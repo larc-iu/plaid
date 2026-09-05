@@ -7,6 +7,8 @@ the logged-in user's own token.
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 import zlib
 from datetime import datetime, timezone
@@ -20,7 +22,7 @@ from fastapi.templating import Jinja2Templates
 from plaid_client import PlaidClient
 from plaid_client.http import PlaidAPIError
 
-from .. import auth, db, jobs, plaid_gateway as gw
+from .. import auth, db, jobs, plaid_gateway as gw, sentences
 from ..inference import kg as kgmod, legacy_labels, pipeline, runner
 from ..reference import catalog
 
@@ -322,8 +324,28 @@ def language_page(request: Request, language_id: str, imported: int | None = Non
         available.sort(key=lambda q: q.short_title)
         runs = [{"run": r, "stale": r.status == "done" and _run_is_stale(r, docs)} for r in lang.runs]
         published = sum(1 for d in docs if d["doc"] and d["doc"].published and d["filled"])
+        corpora = []
+        for ref in lang.corpora:
+            try:
+                d = access.load_doc(ref.plaid_document_id)
+                corpora.append({"ref": ref, "doc": d, "missing": False, "reason": "",
+                                "sentences": sum(1 for x in d.slots if x.filled)})
+            except gw.DocumentUnavailable as e:
+                corpora.append({"ref": ref, "doc": None, "missing": True, "reason": str(e), "sentences": 0})
+        pool_size = sum(1 for d in docs + corpora if d["doc"]
+                        for x in d["doc"].slots if x.filled and x.fields.get("prompt", (None, ""))[1].strip())
+        augmented = s.query(db.SentenceAugmentation).filter_by(language_id=lang.id).count()
+        augment_job = _latest_job(s, "augment", lang.id)
     return render(request, "language.html", lang=lang, access=access, docs=docs, available=available,
-                  runs=runs, imported=imported, published=published)
+                  runs=runs, imported=imported, published=published, corpora=corpora,
+                  pool_size=pool_size, augmented=augmented, augment_job=augment_job)
+
+
+def _latest_job(s, kind: str, language_id: str) -> db.Job | None:
+    for job in s.query(db.Job).filter_by(kind=kind).order_by(db.Job.created_at.desc()).limit(50):
+        if job.payload.get("language_id") == language_id:
+            return job
+    return None
 
 
 def _run_is_stale(run: db.InferenceRun, docs: list[dict]) -> bool:
@@ -358,11 +380,103 @@ def questionnaire_forget(request: Request, language_id: str, document_id: str):
         lang = get_language(s, language_id)
         access = Access(user, lang)
         require_manage(access)
-        for ref in lang.documents:
+        for ref in list(lang.documents) + list(lang.corpora):
             if ref.plaid_document_id == document_id:
                 s.delete(ref)
         s.commit()
     return redirect(f"/languages/{language_id}", request)
+
+
+# ---------------------------------------------------------------- sentence pairs
+
+
+def parse_pairs(filename: str, raw: bytes) -> list[dict[str, str]]:
+    """dig4el's sentence-pair files: a JSON list of {source, target, comments} or a CSV
+    with those columns. Rows missing either side are dropped."""
+    text = raw.decode("utf-8-sig")
+    if filename.lower().endswith(".json"):
+        data = json.loads(text)
+        if not isinstance(data, list):
+            raise HTTPException(400, "A sentence-pair file is a JSON list of objects with source and target.")
+        rows = [r for r in data if isinstance(r, dict)]
+    else:
+        reader = csv.DictReader(io.StringIO(text))
+        rows = [{(k or "").strip().lower(): (v or "") for k, v in r.items()} for r in reader]
+    pairs = []
+    for r in rows:
+        source, target = str(r.get("source") or "").strip(), str(r.get("target") or "").strip()
+        if source and target:
+            pairs.append({"source": source, "target": target, "comments": str(r.get("comments") or "").strip()})
+    if not pairs:
+        raise HTTPException(400, "No row had both a source and a target sentence.")
+    return pairs
+
+
+@app.post("/languages/{language_id}/corpora")
+async def corpus_add(request: Request, language_id: str, name: str = Form(...), origin: str = Form(""),
+                     author: str = Form(""), file: UploadFile = File(...)):
+    user = current_user(request)
+    raw = await file.read()
+    pairs = parse_pairs(file.filename or "", raw)
+    with db.session() as s:
+        lang = get_language(s, language_id)
+        access = Access(user, lang)
+        require_edit(access)
+        doc = gw.create_corpus_document(access.client, lang.plaid_project_id, access.layers, name.strip(),
+                                        {"origin": origin.strip(), "author": author.strip()}, pairs,
+                                        lang.delimiters or catalog.DEFAULT_DELIMITERS)
+        s.add(db.CorpusDocument(language_id=lang.id, plaid_document_id=doc["id"], name=name.strip(),
+                                origin=origin.strip(), author=author.strip(), created_by=user.id))
+        s.commit()
+    return redirect(f"/languages/{language_id}/documents/{doc['id']}", request)
+
+
+@app.post("/languages/{language_id}/augment")
+def augment_start(request: Request, language_id: str, model: str = Form("")):
+    user = current_user(request)
+    with db.session() as s:
+        lang = get_language(s, language_id)
+        access = Access(user, lang)
+        require_edit(access)
+        running = _latest_job(s, "augment", lang.id)
+        if running is not None and running.status in ("queued", "running"):
+            return redirect(f"/languages/{language_id}", request)
+        job = jobs.enqueue(s, "augment", {"language_id": lang.id, "model": model.strip()}, user.id, user.token)
+        s.commit()
+        job_id = job.id
+    jobs.submit(job_id)
+    return redirect(f"/languages/{language_id}", request)
+
+
+@app.get("/languages/{language_id}/jobs/{job_id}/status", response_class=HTMLResponse)
+def job_status(request: Request, language_id: str, job_id: str):
+    current_user(request)
+    with db.session() as s:
+        job = s.get(db.Job, job_id)
+        if job is None:
+            raise HTTPException(404)
+        if job.status in ("done", "failed"):
+            return Response(status_code=200, headers={"HX-Redirect": f"/languages/{language_id}"})
+    return render(request, "_job_status.html", job=job, language_id=language_id)
+
+
+@app.post("/languages/{language_id}/search", response_class=HTMLResponse)
+def sentence_search(request: Request, language_id: str, query: str = Form(""), how: str = Form("keyword")):
+    user = current_user(request)
+    with db.session() as s:
+        lang = get_language(s, language_id)
+        Access(user, lang)
+        rows = s.query(db.SentenceAugmentation).filter_by(language_id=lang.id).all()
+    query = query.strip()
+    hits: list[sentences.Hit] = []
+    if query:
+        if how == "embedding":
+            hits = sentences.embedding_hits(rows, query)
+        elif how == "model":
+            hits = sentences.model_selection(rows, query)
+        else:
+            hits = sentences.keyword_hits(rows, query, lang.delimiters or catalog.DEFAULT_DELIMITERS)[:50]
+    return render(request, "_search.html", lang=lang, query=query, how=how, hits=hits)
 
 
 @app.post("/languages/{language_id}/questionnaires")
@@ -398,18 +512,41 @@ def document_publish(request: Request, language_id: str, document_id: str, publi
 
 
 def _editor_context(access: Access, lang: db.Language, doc: gw.QuestionnaireDoc) -> dict:
-    """The editor's rows in questionnaire order: a slot, or the segment whose slot is
-    gone; sentence tokens that are not segments come last."""
-    q = catalog.questionnaires().get(doc.questionnaire)
+    """The editor's rows: for a questionnaire, in questionnaire order with the segments
+    whose slot is gone and foreign sentence tokens last; for a corpus, the slots with
+    their augmentations."""
+    q = catalog.questionnaires().get(doc.questionnaire) if doc.kind == "questionnaire" else None
     rows: list[tuple[str, Any]] = []
     if q:
         for seg in q.segments:
             slot = doc.slot(seg.index)
             rows.append(("slot", slot) if slot else ("missing", seg))
+        rows.extend(("slot", s) for s in doc.extra_slots)
     else:
         rows = [("slot", s) for s in doc.slots]
-    rows.extend(("slot", s) for s in doc.extra_slots)
-    return {"lang": lang, "access": access, "doc": doc, "q": q, "rows": rows}
+    return {"lang": lang, "access": access, "doc": doc, "q": q, "rows": rows,
+            "aug": _augmentations(doc), "corpus": _corpus_ref(lang, doc)}
+
+
+def _augmentations(doc: gw.QuestionnaireDoc) -> dict[str, db.SentenceAugmentation]:
+    with db.session() as s:
+        return {a.token_id: a for a in s.query(db.SentenceAugmentation).filter_by(document_id=doc.id).all()}
+
+
+def _corpus_ref(lang: db.Language, doc: gw.QuestionnaireDoc) -> db.CorpusDocument | None:
+    with db.session() as s:  # the language may be detached by now
+        return s.query(db.CorpusDocument).filter_by(plaid_document_id=doc.id).one_or_none()
+
+
+def meanings_of(doc: gw.QuestionnaireDoc, slot: gw.Slot, aug: dict[str, db.SentenceAugmentation]) -> list[str]:
+    """The meanings a slot links words to: a questionnaire segment's expected concepts,
+    or a corpus sentence's key translation concepts plus any meaning already linked."""
+    if doc.kind == "questionnaire":
+        return slot.segment.expected_concepts() if slot.segment else []
+    a = aug.get(slot.token_id)
+    out = list(a.key_translation_concepts) if a else []
+    out += [c["value"] for c in slot.concepts if c["value"] not in out]
+    return out
 
 
 # Twenty hues a golden angle apart, dark enough for white text.
@@ -435,9 +572,9 @@ class SlotView:
     concept has, a color per concept, and the concept currently being linked (the first
     one without words unless the caller says otherwise)."""
 
-    def __init__(self, slot: gw.Slot, active: str | None = None):
+    def __init__(self, slot: gw.Slot, active: str | None = None, expected: list[str] | None = None):
         seg = slot.segment
-        self.concepts: list[str] = seg.expected_concepts() if seg else []
+        self.concepts: list[str] = expected if expected is not None else (seg.expected_concepts() if seg else [])
         form_of = {w["id"]: w["form"] for w in slot.words}
         order = {w["id"]: i for i, w in enumerate(slot.words)}
         self.by_word: dict[str, list[str]] = {}
@@ -455,9 +592,12 @@ class SlotView:
         self.colors = concept_colors(list(set(self.concepts) | set(self.by_concept)))
 
 
-def _attach_views(doc: gw.QuestionnaireDoc, active: str | None = None, segment: str | None = None) -> None:
+def _attach_views(doc: gw.QuestionnaireDoc, active: str | None = None, segment: str | None = None,
+                  aug: dict[str, db.SentenceAugmentation] | None = None) -> None:
+    aug = aug if aug is not None else _augmentations(doc)
     for s in doc.slots:
-        s.view = SlotView(s, active if segment is None or s.segment_index == segment else None)  # type: ignore[attr-defined]
+        s.view = SlotView(s, active if segment is None or s.segment_index == segment else None,  # type: ignore[attr-defined]
+                          expected=meanings_of(doc, s, aug))
 
 
 @app.get("/languages/{language_id}/documents/{document_id}", response_class=HTMLResponse)
@@ -467,8 +607,9 @@ def editor_page(request: Request, language_id: str, document_id: str):
         lang = get_language(s, language_id)
         access = Access(user, lang)
         doc = access.load_doc(document_id)
-    _attach_views(doc)
-    return render(request, "questionnaire.html", **_editor_context(access, lang, doc))
+    ctx = _editor_context(access, lang, doc)
+    _attach_views(doc, aug=ctx["aug"])
+    return render(request, "corpus.html" if doc.kind == "corpus" else "questionnaire.html", **ctx)
 
 
 def _slot_response(request: Request, access: Access, lang: db.Language, document_id: str, segment: str,
@@ -477,8 +618,9 @@ def _slot_response(request: Request, access: Access, lang: db.Language, document
     slot = doc.slot(segment)
     if slot is None:
         raise HTTPException(404, "No such segment")
-    _attach_views(doc, active, segment)
-    return render(request, "_slot.html", slot=slot, seg=slot.segment, **_editor_context(access, lang, doc))
+    ctx = _editor_context(access, lang, doc)
+    _attach_views(doc, active, segment, aug=ctx["aug"])
+    return render(request, "_pair.html" if doc.kind == "corpus" else "_slot.html", slot=slot, seg=slot.segment, **ctx)
 
 
 @app.get("/languages/{language_id}/documents/{document_id}/slots/{segment}", response_class=HTMLResponse)
@@ -494,7 +636,7 @@ def slot_get(request: Request, language_id: str, document_id: str, segment: str,
           response_class=HTMLResponse)
 def slot_translation(request: Request, language_id: str, document_id: str, segment: str,
                      text: str = Form(""), alternate_pivot: str = Form(""),
-                     back_translation: str = Form(""), note: str = Form("")):
+                     back_translation: str = Form(""), note: str = Form(""), source: str | None = Form(None)):
     user = current_user(request)
     with db.session() as s:
         lang = get_language(s, language_id)
@@ -505,6 +647,10 @@ def slot_translation(request: Request, language_id: str, document_id: str, segme
         if slot is None:
             raise HTTPException(404, "No such segment")
         fields = {"alternate_pivot": alternate_pivot, "back_translation": back_translation, "note": note}
+        if doc.kind == "corpus":
+            fields = {"note": note}
+            if source is not None:
+                fields["prompt"] = source
         text = text.replace("\n", " ").strip()
         if text != slot.text:
             gw.fill_slot(access.client, doc, slot, text, lang.delimiters or catalog.DEFAULT_DELIMITERS,
@@ -531,6 +677,55 @@ def slot_restore(request: Request, language_id: str, document_id: str, segment: 
     return redirect(f"/languages/{language_id}/documents/{document_id}#slot-{segment}", request)
 
 
+@app.post("/languages/{language_id}/documents/{document_id}/slots/{segment}/augmentation",
+          response_class=HTMLResponse)
+async def slot_augmentation(request: Request, language_id: str, document_id: str, segment: str):
+    """Edit what the model said about a corpus sentence: description, keywords, comment,
+    and the meanings (rename, add, remove), as dig4el's step 3 allowed."""
+    user = current_user(request)
+    form = await request.form()
+    with db.session() as s:
+        lang = get_language(s, language_id)
+        access = Access(user, lang)
+        require_edit(access)
+        doc = access.load_doc(document_id)
+        slot = doc.slot(segment)
+        if slot is None:
+            raise HTTPException(404, "No such segment")
+        a = s.query(db.SentenceAugmentation).filter_by(token_id=slot.token_id).one_or_none()
+        if a is None:
+            a = db.SentenceAugmentation(language_id=lang.id, document_id=doc.id, token_id=slot.token_id,
+                                        source=slot.fields.get("prompt", (None, ""))[1], target=slot.text)
+            s.add(a)
+        if "description" in form:
+            a.description = str(form.get("description") or "").strip()
+            a.keywords = [k.strip() for k in str(form.get("keywords") or "").split(",") if k.strip()]
+            a.comment = str(form.get("comment") or "").strip()
+        concepts = list(a.key_translation_concepts)
+        renames: dict[str, str] = {}
+        for key, value in form.multi_items():
+            if key.startswith("concept__"):
+                old = key[len("concept__"):]
+                new = str(value).strip()
+                if old in concepts:
+                    if new and new != old:
+                        renames[old] = new
+                        concepts[concepts.index(old)] = new
+                    elif not new:
+                        concepts.remove(old)
+        new_concept = str(form.get("new_concept") or "").strip()
+        if new_concept and new_concept not in concepts:
+            concepts.append(new_concept)
+        a.key_translation_concepts = concepts
+        a.edited_by = user.id
+        s.commit()
+        if renames:
+            with access.client.operation(f"Rename meanings in sentence {segment} of {doc.name}"):
+                for old, new in renames.items():
+                    gw.rename_concept(access.client, slot, old, new)
+    return _slot_response(request, access, lang, document_id, segment)
+
+
 @app.post("/languages/{language_id}/documents/{document_id}/slots/{segment}/link",
           response_class=HTMLResponse)
 def slot_link(request: Request, language_id: str, document_id: str, segment: str,
@@ -543,11 +738,11 @@ def slot_link(request: Request, language_id: str, document_id: str, segment: str
         require_edit(access)
         doc = access.load_doc(document_id)
         slot = doc.slot(segment)
-        if slot is None or slot.segment is None:
+        if slot is None or (doc.kind == "questionnaire" and slot.segment is None):
             raise HTTPException(404, "No such segment")
         if not doc.can_link:
             raise HTTPException(409, "The Concept layer was removed in Plaid, so meanings cannot be linked.")
-        if concept not in slot.segment.expected_concepts():
+        if concept not in meanings_of(doc, slot, _augmentations(doc)):
             return _slot_response(request, access, lang, document_id, segment)
         current = next((sp for sp in slot.concepts if sp["value"] == concept), None)
         tokens = set(current["tokens"]) if current else set()

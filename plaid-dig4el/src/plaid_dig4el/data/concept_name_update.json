@@ -1,0 +1,18 @@
+[
+  {"PP1SG":  "Ref_speaker"},
+  {"PP1INCDU":  "Ref_speaker_and_addressee"},
+  {"PP1EXCDU":  "Ref_speaker_plus_person_excluding_addressee"},
+  {"PP1PLU":  "Ref_speaker_plus_many_including_addressee"},
+  {"PP1EXCPLU":  "Ref_speaker_plus_many_excluding_addressee"},
+  {"PP2SG":  "Ref_addressee"},
+  {"PP2DU":  "Ref_2_people_including_addressee"},
+  {"PP2INCDU":  "Ref_2_people_including_addressee"},
+  {"PP2EXCDU":  "PP2EXCDU"},
+  {"PP2TRI":  "Ref_3_people_including_addressee"},
+  {"PP2PLU":  "Ref_many_people_including_addressee"},
+  {"PP2EXPLU":  "PP2EXCPLU"},
+  {"PP3SG":  "Ref_1_person"},
+  {"PP3DU":  "Ref_2_people"},
+  {"PP3PLU":  "Ref_many_people"},
+  {"PP3TRI":  "Ref_3_people"}
+]

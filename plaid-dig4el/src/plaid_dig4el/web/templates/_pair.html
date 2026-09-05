@@ -1,0 +1,75 @@
+{% set base = "/languages/" ~ lang.id ~ "/documents/" ~ doc.id ~ "/slots/" ~ slot.segment_index %}
+{% set sv = slot.view %}
+{% set a = aug.get(slot.token_id) %}
+<div class="card slot mb-2" id="slot-{{ slot.segment_index }}"><a id="slot-{{ slot.token_id }}"></a>
+  <div class="card-body py-2 px-3">
+    <form hx-post="{{ base }}/translation" hx-target="#slot-{{ slot.segment_index }}" hx-swap="outerHTML" data-advance="1" class="m-0">
+      <div class="d-flex align-items-center gap-2">
+        <span class="text-secondary small">{{ slot.segment_index }}</span>
+        <div class="flex-grow-1 d-grid gap-1">
+          <input type="text" class="form-control form-control-sm" name="text" value="{{ slot.text }}" placeholder="Sentence in {{ lang.name }}"
+                 autocomplete="off" {% if not access.can_edit %}readonly{% endif %}>
+          <input type="text" class="form-control form-control-sm" name="source" value="{{ slot.fields.get('prompt', (None, ''))[1] }}"
+                 placeholder="Equivalent in {{ lang.pivot_language }}" autocomplete="off" {% if not access.can_edit %}readonly{% endif %}>
+          <input type="text" class="form-control form-control-sm" name="note" value="{{ slot.fields.get('note', (None, ''))[1] }}"
+                 placeholder="Comment" autocomplete="off" {% if not access.can_edit %}readonly{% endif %}>
+        </div>
+        {% if access.can_edit %}<button type="submit" class="btn btn-sm btn-outline-primary align-self-start">Save</button>{% endif %}
+      </div>
+    </form>
+    {% if a %}
+    <details class="small mt-1">
+      <summary class="text-secondary">Model's description{% if a.edited_by %} (edited){% endif %}</summary>
+      <form hx-post="{{ base }}/augmentation" hx-target="#slot-{{ slot.segment_index }}" hx-swap="outerHTML" class="d-grid gap-1 mt-1 m-0">
+        <input type="text" class="form-control form-control-sm" name="description" value="{{ a.description }}" placeholder="Description" {% if not access.can_edit %}readonly{% endif %}>
+        <input type="text" class="form-control form-control-sm" name="keywords" value="{{ a.keywords|join(', ') }}" placeholder="Keywords, comma-separated" {% if not access.can_edit %}readonly{% endif %}>
+        <input type="text" class="form-control form-control-sm" name="comment" value="{{ a.comment }}" placeholder="Model's comment" {% if not access.can_edit %}readonly{% endif %}>
+        <div class="d-flex flex-wrap gap-1 align-items-center">
+          <span class="text-secondary">Meanings:</span>
+          {% for c in a.key_translation_concepts %}<input type="text" class="form-control form-control-sm w-auto" name="concept__{{ c }}" value="{{ c }}" {% if not access.can_edit %}readonly{% endif %}>{% endfor %}
+          <input type="text" class="form-control form-control-sm w-auto" name="new_concept" placeholder="Add a meaning" {% if not access.can_edit %}readonly{% endif %}>
+        </div>
+        <div class="text-secondary">Clear a meaning to remove it. Model: {{ a.model or 'none' }}.</div>
+        {% if access.can_edit %}<div><button type="submit" class="btn btn-sm btn-outline-secondary">Save description</button></div>{% endif %}
+      </form>
+    </details>
+    {% elif access.can_edit %}
+    <form hx-post="{{ base }}/augmentation" hx-target="#slot-{{ slot.segment_index }}" hx-swap="outerHTML" class="d-flex gap-1 align-items-center mt-1 m-0 small">
+      <span class="text-secondary">Not described yet.</span>
+      <input type="text" class="form-control form-control-sm w-auto" name="new_concept" placeholder="Add a meaning">
+      <button type="submit" class="btn btn-sm btn-outline-secondary">Add</button>
+    </form>
+    {% endif %}
+    {% if slot.filled and sv and sv.concepts and doc.can_link %}
+    <div class="linker mt-2 pt-2 border-top" data-active="{{ sv.active }}" style="--active-color: {{ sv.colors.get(sv.active, '') }}">
+      <input type="hidden" name="concept" value="{{ sv.active }}">
+      <div class="words d-flex flex-wrap gap-1 mb-2">
+        {% for w in slot.words %}
+          {% set linked = sv.by_word.get(w.id, []) %}
+          <span class="wordwrap">
+            <button type="button" class="word btn btn-sm btn-outline-secondary {{ 'on' if sv.active in linked }}" name="word" value="{{ w.id }}"
+                    data-concepts="{{ linked|join('|') }}"
+                    hx-post="{{ base }}/link" hx-include="closest .linker"
+                    hx-target="#slot-{{ slot.segment_index }}" hx-swap="outerHTML"
+                    {% if not access.can_edit %}disabled{% endif %}>
+              <span class="form">{{ w.form }}</span>
+              <span class="dots">{% for c in linked %}<i class="dot" style="--c: {{ sv.colors[c] }}"></i>{% endfor %}</span>
+            </button>
+            {% if linked %}
+            <span class="wordcard">{% for c in linked %}<span class="d-block"><i class="dot" style="--c: {{ sv.colors[c] }}"></i> {{ c }}</span>{% endfor %}</span>
+            {% endif %}
+          </span>
+        {% endfor %}
+      </div>
+      <div class="concepts d-flex flex-wrap gap-1 align-items-center">
+        {% for c in sv.concepts %}
+          {% set ws = sv.by_concept.get(c, []) %}
+          <span class="concept {{ 'active' if c == sv.active }} {{ 'linked' if ws else 'unlinked' }}" data-concept="{{ c }}" style="--c: {{ sv.colors[c] }}">
+            <button type="button" class="concept-btn btn btn-sm btn-outline-secondary"><i class="dot"></i>{{ c }}</button>
+          </span>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>

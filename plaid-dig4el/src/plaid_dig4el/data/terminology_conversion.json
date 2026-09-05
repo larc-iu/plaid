@@ -1,0 +1,61 @@
+{
+  "CONDITION": "Condition",
+
+  "Ref_addressee": "Reference: Second person",
+  "Ref_speaker": "Reference: First person",
+  "Ref_speaker_and_addressee": "Reference: First person dual inclusive",
+  "Ref_speaker_plus_person_excluding_addressee": "Reference: First person dual exclusive",
+  "Ref_speaker_plus_many_including_addressee": "Reference: First person plural inclusive",
+  "Ref_1_person": "Reference: Third person",
+  "Ref_2_people": "Reference: Third person dual",
+  "Ref_2_people_including_addressee": "Reference: Second person dual inclusive",
+  "Ref_many_people_including_addressee": "Reference: Second person plural inclusive",
+
+  "Ref_1_object": "Reference: 1 object",
+  "Ref_many_objects": "Reference: many objects",
+  "object wildcard": "Reference: unknown object",
+
+  "OTHER X": "Logic: other",
+  "ANOTHER": "Logic: Another",
+
+  "Ref_location": "Space: Reference to known location",
+  "spatial position wildcard": "Space: Reference to an unknown location",
+  "CLOSE TO SPEAKER": "Space: Proximal",
+  "DIRECTION": "Space: Direction",
+  "BEHIND X": "Space: Relative position: behind",
+  "TOWARD X": "Space: Direction toward X",
+  "BEING LOCATED": "Space: being located",
+  "ZOOM IN": "Space: Inclusion",
+  "SPATIAL ON": "Space: Relative position: on",
+  "UNDER": "Space: Relative position: under",
+  "all over": "Space: all over",
+
+  "Ref_Event": "Reference: known event",
+  "event Wildcard": "Reference: unknown event",
+
+  "PERSON wildcard": "Reference: unknown people",
+
+  "POINTED BY SPEAKER": "Deictic",
+
+  "presenting (presentative)": "Presentative",
+  "PRESENT X": "Introducing someone/something",
+
+  "OLDER THAN X": "Comparative: older than",
+  "BEFORE X": "Relative time position: before X",
+  "time position wildcard": "Reference to an unknown time position",
+  "IN FUTURE DIRECTION": "Time: in the direction of the future",
+  "AFTER X": "Time: after X",
+  "END of X": "Time: end of X",
+
+  "MORE X than Y": "Comparative: more X than Y",
+  "COMP-MORE": "Comparative: more",
+  "COMP-EQUAL": "Comparative: equal",
+
+  "TOO MUCH of X": "Quantifier: too much of",
+  "ALL": "Quantifier: all",
+
+  "causality wildcard": "Causality: Reference to an unknown cause",
+
+  "event_": "event"
+
+}

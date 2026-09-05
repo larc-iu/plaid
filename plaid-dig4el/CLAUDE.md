@@ -28,6 +28,27 @@ single worker thread in `jobs.py`. A handler is `@jobs.handler("kind")` taking
 one session, commit, then `jobs.submit(id)`. A restart requeues interrupted jobs
 (`attempts`, given up after `MAX_ATTEMPTS`). Do not start threads for work; add a kind.
 
+## Sentence pairs and the language model
+
+The sentence pool (`sentences.read_pool`) is every slot with both sides: the target
+text and its source-language prompt field, from questionnaire and corpus documents
+alike (dig4el's `cq_to_sentence_pairs`). A corpus is a Plaid document of the same
+shape (`plaid_gateway.create_corpus_document`), registered in `corpus_documents`.
+Augmentation (`augment.py`, job kind `augment`) is Sebastien's Grammatical Descriptor
+verbatim as one schema-constrained completion per source sentence; the result and its
+three embeddings live in `sentence_augmentations` (dig4el's side: derived, not
+asserted), while word-meaning links for a corpus sentence are Concept spans in Plaid
+with the key translation concept as value. Retrieval (`sentences.py`) offers dig4el's
+three routes: keyword substring, embedding cosine, and the Sentence Selector, which is
+the one dig4el's generation actually uses.
+
+`llm.py` talks to any OpenAI-compatible endpoint (`LLM_BASE_URL`, key in
+`LLM_KEY_FILE` or `LLM_API_KEY`). Reasoning models return thinking in a separate field
+that is dropped. `chat_json` constrains output with `response_format: json_schema` and
+validates with pydantic. On the IU endpoint gpt-oss-120b honours the schema (3 to 7 s
+per sentence); gemma-4-31B-it does not (it emits whitespace until the token limit under
+guided decoding), so it is not used for structured stages; glm-5.2 works but is slow.
+
 ## Plaid-side changes degrade, they never crash
 
 Anything igt or another app does to the shared project is legitimate. The gateway

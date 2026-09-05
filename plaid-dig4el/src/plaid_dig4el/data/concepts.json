@@ -1,0 +1,4147 @@
+{
+    "INTELLECT": {
+        "description": "INTELLECT",
+        "type": "concept",
+        "ontological parent": "self",
+        "requires": [],
+        "gramprop": []
+    },
+    "EVENT": {
+        "description": "Any concept describing something changing in time.",
+        "type": "concept",
+        "ontological parent": "CONCEPT CORE",
+        "requires": [
+            "AGENT",
+            "EVENT TENSE",
+            "ASPECT",
+            "QUALIFIER",
+            "POLARITY",
+            "LOCATION INFORMATION",
+            "TIME INFORMATION",
+            "QUANTIFIER"
+        ],
+        "gramprop": []
+    },
+    "EXPERIENCE": {
+        "description": "Something experiencing something.",
+        "type": "concept",
+        "ontological parent": "EVENT",
+        "requires": [],
+        "gramprop": []
+    },
+    "ACTION": {
+        "description": "Something doing something",
+        "type": "concept",
+        "ontological parent": "EVENT",
+        "requires": [],
+        "gramprop": []
+    },
+    "OBJECT": {
+        "description": "Any reference to a class of objects.",
+        "type": "concept",
+        "ontological parent": "CONCEPT CORE",
+        "requires": [
+            "DEFINITENESS",
+            "QUANTIFIER",
+            "POSSESSOR",
+            "POSSESSEE",
+            "QUALIFIER",
+            "POLARITY",
+            "LOCATION INFORMATION",
+            "TIME INFORMATION",
+            "ORIGIN OF OBJECTS"
+        ],
+        "gramprop": []
+    },
+    "EXPERIENCEABLE OBJECT": {
+        "description": "Any reference to a class of experienceable objects.",
+        "type": "concept",
+        "ontological parent": "OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "ABSTRACT OBJECT": {
+        "description": "Any abstract concept.",
+        "type": "concept",
+        "ontological parent": "OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "TIME": {
+        "description": "Any reference to time.",
+        "type": "concept",
+        "ontological parent": "CONCEPT CORE",
+        "requires": [],
+        "gramprop": []
+    },
+    "TIME CHUNKS": {
+        "description": "Named chunks/units of time",
+        "type": "concept",
+        "ontological parent": "TIME",
+        "requires": [
+            "QUANTIFIER",
+            "QUALIFIER"
+        ],
+        "gramprop": []
+    },
+    "ABSOLUTE TIME REFERENCES": {
+        "description": "A pointer to a time in the future or past defined without reference to the time of enunciation.",
+        "type": "concept",
+        "ontological parent": "TIME",
+        "requires": [],
+        "gramprop": []
+    },
+    "RELATIVE TIME REFERENCE": {
+        "description": "A time in the future or past defined by reference to the time of enunciation.",
+        "type": "concept",
+        "ontological parent": "TIME",
+        "requires": [
+            "QUANTIFIER"
+        ],
+        "gramprop": []
+    },
+    "EVENT TENSE": {
+        "description": "The general position in time at which an event occurs, relative to the time of enunciation.",
+        "type": "concept",
+        "ontological parent": "CONCEPT ATTRIBUTES",
+        "requires": [],
+        "gramprop": []
+    },
+    "PAST EVENT": {
+        "description": "Before the real or imaginary speaker time.",
+        "type": "concept",
+        "ontological parent": "EVENT TENSE",
+        "requires": [],
+        "gramprop": []
+    },
+    "JUST A MOMENT AGO": {
+        "description": "A few minutes/hours in the past of the speaker.",
+        "type": "concept",
+        "ontological parent": "PAST EVENT",
+        "requires": [],
+        "gramprop": []
+    },
+    "A SHORT WHILE AGO": {
+        "description": "A few hours/days in the past of the speaker.",
+        "type": "concept",
+        "ontological parent": "PAST EVENT",
+        "requires": [],
+        "gramprop": []
+    },
+    "SOME TIME AGO": {
+        "description": "Some days/weeks in the past of the speaker.",
+        "type": "concept",
+        "ontological parent": "PAST EVENT",
+        "requires": [],
+        "gramprop": []
+    },
+    "A LONG TIME AGO": {
+        "description": "Some months/years in the past of the speaker.",
+        "type": "concept",
+        "ontological parent": "PAST EVENT",
+        "requires": [],
+        "gramprop": []
+    },
+    "A VERY LONG TIME AGO": {
+        "description": "Many years in the past of the speaker.",
+        "type": "concept",
+        "ontological parent": "PAST EVENT",
+        "requires": [],
+        "gramprop": []
+    },
+    "FUTURE EVENT": {
+        "description": "After the real or imaginary speaker time.",
+        "type": "concept",
+        "ontological parent": "EVENT TENSE",
+        "requires": [],
+        "gramprop": []
+    },
+    "SHORTLY AFTER NOW": {
+        "description": "A short duration after the speaker time.",
+        "type": "concept",
+        "ontological parent": "FUTURE EVENT",
+        "requires": [],
+        "gramprop": []
+    },
+    "ASPECT": {
+        "description": "The way an event is viewed in relation to the flow of time.",
+        "type": "concept",
+        "ontological parent": "CONCEPT ATTRIBUTES",
+        "requires": [],
+        "gramprop": []
+    },
+    "PROGRESSIVE": {
+        "description": "An event in progress.",
+        "type": "concept",
+        "ontological parent": "ASPECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "PERFECTIVE": {
+        "description": "An event that has been completed.",
+        "type": "concept",
+        "ontological parent": "ASPECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "HABITUAL": {
+        "description": "An event that is repeated.",
+        "type": "concept",
+        "ontological parent": "ASPECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "SPACE": {
+        "description": " ",
+        "type": "concept",
+        "ontological parent": "CONCEPT CORE",
+        "requires": [],
+        "gramprop": []
+    },
+    "DEICTIC": {
+        "description": "A pointer relative to the real or imaginary speaker.",
+        "type": "concept",
+        "ontological parent": "REFERENCE TO CONCEPT",
+        "requires": [],
+        "gramprop": []
+    },
+    "OBJECT DEICTIC": {
+        "description": "A relative pointer to an object.",
+        "type": "concept",
+        "ontological parent": "DEICTIC",
+        "requires": [],
+        "gramprop": []
+    },
+    "DISTAL": {
+        "description": "Far from the speaker.",
+        "type": "concept",
+        "ontological parent": "SPATIAL DEICTIC",
+        "requires": [],
+        "gramprop": []
+    },
+    "Ref_speaker": {
+        "description": "A reference to the speaker.",
+        "type": "concept",
+        "ontological parent": "PERSONAL DEICTIC",
+        "requires": [],
+        "gramprop": []
+    },
+    "Ref_addressee": {
+        "description": "A reference to the addressee.",
+        "type": "concept",
+        "ontological parent": "PERSONAL DEICTIC",
+        "requires": [],
+        "gramprop": []
+    },
+    "Ref_2_people_including_addressee": {
+        "description": "A reference to the addressee and someone else but not the speaker.",
+        "type": "concept",
+        "ontological parent": "PERSONAL DEICTIC",
+        "requires": [],
+        "gramprop": []
+    },
+    "Ref_3_people_including_addressee": {
+        "description": "A relative pointer to the addressee and two other people but not the speaker.",
+        "type": "concept",
+        "ontological parent": "PERSONAL DEICTIC",
+        "requires": [],
+        "gramprop": []
+    },
+    "Ref_1_person": {
+        "description": "A relative pointer to someone else but not the speaker or the addressee.",
+        "type": "concept",
+        "ontological parent": "PERSONAL DEICTIC",
+        "requires": [],
+        "gramprop": []
+    },
+    "Ref_2_people": {
+        "description": "A relative pointer to two people different from the speaker or the addressee.",
+        "type": "concept",
+        "ontological parent": "PERSONAL DEICTIC",
+        "requires": [],
+        "gramprop": []
+    },
+    "Ref_3_people": {
+        "description": "A relative pointer to three people different from the speaker or the addressee.",
+        "type": "concept",
+        "ontological parent": "PERSONAL DEICTIC",
+        "requires": [],
+        "gramprop": []
+    },
+    "Ref_many_people": {
+        "description": "A relative pointer to several people that do not include speaker or addresse.",
+        "type": "concept",
+        "ontological parent": "PERSONAL DEICTIC",
+        "requires": [],
+        "gramprop": []
+    },
+    "DEFINITENESS": {
+        "description": "Whether an entity is considered definite or indefinite.",
+        "type": "concept",
+        "ontological parent": "CONCEPT ATTRIBUTES",
+        "requires": [],
+        "gramprop": []
+    },
+    "UNIQUE": {
+        "description": "The considered entity is unique.",
+        "type": "concept",
+        "ontological parent": "DEFINITENESS",
+        "requires": [],
+        "gramprop": []
+    },
+    "DEFINITE": {
+        "description": "The considered entity is definite.",
+        "type": "concept",
+        "ontological parent": "DEFINITENESS",
+        "requires": [],
+        "gramprop": []
+    },
+    "INDEFINITE": {
+        "description": "The considered entity is indefinite.",
+        "type": "concept",
+        "ontological parent": "DEFINITENESS",
+        "requires": [],
+        "gramprop": []
+    },
+    "QUANTIFIER": {
+        "description": "Any reference to a  QUANTIFIER.",
+        "type": "concept",
+        "ontological parent": "CONCEPT ATTRIBUTES",
+        "requires": [],
+        "gramprop": []
+    },
+    "NUMBER": {
+        "description": "Quantified enumeration of something.",
+        "type": "concept",
+        "ontological parent": "QUANTIFIER",
+        "requires": [],
+        "gramprop": []
+    },
+    "SINGULAR": {
+        "description": "Singular",
+        "type": "feature",
+        "ontological parent": "NUMBER",
+        "requires": [],
+        "gramprop": []
+    },
+    "DUAL": {
+        "description": "Dual",
+        "type": "feature",
+        "ontological parent": "NUMBER",
+        "requires": [],
+        "gramprop": []
+    },
+    "TRIAL": {
+        "description": "Trial",
+        "type": "feature",
+        "ontological parent": "NUMBER",
+        "requires": [],
+        "gramprop": []
+    },
+    "PAUCAL": {
+        "description": "Paucal",
+        "type": "feature",
+        "ontological parent": "QUANTIFIER",
+        "requires": [],
+        "gramprop": []
+    },
+    "PLURAL": {
+        "description": "Plural",
+        "type": "feature",
+        "ontological parent": "QUANTIFIER",
+        "requires": [],
+        "gramprop": []
+    },
+    "EMOTION": {
+        "description": "Any reference to an emotion.",
+        "type": "concept",
+        "ontological parent": "ABSTRACT OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "men": {
+        "description": "Man",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "needing": {
+        "description": "Needing",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "requires": [
+            "PATIENT",
+            "OBLIQUE ROLE ORIGIN",
+            "OBLIQUE ROLE OBJECTIVE"
+        ],
+        "gramprop": []
+    },
+    "trying": {
+        "description": "Trying",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "PATIENT",
+            "OBLIQUE ROLE WITH",
+            "OBLIQUE ROLE OBJECTIVE"
+        ],
+        "gramprop": []
+    },
+    "two hundred": {
+        "description": "Two hundred",
+        "type": "concept",
+        "ontological parent": "NUMBER",
+        "requires": [],
+        "gramprop": []
+    },
+    "month": {
+        "description": "Month",
+        "type": "concept",
+        "ontological parent": "TIME CHUNKS",
+        "requires": [],
+        "gramprop": []
+    },
+    "finding": {
+        "description": "Finding",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "requires": [
+            "PATIENT"
+        ],
+        "gramprop": []
+    },
+    "communities": {
+        "description": "Community",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "celebration": {
+        "description": "Celebration",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [
+            "OBLIQUE ROLE OBJECTIVE",
+            "OBLIQUE ROLE ORIGIN"
+        ],
+        "gramprop": []
+    },
+    "knowing": {
+        "description": "Knowing",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "requires": [
+            "PATIENT"
+        ],
+        "gramprop": []
+    },
+    "children": {
+        "description": "Child",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "year": {
+        "description": "Year",
+        "type": "concept",
+        "ontological parent": "TIME CHUNKS",
+        "requires": [
+            "QUANTIFIER"
+        ],
+        "gramprop": []
+    },
+    "telling": {
+        "description": "Telling",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "PATIENT",
+            "OBLIQUE ROLE DESTINATION",
+            "OBLIQUE ROLE OBJECTIVE"
+        ],
+        "gramprop": []
+    },
+    "morning": {
+        "description": "Morning",
+        "type": "concept",
+        "ontological parent": "RELATIVE TIME REFERENCE",
+        "requires": [],
+        "gramprop": []
+    },
+    "music": {
+        "description": "Music",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "women": {
+        "description": "Woman",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "starting": {
+        "description": "Starting",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "PATIENT",
+            "OBLIQUE ROLE ORIGIN",
+            "OBLIQUE ROLE WITH",
+            "OBLIQUE ROLE DESTINATION"
+        ],
+        "gramprop": []
+    },
+    "organization": {
+        "description": "Organization",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [],
+        "gramprop": []
+    },
+    "dinner": {
+        "description": "Dinner",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "yesterday": {
+        "description": "Yesterday",
+        "type": "concept",
+        "ontological parent": "RELATIVE TIME REFERENCE",
+        "requires": [],
+        "gramprop": []
+    },
+    "river": {
+        "description": "River",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "bringing": {
+        "description": "Bringing",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "PATIENT",
+            "OBLIQUE ROLE",
+            "OBLIQUE ROLE DESTINATION",
+            "OBLIQUE ROLE OBJECTIVE"
+        ],
+        "gramprop": []
+    },
+    "dance": {
+        "description": "Dance",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "stories": {
+        "description": "Stories",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "being able to": {
+        "description": "Being able to",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "requires": [
+            "COMPLEMENT"
+        ],
+        "gramprop": []
+    },
+    "after": {
+        "description": "After",
+        "type": "concept",
+        "ontological parent": "RELATIVE TIME REFERENCE",
+        "requires": [
+            "CONCEPT CORE"
+        ],
+        "gramprop": []
+    },
+    "market": {
+        "description": "Market",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "bathing": {
+        "description": "Bathing",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [],
+        "gramprop": []
+    },
+    "catching": {
+        "description": "Catching",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "PATIENT"
+        ],
+        "gramprop": []
+    },
+    "parting": {
+        "description": "Parting",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [],
+        "gramprop": []
+    },
+    "helping": {
+        "description": "Helping",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "PATIENT"
+        ],
+        "gramprop": []
+    },
+    "friendly way": {
+        "description": "Friendly way",
+        "type": "concept",
+        "ontological parent": "ABSTRACT OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "friends": {
+        "description": "Friend",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "olden times": {
+        "description": "Olden times",
+        "type": "concept",
+        "ontological parent": "ABSOLUTE TIME REFERENCES",
+        "requires": [],
+        "gramprop": []
+    },
+    "calling": {
+        "description": "Calling",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "PATIENT"
+        ],
+        "gramprop": []
+    },
+    "tomorrow": {
+        "description": "Tomorrow",
+        "type": "concept",
+        "ontological parent": "RELATIVE TIME REFERENCE",
+        "requires": [],
+        "gramprop": []
+    },
+    "families": {
+        "description": "Family",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "end": {
+        "description": "And",
+        "type": "concept",
+        "ontological parent": "RELATIVE TIME REFERENCE",
+        "requires": [
+            "DEFINITENESS"
+        ],
+        "gramprop": []
+    },
+    "food": {
+        "description": "Food",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "welcome speech": {
+        "description": "Welcome speech",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "always": {
+        "description": "Always",
+        "type": "concept",
+        "ontological parent": "TIME CHUNKS",
+        "requires": [],
+        "gramprop": []
+    },
+    "chicken": {
+        "description": "Chicken",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "young": {
+        "description": "Young",
+        "type": "concept",
+        "ontological parent": "ABSTRACT OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "forgetting": {
+        "description": "Forgetting",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "requires": [
+            "PATIENT"
+        ],
+        "gramprop": []
+    },
+    "singing": {
+        "description": "Singing",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "PATIENT"
+        ],
+        "gramprop": []
+    },
+    "hearing": {
+        "description": "Hearing",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "requires": [
+            "PATIENT"
+        ],
+        "gramprop": []
+    },
+    "dancing": {
+        "description": "Dancing",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "PATIENT"
+        ],
+        "gramprop": []
+    },
+    "rehearsing": {
+        "description": "Rehearsing",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "PATIENT"
+        ],
+        "gramprop": []
+    },
+    "loving": {
+        "description": "Loving",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "PATIENT"
+        ],
+        "gramprop": []
+    },
+    "coming": {
+        "description": "Coming",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "OBLIQUE ROLE WITH",
+            "OBLIQUE ROLE ORIGIN",
+            "OBLIQUE ROLE DESTINATION"
+        ],
+        "gramprop": []
+    },
+    "village": {
+        "description": "Village",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "fishing": {
+        "description": "Fishing",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [],
+        "gramprop": []
+    },
+    "eating": {
+        "description": "Eating",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "PATIENT"
+        ],
+        "gramprop": []
+    },
+    "meeting": {
+        "description": "Meeting",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "PATIENT"
+        ],
+        "gramprop": []
+    },
+    "sharing": {
+        "description": "Sharing",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "PATIENT",
+            "OBLIQUE ROLE",
+            "OBLIQUE ROLE MANNER",
+            "OBLIQUE ROLE WITH",
+            "OBLIQUE ROLE OBJECTIVE"
+        ],
+        "gramprop": []
+    },
+    "money": {
+        "description": "Money",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "fish": {
+        "description": "Fish",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": [
+            "animal"
+        ]
+    },
+    "showcasing": {
+        "description": "Showcasing",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "PATIENT"
+        ],
+        "gramprop": []
+    },
+    "work": {
+        "description": "Work",
+        "type": "concept",
+        "ontological parent": "ABSTRACT OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "new year": {
+        "description": "New Year",
+        "type": "concept",
+        "ontological parent": "ABSOLUTE TIME REFERENCES",
+        "requires": [],
+        "gramprop": []
+    },
+    "being in charge of": {
+        "description": "Being in charge of",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "requires": [
+            "PATIENT"
+        ],
+        "gramprop": []
+    },
+    "good": {
+        "description": "Good",
+        "type": "concept",
+        "ontological parent": "ABSTRACT PROPERTY",
+        "requires": [],
+        "gramprop": []
+    },
+    "preparing": {
+        "description": "Preparing",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "PATIENT",
+            "OBLIQUE ROLE OBJECTIVE"
+        ],
+        "gramprop": []
+    },
+    "buying": {
+        "description": "Buying",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "PATIENT"
+        ],
+        "gramprop": []
+    },
+    "walking": {
+        "description": "Walking",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "OBLIQUE ROLE DESTINATION"
+        ],
+        "gramprop": []
+    },
+    "late afternoon": {
+        "description": "Late afternoon",
+        "type": "concept",
+        "ontological parent": "RELATIVE TIME REFERENCE",
+        "requires": [],
+        "gramprop": []
+    },
+    "possessing": {
+        "description": "Possessing",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "requires": [
+            "PATIENT"
+        ],
+        "gramprop": []
+    },
+    "old people": {
+        "description": "Old people",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "last": {
+        "description": "Last",
+        "type": "concept",
+        "ontological parent": "RELATIVE TIME REFERENCE",
+        "requires": [],
+        "gramprop": []
+    },
+    "idea": {
+        "description": "Idea",
+        "type": "concept",
+        "ontological parent": "ABSTRACT OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "welcoming": {
+        "description": "Welcoming",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "PATIENT",
+            "OBLIQUE ROLE MANNER"
+        ],
+        "gramprop": []
+    },
+    "husband": {
+        "description": "Husband",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "songs": {
+        "description": "Songs",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "rest": {
+        "description": "Rest",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "going": {
+        "description": "Going",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "OBLIQUE ROLE DESTINATION",
+            "OBLIQUE ROLE WITH",
+            "OBLIQUE ROLE OBJECTIVE"
+        ],
+        "gramprop": []
+    },
+    "choosing": {
+        "description": "Choosing",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "PATIENT"
+        ],
+        "gramprop": []
+    },
+    "home": {
+        "description": "Home",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "garden": {
+        "description": "Garden",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "seeing": {
+        "description": "Seeing",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "requires": [
+            "PATIENT"
+        ],
+        "gramprop": []
+    },
+    "hoping": {
+        "description": "Hoping",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "requires": [
+            "PATIENT"
+        ],
+        "gramprop": []
+    },
+    "praying": {
+        "description": "Praying",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [],
+        "gramprop": []
+    },
+    "harvesting": {
+        "description": "Harvesting",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "PATIENT"
+        ],
+        "gramprop": []
+    },
+    "day": {
+        "description": "Day",
+        "type": "concept",
+        "ontological parent": "TIME CHUNKS",
+        "requires": [
+            "QUANTIFIER",
+            "DEFINITENESS"
+        ],
+        "gramprop": []
+    },
+    "doing": {
+        "description": "Doing",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "PATIENT",
+            "OBLIQUE ROLE DESTINATION",
+            "OBLIQUE ROLE MANNER",
+            "OBLIQUE ROLE WITH",
+            "OBLIQUE ROLE MEDIUM"
+        ],
+        "gramprop": []
+    },
+    "again": {
+        "description": "Again",
+        "type": "concept",
+        "ontological parent": "TIME LOGIC",
+        "requires": [],
+        "gramprop": []
+    },
+    "vegetables": {
+        "description": "Vegetables",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "people": {
+        "description": "People",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "understanding": {
+        "description": "Understanding",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "requires": [
+            "PATIENT"
+        ],
+        "gramprop": []
+    },
+    "giving": {
+        "description": "Giving",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "PATIENT",
+            "OBLIQUE ROLE GOAL",
+            "OBLIQUE ROLE DESTINATION",
+            "OBLIQUE ROLE OBJECTIVE"
+        ],
+        "gramprop": []
+    },
+    "today": {
+        "description": "Today",
+        "type": "concept",
+        "ontological parent": "RELATIVE TIME REFERENCE",
+        "requires": [],
+        "gramprop": []
+    },
+    "wanting": {
+        "description": "Wanting",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "requires": [
+            "PATIENT"
+        ],
+        "gramprop": []
+    },
+    "dances": {
+        "description": "Dances",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "together": {
+        "description": "Together",
+        "type": "concept",
+        "ontological parent": "PLACEHOLDER",
+        "requires": [],
+        "gramprop": []
+    },
+    "family": {
+        "description": "Family",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "community": {
+        "description": "Community",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "lunch": {
+        "description": "Lunch",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "leaders": {
+        "description": "Leader",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "ARTIFICIAL OBJECT": {
+        "description": "Artificial, man-made object",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "PERSONAL DEICTIC": {
+        "description": "Reference to a person or personified object in relation with the real or imaginary speaker.",
+        "type": "concept",
+        "ontological parent": "OBJECT DEICTIC",
+        "requires": [
+            "QUANTIFIER",
+            "SEX-BASED GENDER"
+        ],
+        "gramprop": []
+    },
+    "SEMANTIC ROLE": {
+        "description": "Semantic Role",
+        "type": "concept",
+        "ontological parent": "CONCEPTS RELATIONS",
+        "requires": [],
+        "gramprop": []
+    },
+    "AGENT": {
+        "description": "Agent",
+        "type": "concept",
+        "ontological parent": "SEMANTIC ROLE",
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ],
+        "gramprop": []
+    },
+    "PATIENT": {
+        "description": "Patient",
+        "type": "concept",
+        "ontological parent": "SEMANTIC ROLE",
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ],
+        "gramprop": []
+    },
+    "OBLIQUE ROLE": {
+        "description": "Oblique Role",
+        "type": "concept",
+        "ontological parent": "SEMANTIC ROLE",
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ],
+        "gramprop": []
+    },
+    "OBLIQUE ROLE WITH": {
+        "description": "Oblique Role With",
+        "type": "concept",
+        "ontological parent": "OBLIQUE ROLE",
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ],
+        "gramprop": []
+    },
+    "CONCEPT ATTRIBUTES": {
+        "description": "CONCEPT ATTRIBUTES",
+        "type": "concept",
+        "ontological parent": "SPECIFIERS",
+        "requires": [],
+        "gramprop": []
+    },
+    "CONCEPTS RELATIONS": {
+        "description": "CONCEPTS RELATIONS",
+        "type": "concept",
+        "ontological parent": "INTELLECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "CONCEPT CORE": {
+        "description": "CONCEPT CORE",
+        "type": "concept",
+        "ontological parent": "INTELLECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "REFERENCE TO CONCEPT": {
+        "description": "REFERENCE TO CONCEPT",
+        "type": "feature",
+        "ontological parent": "SPECIFIERS",
+        "requires": [],
+        "gramprop": []
+    },
+    "ABSOLUTE REFERENCE": {
+        "description": "ABSOLUTE REFERENCE",
+        "type": "feature",
+        "ontological parent": "REFERENCE TO CONCEPT",
+        "requires": [
+            "OBJECT"
+        ],
+        "gramprop": []
+    },
+    "being": {
+        "description": "Being",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "requires": [
+            "PATIENT",
+            "OBLIQUE ROLE OBJECTIVE",
+            "OBLIQUE ROLE DESTINATION"
+        ],
+        "gramprop": []
+    },
+    "PRESENT": {
+        "description": "Present",
+        "type": "concept",
+        "ontological parent": "EVENT TENSE",
+        "requires": [],
+        "gramprop": []
+    },
+    "ADVERBIAL": {
+        "description": "Add information about a process",
+        "type": "feature",
+        "ontological parent": "SEMANTIC ROLE",
+        "requires": [
+            "CONCEPT CORE"
+        ],
+        "gramprop": []
+    },
+    "PERFECT PROGRESSIVE": {
+        "description": "Perfect Progressive",
+        "type": "feature",
+        "ontological parent": "ASPECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "INDEFINITE ASPECT": {
+        "description": "Indefinite Aspect",
+        "type": "feature",
+        "ontological parent": "ASPECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "wife": {
+        "description": "Wife",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "POSSESSION": {
+        "description": "Possession",
+        "type": "concept",
+        "ontological parent": "CONCEPTS RELATIONS",
+        "requires": [],
+        "gramprop": []
+    },
+    "POSSESSOR": {
+        "description": "Possessor",
+        "type": "concept",
+        "ontological parent": "POSSESSION",
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ],
+        "gramprop": []
+    },
+    "POSSESSEE": {
+        "description": ":Possessee",
+        "type": "concept",
+        "ontological parent": "POSSESSION",
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ],
+        "gramprop": []
+    },
+    "Ref_speaker_plus_many_excluding_addressee": {
+        "description": "Speaker and a number of people above discrete count but not the adressee. ",
+        "type": "concept",
+        "ontological parent": "PERSONAL DEICTIC",
+        "requires": [],
+        "gramprop": []
+    },
+    "Ref_speaker_plus_person_excluding_addressee": {
+        "description": "The speaker and someone else but not the addressee",
+        "type": "concept",
+        "ontological parent": "PERSONAL DEICTIC",
+        "requires": [],
+        "gramprop": []
+    },
+    "having to": {
+        "description": "Having to",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "requires": [
+            "PATIENT"
+        ],
+        "gramprop": []
+    },
+    "COMPLEMENT": {
+        "description": "Complement",
+        "type": "feature",
+        "ontological parent": "CONCEPTS RELATIONS",
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ],
+        "gramprop": []
+    },
+    "being sorry": {
+        "description": "Being sorry",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "requires": [
+            "OBLIQUE ROLE ORIGIN"
+        ],
+        "gramprop": []
+    },
+    "ONE": {
+        "description": "One",
+        "type": "concept",
+        "ontological parent": "QUANTIFIER",
+        "requires": [],
+        "gramprop": []
+    },
+    "NONE": {
+        "description": "None",
+        "type": "concept",
+        "ontological parent": "QUANTIFIER",
+        "requires": [],
+        "gramprop": []
+    },
+    "ALL": {
+        "description": "All",
+        "type": "concept",
+        "ontological parent": "QUANTIFIER",
+        "requires": [],
+        "gramprop": []
+    },
+    "Ref_speaker_plus_many_including_addressee": {
+        "description": "The speaker, the addressee and more people than discrete count",
+        "type": "concept",
+        "ontological parent": "PERSONAL DEICTIC",
+        "requires": [],
+        "gramprop": []
+    },
+    "tonight": {
+        "description": "Tonight",
+        "type": "concept",
+        "ontological parent": "RELATIVE TIME REFERENCE",
+        "requires": [],
+        "gramprop": []
+    },
+    "two": {
+        "description": "The number 2",
+        "type": "concept",
+        "ontological parent": "NUMBER",
+        "requires": [],
+        "gramprop": []
+    },
+    "happening": {
+        "description": "Something happening",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "requires": [
+            "OBLIQUE ROLE DESTINATION"
+        ],
+        "gramprop": []
+    },
+    "last year": {
+        "description": "Last year",
+        "type": "concept",
+        "ontological parent": "RELATIVE TIME REFERENCE",
+        "requires": [],
+        "gramprop": []
+    },
+    "playing": {
+        "description": "Playing",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "PATIENT",
+            "OBLIQUE ROLE WITH"
+        ],
+        "gramprop": []
+    },
+    "afternoon": {
+        "description": "Afternoon",
+        "type": "concept",
+        "ontological parent": "RELATIVE TIME REFERENCE",
+        "requires": [],
+        "gramprop": []
+    },
+    "everyone": {
+        "description": "Everyone",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "CONCATENATION": {
+        "description": "And",
+        "type": "feature",
+        "ontological parent": "CONCEPTS RELATIONS",
+        "requires": [],
+        "gramprop": []
+    },
+    "elders": {
+        "description": "Elders",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "youngs": {
+        "description": "The youngs, children, kids",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "remembering": {
+        "description": "Remembering",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "PATIENT"
+        ],
+        "gramprop": []
+    },
+    "organizing": {
+        "description": "Organizing",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "PATIENT",
+            "OBLIQUE ROLE OBJECTIVE"
+        ],
+        "gramprop": []
+    },
+    "Ref_speaker_and_addressee": {
+        "description": "The speaker and the adressee",
+        "type": "feature",
+        "ontological parent": "PERSONAL DEICTIC",
+        "requires": [],
+        "gramprop": []
+    },
+    "a meeting": {
+        "description": "A meeting",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "cleaning": {
+        "description": "Cleaning",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "PATIENT"
+        ],
+        "gramprop": []
+    },
+    "costume": {
+        "description": "Costume",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "fabricating": {
+        "description": "Fabricating",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "requires": [
+            "PATIENT",
+            "OBLIQUE ROLE WITH",
+            "OBLIQUE ROLE OBJECTIVE"
+        ],
+        "gramprop": []
+    },
+    "existing": {
+        "description": "Existing: expresses the existence of something",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "requires": [
+            "OBLIQUE ROLE OBJECTIVE"
+        ],
+        "gramprop": []
+    },
+    "CLOSE TO SPEAKER": {
+        "description": "Close to the speaker.",
+        "type": "concept",
+        "ontological parent": "SPATIAL DEICTIC",
+        "requires": [],
+        "gramprop": []
+    },
+    "ABSTRACT PROPERTY": {
+        "description": "Any reference to an abstract property",
+        "type": "concept",
+        "ontological parent": "OBJECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "SHAPE": {
+        "description": "Shape",
+        "type": "concept",
+        "ontological parent": "ABSTRACT PROPERTY",
+        "requires": [],
+        "gramprop": []
+    },
+    "ANIMATED": {
+        "description": "Animacy True",
+        "type": "concept",
+        "ontological parent": "ANIMACY",
+        "requires": [],
+        "gramprop": []
+    },
+    "human": {
+        "description": "Human",
+        "type": "concept",
+        "ontological parent": "ANIMATED",
+        "requires": [],
+        "gramprop": []
+    },
+    "animal": {
+        "description": "Animal",
+        "type": "concept",
+        "ontological parent": "ANIMATED",
+        "requires": [],
+        "gramprop": []
+    },
+    "EDIBILITY": {
+        "description": "Can be eaten",
+        "type": "concept",
+        "ontological parent": "ABSTRACT PROPERTY",
+        "requires": [],
+        "gramprop": []
+    },
+    "NON-GRAMATICAL QUALIFIER": {
+        "description": "NON-GRAMATICAL QUALIFIER",
+        "type": "concept",
+        "ontological parent": "CONCEPT CORE",
+        "requires": [],
+        "gramprop": []
+    },
+    "INTENT": {
+        "description": "INTENT",
+        "type": "concept",
+        "ontological parent": "INTELLECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "ORDER": {
+        "description": "ORDER",
+        "type": "concept",
+        "ontological parent": "INTENT",
+        "requires": [],
+        "gramprop": []
+    },
+    "ASK": {
+        "description": "Asking a question",
+        "type": "concept",
+        "ontological parent": "INTENT",
+        "requires": [],
+        "gramprop": []
+    },
+    "EXPRESS CONDITION": {
+        "description": "Express a condition",
+        "type": "concept",
+        "ontological parent": "INTENT",
+        "requires": [],
+        "gramprop": []
+    },
+    "EXPRESS POTENTIAL": {
+        "description": "Express a potentiality",
+        "type": "concept",
+        "ontological parent": "INTENT",
+        "requires": [],
+        "gramprop": []
+    },
+    "APPROVE": {
+        "description": "Approve what has been said",
+        "type": "concept",
+        "ontological parent": "INTENT",
+        "gramprop": [],
+        "requires": []
+    },
+    "DENY": {
+        "description": "Disapprove what has been said",
+        "type": "concept",
+        "ontological parent": "INTENT",
+        "requires": [],
+        "gramprop": []
+    },
+    "ASSERT": {
+        "description": "Asserting (affirming)",
+        "type": "concept",
+        "ontological parent": "INTENT",
+        "requires": [],
+        "gramprop": []
+    },
+    "GREET": {
+        "description": "Greeting",
+        "type": "concept",
+        "ontological parent": "INTENT",
+        "requires": [],
+        "gramprop": []
+    },
+    "PART": {
+        "description": "Parting",
+        "type": "concept",
+        "ontological parent": "INTENT",
+        "requires": [],
+        "gramprop": []
+    },
+    "THANK": {
+        "description": "Thanking",
+        "type": "concept",
+        "ontological parent": "INTENT",
+        "requires": [],
+        "gramprop": []
+    },
+    "WISH": {
+        "description": "Wishing",
+        "type": "concept",
+        "ontological parent": "INTENT",
+        "requires": [],
+        "gramprop": []
+    },
+    "non animated": {
+        "description": "Animacy False",
+        "type": "concept",
+        "ontological parent": "ANIMACY",
+        "gramprop": [],
+        "requires": []
+    },
+    "SPECIFIERS": {
+        "description": "SPECIFIERS",
+        "type": "concept",
+        "ontological parent": "INTELLECT",
+        "requires": [],
+        "gramprop": []
+    },
+    "health": {
+        "description": "The health status of someone",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "QUALIFIER": {
+        "description": "QUALIFIER",
+        "type": "concept",
+        "ontological parent": "CONCEPT ATTRIBUTES",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "bad": {
+        "description": "Bad",
+        "type": "concept",
+        "ontological parent": "ABSTRACT PROPERTY",
+        "gramprop": [],
+        "requires": []
+    },
+    "sleeping": {
+        "description": "Sleeping",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "gramprop": [],
+        "requires": []
+    },
+    "night": {
+        "description": "Night",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "sweating": {
+        "description": "Sweating",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "gramprop": [],
+        "requires": []
+    },
+    "nightmare": {
+        "description": "Nightmare",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "waking up": {
+        "description": "Waking up",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "gramprop": [],
+        "requires": []
+    },
+    "middle": {
+        "description": "Middle",
+        "type": "concept",
+        "ontological parent": "QUANTIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "hot": {
+        "description": "Hot",
+        "type": "concept",
+        "ontological parent": "ABSTRACT OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "cold": {
+        "description": "Cold",
+        "type": "concept",
+        "ontological parent": "ABSTRACT OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "fever": {
+        "description": "Fever",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "sometimes": {
+        "description": "Sometimes",
+        "type": "concept",
+        "ontological parent": "TIME CHUNKS",
+        "gramprop": [],
+        "requires": []
+    },
+    "experiencing in the body": {
+        "description": "Experiencing something in the body, as heat, cold, or pain",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "gramprop": [],
+        "requires": [
+            "PATIENT"
+        ]
+    },
+    "checking": {
+        "description": "Checking",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "gramprop": [],
+        "requires": [
+            "PATIENT"
+        ]
+    },
+    "forehead": {
+        "description": "Forehead",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "coughing": {
+        "description": "Coughing",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "gramprop": [],
+        "requires": []
+    },
+    "every time": {
+        "description": "Every time",
+        "type": "concept",
+        "ontological parent": "TIME CHUNKS",
+        "gramprop": [],
+        "requires": [
+            "COMPLEMENT"
+        ]
+    },
+    "thirst": {
+        "description": "Thirst",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "gramprop": [],
+        "requires": []
+    },
+    "drinking": {
+        "description": "Drinking",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "gramprop": [],
+        "requires": [
+            "PATIENT"
+        ]
+    },
+    "belly": {
+        "description": "Belly",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "pain": {
+        "description": "Pain",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": [
+            "LOCATION INFORMATION"
+        ]
+    },
+    "LOGIC": {
+        "description": "LOGIC",
+        "type": "concept",
+        "ontological parent": "CONCEPT CORE",
+        "gramprop": [],
+        "requires": []
+    },
+    "causality wildcard": {
+        "description": "Reference to something unknown that is the cause of an event",
+        "type": "concept",
+        "ontological parent": "LOGIC",
+        "gramprop": [],
+        "requires": []
+    },
+    "time position wildcard": {
+        "description": "Reference to an unknown time",
+        "type": "concept",
+        "ontological parent": "ABSOLUTE TIME REFERENCES",
+        "gramprop": [],
+        "requires": []
+    },
+    "spatial position wildcard": {
+        "description": "Reference to an unknown location",
+        "type": "concept",
+        "ontological parent": "SPACE",
+        "gramprop": [],
+        "requires": []
+    },
+    "object wildcard": {
+        "description": "Reference to an unknown object",
+        "type": "concept",
+        "ontological parent": "OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "anxiety": {
+        "description": "Anxiety",
+        "type": "concept",
+        "ontological parent": "EMOTION",
+        "gramprop": [],
+        "requires": []
+    },
+    "doctor": {
+        "description": "Doctor",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "lately": {
+        "description": "Lately",
+        "type": "concept",
+        "ontological parent": "RELATIVE TIME REFERENCE",
+        "gramprop": [],
+        "requires": []
+    },
+    "particular": {
+        "description": "Particular",
+        "type": "concept",
+        "ontological parent": "ABSTRACT OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "ANIMACY": {
+        "description": "Animate or inanimate",
+        "type": "concept",
+        "ontological parent": "ABSTRACT PROPERTY",
+        "requires": [],
+        "gramprop": []
+    },
+    "thinking": {
+        "description": "Thinking",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "gramprop": [],
+        "requires": [
+            "PATIENT"
+        ]
+    },
+    "event wildcard": {
+        "description": "Reference to an unknown event",
+        "type": "concept",
+        "ontological parent": "EVENT",
+        "gramprop": [],
+        "requires": [
+            "PATIENT"
+        ]
+    },
+    "DISAPPROVE": {
+        "description": "Express that what has been said is untrue",
+        "type": "concept",
+        "ontological parent": "INTENT",
+        "gramprop": [],
+        "requires": []
+    },
+    "week": {
+        "description": "Week",
+        "type": "concept",
+        "ontological parent": "TIME CHUNKS",
+        "gramprop": [],
+        "requires": []
+    },
+    "last week": {
+        "description": "Last week",
+        "type": "concept",
+        "ontological parent": "RELATIVE TIME REFERENCE",
+        "gramprop": [],
+        "requires": []
+    },
+    "forest": {
+        "description": "Forest",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "strange": {
+        "description": "Strange",
+        "type": "concept",
+        "ontological parent": "ABSTRACT PROPERTY",
+        "gramprop": [],
+        "requires": []
+    },
+    "fruit": {
+        "description": "Fruit",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "OBLIQUE ROLE GOAL": {
+        "description": "Oblique Role Goal, as TO in I want the key TO open the door",
+        "type": "concept",
+        "ontological parent": "OBLIQUE ROLE",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "OBLIQUE ROLE ORIGIN": {
+        "description": "Oblique Role Origin, as FROM in I am coming FROM the village",
+        "type": "concept",
+        "ontological parent": "OBLIQUE ROLE",
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ],
+        "gramprop": []
+    },
+    "NON-HUMAN DEICTIC": {
+        "description": "Object Deictic (non-human)",
+        "type": "concept",
+        "ontological parent": "OBJECT DEICTIC",
+        "gramprop": [],
+        "requires": [
+            "POSSESSOR",
+            "POSSESSEE",
+            "QUALIFIER",
+            "TIME INFORMATION",
+            "LOCATION INFORMATION",
+            "POLARITY",
+            "QUANTIFIER"
+        ]
+    },
+    "Ref_1_object": {
+        "description": "Reference to 1 known object",
+        "type": "concept",
+        "ontological parent": "NON-HUMAN DEICTIC",
+        "gramprop": [],
+        "requires": []
+    },
+    "Ref_2_objects": {
+        "description": "Reference to 2 known objects",
+        "type": "concept",
+        "ontological parent": "NON-HUMAN DEICTIC",
+        "gramprop": [],
+        "requires": []
+    },
+    "Ref_3_objects": {
+        "description": "Reference to 3 known objects",
+        "type": "concept",
+        "ontological parent": "NON-HUMAN DEICTIC",
+        "gramprop": [],
+        "requires": []
+    },
+    "Ref_paucal_objects": {
+        "description": "Reference to a handful (paucal) number of known objects",
+        "type": "concept",
+        "ontological parent": "NON-HUMAN DEICTIC",
+        "gramprop": [],
+        "requires": []
+    },
+    "Ref_many_objects": {
+        "description": "Reference to many objects",
+        "type": "concept",
+        "ontological parent": "NON-HUMAN DEICTIC",
+        "gramprop": [],
+        "requires": [
+            "QUANTIFIER"
+        ]
+    },
+    "OBLIQUE ROLE DESTINATION": {
+        "description": "Oblique Role Destination, as TO in giving something TO someone",
+        "type": "concept",
+        "ontological parent": "OBLIQUE ROLE",
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ],
+        "gramprop": []
+    },
+    "OBLIQUE ROLE OBJECTIVE": {
+        "description": "Oblique Role Objective",
+        "type": "concept",
+        "ontological parent": "OBLIQUE ROLE",
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ],
+        "gramprop": []
+    },
+    "liking": {
+        "description": "Liking",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "gramprop": [],
+        "requires": [
+            "PATIENT"
+        ]
+    },
+    "sweet": {
+        "description": "Sweet, as containing sugar",
+        "type": "concept",
+        "ontological parent": "NON-GRAMATICAL QUALIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "sick": {
+        "description": "Sick",
+        "type": "concept",
+        "ontological parent": "NON-GRAMATICAL QUALIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "becoming": {
+        "description": "Becoming",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "gramprop": [],
+        "requires": [
+            "PATIENT"
+        ]
+    },
+    "causing": {
+        "description": "Something causing something",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "gramprop": [],
+        "requires": [
+            "PATIENT",
+            "OBLIQUE ROLE DESTINATION"
+        ]
+    },
+    "EXPRESS LIKELIHOOD": {
+        "description": "Express likelihood, as in: it must be...",
+        "type": "concept",
+        "ontological parent": "INTENT",
+        "gramprop": [],
+        "requires": []
+    },
+    "CONDITION": {
+        "description": "Express condition",
+        "type": "concept",
+        "ontological parent": "LOGIC",
+        "gramprop": [],
+        "requires": [
+            "ANTECEDENT",
+            "CONSEQUENT"
+        ]
+    },
+    "ANTECEDENT": {
+        "description": "Causal Antecedent: If...",
+        "type": "concept",
+        "ontological parent": "CONDITION",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "CONSEQUENT": {
+        "description": "Causal Consequent: Then..",
+        "type": "concept",
+        "ontological parent": "CONDITION",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "POLARITY": {
+        "description": "Polarity: spectrum from affirmation to negation",
+        "type": "concept",
+        "ontological parent": "INTELLECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "POSITIVE": {
+        "description": "Positive Polarity",
+        "type": "concept",
+        "ontological parent": "POLARITY",
+        "gramprop": [],
+        "requires": []
+    },
+    "NEGATIVE": {
+        "description": "Negative Polarity, negation",
+        "type": "concept",
+        "ontological parent": "POLARITY",
+        "gramprop": [],
+        "requires": []
+    },
+    "PREDICATE": {
+        "description": "Type of predicate",
+        "type": "concept",
+        "ontological parent": "INTELLECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "INCLUSIVE PREDICATE": {
+        "description": "Inclusive Predicate: Expresses that something belongs to a given category/class",
+        "type": "concept",
+        "ontological parent": "PREDICATE",
+        "gramprop": [],
+        "requires": []
+    },
+    "ATTRIBUTIVE PREDICATE": {
+        "description": "Attributive Predicate: Expresses that something exposes a given quality",
+        "type": "concept",
+        "ontological parent": "PREDICATE",
+        "gramprop": [],
+        "requires": []
+    },
+    "EXISTENTIAL PREDICATE": {
+        "description": "Existential Predicate: Expresses that something does exist.",
+        "type": "concept",
+        "ontological parent": "PREDICATE",
+        "gramprop": [],
+        "requires": []
+    },
+    "NUMERAL PREDICATE": {
+        "description": "Numeral Predicate: Expresses the quantity of some object.",
+        "type": "concept",
+        "ontological parent": "PREDICATE",
+        "gramprop": [],
+        "requires": []
+    },
+    "LOCATIVE PREDICATE": {
+        "description": "Locative Predicate: Expresses that something that exists is somewhere.",
+        "type": "concept",
+        "ontological parent": "PREDICATE",
+        "gramprop": [],
+        "requires": []
+    },
+    "EQUATIVE PREDICATE": {
+        "description": "Equative Predicate: Expresses that something and something else are the same thing.",
+        "type": "concept",
+        "ontological parent": "PREDICATE",
+        "gramprop": [],
+        "requires": []
+    },
+    "PRESENTATIVE PREDICATE": {
+        "description": "Presentative Predicate: Here is X.",
+        "type": "concept",
+        "ontological parent": "PREDICATE",
+        "gramprop": [],
+        "requires": []
+    },
+    "PROCESSIVE PREDICATE": {
+        "description": "Processive Predicate: An event is happening.",
+        "type": "concept",
+        "ontological parent": "PREDICATE",
+        "gramprop": [],
+        "requires": []
+    },
+    "these days": {
+        "description": "These days",
+        "type": "concept",
+        "ontological parent": "TIME CHUNKS",
+        "gramprop": [],
+        "requires": []
+    },
+    "looking like": {
+        "description": "Looking like",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "gramprop": [],
+        "requires": [
+            "PATIENT"
+        ]
+    },
+    "at night": {
+        "description": "At night",
+        "type": "concept",
+        "ontological parent": "RELATIVE TIME REFERENCE",
+        "gramprop": [],
+        "requires": []
+    },
+    "middle of the night": {
+        "description": "Middle of the night",
+        "type": "concept",
+        "ontological parent": "RELATIVE TIME REFERENCE",
+        "gramprop": [],
+        "requires": []
+    },
+    "allowing": {
+        "description": "Allowing",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "gramprop": [],
+        "requires": [
+            "OBLIQUE ROLE OBJECTIVE",
+            "PATIENT"
+        ]
+    },
+    "LOCATION INFORMATION": {
+        "description": "Location Information",
+        "type": "concept",
+        "ontological parent": "SPACE",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "OR": {
+        "description": "Something OR Something else",
+        "type": "concept",
+        "ontological parent": "LOGIC",
+        "gramprop": [],
+        "requires": [
+            "OR_TERM1",
+            "OR_TERM2"
+        ]
+    },
+    "OR_TERM1": {
+        "description": "OR Term 1",
+        "type": "concept",
+        "ontological parent": "OR",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "OR_TERM2": {
+        "description": "OR Term 2",
+        "type": "concept",
+        "ontological parent": "OR",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "a bit": {
+        "description": "A bit",
+        "type": "concept",
+        "ontological parent": "QUANTIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "TIME INFORMATION": {
+        "description": "Time Information",
+        "type": "concept",
+        "ontological parent": "TIME",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "waiting": {
+        "description": "Waiting",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "gramprop": [],
+        "requires": [
+            "OBLIQUE ROLE OBJECTIVE"
+        ]
+    },
+    "COMPARATOR": {
+        "description": "Comparator",
+        "type": "concept",
+        "ontological parent": "LOGIC",
+        "gramprop": [],
+        "requires": [
+            "COMPARER",
+            "COMPAREE"
+        ]
+    },
+    "so much": {
+        "description": "So much",
+        "type": "concept",
+        "ontological parent": "QUANTIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "COMP-EQUAL": {
+        "description": "Comparator: Is equal",
+        "type": "concept",
+        "ontological parent": "COMPARATOR",
+        "gramprop": [],
+        "requires": [
+            "COMP-EQUAL_term1",
+            "COMP-EQUAL_term2"
+        ]
+    },
+    "COMP-EQUAL_term1": {
+        "description": "Comparator Term 1",
+        "type": "concept",
+        "ontological parent": "COMP-EQUAL",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "COMP-EQUAL_term2": {
+        "description": "Comparator Term 2",
+        "type": "concept",
+        "ontological parent": "COMP-EQUAL",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "COMP-MORE": {
+        "description": "Comparator: More",
+        "type": "concept",
+        "ontological parent": "COMPARATOR",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "COMP-LESS": {
+        "description": "Comparator: Less",
+        "type": "concept",
+        "ontological parent": "COMPARATOR",
+        "gramprop": [],
+        "requires": []
+    },
+    "now": {
+        "description": "Now",
+        "type": "concept",
+        "ontological parent": "RELATIVE TIME REFERENCE",
+        "gramprop": [],
+        "requires": []
+    },
+    "OBLIQUE ROLE ABOUT": {
+        "description": "Oblique Role About",
+        "type": "concept",
+        "ontological parent": "OBLIQUE ROLE",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "worrying": {
+        "description": "Worrying",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "gramprop": [],
+        "requires": [
+            "OBLIQUE ROLE ABOUT"
+        ]
+    },
+    "medicine": {
+        "description": "Medicine",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "taking": {
+        "description": "Taking",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "gramprop": [],
+        "requires": [
+            "PATIENT",
+            "OBLIQUE ROLE DESTINATION",
+            "OBLIQUE ROLE ORIGIN",
+            "OBLIQUE ROLE OBJECTIVE"
+        ]
+    },
+    "twice a day": {
+        "description": "Twice a day",
+        "type": "concept",
+        "ontological parent": "TIME CHUNKS",
+        "gramprop": [],
+        "requires": []
+    },
+    "evening": {
+        "description": "Evening",
+        "type": "concept",
+        "ontological parent": "RELATIVE TIME REFERENCE",
+        "gramprop": [],
+        "requires": []
+    },
+    "TIME LOGIC": {
+        "description": "Time Logic",
+        "type": "concept",
+        "ontological parent": "TIME",
+        "gramprop": [],
+        "requires": []
+    },
+    "AFTER X": {
+        "description": "After a given reference",
+        "type": "concept",
+        "ontological parent": "TIME LOGIC",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "efficient": {
+        "description": "Efficient",
+        "type": "concept",
+        "ontological parent": "NON-GRAMATICAL QUALIFIER",
+        "gramprop": [],
+        "requires": [
+            "OBLIQUE ROLE GOAL"
+        ]
+    },
+    "belly-ache": {
+        "description": "Belly-ache",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "SPATIAL DEICTIC": {
+        "description": "A spatial pointer relative to the real or imaginary speaker.",
+        "type": "concept",
+        "ontological parent": "DEICTIC",
+        "requires": [],
+        "gramprop": []
+    },
+    "AND": {
+        "description": "Logic AND",
+        "type": "concept",
+        "ontological parent": "LOGIC",
+        "gramprop": [],
+        "requires": [
+            "AND_TERM1",
+            "AND_TERM2"
+        ]
+    },
+    "AND_TERM1": {
+        "description": "And Term 1",
+        "type": "concept",
+        "ontological parent": "AND",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "AND_TERM2": {
+        "description": "And Term 2",
+        "type": "concept",
+        "ontological parent": "AND",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "resting": {
+        "description": "Resting",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "gramprop": [],
+        "requires": []
+    },
+    "SHOW ACTIVE LISTENING": {
+        "description": "Show active listening",
+        "type": "concept",
+        "ontological parent": "INTENT",
+        "gramprop": [],
+        "requires": []
+    },
+    "the other day": {
+        "description": "The other day",
+        "type": "concept",
+        "ontological parent": "RELATIVE TIME REFERENCE",
+        "gramprop": [],
+        "requires": []
+    },
+    "already": {
+        "description": "Already",
+        "type": "concept",
+        "ontological parent": "TIME LOGIC",
+        "gramprop": [],
+        "requires": []
+    },
+    "nothing": {
+        "description": "Nothing",
+        "type": "concept",
+        "ontological parent": "ABSTRACT OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "nothing left": {
+        "description": "Nothing left",
+        "type": "concept",
+        "ontological parent": "ABSTRACT OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "anymore": {
+        "description": "Anymore",
+        "type": "concept",
+        "ontological parent": "TIME LOGIC",
+        "gramprop": [],
+        "requires": []
+    },
+    "INTENSIFIER": {
+        "description": "Intensifier: as REALLY in I REALLY need this",
+        "type": "concept",
+        "ontological parent": "QUANTIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "Ref_many_people_including_addressee": {
+        "description": "Reference to many people, including the addressee",
+        "type": "concept",
+        "ontological parent": "PERSONAL DEICTIC",
+        "gramprop": [],
+        "requires": []
+    },
+    "some": {
+        "description": "Some",
+        "type": "concept",
+        "ontological parent": "QUANTIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "ACKNOWLEDGE THANK": {
+        "description": "Acknowledge the gratefulness",
+        "type": "concept",
+        "ontological parent": "INTENT",
+        "gramprop": [],
+        "requires": []
+    },
+    "OPEN CONVERSATION": {
+        "description": "Open Conversation: in English: you know what, guess what, so, listen...",
+        "type": "concept",
+        "ontological parent": "INTENT",
+        "gramprop": [],
+        "requires": []
+    },
+    "IN FUTURE DIRECTION": {
+        "description": "In Future Direction, as IN in IN two months",
+        "type": "concept",
+        "ontological parent": "TIME LOGIC",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "IN PAST DIRECTION": {
+        "description": "In Past Direction, as AGO in two months AGO",
+        "type": "concept",
+        "ontological parent": "TIME LOGIC",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "this time": {
+        "description": "(at) This time",
+        "type": "concept",
+        "ontological parent": "TIME LOGIC",
+        "gramprop": [],
+        "requires": []
+    },
+    "village X": {
+        "description": "Village X",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "EXPRESS DUTY (DEONTIC)": {
+        "description": "Express Duty (English SHOULD)",
+        "type": "concept",
+        "ontological parent": "INTENT",
+        "gramprop": [],
+        "requires": []
+    },
+    "EXPRESS BELIEF (EPISTEMIC)": {
+        "description": "Express Belief (English SHOULD in the train SHOULD arrive at 5pm)",
+        "type": "concept",
+        "ontological parent": "INTENT",
+        "gramprop": [],
+        "requires": []
+    },
+    "GIVE ADVICE (ADVISORY)": {
+        "description": "Give Advice, as English SHOULD in you SHOULD come with me",
+        "type": "concept",
+        "ontological parent": "INTENT",
+        "gramprop": [],
+        "requires": []
+    },
+    "OBLIQUE ROLE MANNER": {
+        "description": "Oblique Role Manner, as HOW in This is HOW you do it.",
+        "type": "concept",
+        "ontological parent": "OBLIQUE ROLE",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "then": {
+        "description": "Time logic: Then",
+        "type": "concept",
+        "ontological parent": "TIME LOGIC",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "in the morning": {
+        "description": "In the morning",
+        "type": "concept",
+        "ontological parent": "TIME CHUNKS",
+        "gramprop": [],
+        "requires": []
+    },
+    "in the afternoon": {
+        "description": "In the afternoon",
+        "type": "concept",
+        "ontological parent": "TIME CHUNKS",
+        "gramprop": [],
+        "requires": []
+    },
+    "experiencing": {
+        "description": "Experiencing",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "gramprop": [],
+        "requires": [
+            "PATIENT",
+            "OBLIQUE ROLE WITH",
+            "OBLIQUE ROLE MANNER",
+            "OBLIQUE ROLE OBJECTIVE"
+        ]
+    },
+    "too": {
+        "description": "Too",
+        "type": "concept",
+        "ontological parent": "NON-GRAMATICAL QUALIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "ORIGIN OF OBJECTS": {
+        "description": "Origin of Objects",
+        "type": "concept",
+        "ontological parent": "QUALIFIER",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "so many": {
+        "description": "So many",
+        "type": "concept",
+        "ontological parent": "QUANTIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "END OF X": {
+        "description": "The End of Something",
+        "type": "concept",
+        "ontological parent": "TIME LOGIC",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "day of celebration": {
+        "description": "Day of celebration",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "this year": {
+        "description": "This year",
+        "type": "concept",
+        "ontological parent": "TIME CHUNKS",
+        "gramprop": [],
+        "requires": []
+    },
+    "PLACEHOLDER": {
+        "description": "Placeholder",
+        "type": "concept",
+        "ontological parent": "CONCEPT CORE",
+        "requires": [],
+        "gramprop": []
+    },
+    "other": {
+        "description": "Other",
+        "type": "concept",
+        "ontological parent": "SEX-BASED GENDER",
+        "gramprop": [],
+        "requires": []
+    },
+    "making": {
+        "description": "Making",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "gramprop": [],
+        "requires": [
+            "PATIENT",
+            "OBLIQUE ROLE WITH",
+            "OBLIQUE ROLE MANNER",
+            "OBLIQUE ROLE OBJECTIVE",
+            "OBLIQUE ROLE ORIGIN",
+            "OBLIQUE ROLE DESTINATION"
+        ]
+    },
+    "enough": {
+        "description": "Enough",
+        "type": "concept",
+        "ontological parent": "QUANTIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "brother": {
+        "description": "Brother",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [
+            "human"
+        ],
+        "requires": []
+    },
+    "notebook": {
+        "description": "Notebook",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "searching": {
+        "description": "Searching",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "gramprop": [],
+        "requires": [
+            "PATIENT"
+        ]
+    },
+    "SPACE LOGIC": {
+        "description": "Space Logic",
+        "type": "concept",
+        "ontological parent": "SPACE",
+        "gramprop": [],
+        "requires": []
+    },
+    "everywhere": {
+        "description": "Everywhere",
+        "type": "concept",
+        "ontological parent": "SPACE LOGIC",
+        "gramprop": [],
+        "requires": []
+    },
+    "BUT CONSEQUENT": {
+        "description": "But: Consequent",
+        "type": "concept",
+        "ontological parent": "LOGIC",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "BUT ANTECEDENT": {
+        "description": "But: Antecedent",
+        "type": "concept",
+        "ontological parent": "LOGIC",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "BUT": {
+        "description": "But",
+        "type": "concept",
+        "ontological parent": "LOGIC",
+        "gramprop": [],
+        "requires": [
+            "BUT ANTECEDENT",
+            "BUT CONSEQUENT"
+        ]
+    },
+    "sister": {
+        "description": "Sister",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [
+            "human"
+        ],
+        "requires": []
+    },
+    "math": {
+        "description": "Math",
+        "type": "concept",
+        "ontological parent": "ABSTRACT OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "book": {
+        "description": "Book",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "thick": {
+        "description": "Thick",
+        "type": "concept",
+        "ontological parent": "NON-GRAMATICAL QUALIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "blue": {
+        "description": "Blue",
+        "type": "concept",
+        "ontological parent": "NON-GRAMATICAL QUALIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "OBLIQUE ROLE MEDIUM": {
+        "description": "Oblique Role Medium: The medium on which an action is perfomed, as ON a notebook.",
+        "type": "concept",
+        "ontological parent": "OBLIQUE ROLE",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "last night": {
+        "description": "Last night",
+        "type": "concept",
+        "ontological parent": "TIME CHUNKS",
+        "gramprop": [],
+        "requires": []
+    },
+    "homework": {
+        "description": "Homework",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "dining room": {
+        "description": "Dining room",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "probably": {
+        "description": "Probably",
+        "type": "concept",
+        "ontological parent": "PROBABILITY",
+        "gramprop": [],
+        "requires": []
+    },
+    "leaving (transitive)": {
+        "description": "leaving something somewhere",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "gramprop": [],
+        "requires": [
+            "PATIENT",
+            "OBLIQUE ROLE OBJECTIVE"
+        ]
+    },
+    "putting": {
+        "description": "putting something somewhere",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "gramprop": [],
+        "requires": [
+            "PATIENT",
+            "OBLIQUE ROLE DESTINATION",
+            "OBLIQUE ROLE OBJECTIVE"
+        ]
+    },
+    "BEFORE X": {
+        "description": "Before something",
+        "type": "concept",
+        "ontological parent": "TIME LOGIC",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "schoolbag": {
+        "description": "Schoolbag",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "ZOOM IN": {
+        "description": "Looking closer",
+        "type": "concept",
+        "ontological parent": "LOGIC",
+        "gramprop": [],
+        "requires": [
+            "ZOOMING WIDE",
+            "ZOOMING NARROW"
+        ]
+    },
+    "bedroom": {
+        "description": "Bedroom",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "bed": {
+        "description": "Bed",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "beside": {
+        "description": "Beside",
+        "type": "concept",
+        "ontological parent": "SPACE LOGIC",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "ZOOMING WIDE": {
+        "description": "Looking at a larger area",
+        "type": "concept",
+        "ontological parent": "ZOOM IN",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "ZOOMING NARROW": {
+        "description": "Looking at a narrow area",
+        "type": "concept",
+        "ontological parent": "ZOOM IN",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "dad": {
+        "description": "Dad",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [
+            "human"
+        ],
+        "requires": []
+    },
+    "desk": {
+        "description": "Desk",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "hidden": {
+        "description": "Hidden",
+        "type": "concept",
+        "ontological parent": "NON-GRAMATICAL QUALIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "UNDER": {
+        "description": "Under",
+        "type": "concept",
+        "ontological parent": "SPACE LOGIC",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "ANOTHER": {
+        "description": "Another",
+        "type": "concept",
+        "ontological parent": "LOGIC",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "SPATIAL ON": {
+        "description": "Spatial location ON, as in ON the desk",
+        "type": "concept",
+        "ontological parent": "SPACE LOGIC",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "CONFIRM": {
+        "description": "Confirm what has been said",
+        "type": "concept",
+        "ontological parent": "INTENT",
+        "gramprop": [],
+        "requires": []
+    },
+    "INFIRM": {
+        "description": "Infirm what has been said",
+        "type": "concept",
+        "ontological parent": "INTENT",
+        "gramprop": [],
+        "requires": []
+    },
+    "kitchen": {
+        "description": "Kitchen",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "school class": {
+        "description": "School Class",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "quite": {
+        "description": "Quite",
+        "type": "concept",
+        "ontological parent": "QUALIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "angry": {
+        "description": "Angry",
+        "type": "concept",
+        "ontological parent": "QUALIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "teacher": {
+        "description": "Teacher",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "looking": {
+        "description": "Looking",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "gramprop": [],
+        "requires": [
+            "PATIENT"
+        ]
+    },
+    "little brother": {
+        "description": "Little brother",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "out there": {
+        "description": "Out there",
+        "type": "concept",
+        "ontological parent": "SPATIAL DEICTIC",
+        "gramprop": [],
+        "requires": []
+    },
+    "DIRECTION": {
+        "description": "In the direction of something",
+        "type": "concept",
+        "ontological parent": "SPACE LOGIC",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "holding": {
+        "description": "Holding",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "gramprop": [],
+        "requires": [
+            "PATIENT",
+            "OBLIQUE ROLE WITH",
+            "OBLIQUE ROLE MEDIUM",
+            "OBLIQUE ROLE MANNER"
+        ]
+    },
+    "hand": {
+        "description": "Hand",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "hands": {
+        "description": "The hands of someone",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "OBLIQUE ROLE TRANSFORMATION": {
+        "description": "Oblique role transformation as INTO in shredding it INTO pieces",
+        "type": "concept",
+        "ontological parent": "OBLIQUE ROLE",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "shredding": {
+        "description": "Shredding",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "gramprop": [],
+        "requires": [
+            "PATIENT",
+            "OBLIQUE ROLE TRANSFORMATION"
+        ]
+    },
+    "pieces": {
+        "description": "Parts of an object",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "new": {
+        "description": "New",
+        "type": "concept",
+        "ontological parent": "NON-GRAMATICAL QUALIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "all over": {
+        "description": "All over",
+        "type": "concept",
+        "ontological parent": "QUANTIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "disaster": {
+        "description": "Disaster",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "picture": {
+        "description": "Picture",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": [
+            "OBLIQUE ROLE ORIGIN"
+        ]
+    },
+    "never": {
+        "description": "Never",
+        "type": "concept",
+        "ontological parent": "TIME LOGIC",
+        "gramprop": [],
+        "requires": []
+    },
+    "old": {
+        "description": "Old",
+        "type": "concept",
+        "ontological parent": "RELATIVE TIME REFERENCE",
+        "gramprop": [],
+        "requires": []
+    },
+    "photo album": {
+        "description": "Photo album",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "room": {
+        "description": "Room",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "parents": {
+        "description": "Parent",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [
+            "human"
+        ],
+        "requires": []
+    },
+    "showing": {
+        "description": "Showing",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "gramprop": [],
+        "requires": [
+            "PATIENT",
+            "OBLIQUE ROLE DESTINATION"
+        ]
+    },
+    "please": {
+        "description": "Please",
+        "type": "concept",
+        "ontological parent": "PLACEHOLDER",
+        "gramprop": [],
+        "requires": []
+    },
+    "POSITION IN SEQUENCE": {
+        "description": "Position in sequnce, for example position 1 is FIRST in English. ",
+        "type": "concept",
+        "ontological parent": "NUMBER",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "black and white": {
+        "description": "Black and white",
+        "type": "concept",
+        "ontological parent": "NON-GRAMATICAL QUALIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "grandparents": {
+        "description": "Grandparents",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [
+            "human"
+        ],
+        "requires": []
+    },
+    "mother": {
+        "description": "Mother",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [
+            "human"
+        ],
+        "requires": []
+    },
+    "grandpa": {
+        "description": "Grandfather",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [
+            "human"
+        ],
+        "requires": []
+    },
+    "grandma": {
+        "description": "Grandmother",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [
+            "human"
+        ],
+        "requires": []
+    },
+    "relatives": {
+        "description": "Relatives",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [
+            "human"
+        ],
+        "requires": []
+    },
+    "wedding": {
+        "description": "A Wedding",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "getting engaged": {
+        "description": "Getting engaged",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "gramprop": [],
+        "requires": []
+    },
+    "POINTER TO X": {
+        "description": "Pointer to something. As in English that, which, those etc.",
+        "type": "concept",
+        "ontological parent": "INTELLECT",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "PRESENT X": {
+        "description": "here is X, this is X",
+        "type": "concept",
+        "ontological parent": "FOCUS",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "FOCUS": {
+        "description": "focus on concepts",
+        "type": "concept",
+        "ontological parent": "INTELLECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "ORDINAL": {
+        "description": "Ordinal",
+        "type": "concept",
+        "ontological parent": "NUMBER",
+        "gramprop": [],
+        "requires": []
+    },
+    "first": {
+        "description": "First",
+        "type": "concept",
+        "ontological parent": "ORDINAL",
+        "gramprop": [],
+        "requires": []
+    },
+    "photo": {
+        "description": "Photo",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "POINTED BY SPEAKER": {
+        "description": "Pointed by the speaker, as THERE in english",
+        "type": "concept",
+        "ontological parent": "SPATIAL DEICTIC",
+        "gramprop": [],
+        "requires": []
+    },
+    "mothers side": {
+        "description": "On the side of the mother",
+        "type": "concept",
+        "ontological parent": "ABSTRACT OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "left": {
+        "description": "Left",
+        "type": "concept",
+        "ontological parent": "SPATIAL DEICTIC",
+        "gramprop": [],
+        "requires": []
+    },
+    "right": {
+        "description": "Right",
+        "type": "concept",
+        "ontological parent": "SPATIAL DEICTIC",
+        "gramprop": [],
+        "requires": []
+    },
+    "around": {
+        "description": "Around",
+        "type": "concept",
+        "ontological parent": "SPACE LOGIC",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "OLDER THAN X": {
+        "description": "Older than X",
+        "type": "concept",
+        "ontological parent": "TIME LOGIC",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "those times": {
+        "description": "Those times",
+        "type": "concept",
+        "ontological parent": "TIME CHUNKS",
+        "gramprop": [],
+        "requires": []
+    },
+    "engagement": {
+        "description": "Engagement",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "major": {
+        "description": "Major",
+        "type": "concept",
+        "ontological parent": "QUANTIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "event_": {
+        "description": "Event",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": [
+            "OBLIQUE ROLE DESTINATION"
+        ]
+    },
+    "whole": {
+        "description": "Whole",
+        "type": "concept",
+        "ontological parent": "QUANTIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "wearing": {
+        "description": "Wearing",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "gramprop": [],
+        "requires": [
+            "PATIENT"
+        ]
+    },
+    "beautiful": {
+        "description": "Beautiful",
+        "type": "concept",
+        "ontological parent": "NON-GRAMATICAL QUALIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "clothes": {
+        "description": "Clothes",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "dying": {
+        "description": "Dying",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "gramprop": [],
+        "requires": [
+            "OBLIQUE ROLE ORIGIN"
+        ]
+    },
+    "being born": {
+        "description": "Being born",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "gramprop": [],
+        "requires": []
+    },
+    "_a long time ago": {
+        "description": "A long time ago",
+        "type": "concept",
+        "ontological parent": "TIME CHUNKS",
+        "gramprop": [],
+        "requires": []
+    },
+    "second": {
+        "description": "Second",
+        "type": "concept",
+        "ontological parent": "ORDINAL",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "guessing": {
+        "description": "Guessing",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "gramprop": [],
+        "requires": [
+            "PATIENT"
+        ]
+    },
+    "small": {
+        "description": "Small",
+        "type": "concept",
+        "ontological parent": "NON-GRAMATICAL QUALIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "uncle": {
+        "description": "Uncle",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [
+            "human"
+        ],
+        "requires": []
+    },
+    "far away": {
+        "description": "Far away",
+        "type": "concept",
+        "ontological parent": "SPACE LOGIC",
+        "gramprop": [],
+        "requires": [
+            "OBLIQUE ROLE ORIGIN"
+        ]
+    },
+    "here": {
+        "description": "Here",
+        "type": "concept",
+        "ontological parent": "SPATIAL DEICTIC",
+        "gramprop": [],
+        "requires": []
+    },
+    "school": {
+        "description": "School",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "boy": {
+        "description": "Boy",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [
+            "human"
+        ],
+        "requires": []
+    },
+    "behind": {
+        "description": "Behind",
+        "type": "concept",
+        "ontological parent": "SPACE LOGIC",
+        "gramprop": [],
+        "requires": []
+    },
+    "BEHIND X": {
+        "description": "Behind X",
+        "type": "concept",
+        "ontological parent": "SPACE LOGIC",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "NAMES": {
+        "description": "Name",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "Teri": {
+        "description": "Teri",
+        "type": "concept",
+        "ontological parent": "NAMES",
+        "gramprop": [],
+        "requires": []
+    },
+    "residing": {
+        "description": "Residing",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "gramprop": [],
+        "requires": [
+            "PATIENT"
+        ]
+    },
+    "attending": {
+        "description": "Attending",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "gramprop": [],
+        "requires": [
+            "PATIENT"
+        ]
+    },
+    "then (time)": {
+        "description": "Then",
+        "type": "concept",
+        "ontological parent": "TIME LOGIC",
+        "gramprop": [],
+        "requires": []
+    },
+    "TOWARD X": {
+        "description": "Toward X",
+        "type": "concept",
+        "ontological parent": "SPACE LOGIC",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "lake": {
+        "description": "Lake",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "down the road": {
+        "description": "Down the road",
+        "type": "concept",
+        "ontological parent": "SPACE LOGIC",
+        "gramprop": [],
+        "requires": []
+    },
+    "OTHER X": {
+        "description": "Other X",
+        "type": "concept",
+        "ontological parent": "LOGIC",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "surely": {
+        "description": "Surely",
+        "type": "concept",
+        "ontological parent": "PROBABILITY",
+        "gramprop": [],
+        "requires": []
+    },
+    "carrying": {
+        "description": "Carrying",
+        "type": "concept",
+        "ontological parent": "ACTION",
+        "gramprop": [],
+        "requires": [
+            "PATIENT",
+            "OBLIQUE ROLE DESTINATION",
+            "OBLIQUE ROLE ORIGIN",
+            "OBLIQUE ROLE OBJECTIVE"
+        ]
+    },
+    "back (anatomy)": {
+        "description": "Back (anatomy)",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "recognizing": {
+        "description": "Recognizing",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "gramprop": [],
+        "requires": [
+            "PATIENT",
+            "OBLIQUE ROLE MANNER"
+        ]
+    },
+    "PROBABILITY": {
+        "description": "Probability",
+        "type": "concept",
+        "ontological parent": "LOGIC",
+        "gramprop": [],
+        "requires": []
+    },
+    "process wildcard": {
+        "description": "Reference to an unknown process",
+        "type": "concept",
+        "ontological parent": "LOGIC",
+        "gramprop": [],
+        "requires": []
+    },
+    "eyes": {
+        "description": "Eyes",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "smile": {
+        "description": "Smile",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "mischievous": {
+        "description": "Mischievous",
+        "type": "concept",
+        "ontological parent": "NON-GRAMATICAL QUALIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "changing (over time)": {
+        "description": "Changing (over time)",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "gramprop": [],
+        "requires": []
+    },
+    "much": {
+        "description": "Much",
+        "type": "concept",
+        "ontological parent": "QUANTIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "growing up": {
+        "description": "Growing up",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "gramprop": [],
+        "requires": []
+    },
+    "tall": {
+        "description": "Tall",
+        "type": "concept",
+        "ontological parent": "NON-GRAMATICAL QUALIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "heavy": {
+        "description": "Heavy",
+        "type": "concept",
+        "ontological parent": "NON-GRAMATICAL QUALIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "COMPAREE": {
+        "description": "The reference in a comparison",
+        "type": "concept",
+        "ontological parent": "LOGIC",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "COMPARER": {
+        "description": "The object compared to a reference in a comparison",
+        "type": "concept",
+        "ontological parent": "LOGIC",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "MORE X THAN Y": {
+        "description": "More X than Y",
+        "type": "concept",
+        "ontological parent": "COMPARATOR",
+        "gramprop": [],
+        "requires": [
+            "COMPARER",
+            "COMPAREE"
+        ]
+    },
+    "TOO MUCH OF X": {
+        "description": "Too much of X",
+        "type": "concept",
+        "ontological parent": "QUANTIFIER",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "healthy": {
+        "description": "Healthy",
+        "type": "concept",
+        "ontological parent": "QUALIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "soon": {
+        "description": "Soon",
+        "type": "concept",
+        "ontological parent": "RELATIVE TIME REFERENCE",
+        "gramprop": [],
+        "requires": []
+    },
+    "APPRECIATIVE PREDICATE": {
+        "description": "Appreciative Predicate: Expresses an opinion about what hae been just said",
+        "type": "concept",
+        "ontological parent": "PREDICATE",
+        "gramprop": [],
+        "requires": []
+    },
+    "equating": {
+        "description": "Equating",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "gramprop": [],
+        "requires": [
+            "PATIENT",
+            "OBLIQUE ROLE DESTINATION"
+        ]
+    },
+    "exhibiting (an attribute)": {
+        "description": "Exhibiting (an attribute)",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "gramprop": [],
+        "requires": [
+            "PATIENT"
+        ]
+    },
+    "presenting (presentative)": {
+        "description": "Presenting something",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "gramprop": [],
+        "requires": [
+            "PATIENT"
+        ]
+    },
+    "BEING LOCATED": {
+        "description": "locative predicate: Being located",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "gramprop": [],
+        "requires": [
+            "PATIENT"
+        ]
+    },
+    "being hidden": {
+        "description": "Being hidden",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "gramprop": [],
+        "requires": []
+    },
+    "maybe": {
+        "description": "Maybe",
+        "type": "concept",
+        "ontological parent": "PROBABILITY",
+        "gramprop": [],
+        "requires": []
+    },
+    "PERSON": {
+        "description": "Any number of human(ized) objects",
+        "type": "concept",
+        "ontological parent": "OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "PERSON wildcard": {
+        "description": "Reference to an unknown person",
+        "type": "concept",
+        "ontological parent": "PERSON",
+        "gramprop": [],
+        "requires": []
+    },
+    "EVENT DEICTIC": {
+        "description": "Pointer to an event",
+        "type": "concept",
+        "ontological parent": "DEICTIC",
+        "gramprop": [],
+        "requires": []
+    },
+    "Ref_Event": {
+        "description": "Reference to an event",
+        "type": "concept",
+        "ontological parent": "EVENT DEICTIC",
+        "gramprop": [],
+        "requires": [
+            "AGENT",
+            "PATIENT",
+            "EVENT TENSE"
+        ]
+    },
+    "many": {
+        "description": "Many",
+        "type": "concept",
+        "ontological parent": "QUANTIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "Ref_location": {
+        "description": "Reference to a known location",
+        "type": "concept",
+        "ontological parent": "SPATIAL DEICTIC",
+        "gramprop": [],
+        "requires": []
+    },
+    "SEX-BASED GENDER": {
+        "description": "Sex-based gender",
+        "type": "concept",
+        "ontological parent": "CONCEPT ATTRIBUTES",
+        "gramprop": [],
+        "requires": []
+    },
+    "male": {
+        "description": "Male",
+        "type": "concept",
+        "ontological parent": "SEX-BASED GENDER",
+        "gramprop": [],
+        "requires": []
+    },
+    "female": {
+        "description": "Female",
+        "type": "concept",
+        "ontological parent": "SEX-BASED GENDER",
+        "gramprop": [],
+        "requires": []
+    },
+    "GENERIC FUTURE": {
+        "description": "Any time in the future of the real or imaginary speaker.",
+        "type": "concept",
+        "ontological parent": "FUTURE EVENT",
+        "requires": [],
+        "gramprop": []
+    },
+    "GENERIC PAST": {
+        "description": "Whenever in the past of the real of imaginary speaker.",
+        "type": "concept",
+        "ontological parent": "PAST EVENT",
+        "requires": [],
+        "gramprop": []
+    },
+    "branch": {
+        "description": "Branch",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "rock": {
+        "description": "Rock",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "coral": {
+        "description": "Coral",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "seaside": {
+        "description": "Seaside",
+        "type": "concept",
+        "ontological parent": "SPACE LOGIC",
+        "gramprop": [],
+        "requires": []
+    },
+    "mountainside": {
+        "description": "Mountainside",
+        "type": "concept",
+        "ontological parent": "SPACE LOGIC",
+        "gramprop": [],
+        "requires": []
+    },
+    "on top of": {
+        "description": "On top of",
+        "type": "concept",
+        "ontological parent": "SPACE LOGIC",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "above": {
+        "description": "Above",
+        "type": "concept",
+        "ontological parent": "SPACE LOGIC",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "under": {
+        "description": "Under",
+        "type": "concept",
+        "ontological parent": "SPACE LOGIC",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "below": {
+        "description": "Below",
+        "type": "concept",
+        "ontological parent": "SPACE LOGIC",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "inside": {
+        "description": "Inside",
+        "type": "concept",
+        "ontological parent": "SPACE LOGIC",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "outside": {
+        "description": "Outside",
+        "type": "concept",
+        "ontological parent": "SPACE LOGIC",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "next to": {
+        "description": "Next to",
+        "type": "concept",
+        "ontological parent": "SPACE LOGIC",
+        "gramprop": [],
+        "requires": [
+            "REFERENCE TO CONCEPT"
+        ]
+    },
+    "plant": {
+        "description": "Plant",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "tree": {
+        "description": "Tree",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "bird": {
+        "description": "Bird",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [
+            "animal"
+        ],
+        "requires": []
+    },
+    "coral head": {
+        "description": "Coral head",
+        "type": "concept",
+        "ontological parent": "EXPERIENCEABLE OBJECT",
+        "gramprop": [],
+        "requires": []
+    },
+    "big": {
+        "description": "Big",
+        "type": "concept",
+        "ontological parent": "NON-GRAMATICAL QUALIFIER",
+        "gramprop": [],
+        "requires": []
+    },
+    "grouper": {
+        "description": "Grouper",
+        "type": "concept",
+        "ontological parent": "fish",
+        "gramprop": [
+            "animal"
+        ],
+        "requires": []
+    },
+    "triggerfish": {
+        "description": "Triggerfish",
+        "type": "concept",
+        "ontological parent": "INTELLECT",
+        "gramprop": [
+            "animal"
+        ],
+        "requires": []
+    },
+    "being_included_in_class": {
+        "description": "Being included in a class",
+        "type": "concept",
+        "ontological parent": "EXPERIENCE",
+        "gramprop": [],
+        "requires": [
+            "PATIENT"
+        ]
+    },
+    "Negative Polarity": {
+        "description": "Negative Polarity (Negation)",
+        "type": "concept",
+        "ontological parent": "LOGIC",
+        "gramprop": [],
+        "requires": []
+    }
+}

@@ -19,6 +19,8 @@ dependencies = [
   "numpy",
   "networkx",
   "requests",
+  "python-docx",
+  "pypdf",
 ]
 
 [project.optional-dependencies]

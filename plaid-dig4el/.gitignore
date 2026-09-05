@@ -2,7 +2,7 @@
 # Fetched by scripts/fetch_reference_data.py; about 100 MB of JSON.
 reference_data/
 # Runtime data directory (SQLite database, uploads, indexes).
-data/
+/data/
 *.db
 __pycache__/
 *.pyc

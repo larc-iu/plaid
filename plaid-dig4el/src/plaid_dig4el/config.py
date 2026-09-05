@@ -20,6 +20,14 @@ class Settings:
     port: int = field(default_factory=lambda: int(_env("PLAID_DIG4EL_PORT", "8087")))
     secret_key: str = field(default_factory=lambda: _env("PLAID_DIG4EL_SECRET", ""))
     dev_reload: bool = False
+    # The language model endpoint (OpenAI-compatible). The key comes from LLM_API_KEY or
+    # the first line of the key file.
+    llm_base_url: str = field(default_factory=lambda: _env("LLM_BASE_URL", "https://reallms.rescloud.iu.edu/direct/v1"))
+    llm_api_key: str = field(default_factory=lambda: _env("LLM_API_KEY", ""))
+    llm_key_file: Path = field(default_factory=lambda: Path(_env("LLM_KEY_FILE", "~/.reallms")))
+    llm_model: str = field(default_factory=lambda: _env("LLM_MODEL", "gpt-oss-120b"))  # structured, fast
+    llm_model_strong: str = field(default_factory=lambda: _env("LLM_MODEL_STRONG", "glm-5.2"))  # slow, better
+    llm_embedding_model: str = field(default_factory=lambda: _env("LLM_EMBEDDING_MODEL", "embeddinggemma-300m"))
 
     def __post_init__(self) -> None:
         self.data_dir = Path(self.data_dir)
@@ -37,6 +45,14 @@ class Settings:
     @property
     def db_path(self) -> Path:
         return self.data_dir / "dig4el.db"
+
+    def llm_key(self) -> str:
+        if self.llm_api_key:
+            return self.llm_api_key
+        path = Path(self.llm_key_file).expanduser()
+        if path.exists():
+            return path.read_text().strip().splitlines()[0].strip()
+        return ""
 
 
 _settings: Settings | None = None

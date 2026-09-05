@@ -63,6 +63,66 @@
   {% endif %}
 </div>
 
+<div class="card mb-3">
+  <div class="card-header bg-white fw-semibold">Sentence pairs</div>
+  {% if corpora %}
+  <table class="table table-sm mb-0 align-middle">
+    <thead class="table-light"><tr><th>Corpus</th><th>Origin</th><th>Sentences</th><th></th></tr></thead>
+    <tbody>
+    {% for c in corpora %}
+      <tr>
+        <td>{% if c.missing %}<span class="text-secondary">{{ c.ref.name }}</span><div class="small text-danger">{{ c.reason }}</div>
+            {% else %}<a href="/languages/{{ lang.id }}/documents/{{ c.doc.id }}" class="text-decoration-none">{{ c.doc.name }}</a>{% endif %}</td>
+        <td class="small text-secondary">{{ c.ref.origin }}{% if c.ref.author %} · {{ c.ref.author }}{% endif %}</td>
+        <td>{% if not c.missing %}{{ c.sentences }}{% endif %}</td>
+        <td class="text-end">{% if not c.missing %}<a href="/languages/{{ lang.id }}/documents/{{ c.doc.id }}" class="btn btn-sm btn-link">Open</a>
+            {% elif access.can_manage %}
+            <form method="post" action="/languages/{{ lang.id }}/documents/{{ c.ref.plaid_document_id }}/forget" class="m-0">
+              <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+            </form>
+            {% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  <div class="card-body py-2 small">
+    <div class="mb-2">{{ pool_size }} sentence{{ 's' if pool_size != 1 }} with both a {{ lang.name }} and a {{ lang.pivot_language }} side, counting questionnaire translations · {{ augmented }} described by the model.</div>
+    {% if augment_job and augment_job.status in ('queued', 'running') %}
+      {% with job = augment_job, language_id = lang.id %}{% include "_job_status.html" %}{% endwith %}
+    {% elif augment_job and augment_job.status == 'failed' %}
+      <div class="alert alert-danger py-1 mb-2">{{ 'The last description job failed.' if '\n' in augment_job.error else augment_job.error }}</div>
+    {% endif %}
+    {% if access.can_edit %}
+    <div class="d-flex flex-wrap gap-3 align-items-start">
+      <form method="post" action="/languages/{{ lang.id }}/augment" class="m-0">
+        <button type="submit" class="btn btn-sm btn-primary" {% if pool_size == augmented or (augment_job and augment_job.status in ('queued', 'running')) %}disabled{% endif %}>Describe new sentences</button>
+      </form>
+      <form method="post" action="/languages/{{ lang.id }}/corpora" enctype="multipart/form-data" class="d-flex flex-wrap gap-1 align-items-center m-0">
+        <input type="text" class="form-control form-control-sm w-auto" name="name" placeholder="Corpus name" required>
+        <input type="text" class="form-control form-control-sm w-auto" name="origin" placeholder="Origin">
+        <input type="text" class="form-control form-control-sm w-auto" name="author" placeholder="Author or owner">
+        <input type="file" class="form-control form-control-sm w-auto" name="file" accept=".json,.csv" required>
+        <button type="submit" class="btn btn-sm btn-outline-primary">Add corpus</button>
+        <span class="text-secondary">JSON list or CSV with source, target, comments.</span>
+      </form>
+    </div>
+    {% endif %}
+    {% if augmented %}
+    <form hx-post="/languages/{{ lang.id }}/search" hx-target="#search-results" hx-swap="outerHTML" class="d-flex flex-wrap gap-1 align-items-center mt-2 m-0">
+      <input type="text" class="form-control form-control-sm w-auto" name="query" placeholder="Find sentences about…" style="min-width: 18rem">
+      <select name="how" class="form-select form-select-sm w-auto">
+        <option value="keyword">by keyword</option>
+        <option value="embedding">by similarity</option>
+        <option value="model">selected by the model</option>
+      </select>
+      <button type="submit" class="btn btn-sm btn-outline-secondary">Search</button>
+    </form>
+    <div id="search-results"></div>
+    {% endif %}
+  </div>
+</div>
+
 <div class="card">
   <div class="card-header bg-white fw-semibold">Grammar inferences</div>
   {% if runs %}

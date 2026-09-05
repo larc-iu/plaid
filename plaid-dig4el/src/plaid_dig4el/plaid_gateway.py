@@ -125,6 +125,39 @@ def create_questionnaire_document(client: PlaidClient, project_id: str, layers: 
     return doc
 
 
+def create_corpus_document(client: PlaidClient, project_id: str, layers: Layers, name: str,
+                           provenance: dict[str, str], pairs: list[dict[str, str]],
+                           delimiters: list[str]) -> dict[str, Any]:
+    """A sentence-pair corpus: one slot per pair holding the target sentence, its words,
+    the source sentence as the prompt field and any comment as the note field."""
+    targets = [(p.get("target") or "").replace("\n", " ").strip() for p in pairs]
+    body = "".join(t + "\n" for t in targets)
+    with client.operation(f'Add corpus "{name}"'):
+        doc = client.documents.create(
+            project_id, name, metadata={NS: {"kind": "corpus", "published": True, **provenance}},
+        )
+        text = client.texts.create(layers.text, doc["id"], body)
+        sentences, words, pos = [], [], 0
+        for i, t in enumerate(targets):
+            sentences.append({"token_layer_id": layers.sentence, "text": text["id"], "begin": pos,
+                              "end": pos + len(t) + 1, "metadata": {NS: {"segment": str(i + 1)}}})
+            words.extend({"token_layer_id": layers.word, "text": text["id"], "begin": pos + b, "end": pos + e}
+                         for b, e, _ in tokenize_with_offsets(t, delimiters))
+            pos += len(t) + 1
+        toks = client.tokens.bulk_create(sentences)["ids"]
+        if words:
+            client.tokens.bulk_create(words)
+        # one bulk call per layer: Plaid's bulk span create takes a single layer
+        for key, field_name in (("prompt", "source"), ("note", "comments")):
+            if key not in layers.fields:
+                continue
+            spans = [{"span_layer_id": layers.fields[key], "tokens": [tid], "value": str(p.get(field_name) or "").strip()}
+                     for tid, p in zip(toks, pairs) if str(p.get(field_name) or "").strip()]
+            if spans:
+                client.spans.bulk_create(spans)
+    return doc
+
+
 # --------------------------------------------------------------- reading a doc
 
 
@@ -163,6 +196,7 @@ class QuestionnaireDoc:
     questionnaire: str
     published: bool
     slots: list[Slot]
+    kind: str = "questionnaire"  # or "corpus": a sentence-pair corpus
     can_link: bool = True  # the Concept layer still exists
     problems: list[str] = field(default_factory=list)  # layers changed in Plaid, in plain words
 
@@ -175,14 +209,14 @@ class QuestionnaireDoc:
     @property
     def missing_segments(self) -> list[Segment]:
         """Questionnaire segments whose sentence token no longer exists in Plaid."""
-        q = catalog.questionnaires().get(self.questionnaire)
+        q = catalog.questionnaires().get(self.questionnaire) if self.kind == "questionnaire" else None
         present = {s.segment_index for s in self.slots}
         return [seg for seg in q.segments if seg.index not in present] if q else []
 
     @property
     def extra_slots(self) -> list[Slot]:
         """Sentence tokens that are not questionnaire segments (made in another app)."""
-        return [s for s in self.slots if s.segment is None]
+        return [s for s in self.slots if s.segment is None] if self.kind == "questionnaire" else []
 
 
 class DocumentUnavailable(Exception):
@@ -272,7 +306,7 @@ def read_questionnaire_document(client: PlaidClient, document_id: str, layers: L
         id=d["id"], name=d["name"], version=d["version"], text_id=text.get("id"), body=body,
         questionnaire=str(dmeta.get("questionnaire", slots[0].questionnaire if slots else "")),
         published=bool(dmeta.get("published", False)), slots=slots,
-        can_link=bool(concept_layer), problems=problems,
+        kind=str(dmeta.get("kind", "questionnaire")), can_link=bool(concept_layer), problems=problems,
     )
 
 
@@ -425,6 +459,13 @@ def set_concepts(client: PlaidClient, doc: QuestionnaireDoc, slot: Slot,
             elif not cur and tids:
                 client.spans.create(layers.concept, tids, concept)
         # concepts no longer mentioned are left alone
+
+
+def rename_concept(client: PlaidClient, slot: Slot, old: str, new: str) -> None:
+    """Repoint a slot's link from one meaning to another (the words stay)."""
+    for sp in slot.concepts:
+        if sp["value"] == old:
+            client.spans.update(sp["id"], new)
 
 
 def set_published(client: PlaidClient, document_id: str, published: bool) -> None:

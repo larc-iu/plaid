@@ -16,7 +16,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, create_engine
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, LargeBinary, String, Text, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
 
 from .config import settings
@@ -58,6 +58,12 @@ class Language(Base):
     runs: Mapped[list["InferenceRun"]] = relationship(back_populates="language",
                                                       cascade="all, delete-orphan",
                                                       order_by="InferenceRun.created_at.desc()")
+    corpora: Mapped[list["CorpusDocument"]] = relationship(back_populates="language",
+                                                           cascade="all, delete-orphan",
+                                                           order_by="CorpusDocument.created_at")
+    outputs: Mapped[list["GrammarOutput"]] = relationship(back_populates="language",
+                                                          cascade="all, delete-orphan",
+                                                          order_by="GrammarOutput.created_at.desc()")
 
     @property
     def typology_name(self) -> str:
@@ -79,6 +85,94 @@ class QuestionnaireDocument(Base):
     language: Mapped[Language] = relationship(back_populates="documents")
 
 
+class CorpusDocument(Base):
+    """A Plaid document holding a sentence-pair corpus for a language (target sentences
+    with their source-language equivalents), with the provenance dig4el asks for."""
+
+    __tablename__ = "corpus_documents"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
+    language_id: Mapped[str] = mapped_column(ForeignKey("languages.id"), nullable=False)
+    plaid_document_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    origin: Mapped[str] = mapped_column(String, nullable=False, default="")
+    author: Mapped[str] = mapped_column(String, nullable=False, default="")
+    created_by: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+    language: Mapped[Language] = relationship(back_populates="corpora")
+
+
+class SentenceAugmentation(Base):
+    """What the language model said about one sentence (dig4el's augmented pair): the
+    facet description, keywords and key translation concepts, with the embeddings that
+    index it. Keyed by the sentence's Plaid token; ``target`` and ``source`` are the
+    text it described, so a changed sentence is re-described."""
+
+    __tablename__ = "sentence_augmentations"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
+    language_id: Mapped[str] = mapped_column(ForeignKey("languages.id"), nullable=False)
+    document_id: Mapped[str] = mapped_column(String, nullable=False)  # Plaid document
+    token_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)  # Plaid sentence token
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    target: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    keywords: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    key_translation_concepts: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    comment: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    model: Mapped[str] = mapped_column(String, nullable=False, default="")
+    vectors: Mapped[bytes] = mapped_column(LargeBinary, nullable=False, default=b"")  # float32 (3, dim): pair, source, description
+    edited_by: Mapped[str] = mapped_column(String, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
+class GrammarOutput(Base):
+    """A generated grammar lesson or sketch (dig4el's stored output), with the trace of
+    what fed it: selected parameters, the pseudo-gloss contribution, the document
+    contribution and the chosen sentence pairs."""
+
+    __tablename__ = "grammar_outputs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
+    language_id: Mapped[str] = mapped_column(ForeignKey("languages.id"), nullable=False)
+    job_id: Mapped[str | None] = mapped_column(ForeignKey("jobs.id"), nullable=True)
+    format: Mapped[str] = mapped_column(String, nullable=False)  # lesson / sketch
+    topic: Mapped[str] = mapped_column(String, nullable=False)
+    query: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    readers_language: Mapped[str] = mapped_column(String, nullable=False, default="English")
+    readers_type: Mapped[str] = mapped_column(String, nullable=False, default="Adults")
+    model: Mapped[str] = mapped_column(String, nullable=False, default="")
+    output: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    trace: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_by: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+    language: Mapped[Language] = relationship(back_populates="outputs")
+    feedback: Mapped[list["OutputFeedback"]] = relationship(back_populates="output", cascade="all, delete-orphan",
+                                                            order_by="OutputFeedback.created_at")
+
+
+class OutputFeedback(Base):
+    """dig4el's feedback form on an output: five 0-9 ratings and a comment."""
+
+    __tablename__ = "output_feedback"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
+    output_id: Mapped[str] = mapped_column(ForeignKey("grammar_outputs.id"), nullable=False)
+    user_id: Mapped[str] = mapped_column(String, nullable=False)
+    errors: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    completeness: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    clarity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    usefulness: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    confidence: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    comments: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+    output: Mapped[GrammarOutput] = relationship(back_populates="feedback")
+
+
 class Job(Base):
     """A unit of background work (an inference run, later an LLM stage), executed by
     the worker in ``jobs.py``. The user's Plaid token rides along so the job acts as
@@ -97,6 +191,7 @@ class Job(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    progress: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)  # {"done": n, "total": m, "note": str}
 
 
 class InferenceRun(Base):
@@ -145,6 +240,9 @@ MIGRATIONS: list[list[str]] = [
         "ALTER TABLE inference_runs DROP COLUMN error",
         "ALTER TABLE questionnaire_documents DROP COLUMN version_seen",
         "ALTER TABLE questionnaire_documents DROP COLUMN missing",
+    ],
+    [  # 2: jobs report progress
+        "ALTER TABLE jobs ADD COLUMN progress JSON NOT NULL DEFAULT '{}'",
     ],
 ]
 
