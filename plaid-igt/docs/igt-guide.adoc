@@ -695,9 +695,3 @@ Every shortcut that takes Ctrl also takes Cmd on a Mac.
 | **Ctrl/Cmd+Enter** / **Esc** (new-segment popover) | Save the segment, or cancel it.
 | **Ctrl/Cmd+wheel** / **wheel** (timeline) | Zoom, or pan.
 |===
-
-= Going Further
-
-Plaid IGT is one of the apps built on the Plaid platform, and everything you see in the editor is also reachable from a script.
-If you want to work with your data from Python or JavaScript, or you are curious about what is underneath, see link:manual.html[the Plaid manual] and the link:api-py.html[Python] / link:api-js.html[JavaScript] client references.
-The manual also covers running a Plaid server for a class or a team.
