@@ -4,6 +4,12 @@
 // e2e/ (see e2e/bugbash/harness.mjs for the fixture project).
 //
 //   node e2e/restore-fuzz.mjs [seed] [rounds]
+//   PLAID_STRICT=1 node e2e/restore-fuzz.mjs [seed] [rounds]
+//
+// PLAID_STRICT runs the restore through a client in strict mode (document-
+// version OCC), which is what the document page uses. The two bugs the first
+// browser run found (a stale version learned from an as-of read; the span
+// bulk route resolving no document) were invisible to a non-strict client.
 
 import {
   makeClient,
@@ -22,6 +28,7 @@ import { runRestore } from '../src/restore/restoreRunner.js';
 
 const SEED = process.argv[2] ? Number(process.argv[2]) : Date.now() & 0xffffffff;
 const ROUNDS = process.argv[3] ? Number(process.argv[3]) : 4;
+const STRICT = process.env.PLAID_STRICT === '1';
 const rng = makeRng(SEED);
 const client = makeClient();
 const failures = [];
@@ -241,6 +248,12 @@ async function round(projectId, ctx, n) {
     if (sanity.length)
       result.failures.push(`as-of read differs from live at T: ${sanity.join('; ')}`);
     const b = await edit(documentId, ctx, randInt(rng, 4, 10));
+    // The page views the old state before restoring, and its client learns
+    // versions from every read it makes along the way.
+    if (STRICT) {
+      client.enterStrictMode(documentId);
+      await client.documents.get(documentId, true, T);
+    }
     const res = await runRestore({ client, documentId, asOf: T });
     const after = normalizeState(await read(documentId));
     const diffs = compareStates(after, target);
@@ -248,6 +261,7 @@ async function round(projectId, ctx, n) {
     if (!res.exact) result.failures.push(`self-check reported: ${res.differences.join('; ')}`);
     if (res.warnings.length) result.failures.push(`warnings: ${res.warnings.join('; ')}`);
     const again = await runRestore({ client, documentId, asOf: T });
+    if (STRICT) client.exitStrictMode();
     if (again.summary.total !== 0)
       result.failures.push(`second restore still planned ${again.summary.total} changes`);
     const inv = runAllInvariants(await reloadFresh(client, projectId, documentId));
@@ -263,6 +277,7 @@ async function round(projectId, ctx, n) {
     result.failures.push(`threw: ${err?.message ?? err}`);
     log(`  round ${n}: threw ${err?.message ?? err}`);
   } finally {
+    if (STRICT) client.exitStrictMode();
     await cleanupDoc(client, documentId);
   }
   return result;
@@ -281,7 +296,9 @@ if (vocabId) {
   }
 }
 const ctx = { itemIds, rejections: [] };
-log(`restore fuzz: seed ${SEED}, ${ROUNDS} rounds, ${itemIds.length} vocab items`);
+log(
+  `restore fuzz: seed ${SEED}, ${ROUNDS} rounds, ${itemIds.length} vocab items${STRICT ? ', strict-mode client' : ''}`,
+);
 for (let i = 1; i <= ROUNDS; i++) {
   const r = await round(projectId, ctx, i);
   if (r.failures.length) failures.push({ round: i, ...r });
