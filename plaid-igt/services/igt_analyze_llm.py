@@ -16,6 +16,13 @@ Per sentence the prompt carries, retrieved from Plaid:
     verified, rendered in the same interleaved format, as examples of the
     project's glossing conventions;
   * the sentence's free translation, when it has one.
+And once per run, in the system prompt: the tagset the gloss field is held
+to, when it has one, with its tags, their meanings, and what its mode
+allows, so the model glosses with the project's own abbreviations. Nothing
+is enforced: a tag the model writes that is not listed lands as written and
+shows in the Validation tab, which is the point (an off-list value from a
+machine tells the linguist the list is incomplete or the model is wrong,
+and snapping it to the nearest listed tag would hide that).
 So a correction a person confirms is an example next run, and a lexicon
 entry a person adds or links is evidence next run: the model improves with
 the project without retraining (the GlossAssist / CWoMP loop, without
@@ -42,12 +49,14 @@ from typing import Any, Dict, List, Optional
 from plaid_client import BaseService, TASKS, Param, service_source
 from plaid_client.workflows.igt import (
     derive, select_targets, word_state, parse_interleaved, align_words, analysis_for, write_analyses,
+    tagset_for, mode_rule, value_lines,
 )
 
 DEFAULT_SERVICE_ID = 'llm-analyzer'
 MAX_EXAMPLE_DOCS = 25  # documents scanned for example sentences per run
 DEFAULT_EXAMPLES = 8
 DEFAULT_LEXICON_BUDGET = 60  # entries per prompt
+TAGSET_BUDGET = 300  # tags shown to the model when the gloss field is held to a tagset
 
 SUMMARY = """\
 **LLM glossing** proposes a morpheme **segmentation** and **glosses** for
@@ -55,6 +64,8 @@ every word of the document with a language model, grounded in this project:
 each sentence is sent with the lexicon entries found inside its words and
 the project's most similar sentences that a person has analyzed, so the model
 follows the project's own conventions and improves as the project grows.
+If the gloss field is held to a tagset, the model is shown its tags and told
+which are required, so it glosses with your abbreviations.
 
 - **Language** / **Metalanguage**: the object language's name and the
   language of glosses and translations.
@@ -85,6 +96,24 @@ their glosses for the same morphemes, their segmentation style, and their
 gloss abbreviations. Grammatical glosses are UPPERCASE, lexical glosses are
 lowercase. If a word cannot be segmented with confidence, keep it whole as
 GLOSS(word)."""
+
+
+def tagset_paragraph(tagset, max_values=TAGSET_BUDGET) -> str:
+    """The gloss field's tagset as a rule for the model, appended to the
+    system prompt for the run: what its mode allows, then the tags with
+    their meanings. Empty when the field is free. It says an unlisted tag
+    goes to the linguist for review rather than forbidding one, so a
+    category the list lacks still comes out as itself and not as the
+    nearest listed tag."""
+    if not tagset:
+        return ''
+    head = f'The gloss field is held to the tagset "{tagset["name"]}". {mode_rule(tagset)}'
+    lines = value_lines(tagset, max_values)
+    if not lines:
+        return head
+    return (head + ' Use these tags, with these spellings, for what they cover. A tag that is not listed is '
+            'shown to the linguist for review, so write one only where no listed tag means the same thing.\n'
+            'Tags (tag: meaning):\n' + '\n'.join('  ' + line for line in lines))
 
 
 # --- model -----------------------------------------------------------------
@@ -394,6 +423,8 @@ class LLMAnalyzeService(BaseService):
         # Retrieval, once per run.
         response_helper.progress(5, 'Reading the lexicon...')
         project = self.client.projects.get(project_id)
+        tagset = tagset_for(project, gloss_layer_id)
+        system = SYSTEM_PROMPT + ('\n\n' + tagset_paragraph(tagset) if tagset else '')
         lexicon = load_lexicon(self.client, project)
         pool = load_examples(
             self.client, project_id, layers, gloss_field, translation_field, orthography,
@@ -416,7 +447,7 @@ class LLMAnalyzeService(BaseService):
             prompt = build_user_prompt(language, metalanguage, words, (s['translation'] or '').strip(),
                                        entries, examples)
             try:
-                reply = self.model.complete(SYSTEM_PROMPT, prompt)
+                reply = self.model.complete(system, prompt)
             except Exception as exc:
                 failed.append({'sentence_id': s['id'], 'reason': f'model error: {exc}'})
                 continue
@@ -448,6 +479,7 @@ class LLMAnalyzeService(BaseService):
             'words_written': written, 'words_replaced': replaced,
             'skipped': skipped, 'sentences_failed': failed,
             'lexicon_entries': len(lexicon), 'example_sentences': len(pool),
+            'tagset': tagset['name'] if tagset else None,
         })
 
 

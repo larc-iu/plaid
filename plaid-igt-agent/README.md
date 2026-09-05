@@ -119,8 +119,11 @@ receives them, rendered over the test fixture project; regenerate it with
 
 - `web.py`: the optional web tools, the URL guard, and HTML to text.
 - `project.py`: loads a project's IGT shape (layers by role, fields by scope,
-  orthographies, lexicons) and documents, and renders documents as compact
-  interlinear text. Everything is addressed positionally (`s3.w2.m1`); the
+  the tagsets fields are held to, orthographies, lexicons) and documents, and
+  renders documents as compact interlinear text. A tagset's values go into the
+  system prompt and the overview so the model proposes the listed spellings;
+  nothing is enforced on a plan, and an unlisted value shows to the user as
+  invalid, as any other writer's would. Everything is addressed positionally (`s3.w2.m1`); the
   model never sees ids.
 - `tools.py`: the tools the model gets. Reads run immediately:
   `project_overview`, `list_documents`, `read_document`, `search`, `read_lexicon`,

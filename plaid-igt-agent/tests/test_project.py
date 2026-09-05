@@ -158,3 +158,33 @@ def test_two_lexicons_with_one_name_are_refused_rather_than_guessed():
         assert 'Several lexicons' in str(e)
     else:
         raise AssertionError
+
+
+def test_tagsets_reach_the_overview_and_the_prompt():
+    from fixtures import FakeClient, project_raw
+    from plaid_igt_agent.prompt import build_system_prompt
+    raw = project_raw()
+    raw['config']['igt']['tagsets']['POS'] = {'mode': 'closed', 'values': [{'value': 'n'}, {'value': 'v'}]}
+    raw['config']['igt']['documentMetadata'] += [{'name': 'Genre', 'tagset': 'Gone'}, {'name': 'Kind', 'tagset': 'POS'}]
+    raw['text_layers'][0]['token_layers'][1]['span_layers'][0]['config']['igt']['tagset'] = 'Leipzig'  # word Gloss too
+    raw['vocabs'][0]['config'] = {'igt': {'fields': {'pos': {'inline': True, 'tagset': 'POS'}, 'gloss': {'inline': True}},
+                                          'tagsets': {'POS': {'mode': 'closed', 'values': [{'value': 'adj'}]}}}}
+    p = load_project(FakeClient(project=raw), 'p1')
+    assert p.field('Morph Gloss').tagset['name'] == 'Leipzig' and p.field('Translation').tagset is None
+    assert p.document_metadata == ['Date', 'Genre', 'Kind']
+    assert list(p.metadata_tagsets) == ['Kind']  # a dangling reference governs nothing
+    assert p.vocabs[0]['fields'] == ['pos', 'gloss']
+    assert [v['value'] for v in p.vocabs[0]['tagsets']['pos']['values']] == ['adj']  # the lexicon's own POS
+    out = render_overview(p, [])
+    assert '  "Leipzig" on Gloss, Morph Gloss. A grammatical tag, written in capitals or digits' in out
+    assert "joins its parts with '.' or ':'.\n    PL: plural\n    ERG\n" in out
+    assert '  "POS" on document metadata Kind. Only the listed values are accepted.\n    n\n    v\n' in out
+    assert '  "POS" (lexicon Lexicon) on entry field pos. Only the listed values are accepted.\n    adj\n' in out
+    assert out.index('Tagsets:') < out.index('Orthographies:')
+    prompt = build_system_prompt(p)
+    assert '- Tagsets: the user sees a value outside' in prompt and '    PL: plural\n    ERG\n' in prompt
+    # nothing governed, nothing said
+    bare = project_raw()
+    del bare['text_layers'][0]['token_layers'][2]['span_layers'][0]['config']['igt']['tagset']
+    q = load_project(FakeClient(project=bare), 'p1')
+    assert 'Tagsets' not in render_overview(q, []) and 'Tagsets' not in build_system_prompt(q)

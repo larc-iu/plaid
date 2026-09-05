@@ -68,3 +68,17 @@ def test_build_user_prompt_layout():
     assert p.endswith('Now gloss this sentence.\nText: evlerden\nTranslation: from the houses\nGlosses:')
     bare = llm.build_user_prompt('Turkish', 'English', ['evlerden'], '', [], [])
     assert 'Lexicon' not in bare and 'Examples' not in bare and bare.endswith('Text: evlerden\nGlosses:')
+
+
+def test_tagset_paragraph_states_the_rule_and_lists_tags_within_budget():
+    t = {'name': 'Leipzig', 'mode': 'mixed', 'delimiters': '.:',
+         'values': [{'value': 'PL', 'description': 'plural'}, {'value': '1SG'}, {'value': 'PST', 'description': 'past'}]}
+    p = llm.tagset_paragraph(t)
+    assert p.startswith('The gloss field is held to the tagset "Leipzig". A grammatical tag')
+    assert "joins its parts with '.' or ':'." in p
+    assert 'shown to the linguist for review' in p
+    assert p.endswith('Tags (tag: meaning):\n  PL: plural\n  1SG\n  PST: past')
+    assert llm.tagset_paragraph(t, max_values=2).endswith('\n  1SG\n  ... and 1 more')
+    assert llm.tagset_paragraph(None) == ''
+    closed = llm.tagset_paragraph({'name': 'POS', 'mode': 'closed', 'delimiters': '', 'values': []})
+    assert closed == 'The gloss field is held to the tagset "POS". Only the listed values are accepted.'

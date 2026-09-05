@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from plaid_client.workflows.igt import (
     ParsedWord, parse_interleaved, align_words, analysis_for, clitic_types,
     derive, word_state, select_targets, is_token_ignored, chunk_plans,
+    normalize_tagset, read_tagsets, tagset_for, vocab_tagset_for, governed_fields, mode_rule, value_lines,
 )
 
 
@@ -223,3 +224,60 @@ def test_word_state_on_hand_built_words():
     # a human word-level span or morpheme link protects even a default morpheme
     assert word_state(_word('abc', [m0], spans=[('pos', {'metadata': None})])) == 'protected'
     assert word_state(_word('abc', [m0], morph_links={'m0': [{'metadata': {}}]})) == 'protected'
+
+
+# --- tagsets ---------------------------------------------------------------------------
+
+def raw_project():
+    return {
+        'id': 'p', 'config': {'igt': {
+            'tagsets': {'Leipzig': {'delimiters': ' . : ', 'mode': 'mixed',
+                                    'values': [{'value': ' PL ', 'description': 'plural'}, {'value': 'PL'},
+                                               {'value': ''}, {'value': '1SG'}, 'junk']},
+                        ' POS ': {'mode': 'closed', 'values': [{'value': 'n'}]},
+                        'Odd': {'mode': 'strict', 'delimiters': 7}},
+            'documentMetadata': [{'name': 'Genre', 'tagset': 'POS'}, {'name': 'Date'}, {'name': 'X', 'tagset': 'Gone'}],
+        }},
+        'text_layers': [{'token_layers': [
+            {'id': 'morphL', 'span_layers': [
+                {'id': 'glossL', 'name': 'Gloss', 'config': {'igt': {'scope': 'Morpheme', 'tagset': 'Leipzig'}}},
+                {'id': 'noteL', 'name': 'Note', 'config': {'igt': {'scope': 'Morpheme'}}},
+                {'id': 'oldL', 'name': 'Old', 'config': {'igt': {'scope': 'Morpheme', 'tagset': 'Gone'}}}]}]}],
+        'vocabs': [{'id': 'v', 'name': 'Lex', 'config': {'igt': {
+            'fields': {'pos': {'inline': True, 'tagset': 'POS'}, 'gloss': {'inline': True}},
+            'tagsets': {'POS': {'mode': 'closed', 'values': [{'value': 'adj'}]}}}}}],
+    }
+
+
+def test_tagsets_are_read_the_way_the_editor_reads_them():
+    ts = read_tagsets(raw_project()['config'])
+    assert set(ts) == {'Leipzig', 'POS', 'Odd'}  # names trimmed
+    leipzig = ts['Leipzig']
+    assert leipzig['delimiters'] == '.:' and leipzig['mode'] == 'mixed'
+    assert [v['value'] for v in leipzig['values']] == ['PL', '1SG']  # trimmed, deduped, empties and junk dropped
+    assert leipzig['values'][0]['description'] == 'plural'
+    assert ts['Odd'] == {'name': 'Odd', 'delimiters': '', 'mode': 'suggest', 'values': []}
+    assert normalize_tagset(None)['mode'] == 'suggest'
+
+
+def test_tagset_for_and_governed_fields_resolve_by_name_and_ignore_dangling_references():
+    p = raw_project()
+    assert tagset_for(p, 'glossL')['name'] == 'Leipzig'
+    assert tagset_for(p, 'noteL') is None and tagset_for(p, 'oldL') is None and tagset_for(p, 'nope') is None
+    g = governed_fields(p)
+    assert [(f['kind'], f['name'], f['scope'], f['layer_id'], f['tagset']['name']) for f in g] == [
+        ('span', 'Gloss', 'Morpheme', 'glossL', 'Leipzig'), ('metadata', 'Genre', 'document', None, 'POS')]
+    # a vocabulary's field resolves against the vocabulary's own tagsets, never the project's
+    assert [v['value'] for v in vocab_tagset_for(p['vocabs'][0], 'pos')['values']] == ['adj']
+    assert vocab_tagset_for(p['vocabs'][0], 'gloss') is None
+
+
+def test_tagset_rules_and_value_lines_for_a_prompt():
+    leipzig = read_tagsets(raw_project()['config'])['Leipzig']
+    assert mode_rule(leipzig) == ('A grammatical tag, written in capitals or digits, must be a listed value. '
+                                  'A lexical gloss, an ordinary word in lowercase or in a script without capitals, '
+                                  "may be anything. A composite value joins its parts with '.' or ':'.")
+    assert mode_rule({'mode': 'closed', 'delimiters': ''}) == 'Only the listed values are accepted.'
+    assert mode_rule({'mode': 'suggest', 'delimiters': '.:>'}).endswith("joins its parts with '.', ':' or '>'.")
+    assert value_lines(leipzig) == ['PL: plural', '1SG']
+    assert value_lines(leipzig, max_values=1) == ['PL: plural', '... and 1 more']

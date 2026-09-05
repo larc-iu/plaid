@@ -12,7 +12,11 @@ TEXT_ID = 'text1'
 
 def project_raw():
     return {
-        'id': PID, 'name': 'Demo', 'config': {'igt': {'initialized': True, 'documentMetadata': [{'name': 'Date'}]}},
+        'id': PID, 'name': 'Demo',
+        'config': {'igt': {'initialized': True, 'documentMetadata': [{'name': 'Date'}],
+                           'tagsets': {'Leipzig': {'delimiters': '.:', 'mode': 'mixed',
+                                                   'values': [{'value': 'PL', 'description': 'plural'},
+                                                              {'value': 'ERG'}]}}}},
         'vocabs': [{'id': VOCAB, 'name': 'Lexicon', 'config': {}}],
         'text_layers': [{
             'id': TEXT_LAYER, 'name': 'Text', 'config': {'plaid': {'role': 'baseline'}},
@@ -25,7 +29,8 @@ def project_raw():
                                     'ignoredTokens': {'type': 'unicodePunctuation', 'whitelist': []}}},
                  'span_layers': [{'id': GLOSS, 'name': 'Gloss', 'config': {'igt': {'scope': 'Word'}}}]},
                 {'id': MORPH_LAYER, 'name': 'Morphemes', 'config': {'plaid': {'role': 'morpheme'}},
-                 'span_layers': [{'id': MGLOSS, 'name': 'Morph Gloss', 'config': {'igt': {'scope': 'Morpheme'}}}]},
+                 'span_layers': [{'id': MGLOSS, 'name': 'Morph Gloss',
+                                  'config': {'igt': {'scope': 'Morpheme', 'tagset': 'Leipzig'}}}]},
             ]}],
     }
 

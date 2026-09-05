@@ -12,6 +12,7 @@ first morpheme. Tokens the word layer's ``ignoredTokens`` config excludes
 them no annotation cells.
 """
 
+import dataclasses
 import re
 import unicodedata
 from dataclasses import dataclass, field
@@ -27,6 +28,7 @@ from typing import Dict, List, Optional, Tuple
 
 import regex as uregex
 from plaid_client import ROLES, find_by_role
+from plaid_client.workflows.igt import read_tagsets, read_tagset_name, vocab_tagset_for, mode_rule, value_lines
 
 SCOPES = ('Word', 'Morpheme', 'Sentence')
 
@@ -88,26 +90,27 @@ class Field:
     layer_id: str
     scope: str       # Word | Morpheme | Sentence
     base_name: str = ''  # the layer's own name
+    tagset: Optional[dict] = None  # the normalized tagset the field is held to, if any (see tagset_lines)
 
 
 def _unique_field_names(entries):
-    """[(layer name, layer id, scope)] -> Fields with display names made unique
-    (case-insensitively) by a scope suffix where the same layer name occurs in
-    several scopes, and a further counter if a layer is literally named like
-    a qualified one ("Gloss (Word)")."""
+    """[(layer name, layer id, scope, tagset)] -> Fields with display names made
+    unique (case-insensitively) by a scope suffix where the same layer name
+    occurs in several scopes, and a further counter if a layer is literally
+    named like a qualified one ("Gloss (Word)")."""
     counts = {}
-    for name, _, _ in entries:
+    for name, *_ in entries:
         counts[name.casefold()] = counts.get(name.casefold(), 0) + 1
     out = {}
     taken = set()
-    for name, lid, scope in entries:
+    for name, lid, scope, tagset in entries:
         display = f'{name} ({scope})' if counts[name.casefold()] > 1 else name
         n = 2
         while display.casefold() in taken:
             display = f'{name} ({scope} {n})'
             n += 1
         taken.add(display.casefold())
-        out[display] = Field(display, lid, scope, name)
+        out[display] = Field(display, lid, scope, name, tagset)
     return out
 
 
@@ -122,8 +125,10 @@ class IgtProject:
     fields: Dict[str, Field]
     orthographies: List[str]
     ignored_cfg: Optional[dict]
-    vocabs: List[dict]  # [{id, name}]
+    vocabs: List[dict]  # [{id, name, fields: [name], tagsets: {field name: tagset}}]
     document_metadata: List[str]
+    # document metadata field -> tagset (dataclasses.field spelled out: the class has a field() method)
+    metadata_tagsets: Dict[str, dict] = dataclasses.field(default_factory=dict)
 
     def field(self, name: str) -> Field:
         """Case-insensitive field lookup by display name, falling back to the
@@ -233,6 +238,7 @@ def load_project(client, project_id: str) -> IgtProject:
     morph = find_by_role(token_layers, ROLES.MORPHEME)
     if not sent or not word:
         raise ValueError('This project lacks a sentence or word token layer (not set up for IGT?)')
+    tagsets = read_tagsets(p.get('config'))
     entries = []
     for tk in (sent, word, morph):
         if not tk:
@@ -240,8 +246,16 @@ def load_project(client, project_id: str) -> IgtProject:
         for sl in tk.get('span_layers') or []:
             scope = _igt(sl.get('config'), 'scope')
             if scope in SCOPES:
-                entries.append((sl['name'], sl['id'], scope))
+                tname = read_tagset_name(sl.get('config'))
+                entries.append((sl['name'], sl['id'], scope, tagsets.get(tname) if tname else None))
     fields = _unique_field_names(entries)
+    metadata = [m for m in (_igt(p.get('config'), 'documentMetadata') or []) if isinstance(m, dict) and m.get('name')]
+    metadata_tagsets = {}
+    for m in metadata:
+        tname = m.get('tagset')
+        tname = tname.strip() if isinstance(tname, str) else ''
+        if tname in tagsets:
+            metadata_tagsets[m['name']] = tagsets[tname]
     return IgtProject(
         id=p['id'], name=p['name'],
         text_layer_id=text_layer['id'], sentence_layer_id=sent['id'], word_layer_id=word['id'],
@@ -249,10 +263,22 @@ def load_project(client, project_id: str) -> IgtProject:
         fields=fields,
         orthographies=[o['name'] for o in (_igt(word.get('config'), 'orthographies') or [])],
         ignored_cfg=_igt(word.get('config'), 'ignoredTokens'),
-        vocabs=[{'id': v['id'], 'name': v['name'],
-                 'fields': list((_igt(v.get('config'), 'fields') or {}).keys())} for v in (p.get('vocabs') or [])],
-        document_metadata=[m['name'] for m in (_igt(p.get('config'), 'documentMetadata') or [])],
+        vocabs=[_vocab_entry(v) for v in (p.get('vocabs') or [])],
+        document_metadata=[m['name'] for m in metadata],
+        metadata_tagsets=metadata_tagsets,
     )
+
+
+def _vocab_entry(v: dict) -> dict:
+    """A lexicon as the tools see it: its entry fields, and for each field a
+    tagset holds, the tagset (the vocabulary's own, never the project's)."""
+    names = list((_igt(v.get('config'), 'fields') or {}).keys())
+    tagsets = {}
+    for n in names:
+        t = vocab_tagset_for(v, n)
+        if t:
+            tagsets[n] = t
+    return {'id': v['id'], 'name': v['name'], 'fields': names, 'tagsets': tagsets}
 
 
 # --- document ---------------------------------------------------------------
@@ -594,6 +620,42 @@ def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optio
 MAX_OVERVIEW_DOCS = 100
 
 
+def tagset_lines(project: IgtProject, max_values: Optional[int] = None) -> List[str]:
+    """The tagsets in use, a block each: the fields it holds, the rule its
+    mode sets, and its values, so the model proposes the project's own
+    spellings. Empty when nothing is governed. Nothing is enforced on a
+    plan: a value outside a list is written as proposed and shown to the
+    user as invalid, which is how the user learns the list is incomplete
+    or the proposal wrong, so the block asks for the listed spellings
+    rather than forbidding others."""
+    groups: Dict[tuple, tuple] = {}
+
+    def use(owner: str, t: Optional[dict], where: str):
+        if t:
+            groups.setdefault((owner, t['name']), (t, []))[1].append(where)
+
+    for f in project.fields.values():
+        use('', f.tagset, f.name)
+    for name, t in project.metadata_tagsets.items():
+        use('', t, f'document metadata {name}')
+    for v in project.vocabs:
+        for name, t in (v.get('tagsets') or {}).items():
+            use(v['id'], t, f'entry field {name}')
+    if not groups:
+        return []
+    lines = ['Tagsets: the user sees a value outside a field\'s list as invalid, so use the listed spellings, '
+             'and write an unlisted value only where no listed one means the same thing.']
+    by_id = {v['id']: v['name'] for v in project.vocabs}
+    for (owner, name), (t, where) in groups.items():
+        label = f'"{name}"' + (f' (lexicon {by_id[owner]})' if owner else '')
+        lines.append(f'  {label} on {", ".join(where)}. {mode_rule(t)}')
+        vl = value_lines(t, max_values)
+        if max_values is not None and len(t.get('values') or []) > max_values:
+            vl[-1] += ' (project_overview lists them all)'
+        lines.extend('    ' + line for line in vl)
+    return lines
+
+
 def render_overview(project: IgtProject, documents: List[dict]) -> str:
     lines = [f'Project "{project.name}"']
     for scope in SCOPES:
@@ -605,6 +667,7 @@ def render_overview(project: IgtProject, documents: List[dict]) -> str:
     defaults = [f'{scope.lower()}: {f.name}' for scope in SCOPES for f in [project.gloss_field(scope)] if f]
     if defaults and len(project.fields) > len(defaults):
         lines.append('Treated as the gloss where a tool takes no field= (' + ', '.join(defaults) + ')')
+    lines.extend(tagset_lines(project))
     lines.append('Orthographies: ' + (', '.join(project.orthographies) or '(none)'))
     lines.append('Lexicons: ' + (', '.join(v['name'] + (f' (entry fields: {", ".join(v["fields"])})' if v.get('fields') else '')
                                             for v in project.vocabs) or '(none)'))

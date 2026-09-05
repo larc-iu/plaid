@@ -1,6 +1,9 @@
 """The system prompt."""
 
-from .project import IgtProject, SCOPES
+from .project import IgtProject, SCOPES, tagset_lines
+
+# Values of one tagset shown in the system prompt; project_overview lists the rest.
+PROMPT_TAGSET_VALUES = 120
 
 SYSTEM = '''You are the assistant inside Plaid IGT, a tool linguists use to build interlinear glossed text (IGT): \
 documents of a language under study, segmented into sentences and words, with words split into morphemes, \
@@ -82,6 +85,8 @@ def build_system_prompt(project: IgtProject, web: bool = False) -> str:
             lines.append(f'- {scope} fields: ' + ', '.join(f.name for f in fs))
     if not project.morpheme_layer_id:
         lines.append('- No morpheme layer (words cannot be segmented here).')
+    for i, line in enumerate(tagset_lines(project, max_values=PROMPT_TAGSET_VALUES)):
+        lines.append(('- ' if i == 0 else '') + line)
     lines.append('- Orthographies: ' + (', '.join(project.orthographies) or 'none'))
     lines.append('- Lexicons: ' + (', '.join(v['name'] for v in project.vocabs) or 'none'))
     # Not str.format: field and layer names in the shape may contain braces.

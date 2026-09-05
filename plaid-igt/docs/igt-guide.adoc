@@ -263,6 +263,7 @@ A value can carry a description, shown beside it in the list.
 
 A tagset is enforced as you type and in Bulk Edit.
 An import, a service, the Assistant, or a script writes past it, so the project's **Validation** tab (maintainers) lists, for each governed field, every value in the project that its tagset refuses, with a count, and offers the two remedies: add the value to the tagset, or open the documents that use it and fix them.
+The Assistant and the LLM glossing service read a governed field's tagset before proposing values, so they use its spellings, but nothing they write is refused.
 
 == Access
 
