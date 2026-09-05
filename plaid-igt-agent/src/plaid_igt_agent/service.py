@@ -9,8 +9,10 @@ may read and approved edits are attributed to them in the audit log.
 Request data:
     project_id   the project (a service instance may serve many)
     messages     the transcript so far (OpenAI-shaped message dicts, no system)
-    approve      instead of a turn: {id, ops, label, as_human, documents} of a plan the user approved
-                 (as_human: record the writes as human-made instead of verified machine-made;
+    approve      instead of a turn: {id, ops, label, as_human, contributed_by, documents} of a plan the user
+                 approved (as_human: record the writes as human-made instead of verified machine-made;
+                 contributed_by: the approver's user id when they are a contributor, whose approval
+                 records the writes as their own unreviewed work;
                  documents: [{id, name, version}] read at plan time, refused if any changed since)
 
 Result data:
@@ -161,7 +163,8 @@ class AssistantService(BaseService):
                                           'message': 'This plan was already applied; nothing was written again.'})
                 return
             label = approve.get('label') or f'Assistant: {summarize(ops)}'
-            stamp_mode = 'human' if approve.get('as_human') else 'verified'
+            contributor = approve.get('contributed_by') or None
+            stamp_mode = 'contributed' if contributor else 'human' if approve.get('as_human') else 'verified'
             stale = stale_documents(client, approve.get('documents') or [])
             if stale:
                 response_helper.error('Nothing was written: ' + '; '.join(stale)
@@ -171,7 +174,7 @@ class AssistantService(BaseService):
             response_helper.progress(10, 'Applying changes…')
             try:
                 counts = execute_plan(client, ops, source=service_source(self.service_id), label=label, project=project,
-                                      stamp_mode=stamp_mode)
+                                      stamp_mode=stamp_mode, contributor=contributor)
             except PlanError as e:
                 if plan_id and e.applied:
                     self._remember_applied(plan_id)

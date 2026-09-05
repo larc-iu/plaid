@@ -1,5 +1,15 @@
+import {
+  PROV,
+  PROV_CONFIRMED,
+  confirmedInferred,
+  contributeOnEdit,
+  isMachine,
+  needsReview,
+  stampContributed,
+  verifyOnEdit,
+} from '@larc-iu/plaid-client';
 import { getIgtLayerInfo } from './layerInfo.js';
-import { readSpeakers, IGT_NAMESPACE } from './igtConfig.js';
+import { readSpeakers, readReviewWriters, IGT_NAMESPACE } from './igtConfig.js';
 import {
   planMorphemeReconcile,
   planSpanDedup,
@@ -51,9 +61,14 @@ export class IgtDocument {
     client = null,
     projectId = null,
     asOf = null,
+    user = null,
   }) {
     this._raw = raw;
     this._project = project;
+    // The person writing through this document ({ id, isAdmin }), for the
+    // provenance convention (see contributorId). Null = a verifier: scripts,
+    // imports, tests.
+    this._user = user;
     // Fold the document-embedded vocab-links (under raw's token layers) into the
     // separately-loaded vocabularies — `vocabLayers.get` returns items but not
     // links, so this is the only way links survive a fresh load. See
@@ -93,7 +108,7 @@ export class IgtDocument {
   // wrap them in an IgtDocument. Mirror of plaid-ud's ConlluDocument.load.
   // `asOf` (an ISO timestamp) loads a historical snapshot for time-travel /
   // read-only viewing; omit/null for the live document.
-  static async load(client, projectId, documentId, asOf = null) {
+  static async load(client, projectId, documentId, asOf = null, { user = null } = {}) {
     const at = asOf || undefined;
     // Time-travel (as-of) is supported ONLY on document GETs server-side; passing
     // an as-of to the project or vocab GETs 400s ("not supported on this endpoint")
@@ -108,7 +123,7 @@ export class IgtDocument {
       projectP,
       projectP.then((project) => loadProjectVocabularies(client, project)),
     ]);
-    return new IgtDocument({ raw, project, vocabularies, client, projectId, asOf });
+    return new IgtDocument({ raw, project, vocabularies, client, projectId, asOf, user });
   }
 
   // Re-read ONLY the document at `asOf`, reusing the project and vocabulary
@@ -133,7 +148,80 @@ export class IgtDocument {
       client: this._client,
       projectId: this._projectId,
       asOf,
+      user: this._user,
     });
+  }
+
+  // ----- who is writing (provenance) -----
+  // The provenance convention tells a VERIFIER from a CONTRIBUTOR. A verifier's
+  // work stands as human-made and their edits confirm machine or contributed
+  // material; a contributor's work is stamped { prov: 'contributed',
+  // provSource: 'user:<id>' } until a verifier confirms it. A project writer
+  // is a contributor when the project reviews writers' work
+  // (config.igt.reviewWriters); maintainers and admins are always verifiers,
+  // and so is a document with no user (scripts, imports, tests).
+
+  /** The contributor's user id, or null when the writer is a verifier. */
+  get contributorId() {
+    const user = this._user;
+    const project = this._project;
+    if (!user?.id || !project || !readReviewWriters(project.config)) return null;
+    if (user.isAdmin || (project.maintainers || []).includes(user.id)) return null;
+    return (project.writers || []).includes(user.id) ? user.id : null;
+  }
+
+  get isContributor() {
+    return this.contributorId != null;
+  }
+
+  /** The metadata a person's NEW entity carries: null for a verifier. */
+  get createStamp() {
+    const id = this.contributorId;
+    return id ? stampContributed(id) : null;
+  }
+
+  // The fragment a person's EDIT of an entity merges over its metadata, or
+  // null when there is nothing to merge: a verifier confirms what needs
+  // review (write-contract rule 3); a contributor's edit marks the entity
+  // contributed, dropping any earlier confirmation.
+  editStamp(metadata) {
+    const id = this.contributorId;
+    return id ? contributeOnEdit(metadata, id) : verifyOnEdit(metadata);
+  }
+
+  // Material this writer's review gestures (Ctrl+Enter, Ctrl+Backspace, the
+  // link sweep) act on: a verifier reviews machine and contributed material;
+  // a contributor reviews machine proposals only, since their own vouching
+  // is itself a contribution.
+  reviewable(metadata) {
+    return this.isContributor ? isMachine(metadata) : needsReview(metadata);
+  }
+
+  /** reviewable() on a derived provenance state ('machine' | 'contributed' | ...). */
+  reviewableState(state) {
+    return this.isContributor
+      ? state === 'machine'
+      : state === 'machine' || state === 'contributed';
+  }
+
+  // The fragment an explicit confirm gesture merges, or null when there is
+  // nothing for this writer to confirm: PROV_CONFIRMED for a verifier, the
+  // contributed stamp for a contributor accepting a machine proposal.
+  confirmStamp(metadata) {
+    if (!this.reviewable(metadata)) return null;
+    const id = this.contributorId;
+    return id ? contributeOnEdit(metadata, id) : PROV_CONFIRMED;
+  }
+
+  // What a guess or a picked value is written with when a person adopts it
+  // into an empty cell: born-verified with the guess's producer as its source
+  // for a verifier; for a contributor, contributed, with the producer kept in
+  // provDetail.guess so "accepted as-is" stays answerable. `detail` is the
+  // prediction extras ({ value } for a span).
+  adoptStamp(source, detail) {
+    const id = this.contributorId;
+    if (!id) return confirmedInferred(source, { detail });
+    return { ...stampContributed(id), [PROV.detailKey]: { ...(detail || {}), guess: source } };
   }
 
   // ----- read API -----

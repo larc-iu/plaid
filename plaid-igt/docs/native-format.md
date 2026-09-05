@@ -249,8 +249,10 @@ rather than truncated, and the import reports how many.
 ## Provenance
 
 The cross-app provenance convention rides verbatim in span and link `metadata`:
-`prov`, `provSource`, `provConfirmed` (plus `provProb`/`provDetail` where present).
-Absent provenance keys mean human-entered. The exporter never rewrites these.
+`prov` (`inferred` or `contributed`), `provSource`, `provConfirmed` (plus
+`provProb`/`provDetail` where present). Absent provenance keys mean a verifier
+entered it. The exporter never rewrites these, and `reviewWriters` rides with the
+project config like any other `igt` key.
 
 ## Re-import contract
 

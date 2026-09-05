@@ -1,13 +1,14 @@
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
-import { provState, PROV_STATES } from '@larc-iu/plaid-client';
+import { needsReview, provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { resolveColor, baseRel } from '../../../utils/udVocab.js';
 import { provCellTitle } from '../../../utils/provenanceUi.js';
 import { DeprelEditor } from './DeprelEditor.jsx';
 import './DependencyTree.css';
 
-// Machine-made, not yet human-verified (provenance convention) — the deprel
-// label renders distinctly until a human edits it (which verifies it).
-const isInferredRelation = (relation) => provState(relation?.metadata) === PROV_STATES.MACHINE;
+// Machine-made or contributed, not yet human-verified (provenance convention)
+// — the deprel label renders distinctly until a human edits it (which
+// verifies it).
+const isInferredRelation = (relation) => needsReview(relation?.metadata);
 
 // The "unapproved" violet, matching the inferred annotation cells. Paired with a
 // dashed stroke so the unapproved state never relies on color alone (a configured

@@ -8,7 +8,7 @@ import React, {
   useState,
 } from 'react';
 import { Pause, Play, Trash2 } from 'lucide-react';
-import { cpSlice, isMachine } from '@larc-iu/plaid-client';
+import { cpSlice, provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -183,7 +183,15 @@ const SegmentRow = memo(function SegmentRow({
     }
   };
 
-  const machine = isMachine(token.metadata);
+  // A segment somebody else proposed: a transcriber service's (machine) or a
+  // contributor's. Editing it as a verifier confirms it, so the tag goes.
+  const state = provState(token.metadata);
+  const proposed =
+    state === PROV_STATES.MACHINE
+      ? 'machine'
+      : state === PROV_STATES.CONTRIBUTED
+        ? 'contributed'
+        : null;
 
   return (
     <div
@@ -217,9 +225,14 @@ const SegmentRow = memo(function SegmentRow({
             />
           </>
         )}
-        {machine && (
-          <span className="mt-0.5 text-[10px] uppercase tracking-wide text-violet-600">
-            machine
+        {proposed && (
+          <span
+            className={cn(
+              'mt-0.5 text-[10px] uppercase tracking-wide',
+              proposed === 'machine' ? 'text-violet-600' : 'text-amber-700',
+            )}
+          >
+            {proposed}
           </span>
         )}
       </div>

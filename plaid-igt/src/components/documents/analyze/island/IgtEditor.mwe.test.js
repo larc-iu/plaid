@@ -167,7 +167,9 @@ describe('a linked multi-word expression', () => {
     click(row);
     await settle();
     const create = client.calls.find((c) => c.kind === 'vocabLinks.create');
-    expect(create.args).toEqual(['i-cat', ['w-3', 'w-4']]);
+    expect(create.args.slice(0, 2)).toEqual(['i-cat', ['w-3', 'w-4']]);
+    // A verifier's link carries no stamp.
+    expect(create.args[2]).toBeUndefined();
     expect(doc.sentences[0].mwes[0].item.id).toBe('i-cat');
   });
 });

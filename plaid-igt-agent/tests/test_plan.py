@@ -56,6 +56,24 @@ def test_human_stamp_mode_writes_no_provenance_and_clears_it_on_rewrites():
         execute_plan(c, ops, source='src', label='l', stamp_mode='bogus')
 
 
+def test_contributed_stamp_mode_stamps_the_approver_and_drops_confirmations():
+    import pytest
+    c = FakeClient()
+    ops = [{'kind': 'set_span', 'layer_id': 'L', 'token_id': 'T', 'span_id': None, 'value': 'new', 'label': ''},
+           {'kind': 'set_span', 'layer_id': 'L', 'token_id': 'T2', 'span_id': 'S', 'value': 'upd', 'label': ''},
+           {'kind': 'link', 'token_id': 'w-1', 'item_id': 'vi-erg', 'new_entry_key': None, 'existing_link_id': None, 'label': ''}]
+    execute_plan(c, ops, source='src', label='l', stamp_mode='contributed', contributor='ann@x.com')
+    by = {(r, m): a for r, m, a, k in c.log}
+    contributed = {'prov': 'contributed', 'provSource': 'user:ann@x.com'}
+    assert by[('spans', 'create')][3] == contributed
+    # a rewrite drops the confirmation and any machine keys, then stamps
+    assert by[('spans', 'patch_metadata')][1] == {'prov': 'contributed', 'provSource': 'user:ann@x.com',
+                                                  'provConfirmed': None, 'provProb': None, 'provDetail': None}
+    assert by[('vocab_links', 'create')][2] == contributed
+    with pytest.raises(ValueError, match='contributor'):
+        execute_plan(c, ops, source='src', label='l', stamp_mode='contributed')
+
+
 def test_confirm_and_discard_analysis_ops():
     c = FakeClient()
     ops = [{'kind': 'confirm', 'span_ids': ['sp-a', 'sp-gone'], 'token_ids': ['m-x'], 'link_ids': ['l-a'], 'label': 'c1'},

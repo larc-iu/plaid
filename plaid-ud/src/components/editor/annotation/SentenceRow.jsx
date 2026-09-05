@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Autocomplete, Button, Tooltip, ActionIcon } from '@mantine/core';
 import { IconChevronRight, IconCheck } from '@tabler/icons-react';
-import { provState, PROV_STATES } from '@larc-iu/plaid-client';
+import { needsReview, provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { DependencyTree } from './DependencyTree.jsx';
 import { useTokenPositions } from '../hooks/useTokenPositions.js';
 import { resolveColor } from '../../../utils/udVocab.js';
@@ -13,10 +13,10 @@ import {
 } from '../../../utils/provenanceUi.js';
 import './SentenceRow.css';
 
-// Machine-made, not yet human-verified (provenance convention) — such cells
-// render distinctly (italic + dotted violet underline) until a human edits
-// them, which verifies them.
-const isInferredSpan = (span) => !!span && provState(span.metadata) === PROV_STATES.MACHINE;
+// Machine-made or contributed, not yet human-verified (provenance convention)
+// — such cells render distinctly (italic + dotted violet underline) until a
+// human edits them, which verifies them.
+const isInferredSpan = (span) => !!span && needsReview(span.metadata);
 
 // Shared throttle for tab navigation across all EditableCell instances
 let lastGlobalTabPress = 0;
@@ -1049,9 +1049,7 @@ export const SentenceRow = React.memo(
           isInferredSpan(d.upos) ||
           (d.feats || []).some(isInferredSpan),
       );
-      return (
-        spanInferred || (relations || []).some((r) => provState(r.metadata) === PROV_STATES.MACHINE)
-      );
+      return spanInferred || (relations || []).some((r) => needsReview(r.metadata));
     }, [tokenData, relations]);
 
     // Tokens whose incoming dependency relation is machine-made and unverified
@@ -1061,7 +1059,7 @@ export const SentenceRow = React.memo(
       for (const d of tokenData) if (d.lemma?.id) tokenByLemma.set(d.lemma.id, d.token.id);
       const ids = new Set();
       for (const r of relations || []) {
-        if (provState(r.metadata) !== PROV_STATES.MACHINE) continue;
+        if (!needsReview(r.metadata)) continue;
         const tokenId = tokenByLemma.get(r.target);
         if (tokenId) ids.add(tokenId);
       }

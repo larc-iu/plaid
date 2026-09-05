@@ -284,9 +284,11 @@ const startTurn = ({ client, userId, projectId, service, conv, prevMeta }) => {
 
 // Apply the plan at `index` in `conv`. What a plan writes is recorded as
 // verified (made by the assistant, confirmed by the approver) unless the user
-// asks for it to count as human-made. The plan id lets the service refuse a
-// second application of the same plan (a retried request, a double click), so
-// a failure leaves the plan undecided and approving again is safe.
+// asks for it to count as human-made; a contributor's approval records it as
+// their own unreviewed work (`contributedBy`, provenance convention). The plan
+// id lets the service refuse a second application of the same plan (a retried
+// request, a double click), so a failure leaves the plan undecided and
+// approving again is safe.
 const startApply = ({
   client,
   userId,
@@ -297,6 +299,7 @@ const startApply = ({
   index,
   plan,
   asHuman,
+  contributedBy = null,
 }) => {
   const j = {
     id: conv.id,
@@ -333,6 +336,7 @@ const startApply = ({
             ops: plan.ops,
             label: `Assistant: ${plan.summary}`,
             asHuman,
+            contributedBy,
             // Versions the plan was made against; the service refuses a plan
             // whose documents changed since (its offsets and ids may not fit).
             documents: plan.documents || [],
@@ -395,7 +399,14 @@ const EXAMPLES = [
   'Summarize the noun morphology you can see in the corpus.',
 ];
 
-export const ProjectAssistant = ({ projectId, projectName, client, userId, canWrite }) => {
+export const ProjectAssistant = ({
+  projectId,
+  projectName,
+  client,
+  userId,
+  canWrite,
+  contributor = false,
+}) => {
   // --- services ---------------------------------------------------------
   const [services, setServices] = useState([]);
   const [discovering, setDiscovering] = useState(true);
@@ -710,6 +721,7 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
       index,
       plan,
       asHuman,
+      contributedBy: contributor ? userId : null,
     });
   };
 
@@ -910,6 +922,7 @@ export const ProjectAssistant = ({ projectId, projectName, client, userId, canWr
                   !!d.model && !!previousModel(display, i) && d.model !== previousModel(display, i)
                 }
                 canWrite={canWrite}
+                contributor={contributor}
                 busy={!!busy || blockedByOther}
                 interrupted={i === stuckApply}
                 onApprove={(opts) => approve(i, d.plan, opts)}
@@ -1266,6 +1279,7 @@ const Turn = ({
   results,
   fromAnotherModel,
   canWrite,
+  contributor,
   busy,
   interrupted,
   onApprove,
@@ -1324,6 +1338,7 @@ const Turn = ({
             recordedAsHuman={item.asHuman}
             interrupted={interrupted}
             canWrite={canWrite}
+            contributor={contributor}
             busy={busy}
             onApprove={onApprove}
             onDiscard={onDiscard}
@@ -1400,6 +1415,7 @@ const PlanCard = ({
   busy,
   onApprove,
   onDiscard,
+  contributor = false,
 }) => {
   const labels = plan.labels || [];
   const [expanded, setExpanded] = useState(labels.length <= 12);
@@ -1484,7 +1500,7 @@ const PlanCard = ({
           <Button type="button" size="sm" variant="outline" onClick={onDiscard} disabled={busy}>
             <X className="h-4 w-4" /> Discard
           </Button>
-          {canWrite && (
+          {canWrite && !contributor && (
             <label
               htmlFor={humanId}
               className="ml-auto flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground"

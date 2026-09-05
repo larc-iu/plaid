@@ -1324,6 +1324,116 @@ describe('clearing an annotation cell', () => {
   });
 });
 
+describe('who is writing (provenance)', () => {
+  const ANN = { id: 'ann@x.com', isAdmin: false };
+  const LEAD = { id: 'lead@x.com', isAdmin: false };
+  const ROOT = { id: 'root@x.com', isAdmin: true };
+  const CONTRIBUTED = { prov: 'contributed', provSource: 'user:ann@x.com' };
+  const MACHINE = { prov: 'inferred', provSource: 'service:x' };
+  const projectWith = (reviewWriters) => ({
+    id: 'proj-1',
+    vocabs: [],
+    config: { plaid: {}, igt: reviewWriters ? { reviewWriters: true } : {} },
+    maintainers: [LEAD.id],
+    writers: [ANN.id],
+  });
+  const docAs = (user, reviewWriters = true, client = makeFakeClient()) =>
+    new IgtDocument({
+      raw: buildRawDoc(),
+      project: projectWith(reviewWriters),
+      vocabularies: {},
+      client,
+      projectId: 'proj-1',
+      user,
+    });
+
+  it('a writer is a contributor only where the project reviews writers', () => {
+    expect(docAs(ANN).contributorId).toBe('ann@x.com');
+    expect(docAs(ANN, false).contributorId).toBe(null);
+    expect(docAs(LEAD).contributorId).toBe(null);
+    expect(docAs(ROOT).contributorId).toBe(null);
+    expect(docAs(null).contributorId).toBe(null);
+    expect(makeDoc().isContributor).toBe(false);
+  });
+
+  it('a verifier writes plain and confirms what needs review, contributed included', async () => {
+    const doc = docAs(LEAD);
+    expect(doc.createStamp).toBe(null);
+    expect(doc.editStamp(null)).toBe(null);
+    expect(doc.editStamp(MACHINE)).toEqual({ provConfirmed: true });
+    expect(doc.editStamp(CONTRIBUTED)).toEqual({ provConfirmed: true });
+    expect(doc.editStamp({ ...MACHINE, provConfirmed: true })).toBe(null);
+    expect(doc.confirmStamp(CONTRIBUTED)).toEqual({ provConfirmed: true });
+    expect(doc.reviewable(CONTRIBUTED)).toBe(true);
+    expect(doc.reviewableState('contributed')).toBe(true);
+    expect(doc.adoptStamp('gloss:precedent', { value: 'cat' })).toEqual({
+      prov: 'inferred',
+      provSource: 'gloss:precedent',
+      provConfirmed: true,
+      provDetail: { value: 'cat' },
+    });
+  });
+
+  it('a contributor stamps everything contributed and reviews machine proposals only', () => {
+    const doc = docAs(ANN);
+    expect(doc.createStamp).toEqual(CONTRIBUTED);
+    expect(doc.editStamp(null)).toEqual({ ...CONTRIBUTED, provConfirmed: null });
+    expect(doc.editStamp({ ...MACHINE, provConfirmed: true })).toEqual({
+      ...CONTRIBUTED,
+      provConfirmed: null,
+    });
+    expect(doc.confirmStamp(MACHINE)).toEqual({ ...CONTRIBUTED, provConfirmed: null });
+    expect(doc.confirmStamp(CONTRIBUTED)).toBe(null);
+    expect(doc.confirmStamp(null)).toBe(null);
+    expect(doc.reviewable(MACHINE)).toBe(true);
+    expect(doc.reviewable(CONTRIBUTED)).toBe(false);
+    expect(doc.reviewableState('contributed')).toBe(false);
+    expect(doc.adoptStamp('gloss:precedent', { value: 'cat' })).toEqual({
+      ...CONTRIBUTED,
+      provDetail: { value: 'cat', guess: 'gloss:precedent' },
+    });
+  });
+
+  it("a contributor's new span, morpheme form edit and morpheme type edit carry the stamp", async () => {
+    const client = makeFakeClient();
+    const doc = docAs(ANN, true, client);
+    await doc.updateMorphemeSpan('m-1', 'Gloss', 'cat');
+    const create = client.calls.find((c) => c.kind === 'spans.create');
+    expect(create.args[3]).toEqual(CONTRIBUTED);
+    expect(doc.sentences[0].tokens[0].morphemes[0].annotations.Gloss.metadata).toEqual(CONTRIBUTED);
+
+    await doc.updateMorphemeForm('m-1', 'ca');
+    const patch = client.calls.find((c) => c.kind === 'tokens.patchMetadata');
+    expect(patch.args[1]).toEqual({ form: 'ca', ...CONTRIBUTED, provConfirmed: null });
+    // The local copy applies the patch as the server does: null deletes.
+    const m = doc.sentences[0].tokens[0].morphemes[0];
+    expect(m.metadata.prov).toBe('contributed');
+    expect('provConfirmed' in m.metadata).toBe(false);
+  });
+
+  it("a contributor's edit of a confirmed span drops the confirmation on the server copy too", async () => {
+    const client = makeFakeClient();
+    const doc = docAs(ANN, true, client);
+    await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', { ...MACHINE, provConfirmed: true });
+    await doc.updateMorphemeSpan('m-1', 'Gloss', 'NOM');
+    const set = client.calls.filter((c) => c.kind === 'spans.setMetadata').pop();
+    expect(set.args[1]).toEqual(CONTRIBUTED);
+  });
+
+  it("a contributor's discard leaves contributed work alone; a verifier's takes it", async () => {
+    const asAnn = docAs(ANN);
+    await asAnn.updateMorphemeSpan('m-1', 'Gloss', 'PL', CONTRIBUTED);
+    await asAnn.updateMorphemeSpan('m-1', 'Gloss2', 'x', MACHINE).catch(() => {});
+    expect(await asAnn.discardWordAnalysis('w-1')).toBe(true);
+    expect(asAnn.sentences[0].tokens[0].morphemes[0].annotations.Gloss?.value).toBe('PL');
+
+    const asLead = docAs(LEAD);
+    await asLead.updateMorphemeSpan('m-1', 'Gloss', 'PL', CONTRIBUTED);
+    expect(await asLead.discardWordAnalysis('w-1')).toBe(true);
+    expect(asLead.sentences[0].tokens[0].morphemes[0].annotations.Gloss).toBeFalsy();
+  });
+});
+
 describe('confirmWordAnalysis', () => {
   it('confirms the machine word token itself along with its morphemes, links and spans', async () => {
     const raw = buildRawDoc();

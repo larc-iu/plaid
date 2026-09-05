@@ -34,12 +34,18 @@ const MACHINE = {
 let host;
 let editor;
 
+// A contributor: a writer in a project that reviews writers' work.
+const ANN = { id: 'ann@x.com', isAdmin: false };
+const CONTRIBUTED = { prov: 'contributed', provSource: 'user:ann@x.com' };
+
 // `tagset`, when given, governs the morpheme-scope Gloss field (msl-0).
-function mount({ tagset = null } = {}) {
+// `contributor` mounts the editor as ANN in a project that reviews writers.
+function mount({ tagset = null, contributor = false } = {}) {
   const raw = buildRawDoc();
   const client = makeFakeClient();
   client.query = async () => ({ results: [] });
   const igt = tagset ? { tagsets: { Leipzig: tagset } } : {};
+  if (contributor) igt.reviewWriters = true;
   if (tagset) {
     const morphLayer = raw.textLayers[0].tokenLayers
       .flatMap((tl) => tl.spanLayers || [])
@@ -48,10 +54,17 @@ function mount({ tagset = null } = {}) {
   }
   const doc = new IgtDocument({
     raw,
-    project: { id: 'proj-1', vocabs: [], config: { plaid: {}, igt } },
+    project: {
+      id: 'proj-1',
+      vocabs: [],
+      config: { plaid: {}, igt },
+      maintainers: ['lead@x.com'],
+      writers: [ANN.id],
+    },
     vocabularies: {},
     client,
     projectId: 'proj-1',
+    user: contributor ? ANN : null,
   });
   // A reload (what a failed save does) hands back the document as it stands,
   // as a server would, rather than the pristine fixture.
@@ -146,6 +159,136 @@ describe('a value picked from the list', () => {
     const span = glossOf(doc);
     expect(span.value).toBe('NOM');
     expect(span.metadata).toEqual({ ...MACHINE, provConfirmed: true });
+  });
+});
+
+describe('as a contributor', () => {
+  it('a typed value is written contributed, and renders amber', async () => {
+    const { doc } = mount({ contributor: true });
+    expect(doc.isContributor).toBe(true);
+    const c = cell('ma:m-1:Gloss');
+    focus(c);
+    type(c, 'cat');
+    key(c, 'Enter');
+    await settle();
+    expect(glossOf(doc).value).toBe('cat');
+    expect(glossOf(doc).metadata).toEqual(CONTRIBUTED);
+    expect(cell('ma:m-1:Gloss').classList.contains('igt-field--contributed')).toBe(true);
+    expect(cell('ma:m-1:Gloss').title).toBe('cat: contributed, awaiting review');
+  });
+
+  it('a picked value is contributed too, with the guess kept as detail', async () => {
+    const { doc } = mount({ contributor: true });
+    const c = cell('ma:m-1:Gloss');
+    focus(c);
+    editor._pickAlt(c, { value: 'cat', source: 'gloss:precedent' });
+    await settle();
+    expect(glossOf(doc).metadata).toEqual({
+      ...CONTRIBUTED,
+      provDetail: { value: 'cat', guess: 'gloss:precedent' },
+    });
+  });
+
+  it('editing a machine value marks it contributed and keeps the prediction as history', async () => {
+    const { doc } = mount({ contributor: true });
+    await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', MACHINE);
+    await settle();
+    const c = cell('ma:m-1:Gloss');
+    expect(c.classList.contains('igt-field--machine')).toBe(true);
+    focus(c);
+    type(c, 'NOM');
+    key(c, 'Enter');
+    await settle();
+    const span = glossOf(doc);
+    expect(span.value).toBe('NOM');
+    expect(span.metadata).toEqual({
+      ...CONTRIBUTED,
+      provProb: 0.8,
+      provDetail: { value: 'PL', valueProbs: { PL: 0.8, NOM: 0.2 } },
+    });
+    expect(span.metadata.provConfirmed).toBeUndefined();
+  });
+
+  it('editing a confirmed value takes its confirmation away', async () => {
+    const { doc } = mount({ contributor: true });
+    await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', { ...MACHINE, provConfirmed: true });
+    await settle();
+    expect(cell('ma:m-1:Gloss').classList.contains('igt-field--verified')).toBe(true);
+    const c = cell('ma:m-1:Gloss');
+    focus(c);
+    type(c, 'NOM');
+    key(c, 'Enter');
+    await settle();
+    expect(glossOf(doc).metadata.provConfirmed).toBeUndefined();
+    expect(glossOf(doc).metadata.prov).toBe('contributed');
+    expect(cell('ma:m-1:Gloss').classList.contains('igt-field--contributed')).toBe(true);
+  });
+
+  it('Ctrl+Enter takes a machine proposal as a contribution, and has nothing to take on contributed work', async () => {
+    const { doc } = mount({ contributor: true });
+    await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', MACHINE);
+    await settle();
+    const c = cell('ma:m-1:Gloss');
+    focus(c);
+    key(c, 'Enter', { ctrlKey: true });
+    await settle();
+    expect(glossOf(doc).metadata.prov).toBe('contributed');
+    expect(glossOf(doc).metadata.provSource).toBe('user:ann@x.com');
+    expect(glossOf(doc).metadata.provConfirmed).toBeUndefined();
+    // The contributed cell is not a review stop for a contributor.
+    expect(editor._wordHasUnverified('w-1')).toBe(false);
+    focus(cell('ma:m-1:Gloss'));
+    key(cell('ma:m-1:Gloss'), 'Enter', { ctrlKey: true });
+    await settle();
+    expect(notifyInfo).toHaveBeenCalled();
+  });
+});
+
+describe('as a verifier over contributed work', () => {
+  it('sees it as a review stop, and editing it confirms it with the contributor kept as its source', async () => {
+    const { doc } = mount();
+    await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', CONTRIBUTED);
+    await settle();
+    const c = cell('ma:m-1:Gloss');
+    expect(c.classList.contains('igt-field--contributed')).toBe(true);
+    expect(c.title).toBe(
+      'PL: contributed, unverified. Edit to fix, Ctrl+Enter accepts the whole word',
+    );
+    expect(editor._wordHasUnverified('w-1')).toBe(true);
+    focus(c);
+    type(c, 'NOM');
+    key(c, 'Enter');
+    await settle();
+    expect(glossOf(doc).metadata).toEqual({ ...CONTRIBUTED, provConfirmed: true });
+    expect(cell('ma:m-1:Gloss').classList.contains('igt-field--verified')).toBe(true);
+    expect(cell('ma:m-1:Gloss').title).toBe('NOM: contributed, confirmed');
+  });
+
+  it('Ctrl+Enter confirms it as is', async () => {
+    const { doc } = mount();
+    await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', CONTRIBUTED);
+    await settle();
+    const c = cell('ma:m-1:Gloss');
+    focus(c);
+    key(c, 'Enter', { ctrlKey: true });
+    await settle();
+    expect(glossOf(doc).metadata).toEqual({ ...CONTRIBUTED, provConfirmed: true });
+  });
+
+  it('Ctrl+Backspace discards it', async () => {
+    // The gesture reaches the domain (which the document tests cover: a
+    // verifier's discard takes contributed work); the fake client's reload
+    // cannot show the deletion, so the call is what is asserted here.
+    const { doc } = mount();
+    await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', CONTRIBUTED);
+    await settle();
+    const spy = vi.spyOn(doc, 'discardWordAnalysis').mockResolvedValue(true);
+    const c = cell('ma:m-1:Gloss');
+    focus(c);
+    const e = key(c, 'Backspace', { ctrlKey: true });
+    await settle();
+    expect(e.defaultPrevented).toBe(true);
+    expect(spy).toHaveBeenCalledWith('w-1');
   });
 });
 

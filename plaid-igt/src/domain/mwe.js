@@ -7,7 +7,7 @@
 // (which turns a selection into a new entry's form and type) and the
 // validators.
 
-import { provState } from '@larc-iu/plaid-client';
+import { provState, provOrigin } from '@larc-iu/plaid-client';
 import { itemsById, linkedItem } from './vocabLookup.js';
 
 export const isMweLink = (link) =>
@@ -28,6 +28,7 @@ export function collectMweLinks(vocabularies) {
         tokenIds: [...link.tokens],
         metadata: link.metadata || {},
         prov: provState(link.metadata || {}),
+        provOrigin: provOrigin(link.metadata || {}),
       });
     });
   });

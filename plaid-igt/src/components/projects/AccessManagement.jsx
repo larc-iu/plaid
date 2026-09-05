@@ -41,6 +41,7 @@ import {
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { isEmail, EMAIL_INVALID_MESSAGE } from '@/utils/email';
 import { ProjectInvites, MintedLinkDialog } from './ProjectInvites';
+import { IGT_NAMESPACE, readReviewWriters } from '../../domain/igtConfig.js';
 
 // Mirrors plaid-ud's ProjectManagement. The full user roster isn't fetched
 // (doesn't scale + is admin-gated); instead "Members" come from the project's
@@ -97,6 +98,24 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
   // Whether this user can hand out project invites. Maintainers can, which is
   // the point: onboarding a class should not queue behind an admin.
   const canInvite = isAdmin || (project?.maintainers || []).includes(user?.id);
+
+  // Review writers' work (provenance convention): while on, a writer's
+  // annotations are marked contributed until a maintainer confirms them.
+  // Stored in the project's igt config; the editor reads it per document.
+  const reviewWriters = readReviewWriters(project?.config);
+  const [savingReview, setSavingReview] = useState(false);
+  const setReviewWriters = async (on) => {
+    setSavingReview(true);
+    try {
+      await client.projects.setConfig(projectId, IGT_NAMESPACE, 'reviewWriters', on);
+      onDataUpdate?.();
+    } catch (err) {
+      console.error('Error updating review setting:', err);
+      notifyError('Failed to update the review setting. Please try again.', 'Error');
+    } finally {
+      setSavingReview(false);
+    }
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 250);
@@ -295,6 +314,26 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
 
   return (
     <div className="tw flex flex-col gap-6 pt-4 [&>*+*]:border-t [&>*+*]:pt-6">
+      {/* Review */}
+      <div>
+        <h2 className="pb-3 text-lg font-semibold">Review</h2>
+        <div className="flex items-start gap-2">
+          <Switch
+            id="review-writers"
+            checked={reviewWriters}
+            disabled={savingReview}
+            onCheckedChange={setReviewWriters}
+          />
+          <div>
+            <Label htmlFor="review-writers">Review writers' work</Label>
+            <p className="text-xs text-muted-foreground">
+              A writer's annotations are marked as contributed until a maintainer confirms them.
+              Maintainers' work is never marked.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Members */}
       <div>
         <div className="flex items-center justify-between gap-2 pb-3">

@@ -10,7 +10,7 @@ import { ProjectValidation } from './validate/ProjectValidation.jsx';
 import { ProjectAssistant } from './assistant/ProjectAssistant.jsx';
 import { ProjectExport } from './ProjectExport.jsx';
 import { ProjectSettingsPanel } from './ProjectSettingsPanel';
-import { readInitialized } from '@/domain/igtConfig';
+import { readInitialized, readReviewWriters } from '@/domain/igtConfig';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useTabParam, tabTo } from '@/hooks/useTabParam';
 import { cn } from '@/lib/utils';
@@ -301,6 +301,7 @@ export const ProjectDetail = () => {
             client={client}
             userId={user?.id}
             canWrite={canWrite}
+            contributor={!!project && readReviewWriters(project.config) && canWrite && !canManage}
           />
         </TabsContent>
         <TabsContent value="export">

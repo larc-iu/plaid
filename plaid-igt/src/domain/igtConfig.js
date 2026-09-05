@@ -168,6 +168,13 @@ export const readSpeakers = (config) => readIgt(config, 'speakers') ?? [];
 /** Whether a project has been set up by plaid-igt. */
 export const readInitialized = (config) => readIgt(config, 'initialized') === true;
 
+/**
+ * Whether the project reviews writers' work: a writer's annotations are then
+ * marked contributed (provenance convention) until a maintainer confirms
+ * them. Off by default: elsewhere a writer's work stands as their own.
+ */
+export const readReviewWriters = (config) => readIgt(config, 'reviewWriters') === true;
+
 /** A vocab layer's custom field schema: {field: {inline}}, or null. */
 export const readVocabFields = (config) => readIgt(config, 'fields') ?? null;
 

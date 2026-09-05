@@ -9,7 +9,7 @@
 //   XPOS  -> provDetail.xposProbs
 //   deprel-> provDetail.deprelProbs
 
-import { provState, PROV_STATES, PROV } from '@larc-iu/plaid-client';
+import { provState, provOrigin, PROV_STATES, PROV } from '@larc-iu/plaid-client';
 
 const FIELD_PROBS_KEY = {
   upos: 'uposProbs',
@@ -58,10 +58,11 @@ export function probLabel(probs, value) {
   return typeof p === 'number' && Number.isFinite(p) ? `${Math.round(p * 100)}%` : null;
 }
 
-// Tooltip text: the base title, extended with the machine-origin record when
-// the entity is machine-made — producer, model/language from provDetail, and
-// provProb when present. Once verified, say so (the prediction extras
-// describe the ORIGINAL prediction, not necessarily the current value).
+// Tooltip text: the base title, extended with the origin record when the
+// entity is machine-made or contributed — producer, model/language from
+// provDetail, and provProb when present. Once verified, say so (the
+// prediction extras describe the ORIGINAL prediction, not necessarily the
+// current value).
 /** Every reserved provenance metadata key (the convention's flat slots). */
 export const PROV_KEYS = Object.freeze(
   new Set([PROV.key, PROV.sourceKey, PROV.confirmedKey, PROV.probKey, PROV.detailKey]),
@@ -79,7 +80,8 @@ export function provCellTitle(base, metadata) {
   if (detail?.language) bits.push(detail.language);
   const prob = metadata?.[PROV.probKey];
   if (typeof prob === 'number') bits.push(`p=${prob}`);
+  const origin = provOrigin(metadata) === PROV.CONTRIBUTED ? 'contributed' : 'machine-made';
   const who =
-    state === PROV_STATES.VERIFIED ? 'machine-made, human-verified' : 'machine-made, unverified';
+    state === PROV_STATES.VERIFIED ? `${origin}, human-verified` : `${origin}, unverified`;
   return `${base}: ${who} (${bits.filter(Boolean).join(' · ')})`;
 }

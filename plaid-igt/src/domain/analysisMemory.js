@@ -14,7 +14,8 @@
 //   morpheme, no links, no values) — existing work is never clobbered;
 //   pure-machine sources don't count as precedent (an unverified copy must
 //   not bootstrap more copies; FLEx-imported approved analyses are stamped
-//   verified by the importer and do count).
+//   verified by the importer and do count, and so does a contributor's
+//   unreviewed analysis: a person's decision, not a machine's).
 //
 // Pure functions only — the query/fetch/apply orchestration lives in
 // autoPass.js and mutations/analysisCopy.js.

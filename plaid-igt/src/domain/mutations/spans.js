@@ -5,7 +5,7 @@
 // (setError + return false) so a misconfigured-field edit reports failure
 // rather than silently "succeeding" via the saving wrapper.
 
-import { verifyOnEdit, isMachine, PROV_CONFIRMED } from '@larc-iu/plaid-client';
+import { mergeMetadata } from '@larc-iu/plaid-client';
 
 const findSpanLayer = (doc, scope, fieldName) => {
   const spanLayers = doc.layerInfo.spanLayers?.[scope] || [];
@@ -16,9 +16,11 @@ const findSpanLayer = (doc, scope, fieldName) => {
 // the target token, otherwise create. Applies the optimistic patch in both
 // branches. `metadata` (optional) carries provenance for machine-produced
 // values (see the shared provenance helpers) — merged over any existing
-// metadata on the update path; human edits pass none. A HUMAN edit of a
-// machine-made, unverified span verifies it (write-contract rule 3): the
-// update also merges { provConfirmed: true }, keeping provSource for history.
+// metadata on the update path; human edits pass none and get the document's
+// stamp for the writer: a new span carries doc.createStamp, and an edit
+// merges doc.editStamp (write-contract rule 3: a verifier's edit of a
+// machine-made or contributed span verifies it, keeping provSource for
+// history; a contributor's edit marks the span contributed).
 const upsertSpan = async (doc, scope, targetLayer, targetTokenId, value, metadata) => {
   const existingSpan = (targetLayer.spans || []).find(
     (span) => Array.isArray(span.tokens) && span.tokens.includes(targetTokenId),
@@ -46,10 +48,9 @@ const upsertSpan = async (doc, scope, targetLayer, targetTokenId, value, metadat
     // this too, this keeps the rule for every caller). A caller fragment
     // (a machine writer re-stamping) still writes.
     if (!metadata && existingSpan.value === value) return;
-    // No caller fragment = a human edit; verifying a machine span is the
-    // fragment such an edit carries.
-    const fragment = metadata || verifyOnEdit(existingSpan.metadata);
-    const mergedMetadata = fragment ? { ...(existingSpan.metadata || {}), ...fragment } : null;
+    // No caller fragment = a human edit, which carries the writer's stamp.
+    const fragment = metadata || doc.editStamp(existingSpan.metadata);
+    const mergedMetadata = fragment ? mergeMetadata(existingSpan.metadata, fragment) : null;
     if (mergedMetadata) {
       await doc._client.batched(async () => {
         doc._client.spans.update(existingSpan.id, value);
@@ -68,11 +69,12 @@ const upsertSpan = async (doc, scope, targetLayer, targetTokenId, value, metadat
       }
     });
   } else {
+    const stamp = metadata || doc.createStamp;
     const result = await doc._client.spans.create(
       targetLayer.id,
       [targetTokenId],
       value,
-      metadata || undefined,
+      stamp || undefined,
     );
     const newSpanId = result?.id || result;
     doc._applyRawPatch((next, infoNext) => {
@@ -83,7 +85,7 @@ const upsertSpan = async (doc, scope, targetLayer, targetTokenId, value, metadat
         id: newSpanId,
         tokens: [targetTokenId],
         value,
-        ...(metadata ? { metadata } : {}),
+        ...(stamp ? { metadata: stamp } : {}),
       });
     });
   }
@@ -106,17 +108,13 @@ export const spanMutations = {
   updateSentenceSpan: makeSpanUpdater('sentence'),
   updateMorphemeSpan: makeSpanUpdater('morpheme'),
 
-  // Confirm a machine-made sentence value as-is (Ctrl+Enter in a Translation
-  // field): the span keeps its value and gains provConfirmed, the sentence
-  // counterpart of confirmWordAnalysis. No-op (true) for human, verified or
-  // absent values.
-  // Discard a machine-made sentence value (Ctrl+Backspace in a Translation
+  // Discard a proposed sentence value (Ctrl+Backspace in a Translation
   // field): the sentence counterpart of discardWordAnalysis, for a proposal
   // that is wrong wholesale rather than worth editing. Deletes the span, so
   // the field goes back to empty and the sentence reads as unannotated.
-  // No-op (true) for human, verified or absent values — the same protection
-  // the word gesture gives: this only ever throws away what a machine
-  // proposed and nobody vouched for.
+  // No-op (true) unless the value is reviewable by this writer — the same
+  // protection the word gesture gives: this only ever throws away what
+  // nobody the writer defers to has vouched for.
   async discardSentenceSpan(sentenceId, fieldName) {
     const layer = findSpanLayer(this, 'sentence', fieldName);
     if (!layer) {
@@ -126,7 +124,7 @@ export const spanMutations = {
     const span = (layer.spans || []).find(
       (s) => Array.isArray(s.tokens) && s.tokens.includes(sentenceId),
     );
-    if (!span || !isMachine(span.metadata)) return true;
+    if (!span || !this.reviewable(span.metadata)) return true;
     return this._withSaving(`Failed to discard ${fieldName}`, async () => {
       await this._client.spans.delete(span.id);
       this._applyRawPatch((next, infoNext) => {
@@ -137,6 +135,10 @@ export const spanMutations = {
     });
   },
 
+  // Confirm a proposed sentence value as-is (Ctrl+Enter in a Translation
+  // field): the span keeps its value and merges the writer's confirm stamp,
+  // the sentence counterpart of confirmWordAnalysis. No-op (true) when there
+  // is nothing for this writer to confirm.
   async confirmSentenceSpan(sentenceId, fieldName) {
     const layer = findSpanLayer(this, 'sentence', fieldName);
     if (!layer) {
@@ -146,17 +148,15 @@ export const spanMutations = {
     const span = (layer.spans || []).find(
       (s) => Array.isArray(s.tokens) && s.tokens.includes(sentenceId),
     );
-    if (!span || !isMachine(span.metadata)) return true;
+    const confirm = span ? this.confirmStamp(span.metadata) : null;
+    if (!confirm) return true;
     return this._withSaving(`Failed to confirm ${fieldName}`, async () => {
-      await this._client.spans.patchMetadata(span.id, PROV_CONFIRMED);
+      await this._client.spans.patchMetadata(span.id, confirm);
       this._applyRawPatch((next, infoNext) => {
         const layerDoc = (infoNext.spanLayers?.sentence || []).find((sl) => sl.id === layer.id);
         const idx = layerDoc?.spans?.findIndex((s) => s.id === span.id) ?? -1;
         if (idx !== -1) {
-          layerDoc.spans[idx].metadata = {
-            ...(layerDoc.spans[idx].metadata || {}),
-            ...PROV_CONFIRMED,
-          };
+          layerDoc.spans[idx].metadata = mergeMetadata(layerDoc.spans[idx].metadata, confirm);
         }
       });
     });

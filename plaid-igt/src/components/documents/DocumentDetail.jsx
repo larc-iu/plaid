@@ -186,7 +186,10 @@ const DocumentEditor = () => {
     setLoadError('');
     (async () => {
       try {
-        const d = await IgtDocument.load(client, projectId, documentId, null);
+        // The user rides along for the provenance convention: a writer in a
+        // project that reviews writers' work is a contributor, whose edits
+        // are stamped as such (IgtDocument.contributorId).
+        const d = await IgtDocument.load(client, projectId, documentId, null, { user });
         if (cancelled) return;
         d.onError = (msg, err, label) =>
           notifyError(err ? `${label}: ${humanizeError(err)}` : humanizeError(msg, msg));
@@ -207,7 +210,8 @@ const DocumentEditor = () => {
     // NOT keyed on asOf: time-travel is handled by the snapshot effect below,
     // which re-reads only the document. DocumentDetail is keyed by documentId,
     // so within one mount this runs once and always at the live state.
-  }, [client, projectId, documentId, navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, projectId, documentId, navigate, user?.id]);
 
   // Time-travel. Swaps the document to another snapshot by re-reading ONLY the
   // document, reusing the project / vocab / item levels already loaded — see

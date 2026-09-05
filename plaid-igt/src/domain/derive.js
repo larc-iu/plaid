@@ -8,7 +8,7 @@
 // findSentenceForToken) are produced together so they stay in sync with
 // `sentences`.
 
-import { provState } from '@larc-iu/plaid-client';
+import { provState, provOrigin } from '@larc-iu/plaid-client';
 import { itemsById, linkedItem } from './vocabLookup.js';
 import { readDocumentMetadata, readOrthographies } from './igtConfig.js';
 import { collectMweLinks, bracketPieces, assignLanes } from './mwe.js';
@@ -369,10 +369,13 @@ function collectSingleTokenVocabLinks(vocabularies) {
         vocabId: vocab.id,
         vocabName: vocab.name,
         linkId: link.id,
-        // Provenance state ('human' | 'machine' | 'verified') of the LINK —
-        // the editor renders all three distinctly; the auto-linker and
-        // analysis memory treat 'machine' as replaceable/unvouched.
+        // Provenance state ('human' | 'machine' | 'contributed' | 'verified')
+        // of the LINK — the editor renders each distinctly; the auto-linker
+        // and analysis memory treat 'machine' as replaceable/unvouched.
+        // provOrigin (null | 'inferred' | 'contributed') is what a verified
+        // link's tooltip needs, since the state folds both origins.
         prov: provState(linkMeta),
+        provOrigin: provOrigin(linkMeta),
       };
     });
   });

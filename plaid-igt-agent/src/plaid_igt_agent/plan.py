@@ -11,7 +11,11 @@ machine-made (``prov: inferred`` with the assistant as ``provSource``, so the
 origin stays traceable) and confirmed (``provConfirmed: true``), exactly the
 state a person reaches by checking a service's output in the editor. The user
 may instead approve a plan as HUMAN-made (``stamp_mode='human'``): nothing is
-stamped, and rewritten entities lose their machine keys.
+stamped, and rewritten entities lose their machine keys. When the approver is
+a CONTRIBUTOR (a writer whose work the project reviews), their approval is a
+contribution, not a verification: ``stamp_mode='contributed'`` with the
+approver's ``contributor`` id stamps everything contributed, and rewritten
+entities lose any earlier confirmation.
 
 Operation shapes (all keys snake_case, no id-keyed maps, so they survive the
 wire's key recasing):
@@ -51,10 +55,10 @@ Each also carries a human ``label`` for the approval UI.
 from collections import Counter
 from typing import Any, Dict, List
 
-from plaid_client.provenance import (confirmed_inferred, PROV_KEY, PROV_SOURCE_KEY, PROV_CONFIRMED_KEY,
+from plaid_client.provenance import (confirmed_inferred, stamp_contributed, PROV_KEY, PROV_SOURCE_KEY, PROV_CONFIRMED_KEY,
                                      PROV_PROB_KEY, PROV_DETAIL_KEY)
 
-STAMP_MODES = ('verified', 'human')
+STAMP_MODES = ('verified', 'human', 'contributed')
 # patch semantics: a null value deletes the key
 CLEAR_PROV = {PROV_KEY: None, PROV_SOURCE_KEY: None, PROV_CONFIRMED_KEY: None, PROV_PROB_KEY: None, PROV_DETAIL_KEY: None}
 CONFIRM = {PROV_CONFIRMED_KEY: True}
@@ -278,22 +282,25 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
 
 
 def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, project=None,
-                 stamp_mode: str = 'verified') -> Dict[str, int]:
+                 stamp_mode: str = 'verified', contributor: str = None) -> Dict[str, int]:
     """Apply ``ops`` with ``client`` under one operation labelled ``label``.
     Returns per-kind counts of what was applied (plus ``notes`` for anything
     dropped). ``project`` (an IgtProject) is needed only by document-creating
     ops. ``stamp_mode`` is ``'verified'`` (machine-made, human-confirmed: the
-    default) or ``'human'`` (no provenance keys at all). Raises
-    :class:`PlanError` with the applied count if a later batch fails: batches
-    are atomic individually, the plan as a whole is not."""
+    default), ``'human'`` (no provenance keys at all) or ``'contributed'``
+    (the approver's own unreviewed work; needs ``contributor``, their user
+    id). Raises :class:`PlanError` with the applied count if a later batch
+    fails: batches are atomic individually, the plan as a whole is not."""
     if stamp_mode not in STAMP_MODES:
         raise ValueError(f'stamp_mode must be one of {STAMP_MODES}')
+    if stamp_mode == 'contributed' and not contributor:
+        raise ValueError("stamp_mode 'contributed' needs the contributor's user id")
     validate_ops(ops)
     ops, notes = normalize_ops(ops)
     counts: Counter = Counter()
     try:
         return _execute(client, ops, source=source, label=label, project=project, counts=counts, notes=notes,
-                        stamp_mode=stamp_mode)
+                        stamp_mode=stamp_mode, contributor=contributor)
     except PlanError:
         raise
     except Exception as e:
@@ -301,18 +308,25 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
         raise PlanError(f'{type(e).__name__}: {e}', applied if applied is not None else 0, len(ops)) from e
 
 
-def _execute(client, ops, *, source, label, project, counts, notes, stamp_mode) -> Dict[str, int]:
+def _execute(client, ops, *, source, label, project, counts, notes, stamp_mode, contributor=None) -> Dict[str, int]:
     new_docs = []
     human = stamp_mode == 'human'
+    contributed = stamp_mode == 'contributed'
 
     def stamp():
         """Metadata merged into everything the plan creates (empty when there is nothing to stamp)."""
-        return {} if human else confirmed_inferred(source)
+        if human:
+            return {}
+        return stamp_contributed(contributor) if contributed else confirmed_inferred(source)
 
     def restamp():
         """Metadata patched onto an entity the plan rewrites: the new value is
-        this plan's, whatever the entity was before."""
-        return CLEAR_PROV if human else confirmed_inferred(source)
+        this plan's, whatever the entity was before (a contributor's rewrite
+        drops the entity's confirmation and machine keys, keeping nothing
+        but the contributed stamp)."""
+        if human:
+            return CLEAR_PROV
+        return {**CLEAR_PROV, **stamp_contributed(contributor)} if contributed else confirmed_inferred(source)
 
     applied = [0]
 

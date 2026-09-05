@@ -16,13 +16,14 @@ import { repeat } from 'lit-html/directives/repeat.js';
 import { live } from 'lit-html/directives/live.js';
 import { directive, Directive, PartType } from 'lit-html/directive.js';
 import './igt-editor.css';
-import { PROV, provState, PROV_STATES, confirmedInferred } from '@larc-iu/plaid-client';
+import { PROV, provState, provOrigin, PROV_STATES } from '@larc-iu/plaid-client';
 import {
   readOrthographies,
   readIgnoredTokens,
   readVocabFields,
   isTokenIgnored,
   trimIgnoredEdges,
+  readReviewWriters,
 } from '@/domain/igtConfig';
 import {
   allowedGuess,
@@ -126,8 +127,9 @@ const morphFormOf = (m) =>
     : (m.content ?? '');
 
 // Display-relevant provenance of an entity's metadata: null for human-made
-// material (renders plain), else 'machine' (unverified: violet + dashed) or
-// 'verified' (confirmed: quiet). The state doubles as the CSS modifier suffix
+// material (renders plain), else 'machine' (unverified: violet + dashed),
+// 'contributed' (a writer's unreviewed work: amber + dashed) or 'verified'
+// (confirmed: quiet). The state doubles as the CSS modifier suffix
 // (igt-field--machine, igt-vocab__hint--verified, igt-legend__prov--machine).
 // Empty cells are the caller's concern (_field only styles filled values).
 const provDisplay = (metadata) => {
@@ -136,12 +138,32 @@ const provDisplay = (metadata) => {
 };
 const provClass = (base, state) => (state ? `${base}--${state}` : '');
 
-const PROV_TITLE = {
-  [PROV_STATES.MACHINE]:
-    'machine-suggested, unverified. Edit to fix, Ctrl+Enter accepts the whole word',
-  [PROV_STATES.VERIFIED]: 'machine-suggested, confirmed',
+// What a marked value's tooltip says of its state. `origin` (provOrigin of
+// the entity) tells a verified value's two origins apart; `contributor`
+// is whether the person looking is one, whose Ctrl+Enter takes machine
+// proposals only.
+const REVIEW_HINT = 'Edit to fix, Ctrl+Enter accepts the whole word';
+const provStateText = (state, origin, contributor) => {
+  if (state === PROV_STATES.MACHINE) return `machine-suggested, unverified. ${REVIEW_HINT}`;
+  if (state === PROV_STATES.CONTRIBUTED)
+    return contributor ? 'contributed, awaiting review' : `contributed, unverified. ${REVIEW_HINT}`;
+  return origin === PROV.CONTRIBUTED ? 'contributed, confirmed' : 'machine-suggested, confirmed';
 };
-const provTitle = (value, state) => `${value}: ${PROV_TITLE[state]}`;
+const provTitle = (value, state, origin, contributor) =>
+  `${value}: ${provStateText(state, origin, contributor)}`;
+
+// The CSS classes of the marked material this writer reviews (see
+// IgtDocument.reviewable): the review sweep's stops and the confirm/discard
+// gestures' targets. A verifier reviews machine and contributed material,
+// a contributor machine material only.
+const reviewStates = (contributor) =>
+  contributor ? [PROV_STATES.MACHINE] : [PROV_STATES.MACHINE, PROV_STATES.CONTRIBUTED];
+const reviewSelector = (bases, contributor) =>
+  bases
+    .flatMap((b) =>
+      reviewStates(contributor).map((s) => (typeof b === 'function' ? b(s) : `${b}--${s}`)),
+    )
+    .join(', ');
 
 export class IgtEditor {
   constructor(
@@ -1169,12 +1191,7 @@ export class IgtEditor {
         ? html`<sub class="igt-vocab__sub">${sub}</sub>`
         : nothing}`;
       const words = this._mweWords(mwe.memberTokenIds);
-      title =
-        state === PROV_STATES.MACHINE
-          ? `“${words}” auto-linked to "${mwe.item.form}": open to confirm or change`
-          : state === PROV_STATES.VERIFIED
-            ? `“${words}” linked to "${mwe.item.form}": auto-linked, confirmed${canLink ? ' · manage' : ''}`
-            : `“${words}” linked to "${mwe.item.form}"${canLink ? ' · manage' : ''}`;
+      title = `“${words}” ${this._linkStateText(state, mwe.provOrigin, mwe.item.form, canLink)}`;
     } else {
       const n = this._mweSel?.tokenIds.size ?? 0;
       content = n >= 2 ? html`${n} words · <kbd>↵</kbd>` : html`add words…`;
@@ -1847,19 +1864,31 @@ export class IgtEditor {
         targetId,
         field,
         value,
-        metadata: confirmedInferred(el.dataset.guessSource || 'unknown', { detail: { value } }),
+        metadata: this.doc.adoptStamp(el.dataset.guessSource || 'unknown', { value }),
       });
     }
     return out;
   }
 
-  // Whether this word column holds any machine-unverified material — the same
-  // selector the review sweep uses to find its next stop.
+  // The selector for material this writer reviews in a word column — the
+  // review sweep's stops and what Ctrl+Enter / Ctrl+Backspace act on.
+  _reviewColSelector() {
+    return reviewSelector(
+      ['.igt-field', '.igt-token-form', (s) => `button.igt-vocab__hint--${s}:not([disabled])`],
+      this.doc.isContributor,
+    );
+  }
+
+  // Whether an element carries one of the review states this writer acts on.
+  _isReviewable(el, base) {
+    return reviewStates(this.doc.isContributor).some((s) => el.classList.contains(`${base}--${s}`));
+  }
+
+  // Whether this word column holds any material this writer reviews — the
+  // same selector the review sweep uses to find its next stop.
   _wordHasUnverified(wordId) {
     const col = this.container.querySelector(`[data-word-col="${wordId}"]`);
-    return !!col?.querySelector(
-      '.igt-field--machine, .igt-token-form--machine, button.igt-vocab__hint--machine:not([disabled])',
-    );
+    return !!col?.querySelector(this._reviewColSelector());
   }
 
   // Ctrl/Cmd+Backspace (or Delete) on any cell of a word column: discard the
@@ -1914,26 +1943,29 @@ export class IgtEditor {
   _unverifiedWordAnchors() {
     const anchors = [];
     const seen = new Set();
-    const els = this.container.querySelectorAll(
-      '.igt-field--machine, .igt-token-form--machine, button.igt-vocab__hint--machine:not([disabled])',
-    );
+    const contributor = this.doc.isContributor;
+    const els = this.container.querySelectorAll(this._reviewColSelector());
     for (const el of els) {
       const col = el.closest('[data-word-col]');
       const wordId = col?.dataset.wordCol;
       if (!wordId || seen.has(wordId)) continue;
       seen.add(wordId);
-      // Prefer a machine CELL in the column (where Ctrl+Enter / Ctrl+Backspace
-      // act on the word); a column whose only machine material is a link
+      // Prefer a marked CELL in the column (where Ctrl+Enter / Ctrl+Backspace
+      // act on the word); a column whose only marked material is a link
       // lands on the chip.
       const target =
-        col.querySelector('.igt-field--machine') ||
-        (el.matches('input, button') ? el : col.querySelector('button.igt-vocab__hint--machine'));
+        col.querySelector(reviewSelector(['.igt-field'], contributor)) ||
+        (el.matches('input, button')
+          ? el
+          : col.querySelector(
+              reviewSelector([(s) => `button.igt-vocab__hint--${s}`], contributor),
+            ));
       if (target) anchors.push({ wordId, el: target });
     }
-    // Machine-made sentence values (a proposed translation) are stops too,
-    // keyed by their cell so the sweep can tell where it is.
+    // Proposed sentence values (a translation) are stops too, keyed by their
+    // cell so the sweep can tell where it is.
     for (const el of this.container.querySelectorAll(
-      'textarea.igt-field--sentence.igt-field--machine',
+      reviewSelector([(s) => `textarea.igt-field--sentence.igt-field--${s}`], contributor),
     )) {
       anchors.push({ wordId: `sentence:${el.dataset.cellKey}`, el });
     }
@@ -2028,7 +2060,13 @@ export class IgtEditor {
     // expressions, in document order.
     return [
       ...this.container.querySelectorAll(
-        'button.igt-vocab__hint--machine:not([disabled]), .igt-mwe__label--machine:not([disabled])',
+        reviewSelector(
+          [
+            (s) => `button.igt-vocab__hint--${s}:not([disabled])`,
+            (s) => `.igt-mwe__label--${s}:not([disabled])`,
+          ],
+          this.doc.isContributor,
+        ),
       ),
     ];
   }
@@ -2106,9 +2144,9 @@ export class IgtEditor {
     // Accept/reject the focused suggestion (Space/click still opens the popover
     // to change it). Only an inferred chip is actionable here.
     const el = document.activeElement;
-    const isChip = !!el?.classList?.contains('igt-vocab__hint--machine');
+    const isChip = !!el?.classList && this._isReviewable(el, 'igt-vocab__hint');
     // The label of an auto-linked multi-word expression reviews the same way.
-    const isMweLabel = !!el?.classList?.contains('igt-mwe__label--machine');
+    const isMweLabel = !!el?.classList && this._isReviewable(el, 'igt-mwe__label');
     if (!isChip && !isMweLabel) return;
     const tokenId = el.dataset.vocabOpener;
     if (!tokenId) return;
@@ -2375,7 +2413,7 @@ export class IgtEditor {
     // provProb kept the model's number — a span that said "precedent, 80% sure".)
     const fragment =
       adopted && (el.dataset.orig ?? '') === ''
-        ? confirmedInferred(adopted.source, { detail: { value: next } })
+        ? this.doc.adoptStamp(adopted.source, { value: next })
         : null;
     this._runKeepingFocus(el, next, () => apply(next, fragment));
   }
@@ -2426,6 +2464,7 @@ export class IgtEditor {
     ariaLabel,
     guess = null,
     prov = null,
+    provOrigin: origin = null,
     confirmWord = null,
     alternatives = null,
     confirmSentence = null,
@@ -2473,7 +2512,7 @@ export class IgtEditor {
         title=${violations.length
           ? this._violationText(violations, tagset)
           : ps
-            ? `${provTitle(v, ps)}. Ctrl+Enter confirms it as is`
+            ? `${this._cellTitle(v, ps, origin)}. Ctrl+Enter confirms it as is`
             : nothing}
         rows="1"
         spellcheck="false"
@@ -2502,7 +2541,7 @@ export class IgtEditor {
     const baseTitle = g
       ? `Guess: ${g.value}. Enter accepts it, Ctrl+Enter accepts the whole word, typing replaces`
       : p
-        ? provTitle(v, p)
+        ? this._cellTitle(v, p, origin)
         : filled
           ? v
           : (ariaLabel ?? null);
@@ -2625,7 +2664,7 @@ export class IgtEditor {
       const field = el.dataset.fieldName;
       if (this.readOnly || !sid || !field) return;
       if (el.value !== (el.dataset.orig ?? '')) return;
-      if (!el.classList.contains('igt-field--machine')) return;
+      if (!this._isReviewable(el, 'igt-field')) return;
       e.preventDefault();
       // The DOM still holds the discarded text until the re-render: don't let
       // the blur from the hop write it back.
@@ -2646,7 +2685,7 @@ export class IgtEditor {
       const field = el.dataset.fieldName;
       if (this.readOnly || !sid || !field) return;
       const unchanged = el.value === (el.dataset.orig ?? '');
-      if (unchanged && !el.classList.contains('igt-field--machine')) {
+      if (unchanged && !this._isReviewable(el, 'igt-field')) {
         notifyInfo(
           el.value
             ? 'This value was made by a person already.'
@@ -3164,6 +3203,8 @@ export class IgtEditor {
       hasMorphemes,
       ignoredCfg,
       guess,
+      // The legend explains the contributed mark only where it can appear.
+      reviewsWriters: readReviewWriters(this.doc.project?.config),
     };
     // _computeRowMenuPos needs the row list to estimate the menu's height, and
     // it runs from a click handler rather than from render.
@@ -3286,6 +3327,29 @@ export class IgtEditor {
     `;
   }
 
+  // The tooltip of a marked cell (see provStateText): its value and state,
+  // with the two origins of a confirmed value told apart.
+  _cellTitle(value, state, origin) {
+    return provTitle(value, state, origin, this.doc.isContributor);
+  }
+
+  // The tooltip of a link chip or MWE label: what it links to and, for a
+  // marked link, its state and what the click does. `single` is a word's or
+  // morpheme's own chip (the MWE label prefixes the words itself).
+  _linkStateText(state, origin, form, canLink, single = false) {
+    const manage = canLink ? ' · manage' : '';
+    const linked = single ? `Linked to "${form}"` : `linked to "${form}"`;
+    if (state === PROV_STATES.MACHINE)
+      return `${single ? 'Auto-linked' : 'auto-linked'} to "${form}": open to confirm or change`;
+    if (state === PROV_STATES.CONTRIBUTED)
+      return this.doc.isContributor
+        ? `${linked}: contributed, awaiting review${manage}`
+        : `${linked}: contributed. Open to confirm or change`;
+    if (state === PROV_STATES.VERIFIED)
+      return `${linked}: ${origin === PROV.CONTRIBUTED ? 'contributed' : 'auto-linked'}, confirmed${manage}`;
+    return `${linked}${manage}`;
+  }
+
   _legend(ctx) {
     return html`
       <div class="igt-legend">
@@ -3297,6 +3361,20 @@ export class IgtEditor {
             ? html`<span class="igt-legend__chip igt-legend__chip--morph">Morpheme</span>`
             : nothing}
           <span class="igt-legend__chip igt-legend__chip--sent">Sentence</span>
+        </div>
+        <div class="igt-legend__row">
+          <strong>Marks</strong>
+          <span
+            ><span class="igt-legend__prov--machine">machine-made</span> ·
+            ${ctx.reviewsWriters
+              ? html`<span class="igt-legend__prov--contributed">contributed</span> · `
+              : nothing}<span class="igt-legend__prov--verified">confirmed</span> · plain: a
+            person's · <kbd>Ctrl</kbd>+<kbd>↵</kbd> accepts a word's proposal, <kbd>Ctrl</kbd>+<kbd
+              >⌫</kbd
+            >
+            discards it, <kbd>Ctrl</kbd>+<kbd>⇧</kbd>+<kbd>↑</kbd><kbd>↓</kbd> jumps between
+            them</span
+          >
         </div>
         <div class="igt-legend__row">
           <strong>Navigate</strong>
@@ -3804,16 +3882,16 @@ export class IgtEditor {
         this._mweBrackets(token, sctx).rules,
       );
     }
-    // Machine-made word tokens (a tokenizer service stamps prov on token
-    // metadata) show the same violet/dashed treatment on the form band;
-    // Ctrl+Enter on the word confirms the token along with its analysis.
+    // Marked word tokens (a tokenizer service stamps prov on token metadata)
+    // show the same violet/dashed treatment on the form band; Ctrl+Enter on
+    // the word confirms the token along with its analysis.
     const wp = provDisplay(token.metadata);
-    const wpTitle =
-      wp === PROV_STATES.MACHINE
-        ? `${token.content}: machine-tokenized, unverified. Ctrl+Enter accepts the whole word`
-        : wp === PROV_STATES.VERIFIED
-          ? `${token.content}: machine-tokenized, confirmed`
-          : token.content;
+    const wpTitle = wp
+      ? provTitle(token.content, wp, provOrigin(token.metadata), this.doc.isContributor).replace(
+          'machine-suggested',
+          'machine-tokenized',
+        )
+      : token.content;
     // Multi-word expressions: a member of the selection (or of the MWE whose
     // popover is open) is outlined; while gathering, every word is a target.
     const selected = this._selectedWordIds().has(token.id);
@@ -3895,6 +3973,7 @@ export class IgtEditor {
                     tagset: this._tagsetFor('word', name),
                   }),
                 prov: provDisplay(token.annotations?.[name]?.metadata),
+                provOrigin: provOrigin(token.annotations?.[name]?.metadata),
                 confirmWord: token.id,
               })}
             </div>`,
@@ -3991,7 +4070,11 @@ export class IgtEditor {
               data-prec=${morph.precedence ?? 1}
               data-confirm-word=${word.id}
               aria-label=${`Morpheme form${value ? ` ${value}` : ''}`}
-              title=${prov ? provTitle(value, prov) : filled ? value : nothing}
+              title=${prov
+                ? this._cellTitle(value, prov, provOrigin(morph.metadata))
+                : filled
+                  ? value
+                  : nothing}
               size=${this._fieldSize(value)}
               spellcheck="false"
               ?disabled=${this.readOnly}
@@ -4044,6 +4127,7 @@ export class IgtEditor {
                     tagset: this._tagsetFor('morpheme', name),
                   }),
                 prov: provDisplay(morph.annotations?.[name]?.metadata),
+                provOrigin: provOrigin(morph.annotations?.[name]?.metadata),
                 confirmWord: word.id,
               })}
             </div>
@@ -4114,6 +4198,7 @@ export class IgtEditor {
                             })
                         : null,
                       prov: provDisplay(sentence.annotations?.[name]?.metadata),
+                      provOrigin: provOrigin(sentence.annotations?.[name]?.metadata),
                       confirmSentence: sentence.id,
                       fieldName: name,
                     })}
@@ -4145,16 +4230,12 @@ export class IgtEditor {
     };
     let opener = nothing;
     if (vocabItem) {
-      // Three-way provenance: human links plain, machine-unverified violet,
-      // machine-verified quietly marked. derive.js always sets vocabItem.prov.
+      // Four-way provenance: human links plain, machine-unverified violet,
+      // contributed amber, verified quietly marked. derive.js always sets
+      // vocabItem.prov (and provOrigin).
       const state = vocabItem.prov;
       const stateClass = provClass('igt-vocab__hint', state === PROV_STATES.HUMAN ? null : state);
-      const title =
-        state === PROV_STATES.MACHINE
-          ? `Auto-linked to "${vocabItem.form}": open to confirm or change`
-          : state === PROV_STATES.VERIFIED
-            ? `Linked to "${vocabItem.form}": auto-linked, confirmed${canLink ? ' · manage' : ''}`
-            : `Linked to "${vocabItem.form}"${canLink ? ' · manage' : ''}`;
+      const title = this._linkStateText(state, vocabItem.provOrigin, vocabItem.form, canLink, true);
       const sub = this._homonymSub(vocabItem);
       opener = html`<button
         type="button"
@@ -4435,10 +4516,11 @@ export class IgtEditor {
       ? `position:fixed;left:${pos.left}px;top:${pos.top}px;transform:none;margin-top:0;`
       : '';
 
-    // For a machine-unverified link, selecting the linked row CONFIRMS it (the
-    // human gesture that flips provConfirmed); for a human link it unlinks
-    // (toggle), as before. The explicit "unlink" mini-action is always available.
-    const inferredCurrent = currentItem?.prov === PROV_STATES.MACHINE;
+    // For a link this writer reviews, selecting the linked row CONFIRMS it (the
+    // gesture that merges the writer's confirm stamp); for any other link it
+    // unlinks (toggle), as before. The explicit "unlink" mini-action is always
+    // available.
+    const inferredCurrent = this.doc.reviewableState(currentItem?.prov);
     const selectActive = (immediate = false) => {
       if (activeIdx < limited.length) {
         const it = limited[activeIdx];

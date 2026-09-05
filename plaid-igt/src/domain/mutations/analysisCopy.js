@@ -17,7 +17,7 @@
 // outside any focused-cell interaction, so a full resync is the simple,
 // correct move (same as the service-backed auto-link path).
 
-import { stampInferred, isMachine, PROV, PROV_CONFIRMED, PROV_STATES } from '@larc-iu/plaid-client';
+import { stampInferred, mergeMetadata, PROV } from '@larc-iu/plaid-client';
 import { isUnanalyzedWord, extractAnalysis, analysisSignature } from '../analysisMemory.js';
 
 // The server caps a single atomic batch at 1000 ops (plaid-core
@@ -66,11 +66,11 @@ export const analysisCopyMutations = {
   // analysis with `analysis` (same shape as extractAnalysis), whatever it
   // carries now. Two phases under one operation: strip every link, span and
   // extra morpheme off the word (first morpheme reset to the healed default),
-  // resync, then run the same apply path as a copy. A human chose this
-  // analysis deliberately, so nothing is provenance-stamped: it lands as
-  // human work, not as an unverified guess. Words already carrying exactly
-  // the target analysis are skipped. Returns the number of words changed
-  // (false on failure).
+  // resync, then run the same apply path as a copy. A person chose this
+  // analysis deliberately, so it lands as their work (the writer's create
+  // stamp: nothing for a verifier), not as an unverified guess. Words already
+  // carrying exactly the target analysis are skipped. Returns the number of
+  // words changed (false on failure).
   async bulkReplaceAnalyses(proposals) {
     const targetSig = new Map();
     const targets = [];
@@ -140,7 +140,7 @@ export const analysisCopyMutations = {
         targets.map(({ wordTokenId, analysis }) => ({ wordTokenId, analysis })),
       );
       if (todo === false) throw new Error('Morpheme layer not configured');
-      await this._applyAnalysesImpl(todo, {});
+      await this._applyAnalysesImpl(todo, this.createStamp || {});
     }))
       ? targets.length
       : false;
@@ -176,12 +176,13 @@ export const analysisCopyMutations = {
     const wordLayersByName = new Map((info.spanLayers?.word || []).map((l) => [l.name, l]));
     const morphLayersByName = new Map((info.spanLayers?.morpheme || []).map((l) => [l.name, l]));
 
-    // Prediction extras (provenance convention): when the pieces are machine-
-    // stamped, each copied span also records the value it was given as
-    // provDetail.value and each copied morpheme its segment as provDetail.form.
-    // The entity may be edited later; that copy is what tells an accepted-as-is
-    // copy from a corrected one once it is verified. A human replace (empty
-    // stamp) records nothing. Links need nothing: the item id is the guess.
+    // Prediction extras (provenance convention): when the pieces carry a
+    // provenance stamp (machine, or a contributor's), each copied span also
+    // records the value it was given as provDetail.value and each copied
+    // morpheme its segment as provDetail.form. The entity may be edited later;
+    // that copy is what tells an accepted-as-is copy from a corrected one once
+    // it is verified. A verifier's replace (empty stamp) records nothing.
+    // Links need nothing: the item id is the guess.
     const machine = !!stamp?.[PROV.key];
     const withDetail = (detail) => (machine ? { ...stamp, [PROV.detailKey]: detail } : stamp);
     const stampValue = (value) => withDetail({ value });
@@ -304,11 +305,13 @@ export const analysisCopyMutations = {
   // and its surviving morphemes are deleted; machine morphemes after the
   // first are deleted outright (their spans/links cascade server-side, so
   // they are NOT queued separately — a double delete would fail the batch);
-  // a machine first morpheme is reset to the healed default state (form,
-  // morphType and prov keys dropped). Human and verified pieces are left
-  // alone, so a mixed word keeps its human parts; survivors are renumbered so
-  // precedence stays gap-free. Ends with a reload (several entity families
-  // change at once). No-op (true) when nothing is unverified.
+  // a proposed first morpheme is reset to the healed default state (form,
+  // morphType and prov keys dropped). "Proposed" is what this writer
+  // reviews (doc.reviewable: machine and contributed material for a
+  // verifier, machine only for a contributor); everything else is left
+  // alone, so a mixed word keeps its vouched-for parts; survivors are
+  // renumbered so precedence stays gap-free. Ends with a reload (several
+  // entity families change at once). No-op (true) when nothing is proposed.
   async discardWordAnalysis(wordTokenId) {
     const token = this.tokenLookup.get(wordTokenId);
     if (!token) {
@@ -320,9 +323,9 @@ export const analysisCopyMutations = {
     const morphIds = [];
     let resetFirst = null;
     const collectAttached = (t) => {
-      if (t.vocabItem?.prov === PROV_STATES.MACHINE) linkIds.push(t.vocabItem.linkId);
+      if (this.reviewableState(t.vocabItem?.prov)) linkIds.push(t.vocabItem.linkId);
       for (const span of Object.values(t.annotations || {})) {
-        if (span && isMachine(span.metadata)) spanIds.push(span.id);
+        if (span && this.reviewable(span.metadata)) spanIds.push(span.id);
       }
     };
     collectAttached(token);
@@ -331,13 +334,13 @@ export const analysisCopyMutations = {
     );
     const survivors = [];
     morphs.forEach((m, i) => {
-      if (isMachine(m.metadata) && i > 0) {
+      if (this.reviewable(m.metadata) && i > 0) {
         morphIds.push(m.id); // spans/links cascade with the token
         return;
       }
       survivors.push(m);
       collectAttached(m);
-      if (isMachine(m.metadata)) resetFirst = m.id;
+      if (this.reviewable(m.metadata)) resetFirst = m.id;
     });
     const renumber = survivors
       .map((m, i) => ({ id: m.id, precedence: i + 1 }))
@@ -374,10 +377,12 @@ export const analysisCopyMutations = {
 
   // Accept everything proposed on one word at once — the deliberate "this whole
   // word looks right" gesture (Ctrl/Cmd+Enter in the editor). Two kinds of
-  // proposal, one gesture, because on screen they are the same violet italic
-  // and the annotator is vouching for the word either way:
-  //   - machine-unverified material already stored (the word's link + spans,
-  //     each morpheme's token metadata, link and spans) gains provConfirmed;
+  // proposal, one gesture, because on screen they are both marked and the
+  // annotator is vouching for the word either way:
+  //   - material already stored that this writer reviews (the word's link +
+  //     spans, each morpheme's token metadata, link and spans) merges the
+  //     writer's confirm stamp: provConfirmed for a verifier, the contributed
+  //     stamp for a contributor accepting a machine proposal;
   //   - `adoptions` are cells showing a guess, which is NOT stored at all (it
   //     is a placeholder computed from the linked entry or project precedent —
   //     see domain/glossGuess.js), so each becomes a new span written exactly
@@ -392,19 +397,20 @@ export const analysisCopyMutations = {
       this.setError(`Word ${wordTokenId} not found`);
       return false;
     }
-    const confirm = PROV_CONFIRMED;
+    // One writer, one stamp: what it merges does not depend on the entity.
+    const confirm = this.confirmStamp(stampInferred('any'));
     const spanIds = [];
     const tokenIds = [];
     const linkIds = [];
 
     const collect = (t) => {
-      if (t.vocabItem?.prov === PROV_STATES.MACHINE) linkIds.push(t.vocabItem.linkId);
+      if (this.reviewableState(t.vocabItem?.prov)) linkIds.push(t.vocabItem.linkId);
       for (const span of Object.values(t.annotations || {})) {
-        if (span && isMachine(span.metadata)) spanIds.push(span.id);
+        if (span && this.reviewable(span.metadata)) spanIds.push(span.id);
       }
       // Morpheme tokens (a copied segmentation) AND the word token itself (a
       // tokenizer service stamps prov on word tokens) confirm together.
-      if (isMachine(t.metadata)) tokenIds.push(t.id);
+      if (this.reviewable(t.metadata)) tokenIds.push(t.id);
     };
     collect(token);
     for (const m of token.morphemes || []) collect(m);
@@ -450,19 +456,19 @@ export const analysisCopyMutations = {
       this._applyRawPatch((next, infoNext, vocabs) => {
         for (const layer of [infoNext.primaryTokenLayer, infoNext.morphemeTokenLayer]) {
           (layer?.tokens || []).forEach((t) => {
-            if (tokenSet.has(t.id)) t.metadata = { ...(t.metadata || {}), ...confirm };
+            if (tokenSet.has(t.id)) t.metadata = mergeMetadata(t.metadata, confirm);
           });
         }
         for (const scope of ['word', 'morpheme']) {
           (infoNext.spanLayers?.[scope] || []).forEach((sl) => {
             (sl.spans || []).forEach((s) => {
-              if (spanSet.has(s.id)) s.metadata = { ...(s.metadata || {}), ...confirm };
+              if (spanSet.has(s.id)) s.metadata = mergeMetadata(s.metadata, confirm);
             });
           });
         }
         Object.values(vocabs || {}).forEach((vocab) => {
           (vocab.vocabLinks || []).forEach((l) => {
-            if (linkSet.has(l.id)) l.metadata = { ...(l.metadata || {}), ...confirm };
+            if (linkSet.has(l.id)) l.metadata = mergeMetadata(l.metadata, confirm);
           });
         });
       });

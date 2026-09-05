@@ -12,14 +12,24 @@
 // invalid input. `throw` inside `_withSaving` is reserved for unexpected
 // failure paths the server is reporting.
 
-import { cpSlice, verifyOnEdit } from '@larc-iu/plaid-client';
+import { cpSlice, mergeMetadata } from '@larc-iu/plaid-client';
 import { isValidMorphType, cliticTypesForChain } from '../affixMarkers.js';
 import { isZeroMorph } from '../zeroMorph.js';
 
-// A human edit of a machine-made, unverified morpheme verifies its
-// segmentation (provenance write-contract rule 3): merge { provConfirmed:
-// true } into the same metadata patch. Null-safe spread for human morphemes.
-const verified = (morpheme, patch) => ({ ...patch, ...(verifyOnEdit(morpheme?.metadata) || {}) });
+// A person's edit of a morpheme carries the writer's edit stamp (provenance
+// write-contract rule 3): a verifier's edit confirms a machine-made or
+// contributed segmentation, a contributor's marks it contributed. Merged into
+// the same metadata patch; null-safe for a verifier's own morphemes. A new
+// morpheme a person makes carries the create stamp likewise.
+const stamped = (doc, morpheme, patch) => ({
+  ...patch,
+  ...(doc.editStamp(morpheme?.metadata) || {}),
+});
+const created = (doc, meta) => {
+  const stamp = doc.createStamp;
+  if (!stamp) return meta;
+  return { ...(meta || {}), ...stamp };
+};
 
 const morphemesInWord = (morphemeTokens, word) =>
   (morphemeTokens || []).filter((m) => m.begin === word.begin && m.end === word.end);
@@ -51,7 +61,7 @@ export const morphemeMutations = {
     return this._withSaving('Failed to create morpheme', async () => {
       const existing = morphemesInWord(morphemeLayer.tokens, word);
       const precedence = existing.length + 1;
-      const metadata = form ? { form } : undefined;
+      const metadata = created(this, form ? { form } : undefined);
 
       const result = await this._client.tokens.create(
         morphemeLayer.id,
@@ -73,7 +83,7 @@ export const morphemeMutations = {
           begin: word.begin,
           end: word.end,
           precedence,
-          metadata: form ? { form } : {},
+          metadata: metadata || {},
         });
       });
     });
@@ -109,7 +119,7 @@ export const morphemeMutations = {
             word.begin,
             word.end,
             basePrecedence + i,
-            form ? { form } : undefined,
+            created(this, form ? { form } : undefined),
           );
         });
       });
@@ -128,7 +138,7 @@ export const morphemeMutations = {
             begin: word.begin,
             end: word.end,
             precedence: basePrecedence + i,
-            metadata: form ? { form } : {},
+            metadata: created(this, form ? { form } : undefined) || {},
           });
         });
       });
@@ -194,15 +204,16 @@ export const morphemeMutations = {
       // default morpheme shows the word), so a right-edge split ("ngo-" with
       // nothing after the caret yet) used to show the whole word in the new
       // cell, with the caret at its start.
-      const restMeta = (form, i) => ({
-        form: form ?? '',
-        ...(types[i + 1] != null ? { morphType: types[i + 1] } : {}),
-      });
+      const restMeta = (form, i) =>
+        created(this, {
+          form: form ?? '',
+          ...(types[i + 1] != null ? { morphType: types[i + 1] } : {}),
+        });
 
       const results = await this._client.batched(async () => {
         // patch, not set: form edits must not clobber other metadata keys
         // (morphType from the FLEx import, in particular)
-        this._client.tokens.patchMetadata(morphemeId, verified(target, firstPatch));
+        this._client.tokens.patchMetadata(morphemeId, stamped(this, target, firstPatch));
         shifted.forEach((m) => {
           this._client.tokens.update(
             m.id,
@@ -231,7 +242,7 @@ export const morphemeMutations = {
         const tokens = layer.tokens || [];
         const t = tokens.find((m) => m.id === morphemeId);
         if (t) {
-          t.metadata = { ...(t.metadata || {}), ...verified(target, firstPatch) };
+          t.metadata = mergeMetadata(t.metadata, stamped(this, target, firstPatch));
         }
         tokens.forEach((m) => {
           if (
@@ -291,7 +302,10 @@ export const morphemeMutations = {
       const subsequents = siblings.slice(idx + 1);
 
       await this._client.batched(async () => {
-        this._client.tokens.patchMetadata(previous.id, verified(previous, { form: mergedForm }));
+        this._client.tokens.patchMetadata(
+          previous.id,
+          stamped(this, previous, { form: mergedForm }),
+        );
         this._client.tokens.delete(morphemeId);
         subsequents.forEach((m) => {
           this._client.tokens.update(m.id, undefined, undefined, (m.precedence ?? 0) - 1);
@@ -303,7 +317,10 @@ export const morphemeMutations = {
         if (!layer || !Array.isArray(layer.tokens)) return;
         const prev = layer.tokens.find((m) => m.id === previous.id);
         if (prev)
-          prev.metadata = { ...(prev.metadata || {}), ...verified(previous, { form: mergedForm }) };
+          prev.metadata = mergeMetadata(
+            prev.metadata,
+            stamped(this, previous, { form: mergedForm }),
+          );
         layer.tokens = layer.tokens.filter((m) => m.id !== morphemeId);
         layer.tokens.forEach((m) => {
           if (
@@ -373,12 +390,12 @@ export const morphemeMutations = {
     }
 
     return this._withSaving('Failed to update morpheme form', async () => {
-      const patch = verified(target, { form });
+      const patch = stamped(this, target, { form });
       await this._client.tokens.patchMetadata(morphemeId, patch);
 
       this._applyRawPatch((next, infoNext) => {
         const m = (infoNext.morphemeTokenLayer?.tokens || []).find((x) => x.id === morphemeId);
-        if (m) m.metadata = { ...(m.metadata || {}), ...patch };
+        if (m) m.metadata = mergeMetadata(m.metadata, patch);
       });
     });
   },
@@ -401,7 +418,7 @@ export const morphemeMutations = {
 
     return this._withSaving('Failed to set morpheme type', async () => {
       // patch semantics: a null value deletes the key
-      const confirm = verifyOnEdit(target.metadata) || {};
+      const confirm = this.editStamp(target.metadata) || {};
       await this._client.tokens.patchMetadata(morphemeId, {
         morphType: morphType ?? null,
         ...confirm,
@@ -410,7 +427,7 @@ export const morphemeMutations = {
       this._applyRawPatch((next, infoNext) => {
         const m = (infoNext.morphemeTokenLayer?.tokens || []).find((x) => x.id === morphemeId);
         if (!m) return;
-        const meta = { ...(m.metadata || {}), ...confirm };
+        const meta = mergeMetadata(m.metadata, confirm);
         if (morphType == null) delete meta.morphType;
         else meta.morphType = morphType;
         m.metadata = meta;

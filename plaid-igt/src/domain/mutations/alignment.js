@@ -16,7 +16,7 @@
 // so measurement and slicing use cpLength/cpSlice, not the UTF-16
 // `.length`/`.substring`/`.indexOf` (which mis-place tokens around astral text).
 
-import { cpLength, cpSlice, verifyOnEdit } from '@larc-iu/plaid-client';
+import { cpLength, cpSlice, mergeMetadata } from '@larc-iu/plaid-client';
 import { applyTextEditsLocally, removeTokensLocally } from '../textEdits.js';
 import { rangeProblem } from '../alignmentTimes.js';
 
@@ -200,7 +200,7 @@ export const alignmentMutations = {
     // to cover the inserted text.
     const seedSentence = !hasExistingSentences && newTextLength > 0;
     const textOps = [{ type: 'insert', index: insertBegin, value: insertedText }];
-    const meta = alignmentMeta(timeBegin, timeEnd, speaker);
+    const meta = { ...alignmentMeta(timeBegin, timeEnd, speaker), ...(this.createStamp || {}) };
 
     return this._withSaving('Failed to create alignment', async () => {
       const results = await this._client.batched(async () => {
@@ -339,7 +339,7 @@ export const alignmentMutations = {
     const cascadeWipesAllSentences =
       sentences.length === 0 || sentences.every((s) => s.begin >= tokenBegin && s.end <= tokenEnd);
     const seedSentence = cascadeWipesAllSentences && newTextLength > 0;
-    const meta = alignmentMeta(timeBegin, timeEnd, speaker);
+    const meta = { ...alignmentMeta(timeBegin, timeEnd, speaker), ...(this.createStamp || {}) };
 
     return this._withSaving('Failed to edit alignment', async () => {
       const results = await this._client.batched(async () => {
@@ -445,7 +445,7 @@ export const alignmentMutations = {
       return false;
     }
 
-    const meta = alignmentMeta(timeBegin, timeEnd, speaker);
+    const meta = { ...alignmentMeta(timeBegin, timeEnd, speaker), ...(this.createStamp || {}) };
     return this._withSaving('Failed to align baseline text', async () => {
       const result = await this._client.tokens.create(
         alignmentTokenLayer.id,
@@ -566,14 +566,15 @@ export const alignmentMutations = {
     return this._withSaving('Failed to update alignment boundaries', async () => {
       // PATCH (shallow-merge), not setMetadata (full replace): a manual boundary
       // drag must preserve the segment's provenance (prov/provSource/provDetail),
-      // and per the cross-app convention "any human edit verifies" a machine-made
-      // segment picks up provConfirmed (write-contract rule 3). setMetadata would
-      // wipe prov, recording a machine-made segment as origin-less.
-      const patch = { timeBegin, timeEnd, ...(verifyOnEdit(token.metadata) || {}) };
+      // and per the cross-app convention a person's edit carries the writer's
+      // stamp (write-contract rule 3: a verifier's confirms a machine-made or
+      // contributed segment, a contributor's marks it contributed). setMetadata
+      // would wipe prov, recording a machine-made segment as origin-less.
+      const patch = { timeBegin, timeEnd, ...(this.editStamp(token.metadata) || {}) };
       await this._client.tokens.patchMetadata(alignmentId, patch);
       this._applyRawPatch((next, infoNext) => {
         const t = (infoNext.alignmentTokenLayer?.tokens || []).find((x) => x.id === alignmentId);
-        if (t) t.metadata = { ...(t.metadata || {}), ...patch };
+        if (t) t.metadata = mergeMetadata(t.metadata, patch);
       });
     });
   },
@@ -592,14 +593,14 @@ export const alignmentMutations = {
     }
     const value = (speaker || '').trim();
     return this._withSaving('Failed to update speaker', async () => {
-      // Any human edit confirms a machine-made segment (write-contract rule 3),
-      // and choosing its speaker is one.
-      const verify = verifyOnEdit(token.metadata) || {};
+      // A person's edit carries the writer's stamp (write-contract rule 3),
+      // and choosing a segment's speaker is one.
+      const verify = this.editStamp(token.metadata) || {};
       await this._client.tokens.patchMetadata(alignmentId, { speaker: value || null, ...verify });
       this._applyRawPatch((next, infoNext) => {
         const t = (infoNext.alignmentTokenLayer?.tokens || []).find((x) => x.id === alignmentId);
         if (t) {
-          t.metadata = { ...(t.metadata || {}), ...verify };
+          t.metadata = mergeMetadata(t.metadata, verify);
           if (value) t.metadata.speaker = value;
           else delete t.metadata.speaker;
         }

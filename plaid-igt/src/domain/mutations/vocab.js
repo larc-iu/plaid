@@ -6,7 +6,7 @@
 // `_vocabularies`). A token id here may be a word OR morpheme token; the
 // link/create operation is identical either way.
 
-import { stampInferred, isMachine, PROV_CONFIRMED } from '@larc-iu/plaid-client';
+import { stampInferred, isMachine, mergeMetadata } from '@larc-iu/plaid-client';
 import { isValidMorphType } from '../affixMarkers.js';
 
 // Link replacements emit 2 ops apiece (delete + create); 400 per batch keeps
@@ -97,18 +97,21 @@ export const vocabMutations = {
     return ok ? creates.length + replaces.length : false;
   },
 
-  // Confirm-on-touch for an inferred link: flip provConfirmed so it renders
-  // (and queries) as human-approved. No-op for human or already-confirmed links.
+  // Confirm-on-touch for a proposed link: merge the writer's confirm stamp
+  // (provConfirmed for a verifier; a contributor's vouching is itself a
+  // contribution) so it renders (and queries) accordingly. No-op when there
+  // is nothing for this writer to confirm.
   async confirmVocabLink(tokenId) {
     const { link, vocabId } = findPriorLink(this._vocabularies, tokenId);
     if (!link || !vocabId) return false;
-    if (!isMachine(link.metadata)) return false;
+    const confirm = this.confirmStamp(link.metadata);
+    if (!confirm) return false;
 
     return this._withSaving('Failed to confirm link', async () => {
-      await this._client.vocabLinks.patchMetadata(link.id, PROV_CONFIRMED);
+      await this._client.vocabLinks.patchMetadata(link.id, confirm);
       this._applyRawPatch((next, info, vocabs) => {
         const l = (vocabs[vocabId]?.vocabLinks || []).find((x) => x.id === link.id);
-        if (l) l.metadata = { ...(l.metadata || {}), ...PROV_CONFIRMED };
+        if (l) l.metadata = mergeMetadata(l.metadata, confirm);
       });
     });
   },
@@ -116,7 +119,8 @@ export const vocabMutations = {
   // Link a vocab item to a token (word or morpheme). If a prior single-token
   // link exists for this token, delete it and create the new link atomically.
   // `metadata` (optional) carries provenance for machine-produced links (see
-  // the shared provenance helpers); human links from the popover pass none.
+  // the shared provenance helpers); human links from the popover pass none
+  // and carry the writer's create stamp.
   async linkVocab(tokenId, vocabItemId, metadata = null) {
     const { vocab: targetVocab, item: vocabItem } = findVocabForItem(
       this._vocabularies,
@@ -128,20 +132,21 @@ export const vocabMutations = {
     }
     const targetVocabId = targetVocab.id;
     const { link: priorLink, vocabId: priorVocabId } = findPriorLink(this._vocabularies, tokenId);
+    const stamp = metadata || this.createStamp;
 
     return this._withSaving('Failed to link vocab item', async () => {
       let newLinkId;
       if (priorLink) {
         const results = await this._client.batched(async () => {
           this._client.vocabLinks.delete(priorLink.id);
-          this._client.vocabLinks.create(vocabItemId, [tokenId], metadata || undefined);
+          this._client.vocabLinks.create(vocabItemId, [tokenId], stamp || undefined);
         });
         newLinkId = results[results.length - 1]?.body?.id;
       } else {
         const result = await this._client.vocabLinks.create(
           vocabItemId,
           [tokenId],
-          metadata || undefined,
+          stamp || undefined,
         );
         newLinkId = result?.id || result;
       }
@@ -162,7 +167,7 @@ export const vocabMutations = {
             id: newLinkId,
             tokens: [tokenId],
             vocabItem: itemSnapshot,
-            ...(metadata ? { metadata } : {}),
+            ...(stamp ? { metadata: stamp } : {}),
           });
         }
       });
@@ -260,7 +265,8 @@ export const vocabMutations = {
   },
 
   // Link an entry to several words at once. `metadata` carries provenance for
-  // machine-made links; a human link from the popover passes none.
+  // machine-made links; a human link from the popover passes none and
+  // carries the writer's create stamp.
   async linkMwe(tokenIds, vocabItemId, metadata = null) {
     const { vocab, item } = findVocabForItem(this._vocabularies, vocabItemId);
     if (!vocab || !item) {
@@ -271,12 +277,9 @@ export const vocabMutations = {
     if (!tokens) return false;
     const vocabId = vocab.id;
     const itemSnapshot = { id: item.id, form: item.form, metadata: item.metadata || {} };
+    const stamp = metadata || this.createStamp;
     return this._withSaving('Failed to link multi-word expression', async () => {
-      const result = await this._client.vocabLinks.create(
-        vocabItemId,
-        tokens,
-        metadata || undefined,
-      );
+      const result = await this._client.vocabLinks.create(vocabItemId, tokens, stamp || undefined);
       const newLinkId = result?.id || result;
       this._applyRawPatch((next, info, vocabs) => {
         const tv = vocabs[vocabId];
@@ -286,7 +289,7 @@ export const vocabMutations = {
           id: newLinkId,
           tokens,
           vocabItem: itemSnapshot,
-          ...(metadata ? { metadata } : {}),
+          ...(stamp ? { metadata: stamp } : {}),
         });
       });
     });
@@ -305,6 +308,7 @@ export const vocabMutations = {
     const tokens = this._mweMembers(tokenIds);
     if (!tokens) return false;
     const metadataArg = Object.keys(metadata || {}).length > 0 ? metadata : undefined;
+    const stamp = this.createStamp || undefined;
     return this._withSaving('Failed to create and link multi-word expression', async () => {
       const createResult = await this._client.vocabItems.create(vocabId, form, metadataArg);
       const newItemId = createResult?.id || createResult;
@@ -312,11 +316,11 @@ export const vocabMutations = {
       if (replaceLinkId) {
         const results = await this._client.batched(async () => {
           this._client.vocabLinks.delete(replaceLinkId);
-          this._client.vocabLinks.create(newItemId, tokens);
+          this._client.vocabLinks.create(newItemId, tokens, stamp);
         });
         newLinkId = results[results.length - 1]?.body?.id;
       } else {
-        const linkResult = await this._client.vocabLinks.create(newItemId, tokens);
+        const linkResult = await this._client.vocabLinks.create(newItemId, tokens, stamp);
         newLinkId = linkResult?.id || linkResult;
       }
       const newItem = { id: newItemId, form, metadata: metadata || {} };
@@ -332,14 +336,20 @@ export const vocabMutations = {
         if (!Array.isArray(tv.items)) tv.items = [];
         tv.items.push(newItem);
         if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
-        tv.vocabLinks.push({ id: newLinkId, tokens, vocabItem: { ...newItem } });
+        tv.vocabLinks.push({
+          id: newLinkId,
+          tokens,
+          vocabItem: { ...newItem },
+          ...(stamp ? { metadata: stamp } : {}),
+        });
       });
     });
   },
 
   // Point an existing MWE at a different entry: the same words, a new
   // link (delete + create in one atomic batch). A human choice, so the
-  // machine provenance of the old link does not carry over.
+  // machine provenance of the old link does not carry over; the new link
+  // carries the writer's create stamp.
   async relinkMwe(linkId, vocabItemId) {
     const { link: prior, vocabId: priorVocabId } = findLinkById(this._vocabularies, linkId);
     if (!prior) return false;
@@ -351,10 +361,11 @@ export const vocabMutations = {
     const tokens = [...prior.tokens];
     const vocabId = vocab.id;
     const itemSnapshot = { id: item.id, form: item.form, metadata: item.metadata || {} };
+    const stamp = this.createStamp || undefined;
     return this._withSaving('Failed to change multi-word expression', async () => {
       const results = await this._client.batched(async () => {
         this._client.vocabLinks.delete(linkId);
-        this._client.vocabLinks.create(vocabItemId, tokens);
+        this._client.vocabLinks.create(vocabItemId, tokens, stamp);
       });
       const newLinkId = results[results.length - 1]?.body?.id;
       this._applyRawPatch((next, info, vocabs) => {
@@ -366,13 +377,21 @@ export const vocabMutations = {
         const tv = vocabs[vocabId];
         if (!tv) return;
         if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
-        tv.vocabLinks.push({ id: newLinkId, tokens, vocabItem: itemSnapshot });
+        tv.vocabLinks.push({
+          id: newLinkId,
+          tokens,
+          vocabItem: itemSnapshot,
+          ...(stamp ? { metadata: stamp } : {}),
+        });
       });
     });
   },
 
-  // Change which words an MWE covers, keeping its entry and
-  // provenance. Fewer than two words left means the MWE is gone.
+  // Change which words an MWE covers, keeping its entry and provenance
+  // (re-covering is not vouching for the link, so a verifier's change leaves
+  // a proposal a proposal; a contributor's change marks it contributed, as
+  // every contributor edit does). Fewer than two words left means the MWE
+  // is gone.
   async setMweMembers(linkId, tokenIds) {
     const { link: prior, vocabId } = findLinkById(this._vocabularies, linkId);
     if (!prior) return false;
@@ -381,7 +400,10 @@ export const vocabMutations = {
     const tokens = this._mweMembers(ids);
     if (!tokens) return false;
     const itemId = prior.vocabItem?.id;
-    const metadata = prior.metadata && Object.keys(prior.metadata).length ? prior.metadata : null;
+    const merged = this.isContributor
+      ? mergeMetadata(prior.metadata, this.editStamp(prior.metadata))
+      : { ...(prior.metadata || {}) };
+    const metadata = Object.keys(merged).length ? merged : null;
     const vocabItem = prior.vocabItem;
     return this._withSaving('Failed to change multi-word expression', async () => {
       const results = await this._client.batched(async () => {
@@ -418,16 +440,17 @@ export const vocabMutations = {
     });
   },
 
-  // Confirm-on-touch for a machine-made MWE link (same contract as
-  // confirmVocabLink). No-op for human or already-confirmed links.
+  // Confirm-on-touch for a proposed MWE link (same contract as
+  // confirmVocabLink). No-op when there is nothing for this writer to confirm.
   async confirmMweLink(linkId) {
     const { link, vocabId } = findLinkById(this._vocabularies, linkId);
-    if (!link || !isMachine(link.metadata)) return false;
+    const confirm = link ? this.confirmStamp(link.metadata) : null;
+    if (!confirm) return false;
     return this._withSaving('Failed to confirm multi-word expression', async () => {
-      await this._client.vocabLinks.patchMetadata(linkId, PROV_CONFIRMED);
+      await this._client.vocabLinks.patchMetadata(linkId, confirm);
       this._applyRawPatch((next, info, vocabs) => {
         const l = (vocabs[vocabId]?.vocabLinks || []).find((x) => x.id === linkId);
-        if (l) l.metadata = { ...(l.metadata || {}), ...PROV_CONFIRMED };
+        if (l) l.metadata = mergeMetadata(l.metadata, confirm);
       });
     });
   },
@@ -473,6 +496,7 @@ export const vocabMutations = {
     }
     const { link: priorLink, vocabId: priorVocabId } = findPriorLink(this._vocabularies, tokenId);
     const metadataArg = Object.keys(metadata || {}).length > 0 ? metadata : undefined;
+    const stamp = this.createStamp || undefined;
 
     return this._withSaving('Failed to create and link vocab item', async () => {
       const createResult = await this._client.vocabItems.create(vocabId, form, metadataArg);
@@ -482,11 +506,11 @@ export const vocabMutations = {
       if (priorLink) {
         const results = await this._client.batched(async () => {
           this._client.vocabLinks.delete(priorLink.id);
-          this._client.vocabLinks.create(newItemId, [tokenId]);
+          this._client.vocabLinks.create(newItemId, [tokenId], stamp);
         });
         newLinkId = results[results.length - 1]?.body?.id;
       } else {
-        const linkResult = await this._client.vocabLinks.create(newItemId, [tokenId]);
+        const linkResult = await this._client.vocabLinks.create(newItemId, [tokenId], stamp);
         newLinkId = linkResult?.id || linkResult;
       }
 
@@ -511,6 +535,7 @@ export const vocabMutations = {
             id: newLinkId,
             tokens: [tokenId],
             vocabItem: { id: newItem.id, form: newItem.form, metadata: newItem.metadata },
+            ...(stamp ? { metadata: stamp } : {}),
           });
         }
       });

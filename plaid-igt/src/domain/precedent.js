@@ -21,7 +21,9 @@
 // bootstrap the next; a consumer that only SUGGESTS and needs a human act to
 // write (the placeholder guess, the popover ranking) counts everything,
 // since the person adopting it is the check. Read with { excludeMachine }
-// accordingly.
+// accordingly. A CONTRIBUTOR's unreviewed decisions count as a person's
+// (they are one, and following them bootstraps no machine loop): what gets
+// copied from them is stamped machine-made and reviewed like any copy.
 //
 // Sources: grouped queries over the whole project (linkPrecedentQueries,
 // valuePrecedentQueries) with the open document left out, plus the open
@@ -32,7 +34,7 @@
 // rows from the project query carry no provenance and count as trusted;
 // only the open document's links are state-exact. Value rows are exact.
 
-import { PROV_STATES, ROLES, isMachine } from '@larc-iu/plaid-client';
+import { PROV, PROV_STATES, ROLES, isMachine } from '@larc-iu/plaid-client';
 import { trimIgnoredEdges } from './igtConfig.js';
 import { isMweType } from './mwe.js';
 import { isZeroMorph } from './zeroMorph.js';
@@ -184,7 +186,7 @@ export function foldValueRows(tally, kind, field, rows, ignoredCfg = null) {
       value,
       n,
       {
-        machine: prov != null && !confirmed,
+        machine: prov != null && prov !== PROV.CONTRIBUTED && !confirmed,
       },
     );
   }
