@@ -44,3 +44,26 @@ def test_feature_values_and_word_detail():
     top = max(ws["words"].values(), key=lambda w: w["frequency"])["word"]
     d = explore.word_detail(kg, top, [" "])
     assert d["entries"] and all(len(e) == 3 for e in d["entries"])
+
+
+def test_word_network_metrics_follow_dig4el():
+    words = {
+        "a": {"word": "a", "frequency": 3, "following": {"b": 2, "": 1}, "preceding": {"": 3}},
+        "b": {"word": "b", "frequency": 2, "following": {"c": 2}, "preceding": {"a": 2}},
+    }
+    n = explore.word_network(words)
+    # "c" only follows; a has one real follower (b), b has one (c); in-degree counts words listing you
+    assert n["total_words"] == 2 and n["follower_only"] == 1 and n["no_followers"] == 0
+    assert n["total_connections"] == 3 and n["avg_connections"] == 1.5
+    assert n["density"] == round(3 / (2 * 2), 4)
+    hubs = {h["word"]: h for h in n["hubs"]}
+    assert hubs["a"] == {"word": "a", "out": 1, "in": 0, "total": 1, "count": 3, "count_x": 3}
+    assert hubs["b"]["in"] == 1 and hubs["b"]["out"] == 1
+
+
+def test_comparable_sentences_need_two_languages():
+    kg1 = {0: {"sentence_data": {"text": "Hello"}, "recording_data": {"translation": "ia ora na"}},
+           1: {"sentence_data": {"text": "Bye"}, "recording_data": {"translation": "nana"}}}
+    kg2 = {0: {"sentence_data": {"text": "Hello"}, "recording_data": {"translation": "kaoha"}}}
+    comp = explore.comparable_sentences({"Tahitian": kg1, "Marquesan": kg2})
+    assert list(comp) == ["Hello"] and comp["Hello"]["Marquesan"]["stl"] == "kaoha"

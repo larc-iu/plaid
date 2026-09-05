@@ -5,6 +5,20 @@
 {% set base = "/languages/" ~ lang.id ~ "/statistics" %}
 <h4>Statistics and exploration of the translations</h4>
 <div class="text-secondary small mb-2">{{ sentences }} published questionnaire sentences · {{ stats.words|length }} distinct words · {{ stats.total }} words in all · average transition entropy {{ '%.3f'|format(stats.entropy) }} bits</div>
+<div class="card mb-3"><div class="card-header bg-white fw-semibold">Word network</div><div class="card-body small">
+  <div class="d-flex flex-wrap gap-4 mb-2">
+    <div><div class="fs-5">{{ network.total_words }}</div><div class="text-secondary">words in the dictionary</div></div>
+    <div><div class="fs-5">{{ network.total_connections }}</div><div class="text-secondary">connections</div></div>
+    <div><div class="fs-5">{{ network.avg_connections }}</div><div class="text-secondary">connections per word</div></div>
+    <div><div class="fs-5">{{ network.density }}</div><div class="text-secondary">network density</div></div>
+    <div><div class="fs-5">{{ network.no_followers }}</div><div class="text-secondary">words with no follower</div></div>
+    <div><div class="fs-5">{{ network.follower_only }}</div><div class="text-secondary">words appearing only as followers</div></div>
+  </div>
+  <div class="d-flex align-items-center gap-2 mb-1"><span class="fw-semibold">Hub words</span>
+    {% for k, label in hub_metrics.items() %}<a class="btn btn-sm {{ 'btn-primary' if k == hub_metric else 'btn-outline-secondary' }} py-0" href="{{ base }}?word={{ word|urlencode }}&feature={{ feature|urlencode }}&value={{ value|urlencode }}&hub={{ k }}">{{ label }}</a>{% endfor %}</div>
+  <table class="table table-sm mb-0" style="max-width: 40rem"><thead class="table-light"><tr><th>Word</th><th class="text-end">Out</th><th class="text-end">In</th><th class="text-end">Total</th><th class="text-end">Count</th><th class="text-end">Count x connections</th></tr></thead>
+    <tbody>{% for h in network.hubs[:15] %}<tr><td>{{ h.word }}</td><td class="text-end">{{ h.out }}</td><td class="text-end">{{ h['in'] }}</td><td class="text-end">{{ h.total }}</td><td class="text-end">{{ h.count }}</td><td class="text-end">{{ h.count_x }}</td></tr>{% endfor %}</tbody></table>
+</div></div>
 <div class="row g-3">
   <div class="col-lg-6">
     <div class="card"><div class="card-header bg-white fw-semibold">Most frequent words</div>

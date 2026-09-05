@@ -171,3 +171,44 @@ def value_detail(kg: dict, value_loc: dict[str, list], value: str, total_words: 
 
 def _clean(v: Any) -> str:
     return "" if v is None or (isinstance(v, float) and v != v) else str(v)
+
+
+def word_network(words: dict[str, dict]) -> dict[str, Any]:
+    """dig4el's Transcriptions explorer "statistics on target words": the word graph's
+    basic metrics and each word's hub scores (out degree, in degree, their sum, and
+    count times connections)."""
+    all_unique = set(words)
+    for info in words.values():
+        all_unique.update(f for f in info["following"] if f)
+    total_words = len(words)
+    total_connections = sum(len(info["following"]) for info in words.values())
+    max_possible = total_words * (len(all_unique) - 1)
+    hubs = []
+    for word, info in words.items():
+        out_degree = len([f for f in info["following"] if f])
+        in_degree = sum(1 for other in words.values() if word in other["following"])
+        hubs.append({"word": word, "out": out_degree, "in": in_degree, "total": in_degree + out_degree,
+                     "count": info["frequency"], "count_x": info["frequency"] * (in_degree + out_degree)})
+    return {
+        "total_words": total_words, "total_connections": total_connections,
+        "avg_connections": round(total_connections / total_words, 2) if total_words else 0,
+        "density": round(total_connections / max_possible, 4) if max_possible else 0,
+        "no_followers": sum(1 for info in words.values() if not any(f for f in info["following"] if f)),
+        "follower_only": len(all_unique) - total_words,
+        "hubs": hubs,
+    }
+
+
+HUB_METRICS = {"total": "Total connections", "out": "Out degree", "in": "In degree", "count_x": "Count x connections"}
+
+
+def comparable_sentences(kgs: dict[str, dict]) -> dict[str, dict[str, dict]]:
+    """dig4el's compare page: pivot sentences translated in more than one language,
+    with each language's entry."""
+    tmp: dict[str, dict[str, dict]] = {}
+    for tl, kg in kgs.items():
+        for index, data in kg.items():
+            pivot = data["sentence_data"]["text"]
+            tmp.setdefault(pivot, {})[tl] = {"kg_index": index, "stl": data["recording_data"]["translation"]}
+    return {sentence: data for sentence, data in tmp.items() if len(data) > 1}
+

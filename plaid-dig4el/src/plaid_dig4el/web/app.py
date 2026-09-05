@@ -1404,7 +1404,8 @@ def explore_probabilities(request: Request, p1: str = "", p2: str = ""):
 
 
 @app.get("/languages/{language_id}/statistics", response_class=HTMLResponse)
-def language_statistics(request: Request, language_id: str, word: str = "", feature: str = "", value: str = ""):
+def language_statistics(request: Request, language_id: str, word: str = "", feature: str = "", value: str = "",
+                        hub: str = "total"):
     """dig4el's statistics and exploration of the transcriptions: word frequencies and
     neighbours, a word's sentences and connected meanings, and for a feature the words
     that set one value apart."""
@@ -1421,7 +1422,11 @@ def language_statistics(request: Request, language_id: str, word: str = "", feat
     features = ["INTENT", "PREDICATE", "PERSONAL DEICTIC"] + sorted(
         (c for c in cg if c not in ("INTENT", "PREDICATE", "PERSONAL DEICTIC") and graphs.get_children(cg, c)), key=str.lower)
     value_loc = explore.feature_values(kg, cg, feature, delimiters) if feature in cg else {}
+    network = explore.word_network(ws["words"])
+    hub_metric = hub if hub in explore.HUB_METRICS else "total"
+    network["hubs"].sort(key=lambda h: (-h[hub_metric], h["word"]))
     return render(request, "statistics.html", lang=lang, access=access, sentences=len(kg), stats=ws, top=top,
+                  network=network, hub_metric=hub_metric, hub_metrics=explore.HUB_METRICS,
                   word=word.strip(), word_detail=explore.word_detail(kg, word.strip(), delimiters) if word.strip() else None,
                   features=features, feature=feature,
                   value_counts=sorted(((v, len(e)) for v, e in value_loc.items()), key=lambda t: -t[1]),
@@ -1513,4 +1518,46 @@ def corpus_docx(request: Request, language_id: str, entries: str = ""):
     buf = transcription_io.generate_docx_from_kg_index_list(kg, gw.KG_DELIMITERS, indices)
     return StreamingResponse(buf, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                              headers={"Content-Disposition": f'attachment; filename="dig4el_{lang.name.replace(" ", "_")}_corpus.docx"'})
+
+
+@app.get("/compare", response_class=HTMLResponse)
+def compare_page(request: Request, languages: str = "", intent: str = "", concept: str = "", sentence: str = ""):
+    """dig4el's compare page: the same prompt across languages, with each language's
+    translation and gloss, filtered by intent or concept."""
+    user = current_user(request)
+    with db.session() as s:
+        mine = []
+        for lang in s.query(db.Language).order_by(db.Language.name).all():
+            try:
+                Access(user, lang)
+            except HTTPException:
+                continue
+            _ = lang.documents
+            mine.append(lang)
+    chosen = [n.strip() for n in languages.split(";") if n.strip()]
+    kgs: dict[str, dict] = {}
+    for lang in mine:
+        if lang.name in chosen:
+            kg, _inputs = runner.gather_inputs(Access(user, lang).client, lang)
+            kgs[lang.name] = kg
+    comp = explore.comparable_sentences(kgs) if len(kgs) > 1 else {}
+    concepts = sorted({c for kg in kgs.values() for d in kg.values() for c, w in d["recording_data"]["concept_words"].items() if w})
+    intents = sorted({i for kg in kgs.values() for d in kg.values() for i in d["sentence_data"]["intent"]})
+    keys = []
+    for text, data in comp.items():
+        l0 = next(iter(data))
+        sd = kgs[l0][data[l0]["kg_index"]]["sentence_data"]
+        if intent and intent not in sd["intent"]:
+            continue
+        if concept and concept not in sd["concept"]:
+            continue
+        keys.append(text)
+    keys.sort()
+    rows = []
+    if sentence in comp:
+        for tl, entry in comp[sentence].items():
+            rows.append({"language": tl, "translation": entry["stl"],
+                         "gloss": kgmod.build_super_gloss(kgs[tl], entry["kg_index"], gw.KG_DELIMITERS)})
+    return render(request, "compare.html", user=user, mine=mine, chosen=chosen, intents=intents, concepts=concepts,
+                  intent=intent, concept=concept, keys=keys, sentence=sentence, rows=rows, loaded=len(kgs))
 
