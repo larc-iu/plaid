@@ -29,19 +29,24 @@
 
 = Introduction
 
-**Plaid IGT** is a web-based editor for building interlinear glossed text (IGT).
-Every document is grounded in a single **baseline** text.
-You divide that text into sentences, words, and morphemes, and then annotate those units with whatever fields your project calls for: a gloss, a part of speech, a free translation.
-The result is the familiar interlinear display, with the original text on one line and its analysis lined up beneath it.
+**Plaid IGT** is an editor for interlinear glossed text (IGT), made for documentary and field linguists.
+You bring a text, or a recording of one, and take it through the familiar workflow: transcribe it, divide it into sentences, words, and morphemes, gloss and annotate them, link them to a lexicon, and export the result to wherever it needs to go next.
+
+If you know FieldWorks (FLEx) and ELAN, you will find the core of each here, in one program.
+From FLEx comes interlinear analysis with a lexicon behind it: morpheme segmentation, glossing, parts of speech, free translations, and entries that keep the same word analyzed the same way everywhere.
+From ELAN comes time-aligned transcription of audio and video: you play a recording, type what you hear segment by segment, and label who is speaking.
+Transcription and glossing usually mean two programs and an export between them.
+Here they are one workflow, and the transcript you type against the recording is the very text you go on to gloss.
+Data you already have in FLEx or ELAN can be brought in, and your work can be taken back out to either (see <<_import_and_export>>).
+
+Plaid IGT runs in your web browser.
+There is nothing to install, it works the same on Windows, macOS, and Linux, and your data lives on a server rather than on one laptop.
+That server is also what makes a project a shared thing.
+Several people can work in the same project at the same time, each with a role, and every change is recorded with the name of the person who made it (see <<_sharing_and_permissions>> and <<_history>>).
+A field methods class, a documentation team, or a linguist and a speaker on two continents can all work in one project without passing files around.
 
 Plaid IGT is one of the apps built on the Plaid platform.
 You don't need to know anything about Plaid itself to use the editor, but if you're curious about the underlying platform, or you want to script against your data, see link:manual.html[the Plaid manual] and the link:api-py.html[Python] / link:api-js.html[JavaScript] client references.
-
-[NOTE]
-====
-Plaid IGT is a *demonstration app*.
-It covers the core interlinear-glossing workflow in full, and the heavier surfaces (audio transcription, FieldWorks import and export, the assistant) each get a section of their own below.
-====
 
 = Getting Started
 
