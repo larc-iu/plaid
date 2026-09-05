@@ -101,7 +101,12 @@ reports it: `DocumentUnavailable` when a document or its text/sentence/word laye
 gone (the language page shows why and a caretaker can remove the reference),
 `doc.problems` and `doc.can_link` for a lost Concept layer or field, `doc.missing_segments`
 for deleted sentence tokens (the editor offers Restore, an audited insert), `extra_slots`
-for foreign sentence tokens. A run records the document versions it read; the language
+for foreign sentence tokens. A deleted LAYER is detected by `check_layers` on the
+language page and repaired by `repair_layers` (caretaker's Repair button): the layer
+comes back with the new-language schema, ids are updated in the project config and the
+language row, slots are rebuilt from the text's lines, words retokenized, prompts
+restored from the catalog; what sat on the deleted layer is lost and the report says so.
+Never repair silently and never recreate data that was not there. A run records the document versions it read; the language
 page marks a run stale when a published document's version moved (Plaid bumps it on any
 edit inside the document).
 
