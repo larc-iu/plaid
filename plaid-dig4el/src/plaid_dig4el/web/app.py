@@ -27,7 +27,19 @@ HERE = Path(__file__).parent
 app = FastAPI(title="dig4el", docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 templates = Jinja2Templates(directory=HERE / "templates")
-templates.env.globals.update(label=legacy_labels.label, catalog=catalog)
+
+
+def asset(path: str) -> str:
+    """A static asset URL stamped with the file's modification time, so a changed
+    stylesheet or script is fetched afresh instead of served from the browser cache."""
+    try:
+        stamp = int((HERE / "static" / path).stat().st_mtime)
+    except OSError:
+        stamp = 0
+    return f"/static/{path}?v={stamp}"
+
+
+templates.env.globals.update(label=legacy_labels.label, catalog=catalog, asset=asset)
 
 
 @app.on_event("startup")
@@ -305,6 +317,35 @@ def _editor_context(access: Access, lang: db.Language, doc: gw.QuestionnaireDoc)
     return {"lang": lang, "access": access, "doc": doc, "q": q}
 
 
+class SlotView:
+    """What the linking panel needs: which concepts each word carries, which words each
+    concept has, and the concept currently being linked (the first one without words
+    unless the caller says otherwise)."""
+
+    def __init__(self, slot: gw.Slot, active: str | None = None):
+        seg = slot.segment
+        self.concepts: list[str] = seg.expected_concepts() if seg else []
+        form_of = {w["id"]: w["form"] for w in slot.words}
+        order = {w["id"]: i for i, w in enumerate(slot.words)}
+        self.by_word: dict[str, list[str]] = {}
+        self.by_concept: dict[str, list[str]] = {}
+        for sp in slot.concepts:
+            toks = sorted(sp["tokens"], key=lambda t: order.get(t, 0))
+            self.by_concept.setdefault(sp["value"], []).extend(form_of[t] for t in toks if t in form_of)
+            for t in toks:
+                self.by_word.setdefault(t, []).append(sp["value"])
+        if active in self.concepts:
+            self.active = active
+        else:
+            self.active = next((c for c in self.concepts if not self.by_concept.get(c)),
+                               self.concepts[0] if self.concepts else "")
+
+
+def _attach_views(doc: gw.QuestionnaireDoc, active: str | None = None, segment: str | None = None) -> None:
+    for s in doc.slots:
+        s.view = SlotView(s, active if segment is None or s.segment_index == segment else None)  # type: ignore[attr-defined]
+
+
 @app.get("/languages/{language_id}/documents/{document_id}", response_class=HTMLResponse)
 def editor_page(request: Request, language_id: str, document_id: str):
     user = current_user(request)
@@ -312,24 +353,27 @@ def editor_page(request: Request, language_id: str, document_id: str):
         lang = get_language(s, language_id)
         access = Access(user, lang)
         doc = access.load_doc(document_id)
+    _attach_views(doc)
     return render(request, "questionnaire.html", **_editor_context(access, lang, doc))
 
 
-def _slot_response(request: Request, access: Access, lang: db.Language, document_id: str, segment: str):
+def _slot_response(request: Request, access: Access, lang: db.Language, document_id: str, segment: str,
+                   active: str | None = None):
     doc = access.load_doc(document_id)
     slot = doc.slot(segment)
     if slot is None:
         raise HTTPException(404, "No such segment")
+    _attach_views(doc, active, segment)
     return render(request, "_slot.html", slot=slot, seg=slot.segment, **_editor_context(access, lang, doc))
 
 
 @app.get("/languages/{language_id}/documents/{document_id}/slots/{segment}", response_class=HTMLResponse)
-def slot_get(request: Request, language_id: str, document_id: str, segment: str):
+def slot_get(request: Request, language_id: str, document_id: str, segment: str, active: str | None = None):
     user = current_user(request)
     with db.session() as s:
         lang = get_language(s, language_id)
         access = Access(user, lang)
-    return _slot_response(request, access, lang, document_id, segment)
+    return _slot_response(request, access, lang, document_id, segment, active)
 
 
 @app.post("/languages/{language_id}/documents/{document_id}/slots/{segment}/translation",
@@ -357,11 +401,12 @@ def slot_translation(request: Request, language_id: str, document_id: str, segme
     return _slot_response(request, access, lang, document_id, segment)
 
 
-@app.post("/languages/{language_id}/documents/{document_id}/slots/{segment}/concepts",
+@app.post("/languages/{language_id}/documents/{document_id}/slots/{segment}/link",
           response_class=HTMLResponse)
-async def slot_concepts(request: Request, language_id: str, document_id: str, segment: str):
+def slot_link(request: Request, language_id: str, document_id: str, segment: str,
+              concept: str = Form(""), word: str = Form(...)):
+    """Toggle one word in or out of one concept's link."""
     user = current_user(request)
-    form = await request.form()
     with db.session() as s:
         lang = get_language(s, language_id)
         access = Access(user, lang)
@@ -370,9 +415,14 @@ async def slot_concepts(request: Request, language_id: str, document_id: str, se
         slot = doc.slot(segment)
         if slot is None or slot.segment is None:
             raise HTTPException(404, "No such segment")
-        wanted = {c: [str(v) for v in form.getlist(f"c:{c}")] for c in slot.segment.expected_concepts()}
-        gw.set_concepts(access.client, doc, slot, wanted)
-    return _slot_response(request, access, lang, document_id, segment)
+        if concept not in slot.segment.expected_concepts():
+            return _slot_response(request, access, lang, document_id, segment)
+        current = next((sp for sp in slot.concepts if sp["value"] == concept), None)
+        tokens = set(current["tokens"]) if current else set()
+        tokens ^= {word}
+        ordered = [w["id"] for w in slot.words if w["id"] in tokens]
+        gw.set_concepts(access.client, doc, slot, {concept: ordered})
+    return _slot_response(request, access, lang, document_id, segment, active=concept)
 
 
 # ---------------------------------------------------------------- inference

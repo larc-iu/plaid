@@ -1,6 +1,6 @@
 # plaid-dig4el — local conventions
 
-Python server-rendered app (FastAPI, Jinja2, htmx, Pico classless CSS) that puts dig4el
+Python server-rendered app (FastAPI, Jinja2, htmx, Bootstrap 5 vendored as one CSS file) that puts dig4el
 on Plaid. Environment: `~/.mambaforge/envs/plaid-dig4el/bin/python` (mamba env
 `plaid-dig4el`); the package is installed editable there along with `plaid-client-py`.
 Dev server: `plaid-dig4el --plaid-url http://localhost:8085 --data-dir <dir> --port 8087`

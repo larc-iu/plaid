@@ -1,33 +1,32 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-bs-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}dig4el{% endblock %}</title>
-  <link rel="stylesheet" href="/static/pico.min.css">
-  <link rel="stylesheet" href="/static/dig4el.css">
-  <script src="/static/htmx.min.js" defer></script>
+  <link rel="stylesheet" href="{{ asset('bootstrap.min.css') }}">
+  <link rel="stylesheet" href="{{ asset('dig4el.css') }}">
+  <script src="{{ asset('htmx.min.js') }}" defer></script>
+  <script src="{{ asset('dig4el.js') }}" defer></script>
 </head>
-<body>
-  <header class="container">
-    <nav>
-      <ul>
-        <li><a href="/"><strong>dig4el</strong></a></li>
-        {% block crumbs %}{% endblock %}
-      </ul>
-      <ul>
-        {% if user %}
-          <li><small>{{ user.display_name }}</small></li>
-          <li>
-            <form method="post" action="/logout" class="inline">
-              <button class="secondary outline" type="submit">Log out</button>
-            </form>
-          </li>
-        {% endif %}
-      </ul>
-    </nav>
-  </header>
-  <main class="container">
+<body class="bg-body-tertiary">
+  <nav class="navbar bg-white border-bottom mb-3">
+    <div class="container align-items-center">
+      <div class="d-flex align-items-center gap-3">
+        <a class="navbar-brand fw-semibold mb-0" href="/">dig4el</a>
+        <ol class="breadcrumb mb-0 small">{% block crumbs %}{% endblock %}</ol>
+      </div>
+      {% if user %}
+      <div class="d-flex align-items-center gap-2 small">
+        <span class="text-secondary">{{ user.display_name }}</span>
+        <form method="post" action="/logout" class="m-0">
+          <button class="btn btn-outline-secondary btn-sm" type="submit">Log out</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+  </nav>
+  <main class="container pb-5">
     {% block content %}{% endblock %}
   </main>
 </body>

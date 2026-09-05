@@ -1,29 +1,31 @@
 {% extends "base.html" %}
 {% block title %}Languages · dig4el{% endblock %}
 {% block content %}
-<hgroup>
-  <h2>Languages</h2>
-  <p>Each language keeps its questionnaire translations in Plaid and its grammar inferences here.</p>
-</hgroup>
-{% if rows %}
-<table>
-  <thead><tr><th>Language</th><th>Questionnaires</th><th>Latest inference</th></tr></thead>
-  <tbody>
-  {% for r in rows %}
-    <tr>
-      <td><a href="/languages/{{ r.language.id }}">{{ r.language.name }}</a>
-          {% if r.language.glottocode %}<small class="muted">{{ r.language.glottocode }}</small>{% endif %}</td>
-      <td>{{ r.documents }}</td>
-      <td>{% if r.latest_run %}
-            <a href="/languages/{{ r.language.id }}/runs/{{ r.latest_run.id }}">{{ r.latest_run.status }}</a>
-            {% if r.latest_run.approved %}<span class="badge known">approved</span>{% endif %}
-          {% else %}<span class="muted">none yet</span>{% endif %}</td>
-    </tr>
-  {% endfor %}
-  </tbody>
-</table>
-{% else %}
-<p class="muted">No languages yet.</p>
-{% endif %}
-<a role="button" href="/languages/new">Add a language</a>
+<div class="d-flex align-items-baseline justify-content-between mb-2">
+  <h4 class="mb-0">Languages</h4>
+  <a class="btn btn-primary btn-sm" href="/languages/new">Add a language</a>
+</div>
+<p class="text-secondary small">Each language keeps its questionnaire translations in Plaid and its grammar inferences here.</p>
+<div class="card">
+  {% if rows %}
+  <table class="table table-sm table-hover mb-0 align-middle">
+    <thead class="table-light"><tr><th>Language</th><th>Questionnaires</th><th>Latest inference</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><a href="/languages/{{ r.language.id }}" class="text-decoration-none">{{ r.language.name }}</a>
+            {% if r.language.glottocode %}<span class="text-secondary small ms-1">{{ r.language.glottocode }}</span>{% endif %}</td>
+        <td>{{ r.documents }}</td>
+        <td>{% if r.latest_run %}
+              <a href="/languages/{{ r.language.id }}/runs/{{ r.latest_run.id }}" class="text-decoration-none">{{ r.latest_run.status }}</a>
+              {% if r.latest_run.approved %}<span class="badge text-bg-primary ms-1">approved</span>{% endif %}
+            {% else %}<span class="text-secondary">none yet</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="card-body text-secondary">No languages yet.</div>
+  {% endif %}
+</div>
 {% endblock %}

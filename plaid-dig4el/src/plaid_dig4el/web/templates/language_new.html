@@ -1,40 +1,47 @@
 {% extends "base.html" %}
 {% block title %}New language · dig4el{% endblock %}
-{% block crumbs %}<li>New language</li>{% endblock %}
+{% block crumbs %}<li class="breadcrumb-item active">New language</li>{% endblock %}
 {% block content %}
-<h2>Add a language</h2>
-<form method="post" action="/languages" enctype="multipart/form-data">
-  <div class="grid">
-    <label>Name
-      <input type="text" name="name" required placeholder="As speakers call it">
-    </label>
-    <label>Glottocode
-      <input type="text" name="glottocode" placeholder="e.g. tahi1242, or a provisional name+">
-    </label>
+<h4>Add a language</h4>
+<form method="post" action="/languages" enctype="multipart/form-data" class="card">
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label">Name</label>
+        <input class="form-control" type="text" name="name" required placeholder="As speakers call it">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Glottocode</label>
+        <input class="form-control" type="text" name="glottocode" placeholder="e.g. tahi1242, or a provisional name+">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Name in WALS</label>
+        <input class="form-control" type="text" name="wals_name" list="wals-names" placeholder="Leave empty if WALS has no entry">
+        <div class="form-text">Used to fetch the values WALS already documents for this language.</div>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Name in Grambank</label>
+        <input class="form-control" type="text" name="grambank_name" list="grambank-names" placeholder="Leave empty if Grambank has no entry">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Language of the prompts</label>
+        <input class="form-control" type="text" name="pivot_language" value="English">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Word separators</label>
+        <input class="form-control" type="text" name="delimiters" value="{{ default_delimiters }}">
+        <div class="form-text">Every character here separates words. Include the space.</div>
+      </div>
+      <div class="col-12">
+        <label class="form-label">Existing translations (optional)</label>
+        <input class="form-control" type="file" name="legacy_file" accept=".json,application/json">
+        <div class="form-text">A dig4el recording file or knowledge graph. Its translations and concept links are imported into Plaid.</div>
+      </div>
+    </div>
   </div>
-  <div class="grid">
-    <label>Name in WALS
-      <input type="text" name="wals_name" list="wals-names" placeholder="Leave empty if WALS has no entry">
-      <small>Used to fetch the values WALS already documents for this language.</small>
-    </label>
-    <label>Name in Grambank
-      <input type="text" name="grambank_name" list="grambank-names" placeholder="Leave empty if Grambank has no entry">
-    </label>
+  <div class="card-footer bg-white">
+    <button class="btn btn-primary" type="submit">Create</button>
   </div>
-  <div class="grid">
-    <label>Language of the prompts
-      <input type="text" name="pivot_language" value="English">
-    </label>
-    <label>Word separators
-      <input type="text" name="delimiters" value="{{ default_delimiters }}">
-      <small>Every character here separates words. Include the space.</small>
-    </label>
-  </div>
-  <label>Existing translations (optional)
-    <input type="file" name="legacy_file" accept=".json,application/json">
-    <small>A dig4el recording file or knowledge graph. Its translations and concept links are imported into Plaid.</small>
-  </label>
-  <button type="submit">Create</button>
 </form>
 <datalist id="wals-names">{% for n in wals_names %}<option value="{{ n }}">{% endfor %}</datalist>
 <datalist id="grambank-names">{% for n in grambank_names %}<option value="{{ n }}">{% endfor %}</datalist>

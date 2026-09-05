@@ -1,8 +1,9 @@
 {% if run is defined %}{% set run_status = run.status %}{% set language_id = lang.id %}{% set run_id = run.id %}{% set elapsed = 0 %}{% endif %}
-<article id="run-status" hx-get="/languages/{{ language_id }}/runs/{{ run_id }}/status" hx-trigger="every 3s" hx-swap="outerHTML">
-  <p aria-busy="true">
+<div class="alert alert-info d-flex align-items-center gap-2" id="run-status" hx-get="/languages/{{ language_id }}/runs/{{ run_id }}/status" hx-trigger="every 3s" hx-swap="outerHTML">
+  <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+  <span>
     {% if run_status == 'queued' %}Waiting to start…{% else %}Reading the translations, running the observers, and propagating beliefs across parameters…{% endif %}
-    {% if elapsed %}<small class="muted">({{ elapsed }}s)</small>{% endif %}
-  </p>
-  <p class="muted"><small>The first run after the server starts also loads the typological databases and takes a few minutes.</small></p>
-</article>
+    {% if elapsed %}<span class="text-secondary">({{ elapsed }}s)</span>{% endif %}
+    <br><small class="text-secondary">The first run after the server starts also loads the typological databases and takes a few minutes.</small>
+  </span>
+</div>

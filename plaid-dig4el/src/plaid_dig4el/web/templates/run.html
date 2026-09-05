@@ -1,80 +1,91 @@
 {% extends "base.html" %}
 {% block title %}Inference · {{ lang.name }} · dig4el{% endblock %}
-{% block crumbs %}<li><a href="/languages/{{ lang.id }}">{{ lang.name }}</a></li><li>Inference {{ run.created_at.strftime('%Y-%m-%d %H:%M') }}</li>{% endblock %}
+{% block crumbs %}<li class="breadcrumb-item"><a href="/languages/{{ lang.id }}">{{ lang.name }}</a></li><li class="breadcrumb-item active">Inference {{ run.created_at.strftime('%Y-%m-%d %H:%M') }}</li>{% endblock %}
+{% set origin_badge = {'known': 'text-bg-primary', 'observed': 'text-bg-success', 'inferred': 'origin-inferred text-white', 'caretaker': 'text-bg-warning'} %}
 {% block content %}
-<hgroup>
-  <h2>Grammar inference</h2>
-  <p>Started {{ run.created_at.strftime('%Y-%m-%d %H:%M') }} by {{ run.created_by }}
-     {% if run.approved %} · <span class="badge known">approved by {{ run.approved_by }} on {{ run.approved_at.strftime('%Y-%m-%d') }}</span>{% endif %}</p>
-</hgroup>
+<div class="mb-3">
+  <h4 class="mb-1">Grammar inference</h4>
+  <div class="text-secondary small">Started {{ run.created_at.strftime('%Y-%m-%d %H:%M') }} by {{ run.created_by }}
+     {% if run.approved %} · <span class="badge text-bg-primary fw-normal">approved by {{ run.approved_by }} on {{ run.approved_at.strftime('%Y-%m-%d') }}</span>{% endif %}</div>
+</div>
 
 {% if run.status in ('queued', 'running') %}
   {% include "_run_status.html" with context %}
 {% elif run.status == 'failed' %}
-  <p><mark>The run failed.</mark></p>
-  <pre>{{ run.error }}</pre>
+  <div class="alert alert-danger">The run failed.</div>
+  <pre class="small bg-white border rounded p-2">{{ run.error }}</pre>
 {% else %}
-  <p class="muted">
-    {{ view.sentences }} translated segments read ·
-    {{ view.counts.known }} values documented in WALS or Grambank,
-    {{ view.counts.observed }} observed in the translations,
-    {{ view.counts.inferred }} inferred from typological tendencies ·
-    {{ view.counts.retained }} of {{ view.counts.parameters }} parameters reach the confidence threshold.
-  </p>
-  <p>
-    {% if show_all %}<a href="?all=0">Show only confident values</a>{% else %}<a href="?all=1">Show every parameter</a>{% endif %}
-    {% if access.can_manage and not run.approved %}
-      <form method="post" action="/languages/{{ lang.id }}/runs/{{ run.id }}/approve" class="inline" style="margin-left:1rem">
-        <button type="submit">Approve these values</button>
-      </form>
-    {% endif %}
-  </p>
-  <p><small class="muted">Values marked <span class="badge known">known</span> come from WALS or Grambank, <span class="badge observed">observed</span> were counted in the translations, <span class="badge inferred">inferred</span> follow from typological tendencies and should be read as expectations, <span class="badge caretaker">caretaker</span> were set by hand. Confidence is the model's own certainty, not the probability the value is right.</small></p>
+  <div class="card mb-3">
+    <div class="card-body py-2 small">
+      <div>{{ view.sentences }} translated segments read ·
+        {{ view.counts.known }} values documented in WALS or Grambank,
+        {{ view.counts.observed }} observed in the translations,
+        {{ view.counts.inferred }} inferred from typological tendencies ·
+        {{ view.counts.retained }} of {{ view.counts.parameters }} parameters reach the confidence threshold.</div>
+      <div class="text-secondary mt-1">
+        <span class="badge text-bg-primary fw-normal">known</span> from WALS or Grambank ·
+        <span class="badge text-bg-success fw-normal">observed</span> counted in the translations ·
+        <span class="badge origin-inferred text-white fw-normal">inferred</span> follows from typological tendencies, an expectation ·
+        <span class="badge text-bg-warning fw-normal">caretaker</span> set by hand ·
+        confidence is the model's own certainty, not the probability the value is right.
+      </div>
+      <div class="d-flex align-items-center gap-3 mt-2">
+        {% if show_all %}<a href="?all=0">Show only confident values</a>{% else %}<a href="?all=1">Show every parameter</a>{% endif %}
+        {% if access.can_manage and not run.approved %}
+          <form method="post" action="/languages/{{ lang.id }}/runs/{{ run.id }}/approve" class="m-0 ms-auto">
+            <button type="submit" class="btn btn-sm btn-primary">Approve these values</button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
 
   {% for topic, rows in view.groups %}
-  <h4>{{ topic }}</h4>
-  <table class="params">
-    <thead><tr><th>Parameter</th><th>Origin</th><th>Value</th><th class="conf">Confidence</th></tr></thead>
-    <tbody>
-    {% for p in rows %}
-      <tr>
-        <td>{{ p.parameter }}
-          {% set ev = view.evidence.get(p.parameter) %}
-          {% if ev %}
-          <details><summary>Evidence in the translations</summary>
-            {% for vname, v in ev['values'].items() if v.count %}
-              <p class="example"><strong>{{ vname }}</strong>: {{ v.count }}</p>
-              {% for ex in v.examples %}
-                <p class="example">“{{ ex.prompt }}” <span class="tl">{{ ex.translation }}</span></p>
+  <div class="card mb-3">
+    <div class="card-header bg-white fw-semibold">{{ topic }}</div>
+    <table class="table table-sm mb-0 align-top">
+      <thead class="table-light"><tr><th>Parameter</th><th>Origin</th><th>Value</th><th class="text-end">Confidence</th></tr></thead>
+      <tbody>
+      {% for p in rows %}
+        <tr>
+          <td>{{ p.parameter }}
+            {% set ev = view.evidence.get(p.parameter) %}
+            {% if ev %}
+            <details class="small"><summary class="text-secondary">Evidence in the translations</summary>
+              {% for vname, v in ev['values'].items() if v.count %}
+                <div class="example mt-1"><strong>{{ vname }}</strong>: {{ v.count }}</div>
+                {% for ex in v.examples %}
+                  <div class="example">“{{ ex.prompt }}” <span class="tl">{{ ex.translation }}</span></div>
+                {% endfor %}
               {% endfor %}
-            {% endfor %}
-            {% if not ev['values'].values()|selectattr('count')|list %}<p class="example muted">Nothing counted yet.</p>{% endif %}
-          </details>
-          {% endif %}
-        </td>
-        <td><span class="badge {{ p.origin }}">{{ p.origin }}</span></td>
-        <td>
-          {% if access.can_edit and not run.approved %}
-          <form method="post" action="/languages/{{ lang.id }}/runs/{{ run.id }}/override" class="inline">
-            <input type="hidden" name="parameter" value="{{ p.parameter }}">
-            <select name="code" class="small" onchange="this.form.submit()">
-              {% for code, b in p.beliefs.items() %}
-                <option value="{{ code }}" {% if code == p.winner_code %}selected{% endif %}>{{ b.name }} ({{ (100 * b.p)|round|int }}%)</option>
-              {% endfor %}
-            </select>
-          </form>
-          {% else %}
-            {{ p.winner }}
-            <details><summary>Distribution</summary><ul>
-              {% for code, b in p.beliefs.items() %}<li>{{ b.name }}: {{ (100 * b.p)|round|int }}%</li>{% endfor %}
-            </ul></details>
-          {% endif %}
-        </td>
-        <td class="conf">{{ p.confidence }}%{% if p.locked %} <small class="muted" title="Not changed by propagation">locked</small>{% endif %}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+              {% if not ev['values'].values()|selectattr('count')|list %}<div class="example text-secondary">Nothing counted yet.</div>{% endif %}
+            </details>
+            {% endif %}
+          </td>
+          <td><span class="badge {{ origin_badge.get(p.origin, 'text-bg-secondary') }} fw-normal">{{ p.origin }}</span></td>
+          <td>
+            {% if access.can_edit and not run.approved %}
+            <form method="post" action="/languages/{{ lang.id }}/runs/{{ run.id }}/override" class="m-0">
+              <input type="hidden" name="parameter" value="{{ p.parameter }}">
+              <select name="code" class="form-select form-select-sm w-auto" onchange="this.form.submit()">
+                {% for code, b in p.beliefs.items() %}
+                  <option value="{{ code }}" {% if code == p.winner_code %}selected{% endif %}>{{ b.name }} ({{ (100 * b.p)|round|int }}%)</option>
+                {% endfor %}
+              </select>
+            </form>
+            {% else %}
+              {{ p.winner }}
+              <details class="small"><summary class="text-secondary">Distribution</summary><ul class="mb-0 ps-3">
+                {% for code, b in p.beliefs.items() %}<li>{{ b.name }}: {{ (100 * b.p)|round|int }}%</li>{% endfor %}
+              </ul></details>
+            {% endif %}
+          </td>
+          <td class="text-end text-nowrap">{{ p.confidence }}%{% if p.locked %} <span class="text-secondary small" title="Not changed by propagation">locked</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% endfor %}
 {% endif %}
 {% endblock %}

@@ -1,76 +1,87 @@
 {% extends "base.html" %}
 {% block title %}{{ lang.name }} · dig4el{% endblock %}
-{% block crumbs %}<li>{{ lang.name }}</li>{% endblock %}
+{% block crumbs %}<li class="breadcrumb-item active">{{ lang.name }}</li>{% endblock %}
 {% block content %}
-<hgroup>
-  <h2>{{ lang.name }} <span class="badge {{ 'caretaker' if access.can_manage else 'member' }}">{{ access.role }}</span></h2>
-  <p>
+<div class="mb-3">
+  <h4 class="mb-1">{{ lang.name }}
+    <span class="badge {{ 'text-bg-warning' if access.can_manage else 'text-bg-secondary' }} fw-normal align-middle">{{ access.role }}</span></h4>
+  <div class="text-secondary small">
     {% if lang.glottocode %}{{ lang.glottocode }} · {% endif %}
     {% if lang.wals_name %}WALS: {{ lang.wals_name }} · {% endif %}
     {% if lang.grambank_name %}Grambank: {{ lang.grambank_name }} · {% endif %}
     prompts in {{ lang.pivot_language }}
-  </p>
-</hgroup>
-{% if imported %}<p><mark>Imported {{ imported }} questionnaire translation{{ 's' if imported != 1 }}.</mark></p>{% endif %}
+  </div>
+</div>
+{% if imported %}<div class="alert alert-success py-2 small">Imported {{ imported }} questionnaire translation{{ 's' if imported != 1 }}.</div>{% endif %}
 
-<h3>Questionnaires</h3>
-{% if docs %}
-<table>
-  <thead><tr><th>Questionnaire</th><th>Translated</th><th>Published</th><th></th></tr></thead>
-  <tbody>
-  {% for d in docs %}
-    <tr>
-      <td>{% if d.missing %}<span class="muted">{{ d.q.short_title if d.q else d.ref.questionnaire_uid }} (no longer in Plaid)</span>
-          {% else %}<a href="/languages/{{ lang.id }}/documents/{{ d.doc.id }}">{{ d.doc.name }}</a>{% endif %}</td>
-      <td>{% if not d.missing %}{{ d.filled }} / {{ d.total }}{% endif %}</td>
-      <td>{% if not d.missing %}
-            {% if access.can_edit %}
-            <form method="post" action="/languages/{{ lang.id }}/documents/{{ d.doc.id }}/publish" class="inline">
-              <input type="hidden" name="published" value="{{ '0' if d.doc.published else '1' }}">
-              <button type="submit" class="{{ 'secondary' if d.doc.published else '' }} outline">
-                {{ 'Published · unpublish' if d.doc.published else 'Publish' }}</button>
-            </form>
-            {% else %}{{ 'yes' if d.doc.published else 'no' }}{% endif %}
-          {% endif %}</td>
-      <td>{% if not d.missing %}<a href="/languages/{{ lang.id }}/documents/{{ d.doc.id }}">Translate</a>{% endif %}</td>
-    </tr>
-  {% endfor %}
-  </tbody>
-</table>
-{% else %}
-<p class="muted">No questionnaires yet.</p>
-{% endif %}
-{% if access.can_edit and available %}
-<form method="post" action="/languages/{{ lang.id }}/questionnaires" class="grid">
-  <select name="uid">
-    {% for q in available %}<option value="{{ q.uid }}">{{ q.short_title }} ({{ q.segments|length }} segments)</option>{% endfor %}
-  </select>
-  <button type="submit">Add questionnaire</button>
-</form>
-{% endif %}
+<div class="card mb-3">
+  <div class="card-header bg-white fw-semibold">Questionnaires</div>
+  {% if docs %}
+  <table class="table table-sm mb-0 align-middle">
+    <thead class="table-light"><tr><th>Questionnaire</th><th>Translated</th><th>Published</th><th></th></tr></thead>
+    <tbody>
+    {% for d in docs %}
+      <tr>
+        <td>{% if d.missing %}<span class="text-secondary">{{ d.q.short_title if d.q else d.ref.questionnaire_uid }} (no longer in Plaid)</span>
+            {% else %}<a href="/languages/{{ lang.id }}/documents/{{ d.doc.id }}" class="text-decoration-none">{{ d.doc.name }}</a>{% endif %}</td>
+        <td>{% if not d.missing %}{{ d.filled }} / {{ d.total }}{% endif %}</td>
+        <td>{% if not d.missing %}
+              {% if access.can_edit %}
+              <form method="post" action="/languages/{{ lang.id }}/documents/{{ d.doc.id }}/publish" class="m-0">
+                <input type="hidden" name="published" value="{{ '0' if d.doc.published else '1' }}">
+                {% if d.doc.published %}
+                  <button type="submit" class="btn btn-sm btn-outline-secondary">Published · unpublish</button>
+                {% else %}
+                  <button type="submit" class="btn btn-sm btn-outline-primary">Publish</button>
+                {% endif %}
+              </form>
+              {% else %}{{ 'yes' if d.doc.published else 'no' }}{% endif %}
+            {% endif %}</td>
+        <td class="text-end">{% if not d.missing %}<a href="/languages/{{ lang.id }}/documents/{{ d.doc.id }}" class="btn btn-sm btn-link">Translate</a>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="card-body text-secondary">No questionnaires yet.</div>
+  {% endif %}
+  {% if access.can_edit and available %}
+  <div class="card-footer bg-white">
+    <form method="post" action="/languages/{{ lang.id }}/questionnaires" class="d-flex gap-2 align-items-center m-0">
+      <select name="uid" class="form-select form-select-sm w-auto">
+        {% for q in available %}<option value="{{ q.uid }}">{{ q.short_title }} ({{ q.segments|length }} segments)</option>{% endfor %}
+      </select>
+      <button type="submit" class="btn btn-sm btn-outline-primary">Add questionnaire</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
 
-<h3>Grammar inferences</h3>
-<p class="muted">Published translations feed the inference. {{ published }} questionnaire{{ 's' if published != 1 }} with translations {{ 'is' if published == 1 else 'are' }} published.</p>
-{% if runs %}
-<table>
-  <thead><tr><th>Started</th><th>By</th><th>Status</th><th>Review</th></tr></thead>
-  <tbody>
-  {% for r in runs %}
-    <tr>
-      <td><a href="/languages/{{ lang.id }}/runs/{{ r.id }}">{{ r.created_at.strftime('%Y-%m-%d %H:%M') }}</a></td>
-      <td>{{ r.created_by }}</td>
-      <td>{{ r.status }}</td>
-      <td>{% if r.approved %}<span class="badge known">approved by {{ r.approved_by }}</span>
-          {% elif r.status == 'done' %}<span class="muted">awaiting review</span>{% endif %}</td>
-    </tr>
-  {% endfor %}
-  </tbody>
-</table>
-{% endif %}
-{% if access.can_edit %}
-<form method="post" action="/languages/{{ lang.id }}/inference">
-  <button type="submit" {% if not published %}disabled{% endif %}>Run inference</button>
-  {% if not published %}<small class="muted">Publish at least one translated questionnaire first.</small>{% endif %}
-</form>
-{% endif %}
+<div class="card">
+  <div class="card-header bg-white fw-semibold">Grammar inferences</div>
+  {% if runs %}
+  <table class="table table-sm mb-0 align-middle">
+    <thead class="table-light"><tr><th>Started</th><th>By</th><th>Status</th><th>Review</th></tr></thead>
+    <tbody>
+    {% for r in runs %}
+      <tr>
+        <td><a href="/languages/{{ lang.id }}/runs/{{ r.id }}" class="text-decoration-none">{{ r.created_at.strftime('%Y-%m-%d %H:%M') }}</a></td>
+        <td>{{ r.created_by }}</td>
+        <td>{{ r.status }}</td>
+        <td>{% if r.approved %}<span class="badge text-bg-primary fw-normal">approved by {{ r.approved_by }}</span>
+            {% elif r.status == 'done' %}<span class="text-secondary">awaiting review</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  <div class="card-footer bg-white d-flex align-items-center gap-3">
+    <span class="text-secondary small">Published translations feed the inference. {{ published }} questionnaire{{ 's' if published != 1 }} with translations {{ 'is' if published == 1 else 'are' }} published.</span>
+    {% if access.can_edit %}
+    <form method="post" action="/languages/{{ lang.id }}/inference" class="m-0 ms-auto">
+      <button type="submit" class="btn btn-sm btn-primary" {% if not published %}disabled{% endif %}>Run inference</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
 {% endblock %}

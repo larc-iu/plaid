@@ -1,14 +1,22 @@
 {% extends "base.html" %}
 {% block title %}Log in · dig4el{% endblock %}
 {% block content %}
-<article style="max-width: 28rem; margin: 3rem auto;">
-  <h2>Log in</h2>
-  <p class="muted">Use your Plaid account.</p>
-  {% if error %}<p><mark>{{ error }}</mark></p>{% endif %}
-  <form method="post" action="/login">
-    <label>Email <input type="text" name="user_id" autocomplete="username" required autofocus></label>
-    <label>Password <input type="password" name="password" autocomplete="current-password" required></label>
-    <button type="submit">Log in</button>
-  </form>
-</article>
+<div class="card mx-auto mt-5" style="max-width: 24rem;">
+  <div class="card-body">
+    <h5 class="card-title">Log in</h5>
+    <p class="text-secondary small">Use your Plaid account.</p>
+    {% if error %}<div class="alert alert-danger py-2 small">{{ error }}</div>{% endif %}
+    <form method="post" action="/login">
+      <div class="mb-2">
+        <label class="form-label small mb-1">Email</label>
+        <input class="form-control" type="text" name="user_id" autocomplete="username" required autofocus>
+      </div>
+      <div class="mb-3">
+        <label class="form-label small mb-1">Password</label>
+        <input class="form-control" type="password" name="password" autocomplete="current-password" required>
+      </div>
+      <button class="btn btn-primary" type="submit">Log in</button>
+    </form>
+  </div>
+</div>
 {% endblock %}

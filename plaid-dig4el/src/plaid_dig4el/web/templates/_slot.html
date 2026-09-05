@@ -1,45 +1,57 @@
 {% set base = "/languages/" ~ lang.id ~ "/documents/" ~ doc.id ~ "/slots/" ~ slot.segment_index %}
-<article class="slot" id="slot-{{ slot.segment_index }}">
-  <header>
-    <span class="muted">{{ slot.segment_index }}</span>
-    <span class="speaker muted">{{ slot.speaker }}</span>
-    <span class="prompt">{{ slot.fields.prompt[1] or (seg.text if seg else '') }}</span>
-    {% if seg and seg.idiomaticity %}<small class="muted"> · likely idiomatic</small>{% endif %}
-  </header>
-  <form hx-post="{{ base }}/translation" hx-target="#slot-{{ slot.segment_index }}" hx-swap="outerHTML">
-    <input type="text" name="text" value="{{ slot.text }}" placeholder="Equivalent in {{ lang.name }}"
-           autocomplete="off" {% if not access.can_edit %}readonly{% endif %}>
-    <details>
-      <summary class="muted">Alternate prompt, literal back-translation, note</summary>
-      <div class="fields">
-        <input type="text" name="alternate_pivot" value="{{ slot.fields.alternate_pivot[1] }}"
-               placeholder="The prompt as actually used, if it differed" {% if not access.can_edit %}readonly{% endif %}>
-        <input type="text" name="back_translation" value="{{ slot.fields.back_translation[1] }}"
-               placeholder="Literal back-translation into {{ lang.pivot_language }}" {% if not access.can_edit %}readonly{% endif %}>
-        <input type="text" name="note" value="{{ slot.fields.note[1] }}" placeholder="Notes"
-               {% if not access.can_edit %}readonly{% endif %}>
+{% set sv = slot.view %}
+<div class="card slot mb-2" id="slot-{{ slot.segment_index }}">
+  <div class="card-body py-2 px-3">
+    <div class="d-flex align-items-baseline gap-2 mb-1">
+      <span class="text-secondary small">{{ slot.segment_index }}</span>
+      <span class="text-secondary small">{{ slot.speaker }}</span>
+      <span class="prompt">{{ slot.fields.prompt[1] or (seg.text if seg else '') }}</span>
+      {% if seg and seg.idiomaticity %}<span class="text-secondary small">· likely idiomatic</span>{% endif %}
+    </div>
+    <form hx-post="{{ base }}/translation" hx-target="#slot-{{ slot.segment_index }}" hx-swap="outerHTML" data-advance="1" class="m-0">
+      <div class="input-group input-group-sm">
+        <input type="text" class="form-control" name="text" value="{{ slot.text }}" placeholder="Equivalent in {{ lang.name }}"
+               autocomplete="off" {% if not access.can_edit %}readonly{% endif %}>
+        {% if access.can_edit %}<button type="submit" class="btn btn-outline-primary">Save</button>{% endif %}
       </div>
-    </details>
-    {% if access.can_edit %}<button type="submit" class="outline">Save</button>{% endif %}
-  </form>
-  {% if slot.filled and seg %}
-  <div class="concepts">
-    <div class="words">{% for w in slot.words %}<span class="word">{{ w.form }}</span>{% endfor %}</div>
-    <form hx-post="{{ base }}/concepts" hx-trigger="change" hx-target="#slot-{{ slot.segment_index }}" hx-swap="outerHTML">
-      {% for c in seg.expected_concepts() %}
-        {% set linked = [] %}
-        {% for sp in slot.concepts if sp.value == c %}{% for t in sp.tokens %}{% set _ = linked.append(t) %}{% endfor %}{% endfor %}
-        <div class="concept">
-          <span class="name" title="{{ c }}">{{ label(c) }}</span>
-          {% for w in slot.words %}
-            <label class="chip {{ 'on' if w.id in linked }}">
-              <input type="checkbox" name="c:{{ c }}" value="{{ w.id }}" {% if w.id in linked %}checked{% endif %}
-                     {% if not access.can_edit %}disabled{% endif %}>{{ w.form }}
-            </label>
-          {% endfor %}
+      <details class="small mt-1">
+        <summary class="text-secondary">Alternate prompt, literal back-translation, note</summary>
+        <div class="d-grid gap-1 mt-1">
+          <input type="text" class="form-control form-control-sm" name="alternate_pivot" value="{{ slot.fields.alternate_pivot[1] }}"
+                 placeholder="The prompt as actually used, if it differed" {% if not access.can_edit %}readonly{% endif %}>
+          <input type="text" class="form-control form-control-sm" name="back_translation" value="{{ slot.fields.back_translation[1] }}"
+                 placeholder="Literal back-translation into {{ lang.pivot_language }}" {% if not access.can_edit %}readonly{% endif %}>
+          <input type="text" class="form-control form-control-sm" name="note" value="{{ slot.fields.note[1] }}" placeholder="Notes"
+                 {% if not access.can_edit %}readonly{% endif %}>
         </div>
-      {% endfor %}
+      </details>
     </form>
+    {% if slot.filled and seg and sv %}
+    <div class="linker mt-2 pt-2 border-top" data-active="{{ sv.active }}">
+      <input type="hidden" name="concept" value="{{ sv.active }}">
+      <div class="words d-flex flex-wrap gap-1 mb-2">
+        {% for w in slot.words %}
+          {% set linked = sv.by_word.get(w.id, []) %}
+          <button type="button" class="word btn btn-sm btn-outline-secondary {{ 'on' if sv.active in linked }}" name="word" value="{{ w.id }}"
+                  data-concepts="{{ linked|join('|') }}"
+                  hx-post="{{ base }}/link" hx-include="closest .linker"
+                  hx-target="#slot-{{ slot.segment_index }}" hx-swap="outerHTML"
+                  {% if not access.can_edit %}disabled{% endif %}>
+            <span class="form">{{ w.form }}</span>
+            {% if linked %}<span class="tags">{% for c in linked %}<span class="tag">{{ label(c) }}</span>{% endfor %}</span>{% endif %}
+          </button>
+        {% endfor %}
+      </div>
+      <div class="concepts d-flex flex-wrap gap-1 align-items-center">
+        {% for c in sv.concepts %}
+          {% set ws = sv.by_concept.get(c, []) %}
+          <span class="concept {{ 'active' if c == sv.active }} {{ 'linked' if ws else 'unlinked' }}" data-concept="{{ c }}">
+            <button type="button" class="concept-btn btn btn-sm btn-outline-secondary" title="{{ c }}">{{ label(c) }}</button>
+            <span class="linked-words">{{ ws|join(' ') if ws else '—' }}</span>
+          </span>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
   </div>
-  {% endif %}
-</article>
+</div>

@@ -38,5 +38,5 @@ is not next to the package.
   discovery, reused with their imports rewired (AGPL-3.0, see the file headers)
 - `src/plaid_dig4el/inference/` the pipeline as dig4el's inference page runs it
 - `src/plaid_dig4el/plaid_gateway.py` everything dig4el does to Plaid
-- `src/plaid_dig4el/web/` the FastAPI + Jinja2 + htmx application
+- `src/plaid_dig4el/web/` the FastAPI + Jinja2 + htmx application, styled with Bootstrap 5
 - `tests/` offline unit tests and the parity tests against dig4el's baselines
