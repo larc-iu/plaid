@@ -83,6 +83,22 @@ def execute_run(run_id: str, token: str) -> None:
             s.commit()
 
 
+RESTART_ERROR = "The server restarted before this run finished. Run it again."
+
+
+def fail_orphaned_runs() -> int:
+    """Runs execute in threads of the server process, so a restart loses them. Called at
+    startup: every run still marked queued or running belongs to a dead process."""
+    with db.session() as s:
+        orphans = s.query(db.InferenceRun).filter(db.InferenceRun.status.in_(("queued", "running"))).all()
+        for run in orphans:
+            run.status = "failed"
+            run.error = RESTART_ERROR
+            run.finished_at = db.now()
+        s.commit()
+        return len(orphans)
+
+
 def start_run(run_id: str, token: str) -> None:
     threading.Thread(target=execute_run, args=(run_id, token), name=f"dig4el-run-{run_id[:8]}",
                      daemon=True).start()

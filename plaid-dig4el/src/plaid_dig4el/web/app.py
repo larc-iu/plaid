@@ -40,12 +40,13 @@ def asset(path: str) -> str:
     return f"/static/{path}?v={stamp}"
 
 
-templates.env.globals.update(label=legacy_labels.label, catalog=catalog, asset=asset)
+templates.env.globals.update(label=legacy_labels.label, catalog=catalog, asset=asset, runner=runner)
 
 
 @app.on_event("startup")
 def _startup() -> None:
     db.engine()
+    runner.fail_orphaned_runs()
     runner.preload_in_background()
 
 
