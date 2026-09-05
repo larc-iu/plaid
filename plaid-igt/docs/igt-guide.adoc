@@ -348,7 +348,7 @@ The popover for a single word lists the multi-word expressions it is part of, an
 Most of the words in a running text are repeats, and much of the rest can be guessed at.
 **Auto-analyze**, a button on the Analyze tab's toolbar, makes that first pass over a whole document so that your time goes into checking rather than typing.
 It runs up to four steps in order, each of which you can switch on or off.
-Everything it produces is marked as machine-made and shows in violet until you confirm or discard it (see <<_where_a_value_came_from>>), and nothing a person has written is ever changed.
+Everything it produces is marked as machine-made and shows in violet until you confirm or discard it (see <<_provenance>>), and nothing a person has written is ever changed.
 
 == The four steps
 
