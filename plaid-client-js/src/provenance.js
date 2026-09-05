@@ -5,28 +5,39 @@
  * Flat scalar keys — the query engine matches flat metadata well, nested
  * objects poorly.
  *
- * Three states (the PRESENCE of the `prov` key, not its value, is the
- * discriminator; absent keys mean "human"):
+ * Two axes. ORIGIN is the `prov` key: absent means a trusted person (a
+ * verifier) made it; 'inferred' means an algorithm or service did;
+ * 'contributed' means a person whose work the project reviews (a
+ * contributor) did. TRUST is `provConfirmed`: true once a verifier vouched
+ * for the value. Together they give four states:
  *
- *   human              — no prov keys; a person made it.
+ *   human              — no prov keys; a verifier made it.
  *   machine            — { prov: 'inferred', provSource: '<producer>' };
- *                        an algorithm/service made it, no human has vouched.
- *   verified           — same + { provConfirmed: true }; machine-made and a
- *                        human confirmed (or edited) it. provSource stays so
- *                        machine origin remains traceable.
+ *                        an algorithm/service made it, nobody has vouched.
+ *   contributed        — { prov: 'contributed', provSource: 'user:<id>' };
+ *                        a contributor made it, no verifier has vouched.
+ *   verified           — either origin + { provConfirmed: true }; a verifier
+ *                        confirmed (or edited) it. prov/provSource stay so
+ *                        the origin remains traceable.
  *
  * The write contract every machine writer must follow:
  *   1. Machine writers may freely replace MACHINE (unverified) material.
- *   2. Machine writers must never modify or delete human or verified
- *      material unless explicitly told to overwrite (an explicit, per-run,
- *      user-facing opt-in — for services, a declared boolean `overwrite`
- *      parameter).
- *   3. Any human edit of a machine annotation verifies it: the edit also
- *      stamps { provConfirmed: true } (see verifyOnEdit).
+ *   2. Machine writers must never modify or delete human, contributed or
+ *      verified material unless explicitly told to overwrite (an explicit,
+ *      per-run, user-facing opt-in — for services, a declared boolean
+ *      `overwrite` parameter). A contributor's work is a person's work.
+ *   3. A verifier's edit of machine or contributed material verifies it:
+ *      the edit also stamps { provConfirmed: true } (see verifyOnEdit).
+ *      A contributor's edit of anything marks it contributed: the edit
+ *      merges stampContributed(userId) and drops any earlier confirmation
+ *      (see contributeOnEdit). Who is a contributor is the app's call
+ *      (Plaid IGT: a project writer, when the project reviews writers'
+ *      work); a service running as a contributor should stamp likewise.
  *
  * Producer naming: 'service:<serviceId>' for services (use serviceSource),
- * 'rule:<name>' for built-in rule algorithms, app-specific ids like
- * 'gloss:doc-frequency' or 'flex-import' otherwise.
+ * 'rule:<name>' for built-in rule algorithms, 'user:<userId>' for a
+ * contributor (use userSource), app-specific ids like 'gloss:doc-frequency'
+ * or 'flex-import' otherwise.
  *
  * PREDICTION EXTRAS. A producer may also record how confident it was and
  * what else it considered, in two reserved slots split along the
@@ -68,14 +79,17 @@ export const PROV = Object.freeze({
   probKey: 'provProb',
   /** Open map of producer extras (alternatives, model version, raw scores). */
   detailKey: 'provDetail',
-  /** The (currently only) value of `prov`. Presence, not value, decides. */
+  /** `prov` for machine-made material. Any value but CONTRIBUTED reads as machine. */
   INFERRED: 'inferred',
+  /** `prov` for a contributor's material. */
+  CONTRIBUTED: 'contributed',
 });
 
-/** The three provenance states returned by provState. */
+/** The four provenance states returned by provState. */
 export const PROV_STATES = Object.freeze({
   HUMAN: 'human',
   MACHINE: 'machine',
+  CONTRIBUTED: 'contributed',
   VERIFIED: 'verified',
 });
 
@@ -117,34 +131,100 @@ export const confirmedInferred = (source, extras = {}) => ({
 export const PROV_CONFIRMED = Object.freeze({ [PROV.confirmedKey]: true });
 
 /**
+ * The metadata fragment a contributor's work carries:
+ * { prov: 'contributed', provSource: 'user:<userId>' }.
+ * @param {string} userId
+ */
+export const stampContributed = (userId) => ({
+  [PROV.key]: PROV.CONTRIBUTED,
+  [PROV.sourceKey]: userSource(userId),
+});
+
+/**
  * Classify an entity's metadata into one of PROV_STATES.
  * @param {Object|null|undefined} metadata
- * @returns {'human'|'machine'|'verified'}
+ * @returns {'human'|'machine'|'contributed'|'verified'}
  */
 export const provState = (metadata) => {
   if (!metadata || metadata[PROV.key] == null) return PROV_STATES.HUMAN;
-  return metadata[PROV.confirmedKey] ? PROV_STATES.VERIFIED : PROV_STATES.MACHINE;
+  if (metadata[PROV.confirmedKey]) return PROV_STATES.VERIFIED;
+  return metadata[PROV.key] === PROV.CONTRIBUTED ? PROV_STATES.CONTRIBUTED : PROV_STATES.MACHINE;
 };
 
 /**
- * Whether this entity is machine-made and not yet human-verified — the
- * material that still needs review, that machine writers may replace, and
- * that a human confirmation gesture acts on. Complement of isProtected.
+ * Where an entity came from, confirmed or not: null for a verifier's own
+ * work, PROV.INFERRED for a machine's, PROV.CONTRIBUTED for a contributor's.
+ * What a verified entity's tooltip needs, since provState folds both
+ * origins into 'verified'.
+ * @returns {null|'inferred'|'contributed'}
+ */
+export const provOrigin = (metadata) => {
+  if (!metadata || metadata[PROV.key] == null) return null;
+  return metadata[PROV.key] === PROV.CONTRIBUTED ? PROV.CONTRIBUTED : PROV.INFERRED;
+};
+
+/**
+ * Whether this entity is machine-made and not yet verified — the material
+ * machine writers may replace. Complement of isProtected.
  */
 export const isMachine = (metadata) => provState(metadata) === PROV_STATES.MACHINE;
 
 /**
  * Whether a machine writer must leave this entity alone (write-contract
- * rule 2): true for human-made and human-verified material.
+ * rule 2): true for human-made, contributed and verified material.
  */
 export const isProtected = (metadata) => !isMachine(metadata);
 
 /**
- * The metadata fragment a HUMAN edit of this entity should merge in
- * (write-contract rule 3): PROV_CONFIRMED when the entity is machine-made
- * and unverified, else null (nothing to do).
+ * Whether a verifier still has to look at this entity: machine-made or
+ * contributed, and not yet confirmed. What review UIs mark and sweep, and
+ * what a verifier's confirmation gesture acts on.
  */
-export const verifyOnEdit = (metadata) => (isMachine(metadata) ? PROV_CONFIRMED : null);
+export const needsReview = (metadata) => {
+  const s = provState(metadata);
+  return s === PROV_STATES.MACHINE || s === PROV_STATES.CONTRIBUTED;
+};
+
+/**
+ * The metadata fragment a VERIFIER's edit of this entity should merge in
+ * (write-contract rule 3): PROV_CONFIRMED when the entity needs review,
+ * else null (nothing to do).
+ */
+export const verifyOnEdit = (metadata) => (needsReview(metadata) ? PROV_CONFIRMED : null);
+
+/**
+ * The metadata fragment a CONTRIBUTOR's edit of this entity should merge in
+ * (write-contract rule 3): the contributed stamp, plus provConfirmed: null
+ * so an earlier confirmation is dropped (a patch deletes null-valued keys;
+ * see mergeMetadata for a full replace). Prediction extras a machine
+ * recorded stay, as history.
+ * @param {Object|null|undefined} metadata - unused today; the fragment is
+ *   the same whatever the entity was, and the parameter keeps the shape of
+ *   verifyOnEdit so callers can swap one for the other
+ * @param {string} userId
+ */
+// eslint-disable-next-line no-unused-vars
+export const contributeOnEdit = (metadata, userId) => ({
+  ...stampContributed(userId),
+  [PROV.confirmedKey]: null,
+});
+
+/**
+ * Merge a metadata fragment the way the server's PATCH does — a null value
+ * deletes the key — for callers that keep a local copy or send a full
+ * replacement (setMetadata). Returns a new object.
+ */
+export const mergeMetadata = (metadata, fragment) => {
+  const out = { ...(metadata || {}) };
+  for (const [k, v] of Object.entries(fragment || {})) {
+    if (v === null) delete out[k];
+    else out[k] = v;
+  }
+  return out;
+};
 
 /** Canonical provSource for a service: 'service:<serviceId>'. */
 export const serviceSource = (serviceId) => `service:${serviceId}`;
+
+/** Canonical provSource for a contributor: 'user:<userId>'. */
+export const userSource = (userId) => `user:${userId}`;

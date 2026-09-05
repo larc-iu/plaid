@@ -164,8 +164,8 @@ def word_state(w):
 
     Every span, link and non-default morpheme on the word votes with its
     provenance state; a word is 'machine' only when every vote is
-    machine-unverified, 'protected' as soon as one piece is human-made or
-    human-verified."""
+    machine-unverified, 'protected' as soon as one piece is human-made,
+    contributed or verified."""
     ms = w['morphs']
     if not ms:
         return 'nomorph'

@@ -2774,20 +2774,26 @@ export {
   buildDefaultValues,
   coerceParamValues,
 } from "./serviceSchema.js";
-// Provenance: the cross-app convention for machine-provided vs human-labeled
-// information (flat prov/provSource/provConfirmed metadata; absence = human),
-// plus the machine-writer contract. See ./provenance.js and the manual,
-// "Provenance".
+// Provenance: the cross-app convention for who made an annotation (flat
+// prov/provSource/provConfirmed metadata; absence = a verifier; 'inferred' =
+// a machine; 'contributed' = a person whose work is reviewed), plus the
+// machine-writer contract. See ./provenance.js and the manual, "Provenance".
 export {
   PROV,
   PROV_STATES,
   PROV_CONFIRMED,
   stampInferred,
   confirmedInferred,
+  stampContributed,
   provState,
+  provOrigin,
   isMachine,
   isProtected,
+  needsReview,
   verifyOnEdit,
+  contributeOnEdit,
+  mergeMetadata,
   serviceSource,
+  userSource,
 } from "./provenance.js";
 export { MAX_BATCH_OPS };

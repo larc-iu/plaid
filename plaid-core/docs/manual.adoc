@@ -1203,19 +1203,24 @@ We also advise app developers to consider the _absence_ of a role tag to be a me
 == Provenance
 
 Annotation projects routinely mix human labor with machine output—a parser fills in a first pass, an auto-linker proposes vocabulary links, an importer carries another tool's analysis—and it matters enormously which is which: machine output is cheap and replaceable, while human judgment is expensive and must never be silently destroyed.
-Plaid standardizes this distinction as the **provenance** convention: flat metadata keys on annotation entities (spans, relations, vocab links, and optionally tokens) that put every entity in one of three states.
+Some projects also take in work that is a person's but not yet checked—a community member's transcription, a student's glosses—which must be kept apart from both.
+Plaid standardizes these distinctions as the **provenance** convention: flat metadata keys on annotation entities (spans, relations, vocab links, and optionally tokens) along two axes.
+The `prov` key records the **origin** (absent: a trusted person, a _verifier_; `inferred`: a machine; `contributed`: a person whose work is reviewed, a _contributor_), and `provConfirmed` records **trust** (a verifier vouched for the value).
+Together they put every entity in one of four states.
 
 [cols="1,2,3"]
 |===
 | State | Metadata | Meaning
 
-| **human** | _no provenance keys_ | A person made it. The absence of the `prov` key is the discriminator.
-| **machine** | `prov: "inferred"`, `provSource: "<producer>"` | An algorithm or service made it, and no human has vouched for it yet.
-| **verified** | the above, plus `provConfirmed: true` | Machine-made, and a human confirmed or edited it. `provSource` stays, so machine origin remains traceable.
+| **human** | _no provenance keys_ | A verifier made it. The absence of the `prov` key is the discriminator.
+| **machine** | `prov: "inferred"`, `provSource: "<producer>"` | An algorithm or service made it, and nobody has vouched for it yet.
+| **contributed** | `prov: "contributed"`, `provSource: "user:<userId>"` | A contributor made it, and no verifier has vouched for it yet.
+| **verified** | either of the above, plus `provConfirmed: true` | A verifier confirmed or edited it. `prov` and `provSource` stay, so the origin remains traceable.
 |===
 
-`provSource` names the producer: `service:<serviceId>` for services, `rule:<name>` for built-in rule algorithms, or an app-specific id such as `gloss:doc-frequency` or `flex-import`.
-The presence of the `prov` key—not its particular value—is what marks an entity as machine-made; `inferred` is simply the only value defined today.
+`provSource` names the producer: `service:<serviceId>` for services, `rule:<name>` for built-in rule algorithms, `user:<userId>` for a contributor, or an app-specific id such as `gloss:doc-frequency` or `flex-import`.
+The presence of the `prov` key is what marks an entity as somebody's proposal; any value other than `contributed` reads as machine-made.
+Who counts as a contributor is each app's decision: Plaid IGT treats a project's writers as contributors when the project's Access settings say writers' work is reviewed, and maintainers as verifiers.
 The keys are deliberately flat scalars, which the query system's metadata filters match well, so questions like "show me every unverified machine annotation in this document" are ordinary queries.
 
 A producer may also record **prediction extras**—how confident it was, and what else it considered—in two further reserved slots, split along the queryability line:
@@ -1237,13 +1242,15 @@ A producer that has a distribution records it as a top-k `{label: probability}` 
 The convention is made operational by a **write contract** that every machine writer (service, built-in algorithm, importer) is expected to follow:
 
 1. A machine writer may freely create new material and freely **replace machine-made, unverified material**—its own or another machine's. Unverified machine output is by definition replaceable.
-2. A machine writer must **never modify or delete human-made or verified material** unless explicitly told to, via a per-run, user-facing opt-in. For services, the idiom is a declared boolean `overwrite` parameter, so the option renders in the standard argument form and is off by default.
-3. **Any human edit of a machine annotation verifies it**: alongside the new value, the editing app also merges `provConfirmed: true`. Explicit confirm gestures (clicking to accept a proposed link, for example) do the same.
+2. A machine writer must **never modify or delete human-made, contributed or verified material** unless explicitly told to, via a per-run, user-facing opt-in. For services, the idiom is a declared boolean `overwrite` parameter, so the option renders in the standard argument form and is off by default. A contributor's work is a person's work, however unreviewed.
+3. **A verifier's edit of a machine-made or contributed annotation verifies it**: alongside the new value, the editing app also merges `provConfirmed: true`. Explicit confirm gestures (clicking to accept a proposed link, for example) do the same. **A contributor's edit of any annotation marks it contributed**: the app merges the contributed stamp and drops any earlier confirmation, so a verifier sees that a confirmed value was changed. A contributor accepting a machine proposal records it as a contribution, not a verification.
 
-Rule 3 is what lets editors render unverified machine output distinctly (Plaid's apps use violet italics) and have the marking dissolve naturally as a human works through the material—each touched annotation graduates to verified, while everything still violet remains fair game for the next machine pass.
+Rule 3 is what lets editors render proposals distinctly (Plaid's apps use violet italics for machine output and amber for contributions) and have the marking dissolve naturally as a verifier works through the material—each touched annotation graduates to verified, while everything still violet remains fair game for the next machine pass.
 
 For service authors, both clients ship helpers: `stampInferred(source)` / `stamp_inferred(source)` builds the fragment to merge into everything you create (every bulk create accepts per-item `metadata`) and takes the prediction extras as options (`stampInferred(source, {prob, detail})` / `stamp_inferred(source, prob=, detail=)`), `serviceSource(serviceId)` / `service_source(service_id)` builds the canonical producer id, and `isProtected(metadata)` / `is_protected(metadata)` implements the rule-2 check against material you are about to destroy.
 Born-verified material—an import carrying upstream human approval, or a guess written only upon explicit user confirmation—uses `confirmedInferred` / `confirmed_inferred` instead.
+On the reading side, `provState` / `prov_state` classifies an entity into the four states, `needsReview` / `needs_review` is what a review UI marks and sweeps, and `provOrigin` / `prov_origin` tells a verified entity's two origins apart.
+A service running on behalf of a contributor (the IGT assistant applying a plan a contributor approved, for example) stamps with `stampContributed(userId)` / `stamp_contributed(user_id)` and rewrites with `contributeOnEdit` / `contribute_on_edit`, which also drops an earlier confirmation; `mergeMetadata` / `merge_metadata` applies such a fragment to a local copy the way the server's PATCH does (a null value deletes the key).
 
 [NOTE]
 ====

@@ -71,6 +71,7 @@ def test_align_words_fast_path_and_merge_and_drop():
 
 MACHINE = {'prov': 'inferred', 'provSource': 'service:x'}
 VERIFIED = {**MACHINE, 'provConfirmed': True}
+CONTRIBUTED = {'prov': 'contributed', 'provSource': 'user:ann@x.com'}
 
 
 def raw_doc(*, word_meta=None, gloss_meta=None, morph2=None):
@@ -221,6 +222,8 @@ def test_word_state_on_hand_built_words():
     ms = [{'id': 'm0', 'metadata': {'form': 'ab', **MACHINE}}, {'id': 'm1', 'metadata': {'form': 'c', **MACHINE}}]
     assert word_state(_word('abc', ms, morph_spans={'m0': [('g', {'metadata': MACHINE})]})) == 'machine'
     assert word_state(_word('abc', ms, morph_spans={'m0': [('g', {'metadata': VERIFIED})]})) == 'protected'
+    # a contributor's work is a person's work: protected from machine writers
+    assert word_state(_word('abc', ms, morph_spans={'m0': [('g', {'metadata': CONTRIBUTED})]})) == 'protected'
     # a human word-level span or morpheme link protects even a default morpheme
     assert word_state(_word('abc', [m0], spans=[('pos', {'metadata': None})])) == 'protected'
     assert word_state(_word('abc', [m0], morph_links={'m0': [{'metadata': {}}]})) == 'protected'
