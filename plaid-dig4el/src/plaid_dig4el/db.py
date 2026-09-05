@@ -213,6 +213,20 @@ class OutputFeedback(Base):
     output: Mapped[GrammarOutput] = relationship(back_populates="feedback")
 
 
+class CatalogEntry(Base):
+    """An editable catalog document: the concept graph (key ``concepts``) or one
+    questionnaire (key = its uid), as the JSON dig4el edits; seeded from the bundled
+    files on first start."""
+
+    __tablename__ = "catalog_entries"
+
+    key: Mapped[str] = mapped_column(String, primary_key=True)
+    kind: Mapped[str] = mapped_column(String, nullable=False)  # concepts / questionnaire
+    data: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    updated_by: Mapped[str] = mapped_column(String, nullable=False, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
 class Job(Base):
     """A unit of background work (an inference run, later an LLM stage), executed by
     the worker in ``jobs.py``. The user's Plaid token rides along so the job acts as

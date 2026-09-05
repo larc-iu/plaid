@@ -23,8 +23,9 @@ from markupsafe import Markup, escape
 from plaid_client import PlaidClient
 from plaid_client.http import PlaidAPIError
 
-from .. import auth, db, documents, docx_export, generation, jobs, plaid_gateway as gw, sentences
+from .. import auth, catalog_store, db, documents, docx_export, generation, jobs, plaid_gateway as gw, sentences
 from ..inference import kg as kgmod, legacy_labels, pipeline, runner
+from ..legacy import graphs_utils as graphs
 from ..reference import catalog
 
 HERE = Path(__file__).parent
@@ -63,6 +64,7 @@ templates.env.filters["emph"] = emph
 @app.on_event("startup")
 def _startup() -> None:
     db.engine()
+    catalog_store.install()
     jobs.start_worker()
     runner.preload_in_background()
 
@@ -1077,3 +1079,285 @@ def run_approve(request: Request, language_id: str, run_id: str):
         run.approved_at = db.now()
         s.commit()
     return redirect(f"/languages/{language_id}/runs/{run_id}", request)
+
+
+# ---------------------------------------------------------- catalog editors
+# dig4el's "expert features": the concept graph editor and the questionnaire editor.
+
+
+def require_admin(user: auth.User) -> None:
+    if not user.is_admin:
+        raise HTTPException(403, "Only administrators can change the catalog.")
+
+
+def _concept_names(cg: dict) -> list[str]:
+    return sorted(cg.keys(), key=str.lower)
+
+
+@app.get("/catalog/concepts", response_class=HTMLResponse)
+def concepts_page(request: Request, focus: str = "INTELLECT"):
+    user = current_user(request)
+    cg = catalog.concepts()
+    if focus not in cg:
+        focus = next(iter(cg)) if cg else ""
+    node = cg.get(focus, {})
+    parent = node.get("ontological parent", "self")
+    children = sorted(graphs.get_children(cg, focus), key=str.lower) if focus else []
+    inherited = sorted(graphs.inherit_required_features(cg, focus), key=str.lower) if focus else []
+    lineage = list(reversed(graphs.get_genealogy(cg, focus))) if focus and focus in cg else []
+    return render(request, "concepts.html", user=user, cg=cg, names=_concept_names(cg) + ["self"], focus=focus,
+                  node=node, parent=parent, children=children, inherited=inherited, lineage=lineage)
+
+
+@app.post("/catalog/concepts")
+async def concept_create(request: Request):
+    user = current_user(request)
+    require_admin(user)
+    form = await request.form()
+    name = str(form.get("name") or "").strip()
+    cg = dict(catalog.concepts())
+    if not name or name in cg:
+        raise HTTPException(400, "A new concept needs a name that is not taken.")
+    cg[name] = {"description": str(form.get("description") or "").strip(), "type": "concept",
+                "ontological parent": str(form.get("parent") or "self"),
+                "gramprop": [x for x in form.getlist("gramprop") if x], "requires": [x for x in form.getlist("requires") if x]}
+    catalog_store.save_concepts(cg, user.id)
+    return redirect(f"/catalog/concepts?focus={name}", request)
+
+
+@app.post("/catalog/concepts/{name}/edit")
+async def concept_edit(request: Request, name: str):
+    """Edit a concept as dig4el's editor did, renaming references across the graph."""
+    user = current_user(request)
+    require_admin(user)
+    form = await request.form()
+    cg = {k: dict(v) for k, v in catalog.concepts().items()}
+    if name not in cg:
+        raise HTTPException(404)
+    new_name = str(form.get("new_name") or name).strip() or name
+    cg[name].update({"description": str(form.get("description") or "").strip(), "type": "concept",
+                     "ontological parent": str(form.get("parent") or "self"),
+                     "gramprop": [x for x in form.getlist("gramprop") if x],
+                     "requires": [x for x in form.getlist("requires") if x]})
+    if new_name != name:
+        if new_name in cg:
+            raise HTTPException(400, "That name is taken.")
+        cg[new_name] = cg.pop(name)
+        for c in cg.values():
+            if c.get("ontological parent") == name:
+                c["ontological parent"] = new_name
+            c["requires"] = [new_name if r == name else r for r in c.get("requires", [])]
+            c["gramprop"] = [new_name if r == name else r for r in c.get("gramprop", [])]
+    catalog_store.save_concepts(cg, user.id)
+    return redirect(f"/catalog/concepts?focus={new_name}", request)
+
+
+@app.post("/catalog/concepts/{name}/delete")
+def concept_delete(request: Request, name: str):
+    user = current_user(request)
+    require_admin(user)
+    cg = {k: dict(v) for k, v in catalog.concepts().items()}
+    if name not in cg:
+        raise HTTPException(404)
+    if graphs.get_children(cg, name):
+        raise HTTPException(400, "This concept has children; delete them first.")
+    parent = cg[name].get("ontological parent", "INTELLECT")
+    del cg[name]
+    catalog_store.save_concepts(cg, user.id)
+    return redirect(f"/catalog/concepts?focus={parent if parent in cg else 'INTELLECT'}", request)
+
+
+@app.get("/catalog/questionnaires", response_class=HTMLResponse)
+def questionnaires_page(request: Request):
+    user = current_user(request)
+    rows = []
+    for uid, raw in catalog.raw_questionnaires().items():
+        dialog = raw.get("dialog", {})
+        with_graph = sum(1 for d in dialog.values() if d.get("graph"))
+        rows.append({"uid": uid, "raw": raw, "short_title": catalog.titles().get(uid, raw.get("title", uid)),
+                     "segments": len(dialog), "with_graph": with_graph})
+    rows.sort(key=lambda r: r["short_title"])
+    return render(request, "questionnaires.html", user=user, rows=rows)
+
+
+@app.post("/catalog/questionnaires")
+def questionnaire_create(request: Request, title: str = Form(...)):
+    user = current_user(request)
+    require_admin(user)
+    uid = catalog_store.new_questionnaire(title.strip() or "Untitled", user.id)
+    return redirect(f"/catalog/questionnaires/{uid}", request)
+
+
+def _raw_questionnaire(uid: str) -> dict:
+    raw = catalog.raw_questionnaires().get(uid)
+    if raw is None:
+        raise HTTPException(404, "Unknown questionnaire")
+    return json.loads(json.dumps(raw))  # a private copy
+
+
+def _segment_keys(raw: dict) -> list[str]:
+    return sorted(raw.get("dialog", {}).keys(), key=lambda k: int(k) if k.isdigit() else 10**9)
+
+
+@app.get("/catalog/questionnaires/{uid}", response_class=HTMLResponse)
+def questionnaire_page(request: Request, uid: str):
+    user = current_user(request)
+    raw = _raw_questionnaire(uid)
+    segments = [(k, raw["dialog"][k]) for k in _segment_keys(raw)]
+    return render(request, "questionnaire_edit.html", user=user, uid=uid, raw=raw, segments=segments,
+                  short_title=catalog.titles().get(uid, raw.get("title", uid)))
+
+
+@app.get("/catalog/questionnaires/{uid}/json")
+def questionnaire_json(request: Request, uid: str):
+    current_user(request)
+    raw = _raw_questionnaire(uid)
+    return JSONResponse(raw, headers={"Content-Disposition": f'attachment; filename="cq_{raw.get("title", uid)}_{uid}.json"'})
+
+
+@app.post("/catalog/questionnaires/{uid}/header")
+def questionnaire_header(request: Request, uid: str, title: str = Form(""), short_title: str = Form(""),
+                         context: str = Form(""), a_name: str = Form(""), a_gender: str = Form("indef"),
+                         a_age: str = Form(""), b_name: str = Form(""), b_gender: str = Form("indef"),
+                         b_age: str = Form("")):
+    user = current_user(request)
+    require_admin(user)
+    raw = _raw_questionnaire(uid)
+    raw["title"] = title.strip() or raw.get("title", "")
+    raw["short_title"] = short_title.strip() or raw["title"]
+    raw["context"] = context.strip()
+    raw["speakers"] = {"A": {"name": a_name.strip(), "gender": a_gender, "age": a_age.strip()},
+                       "B": {"name": b_name.strip(), "gender": b_gender, "age": b_age.strip()}}
+    catalog_store.save_questionnaire(uid, raw, user.id)
+    return redirect(f"/catalog/questionnaires/{uid}", request)
+
+
+@app.post("/catalog/questionnaires/{uid}/delete")
+def questionnaire_delete(request: Request, uid: str):
+    user = current_user(request)
+    require_admin(user)
+    with db.session() as s:
+        used = s.query(db.QuestionnaireDocument).filter_by(questionnaire_uid=uid).count()
+    if used:
+        raise HTTPException(400, f"{used} language(s) have translations of this questionnaire. Remove those first.")
+    catalog_store.delete_questionnaire(uid)
+    return redirect("/catalog/questionnaires", request)
+
+
+EMPTY_SEGMENT = {"speaker": "A", "text": "", "intent": [], "legacy index": "", "idiomaticity": 1,
+                 "predicate": [], "concept": [], "graph": {}, "trimmed_graph": {}}
+
+
+@app.post("/catalog/questionnaires/{uid}/segments")
+def segment_insert(request: Request, uid: str, after: str = Form("")):
+    """Insert an empty segment after the given one (or at the end), shifting the rest."""
+    user = current_user(request)
+    require_admin(user)
+    raw = _raw_questionnaire(uid)
+    keys = _segment_keys(raw)
+    position = (keys.index(after) + 2) if after in keys else len(keys) + 1
+    new_dialog = {}
+    for k in keys:
+        n = int(k)
+        new_dialog[str(n + 1 if n >= position else n)] = raw["dialog"][k]
+    new_dialog[str(position)] = dict(EMPTY_SEGMENT)
+    raw["dialog"] = new_dialog
+    catalog_store.save_questionnaire(uid, raw, user.id)
+    return redirect(f"/catalog/questionnaires/{uid}/segments/{position}", request)
+
+
+@app.post("/catalog/questionnaires/{uid}/segments/{index}/delete")
+def segment_delete(request: Request, uid: str, index: str):
+    user = current_user(request)
+    require_admin(user)
+    raw = _raw_questionnaire(uid)
+    keys = _segment_keys(raw)
+    if index not in keys:
+        raise HTTPException(404)
+    n = int(index)
+    raw["dialog"] = {str(int(k) - 1 if int(k) > n else int(k)): v for k, v in raw["dialog"].items() if k != index}
+    catalog_store.save_questionnaire(uid, raw, user.id)
+    return redirect(f"/catalog/questionnaires/{uid}", request)
+
+
+def value_options(cg: dict, node: str, sentence_concepts: list[str]) -> list[tuple[str, list[tuple[str, str]]]]:
+    """What a requirement leaf may be set to, following dig4el's CQ editor walk: a terminal
+    feature offers its children (or itself), an absolute reference offers the sentence's
+    concepts (or none, which stands for the node itself), anything else its terminal
+    descendants grouped by feature."""
+    children = sorted(graphs.get_children(cg, node), key=str.lower)
+    leaves = sorted(graphs.get_leaves_from_node(cg, node), key=str.lower)
+    if node == "ABSOLUTE REFERENCE" or children == ["ABSOLUTE REFERENCE", "DEICTIC"]:
+        return [("Concepts of this sentence", [(c, c) for c in sentence_concepts] + [("None", node)])]
+    if leaves == children or not children:
+        return [(node, [(c, c) for c in (children or [node])])]
+    groups: list[tuple[str, list[tuple[str, str]]]] = []
+    for child in children:
+        groups.extend(value_options(cg, child, sentence_concepts))
+    return groups
+
+
+@app.get("/catalog/questionnaires/{uid}/segments/{index}", response_class=HTMLResponse)
+def segment_page(request: Request, uid: str, index: str):
+    user = current_user(request)
+    raw = _raw_questionnaire(uid)
+    seg = raw.get("dialog", {}).get(index)
+    if seg is None:
+        raise HTTPException(404)
+    cg = catalog.concepts()
+    graph = seg.get("graph") or {}
+    leaves = []
+    for name, entry in graph.items():
+        if entry.get("requires"):
+            continue
+        node = entry["path"][-1] if entry.get("path") else name
+        leaves.append({"name": name, "value": entry.get("value", ""), "node": node,
+                       "options": value_options(cg, node, list(seg.get("concept") or [])) if node in cg else []})
+    keys = _segment_keys(raw)
+    i = keys.index(index)
+    return render(request, "segment_edit.html", user=user, uid=uid, raw=raw, index=index, seg=seg, leaves=leaves,
+                  intents=graphs.get_leaves_from_node(cg, "INTENT") if "INTENT" in cg else [],
+                  predicates=graphs.get_leaves_from_node(cg, "PREDICATE") if "PREDICATE" in cg else [],
+                  concept_names=_concept_names(cg), prev=keys[i - 1] if i > 0 else None,
+                  next=keys[i + 1] if i + 1 < len(keys) else None,
+                  short_title=catalog.titles().get(uid, raw.get("title", uid)))
+
+
+@app.post("/catalog/questionnaires/{uid}/segments/{index}")
+async def segment_save(request: Request, uid: str, index: str):
+    """dig4el's "Validate sentence", plus the graph actions: initialize from the concepts,
+    set a leaf's value, reset."""
+    user = current_user(request)
+    require_admin(user)
+    form = await request.form()
+    raw = _raw_questionnaire(uid)
+    seg = raw.get("dialog", {}).get(index)
+    if seg is None:
+        raise HTTPException(404)
+    cg = catalog.concepts()
+    action = str(form.get("action") or "save")
+    if action == "reset":
+        raw["dialog"][index] = dict(EMPTY_SEGMENT)
+    else:
+        seg["legacy index"] = str(form.get("legacy_index") or "").strip()
+        seg["speaker"] = str(form.get("speaker") or "A")
+        seg["text"] = str(form.get("text") or "").strip()
+        try:
+            seg["idiomaticity"] = max(1, min(5, int(form.get("idiomaticity") or 1)))
+        except ValueError:
+            seg["idiomaticity"] = 1
+        seg["intent"] = [x for x in form.getlist("intent") if x]
+        seg["predicate"] = [x for x in form.getlist("predicate") if x]
+        seg["concept"] = [x for x in form.getlist("concept") if x in cg]
+        graph = seg.get("graph") or {}
+        if action == "init_graph" or (action == "save" and not graph and seg["concept"]):
+            graph = graphs.create_requirement_graph(seg["concept"], cg)
+        elif action == "set_value":
+            leaf, value = str(form.get("leaf") or ""), str(form.get("value") or "")
+            if leaf in graph:
+                graph[leaf]["value"] = value
+        seg["graph"] = graph
+        seg["trimmed_graph"] = graphs.arrange_requirement_graph_for_display(graph) if graph else {}
+    catalog_store.save_questionnaire(uid, raw, user.id)
+    return redirect(f"/catalog/questionnaires/{uid}/segments/{index}", request)
+

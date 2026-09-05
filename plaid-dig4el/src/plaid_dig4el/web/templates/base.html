@@ -18,6 +18,12 @@
       </div>
       {% if user %}
       <div class="d-flex align-items-center gap-2 small">
+        <a class="text-decoration-none text-secondary" href="/catalog/questionnaires">Questionnaires</a>
+        <a class="text-decoration-none text-secondary" href="/catalog/concepts">Concept graph</a>
+        <a class="text-decoration-none text-secondary" href="/explore/wals">WALS</a>
+        <a class="text-decoration-none text-secondary" href="/explore/grambank">Grambank</a>
+        <a class="text-decoration-none text-secondary" href="/explore/probabilities">Probabilities</a>
+        <span class="text-secondary">·</span>
         <span class="text-secondary">{{ user.display_name }}</span>
         <form method="post" action="/logout" class="m-0">
           <button class="btn btn-outline-secondary btn-sm" type="submit">Log out</button>

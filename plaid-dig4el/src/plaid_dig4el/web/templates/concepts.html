@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Concept graph · dig4el{% endblock %}
+{% block crumbs %}<li class="breadcrumb-item active">Concept graph</li>{% endblock %}
+{% block content %}
+<h4>Concept graph</h4>
+<div class="text-secondary small mb-2">{{ cg|length }} concepts. {% if not user.is_admin %}Only administrators can change it.{% endif %}</div>
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="card"><div class="card-header bg-white fw-semibold">Explore</div><div class="card-body small">
+      <form method="get" action="/catalog/concepts" class="d-flex gap-1 m-0 mb-2">
+        <select name="focus" class="form-select form-select-sm">{% for n in names %}{% if n != 'self' %}<option {{ 'selected' if n == focus }}>{{ n }}</option>{% endif %}{% endfor %}</select>
+        <button type="submit" class="btn btn-sm btn-outline-secondary">Go</button>
+      </form>
+      <div class="mb-1">{% for p in lineage %}<a href="/catalog/concepts?focus={{ p }}">{{ p }}</a> › {% endfor %}<strong>{{ focus }}</strong></div>
+      <div class="mb-1 text-secondary">{{ node.description }}</div>
+      <div><span class="text-secondary">Parent:</span> {% if parent != 'self' %}<a href="/catalog/concepts?focus={{ parent }}">{{ parent }}</a>{% else %}root{% endif %}</div>
+      <div><span class="text-secondary">Children:</span> {% for c in children %}<a href="/catalog/concepts?focus={{ c }}">{{ c }}</a>{{ ', ' if not loop.last }}{% else %}none{% endfor %}</div>
+      <div><span class="text-secondary">Requires (inherited):</span> {% for r in inherited %}<a href="/catalog/concepts?focus={{ r }}">{{ r }}</a>{{ ', ' if not loop.last }}{% else %}none{% endfor %}</div>
+      <div><span class="text-secondary">Grammaticalizable properties:</span> {{ node.gramprop|join(', ') or 'none' }}</div>
+    </div></div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card"><div class="card-header bg-white fw-semibold">Edit {{ focus }}</div><div class="card-body small">
+      <form method="post" action="/catalog/concepts/{{ focus }}/edit" class="d-grid gap-1 m-0">
+        <label class="form-label mb-0">Description<input type="text" class="form-control form-control-sm" name="description" value="{{ node.description }}" {% if not user.is_admin %}readonly{% endif %}></label>
+        <label class="form-label mb-0">Name<input type="text" class="form-control form-control-sm" name="new_name" value="{{ focus }}" {% if not user.is_admin %}readonly{% endif %}></label>
+        <label class="form-label mb-0">Ontological parent<select name="parent" class="form-select form-select-sm">{% for n in names %}<option {{ 'selected' if n == parent }}>{{ n }}</option>{% endfor %}</select></label>
+        <label class="form-label mb-0">Intrinsic grammaticalizable properties<select name="gramprop" class="form-select form-select-sm" multiple size="5">{% for n in names %}{% if n != 'self' %}<option {{ 'selected' if n in node.gramprop }}>{{ n }}</option>{% endif %}{% endfor %}</select></label>
+        <label class="form-label mb-0">Particularization and relational edges (requires)<select name="requires" class="form-select form-select-sm" multiple size="5">{% for n in names %}{% if n != 'self' %}<option {{ 'selected' if n in node.requires }}>{{ n }}</option>{% endif %}{% endfor %}</select></label>
+        {% if user.is_admin %}<div class="d-flex gap-1"><button type="submit" class="btn btn-sm btn-primary">Submit</button></div>{% endif %}
+      </form>
+      {% if user.is_admin %}<form method="post" action="/catalog/concepts/{{ focus }}/delete" class="m-0 mt-1"><button type="submit" class="btn btn-sm btn-outline-danger" {% if children %}disabled title="Delete the children first"{% endif %}>Delete</button></form>{% endif %}
+    </div></div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card"><div class="card-header bg-white fw-semibold">Create</div><div class="card-body small">
+      <form method="post" action="/catalog/concepts" class="d-grid gap-1 m-0">
+        <label class="form-label mb-0">Name<input type="text" class="form-control form-control-sm" name="name" required {% if not user.is_admin %}readonly{% endif %}></label>
+        <label class="form-label mb-0">Description<input type="text" class="form-control form-control-sm" name="description"></label>
+        <label class="form-label mb-0">Ontological parent<select name="parent" class="form-select form-select-sm">{% for n in names %}<option {{ 'selected' if n == focus }}>{{ n }}</option>{% endfor %}</select></label>
+        <label class="form-label mb-0">Intrinsic grammaticalizable properties<select name="gramprop" class="form-select form-select-sm" multiple size="4">{% for n in names %}{% if n != 'self' %}<option>{{ n }}</option>{% endif %}{% endfor %}</select></label>
+        <label class="form-label mb-0">Particularization and relational edges (requires)<select name="requires" class="form-select form-select-sm" multiple size="4">{% for n in names %}{% if n != 'self' %}<option>{{ n }}</option>{% endif %}{% endfor %}</select></label>
+        {% if user.is_admin %}<div><button type="submit" class="btn btn-sm btn-outline-primary">Create</button></div>{% endif %}
+      </form>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

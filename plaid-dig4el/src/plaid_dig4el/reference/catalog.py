@@ -82,12 +82,48 @@ def _segment_sort_key(k: str):
         return (1, 0, k)
 
 
+class FileSource:
+    """The catalog as shipped with the package."""
+
+    def questionnaire_documents(self) -> dict[str, dict]:
+        out = {}
+        for path in sorted(QUESTIONNAIRES_DIR.glob("*.json")):
+            with open(path, encoding="utf-8") as f:
+                raw = json.load(f)
+            out[str(raw["uid"])] = raw
+        return out
+
+    def concept_graph(self) -> dict[str, Any]:
+        with open(DATA_DIR / "concepts.json", encoding="utf-8") as f:
+            return json.load(f)
+
+
+_source: Any = FileSource()
+
+
+def use_source(source: Any) -> None:
+    """Install a catalog source (the app installs its database-backed one) and drop caches."""
+    global _source
+    _source = source
+    invalidate()
+
+
+def invalidate() -> None:
+    questionnaires.cache_clear()
+    concepts.cache_clear()
+    titles.cache_clear()
+    raw_questionnaires.cache_clear()
+
+
+@lru_cache(maxsize=1)
+def raw_questionnaires() -> dict[str, dict]:
+    return _source.questionnaire_documents()
+
+
 @lru_cache(maxsize=1)
 def questionnaires() -> dict[str, Questionnaire]:
     out: dict[str, Questionnaire] = {}
-    for path in sorted(QUESTIONNAIRES_DIR.glob("*.json")):
-        with open(path, encoding="utf-8") as f:
-            raw = json.load(f)
+    for uid, raw in raw_questionnaires().items():
         segments = []
         for key in sorted(raw["dialog"].keys(), key=_segment_sort_key):
             item = raw["dialog"][key]
@@ -117,15 +153,22 @@ def questionnaires() -> dict[str, Questionnaire]:
 
 @lru_cache(maxsize=1)
 def titles() -> dict[str, str]:
+    """Short titles: dig4el's ``uid_dict.json``, overridden by a questionnaire's own
+    ``short_title`` when it has one."""
     with open(DATA_DIR / "uid_dict.json", encoding="utf-8") as f:
-        return json.load(f)
+        out = dict(json.load(f))
+    for uid, raw in raw_questionnaires().items():
+        if raw.get("short_title"):
+            out[uid] = raw["short_title"]
+        elif uid not in out:
+            out[uid] = raw.get("title", uid)
+    return out
 
 
 @lru_cache(maxsize=1)
 def concepts() -> dict[str, Any]:
-    """The General Concept Graph shipped with dig4el."""
-    with open(DATA_DIR / "concepts.json", encoding="utf-8") as f:
-        return json.load(f)
+    """The General Concept Graph (dig4el's concepts.json), from the installed source."""
+    return _source.concept_graph()
 
 
 @lru_cache(maxsize=1)

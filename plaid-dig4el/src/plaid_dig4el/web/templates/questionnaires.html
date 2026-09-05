@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Questionnaires · dig4el{% endblock %}
+{% block crumbs %}<li class="breadcrumb-item active">Questionnaires</li>{% endblock %}
+{% block content %}
+<h4>Conversational questionnaires</h4>
+<div class="card">
+  <table class="table table-sm mb-0 align-middle">
+    <thead class="table-light"><tr><th>Questionnaire</th><th>Title</th><th>Segments</th><th>With a graph</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><a href="/catalog/questionnaires/{{ r.uid }}" class="text-decoration-none">{{ r.short_title }}</a><div class="small text-secondary">{{ r.uid }}</div></td>
+        <td class="small">{{ r.raw.title }}</td>
+        <td>{{ r.segments }}</td>
+        <td>{{ r.with_graph }}</td>
+        <td class="text-end"><a class="btn btn-sm btn-link" href="/catalog/questionnaires/{{ r.uid }}/json">JSON</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if user.is_admin %}
+  <div class="card-footer bg-white">
+    <form method="post" action="/catalog/questionnaires" class="d-flex gap-1 m-0">
+      <input type="text" class="form-control form-control-sm w-auto" name="title" placeholder="Title of a new questionnaire" required>
+      <button type="submit" class="btn btn-sm btn-outline-primary">New questionnaire</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
