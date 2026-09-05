@@ -19,7 +19,8 @@ reproducibility: the parameter list handed to the agent is de-duplicated across
 topics, the random traversal order can be seeded, and frontier candidates with
 equal scores are ranked by value id (the original's top-K cut fell among tied
 candidates in set-iteration order, so two runs of the same data could select
-different parameters).
+different parameters). One addition: Grambank can be looked up under its own name
+(the original used the WALS name for both).
 """
 
 from __future__ import annotations
@@ -107,10 +108,12 @@ def params_by_topic() -> dict[str, list[str]]:
     return load_json(reference_dir() / "params_by_topic.json")
 
 
-def known_values(language_name: str) -> Known:
-    """What WALS and Grambank document for the language, looked up by WALS/Grambank name."""
+def known_values(language_name: str, grambank_name: str | None = None) -> Known:
+    """What WALS and Grambank document for the language. ``language_name`` is the WALS
+    name; Grambank is looked up by ``grambank_name`` when given, else by the same name
+    (the original's single-name behavior)."""
     wals_pk = wu.language_pk_for_name(language_name)
-    gb_id = gu.language_id_for_name(language_name)
+    gb_id = gu.language_id_for_name(grambank_name or language_name)
     return Known(
         wals_language_pk=wals_pk,
         grambank_language_id=gb_id,
@@ -277,11 +280,11 @@ def observation_evidence(observer_outputs: dict[str, dict], kg: dict) -> dict[st
 
 
 def run_inference(kg: dict, language_name: str, delimiters: list[str] | None = None,
-                  settings: Settings | None = None) -> dict[str, Any]:
+                  settings: Settings | None = None, grambank_name: str | None = None) -> dict[str, Any]:
     """The whole pipeline. Returns a JSON-serializable report."""
     settings = settings or Settings()
     delimiters = delimiters or catalog.delimiters_for(language_name)
-    known = known_values(language_name)
+    known = known_values(language_name, grambank_name)
     outputs = run_observers(kg, language_name, delimiters)
     counts = observed_counts(outputs)
     discovery = discover_parameters(counts, known, settings)
@@ -289,6 +292,7 @@ def run_inference(kg: dict, language_name: str, delimiters: list[str] | None = N
     parameters = summarize_parameters(ga, counts, known, settings)
     return {
         "language": language_name,
+        "grambank_name": grambank_name or language_name,
         "delimiters": delimiters,
         "settings": asdict(settings),
         "known": {

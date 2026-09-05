@@ -26,3 +26,38 @@ document.addEventListener('htmx:afterSwap', (e) => {
   const input = next && next.querySelector('input[name=text]');
   if (input && !input.readOnly) { input.focus(); input.select(); }
 });
+
+// Typeahead for the WALS and Grambank names: the server sends the matches; picking
+// one fills the field. Selection happens on mousedown so the input keeps focus.
+document.addEventListener('mousedown', (e) => {
+  const item = e.target.closest('.typeahead-item');
+  if (!item) return;
+  e.preventDefault();
+  const ta = item.closest('.typeahead');
+  ta.querySelector('input').value = item.dataset.value;
+  ta.querySelector('.typeahead-menu').replaceChildren();
+});
+document.addEventListener('focusout', (e) => {
+  const ta = e.target.closest && e.target.closest('.typeahead');
+  if (ta) ta.querySelector('.typeahead-menu').replaceChildren();
+});
+document.addEventListener('keydown', (e) => {
+  const ta = e.target.closest && e.target.closest('.typeahead');
+  if (!ta) return;
+  const menu = ta.querySelector('.typeahead-menu');
+  const items = Array.from(menu.querySelectorAll('.typeahead-item'));
+  if (e.key === 'Escape') { menu.replaceChildren(); return; }
+  if (!items.length) return;
+  let i = items.findIndex((it) => it.classList.contains('active'));
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    i = e.key === 'ArrowDown' ? Math.min(i + 1, items.length - 1) : Math.max(i - 1, 0);
+    items.forEach((it, k) => it.classList.toggle('active', k === i));
+    items[i].scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    const pick = i >= 0 ? items[i] : items[0];
+    ta.querySelector('input').value = pick.dataset.value;
+    menu.replaceChildren();
+  }
+});

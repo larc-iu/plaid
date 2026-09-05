@@ -63,7 +63,8 @@ def execute_run(run_id: str, token: str) -> None:
         kg, inputs = gather_inputs(client, language)
         cfg = pipeline.Settings(**{k: v for k, v in (run.settings_json or {}).items()
                                    if k in pipeline.Settings.__dataclass_fields__})
-        report = pipeline.run_inference(kg, language.typology_name, gw.KG_DELIMITERS, cfg)
+        report = pipeline.run_inference(kg, language.typology_name, gw.KG_DELIMITERS, cfg,
+                                        grambank_name=language.grambank_name or None)
         report["sentences"] = len(kg)
         with db.session() as s:
             run = s.get(db.InferenceRun, run_id)

@@ -125,6 +125,11 @@ def get_language_pks_by_macroarea(macroarea):
     return __getattr__("language_pk_by_macroarea").get(macroarea, [])
 
 
+def language_names() -> list[str]:
+    """Every WALS language name, sorted."""
+    return sorted(__getattr__("language_pk_id_by_name").keys())
+
+
 def language_pk_for_name(language_name: str) -> str | None:
     """The WALS language pk for a WALS language name, or None when WALS has no such language."""
     entry = __getattr__("language_pk_id_by_name").get(language_name)

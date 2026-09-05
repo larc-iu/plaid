@@ -75,6 +75,11 @@ def compute_grambank_cp_matrix_from_general_data(pid1, pid2):
     return filtered.apply(normalize_column, axis=0)
 
 
+def language_names() -> list[str]:
+    """Every Grambank language name, sorted."""
+    return sorted({info.get("name", "") for info in __getattr__("grambank_language_by_lid").values()} - {""})
+
+
 def language_id_for_name(language_name: str) -> str | None:
     """The Grambank language id (a glottocode) for a Grambank language name."""
     for lid, info in __getattr__("grambank_language_by_lid").items():

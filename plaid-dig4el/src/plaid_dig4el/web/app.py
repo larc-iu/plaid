@@ -69,10 +69,10 @@ def current_user(request: Request) -> auth.User:
     return user
 
 
-def render(request: Request, name: str, **ctx: Any) -> HTMLResponse:
+def render(request: Request, name: str, status_code: int = 200, **ctx: Any) -> HTMLResponse:
     ctx.setdefault("user", auth.user_from_request(request))
     ctx["request"] = request
-    return templates.TemplateResponse(request, name, ctx)
+    return templates.TemplateResponse(request, name, ctx, status_code=status_code)
 
 
 def redirect(url: str, request: Request | None = None) -> Response:
@@ -196,15 +196,47 @@ def languages_page(request: Request):
     return render(request, "languages.html", rows=rows)
 
 
+def reference_names(database: str) -> list[str]:
+    """The language names one of the typological databases knows, sorted."""
+    from ..reference import grambank as gu, wals as wu
+
+    if database == "wals":
+        return wu.language_names()
+    if database == "grambank":
+        return gu.language_names()
+    raise HTTPException(404)
+
+
+def match_names(names: list[str], q: str, limit: int = 15) -> list[str]:
+    """Case-insensitive matches for a partial name, those starting with it first."""
+    q = q.strip().casefold()
+    if not q:
+        return []
+    starts = [n for n in names if n.casefold().startswith(q)]
+    within = [n for n in names if q in n.casefold() and not n.casefold().startswith(q)]
+    return (starts + within)[:limit]
+
+
+@app.get("/reference/names", response_class=HTMLResponse)
+def reference_name_matches(request: Request, database: str = "", wals_name: str = "", grambank_name: str = "",
+                           q: str = ""):
+    """Typeahead matches for the WALS or Grambank name fields (an htmx fragment)."""
+    current_user(request)
+    q = q or wals_name or grambank_name
+    return render(request, "_names.html", q=q.strip(), names=match_names(reference_names(database), q))
+
+
+def new_language_form(request: Request, values: dict[str, str] | None = None,
+                      errors: dict[str, str] | None = None) -> HTMLResponse:
+    values = {"pivot_language": "English", "delimiters": "".join(catalog.DEFAULT_DELIMITERS), **(values or {})}
+    return render(request, "language_new.html", status_code=400 if errors else 200,
+                  values=values, errors=errors or {})
+
+
 @app.get("/languages/new", response_class=HTMLResponse)
 def language_new(request: Request):
     current_user(request)
-    from ..reference import grambank as gu, wals as wu
-
-    wals_names = sorted(wu.language_pk_id_by_name.keys())
-    gb_names = sorted({v.get("name", "") for v in gu.grambank_language_by_lid.values()} - {""})
-    return render(request, "language_new.html", wals_names=wals_names, grambank_names=gb_names,
-                  default_delimiters="".join(catalog.DEFAULT_DELIMITERS))
+    return new_language_form(request)
 
 
 @app.post("/languages")
@@ -221,8 +253,19 @@ async def language_create(
     user = current_user(request)
     client = user.client()
     name = name.strip()
+    wals_name = wals_name.strip()
+    grambank_name = grambank_name.strip()
+    values = {"name": name, "glottocode": glottocode, "wals_name": wals_name, "grambank_name": grambank_name,
+              "pivot_language": pivot_language, "delimiters": delimiters}
+    errors = {}
     if not name:
-        raise HTTPException(400, "A language needs a name.")
+        errors["name"] = "A language needs a name."
+    if wals_name and wals_name not in reference_names("wals"):
+        errors["wals_name"] = "WALS has no language by this name. Pick one from the list, or leave it empty."
+    if grambank_name and grambank_name not in reference_names("grambank"):
+        errors["grambank_name"] = "Grambank has no language by this name. Pick one from the list, or leave it empty."
+    if errors:
+        return new_language_form(request, values, errors)
     delims = list(dict.fromkeys(delimiters)) if delimiters else catalog.delimiters_for(wals_name or name)
     identity = {"name": name, "glottocode": glottocode.strip(), "walsName": wals_name.strip(),
                 "grambankName": grambank_name.strip(), "pivotLanguage": pivot_language.strip() or "English"}

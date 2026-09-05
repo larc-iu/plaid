@@ -1,0 +1,2 @@
+{% for n in names %}<button type="button" class="list-group-item list-group-item-action py-1 typeahead-item" data-value="{{ n }}">{{ n }}</button>
+{% endfor %}{% if q and not names %}<div class="list-group-item py-1 text-secondary">No entry matches</div>{% endif %}

@@ -29,3 +29,7 @@ details[open] > summary::before { content: "▾ "; }
 /* inference runs */
 .badge.origin-inferred { background-color: #6f42c1; }
 .example .tl { font-style: italic; }
+
+/* typeahead for the WALS and Grambank names */
+.typeahead-menu { z-index: 1030; max-height: 16rem; overflow-y: auto; }
+.typeahead-menu:empty { display: none; }

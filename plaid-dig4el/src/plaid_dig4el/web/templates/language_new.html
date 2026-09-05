@@ -8,28 +8,43 @@
     <div class="row g-3">
       <div class="col-md-6">
         <label class="form-label">Name</label>
-        <input class="form-control" type="text" name="name" required placeholder="As speakers call it">
+        <input class="form-control {{ 'is-invalid' if errors.name }}" type="text" name="name" required placeholder="As speakers call it" value="{{ values.name or '' }}">
+        {% if errors.name %}<div class="invalid-feedback">{{ errors.name }}</div>{% endif %}
       </div>
       <div class="col-md-6">
         <label class="form-label">Glottocode</label>
-        <input class="form-control" type="text" name="glottocode" placeholder="e.g. tahi1242, or a provisional name+">
+        <input class="form-control" type="text" name="glottocode" placeholder="e.g. tahi1242, or a provisional name+" value="{{ values.glottocode or '' }}">
       </div>
       <div class="col-md-6">
         <label class="form-label">Name in WALS</label>
-        <input class="form-control" type="text" name="wals_name" list="wals-names" placeholder="Leave empty if WALS has no entry">
+        <div class="typeahead position-relative">
+          <input class="form-control {{ 'is-invalid' if errors.wals_name }}" type="text" name="wals_name" autocomplete="off"
+                 placeholder="Leave empty if WALS has no entry" value="{{ values.wals_name or '' }}"
+                 hx-get="/reference/names?database=wals" hx-trigger="input changed delay:150ms, focus"
+                 hx-target="next .typeahead-menu" hx-swap="innerHTML">
+          {% if errors.wals_name %}<div class="invalid-feedback">{{ errors.wals_name }}</div>{% endif %}
+          <div class="typeahead-menu list-group position-absolute w-100 shadow-sm"></div>
+        </div>
         <div class="form-text">Used to fetch the values WALS already documents for this language.</div>
       </div>
       <div class="col-md-6">
         <label class="form-label">Name in Grambank</label>
-        <input class="form-control" type="text" name="grambank_name" list="grambank-names" placeholder="Leave empty if Grambank has no entry">
+        <div class="typeahead position-relative">
+          <input class="form-control {{ 'is-invalid' if errors.grambank_name }}" type="text" name="grambank_name" autocomplete="off"
+                 placeholder="Leave empty if Grambank has no entry" value="{{ values.grambank_name or '' }}"
+                 hx-get="/reference/names?database=grambank" hx-trigger="input changed delay:150ms, focus"
+                 hx-target="next .typeahead-menu" hx-swap="innerHTML">
+          {% if errors.grambank_name %}<div class="invalid-feedback">{{ errors.grambank_name }}</div>{% endif %}
+          <div class="typeahead-menu list-group position-absolute w-100 shadow-sm"></div>
+        </div>
       </div>
       <div class="col-md-6">
         <label class="form-label">Language of the prompts</label>
-        <input class="form-control" type="text" name="pivot_language" value="English">
+        <input class="form-control" type="text" name="pivot_language" value="{{ values.pivot_language }}">
       </div>
       <div class="col-md-6">
         <label class="form-label">Word separators</label>
-        <input class="form-control" type="text" name="delimiters" value="{{ default_delimiters }}">
+        <input class="form-control" type="text" name="delimiters" value="{{ values.delimiters }}">
         <div class="form-text">Every character here separates words. Include the space.</div>
       </div>
       <div class="col-12">
@@ -43,6 +58,4 @@
     <button class="btn btn-primary" type="submit">Create</button>
   </div>
 </form>
-<datalist id="wals-names">{% for n in wals_names %}<option value="{{ n }}">{% endfor %}</datalist>
-<datalist id="grambank-names">{% for n in grambank_names %}<option value="{{ n }}">{% endfor %}</datalist>
 {% endblock %}
