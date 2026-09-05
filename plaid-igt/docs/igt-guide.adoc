@@ -47,8 +47,8 @@ Key features include:
 
 = Getting Started
 
-Plaid IGT is served by your Plaid server, so you open it in your browser rather than installing anything.
-It lives at the `/igt/` path on that server.
+Plaid IGT is served by your Plaid server. There is nothing to install.
+Open the editor in your browser at the `/igt/` path on that server.
 If you are running Plaid locally with the default settings, that is:
 
 ----
@@ -439,7 +439,8 @@ The tab says so when none is connected.
 = Services
 
 Plaid IGT can call external **services** for certain tasks.
-A service is a small program, often a Python script, that connects to your project when it starts and advertises which task it handles.
+A service is a small program, often a Python script wrapping a model, that connects to your project when it starts and advertises which task it handles.
+The AI assistance described in the introduction is connected this way.
 Once connected, it appears wherever its task is offered, and a maintainer can make it the default for that task under **Settings → Services**.
 Some tasks ship with a built-in method that needs no service at all.
 
@@ -499,7 +500,7 @@ Results come in two views:
 
 = History
 
-Every change in Plaid IGT is recorded with a meaningful message and the identity of the person who made it.
+Every change in Plaid IGT is recorded in an **audit log**, with a meaningful message and the identity of the person who made it.
 Past states of any document can be viewed, read-only.
 
 Open a document's **history** from the rail at the left edge of the editor.
