@@ -1,0 +1,37 @@
+form.inline { display: inline; margin: 0; }
+form.inline button { padding: 0.2rem 0.6rem; margin: 0; }
+.muted { color: var(--pico-muted-color); }
+.badge { display: inline-block; padding: 0.05rem 0.5rem; border-radius: 1rem; font-size: 0.8em;
+         background: var(--pico-secondary-background); color: var(--pico-secondary-inverse); }
+.badge.known { background: #2b6cb0; }
+.badge.observed { background: #2f855a; }
+.badge.inferred { background: #805ad5; }
+.badge.caretaker { background: #b7791f; }
+.badge.member { background: #718096; }
+
+/* questionnaire editor */
+.slot { padding: 0.75rem 1rem; margin-bottom: 0.6rem; }
+.slot header { margin-bottom: 0.4rem; padding: 0; background: none; }
+.slot .prompt { font-size: 1.05em; }
+.slot .speaker { font-variant: small-caps; margin-right: 0.5rem; }
+.slot input[type=text] { margin-bottom: 0.4rem; }
+.slot details { margin-bottom: 0.4rem; }
+.slot .fields input { margin-bottom: 0.3rem; }
+.concepts { margin-top: 0.4rem; border-top: 1px solid var(--pico-muted-border-color); padding-top: 0.4rem; }
+.concept { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem; margin: 0.25rem 0; }
+.concept .name { min-width: 14rem; font-size: 0.9em; }
+.chip { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.05rem 0.5rem; border: 1px solid var(--pico-muted-border-color);
+        border-radius: 1rem; font-size: 0.9em; cursor: pointer; margin: 0; }
+.chip input { margin: 0; width: 0.9rem; height: 0.9rem; }
+.chip.on { background: var(--pico-primary-background); color: var(--pico-primary-inverse); border-color: transparent; }
+.words { margin: 0.2rem 0 0.4rem; }
+.words .word { display: inline-block; padding: 0 0.4rem; margin-right: 0.2rem; border-radius: 0.3rem; background: var(--pico-code-background-color); }
+
+/* runs */
+table.params td, table.params th { vertical-align: top; }
+table.params .conf { text-align: right; white-space: nowrap; }
+table.params details summary { cursor: pointer; font-size: 0.9em; }
+table.params ul { margin: 0.2rem 0 0 1rem; padding: 0; font-size: 0.9em; }
+.example { font-size: 0.9em; margin: 0.2rem 0; }
+.example .tl { font-style: italic; }
+select.small { padding: 0.1rem 1.6rem 0.1rem 0.4rem; margin: 0; height: auto; font-size: 0.9em; width: auto; }

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}{{ doc.name }} · {{ lang.name }} · dig4el{% endblock %}
+{% block crumbs %}<li><a href="/languages/{{ lang.id }}">{{ lang.name }}</a></li><li>{{ doc.name }}</li>{% endblock %}
+{% block content %}
+<hgroup>
+  <h2>{{ doc.name }}</h2>
+  <p>{{ q.context if q else '' }}
+     {% if q %}<br><small class="muted">{% for k, sp in q.speakers.items() %}{{ k }}: {{ sp.name }} ({{ sp.gender }}, {{ sp.age }}){{ ' · ' if not loop.last }}{% endfor %}</small>{% endif %}</p>
+</hgroup>
+<p class="muted">
+  {{ doc.slots|selectattr('filled')|list|length }} of {{ doc.slots|length }} segments translated ·
+  {{ 'published' if doc.published else 'not published' }}
+  {% if not access.can_edit %} · you can read but not edit{% endif %}
+</p>
+<p class="muted"><small>For each prompt, type how a speaker would say it. Then, for each meaning listed, click the word or words that express it. A meaning may have no word, and a word may carry several meanings.</small></p>
+{% for slot in doc.slots %}
+  {% with seg = slot.segment %}
+    {% include "_slot.html" %}
+  {% endwith %}
+{% endfor %}
+{% endblock %}

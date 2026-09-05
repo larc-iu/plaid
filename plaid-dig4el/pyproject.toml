@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "larc-plaid-dig4el"
+version = "0.0.0"
+description = "dig4el on Plaid: grammar inference and lesson generation for under-documented languages, with the linguistic record kept in Plaid"
+requires-python = ">=3.11"
+dependencies = [
+  "larc-plaid-client",
+  "fastapi",
+  "uvicorn[standard]",
+  "jinja2",
+  "python-multipart",
+  "itsdangerous",
+  "sqlalchemy>=2",
+  "pandas",
+  "numpy",
+  "networkx",
+  "requests",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "httpx"]
+
+[project.scripts]
+plaid-dig4el = "plaid_dig4el.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/plaid_dig4el"]

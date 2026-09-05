@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Inference · {{ lang.name }} · dig4el{% endblock %}
+{% block crumbs %}<li><a href="/languages/{{ lang.id }}">{{ lang.name }}</a></li><li>Inference {{ run.created_at.strftime('%Y-%m-%d %H:%M') }}</li>{% endblock %}
+{% block content %}
+<hgroup>
+  <h2>Grammar inference</h2>
+  <p>Started {{ run.created_at.strftime('%Y-%m-%d %H:%M') }} by {{ run.created_by }}
+     {% if run.approved %} · <span class="badge known">approved by {{ run.approved_by }} on {{ run.approved_at.strftime('%Y-%m-%d') }}</span>{% endif %}</p>
+</hgroup>
+
+{% if run.status in ('queued', 'running') %}
+  {% include "_run_status.html" with context %}
+{% elif run.status == 'failed' %}
+  <p><mark>The run failed.</mark></p>
+  <pre>{{ run.error }}</pre>
+{% else %}
+  <p class="muted">
+    {{ view.sentences }} translated segments read ·
+    {{ view.counts.known }} values documented in WALS or Grambank,
+    {{ view.counts.observed }} observed in the translations,
+    {{ view.counts.inferred }} inferred from typological tendencies ·
+    {{ view.counts.retained }} of {{ view.counts.parameters }} parameters reach the confidence threshold.
+  </p>
+  <p>
+    {% if show_all %}<a href="?all=0">Show only confident values</a>{% else %}<a href="?all=1">Show every parameter</a>{% endif %}
+    {% if access.can_manage and not run.approved %}
+      <form method="post" action="/languages/{{ lang.id }}/runs/{{ run.id }}/approve" class="inline" style="margin-left:1rem">
+        <button type="submit">Approve these values</button>
+      </form>
+    {% endif %}
+  </p>
+  <p><small class="muted">Values marked <span class="badge known">known</span> come from WALS or Grambank, <span class="badge observed">observed</span> were counted in the translations, <span class="badge inferred">inferred</span> follow from typological tendencies and should be read as expectations, <span class="badge caretaker">caretaker</span> were set by hand. Confidence is the model's own certainty, not the probability the value is right.</small></p>
+
+  {% for topic, rows in view.groups %}
+  <h4>{{ topic }}</h4>
+  <table class="params">
+    <thead><tr><th>Parameter</th><th>Origin</th><th>Value</th><th class="conf">Confidence</th></tr></thead>
+    <tbody>
+    {% for p in rows %}
+      <tr>
+        <td>{{ p.parameter }}
+          {% set ev = view.evidence.get(p.parameter) %}
+          {% if ev %}
+          <details><summary>Evidence in the translations</summary>
+            {% for vname, v in ev['values'].items() if v.count %}
+              <p class="example"><strong>{{ vname }}</strong>: {{ v.count }}</p>
+              {% for ex in v.examples %}
+                <p class="example">“{{ ex.prompt }}” <span class="tl">{{ ex.translation }}</span></p>
+              {% endfor %}
+            {% endfor %}
+            {% if not ev['values'].values()|selectattr('count')|list %}<p class="example muted">Nothing counted yet.</p>{% endif %}
+          </details>
+          {% endif %}
+        </td>
+        <td><span class="badge {{ p.origin }}">{{ p.origin }}</span></td>
+        <td>
+          {% if access.can_edit and not run.approved %}
+          <form method="post" action="/languages/{{ lang.id }}/runs/{{ run.id }}/override" class="inline">
+            <input type="hidden" name="parameter" value="{{ p.parameter }}">
+            <select name="code" class="small" onchange="this.form.submit()">
+              {% for code, b in p.beliefs.items() %}
+                <option value="{{ code }}" {% if code == p.winner_code %}selected{% endif %}>{{ b.name }} ({{ (100 * b.p)|round|int }}%)</option>
+              {% endfor %}
+            </select>
+          </form>
+          {% else %}
+            {{ p.winner }}
+            <details><summary>Distribution</summary><ul>
+              {% for code, b in p.beliefs.items() %}<li>{{ b.name }}: {{ (100 * b.p)|round|int }}%</li>{% endfor %}
+            </ul></details>
+          {% endif %}
+        </td>
+        <td class="conf">{{ p.confidence }}%{% if p.locked %} <small class="muted" title="Not changed by propagation">locked</small>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endfor %}
+{% endif %}
+{% endblock %}

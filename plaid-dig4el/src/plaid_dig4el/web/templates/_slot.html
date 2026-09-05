@@ -1,0 +1,45 @@
+{% set base = "/languages/" ~ lang.id ~ "/documents/" ~ doc.id ~ "/slots/" ~ slot.segment_index %}
+<article class="slot" id="slot-{{ slot.segment_index }}">
+  <header>
+    <span class="muted">{{ slot.segment_index }}</span>
+    <span class="speaker muted">{{ slot.speaker }}</span>
+    <span class="prompt">{{ slot.fields.prompt[1] or (seg.text if seg else '') }}</span>
+    {% if seg and seg.idiomaticity %}<small class="muted"> · likely idiomatic</small>{% endif %}
+  </header>
+  <form hx-post="{{ base }}/translation" hx-target="#slot-{{ slot.segment_index }}" hx-swap="outerHTML">
+    <input type="text" name="text" value="{{ slot.text }}" placeholder="Equivalent in {{ lang.name }}"
+           autocomplete="off" {% if not access.can_edit %}readonly{% endif %}>
+    <details>
+      <summary class="muted">Alternate prompt, literal back-translation, note</summary>
+      <div class="fields">
+        <input type="text" name="alternate_pivot" value="{{ slot.fields.alternate_pivot[1] }}"
+               placeholder="The prompt as actually used, if it differed" {% if not access.can_edit %}readonly{% endif %}>
+        <input type="text" name="back_translation" value="{{ slot.fields.back_translation[1] }}"
+               placeholder="Literal back-translation into {{ lang.pivot_language }}" {% if not access.can_edit %}readonly{% endif %}>
+        <input type="text" name="note" value="{{ slot.fields.note[1] }}" placeholder="Notes"
+               {% if not access.can_edit %}readonly{% endif %}>
+      </div>
+    </details>
+    {% if access.can_edit %}<button type="submit" class="outline">Save</button>{% endif %}
+  </form>
+  {% if slot.filled and seg %}
+  <div class="concepts">
+    <div class="words">{% for w in slot.words %}<span class="word">{{ w.form }}</span>{% endfor %}</div>
+    <form hx-post="{{ base }}/concepts" hx-trigger="change" hx-target="#slot-{{ slot.segment_index }}" hx-swap="outerHTML">
+      {% for c in seg.expected_concepts() %}
+        {% set linked = [] %}
+        {% for sp in slot.concepts if sp.value == c %}{% for t in sp.tokens %}{% set _ = linked.append(t) %}{% endfor %}{% endfor %}
+        <div class="concept">
+          <span class="name" title="{{ c }}">{{ label(c) }}</span>
+          {% for w in slot.words %}
+            <label class="chip {{ 'on' if w.id in linked }}">
+              <input type="checkbox" name="c:{{ c }}" value="{{ w.id }}" {% if w.id in linked %}checked{% endif %}
+                     {% if not access.can_edit %}disabled{% endif %}>{{ w.form }}
+            </label>
+          {% endfor %}
+        </div>
+      {% endfor %}
+    </form>
+  </div>
+  {% endif %}
+</article>

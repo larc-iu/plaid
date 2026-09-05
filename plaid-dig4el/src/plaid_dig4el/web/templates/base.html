@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}dig4el{% endblock %}</title>
+  <link rel="stylesheet" href="/static/pico.min.css">
+  <link rel="stylesheet" href="/static/dig4el.css">
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body>
+  <header class="container">
+    <nav>
+      <ul>
+        <li><a href="/"><strong>dig4el</strong></a></li>
+        {% block crumbs %}{% endblock %}
+      </ul>
+      <ul>
+        {% if user %}
+          <li><small>{{ user.display_name }}</small></li>
+          <li>
+            <form method="post" action="/logout" class="inline">
+              <button class="secondary outline" type="submit">Log out</button>
+            </form>
+          </li>
+        {% endif %}
+      </ul>
+    </nav>
+  </header>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

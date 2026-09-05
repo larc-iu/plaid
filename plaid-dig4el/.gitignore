@@ -1,0 +1,12 @@
+# Derived typological data (WALS, Grambank, conditional-probability tables).
+# Fetched by scripts/fetch_reference_data.py; about 100 MB of JSON.
+reference_data/
+# Runtime data directory (SQLite database, uploads, indexes).
+data/
+*.db
+__pycache__/
+*.pyc
+.pytest_cache/
+dist/
+*.egg-info/
+.token
