@@ -282,11 +282,37 @@ def list_all(client, path, *, page_size=1000, query=None):
     return results
 
 
+class _ProgressBody:
+    """An encoded request body that reports how much of it has been read.
+
+    ``http.client`` sends a file-like body by reading it in blocks, so what
+    has been read is what has gone up the socket, give or take one block. Has
+    a length so ``requests`` sends a Content-Length rather than chunking.
+    """
+
+    def __init__(self, data, callback):
+        self._data = data
+        self._pos = 0
+        self._callback = callback
+
+    def __len__(self):
+        return len(self._data)
+
+    def read(self, size=-1):
+        if size is None or size < 0:
+            size = len(self._data) - self._pos
+        chunk = self._data[self._pos:self._pos + size]
+        self._pos += len(chunk)
+        if chunk:
+            self._callback({'loaded': self._pos, 'total': len(self._data)})
+        return chunk
+
+
 def make_request(client, method, path, *, body=None, raw_body=None, form_data=False,
                  query_params=None, no_batch=False, bypass_batch=False,
                  skip_response_transform=False,
                  no_auth=False, binary_response=False, audit_message=None,
-                 timeout=_UNSET):
+                 timeout=_UNSET, on_upload_progress=None):
     """Generic request method handling all HTTP logic.
 
     Args:
@@ -309,6 +335,11 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
         skip_response_transform: Return raw parsed JSON (no transform_response).
         no_auth: Skip Authorization header.
         binary_response: Return raw bytes instead of JSON/text.
+        on_upload_progress: For a multipart upload, called with
+            ``{'loaded': bytes_sent, 'total': body_bytes}`` as the body goes
+            up (the JS client's ``onUploadProgress``). The body is then
+            encoded up front and streamed from memory, which is what
+            ``requests`` does for ``files=`` anyway.
     """
     url = f'{client.base_url}{path}'
 
@@ -398,16 +429,29 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
               'timeout': (timeout if timeout is not _UNSET
                           else getattr(client, 'timeout', DEFAULT_TIMEOUT_S))}
 
+    encoded_upload = None
     if request_body is not None:
         if form_data:
             # request_body is a dict of {field: file_tuple} for multipart
             kwargs.pop('headers', None)
             kwargs['headers'] = {k: v for k, v in headers.items() if k != 'Content-Type'}
-            kwargs['files'] = request_body
+            if on_upload_progress is not None:
+                # requests' own encoder for ``files=``, so the body is byte
+                # for byte what the plain path would have sent; only the
+                # transport differs (a file-like body read in blocks).
+                from requests.models import RequestEncodingMixin
+                encoded_upload, content_type = RequestEncodingMixin._encode_files(
+                    request_body, None)
+                kwargs['headers']['Content-Type'] = content_type
+            else:
+                kwargs['files'] = request_body
         else:
             kwargs['data'] = json.dumps(request_body)
 
     def attempt():
+        if encoded_upload is not None:
+            # A fresh body per attempt: a retried upload must start over.
+            kwargs['data'] = _ProgressBody(encoded_upload, on_upload_progress)
         try:
             resp = client.session.request(**kwargs)
         except Exception as e:

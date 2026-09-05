@@ -1018,25 +1018,34 @@ class UserDataResource(_Resource):
 
 class CommentsResource(_Resource):
     """Free-text discussion anchored to a document, text, token, span or
-    relation.
+    relation, or to a vocabulary entry (``vocab-item``).
 
     Comments are social data, not annotation data: they are never audited,
     they do not bump the document version, and no export target carries them.
-    Posting takes project WRITE access (readers may read a thread but not add
-    to it). Only the AUTHOR may edit a comment; the author or a project
-    maintainer may delete one."""
+    Posting takes WRITE access to the owner: the entity's project, or the
+    vocabulary for an entry (readers may read a thread but not add to it).
+    Only the AUTHOR may edit a comment; the author or a maintainer of the
+    owner may delete one.
 
-    def create(self, entity_type: str, entity_id: str, body: str) -> Any:
+    A comment outlives its anchor: deleting the entity does not delete the
+    comment. It is then shown as outdated with its ``anchor_label``, the
+    caption passed when it was posted."""
+
+    def create(self, entity_type: str, entity_id: str, body: str, *,
+               anchor_label: str | None = None) -> Any:
         """Post a comment on an entity.
 
         Args:
-            entity_type: One of ``document``, ``text``, ``token``, ``span``, ``relation``
+            entity_type: One of ``document``, ``text``, ``token``, ``span``,
+                ``relation``, ``vocab-item``
             entity_id: The commented entity's id
             body: The comment text (1..10000 characters)
+            anchor_label: What the comment is about, in words (at most 200
+                characters); shown once the anchor has been deleted
         """
         return self._request('POST', '/api/v1/comments',
-                             body=_body_of(entity_type=entity_type, entity_id=entity_id,
-                                           body=body))
+                             body=_body_of(entity_type=entity_type, entity_id=entity_id, body=body,
+                                           anchor_label=_UNSET if anchor_label is None else anchor_label))
 
     def get(self, comment_id: str) -> Any:
         """Read one comment."""
@@ -1126,6 +1135,43 @@ class CommentsResource(_Resource):
                              query_params={'document-id': document_id,
                                            'entity-type': entity_type,
                                            'entity-id': entity_id},
+                             skip_response_transform=True)
+
+    def list_in_vocab(self, vocab_id: str, *, entity_id: str | None = None) -> Any:
+        """List the comments on a vocabulary's entries, oldest first.
+
+        Requires read access to the vocabulary. Transparently follows
+        server-side pagination cursors and returns the full flat list.
+
+        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError if called while batching — use list_in_vocab_page() for a single page in a batch.
+
+        Args:
+            vocab_id: The vocab layer to read
+            entity_id: Only this entry's thread
+        """
+        return list_all(self._client, f'/api/v1/vocab-layers/{vocab_id}/comments',
+                        query={'entity-id': entity_id})
+
+    def list_in_vocab_page(self, vocab_id: str, *, limit: int | None = None,
+                           cursor: str | None = None, entity_id: str | None = None) -> Any:
+        """List one page of a vocabulary's comments.
+
+        Args:
+            vocab_id: The vocab layer to read
+            limit: Page size (1..1000)
+            cursor: Opaque cursor from a previous page's ``next_cursor``
+            entity_id: Only this entry's thread
+        """
+        return list_page(self._client, f'/api/v1/vocab-layers/{vocab_id}/comments',
+                         limit=limit, cursor=cursor, query={'entity-id': entity_id})
+
+    def counts_in_vocab(self, vocab_id: str, *, entity_id: str | None = None) -> Any:
+        """Comment counts per entry of a vocabulary, as an ``{entry_id: n}`` dict.
+
+        The response is NOT key-transformed: its keys are entry ids.
+        """
+        return self._request('GET', f'/api/v1/vocab-layers/{vocab_id}/comments/counts',
+                             query_params={'entity-id': entity_id},
                              skip_response_transform=True)
 
 
@@ -1418,15 +1464,24 @@ class DocumentsResource(_Resource):
         return self._request('GET', f'/api/v1/documents/{document_id}/media',
                              no_batch=True, binary_response=True)
 
-    def upload_media(self, document_id: str, file, audit_message=None) -> Any:
+    def upload_media(self, document_id: str, file, audit_message=None, *,
+                     on_progress=None) -> Any:
         """Upload a media file for a document. Uses Apache Tika for content validation.
 
         Args:
             document_id: The document ID
-            file: The file to upload
+            file: The file to upload (an open binary file, or a
+                ``(filename, bytes_or_file, content_type)`` tuple as for
+                ``requests``)
+            audit_message: Custom audit-log message for this write
+            on_progress: Optional callback called with
+                ``{'loaded': bytes_sent, 'total': body_bytes}`` as the file
+                goes up, for a progress bar; the same payload as the JS
+                client's ``onProgress``.
         """
         return self._request('PUT', f'/api/v1/documents/{document_id}/media',
-                             body={'file': file}, form_data=True, no_batch=True, audit_message=audit_message)
+                             body={'file': file}, form_data=True, no_batch=True,
+                             audit_message=audit_message, on_upload_progress=on_progress)
 
     def delete_media(self, document_id: str, audit_message=None) -> Any:
         """Delete media file for a document.
