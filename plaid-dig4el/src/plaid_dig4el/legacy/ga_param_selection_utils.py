@@ -151,7 +151,10 @@ def score_candidates(
             default=0.0,
         )
         scores[c] = best  # heuristic of expected info gain
-    return sorted(scores.items(), key=lambda t: t[1], reverse=True)
+    # Deterministic ranking: ties broken by value id. The original sorted by score
+    # alone over a set, so which tied candidates made the top-K depended on set
+    # iteration order and differed from one process to the next.
+    return sorted(scores.items(), key=lambda t: (-t[1], t[0]))
 
 ###############################################################################
 # 5.  Putting it together   suggest_parameters()

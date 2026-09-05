@@ -14,9 +14,12 @@ word–concept connections), the pipeline:
 5. reports every parameter's distribution with its origin and confidence.
 
 Constants and control flow follow ``pages/infer_from_knowledge_and_cqs.py``
-(Sebastien Christian, AGPL-3.0). Two deliberate departures: the parameter list
-handed to the agent is de-duplicated across topics, and the random traversal
-order can be seeded so a run is reproducible.
+(Sebastien Christian, AGPL-3.0). Three deliberate departures, all for
+reproducibility: the parameter list handed to the agent is de-duplicated across
+topics, the random traversal order can be seeded, and frontier candidates with
+equal scores are ranked by value id (the original's top-K cut fell among tied
+candidates in set-iteration order, so two runs of the same data could select
+different parameters).
 """
 
 from __future__ import annotations
