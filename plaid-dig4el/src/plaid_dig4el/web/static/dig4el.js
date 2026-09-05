@@ -5,15 +5,29 @@ document.addEventListener('click', (e) => {
   const btn = e.target.closest('.concept-btn');
   if (!btn) return;
   const linker = btn.closest('.linker');
-  const concept = btn.closest('.concept').dataset.concept;
+  const chip = btn.closest('.concept');
+  const concept = chip.dataset.concept;
   linker.dataset.active = concept;
+  linker.style.setProperty('--active-color', chip.style.getPropertyValue('--c'));
   const hidden = linker.querySelector('input[name=concept]');
   if (hidden) hidden.value = concept;
   linker.querySelectorAll('.concept').forEach((li) => li.classList.toggle('active', li.dataset.concept === concept));
-  linker.querySelectorAll('.word').forEach((w) => {
-    const linked = w.dataset.concepts ? w.dataset.concepts.split('|') : [];
-    w.classList.toggle('on', linked.includes(concept));
-  });
+  linker.querySelectorAll('.word').forEach((w) => w.classList.toggle('on', linkedTo(w).includes(concept)));
+});
+
+// Hovering a meaning paints the words linked to it in its color.
+const linkedTo = (word) => (word.dataset.concepts ? word.dataset.concepts.split('|') : []);
+document.addEventListener('mouseover', (e) => {
+  const chip = e.target.closest('.concept');
+  if (!chip) return;
+  const linker = chip.closest('.linker');
+  linker.style.setProperty('--hl-color', chip.style.getPropertyValue('--c'));
+  linker.querySelectorAll('.word').forEach((w) => w.classList.toggle('hl', linkedTo(w).includes(chip.dataset.concept)));
+});
+document.addEventListener('mouseout', (e) => {
+  const chip = e.target.closest('.concept');
+  if (!chip || chip.contains(e.relatedTarget)) return;
+  chip.closest('.linker').querySelectorAll('.word.hl').forEach((w) => w.classList.remove('hl'));
 });
 
 // After a translation is saved, move on to the next segment.

@@ -27,27 +27,31 @@
       </details>
     </form>
     {% if slot.filled and seg and sv %}
-    <div class="linker mt-2 pt-2 border-top" data-active="{{ sv.active }}">
+    <div class="linker mt-2 pt-2 border-top" data-active="{{ sv.active }}" style="--active-color: {{ sv.colors.get(sv.active, '') }}">
       <input type="hidden" name="concept" value="{{ sv.active }}">
       <div class="words d-flex flex-wrap gap-1 mb-2">
         {% for w in slot.words %}
           {% set linked = sv.by_word.get(w.id, []) %}
-          <button type="button" class="word btn btn-sm btn-outline-secondary {{ 'on' if sv.active in linked }}" name="word" value="{{ w.id }}"
-                  data-concepts="{{ linked|join('|') }}"
-                  hx-post="{{ base }}/link" hx-include="closest .linker"
-                  hx-target="#slot-{{ slot.segment_index }}" hx-swap="outerHTML"
-                  {% if not access.can_edit %}disabled{% endif %}>
-            <span class="form">{{ w.form }}</span>
-            {% if linked %}<span class="tags">{% for c in linked %}<span class="tag">{{ label(c) }}</span>{% endfor %}</span>{% endif %}
-          </button>
+          <span class="wordwrap">
+            <button type="button" class="word btn btn-sm btn-outline-secondary {{ 'on' if sv.active in linked }}" name="word" value="{{ w.id }}"
+                    data-concepts="{{ linked|join('|') }}"
+                    hx-post="{{ base }}/link" hx-include="closest .linker"
+                    hx-target="#slot-{{ slot.segment_index }}" hx-swap="outerHTML"
+                    {% if not access.can_edit %}disabled{% endif %}>
+              <span class="form">{{ w.form }}</span>
+              <span class="dots">{% for c in linked %}<i class="dot" style="--c: {{ sv.colors[c] }}"></i>{% endfor %}</span>
+            </button>
+            {% if linked %}
+            <span class="wordcard">{% for c in linked %}<span class="d-block"><i class="dot" style="--c: {{ sv.colors[c] }}"></i> {{ label(c) }}</span>{% endfor %}</span>
+            {% endif %}
+          </span>
         {% endfor %}
       </div>
       <div class="concepts d-flex flex-wrap gap-1 align-items-center">
         {% for c in sv.concepts %}
           {% set ws = sv.by_concept.get(c, []) %}
-          <span class="concept {{ 'active' if c == sv.active }} {{ 'linked' if ws else 'unlinked' }}" data-concept="{{ c }}">
-            <button type="button" class="concept-btn btn btn-sm btn-outline-secondary" title="{{ c }}">{{ label(c) }}</button>
-            <span class="linked-words">{{ ws|join(' ') if ws else '—' }}</span>
+          <span class="concept {{ 'active' if c == sv.active }} {{ 'linked' if ws else 'unlinked' }}" data-concept="{{ c }}" style="--c: {{ sv.colors[c] }}">
+            <button type="button" class="concept-btn btn btn-sm btn-outline-secondary" title="{{ c }}"><i class="dot"></i>{{ label(c) }}</button>
           </span>
         {% endfor %}
       </div>

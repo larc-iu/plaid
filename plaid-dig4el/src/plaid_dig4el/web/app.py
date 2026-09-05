@@ -8,6 +8,7 @@ the logged-in user's own token.
 from __future__ import annotations
 
 import json
+import zlib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -360,10 +361,28 @@ def _editor_context(access: Access, lang: db.Language, doc: gw.QuestionnaireDoc)
     return {"lang": lang, "access": access, "doc": doc, "q": q}
 
 
+# Twenty hues a golden angle apart, dark enough for white text.
+PALETTE = [f"hsl({(i * 137) % 360} 58% 38%)" for i in range(20)]
+
+
+def concept_colors(concepts: list[str]) -> dict[str, str]:
+    """A color per concept: the same everywhere for the same concept (a hash of its id
+    picks it), distinct within one sentence (a collision moves to the next free color)."""
+    taken: set[int] = set()
+    out: dict[str, str] = {}
+    for c in sorted(concepts):
+        i = zlib.crc32(c.encode()) % len(PALETTE)
+        while i in taken and len(taken) < len(PALETTE):
+            i = (i + 1) % len(PALETTE)
+        taken.add(i)
+        out[c] = PALETTE[i]
+    return out
+
+
 class SlotView:
     """What the linking panel needs: which concepts each word carries, which words each
-    concept has, and the concept currently being linked (the first one without words
-    unless the caller says otherwise)."""
+    concept has, a color per concept, and the concept currently being linked (the first
+    one without words unless the caller says otherwise)."""
 
     def __init__(self, slot: gw.Slot, active: str | None = None):
         seg = slot.segment
@@ -382,6 +401,7 @@ class SlotView:
         else:
             self.active = next((c for c in self.concepts if not self.by_concept.get(c)),
                                self.concepts[0] if self.concepts else "")
+        self.colors = concept_colors(list(set(self.concepts) | set(self.by_concept)))
 
 
 def _attach_views(doc: gw.QuestionnaireDoc, active: str | None = None, segment: str | None = None) -> None:
