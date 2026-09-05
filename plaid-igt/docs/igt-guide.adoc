@@ -429,20 +429,3 @@ TIP: If you type a lot of one language, a system keyboard such as SIL Keyman is 
 | **Up** / **Down** (segment time) | Step the digit box under the caret: milliseconds by 10, 100 with Shift; seconds and minutes by 1, 10 with Shift. **Left** / **Right** move between boxes.
 |===
 
-= Future Work
-
-Plaid IGT is an alpha-quality app, with ongoing development.
-Here we note some future planned work which we expect to deliver at some point.
-
-== Richer linguistic representation
-
-Today each annotation field holds a single plain-text value in a left-to-right script, and the lexicon is a flat list of entries.
-This suits many but not all languages.
-We are exploring support for multiple analysis languages and writing systems per field, including right-to-left and complex-script shaping, and per-field fonts.
-A more structured vocabulary model (allowing for first-class representation of sense structures and allomorphy) may arrive at some point in the future.
-
-== Audio and time alignment
-
-Media support is deliberately lightweight: one recording per document and one tier of utterance-level segments.
-Plaid IGT is a glossing tool, not a phonetics workbench, so word-level and finer alignment are out of scope.
-For phonetic analysis, export the document to ELAN (`.eaf`) and continue there.
