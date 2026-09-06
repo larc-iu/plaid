@@ -2287,6 +2287,25 @@ export class IgtEditor {
     const colTol = 64; // same-column band
     const fields = this._navFields();
     const tier = this._tierOf(current);
+    const vertical = dir === 'down' || dir === 'up';
+
+    // A RUN of vertical moves keeps the column it started in. Without an
+    // anchor a wide cell swallows the column on the way in and hands back a
+    // different one on the way out, so ↓ then ↑ does not return where it
+    // started. The run ends at any horizontal move, and at a focus that
+    // arrives by some other route (a click, the review sweep), since the
+    // anchor then no longer points at the cell being left.
+    if (!vertical || this._navAnchor?.el !== current) this._navAnchor = null;
+    const ax = this._navAnchor?.x ?? cx;
+
+    // Same column band: horizontal extents overlap, or centres are close.
+    // Overlap is what lets a WIDE cell see the narrow cells it spans. On
+    // centres alone a sentence-scope field's only neighbour is the next
+    // sentence's one — its centre sits half a sentence away from every word
+    // column — so ↑ out of a translation skipped that sentence's word and
+    // morpheme rows entirely.
+    const inBand = (r, ex) =>
+      (r.right > cr.left + 1 && r.left < cr.right - 1) || Math.abs(ex - ax) <= colTol;
 
     const pick = (score) => {
       let best = null;
@@ -2303,17 +2322,41 @@ export class IgtEditor {
       return best;
     };
 
+    // Vertical: the NEAREST ROW in that direction wins outright, and only
+    // then does the column decide which cell of it. Scoring the two together
+    // let a far row with a well-aligned cell beat the row directly above or
+    // below, which is what makes a vertical run unpredictable. `banded`
+    // false is the fallback for a column with nothing left in it.
+    const pickRow = (banded) => {
+      const cands = [];
+      for (const el of fields) {
+        if (el === current) continue;
+        const r = el.getBoundingClientRect();
+        const ex = r.left + r.width / 2;
+        const ey = r.top + r.height / 2;
+        const dy = dir === 'down' ? ey - cy : cy - ey;
+        if (dy <= 1) continue;
+        if (banded && !inBand(r, ex)) continue;
+        cands.push({ el, dy, dx: Math.abs(ex - ax) });
+      }
+      if (!cands.length) return null;
+      const nearest = Math.min(...cands.map((c) => c.dy));
+      // Cells of one row are not pixel-aligned (a morpheme chip and a word
+      // cell differ in height), so the row is a band, not an exact dy.
+      return cands.filter((c) => c.dy <= nearest + rowTol).reduce((a, b) => (b.dx < a.dx ? b : a))
+        .el;
+    };
+
     // Pass 1: strictly within the current screen row / column band.
-    let best = pick((el, ex, ey) => {
-      if (dir === 'next') return Math.abs(ey - cy) <= rowTol && ex > cx + 1 ? ex - cx : null;
-      if (dir === 'prev') return Math.abs(ey - cy) <= rowTol && ex < cx - 1 ? cx - ex : null;
-      if (dir === 'down')
-        return ey > cy + 1 && Math.abs(ex - cx) <= colTol ? ey - cy + Math.abs(ex - cx) * 3 : null;
-      return ey < cy - 1 && Math.abs(ex - cx) <= colTol ? cy - ey + Math.abs(ex - cx) * 3 : null;
-    });
+    let best = vertical
+      ? pickRow(true)
+      : pick((el, ex, ey) => {
+          if (dir === 'next') return Math.abs(ey - cy) <= rowTol && ex > cx + 1 ? ex - cx : null;
+          return Math.abs(ey - cy) <= rowTol && ex < cx - 1 ? cx - ex : null;
+        });
 
     // Pass 2: cross the band boundary.
-    if (!best && (dir === 'next' || dir === 'prev')) {
+    if (!best && !vertical) {
       // Same tier in a following/preceding band: nearest row in that
       // direction, then the leftmost (next) / rightmost (prev) cell in it.
       best = pick((el, ex, ey) => {
@@ -2322,15 +2365,10 @@ export class IgtEditor {
         return ey < cy - rowTol ? (cy - ey) * 10000 + (10000 - ex) : null;
       });
     }
-    if (!best && (dir === 'down' || dir === 'up')) {
-      // Nearest row beyond the band, then nearest horizontally.
-      best = pick((el, ex, ey) => {
-        if (dir === 'down') return ey > cy + 1 ? (ey - cy) * 100 + Math.abs(ex - cx) : null;
-        return ey < cy - 1 ? (cy - ey) * 100 + Math.abs(ex - cx) : null;
-      });
-    }
+    if (!best && vertical) best = pickRow(false);
 
     if (!best) return false;
+    this._navAnchor = vertical ? { el: best, x: ax } : null;
     best.focus();
     try {
       best.select();
@@ -2723,8 +2761,13 @@ export class IgtEditor {
       // end/start); inside a multi-line translation the arrows still move the
       // caret. Without this the Translation field trapped ArrowDown.
       const el = e.target;
-      const atEnd = el.selectionStart === el.value.length;
-      const atStart = el.selectionEnd === 0;
+      // Which edge the press collapses a selection to: ArrowDown to its end,
+      // ArrowUp to its start. Testing the collapsed caret instead meant that
+      // focusing a cell (which selects it) made the FIRST press in either
+      // direction do nothing at all — one press swallowed per field crossed,
+      // so the same number of ↑ and ↓ presses no longer came back level.
+      const atEnd = el.selectionEnd === el.value.length;
+      const atStart = el.selectionStart === 0;
       if ((e.key === 'ArrowDown' && atEnd) || (e.key === 'ArrowUp' && atStart)) {
         if (this._navMove(el, e.key === 'ArrowDown' ? 'down' : 'up')) e.preventDefault();
       }

@@ -182,6 +182,58 @@ test('C5-03: the Translation textarea lets arrows out only at its edges', async 
   await expect(tr).toHaveValue('hello world');
 });
 
+// The property the whole arrow model rests on: equal numbers of opposing
+// presses come back to where they started, whatever order they are made in.
+// Two things used to break it. A vertical move scored row distance and column
+// distance together, so a sentence-scope field — as wide as the sentence, and
+// therefore centred half a sentence away from every word column — was the
+// only thing in its own column band: ↓ into a translation fell through to it
+// by row, and ↑ out of it found the NEXT translation before its own
+// sentence's morpheme and word rows. And focusing a cell selects it, while
+// the textarea's edge test wanted a collapsed caret, so the first press in
+// either direction was swallowed.
+test('C5-11: equal opposing arrow presses return to the starting cell', async ({ page }) => {
+  await openAnalyze(page);
+  const KEY = { D: 'ArrowDown', U: 'ArrowUp', L: 'ArrowLeft', R: 'ArrowRight' };
+  // ↑↓ only, because ←→ are caret keys first: inside a value they move
+  // through the text, and a selection (focusing a cell makes one) collapses
+  // before they navigate, so their press count deliberately depends on what
+  // the cells hold. C5-10 covers that rule.
+  //
+  // At a grid edge a press has nowhere to go and is spent, so the property
+  // only means anything away from one. This document is 5 rows deep (IPA,
+  // POS, morpheme form, Gloss, Translation), so the run starts on the middle
+  // row, with two moves of room each way.
+  const run = async (start, seq) => {
+    await cell(page, start).click();
+    await page.keyboard.press('End'); // collapse the select-on-focus
+    let at = start;
+    for (const c of seq) {
+      await page.keyboard.press(KEY[c]);
+      const next = await focusedKey(page);
+      expect(next, `${seq}: '${c}' moved nowhere, so it is not a fair test`).not.toBe(at);
+      at = next;
+    }
+    expect(at, `${seq} did not come back`).toBe(start);
+  };
+
+  // The morpheme form row has two rows above and two below it.
+  for (const seq of ['DDUU', 'DUDU', 'UUDD', 'UDUD']) await run(`mf:${ids.m[1]}`, seq);
+});
+
+// ↓ then ↑ through a sentence-scope field keeps the column it started in, and
+// crossing one costs exactly one press each way.
+test('C5-12: a translation is crossed symmetrically, keeping the column', async ({ page }) => {
+  await openAnalyze(page);
+  const start = `ma:${ids.m[2]}:Gloss`;
+  await cell(page, start).click();
+  await page.keyboard.press('End');
+  await page.keyboard.press('ArrowDown');
+  expect(await focusedKey(page)).toBe(`sa:${ids.s}:Translation`);
+  await page.keyboard.press('ArrowUp');
+  expect(await focusedKey(page), 'came back to a different column').toBe(start);
+});
+
 test('C5-04: Escape mid-edit reverts and writes nothing', async ({ page }) => {
   await openAnalyze(page);
   const g0 = cell(page, `ma:${ids.m[0]}:Gloss`);
