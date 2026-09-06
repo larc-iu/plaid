@@ -3,7 +3,7 @@
 // the history, and the document is re-read and compared with the target
 // afterwards, so the toast can say whether it landed exactly.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -46,6 +46,10 @@ export const RestoreDialog = ({ open, onOpenChange, client, documentId, entry, o
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState('');
   const asOf = entry?.time ?? null;
+  // The toast's Undo fires long after the restore's render, so it reads the
+  // latest callback rather than the one it closed over.
+  const onRestoredRef = useRef(onRestored);
+  onRestoredRef.current = onRestored;
 
   useEffect(() => {
     if (!open || !asOf) return undefined;
@@ -75,7 +79,7 @@ export const RestoreDialog = ({ open, onOpenChange, client, documentId, entry, o
   const undo = (before) => {
     const run = runRestore({ client, documentId, asOf: before.time, label: before.label });
     notifyPromise(
-      run.finally(() => onRestored?.()),
+      run.finally(() => onRestoredRef.current?.()),
       {
         loading: 'Undoing the restore…',
         success: (res) =>
@@ -92,7 +96,10 @@ export const RestoreDialog = ({ open, onOpenChange, client, documentId, entry, o
     setBusy(true);
     try {
       const before = await latestState(client, documentId).catch(() => null);
-      const action = before ? { label: 'Undo', onClick: () => undo(before) } : undefined;
+      // The toast stays long enough to be acted on.
+      const action = before
+        ? { action: { label: 'Undo', onClick: () => undo(before) }, duration: 15000 }
+        : {};
       const res = await runRestore({
         client,
         documentId,
@@ -101,7 +108,7 @@ export const RestoreDialog = ({ open, onOpenChange, client, documentId, entry, o
         onProgress: setPhase,
       });
       if (res.exact && res.warnings.length === 0) {
-        notifySuccess(`Restored to ${formatTime(asOf)}.`, 'Restored', { action });
+        notifySuccess(`Restored to ${formatTime(asOf)}.`, 'Restored', action);
       } else {
         notifyWarning(
           [
@@ -113,7 +120,7 @@ export const RestoreDialog = ({ open, onOpenChange, client, documentId, entry, o
             .filter(Boolean)
             .join(' '),
           'Restored with differences',
-          { action },
+          action,
         );
         if (!res.exact) console.warn('Restore differences:', res.differences);
       }

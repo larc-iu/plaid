@@ -315,7 +315,7 @@ describe('runRestore', () => {
       asOf: '2026-09-01T00:00:00Z',
       label: 'Tokenize',
     });
-    expect(client.calls[0][1]).toMatch(/^Restore “Renamed” to .* \(after “Tokenize”\)$/);
+    expect(client.calls[0][1]).toMatch(/^Restore to .* \(after “Tokenize”\)$/);
     expect(client.calls.slice(1)).toEqual([
       ['documents.update', 'doc1', 'Doc'],
       ['documents.deleteMetadata', 'doc1'],

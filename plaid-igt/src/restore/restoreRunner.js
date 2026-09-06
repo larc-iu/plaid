@@ -70,11 +70,12 @@ export async function runRestore({ client, documentId, asOf, label, onProgress =
   const read = async () => indexDocument(await client.documents.get(documentId, true));
   const warnings = [];
   const idMap = new Map(); // id as of T -> id now, for tokens that came back
-  const { name, summary, tgt, cur: first } = await previewRestore({ client, documentId, asOf });
+  const { summary, tgt, cur: first } = await previewRestore({ client, documentId, asOf });
   let cur = first;
 
-  const message =
-    `Restore “${name ?? documentId}” to ${formatWhen(asOf)}` + (label ? ` (after “${label}”)` : '');
+  // The history rail is the document's own, so the message names only the
+  // moment and the entry it belongs to.
+  const message = `Restore to ${formatWhen(asOf)}` + (label ? ` (after “${label}”)` : '');
   await client.withOperation(message, async () => {
     // ---- 1. text ---------------------------------------------------------
     onProgress('Text');
