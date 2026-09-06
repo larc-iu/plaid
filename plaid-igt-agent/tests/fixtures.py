@@ -1,7 +1,10 @@
 """A small IGT project and document in the live API's shape, plus a fake
 client that records writes with the real client's batch/operation surface."""
 
+import copy
 from contextlib import contextmanager
+
+from plaid_client.http import PlaidAPIError
 
 PID = 'p1'
 TEXT_LAYER, SENT_LAYER, WORD_LAYER, MORPH_LAYER = 'tl', 'tk-sent', 'tk-word', 'tk-morph'
@@ -157,6 +160,29 @@ class FakeClient:
         def audit(self, did, **kw):
             return [e for e in self.c.audit if any(d['id'] == did for d in e.get('documents', []))]
 
+    class _UserData:
+        """The user's private key/value store, in memory: what the assistant
+        keeps conversations in."""
+
+        def __init__(self, c):
+            self.store = {}
+
+        def get(self, user_id, key):
+            if (user_id, key) not in self.store:
+                raise PlaidAPIError(f'No entry {key}', status=404)
+            return {'key': key, 'value': copy.deepcopy(self.store[(user_id, key)])}
+
+        def put(self, user_id, key, value):
+            self.store[(user_id, key)] = copy.deepcopy(value)
+            return {'key': key}
+
+        def delete(self, user_id, key):
+            self.store.pop((user_id, key), None)
+
+        def list(self, user_id, *, prefix=None, include_values=False):
+            return [{'key': k, **({'value': copy.deepcopy(v)} if include_values else {})}
+                    for (u, k), v in self.store.items() if u == user_id and (not prefix or k.startswith(prefix))]
+
     class _VocabLayers:
         def __init__(self, c):
             self.c = c
@@ -172,6 +198,12 @@ class FakeClient:
     @property
     def documents(self):
         return FakeClient._Documents(self)
+
+    @property
+    def user_data(self):
+        if not hasattr(self, '_user_data'):
+            self._user_data = self._UserData(self)
+        return self._user_data
 
     @property
     def vocab_layers(self):

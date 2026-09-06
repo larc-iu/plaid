@@ -1,38 +1,48 @@
 """The assistant as a Plaid service (task ``assist``, delegating).
 
-One request = one chat turn (or one plan approval). The browser holds the
-transcript and sends it back with each turn, so the service is stateless
-across turns; every request is served with the REQUESTER's own client (the
-server mints a short-lived token for them), so reads are limited to what they
-may read and approved edits are attributed to them in the audit log.
+One request = one chat turn, or one plan approval, on a conversation that
+lives in the requester's private key/value store on the Plaid server (see
+:mod:`.conversation`). The browser appends the user's message to the record
+and marks the conversation pending before submitting; the service loads the
+record, does the work, and writes the outcome back BEFORE reporting the
+request done. So the reply lands whether or not the browser is still
+watching, and a browser that comes back reads it from the record (or
+rejoins the request by id while it is still running). Every request is
+served with the REQUESTER's own client (the server mints a short-lived token
+for them), so reads are limited to what they may read, approved edits are
+attributed to them in the audit log, and the record is theirs.
 
 Request data:
-    project_id   the project (a service instance may serve many)
-    messages     the transcript so far (OpenAI-shaped message dicts, no system)
-    approve      instead of a turn: {id, ops, label, as_human, contributed_by, documents} of a plan the user
-                 approved (as_human: record the writes as human-made instead of verified machine-made;
-                 contributed_by: the approver's user id when they are a contributor, whose approval
-                 records the writes as their own unreviewed work;
-                 documents: [{id, name, version}] read at plan time, refused if any changed since)
+    project_id       the project (a service instance may serve many)
+    conversation_id  the conversation to continue
+    approve          instead of a turn: {plan_id, as_human, contributed_by} for a plan
+                     in the conversation the user approved (as_human: record the writes
+                     as human-made instead of verified machine-made; contributed_by: the
+                     approver's user id when they are a contributor, whose approval records
+                     the writes as their own unreviewed work). The plan's ops and the
+                     document versions it was made against come from the record; a plan
+                     whose documents changed since is refused.
 
 Result data:
-    {kind: 'turn', message, messages: [new transcript messages], plan: {id, summary, labels, ops, documents} | null,
-     citations: [{key, document_id, document_name, sentence_id, sentence, focus, text, words, fields}],
-     steps: [{id, name, kind, label}], steps_summary: '...'}
-                 (a step's own output is not repeated here: it is the `tool` message with the same id)
+    {kind: 'turn', message, plan: {id, summary, ...} | null, citations, steps, steps_summary}
+    {kind: 'stopped'}                       the requester cancelled the turn
     {kind: 'applied', applied: n, counts: [{kind, count}], message}
+The record is the full outcome: a browser re-reads it on any of these.
 """
 
 import argparse
 import os
 import re
 import time
+import traceback
 from urllib.parse import urlsplit
 
 from plaid_client import BaseService, TASKS, service_source
 
-from .agent import ModelConfig, ping_model, run_turn
+from .agent import ModelConfig, TurnCancelled, ping_model, run_turn
 from .citations import resolve_citations
+from .conversation import (ConversationStore, MissingConversation, assistant_item, build_meta, error_item,
+                           find_plan, prune, settle_plan)
 from .plan import execute_plan, summarize, PlanError
 from .project import load_project
 from .prompt import build_system_prompt
@@ -142,77 +152,153 @@ class AssistantService(BaseService):
     def process_request(self, request_data: dict, response_helper) -> None:
         client = request_data.get('requester_client')
         project_id = request_data.get('project_id')
-        if client is None or not project_id:
+        user_id = request_data.get('requester_id')
+        conv_id = request_data.get('conversation_id')
+        if client is None or not project_id or not user_id:
             response_helper.error('Missing project_id or requester credentials')
+            return
+        if not conv_id:
+            response_helper.error('Missing conversation_id')
+            return
+        store = ConversationStore(client, user_id, project_id)
+        try:
+            conv, meta = store.load(conv_id)
+        except MissingConversation:
+            response_helper.error('No such conversation')
             return
         try:
             project = load_project(client, project_id)
         except ValueError as e:
             response_helper.error(str(e))
             return
-
+        request_id = getattr(response_helper, 'request_id', None)
         approve = request_data.get('approve')
         if approve:
-            ops = approve.get('ops') or []
-            if not ops:
-                response_helper.error('Nothing to apply')
-                return
-            plan_id = approve.get('id')
-            if plan_id and plan_id in self._applied_plans:
-                response_helper.complete({'kind': 'applied', 'applied': 0, 'counts': [], 'duplicate': True,
-                                          'message': 'This plan was already applied; nothing was written again.'})
-                return
-            label = approve.get('label') or f'Assistant: {summarize(ops)}'
-            contributor = approve.get('contributed_by') or None
-            stamp_mode = 'contributed' if contributor else 'human' if approve.get('as_human') else 'verified'
-            stale = stale_documents(client, approve.get('documents') or [])
-            if stale:
-                response_helper.error('Nothing was written: ' + '; '.join(stale)
-                                      + '. The plan was made against an older state of the data (its character '
-                                      'offsets and ids may no longer fit). Ask the assistant to plan again.')
-                return
-            response_helper.progress(10, 'Applying changes…')
-            try:
-                counts = execute_plan(client, ops, source=service_source(self.service_id), label=label, project=project,
-                                      stamp_mode=stamp_mode, contributor=contributor)
-            except PlanError as e:
-                if plan_id and e.applied:
-                    self._remember_applied(plan_id)
-                response_helper.error(f'The plan failed after {e.applied} of {e.total} changes were applied: {e}. '
-                                      + ('Those changes stand (see recent_changes); the rest were not applied.' if e.applied
-                                         else 'Nothing was written.'))
-                return
-            except ValueError as e:
-                response_helper.error(f'The plan was rejected before anything was written: {e}')
-                return
-            if plan_id:
-                self._remember_applied(plan_id)
-            notes = counts.pop('notes', [])
-            response_helper.progress(100, 'Done')
-            response_helper.complete({
-                'kind': 'applied', 'applied': sum(counts.values()),
-                'counts': [{'kind': k, 'count': n} for k, n in counts.items()],
-                'message': f'Applied {summarize(ops)}.' + (' ' + '; '.join(notes) if notes else ''),
-            })
-            return
+            self._apply(client, project, store, conv_id, conv, meta, approve, request_id, response_helper)
+        else:
+            self._turn(client, project, store, conv_id, conv, meta, request_id, response_helper)
 
-        transcript = request_data.get('messages') or []
+    def _write(self, store: ConversationStore, conv_id: str, conv: dict, meta: dict, request_id) -> bool:
+        """Write the outcome, unless the conversation moved on meanwhile (its
+        pending marker names another request, or it was deleted): then the
+        outcome is dropped rather than written over what the user did."""
+        if not store.owned_by(conv_id, request_id):
+            print(f'Conversation {conv_id} moved on; the outcome of request {request_id} is not written.')
+            return False
+        store.save(conv_id, conv, meta)
+        return True
+
+    def _turn(self, client, project, store, conv_id, conv, meta, request_id, response_helper) -> None:
+        transcript = conv['messages']
+        if not transcript or transcript[-1].get('role') != 'user':
+            response_helper.error('The conversation has no message to answer')
+            return
+        model = self.cfg.model
         state = {'pct': 5}
 
         def on_progress(pct, msg):
             state['pct'] = max(state['pct'], pct)
             response_helper.progress(state['pct'], msg)
 
+        def cancelled() -> bool:
+            return bool(getattr(response_helper, 'cancelled', False))
+
         ws = Workspace(client, project, on_progress=lambda msg: response_helper.progress(state['pct'], msg))
         if self.web_cfg is not None:
             ws.web = session_for(self.web_cfg, transcript)
-        turn = run_turn(self.cfg, ws, build_system_prompt(project, web=ws.web is not None),
-                        transcript, on_progress)
+        try:
+            turn = run_turn(self.cfg, ws, build_system_prompt(project, web=ws.web is not None),
+                            transcript, on_progress, cancelled=cancelled)
+        except TurnCancelled:
+            # The user's message leaves the model transcript (a retry must not
+            # send it twice) and stays on screen with what happened.
+            stopped = {'messages': transcript[:-1], 'display': conv['display'] + [error_item('Stopped.', stopped=True)]}
+            self._write(store, conv_id, stopped, build_meta(meta, conv_id, stopped, self.service_id, model), request_id)
+            response_helper.complete({'kind': 'stopped'})
+            return
+        except Exception as e:  # noqa: BLE001 - whatever failed, the record must say so
+            traceback.print_exc()
+            failed = {'messages': transcript[:-1],
+                      'display': conv['display'] + [error_item(f'The assistant could not answer: {e}')]}
+            self._write(store, conv_id, failed, build_meta(meta, conv_id, failed, self.service_id, model), request_id)
+            response_helper.error(str(e))
+            return
+        item = assistant_item(turn.text, ws.plan_payload(), resolve_citations(ws, turn.text),
+                              turn.steps, turn.summary, model)
+        done = prune({'messages': transcript + turn.messages, 'display': conv['display'] + [item]})
+        self._write(store, conv_id, done, build_meta(meta, conv_id, done, self.service_id, model), request_id)
         response_helper.progress(100, 'Done')
-        response_helper.complete({'kind': 'turn', 'message': turn.text, 'messages': turn.messages,
-                                  'plan': ws.plan_payload(), 'citations': resolve_citations(ws, turn.text),
-                                  'steps': turn.steps, 'steps_summary': turn.summary})
+        response_helper.complete({'kind': 'turn', 'message': turn.text, 'plan': item['plan'],
+                                  'citations': item['citations'], 'steps': turn.steps, 'steps_summary': turn.summary})
 
+    def _apply(self, client, project, store, conv_id, conv, meta, approve: dict, request_id, response_helper) -> None:
+        model = self.cfg.model
+        plan_id = approve.get('plan_id')
+        index, item = find_plan(conv, plan_id) if plan_id else (-1, None)
+        if item is None:
+            response_helper.error('No such plan in this conversation')
+            return
+        plan = item['plan']
+
+        def settled(next_conv=None):
+            """Clear the pending marker (with the conversation as it stands, or
+            as given) so the card is decidable again."""
+            c = next_conv or conv
+            self._write(store, conv_id, c, build_meta(meta, conv_id, c, self.service_id, model), request_id)
+
+        # A second approval of the same plan (a retried request, a double
+        # click) does not write it twice.
+        if item.get('status') == 'applied' or (plan_id in self._applied_plans):
+            settled()
+            response_helper.complete({'kind': 'applied', 'applied': 0, 'counts': [], 'duplicate': True,
+                                      'message': 'This plan was already applied; nothing was written again.'})
+            return
+        if item.get('status') == 'discarded':
+            settled()
+            response_helper.error('The plan was discarded')
+            return
+        ops = plan.get('ops') or []
+        if not ops:
+            settled()
+            response_helper.error('Nothing to apply')
+            return
+        contributor = approve.get('contributed_by') or None
+        as_human = bool(approve.get('as_human'))
+        stamp_mode = 'contributed' if contributor else 'human' if as_human else 'verified'
+        stale = stale_documents(client, plan.get('documents') or [])
+        if stale:
+            settled()
+            response_helper.error('Nothing was written: ' + '; '.join(stale)
+                                  + '. The plan was made against an older state of the data (its character '
+                                  'offsets and ids may no longer fit). Ask the assistant to plan again.')
+            return
+        response_helper.progress(10, 'Applying changes…')
+        summary = plan.get('summary') or summarize(ops)
+        try:
+            counts = execute_plan(client, ops, source=service_source(self.service_id), label=f'Assistant: {summary}',
+                                  project=project, stamp_mode=stamp_mode, contributor=contributor)
+        except PlanError as e:
+            if e.applied:
+                self._remember_applied(plan_id)
+            settled()
+            response_helper.error(f'The plan failed after {e.applied} of {e.total} changes were applied: {e}. '
+                                  + ('Those changes stand (see recent_changes); the rest were not applied.' if e.applied
+                                     else 'Nothing was written.'))
+            return
+        except ValueError as e:
+            settled()
+            response_helper.error(f'The plan was rejected before anything was written: {e}')
+            return
+        self._remember_applied(plan_id)
+        notes = counts.pop('notes', [])
+        note = f'(note) The plan was approved and applied: {summary}.' + (' ' + '; '.join(notes) if notes else '')
+        settled(settle_plan(conv, index, 'applied', note, as_human=as_human))
+        response_helper.progress(100, 'Done')
+        response_helper.complete({
+            'kind': 'applied', 'applied': sum(counts.values()),
+            'counts': [{'kind': k, 'count': n} for k, n in counts.items()],
+            'message': f'Applied {summarize(ops)}.' + (' ' + '; '.join(notes) if notes else ''),
+        })
 
     def _remember_applied(self, plan_id: str) -> None:
         self._applied_plans.append(plan_id)

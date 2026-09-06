@@ -110,6 +110,11 @@ def _length_note(choice) -> str:
             'with `--max-tokens`.)*')
 
 
+class TurnCancelled(Exception):
+    """The requester asked for the turn to stop. Raised between steps (never
+    inside a model call or a tool), so nothing is left half done."""
+
+
 @dataclass
 class TurnResult:
     """One finished turn: the reply, the messages it appended to the
@@ -124,8 +129,11 @@ class TurnResult:
 
 
 def run_turn(cfg: ModelConfig, ws: Workspace, system: str, transcript: List[Dict[str, Any]],
-             on_progress: Callable[[int, str], None] = lambda p, m: None) -> TurnResult:
-    """Run one turn: model call, tool calls, repeat, final text."""
+             on_progress: Callable[[int, str], None] = lambda p, m: None,
+             cancelled: Callable[[], bool] = lambda: False) -> TurnResult:
+    """Run one turn: model call, tool calls, repeat, final text. ``cancelled``
+    is polled before every model call and every tool call; once it answers
+    True the turn ends with :class:`TurnCancelled`."""
     history = _clean_transcript(transcript)
     new: List[Dict[str, Any]] = []
     trace: List[Dict[str, Any]] = []
@@ -145,6 +153,8 @@ def run_turn(cfg: ModelConfig, ws: Workspace, system: str, transcript: List[Dict
         return text + _length_note(choice)
 
     while True:
+        if cancelled():
+            raise TurnCancelled()
         on_progress(min(85, 8 + rounds * 5), 'Thinking…' if rounds == 0 else 'Thinking more…')
         kwargs: Dict[str, Any] = dict(**_provider_kwargs(cfg), tools=tools_for(ws), tool_choice='auto',
                                       messages=[{'role': 'system', 'content': system}] + history + new)
@@ -170,6 +180,8 @@ def run_turn(cfg: ModelConfig, ws: Workspace, system: str, transcript: List[Dict
             return TurnResult(text, new, trace)
         rounds += 1
         for c in calls:
+            if cancelled():
+                raise TurnCancelled()
             name = c['function']['name']
             try:
                 args = json.loads(c['function']['arguments'] or '{}')

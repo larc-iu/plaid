@@ -252,10 +252,12 @@ class Workspace:
         if not self.ops:
             return None
         from .plan import summarize
+        from .changes import describe_changes
         # A snapshot: the payload must not alias the live list (discard_plan
         # clears it) since it is what the user approves later.
         return {'id': uuid.uuid4().hex, 'summary': summarize(self.ops),
                 'labels': [op['label'] for op in self.ops], 'ops': copy.deepcopy(self.ops),
+                'changes': describe_changes(self, self.ops),
                 'documents': self.touched_documents()}
 
     def touched_documents(self) -> List[Dict[str, Any]]:
