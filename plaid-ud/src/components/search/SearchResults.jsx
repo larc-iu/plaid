@@ -28,7 +28,9 @@ export const SearchResults = ({
     setPage(0);
   }, [groups]);
 
-  const paged = pageSlice(groups, page, PAGE_SIZE);
+  // Memoized so `pageItems` keeps its identity across renders that change
+  // neither the results nor the page — the grouping below keys on it.
+  const paged = useMemo(() => pageSlice(groups, page, PAGE_SIZE), [groups, page]);
   const { pageItems } = paged;
 
   // Group only the current page's sentences by document for rendering.
