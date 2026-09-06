@@ -1752,7 +1752,7 @@ export class IgtEditor {
     const tag = (it) => {
       const parts = [];
       if (it.count) parts.push(`×${it.count}`);
-      if (it.entry) parts.push(it.entryTrusted ? 'entry' : 'unconfirmed link');
+      if (it.entry) parts.push(it.entryTrusted ? 'link' : 'unconfirmed link');
       if (it.model) parts.push(it.prob != null ? `model ${Math.round(it.prob * 100)}%` : 'model');
       return parts.join(' · ');
     };
