@@ -234,6 +234,8 @@ Four states are distinguished in the grid:
 * A **machine-made** value, such as a gloss a service proposed or a vocabulary link Auto-analyze made, shows in **violet italic**. It is in the document, and it waits for a person to confirm or discard it.
 * A **contributed** value shows in **amber italic**. It was entered by someone whose work the project reviews (see <<_access>>), and it waits for a verifier to confirm or discard it.
 * A **guess** is a faint gray placeholder in an empty cell. It is not in the document at all until you take it with Enter.
+A guess on a **pale teal** background comes from the lexicon entry the word or morpheme is linked to.
+A guess on plain background comes from what the same form was given elsewhere in the project.
 
 Hover over an annotation to see where it came from.
 Editing a marked value confirms it, so the violet and amber dissolve naturally as you work through a document.
@@ -274,6 +276,8 @@ While you analyze, you connect a word or morpheme to an entry, by hand with the 
 
 Linking does two things for you.
 It keeps the same item analyzed the same way everywhere it appears, and a linked entry offers its gloss (and any other field that shares a name with one of your annotation fields) as a guess in the grid, which you accept with Enter.
+A link you made or confirmed puts its entry's gloss ahead of anything the project has seen for the same form.
+An auto-made link you have not confirmed yet ranks behind it, in the grid and in the Alt/Option+Down list alike.
 Because a vocabulary is shared, editing an entry updates every document linked to it.
 In the link popover, the linked entry's form is itself a link: click it to open the entry in its vocabulary.
 

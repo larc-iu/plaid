@@ -28,7 +28,9 @@ import {
   allowedGuess,
   defaultGuessSource,
   listAlternatives,
+  PRECEDENT_SOURCE,
   TAGSET_SOURCE,
+  VOCAB_ENTRY_SOURCE,
 } from '@/domain/glossGuess';
 import {
   isValueAllowed,
@@ -1750,7 +1752,7 @@ export class IgtEditor {
     const tag = (it) => {
       const parts = [];
       if (it.count) parts.push(`×${it.count}`);
-      if (it.entry) parts.push('entry');
+      if (it.entry) parts.push(it.entryTrusted ? 'entry' : 'unconfirmed link');
       if (it.model) parts.push(it.prob != null ? `model ${Math.round(it.prob * 100)}%` : 'model');
       return parts.join(' · ');
     };
@@ -2537,8 +2539,9 @@ export class IgtEditor {
     // say nothing. Skipping it also spares the computation on every such cell
     // of every render.
     const nAlts = !tagset && !this.readOnly && alternatives ? alternatives().length : 0;
+    const basis = g ? this._guessBasis(g) : null;
     const baseTitle = g
-      ? `Guess: ${g.value}. Enter accepts it, Ctrl+Enter accepts the whole word, typing replaces`
+      ? `Guess: ${g.value}${basis ? `, ${basis}` : ''}. Enter accepts it, Ctrl+Enter accepts the whole word, typing replaces`
       : p
         ? this._cellTitle(v, p, origin)
         : filled
@@ -2549,12 +2552,20 @@ export class IgtEditor {
       : nAlts > 1
         ? `${baseTitle ? `${baseTitle}. ` : ''}Alt+↓ lists ${nAlts} values seen for this form`
         : (baseTitle ?? nothing);
+    // A suggestion out of the lexicon wears the faint teal of a stem-linked
+    // morpheme chip, which already means "lexically identified" here. The wash
+    // says where the suggestion came from; how far to trust it is the link
+    // chip's job, in the same column.
+    const guessCls = g
+      ? `igt-field--guess${g.source === VOCAB_ENTRY_SOURCE ? ' igt-field--guess-entry' : ''}`
+      : '';
     const input = html`<input
-      class="igt-field ${filled ? 'igt-field--filled' : 'igt-field--empty'} ${g
-        ? 'igt-field--guess'
-        : ''} ${nAlts > 1 ? 'igt-field--alts' : ''} ${violations.length
-        ? 'igt-field--invalid'
-        : ''} ${provClass('igt-field', p)} ${extraClass}"
+      class="igt-field ${filled ? 'igt-field--filled' : 'igt-field--empty'} ${guessCls} ${nAlts > 1
+        ? 'igt-field--alts'
+        : ''} ${violations.length ? 'igt-field--invalid' : ''} ${provClass(
+        'igt-field',
+        p,
+      )} ${extraClass}"
       data-cell-key=${key}
       data-has-tagset=${tagset ? '1' : nothing}
       data-tagset-delims=${tagset?.delimiters || nothing}
@@ -3335,6 +3346,19 @@ export class IgtEditor {
     return provTitle(value, state, origin, this.doc.isContributor);
   }
 
+  // What a suggestion is standing on, so a person can weigh it before pressing
+  // Enter: the entry it came from (and whether that link is confirmed), or how
+  // often the project has already said this for the same form.
+  _guessBasis(g) {
+    if (g.source === VOCAB_ENTRY_SOURCE) {
+      const entry = g.entryForm ? `the entry “${g.entryForm}”` : 'the linked entry';
+      return g.trusted ? `from ${entry}` : `from ${entry}, unconfirmed link`;
+    }
+    if (g.source === PRECEDENT_SOURCE && g.count)
+      return `seen ${g.count} time${g.count === 1 ? '' : 's'} in this project`;
+    return null;
+  }
+
   // The tooltip of a link chip or MWE label: what it links to and, for a
   // marked link, its state and what the click does. `single` is a word's or
   // morpheme's own chip (the MWE label prefixes the words itself).
@@ -3376,6 +3400,14 @@ export class IgtEditor {
             >
             discards it, <kbd>Ctrl</kbd>+<kbd>⇧</kbd>+<kbd>↑</kbd><kbd>↓</kbd> jumps between
             them</span
+          >
+        </div>
+        <div class="igt-legend__row">
+          <strong>Suggestions</strong>
+          <span
+            ><span class="igt-legend__guess">from this project</span> ·
+            <span class="igt-legend__guess igt-legend__guess--entry">from the linked entry</span> ·
+            <kbd>↵</kbd> accepts one, <kbd>Alt</kbd>+<kbd>↓</kbd> lists the rest</span
           >
         </div>
         <div class="igt-legend__row">

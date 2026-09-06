@@ -277,6 +277,16 @@
 .igt-legend__prov--verified {
   border-bottom: 1px dotted var(--igt-violet-soft);
 }
+/* Suggestion swatches, echoing the placeholder styles. */
+.igt-legend__guess {
+  color: #9ca3af;
+  font-style: italic;
+}
+.igt-legend__guess--entry {
+  background: #e9f4f2;
+  border-radius: 2px;
+  padding: 0 3px;
+}
 .igt-legend kbd {
   font: inherit;
   font-size: 10px;
@@ -702,6 +712,16 @@
   color: #9ca3af;
   font-style: italic;
   opacity: 1;
+}
+/* Out of the linked lexicon entry rather than out of project precedent: the
+   same faint teal as a stem-linked morpheme chip (.igt-morph-form--stem),
+   which already carries "lexically identified" in this grid. A background, not
+   a value color, so scope hue still never touches a value. Hover and focus
+   both outrank it on specificity and take the cell back to their own fill.
+   Whether the link behind it is a person's or an unconfirmed auto-link is the
+   link chip's job in the same column, and the ranking's. */
+.igt-field--guess-entry {
+  background: #e9f4f2;
 }
 
 /* ---- provenance states ----

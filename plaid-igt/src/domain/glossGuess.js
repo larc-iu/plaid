@@ -9,13 +9,14 @@
 // helpers).
 //
 // The built-in default (defaultGuessSource) asks the linked lexicon entry
-// first, then project precedent. To plug in a different algorithm (or a
+// first when a person made or confirmed that link, then project precedent,
+// then the entry behind an unconfirmed auto-link. To plug in a different (or a
 // service-backed one), assign a factory with the same shape to
 // IgtEditor.guessSourceFactory:
 //   ({ precedent, sentences, wordFields, morphFields }) => ({ id, guessFor })
 // where `precedent` is the precedent.js tally the editor maintains.
 
-import { PROV } from '@larc-iu/plaid-client';
+import { PROV, PROV_STATES } from '@larc-iu/plaid-client';
 import { precedentCounts, pickMajority } from './precedent.js';
 import { isValueAllowed, scanValue, tagsetEnforces } from './tagsets.js';
 
@@ -36,7 +37,9 @@ export function precedentGuessSource(precedent) {
     guessFor(kind, form, field) {
       const counts = precedentCounts(precedent, kind, form, field);
       const value = pickMajority(counts);
-      return value ? { value, source: PRECEDENT_SOURCE } : null;
+      // The count rides along so the cell can say what the suggestion stands
+      // on rather than only what it is.
+      return value ? { value, source: PRECEDENT_SOURCE, count: counts.get(value) } : null;
     },
   };
 }
@@ -52,23 +55,53 @@ const fieldKey = (name) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '');
 
+// Link states whose entry may outrank precedent. A person saying "this token
+// IS this lexeme" is a claim about THIS token, which beats "other tokens
+// spelled the same got X"; an auto-made link nobody has confirmed is itself a
+// guess, so its entry would be a guess resting on a guess and ranks below
+// precedent instead. (Move PROV_STATES.CONTRIBUTED in here to treat a
+// contributor's unreviewed link as a person's, which is how precedent.js
+// already counts their decisions.)
+const TRUSTED_LINK_STATES = new Set([PROV_STATES.HUMAN, PROV_STATES.VERIFIED]);
+
+/** Whether a derived vocabItem's LINK was made or confirmed by a person. */
+export const isTrustedLink = (vocabItem) =>
+  !!vocabItem && TRUSTED_LINK_STATES.has(vocabItem.prov ?? PROV_STATES.HUMAN);
+
 // The linked entry's own value for the same-named field. An entry's fields
 // are what it says about itself in the lexicon (form aside); a token linked to
 // it inherits them as guesses, never as writes, since an instance may
 // legitimately differ from its entry (context-specific glossing).
-export function vocabEntryGuessSource() {
+//
+// `trusted` filters by the LINK's provenance (see TRUSTED_LINK_STATES): true
+// answers only for a person's links, false only for a machine's, null for
+// either. That is what lets the default source sit precedent BETWEEN the two.
+// The guess reports the entry's form and the link's standing so the cell can
+// say where the suggestion came from; `source` stays VOCAB_ENTRY_SOURCE
+// either way, since that is the provenance an adoption is written with.
+export function vocabEntryGuessSource({ trusted = null } = {}) {
   return {
     id: VOCAB_ENTRY_SOURCE,
     guessFor(kind, form, field, ctx = null) {
-      const meta = ctx?.vocabItem?.metadata;
+      const item = ctx?.vocabItem;
+      const meta = item?.metadata;
       if (!meta || typeof meta !== 'object') return null;
+      const isTrusted = isTrustedLink(item);
+      if (trusted !== null && isTrusted !== trusted) return null;
       const want = fieldKey(field);
       if (!want) return null;
       for (const [name, value] of Object.entries(meta)) {
         if (fieldKey(name) !== want) continue;
         if (value == null) return null;
         const s = String(value).trim();
-        return s ? { value: s, source: VOCAB_ENTRY_SOURCE } : null;
+        return s
+          ? {
+              value: s,
+              source: VOCAB_ENTRY_SOURCE,
+              entryForm: item.form ?? null,
+              trusted: isTrusted,
+            }
+          : null;
       }
       return null;
     },
@@ -89,9 +122,16 @@ export function composeGuessSources(sources) {
   };
 }
 
-// The editor's default: the linked entry, then project precedent.
+// The editor's default, strongest claim first: an entry reached through a
+// person's link, then project precedent, then an entry reached through an
+// unconfirmed auto-link. listAlternatives sorts to match, so the placeholder
+// and the Alt+down list never disagree about what ranks first.
 export function defaultGuessSource({ precedent }) {
-  return composeGuessSources([vocabEntryGuessSource(), precedentGuessSource(precedent)]);
+  return composeGuessSources([
+    vocabEntryGuessSource({ trusted: true }),
+    precedentGuessSource(precedent),
+    vocabEntryGuessSource({ trusted: false }),
+  ]);
 }
 
 export const TAGSET_SOURCE = 'tagset';
@@ -101,8 +141,9 @@ export const TAGSET_SOURCE = 'tagset';
 // says, what the cell's own producer predicted (provDetail.value, plus a top-k
 // distribution under provDetail.valueProbs when it has one), and what the
 // field's tagset allows. Rows merge by value; `source` is the provenance
-// source a pick is written with. Rank: count, then probability, then
-// entry-backed, then alphabetical.
+// source a pick is written with. Rank: an entry reached through a person's
+// link, then count, then probability, then any other entry-backed row, then
+// alphabetical — the same order defaultGuessSource picks the placeholder in.
 //
 // An ENFORCING tagset then keeps only what it allows: offering a value that
 // commit will reject is offering a dead end. It also drops a one-off lexical
@@ -128,13 +169,21 @@ export function listAlternatives({
   const row = (value) => {
     const v = String(value);
     let r = rows.get(v);
-    if (!r) rows.set(v, (r = { value: v, count: 0, prob: null, entry: false, model: false }));
+    if (!r)
+      rows.set(
+        v,
+        (r = { value: v, count: 0, prob: null, entry: false, entryTrusted: false, model: false }),
+      );
     return r;
   };
   const counts = precedentCounts(precedent, kind, form, field);
   if (counts) for (const [v, n] of counts) row(v).count += n;
   const e = vocabEntryGuessSource().guessFor(kind, form, field, { vocabItem });
-  if (e) row(e.value).entry = true;
+  if (e) {
+    const r = row(e.value);
+    r.entry = true;
+    r.entryTrusted = e.trusted;
+  }
   const d = span?.metadata?.[PROV_DETAIL_KEY];
   if (d && typeof d === 'object') {
     if (d.value != null && d.value !== '') row(d.value).model = true;
@@ -174,6 +223,7 @@ export function listAlternatives({
         count: 0,
         prob: null,
         entry: false,
+        entryTrusted: false,
         model: false,
         source: TAGSET_SOURCE,
         description: rec.description,
@@ -204,6 +254,7 @@ export function listAlternatives({
 
   list.sort(
     (a, b) =>
+      Number(b.entryTrusted) - Number(a.entryTrusted) ||
       b.count - a.count ||
       (b.prob ?? -1) - (a.prob ?? -1) ||
       Number(b.entry) - Number(a.entry) ||
@@ -226,12 +277,21 @@ function decomposeRows(rows, delimiters) {
       if (!p) {
         byPart.set(
           value,
-          (p = { value, count: 0, prob: null, entry: false, model: false, source: r.source }),
+          (p = {
+            value,
+            count: 0,
+            prob: null,
+            entry: false,
+            entryTrusted: false,
+            model: false,
+            source: r.source,
+          }),
         );
       }
       p.count += r.count;
       if (r.prob != null) p.prob = Math.max(p.prob ?? 0, r.prob);
       p.entry ||= r.entry;
+      p.entryTrusted ||= r.entryTrusted;
       p.model ||= r.model;
       // Precedent is the strongest claim to a source; keep it over a model's.
       if (r.count) p.source = r.source;

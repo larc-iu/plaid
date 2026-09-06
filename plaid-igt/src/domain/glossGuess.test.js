@@ -33,10 +33,15 @@ describe('precedentGuessSource', () => {
         { morphFields: ['Gloss'] },
       ),
     );
-    expect(g.guessFor('morpheme', 's', 'Gloss')).toEqual({ value: 'PL', source: PRECEDENT_SOURCE });
+    expect(g.guessFor('morpheme', 's', 'Gloss')).toEqual({
+      value: 'PL',
+      source: PRECEDENT_SOURCE,
+      count: 1,
+    });
     expect(g.guessFor('morpheme', 'perro', 'Gloss')).toEqual({
       value: 'dog',
       source: PRECEDENT_SOURCE,
+      count: 1,
     });
     expect(g.guessFor('morpheme', 'gato', 'Gloss')).toBeNull();
   });
@@ -102,6 +107,8 @@ describe('vocabEntryGuessSource', () => {
     expect(g.guessFor('morpheme', 'perro', 'Gloss', ctx({ gloss: 'dog' }))).toEqual({
       value: 'dog',
       source: 'vocab:entry',
+      entryForm: null,
+      trusted: true,
     });
     expect(g.guessFor('word', 'perro', 'POS', ctx({ pos: 'N' }))?.value).toBe('N');
     expect(g.guessFor('word', 'x', 'Morph Type', ctx({ morphType: 'stem' }))?.value).toBe('stem');
@@ -130,7 +137,43 @@ describe('defaultGuessSource', () => {
     expect(g.guessFor('morpheme', 's', 'Gloss', { vocabItem: { metadata: {} } })).toEqual({
       value: 'PL',
       source: PRECEDENT_SOURCE,
+      count: 1,
     });
+  });
+
+  it("sits precedent between a person's link and an unconfirmed auto-link", () => {
+    const g = defaultGuessSource({
+      precedent: tallyOf(
+        sent([
+          word('perros', {}, [morph('perro', { Gloss: 'hound' }), morph('s', { Gloss: 'PL' })]),
+        ]),
+        { morphFields: ['Gloss'] },
+      ),
+    });
+    const entry = { form: 'perro', metadata: { gloss: 'dog' } };
+    const guess = (prov) =>
+      g.guessFor('morpheme', 'perro', 'Gloss', { vocabItem: { ...entry, prov } });
+
+    // A person made or confirmed the link: the entry is a claim about THIS
+    // token and outranks what other tokens spelled the same were given.
+    expect(guess('human')?.value).toBe('dog');
+    expect(guess('verified')?.value).toBe('dog');
+    // The link is itself an unconfirmed machine guess, so precedent wins.
+    expect(guess('machine')?.value).toBe('hound');
+    expect(guess('contributed')?.value).toBe('hound');
+    // ...but the entry is still better than nothing where precedent is silent.
+    expect(
+      g.guessFor('morpheme', 'gato', 'Gloss', { vocabItem: { ...entry, prov: 'machine' } }),
+    ).toMatchObject({ value: 'dog', source: 'vocab:entry', trusted: false });
+  });
+
+  it('reports the entry form and the link standing for the cell to show', () => {
+    const g = defaultGuessSource({ precedent: createTally() });
+    expect(
+      g.guessFor('morpheme', 'perro', 'Gloss', {
+        vocabItem: { form: 'perro', prov: 'human', metadata: { gloss: 'dog' } },
+      }),
+    ).toEqual({ value: 'dog', source: 'vocab:entry', entryForm: 'perro', trusted: true });
   });
 });
 
@@ -161,10 +204,34 @@ describe('listAlternatives', () => {
         },
       },
     });
+    // The entry's link is a person's (no prov on the item), so it leads —
+    // the same order defaultGuessSource picks the placeholder in.
     expect(list.map((r) => [r.value, r.count, r.prob, r.entry, r.model, r.source])).toEqual([
-      ['PL', 2, 0.7, false, true, PRECEDENT_SOURCE],
       ['3SG', 1, 0.1, true, true, 'vocab:entry'],
+      ['PL', 2, 0.7, false, true, PRECEDENT_SOURCE],
       ['GEN', 0, 0.2, false, true, 'service:x'],
+    ]);
+  });
+
+  it('ranks an entry behind precedent when its link is an unconfirmed auto-link', () => {
+    const rank = (prov) =>
+      listAlternatives({
+        precedent,
+        kind: 'morpheme',
+        form: 's',
+        field: 'Gloss',
+        vocabItem: { form: 's', prov, metadata: { gloss: 'GEN' } },
+      }).map((r) => [r.value, r.entry, r.entryTrusted]);
+
+    expect(rank('human')).toEqual([
+      ['GEN', true, true],
+      ['PL', false, false],
+      ['3SG', false, false],
+    ]);
+    expect(rank('machine')).toEqual([
+      ['PL', false, false],
+      ['3SG', false, false],
+      ['GEN', true, false],
     ]);
   });
 
