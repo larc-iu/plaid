@@ -235,7 +235,7 @@ const print = (projectId, docId, vocabId) => {
   console.log(`access:        ${APP}/#/projects/${projectId}/access`);
   if (vocabId) console.log(`lexicon:       ${APP}/#/vocabularies/${vocabId}`);
   console.log(
-    `contributor:   ${WRITER.email} / ${PASSWORD}   (a writer; the project reviews writers)`,
+    `contributor:   ${WRITER.email} / ${PASSWORD}   (a writer whose work is reviewed)`,
   );
   console.log(`verifier:      ${MAINT.email} / ${PASSWORD}   (a maintainer), or your admin login`);
 };
@@ -293,8 +293,9 @@ await client.projects.setConfig(projectId, 'igt', 'documentMetadata', [
   { name: 'Date' },
   { name: 'Speakers' },
 ]);
-// The setting under test: writers are contributors here.
-await client.projects.setConfig(projectId, 'igt', 'reviewWriters', true);
+// The mark under test: the writer's work is reviewed (a per-person mark in
+// the cross-app plaid.review config, independent of the role).
+await client.projects.setConfig(projectId, 'plaid', 'review', { users: [writerId] });
 await client.projects.setConfig(projectId, 'igt', 'initialized', true);
 await client.projects.addWriter(projectId, writerId);
 await client.projects.addMaintainer(projectId, maintId);

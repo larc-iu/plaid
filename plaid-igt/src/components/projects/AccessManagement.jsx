@@ -41,7 +41,14 @@ import {
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { isEmail, EMAIL_INVALID_MESSAGE } from '@/utils/email';
 import { ProjectInvites, MintedLinkDialog } from './ProjectInvites';
-import { IGT_NAMESPACE, readReviewWriters } from '../../domain/igtConfig.js';
+import {
+  PLAID_NAMESPACE,
+  REVIEW_KEY,
+  isReviewed,
+  projectRole,
+  readReview,
+  withReviewedUser,
+} from '@larc-iu/plaid-client';
 
 // Mirrors plaid-ud's ProjectManagement. The full user roster isn't fetched
 // (doesn't scale + is admin-gated); instead "Members" come from the project's
@@ -99,21 +106,29 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
   // the point: onboarding a class should not queue behind an admin.
   const canInvite = isAdmin || (project?.maintainers || []).includes(user?.id);
 
-  // Review writers' work (provenance convention): while on, a writer's
-  // annotations are marked contributed until a maintainer confirms them.
-  // Stored in the project's igt config; the editor reads it per document.
-  const reviewWriters = readReviewWriters(project?.config);
-  const [savingReview, setSavingReview] = useState(false);
-  const setReviewWriters = async (on) => {
-    setSavingReview(true);
+  // Whose work is reviewed (the cross-app `plaid.review` norm, provenance
+  // convention): a marked member's annotations are recorded as contributed
+  // until a verifier confirms them. Independent of the role: any member can
+  // be marked. A project may also mark whole roles (another app's setting);
+  // such members show as reviewed and cannot be unmarked one by one here.
+  const [updatingReview, setUpdatingReview] = useState(null);
+  const reviewedByRole = (m) => {
+    const { users, roles } = readReview(project?.config);
+    return (
+      !users.includes(m.id) && roles.includes(projectRole(project, m.id, { isAdmin: m.isAdmin }))
+    );
+  };
+  const setReviewed = async (userId, on) => {
     try {
-      await client.projects.setConfig(projectId, IGT_NAMESPACE, 'reviewWriters', on);
-      onDataUpdate?.();
+      setUpdatingReview(userId);
+      const next = withReviewedUser(project?.config?.[PLAID_NAMESPACE]?.[REVIEW_KEY], userId, on);
+      await client.projects.setConfig(projectId, PLAID_NAMESPACE, REVIEW_KEY, next);
+      await onDataUpdate();
     } catch (err) {
-      console.error('Error updating review setting:', err);
-      notifyError('Failed to update the review setting. Please try again.', 'Error');
+      console.error('Error updating review:', err);
+      notifyError('Failed to update review. Please try again.', 'Error');
     } finally {
-      setSavingReview(false);
+      setUpdatingReview(null);
     }
   };
 
@@ -314,26 +329,6 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
 
   return (
     <div className="tw flex flex-col gap-6 pt-4 [&>*+*]:border-t [&>*+*]:pt-6">
-      {/* Review */}
-      <div>
-        <h2 className="pb-3 text-lg font-semibold">Review</h2>
-        <div className="flex items-start gap-2">
-          <Switch
-            id="review-writers"
-            checked={reviewWriters}
-            disabled={savingReview}
-            onCheckedChange={setReviewWriters}
-          />
-          <div>
-            <Label htmlFor="review-writers">Review writers' work</Label>
-            <p className="text-xs text-muted-foreground">
-              A writer's annotations are marked as contributed until a maintainer confirms them.
-              Maintainers' work is never marked.
-            </p>
-          </div>
-        </div>
-      </div>
-
       {/* Members */}
       <div>
         <div className="flex items-center justify-between gap-2 pb-3">
@@ -369,6 +364,12 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
                 <tr className="text-left text-muted-foreground">
                   <th className="px-4 py-2 font-medium">User</th>
                   <th className="px-4 py-2 font-medium">Project role</th>
+                  <th
+                    className="px-4 py-2 font-medium"
+                    title="Their annotations are marked as contributed until a maintainer confirms them"
+                  >
+                    Review work
+                  </th>
                   {isAdmin && <th className="w-12 px-4 py-2" />}
                 </tr>
               </thead>
@@ -410,6 +411,21 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
                           ))}
                         </SelectContent>
                       </Select>
+                    </td>
+                    <td className="px-4 py-2">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4"
+                        aria-label={`Review ${m.displayName}'s work`}
+                        checked={isReviewed(project, m.id, { isAdmin: m.isAdmin })}
+                        disabled={updatingReview === m.id || reviewedByRole(m)}
+                        title={
+                          reviewedByRole(m)
+                            ? `Every ${projectRole(project, m.id, { isAdmin: m.isAdmin })} is reviewed in this project`
+                            : undefined
+                        }
+                        onChange={(e) => setReviewed(m.id, e.target.checked)}
+                      />
                     </td>
                     {isAdmin && (
                       <td className="px-4 py-2">

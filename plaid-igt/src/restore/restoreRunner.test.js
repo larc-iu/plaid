@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { runRestore, previewRestore } from './restoreRunner.js';
+import { runRestore, previewRestore, latestState } from './restoreRunner.js';
 
 // The runner re-reads the document between phases. The stub hands back one
 // prepared state per live read, in order, and the target for the as-of read,
@@ -322,6 +322,25 @@ describe('runRestore', () => {
     ]);
     expect(res.summary).toMatchObject({ name: true, metadata: true, total: 2 });
     expect(res.exact).toBe(true);
+  });
+
+  it('reads the newest history entry as the moment the live state belongs to', async () => {
+    const audit = [
+      { id: 'a', time: '2026-09-01T00:00:00Z', ops: [{ description: 'Create document' }] },
+      {
+        id: 'b',
+        time: '2026-09-01T00:01:00Z',
+        endTime: '2026-09-01T00:01:02Z',
+        message: 'Tokenize',
+        ops: [{ description: 'Create token' }],
+      },
+    ];
+    const client = { documents: { audit: async () => audit } };
+    expect(await latestState(client, 'doc1')).toEqual({
+      time: '2026-09-01T00:01:02Z',
+      label: 'Tokenize',
+    });
+    expect(await latestState({ documents: { audit: async () => [] } }, 'doc1')).toBeNull();
   });
 
   it('previews without writing', async () => {

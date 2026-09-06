@@ -1,4 +1,11 @@
-import { cpLength, cpSlice, utf16ToCp, verifyOnEdit } from '@larc-iu/plaid-client';
+import {
+  cpLength,
+  cpSlice,
+  utf16ToCp,
+  isReviewed,
+  mergeMetadata,
+  writerPolicy,
+} from '@larc-iu/plaid-client';
 import { isProvKey } from '../utils/provenanceUi.js';
 import { getUdLayerInfo, containsToken, missingUdLayerLabels } from '../utils/udLayerUtils.js';
 import {
@@ -47,10 +54,15 @@ export function operationLabel(errorLabel) {
 }
 
 export class ConlluDocument {
-  constructor({ raw, client = null, projectId = null }) {
+  constructor({ raw, client = null, projectId = null, project = null, user = null }) {
     this._raw = raw;
     this._client = client;
     this._projectId = projectId;
+    // The project (its ACL and config) and the person writing ({ id, isAdmin }),
+    // for the provenance convention: see `writer`. Null = a verifier.
+    this._project = project;
+    this._user = user;
+    this._writer = null;
     // `_version` is the React subscription snapshot — it bumps on EVERY emit
     // (including isSaving/error toggles that change no document data). The
     // derived caches below instead key on `_dataVersion`, which bumps only when
@@ -69,10 +81,33 @@ export class ConlluDocument {
     this._error = '';
   }
 
-  // Convenience factory: fetch a document by id and wrap it.
-  static async load(client, projectId, documentId) {
+  // Convenience factory: fetch a document by id and wrap it. `project` and
+  // `user`, when given, make the document write as that person (see `writer`).
+  static async load(client, projectId, documentId, { project = null, user = null } = {}) {
     const raw = await client.documents.get(documentId, true);
-    return new ConlluDocument({ raw, client, projectId });
+    return new ConlluDocument({ raw, client, projectId, project, user });
+  }
+
+  // ----- who is writing (provenance) -----
+  // Whose work is reviewed is the project's call, under the cross-app
+  // `plaid.review` config (isReviewed). A reviewed person is a CONTRIBUTOR,
+  // whose creates and edits are stamped contributed until a verifier confirms
+  // them; everyone else, and a document with no user, is a VERIFIER, whose
+  // edits and confirmations settle machine or contributed material. The
+  // policy is the client's writerPolicy; every human write below reads it.
+
+  /** The contributor's user id, or null when the writer is a verifier. */
+  get contributorId() {
+    const user = this._user;
+    if (!user?.id || !this._project) return null;
+    return isReviewed(this._project, user.id, { isAdmin: !!user.isAdmin }) ? user.id : null;
+  }
+
+  /** The writer's policy (plaid-client's writerPolicy) for the current user. */
+  get writer() {
+    const id = this.contributorId;
+    if (!this._writer || this._writer.contributorId !== id) this._writer = writerPolicy(id);
+    return this._writer;
   }
 
   // Import a CoNLL-U text into a new document in the given project.
@@ -1247,9 +1282,9 @@ export class ConlluDocument {
             span.value.split('=')[0] === key,
         );
         if (existingFeat) {
-          // Human edit of a machine feature verifies it (see the existing-span
+          // A person's edit carries the writer's stamp (see the existing-span
           // branch below for the full rationale).
-          const verifyFeat = verifyOnEdit(existingFeat.metadata);
+          const verifyFeat = this.writer.editStamp(existingFeat.metadata);
           // Optimistic overwrite: update the tag locally before the round trip.
           this._applyRawPatch((next, infoNext) => {
             const layerDoc = infoNext.tokenLayer?.spanLayers?.find((layer) =>
@@ -1259,10 +1294,10 @@ export class ConlluDocument {
             if (layerDoc?.spans && spanIndex != null && spanIndex !== -1) {
               layerDoc.spans[spanIndex].value = value;
               if (verifyFeat) {
-                layerDoc.spans[spanIndex].metadata = {
-                  ...(layerDoc.spans[spanIndex].metadata || {}),
-                  ...verifyFeat,
-                };
+                layerDoc.spans[spanIndex].metadata = mergeMetadata(
+                  layerDoc.spans[spanIndex].metadata,
+                  verifyFeat,
+                );
               }
             }
           });
@@ -1278,7 +1313,14 @@ export class ConlluDocument {
         }
         // Create is post-server (a span create needs the server id; the temp-id
         // reconcile's double grid-rebuild isn't worth it — see createRelation).
-        const spanResult = await this._client.spans.create(targetLayer.id, [tokenId], value);
+        // A new span carries the writer's create stamp (null for a verifier).
+        const stamp = this.writer.createStamp;
+        const spanResult = await this._client.spans.create(
+          targetLayer.id,
+          [tokenId],
+          value,
+          stamp || undefined,
+        );
         const newSpanId = spanResult?.id || spanResult;
         this._applyRawPatch((next, infoNext) => {
           const featuresLayerDoc =
@@ -1287,7 +1329,12 @@ export class ConlluDocument {
               : infoNext.tokenLayer?.spanLayers?.find((layer) => layer.id === targetLayer.id);
           if (featuresLayerDoc) {
             if (!featuresLayerDoc.spans) featuresLayerDoc.spans = [];
-            featuresLayerDoc.spans.push({ id: newSpanId, tokens: [tokenId], value });
+            featuresLayerDoc.spans.push({
+              id: newSpanId,
+              tokens: [tokenId],
+              value,
+              ...(stamp ? { metadata: stamp } : {}),
+            });
           }
         });
         return;
@@ -1318,12 +1365,13 @@ export class ConlluDocument {
         return;
       }
       if (existingSpan) {
-        // A human edit of a machine-made, unverified span VERIFIES it
-        // (provenance write contract): merge provConfirmed alongside the
-        // value. Both land in ONE optimistic patch (single _dataVersion bump,
-        // so the machine styling clears with the value, no double repaint)
-        // and one atomic batch (single document-version bump, OCC-safe).
-        const verify = verifyOnEdit(existingSpan.metadata);
+        // A person's edit carries the writer's stamp (provenance write
+        // contract rule 3): a verifier's confirms a machine-made or contributed
+        // span, a contributor's marks it contributed. Value and metadata land
+        // in ONE optimistic patch (single _dataVersion bump, so the styling
+        // changes with the value, no double repaint) and one atomic batch
+        // (single document-version bump, OCC-safe).
+        const verify = this.writer.editStamp(existingSpan.metadata);
         // Optimistic: update the value (+ metadata) locally before the round trip.
         this._applyRawPatch((next, infoNext) => {
           const targetLayerDoc = infoNext.tokenLayer?.spanLayers?.find((layer) =>
@@ -1334,10 +1382,10 @@ export class ConlluDocument {
             if (spanIndex !== -1) {
               targetLayerDoc.spans[spanIndex].value = value;
               if (verify) {
-                targetLayerDoc.spans[spanIndex].metadata = {
-                  ...(targetLayerDoc.spans[spanIndex].metadata || {}),
-                  ...verify,
-                };
+                targetLayerDoc.spans[spanIndex].metadata = mergeMetadata(
+                  targetLayerDoc.spans[spanIndex].metadata,
+                  verify,
+                );
               }
             }
           }
@@ -1353,7 +1401,14 @@ export class ConlluDocument {
       } else {
         // Create is post-server (EditableCell already shows the typed value
         // optimistically via its local state, so there's no visible delay).
-        const spanResult = await this._client.spans.create(targetLayer.id, [tokenId], value);
+        // A new span carries the writer's create stamp (null for a verifier).
+        const stamp = this.writer.createStamp;
+        const spanResult = await this._client.spans.create(
+          targetLayer.id,
+          [tokenId],
+          value,
+          stamp || undefined,
+        );
         const newSpanId = spanResult?.id || spanResult;
         this._applyRawPatch((next, infoNext) => {
           const targetLayerDoc = infoNext.tokenLayer?.spanLayers?.find(
@@ -1361,7 +1416,12 @@ export class ConlluDocument {
           );
           if (targetLayerDoc) {
             if (!targetLayerDoc.spans) targetLayerDoc.spans = [];
-            targetLayerDoc.spans.push({ id: newSpanId, tokens: [tokenId], value });
+            targetLayerDoc.spans.push({
+              id: newSpanId,
+              tokens: [tokenId],
+              value,
+              ...(stamp ? { metadata: stamp } : {}),
+            });
           }
         });
       }
@@ -1424,7 +1484,14 @@ export class ConlluDocument {
         const token = info.tokenLayer?.tokens?.find((t) => t.id === tokenId);
         const lemmaValue = token ? cpSlice(textBody, token.begin, token.end) : '';
 
-        const apiResponse = await this._client.spans.create(lemmaLayer.id, [tokenId], lemmaValue);
+        // Made on the writer's behalf to hang the relation on: their stamp.
+        const stamp = this.writer.createStamp;
+        const apiResponse = await this._client.spans.create(
+          lemmaLayer.id,
+          [tokenId],
+          lemmaValue,
+          stamp || undefined,
+        );
         const createdSpanId = apiResponse.id || apiResponse;
 
         this._applyRawPatch((next, infoNext) => {
@@ -1432,7 +1499,12 @@ export class ConlluDocument {
           if (lemmaLayerDoc) {
             if (!Array.isArray(lemmaLayerDoc.spans)) lemmaLayerDoc.spans = [];
             if (lemmaLayerDoc.spans.findIndex((s) => s.id === createdSpanId) === -1) {
-              lemmaLayerDoc.spans.push({ id: createdSpanId, tokens: [tokenId], value: lemmaValue });
+              lemmaLayerDoc.spans.push({
+                id: createdSpanId,
+                tokens: [tokenId],
+                value: lemmaValue,
+                ...(stamp ? { metadata: stamp } : {}),
+              });
             }
           }
         });
@@ -1459,6 +1531,9 @@ export class ConlluDocument {
         (rel) => rel.target === resolvedTargetId,
       );
       const finalDeprel = deprel || (resolvedSourceId === resolvedTargetId ? 'root' : 'dep');
+      // A re-pointed head is a person's relation: it carries the writer's
+      // create stamp (null for a verifier, so a verifier's stays plain).
+      const relStamp = this.writer.createStamp;
       const batchResults = await this._client.batched(async () => {
         incomingRelations.forEach((rel) => this._client.relations.delete(rel.id));
         this._client.relations.create(
@@ -1466,6 +1541,7 @@ export class ConlluDocument {
           resolvedSourceId,
           resolvedTargetId,
           finalDeprel,
+          relStamp || undefined,
         );
       });
       const newRelationId = batchResults[batchResults.length - 1]?.body?.id;
@@ -1479,6 +1555,7 @@ export class ConlluDocument {
           source: resolvedSourceId,
           target: resolvedTargetId,
           value: finalDeprel,
+          ...(relStamp ? { metadata: relStamp } : {}),
         });
       });
     });
@@ -1492,7 +1569,7 @@ export class ConlluDocument {
       const existing = (this.layerInfo.relationLayer?.relations || []).find(
         (r) => r.id === relationId,
       );
-      const verify = verifyOnEdit(existing?.metadata);
+      const verify = this.writer.editStamp(existing?.metadata);
       // Optimistic: reflect the new value immediately, BEFORE the round trip,
       // so the label doesn't flash the previous value while the save is in
       // flight. On failure, _withSaving reloads from the server and reverts.
@@ -1503,10 +1580,10 @@ export class ConlluDocument {
         if (idx !== -1) {
           relLayer.relations[idx].value = deprel;
           if (verify) {
-            relLayer.relations[idx].metadata = {
-              ...(relLayer.relations[idx].metadata || {}),
-              ...verify,
-            };
+            relLayer.relations[idx].metadata = mergeMetadata(
+              relLayer.relations[idx].metadata,
+              verify,
+            );
           }
         }
       });
@@ -1533,13 +1610,15 @@ export class ConlluDocument {
     });
   }
 
-  // Confirm machine-made (unverified) predictions on the given tokens WITHOUT
-  // changing their values: stamp { provConfirmed: true } on every inferred span
-  // (form/lemma/upos/xpos/features) and incoming dependency relation, so a later
-  // re-parse's protect-guard leaves the reviewed material alone. Human-made and
-  // already-verified annotations are skipped (verifyOnEdit returns null for
-  // them). Used by the editor's per-token Ctrl+Enter and per-sentence
-  // "Accept predictions" gestures.
+  // Confirm the proposals on the given tokens WITHOUT changing their values:
+  // merge the writer's confirm stamp on every span (form/lemma/upos/xpos/
+  // features) and incoming dependency relation this writer reviews, so a later
+  // re-parse's protect-guard leaves the reviewed material alone. For a verifier
+  // that is provConfirmed on machine-made or contributed material; a
+  // contributor's acceptance of a machine proposal records it as their
+  // contribution. Anything else is skipped (confirmStamp returns null). Used by
+  // the editor's per-token Ctrl+Enter and per-sentence "Accept predictions"
+  // gestures.
   async confirmTokens(tokenIds) {
     const idSet = new Set(tokenIds || []);
     if (idSet.size === 0) return false;
@@ -1560,7 +1639,7 @@ export class ConlluDocument {
         for (const layer of spanLayers) {
           for (const span of layer.spans || []) {
             if (Array.isArray(span.tokens) && span.tokens.some((t) => idSet.has(t))) {
-              const verify = verifyOnEdit(span.metadata);
+              const verify = this.writer.confirmStamp(span.metadata);
               if (verify) spanPatchById.set(span.id, verify);
             }
           }
@@ -1575,7 +1654,7 @@ export class ConlluDocument {
         for (const rel of info.relationLayer?.relations || []) {
           const targetTokens = lemmaTokensBySpan.get(rel.target) || [];
           if (targetTokens.some((t) => idSet.has(t))) {
-            const verify = verifyOnEdit(rel.metadata);
+            const verify = this.writer.confirmStamp(rel.metadata);
             if (verify) relPatchById.set(rel.id, verify);
           }
         }
@@ -1593,12 +1672,12 @@ export class ConlluDocument {
           ]) {
             for (const span of layer?.spans || []) {
               const patch = spanPatchById.get(span.id);
-              if (patch) span.metadata = { ...(span.metadata || {}), ...patch };
+              if (patch) span.metadata = mergeMetadata(span.metadata, patch);
             }
           }
           for (const rel of infoNext.relationLayer?.relations || []) {
             const patch = relPatchById.get(rel.id);
-            if (patch) rel.metadata = { ...(rel.metadata || {}), ...patch };
+            if (patch) rel.metadata = mergeMetadata(rel.metadata, patch);
           }
         });
 

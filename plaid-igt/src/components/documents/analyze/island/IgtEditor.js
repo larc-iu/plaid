@@ -16,14 +16,13 @@ import { repeat } from 'lit-html/directives/repeat.js';
 import { live } from 'lit-html/directives/live.js';
 import { directive, Directive, PartType } from 'lit-html/directive.js';
 import './igt-editor.css';
-import { PROV, provState, provOrigin, PROV_STATES } from '@larc-iu/plaid-client';
+import { PROV, provState, provOrigin, PROV_STATES, readReview } from '@larc-iu/plaid-client';
 import {
   readOrthographies,
   readIgnoredTokens,
   readVocabFields,
   isTokenIgnored,
   trimIgnoredEdges,
-  readReviewWriters,
 } from '@/domain/igtConfig';
 import {
   allowedGuess,
@@ -3203,8 +3202,11 @@ export class IgtEditor {
       hasMorphemes,
       ignoredCfg,
       guess,
-      // The legend explains the contributed mark only where it can appear.
-      reviewsWriters: readReviewWriters(this.doc.project?.config),
+      // The legend explains the contributed mark only where it can appear:
+      // when the project reviews anyone's work.
+      reviewsSomeone: (({ users, roles }) => users.length > 0 || roles.length > 0)(
+        readReview(this.doc.project?.config),
+      ),
     };
     // _computeRowMenuPos needs the row list to estimate the menu's height, and
     // it runs from a click handler rather than from render.
@@ -3366,7 +3368,7 @@ export class IgtEditor {
           <strong>Marks</strong>
           <span
             ><span class="igt-legend__prov--machine">machine-made</span> ·
-            ${ctx.reviewsWriters
+            ${ctx.reviewsSomeone
               ? html`<span class="igt-legend__prov--contributed">contributed</span> · `
               : nothing}<span class="igt-legend__prov--verified">confirmed</span> · plain: a
             person's · <kbd>Ctrl</kbd>+<kbd>↵</kbd> accepts a word's proposal, <kbd>Ctrl</kbd>+<kbd

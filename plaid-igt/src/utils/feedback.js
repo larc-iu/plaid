@@ -4,8 +4,8 @@ import { toast } from 'sonner';
 // Signature mirrors plaid-ud's feedback util: (message, title?).
 // Destructive confirms go through the shadcn <AlertDialog> component, not here.
 
-export const notifySuccess = (message, title) =>
-  toast.success(title || message, title ? { description: message } : undefined);
+export const notifySuccess = (message, title, options) =>
+  toast.success(title || message, { ...(title ? { description: message } : {}), ...options });
 
 // Every error toast passes through here, and many callers hand over a raw
 // client `err.message` ("HTTP 400 … at http://host/api/v1/…"). Scrub the
@@ -18,14 +18,20 @@ const scrubTransport = (message) =>
         .trim() || message
     : message;
 
-export const notifyError = (message, title = 'Error') =>
-  toast.error(title, { description: scrubTransport(message) });
+export const notifyError = (message, title = 'Error', options) =>
+  toast.error(title, { description: scrubTransport(message), ...options });
 
 export const notifyInfo = (message, title) =>
   toast(title || message, title ? { description: message } : undefined);
 
 export const notifyWarning = (message, title = 'Warning', options) =>
   toast.warning(title, { description: message, ...options });
+
+// A toast that follows a promise: `loading` while it runs, then `success`
+// (a string, or a function of the result) or `error` (a function of the
+// error) as the outcome.
+export const notifyPromise = (promise, { loading, success, error }) =>
+  toast.promise(promise, { loading, success, error });
 
 // Pull an HTTP status off an error object or its message ("HTTP 423 …").
 const statusOf = (error) => {

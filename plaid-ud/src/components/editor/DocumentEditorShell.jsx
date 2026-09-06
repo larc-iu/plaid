@@ -25,7 +25,7 @@ const isWideRoute = (pathname) => pathname.includes('/annotate');
 export const DocumentEditorShell = () => {
   const { projectId, documentId } = useParams();
   const { pathname } = useLocation();
-  const { getClient, logout } = useAuth();
+  const { getClient, logout, user } = useAuth();
 
   const [doc, setDoc] = useState(null);
   const [project, setProject] = useState(null);
@@ -54,11 +54,20 @@ export const DocumentEditorShell = () => {
       }
       try {
         setLoading(true);
-        const [projectData, next] = await Promise.all([
+        const [projectData, raw] = await Promise.all([
           client.projects.get(projectId),
-          ConlluDocument.load(client, projectId, documentId),
+          client.documents.get(documentId, true),
         ]);
         if (cancelled) return;
+        // The project and the user ride along so the document writes as this
+        // person (provenance convention: see ConlluDocument.writer).
+        const next = new ConlluDocument({
+          raw,
+          client,
+          projectId,
+          project: projectData,
+          user,
+        });
         setProject(projectData);
         setDoc(next);
         setLoadError('');

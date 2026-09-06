@@ -251,8 +251,8 @@ rather than truncated, and the import reports how many.
 The cross-app provenance convention rides verbatim in span and link `metadata`:
 `prov` (`inferred` or `contributed`), `provSource`, `provConfirmed` (plus
 `provProb`/`provDetail` where present). Absent provenance keys mean a verifier
-entered it. The exporter never rewrites these, and `reviewWriters` rides with the
-project config like any other `igt` key.
+entered it. The exporter never rewrites these. Whose work is reviewed
+(`config.plaid.review`) names users, so it goes with permissions: not archived.
 
 ## Re-import contract
 

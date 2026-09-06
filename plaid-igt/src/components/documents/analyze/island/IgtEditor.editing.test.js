@@ -34,18 +34,18 @@ const MACHINE = {
 let host;
 let editor;
 
-// A contributor: a writer in a project that reviews writers' work.
+// A contributor: a member whose work the project reviews (plaid.review).
 const ANN = { id: 'ann@x.com', isAdmin: false };
 const CONTRIBUTED = { prov: 'contributed', provSource: 'user:ann@x.com' };
 
 // `tagset`, when given, governs the morpheme-scope Gloss field (msl-0).
-// `contributor` mounts the editor as ANN in a project that reviews writers.
+// `contributor` mounts the editor as ANN in a project that reviews her work.
 function mount({ tagset = null, contributor = false } = {}) {
   const raw = buildRawDoc();
   const client = makeFakeClient();
   client.query = async () => ({ results: [] });
   const igt = tagset ? { tagsets: { Leipzig: tagset } } : {};
-  if (contributor) igt.reviewWriters = true;
+  const plaid = contributor ? { review: { users: [ANN.id] } } : {};
   if (tagset) {
     const morphLayer = raw.textLayers[0].tokenLayers
       .flatMap((tl) => tl.spanLayers || [])
@@ -57,7 +57,7 @@ function mount({ tagset = null, contributor = false } = {}) {
     project: {
       id: 'proj-1',
       vocabs: [],
-      config: { plaid: {}, igt },
+      config: { plaid, igt },
       maintainers: ['lead@x.com'],
       writers: [ANN.id],
     },

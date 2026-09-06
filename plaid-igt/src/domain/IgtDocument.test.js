@@ -1330,30 +1330,37 @@ describe('who is writing (provenance)', () => {
   const ROOT = { id: 'root@x.com', isAdmin: true };
   const CONTRIBUTED = { prov: 'contributed', provSource: 'user:ann@x.com' };
   const MACHINE = { prov: 'inferred', provSource: 'service:x' };
-  const projectWith = (reviewWriters) => ({
+  const REVIEW_ANN = { users: [ANN.id] };
+  const projectWith = (review) => ({
     id: 'proj-1',
     vocabs: [],
-    config: { plaid: {}, igt: reviewWriters ? { reviewWriters: true } : {} },
+    config: { plaid: review ? { review } : {}, igt: {} },
     maintainers: [LEAD.id],
     writers: [ANN.id],
   });
-  const docAs = (user, reviewWriters = true, client = makeFakeClient()) =>
+  const docAs = (user, review = REVIEW_ANN, client = makeFakeClient()) =>
     new IgtDocument({
       raw: buildRawDoc(),
-      project: projectWith(reviewWriters),
+      project: projectWith(review),
       vocabularies: {},
       client,
       projectId: 'proj-1',
       user,
     });
 
-  it('a writer is a contributor only where the project reviews writers', () => {
+  it("a contributor is whoever the project's review lists name, whatever their role", () => {
     expect(docAs(ANN).contributorId).toBe('ann@x.com');
-    expect(docAs(ANN, false).contributorId).toBe(null);
+    expect(docAs(ANN, null).contributorId).toBe(null);
     expect(docAs(LEAD).contributorId).toBe(null);
     expect(docAs(ROOT).contributorId).toBe(null);
     expect(docAs(null).contributorId).toBe(null);
     expect(makeDoc().isContributor).toBe(false);
+    // a maintainer can be reviewed too
+    expect(docAs(LEAD, { users: [LEAD.id] }).contributorId).toBe('lead@x.com');
+    // or a whole role, admins counting as maintainers
+    expect(docAs(ANN, { roles: ['writer'] }).contributorId).toBe('ann@x.com');
+    expect(docAs(LEAD, { roles: ['writer'] }).contributorId).toBe(null);
+    expect(docAs(ROOT, { roles: ['maintainer'] }).contributorId).toBe('root@x.com');
   });
 
   it('a verifier writes plain and confirms what needs review, contributed included', async () => {
@@ -1396,7 +1403,7 @@ describe('who is writing (provenance)', () => {
 
   it("a contributor's new span, morpheme form edit and morpheme type edit carry the stamp", async () => {
     const client = makeFakeClient();
-    const doc = docAs(ANN, true, client);
+    const doc = docAs(ANN, REVIEW_ANN, client);
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'cat');
     const create = client.calls.find((c) => c.kind === 'spans.create');
     expect(create.args[3]).toEqual(CONTRIBUTED);
@@ -1413,7 +1420,7 @@ describe('who is writing (provenance)', () => {
 
   it("a contributor's edit of a confirmed span drops the confirmation on the server copy too", async () => {
     const client = makeFakeClient();
-    const doc = docAs(ANN, true, client);
+    const doc = docAs(ANN, REVIEW_ANN, client);
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', { ...MACHINE, provConfirmed: true });
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'NOM');
     const set = client.calls.filter((c) => c.kind === 'spans.setMetadata').pop();

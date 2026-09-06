@@ -160,6 +160,88 @@ test('editing a machine-made relation verifies it too', async () => {
   assert.equal(after.metadata.provConfirmed, true);
 });
 
+// A CONTRIBUTOR (someone the project's plaid.review lists name) writes as the
+// provenance convention's rule 3 says for them: creates and edits carry the
+// contributed stamp, an edit of a confirmed value drops the confirmation, and
+// their acceptance of a machine proposal is a contribution, not a verification.
+const CONTRIBUTED = { prov: 'contributed', provSource: 'user:ann@x.com' };
+const reviewedProject = {
+  id: 'p',
+  writers: ['ann@x.com'],
+  config: { plaid: { review: { users: ['ann@x.com'] } } },
+};
+const asAnn = (raw, client) =>
+  new ConlluDocument({
+    raw,
+    client: withOps(client),
+    project: reviewedProject,
+    user: { id: 'ann@x.com', isAdmin: false },
+  });
+
+test("a contributor's edit of a confirmed machine annotation marks it contributed", async () => {
+  const raw = rawDocFromConllu(INPUT, 'mut-doc');
+  const client = provClient();
+  const doc = asAnn(raw, client);
+  assert.equal(doc.contributorId, 'ann@x.com');
+
+  const span = doc.layerInfo.uposLayer.spans.find((s) => s.value === 'NOUN');
+  span.metadata = { prov: 'inferred', provSource: 'service:stanza-parser', provConfirmed: true };
+
+  assert.equal(await doc.updateAnnotation(span.tokens[0], 'upos', 'PROPN'), true);
+  assert.deepEqual(
+    client.calls.map((c) => c[0]),
+    ['spans.update', 'spans.patchMetadata', 'submitBatch'],
+  );
+  assert.deepEqual(client.calls[1][2], { ...CONTRIBUTED, provConfirmed: null });
+  const after = doc.layerInfo.uposLayer.spans.find((s) => s.id === span.id);
+  assert.equal(after.value, 'PROPN');
+  assert.deepEqual(after.metadata, CONTRIBUTED); // the local copy drops the null key too
+});
+
+test("a contributor's edit of a plain annotation marks it contributed; a verifier's edit of contributed work confirms it", async () => {
+  const raw = rawDocFromConllu(INPUT, 'mut-doc');
+  const client = provClient();
+  const doc = asAnn(raw, client);
+  const span = doc.layerInfo.uposLayer.spans.find((s) => s.value === 'NOUN');
+  assert.equal(await doc.updateAnnotation(span.tokens[0], 'upos', 'PROPN'), true);
+  assert.deepEqual(client.calls[1][2], { ...CONTRIBUTED, provConfirmed: null });
+
+  const verifier = new ConlluDocument({
+    raw: rawDocFromConllu(INPUT, 'mut-doc'),
+    client: withOps(provClient()),
+    project: reviewedProject,
+    user: { id: 'lead@x.com', isAdmin: false },
+  });
+  assert.equal(verifier.contributorId, null);
+  const span2 = verifier.layerInfo.uposLayer.spans.find((s) => s.value === 'NOUN');
+  span2.metadata = { ...CONTRIBUTED };
+  assert.equal(await verifier.updateAnnotation(span2.tokens[0], 'upos', 'PROPN'), true);
+  const after = verifier.layerInfo.uposLayer.spans.find((s) => s.id === span2.id);
+  assert.deepEqual(after.metadata, { ...CONTRIBUTED, provConfirmed: true });
+});
+
+test('confirmTokens: a contributor takes machine proposals as contributions and leaves contributed work alone', async () => {
+  const raw = rawDocFromConllu(INPUT, 'mut-doc');
+  const client = provClient();
+  const doc = asAnn(raw, client);
+  const noun = doc.layerInfo.uposLayer.spans.find((s) => s.value === 'NOUN');
+  noun.metadata = { prov: 'inferred', provSource: 'service:stanza-parser' };
+  const det = doc.layerInfo.uposLayer.spans.find((s) => s.value === 'DET');
+  det.metadata = { ...CONTRIBUTED };
+
+  assert.equal(await doc.confirmTokens([...noun.tokens, ...det.tokens]), true);
+  const patches = client.calls.filter((c) => c[0] === 'spans.patchMetadata');
+  assert.deepEqual(
+    patches.map((c) => c[1]),
+    [noun.id],
+  );
+  assert.deepEqual(patches[0][2], { ...CONTRIBUTED, provConfirmed: null });
+  assert.deepEqual(
+    doc.layerInfo.uposLayer.spans.find((s) => s.id === noun.id).metadata,
+    CONTRIBUTED,
+  );
+});
+
 test('deleteWord mirrors the server cascade locally before the round trip', async () => {
   const raw = rawDocFromConllu(INPUT, 'mut-doc');
   const server = deferred();

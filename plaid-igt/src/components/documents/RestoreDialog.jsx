@@ -12,8 +12,14 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { notifySuccess, notifyWarning, notifyError, humanizeError } from '@/utils/feedback';
-import { previewRestore, runRestore } from '@/restore/restoreRunner';
+import {
+  notifySuccess,
+  notifyWarning,
+  notifyError,
+  notifyPromise,
+  humanizeError,
+} from '@/utils/feedback';
+import { previewRestore, runRestore, latestState } from '@/restore/restoreRunner';
 
 const plural = (n, word, words = `${word}s`) => `${n.toLocaleString()} ${n === 1 ? word : words}`;
 const formatTime = (t) => new Date(t).toLocaleString();
@@ -64,9 +70,29 @@ export const RestoreDialog = ({ open, onOpenChange, client, documentId, entry, o
     onOpenChange(false);
   };
 
+  // Back to the state from just before the restore: itself a restore, to the
+  // history entry that was newest when the restore began.
+  const undo = (before) => {
+    const run = runRestore({ client, documentId, asOf: before.time, label: before.label });
+    notifyPromise(
+      run.finally(() => onRestored?.()),
+      {
+        loading: 'Undoing the restore…',
+        success: (res) =>
+          res.exact && res.warnings.length === 0
+            ? 'Back to the state before the restore.'
+            : `Undone with differences. ${res.warnings.join(' ')}`.trim(),
+        error: (err) =>
+          humanizeError(err, 'The undo stopped partway. Restore that state again to finish.'),
+      },
+    );
+  };
+
   const restore = async () => {
     setBusy(true);
     try {
+      const before = await latestState(client, documentId).catch(() => null);
+      const action = before ? { label: 'Undo', onClick: () => undo(before) } : undefined;
       const res = await runRestore({
         client,
         documentId,
@@ -75,7 +101,7 @@ export const RestoreDialog = ({ open, onOpenChange, client, documentId, entry, o
         onProgress: setPhase,
       });
       if (res.exact && res.warnings.length === 0) {
-        notifySuccess(`Restored to ${formatTime(asOf)}.`, 'Restored');
+        notifySuccess(`Restored to ${formatTime(asOf)}.`, 'Restored', { action });
       } else {
         notifyWarning(
           [
@@ -87,6 +113,7 @@ export const RestoreDialog = ({ open, onOpenChange, client, documentId, entry, o
             .filter(Boolean)
             .join(' '),
           'Restored with differences',
+          { action },
         );
         if (!res.exact) console.warn('Restore differences:', res.differences);
       }

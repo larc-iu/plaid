@@ -33,6 +33,21 @@ const formatWhen = (asOf) => {
 };
 
 /**
+ * The document's newest history entry: the moment its live state belongs to
+ * and what that entry is called, or null for a document with no history. A
+ * restore reads this first so the state before it can be brought back.
+ */
+export async function latestState(client, documentId) {
+  const entries = await client.documents.audit(documentId);
+  const last = entries?.[entries.length - 1];
+  if (!last) return null;
+  return {
+    time: last.endTime || last.time,
+    label: last.message || last.ops?.[0]?.description || null,
+  };
+}
+
+/**
  * The two states and what a restore would change, for the confirm step.
  */
 export async function previewRestore({ client, documentId, asOf }) {

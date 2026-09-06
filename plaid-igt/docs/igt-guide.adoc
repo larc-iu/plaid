@@ -232,14 +232,15 @@ Four states are distinguished in the grid:
 
 * A value **you typed** shows plain. So does a marked value once you have edited or confirmed it.
 * A **machine-made** value, such as a gloss a service proposed or a vocabulary link Auto-analyze made, shows in **violet italic**. It is in the document, and it waits for a person to confirm or discard it.
-* A **contributed** value shows in **amber italic**. It was entered by a writer in a project that reviews writers' work (see <<_access>>), and it waits for a maintainer to confirm or discard it.
+* A **contributed** value shows in **amber italic**. It was entered by someone whose work the project reviews (see <<_access>>), and it waits for a verifier to confirm or discard it.
 * A **guess** is a faint gray placeholder in an empty cell. It is not in the document at all until you take it with Enter.
 
 Hover over an annotation to see where it came from.
 Editing a marked value confirms it, so the violet and amber dissolve naturally as you work through a document.
 
-In a project that reviews writers' work, a writer is a **contributor**: everything they enter is marked contributed, and their edit of a confirmed value marks it contributed again.
-A contributor can take a machine proposal with Ctrl/Cmd+Enter, which records it as their own contribution; only a maintainer can confirm.
+A member whose work is reviewed is a **contributor**: everything they enter is marked contributed, and their edit of a confirmed value marks it contributed again.
+A contributor can take a machine proposal with Ctrl/Cmd+Enter, which records it as their own contribution.
+Everyone else is a **verifier**: their work shows plain, and their edits and confirmations settle marked values.
 
 A value that a field's tagset refuses is underlined in red, and a closed tagset will not let it be entered at all (see <<_tagsets>>).
 
@@ -434,8 +435,9 @@ This section also holds the project's **tagsets** (see <<_tagsets>>) and the **d
 The project's members and their roles, invitation links, and API access.
 See <<_sharing_and_permissions>>.
 
-**Review writers' work** marks everything a writer enters as contributed, in amber, until a maintainer confirms it (see <<_provenance>>).
-Turn it on for a project that takes in work from community members or students; a maintainer's own work is never marked.
+**Review work**, a checkbox per member, marks everything that person enters as contributed, in amber, until a verifier confirms it (see <<_provenance>>).
+It is independent of the role: tick it for a community member or a student whatever access they have, and leave it off for a trusted collaborator.
+The mark is shared with every Plaid app on the project.
 
 [[_settings_services]]
 == Services
@@ -579,6 +581,7 @@ Viewing history changes nothing.
 To bring a document back to an earlier state, select that entry and click **Restore to this state**.
 The document is edited in place until it matches: the name, the text, the sentences, words and morphemes, the time alignment, the annotations, the vocabulary links, and the metadata.
 Before anything is written, a dialog lists what will change, and the restore lands in the history as one more entry, so the state just before it can be restored in turn.
+The message that confirms a restore offers **Undo**, which brings that state back.
 Comments stay where they are: a comment on something the restore brought back keeps its place, and one on something the restore removed moves to the Comments tab's Outdated section.
 Restoring is for a project's maintainers.
 

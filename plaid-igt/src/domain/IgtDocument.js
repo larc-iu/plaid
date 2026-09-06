@@ -1,15 +1,6 @@
-import {
-  PROV,
-  PROV_CONFIRMED,
-  confirmedInferred,
-  contributeOnEdit,
-  isMachine,
-  needsReview,
-  stampContributed,
-  verifyOnEdit,
-} from '@larc-iu/plaid-client';
+import { isReviewed, writerPolicy } from '@larc-iu/plaid-client';
 import { getIgtLayerInfo } from './layerInfo.js';
-import { readSpeakers, readReviewWriters, IGT_NAMESPACE } from './igtConfig.js';
+import { readSpeakers, IGT_NAMESPACE } from './igtConfig.js';
 import {
   planMorphemeReconcile,
   planSpanDedup,
@@ -69,6 +60,7 @@ export class IgtDocument {
     // provenance convention (see contributorId). Null = a verifier: scripts,
     // imports, tests.
     this._user = user;
+    this._writer = null;
     // Fold the document-embedded vocab-links (under raw's token layers) into the
     // separately-loaded vocabularies — `vocabLayers.get` returns items but not
     // links, so this is the only way links survive a fresh load. See
@@ -153,75 +145,50 @@ export class IgtDocument {
   }
 
   // ----- who is writing (provenance) -----
-  // The provenance convention tells a VERIFIER from a CONTRIBUTOR. A verifier's
-  // work stands as human-made and their edits confirm machine or contributed
-  // material; a contributor's work is stamped { prov: 'contributed',
-  // provSource: 'user:<id>' } until a verifier confirms it. A project writer
-  // is a contributor when the project reviews writers' work
-  // (config.igt.reviewWriters); maintainers and admins are always verifiers,
-  // and so is a document with no user (scripts, imports, tests).
+  // The provenance convention tells a VERIFIER from a CONTRIBUTOR: a
+  // verifier's work stands as human-made and their edits confirm machine or
+  // contributed material; a contributor's work is stamped contributed until a
+  // verifier confirms it. Whose work is reviewed is the project's call, under
+  // the cross-app `plaid.review` config (isReviewed); a document with no user
+  // (scripts, imports, tests) writes as a verifier. The policy itself, what
+  // each writer's creates, edits and confirms carry and what their review
+  // gestures act on, is the client's writerPolicy; the mutations and the
+  // editor read it through the accessors below.
 
   /** The contributor's user id, or null when the writer is a verifier. */
   get contributorId() {
     const user = this._user;
-    const project = this._project;
-    if (!user?.id || !project || !readReviewWriters(project.config)) return null;
-    if (user.isAdmin || (project.maintainers || []).includes(user.id)) return null;
-    return (project.writers || []).includes(user.id) ? user.id : null;
+    if (!user?.id || !this._project) return null;
+    return isReviewed(this._project, user.id, { isAdmin: !!user.isAdmin }) ? user.id : null;
+  }
+
+  /** The writer's policy (see plaid-client's writerPolicy), for the current user. */
+  get writer() {
+    const id = this.contributorId;
+    if (!this._writer || this._writer.contributorId !== id) this._writer = writerPolicy(id);
+    return this._writer;
   }
 
   get isContributor() {
-    return this.contributorId != null;
+    return this.writer.isContributor;
   }
-
-  /** The metadata a person's NEW entity carries: null for a verifier. */
   get createStamp() {
-    const id = this.contributorId;
-    return id ? stampContributed(id) : null;
+    return this.writer.createStamp;
   }
-
-  // The fragment a person's EDIT of an entity merges over its metadata, or
-  // null when there is nothing to merge: a verifier confirms what needs
-  // review (write-contract rule 3); a contributor's edit marks the entity
-  // contributed, dropping any earlier confirmation.
   editStamp(metadata) {
-    const id = this.contributorId;
-    return id ? contributeOnEdit(metadata, id) : verifyOnEdit(metadata);
+    return this.writer.editStamp(metadata);
   }
-
-  // Material this writer's review gestures (Ctrl+Enter, Ctrl+Backspace, the
-  // link sweep) act on: a verifier reviews machine and contributed material;
-  // a contributor reviews machine proposals only, since their own vouching
-  // is itself a contribution.
   reviewable(metadata) {
-    return this.isContributor ? isMachine(metadata) : needsReview(metadata);
+    return this.writer.reviewable(metadata);
   }
-
-  /** reviewable() on a derived provenance state ('machine' | 'contributed' | ...). */
   reviewableState(state) {
-    return this.isContributor
-      ? state === 'machine'
-      : state === 'machine' || state === 'contributed';
+    return this.writer.reviewableState(state);
   }
-
-  // The fragment an explicit confirm gesture merges, or null when there is
-  // nothing for this writer to confirm: PROV_CONFIRMED for a verifier, the
-  // contributed stamp for a contributor accepting a machine proposal.
   confirmStamp(metadata) {
-    if (!this.reviewable(metadata)) return null;
-    const id = this.contributorId;
-    return id ? contributeOnEdit(metadata, id) : PROV_CONFIRMED;
+    return this.writer.confirmStamp(metadata);
   }
-
-  // What a guess or a picked value is written with when a person adopts it
-  // into an empty cell: born-verified with the guess's producer as its source
-  // for a verifier; for a contributor, contributed, with the producer kept in
-  // provDetail.guess so "accepted as-is" stays answerable. `detail` is the
-  // prediction extras ({ value } for a span).
   adoptStamp(source, detail) {
-    const id = this.contributorId;
-    if (!id) return confirmedInferred(source, { detail });
-    return { ...stampContributed(id), [PROV.detailKey]: { ...(detail || {}), guess: source } };
+    return this.writer.adoptStamp(source, detail);
   }
 
   // ----- read API -----

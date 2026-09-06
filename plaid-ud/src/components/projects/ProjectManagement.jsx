@@ -24,6 +24,14 @@ import {
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { IconPlus, IconSearch, IconDotsVertical } from '@tabler/icons-react';
+import {
+  PLAID_NAMESPACE,
+  REVIEW_KEY,
+  isReviewed,
+  projectRole,
+  readReview,
+  withReviewedUser,
+} from '@larc-iu/plaid-client';
 import { ProjectInvites, MintedLinkModal } from './ProjectInvites';
 import { useAuth } from '../../contexts/AuthContext';
 import { UserAvatar } from '../common/UserAvatar';
@@ -219,6 +227,33 @@ export const ProjectManagement = ({ embedded = false }) => {
     } catch (err) {
       console.error('Error updating permissions:', err);
       notifyError('Failed to update permissions');
+    }
+  };
+
+  // Whose work is reviewed (the cross-app `plaid.review` norm, provenance
+  // convention): a marked member's annotations are recorded as contributed
+  // until a verifier confirms them. Independent of the role: any member can be
+  // marked. A project may also mark whole roles (another app's setting); such
+  // members show as reviewed and cannot be unmarked one by one here.
+  const [updatingReview, setUpdatingReview] = useState(null);
+  const reviewedByRole = (m) => {
+    const { users, roles } = readReview(project?.config);
+    return (
+      !users.includes(m.id) && roles.includes(projectRole(project, m.id, { isAdmin: m.isAdmin }))
+    );
+  };
+  const setReviewed = async (userId, on) => {
+    try {
+      setUpdatingReview(userId);
+      const client = getClient();
+      const next = withReviewedUser(project?.config?.[PLAID_NAMESPACE]?.[REVIEW_KEY], userId, on);
+      await client.projects.setConfig(projectId, PLAID_NAMESPACE, REVIEW_KEY, next);
+      await fetchProject();
+    } catch (err) {
+      console.error('Error updating review:', err);
+      notifyError('Failed to update review');
+    } finally {
+      setUpdatingReview(null);
     }
   };
 
@@ -427,6 +462,9 @@ export const ProjectManagement = ({ embedded = false }) => {
                 <Table.Tr>
                   <Table.Th>User</Table.Th>
                   <Table.Th>Project role</Table.Th>
+                  <Table.Th title="Their annotations are marked as contributed until a verifier confirms them">
+                    Review work
+                  </Table.Th>
                   {isAdmin && <Table.Th w={48} />}
                 </Table.Tr>
               </Table.Thead>
@@ -469,6 +507,20 @@ export const ProjectManagement = ({ embedded = false }) => {
                         w={150}
                         size="sm"
                         description={m.id === user.id ? 'Your own access' : undefined}
+                      />
+                    </Table.Td>
+                    <Table.Td>
+                      <Checkbox
+                        size="sm"
+                        aria-label={`Review ${m.displayName}'s work`}
+                        checked={isReviewed(project, m.id, { isAdmin: m.isAdmin })}
+                        disabled={updatingReview === m.id || reviewedByRole(m)}
+                        title={
+                          reviewedByRole(m)
+                            ? `Every ${projectRole(project, m.id, { isAdmin: m.isAdmin })} is reviewed in this project`
+                            : undefined
+                        }
+                        onChange={(e) => setReviewed(m.id, e.currentTarget.checked)}
                       />
                     </Table.Td>
                     {isAdmin && (

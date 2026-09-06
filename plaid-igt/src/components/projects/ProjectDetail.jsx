@@ -10,7 +10,8 @@ import { ProjectValidation } from './validate/ProjectValidation.jsx';
 import { ProjectAssistant } from './assistant/ProjectAssistant.jsx';
 import { ProjectExport } from './ProjectExport.jsx';
 import { ProjectSettingsPanel } from './ProjectSettingsPanel';
-import { readInitialized, readReviewWriters } from '@/domain/igtConfig';
+import { readInitialized } from '@/domain/igtConfig';
+import { isReviewed } from '@larc-iu/plaid-client';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useTabParam, tabTo } from '@/hooks/useTabParam';
 import { cn } from '@/lib/utils';
@@ -301,7 +302,9 @@ export const ProjectDetail = () => {
             client={client}
             userId={user?.id}
             canWrite={canWrite}
-            contributor={!!project && readReviewWriters(project.config) && canWrite && !canManage}
+            contributor={
+              !!project && !!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin })
+            }
           />
         </TabsContent>
         <TabsContent value="export">
