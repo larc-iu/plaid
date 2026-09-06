@@ -302,6 +302,31 @@
                        coerce-entity)]
     (boolean (and entity (project-live? db (:project_id entity))))))
 
+(defn document-rows-at
+  "The document-scoped rows at time `ts`, as the audit log folds them and
+  keyed the way the OLTP tables are: `{:document row :texts [row ...]
+  :tokens [...] :spans [...] :relations [...] :vocab-links [...]}`. Each
+  row is column-keyed with ids coerced, plus the `:tokens` fold on spans
+  and vocab links and a string-keyed `:metadata` fold where the entity
+  had any. This is the row-level view `plaid.history.restore` diffs
+  against the current tables; `get-with-layer-data-at` is the same fold
+  built into the nested read shape. nil when the document did not exist
+  at `ts`, or when its project has since been deleted."
+  [db doc-id ts]
+  (let [ts-iso (->ts-iso ts)
+        _ (check-retention! db ts-iso)
+        bound (effective-bound db ts-iso)
+        folded (fold-rows (q-doc-rows db doc-id bound))
+        doc-entity (some-> (clojure.core/get folded ["documents" (str doc-id)])
+                           coerce-entity)]
+    (when (and doc-entity (project-live? db (:project_id doc-entity)))
+      {:document doc-entity
+       :texts (entities-of folded "texts")
+       :tokens (entities-of folded "tokens")
+       :spans (entities-of folded "spans")
+       :relations (entities-of folded "relations")
+       :vocab-links (entities-of folded "vocab_links")})))
+
 (defn get-with-layer-data-at
   "Deep document read at time `ts`. Result shape mirrors
   `plaid.sql.document/get-with-layer-data` — same top-level keys, same

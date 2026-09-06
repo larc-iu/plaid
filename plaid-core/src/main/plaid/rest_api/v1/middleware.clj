@@ -217,12 +217,19 @@
   ;; one-trailing-slash case some proxies emit.
   #"/api/v1/documents/[0-9a-fA-F-]{36}/?")
 
+(def ^:private restore-path-regex
+  ;; `POST /documents/<uuid>/restore?as-of=` is the one writer that takes
+  ;; a time: it names the state to go back to, and the handler parses it
+  ;; itself (the value is in its query schema). Left alone here.
+  #"/api/v1/documents/[0-9a-fA-F-]{36}/restore/?")
+
 (defn wrap-route-as-of
   "Document-route variant of as-of handling. When `?as-of=<ISO-8601>`
   is present on the top-level document GET, parse it and inject
   `:as-of-ts` on the request; downstream handlers then serve the read
   from the audit log (`plaid.history.read`) instead of current OLTP
-  state.
+  state. The document restore (POST `/restore`) takes `as-of` as its
+  own parameter and is passed through untouched.
 
   Always available: the audit log lives in the same database the write
   committed to, so there is no replica to enable, lag behind, or stall
@@ -243,7 +250,9 @@
      (logged; no message leaked to the client)"
   [handler]
   (fn [request]
-    (if-let [raw (raw-as-of-param request)]
+    (if-let [raw (when-not (and (= :post (:request-method request))
+                                (re-matches restore-path-regex (or (:uri request) "")))
+                   (raw-as-of-param request))]
       (let [parsed (try (Instant/parse raw)
                         (catch DateTimeParseException _ ::parse-error))]
         (cond

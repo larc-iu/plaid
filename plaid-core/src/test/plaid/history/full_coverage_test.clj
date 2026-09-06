@@ -161,7 +161,8 @@
 
 (def ^:private known-op-types
   #{"document/create" "document/delete" "document/delete-metadata"
-    "document/patch-metadata" "document/set-metadata" "document/update"
+    "document/patch-metadata" "document/restore" "document/set-metadata"
+    "document/update"
     "layer/assoc-editor-config-pair" "layer/dissoc-editor-config-pair"
     "project/add-maintainer" "project/add-reader" "project/add-vocab"
     "project/add-writer" "project/create" "project/delete"
@@ -442,6 +443,13 @@
             _ (assert-no-content (deactivate-user! u-throw))                 ; user/deactivate
             _ (assert-ok (reactivate-user! u-throw))                         ; user/reactivate
             _ (assert-no-content (deactivate-user! u-throw))                 ; leave them deactivated
+            ;; A restore to the present changes no row, so the survivor stays
+            ;; what the parity check expects, but it is an operation of its
+            ;; own type.
+            _ (assert-ok (api-call admin-request
+                                   {:method :post
+                                    :path (str "/api/v1/documents/" doc "/restore?as-of="
+                                               (latest-op-ts))}))          ; document/restore
 
             ts (latest-op-ts)
             _ (drain!)]

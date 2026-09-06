@@ -5,9 +5,12 @@
             [plaid.rest-api.v1.middleware :as prm]
             [plaid.rest-api.v1.media :as media]
             [plaid.history.read :as hread]
+            [plaid.history.restore :as restore]
             [plaid.server.locks :as locks]
             [reitit.coercion.malli]
-            [plaid.sql.document :as doc]))
+            [plaid.sql.document :as doc])
+  (:import (java.time Instant)
+           (java.time.format DateTimeParseException)))
 
 ;; Defined below; forward-declared so the auth-path history read in
 ;; get-project-id can be timeout-bounded like the GET handler's read.
@@ -188,6 +191,51 @@
                                  {:status 204}
                                  {:status (or code 500)
                                   :body {:error (or error "Internal server error")}})))}}]
+
+    ["/restore"
+     {:post {:summary (str "Restore the document to its state at <query>as-of</query> (an ISO-8601 instant), "
+                           "as one operation: what was deleted since then comes back under its original id, "
+                           "what was added since is removed, and what changed is set back, across every layer. "
+                           "A layer deleted since then, or a vocabulary entry that no longer exists, is skipped and "
+                           "reported under <body>skipped</body>. The response is a summary of the changes. "
+                           "With <query>dry-run</query> true nothing is written and the summary says what would change. "
+                           "Requires maintainer privileges.")
+             :middleware [[pra/wrap-maintainer-required get-project-id]
+                          [prm/wrap-document-version get-document-id]]
+             :parameters {:query [:map
+                                  [:as-of :string]
+                                  [:dry-run {:optional true} boolean?]
+                                  [:document-version {:optional true} :int]]}
+             :handler (fn [{{{:keys [document-id]} :path
+                             {:keys [as-of dry-run]} :query} :parameters
+                            db :db
+                            user-id :user/id}]
+                        (let [ts (try (Instant/parse as-of)
+                                      (catch DateTimeParseException _ nil))]
+                          (cond
+                            (nil? ts)
+                            {:status 400
+                             :body {:error (str "Invalid as-of value (expected ISO-8601 instant, e.g. "
+                                                "2026-05-28T09:00:00Z): " as-of)}}
+
+                            dry-run
+                            (try
+                              {:status 200 :body (restore/preview db document-id ts)}
+                              (catch clojure.lang.ExceptionInfo e
+                                (let [{:keys [code type]} (ex-data e)]
+                                  (if (= type :history/pruned)
+                                    {:status 400 :body {:error (ex-message e)}}
+                                    {:status (or code 500)
+                                     :body {:error (if (and code (< code 500)) (ex-message e) "Internal error")}}))))
+
+                            :else
+                            (let [{:keys [success extra code error]} (restore/restore db document-id ts user-id)]
+                              (if success
+                                (prm/assoc-document-version-in-header
+                                 {:status 200 :body extra}
+                                 db document-id)
+                                {:status (or code 500)
+                                 :body {:error (or error "Internal server error")}})))))}}]
 
     ["/lock"
      {:get {:summary "Get information about a document lock"

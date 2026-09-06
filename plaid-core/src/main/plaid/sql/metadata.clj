@@ -210,6 +210,25 @@
          (let [post (get-metadata tx entity-type entity-id)]
            (emit-parent-audit! tx entity-type entity-id pre post)))))))
 
+(defn insert-metadata-rows!
+  "Bulk, UNAUDITED insert of metadata for many entities of one type:
+  `id->map` is `{entity-id {k v}}`. For a caller that folds the metadata
+  into the parent rows' own audit images, as the entity `create` paths
+  do one entity at a time with `:skip-parent-audit?` (the restore's
+  re-inserts are the bulk case). Keys are validated as in
+  `insert-metadata!`; empty maps are skipped."
+  [tx entity-type id->map]
+  (doseq [[_ m] id->map] (validate-metadata-keys! m))
+  (let [rows (for [[id m] id->map
+                   [k v] m]
+               {:entity_type entity-type
+                :entity_id id
+                :key (if (keyword? k) (name k) (str k))
+                :value (encode-value v)})]
+    (doseq [chunk (partition-all 4000 rows)]
+      (psc/execute! tx {:insert-into :entity_metadata
+                        :values (vec chunk)}))))
+
 (defn delete-metadata!
   "Delete every metadata row for (entity-type, entity-id) and emit a
   synthetic parent-row audit row capturing the transition. No-op (and no
