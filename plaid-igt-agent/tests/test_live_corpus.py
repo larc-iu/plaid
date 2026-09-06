@@ -148,7 +148,12 @@ def review_proj(live_client):
     layers = raw['text_layers'][0]['token_layers']
     layers[1]['vocabs'][0]['vocab_links'][1]['metadata'] = {'prov': 'inferred', 'provSource': 'service:mwe'}
     layers[1]['span_layers'][0]['spans'][0]['metadata'] = {'prov': 'contributed', 'provSource': f'user:{ANN}'}
-    s = seed(live_client, project_raw(), {'d1': raw}, {VOCAB: mwe_lexicon_raw()}, name='igt-agent review test')
+    # A second expression over the same words whose entry no longer reads like them: stale.
+    layers[1]['vocabs'][0]['vocab_links'].append(
+        {'id': 'l-stale', 'vocab_item': {'id': 'vi-stale', 'form': 'zzz yyy'}, 'tokens': ['w-2', 'w-3']})
+    lex = mwe_lexicon_raw()
+    lex['items'].append({'id': 'vi-stale', 'form': 'zzz yyy', 'metadata': {'morphType': 'phrase'}})
+    s = seed(live_client, project_raw(), {'d1': raw}, {VOCAB: lex}, name='igt-agent review test')
     yield s
     s.delete()
 
@@ -159,13 +164,16 @@ def test_multi_word_expressions_and_review_match_the_scan(review_proj):
     c = proj.client
     d = load_document(c, load_project(c, proj.project_id), proj.ids['d1'])
     w2, w3 = d.sentences[0].words[1], d.sentences[0].words[2]
-    assert w2.link is None and [l.tokens for l in w2.mwes] == [[proj.ids['w-2'], proj.ids['w-3']]] and w3.mwes == w2.mwes
+    assert w2.link is None and len(w2.mwes) == 2 and w3.mwes == w2.mwes
+    assert all(l.tokens == [proj.ids['w-2'], proj.ids['w-3']] for l in w2.mwes)
     for args in ({'pattern': 'gam'}, {'pattern': 'akuna'}):
         out = same(proj, 'search', args)
         assert 'mwe=gam akuna~ (w2+w3)' in out
     for args in ({}, {'section': 'stale'}, {'section': 'unused'}):
         same(proj, 'check_lexicon', args)
-    assert 'Linked from 2 words and 0 morphemes' in same(proj, 'lexicon_entry', {'entry_form': 'gam akuna'})
+    out = same(proj, 'check_lexicon', {'section': 'stale'})
+    assert '1 links whose form no longer contains the entry form: gam akuna → "zzz yyy"' in out
+    assert 'Linked from 2 words and 0 morphemes (1 multi-word expression)' in same(proj, 'lexicon_entry', {'entry_form': 'gam akuna'})
     for args in ({'kind': 'unlinked', 'level': 'word'}, {'kind': 'unverified'}, {'kind': 'contributed'},
                  {'kind': 'contributed', 'user': ANN}, {'kind': 'contributed', 'user': 'nobody@x.com'}):
         same(proj, 'worklist', args, strip_examples)

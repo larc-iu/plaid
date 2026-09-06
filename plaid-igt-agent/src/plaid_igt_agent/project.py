@@ -328,6 +328,12 @@ def mwe_ref(link: 'Link', sentence_index: int) -> str:
     return '+'.join(f's{si}.w{wi}' for si, wi in link.members) or '?'
 
 
+def mwe_form(doc: 'IgtDoc', link: 'Link') -> str:
+    """A multi-word expression's linked form: its members' surfaces in text
+    order, spaced, which is what its entry's form is compared against."""
+    return ' '.join(doc.sentences[si - 1].words[wi - 1].surface for si, wi in link.members)
+
+
 @dataclass
 class Morpheme:
     id: str

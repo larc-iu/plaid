@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from plaid_client.provenance import prov_state, CONTRIBUTED_STATE, PROV_SOURCE_KEY
 
-from .project import IgtDoc, Sentence, Word, REVIEWABLE, render_word, segmentation, word_ref
+from .project import IgtDoc, Sentence, Word, REVIEWABLE, mwe_form, render_word, segmentation, word_ref
 from .tools import Workspace, ToolError, _matcher, _truncate, entry_line
 
 
@@ -391,6 +391,16 @@ def _strip_affix(form: str) -> str:
     return (form or '').strip('-=~ ').casefold()
 
 
+def _note_stale(stale: Counter, item: dict, form: str) -> None:
+    """Count a link as stale when its entry's form is no longer contained in
+    the linked form: containment, not equality, since a word may link to its
+    stem's entry; a multi-word expression's linked form is its members'
+    surfaces in text order. Keyed by (linked form, entry form)."""
+    entry = item.get('form') or ''
+    if _strip_affix(entry) not in _strip_affix(form):
+        stale[(form, entry)] += 1
+
+
 LEXICON_SECTIONS = ('unused', 'fields', 'homographs', 'near', 'glosses', 'spread', 'stale', 'single')
 
 
@@ -430,24 +440,28 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
     use_docs: Dict[str, set] = defaultdict(set)
     corpus_gloss: Dict[str, Counter] = defaultdict(Counter)   # item -> corpus gloss values
     gloss_items: Dict[str, set] = defaultdict(set)            # corpus gloss -> items
-    stale: List[str] = []
+    stale: Counter = Counter()                                # (linked form, entry form) -> links
     if not ws.prefer_scan:
         from .corpus import q_lexicon_usage
         uses, use_docs, corpus_gloss, gloss_items, stale = q_lexicon_usage(ws, vocabs, items)
         docs = []
     for d in docs:
-        tag = _tag(ws, docs, d)
+        seen_mwes = set()
         for s in d.sentences:
             for w in s.words:
                 # A multi-word expression counts once per member word, as the
-                # query path counts linked tokens; its form is the members'.
+                # query path counts linked tokens; for the stale check it is
+                # one link whose form is its members' surfaces.
                 for l in w.mwes:
-                    if l.item_id in items:
-                        uses[l.item_id] += 1
-                        use_docs[l.item_id].add(d.id)
-                units = [(w, w.surface, first_w, f'{tag}{word_ref(s, w)}')] + \
-                    [(m, m.form, first_m, f'{tag}{word_ref(s, w)}.m{m.index}') for m in w.morphemes]
-                for u, form, fname, ref in units:
+                    if l.item_id not in items:
+                        continue
+                    uses[l.item_id] += 1
+                    use_docs[l.item_id].add(d.id)
+                    if l.id not in seen_mwes:
+                        seen_mwes.add(l.id)
+                        _note_stale(stale, items[l.item_id], mwe_form(d, l))
+                units = [(w, w.surface, first_w)] + [(m, m.form, first_m) for m in w.morphemes]
+                for u, form, fname in units:
                     if not u.link or u.link.item_id not in items:
                         continue
                     iid = u.link.item_id
@@ -458,13 +472,7 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
                         if sp and sp.value != '':
                             corpus_gloss[iid][sp.value] += 1
                             gloss_items[sp.value].add(iid)
-                    # A word may link to its stem's entry, so the entry form
-                    # only has to be contained in the linked form.
-                    if _strip_affix(items[iid].get('form')) not in _strip_affix(form):
-                        if len(stale) < 200:
-                            stale.append(f'{ref} {form} → "{items[iid].get("form")}"')
-                        else:
-                            stale.append('')
+                    _note_stale(stale, items[iid], form)
     lines = [f'Lexicon check: {len(items)} entries in {", ".join(v["name"] for v in vocabs)}, {sum(uses.values())} links'
              + (f'; section "{only}"' if only else '; each section capped, ask for one section for the full list') + '.']
 
@@ -533,9 +541,10 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
         spread = {g: ids for g, ids in gloss_items.items() if len(ids) > 1}
         listing('corpus glosses linked to several entries', (f'{g} → {", ".join(items[i].get("form") or "" for i in ids)}' for g, ids in spread.items()))
     if want('stale'):
-        real_stale = [s for s in stale if s]
-        lines.append(f'{len(stale)} links whose form no longer contains the entry form'
-                     + (': ' + '; '.join(real_stale[:cap]) + (' …' if len(stale) > min(cap, len(real_stale)) else '') if real_stale else '.'))
+        shown = [f'{form} → "{entry}"' + (f' ×{n}' if n > 1 else '')
+                 for (form, entry), n in sorted(stale.items(), key=lambda kv: (-kv[1], kv[0]))]
+        lines.append(f'{sum(stale.values())} links whose form no longer contains the entry form'
+                     + (': ' + '; '.join(shown[:cap]) + (' …' if len(shown) > cap else '') if shown else '.'))
     if want('single') and n_docs > 1:
         listing('entries attested in a single document', (items[i].get('form') or '' for i, ds in use_docs.items() if len(ds) == 1))
     return _truncate('\n'.join(lines))

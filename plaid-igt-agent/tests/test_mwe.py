@@ -113,6 +113,14 @@ def test_entry_tools_move_and_delete_the_whole_expression_once():
     # A phrase entry is not a stale link on its members, and each member counts as a use.
     out = call_tool(w, 'check_lexicon', {'section': 'stale'})
     assert '0 links whose form no longer contains the entry form' in out
+    # An expression is judged by its members' surfaces: an entry that no longer reads
+    # like them is stale, reported once for the link, not once per member.
+    c2 = mwe_client()
+    c2._documents['d1']['text_layers'][0]['token_layers'][1]['vocabs'][0]['vocab_links'][1]['vocab_item'] = \
+        {'id': 'vi-stale', 'form': 'zzz yyy'}
+    c2._lexicon['items'].append({'id': 'vi-stale', 'form': 'zzz yyy', 'metadata': {'morphType': 'phrase'}})
+    out = call_tool(scan_ws(c2), 'check_lexicon', {'section': 'stale'})
+    assert '1 links whose form no longer contains the entry form: gam akuna → "zzz yyy"' in out
     assert '2 links' not in out.split('\n')[0] or True
     assert 'Linked from 2 words and 0 morphemes' in call_tool(w, 'lexicon_entry', {'entry_id': PHRASE_ITEM})
     # Members count as linked in the worklist.

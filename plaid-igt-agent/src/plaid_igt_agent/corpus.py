@@ -831,6 +831,7 @@ def q_consistency(ws: Workspace, f):
 def q_lexicon_usage(ws: Workspace, vocabs: List[dict], items: Dict[str, dict]):
     """(uses, use_docs, corpus_gloss, gloss_items, stale) for check_lexicon,
     from grouped queries over the links of the given lexicons."""
+    from .stats import _note_stale
     c = ws.corpus
     p = c.p
     gm, gw = p.gloss_field('Morpheme'), p.gloss_field('Word')
@@ -838,7 +839,7 @@ def q_lexicon_usage(ws: Workspace, vocabs: List[dict], items: Dict[str, dict]):
     use_docs: Dict[str, set] = defaultdict(set)
     corpus_gloss: Dict[str, Counter] = defaultdict(Counter)
     gloss_items: Dict[str, set] = defaultdict(set)
-    stale: List[str] = []
+    stale: Counter = Counter()
     levels = [('?t', c.word('?t'), gw, ['?t.value'])]
     if c.M:
         levels.append(('?t', c.morph('?t'), gm, ['?t.metadata.form', '?t.value']))
@@ -857,30 +858,22 @@ def q_lexicon_usage(ws: Workspace, vocabs: List[dict], items: Dict[str, dict]):
                     if iid in items and value not in (None, ''):
                         corpus_gloss[iid][value] += n
                         gloss_items[value].add(iid)
-            for row in c.group(where, ['?v'] + form_keys):
-                iid, n = row[0], row[-1]
-                if iid not in items:
-                    continue
-                form = Corpus.morph_key(row[1], row[2]) if len(form_keys) == 2 else (row[1] or '')
-                if c.ignored(row[2] if len(form_keys) == 2 else row[1]):
-                    continue
-                if _link_is_stale(items[iid].get('form'), form):
-                    stale.append(f'{form} → "{items[iid].get("form")}"' + (f' ×{n}' if n > 1 else ''))
+        # Stale links, link by link through the link entity: a multi-word
+        # expression's form is its members' surfaces in text order, exactly
+        # as the scan judges it.
+        per_link: Dict[str, tuple] = {}
+        item_links = [['vocab', '?v', {'layer': v['id']}], ['link-item', '?l', '?v'], ['link-token', '?l', '?t']]
+        for iid, lid, value, begin, _n in c.group(item_links + [c.word('?t')], ['?v', '?l', '?t.value', '?t.begin']):
+            if iid in items and value is not None and not c.ignored(value):
+                per_link.setdefault(lid, (iid, []))[1].append((begin, value))
+        if c.M:
+            for iid, lid, form, value, _n in c.group(item_links + [c.morph('?t')], ['?v', '?l', '?t.metadata.form', '?t.value']):
+                raw = form if form not in (None, '') else (value or '')
+                if iid in items and raw and not c.ignored(value):
+                    per_link.setdefault(lid, (iid, []))[1].append((0, raw))
+        for iid, parts in per_link.values():
+            _note_stale(stale, items[iid], ' '.join(f for _b, f in sorted(parts)))
     return uses, use_docs, corpus_gloss, gloss_items, stale
-
-
-def _link_is_stale(entry_form: Optional[str], token_form: str) -> bool:
-    """Whether a linked token's form no longer contains the entry's. A
-    phrase entry (a multi-word expression) is linked from each member word,
-    and the query sees one word at a time, so it is judged word by word: no
-    word of the entry contained in this token means the link is stale."""
-    from .stats import _strip_affix
-    entry = _strip_affix(entry_form)
-    token = _strip_affix(token_form)
-    parts = entry.split()
-    if len(parts) > 1:
-        return not any(p in token for p in parts)
-    return entry not in token
 
 
 # --- sequence_search ----------------------------------------------------------------
