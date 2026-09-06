@@ -713,8 +713,16 @@ export const ProjectAssistant = ({
   // conversation from the URL, so it is put back).
   useEffect(() => {
     const remembered = lastOpen.get(projectId);
-    if (!urlConvRef.current && remembered) setUrlConvRef.current(remembered, { replace: true });
-    loadList();
+    loadList().then((metas) => {
+      // Only a conversation that still exists (it may have been deleted meanwhile).
+      if (
+        !urlConvRef.current &&
+        remembered &&
+        (jobFor(remembered) || metas.some((m) => m.id === remembered))
+      ) {
+        setUrlConvRef.current(remembered, { replace: true });
+      }
+    });
     return () => {
       const a = activeRef.current;
       if (a && !a.draft) lastOpen.set(projectId, a.id);
