@@ -820,7 +820,7 @@ export const ProjectAssistant = ({
   // --- turns -----------------------------------------------------------------
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' });
-  }, [active?.display.length, busy, progress]);
+  }, [active?.display.length, busy, progress, partial]);
 
   const canSend = !!service && !busy;
 
@@ -1092,24 +1092,31 @@ export const ProjectAssistant = ({
                 </Button>
               </div>
             )}
-            {busy === 'turn' && partial && (
-              <div className="flex gap-3">
-                <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted">
-                  <Bot className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <AssistantMarkdown>{partial}</AssistantMarkdown>
-                </div>
-              </div>
-            )}
+            {/* What the turn has done so far, then the reply as it is being
+                written, then what it is doing now: the same order the turn
+                happened in, so the text lands under the steps it followed. */}
             {busy && (
-              <div className="flex flex-col gap-1 text-sm text-muted-foreground">
-                {liveSteps.map((m, i) => (
-                  <div key={i} className="flex items-center gap-2 pl-6 text-xs">
-                    <Check className="h-3 w-3" /> {m}
+              <div className="flex flex-col gap-3">
+                {liveSteps.length > 0 && (
+                  <div className="flex flex-col gap-1 text-sm text-muted-foreground">
+                    {liveSteps.map((m, i) => (
+                      <div key={i} className="flex items-center gap-2 pl-6 text-xs">
+                        <Check className="h-3 w-3" /> {m}
+                      </div>
+                    ))}
                   </div>
-                ))}
-                <div className="flex items-center gap-2">
+                )}
+                {busy === 'turn' && partial && (
+                  <div className="flex gap-3">
+                    <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted">
+                      <Bot className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <AssistantMarkdown>{partial}</AssistantMarkdown>
+                    </div>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   <span className="animate-pulse">
                     {progress || (busy === 'apply' ? 'Applying changes…' : 'Thinking…')}
