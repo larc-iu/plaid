@@ -165,6 +165,7 @@ type (and its table and access-control scope); the **constraint map** filters it
 | `vocab`    | `layer`, `form`, `metadata`                           | Vocab items are global; scoped via project grants (see <<Scope and access control>>).
 | `document` | `name`, `id`, `metadata`                              | A document.
 | `text`     | `body`, `doc`, `metadata`                             | A document's text content; `body` is the raw text.
+| `link`     | `item`, `doc`, `metadata`                             | A vocab link: the annotation that ties one or more tokens to a vocab item (several tokens make a multi-word expression). `item` is a vocab variable (a join) or an item id; its metadata carries provenance. Scoped through its document.
 |===
 
 All constraints are optional, but a layer-less entity is still confined to your
@@ -363,8 +364,8 @@ A relationship clause is `[op, "?a", "?b"]`, a named edge between two variables.
 This is where the structure between entities comes from. Each operator fixes the
 entity kind of both operands, shown as `(kind, kind)` after the signature; a
 variable used at the wrong kind (a span where a token is required) is a 400. Only
-spans, tokens, relations, and vocab items take part in these clauses; documents
-and texts do not.
+spans, tokens, relations, vocab items, and links take part in these clauses;
+documents and texts do not.
 
 In the diagrams below, tokens are boxed words, a bracket marks the tokens a span
 covers, and an arrow is a relation edge.
@@ -517,6 +518,23 @@ token is linked to that vocab item.
    [ Fido ] ──▶  vocab { form: "Fido" }
     ?token        ?v
 ....
+
+**Link entity.** When the link itself matters (who made it, whether anyone
+confirmed it, how many tokens it covers), bind it as a `link` entity and walk to
+its tokens and item: `["link-token", "?link", "?token"]` (`link`, `token`) and
+`["link-item", "?link", "?vocab"]` (`link`, `vocab`). The `item` constraint on the
+`link` clause is the inline form of `link-item`.
+
+[,python]
+----
+# machine-made links nobody has confirmed, and the words they sit on
+["link", "?l", {"metadata": {"prov": "inferred"}}],
+["not", ["link", "?l", {"metadata": {"provConfirmed": True}}]],
+["link-token", "?l", "?t"]
+
+# every link to one lexicon entry, however many tokens each covers
+["vocab", "?v", {"form": "kick the bucket"}], ["link-item", "?l", "?v"]
+----
 
 == Predicate clauses
 
@@ -1107,6 +1125,14 @@ client.query({
     "find": ["?t"],
     "where": [["vocab", "?v", {"form": "Kemal"}],
               ["vocab-link", "?t", "?v"]],
+})
+
+# how many tokens each unconfirmed machine-made link covers (2+ = a multi-word expression)
+client.query({
+    "where": [["link", "?l", {"metadata": {"prov": "inferred"}}],
+              ["not", ["link", "?l", {"metadata": {"provConfirmed": True}}]],
+              ["link-token", "?l", "?t"]],
+    "return": {"group": ["?l"], "aggregates": [["count"]]},
 })
 
 # restrict to one project by ID

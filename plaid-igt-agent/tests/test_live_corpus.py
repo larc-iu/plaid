@@ -166,15 +166,13 @@ def test_multi_word_expressions_and_review_match_the_scan(review_proj):
     for args in ({}, {'section': 'stale'}, {'section': 'unused'}):
         same(proj, 'check_lexicon', args)
     assert 'Linked from 2 words and 0 morphemes' in same(proj, 'lexicon_entry', {'entry_form': 'gam akuna'})
-    for args in ({'kind': 'unlinked', 'level': 'word'}, {'kind': 'contributed'},
+    for args in ({'kind': 'unlinked', 'level': 'word'}, {'kind': 'unverified'}, {'kind': 'contributed'},
                  {'kind': 'contributed', 'user': ANN}, {'kind': 'contributed', 'user': 'nobody@x.com'}):
         same(proj, 'worklist', args, strip_examples)
-    # Link provenance is not queryable, so the project-wide unverified list
-    # cannot see the machine-made expression's words; the scan of a document can.
-    a, b = two(proj)
-    assert '\tgam\t' in call_tool(a, 'worklist', {'kind': 'unverified'})
-    out = call_tool(b, 'worklist', {'kind': 'unverified'})
-    assert '\tali-di\t' in out and '\tgam\t' not in out
+    # The machine-made expression's words await review on both paths (the
+    # query path reaches link provenance through the link entity).
+    out = same(proj, 'worklist', {'kind': 'unverified'}, strip_examples)
+    assert '\tgam\t' in out and '\takuna\t' in out and '\tali-di\t' in out
     for args in ({'field': 'Gloss'}, {'field': 'Morph Gloss'}):
         same(proj, 'check_consistency', args)
     b = same_ops(proj, 'merge_entries', {'keep_form': 'Ali', 'remove_form': 'gam akuna'})

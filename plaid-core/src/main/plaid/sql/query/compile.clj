@@ -29,10 +29,10 @@
 
 (def ^:private entity-table
   {:span :spans :token :tokens :relation :relations :vocab :vocab_items
-   :document :documents :text :texts})
+   :document :documents :text :texts :link :vocab_links})
 
 (def ^:private alias-prefix
-  {:span "s" :token "t" :relation "r" :vocab "v" :document "d" :text "tx"})
+  {:span "s" :token "t" :relation "r" :vocab "v" :document "d" :text "tx" :link "lk"})
 
 (def ^:private layer-fk
   {:span :span_layer_id :token :token_layer_id :relation :relation_layer_id :vocab :vocab_layer_id})
@@ -156,7 +156,7 @@
 ;; values are stored JSON-encoded (write-json), like :value.
 (def ^:private kind->meta-type
   {:span "span" :token "token" :relation "relation"
-   :document "document" :text "text" :vocab "vocab-item"})
+   :document "document" :text "text" :vocab "vocab-item" :link "vocab-link"})
 
 (defn- metadata-exists-pred
   "EXISTS a entity_metadata row for (kind, `a`.id, `mk`) whose value matches
@@ -242,6 +242,10 @@
   (when (contains? cmap :form)
     (emit-field! st (col a :form) (:form cmap) identity (col a :form) false))
   (when (contains? cmap :doc)   (emit-field! st (col a :document_id) (:doc cmap) str (col a :document_id) false))
+  ;; a link's :item by id(s); a vocab VARIABLE there is a join, emitted by
+  ;; compile-relation-inline! (it needs the constraints to ensure the var)
+  (when (and (contains? cmap :item) (not (symbol? (:item cmap))))
+    (emit-field! st (col a :vocab_item_id) (:item cmap) str (col a :vocab_item_id) false))
   (when (contains? cmap :begin) (emit-field! st (col a :begin) (:begin cmap) identity (col a :begin) false))
   (when (contains? cmap :end)   (emit-field! st (col a :end_) (:end cmap) identity (col a :end_) false))
   ;; document name / text body (plain TEXT — regex runs on the column directly), id
@@ -324,6 +328,13 @@
               ;; a text is scoped through its document
               (= kind :text)
               (let [d (next-alias! st "txd")]
+                (add-from! st [:documents d])
+                (add-where! st [:= (col a :document_id) (col d :id)])
+                (add-where! st [:in (col d :project_id) (:scope @st)]))
+              ;; a vocab link lives in a document too (its item may be global, but
+              ;; the link is the project's annotation)
+              (= kind :link)
+              (let [d (next-alias! st "lkd")]
                 (add-from! st [:documents d])
                 (add-where! st [:= (col a :document_id) (col d :id)])
                 (add-where! st [:in (col d :project_id) (:scope @st)]))
@@ -554,11 +565,20 @@
                     (add-where! st [:= (col vlt :token_id) (col t :id)])
                     (add-where! st [:= (col vlt :vocab_link_id) (col vl :id)])
                     (add-where! st [:= (col vl :vocab_item_id) (col v :id)]))
+      ;; the link as an entity: its tokens through the junction, its item by FK
+      :link-token (let [l (av a) t (av b)
+                        vlt (next-alias! st "lkt")]
+                    (add-from! st [:vocab_link_tokens vlt])
+                    (add-where! st [:= (col vlt :vocab_link_id) (col l :id)])
+                    (add-where! st [:= (col vlt :token_id) (col t :id)]))
+      :link-item  (let [l (av a) v (av b)]
+                    (add-where! st [:= (col l :vocab_item_id) (col v :id)]))
       (err-500! (str "Compiler reached unknown relationship clause :" (name head)) {:clause clause}))))
 
 (defn- compile-relation-inline!
-  "A :relation entity clause may carry inline :source/:target span vars — compile
-  them as relationship predicates."
+  "A :relation entity clause may carry inline :source/:target span vars, and a
+  :link clause an inline :item vocab var — compile them as relationship
+  predicates."
   [st constraints clause]
   (let [[head r cmap] clause]
     (when (= head :relation)
@@ -566,7 +586,10 @@
         (when-let [s (:source cmap)]
           (add-where! st [:= (col ra :source_span_id) (col (ensure-var! st s constraints) :id)]))
         (when-let [t (:target cmap)]
-          (add-where! st [:= (col ra :target_span_id) (col (ensure-var! st t constraints) :id)]))))))
+          (add-where! st [:= (col ra :target_span_id) (col (ensure-var! st t constraints) :id)]))))
+    (when (and (= head :link) (symbol? (:item cmap)))
+      (let [la (ensure-var! st r constraints)]
+        (add-where! st [:= (col la :vocab_item_id) (col (ensure-var! st (:item cmap) constraints) :id)])))))
 
 ;; ---------------------------------------------------------------------------
 ;; Implicit document co-location
@@ -595,7 +618,7 @@
 
 (def ^:private doc-local-rel-ops
   #{:covers :precedes :precedes* :within :first-in
-    :overlaps :contains :coextensive :related* :source :target})
+    :overlaps :contains :coextensive :related* :source :target :link-token})
 
 (defn- doc-local-edges
   "Var pairs that document-local relationship clauses force into one document."
@@ -746,12 +769,14 @@
           {:sql (if json? [:json_extract (col a column) [:inline "$"]] (col a column)) :enc enc}))
       :ref
       ;; a FK reference column: ?s.layer -> the kind-aware *_layer_id; a relation's
-      ;; ?r.source/?r.target -> source_span_id/target_span_id. Opaque ids (enc str),
-      ;; so `["=" "?s.layer" "?sl"]` joins to the layer var's id exactly like {:layer ?sl}.
+      ;; ?r.source/?r.target -> source_span_id/target_span_id; a link's ?l.item ->
+      ;; vocab_item_id. Opaque ids (enc str), so `["=" "?s.layer" "?sl"]` joins to
+      ;; the layer var's id exactly like {:layer ?sl}.
       {:sql (col a (case (:attr res)
                      :layer  (layer-fk kind)
                      :source :source_span_id
-                     :target :target_span_id))
+                     :target :target_span_id
+                     :item   :vocab_item_id))
        :enc str}
       :config
       {:sql [:json_extract (col a :config) (json-path (:subpath res))] :enc identity}

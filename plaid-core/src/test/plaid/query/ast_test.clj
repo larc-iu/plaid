@@ -590,3 +590,42 @@
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?d"] "where" [["document" "?d" {}] ["=" "?d.layer" "?x"]]})))))
   (testing "the regex op does not alias a typed word (\"match\" is an unknown clause head)"
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}] ["match" "?s.value" "x"]]}))))))
+
+;; ---------------------------------------------------------------------------
+;; :link — a vocab link as an entity (its metadata, document, item, tokens)
+;; ---------------------------------------------------------------------------
+
+(deftest link-clauses-infer-kinds
+  (testing ":link binds a link; :link-token / :link-item bind token / vocab"
+    (let [k (::ast/var-kinds
+             (ast/parse+validate
+              {"find" ["?l"]
+               "where" [["link" "?l" {"metadata" {"prov" "inferred"}}]
+                        ["link-token" "?l" "?t"] ["link-item" "?l" "?v"]]}))]
+      (is (= :link (k (symbol "?l"))))
+      (is (= :token (k (symbol "?t"))))
+      (is (= :vocab (k (symbol "?v"))))))
+  (testing "an inline :item var is a vocab var, and a dotted ?l.item compares to one"
+    (let [checked (ast/parse+validate
+                   {"find" ["?l"]
+                    "where" [["link" "?l" {"item" "?v"}] ["vocab" "?v" {"form" "x"}]
+                             ["=" "?l.item" "?v"]]})]
+      (is (= :vocab ((::ast/var-kinds checked) (symbol "?v"))))
+      (is (= (symbol "?v") (get-in checked [:where 0 2 :item])) "the item slot is var-ized at parse")))
+  (testing "an item id, or a list of ids, is a literal constraint"
+    (is (map? (ast/parse+validate
+               {"find" ["?l"] "where" [["link" "?l" {"item" "5b7ce985-1111-4222-8333-6d1186cbd822"}]]})))
+    (is (map? (ast/parse+validate
+               {"find" ["?l"] "where" [["link" "?l" {"item" ["5b7ce985-1111-4222-8333-6d1186cbd822"
+                                                             "5b7ce985-1111-4222-8333-6d1186cbd823"]}]]}))))
+  (testing "author errors are 400s"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?l"] "where" [["link" "?l" {"layer" "x"}]]})))
+        "a link has no layer")
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?l"] "where" [["link" "?l" {"item" "Kemal"}]]})))
+        "an item is referenced by id or variable, never by form")
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?l"] "where" [["link" "?l" {}] ["span" "?s" {}] ["link-token" "?l" "?s"]]})))
+        "link-token needs a token")
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?l"] "where" [["link" "?l" {}] ["token" "?t" {}] ["=" "?l.item" "?t"]]})))
+        "?l.item compares to a vocab variable, not a token")
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?l"] "where" [["link" "?l" {}] ["<" "?l.item" "x"]]})))
+        "a reference has no order")))

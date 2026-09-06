@@ -417,9 +417,14 @@ def q_review_docs(ws: Workspace, f=None) -> List[str]:
                                 ['not', ['span', '?s', {'metadata': {'provConfirmed': True}}]]], ['?s.doc']):
             if doc not in out:
                 out.append(doc)
-        if c.M and f is None:
-            for doc, _n in c.group([c.morph('?m', metadata=stamp),
-                                    ['not', ['token', '?m', {'metadata': {'provConfirmed': True}}]]], ['?m.doc']):
+        if f is None:
+            if c.M:
+                for doc, _n in c.group([c.morph('?m', metadata=stamp),
+                                        ['not', ['token', '?m', {'metadata': {'provConfirmed': True}}]]], ['?m.doc']):
+                    if doc not in out:
+                        out.append(doc)
+            for doc, _n in c.group([['link', '?l', {'metadata': stamp}],
+                                    ['not', ['link', '?l', {'metadata': {'provConfirmed': True}}]]], ['?l.doc']):
                 if doc not in out:
                     out.append(doc)
     return out
@@ -439,13 +444,18 @@ def q_worklist(ws: Workspace, kind: str, f, lvl: str, user: Optional[str] = None
         counts = c.word_tally(where, '?w')
         by_doc = c.group(where, ['?w.value', '?w.doc'])
     elif kind in ('unverified', 'contributed'):
-        # Distinct words carrying any span or morpheme awaiting review
-        # (links are not reachable by query).
+        # Distinct words carrying any span, morpheme, or link (their own, a
+        # multi-word expression's, or a morpheme's) awaiting review.
         ids: Dict[str, Tuple[str, str]] = {}
         for stamp in review_stamps(kind, user):
             span = ['span', '?s', {'layer': '?sl', 'metadata': stamp}]
             unconfirmed = ['not', ['span', '?s', {'metadata': {'provConfirmed': True}}]]
+            link = ['link', '?l', {'metadata': stamp}]
+            unconfirmed_link = ['not', ['link', '?l', {'metadata': {'provConfirmed': True}}]]
             for wid, value, doc, _n in c.group([c.word('?w'), span, ['covers', '?s', '?w'], unconfirmed],
+                                               ['?w', '?w.value', '?w.doc']):
+                ids[wid] = (value, doc)
+            for wid, value, doc, _n in c.group([c.word('?w'), link, ['link-token', '?l', '?w'], unconfirmed_link],
                                                ['?w', '?w.value', '?w.doc']):
                 ids[wid] = (value, doc)
             if c.M:
@@ -454,6 +464,9 @@ def q_worklist(ws: Workspace, kind: str, f, lvl: str, user: Optional[str] = None
                                                    ['?w', '?w.value', '?w.doc']):
                     ids[wid] = (value, doc)
                 for wid, value, doc, _n in c.group(c.in_word('?m', '?w') + [span, ['covers', '?s', '?m'], unconfirmed],
+                                                   ['?w', '?w.value', '?w.doc']):
+                    ids[wid] = (value, doc)
+                for wid, value, doc, _n in c.group(c.in_word('?m', '?w') + [link, ['link-token', '?l', '?m'], unconfirmed_link],
                                                    ['?w', '?w.value', '?w.doc']):
                     ids[wid] = (value, doc)
         counts = Counter()
@@ -945,7 +958,9 @@ def q_sequence(ws: Workspace, sequence: List[Dict[str, Any]], adjacent: bool, re
 # --- lexicon_entry --------------------------------------------------------------------
 
 def q_entry_usage(ws: Workspace, item_id: str, examples: int):
-    """(word links, morpheme links, example lines) for one lexicon entry."""
+    """(word links, morpheme links, multi-word expressions, example lines) for
+    one lexicon entry. Word and morpheme counts are per linked token; an
+    expression is one link over two or more of them."""
     from .project import render_word, word_ref
     c = ws.corpus
     where = [['vocab', '?v', {}], ['=', '?v.id', item_id], ['vocab-link', '?t', '?v']]
@@ -955,6 +970,7 @@ def q_entry_usage(ws: Workspace, item_id: str, examples: int):
             word_links += n
         elif layer == c.M:
             morph_links += n
+    mwes = sum(1 for _l, n in c.group([['link', '?l', {'item': item_id}], ['link-token', '?l', '?t']], ['?l']) if n >= 2)
     exs = []
     if examples:
         for row in c.entities(where, ['?t'], examples * 2, [['?t.doc'], ['?t.begin']]):
@@ -967,7 +983,7 @@ def q_entry_usage(ws: Workspace, item_id: str, examples: int):
             exs.append(f'  {c.ws.doc_tag(doc)}{word_ref(s, w)} {render_word(w, c.p)[len(w.ref) + 1:]} || {s.text}')
             if len(exs) >= examples:
                 break
-    return word_links, morph_links, exs
+    return word_links, morph_links, mwes, exs
 
 
 def q_entry_links(ws: Workspace, item_id: str) -> List[Dict[str, Any]]:

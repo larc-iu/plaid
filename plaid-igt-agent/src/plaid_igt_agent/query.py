@@ -29,6 +29,8 @@ Entity clauses  [kind, "?v", {constraints}]  (all constraints optional):
   ["token", "?t", {"layer": "words"|"morphemes"|"sentences", "value": <surface text>, "begin": n, "end": n, "metadata": {...}}]
       morpheme tokens carry their form in metadata.form and type in metadata.morphType
   ["vocab", "?v", {"layer": <lexicon name>, "form": ..., "metadata": {...}}]           a lexicon entry
+  ["link", "?l", {"item": "?v" | <entry id>, "doc": ..., "metadata": {...}}]          a lexicon link itself (its metadata is
+      its provenance: {"prov": "inferred"|"contributed", "provConfirmed": true}; one over several words is a multi-word expression)
   ["document", "?d", {"name": ..., "id": ..., "metadata": {...}}]
 Constraint values: literal "NOUN" (equality) | list ["NOUN","PROPN"] (any of) | {"regex": "^N", "flags": "i"} (Java regex,
   substring unless anchored) | {"var": "?x"} (bind the column instead of filtering; same ?x elsewhere = join).
@@ -41,9 +43,10 @@ Relationship clauses  [op, "?a", "?b"]:
   ["first-in", ?token, ?container]   the first token of its layer inside the container token
   ["overlaps"|"contains"|"coextensive", ?span, ?span]   spans compared by the tokens they cover
   ["vocab-link", ?token, ?vocab] the token (word or morpheme) is linked to that entry
+  ["link-token", ?link, ?token]  the link covers that token; ["link-item", ?link, ?vocab]  the link points at that entry
 Predicates over bound terms: ["=","?a","?b"], ["!=","?s1","?s2"] (distinct entities), ["<"|">"|"<="|">=", "?t.begin", 5],
   ["~", "?s.value", "^N"] (regex on a text field), ["in", "?s.value", ["A","B"]].
-Dot paths read fields: ?s.value ?s.doc ?s.layer ?t.begin ?t.end ?t.precedence ?t.metadata.form ?v.form ?d.name ?x.metadata.KEY
+Dot paths read fields: ?s.value ?s.doc ?s.layer ?t.begin ?t.end ?t.precedence ?t.metadata.form ?v.form ?d.name ?l.item ?x.metadata.KEY
 Sequences over one token layer (adjacent tokens): ["seq", {"layer": "words"}, ["span", {"layer": "POS", "value": "n"}, "as", "?a"],
   ["?", ["span", {"layer": "POS", "value": "adj"}]], ["rep", 0, 2, ["token", {}]], ["span", {"layer": "Gloss", "value": {"regex": "ERG"}}, "as", "?b"]]
   Elements: ["span", {...}] matches a token covered by such a span; ["token", {...}] the token itself; "as" names fixed elements.
@@ -62,6 +65,9 @@ Examples (this project's names):
   {"where": [["token","?t",{"layer":"words","doc":{"var":"?d"}}]], "return": {"group": ["?d"], "aggregates": [["count"]]}}
   # words linked to the entry "kar"
   {"find": ["?t"], "where": [["vocab","?v",{"form":"kar"}], ["vocab-link","?t","?v"]], "return": "entities"}
+  # words under a machine-made link nobody confirmed
+  {"find": ["?t"], "where": [["link","?l",{"metadata":{"prov":"inferred"}}], ["not", ["link","?l",{"metadata":{"provConfirmed":true}}]],
+   ["link-token","?l","?t"], ["token","?t",{"layer":"words"}]]}
 '''
 
 

@@ -20,10 +20,11 @@
   strings \"?s1\"; `parse` converts.
 
   Covers the full clause set: entity clauses (span/token/relation/vocab/document/
-  text) with literal/list/regex/value-variable constraints + :metadata; the
+  text/link) with literal/list/regex/value-variable constraints + :metadata; the
   relationship clauses (covers, precedes(*), within, first-in, overlaps, contains,
-  coextensive, source, target, vocab-link, related*); predicate clauses; :or/:seq/
-  :not; layer variables; :order-by; and :return ids/entities/count/aggregate. The
+  coextensive, source, target, vocab-link, link-token, link-item, related*);
+  predicate clauses; :or/:seq/:not; layer variables; :order-by; and :return
+  ids/entities/count/aggregate. The
   `deferred-clauses` mechanism (now empty) still rejects any future-reserved head
   with a clear message; `:as-of` is rejected as the bitemporal seam."
   (:refer-clojure :exclude [var?])
@@ -61,12 +62,16 @@
    :relation #{:layer :value :doc :source :target :metadata}
    :vocab    #{:layer :form :metadata}
    :document #{:name :id :metadata}
-   :text     #{:body :doc :metadata}})
+   :text     #{:body :doc :metadata}
+   ;; a vocab link as an entity of its own (its metadata carries provenance; a
+   ;; link over several tokens is a multi-word expression). :item is the vocab
+   ;; item it points at: a vocab variable (binds/joins) or an item id (or a list).
+   :link     #{:item :doc :metadata}})
 
 ;; Constraint keys whose value may be a vector = "one of" (compiles to IN). The
 ;; literal-match keys only — NOT :layer (multi-layer is unique-or-400 / future
-;; layer vars) or :source/:target (vars).
-(def ^:private alternation-keys #{:value :form :doc :begin :end :name :body :id})
+;; layer vars) or :source/:target (vars). :item takes a list of item ids.
+(def ^:private alternation-keys #{:value :form :doc :begin :end :name :body :id :item})
 
 ;; Constraint keys whose value may be a regex spec `{:regex "..." :flags "i"?}`
 ;; (compiles to a REGEXP match). Text-valued keys only.
@@ -135,7 +140,7 @@
 ;; Constraint keys whose value may be a query variable (so it is var-ized at parse):
 ;; the entity :layer / relation-endpoint slots plus every layer structural slot.
 (def ^:private var-slots
-  (into #{:source :target :layer} (map second) (keys layer-slot->kind)))
+  (into #{:source :target :layer :item} (map second) (keys layer-slot->kind)))
 
 ;; Relationship clauses and their arity (number of var args after the head).
 (def ^:private rel-clauses
@@ -149,7 +154,9 @@
    :overlaps    2    ; [:overlaps ?a ?b]     spans share a covered token
    :contains    2    ; [:contains ?a ?b]     span ?a covers every token ?b does
    :coextensive 2    ; [:coextensive ?a ?b]  spans cover the same tokens
-   :vocab-link 2})   ; [:vocab-link ?token ?vocab]
+   :vocab-link 2     ; [:vocab-link ?token ?vocab]   the token is linked to the item (no link entity)
+   :link-token 2     ; [:link-token ?link ?token]    the link covers that token
+   :link-item  2})   ; [:link-item ?link ?vocab]     the link points at that item
 
 ;; Clause heads accepted by the grammar but not implemented until a later
 ;; milestone. Rejected by validate with a "not yet supported" message rather
@@ -171,12 +178,14 @@
    :relation #{:value :doc :id :layer :source :target}
    :vocab    #{:form :id :layer}
    :document #{:name :id}
-   :text     #{:body :doc :id}})
+   :text     #{:body :doc :id}
+   :link     #{:doc :id :item}})
 
-;; Reference fields: a dot-path to a FK id column (a layer or a relation endpoint).
-;; They behave like opaque ids — only `=` / `!=` / `in` against a variable or an
-;; id literal (no ordering, no name resolution — see the G4 check in `validate`).
-(def ^:private ref-attrs #{:layer :source :target})
+;; Reference fields: a dot-path to a FK id column (a layer, a relation endpoint,
+;; or a link's item). They behave like opaque ids — only `=` / `!=` / `in`
+;; against a variable or an id literal (no ordering, no name resolution — see
+;; the G4 check in `validate`).
+(def ^:private ref-attrs #{:layer :source :target :item})
 
 ;; Layer variables expose name/id as scalar fields, plus open `config` keys.
 (def ^:private layer-field-attrs #{:name :id})
@@ -228,7 +237,7 @@
 (def ^:private field-attr-by-canon
   (into {} (map (fn [a] [(canon-seg (name a)) a]))
         [:value :doc :id :begin :end :precedence :form :name :body
-         :layer :source :target]))
+         :layer :source :target :item]))
 
 (defn- dotted-name? [x]
   (let [n (cond (symbol? x) (name x) (string? x) x :else nil)]
@@ -648,7 +657,11 @@
                             (if-let [sv (get cmap rk)]
                               (assoc-kind kk sv :span)
                               kk))
-                          kinds [:source :target])]
+                          kinds [:source :target])
+            ;; :link's inline :item var is a vocab item
+            kinds (if (var? (:item cmap))
+                    (assoc-kind kinds (:item cmap) :vocab)
+                    kinds)]
         ;; a {:var ?v} in a scalar-key value (:value/:form/:begin/:end/:doc) is a scalar var
         (reduce (fn [kk sk]
                   (let [x (get cmap sk)]
@@ -667,6 +680,8 @@
       (= head :source)     (-> kinds (assoc-kind (first args) :relation) (assoc-kind (second args) :span))
       (= head :target)     (-> kinds (assoc-kind (first args) :relation) (assoc-kind (second args) :span))
       (= head :vocab-link) (-> kinds (assoc-kind (first args) :token) (assoc-kind (second args) :vocab))
+      (= head :link-token) (-> kinds (assoc-kind (first args) :link) (assoc-kind (second args) :token))
+      (= head :link-item)  (-> kinds (assoc-kind (first args) :link) (assoc-kind (second args) :vocab))
       ;; a layer-constraint clause binds its var to the head's layer kind, and each
       ;; structural-slot var to its parent layer kind (assoc-kind detects conflicts
       ;; and rejects a dotted name in the slot)
@@ -692,7 +707,7 @@
       (contains? entity-clauses head)
       (let [[v cmap] args]
         (-> (if (var? v) [v] [])
-            (into (keep #(let [x (get cmap %)] (when (var? x) x)) [:source :target :layer]))
+            (into (keep #(let [x (get cmap %)] (when (var? x) x)) [:source :target :layer :item]))
             (into (keep #(let [x (get cmap %)] (when (and (map? x) (var? (:var x))) (:var x))) scalar-keys))))
       (contains? rel-clauses head) (filterv var? args)
       (= head :related*) (filterv var? args)   ; two span vars (the trailing map filters out)
@@ -874,6 +889,17 @@
           (when (seq unknown)
             (err! :validate (str "Unknown constraint key(s) " (vec unknown) " on :" (name head)
                                  " (allowed: " (vec (sort allowed)) ")"))))
+        ;; a link's :item is a reference: a vocab variable, an item id, or a list of
+        ;; ids. A bare form would silently compare the FK to a value it can never
+        ;; equal (the same footgun as a layer name), so it is a 400 here.
+        (when (contains? cmap :item)
+          (let [x (:item cmap)
+                id? #(or (uuid? %) (uuid-like? %))]
+            (when-not (or (var? x) (id? x)
+                          (and (vector? x) (seq x) (every? id? x)))
+              (err! :validate (str ":" (name head) " :item must be a vocab variable, an item id, or a list of "
+                                   "item ids, got: " (pr-str x)
+                                   " — to match an entry by form, bind it with [\"vocab\" \"?v\" {\"form\" \"…\"}]")))))
         ;; value shapes: a vector value means "one of" -> IN (alternation, on the
         ;; literal-match keys only); a map value means a regex spec (regex-keys
         ;; only). A scalar is plain equality.
@@ -1087,7 +1113,8 @@
               (when (var? other)
                 (let [want (case (:attr res)
                              :layer (entity->layer-kind (get kinds (field-var t)))
-                             (:source :target) :span)
+                             (:source :target) :span
+                             :item :vocab)
                       got  (get kinds other)]
                   (when (and want got (not= got want))
                     (err! :validate (str "Field " (field->str t) " is a " (name (:attr res))

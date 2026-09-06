@@ -816,11 +816,12 @@ def t_lexicon_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Op
         if k in ('flexEntry', 'flexSense') or k.startswith('prov') or v in (None, '', [], {}):
             continue
         lines.append(f'  {k}: {json.dumps(v, ensure_ascii=False) if isinstance(v, (list, dict)) else v}')
-    word_links, morph_links, exs = 0, 0, []
+    word_links, morph_links, mwes, exs = 0, 0, 0, []
     examples = max(0, min(int(examples or 3), 20))
     if not ws.prefer_scan:
         from .corpus import q_entry_usage
-        word_links, morph_links, exs = q_entry_usage(ws, target['id'], examples)
+        word_links, morph_links, mwes, exs = q_entry_usage(ws, target['id'], examples)
+    seen_mwes = set()
     for doc in (ws.all_docs() if ws.prefer_scan else []):
         tag = ws.doc_tag(doc)
         for s in doc.sentences:
@@ -832,6 +833,7 @@ def t_lexicon_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Op
                 for l in w.mwes:
                     if l.item_id == target['id']:
                         word_links += 1  # one per member word, as the query path counts tokens
+                        seen_mwes.add(l.id)
                         hit = True
                 for m in w.morphemes:
                     if m.link and m.link.item_id == target['id']:
@@ -839,7 +841,10 @@ def t_lexicon_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Op
                         hit = True
                 if hit and len(exs) < examples:
                     exs.append(f'  {tag}{word_ref(s, w)} {render_word(w, ws.project)[len(w.ref) + 1:]} || {s.text}')
-    lines.append(f'Linked from {word_links} word{"s" if word_links != 1 else ""} and {morph_links} morpheme{"s" if morph_links != 1 else ""}.')
+    if ws.prefer_scan:
+        mwes = len(seen_mwes)
+    lines.append(f'Linked from {word_links} word{"s" if word_links != 1 else ""} and {morph_links} morpheme{"s" if morph_links != 1 else ""}'
+                 + (f' ({mwes} multi-word expression{"s" if mwes != 1 else ""})' if mwes else '') + '.')
     if exs:
         lines.append('Examples:')
         lines.extend(exs)
