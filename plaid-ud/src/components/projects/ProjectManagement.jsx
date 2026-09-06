@@ -38,6 +38,7 @@ import { UserAvatar } from '../common/UserAvatar';
 import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { canManageProject } from '../../utils/permissions.js';
 import { isEmail, EMAIL_INVALID_MESSAGE } from '../../utils/email';
+import { ListHint, SearchInput } from '../common/ListChrome.jsx';
 
 const PERMISSION_OPTIONS = [
   { value: 'none', label: 'None' },
@@ -81,6 +82,9 @@ export const ProjectManagement = ({ embedded = false }) => {
   const [searchActive, setSearchActive] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  // True when the directory had more matches than SEARCH_LIMIT returned, so
+  // the list can say so instead of reading as "no such user".
+  const [searchCapped, setSearchCapped] = useState(false);
 
   // User creation form state
   const [showCreateUserForm, setShowCreateUserForm] = useState(false);
@@ -203,10 +207,19 @@ export const ProjectManagement = ({ embedded = false }) => {
         });
         const memberIds = new Set(members.map((m) => m.id));
         const results = (page.entries || []).filter((u) => !memberIds.has(u.id));
-        if (!cancelled) setSearchResults(results);
+        // A cursor back means the directory had more than the cap allowed.
+        // Read it rather than counting results: members are filtered out
+        // above, so a capped page can come back short.
+        if (!cancelled) {
+          setSearchResults(results);
+          setSearchCapped(Boolean(page.nextCursor));
+        }
       } catch (err) {
         console.error('User search failed:', err);
-        if (!cancelled) setSearchResults([]);
+        if (!cancelled) {
+          setSearchResults([]);
+          setSearchCapped(false);
+        }
       } finally {
         if (!cancelled) setSearchLoading(false);
       }
@@ -584,12 +597,12 @@ export const ProjectManagement = ({ embedded = false }) => {
           </Title>
         </Group>
         <Stack px="lg" py="md" gap="sm">
-          <TextInput
-            leftSection={<IconSearch size={16} />}
+          <SearchInput
             placeholder="Search users by name…"
             value={search}
-            onChange={(e) => setSearch(e.currentTarget.value)}
+            onChange={setSearch}
             onFocus={() => setSearchActive(true)}
+            w="100%"
           />
           {searchActive &&
             (searchLoading ? (
@@ -657,6 +670,14 @@ export const ProjectManagement = ({ embedded = false }) => {
                 ))}
               </Stack>
             ))}
+          {/* Outside the branch above: a capped search whose whole page was
+              filtered out as existing members shows the empty message, and
+              that is the case most in need of saying the list was cut. */}
+          {searchActive && !searchLoading && searchCapped && (
+            <ListHint>
+              Showing the first {SEARCH_LIMIT} matches. Narrow the search to see others.
+            </ListHint>
+          )}
         </Stack>
       </Paper>
 

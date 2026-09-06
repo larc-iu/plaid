@@ -17,7 +17,7 @@ import {
   Checkbox,
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
-import { IconPlus, IconSearch, IconLink } from '@tabler/icons-react';
+import { IconPlus, IconLink } from '@tabler/icons-react';
 import { MintedLinkModal } from '../projects/ProjectInvites';
 import { useAuth } from '../../contexts/AuthContext';
 import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
@@ -25,6 +25,7 @@ import { UserAvatar } from '../common/UserAvatar';
 import classes from '../common/listRow.module.css';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { isEmail, EMAIL_INVALID_MESSAGE } from '../../utils/email';
+import { CursorPager, SearchInput } from '../common/ListChrome.jsx';
 
 const PAGE_SIZE = 100;
 const EMPTY_USER_FORM = {
@@ -118,6 +119,18 @@ export const AdminUsers = () => {
   const goPrev = () => {
     if (page === 0 || loading) return;
     fetchPage(page - 1, cursors[page - 1]);
+  };
+
+  // The directory is paged by a keyset cursor, so there is no total and no
+  // last page to jump to. One strip above the rows and one below, as
+  // everywhere else.
+  const pager = {
+    page: page + 1,
+    hasPrevious: page > 0,
+    hasNext: Boolean(nextCursor),
+    onPrevious: goPrev,
+    onNext: goNext,
+    busy: loading,
   };
 
   // Reload the current page in place (after a create / edit / (de)activate).
@@ -288,14 +301,16 @@ export const AdminUsers = () => {
 
       <Paper withBorder radius="md">
         <Group px="lg" py="md" style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
-          <TextInput
-            leftSection={<IconSearch size={16} />}
+          <SearchInput
             placeholder="Search users by name…"
             value={search}
-            onChange={(e) => setSearch(e.currentTarget.value)}
+            onChange={setSearch}
             style={{ flex: 1 }}
+            w={undefined}
           />
         </Group>
+
+        <CursorPager {...pager} position="top" />
 
         {loading ? (
           <Center py="xl">
@@ -375,24 +390,7 @@ export const AdminUsers = () => {
           </Table.ScrollContainer>
         )}
 
-        {(page > 0 || nextCursor) && (
-          <Group
-            justify="space-between"
-            px="lg"
-            py="sm"
-            style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}
-          >
-            <Button variant="default" size="xs" disabled={page === 0 || loading} onClick={goPrev}>
-              Previous
-            </Button>
-            <Text size="sm" c="dimmed">
-              Page {page + 1}
-            </Text>
-            <Button variant="default" size="xs" disabled={!nextCursor || loading} onClick={goNext}>
-              Next
-            </Button>
-          </Group>
-        )}
+        <CursorPager {...pager} />
       </Paper>
 
       {/* Create User Modal */}

@@ -1,9 +1,11 @@
 import { useMemo, useState, useEffect } from 'react';
-import { Stack, Paper, Text, Box, Alert, Divider, Group, Pagination } from '@mantine/core';
+import { Stack, Paper, Text, Box, Alert, Divider, Group } from '@mantine/core';
 import { Link } from 'react-router-dom';
 import { IconInfoCircle } from '@tabler/icons-react';
 import classes from '../common/listRow.module.css';
 import { segmentize } from './grewToHighlight.js';
+import { pageSlice } from '../../hooks/usePagedList.js';
+import { ListPager } from '../common/ListChrome.jsx';
 
 const PAGE_SIZE = 50; // matched sentences per page
 
@@ -21,24 +23,23 @@ export const SearchResults = ({
   docName,
   hrefFor,
 }) => {
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(0);
   useEffect(() => {
-    setPage(1);
+    setPage(0);
   }, [groups]);
 
-  const totalPages = Math.max(1, Math.ceil(groups.length / PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
+  const paged = pageSlice(groups, page, PAGE_SIZE);
+  const { pageItems } = paged;
 
   // Group only the current page's sentences by document for rendering.
   const byDoc = useMemo(() => {
-    const slice = groups.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
     const m = new Map();
-    for (const g of slice) {
+    for (const g of pageItems) {
       if (!m.has(g.docId)) m.set(g.docId, []);
       m.get(g.docId).push(g);
     }
     return [...m.entries()];
-  }, [groups, currentPage]);
+  }, [pageItems]);
 
   return (
     <Stack gap="md">
@@ -62,6 +63,8 @@ export const SearchResults = ({
               (truncated ? ` (capped at ${count}; refine the query for more)` : '')}
         </Text>
       )}
+
+      <ListPager {...paged} onPage={setPage} position="top" />
 
       {byDoc.map(([docId, sentences]) => (
         <Paper key={docId} withBorder radius="md">
@@ -106,11 +109,7 @@ export const SearchResults = ({
         </Paper>
       ))}
 
-      {totalPages > 1 && (
-        <Group justify="center" mt="xs">
-          <Pagination total={totalPages} value={currentPage} onChange={setPage} />
-        </Group>
-      )}
+      <ListPager {...paged} onPage={setPage} />
     </Stack>
   );
 };

@@ -12,11 +12,8 @@ import {
   Center,
   Loader,
   Tooltip,
-  Pagination,
-  TextInput,
-  CloseButton,
 } from '@mantine/core';
-import { IconPlus, IconSearch } from '@tabler/icons-react';
+import { IconPlus } from '@tabler/icons-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { DocumentForm } from './DocumentForm';
 import { ProjectTabs } from '../projects/ProjectTabs.jsx';
@@ -28,11 +25,12 @@ import { nextSort, sortBy } from '../../utils/sorting.js';
 import classes from '../common/listRow.module.css';
 import { EntityAvatar } from '../common/EntityAvatar.jsx';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { usePagedList } from '../../hooks/usePagedList.js';
+import { ListCount, ListPager, SearchInput } from '../common/ListChrome.jsx';
 
 // Fixed metric-column widths, shared by the header and every row so they align.
 const W_WORDS = 84;
 const W_UPDATED = 124;
-const PAGE_SIZE = 100; // documents shown per page (the full list is paged client-side)
 
 export const DocumentList = () => {
   const { projectId } = useParams();
@@ -49,7 +47,6 @@ export const DocumentList = () => {
   const [wordsLoading, setWordsLoading] = useState(true);
   const [sort, setSort] = useState({ key: 'name', dir: 'asc' });
   const [filter, setFilter] = useState('');
-  const [page, setPage] = useState(1);
   const { user, getClient, logout } = useAuth();
 
   const fetchProjectAndDocuments = async () => {
@@ -144,14 +141,8 @@ export const DocumentList = () => {
     return `/projects/${projectId}/documents/${documentId}/${knownEmpty ? 'edit' : 'annotate'}`;
   };
 
-  const onSort = (key) => {
-    setSort(nextSort(key));
-    setPage(1);
-  };
-  const onFilter = (value) => {
-    setFilter(value);
-    setPage(1);
-  };
+  const onSort = (key) => setSort(nextSort(key));
+  const onFilter = (value) => setFilter(value);
 
   const sortedDocuments = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -166,14 +157,8 @@ export const DocumentList = () => {
     return sortBy(matched, extract, sort.dir);
   }, [documents, wordCounts, hasWordLayer, sort, filter]);
 
-  // Page the sorted list at PAGE_SIZE. `currentPage` is clamped so deleting
-  // documents off the last page falls back into range instead of showing blank.
-  const totalPages = Math.max(1, Math.ceil(sortedDocuments.length / PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
-  const pageDocuments = sortedDocuments.slice(
-    (currentPage - 1) * PAGE_SIZE,
-    currentPage * PAGE_SIZE,
-  );
+  // A new search or sort is a different list, so it starts at page 1.
+  const paged = usePagedList(sortedDocuments, { resetKey: `${filter}|${sort.key}|${sort.dir}` });
 
   if (loading) {
     return (
@@ -204,18 +189,8 @@ export const DocumentList = () => {
       <Group justify="space-between" mb="lg">
         <Title order={2}>Documents in {project.name}</Title>
         <Group gap="sm">
-          <TextInput
-            placeholder="Filter by name…"
-            value={filter}
-            onChange={(e) => onFilter(e.currentTarget.value)}
-            leftSection={<IconSearch size={16} />}
-            rightSection={
-              filter ? (
-                <CloseButton size="sm" onClick={() => onFilter('')} aria-label="Clear filter" />
-              ) : null
-            }
-            w={240}
-          />
+          <SearchInput placeholder="Search documents…" value={filter} onChange={onFilter} />
+          <ListCount shown={sortedDocuments.length} total={documents.length} noun="document" />
           {canEdit && (
             <Button
               color="dark"
@@ -250,6 +225,7 @@ export const DocumentList = () => {
         </Center>
       ) : (
         <Paper withBorder radius="md">
+          <ListPager {...paged} onPage={paged.setPage} position="top" />
           {/* Sortable column header */}
           <Group
             gap="sm"
@@ -270,7 +246,7 @@ export const DocumentList = () => {
           </Group>
 
           <Stack gap={0}>
-            {pageDocuments.map((document) => (
+            {paged.pageItems.map((document) => (
               <Box
                 key={document.id}
                 component={Link}
@@ -309,13 +285,8 @@ export const DocumentList = () => {
               </Box>
             ))}
           </Stack>
+          <ListPager {...paged} onPage={paged.setPage} />
         </Paper>
-      )}
-
-      {totalPages > 1 && (
-        <Group justify="center" mt="lg">
-          <Pagination total={totalPages} value={currentPage} onChange={setPage} />
-        </Group>
       )}
     </>
   );
