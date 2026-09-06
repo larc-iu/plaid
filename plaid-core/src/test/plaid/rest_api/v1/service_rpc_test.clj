@@ -54,18 +54,25 @@
   (events/reset-state!)
   (let [pid (random-uuid)
         requester (Object.)]
-    (events/track-request! "r1" requester pid "svc")
-    (events/track-request! "r2" (Object.) pid "other")
-    (is (= requester (:requester (events/get-request "r1"))))
+    (events/track-request! "r1" requester pid "svc" "u1")
+    (events/track-request! "r2" (Object.) pid "other" "u1")
+    (is (= #{requester} (:requesters (events/get-request "r1"))))
+    (is (= "u1" (:user-id (events/get-request "r1"))))
     (is (= 1 (count (events/requests-for-service pid "svc"))))
     (is (= "r1" (ffirst (events/requests-for-service pid "svc"))))
-    (is (= requester (:requester (events/resolve-request! "r1"))))
-    (is (nil? (events/get-request "r1")) "resolved request is gone")
-    (is (nil? (events/resolve-request! "r1")) "resolving twice is a no-op")))
+    (testing "the requester leaving does not end the request"
+      (events/detach-request! "r1" requester)
+      (is (= #{} (:requesters (events/get-request "r1"))))
+      (is (= 1 (count (events/requests-for-service pid "svc")))))
+    (testing "finishing stores the result for a requester that comes back"
+      (is (= #{} (:requesters (events/finish-request! "r1" "result" {:data 1}))))
+      (is (= {:event "result" :data {:data 1}} (:result (events/get-request "r1"))))
+      (is (empty? (events/requests-for-service pid "svc")) "a finished request is no longer routed")
+      (is (nil? (events/finish-request! "r1" "error" {:error "x"})) "finishing twice is a no-op"))))
 
 (deftest reset-state-clears-rpc-maps
   (events/register-service-channel! (random-uuid) "svc" (Object.) {:service-name "S"} "u1")
-  (events/track-request! "rid" (Object.) (random-uuid) "svc")
+  (events/track-request! "rid" (Object.) (random-uuid) "svc" "u1")
   (events/reset-state!)
   (is (empty? @events/service-channels))
   (is (empty? @events/inflight-requests)))
@@ -88,6 +95,33 @@
                                       :path (str "/api/v1/projects/" pid "/service-requests/nope/events")
                                       :body {:status "progress" :progress {:percent 10}}})]
     (is (= 404 (:status resp)) "reporting against an unknown/expired request is a 404")))
+
+(deftest rejoin-and-cancel-need-a-known-request-of-yours
+  (events/reset-state!)
+  (let [pid (create-project!)]
+    (grant-reader! pid "user2@example.com")
+    (testing "unknown request"
+      (is (= 404 (:status (api-call admin-request {:method :get
+                                                   :path (str "/api/v1/projects/" pid "/service-requests/nope")}))))
+      (is (= 404 (:status (api-call admin-request {:method :delete
+                                                   :path (str "/api/v1/projects/" pid "/service-requests/nope")})))))
+    (events/track-request! "theirs" (Object.) pid "svc" "someone-else@example.com")
+    (testing "another user's request reads as unknown to a plain member"
+      (is (= 404 (:status (api-call user2-request {:method :delete
+                                                   :path (str "/api/v1/projects/" pid "/service-requests/theirs")})))))
+    (testing "an admin may cancel it; without a live service the request just stands cancelled"
+      (is (= 204 (:status (api-call admin-request {:method :delete
+                                                   :path (str "/api/v1/projects/" pid "/service-requests/theirs")}))))
+      (is (true? (:cancelled (events/get-request "theirs")))))
+    (testing "a finished request cannot be cancelled"
+      (events/finish-request! "theirs" "result" {:data nil})
+      (is (= 409 (:status (api-call admin-request {:method :delete
+                                                   :path (str "/api/v1/projects/" pid "/service-requests/theirs")})))))
+    (testing "a submitted request id must be a UUID"
+      (events/register-service-channel! pid "x" (Object.) {:service-name "X" :extras {:delegation true}} "svc")
+      (is (= 400 (:status (api-call admin-request {:method :post
+                                                   :path (str "/api/v1/projects/" pid "/services/x/requests?request-id=not-a-uuid")
+                                                   :body {:doc 1}})))))))
 
 (deftest submit-requires-writer
   ;; A plain service acts with its OWN token, so a reader driving it would be
