@@ -526,10 +526,12 @@ describe('summarizeRestore (after a restore)', () => {
 describe('planMetadata', () => {
   it('sets or clears document and text metadata that differ', () => {
     expect(planMetadata(idx(), idx({ metadata: { a: 1 }, textMetadata: { lang: 'es' } }))).toEqual({
+      name: undefined,
       document: { a: 1 },
       text: { lang: 'es' },
     });
     expect(planMetadata(idx({ metadata: { a: 1 } }), idx())).toEqual({
+      name: undefined,
       document: null,
       text: undefined,
     });
@@ -553,6 +555,14 @@ describe('mapPartitionIds', () => {
     const idMap = new Map();
     mapPartitionIds(fresh, tgt, idMap);
     expect([...idMap]).toEqual([['s2', 'n1']]);
+  });
+});
+
+describe('planMetadata (name)', () => {
+  it('restores the document name when it differs', () => {
+    const cur = indexDocument({ ...raw(), name: 'Renamed' });
+    expect(planMetadata(cur, idx()).name).toBe('Doc');
+    expect(planMetadata(idx(), idx()).name).toBeUndefined();
   });
 });
 
@@ -609,6 +619,7 @@ describe('summarizeRestore', () => {
     });
     const s = summarizeRestore(cur, tgt);
     expect(s).toMatchObject({
+      name: false,
       text: true,
       sentences: 0,
       words: 2,
@@ -617,7 +628,12 @@ describe('summarizeRestore', () => {
       annotations: 2,
       links: 1,
       metadata: true,
-      total: 6,
+      total: 7,
     });
+  });
+
+  it('a differing name alone is one change', () => {
+    const s = summarizeRestore(indexDocument({ ...raw(), name: 'Renamed' }), idx());
+    expect(s).toMatchObject({ name: true, metadata: false, total: 1 });
   });
 });

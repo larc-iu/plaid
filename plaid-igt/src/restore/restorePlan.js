@@ -540,10 +540,11 @@ export function planLinks(cur, tgt, idMap) {
   return { deletes, creates, metadata, unresolved };
 }
 
-// ---- document and text metadata ---------------------------------------------
+// ---- document name, document and text metadata ------------------------------
 
 export function planMetadata(cur, tgt) {
-  const out = { document: undefined, text: undefined };
+  const out = { name: undefined, document: undefined, text: undefined };
+  if (tgt.name != null && cur.name !== tgt.name) out.name = tgt.name;
   if (!metaEqual(cur.metadata, tgt.metadata)) {
     out.document = hasMeta(tgt.metadata) ? tgt.metadata : null;
   }
@@ -618,6 +619,7 @@ export function normalizeState(idx) {
     }))
     .sort(byJson);
   return {
+    name: idx.name,
     metadata: idx.metadata,
     body: idx.text?.body ?? null,
     textMetadata: idx.text?.metadata ?? null,
@@ -664,7 +666,8 @@ export function compareStates(a, b, limit = 8) {
 /**
  * What a restore would change, counted from the two states as they stand.
  * Later phases are re-planned against fresh reads, so these are the counts
- * of the first plan, which is what a person confirms.
+ * of the first plan, which is what a person confirms. `total` is zero only
+ * when nothing at all differs.
  */
 export function summarizeRestore(cur, tgt) {
   const text = planText(cur, tgt);
@@ -691,7 +694,10 @@ export function summarizeRestore(cur, tgt) {
   const lk = planLinks(withCreated, tgt, idMap);
   const links = lk.deletes.length + lk.creates.length + lk.metadata.length;
   const metadata = planMetadata(cur, tgt);
+  const name = metadata.name !== undefined;
+  const docMeta = metadata.document !== undefined || metadata.text !== undefined;
   return {
+    name,
     text: !!text,
     sentences: layers.sentence,
     words: layers.word,
@@ -699,8 +705,10 @@ export function summarizeRestore(cur, tgt) {
     alignments: layers.alignment,
     annotations,
     links,
-    metadata: metadata.document !== undefined || metadata.text !== undefined,
+    metadata: docMeta,
     total:
+      (name ? 1 : 0) +
+      (docMeta ? 1 : 0) +
       (text ? 1 : 0) +
       layers.sentence +
       layers.word +

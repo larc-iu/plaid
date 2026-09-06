@@ -207,6 +207,49 @@ const EDITS = {
       await client.documents.deleteMetadata(idx.id);
     } else await client.documents.setMetadata(idx.id, { note: pick(rng, WORDS) });
   },
+  async textMetadata(idx) {
+    if (Object.keys(idx.text.metadata).length && rng() < 0.5) {
+      await client.texts.deleteMetadata(idx.text.id);
+    } else await client.texts.setMetadata(idx.text.id, { lang: pick(rng, WORDS) });
+  },
+  async rename(idx) {
+    await client.documents.update(idx.id, `Fuzz ${pick(rng, WORDS)} ${randInt(rng, 1, 99)}`);
+  },
+  async alignment(idx) {
+    // Time-alignment tokens: a root non-overlapping layer whose times must
+    // run in text order. Times follow the offsets, so any layout is legal.
+    const L = idx.layers.alignment;
+    if (!L) return;
+    const have = [...L.tokens.values()];
+    const roll = rng();
+    if (have.length && roll < 0.3) {
+      await client.tokens.bulkDelete([pick(rng, have).id]);
+      return;
+    }
+    if (have.length && roll < 0.6) {
+      const t = pick(rng, have);
+      await client.tokens.setMetadata(t.id, {
+        timeBegin: t.begin / 10,
+        timeEnd: t.end / 10 + 0.05,
+        speaker: pick(rng, WORDS),
+      });
+      return;
+    }
+    const free = wordRuns(idx.text.body).filter(
+      ([b, e]) => !have.some((t) => t.begin < e && b < t.end),
+    );
+    if (!free.length) return;
+    const [begin, end] = pick(rng, free);
+    await client.tokens.bulkCreate([
+      {
+        tokenLayerId: L.id,
+        text: idx.text.id,
+        begin,
+        end,
+        metadata: { timeBegin: begin / 10, timeEnd: end / 10 },
+      },
+    ]);
+  },
 };
 
 async function edit(documentId, ctx, n) {
@@ -219,6 +262,7 @@ async function edit(documentId, ctx, n) {
     try {
       await EDITS[name](idx, ctx);
       done += 1;
+      ctx.applied[name] = (ctx.applied[name] || 0) + 1;
     } catch (err) {
       rejected += 1;
       ctx.rejections.push(`${name}: ${String(err?.message ?? err).slice(0, 80)}`);
@@ -295,7 +339,7 @@ if (vocabId) {
     itemIds = [it.id];
   }
 }
-const ctx = { itemIds, rejections: [] };
+const ctx = { itemIds, rejections: [], applied: {} };
 log(
   `restore fuzz: seed ${SEED}, ${ROUNDS} rounds, ${itemIds.length} vocab items${STRICT ? ', strict-mode client' : ''}`,
 );
@@ -303,6 +347,7 @@ for (let i = 1; i <= ROUNDS; i++) {
   const r = await round(projectId, ctx, i);
   if (r.failures.length) failures.push({ round: i, ...r });
 }
+log('edits attempted by kind:', JSON.stringify(ctx.applied));
 if (ctx.rejections.length) {
   const tally = {};
   for (const r of ctx.rejections) tally[r.split(':')[0]] = (tally[r.split(':')[0]] || 0) + 1;

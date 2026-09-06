@@ -75,6 +75,7 @@ function stubClient({ live, target, failLinkItems = [] }) {
         reads += 1;
         return state;
       },
+      update: async (id, name) => rec('documents.update', id, name),
       setMetadata: async (id, body) => rec('documents.setMetadata', id, body),
       deleteMetadata: async (id) => rec('documents.deleteMetadata', id),
     },
@@ -297,6 +298,32 @@ describe('runRestore', () => {
     expect(res.differences[0]).toContain('links');
   });
 
+  it('restores the name last, and names the history entry in the operation', async () => {
+    const state = rawDoc({
+      body: 'a b',
+      sentences: [['s1', 0, 3]],
+      words: [
+        ['w1', 0, 1],
+        ['w2', 2, 3],
+      ],
+    });
+    const now = { ...state, name: 'Renamed', metadata: { k: 1 } };
+    const client = stubClient({ live: [now, state], target: state });
+    const res = await runRestore({
+      client,
+      documentId: 'doc1',
+      asOf: '2026-09-01T00:00:00Z',
+      label: 'Tokenize',
+    });
+    expect(client.calls[0][1]).toMatch(/^Restore “Renamed” to .* \(after “Tokenize”\)$/);
+    expect(client.calls.slice(1)).toEqual([
+      ['documents.update', 'doc1', 'Doc'],
+      ['documents.deleteMetadata', 'doc1'],
+    ]);
+    expect(res.summary).toMatchObject({ name: true, metadata: true, total: 2 });
+    expect(res.exact).toBe(true);
+  });
+
   it('previews without writing', async () => {
     const now = rawDoc({
       body: 'a b',
@@ -315,7 +342,7 @@ describe('runRestore', () => {
     const client = stubClient({ live: [now], target });
     const { summary, name } = await previewRestore({ client, documentId: 'doc1', asOf: 'T' });
     expect(name).toBe('Doc');
-    expect(summary).toMatchObject({ text: false, words: 1, metadata: true, total: 1 });
+    expect(summary).toMatchObject({ text: false, words: 1, metadata: true, total: 2 });
     expect(client.calls).toEqual([]);
   });
 });

@@ -577,7 +577,7 @@ A change made through an API token names the token too, so a script's work is to
 
 Viewing history changes nothing.
 To bring a document back to an earlier state, select that entry and click **Restore to this state**.
-The document is edited in place until it matches: the text, the sentences, words and morphemes, the annotations, the vocabulary links, and the metadata.
+The document is edited in place until it matches: the name, the text, the sentences, words and morphemes, the time alignment, the annotations, the vocabulary links, and the metadata.
 Before anything is written, a dialog lists what will change, and the restore lands in the history as one more entry, so the state just before it can be restored in turn.
 Comments stay where they are: a comment on something the restore brought back keeps its place, and one on something the restore removed moves to the Comments tab's Outdated section.
 Restoring is for a project's maintainers.

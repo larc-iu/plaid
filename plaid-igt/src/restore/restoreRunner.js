@@ -46,18 +46,21 @@ export async function previewRestore({ client, documentId, asOf }) {
 }
 
 /**
- * Restore the document to its state as of `asOf`. Returns
+ * Restore the document to its state as of `asOf`; `label` names the history
+ * entry that state belongs to, for the operation's message. Returns
  * `{summary, warnings, exact, differences}`: `exact` is the self-check, the
  * document re-read afterwards and compared, id-free, with the target.
  */
-export async function runRestore({ client, documentId, asOf, onProgress = () => {} }) {
+export async function runRestore({ client, documentId, asOf, label, onProgress = () => {} }) {
   const read = async () => indexDocument(await client.documents.get(documentId, true));
   const warnings = [];
   const idMap = new Map(); // id as of T -> id now, for tokens that came back
   const { name, summary, tgt, cur: first } = await previewRestore({ client, documentId, asOf });
   let cur = first;
 
-  await client.withOperation(`Restore “${name ?? documentId}” to ${formatWhen(asOf)}`, async () => {
+  const message =
+    `Restore “${name ?? documentId}” to ${formatWhen(asOf)}` + (label ? ` (after “${label}”)` : '');
+  await client.withOperation(message, async () => {
     // ---- 1. text ---------------------------------------------------------
     onProgress('Text');
     const text = planText(cur, tgt);
@@ -191,9 +194,10 @@ export async function runRestore({ client, documentId, asOf, onProgress = () => 
     }
     await applyMetadata(client, client.vocabLinks, lk.metadata);
 
-    // ---- 6. document and text metadata ------------------------------------
+    // ---- 6. name, document and text metadata ------------------------------
     onProgress('Metadata');
     const m = planMetadata(cur, tgt);
+    if (m.name !== undefined) await client.documents.update(documentId, m.name);
     if (m.document !== undefined) {
       if (m.document) await client.documents.setMetadata(documentId, m.document);
       else await client.documents.deleteMetadata(documentId);

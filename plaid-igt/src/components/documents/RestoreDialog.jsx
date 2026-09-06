@@ -22,6 +22,7 @@ const formatTime = (t) => new Date(t).toLocaleString();
 const changeLines = (s) => {
   if (!s) return [];
   const lines = [];
+  if (s.name) lines.push('The document name');
   if (s.text) lines.push('The text');
   if (s.sentences) lines.push(plural(s.sentences, 'sentence boundary', 'sentence boundaries'));
   if (s.words) lines.push(plural(s.words, 'word'));
@@ -66,7 +67,13 @@ export const RestoreDialog = ({ open, onOpenChange, client, documentId, entry, o
   const restore = async () => {
     setBusy(true);
     try {
-      const res = await runRestore({ client, documentId, asOf, onProgress: setPhase });
+      const res = await runRestore({
+        client,
+        documentId,
+        asOf,
+        label: entry?.label,
+        onProgress: setPhase,
+      });
       if (res.exact && res.warnings.length === 0) {
         notifySuccess(`Restored to ${formatTime(asOf)}.`, 'Restored');
       } else {
