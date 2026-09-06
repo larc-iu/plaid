@@ -91,6 +91,9 @@ class AssistantService(BaseService):
         parser.add_argument('--max-steps', type=int, default=50, help='Tool-call rounds per turn (default 50)')
         parser.add_argument('--temperature', type=float, default=None)
         parser.add_argument('--max-tokens', type=int, default=None)
+        parser.add_argument('--no-stream', action='store_true',
+                            help='Do not stream the reply as it is written (for a provider that misbehaves '
+                                 'under streaming); the reply then arrives whole')
         parser.add_argument('--service-id', default=None,
                             help='Service id (default igt:assist:<model>). Several assistants can be '
                                  'online on one project as long as their ids differ; the Assistant tab '
@@ -112,7 +115,8 @@ class AssistantService(BaseService):
 
     def setup(self, args) -> None:
         self.cfg = ModelConfig(model=args.model, api_base=args.api_base, api_key=args.api_key,
-                               max_steps=args.max_steps, temperature=args.temperature, max_tokens=args.max_tokens)
+                               max_steps=args.max_steps, temperature=args.temperature, max_tokens=args.max_tokens,
+                               stream=not getattr(args, 'no_stream', False))
         # One registration per model by default, so an operator can run several
         # assistants side by side (different models, or the same model with a
         # different base) and users pick one in the tab. Two instances with the
@@ -194,21 +198,30 @@ class AssistantService(BaseService):
             response_helper.error('The conversation has no message to answer')
             return
         model = self.cfg.model
-        state = {'pct': 5}
+        # Every progress event carries the reply text written so far, so a
+        # watcher (or one that rejoins) shows it as it grows.
+        state = {'pct': 5, 'text': ''}
+
+        def send(msg):
+            response_helper.progress(state['pct'], msg, text=state['text'])
 
         def on_progress(pct, msg):
             state['pct'] = max(state['pct'], pct)
-            response_helper.progress(state['pct'], msg)
+            send(msg)
+
+        def on_text(text):
+            state['text'] = text
+            send('Writing…')
 
         def cancelled() -> bool:
             return bool(getattr(response_helper, 'cancelled', False))
 
-        ws = Workspace(client, project, on_progress=lambda msg: response_helper.progress(state['pct'], msg))
+        ws = Workspace(client, project, on_progress=send)
         if self.web_cfg is not None:
             ws.web = session_for(self.web_cfg, transcript)
         try:
             turn = run_turn(self.cfg, ws, build_system_prompt(project, web=ws.web is not None),
-                            transcript, on_progress, cancelled=cancelled)
+                            transcript, on_progress, cancelled=cancelled, on_text=on_text)
         except TurnCancelled:
             # The user's message leaves the model transcript (a retry must not
             # send it twice) and stays on screen with what happened.

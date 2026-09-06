@@ -20,8 +20,9 @@ class Helper:
         self.cancelled = False
         self.progress_log, self.done, self.errors = [], [], []
 
-    def progress(self, pct, msg=''):
+    def progress(self, pct, msg='', **extra):
         self.progress_log.append((pct, msg))
+        self.extras = extra
 
     def complete(self, data=None):
         self.done.append(data)
@@ -56,7 +57,7 @@ def test_a_turn_is_written_to_the_record_before_it_is_reported(monkeypatch):
     store = _seed(client)
     order = []
 
-    def fake_run_turn(cfg, ws, system, transcript, on_progress, cancelled):
+    def fake_run_turn(cfg, ws, system, transcript, on_progress, cancelled, on_text=None):
         assert transcript[-1] == {'role': 'user', 'content': 'Which words are unglossed?'}
         on_progress(20, 'Reading')
         ws.doc('Text 1')
@@ -84,7 +85,7 @@ def test_a_cancelled_turn_is_settled_as_stopped(monkeypatch):
     client = FakeClient()
     store = _seed(client)
 
-    def fake_run_turn(cfg, ws, system, transcript, on_progress, cancelled):
+    def fake_run_turn(cfg, ws, system, transcript, on_progress, cancelled, on_text=None):
         assert cancelled() is True
         raise TurnCancelled()
 

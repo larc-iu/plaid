@@ -105,3 +105,54 @@ def test_a_self_hosted_provider_wants_a_url_and_no_key(monkeypatch, capsys):
     assert (svc.web_cfg.backend, svc.web_cfg.api_key) == ('searxng', '')
     assert svc.web_cfg.api_base == 'http://localhost:8888'
     assert 'Web lookup: searxng at http://localhost:8888' in capsys.readouterr().out
+
+
+# --- streaming ---------------------------------------------------------------
+
+
+def _chunk(content=None):
+    return SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=content))])
+
+
+def test_streaming_hands_out_the_text_so_far_and_rebuilds_the_response(monkeypatch):
+    monkeypatch.setattr(agent, 'STREAM_INTERVAL_S', 0)
+    seen_kwargs = {}
+
+    def fake_completion(**kwargs):
+        seen_kwargs.update(kwargs)
+        return iter([_chunk('Hel'), _chunk(None), _chunk('lo'), _chunk(' world')])
+
+    monkeypatch.setattr(agent.litellm, 'completion', fake_completion)
+    monkeypatch.setattr(agent.litellm, 'stream_chunk_builder',
+                        lambda chunks, messages=None: SimpleNamespace(rebuilt=len(chunks), messages=messages))
+    texts = []
+    cfg = agent.ModelConfig(model='m')
+    out = agent._complete(cfg, {'model': 'm', 'messages': [{'role': 'user', 'content': 'hi'}]}, texts.append)
+    assert seen_kwargs['stream'] is True
+    assert texts[-1] == 'Hello world' and texts == sorted(texts, key=len), 'the whole text so far, growing'
+    assert out.rebuilt == 4 and out.messages == [{'role': 'user', 'content': 'hi'}]
+
+
+def test_streaming_is_off_when_configured_and_falls_back_when_the_provider_refuses(monkeypatch):
+    calls = []
+
+    def fake_completion(**kwargs):
+        calls.append(kwargs.get('stream'))
+        if kwargs.get('stream'):
+            raise RuntimeError('streaming not supported')
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content='whole', tool_calls=None))])
+
+    monkeypatch.setattr(agent.litellm, 'completion', fake_completion)
+    texts = []
+    out = agent._complete(agent.ModelConfig(model='m', stream=False), {'model': 'm', 'messages': []}, texts.append)
+    assert calls == [None] and out.choices[0].message.content == 'whole' and texts == []
+    calls.clear()
+    out = agent._complete(agent.ModelConfig(model='m'), {'model': 'm', 'messages': []}, texts.append)
+    assert calls == [True, None], 'refused before the first chunk: asked again without streaming'
+    assert out.choices[0].message.content == 'whole'
+
+
+def test_a_whole_response_from_a_stream_call_is_taken_as_is(monkeypatch):
+    whole = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content='x', tool_calls=None))])
+    monkeypatch.setattr(agent.litellm, 'completion', lambda **kw: whole)
+    assert agent._complete(agent.ModelConfig(model='m'), {'model': 'm', 'messages': []}, lambda t: None) is whole

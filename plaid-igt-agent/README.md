@@ -41,6 +41,10 @@ server that is down, which is waited out.) With no project
 id the service registers on every project its token can access (new ones are
 picked up as they appear); pass one or more project ids to serve just those.
 
+The reply is streamed to the Assistant tab as the model writes it. A provider
+that misbehaves under streaming can be run with `--no-stream`, and the reply
+then arrives whole.
+
 Each instance registers as `igt:assist:<model>` (override with `--service-id`
 and `--service-name`), so several assistants with different models can be
 online on the same project; the Assistant tab shows a picker. Two instances

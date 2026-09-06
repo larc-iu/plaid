@@ -12,6 +12,7 @@ one read without re-reading.
 """
 
 import json
+import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
@@ -31,12 +32,18 @@ class ModelConfig:
     max_steps: int = 50
     temperature: Optional[float] = None
     max_tokens: Optional[int] = None
+    # Stream the model's text as it is written (progress events carry the
+    # text so far); off for a provider that misbehaves under streaming.
+    stream: bool = True
 
     def describe(self) -> Dict[str, Any]:
         return {'model': self.model, **({'api_base': self.api_base} if self.api_base else {})}
 
 
 PING_TIMEOUT_S = 30
+# How often the text so far is sent while the model writes. Every send is a
+# request to the Plaid server that relays it to whoever is watching.
+STREAM_INTERVAL_S = 0.15
 
 
 def _provider_kwargs(cfg: ModelConfig) -> Dict[str, Any]:
@@ -63,6 +70,45 @@ def ping_model(cfg: ModelConfig, timeout: float = PING_TIMEOUT_S) -> None:
                               messages=[{'role': 'user', 'content': 'ping'}])
     if not getattr(resp, 'choices', None):
         raise RuntimeError('the provider answered without a completion')
+
+
+def _complete(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[str], None]):
+    """One model call. Streamed when configured: the text so far goes to
+    ``on_text`` at intervals and the full response is rebuilt from the
+    chunks at the end (tool calls included), so the caller reads it as it
+    would an unstreamed one. A provider that refuses to stream (an error
+    before the first chunk) is asked again without streaming."""
+    if not cfg.stream:
+        return litellm.completion(**kwargs)
+    chunks: List[Any] = []
+    text = ''
+    last = 0.0
+    try:
+        stream = litellm.completion(**kwargs, stream=True)
+        if hasattr(stream, 'choices'):
+            return stream  # a whole response (a test double, a provider that ignored stream=)
+        for chunk in stream:
+            chunks.append(chunk)
+            choices = getattr(chunk, 'choices', None) or []
+            delta = getattr(choices[0], 'delta', None) if choices else None
+            piece = getattr(delta, 'content', None) if delta is not None else None
+            if piece:
+                text += piece
+                now = time.monotonic()
+                if now - last >= STREAM_INTERVAL_S:
+                    last = now
+                    on_text(text)
+    except Exception:
+        if chunks:
+            raise
+        return litellm.completion(**kwargs)
+    if text:
+        on_text(text)
+    return litellm.stream_chunk_builder(chunks, messages=kwargs.get('messages'))
+
+
+def planned_progress(n: int) -> str:
+    return f'Planned {n} change{"s" if n != 1 else ""}…'
 
 
 def _message_to_dict(msg) -> Dict[str, Any]:
@@ -130,10 +176,13 @@ class TurnResult:
 
 def run_turn(cfg: ModelConfig, ws: Workspace, system: str, transcript: List[Dict[str, Any]],
              on_progress: Callable[[int, str], None] = lambda p, m: None,
-             cancelled: Callable[[], bool] = lambda: False) -> TurnResult:
+             cancelled: Callable[[], bool] = lambda: False,
+             on_text: Callable[[str], None] = lambda t: None) -> TurnResult:
     """Run one turn: model call, tool calls, repeat, final text. ``cancelled``
     is polled before every model call and every tool call; once it answers
-    True the turn ends with :class:`TurnCancelled`."""
+    True the turn ends with :class:`TurnCancelled`. ``on_text`` receives the
+    text of the reply being written, whole each time, as it grows (and ''
+    when a new model call starts)."""
     history = _clean_transcript(transcript)
     new: List[Dict[str, Any]] = []
     trace: List[Dict[str, Any]] = []
@@ -145,7 +194,8 @@ def run_turn(cfg: ModelConfig, ws: Workspace, system: str, transcript: List[Dict
                   + [{'role': 'user', 'content': nudge}]}
         kwargs.pop('tools', None)
         kwargs.pop('tool_choice', None)
-        choice = litellm.completion(**kwargs).choices[0]
+        on_text('')
+        choice = _complete(cfg, kwargs, on_text).choices[0]
         d = _message_to_dict(choice.message)
         d.pop('tool_calls', None)
         new.append(d)  # the nudge itself never enters the saved transcript
@@ -162,7 +212,8 @@ def run_turn(cfg: ModelConfig, ws: Workspace, system: str, transcript: List[Dict
             kwargs['temperature'] = cfg.temperature
         if cfg.max_tokens:
             kwargs['max_tokens'] = cfg.max_tokens
-        resp = litellm.completion(**kwargs)
+        on_text('')
+        resp = _complete(cfg, kwargs, on_text)
         choice = resp.choices[0]
         d = _message_to_dict(choice.message)
         new.append(d)
@@ -191,7 +242,10 @@ def run_turn(cfg: ModelConfig, ws: Workspace, system: str, transcript: List[Dict
                 args, result = {}, f'Error: arguments were not valid JSON ({e})'
             else:
                 on_progress(min(85, 8 + rounds * 5), progress_label(name, args))
+                planned_before = len(ws.ops)
                 result = call_tool(ws, name, args)
+                if len(ws.ops) != planned_before:
+                    on_progress(min(85, 8 + rounds * 5), planned_progress(len(ws.ops)))
             trace.append(trace_step(c['id'], name, args))
             new.append({'role': 'tool', 'tool_call_id': c['id'], 'content': result})
         if rounds >= cfg.max_steps:
