@@ -3,6 +3,7 @@
             [taoensso.timbre :as log]
             [plaid.server.events :as events]
             [plaid.sql.service-registry :as service-registry]
+            [plaid.sql.user :as user]
             [clojure.core.async :as async]
             [clojure.data.json :as json]
             [org.httpkit.server :as http-kit]))
@@ -109,8 +110,18 @@
 ;; deliberately separate from /listen + /message (which stay as a generic
 ;; medium): the service receives requests on its own SSE stream, and replies
 ;; via plain POSTs that the server routes to the waiting requester's stream.
-;; Ephemeral: if no service channel is open, submit fails fast (503); if a
-;; service drops mid-request, its in-flight requesters are errored.
+;; If no service channel is open, submit fails fast (503); if a service drops
+;; mid-request, its in-flight requests are failed.
+;;
+;; A request outlives the requester's connection. The submitting stream may
+;; close (a browser tab reloaded during a minutes-long turn) and the request
+;; goes on; the requester comes back for it with the request id (GET
+;; /service-requests/:request-id), which replays the latest progress and then
+;; delivers the result, or the result straight away if it is already in (kept
+;; for a while after the service delivered it). A client that wants to be
+;; able to come back mints the id itself (`?request-id=`), so it can record
+;; the id before the request is even accepted. DELETE asks the service to
+;; stop; the request still ends with whatever the service then reports.
 
 (def ^:private sse-response-headers
   {"Content-Type"  "text/event-stream"
@@ -132,6 +143,15 @@
     (when (and (http-kit/open? channel)
                (http-kit/send! channel ": keepalive\n\n" false))
       (recur))))
+
+(defn- finish-request!
+  "Store a request's terminal event and deliver it to every connection still
+  watching, closing each."
+  [request-id event data]
+  (when-let [{:keys [requesters]} (events/finish-request! request-id event data)]
+    (doseq [ch requesters]
+      (try (http-kit/send! ch (sse-event event data) false) (catch Exception _))
+      (try (http-kit/close ch) (catch Exception _)))))
 
 (defn service-channel-handler
   "SSE stream a service opens to RECEIVE work requests (server -> service).
@@ -190,18 +210,62 @@
             (try (service-registry/touch-last-seen! db id service-id)
                  (catch Exception _))
             ;; Fail any in-flight requests that were routed to this now-gone service.
-            (doseq [[request-id {:keys [requester]}] (events/requests-for-service id service-id)]
-              (when requester
-                (try (http-kit/send! requester (sse-event "error" {:error "Service disconnected"}) false)
-                     (catch Exception _))
-                (try (http-kit/close requester) (catch Exception _)))
-              (events/resolve-request! request-id)))
+            (doseq [[request-id _] (events/requests-for-service id service-id)]
+              (finish-request! request-id "error" {:error "Service disconnected"})))
           (log/debug "Service channel closed for" service-id "on project" id))}))))
+
+(defn- request-visible?
+  "May this request's caller see the request `entry`: it belongs to the
+  project in the path and was submitted by the caller, or the caller is an
+  admin."
+  [entry req project-id]
+  (boolean
+   (and entry
+        (= (:project-id entry) project-id)
+        (or (= (:user-id entry) (pra/->user-id req))
+            (user/admin? (:user/record req))))))
+
+(defn- attach-stream
+  "An SSE stream that joins an existing request: the latest progress, then
+  the result when it comes; or the stored result at once if it is already in."
+  [req request-id]
+  (http-kit/as-channel
+   req
+   {:on-open
+    (fn [channel]
+      (http-kit/send! channel {:status 200 :headers sse-response-headers} false)
+      (http-kit/send! channel (sse-event "accepted" {:request-id request-id}) false)
+      (let [entry (events/attach-request! request-id channel)]
+        (cond
+          (nil? entry)
+          (do (http-kit/send! channel (sse-event "error" {:error "Unknown or expired request"}) false)
+              (http-kit/close channel))
+
+          (:result entry)
+          (let [{:keys [event data]} (:result entry)]
+            (http-kit/send! channel (sse-event event data) false)
+            (http-kit/close channel))
+
+          :else
+          (do (when-let [p (:last-progress entry)]
+                (http-kit/send! channel (sse-event "progress" {:progress p}) false))
+              (start-keepalive! channel)))))
+    :on-close
+    (fn [channel _]
+      (events/detach-request! request-id channel))}))
+
+(defn- uuid-string? [s]
+  (boolean (and (string? s) (re-matches #"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}" s))))
 
 (defn submit-request-handler
   "Client POSTs work for a service; the response is an SSE stream of that
   service's progress events ending in a result or error. 503 if no service is
   currently connected.
+
+  The stream opens with an `accepted` event naming the request id. The
+  client may choose the id (`?request-id=`, a UUID): submitting an id that
+  names a request this user already made joins that request instead of
+  starting another, so a retry after a dropped connection is safe.
 
   Who may submit depends on the service. A plain service acts with its OWN
   token, so driving it is a write on the project: writer required. A
@@ -210,62 +274,102 @@
   to the service as `delegated-token` beside the request data, so every read
   and write the service performs for this request is checked against, and
   attributed to, the requester. Readers may drive such a service (it can do
-  nothing for them that they could not do themselves)."
+  nothing for them that they could not do themselves). Every service is told
+  who asked (`requester-id`)."
   [{{{:keys [id service-id]} :path
+     {:keys [request-id]} :query
      data :body} :parameters
     db :db secret-key :secret-key :as req}]
   (let [entry (events/get-service-entry id service-id)
-        delegating? (events/delegating-service? entry)]
+        delegating? (events/delegating-service? entry)
+        existing (when request-id (events/get-request request-id))
+        user-id (pra/->user-id req)]
     (cond
+      existing
+      (if (request-visible? existing req id)
+        (attach-stream req request-id)
+        {:status 409 :body {:error (str "Request id " request-id " is taken")}})
+
+      (and request-id (not (uuid-string? request-id)))
+      {:status 400 :body {:error "request-id must be a UUID"}}
+
       (nil? entry)
       {:status 503 :body {:error (str "No live service '" service-id "' on this project")}}
 
       (and (not delegating?) (not (pra/privileged? req :project/writers get-project-id)))
-      {:status 403 :body {:error (str "User " (pra/->user-id req) " lacks sufficient privileges to write for project "
+      {:status 403 :body {:error (str "User " user-id " lacks sufficient privileges to write for project "
                                       id " (service '" service-id "' acts with its own credentials)")}}
 
       :else
-      (let [request-id (str (java.util.UUID/randomUUID))
+      (let [request-id (or request-id (str (java.util.UUID/randomUUID)))
             delegated-token (when delegating?
-                              (pra/issue-delegated-token! db secret-key (pra/->user-id req)))
-            event (cond-> {:request-id request-id :data data}
+                              (pra/issue-delegated-token! db secret-key user-id))
+            event (cond-> {:request-id request-id :requester-id user-id :data data}
                     delegated-token (assoc :delegated-token delegated-token))]
         (http-kit/as-channel
          req
          {:on-open
           (fn [requester]
             (http-kit/send! requester {:status 200 :headers sse-response-headers} false)
-            (events/track-request! request-id requester id service-id)
+            (events/track-request! request-id requester id service-id user-id)
+            (http-kit/send! requester (sse-event "accepted" {:request-id request-id}) false)
             (start-keepalive! requester)
             ;; Re-fetch the channel at push time — it may have dropped since the
             ;; pre-check above.
             (let [service-ch (events/get-service-channel id service-id)]
               (when-not (and service-ch
                              (http-kit/send! service-ch (sse-event "service_request" event) false))
+                (events/forget-request! request-id)
                 (http-kit/send! requester (sse-event "error" {:error "Service unavailable"}) false)
-                (events/resolve-request! request-id)
                 (http-kit/close requester))))
           :on-close
-          (fn [_ _]
-            (events/resolve-request! request-id))})))))
+          (fn [requester _]
+            (events/detach-request! request-id requester))})))))
+
+(defn attach-request-handler
+  "Client GETs the stream of a request it made earlier (see
+  `submit-request-handler`): 404 unless the request is known and theirs."
+  [{{{:keys [id request-id]} :path} :parameters :as req}]
+  (if (request-visible? (events/get-request request-id) req id)
+    (attach-stream req request-id)
+    {:status 404 :body {:error "Unknown or expired request"}}))
+
+(defn cancel-request-handler
+  "Client asks the service to stop a request it made. The service is told
+  (`service_cancel` on its channel) and the request still ends with whatever
+  the service then reports. 409 once the request has finished."
+  [{{{:keys [id request-id]} :path} :parameters :as req}]
+  (let [entry (events/get-request request-id)]
+    (cond
+      (not (request-visible? entry req id))
+      {:status 404 :body {:error "Unknown or expired request"}}
+
+      (:result entry)
+      {:status 409 :body {:error "The request has already finished"}}
+
+      :else
+      (do (events/cancel-request! request-id)
+          (when-let [service-ch (events/get-service-channel id (:service-id entry))]
+            (try (http-kit/send! service-ch (sse-event "service_cancel" {:request-id request-id}) false)
+                 (catch Exception _)))
+          {:status 204}))))
 
 (defn reply-handler
   "Service POSTs progress/result/error for an in-flight request; the server
-  relays it to the waiting requester's stream, closing on a terminal status."
+  relays it to every connection watching the request, stores the terminal
+  event for a requester that comes back later, and closes the watchers."
   [{{{:keys [id request-id]} :path
      {:keys [status progress data]} :body} :parameters :as req}]
-  (let [{:keys [requester project-id]} (events/get-request request-id)]
-    (if-not (and requester (= project-id id))
+  (let [{:keys [project-id result]} (events/get-request request-id)]
+    (if-not (and project-id (= project-id id) (nil? result))
       {:status 404 :body {:error "Unknown or already-completed request"}}
       (do
         (case status
-          "progress"  (http-kit/send! requester (sse-event "progress" {:progress progress}) false)
-          "completed" (do (http-kit/send! requester (sse-event "result" {:data data}) false)
-                          (events/resolve-request! request-id)
-                          (http-kit/close requester))
-          "error"     (do (http-kit/send! requester (sse-event "error" (if (map? data) data {:error data})) false)
-                          (events/resolve-request! request-id)
-                          (http-kit/close requester))
+          "progress"  (doseq [ch (events/record-progress! request-id progress)]
+                        (try (http-kit/send! ch (sse-event "progress" {:progress progress}) false)
+                             (catch Exception _)))
+          "completed" (finish-request! request-id "result" {:data data})
+          "error"     (finish-request! request-id "error" (if (map? data) data {:error data}))
           nil)
         {:status 200 :body {:success true}}))))
 
@@ -372,8 +476,23 @@
             ;; Reader here; the handler raises the bar to writer for a
             ;; non-delegating service (see `submit-request-handler`).
             :middleware [[pra/wrap-reader-required get-project-id]]
-            :parameters {:body any?}
+            :parameters {:query [:map [:request-id {:optional true} :string]]
+                         :body any?}
             :handler submit-request-handler}}]
+
+   ;; A request the client made earlier: rejoin its stream, or ask the
+   ;; service to stop it. Only the user who submitted it (or an admin).
+   ["/service-requests/:request-id"
+    {:parameters {:path [:map [:id :uuid] [:request-id :string]]}
+     :get {:summary (str "Client: rejoin the stream of a request made earlier (progress, then the "
+                         "result; or the result at once if it already finished). 404 unless the "
+                         "request is yours and still known.")
+           :middleware [[pra/wrap-reader-required get-project-id]]
+           :handler attach-request-handler}
+     :delete {:summary (str "Client: ask the service to stop a request made earlier. The request "
+                            "ends with whatever the service then reports. 409 once finished.")
+              :middleware [[pra/wrap-reader-required get-project-id]]
+              :handler cancel-request-handler}}]
 
    ;; Service reports progress/result/error for an in-flight request; the server
    ;; relays it to the waiting requester.

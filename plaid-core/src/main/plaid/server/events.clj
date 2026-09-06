@@ -73,13 +73,27 @@
   :start (atom {})
   :stop (reset! service-channels {}))
 
-;; In-flight server-mediated RPC requests: request-id -> {:requester <http-kit
-;; channel> :project-id :service-id}. Lets the server route a service's reply
-;; events (progress/result/error) back to ONLY the client that made the
-;; request. Cleared when the request resolves or either side disconnects.
+;; Server-mediated RPC requests, in flight or recently finished: request-id ->
+;; {:requesters #{<http-kit channel>} :project-id :service-id :user-id
+;;  :last-progress <payload|nil> :result <{:event "result"|"error" :data <map>}|nil>
+;;  :finished-at <ms|nil> :cancelled <bool>}.
+;;
+;; A request outlives its requester's connection. The requester's stream may
+;; drop (a browser tab closed or reloaded while a slow service worked) and the
+;; request goes on: progress keeps being recorded, and the result the service
+;; delivers while nobody is listening is kept for `finished-request-ttl-ms`.
+;; The requester (that user, or an admin) comes back for it by request id
+;; (`attach-request!`), receives the last progress and then the result, or the
+;; stored result straight away if it already finished. Several connections may
+;; watch one request. Not persisted: a server restart forgets everything.
 (defstate inflight-requests
   :start (atom {})
   :stop (reset! inflight-requests {}))
+
+;; How long a finished request's result stays available to a returning
+;; requester, and how many finished requests are kept at most (oldest go first).
+(def finished-request-ttl-ms (* 15 60 1000))
+(def max-finished-requests 500)
 
 (defn register-client!
   "Register a client channel to receive events for a specific project.
@@ -289,34 +303,117 @@
        (sort-by :service-id)
        vec))
 
+(defn- sweep-finished
+  "Drop finished requests past their TTL, and the oldest beyond the cap."
+  [reqs now]
+  (let [live (into {} (remove (fn [[_ {:keys [finished-at]}]]
+                                (and finished-at (> (- now finished-at) finished-request-ttl-ms)))
+                              reqs))
+        finished (->> live (filter (comp :finished-at val)) (sort-by (comp :finished-at val)))
+        excess (- (count finished) max-finished-requests)]
+    (if (pos? excess)
+      (apply dissoc live (map key (take excess finished)))
+      live)))
+
 (defn track-request!
-  "Record an in-flight RPC so the service's reply events can be routed back to
-  `requester-channel`."
-  [request-id requester-channel project-id service-id]
-  (swap! inflight-requests assoc request-id {:requester  requester-channel
-                                             :project-id project-id
-                                             :service-id service-id})
+  "Record a new RPC request, with the channel that submitted it as its first
+  requester, so the service's reply events can be routed back."
+  [request-id requester-channel project-id service-id user-id]
+  (swap! inflight-requests
+         (fn [reqs]
+           (assoc (sweep-finished reqs (System/currentTimeMillis)) request-id
+                  {:requesters (if requester-channel #{requester-channel} #{})
+                   :project-id project-id
+                   :service-id service-id
+                   :user-id user-id
+                   :last-progress nil
+                   :result nil
+                   :finished-at nil
+                   :cancelled false})))
   nil)
 
 (defn get-request
-  "The in-flight request entry for `request-id`, or nil."
+  "The entry for `request-id`, in flight or recently finished, or nil."
   [request-id]
   (get @inflight-requests request-id))
 
-(defn resolve-request!
-  "Remove an in-flight request (it completed, errored, or its requester left).
-  Returns the removed entry, or nil if it was already gone."
+(defn attach-request!
+  "Add `channel` as a requester of an unfinished request. Returns the entry as
+  it stands after the attempt (with `:result` set when the request had already
+  finished, in which case the channel was not added), or nil if unknown."
+  [request-id channel]
+  (get (swap! inflight-requests
+              (fn [reqs]
+                (if-let [entry (get reqs request-id)]
+                  (if (:result entry)
+                    reqs
+                    (assoc reqs request-id (update entry :requesters conj channel)))
+                  reqs)))
+       request-id))
+
+(defn detach-request!
+  "A requester's connection closed. The request itself goes on."
+  [request-id channel]
+  (swap! inflight-requests
+         (fn [reqs]
+           (if (get reqs request-id)
+             (update-in reqs [request-id :requesters] disj channel)
+             reqs)))
+  nil)
+
+(defn record-progress!
+  "Remember the latest progress payload (replayed to a requester that attaches
+  later). Returns the channels to relay it to now."
+  [request-id progress]
+  (:requesters (get (swap! inflight-requests
+                           (fn [reqs]
+                             (if (get reqs request-id)
+                               (assoc-in reqs [request-id :last-progress] progress)
+                               reqs)))
+                    request-id)))
+
+(defn finish-request!
+  "Store a request's terminal event (`event` is \"result\" or \"error\",
+  `data` its payload) and release its requesters. Returns the entry as it was
+  before finishing, whose `:requesters` are the channels still to be told, or
+  nil if the request is unknown or had already finished."
+  [request-id event data]
+  (let [before (get @inflight-requests request-id)]
+    (when (and before (nil? (:result before)))
+      (swap! inflight-requests
+             (fn [reqs]
+               (if-let [entry (get reqs request-id)]
+                 (assoc reqs request-id (assoc entry
+                                               :requesters #{}
+                                               :result {:event event :data data}
+                                               :finished-at (System/currentTimeMillis)))
+                 reqs)))
+      before)))
+
+(defn cancel-request!
+  "Mark an unfinished request cancelled. Returns its entry, or nil if unknown
+  or finished. Whether the service stops is the service's business; the
+  request stays until the service replies."
+  [request-id]
+  (let [entry (get @inflight-requests request-id)]
+    (when (and entry (nil? (:result entry)))
+      (swap! inflight-requests assoc-in [request-id :cancelled] true)
+      entry)))
+
+(defn forget-request!
+  "Drop a request outright (its submission failed before the service saw it).
+  Returns the removed entry, or nil."
   [request-id]
   (let [entry (get @inflight-requests request-id)]
     (swap! inflight-requests dissoc request-id)
     entry))
 
 (defn requests-for-service
-  "All in-flight [request-id entry] pairs routed to a given service — used to
+  "All unfinished [request-id entry] pairs routed to a given service — used to
   fail them when that service's channel drops."
   [project-id service-id]
-  (filter (fn [[_ {p :project-id s :service-id}]]
-            (and (= p project-id) (= s service-id)))
+  (filter (fn [[_ {p :project-id s :service-id r :result}]]
+            (and (= p project-id) (= s service-id) (nil? r)))
           @inflight-requests))
 
 ;; =============================================================================
