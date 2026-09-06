@@ -1708,7 +1708,9 @@ const ChangeRow = ({ row, projectId }) => {
   }
   return (
     <tr className="align-top">
-      <td className="max-w-[16rem] truncate whitespace-nowrap py-0.5 pr-3">{place}</td>
+      <td className="w-px whitespace-nowrap py-0.5 pr-4">
+        <span className="inline-block max-w-[18rem] truncate align-bottom">{place}</span>
+      </td>
       <td className="py-0.5">{row.change ?? row.label}</td>
     </tr>
   );
