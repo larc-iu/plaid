@@ -24,12 +24,17 @@ Python 3.11+. From a checkout:
 ```sh
 pip install -e ../plaid-client-py -e .
 python scripts/fetch_reference_data.py      # ~100 MB of derived WALS/Grambank tables
-plaid-dig4el --plaid-url http://localhost:8085 --data-dir ./data --port 8087
+plaid-dig4el --plaid-url http://localhost:8085 --data-dir ./data --port 8087 \
+  --llm-url http://localhost:4000/v1 --llm-key-file ./data/llm.key \
+  --llm-model <chat model> --llm-embedding-model <embedding model>
 ```
 
 Log in with a Plaid account. `--data-dir` holds the SQLite database and a generated
 cookie-signing secret; `PLAID_DIG4EL_REFERENCE_DIR` points at the reference data if it
-is not next to the package.
+is not next to the package. The language-model flags name any OpenAI-compatible
+endpoint (a litellm proxy, for instance); the chat model must honour
+`response_format: json_schema`. Without them the app runs, and sentence description,
+document indexing and grammar generation say they are off.
 
 ## Layout
 

@@ -20,14 +20,16 @@ class Settings:
     port: int = field(default_factory=lambda: int(_env("PLAID_DIG4EL_PORT", "8087")))
     secret_key: str = field(default_factory=lambda: _env("PLAID_DIG4EL_SECRET", ""))
     dev_reload: bool = False
-    # The language model endpoint (OpenAI-compatible). The key comes from LLM_API_KEY or
-    # the first line of the key file.
-    llm_base_url: str = field(default_factory=lambda: _env("LLM_BASE_URL", "https://reallms.rescloud.iu.edu/direct/v1"))
+    # The language-model endpoint: any OpenAI-compatible URL (a litellm proxy, typically).
+    # Nothing is assumed: the URL, the key (LLM_API_KEY or the first line of the key
+    # file) and the model names are given at launch. Without them the app runs, and the
+    # features that need a model say so.
+    llm_base_url: str = field(default_factory=lambda: _env("LLM_BASE_URL", ""))
     llm_api_key: str = field(default_factory=lambda: _env("LLM_API_KEY", ""))
-    llm_key_file: Path = field(default_factory=lambda: Path(_env("LLM_KEY_FILE", "~/.reallms")))
-    llm_model: str = field(default_factory=lambda: _env("LLM_MODEL", "gpt-oss-120b"))  # structured, fast
-    llm_model_strong: str = field(default_factory=lambda: _env("LLM_MODEL_STRONG", "glm-5.2"))  # slow, better
-    llm_embedding_model: str = field(default_factory=lambda: _env("LLM_EMBEDDING_MODEL", "embeddinggemma-300m"))
+    llm_key_file: str = field(default_factory=lambda: _env("LLM_KEY_FILE", ""))
+    llm_model: str = field(default_factory=lambda: _env("LLM_MODEL", ""))  # structured stages
+    llm_model_strong: str = field(default_factory=lambda: _env("LLM_MODEL_STRONG", ""))  # optional, offered as "strong"
+    llm_embedding_model: str = field(default_factory=lambda: _env("LLM_EMBEDDING_MODEL", ""))
 
     def __post_init__(self) -> None:
         self.data_dir = Path(self.data_dir)
@@ -49,10 +51,24 @@ class Settings:
     def llm_key(self) -> str:
         if self.llm_api_key:
             return self.llm_api_key
-        path = Path(self.llm_key_file).expanduser()
-        if path.exists():
-            return path.read_text().strip().splitlines()[0].strip()
+        if self.llm_key_file:
+            path = Path(self.llm_key_file).expanduser()
+            if path.exists():
+                return path.read_text().strip().splitlines()[0].strip()
         return ""
+
+    def llm_missing(self) -> list[str]:
+        """What the language-model setup lacks, in the words of the flags."""
+        out = []
+        if not self.llm_base_url:
+            out.append("--llm-url")
+        if not self.llm_key():
+            out.append("--llm-key-file (or LLM_API_KEY)")
+        if not self.llm_model:
+            out.append("--llm-model")
+        if not self.llm_embedding_model:
+            out.append("--llm-embedding-model")
+        return out
 
 
 _settings: Settings | None = None

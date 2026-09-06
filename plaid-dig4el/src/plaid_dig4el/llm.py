@@ -33,8 +33,10 @@ class LLM:
         self.strong_model = strong_model or s.llm_model_strong
         self.embedding_model = embedding_model or s.llm_embedding_model
         self.timeout = timeout
-        if not self.api_key:
-            raise LLMError("No language-model key: set LLM_API_KEY or put the key in the key file.")
+        self.strong_model = self.strong_model or self.model
+        missing = s.llm_missing() if not (base_url or api_key or model or embedding_model) else []
+        if missing or not self.base_url or not self.api_key or not self.model:
+            raise LLMError("No language-model endpoint is configured. Launch with " + ", ".join(missing or ["--llm-url", "--llm-key-file", "--llm-model", "--llm-embedding-model"]) + ".")
 
     # ------------------------------------------------------------------ transport
 
@@ -104,6 +106,11 @@ class LLM:
             rows = sorted(out["data"], key=lambda d: d.get("index", 0))
             vectors.extend(d["embedding"] for d in rows)
         return vectors
+
+
+def configured() -> bool:
+    """Whether the launch gave an endpoint, a key and the model names."""
+    return not settings().llm_missing()
 
 
 _llm: LLM | None = None

@@ -3,7 +3,8 @@
 Python server-rendered app (FastAPI, Jinja2, htmx, Bootstrap 5 vendored as one CSS file) that puts dig4el
 on Plaid. Environment: `~/.mambaforge/envs/plaid-dig4el/bin/python` (mamba env
 `plaid-dig4el`); the package is installed editable there along with `plaid-client-py`.
-Dev server: `plaid-dig4el --plaid-url http://localhost:8085 --data-dir <dir> --port 8087`
+Dev server: `plaid-dig4el --plaid-url http://localhost:8085 --data-dir <dir> --port 8087
+--llm-url <endpoint> --llm-key-file <file> --llm-model <m> --llm-embedding-model <e>`
 (core on :8085, igt :5174, ud :5173). Login is the Plaid login.
 
 ## Boundaries
@@ -42,12 +43,15 @@ with the key translation concept as value. Retrieval (`sentences.py`) offers dig
 three routes: keyword substring, embedding cosine, and the Sentence Selector, which is
 the one dig4el's generation actually uses.
 
-`llm.py` talks to any OpenAI-compatible endpoint (`LLM_BASE_URL`, key in
-`LLM_KEY_FILE` or `LLM_API_KEY`). Reasoning models return thinking in a separate field
-that is dropped. `chat_json` constrains output with `response_format: json_schema` and
-validates with pydantic. On the IU endpoint gpt-oss-120b honours the schema (3 to 7 s
-per sentence); gemma-4-31B-it does not (it emits whitespace until the token limit under
-guided decoding), so it is not used for structured stages; glm-5.2 works but is slow.
+`llm.py` talks to any OpenAI-compatible endpoint (a litellm proxy, typically). NOTHING
+about the endpoint is hardcoded: `--llm-url`, `--llm-key-file` (or `LLM_API_KEY`),
+`--llm-model`, `--llm-embedding-model`, optional `--llm-model-strong` come from the launch
+(env: `LLM_BASE_URL`, `LLM_KEY_FILE`, `LLM_MODEL`, `LLM_EMBEDDING_MODEL`,
+`LLM_MODEL_STRONG`). Without them the app runs and the model-backed features say they
+are off (`llm.configured()`). Reasoning models return thinking in a separate field that
+is dropped. `chat_json` constrains output with `response_format: json_schema` and
+validates with pydantic; the structured model must honour json_schema (measured on one
+endpoint: gpt-oss-120b does, gemma-4-31B-it emits whitespace under guided decoding).
 
 ## Grammar descriptions and reference documents
 

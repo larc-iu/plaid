@@ -18,15 +18,21 @@ def main() -> None:
     parser.add_argument("--host", default=os.environ.get("PLAID_DIG4EL_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.environ.get("PLAID_DIG4EL_PORT", "8087")))
     parser.add_argument("--reload", action="store_true", help="development: reload on code changes")
-    parser.add_argument("--llm-url", default=os.environ.get("LLM_BASE_URL"),
-                        help="an OpenAI-compatible language-model endpoint")
-    parser.add_argument("--llm-key-file", default=os.environ.get("LLM_KEY_FILE"),
-                        help="file whose first line is the endpoint's key (default ~/.reallms; or set LLM_API_KEY)")
-    parser.add_argument("--llm-model", default=os.environ.get("LLM_MODEL"),
-                        help="model for structured stages (default gpt-oss-120b)")
+    llm = parser.add_argument_group("language model", "an OpenAI-compatible endpoint such as a litellm proxy; "
+                                    "without these the app runs and the model-backed features say they are off")
+    llm.add_argument("--llm-url", default=os.environ.get("LLM_BASE_URL"), help="the endpoint, e.g. http://localhost:4000/v1")
+    llm.add_argument("--llm-key-file", default=os.environ.get("LLM_KEY_FILE"),
+                     help="file whose first line is the endpoint's key (or set LLM_API_KEY)")
+    llm.add_argument("--llm-model", default=os.environ.get("LLM_MODEL"),
+                     help="model for the structured stages (must honour response_format json_schema)")
+    llm.add_argument("--llm-model-strong", default=os.environ.get("LLM_MODEL_STRONG"),
+                     help="optional larger model, offered as 'strong' when generating descriptions")
+    llm.add_argument("--llm-embedding-model", default=os.environ.get("LLM_EMBEDDING_MODEL"),
+                     help="embedding model for sentence and document retrieval")
     args = parser.parse_args()
 
-    for flag, var in ((args.llm_url, "LLM_BASE_URL"), (args.llm_key_file, "LLM_KEY_FILE"), (args.llm_model, "LLM_MODEL")):
+    for flag, var in ((args.llm_url, "LLM_BASE_URL"), (args.llm_key_file, "LLM_KEY_FILE"), (args.llm_model, "LLM_MODEL"),
+                      (args.llm_model_strong, "LLM_MODEL_STRONG"), (args.llm_embedding_model, "LLM_EMBEDDING_MODEL")):
         if flag:
             os.environ[var] = str(flag)
 

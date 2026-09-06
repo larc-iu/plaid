@@ -24,7 +24,7 @@ from plaid_client import PlaidClient
 from plaid_client.http import PlaidAPIError
 
 from ..config import settings
-from .. import auth, catalog_store, db, documents, docx_export, explore, generation, jobs, plaid_gateway as gw, sentences, transcription_io
+from .. import auth, catalog_store, db, documents, docx_export, explore, generation, jobs, llm as llm_module, plaid_gateway as gw, sentences, transcription_io
 from ..inference import kg as kgmod, legacy_labels, pipeline, runner
 from ..legacy import graphs_utils as graphs
 from ..reference import catalog
@@ -45,7 +45,8 @@ def asset(path: str) -> str:
     return f"/static/{path}?v={stamp}"
 
 
-templates.env.globals.update(label=legacy_labels.label, catalog=catalog, asset=asset)
+templates.env.globals.update(label=legacy_labels.label, catalog=catalog, asset=asset,
+                             llm_configured=llm_module.configured, llm_strong_model=lambda: settings().llm_model_strong)
 
 
 def emph(text: Any) -> Markup:
@@ -485,6 +486,8 @@ async def corpus_add(request: Request, language_id: str, name: str = Form(...), 
 @app.post("/languages/{language_id}/augment")
 def augment_start(request: Request, language_id: str, model: str = Form("")):
     user = current_user(request)
+    if not llm_module.configured():
+        raise HTTPException(400, "No language-model endpoint is configured on this server.")
     with db.session() as s:
         lang = get_language(s, language_id)
         access = Access(user, lang)
@@ -614,6 +617,8 @@ def generate_start(request: Request, language_id: str, format: str = Form("lesso
                    polish: str = Form(""), use_cq: str = Form("1"), use_pairs: str = Form("1"),
                    use_documents: str = Form("1")):
     user = current_user(request)
+    if not llm_module.configured():
+        raise HTTPException(400, "No language-model endpoint is configured on this server.")
     topic = topic_custom.strip() or topic_standard.strip()
     if not topic:
         raise HTTPException(400, "Choose a topic or type one.")
@@ -707,7 +712,7 @@ def sentence_search(request: Request, language_id: str, query: str = Form(""), h
         rows = s.query(db.SentenceAugmentation).filter_by(language_id=lang.id).all()
     query = query.strip()
     hits: list[sentences.Hit] = []
-    if user.is_guest and how == "model":
+    if (user.is_guest or not llm_module.configured()) and how != "keyword":
         how = "keyword"
     if query:
         if how == "embedding":
