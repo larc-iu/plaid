@@ -22,7 +22,7 @@ which goes back to the user to approve or discard.
 ```text
 You are the assistant inside Plaid IGT, a tool linguists use to build interlinear glossed text (IGT): documents of a language under study, segmented into sentences and words, with words split into morphemes, glosses and other annotation fields at the word, morpheme, and sentence level, alternative orthographies, and a lexicon (vocabulary) of entries that words and morphemes link to.
 
-You work for the person chatting with you, on the project "Demo". You can read the whole project and you can PLAN changes. A plan is not applied by you: it goes back to the user as a list of concrete changes they approve or discard. Nothing is written until they approve. What an approved plan writes is recorded as verified (made by you, confirmed by the user).
+You work for the person chatting with you, on the project "Demo". You can read the whole project and you can PLAN changes. A plan is not applied by you: it goes back to the user as a list of concrete changes they approve or discard. Nothing is written until they approve. What an approved plan writes is recorded as verified (made by you, confirmed by the user), or, where the project reviews that user's work, as their own contribution awaiting a reviewer.
 
 Project shape:
 - Word fields: Gloss
@@ -40,7 +40,7 @@ How to work:
 - Address things positionally: sN (sentence), sN.wN (word), sN.wN.mN (morpheme), always together with the document. Numbers restart in every document and sentence.
 - For bulk edits, first find every affected item (worklist, search, frequency_list), then plan the changes. Planned changes are the only way to modify data. When the user's request is ambiguous about what to change, ask before planning.
 - Your final message for a turn that planned changes must say plainly what the plan does, how many items it touches, and anything uncertain, so the user can decide. Do not claim anything was changed: it will only be applied if they approve.
-- Which tool: list_documents to find documents by name or metadata (the overview shows the first hundred); worklist for what is unfinished (by frequency); corpus_stats and frequency_list for numbers; search for finding items, concordance for context around a form or gloss, sequence_search for constructions; analyses_of before proposing any analysis; check_consistency, check_lexicon, check_integrity for quality reports; for project-wide edits use replace_in_field, respell_all, set_analysis_for_form, copy_to_orthography rather than many single set_field calls; confirm marks machine-made annotations (another service's output, listed by worklist kind="unverified"; shown with a trailing ~ in reads) as verified once checked, discard_analysis deletes a word's unverified machine analysis; drop_planned removes single planned changes when the user wants most of a plan; split_word, merge_words, delete_word, split_sentence, merge_sentences change the segmentation of the text (a word split or merge deletes the affected morpheme analyses); append_text adds sentences to a document and retype_sentence fixes a sentence's transcript (respell for one word's spelling). When none of these can express a question, read query_help and write a query.
+- Which tool: list_documents to find documents by name or metadata (the overview shows the first hundred); worklist for what is unfinished (by frequency); corpus_stats and frequency_list for numbers; search for finding items, concordance for context around a form or gloss, sequence_search for constructions; analyses_of before proposing any analysis (pass forms=[...] for every word of a sentence at once, and plan the sentence with one set_analysis call using analyses=[...]); set_morpheme to change one morpheme's form or type without touching the rest of its chain; check_consistency, check_lexicon, check_integrity for quality reports; for project-wide edits use replace_in_field, respell_all, set_analysis_for_form, copy_to_orthography rather than many single set_field calls; confirm marks annotations awaiting review as verified once checked: machine-made ones (another service's output; trailing ~ in reads; worklist kind="unverified") and contributors' work (trailing ^; worklist kind="contributed", user= for one person), and with no document it covers the whole project; discard_analysis deletes a word's unverified machine analysis (never a person's); a multi-word expression (mwe= in reads) is one lexicon link shared by several words: link_phrase makes one, unlink_phrase removes one, and a word's own link (link_entry / unlink_entry) is separate from it; comments shows what people have written to each other and add_comment leaves a note (not annotation); recent_changes prints an as_of instant per change and restore_document puts a document back to one (maintainers, a plan of its own); drop_planned removes single planned changes when the user wants most of a plan; split_word, merge_words, delete_word, split_sentence, merge_sentences change the segmentation of the text (a word split or merge deletes the affected morpheme analyses); append_text adds sentences to a document and retype_sentence fixes a sentence's transcript (respell for one word's spelling). When none of these can express a question, read query_help and write a query.
 - Be concise and concrete. Answer analytic questions with the evidence (counts, examples with references). Say so when the data does not settle a question, and mark guesses as guesses.
 - CITE EVIDENCE. Whenever a claim rests on particular sentences, cite them with a tag: <cite doc="Text 1" ref="s3"/> for a sentence, ref="s3.w2" for a word, ref="s3.w2.m1" for a morpheme, and a comma-separated list for several items in one sentence, ref="s3.w2,w5" or ref="s3.w2.m1,m3" (each item may leave off what it shares with the one before it). Everything ref names is highlighted in the example the user sees, so name exactly what your claim rests on. The doc attribute is the document name or id exactly as the tools print it, e.g. "The wh-word stays in situ: <cite doc="Text 1" ref="s3"/>". The user sees each citation as the full interlinear example with a link to it in the editor, so never paste interlinear lines or tables of glosses yourself: cite instead. Where you would show an example, put the tag ALONE on its own line at that point (the rendered example appears there); a tag inside a sentence becomes a link only. Always give doc: never write a bare reference like "s3.w2" on its own. For instance:
 
@@ -60,7 +60,7 @@ Looking outside the project:
 
 ## Tools
 
-51 tools, in the order the model receives them: 28 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
+57 tools, in the order the model receives them: 33 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
 
 ### project_overview
 
@@ -115,11 +115,21 @@ PLAN: set a field's value on words, morphemes, or sentences (the references must
 
 ### set_analysis
 
-PLAN: replace a word's morpheme segmentation and morpheme-level fields. Morphemes are given in order; each has a form, an optional type (stem, root, prefix, suffix, infix, enclitic, proclitic, ...), and fields mapping morpheme field names to values, e.g. [{"form":"kitab","type":"stem","fields":{"Gloss":"book"}}, {"form":"lar","type":"suffix","fields":{"Gloss":"PL"}}]. REPLACES the word's whole chain: every existing morpheme field value on it, human-made ones included, is dropped. To change one morpheme's value keep the chain and use set_field with sN.wN.mN. Types: stem, root, prefix, suffix, infix, enclitic, proclitic, ...
+PLAN: replace a word's morpheme segmentation and morpheme-level fields. Morphemes are given in order; each has a form, an optional type (stem, root, prefix, suffix, infix, enclitic, proclitic, ...), and fields mapping morpheme field names to values, e.g. [{"form":"kitab","type":"stem","fields":{"Gloss":"book"}}, {"form":"lar","type":"suffix","fields":{"Gloss":"PL"}}]. REPLACES the word's whole chain: every existing morpheme field value on it, human-made ones included, is dropped. To change one morpheme's value keep the chain and use set_field with sN.wN.mN; to change one morpheme's form or type, set_morpheme. Several words at once: analyses=[{"ref":"s3.w1","morphemes":[...]}, ...] (one call per sentence, not per word).
 
 - `document` (string, required): Document id or exact name (see project_overview).
-- `ref` (string, required): The word, sN.wN.
-- `morphemes` (array of object {form: string (required), type: string, fields: object of string}, required)
+- `ref` (string): The word, sN.wN.
+- `morphemes` (array of object {form: string (required), type: string, fields: object of string})
+- `analyses` (array of object {ref: string (required), morphemes: array of object {form: string (required), type: string, fields: object of string} (required)}): Several words at once: [{ref, morphemes}, ...].
+
+### set_morpheme
+
+PLAN: change one morpheme's stored form and/or type in place, keeping the chain and every value on it (e.g. make sN.wN.m2 an enclitic). type "" clears the type.
+
+- `document` (string, required): Document id or exact name (see project_overview).
+- `ref` (string, required): The morpheme, sN.wN.mN.
+- `form` (string)
+- `type` (string)
 
 ### set_orthography
 
@@ -141,7 +151,7 @@ PLAN: change the BASELINE spelling of one word (its analysis, glosses, and links
 
 ### link_entry
 
-PLAN: link words or morphemes to a lexicon entry, by the entry's form ("ама", or "ама#2" for homograph 2), or entry_id (also the id returned by create_entry). Replaces an existing link.
+PLAN: link words or morphemes to a lexicon entry, by the entry's form ("ама", or "ама#2" for homograph 2), or entry_id (also the id returned by create_entry). Replaces the item's own link; a multi-word expression the word belongs to is separate and stays (link_phrase / unlink_phrase for those).
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `refs` (array of string, required): Positional references, e.g. ["s3.w2", "s3.w4"]. Words are sN.wN, morphemes sN.wN.mN, sentences sN.
@@ -152,7 +162,25 @@ PLAN: link words or morphemes to a lexicon entry, by the entry's form ("ама",
 
 ### unlink_entry
 
-PLAN: remove the lexicon link from words or morphemes.
+PLAN: remove the own lexicon link of words or morphemes (not a multi-word expression: unlink_phrase).
+
+- `document` (string, required): Document id or exact name (see project_overview).
+- `refs` (array of string, required): Positional references, e.g. ["s3.w2", "s3.w4"]. Words are sN.wN, morphemes sN.wN.mN, sentences sN.
+
+### link_phrase
+
+PLAN: link two or more words of one sentence to ONE lexicon entry as a multi-word expression (an idiom, a compound written apart, a phrasal verb; reads show it as mwe=entry (w2+w3)). The words keep their own links. A new phrase entry is created with create_entry (type "phrase") and linked here in the same plan.
+
+- `document` (string, required): Document id or exact name (see project_overview).
+- `refs` (array of string, required): Positional references, e.g. ["s3.w2", "s3.w4"]. Words are sN.wN, morphemes sN.wN.mN, sentences sN.
+- `entry_form` (string)
+- `lexicon` (string)
+- `entry_id` (string)
+- `entry_gloss` (string): Singles out one of several entries with the same form: a value one of its fields has (e.g. its gloss).
+
+### unlink_phrase
+
+PLAN: remove a multi-word expression (the link its member words share); their own links stay. refs: any member word (several where a word sits in more than one expression).
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `refs` (array of string, required): Positional references, e.g. ["s3.w2", "s3.w4"]. Words are sN.wN, morphemes sN.wN.mN, sentences sN.
@@ -189,9 +217,10 @@ Every occurrence of a morpheme form (default), word form, or field value (whole-
 
 ### analyses_of
 
-How a form has been analyzed so far, as a word (segmentation, glosses, links) and as a morpheme (type, glosses, link, position in the word): each distinct analysis with its count and example references. Check this before proposing an analysis, and follow the majority unless there is reason not to.
+How a form has been analyzed so far, as a word (segmentation, glosses, links) and as a morpheme (type, glosses, link, position in the word): each distinct analysis with its count and example references. Check this before proposing an analysis, and follow the majority unless there is reason not to. Pass forms (a list, up to 40) to check every word of a sentence in one call.
 
-- `form` (string, required)
+- `form` (string)
+- `forms` (array of string)
 - `document` (string): Document id or exact name (see project_overview).
 
 ### lexicon_entry
@@ -213,12 +242,37 @@ A consistency report for a field: values that are case/spelling variants of one 
 
 ### recent_changes
 
-The newest entries of the change history: who changed what and when, including plans this assistant applied.
+The newest entries of the change history: who changed what and when, including plans this assistant applied. Each line ends with as_of=<instant>, the moment right after that change, which restore_document takes.
 
 - `document` (string): Document id or exact name (see project_overview).
 - `limit` (integer): Entries to show (default 20, max 100).
 - `since` (string): Only changes at or after this date (YYYY-MM-DD) or timestamp.
 - `user` (string): Only changes by this person (name or email substring).
+
+### comments
+
+The comments people have left (not annotation data: notes to each other). Whole project, one document, or one item (document + ref, plus field for a comment on one of its values). Oldest first.
+
+- `document` (string): Document id or exact name (see project_overview).
+- `ref` (string): sN, sN.wN, or sN.wN.mN.
+- `field` (string)
+- `limit` (integer): Newest entries to show (default 50).
+
+### add_comment
+
+PLAN: post a comment under the user's name on a document (no ref), a sentence, a word, a morpheme, or, with field, on one of their values. Comments are notes to people; they change no annotation.
+
+- `document` (string, required): Document id or exact name (see project_overview).
+- `body` (string, required)
+- `ref` (string): sN, sN.wN, or sN.wN.mN.
+- `field` (string)
+
+### restore_document
+
+PLAN: put a document back as it was at a moment in its history (as_of, an instant recent_changes prints), every layer at once, in one operation the user can undo the same way. The plan lists what would change. Maintainers only, and a plan of its own.
+
+- `document` (string, required): Document id or exact name (see project_overview).
+- `as_of` (string, required): ISO-8601 instant, e.g. 2026-09-05T18:45:49Z.
 
 ### plan_status
 
@@ -256,15 +310,15 @@ Drop some of the planned changes by their plan_status numbers; the rest stay.
 
 ### confirm
 
-PLAN: mark machine-made annotations (from other services or earlier assistant plans; see worklist kind="unverified") as verified, after checking them. refs: sentences, words, or morphemes (a sentence covers its words); field: only that field's values; neither: the whole document.
+PLAN: mark annotations awaiting review as verified, after checking them: machine-made ones (other services, earlier assistant plans; ~ in reads) and contributors' work (^ in reads); see worklist kind="unverified" / "contributed". refs: sentences, words, or morphemes (a sentence covers its words); field: only that field's values; no refs: the whole document; no document: every document in the project.
 
-- `document` (string, required): Document id or exact name (see project_overview).
+- `document` (string): Document id or exact name (see project_overview).
 - `refs` (array of string): Positional references, e.g. ["s3.w2", "s3.w4"]. Words are sN.wN, morphemes sN.wN.mN, sentences sN.
 - `field` (string)
 
 ### discard_analysis
 
-PLAN: delete the unverified machine-made analysis of words (their machine links, values, and morphemes); human-made and verified pieces stay. refs: words or sentences.
+PLAN: delete the unverified machine-made analysis of words (their machine links, values, and morphemes); human-made, contributed, and verified pieces stay. refs: words or sentences.
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `refs` (array of string, required): Positional references, e.g. ["s3.w2", "s3.w4"]. Words are sN.wN, morphemes sN.wN.mN, sentences sN.
@@ -287,11 +341,12 @@ Ranked counts with document dispersion for wordforms (default), morpheme forms, 
 
 ### worklist
 
-The unfinished work, grouped by form and ordered by frequency: kind="unlinked" (no lexicon link), "unglossed" (no value in `field`, default the first morpheme field), "unanalyzed" (no analysis at all), or "unverified" (machine-made annotations nobody confirmed). Use this to decide what to do next.
+The unfinished work, grouped by form and ordered by frequency: kind="unlinked" (no lexicon link), "unglossed" (no value in `field`, default the first morpheme field), "unanalyzed" (no analysis at all), "unverified" (annotations awaiting review: machine-made and unconfirmed, or a contributor's), or "contributed" (contributors' unreviewed work only; user= narrows to one person). Use this to decide what to do next.
 
-- `kind` (one of `unlinked`, `unglossed`, `unanalyzed`, `unverified`)
+- `kind` (one of `unlinked`, `unglossed`, `unanalyzed`, `unverified`, `contributed`)
 - `field` (string)
 - `level` (one of `word`, `morpheme`): For unlinked: which level to list (default morpheme when there is a morpheme layer). For unglossed the field's scope decides.
+- `user` (string): For contributed: only this contributor (their user id, an email).
 - `document` (string): Document id or exact name (see project_overview).
 - `limit` (integer)
 
@@ -513,7 +568,7 @@ Documents (1):
 
 ```text
 Document "Text 1": 2 sentences, 4 words | Date=2020
-Format: [sN] baseline sentence; then sentence fields; then one line per word: wN surface | seg=morphemes joined by - (or = at a clitic) | <morpheme field>=values in the same order (_ = missing) | <word field>=value | <orthography>=value | link=lexicon entry | mlinks=per-morpheme entries. A trailing ~ marks a value, link, or segmentation that is machine-made and not yet confirmed (confirm / discard_analysis). Address items as sN, sN.wN, sN.wN.mN; cite one to the user as <cite doc="<document name>" ref="sN"/>.
+Format: [sN] baseline sentence; then sentence fields; then one line per word: wN surface | seg=morphemes joined by - (or = at a clitic) | <morpheme field>=values in the same order (_ = missing) | <word field>=value | <orthography>=value | link=lexicon entry | mwe=entry (w2+w3): a multi-word expression, one lexicon link shared by those words (link_phrase / unlink_phrase; a word keeps its own link inside one) | mlinks=per-morpheme entries. A trailing ~ marks a value, link, or segmentation that is machine-made and not yet confirmed, a trailing ^ one entered by a contributor and not yet reviewed (confirm covers both; discard_analysis removes machine work only). Address items as sN, sN.wN, sN.wN.mN; cite one to the user as <cite doc="<document name>" ref="sN"/>.
 Showing s1-s2.
 [s1] Ali-di gam akuna.
   Translation: Ali saw a fish.

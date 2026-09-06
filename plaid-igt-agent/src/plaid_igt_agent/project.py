@@ -17,13 +17,22 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 
-from plaid_client.provenance import prov_state, MACHINE
+from plaid_client.provenance import prov_state, MACHINE, CONTRIBUTED_STATE
 
-UNVERIFIED = '~'  # after a value: machine-made, nobody has confirmed it
+UNVERIFIED = '~'    # after a value: machine-made, nobody has confirmed it
+CONTRIBUTED = '^'   # after a value: a contributor's work, no verifier has reviewed it
+REVIEWABLE = (MACHINE, CONTRIBUTED_STATE)
+
+
+def review_mark(metadata) -> str:
+    """The mark a value carries in a read: ``~`` for unconfirmed machine
+    output, ``^`` for a contributor's unreviewed work, nothing otherwise."""
+    state = prov_state(metadata)
+    return UNVERIFIED if state == MACHINE else CONTRIBUTED if state == CONTRIBUTED_STATE else ''
 
 
 def _mark(value: str, metadata) -> str:
-    return value + UNVERIFIED if prov_state(metadata) == MACHINE else value
+    return value + review_mark(metadata)
 from typing import Dict, List, Optional, Tuple
 
 import regex as uregex
@@ -298,6 +307,25 @@ class Link:
     form: str
     vocab_id: str
     metadata: Optional[dict] = None
+    # Every token the link covers, in text order. One token is an ordinary
+    # link; two or more word tokens make a multi-word expression, one link
+    # shared by all of its members (see plaid-igt's domain/mwe.js).
+    tokens: List[str] = field(default_factory=list)
+    # For a multi-word expression: its members as (sentence index, word
+    # index), filled in when the document is parsed.
+    members: List[Tuple[int, int]] = field(default_factory=list)
+
+    @property
+    def is_mwe(self) -> bool:
+        return len(self.tokens) >= 2
+
+
+def mwe_ref(link: 'Link', sentence_index: int) -> str:
+    """How a read names the members of a multi-word expression from inside
+    one sentence: ``w2+w3``, or ``s4.w1+s5.w2`` when they straddle sentences."""
+    if link.members and all(si == sentence_index for si, _ in link.members):
+        return '+'.join(f'w{wi}' for _, wi in link.members)
+    return '+'.join(f's{si}.w{wi}' for si, wi in link.members) or '?'
 
 
 @dataclass
@@ -323,7 +351,8 @@ class Word:
     orthographies: Dict[str, str] = field(default_factory=dict)
     fields: Dict[str, Span] = field(default_factory=dict)
     morphemes: List[Morpheme] = field(default_factory=list)
-    link: Optional[Link] = None
+    link: Optional[Link] = None          # the word's own, single-token link
+    mwes: List[Link] = field(default_factory=list)  # multi-word expressions it belongs to
 
     @property
     def ref(self):
@@ -370,6 +399,8 @@ class IgtDoc:
                         idx[sp.id] = (s, w, None)
                     if w.link:
                         idx[w.link.id] = (s, w, None)
+                    for l in w.mwes:
+                        idx.setdefault(l.id, (s, w, None))  # its first member
                     for m in w.morphemes:
                         idx[m.id] = (s, w, m)
                         for sp in m.fields.values():
@@ -403,13 +434,23 @@ def _spans_by_token(token_layer, project: IgtProject):
 
 
 def _links_by_token(token_layer):
-    out: Dict[str, Link] = {}
+    """(own, mwes): a token's own single-token link, and the multi-token
+    links (multi-word expressions) each token is a member of, one shared
+    Link object per link."""
+    own: Dict[str, Link] = {}
+    mwes: Dict[str, List[Link]] = {}
     for v in token_layer.get('vocabs') or []:
         for link in v.get('vocab_links') or []:
             item = link.get('vocab_item') or {}
-            for tid in link.get('tokens') or []:
-                out[tid] = Link(link['id'], item.get('id'), item.get('form') or '', v['id'], link.get('metadata'))
-    return out
+            tokens = list(link.get('tokens') or [])
+            l = Link(link['id'], item.get('id'), item.get('form') or '', v['id'], link.get('metadata'), tokens)
+            if len(tokens) >= 2:
+                for tid in tokens:
+                    mwes.setdefault(tid, []).append(l)
+            else:
+                for tid in tokens:
+                    own[tid] = l
+    return own, mwes
 
 
 def load_document(client, project: IgtProject, document_id: str) -> IgtDoc:
@@ -431,10 +472,10 @@ def parse_document(raw: dict, project: IgtProject) -> IgtDoc:
                       raw.get('version'))
 
     word_spans = _spans_by_token(word_layer, project)
-    word_links = _links_by_token(word_layer)
+    word_links, word_mwes = _links_by_token(word_layer)
     sent_spans = _spans_by_token(sent_layer, project)
     morph_spans = _spans_by_token(morph_layer, project) if morph_layer else {}
-    morph_links = _links_by_token(morph_layer) if morph_layer else {}
+    morph_links = _links_by_token(morph_layer)[0] if morph_layer else {}
     morphs_by_extent: Dict[Tuple[int, int], List[dict]] = {}
     for m in (morph_layer or {}).get('tokens') or []:
         morphs_by_extent.setdefault((m['begin'], m['end']), []).append(m)
@@ -475,10 +516,20 @@ def parse_document(raw: dict, project: IgtProject) -> IgtDoc:
                 text_id=text.get('id'), metadata=meta,
                 orthographies={o: meta.get(f'orthog:{o}') for o in project.orthographies
                                if meta.get(f'orthog:{o}')},
-                fields=word_spans.get(w['id'], {}), morphemes=morphemes, link=word_links.get(w['id'])))
+                fields=word_spans.get(w['id'], {}), morphemes=morphemes, link=word_links.get(w['id']),
+                mwes=list(word_mwes.get(w['id'], []))))
         sentences.append(Sentence(
             id=s['id'], index=si, text=''.join(chars[s['begin']:s['end']]).strip(),
             begin=s['begin'], end=s['end'], fields=sent_spans.get(s['id'], {}), words=ws))
+    # Where each multi-word expression's members sit, so a read can name them.
+    at = {w.id: (s.index, w.index) for s in sentences for w in s.words}
+    seen = set()
+    for s in sentences:
+        for w in s.words:
+            for l in w.mwes:
+                if l.id not in seen:
+                    seen.add(l.id)
+                    l.members = [at[t] for t in l.tokens if t in at]
     return IgtDoc(raw['id'], raw.get('name') or '', text.get('id'), body, sentences, raw.get('metadata') or {},
                   raw.get('version'))
 
@@ -544,13 +595,19 @@ def morpheme_field_line(w: Word, name: str) -> Optional[str]:
     return out
 
 
-def render_word(w: Word, project: IgtProject) -> str:
+def segmentation_mark(w: Word) -> str:
+    """The review mark of a segmentation: ``~`` when any morpheme is
+    unconfirmed machine output, else ``^`` when any is a contributor's."""
+    marks = {review_mark(m.metadata) for m in w.morphemes}
+    return UNVERIFIED if UNVERIFIED in marks else CONTRIBUTED if CONTRIBUTED in marks else ''
+
+
+def render_word(w: Word, project: IgtProject, sentence_index: Optional[int] = None) -> str:
     parts = [f'w{w.index} {w.surface}']
     seg = segmentation(w)
     if len(w.morphemes) > 1 or (w.morphemes and seg != w.surface):
         types = [m.morph_type for m in w.morphemes if m.morph_type]
-        if any(prov_state(m.metadata) == MACHINE for m in w.morphemes):
-            seg += UNVERIFIED
+        seg += segmentation_mark(w)
         parts.append(f'seg={seg}' + (f' types={",".join(m.morph_type or "?" for m in w.morphemes)}' if types else ''))
     for f in project.fields_by_scope('Morpheme'):
         line = morpheme_field_line(w, f.name)
@@ -564,6 +621,9 @@ def render_word(w: Word, project: IgtProject) -> str:
         parts.append(f'{o}={v}')
     if w.link:
         parts.append(f'link={_mark(w.link.form, w.link.metadata)}')
+    for l in w.mwes:
+        si = sentence_index if sentence_index is not None else (l.members[0][0] if l.members else 0)
+        parts.append(f'mwe={_mark(l.form, l.metadata)} ({mwe_ref(l, si)})')
     mlinks = [f'm{m.index}:{_mark(m.link.form, m.link.metadata)}' for m in w.morphemes if m.link]
     if mlinks:
         parts.append('mlinks=' + ' '.join(mlinks))
@@ -577,15 +637,18 @@ def render_sentence(s: Sentence, project: IgtProject) -> str:
         if sp and sp.value != '':
             lines.append(f'  {f.name}: {_mark(sp.value, sp.metadata)}')
     for w in s.words:
-        lines.append('  ' + render_word(w, project))
+        lines.append('  ' + render_word(w, project, s.index))
     return '\n'.join(lines)
 
 
 FORMAT_LEGEND = ('Format: [sN] baseline sentence; then sentence fields; then one line per word: '
                  'wN surface | seg=morphemes joined by - (or = at a clitic) | <morpheme field>=values '
                  'in the same order (_ = missing) | <word field>=value | <orthography>=value | '
-                 'link=lexicon entry | mlinks=per-morpheme entries. A trailing ~ marks a value, link, or '
-                 'segmentation that is machine-made and not yet confirmed (confirm / discard_analysis). '
+                 'link=lexicon entry | mwe=entry (w2+w3): a multi-word expression, one lexicon link shared '
+                 'by those words (link_phrase / unlink_phrase; a word keeps its own link inside one) | '
+                 'mlinks=per-morpheme entries. A trailing ~ marks a value, link, or segmentation that is '
+                 'machine-made and not yet confirmed, a trailing ^ one entered by a contributor and not yet '
+                 'reviewed (confirm covers both; discard_analysis removes machine work only). '
                  'Address items as sN, sN.wN, sN.wN.mN; cite one to the user as '
                  '<cite doc="<document name>" ref="sN"/>.')
 

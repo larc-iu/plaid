@@ -9,9 +9,9 @@ import unicodedata
 from collections import Counter, defaultdict
 from typing import Any, Dict, List, Optional
 
-from plaid_client.provenance import prov_state, MACHINE
+from plaid_client.provenance import prov_state, CONTRIBUTED_STATE, PROV_SOURCE_KEY
 
-from .project import IgtDoc, Sentence, Word, render_word, segmentation, word_ref
+from .project import IgtDoc, Sentence, Word, REVIEWABLE, render_word, segmentation, word_ref
 from .tools import Workspace, ToolError, _matcher, _truncate, entry_line
 
 
@@ -30,7 +30,7 @@ def _tag(ws, docs, doc):
 def _analyzed(w: Word) -> bool:
     """Has any analysis at all: a non-default segmentation, any field value,
     or any link."""
-    if w.fields or w.link:
+    if w.fields or w.link or w.mwes:
         return True
     if len(w.morphemes) > 1:
         return True
@@ -41,7 +41,7 @@ def _analyzed(w: Word) -> bool:
 
 
 def _linked(w: Word) -> bool:
-    return bool(w.link or any(m.link for m in w.morphemes))
+    return bool(w.link or w.mwes or any(m.link for m in w.morphemes))
 
 
 # --- corpus_stats -----------------------------------------------------------------
@@ -268,33 +268,51 @@ def _frequency_lines(items, spread, empty, field, what_l, limit) -> str:
 
 # --- worklist ----------------------------------------------------------------------
 
-KINDS = ('unlinked', 'unglossed', 'unanalyzed', 'unverified')
+KINDS = ('unlinked', 'unglossed', 'unanalyzed', 'unverified', 'contributed')
 
 
-def _prov_votes(w: Word) -> List[str]:
+def _prov_votes(w: Word) -> List[tuple]:
+    """(state, source) for every annotated piece of a word."""
     votes = []
+
+    def vote(meta):
+        votes.append((prov_state(meta), (meta or {}).get(PROV_SOURCE_KEY) or ''))
     for sp in w.fields.values():
-        votes.append(prov_state(sp.metadata))
+        vote(sp.metadata)
     if w.link:
-        votes.append(prov_state(w.link.metadata))
+        vote(w.link.metadata)
+    for l in w.mwes:
+        vote(l.metadata)
     for m in w.morphemes:
         if len(w.morphemes) > 1 or m.morph_type or m.form != w.surface:
-            votes.append(prov_state(m.metadata))
+            vote(m.metadata)
         for sp in m.fields.values():
-            votes.append(prov_state(sp.metadata))
+            vote(sp.metadata)
         if m.link:
-            votes.append(prov_state(m.link.metadata))
+            vote(m.link.metadata)
     return votes
 
 
+def _awaits_review(votes: List[tuple], kind: str, user: Optional[str]) -> bool:
+    if kind == 'unverified':
+        return any(state in REVIEWABLE for state, _ in votes)
+    want = f'user:{user}' if user else None
+    return any(state == CONTRIBUTED_STATE and (want is None or source == want) for state, source in votes)
+
+
 def t_worklist(ws: Workspace, kind: str = 'unglossed', field: Optional[str] = None, level: Optional[str] = None,
-               document: Optional[str] = None, limit: int = 50) -> str:
+               document: Optional[str] = None, limit: int = 50, user: Optional[str] = None) -> str:
     """The unfinished work grouped by form, most frequent first: forms that are
     unlinked, lack a field value, have no analysis at all, or carry
-    machine-made annotations nobody has confirmed."""
+    annotations awaiting review (machine-made and unconfirmed, or a
+    contributor's; ``contributed`` narrows to the latter, ``user`` to one
+    contributor)."""
     kind = (kind or 'unglossed').lower()
     if kind not in KINDS:
         raise ToolError('kind must be one of: ' + ', '.join(KINDS))
+    user = (user or '').strip() or None
+    if user and kind != 'contributed':
+        raise ToolError('user= goes with kind="contributed"')
     project = ws.project
     limit = max(1, min(int(limit or 50), 500))
     docs = _docs(ws, document) if ws.use_scan(document) else []
@@ -314,8 +332,8 @@ def t_worklist(ws: Workspace, kind: str = 'unglossed', field: Optional[str] = No
         lvl = 'sentence'
     if not ws.use_scan(document):
         from .corpus import q_worklist
-        counts, examples = q_worklist(ws, kind, f, lvl)
-        return _worklist_lines(kind, f, lvl, limit, counts, examples)
+        counts, examples = q_worklist(ws, kind, f, lvl, user)
+        return _worklist_lines(kind, f, lvl, limit, counts, examples, user)
     groups: Dict[str, List[str]] = defaultdict(list)
     for d in docs:
         tag = _tag(ws, docs, d)
@@ -331,9 +349,8 @@ def t_worklist(ws: Workspace, kind: str = 'unglossed', field: Optional[str] = No
                 if kind == 'unanalyzed':
                     if not _analyzed(w):
                         groups[w.surface.casefold()].append(ref)
-                elif kind == 'unverified':
-                    votes = _prov_votes(w)
-                    if votes and any(v == MACHINE for v in votes):
+                elif kind in ('unverified', 'contributed'):
+                    if _awaits_review(_prov_votes(w), kind, user):
                         groups[w.surface.casefold()].append(ref)
                 elif lvl == 'word':
                     if kind == 'unlinked' and not _linked(w):
@@ -347,16 +364,18 @@ def t_worklist(ws: Workspace, kind: str = 'unglossed', field: Optional[str] = No
                         elif kind == 'unglossed' and f and not (m.fields.get(f.name) and m.fields[f.name].value != ''):
                             groups[m.form.casefold()].append(f'{ref}.m{m.index}')
     return _worklist_lines(kind, f, lvl, limit, {k: len(v) for k, v in groups.items()},
-                           {k: v[:3] for k, v in groups.items()})
+                           {k: v[:3] for k, v in groups.items()}, user)
 
 
-def _worklist_lines(kind, f, lvl, limit, counts: Dict[str, int], examples: Dict[str, List[str]]) -> str:
+def _worklist_lines(kind, f, lvl, limit, counts: Dict[str, int], examples: Dict[str, List[str]],
+                    user: Optional[str] = None) -> str:
     total = sum(counts.values())
     groups = counts
     what = {'unlinked': f'{lvl}s not linked to the lexicon',
             'unglossed': f'{lvl}s without a {f.name if f else ""} value' + (' (grouped by document)' if lvl == 'sentence' else ''),
             'unanalyzed': 'words with no analysis at all',
-            'unverified': 'words with machine-made annotations not yet confirmed'}[kind]
+            'unverified': 'words with annotations awaiting review (machine-made and unconfirmed, or a contributor\'s)',
+            'contributed': 'words with unreviewed contributions' + (f' by {user}' if user else '')}[kind]
     if not total:
         return f'Nothing to do: no {what}.'
     lines = [f'{total} {what} across {len(groups)} distinct forms' + (f' (showing {limit})' if len(groups) > limit else '')
@@ -420,6 +439,12 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
         tag = _tag(ws, docs, d)
         for s in d.sentences:
             for w in s.words:
+                # A multi-word expression counts once per member word, as the
+                # query path counts linked tokens; its form is the members'.
+                for l in w.mwes:
+                    if l.item_id in items:
+                        uses[l.item_id] += 1
+                        use_docs[l.item_id].add(d.id)
                 units = [(w, w.surface, first_w, f'{tag}{word_ref(s, w)}')] + \
                     [(m, m.form, first_m, f'{tag}{word_ref(s, w)}.m{m.index}') for m in w.morphemes]
                 for u, form, fname, ref in units:

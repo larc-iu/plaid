@@ -83,7 +83,12 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
         scope = f' in {a["where"]}' if a.get('where') and a['where'] != 'morpheme' else ''
         return f'Concordanced {_q(a.get("pattern"))}{scope}{_in(a)}'
     if name == 'analyses_of':
-        return f'Tallied the analyses of {_q(a.get("form"))}{_in(a)}'
+        forms = [f for f in ([a.get('form')] if a.get('form') else []) + list(a.get('forms') or []) if f]
+        what = _q(forms[0]) if len(forms) == 1 else _plural(len(forms), 'form') if forms else _q(None)
+        return f'Tallied the analyses of {what}{_in(a)}'
+    if name == 'comments':
+        where = f' on {a["ref"]}' if a.get('ref') else ''
+        return f'Read the comments{where}{_in(a)}'
     if name == 'lexicon_entry':
         return f'Looked up the entry {_entry(a)}'
     if name == 'check_consistency':
@@ -120,7 +125,23 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
     if name == 'set_field':
         return f'Planned {a.get("field")} = {_q(a.get("value"))} on {_plural(_n(a), "item")}{_in(a)}'
     if name == 'set_analysis':
+        many = a.get('analyses') if isinstance(a.get('analyses'), list) else []
+        if many and not a.get('ref'):
+            return f'Planned new analyses for {_plural(len(many), "word")}{_in(a)}'
         return f'Planned a new analysis for {a.get("ref")}{_in(a)}'
+    if name == 'set_morpheme':
+        bits = [b for b in (f'form {_q(a["form"])}' if a.get('form') is not None else '',
+                            f'type {_q(a["type"])}' if a.get('type') is not None else '') if b]
+        return f'Planned changing the morpheme {a.get("ref")}' + (': ' + ', '.join(bits) if bits else '') + _in(a)
+    if name == 'link_phrase':
+        return f'Planned a multi-word expression over {_plural(_n(a), "word")} for {_entry(a)}{_in(a)}'
+    if name == 'unlink_phrase':
+        return f'Planned removing a multi-word expression{_in(a)}'
+    if name == 'add_comment':
+        where = f' on {a["ref"]}' if a.get('ref') else ''
+        return f'Planned a comment{where}{_in(a)}'
+    if name == 'restore_document':
+        return f'Planned restoring {_q(a.get("document"))} to {a.get("as_of")}'
     if name == 'set_orthography':
         return f'Planned {a.get("orthography")} = {_q(a.get("value"))} on {_plural(_n(a), "word")}{_in(a)}'
     if name == 'respell':
@@ -131,8 +152,8 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
         return f'Planned unlinking {_plural(_n(a), "item")}{_in(a)}'
     if name == 'confirm':
         what = f' ({a["field"]})' if a.get('field') else ''
-        scope = _plural(_n(a), 'item') if a.get('refs') else 'everything unverified'
-        return f'Planned confirming {scope}{what}{_in(a)}'
+        scope = _plural(_n(a), 'item') if a.get('refs') else 'everything awaiting review'
+        return f'Planned confirming {scope}{what}{_in(a) or (" across the project" if not a.get("refs") else "")}'
     if name == 'discard_analysis':
         return f'Planned discarding the unverified analysis of {_plural(_n(a), "item")}{_in(a)}'
 
@@ -236,6 +257,8 @@ _PROGRESS = {
     'lexicon_entry': lambda a: f'Looking up "{a.get("entry_form") or a.get("entry_id") or ""}"…',
     'check_consistency': lambda a: f'Checking {a.get("field", "")} consistency…',
     'recent_changes': lambda a: 'Reading the change history…',
+    'comments': lambda a: 'Reading the comments…',
+    'restore_document': lambda a: f'Checking a restore of "{a.get("document", "")}"…',
     'corpus_stats': lambda a: 'Counting the corpus…',
     'frequency_list': lambda a: 'Counting frequencies…',
     'worklist': lambda a: f'Listing {a.get("kind") or "unfinished"} work…',

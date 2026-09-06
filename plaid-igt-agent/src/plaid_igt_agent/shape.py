@@ -84,6 +84,21 @@ def _dedup_links(words: List[Word]) -> Dict[str, Any]:
     return {'keep_id': links[0].id, 'delete_ids': [l.id for l in links[1:]]}
 
 
+def _collapsed_mwes(words: List[Word]) -> list:
+    """Multi-word expressions made of nothing but the merged words: after the
+    merge they would sit on one token, which is no expression; the server
+    would keep a phrase link on a single word, so the plan removes them. One
+    reaching outside the merged words keeps its other members and stays."""
+    ids = {w.id for w in words}
+    out, seen = [], set()
+    for w in words:
+        for l in w.mwes:
+            if l.id not in seen and set(l.tokens) <= ids:
+                seen.add(l.id)
+                out.append(l)
+    return out
+
+
 def t_split_word(ws: Workspace, document: str, ref: str, at) -> str:
     """PLAN: split one word into two at a character position."""
     doc = ws.doc(document)
@@ -148,6 +163,11 @@ def t_merge_words(ws: Workspace, document: str, refs) -> str:
         note += f' (values combined: {comb})'
     if links['delete_ids']:
         note += f' (keeps the link "{[w.link.form for w in words if w.link][0]}", drops {len(links["delete_ids"])})'
+    collapsed = _collapsed_mwes(words)
+    if collapsed:
+        links['delete_ids'] = links['delete_ids'] + [l.id for l in collapsed]
+        note += ' (the multi-word expression ' + ', '.join(f'"{l.form}"' for l in collapsed) \
+            + ' is dropped: its words become one)'
     s = next(s for s in doc.sentences if s.id in sents)
     ws.add_op({'kind': 'merge_words', 'word_id': first.id, 'other_ids': [w.id for w in words[1:]],
                'morpheme_ids': morphs, 'spans': spans, 'links': links,
@@ -160,13 +180,29 @@ def t_delete_word(ws: Workspace, document: str, refs) -> str:
     """PLAN: delete word tokens (the text stays; analysis, values, and links go)."""
     doc = ws.doc(document)
     staged: List[Dict[str, Any]] = []
-    for ref in _refs(refs):
-        w = _need(resolve(doc, ref), Word, ref)
+    words = [(ref, _need(resolve(doc, ref), Word, ref)) for ref in _refs(refs)]
+    going = {w.id for _, w in words}
+    gone_mwes = set()
+    for ref, w in words:
         _guard(ws, w, ref)
         had = bool(w.fields or w.link or len(w.morphemes) > 1 or any(m.fields or m.link for m in w.morphemes))
+        # The server trims a multi-word expression to its remaining members;
+        # one member left is no expression, so the plan removes it outright.
+        dropped = []
+        for l in w.mwes:
+            if l.id in gone_mwes:
+                continue
+            if len([t for t in l.tokens if t not in going]) < 2:
+                gone_mwes.add(l.id)
+                dropped.append(l)
+        note = ' (its analysis, values, and link go; the text stays)' if had else ' (the text stays)'
+        if dropped:
+            note += ' (the multi-word expression ' + ', '.join(f'"{l.form}"' for l in dropped) + ' goes with it)'
+        elif w.mwes:
+            note += ' (the multi-word expression ' + ', '.join(f'"{l.form}"' for l in w.mwes) + ' keeps its other words)'
         staged.append({'kind': 'delete_word', 'word_id': w.id, 'morpheme_ids': [m.id for m in w.morphemes],
-                       'label': f'{ws.doc_label(doc.id)} {ref} "{w.surface}": delete the word token'
-                                + (' (its analysis, values, and link go; the text stays)' if had else ' (the text stays)')})
+                       'link_ids': [l.id for l in dropped],
+                       'label': f'{ws.doc_label(doc.id)} {ref} "{w.surface}": delete the word token{note}'})
     ws.add_ops(staged)
     return ws.planned_note(len(staged))
 

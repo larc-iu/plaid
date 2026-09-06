@@ -395,7 +395,37 @@ def q_frequency_list(ws: Workspace, what_l: str, field, limit: int, min_count: i
 
 # --- worklist ---------------------------------------------------------------------
 
-def q_worklist(ws: Workspace, kind: str, f, lvl: str):
+def review_stamps(kind: str, user: Optional[str] = None) -> List[Dict[str, Any]]:
+    """The metadata a span or morpheme awaiting review carries, one dict per
+    origin: unconfirmed machine output and a contributor's work for
+    ``unverified``, the latter alone (one person's with ``user``) for
+    ``contributed``. Each is matched by JSON equality per key, so the
+    origins are queried one at a time."""
+    if kind == 'contributed':
+        return [{'prov': 'contributed', **({'provSource': f'user:{user}'} if user else {})}]
+    return [{'prov': 'inferred'}, {'prov': 'contributed'}]
+
+
+def q_review_docs(ws: Workspace, f=None) -> List[str]:
+    """Ids of the documents holding a span (of field ``f`` when given) or a
+    morpheme that awaits review, for a project-wide confirm."""
+    c = ws.corpus
+    out: List[str] = []
+    for stamp in review_stamps('unverified'):
+        layer = f.layer_id if f else '?sl'
+        for doc, _n in c.group([['span', '?s', {'layer': layer, 'metadata': stamp}],
+                                ['not', ['span', '?s', {'metadata': {'provConfirmed': True}}]]], ['?s.doc']):
+            if doc not in out:
+                out.append(doc)
+        if c.M and f is None:
+            for doc, _n in c.group([c.morph('?m', metadata=stamp),
+                                    ['not', ['token', '?m', {'metadata': {'provConfirmed': True}}]]], ['?m.doc']):
+                if doc not in out:
+                    out.append(doc)
+    return out
+
+
+def q_worklist(ws: Workspace, kind: str, f, lvl: str, user: Optional[str] = None):
     """{form: count} over the whole project, plus {form: example document
     names}; for sentence fields the groups are documents."""
     c = ws.corpus
@@ -408,23 +438,24 @@ def q_worklist(ws: Workspace, kind: str, f, lvl: str):
         where = [c.word('?w')] + Unanalyzed.clauses(c, '?w')
         counts = c.word_tally(where, '?w')
         by_doc = c.group(where, ['?w.value', '?w.doc'])
-    elif kind == 'unverified':
-        # Distinct words carrying any machine-made, unconfirmed span or
-        # morpheme (links are not reachable by query).
+    elif kind in ('unverified', 'contributed'):
+        # Distinct words carrying any span or morpheme awaiting review
+        # (links are not reachable by query).
         ids: Dict[str, Tuple[str, str]] = {}
-        machine_span = ['span', '?s', {'layer': '?sl', 'metadata': {'prov': 'inferred'}}]
-        unconfirmed = ['not', ['span', '?s', {'metadata': {'provConfirmed': True}}]]
-        for wid, value, doc, _n in c.group([c.word('?w'), machine_span, ['covers', '?s', '?w'], unconfirmed],
-                                           ['?w', '?w.value', '?w.doc']):
-            ids[wid] = (value, doc)
-        if c.M:
-            for wid, value, doc, _n in c.group(c.in_word('?m', '?w') + [c.morph('?m', metadata={'prov': 'inferred'}),
-                                                ['not', ['token', '?m', {'metadata': {'provConfirmed': True}}]]],
+        for stamp in review_stamps(kind, user):
+            span = ['span', '?s', {'layer': '?sl', 'metadata': stamp}]
+            unconfirmed = ['not', ['span', '?s', {'metadata': {'provConfirmed': True}}]]
+            for wid, value, doc, _n in c.group([c.word('?w'), span, ['covers', '?s', '?w'], unconfirmed],
                                                ['?w', '?w.value', '?w.doc']):
                 ids[wid] = (value, doc)
-            for wid, value, doc, _n in c.group(c.in_word('?m', '?w') + [machine_span, ['covers', '?s', '?m'], unconfirmed],
-                                               ['?w', '?w.value', '?w.doc']):
-                ids[wid] = (value, doc)
+            if c.M:
+                for wid, value, doc, _n in c.group(c.in_word('?m', '?w') + [c.morph('?m', metadata=stamp),
+                                                    ['not', ['token', '?m', {'metadata': {'provConfirmed': True}}]]],
+                                                   ['?w', '?w.value', '?w.doc']):
+                    ids[wid] = (value, doc)
+                for wid, value, doc, _n in c.group(c.in_word('?m', '?w') + [span, ['covers', '?s', '?m'], unconfirmed],
+                                                   ['?w', '?w.value', '?w.doc']):
+                    ids[wid] = (value, doc)
         counts = Counter()
         by_doc = []
         for value, doc in ids.values():
@@ -777,7 +808,8 @@ def q_consistency(ws: Workspace, f):
     unlinked = (n, examples(where, ['?u', '?s'], lambda ref, u, row: f'{ref} {u.form if f.scope == "Morpheme" else u.surface} ({row[1].get("value")})') if n else [])
     where = [unit, ['vocab-link', '?u', '?v'], ['not', c.span('?s', f.layer_id), ['covers', '?s', '?u']]]
     n = c.count(where, ['?u'])
-    linked_empty = (n, examples(where, ['?u'], lambda ref, u, row: f'{ref} {u.form if f.scope == "Morpheme" else u.surface} → {u.link.form if u.link else "?"}') if n else [])
+    from .tools import linked_form
+    linked_empty = (n, examples(where, ['?u'], lambda ref, u, row: f'{ref} {u.form if f.scope == "Morpheme" else u.surface} → {linked_form(u)}') if n else [])
     return values, by_form, unlinked, linked_empty
 
 
@@ -786,7 +818,6 @@ def q_consistency(ws: Workspace, f):
 def q_lexicon_usage(ws: Workspace, vocabs: List[dict], items: Dict[str, dict]):
     """(uses, use_docs, corpus_gloss, gloss_items, stale) for check_lexicon,
     from grouped queries over the links of the given lexicons."""
-    from .stats import _strip_affix
     c = ws.corpus
     p = c.p
     gm, gw = p.gloss_field('Morpheme'), p.gloss_field('Word')
@@ -820,9 +851,23 @@ def q_lexicon_usage(ws: Workspace, vocabs: List[dict], items: Dict[str, dict]):
                 form = Corpus.morph_key(row[1], row[2]) if len(form_keys) == 2 else (row[1] or '')
                 if c.ignored(row[2] if len(form_keys) == 2 else row[1]):
                     continue
-                if _strip_affix(items[iid].get('form')) not in _strip_affix(form):
+                if _link_is_stale(items[iid].get('form'), form):
                     stale.append(f'{form} → "{items[iid].get("form")}"' + (f' ×{n}' if n > 1 else ''))
     return uses, use_docs, corpus_gloss, gloss_items, stale
+
+
+def _link_is_stale(entry_form: Optional[str], token_form: str) -> bool:
+    """Whether a linked token's form no longer contains the entry's. A
+    phrase entry (a multi-word expression) is linked from each member word,
+    and the query sees one word at a time, so it is judged word by word: no
+    word of the entry contained in this token means the link is stale."""
+    from .stats import _strip_affix
+    entry = _strip_affix(entry_form)
+    token = _strip_affix(token_form)
+    parts = entry.split()
+    if len(parts) > 1:
+        return not any(p in token for p in parts)
+    return entry not in token
 
 
 # --- sequence_search ----------------------------------------------------------------
@@ -925,22 +970,16 @@ def q_entry_usage(ws: Workspace, item_id: str, examples: int):
     return word_links, morph_links, exs
 
 
-def q_entry_links(ws: Workspace, item_id: str) -> List[Dict[str, str]]:
-    """[{link_id, token_id}] for an entry: the documents its links live in
+def q_entry_links(ws: Workspace, item_id: str) -> List[Dict[str, Any]]:
+    """[{link_id, token_ids}] for an entry: the documents its links live in
     are found by query and only those are loaded (link ids are not queryable)."""
+    from .bulk import links_to_in
     c = ws.corpus
     rows = c.entities([['vocab', '?v', {}], ['=', '?v.id', item_id], ['vocab-link', '?t', '?v']], ['?t'], ROW_LIMIT)
     doc_ids = list(dict.fromkeys(r[0]['document'] for r in rows if isinstance(r[0], dict)))
     out = []
     for did in doc_ids:
-        doc = ws.doc(did)
-        for s in doc.sentences:
-            for w in s.words:
-                if w.link and w.link.item_id == item_id:
-                    out.append({'link_id': w.link.id, 'token_id': w.id})
-                for m in w.morphemes:
-                    if m.link and m.link.item_id == item_id:
-                        out.append({'link_id': m.link.id, 'token_id': m.id})
+        out.extend(links_to_in(ws.doc(did), item_id))
     return out
 
 

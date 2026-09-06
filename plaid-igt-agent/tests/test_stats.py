@@ -141,7 +141,7 @@ def test_lexicon_and_document_ops():
     out = call_tool(w, 'merge_entries', {'keep_form': 'Ali', 'remove_id': 'vi-erg'})
     assert '1 link(s) will move' in out
     assert w.ops[-1] == {'kind': 'merge_entries', 'keep_id': 'vi-ali', 'remove_id': 'vi-erg',
-                         'links': [{'link_id': 'l-2', 'token_id': 'm-1b'}],
+                         'links': [{'link_id': 'l-2', 'token_ids': ['m-1b']}],
                          'label': 'Merge entry -di | type=suffix | gloss=ERG into Ali | gloss=Ali | pos=N: move 1 link, delete the former'}
     assert 'same entry' in call_tool(w, 'merge_entries', {'keep_id': 'vi-ali', 'remove_id': 'vi-ali'})
     call_tool(w, 'delete_entry', {'entry_id': 'vi-ali'})
@@ -244,7 +244,7 @@ def test_unverified_worklist_sees_machine_made_links():
     doc = c._documents['d1']
     doc['text_layers'][0]['token_layers'][1]['vocabs'][0]['vocab_links'][0]['metadata'] = {'prov': 'inferred', 'provSource': 'x'}
     out = call_tool(ws(c), 'worklist', {'kind': 'unverified'})
-    assert out.startswith('1 words with machine-made annotations not yet confirmed') and 'ali-di' in out
+    assert out.startswith('1 words with annotations awaiting review') and 'ali-di' in out
 
 
 def test_set_field_for_form_fills_gaps_by_default():

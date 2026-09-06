@@ -64,7 +64,7 @@ def test_delete_word_and_sentence_ops():
     w = ws()
     out = call_tool(w, 'delete_word', {'document': 'd1', 'refs': ['s1.w3', 's1.w1']})
     assert 'Planned 2 changes' in out
-    assert w.ops[0] == {'kind': 'delete_word', 'word_id': 'w-3', 'morpheme_ids': [],
+    assert w.ops[0] == {'kind': 'delete_word', 'word_id': 'w-3', 'morpheme_ids': [], 'link_ids': [],
                         'label': 'Text 1 s1.w3 "akuna": delete the word token (the text stays)'}
     assert w.ops[1]['word_id'] == 'w-1' and w.ops[1]['morpheme_ids'] == ['m-1a', 'm-1b'] and 'analysis, values, and link go' in w.ops[1]['label']
 

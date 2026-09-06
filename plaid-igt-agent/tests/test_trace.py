@@ -42,7 +42,8 @@ def test_lines_read_as_sentences():
     assert describe_step('append_text', {'document': 'Text 1'}) \
         == 'Planned adding text to the end of “Text 1”'
     assert describe_step('confirm', {'document': 'Text 1'}) \
-        == 'Planned confirming everything unverified in “Text 1”'
+        == 'Planned confirming everything awaiting review in “Text 1”'
+    assert describe_step('confirm', {}) == 'Planned confirming everything awaiting review across the project'
 
 
 def test_summary_counts_documents_searches_and_changes():

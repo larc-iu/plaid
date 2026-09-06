@@ -22,8 +22,8 @@ import unicodedata
 
 from plaid_client.provenance import prov_state, MACHINE
 
-from .project import (IgtProject, IgtDoc, Sentence, Word, Morpheme, load_document, resolve, document_lines,
-                      render_document, render_overview, render_word,
+from .project import (IgtProject, IgtDoc, Sentence, Word, Morpheme, Link, load_document, resolve, document_lines,
+                      render_document, render_overview, render_word, mwe_ref, REVIEWABLE,
                       segmentation, joiner, word_ref, is_unicode_punctuation)
 
 MAX_RESULT_CHARS = 12000
@@ -224,6 +224,12 @@ class Workspace:
                 'This turn has read the web, so it cannot also plan changes. Tell the user what you '
                 'found and what you would change, and let them ask for it. The next turn can plan it '
                 'without looking anything up.')
+        # A restore rewrites a document wholesale, so nothing else can be
+        # planned against the ids and offsets read before it: a restore is
+        # always a plan of its own.
+        if op.get('kind') != 'restore_document' and any(o.get('kind') == 'restore_document' for o in self.ops):
+            raise ToolError('The plan holds a restore, which must be approved on its own; discard_plan first, '
+                            'or let the user approve the restore and plan this afterwards.')
         key = op_target(op)
         if key is not None:
             for i, prev in enumerate(self.ops):
@@ -282,6 +288,7 @@ class Workspace:
                         ids.update(sp.id for sp in w.fields.values())
                         if w.link:
                             ids.add(w.link.id)
+                        ids.update(l.id for l in w.mwes)
                         for m in w.morphemes:
                             ids.add(m.id)
                             ids.update(sp.id for sp in m.fields.values())
@@ -323,6 +330,8 @@ def op_target(op: Dict[str, Any]):
         return ('orth', op.get('word_id'), op.get('key'))
     if k == 'set_morpheme_form':
         return ('morph_form', op.get('morpheme_id'))
+    if k == 'set_morph_type':
+        return ('morph_type', op.get('morpheme_id'))
     if k in ('split_word', 'merge_words', 'delete_word'):
         return ('word_shape', op.get('word_id'))
     if k in ('split_sentence', 'merge_sentences'):
@@ -331,8 +340,16 @@ def op_target(op: Dict[str, Any]):
         return ('edit_text', op.get('text_id'), op.get('begin'), op.get('end'))
     if k == 'respell':
         return ('respell', op.get('text_id'), op.get('begin'), op.get('end'))
-    if k in ('link', 'unlink'):
-        return ('link', op.get('token_id') if k == 'link' else op.get('token_id_hint'))
+    if k == 'link':
+        return ('link', op.get('token_id'))
+    if k == 'unlink':
+        # A multi-word expression's link is its own target: unlinking it
+        # never displaces a member word's own link.
+        return ('mwe_link', op.get('link_id')) if op.get('token_ids') else ('link', op.get('token_id_hint'))
+    if k == 'link_phrase':
+        return ('mwe', tuple(op.get('token_ids') or []))
+    if k == 'restore_document':
+        return ('restore', op.get('document_id'))
     if k == 'set_entry_field':
         return ('entry_field', op.get('item_id'), op.get('field'))
     if k == 'rename_entry':
@@ -493,8 +510,6 @@ def t_list_documents(ws: Workspace, pattern: Optional[str] = None, metadata_fiel
         want = (value or '').casefold()
         docs = [d for d in docs if str((metas.get(d['id']) or {}).get(name, '') or '').casefold() == want
                 or (not want and not (metas.get(d['id']) or {}).get(name))]
-        for d in docs:
-            d = d  # metadata shown below
     limit = max(1, min(int(limit or 100), 500))
     offset = max(0, int(offset or 0))
     page = docs[offset:offset + limit]
@@ -699,16 +714,32 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
     return _truncate('\n'.join(lines))
 
 
-def t_analyses_of(ws: Workspace, form: str, document: Optional[str] = None) -> str:
+MAX_FORMS_PER_CALL = 40
+
+
+def t_analyses_of(ws: Workspace, form: Optional[str] = None, document: Optional[str] = None,
+                  forms: Optional[list] = None) -> str:
     """How a word form and/or a morpheme form has been analyzed so far: the
     distinct analyses with counts and an example reference each. The same
-    evidence the editor's precedent ranking uses."""
-    form = (form or '').strip()
-    if not form:
-        raise ToolError('Give a form.')
+    evidence the editor's precedent ranking uses. Several forms at once
+    (``forms``) come back one block each, so glossing a sentence is one call."""
+    wanted = [str(f).strip() for f in (forms or []) if str(f).strip()]
+    if form and str(form).strip():
+        wanted.insert(0, str(form).strip())
+    wanted = list(dict.fromkeys(wanted))
+    if not wanted:
+        raise ToolError('Give a form, or forms (a list).')
+    if len(wanted) > MAX_FORMS_PER_CALL:
+        raise ToolError(f'At most {MAX_FORMS_PER_CALL} forms per call; split the list.')
+    if len(wanted) > 1:
+        return _truncate('\n\n'.join(_analyses_of_one(ws, f, document) for f in wanted))
+    return _truncate(_analyses_of_one(ws, wanted[0], document))
+
+
+def _analyses_of_one(ws: Workspace, form: str, document: Optional[str]) -> str:
     if not ws.use_scan(document):
         from .corpus import q_analyses_of
-        return _truncate(q_analyses_of(ws, form))
+        return q_analyses_of(ws, form)
     key = form.casefold()
     docs = [ws.doc(document)] if document else ws.all_docs()
     mfields = [f.name for f in ws.project.fields_by_scope('Morpheme')]
@@ -738,6 +769,8 @@ def t_analyses_of(ws: Workspace, form: str, document: Optional[str] = None) -> s
                             parts.append(f'{f}={sp.value}')
                     if w.link:
                         parts.append(f'link={w.link.form}')
+                    for l in w.mwes:
+                        parts.append(f'mwe={l.form}')
                     mlinks = [f'm{m.index}:{m.link.form}' for m in w.morphemes if m.link]
                     if mlinks:
                         parts.append('mlinks=' + ' '.join(mlinks))
@@ -766,7 +799,7 @@ def t_analyses_of(ws: Workspace, form: str, document: Optional[str] = None) -> s
         lines.append(f'{title}: {n} occurrence{"s" if n != 1 else ""}, {len(tally)} distinct analys{"es" if len(tally) != 1 else "is"}:')
         for analysis, refs in sorted(tally.items(), key=lambda kv: -len(kv[1])):
             lines.append(f'  {len(refs)}\t{analysis}  e.g. {", ".join(refs[:3])}')
-    return _truncate('\n'.join(lines))
+    return '\n'.join(lines)
 
 
 def t_lexicon_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Optional[str] = None,
@@ -796,6 +829,10 @@ def t_lexicon_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Op
                 if w.link and w.link.item_id == target['id']:
                     word_links += 1
                     hit = True
+                for l in w.mwes:
+                    if l.item_id == target['id']:
+                        word_links += 1  # one per member word, as the query path counts tokens
+                        hit = True
                 for m in w.morphemes:
                     if m.link and m.link.item_id == target['id']:
                         morph_links += 1
@@ -812,6 +849,15 @@ def t_lexicon_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Op
 def _norm_value(v: str) -> str:
     v = unicodedata.normalize('NFKC', v or '').casefold()
     return ''.join(ch for ch in v if ch.isalnum())
+
+
+def linked_form(u) -> str:
+    """The entry a word or morpheme is linked to, by form: its own link, else
+    the multi-word expression it belongs to, else ``?``."""
+    if u.link:
+        return u.link.form
+    mwes = getattr(u, 'mwes', None)
+    return mwes[0].form if mwes else '?'
 
 
 def t_check_consistency(ws: Workspace, field: str, document: Optional[str] = None) -> str:
@@ -848,14 +894,14 @@ def t_check_consistency(ws: Workspace, field: str, document: Optional[str] = Non
                     if val != '':
                         values[val] += 1
                         by_form.setdefault(form.casefold(), Counter())[val] += 1
-                        if not u.link:
+                        if not u.link and not getattr(u, 'mwes', None):
                             unlinked_n += 1
                             if len(unlinked) < 15:
                                 unlinked.append(f'{ref} {form} ({val})')
-                    elif u.link:
+                    elif u.link or getattr(u, 'mwes', None):
                         linked_empty_n += 1
                         if len(linked_empty) < 15:
-                            linked_empty.append(f'{ref} {form} → {u.link.form}')
+                            linked_empty.append(f'{ref} {form} → {linked_form(u)}')
     return _consistency_lines(ws, f, values, by_form, unlinked_n, unlinked, linked_empty_n, linked_empty)
 
 
@@ -896,43 +942,69 @@ def _consistency_lines(ws, f, values, by_form, unlinked_n, unlinked, linked_empt
     return _truncate('\n'.join(lines))
 
 
-def t_recent_changes(ws: Workspace, document: Optional[str] = None, limit: int = 20,
-                     since: Optional[str] = None, user: Optional[str] = None) -> str:
-    """The newest entries of the audit log: who changed what, when, under
-    which operation label (the assistant's own applied plans included).
-    `since` is a date (YYYY-MM-DD) or timestamp; `user` matches the actor's
-    name or email."""
-    limit = max(1, min(int(limit or 20), 100))
-    ws.on_progress('Reading the change history…')
-    start = None
-    if since:
-        start = since.strip()
-        if re.fullmatch(r'\d{4}-\d{2}-\d{2}', start):
-            start += 'T00:00:00Z'
+# How far back recent_changes looks when no `since` is given, widening until
+# it has enough entries: the audit endpoint pages from the OLDEST entry, so
+# an unbounded read of a long-lived project would fetch its whole history to
+# show the newest twenty.
+AUDIT_WINDOWS_DAYS = (7, 30, 180, 730, None)
+
+
+def _audit_entries(ws: Workspace, document: Optional[str], start: Optional[str], keep) -> list:
+    """The audit entries at or after ``start`` that ``keep`` accepts."""
     if document:
         did = ws.resolve_document_id(document)
         entries = ws.client.documents.audit(did, start_time=start)
     else:
         entries = ws.client.projects.audit(ws.project.id, start_time=start)
-    if user:
-        u = user.casefold()
-        entries = [e for e in entries or []
-                   if u in ((e.get('user') or {}).get('display_name') or '').casefold()
-                   or u in ((e.get('user') or {}).get('id') or '').casefold()]
-    entries = sorted(entries or [], key=lambda e: e.get('time') or '', reverse=True)[:limit]
+    return [e for e in entries or [] if keep(e)]
+
+
+def t_recent_changes(ws: Workspace, document: Optional[str] = None, limit: int = 20,
+                     since: Optional[str] = None, user: Optional[str] = None) -> str:
+    """The newest entries of the audit log: who changed what, when, under
+    which operation label (the assistant's own applied plans included).
+    `since` is a date (YYYY-MM-DD) or timestamp; `user` matches the actor's
+    name or email. Without `since`, recent windows are read first and
+    widened until `limit` entries are in hand."""
+    import datetime
+    limit = max(1, min(int(limit or 20), 100))
+    ws.on_progress('Reading the change history…')
+    u = (user or '').casefold()
+
+    def keep(e):
+        return not u or u in ((e.get('user') or {}).get('display_name') or '').casefold() \
+            or u in ((e.get('user') or {}).get('id') or '').casefold()
+
+    if since:
+        start = since.strip()
+        if re.fullmatch(r'\d{4}-\d{2}-\d{2}', start):
+            start += 'T00:00:00Z'
+        entries = _audit_entries(ws, document, start, keep)
+    else:
+        now = datetime.datetime.now(datetime.timezone.utc)
+        entries = []
+        for days in AUDIT_WINDOWS_DAYS:
+            start = (now - datetime.timedelta(days=days)).strftime('%Y-%m-%dT%H:%M:%SZ') if days else None
+            entries = _audit_entries(ws, document, start, keep)
+            if len(entries) >= limit:
+                break
+    entries = sorted(entries, key=lambda e: e.get('time') or '', reverse=True)[:limit]
     if not entries:
         return 'No changes recorded.'
     lines = [f'{len(entries)} most recent change{"s" if len(entries) != 1 else ""}'
-             + (f' since {since}' if since else '') + (f' by "{user}"' if user else '') + ' (newest first):']
+             + (f' since {since}' if since else '') + (f' by "{user}"' if user else '')
+             + ' (newest first; as_of= is the moment right after that change, for restore_document):']
     for e in entries:
         who = (e.get('user') or {}).get('display_name') or (e.get('user') or {}).get('id') or '?'
         when = (e.get('time') or '')[:16].replace('T', ' ')
+        after = e.get('end_time') or e.get('time') or ''
         ops = e.get('ops') or []
         kinds: Counter = Counter(o.get('type') for o in ops)
         what = e.get('message') or (ops[0].get('description') if len(ops) == 1 and ops else
                                     ', '.join(f'{n}× {k}' for k, n in kinds.most_common(4)))
         docs = ', '.join(f'"{d.get("name")}"' for d in (e.get('documents') or [])[:3])
-        lines.append(f'  {when}  {who}: {what}' + (f'  [{docs}]' if docs else '') + (f'  ({len(ops)} ops)' if len(ops) > 1 else ''))
+        lines.append(f'  {when}  {who}: {what}' + (f'  [{docs}]' if docs else '')
+                     + (f'  ({len(ops)} ops)' if len(ops) > 1 else '') + f'  as_of={after}')
     return _truncate('\n'.join(lines))
 
 
@@ -994,18 +1066,45 @@ def span_op(ws: Workspace, doc, ref: str, what: str, f, token_id: str, old, valu
                      + (' (cleared)' if value == '' else '')}
 
 
-def t_set_analysis(ws: Workspace, document: str, ref: str, morphemes: list) -> str:
+MAX_ANALYSES_PER_CALL = 200
+
+
+def t_set_analysis(ws: Workspace, document: str, ref: Optional[str] = None, morphemes: Optional[list] = None,
+                   analyses: Optional[list] = None) -> str:
+    """PLAN: one word's analysis (``ref`` + ``morphemes``), or several words'
+    at once (``analyses``: a list of {ref, morphemes}), so a whole sentence
+    is one call. Staged together: a bad item leaves nothing planned."""
     if not ws.project.morpheme_layer_id:
         raise ToolError('This project has no morpheme layer.')
     doc = ws.doc(document)
-    w = _need(resolve(doc, ref), Word, ref)
-    out = parse_analysis(ws, morphemes)
-    existing = [{'id': m.id, 'span_ids': [sp.id for sp in m.fields.values()]} for m in w.morphemes]
-    had_values = sum(1 for m in w.morphemes for sp in m.fields.values() if sp.value != '')
-    op, note = analysis_op(ws, f'{ws.doc_label(doc.id)} {ref} "{w.surface}"', w.surface, w.id, w.text_id, w.begin, w.end,
-                           existing, segmentation(w) if w.morphemes else '', had_values, out)
-    ws.add_op(op)
-    return ws.planned_note(1) + note
+    items = list(analyses or [])
+    if ref or morphemes:
+        items.insert(0, {'ref': ref, 'morphemes': morphemes})
+    if not items:
+        raise ToolError('Give ref and morphemes, or analyses (a list of {ref, morphemes}).')
+    if len(items) > MAX_ANALYSES_PER_CALL:
+        raise ToolError(f'At most {MAX_ANALYSES_PER_CALL} analyses per call; split the list.')
+    staged: List[Dict[str, Any]] = []
+    notes: List[str] = []
+    seen = set()
+    for item in items:
+        if not isinstance(item, dict) or not item.get('ref'):
+            raise ToolError('each analysis needs a ref (sN.wN) and morphemes')
+        r = str(item['ref']).strip()
+        w = _need(resolve(doc, r), Word, r)
+        if w.id in seen:
+            raise ToolError(f'{r} is analysed twice in one call')
+        seen.add(w.id)
+        out = parse_analysis(ws, item.get('morphemes'))
+        existing = [{'id': m.id, 'span_ids': [sp.id for sp in m.fields.values()]} for m in w.morphemes]
+        had_values = sum(1 for m in w.morphemes for sp in m.fields.values() if sp.value != '')
+        op, note = analysis_op(ws, f'{ws.doc_label(doc.id)} {r} "{w.surface}"', w.surface, w.id, w.text_id, w.begin,
+                               w.end, existing, segmentation(w) if w.morphemes else '', had_values, out)
+        staged.append(op)
+        if note:
+            notes.append(f'{r}{note}' if len(items) > 1 else note)
+    ws.add_ops(staged)
+    return ws.planned_note(len(staged)) + (' ' + ' '.join(notes) if notes else '')
 
 
 def parse_analysis(ws: Workspace, morphemes: list) -> List[Dict[str, Any]]:
@@ -1081,7 +1180,8 @@ def t_respell(ws: Workspace, document: str, ref: str, new_text: str, morpheme_fo
     w = _need(resolve(doc, ref), Word, ref)
     new_text = (new_text or '').strip()
     if not new_text:
-        raise ToolError('new_text must not be empty (there is no delete-word tool)')
+        raise ToolError('new_text must not be empty (to remove a word from the text, retype_sentence without it; '
+                        'delete_word removes only the token)')
     if new_text == w.surface:
         return ws.planned_note(0)
     check_respell_overlap(ws, w.text_id, w.begin, w.end, f'{ws.doc_label(doc.id)} {ref}')
@@ -1126,34 +1226,143 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
     kind, target = ws.find_entry(entry_form, lexicon, entry_id, entry_gloss)
     form = target.get('form') if kind == 'existing' else ws.new_entries[target]['form']
     staged: List[Dict[str, Any]] = []
+    inside: List[str] = []
     for ref in _refs(refs):
         obj = resolve(doc, ref)
         if isinstance(obj, Sentence):
             raise ToolError(f'{ref}: link words (sN.wN) or morphemes (sN.wN.mN), not sentences')
+        if _planned_phrase_over(ws, obj.id):
+            raise ToolError(f'{ref} is part of a multi-word expression planned in this turn; a word keeps its own '
+                            'link inside one, so drop that plan first if you meant to replace it')
         if kind == 'existing' and obj.link and obj.link.item_id == target['id']:
             continue
         what = obj.surface if isinstance(obj, Word) else obj.form
+        if isinstance(obj, Word) and obj.mwes:
+            inside.append(f'{ref} stays inside ' + ', '.join(f'"{l.form}"' for l in obj.mwes))
         staged.append({'kind': 'link', 'token_id': obj.id,
                        'item_id': target['id'] if kind == 'existing' else None,
                        'new_entry_key': target if kind == 'new' else None,
                        'existing_link_id': obj.link.id if obj.link else None,
                        'label': f'{ws.doc_label(doc.id)} {ref} "{what}": link ' + (f'"{obj.link.form}" → ' if obj.link else '') + f'"{form}"'})
     ws.add_ops(staged)
-    return ws.planned_note(len(staged))
+    note = ws.planned_note(len(staged))
+    if inside:
+        note += ' (' + '; '.join(inside) + ': a word\'s own link and a multi-word expression are separate; unlink_phrase removes the latter)'
+    return note
+
+
+def _planned_phrase_over(ws: Workspace, token_id: str) -> bool:
+    return any(op.get('kind') == 'link_phrase' and token_id in (op.get('token_ids') or []) for op in ws.ops)
+
+
+def _mwe_desc(l: Link, s: Sentence) -> str:
+    return f'"{l.form}" ({mwe_ref(l, s.index)})'
 
 
 def t_unlink_entry(ws: Workspace, document: str, refs) -> str:
     doc = ws.doc(document)
     staged: List[Dict[str, Any]] = []
+    only_mwe: List[str] = []
     for ref in _refs(refs):
         obj = resolve(doc, ref)
-        if isinstance(obj, Sentence) or not obj.link:
+        if isinstance(obj, Sentence):
+            continue
+        if not obj.link:
+            if isinstance(obj, Word) and obj.mwes:
+                s = _sentence_of(doc, obj)
+                only_mwe.append(f'{ref} has no link of its own; it is a member of the multi-word expression '
+                                + ', '.join(_mwe_desc(l, s) for l in obj.mwes) + ' (unlink_phrase removes that)')
             continue
         what = obj.surface if isinstance(obj, Word) else obj.form
         staged.append({'kind': 'unlink', 'link_id': obj.link.id, 'token_id_hint': obj.id,
                        'label': f'{ws.doc_label(doc.id)} {ref} "{what}": unlink "{obj.link.form}"'})
+    if only_mwe and not staged:
+        raise ToolError('; '.join(only_mwe))
     ws.add_ops(staged)
-    return ws.planned_note(len(staged))
+    return ws.planned_note(len(staged)) + (' ' + '; '.join(only_mwe) if only_mwe else '')
+
+
+def _words_of(doc: IgtDoc, refs) -> List[tuple]:
+    """[(ref, sentence, word)] for word references, in text order, no repeats."""
+    out = []
+    seen = set()
+    for ref in _refs(refs):
+        w = _need(resolve(doc, ref), Word, ref)
+        if w.id in seen:
+            continue
+        seen.add(w.id)
+        out.append((ref, _sentence_of(doc, w), w))
+    out.sort(key=lambda t: t[2].begin)
+    return out
+
+
+def t_link_phrase(ws: Workspace, document: str, refs, entry_form: Optional[str] = None,
+                  lexicon: Optional[str] = None, entry_id: Optional[str] = None,
+                  entry_gloss: Optional[str] = None) -> str:
+    """PLAN: one lexicon link over two or more words (a multi-word
+    expression), the editor's gather-and-link gesture. The words keep their
+    own links; a multi-word expression already over exactly these words is
+    replaced, any other one they belong to stays."""
+    doc = ws.doc(document)
+    words = _words_of(doc, refs)
+    if len(words) < 2:
+        raise ToolError('A multi-word expression needs two or more distinct words, e.g. ["s3.w2", "s3.w3"]')
+    kind, target = ws.find_entry(entry_form, lexicon, entry_id, entry_gloss)
+    form = target.get('form') if kind == 'existing' else ws.new_entries[target]['form']
+    token_ids = [w.id for _, _, w in words]
+    existing = None
+    for _, _, w in words:
+        for l in w.mwes:
+            if sorted(l.tokens) == sorted(token_ids):
+                existing = l
+    if existing is not None and kind == 'existing' and existing.item_id == target['id']:
+        return ws.planned_note(0)
+    s = words[0][1]
+    surfaces = ' '.join(w.surface for _, _, w in words)
+    where = '+'.join(f'w{w.index}' for _, _, w in words) if all(sn is s for _, sn, _ in words) \
+        else '+'.join(word_ref(sn, w) for _, sn, w in words)
+    # A planned unlink of the link being replaced would delete it twice.
+    if existing is not None:
+        before = len(ws.ops)
+        ws.ops = [op for op in ws.ops if not (op.get('kind') == 'unlink' and op.get('link_id') == existing.id)]
+        ws.replaced += before - len(ws.ops)
+    ws.add_op({'kind': 'link_phrase', 'token_ids': token_ids,
+               'item_id': target['id'] if kind == 'existing' else None,
+               'new_entry_key': target if kind == 'new' else None,
+               'existing_link_id': existing.id if existing is not None else None,
+               'label': f'{ws.doc_label(doc.id)} s{s.index} {where} "{surfaces}": link phrase '
+                        + (f'"{existing.form}" → ' if existing is not None else '') + f'"{form}"'})
+    return ws.planned_note(1)
+
+
+def t_unlink_phrase(ws: Workspace, document: str, refs) -> str:
+    """PLAN: remove a multi-word expression (the link shared by its member
+    words); the words' own links stay. Name any member, or several members
+    where a word sits in more than one expression."""
+    doc = ws.doc(document)
+    words = _words_of(doc, refs)
+    if not words:
+        raise ToolError('Name at least one member word, e.g. ["s3.w2"]')
+    named = {w.id for _, _, w in words}
+    candidates: Dict[str, Link] = {}
+    for _, _, w in words:
+        for l in w.mwes:
+            candidates[l.id] = l
+    s = words[0][1]
+    if not candidates:
+        raise ToolError(', '.join(r for r, _, _ in words) + ' belong to no multi-word expression'
+                        + (' (unlink_entry removes a word\'s own link)' if any(w.link for _, _, w in words) else ''))
+    # Every named word must be a member; among the expressions they name,
+    # the one containing all of them wins, else ask.
+    full = [l for l in candidates.values() if named <= set(l.tokens)]
+    if len(full) != 1:
+        raise ToolError('Several multi-word expressions include those words: '
+                        + '; '.join(_mwe_desc(l, s) for l in candidates.values())
+                        + '. Name a member set that belongs to just one of them.')
+    l = full[0]
+    ws.add_op({'kind': 'unlink', 'link_id': l.id, 'token_id_hint': l.tokens[0], 'token_ids': list(l.tokens),
+               'label': f'{ws.doc_label(doc.id)} s{s.index} {mwe_ref(l, s.index)}: unlink phrase "{l.form}"'})
+    return ws.planned_note(1)
 
 
 def t_create_entry(ws: Workspace, form: str, lexicon: Optional[str] = None, fields: Optional[dict] = None,
@@ -1165,7 +1374,9 @@ def t_create_entry(ws: Workspace, form: str, lexicon: Optional[str] = None, fiel
     metadata = {lexicon_field(v, k): ('' if val is None else str(val)) for k, val in (fields or {}).items()}
     if type:
         metadata['morphType'] = morph_type(type)
-    key = f'new:{v["id"]}:{form}#{len(ws.new_entries) + 1}'
+    # The key is a handle the model passes back; it must not contain spaces
+    # (a phrase entry's form does).
+    key = f'new:{v["id"]}:{re.sub(r"\s+", "_", form)}#{len(ws.new_entries) + 1}'
     ws.new_entries[key] = {'form': form, 'vocab_id': v['id'], 'metadata': metadata}
     ws.add_op({'kind': 'create_entry', 'vocab_id': v['id'], 'form': form, 'metadata': metadata, 'key': key,
                'label': f'{v["name"]}: new entry ' + entry_line({'form': form, 'metadata': metadata})})
@@ -1247,27 +1458,36 @@ def _is_machine(meta) -> bool:
     return prov_state(meta) == MACHINE
 
 
-def _machine_pieces(obj, f=None, into=None) -> Dict[str, list]:
-    """Ids of the machine-made, unconfirmed pieces of a sentence, word, or
-    morpheme (a sentence includes its words): spans (only field ``f`` when
-    given), links and token metadata (only when no field is named)."""
+def _needs_review(meta) -> bool:
+    """Unconfirmed machine output, or a contributor's unreviewed work."""
+    return prov_state(meta) in REVIEWABLE
+
+
+def _review_pieces(obj, f=None, into=None) -> Dict[str, list]:
+    """Ids of the pieces of a sentence, word, or morpheme (a sentence includes
+    its words) that await review: spans (only field ``f`` when given), links,
+    multi-word expressions, and token metadata (only when no field is named).
+    A multi-word expression is listed once however many members are seen."""
     out = into if into is not None else {'span_ids': [], 'token_ids': [], 'link_ids': []}
     for name, sp in obj.fields.items():
-        if (f is None or name == f.name) and _is_machine(sp.metadata):
+        if (f is None or name == f.name) and _needs_review(sp.metadata):
             out['span_ids'].append(sp.id)
     if isinstance(obj, Sentence):
         if f is None or f.scope != 'Sentence':
             for w in obj.words:
-                _machine_pieces(w, f, out)
+                _review_pieces(w, f, out)
         return out
     if f is None:
-        if obj.link and _is_machine(obj.link.metadata):
+        if obj.link and _needs_review(obj.link.metadata):
             out['link_ids'].append(obj.link.id)
-        if _is_machine(obj.metadata):
+        for l in getattr(obj, 'mwes', ()):
+            if _needs_review(l.metadata) and l.id not in out['link_ids']:
+                out['link_ids'].append(l.id)
+        if _needs_review(obj.metadata):
             out['token_ids'].append(obj.id)
     if isinstance(obj, Word):
         for m in obj.morphemes:
-            _machine_pieces(m, f, out)
+            _review_pieces(m, f, out)
     return out
 
 
@@ -1284,33 +1504,64 @@ def _what(obj) -> str:
     return obj.text if isinstance(obj, Sentence) else (obj.surface if isinstance(obj, Word) else obj.form)
 
 
-def t_confirm(ws: Workspace, document: str, refs=None, field: Optional[str] = None) -> str:
-    """PLAN: mark machine-made annotations as verified, after checking them."""
-    doc = ws.doc(document)
+MAX_CONFIRM_DOCS = 100
+
+
+def _document_confirm_op(ws: Workspace, doc: IgtDoc, f) -> Optional[Dict[str, Any]]:
+    pieces = {'span_ids': [], 'token_ids': [], 'link_ids': []}
+    for s in doc.sentences:
+        _review_pieces(s, f, pieces)
+    if not any(pieces.values()):
+        return None
+    return {'kind': 'confirm', **pieces, 'doc': doc.id,
+            'label': f'{ws.doc_label(doc.id)}: confirm {_pieces_label(pieces)}' + (f' ({f.name})' if f else '')}
+
+
+def t_confirm(ws: Workspace, document: Optional[str] = None, refs=None, field: Optional[str] = None) -> str:
+    """PLAN: mark annotations awaiting review (machine-made and unconfirmed,
+    or a contributor's) as verified, after checking them. Without a
+    document, every document with such material in the project."""
     f = ws.project.field(field) if field else None
     staged: List[Dict[str, Any]] = []
     refs = _refs(refs)
-    if refs:
+    if refs and not document:
+        raise ToolError('refs need a document')
+    if not document:
+        # The documents with reviewable spans or morphemes by query, then
+        # each is read so links and multi-word expressions count too.
+        if ws.prefer_scan:
+            docs = ws.all_docs()
+        else:
+            from .corpus import q_review_docs
+            ids = q_review_docs(ws, f)
+            if len(ids) > MAX_CONFIRM_DOCS:
+                raise ToolError(f'{len(ids)} documents have annotations awaiting review, more than the {MAX_CONFIRM_DOCS} '
+                                'one plan covers; confirm document by document, or narrow with field.')
+            docs = [ws.doc(i) for i in ids]
+        for doc in docs:
+            op = _document_confirm_op(ws, doc, f)
+            if op:
+                staged.append(op)
+    elif refs:
+        doc = ws.doc(document)
         for ref in refs:
             obj = resolve(doc, ref)
-            pieces = _machine_pieces(obj, f)
+            pieces = _review_pieces(obj, f)
             if not any(pieces.values()):
                 continue
             staged.append({'kind': 'confirm', **pieces,
                            'label': f'{ws.doc_label(doc.id)} {ref} "{_what(obj)[:40]}": confirm {_pieces_label(pieces)}'
                                     + (f' ({f.name})' if f else '')})
     else:
-        pieces = {'span_ids': [], 'token_ids': [], 'link_ids': []}
-        for s in doc.sentences:
-            _machine_pieces(s, f, pieces)
-        if any(pieces.values()):
-            staged.append({'kind': 'confirm', **pieces,
-                           'label': f'{ws.doc_label(doc.id)}: confirm {_pieces_label(pieces)}' + (f' ({f.name})' if f else '')})
+        op = _document_confirm_op(ws, ws.doc(document), f)
+        if op:
+            staged.append(op)
     ws.add_ops(staged)
     n = sum(len(v) for op in staged for k, v in op.items() if k.endswith('_ids'))
     if not staged:
-        return 'Nothing to confirm: no machine-made, unconfirmed annotations there.'
-    return ws.planned_note(len(staged)) + f' ({n} annotation{"s" if n != 1 else ""} will be marked verified.)'
+        return 'Nothing to confirm: no annotations awaiting review there.'
+    return ws.planned_note(len(staged)) + f' ({n} annotation{"s" if n != 1 else ""} will be marked verified' \
+        + (f' across {len(staged)} documents' if not document and len(staged) > 1 else '') + '.)'
 
 
 def t_discard_analysis(ws: Workspace, document: str, refs) -> str:
@@ -1361,6 +1612,211 @@ def t_discard_analysis(ws: Workspace, document: str, refs) -> str:
     return ws.planned_note(len(staged))
 
 
+def t_set_morpheme(ws: Workspace, document: str, ref: str, form: Optional[str] = None,
+                   type: Optional[str] = None) -> str:
+    """PLAN: change one morpheme's form and/or type in place, keeping the
+    chain and every value on it (set_analysis replaces the whole chain)."""
+    doc = ws.doc(document)
+    ref = (ref or '').strip()
+    m = _need(resolve(doc, ref), Morpheme, ref)
+    word_ref_ = ref.rsplit('.', 1)[0]
+    w = resolve(doc, word_ref_)
+    if form is None and type is None:
+        raise ToolError('Give form and/or type.')
+    staged: List[Dict[str, Any]] = []
+    if form is not None:
+        new = str(form).strip()
+        if not new:
+            raise ToolError('form must not be empty (set_analysis to remove a morpheme from the chain)')
+        if new != m.form:
+            staged.append(morpheme_form_op(ws, doc, word_ref_, w, m, new))
+    if type is not None:
+        t = morph_type(type) if str(type).strip() else None
+        if t != (m.morph_type or None):
+            staged.append({'kind': 'set_morph_type', 'morpheme_id': m.id, 'morph_type': t,
+                           'label': f'{ws.doc_label(doc.id)} {ref} (in "{w.surface}"): morpheme type '
+                                    + (f'"{m.morph_type}" → ' if m.morph_type else '= ') + (f'"{t}"' if t else '(cleared)')})
+    ws.add_ops(staged)
+    return ws.planned_note(len(staged))
+
+
+# --- comments -------------------------------------------------------------------
+
+MAX_COMMENTS = 200
+
+
+def _anchor(ws: Workspace, doc: IgtDoc, ref: Optional[str], field: Optional[str]) -> tuple:
+    """(entity_type, entity_id, caption, what) for a comment on the document,
+    a sentence, a word, a morpheme, or one of their field values. The caption
+    is the editor's own (commentAnchors.js), so a thread reads the same in
+    the Comments tab whoever posted it."""
+    if not ref:
+        if field:
+            raise ToolError('field needs a ref (the annotated sentence, word, or morpheme)')
+        return 'document', doc.id, doc.name or 'This document', doc.name
+    obj = resolve(doc, ref)
+    if isinstance(obj, Sentence):
+        s, w, m = obj, None, None
+    else:
+        s = resolve(doc, ref.split('.')[0])
+        w = obj if isinstance(obj, Word) else resolve(doc, ref.rsplit('.', 1)[0])
+        m = obj if isinstance(obj, Morpheme) else None
+    where = f'sentence {s.index}'
+    if field:
+        f = ws.project.field(field)
+        sp = obj.fields.get(f.name)
+        if not sp:
+            raise ToolError(f'{ref} has no {f.name} value to comment on')
+        if isinstance(obj, Sentence):
+            return 'span', sp.id, f'{f.name} of sentence {s.index}', s.text
+        head = f'{f.name} of {m.form}' if m else f'{f.name} of {w.surface}'
+        detail = f'in {w.surface}, {where}' if m else where
+        return 'span', sp.id, f'{head}, {detail}', m.form if m else w.surface
+    if isinstance(obj, Sentence):
+        return 'token', s.id, f'Sentence {s.index}', s.text
+    if m:
+        return 'token', m.id, f'{m.form}, in {w.surface}, {where}', m.form
+    return 'token', w.id, f'{w.surface}, {where}', w.surface
+
+
+def t_comments(ws: Workspace, document: Optional[str] = None, ref: Optional[str] = None,
+               field: Optional[str] = None, limit: int = 50) -> str:
+    """The comments people have left: on one thing (document + ref, and
+    field for one of its values), in one document, or in the whole project;
+    oldest first, the newest `limit` shown."""
+    limit = max(1, min(int(limit or 50), MAX_COMMENTS))
+    ws.on_progress('Reading the comments…')
+    doc = ws.doc(document) if document else None
+    if ref and doc is None:
+        raise ToolError('ref needs a document')
+    if doc is not None and ref:
+        etype, eid, caption, _ = _anchor(ws, doc, ref, field)
+        rows = ws.client.comments.list(ws.project.id, entity_type=etype, entity_id=eid)
+        head = f'on {ws.doc_label(doc.id)} {ref}' + (f' {field}' if field else '')
+    elif doc is not None:
+        rows = ws.client.comments.list(ws.project.id, document_id=doc.id)
+        head = f'in {ws.doc_label(doc.id)}'
+    else:
+        rows = ws.client.comments.list(ws.project.id)
+        head = 'in the project'
+    rows = sorted(rows or [], key=lambda c: c.get('created_at') or '')
+    total = len(rows)
+    rows = rows[-limit:]
+    if not rows:
+        return f'No comments {head}.'
+    lines = [f'{total} comment{"s" if total != 1 else ""} {head}' + (f' (newest {limit} shown)' if total > limit else '')
+             + ', oldest first:']
+    loaded = set()
+    for c in rows:
+        when = (c.get('created_at') or '')[:16].replace('T', ' ')
+        who = c.get('author_id') or '?'
+        anchor = ''
+        did = c.get('document_id')
+        if did and (did in ws._docs or ws.corpus.may_load(did, loaded)):
+            d = ws.doc(did)
+            hit = d.find(c.get('entity_id'))
+            tag = ws.corpus.tag(d.id)
+            if hit:
+                s, w, m = hit
+                anchor = f'{tag}s{s.index}' + (f'.w{w.index}' if w else '') + (f'.m{m.index}' if m else '')
+                if c.get('entity_type') == 'span':
+                    anchor += ' ' + (c.get('anchor_label') or 'value')
+            elif c.get('entity_type') == 'document' and c.get('entity_id') == did:
+                anchor = f'{tag}(the document)'
+        if not anchor:
+            anchor = (c.get('anchor_label') or c.get('entity_type') or '?') + (' [outdated]' if did else '')
+        body = (c.get('body') or '').strip().replace('\n', ' ')
+        lines.append(f'  {when}  {who}  @ {anchor}: {body}' + (' (edited)' if c.get('edited') else ''))
+    return _truncate('\n'.join(lines))
+
+
+def t_add_comment(ws: Workspace, document: str, body: str, ref: Optional[str] = None,
+                  field: Optional[str] = None) -> str:
+    """PLAN: post a comment, under the user's name, on a document, a
+    sentence, a word, a morpheme, or one of their field values."""
+    body = (body or '').strip()
+    if not body:
+        raise ToolError('body must not be empty')
+    if len(body) > 10000:
+        raise ToolError('a comment holds at most 10000 characters')
+    doc = ws.doc(document)
+    etype, eid, caption, what = _anchor(ws, doc, ref, field)
+    where = f'{ws.doc_label(doc.id)} {ref} "{(what or "")[:40]}"' if ref else f'"{ws.doc_label(doc.id)}"'
+    ws.add_op({'kind': 'add_comment', 'entity_type': etype, 'entity_id': eid, 'body': body, 'anchor_label': caption,
+               'document_id': doc.id,
+               'label': f'{where}: comment "{body[:60]}{"…" if len(body) > 60 else ""}"'
+                        + (f' (on {field})' if field else '')})
+    return ws.planned_note(1)
+
+
+# --- restore ------------------------------------------------------------------------
+
+def _restore_lines(ws: Workspace, summary: dict) -> List[str]:
+    """The dry run's counts, one line per kind of change, as the editor's
+    restore dialog lists them."""
+    def changed(c):
+        return sum((c or {}).get(k) or 0 for k in ('inserted', 'updated', 'deleted'))
+    roles = {ws.project.sentence_layer_id: 'sentence', ws.project.word_layer_id: 'word',
+             ws.project.morpheme_layer_id: 'morpheme'}
+    lines = []
+    if summary.get('name'):
+        lines.append('the document name')
+    if changed(summary.get('texts')):
+        lines.append('the text')
+    for e in (summary.get('tokens') or {}).get('by_layer') or []:
+        n = changed(e)
+        if n:
+            lines.append(f'{n} {roles.get(e.get("layer_id"), "token")}{"s" if n != 1 else ""}')
+    for e in (summary.get('spans') or {}).get('by_layer') or []:
+        n = changed(e)
+        if n:
+            f = ws.project.field_by_layer(e.get('layer_id'))
+            lines.append(f'{n} {f.name if f else "annotation"} value{"s" if n != 1 else ""}')
+    n = changed(summary.get('relations'))
+    if n:
+        lines.append(f'{n} relation{"s" if n != 1 else ""}')
+    n = changed(summary.get('vocab_links'))
+    if n:
+        lines.append(f'{n} lexicon link{"s" if n != 1 else ""}')
+    if summary.get('document_metadata'):
+        lines.append('the document metadata')
+    for k in summary.get('skipped') or []:
+        lines.append(f'{k.get("count")} {k.get("kind")}(s) cannot come back ({k.get("reason")})')
+    return lines
+
+
+def t_restore_document(ws: Workspace, document: str, as_of: str) -> str:
+    """PLAN: put a document back as it was at a moment in its history (every
+    layer, ids kept), in one operation. The plan shows what would change,
+    from the server's dry run. Maintainers only; nothing else can share the
+    plan, since the restore rewrites what the other changes would address."""
+    as_of = (as_of or '').strip()
+    if not re.match(r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}', as_of):
+        raise ToolError('as_of must be an ISO-8601 instant, e.g. 2026-09-05T18:45:49Z (recent_changes prints one '
+                        'per change as as_of=)')
+    if ws.ops:
+        raise ToolError('A restore must be a plan of its own: discard_plan first, or let the user approve the '
+                        'plan so far and ask for the restore afterwards.')
+    doc = ws.doc(document)
+    ws.on_progress(f'Checking what a restore of "{doc.name}" would change…')
+    try:
+        summary = ws.client.documents.restore(doc.id, as_of, dry_run=True)
+    except Exception as e:  # noqa: BLE001 - the server's reason is the model's answer
+        msg = str(e)
+        if '403' in msg or 'orbidden' in msg:
+            raise ToolError('Restoring a document needs maintainer access to the project.')
+        raise ToolError(f'The restore was refused: {msg[:400]}')
+    summary = summary if isinstance(summary, dict) else {}
+    total = summary.get('total') or 0
+    lines = _restore_lines(ws, summary)
+    if not total:
+        return f'Nothing to restore: "{doc.name}" is as it was at {as_of}.'
+    ws.add_op({'kind': 'restore_document', 'document_id': doc.id, 'as_of': as_of, 'doc': doc.id,
+               'label': f'{ws.doc_label(doc.id)}: restore to {as_of} ({total} change{"s" if total != 1 else ""}: '
+                        + ', '.join(lines) + ')'})
+    return ws.planned_note(1) + '\nWhat changes (from the server\'s dry run): ' + ', '.join(lines) + '.'
+
+
 def t_discard_plan(ws: Workspace) -> str:
     n = len(ws.ops)
     ws.ops.clear()
@@ -1405,6 +1861,9 @@ _GLOSS = {'type': 'string', 'description': 'Singles out one of several entries w
                                            'its fields has (e.g. its gloss).'}
 _REFS = {'type': 'array', 'items': {'type': 'string'},
          'description': 'Positional references, e.g. ["s3.w2", "s3.w4"]. Words are sN.wN, morphemes sN.wN.mN, sentences sN.'}
+_MORPHEMES = {'type': 'array', 'items': {'type': 'object', 'properties': {
+    'form': {'type': 'string'}, 'type': {'type': 'string'},
+    'fields': {'type': 'object', 'additionalProperties': {'type': 'string'}}}, 'required': ['form']}}
 
 TOOLS = [
     _fn('project_overview',
@@ -1451,12 +1910,19 @@ TOOLS = [
         'fields mapping morpheme field names to values, e.g. [{"form":"kitab","type":"stem","fields":{"Gloss":"book"}}, '
         '{"form":"lar","type":"suffix","fields":{"Gloss":"PL"}}]. REPLACES the word\'s whole chain: every existing '
         'morpheme field value on it, human-made ones included, is dropped. To change one morpheme\'s value keep the '
-        'chain and use set_field with sN.wN.mN. Types: stem, root, prefix, suffix, infix, enclitic, proclitic, ...',
+        'chain and use set_field with sN.wN.mN; to change one morpheme\'s form or type, set_morpheme. Several words '
+        'at once: analyses=[{"ref":"s3.w1","morphemes":[...]}, ...] (one call per sentence, not per word).',
         {'document': _DOC, 'ref': {'type': 'string', 'description': 'The word, sN.wN.'},
-         'morphemes': {'type': 'array', 'items': {'type': 'object', 'properties': {
-             'form': {'type': 'string'}, 'type': {'type': 'string'},
-             'fields': {'type': 'object', 'additionalProperties': {'type': 'string'}}}, 'required': ['form']}}},
-        ['document', 'ref', 'morphemes']),
+         'morphemes': _MORPHEMES,
+         'analyses': {'type': 'array', 'description': 'Several words at once: [{ref, morphemes}, ...].',
+                      'items': {'type': 'object', 'properties': {'ref': {'type': 'string'}, 'morphemes': _MORPHEMES},
+                                'required': ['ref', 'morphemes']}}},
+        ['document']),
+    _fn('set_morpheme',
+        'PLAN: change one morpheme\'s stored form and/or type in place, keeping the chain and every value on it '
+        '(e.g. make sN.wN.m2 an enclitic). type "" clears the type.',
+        {'document': _DOC, 'ref': {'type': 'string', 'description': 'The morpheme, sN.wN.mN.'},
+         'form': {'type': 'string'}, 'type': {'type': 'string'}}, ['document', 'ref']),
     _fn('set_orthography',
         'PLAN: set an orthography value (an alternative transcription tier, not the baseline) on words.',
         {'document': _DOC, 'refs': _REFS, 'orthography': {'type': 'string'}, 'value': {'type': 'string'}},
@@ -1470,11 +1936,24 @@ TOOLS = [
         ['document', 'ref', 'new_text']),
     _fn('link_entry',
         'PLAN: link words or morphemes to a lexicon entry, by the entry\'s form ("ама", or "ама#2" for homograph 2), '
-        'or entry_id (also the id returned by create_entry). Replaces an existing link.',
+        'or entry_id (also the id returned by create_entry). Replaces the item\'s own link; a multi-word expression '
+        'the word belongs to is separate and stays (link_phrase / unlink_phrase for those).',
         {'document': _DOC, 'refs': _REFS, 'entry_form': {'type': 'string'}, 'lexicon': {'type': 'string'},
          'entry_id': {'type': 'string'}, 'entry_gloss': _GLOSS},
         ['document', 'refs']),
-    _fn('unlink_entry', 'PLAN: remove the lexicon link from words or morphemes.',
+    _fn('unlink_entry', 'PLAN: remove the own lexicon link of words or morphemes (not a multi-word expression: '
+                        'unlink_phrase).',
+        {'document': _DOC, 'refs': _REFS}, ['document', 'refs']),
+    _fn('link_phrase',
+        'PLAN: link two or more words of one sentence to ONE lexicon entry as a multi-word expression (an idiom, a '
+        'compound written apart, a phrasal verb; reads show it as mwe=entry (w2+w3)). The words keep their own '
+        'links. A new phrase entry is created with create_entry (type "phrase") and linked here in the same plan.',
+        {'document': _DOC, 'refs': _REFS, 'entry_form': {'type': 'string'}, 'lexicon': {'type': 'string'},
+         'entry_id': {'type': 'string'}, 'entry_gloss': _GLOSS},
+        ['document', 'refs']),
+    _fn('unlink_phrase',
+        'PLAN: remove a multi-word expression (the link its member words share); their own links stay. refs: '
+        'any member word (several where a word sits in more than one expression).',
         {'document': _DOC, 'refs': _REFS}, ['document', 'refs']),
     _fn('create_entry',
         'PLAN: add a lexicon entry. fields maps entry field names (e.g. "gloss", "pos") to values; type is the '
@@ -1500,8 +1979,9 @@ TOOLS = [
     _fn('analyses_of',
         'How a form has been analyzed so far, as a word (segmentation, glosses, links) and as a morpheme (type, '
         'glosses, link, position in the word): each distinct analysis with its count and example references. '
-        'Check this before proposing an analysis, and follow the majority unless there is reason not to.',
-        {'form': {'type': 'string'}, 'document': _DOC}, ['form']),
+        'Check this before proposing an analysis, and follow the majority unless there is reason not to. Pass '
+        'forms (a list, up to 40) to check every word of a sentence in one call.',
+        {'form': {'type': 'string'}, 'forms': {'type': 'array', 'items': {'type': 'string'}}, 'document': _DOC}, []),
     _fn('lexicon_entry',
         'One lexicon entry in full: all its fields, how many words and morphemes link to it, and example occurrences.',
         {'entry_form': {'type': 'string'}, 'lexicon': {'type': 'string'}, 'entry_id': {'type': 'string'},
@@ -1512,10 +1992,28 @@ TOOLS = [
         'several different values, and items annotated but not linked to the lexicon (or linked but empty).',
         {'field': {'type': 'string'}, 'document': _DOC}, ['field']),
     _fn('recent_changes',
-        'The newest entries of the change history: who changed what and when, including plans this assistant applied.',
+        'The newest entries of the change history: who changed what and when, including plans this assistant applied. '
+        'Each line ends with as_of=<instant>, the moment right after that change, which restore_document takes.',
         {'document': _DOC, 'limit': {'type': 'integer', 'description': 'Entries to show (default 20, max 100).'},
          'since': {'type': 'string', 'description': 'Only changes at or after this date (YYYY-MM-DD) or timestamp.'},
          'user': {'type': 'string', 'description': 'Only changes by this person (name or email substring).'}}, []),
+    _fn('comments',
+        'The comments people have left (not annotation data: notes to each other). Whole project, one document, '
+        'or one item (document + ref, plus field for a comment on one of its values). Oldest first.',
+        {'document': _DOC, 'ref': {'type': 'string', 'description': 'sN, sN.wN, or sN.wN.mN.'},
+         'field': {'type': 'string'}, 'limit': {'type': 'integer', 'description': 'Newest entries to show (default 50).'}},
+        []),
+    _fn('add_comment',
+        'PLAN: post a comment under the user\'s name on a document (no ref), a sentence, a word, a morpheme, or, '
+        'with field, on one of their values. Comments are notes to people; they change no annotation.',
+        {'document': _DOC, 'body': {'type': 'string'}, 'ref': {'type': 'string', 'description': 'sN, sN.wN, or sN.wN.mN.'},
+         'field': {'type': 'string'}}, ['document', 'body']),
+    _fn('restore_document',
+        'PLAN: put a document back as it was at a moment in its history (as_of, an instant recent_changes prints), '
+        'every layer at once, in one operation the user can undo the same way. The plan lists what would change. '
+        'Maintainers only, and a plan of its own.',
+        {'document': _DOC, 'as_of': {'type': 'string', 'description': 'ISO-8601 instant, e.g. 2026-09-05T18:45:49Z.'}},
+        ['document', 'as_of']),
     _fn('plan_status', 'List the changes planned so far in this turn.', {}, []),
     _fn('set_document_metadata',
         'PLAN: set one of the project\'s document metadata fields (see project_overview) on a document.',
@@ -1530,13 +2028,14 @@ TOOLS = [
     _fn('drop_planned', 'Drop some of the planned changes by their plan_status numbers; the rest stay.',
         {'indexes': {'type': 'array', 'items': {'type': 'integer'}}}, ['indexes']),
     _fn('confirm',
-        'PLAN: mark machine-made annotations (from other services or earlier assistant plans; see worklist '
-        'kind="unverified") as verified, after checking them. refs: sentences, words, or morphemes (a sentence '
-        'covers its words); field: only that field\'s values; neither: the whole document.',
-        {'document': _DOC, 'refs': _REFS, 'field': {'type': 'string'}}, ['document']),
+        'PLAN: mark annotations awaiting review as verified, after checking them: machine-made ones (other services, '
+        'earlier assistant plans; ~ in reads) and contributors\' work (^ in reads); see worklist kind="unverified" / '
+        '"contributed". refs: sentences, words, or morphemes (a sentence covers its words); field: only that '
+        'field\'s values; no refs: the whole document; no document: every document in the project.',
+        {'document': _DOC, 'refs': _REFS, 'field': {'type': 'string'}}, []),
     _fn('discard_analysis',
         'PLAN: delete the unverified machine-made analysis of words (their machine links, values, and morphemes); '
-        'human-made and verified pieces stay. refs: words or sentences.',
+        'human-made, contributed, and verified pieces stay. refs: words or sentences.',
         {'document': _DOC, 'refs': _REFS}, ['document', 'refs']),
 ]
 
@@ -1544,11 +2043,14 @@ _IMPL = {
     'project_overview': t_project_overview, 'read_document': t_read_document, 'search': t_search,
     'list_documents': t_list_documents,
     'read_lexicon': t_read_lexicon,
-    'set_field': t_set_field, 'set_analysis': t_set_analysis, 'set_orthography': t_set_orthography,
+    'set_field': t_set_field, 'set_analysis': t_set_analysis, 'set_morpheme': t_set_morpheme,
+    'set_orthography': t_set_orthography,
     'respell': t_respell, 'link_entry': t_link_entry, 'unlink_entry': t_unlink_entry,
+    'link_phrase': t_link_phrase, 'unlink_phrase': t_unlink_phrase,
     'create_entry': t_create_entry, 'set_entry_field': t_set_entry_field, 'discard_plan': t_discard_plan,
     'concordance': t_concordance, 'analyses_of': t_analyses_of, 'lexicon_entry': t_lexicon_entry,
     'check_consistency': t_check_consistency, 'recent_changes': t_recent_changes, 'plan_status': t_plan_status,
+    'comments': t_comments, 'add_comment': t_add_comment, 'restore_document': t_restore_document,
     'set_document_metadata': t_set_document_metadata, 'create_document': t_create_document,
     'confirm': t_confirm, 'discard_analysis': t_discard_analysis, 'drop_planned': t_drop_planned,
 }
@@ -1594,11 +2096,14 @@ TOOLS += [
          'min_count': {'type': 'integer'}}, []),
     _fn('worklist',
         'The unfinished work, grouped by form and ordered by frequency: kind="unlinked" (no lexicon link), '
-        '"unglossed" (no value in `field`, default the first morpheme field), "unanalyzed" (no analysis at all), or '
-        '"unverified" (machine-made annotations nobody confirmed). Use this to decide what to do next.',
-        {'kind': {'type': 'string', 'enum': ['unlinked', 'unglossed', 'unanalyzed', 'unverified']},
+        '"unglossed" (no value in `field`, default the first morpheme field), "unanalyzed" (no analysis at all), '
+        '"unverified" (annotations awaiting review: machine-made and unconfirmed, or a contributor\'s), or '
+        '"contributed" (contributors\' unreviewed work only; user= narrows to one person). Use this to decide what '
+        'to do next.',
+        {'kind': {'type': 'string', 'enum': ['unlinked', 'unglossed', 'unanalyzed', 'unverified', 'contributed']},
          'field': {'type': 'string'},
          'level': {'type': 'string', 'enum': ['word', 'morpheme'], 'description': 'For unlinked: which level to list (default morpheme when there is a morpheme layer). For unglossed the field\'s scope decides.'},
+         'user': {'type': 'string', 'description': 'For contributed: only this contributor (their user id, an email).'},
          'document': _DOC, 'limit': {'type': 'integer'}}, []),
     _fn('check_lexicon',
         'Lexicon hygiene report, worst first with counts. section: "unused" (entries never linked), "fields" (missing '

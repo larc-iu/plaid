@@ -128,28 +128,43 @@ receives them, rendered over the test fixture project; regenerate it with
 - `tools.py`: the tools the model gets. Reads run immediately:
   `project_overview`, `list_documents`, `read_document`, `search`, `read_lexicon`,
   `lexicon_entry`, `concordance` (aligned context and pattern tally for a
-  form or value), `analyses_of` (how a form has been analyzed so far),
-  `check_consistency` (spelling variants, forms with several values, link
-  gaps), `check_lexicon`, `check_integrity`, `corpus_stats`,
-  `frequency_list`, `worklist` (unlinked / unglossed / unanalyzed /
-  unverified, by frequency), `sequence_search`, `recent_changes` (the audit
-  log), `plan_status`, and the escape hatch `query` + `query_help` (Plaid's
-  query language, project-scoped, layers by name). Writes append resolved operations to the turn's plan:
-  `set_field`, `set_analysis`, `set_orthography`, `respell`, `link_entry`,
-  `unlink_entry`, `create_entry`, `set_entry_field`, `set_document_metadata`,
-  `create_document`, and the corpus-wide `replace_in_field` (also on stored
-  morpheme forms), `set_field_for_form`, `respell_all` (carrying morpheme forms
-  and lexicon headwords along, as Bulk Edit does), `copy_to_orthography`,
-  `set_analysis_for_form`, plus `merge_entries`, `delete_entry`, `rename_entry`,
-  `rename_document`; `confirm` and `discard_analysis` for what other services
-  produced; and the segmentation edits `split_word`, `merge_words`,
-  `delete_word`, `split_sentence`, `merge_sentences` (`shape.py`), which mirror
-  the editor's own mutations including their side effects (a word split or
+  form or value), `analyses_of` (how a form, or a list of forms, has been
+  analyzed so far), `check_consistency` (spelling variants, forms with
+  several values, link gaps), `check_lexicon`, `check_integrity`,
+  `corpus_stats`, `frequency_list`, `worklist` (unlinked / unglossed /
+  unanalyzed / unverified / contributed, by frequency), `sequence_search`,
+  `recent_changes` (the audit log, read in widening windows from the most
+  recent week, each entry with the `as_of` instant a restore takes),
+  `comments` (what people have written to each other, anchored to the
+  document, a sentence, a word, a morpheme, or a value), `plan_status`, and
+  the escape hatch `query` + `query_help` (Plaid's query language,
+  project-scoped, layers by name). Writes append resolved operations to the turn's plan:
+  `set_field`, `set_analysis` (one word, or a whole sentence's words in one
+  call), `set_morpheme` (one morpheme's form or type, chain kept),
+  `set_orthography`, `respell`, `link_entry`, `unlink_entry`, `link_phrase`
+  and `unlink_phrase` (a multi-word expression: one lexicon link shared by
+  two or more words, which a member's own link never displaces),
+  `create_entry`, `set_entry_field`, `set_document_metadata`,
+  `create_document`, `add_comment`, and the corpus-wide `replace_in_field`
+  (also on stored morpheme forms), `set_field_for_form`, `respell_all`
+  (carrying morpheme forms and lexicon headwords along, as Bulk Edit does),
+  `copy_to_orthography`, `set_analysis_for_form`, plus `merge_entries`,
+  `delete_entry`, `rename_entry`, `rename_document`; `confirm` (what awaits
+  review: unconfirmed machine output and contributors' work, per item, per
+  document, or across the project) and `discard_analysis` (machine output
+  only); `restore_document` (the server's own restore to an earlier moment,
+  planned from its dry run, maintainers only, always a plan of its own); and
+  the segmentation edits `split_word`, `merge_words`, `delete_word`,
+  `split_sentence`, `merge_sentences` (`shape.py`), which mirror the
+  editor's own mutations including their side effects (a word split or
   merge deletes the affected morpheme analyses; merges combine field values
-  losslessly and keep one lexicon link); and the text edits `append_text`
-  and `retype_sentence`, which go through the server's diffing text update
-  (unchanged words keep their tokens and analyses) and then tokenize the
-  edited region as the editor would.
+  losslessly and keep one lexicon link; a multi-word expression whose words
+  merge into one, or whose deletion would leave one member, goes with them);
+  and the text edits `append_text` and `retype_sentence`, which go through
+  the server's diffing text update (unchanged words keep their tokens and
+  analyses) and then tokenize the edited region as the editor would.
+  Reads mark a value, link, or segmentation awaiting review: `~` for
+  unconfirmed machine output, `^` for a contributor's unreviewed work.
 - `corpus.py`: the query-engine side of every corpus-wide tool. Project-wide
   reads and target finding run as server-side queries (counts, grouped
   tallies, entity ids); documents are fetched only to render the hits a tool
@@ -175,7 +190,14 @@ receives them, rendered over the test fixture project; regenerate it with
   document it touches; approval is refused if any of them changed since, as
   the plan's ids and character offsets were read from that state.
 - `agent.py`: the litellm loop. `service.py`: the Plaid service; one request
-  is one turn (the browser keeps the transcript) or one approval.
+  is one turn or one approval. A conversation lives in the user's private
+  key/value store on the server. The browser appends the user's message and
+  marks the conversation pending before submitting; the service loads the
+  record, runs the turn, and writes the reply back before reporting the
+  request done, so the answer lands whether or not the browser is still
+  watching, and a browser that comes back rejoins the running request by id
+  or reads the finished reply from the record. Stop cancels the request; the
+  service checks between model calls and tool calls.
 
 ## Tests
 

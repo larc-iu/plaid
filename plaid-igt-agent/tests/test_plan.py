@@ -258,7 +258,7 @@ def test_execute_creates_documents_tokenized_like_the_editor():
 
 def test_execute_lexicon_and_document_ops():
     c = FakeClient()
-    ops = [{'kind': 'merge_entries', 'keep_id': 'vi-ali', 'remove_id': 'vi-erg', 'links': [{'link_id': 'l-2', 'token_id': 'm-1b'}], 'label': ''},
+    ops = [{'kind': 'merge_entries', 'keep_id': 'vi-ali', 'remove_id': 'vi-erg', 'links': [{'link_id': 'l-2', 'token_ids': ['m-1b']}], 'label': ''},
            {'kind': 'delete_entry', 'item_id': 'vi-gam', 'links': ['l-9'], 'label': ''},
            {'kind': 'rename_entry', 'item_id': 'vi-gam2', 'form': 'net', 'label': ''},
            {'kind': 'rename_document', 'document_id': 'd1', 'name': 'Text One', 'label': ''}]

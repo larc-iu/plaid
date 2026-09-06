@@ -147,7 +147,8 @@ def t_respell_all(ws: Workspace, pattern: str, replacement: str, regex: bool = F
                 if new == w.surface:
                     continue
                 if not new.strip():
-                    raise ToolError(f'{ws.doc_label(doc.id)} {word_ref(s, w)}: "{w.surface}" would become empty; there is no delete-word tool')
+                    raise ToolError(f'{ws.doc_label(doc.id)} {word_ref(s, w)}: "{w.surface}" would become empty; '
+                                    'a respelling cannot remove a word (retype_sentence can)')
                 check_respell_overlap(ws, w.text_id, w.begin, w.end, f'{ws.doc_label(doc.id)} {word_ref(s, w)}')
                 label = f'{ws.doc_label(doc.id)} {word_ref(s, w)}: respell "{w.surface}" → "{new}"'
                 staged.append({'kind': 'respell', 'text_id': w.text_id, 'begin': w.begin, 'end': w.end, 'value': new,
@@ -324,19 +325,28 @@ def _existing(ws: Workspace, form, lexicon, entry_id, gloss=None) -> dict:
     return target
 
 
-def _links_to(ws: Workspace, item_id: str) -> List[Dict[str, str]]:
+def links_to_in(doc, item_id: str) -> List[Dict[str, Any]]:
+    """[{link_id, token_ids}] for an entry's links in one parsed document:
+    words' own links, multi-word expressions (once each, with every member),
+    and morpheme links."""
+    out: List[Dict[str, Any]] = []
+    seen = set()
+    for s in doc.sentences:
+        for w in s.words:
+            for l in [w.link] + list(w.mwes) + [m.link for m in w.morphemes]:
+                if l and l.item_id == item_id and l.id not in seen:
+                    seen.add(l.id)
+                    out.append({'link_id': l.id, 'token_ids': list(l.tokens)})
+    return out
+
+
+def _links_to(ws: Workspace, item_id: str) -> List[Dict[str, Any]]:
     if not ws.prefer_scan:
         from .corpus import q_entry_links
         return q_entry_links(ws, item_id)
     out = []
     for doc in ws.all_docs():
-        for s in doc.sentences:
-            for w in s.words:
-                if w.link and w.link.item_id == item_id:
-                    out.append({'link_id': w.link.id, 'token_id': w.id})
-                for m in w.morphemes:
-                    if m.link and m.link.item_id == item_id:
-                        out.append({'link_id': m.link.id, 'token_id': m.id})
+        out.extend(links_to_in(doc, item_id))
     return out
 
 

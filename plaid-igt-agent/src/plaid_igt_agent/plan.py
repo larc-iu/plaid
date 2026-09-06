@@ -46,8 +46,15 @@ wire's key recasing):
                   (append or retype: the region is re-verified against the live body, the edit goes through the
                    server's diffing text update so unchanged words keep their tokens, then sentence boundaries at
                    line starts and word tokens for untokenized text in the region are created from the real result)
-  confirm         {span_ids, token_ids, link_ids}   (provConfirmed on machine-made material, any producer)
+  confirm         {span_ids, token_ids, link_ids}   (provConfirmed on material awaiting review, any origin)
   discard_analysis {word_id, link_ids, span_ids, morpheme_ids, reset_first_id|null, renumber: [{id, precedence}]}
+  link_phrase     {token_ids: [word ids], item_id|null, new_entry_key|null, existing_link_id|null}
+                  (a multi-word expression: one link over two or more words; unlink with token_ids is one too)
+  set_morph_type  {morpheme_id, morph_type|null}
+  add_comment     {entity_type, entity_id, body, anchor_label, document_id}   (unaudited, as every comment)
+  restore_document {document_id, as_of}   (the server's own restore; always a plan of its own)
+  delete_word may carry link_ids: multi-word expressions the deletion would leave with one member.
+  merge_entries links are [{link_id, token_ids}] so a moved multi-word expression keeps every member.
 
 Each also carries a human ``label`` for the approval UI.
 """
@@ -123,21 +130,24 @@ class PlanError(Exception):
         self.total = total
 
 
-KINDS = ('set_span', 'set_analysis', 'set_orthography', 'respell', 'link', 'unlink', 'create_entry',
+KINDS = ('set_span', 'set_analysis', 'set_orthography', 'respell', 'link', 'unlink', 'link_phrase', 'create_entry',
          'set_entry_field', 'set_doc_metadata', 'create_document', 'merge_entries', 'delete_entry',
-         'rename_entry', 'rename_document', 'confirm', 'discard_analysis', 'set_morpheme_form',
-         'split_word', 'merge_words', 'delete_word', 'split_sentence', 'merge_sentences', 'edit_text')
+         'rename_entry', 'rename_document', 'confirm', 'discard_analysis', 'set_morpheme_form', 'set_morph_type',
+         'split_word', 'merge_words', 'delete_word', 'split_sentence', 'merge_sentences', 'edit_text',
+         'add_comment', 'restore_document')
 REQUIRED = {
     'set_span': ('layer_id', 'token_id'), 'set_analysis': ('word_id', 'text_id', 'begin', 'end', 'morpheme_layer_id', 'morphemes'),
     'set_orthography': ('word_id', 'key'), 'respell': ('text_id', 'begin', 'end', 'value'),
-    'link': ('token_id',), 'unlink': ('link_id',), 'create_entry': ('vocab_id', 'form', 'key'),
+    'link': ('token_id',), 'unlink': ('link_id',), 'link_phrase': ('token_ids',), 'create_entry': ('vocab_id', 'form', 'key'),
     'set_entry_field': ('item_id', 'field'), 'set_doc_metadata': ('document_id', 'field'),
     'create_document': ('name', 'text'), 'merge_entries': ('keep_id', 'remove_id'), 'delete_entry': ('item_id',),
     'rename_entry': ('item_id', 'form'), 'rename_document': ('document_id', 'name'),
     'confirm': (), 'discard_analysis': ('word_id',), 'set_morpheme_form': ('morpheme_id', 'form'),
+    'set_morph_type': ('morpheme_id',),
     'split_word': ('word_id', 'position'), 'merge_words': ('word_id', 'other_ids'), 'delete_word': ('word_id',),
     'split_sentence': ('sentence_id', 'position'), 'merge_sentences': ('sentence_id', 'other_id'),
     'edit_text': ('document_id', 'begin', 'end', 'new'),
+    'add_comment': ('entity_type', 'entity_id', 'body'), 'restore_document': ('document_id', 'as_of'),
 }
 
 
@@ -153,14 +163,18 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
         if kind == 'set_analysis' and (not isinstance(op['morphemes'], list) or not op['morphemes']
                                        or any(not (m.get('form') or '').strip() for m in op['morphemes'])):
             raise ValueError(f'op {i + 1} (set_analysis): morphemes must be a non-empty list with non-empty forms')
-        if kind == 'link' and not (op.get('item_id') or op.get('new_entry_key')):
-            raise ValueError(f'op {i + 1} (link): needs item_id or new_entry_key')
+        if kind in ('link', 'link_phrase') and not (op.get('item_id') or op.get('new_entry_key')):
+            raise ValueError(f'op {i + 1} ({kind}): needs item_id or new_entry_key')
+        if kind == 'link_phrase' and (not isinstance(op['token_ids'], list) or len(op['token_ids']) < 2):
+            raise ValueError(f'op {i + 1} (link_phrase): token_ids must list two or more words')
         if kind == 'confirm' and not any(op.get(k) for k in ('span_ids', 'token_ids', 'link_ids')):
             raise ValueError(f'op {i + 1} (confirm): nothing to confirm')
         if kind == 'merge_words' and not isinstance(op['other_ids'], list):
             raise ValueError(f'op {i + 1} (merge_words): other_ids must be a list')
         if kind == 'edit_text' and not (op['new'] or '').strip():
             raise ValueError(f'op {i + 1} (edit_text): the new text is empty')
+        if kind == 'restore_document' and len(ops) > 1:
+            raise ValueError(f'op {i + 1} (restore_document): a restore must be the only op in its plan')
 
 
 def _dead_tokens(ops) -> set:
@@ -183,8 +197,8 @@ def _dead_tokens(ops) -> set:
 
 
 _TOKEN_KEYS = {'set_span': 'token_id', 'set_analysis': 'word_id', 'set_orthography': 'word_id', 'link': 'token_id',
-               'set_morpheme_form': 'morpheme_id', 'discard_analysis': 'word_id', 'split_word': 'word_id',
-               'split_sentence': 'sentence_id'}
+               'set_morpheme_form': 'morpheme_id', 'set_morph_type': 'morpheme_id', 'discard_analysis': 'word_id',
+               'split_word': 'word_id', 'split_sentence': 'sentence_id'}
 
 
 def _doomed_ids(ops) -> set:
@@ -202,8 +216,10 @@ def _doomed_ids(ops) -> set:
                 gone.update(ex[0].get('span_ids') or [])
         elif k == 'unlink':
             gone.add(op['link_id'])
-        elif k == 'link' and op.get('existing_link_id'):
+        elif k in ('link', 'link_phrase') and op.get('existing_link_id'):
             gone.add(op['existing_link_id'])
+        elif k == 'delete_word':
+            gone.update(op.get('link_ids') or [])
         elif k == 'merge_entries':
             gone.update(l['link_id'] for l in op.get('links') or [])
         elif k == 'delete_entry':
@@ -249,14 +265,14 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
     for op in ops:
         k = op.get('kind')
         key = _TOKEN_KEYS.get(k)
-        if key and op.get(key) in dead:
+        if (key and op.get(key) in dead) or (k == 'link_phrase' and any(t in dead for t in op.get('token_ids') or [])):
             raise ValueError(f'{op.get("label") or k}: that word or morpheme is deleted or merged away by another '
                              'op in this plan')
-        if k == 'link' and op.get('item_id') in removed:
+        if k in ('link', 'link_phrase') and op.get('item_id') in removed:
             notes.append(f'dropped: {op.get("label") or "a link"} (its entry is deleted in this plan)')
             continue
-        if k == 'set_morpheme_form' and op['morpheme_id'] in rewritten:
-            notes.append(f'dropped: {op.get("label") or "a morpheme form"} (that analysis is rewritten in this plan)')
+        if k in ('set_morpheme_form', 'set_morph_type') and op['morpheme_id'] in rewritten:
+            notes.append(f'dropped: {op.get("label") or "a morpheme change"} (that analysis is rewritten in this plan)')
             continue
         if k == 'confirm' and doomed:
             op = {**op, **{key: [i for i in (op.get(key) or []) if i not in doomed]
@@ -343,11 +359,12 @@ def _execute(client, ops, *, source, label, project, counts, notes, stamp_mode, 
     with client.operation(label):
         b = _Tracker(client)
         pending_spans = []   # (result idx of the created morpheme, layer_id, value)
-        pending_links = []   # (token_id, new_entry_key)
+        pending_links = []   # ([token_id, ...], new_entry_key)
         entry_idx: Dict[str, int] = {}
         respells: Dict[str, List[tuple]] = {}
         pending_deletes: List[str] = []  # entries to delete once their links are gone
         text_edits: List[Dict[str, Any]] = []
+        restores: List[Dict[str, Any]] = []
 
         for op in ops:
             kind = op.get('kind')
@@ -406,18 +423,32 @@ def _execute(client, ops, *, source, label, project, counts, notes, stamp_mode, 
                 respells.setdefault(op['text_id'], []).append((op['begin'], op['end'], op['value']))
                 counts['respellings'] += 1
 
-            elif kind == 'link':
+            elif kind in ('link', 'link_phrase'):
+                tokens = [op['token_id']] if kind == 'link' else list(op['token_ids'])
                 if op.get('existing_link_id'):
                     b.add(lambda lid=op['existing_link_id']: client.vocab_links.delete(lid))
                 if op.get('item_id'):
-                    b.add(lambda o=op: client.vocab_links.create(o['item_id'], [o['token_id']], stamp()))
+                    b.add(lambda o=op, t=tokens: client.vocab_links.create(o['item_id'], t, stamp()))
                 elif op.get('new_entry_key'):
-                    pending_links.append((op['token_id'], op['new_entry_key']))
-                counts['links'] += 1
+                    pending_links.append((tokens, op['new_entry_key']))
+                counts['links' if kind == 'link' else 'multi-word expressions'] += 1
 
             elif kind == 'unlink':
                 b.add(lambda lid=op['link_id']: client.vocab_links.delete(lid))
                 counts['unlinks'] += 1
+
+            elif kind == 'set_morph_type':
+                b.add(lambda o=op: client.tokens.patch_metadata(o['morpheme_id'], {'morphType': o.get('morph_type') or None}))
+                counts['morpheme types'] += 1
+
+            elif kind == 'add_comment':
+                b.add(lambda o=op: client.comments.create(o['entity_type'], o['entity_id'], o['body'],
+                                                          anchor_label=o.get('anchor_label') or None))
+                counts['comments'] += 1
+
+            elif kind == 'restore_document':
+                restores.append(op)  # after the batches: one server-side operation of its own
+                counts['restored documents'] += 1
 
             elif kind == 'create_entry':
                 entry_idx[op['key']] = b.add(lambda o=op: client.vocab_items.create(
@@ -439,7 +470,7 @@ def _execute(client, ops, *, source, label, project, counts, notes, stamp_mode, 
             elif kind == 'merge_entries':
                 for l in op.get('links') or []:
                     b.add(lambda lid=l['link_id']: client.vocab_links.delete(lid))
-                    b.add(lambda o=op, t=l['token_id']: client.vocab_links.create(o['keep_id'], [t], stamp()))
+                    b.add(lambda o=op, t=list(l['token_ids']): client.vocab_links.create(o['keep_id'], t, stamp()))
                 pending_deletes.append(op['remove_id'])
                 counts['merged entries'] += 1
 
@@ -487,6 +518,10 @@ def _execute(client, ops, *, source, label, project, counts, notes, stamp_mode, 
                 counts['merged words' if kind == 'merge_words' else 'merged sentences'] += 1
 
             elif kind == 'delete_word':
+                # A multi-word expression the deletion would leave with one
+                # member goes first; the server only trims links otherwise.
+                for lid in op.get('link_ids') or []:
+                    b.add(lambda i=lid: client.vocab_links.delete(i))
                 b.add(lambda o=op: client.tokens.delete(o['word_id']))  # cascades morphemes, spans, links
                 counts['deleted words'] += 1
 
@@ -538,15 +573,20 @@ def _execute(client, ops, *, source, label, project, counts, notes, stamp_mode, 
             if not mid:
                 raise RuntimeError('a created morpheme came back without an id; its gloss was not written')
             b.add(lambda l=layer_id, m=mid, v=value: client.spans.create(l, [m], v, stamp()))
-        for token_id, key in pending_links:
+        for tokens, key in pending_links:
             i = entry_idx.get(key)
             iid = _created_id(b.results[i]) if i is not None and i < len(b.results) else None
             if not iid:
                 raise RuntimeError('a created lexicon entry came back without an id; a link to it was not written')
-            b.add(lambda i=iid, t=token_id: client.vocab_links.create(i, [t], stamp()))
+            b.add(lambda i=iid, t=tokens: client.vocab_links.create(i, t, stamp()))
         for iid in pending_deletes:
             b.add(lambda i=iid: client.vocab_items.delete(i))
         b.flush()
+
+        # A restore is the server's own single operation over the document.
+        for op in restores:
+            client.documents.restore(op['document_id'], op['as_of'])
+            applied[0] += 1
 
         # Text edits after the batches (which carry pre-edit offsets).
         # Region edits first, highest region first: each is re-verified
@@ -709,7 +749,10 @@ def summarize(ops: List[Dict[str, Any]]) -> str:
              'set_morpheme_form': ('morpheme form', 'morpheme forms'),
              'split_word': ('split word', 'split words'), 'merge_words': ('word merge', 'word merges'),
              'delete_word': ('deleted word', 'deleted words'), 'split_sentence': ('split sentence', 'split sentences'),
-             'merge_sentences': ('sentence merge', 'sentence merges'), 'edit_text': ('text edit', 'text edits')}
+             'merge_sentences': ('sentence merge', 'sentence merges'), 'edit_text': ('text edit', 'text edits'),
+             'link_phrase': ('multi-word expression', 'multi-word expressions'),
+             'set_morph_type': ('morpheme type', 'morpheme types'), 'add_comment': ('comment', 'comments'),
+             'restore_document': ('document restore', 'document restores')}
     parts = []
     for kind, n in counts.items():
         one, many = names.get(kind, (kind, kind))

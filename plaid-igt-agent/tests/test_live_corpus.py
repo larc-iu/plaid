@@ -132,7 +132,55 @@ def test_bulk_tools_plan_the_same_ops(proj):
     same_ops(proj, 'set_analysis_for_form', {'form': 'gam', 'morphemes': [{'form': 'gam'}], 'skip_analyzed': True})
     same_ops(proj, 'set_analysis_for_form', {'form': 'Ali-di', 'morphemes': [{'form': 'Ali'}, {'form': 'di', 'type': 'suffix', 'fields': {'Morph Gloss': 'ERG'}}]})
     b = same_ops(proj, 'merge_entries', {'keep_form': 'Ali', 'remove_form': '-di'})
-    assert b.ops[-1]['links'] and b.ops[-1]['links'][0]['token_id'] == proj.ids['m-1b']
+    assert b.ops[-1]['links'] and b.ops[-1]['links'][0]['token_ids'] == [proj.ids['m-1b']]
     same_ops(proj, 'delete_entry', {'entry_form': 'Ali'})
     # The stale check knows the documents of query-built ops.
+    assert [d['id'] for d in b.plan_payload()['documents']] == [proj.ids['d1']]
+
+
+@pytest.fixture(scope='module')
+def review_proj(live_client):
+    """The fixture project with a machine-made multi-word expression over
+    s1.w2 + s1.w3 and a contributed Gloss on s1.w1, for the tools that see
+    links shared by several words and work awaiting review."""
+    from fixtures_ext import mwe_document_raw, mwe_lexicon_raw, ANN
+    raw = mwe_document_raw()
+    layers = raw['text_layers'][0]['token_layers']
+    layers[1]['vocabs'][0]['vocab_links'][1]['metadata'] = {'prov': 'inferred', 'provSource': 'service:mwe'}
+    layers[1]['span_layers'][0]['spans'][0]['metadata'] = {'prov': 'contributed', 'provSource': f'user:{ANN}'}
+    s = seed(live_client, project_raw(), {'d1': raw}, {VOCAB: mwe_lexicon_raw()}, name='igt-agent review test')
+    yield s
+    s.delete()
+
+
+def test_multi_word_expressions_and_review_match_the_scan(review_proj):
+    from fixtures_ext import ANN
+    proj = review_proj
+    c = proj.client
+    d = load_document(c, load_project(c, proj.project_id), proj.ids['d1'])
+    w2, w3 = d.sentences[0].words[1], d.sentences[0].words[2]
+    assert w2.link is None and [l.tokens for l in w2.mwes] == [[proj.ids['w-2'], proj.ids['w-3']]] and w3.mwes == w2.mwes
+    for args in ({'pattern': 'gam'}, {'pattern': 'akuna'}):
+        out = same(proj, 'search', args)
+        assert 'mwe=gam akuna~ (w2+w3)' in out
+    for args in ({}, {'section': 'stale'}, {'section': 'unused'}):
+        same(proj, 'check_lexicon', args)
+    assert 'Linked from 2 words and 0 morphemes' in same(proj, 'lexicon_entry', {'entry_form': 'gam akuna'})
+    for args in ({'kind': 'unlinked', 'level': 'word'}, {'kind': 'contributed'},
+                 {'kind': 'contributed', 'user': ANN}, {'kind': 'contributed', 'user': 'nobody@x.com'}):
+        same(proj, 'worklist', args, strip_examples)
+    # Link provenance is not queryable, so the project-wide unverified list
+    # cannot see the machine-made expression's words; the scan of a document can.
+    a, b = two(proj)
+    assert '\tgam\t' in call_tool(a, 'worklist', {'kind': 'unverified'})
+    out = call_tool(b, 'worklist', {'kind': 'unverified'})
+    assert '\tali-di\t' in out and '\tgam\t' not in out
+    for args in ({'field': 'Gloss'}, {'field': 'Morph Gloss'}):
+        same(proj, 'check_consistency', args)
+    b = same_ops(proj, 'merge_entries', {'keep_form': 'Ali', 'remove_form': 'gam akuna'})
+    assert b.ops[-1]['links'] == [{'link_id': proj.ids['l-mwe'], 'token_ids': [proj.ids['w-2'], proj.ids['w-3']]}]
+    same_ops(proj, 'delete_entry', {'entry_form': 'gam akuna'})
+    # A project-wide confirm finds the document by query and reads it for its links.
+    b = same_ops(proj, 'confirm', {})
+    assert b.ops[-1]['link_ids'] == [proj.ids['l-mwe']] and b.ops[-1]['span_ids'] == [proj.ids['sp-g1']]
     assert [d['id'] for d in b.plan_payload()['documents']] == [proj.ids['d1']]
