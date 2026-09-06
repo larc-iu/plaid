@@ -214,6 +214,7 @@ const EditableCell = React.memo(
         <Autocomplete
           ref={inputRef}
           id={`${tokenId}-${field}`}
+          spellCheck={false}
           data={isEditing ? groupSuggestions(suggestions, fieldProbs) : NO_OPTIONS}
           renderOption={
             fieldProbs
@@ -341,6 +342,7 @@ const EditableCell = React.memo(
         ref={inputRef}
         id={`${tokenId}-${field}`}
         type="text"
+        spellCheck={false}
         value={displayValue}
         onChange={handleChange}
         onBlur={handleBlur}
@@ -570,6 +572,7 @@ const FeaturesCell = React.memo(
           <Autocomplete
             ref={inputRef}
             id={`${tokenId}-feats`}
+            spellCheck={false}
             data={isEditing ? suggestions : NO_OPTIONS}
             value={text}
             onChange={(val) => {

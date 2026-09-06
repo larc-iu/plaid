@@ -102,6 +102,7 @@ export function DeprelEditor({ relation, suggestions, onCommit, onCancel, onDele
   return (
     <Autocomplete
       data={data}
+      spellCheck={false}
       renderOption={({ option }) => {
         if (literalValue && option.value === literalValue) {
           return (

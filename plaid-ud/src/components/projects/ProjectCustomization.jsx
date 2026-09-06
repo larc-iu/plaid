@@ -172,6 +172,7 @@ export const ProjectCustomization = ({ embedded = false }) => {
           list.
         </Text>
         <TagsInput
+          spellCheck={false}
           value={uposVocab}
           onChange={setUposVocab}
           placeholder="Add a UPOS tag and press Enter"
@@ -188,6 +189,7 @@ export const ProjectCustomization = ({ embedded = false }) => {
           type values outside this list.
         </Text>
         <TagsInput
+          spellCheck={false}
           value={xposVocab}
           onChange={setXposVocab}
           placeholder="Add an XPOS tag and press Enter"
@@ -214,6 +216,7 @@ export const ProjectCustomization = ({ embedded = false }) => {
           allowed.
         </Text>
         <TagsInput
+          spellCheck={false}
           value={deprelVocab}
           onChange={setDeprelVocab}
           placeholder="Add a relation and press Enter"
@@ -278,6 +281,7 @@ export const ProjectCustomization = ({ embedded = false }) => {
           {featureInventory.map((entry, i) => (
             <Group key={i} align="flex-end" wrap="nowrap" gap="xs">
               <TextInput
+                spellCheck={false}
                 label={i === 0 ? 'Feature' : undefined}
                 value={entry.key}
                 w={150}
@@ -289,6 +293,7 @@ export const ProjectCustomization = ({ embedded = false }) => {
                 }
               />
               <TagsInput
+                spellCheck={false}
                 label={i === 0 ? 'Values' : undefined}
                 value={entry.values}
                 style={{ flex: 1 }}

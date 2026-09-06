@@ -245,6 +245,7 @@ export const TextEditor = () => {
           <Title order={4}>Text Content</Title>
           <Textarea
             value={textContent}
+            spellCheck={false}
             onChange={handleTextChange}
             readOnly={readOnly}
             placeholder={`Enter your text here. Use newlines to separate sentences.

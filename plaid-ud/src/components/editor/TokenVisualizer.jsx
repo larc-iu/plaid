@@ -387,6 +387,7 @@ export const TokenVisualizer = ({
                       <TextInput
                         size="xs"
                         value={form}
+                        spellCheck={false}
                         onChange={(e) =>
                           setDraftForms((prev) =>
                             prev.map((f, idx) => (idx === i ? e.target.value : f)),

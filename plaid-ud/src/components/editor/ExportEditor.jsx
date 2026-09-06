@@ -50,6 +50,7 @@ export const ExportEditor = () => {
 
       <Textarea
         value={conlluContent}
+        spellCheck={false}
         readOnly
         autosize
         minRows={20}
