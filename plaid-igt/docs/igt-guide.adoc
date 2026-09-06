@@ -497,11 +497,17 @@ Ask it what is still unglossed, whether a suffix is glossed consistently, or to 
 It reads the documents, the lexicon, the search results, and the history to answer, and it shows what it read.
 
 When you ask it to change something, it does not touch the data.
-It proposes a **plan**, listed step by step, which you **Approve** or **Discard**.
+It proposes a **plan**, which you **Approve** or **Discard**.
+The plan lists every change under the document or lexicon it lands in; each word is a link to its place in the editor, so a change can be checked before it is approved.
 Approved changes are written under your own account and marked as machine-made, in violet, until you confirm them like any other proposal.
 Tick **Record as human-made** before approving to record them as your own work instead, with no machine marking.
 Reading needs Reader access, and applying a plan needs Writer.
+
+A reply is written into the conversation as it arrives, and it lands whether or not the page stays open: leave the tab, reload, or close the browser, and the answer is there when the conversation is next opened.
+A conversation that is still being answered says so in the list, and opening it picks the answer up as it comes.
+**Stop** ends a turn early.
 Conversations are private to you, kept per project, and can be downloaded or copied as Markdown.
+The tab opens on a new conversation; the list on the left holds the earlier ones, and each has its own link.
 
 The assistant is a service that your server's operator runs and picks the model for (`plaid-igt-agent`, installed from PyPI).
 The tab says so when none is connected.

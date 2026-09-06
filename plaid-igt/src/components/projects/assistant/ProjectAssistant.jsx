@@ -25,6 +25,7 @@ import {
   FileDown,
   ExternalLink,
 } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { TASKS, filterServicesByTask } from '@larc-iu/plaid-client';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -87,6 +88,10 @@ import {
 // request is gone (the server restarted, or it expired), the record is
 // settled here instead.
 //
+// The URL names the conversation (`?tab=assistant&conversation=<id>`): the
+// sidebar's rows are links to it, so a conversation can be shared, opened in
+// a new tab, and backed out of. No conversation in the URL is a new one.
+//
 // The assistant never writes during a turn; a turn that would change data
 // comes back with a plan, shown as a list of concrete changes with Approve /
 // Discard. Approving submits the plan's id back; the service applies it under
@@ -100,6 +105,7 @@ const TITLE_MAX = 60;
 const metaKey = (projectId, id) => `igt:assistant:${projectId}:meta:${id}`;
 const convKey = (projectId, id) => `igt:assistant:${projectId}:conv:${id}`;
 const metaPrefix = (projectId) => `igt:assistant:${projectId}:meta:`;
+const convHref = (projectId, id) => `/projects/${projectId}?tab=assistant&conversation=${id}`;
 
 // A UUID: request ids must be one (the server checks), and conversation ids
 // share the generator.
@@ -228,12 +234,15 @@ const settle = (conv, index, status, note) => ({
 const dropUnanswered = (conv) =>
   conv.messages.at(-1)?.role === 'user' ? conv.messages.slice(0, -1) : conv.messages;
 
+// A progress event carries the reply text written so far (`text`), whole
+// each time; the step list keeps only what the assistant did between them.
 const progressOf = (j) => (p) => {
   const msg = p?.message || '';
   j.progress = msg;
+  if (typeof p?.text === 'string') j.partial = p.text;
   if (
     msg &&
-    !/^(Thinking|Done|Planning|Applying)/.test(msg) &&
+    !/^(Thinking|Done|Planning|Planned|Applying|Writing)/.test(msg) &&
     j.steps[j.steps.length - 1] !== msg
   ) {
     j.steps = [...j.steps, msg];
@@ -310,6 +319,8 @@ const finishJob = async (j, client, userId, projectId, service) => {
 const newJob = (fields) => ({
   controller: new AbortController(),
   steps: [],
+  partial: '',
+
   stopping: false,
   stopped: false,
   error: null,
@@ -524,14 +535,32 @@ export const ProjectAssistant = ({
   // --- conversations ----------------------------------------------------
   const [convs, setConvs] = useState([]); // sidebar metas, newest first
   const [loadingList, setLoadingList] = useState(true);
-  const [active, setActive] = useState(null); // {id, messages, display, draft?}
+  const [active, setActive] = useState(newConversation); // {id, messages, display, draft?}
   const [opening, setOpening] = useState(null); // id being fetched
+  // Which conversation the URL names, if any.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlConv = searchParams.get('conversation');
+  const setUrlConv = useCallback(
+    (id, options) =>
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        if (id) next.set('conversation', id);
+        else next.delete('conversation');
+        return next;
+      }, options),
+    [setSearchParams],
+  );
+  const urlConvRef = useRef(urlConv);
+  urlConvRef.current = urlConv;
+  const setUrlConvRef = useRef(setUrlConv);
+  setUrlConvRef.current = setUrlConv;
 
   // --- the job in flight for the shown conversation ----------------------
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(null); // null | 'turn' | 'apply'
   const [progress, setProgress] = useState('');
   const [liveSteps, setLiveSteps] = useState([]); // progress messages so far
+  const [partial, setPartial] = useState(''); // the reply so far, while it is written
   const [stopping, setStopping] = useState(false);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
@@ -617,12 +646,14 @@ export const ProjectAssistant = ({
     setBusy(j.kind);
     setProgress(j.progress);
     setLiveSteps(j.steps);
+    setPartial(j.partial || '');
     setStopping(!!j.stopping);
   };
   const clearJob = () => {
     setBusy(null);
     setProgress('');
     setLiveSteps([]);
+    setPartial('');
     setStopping(false);
   };
 
@@ -652,6 +683,8 @@ export const ProjectAssistant = ({
       } catch (e) {
         if (seq === openSeq.current) {
           notifyError(humanizeError(e, 'That conversation could not be opened.'));
+          // A link to a conversation that is gone: back to a new one.
+          if (urlConvRef.current === id) setUrlConvRef.current(null, { replace: true });
         }
       } finally {
         if (seq === openSeq.current) setOpening(null);
@@ -662,22 +695,27 @@ export const ProjectAssistant = ({
   const openRef = useRef(open);
   openRef.current = open;
 
+  // The URL names the conversation: opening one from the sidebar, a shared
+  // link, and the browser's back button all arrive here. No conversation in
+  // the URL is a new one.
+  useEffect(() => {
+    if (urlConv) {
+      if (urlConv !== activeRef.current?.id) openRef.current(urlConv);
+    } else if (activeRef.current && !activeRef.current.draft) {
+      openSeq.current++;
+      setActive(newConversation());
+    }
+  }, [urlConv]);
+
   // On mount: a new conversation, the way a chat app opens; the sidebar has
   // the rest. Within one page session, coming back to the tab returns to the
-  // conversation that was open when it was left.
+  // conversation that was open when it was left (the tab links drop the
+  // conversation from the URL, so it is put back).
   useEffect(() => {
-    let cancelled = false;
-    const seq = ++openSeq.current;
-    setActive(newConversation());
     const remembered = lastOpen.get(projectId);
-    loadList().then((metas) => {
-      if (cancelled || seq !== openSeq.current || !remembered) return;
-      if (jobFor(remembered) || metas.some((m) => m.id === remembered)) {
-        openRef.current(remembered);
-      }
-    });
+    if (!urlConvRef.current && remembered) setUrlConvRef.current(remembered, { replace: true });
+    loadList();
     return () => {
-      cancelled = true;
       const a = activeRef.current;
       if (a && !a.draft) lastOpen.set(projectId, a.id);
       else lastOpen.delete(projectId);
@@ -750,7 +788,11 @@ export const ProjectAssistant = ({
         client.userData.delete(userId, metaKey(projectId, id)),
       ]);
       setConvs((prev) => prev.filter((m) => m.id !== id));
-      if (activeRef.current?.id === id) setActive(newConversation());
+      if (activeRef.current?.id === id) {
+        openSeq.current++;
+        setActive(newConversation());
+        setUrlConv(null, { replace: true });
+      }
     } catch (e) {
       notifyError(humanizeError(e, 'The conversation could not be deleted.'));
     }
@@ -763,6 +805,7 @@ export const ProjectAssistant = ({
       setActive(newConversation());
       setInput('');
     }
+    if (urlConvRef.current) setUrlConv(null);
     inputRef.current?.focus();
   };
 
@@ -789,6 +832,7 @@ export const ProjectAssistant = ({
     openSeq.current++; // sending settles which conversation is open
     activeRef.current = conv;
     setActive(conv);
+    if (urlConvRef.current !== conv.id) setUrlConv(conv.id, { replace: true });
     setConvs(upsert(buildMeta(prevMeta, conv, service)));
     showJob(startTurn({ client, userId, projectId, service, conv, prevMeta }));
   };
@@ -893,26 +937,15 @@ export const ProjectAssistant = ({
                   active?.id === m.id ? 'bg-accent text-accent-foreground' : 'hover:bg-muted',
                 )}
               >
-                <button
-                  type="button"
-                  onClick={() => open(m.id)}
-                  disabled={m.draft}
-                  className="min-w-0 flex-1 text-left"
-                >
-                  <div className="flex items-center gap-1.5">
-                    <MessageSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    <span className={cn('truncate', m.draft && 'italic')}>
-                      {m.title || 'Untitled'}
-                    </span>
+                {m.draft ? (
+                  <div className="min-w-0 flex-1 text-left">
+                    <ConversationRow m={m} opening={opening} />
                   </div>
-                  <div className="pl-5 text-[11px] text-muted-foreground">
-                    {m.draft
-                      ? 'Nothing sent yet'
-                      : (opening === m.id ? 'Opening…' : timeAgo(m.updatedAt)) +
-                        (m.model ? ` · ${m.model.split('/').pop()}` : '') +
-                        (m.pending && !jobFor(m.id) ? ' · unfinished' : '')}
-                  </div>
-                </button>
+                ) : (
+                  <Link to={convHref(projectId, m.id)} className="min-w-0 flex-1 text-left">
+                    <ConversationRow m={m} opening={opening} />
+                  </Link>
+                )}
                 {!m.draft && (
                   <button
                     type="button"
@@ -1051,6 +1084,16 @@ export const ProjectAssistant = ({
                 </Button>
               </div>
             )}
+            {busy === 'turn' && partial && (
+              <div className="flex gap-3">
+                <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted">
+                  <Bot className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <AssistantMarkdown>{partial}</AssistantMarkdown>
+                </div>
+              </div>
+            )}
             {busy && (
               <div className="flex flex-col gap-1 text-sm text-muted-foreground">
                 {liveSteps.map((m, i) => (
@@ -1134,6 +1177,24 @@ export const ProjectAssistant = ({
     </div>
   );
 };
+
+// One sidebar entry: the title, when it was last written, which model, and
+// whether work was left unfinished.
+const ConversationRow = ({ m, opening }) => (
+  <>
+    <div className="flex items-center gap-1.5">
+      <MessageSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+      <span className={cn('truncate', m.draft && 'italic')}>{m.title || 'Untitled'}</span>
+    </div>
+    <div className="pl-5 text-[11px] text-muted-foreground">
+      {m.draft
+        ? 'Nothing sent yet'
+        : (opening === m.id ? 'Opening…' : timeAgo(m.updatedAt)) +
+          (m.model ? ` · ${m.model.split('/').pop()}` : '') +
+          (m.pending && !jobFor(m.id) ? ' · unfinished' : '')}
+    </div>
+  </>
+);
 
 // Which assistant a new conversation talks to. Shown only where there is a
 // choice to make: more than one online, and a conversation not yet bound to
