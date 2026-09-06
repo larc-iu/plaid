@@ -221,6 +221,19 @@ Each entry is one action as you performed it (for example "Update upos", "Create
 Selecting an entry shows the document as it was right after that action. Entries made of several changes have an arrow you can expand to see, and select, each individual change.
 Historical views are **read-only**. Return to the latest state to resume editing.
 
+=== Restoring an earlier state
+
+Maintainers can put a document back the way it was.
+While viewing a historical state, choose **Restore to This State**.
+Before anything is written, the dialog lists what would change: sentences, tokens, words, annotations in each field, and dependency relations.
+
+Restoring is one entry in the history, so the state from just before it stays available.
+The toast that confirms a restore also offers **Undo** for fifteen seconds.
+
+Whatever was deleted since the chosen moment comes back under its original identity, so comments attached to it stay attached.
+Two things cannot come back: annotations whose layer has since been deleted, and links to vocabulary entries that no longer exist.
+The dialog names these before you commit, and the toast repeats them afterwards.
+
 == Sharing and Permissions
 
 Projects are shared by adding members with a role:

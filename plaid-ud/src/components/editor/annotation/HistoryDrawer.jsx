@@ -26,6 +26,8 @@ export const HistoryDrawer = ({
   loading,
   onSelectEntry,
   selectedEntry,
+  canRestore = false,
+  onRestore,
 }) => {
   const [expandedGroups, setExpandedGroups] = useState(() => new Set());
 
@@ -209,9 +211,16 @@ export const HistoryDrawer = ({
               <Text size="xs" c="blue.7">
                 {fullTimestamp(selectedEntry.time)}
               </Text>
-              <Button size="xs" mt="xs" onClick={() => onSelectEntry(null)}>
-                Return to Current State
-              </Button>
+              <Group gap="xs" mt="xs">
+                <Button size="xs" onClick={() => onSelectEntry(null)}>
+                  Return to Current State
+                </Button>
+                {canRestore && (
+                  <Button size="xs" variant="light" onClick={() => onRestore(selectedEntry)}>
+                    Restore to This State
+                  </Button>
+                )}
+              </Group>
             </Box>
           )}
         </Drawer.Body>

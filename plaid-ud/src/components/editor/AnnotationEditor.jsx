@@ -9,6 +9,7 @@ import { useSentenceData } from './hooks/useSentenceData.js';
 import { useDocumentHistory } from './hooks/useDocumentHistory.js';
 import { useDocumentEditor } from './useDocumentEditor.js';
 import { HistoryDrawer } from './annotation/HistoryDrawer.jsx';
+import { RestoreDialog } from './annotation/RestoreDialog.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { notifications } from '@mantine/notifications';
 import { formatFindingsForClipboard } from '../../domain/validate.js';
@@ -111,6 +112,8 @@ export const AnnotationEditor = () => {
   const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState(false);
   const [selectedHistoryEntry, setSelectedHistoryEntry] = useState(null);
   const [viewingHistoricalState, setViewingHistoricalState] = useState(false);
+  // The history entry a restore is being confirmed for.
+  const [restoreEntry, setRestoreEntry] = useState(null);
 
   const { getClient, user } = useAuth();
   // Reconcile-on-open is a WRITE (it can seed syntactic-words + delete
@@ -386,6 +389,14 @@ export const AnnotationEditor = () => {
     }
   };
 
+  // After a restore (or an undo of one) the live document has changed under
+  // us and the history has a new entry. Leave the historical view, then reload
+  // both. Called from the toast's Undo too, long after the dialog has closed.
+  const handleRestored = async () => {
+    if (selectedHistoryEntry) await handleSelectHistoryEntry(null);
+    await Promise.all([reload(), fetchAuditLog()]);
+  };
+
   const hasText = !viewingHistoricalState && Boolean(activeDocument?.textLayers?.[0]?.text);
 
   // Single shared toolbar: History on the left; everything NLP lives in one
@@ -478,6 +489,18 @@ export const AnnotationEditor = () => {
         loading={loadingAudit}
         onSelectEntry={handleSelectHistoryEntry}
         selectedEntry={selectedHistoryEntry}
+        canRestore={canManageProject(project, user)}
+        onRestore={setRestoreEntry}
+      />
+
+      <RestoreDialog
+        opened={!!restoreEntry}
+        onClose={() => setRestoreEntry(null)}
+        client={getClient()}
+        documentId={documentId}
+        raw={doc?.raw}
+        entry={restoreEntry}
+        onRestored={handleRestored}
       />
 
       {/* Main content area - pushed right (not overlaid) when the drawer is open */}
