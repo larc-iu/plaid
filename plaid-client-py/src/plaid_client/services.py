@@ -343,12 +343,14 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
                 with cancels_lock:
                     cancels.pop(req_id, None)
 
-            def progress(self, percent, msg=''):
-                """Send a progress update for the in-flight request."""
+            def progress(self, percent, msg='', **extra):
+                """Send a progress update for the in-flight request. Extra
+                keyword fields ride in the progress payload (a chat service
+                sends the reply text so far as ``text=``)."""
                 try:
                     _report_event(client, project_id, req_id,
                                   {'status': 'progress',
-                                   'progress': {'percent': percent, 'message': msg}})
+                                   'progress': {'percent': percent, 'message': msg, **extra}})
                 except Exception:
                     logger.warning('Failed to send progress update')
 

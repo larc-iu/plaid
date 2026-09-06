@@ -154,8 +154,10 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
       get cancelled() {
         return cancelled.get(requestId) === true;
       },
-      progress: (percent, msg) =>
-        reportEvent(requestId, { status: 'progress', progress: { percent, message: msg } }),
+      // Extra fields ride in the progress payload (a chat service sends the
+      // reply text so far as `text`).
+      progress: (percent, msg, extra) =>
+        reportEvent(requestId, { status: 'progress', progress: { percent, message: msg, ...extra } }),
       complete: (data) => {
         finished();
         return reportEvent(requestId, { status: 'completed', data });

@@ -126,9 +126,14 @@ test('a served request sees who asked and whether a stop was requested', async (
     onEvent('service_cancel', { requestId: 'r1' });
     assert.equal(helper.cancelled, true);
     onEvent('service_cancel', { requestId: 'other' }); // unknown ids are ignored
+    await helper.progress(10, 'Writing…', { text: 'Hel' });
     await helper.complete({ done: true });
     assert.equal(reported[0].path, '/api/v1/projects/p1/service-requests/r1/events');
-    assert.deepEqual(reported[0].body, { status: 'completed', data: { done: true } });
+    assert.deepEqual(reported[0].body, {
+      status: 'progress',
+      progress: { percent: 10, message: 'Writing…', text: 'Hel' },
+    });
+    assert.deepEqual(reported[1].body, { status: 'completed', data: { done: true } });
   } finally {
     registration.stop();
   }
