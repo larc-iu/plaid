@@ -4,6 +4,7 @@ import {
   PROV, PROV_STATES, PROV_CONFIRMED, stampInferred, confirmedInferred, stampContributed,
   provState, provOrigin, isMachine, isProtected, needsReview, verifyOnEdit, contributeOnEdit,
   mergeMetadata, serviceSource, userSource,
+  REVIEW_KEY, readReview, projectRole, isReviewed, withReviewedUser, writerPolicy,
 } from '../src/provenance.js';
 
 const CONTRIBUTED = { prov: 'contributed', provSource: 'user:ann@x.com' };
@@ -131,4 +132,81 @@ test('mergeMetadata deletes null-valued keys and leaves the input alone', () => 
 
 test('serviceSource builds the canonical producer id', () => {
   assert.equal(serviceSource('tok:nltk-punkt-tokenizer'), 'service:tok:nltk-punkt-tokenizer');
+});
+
+// ---- review norm + writer policy ----
+
+const PROJECT = (review) => ({
+  id: 'p', maintainers: ['lead@x.com'], writers: ['ann@x.com'], readers: ['bob@x.com'],
+  config: review ? { plaid: { [REVIEW_KEY]: review } } : {},
+});
+
+test('readReview normalizes absent, partial and junk lists', () => {
+  assert.deepEqual(readReview(undefined), { users: [], roles: [] });
+  assert.deepEqual(readReview({ plaid: {} }), { users: [], roles: [] });
+  assert.deepEqual(readReview({ plaid: { review: { users: ['a', 3, null] } } }), { users: ['a'], roles: [] });
+  assert.deepEqual(readReview({ plaid: { review: { roles: ['writer'], users: 'x' } } }), { users: [], roles: ['writer'] });
+});
+
+test('projectRole reads the ACL lists; an implicit admin is a maintainer', () => {
+  const p = PROJECT(null);
+  assert.equal(projectRole(p, 'lead@x.com'), 'maintainer');
+  assert.equal(projectRole(p, 'ann@x.com'), 'writer');
+  assert.equal(projectRole(p, 'bob@x.com'), 'reader');
+  assert.equal(projectRole(p, 'root@x.com'), null);
+  assert.equal(projectRole(p, 'root@x.com', { isAdmin: true }), 'maintainer');
+  assert.equal(projectRole(p, 'ann@x.com', { isAdmin: true }), 'writer');
+});
+
+test('isReviewed: named people, or whole roles, whatever the ACL says', () => {
+  assert.equal(isReviewed(PROJECT(null), 'ann@x.com'), false);
+  assert.equal(isReviewed(PROJECT({ users: ['ann@x.com'] }), 'ann@x.com'), true);
+  assert.equal(isReviewed(PROJECT({ users: ['ann@x.com'] }), 'lead@x.com'), false);
+  // a maintainer can be reviewed, and a writer need not be
+  assert.equal(isReviewed(PROJECT({ users: ['lead@x.com'] }), 'lead@x.com'), true);
+  assert.equal(isReviewed(PROJECT({ roles: ['writer'] }), 'ann@x.com'), true);
+  assert.equal(isReviewed(PROJECT({ roles: ['writer'] }), 'lead@x.com'), false);
+  assert.equal(isReviewed(PROJECT({ roles: ['maintainer'] }), 'root@x.com', { isAdmin: true }), true);
+  assert.equal(isReviewed(null, 'ann@x.com'), false);
+  assert.equal(isReviewed(PROJECT({ users: ['ann@x.com'] }), null), false);
+});
+
+test('withReviewedUser edits users only and is pure', () => {
+  const r = { users: ['ann@x.com'], roles: ['writer'] };
+  assert.deepEqual(withReviewedUser(r, 'bob@x.com', true), { users: ['ann@x.com', 'bob@x.com'], roles: ['writer'] });
+  assert.deepEqual(withReviewedUser(r, 'ann@x.com', false), { users: [], roles: ['writer'] });
+  assert.deepEqual(withReviewedUser(r, 'ann@x.com', true), { users: ['ann@x.com'], roles: ['writer'] });
+  assert.deepEqual(withReviewedUser(undefined, 'ann@x.com', true), { users: ['ann@x.com'], roles: [] });
+  assert.deepEqual(r, { users: ['ann@x.com'], roles: ['writer'] });
+});
+
+test('writerPolicy for a verifier: plain writes, confirms what needs review', () => {
+  const w = writerPolicy(null);
+  assert.equal(w.isContributor, false);
+  assert.equal(w.createStamp, null);
+  assert.equal(w.editStamp(null), null);
+  assert.deepEqual(w.editStamp(stampInferred('x')), PROV_CONFIRMED);
+  assert.deepEqual(w.editStamp(CONTRIBUTED), PROV_CONFIRMED);
+  assert.deepEqual(w.confirmStamp(CONTRIBUTED), PROV_CONFIRMED);
+  assert.equal(w.confirmStamp(confirmedInferred('x')), null);
+  assert.equal(w.reviewable(CONTRIBUTED), true);
+  assert.equal(w.reviewableState('contributed'), true);
+  assert.deepEqual(w.adoptStamp('gloss:precedent', { value: 'cat' }),
+    { prov: 'inferred', provSource: 'gloss:precedent', provConfirmed: true, provDetail: { value: 'cat' } });
+});
+
+test('writerPolicy for a contributor: everything contributed, reviews machine only', () => {
+  const w = writerPolicy('ann@x.com');
+  assert.equal(w.isContributor, true);
+  assert.deepEqual(w.createStamp, CONTRIBUTED);
+  assert.deepEqual(w.editStamp(null), { ...CONTRIBUTED, provConfirmed: null });
+  assert.deepEqual(w.editStamp(confirmedInferred('x')), { ...CONTRIBUTED, provConfirmed: null });
+  assert.deepEqual(w.confirmStamp(stampInferred('x')), { ...CONTRIBUTED, provConfirmed: null });
+  assert.equal(w.confirmStamp(CONTRIBUTED), null);
+  assert.equal(w.confirmStamp(null), null);
+  assert.equal(w.reviewable(stampInferred('x')), true);
+  assert.equal(w.reviewable(CONTRIBUTED), false);
+  assert.equal(w.reviewableState('contributed'), false);
+  assert.deepEqual(w.adoptStamp('gloss:precedent', { value: 'cat' }),
+    { ...CONTRIBUTED, provDetail: { value: 'cat', guess: 'gloss:precedent' } });
 });

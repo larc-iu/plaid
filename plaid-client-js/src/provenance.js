@@ -30,9 +30,23 @@
  *      the edit also stamps { provConfirmed: true } (see verifyOnEdit).
  *      A contributor's edit of anything marks it contributed: the edit
  *      merges stampContributed(userId) and drops any earlier confirmation
- *      (see contributeOnEdit). Who is a contributor is the app's call
- *      (Plaid IGT: a project writer, when the project reviews writers'
- *      work); a service running as a contributor should stamp likewise.
+ *      (see contributeOnEdit). Who is a contributor is the PROJECT's call,
+ *      recorded once for every app (see "Review" below); a service running
+ *      as a contributor should stamp likewise.
+ *
+ * REVIEW: which people are contributors. A project records it under the
+ * reserved `plaid` config namespace, so every app that writes on a person's
+ * behalf reads the same answer:
+ *
+ *   config.plaid.review = { users: [userId, ...], roles: ['writer', ...] }
+ *
+ * `users` names people whose work is reviewed whatever their role; `roles`
+ * names whole project roles ('reader' | 'writer' | 'maintainer'; an admin
+ * without an explicit role counts as a maintainer). Either may be absent.
+ * Nothing here grants or denies access: the ACL lists stay the permission
+ * model, and this only says whose work needs a verifier's look. Apps expose
+ * it as a per-member mark on their access screens (readReview, isReviewed,
+ * withReviewedUser) and derive the writer's policy from it (writerPolicy).
  *
  * Producer naming: 'service:<serviceId>' for services (use serviceSource),
  * 'rule:<name>' for built-in rule algorithms, 'user:<userId>' for a
@@ -228,3 +242,130 @@ export const serviceSource = (serviceId) => `service:${serviceId}`;
 
 /** Canonical provSource for a contributor: 'user:<userId>'. */
 export const userSource = (userId) => `user:${userId}`;
+
+// ---- review: whose work is reviewed (a project-config norm) ----
+
+/** The config key, under the `plaid` namespace, holding the review lists. */
+export const REVIEW_KEY = 'review';
+
+/** The project roles a review list may name. */
+export const PROJECT_ROLES = Object.freeze(['reader', 'writer', 'maintainer']);
+
+/**
+ * The project's review lists, normalized: { users: string[], roles: string[] }.
+ * @param {Object|null|undefined} config - a project's `config`
+ */
+export const readReview = (config) => {
+  const raw = config?.plaid?.[REVIEW_KEY];
+  const list = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []);
+  return { users: list(raw?.users), roles: list(raw?.roles) };
+};
+
+/**
+ * A person's role in a project from its ACL lists: 'maintainer' | 'writer' |
+ * 'reader' | null. An admin with no explicit entry is a maintainer, as the
+ * permission model treats them.
+ * @param {Object} project - with `maintainers`, `writers`, `readers`
+ * @param {string} userId
+ * @param {Object} [opts]
+ * @param {boolean} [opts.isAdmin]
+ */
+export const projectRole = (project, userId, { isAdmin = false } = {}) => {
+  const inList = (l) => Array.isArray(l) && userId != null && l.includes(userId);
+  if (inList(project?.maintainers)) return 'maintainer';
+  if (inList(project?.writers)) return 'writer';
+  if (inList(project?.readers)) return 'reader';
+  return isAdmin ? 'maintainer' : null;
+};
+
+/**
+ * Whether this person's work is reviewed in this project: named in
+ * review.users, or holding a role named in review.roles.
+ */
+export const isReviewed = (project, userId, { isAdmin = false } = {}) => {
+  if (!project || userId == null) return false;
+  const { users, roles } = readReview(project.config);
+  if (users.includes(userId)) return true;
+  const role = projectRole(project, userId, { isAdmin });
+  return role != null && roles.includes(role);
+};
+
+/**
+ * The review lists with one person added to or removed from `users`
+ * (`roles` untouched). Pure; write the result with
+ * projects.setConfig(id, 'plaid', REVIEW_KEY, next).
+ */
+export const withReviewedUser = (review, userId, reviewed) => {
+  const { users, roles } = readReview({ plaid: { [REVIEW_KEY]: review } });
+  const next = users.filter((u) => u !== userId);
+  if (reviewed) next.push(userId);
+  return { users: next, roles };
+};
+
+// ---- the writer's policy: what a person's writes carry ----
+
+/**
+ * What one writer's writes carry and what their review gestures act on,
+ * given who they are: `contributorId` is their user id when their work is
+ * reviewed (isReviewed), else null for a verifier. Apps derive this once per
+ * document and route every human write through it, so the convention's
+ * rule 3 has one implementation.
+ *
+ * @param {string|null} contributorId
+ * @returns {{
+ *   contributorId: string|null,
+ *   isContributor: boolean,
+ *   createStamp: Object|null,
+ *   editStamp: (metadata: Object) => Object|null,
+ *   confirmStamp: (metadata: Object) => Object|null,
+ *   adoptStamp: (source: string, detail?: Object) => Object,
+ *   reviewable: (metadata: Object) => boolean,
+ *   reviewableState: (state: string) => boolean,
+ * }}
+ */
+export const writerPolicy = (contributorId = null) => {
+  const id = contributorId || null;
+  const contributor = id != null;
+  // Material this writer's review gestures act on: a verifier reviews
+  // machine and contributed material; a contributor reviews machine
+  // proposals only, since their own vouching is itself a contribution.
+  const reviewable = (metadata) => (contributor ? isMachine(metadata) : needsReview(metadata));
+  const reviewableState = (state) =>
+    contributor
+      ? state === PROV_STATES.MACHINE
+      : state === PROV_STATES.MACHINE || state === PROV_STATES.CONTRIBUTED;
+  return Object.freeze({
+    contributorId: id,
+    isContributor: contributor,
+    /** The metadata a NEW entity carries: null for a verifier. */
+    createStamp: contributor ? stampContributed(id) : null,
+    /**
+     * The fragment an EDIT merges over the entity's metadata, or null when
+     * there is nothing to merge: a verifier confirms what needs review; a
+     * contributor's edit marks the entity contributed, dropping any earlier
+     * confirmation.
+     */
+    editStamp: (metadata) => (contributor ? contributeOnEdit(metadata, id) : verifyOnEdit(metadata)),
+    /**
+     * The fragment an explicit confirm gesture merges, or null when there is
+     * nothing for this writer to confirm: PROV_CONFIRMED for a verifier, the
+     * contributed stamp for a contributor accepting a machine proposal.
+     */
+    confirmStamp: (metadata) => {
+      if (!reviewable(metadata)) return null;
+      return contributor ? contributeOnEdit(metadata, id) : PROV_CONFIRMED;
+    },
+    /**
+     * What an adopted suggestion is written with (a guess or a picked value
+     * into an empty cell): born-verified with the suggestion's producer as
+     * its source for a verifier; contributed for a contributor, with the
+     * producer kept as provDetail.guess. `detail` is the prediction extras.
+     */
+    adoptStamp: (source, detail) =>
+      contributor
+        ? { ...stampContributed(id), [PROV.detailKey]: { ...(detail || {}), guess: source } }
+        : confirmedInferred(source, { detail }),
+    reviewable,
+    reviewableState,
+  });
+};

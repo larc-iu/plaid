@@ -1220,8 +1220,20 @@ Together they put every entity in one of four states.
 
 `provSource` names the producer: `service:<serviceId>` for services, `rule:<name>` for built-in rule algorithms, `user:<userId>` for a contributor, or an app-specific id such as `gloss:doc-frequency` or `flex-import`.
 The presence of the `prov` key is what marks an entity as somebody's proposal; any value other than `contributed` reads as machine-made.
-Who counts as a contributor is each app's decision: Plaid IGT treats a project's writers as contributors when the project's Access settings say writers' work is reviewed, and maintainers as verifiers.
 The keys are deliberately flat scalars, which the query system's metadata filters match well, so questions like "show me every unverified machine annotation in this document" are ordinary queries.
+
+Who counts as a contributor is the **project's** decision, recorded once for every app under the reserved `plaid` config namespace:
+
+[source,json]
+----
+"config": { "plaid": { "review": { "users": ["ann@example.org"], "roles": ["writer"] } } }
+----
+
+`users` names people whose work is reviewed whatever their access level, and `roles` names whole project roles (`reader`, `writer`, `maintainer`; an admin without an explicit role counts as a maintainer).
+Either list may be absent, and an absent `review` means nobody is reviewed.
+This is deliberately separate from the permission model: the maintainer, writer and reader lists say what a person may do, and the review lists say whose work needs a verifier's look, so a trusted collaborator can be a writer without a mark and a student can be a maintainer with one.
+Every Plaid app that writes on a person's behalf consults it (Plaid IGT and Plaid UD show it as a per-member checkbox on their access screens), and an app for a setting where all writers are contributors need only set `roles` to `["writer"]` when it creates a project.
+Both clients ship `readReview`, `isReviewed`, `projectRole` and `withReviewedUser` (Python: `read_review`, `is_reviewed`, `project_role`, `with_reviewed_user`) for reading and editing it, and `writerPolicy(contributorId)` / `WriterPolicy(contributor_id)`, which turns "is this person a contributor" into the stamps their creates, edits and confirmations carry and the material their review gestures act on, so rule 3 below has one implementation across apps.
 
 A producer may also record **prediction extras**—how confident it was, and what else it considered—in two further reserved slots, split along the queryability line:
 

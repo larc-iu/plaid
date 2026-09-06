@@ -16,6 +16,7 @@ from plaid_client.provenance import (
     stamp_inferred, confirmed_inferred, stamp_contributed, prov_state, prov_origin,
     is_protected, needs_review, verify_on_edit, contribute_on_edit, merge_metadata,
     service_source, user_source,
+    REVIEW_KEY, read_review, project_role, is_reviewed, with_reviewed_user, WriterPolicy,
 )
 
 CONTRIB = {'prov': 'contributed', 'provSource': 'user:ann@x.com'}
@@ -83,3 +84,60 @@ def test_merge_metadata_deletes_none_valued_keys_and_leaves_the_input_alone():
     assert merge_metadata(m, {'a': None, 'c': 3}) == {'b': 2, 'c': 3}
     assert m == {'a': 1, 'b': 2}
     assert merge_metadata(None, None) == {}
+
+
+# --- review norm + writer policy --------------------------------------------------
+
+def _project(review=None):
+    return {'id': 'p', 'maintainers': ['lead@x.com'], 'writers': ['ann@x.com'], 'readers': ['bob@x.com'],
+            'config': {'plaid': {REVIEW_KEY: review}} if review else {}}
+
+
+def test_read_review_normalizes():
+    assert read_review(None) == {'users': [], 'roles': []}
+    assert read_review({'plaid': {}}) == {'users': [], 'roles': []}
+    assert read_review({'plaid': {'review': {'users': ['a', 3, None]}}}) == {'users': ['a'], 'roles': []}
+    assert read_review({'plaid': {'review': {'roles': ['writer'], 'users': 'x'}}}) == {'users': [], 'roles': ['writer']}
+
+
+def test_project_role_and_is_reviewed():
+    p = _project()
+    assert project_role(p, 'lead@x.com') == 'maintainer'
+    assert project_role(p, 'ann@x.com') == 'writer'
+    assert project_role(p, 'bob@x.com') == 'reader'
+    assert project_role(p, 'root@x.com') is None
+    assert project_role(p, 'root@x.com', is_admin=True) == 'maintainer'
+    assert not is_reviewed(p, 'ann@x.com')
+    assert is_reviewed(_project({'users': ['ann@x.com']}), 'ann@x.com')
+    assert is_reviewed(_project({'users': ['lead@x.com']}), 'lead@x.com')
+    assert is_reviewed(_project({'roles': ['writer']}), 'ann@x.com')
+    assert not is_reviewed(_project({'roles': ['writer']}), 'lead@x.com')
+    assert is_reviewed(_project({'roles': ['maintainer']}), 'root@x.com', is_admin=True)
+    assert not is_reviewed(None, 'ann@x.com')
+
+
+def test_with_reviewed_user_is_pure_and_keeps_roles():
+    r = {'users': ['ann@x.com'], 'roles': ['writer']}
+    assert with_reviewed_user(r, 'bob@x.com', True) == {'users': ['ann@x.com', 'bob@x.com'], 'roles': ['writer']}
+    assert with_reviewed_user(r, 'ann@x.com', False) == {'users': [], 'roles': ['writer']}
+    assert with_reviewed_user(None, 'ann@x.com', True) == {'users': ['ann@x.com'], 'roles': []}
+    assert r == {'users': ['ann@x.com'], 'roles': ['writer']}
+
+
+def test_writer_policy():
+    v = WriterPolicy(None)
+    assert not v.is_contributor and v.create_stamp is None
+    assert v.edit_stamp(CONTRIB) == {'provConfirmed': True}
+    assert v.confirm_stamp(stamp_inferred('x')) == {'provConfirmed': True}
+    assert v.confirm_stamp(confirmed_inferred('x')) is None
+    assert v.reviewable(CONTRIB) and v.reviewable_state(CONTRIBUTED_STATE)
+    assert v.adopt_stamp('g', {'value': 'cat'}) == {'prov': 'inferred', 'provSource': 'g', 'provConfirmed': True,
+                                                   'provDetail': {'value': 'cat'}}
+    c = WriterPolicy('ann@x.com')
+    assert c.is_contributor and c.create_stamp == CONTRIB
+    assert c.edit_stamp(confirmed_inferred('x')) == {**CONTRIB, 'provConfirmed': None}
+    assert c.confirm_stamp(stamp_inferred('x')) == {**CONTRIB, 'provConfirmed': None}
+    assert c.confirm_stamp(CONTRIB) is None
+    assert c.reviewable(stamp_inferred('x')) and not c.reviewable(CONTRIB)
+    assert not c.reviewable_state(CONTRIBUTED_STATE)
+    assert c.adopt_stamp('g', {'value': 'cat'}) == {**CONTRIB, 'provDetail': {'value': 'cat', 'guess': 'g'}}

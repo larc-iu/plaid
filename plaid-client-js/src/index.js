@@ -2795,5 +2795,12 @@ export {
   mergeMetadata,
   serviceSource,
   userSource,
+  REVIEW_KEY,
+  PROJECT_ROLES,
+  readReview,
+  projectRole,
+  isReviewed,
+  withReviewedUser,
+  writerPolicy,
 } from "./provenance.js";
 export { MAX_BATCH_OPS };
