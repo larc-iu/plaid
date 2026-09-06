@@ -1,7 +1,7 @@
 // Restore a document to the state selected in the History drawer. The
-// confirm step shows what changes; the restore itself is one operation in
-// the history, and the document is re-read and compared with the target
-// afterwards, so the toast can say whether it landed exactly.
+// server does the work in one operation (documents.restore); the confirm
+// step asks it for a dry run and lists what would change, in the
+// linguist's terms, and the toast that confirms the restore offers Undo.
 
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -19,32 +19,112 @@ import {
   notifyPromise,
   humanizeError,
 } from '@/utils/feedback';
-import { previewRestore, runRestore, latestState } from '@/restore/restoreRunner';
+import { ROLES } from '@larc-iu/plaid-client';
 
 const plural = (n, word, words = `${word}s`) => `${n.toLocaleString()} ${n === 1 ? word : words}`;
 const formatTime = (t) => new Date(t).toLocaleString();
+const changed = (c) => (c?.inserted ?? 0) + (c?.updated ?? 0) + (c?.deleted ?? 0);
+
+const TOKEN_ROLE_WORDS = {
+  [ROLES.SENTENCE]: ['sentence', 'sentences'],
+  [ROLES.WORD]: ['word', 'words'],
+  [ROLES.MORPHEME]: ['morpheme', 'morphemes'],
+  [ROLES.TIME_ALIGNMENT]: ['time alignment', 'time alignments'],
+};
+
+const SKIPPED_WORDS = {
+  text: ['text', 'texts'],
+  token: ['token', 'tokens'],
+  span: ['annotation', 'annotations'],
+  relation: ['relation', 'relations'],
+  'vocab-link': ['vocabulary link', 'vocabulary links'],
+};
+
+// Every layer of the raw document by id, with what to call it.
+const indexLayers = (raw) => {
+  const out = {};
+  for (const tl of raw?.textLayers || []) {
+    for (const tkl of tl.tokenLayers || []) {
+      out[tkl.id] = { name: tkl.name, role: tkl.config?.plaid?.role };
+      for (const sl of tkl.spanLayers || []) {
+        out[sl.id] = { name: sl.name };
+        for (const rl of sl.relationLayers || []) out[rl.id] = { name: rl.name };
+      }
+    }
+  }
+  return out;
+};
 
 // The lines of the confirm step, one per kind of change.
-const changeLines = (s) => {
+const changeLines = (s, layers) => {
   if (!s) return [];
   const lines = [];
   if (s.name) lines.push('The document name');
-  if (s.text) lines.push('The text');
-  if (s.sentences) lines.push(plural(s.sentences, 'sentence boundary', 'sentence boundaries'));
-  if (s.words) lines.push(plural(s.words, 'word'));
-  if (s.morphemes) lines.push(plural(s.morphemes, 'morpheme'));
-  if (s.alignments) lines.push(plural(s.alignments, 'time alignment'));
-  if (s.annotations) lines.push(plural(s.annotations, 'annotation'));
-  if (s.links) lines.push(plural(s.links, 'vocabulary link'));
-  if (s.metadata) lines.push('Metadata');
+  if (changed(s.texts)) lines.push('The text');
+  for (const e of s.tokens?.byLayer || []) {
+    const n = changed(e);
+    if (!n) continue;
+    const layer = layers[e.layerId];
+    const words = TOKEN_ROLE_WORDS[layer?.role];
+    lines.push(
+      words ? plural(n, ...words) : `${plural(n, 'token')} in ${layer?.name ?? 'a layer'}`,
+    );
+  }
+  for (const e of s.spans?.byLayer || []) {
+    const n = changed(e);
+    if (n) lines.push(`${plural(n, 'annotation')} in ${layers[e.layerId]?.name ?? 'a field'}`);
+  }
+  for (const e of s.relations?.byLayer || []) {
+    const n = changed(e);
+    if (n) lines.push(`${plural(n, 'relation')} in ${layers[e.layerId]?.name ?? 'a layer'}`);
+  }
+  if (changed(s.vocabLinks)) lines.push(plural(changed(s.vocabLinks), 'vocabulary link'));
+  if (s.documentMetadata) lines.push('Metadata');
   return lines;
 };
 
-export const RestoreDialog = ({ open, onOpenChange, client, documentId, entry, onRestored }) => {
+const skippedLines = (skipped) =>
+  (skipped || []).map(
+    (k) => `${plural(k.count, ...(SKIPPED_WORDS[k.kind] || ['item', 'items']))} cannot come back.`,
+  );
+
+const historyMessage = (asOf, label) =>
+  `Restore to ${formatTime(asOf)}` + (label ? ` (after “${label}”)` : '');
+
+// A 409 from the restore is the server saying the old state no longer fits
+// a layer as it is now; anything else is the usual story.
+const restoreError = (err, fallback) => {
+  const m = String(err?.message || '');
+  if (/no longer fits/.test(m))
+    return m.replace(/^HTTP \d+\s*/, '').replace(/\s*at\s+https?:\/\/\S+/, '');
+  return humanizeError(err, fallback);
+};
+
+// The document's newest history entry: the moment its live state belongs
+// to and what that entry is called, or null for a document with no history.
+// Read before a restore so the state before it can be brought back.
+const latestState = async (client, documentId) => {
+  const entries = await client.documents.audit(documentId);
+  const last = entries?.[entries.length - 1];
+  if (!last) return null;
+  return {
+    time: last.endTime || last.time,
+    label: last.message || last.ops?.[0]?.description || null,
+  };
+};
+
+export const RestoreDialog = ({
+  open,
+  onOpenChange,
+  client,
+  documentId,
+  doc,
+  entry,
+  onRestored,
+}) => {
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [phase, setPhase] = useState('');
   const asOf = entry?.time ?? null;
   // The toast's Undo fires long after the restore's render, so it reads the
   // latest callback rather than the one it closed over.
@@ -56,19 +136,22 @@ export const RestoreDialog = ({ open, onOpenChange, client, documentId, entry, o
     let cancelled = false;
     setPreview(null);
     setError('');
-    previewRestore({ client, documentId, asOf })
-      .then((p) => {
-        if (!cancelled) setPreview(p);
+    client.documents
+      .restore(documentId, asOf, { dryRun: true })
+      .then((s) => {
+        if (!cancelled) setPreview(s);
       })
       .catch((err) => {
-        if (!cancelled) setError(humanizeError(err, 'That state could not be read.'));
+        if (!cancelled) setError(restoreError(err, 'That state could not be read.'));
       });
     return () => {
       cancelled = true;
     };
   }, [open, asOf, client, documentId]);
 
-  const lines = changeLines(preview?.summary);
+  const layers = indexLayers(doc?.raw);
+  const lines = changeLines(preview, layers);
+  const gaps = skippedLines(preview?.skipped);
   const close = () => {
     if (busy) return;
     onOpenChange(false);
@@ -77,17 +160,21 @@ export const RestoreDialog = ({ open, onOpenChange, client, documentId, entry, o
   // Back to the state from just before the restore: itself a restore, to the
   // history entry that was newest when the restore began.
   const undo = (before) => {
-    const run = runRestore({ client, documentId, asOf: before.time, label: before.label });
+    const run = client.documents.restore(
+      documentId,
+      before.time,
+      {},
+      historyMessage(before.time, before.label),
+    );
     notifyPromise(
       run.finally(() => onRestoredRef.current?.()),
       {
         loading: 'Undoing the restore…',
         success: (res) =>
-          res.exact && res.warnings.length === 0
-            ? 'Back to the state before the restore.'
-            : `Undone with differences. ${res.warnings.join(' ')}`.trim(),
-        error: (err) =>
-          humanizeError(err, 'The undo stopped partway. Restore that state again to finish.'),
+          res?.skipped?.length
+            ? `Back to the state before the restore. ${skippedLines(res.skipped).join(' ')}`
+            : 'Back to the state before the restore.',
+        error: (err) => restoreError(err, 'The undo was not applied.'),
       },
     );
   };
@@ -100,42 +187,25 @@ export const RestoreDialog = ({ open, onOpenChange, client, documentId, entry, o
       const action = before
         ? { action: { label: 'Undo', onClick: () => undo(before) }, duration: 15000 }
         : {};
-      const res = await runRestore({
-        client,
+      const res = await client.documents.restore(
         documentId,
         asOf,
-        label: entry?.label,
-        onProgress: setPhase,
-      });
-      if (res.exact && res.warnings.length === 0) {
-        notifySuccess(`Restored to ${formatTime(asOf)}.`, 'Restored', action);
+        {},
+        historyMessage(asOf, entry?.label),
+      );
+      if (res?.skipped?.length) {
+        notifyWarning(skippedLines(res.skipped).join(' '), 'Restored, with gaps', action);
       } else {
-        notifyWarning(
-          [
-            res.exact
-              ? null
-              : `${plural(res.differences.length, 'difference')} from that state remain.`,
-            ...res.warnings,
-          ]
-            .filter(Boolean)
-            .join(' '),
-          'Restored with differences',
-          action,
-        );
-        if (!res.exact) console.warn('Restore differences:', res.differences);
+        notifySuccess(`Restored to ${formatTime(asOf)}.`, 'Restored', action);
       }
       onOpenChange(false);
       await onRestored?.();
     } catch (err) {
       console.error('Restore failed:', err);
-      notifyError(
-        humanizeError(err, 'The restore stopped partway. Restore again to finish.'),
-        'Restore failed',
-      );
+      notifyError(restoreError(err, 'The restore was not applied.'), 'Restore failed');
       await onRestored?.();
     } finally {
       setBusy(false);
-      setPhase('');
     }
   };
 
@@ -166,13 +236,14 @@ export const RestoreDialog = ({ open, onOpenChange, client, documentId, entry, o
             </ul>
           </div>
         )}
+        {gaps.length > 0 && (
+          <ul className="list-disc pl-5 text-sm text-destructive">
+            {gaps.map((g) => (
+              <li key={g}>{g}</li>
+            ))}
+          </ul>
+        )}
         <DialogFooter>
-          {phase && (
-            <span className="mr-auto flex items-center gap-2 text-sm text-muted-foreground">
-              <span className="h-3 w-3 animate-spin rounded-full border-2 border-muted border-t-primary" />
-              {phase}
-            </span>
-          )}
           <Button variant="outline" onClick={close} disabled={busy}>
             Cancel
           </Button>

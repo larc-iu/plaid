@@ -468,6 +468,7 @@ const DocumentEditor = () => {
         }}
         client={client}
         documentId={documentId}
+        doc={doc}
         entry={restoreEntry}
         onRestored={async () => {
           // Back to the live state, and the history rail shows the restore as
