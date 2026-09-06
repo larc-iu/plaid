@@ -570,3 +570,137 @@ def test_registration_keeps_retrying_for_as_long_as_the_server_is_away():
         assert reg.is_running() and not reg.is_connected()
     finally:
         reg.stop()
+
+
+# --- a request outlives its requester: cancel, requester id, attach ----------
+
+
+class _OpenConnection:
+    ready_state = 1
+    error = None
+
+    def wait_until_settled(self, timeout=None):
+        return 1
+
+    def close(self):
+        pass
+
+
+def _serve_with_capture(handler):
+    """Register a handler through ``serve`` on a fake client and return the
+    channel's event callback plus the events the service reported back."""
+    from plaid_client import services as svc_mod
+    captured = {}
+    reported = []
+
+    class FakeMessages:
+        def listen(self, project_id, on_event, path=None):
+            captured['on_event'] = on_event
+            return _OpenConnection()
+
+        def _request(self, method, path, body=None, **kw):
+            reported.append((method, path, body))
+
+    class FakeClient:
+        messages = FakeMessages()
+
+    reg = svc_mod.serve(FakeClient(), 'p1', {'service_id': 's1', 'service_name': 'S'}, handler)
+    return captured['on_event'], reported, reg
+
+
+def test_served_request_sees_requester_and_cancel():
+    seen = []
+    on_event, reported, reg = _serve_with_capture(lambda data, helper: seen.append((data, helper)))
+    try:
+        on_event('service_request', {'request_id': 'r1', 'requester_id': 'u@x.com',
+                                     'delegated_token': 'tok', 'data': {'q': 1}})
+        (data, helper), = seen
+        assert data == {'q': 1, 'delegated_token': 'tok', 'requester_id': 'u@x.com'}
+        assert helper.request_id == 'r1' and helper.requester_id == 'u@x.com'
+        assert helper.cancelled is False
+        on_event('service_cancel', {'request_id': 'other'})
+        assert helper.cancelled is False
+        on_event('service_cancel', {'request_id': 'r1'})
+        assert helper.cancelled is True
+        helper.complete({'done': True})
+        assert reported == [('POST', '/api/v1/projects/p1/service-requests/r1/events',
+                             {'status': 'completed', 'data': {'done': True}})]
+    finally:
+        reg.stop()
+
+
+def test_request_id_rides_the_url_and_accepted_reaches_the_caller(monkeypatch):
+    from plaid_client import services as svc_mod
+
+    class FakeResponse:
+        status_code = 200
+        ok = True
+        raw = None
+
+        def iter_lines(self, decode_unicode=True):
+            yield 'event: accepted'
+            yield 'data: {"request-id":"abc"}'
+            yield ''
+            yield 'event: progress'
+            yield 'data: {"progress":{"percent":5,"message":"Thinking"}}'
+            yield ''
+            yield 'event: result'
+            yield 'data: {"data":{"kind":"turn"}}'
+            yield ''
+
+        def close(self):
+            pass
+
+    calls = []
+
+    def fake_post(url, **kw):
+        calls.append(('POST', url))
+        return FakeResponse()
+
+    def fake_get(url, **kw):
+        calls.append(('GET', url))
+        return FakeResponse()
+
+    monkeypatch.setattr(svc_mod.requests, 'post', fake_post)
+    monkeypatch.setattr(svc_mod.requests, 'get', fake_get)
+
+    class Client:
+        base_url = 'http://plaid.test'
+        token = 't'
+
+    accepted, progress = [], []
+    out = svc_mod.request_service(Client(), 'p1', 's1', {'a': 1}, timeout=5,
+                                  on_progress=progress.append, request_id='abc',
+                                  on_accepted=accepted.append)
+    assert out == {'kind': 'turn'}
+    assert accepted == ['abc'] and progress == [{'percent': 5, 'message': 'Thinking'}]
+    assert calls[-1] == ('POST', 'http://plaid.test/api/v1/projects/p1/services/s1/requests?request-id=abc')
+
+    out = svc_mod.attach_service_request(Client(), 'p1', 'abc', timeout=5)
+    assert out == {'kind': 'turn'}
+    assert calls[-1] == ('GET', 'http://plaid.test/api/v1/projects/p1/service-requests/abc')
+
+
+def test_attach_to_an_unknown_request_raises_404(monkeypatch):
+    from plaid_client import services as svc_mod
+
+    class Gone:
+        status_code = 404
+        ok = False
+        text = '{"error":"Unknown or expired request"}'
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(svc_mod.requests, 'get', lambda url, **kw: Gone())
+
+    class Client:
+        base_url = 'http://plaid.test'
+        token = 't'
+
+    try:
+        svc_mod.attach_service_request(Client(), 'p1', 'nope', timeout=5)
+    except PlaidAPIError as e:
+        assert e.status == 404
+    else:
+        raise AssertionError('expected a 404')

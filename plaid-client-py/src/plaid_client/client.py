@@ -1727,11 +1727,20 @@ class MessagesResource(_Resource):
             on_status=on_status)
 
     def request_service(self, project_id: str, service_id: str, data: Any,
-                        timeout: float = 10.0, on_progress=None) -> Any:
+                        timeout: float = 10.0, on_progress=None,
+                        request_id: str | None = None, on_accepted=None) -> Any:
         """Request a service to perform work and await its result.
 
         Streams the service's progress + result back over a single
         server-mediated response. Raises if no service is connected.
+
+        The request outlives this call: after a timeout or a dropped
+        connection the service goes on, and :meth:`attach_service_request`
+        collects the result given the request id (``on_accepted`` receives it
+        as soon as the server has taken the request). Pass ``request_id`` (a
+        UUID you mint) to know the id before submitting; submitting an id that
+        names a request you already made rejoins it instead of starting
+        another.
 
         Args:
             project_id: The UUID of the project
@@ -1739,12 +1748,43 @@ class MessagesResource(_Resource):
             data: The request data
             timeout: Timeout in seconds (default: 10.0)
             on_progress: Optional callback invoked with each progress payload
+            request_id: Optional client-minted request id (a UUID)
+            on_accepted: Optional callback invoked with the request id
 
         Returns:
             Service response
         """
         return svc.request_service(
-            self._client, project_id, service_id, data, timeout, on_progress)
+            self._client, project_id, service_id, data, timeout, on_progress,
+            request_id=request_id, on_accepted=on_accepted)
+
+    def attach_service_request(self, project_id: str, request_id: str,
+                               timeout: float = 10.0, on_progress=None) -> Any:
+        """Rejoin a service request made earlier and await its result: the
+        latest progress is replayed, then the result comes, or at once if the
+        request already finished. Only the user who submitted it (or an
+        admin). Raises :class:`PlaidAPIError` with status 404 when the request
+        is unknown or expired (a finished request's result is kept for a
+        while, not forever).
+
+        Args:
+            project_id: The UUID of the project
+            request_id: The request id (from ``on_accepted`` or your own)
+            timeout: Timeout in seconds (default: 10.0)
+            on_progress: Optional callback invoked with each progress payload
+        """
+        return svc.attach_service_request(self._client, project_id, request_id, timeout, on_progress)
+
+    def cancel_service_request(self, project_id: str, request_id: str) -> Any:
+        """Ask the service to stop a request made earlier. The request still
+        ends with whatever the service then reports, on the stream of whoever
+        is awaiting it. 404 if unknown or expired, 409 once finished.
+
+        Args:
+            project_id: The UUID of the project
+            request_id: The request id
+        """
+        return svc.cancel_service_request(self._client, project_id, request_id)
 
 
 class ProjectsResource(_Resource):

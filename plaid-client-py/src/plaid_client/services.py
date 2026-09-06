@@ -14,7 +14,7 @@ import urllib.parse
 
 import requests
 
-from plaid_client.http import short_error
+from plaid_client.http import PlaidAPIError, short_error
 from plaid_client.sse import SSE_CONNECT_TIMEOUT_S, abort_response
 from plaid_client.transforms import transform_request, transform_response
 
@@ -283,11 +283,26 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
     def open_channel():
         return client.messages.listen(project_id, on_event, path=channel_path)
 
+    # The requests this channel is serving, by id, each with the event a
+    # `service_cancel` sets. The handler reads it as ``helper.cancelled``;
+    # whether to stop is the handler's decision (a write under way should
+    # finish), and the request still ends with whatever it reports.
+    cancels = {}
+    cancels_lock = threading.Lock()
+
     def on_event(event_type, event_data):
         if not registration._running:
             return True
-        # The channel only carries `connected` (ignored) and `service_request`.
-        if event_type != 'service_request' or not isinstance(event_data, dict):
+        if not isinstance(event_data, dict):
+            return
+        if event_type == 'service_cancel':
+            with cancels_lock:
+                flag = cancels.get(event_data.get('request_id'))
+            if flag is not None:
+                flag.set()
+            return
+        # Beyond that the channel carries `connected` (ignored) and `service_request`.
+        if event_type != 'service_request':
             return
         req_id = event_data.get('request_id')
         if not req_id:
@@ -296,13 +311,37 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
         # A delegating service (extras ``delegation: True``) gets a short-lived
         # token for the REQUESTING user with each request; surface it beside
         # the payload so the handler can act as that user (BaseService turns it
-        # into ``request_data['requester_client']``).
+        # into ``request_data['requester_client']``). Every service is told
+        # who asked (``requester_id``), delegating or not.
         delegated = event_data.get('delegated_token')
-        if delegated and isinstance(req_data, dict):
-            req_data = {**req_data, 'delegated_token': delegated}
+        requester = event_data.get('requester_id')
+        if isinstance(req_data, dict):
+            req_data = {**req_data,
+                        **({'delegated_token': delegated} if delegated else {}),
+                        **({'requester_id': requester} if requester else {})}
+        cancel_flag = threading.Event()
+        with cancels_lock:
+            cancels[req_id] = cancel_flag
 
         class ResponseHelper:
-            """Helper passed to the request handler for replying."""
+            """Helper passed to the request handler for replying.
+
+            Attributes:
+                request_id: The request being served.
+                requester_id: The user who submitted it.
+                cancelled: True once the requester asked for the request to
+                    stop. A long-running handler polls this between steps.
+            """
+            request_id = req_id
+            requester_id = requester
+
+            @property
+            def cancelled(self):
+                return cancel_flag.is_set()
+
+            def _finished(self):
+                with cancels_lock:
+                    cancels.pop(req_id, None)
 
             def progress(self, percent, msg=''):
                 """Send a progress update for the in-flight request."""
@@ -315,6 +354,7 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
 
             def complete(self, data=None):
                 """Send the final successful result for the request."""
+                self._finished()
                 try:
                     _report_event(client, project_id, req_id,
                                   {'status': 'completed', 'data': data})
@@ -323,6 +363,7 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
 
             def error(self, error):
                 """Send an error response for the request."""
+                self._finished()
                 try:
                     _report_event(client, project_id, req_id,
                                   {'status': 'error', 'data': {'error': str(error)}})
@@ -365,7 +406,8 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
     return registration
 
 
-def request_service(client, project_id, service_id, data, timeout=10.0, on_progress=None):
+def request_service(client, project_id, service_id, data, timeout=10.0, on_progress=None,
+                    request_id=None, on_accepted=None):
     """Submit work to a service and await its result.
 
     Streams the service's progress + result back over a single server-mediated
@@ -374,13 +416,18 @@ def request_service(client, project_id, service_id, data, timeout=10.0, on_progr
     or if the stream ends without a result; ``TimeoutError`` on timeout.
     ``on_progress``, if given, is called with each progress payload
     (``{'percent', 'message'}``).
+
+    The request outlives this call: on a timeout (or a dropped connection)
+    the service goes on, and the result can be collected later with
+    :func:`attach_service_request` given the request id, which
+    ``on_accepted`` receives as soon as the server has taken the request.
+    Pass ``request_id`` (a UUID you mint) to know the id before submitting;
+    submitting an id that names a request you already made rejoins it
+    instead of starting another.
     """
     url = f'{client.base_url}/api/v1/projects/{project_id}/services/{service_id}/requests'
-    headers = {
-        'Authorization': f'Bearer {client.token}',
-        'Content-Type': 'application/json',
-        'Accept': 'text/event-stream',
-    }
+    if request_id:
+        url += '?' + urllib.parse.urlencode({'request-id': request_id})
     # Propagate an open logical operation (client.begin_operation) to the
     # service: its writes then fold under the requester's audit-log entry
     # (BaseService adopts the id around process_request).
@@ -389,7 +436,7 @@ def request_service(client, project_id, service_id, data, timeout=10.0, on_progr
         data = {**data, 'operation_group': {'id': group['id'], 'message': group['message']}}
     body = transform_request(data) if data is not None else None
     try:
-        resp = requests.post(url, headers=headers, json=body, stream=True, timeout=(10, None))
+        resp = requests.post(url, headers=_stream_headers(client), json=body, stream=True, timeout=(10, None))
     except Exception as e:
         raise RuntimeError(f'Failed to submit service request: {e}')
 
@@ -397,14 +444,60 @@ def request_service(client, project_id, service_id, data, timeout=10.0, on_progr
         resp.close()
         raise RuntimeError(f"No live service '{service_id}' on this project")
     if not resp.ok:
-        detail = ''
-        try:
-            detail = resp.text
-        except Exception:
-            pass
+        detail = _response_text(resp)
         resp.close()
         raise RuntimeError(f'Service request failed: HTTP {resp.status_code} {detail}')
+    return _await_stream(resp, timeout, on_progress, on_accepted)
 
+
+def attach_service_request(client, project_id, request_id, timeout=10.0, on_progress=None):
+    """Rejoin a request made earlier (by this user) and await its result:
+    the latest progress is replayed, then the result comes, or at once if the
+    request already finished. Raises :class:`PlaidAPIError` with status 404
+    when the request is unknown or expired (the server keeps a finished
+    request's result for a while, not forever), ``RuntimeError`` if the
+    service reported an error, ``TimeoutError`` on timeout."""
+    url = f'{client.base_url}/api/v1/projects/{project_id}/service-requests/{request_id}'
+    try:
+        resp = requests.get(url, headers=_stream_headers(client), stream=True, timeout=(10, None))
+    except Exception as e:
+        raise RuntimeError(f'Failed to attach to service request: {e}')
+    if not resp.ok:
+        detail = _response_text(resp)
+        status = resp.status_code
+        resp.close()
+        raise PlaidAPIError(f'Attach to service request failed: HTTP {status} {detail}',
+                            status=status, url=url, method='GET')
+    return _await_stream(resp, timeout, on_progress, None)
+
+
+def cancel_service_request(client, project_id, request_id):
+    """Ask the service to stop a request made earlier (by this user). The
+    request still ends with whatever the service then reports, on the stream
+    of whoever is awaiting it. 404 if unknown or expired, 409 once finished."""
+    return client.messages._request(
+        'DELETE', f'/api/v1/projects/{project_id}/service-requests/{request_id}')
+
+
+def _stream_headers(client):
+    return {
+        'Authorization': f'Bearer {client.token}',
+        'Content-Type': 'application/json',
+        'Accept': 'text/event-stream',
+    }
+
+
+def _response_text(resp):
+    try:
+        return resp.text
+    except Exception:
+        return ''
+
+
+def _await_stream(resp, timeout, on_progress, on_accepted):
+    """Read a request stream to its terminal event (shared by submit and
+    attach): the `accepted` event names the request, `progress` events are
+    handed to ``on_progress``, and `result` / `error` end it."""
     result = {'value': None, 'error': None, 'resolved': False}
     done = threading.Event()
 
@@ -423,7 +516,13 @@ def request_service(client, project_id, service_id, data, timeout=10.0, on_progr
                     data_buf = line[6:]
                 elif line == '' and event_type and data_buf:
                     payload = transform_response(json.loads(data_buf))
-                    if event_type == 'progress':
+                    if event_type == 'accepted':
+                        if on_accepted:
+                            try:
+                                on_accepted(payload.get('request_id'))
+                            except Exception:
+                                pass
+                    elif event_type == 'progress':
                         if on_progress:
                             try:
                                 on_progress(payload.get('progress'))

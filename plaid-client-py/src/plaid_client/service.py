@@ -139,11 +139,14 @@ class BaseService(ABC):
 
         Args:
             request_data: The request payload. Read declared parameters under the
-                same key you put in the schema. For a delegating service it also
+                same key you put in the schema, plus ``requester_id``, the user
+                who asked. For a delegating service it also
                 carries ``requester_client``, a ``PlaidClient`` authenticated as
                 the user who submitted the request.
             response_helper: ``.progress(percent, msg)`` / ``.complete(data)`` /
-                ``.error(msg)``.
+                ``.error(msg)``; ``.cancelled`` turns True once the requester
+                asked for the request to stop (poll it between steps of long
+                work; a write under way should finish); ``.request_id``.
         """
         raise NotImplementedError
 

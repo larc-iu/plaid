@@ -21,6 +21,8 @@ import {
   discardService,
   serve,
   requestService,
+  attachServiceRequest,
+  cancelServiceRequest,
 } from "./services.js";
 
 // Helper: normalize a document-read `layers` filter to the wire's
@@ -2130,16 +2132,54 @@ class PlaidClient {
 
       /**
        * Request a service to perform work and await its result.
+       *
+       * The request outlives this call: after a timeout, an abort, or a
+       * dropped connection the service goes on, and `attachServiceRequest`
+       * collects the result given the request id, which `opts.onAccepted`
+       * receives as soon as the server has taken the request. Pass
+       * `opts.requestId` (a UUID you mint) to know the id before submitting;
+       * submitting an id that names a request you already made rejoins it
+       * instead of starting another.
        * @param {string} projectId - The UUID of the project
        * @param {string} serviceId - The ID of the service to request
        * @param {any} data - The request data
-       * @param {number} [timeout] - Timeout in milliseconds (default: 10000)
+       * @param {number} [timeout=10000] - Timeout in ms
        * @param {function} [onProgress] - Called with each progress payload {percent, message}
        * @param {AbortSignal} [signal] - Abort to stop waiting; rejects with an AbortError
-       * @returns {Promise<any>} Service response
+       * @param {Object} [opts] - {requestId, onAccepted}
+       * @returns {Promise<any>} The service's result
        */
-      requestService: (projectId, serviceId, data, timeout, onProgress, signal) =>
-        requestService(this, projectId, serviceId, data, timeout, onProgress, signal),
+      requestService: (projectId, serviceId, data, timeout, onProgress, signal, opts) =>
+        requestService(this, projectId, serviceId, data, timeout, onProgress, signal, opts),
+
+      /**
+       * Rejoin a service request made earlier and await its result: the
+       * latest progress is replayed, then the result comes, or at once if the
+       * request already finished. Only the user who submitted it (or an
+       * admin). Rejects with an error whose `status` is 404 when the request
+       * is unknown or expired (a finished request's result is kept for a
+       * while, not forever).
+       * @param {string} projectId - The UUID of the project
+       * @param {string} requestId - The request id
+       * @param {number} [timeout=10000] - Timeout in ms
+       * @param {function} [onProgress] - Called with each progress payload
+       * @param {AbortSignal} [signal] - Abort to stop waiting
+       * @returns {Promise<any>} The service's result
+       */
+      attachServiceRequest: (projectId, requestId, timeout, onProgress, signal) =>
+        attachServiceRequest(this, projectId, requestId, timeout, onProgress, signal),
+
+      /**
+       * Ask the service to stop a request made earlier. The request still
+       * ends with whatever the service then reports, on the stream of whoever
+       * is awaiting it. Rejects with 404 if unknown or expired, 409 once
+       * finished.
+       * @param {string} projectId - The UUID of the project
+       * @param {string} requestId - The request id
+       * @returns {Promise<void>}
+       */
+      cancelServiceRequest: (projectId, requestId) =>
+        cancelServiceRequest(this, projectId, requestId),
     };
 
     /**

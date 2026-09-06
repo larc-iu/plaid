@@ -118,24 +118,56 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
   const qs = params.toString();
   const channelPath = `/api/v1/projects/${projectId}/services/${encodeURIComponent(serviceId)}/requests${qs ? `?${qs}` : ''}`;
 
-  // The channel only carries `connected` (ignored) and `service_request` events.
+  // The requests this channel is serving, by id, each flagged once a
+  // `service_cancel` arrives. The handler reads it as `responseHelper.cancelled`;
+  // whether to stop is the handler's decision (a write under way should
+  // finish), and the request still ends with whatever it reports.
+  const cancelled = new Map();
+
+  // Beyond `connected` (ignored), the channel carries `service_request` and
+  // `service_cancel` events.
   const onChannelEvent = (eventType, payload) => {
     if (!isRunning) return true;
-    if (eventType !== 'service_request' || !payload) return;
+    if (!payload) return;
+    if (eventType === 'service_cancel') {
+      if (cancelled.has(payload.requestId)) cancelled.set(payload.requestId, true);
+      return;
+    }
+    if (eventType !== 'service_request') return;
     const requestId = payload.requestId;
     if (!requestId) return;
+    cancelled.set(requestId, false);
+    const finished = () => cancelled.delete(requestId);
+
+    // Every service is told who asked (`requesterId`), beside the payload
+    // when that is a plain object, and on the helper regardless.
+    const requesterId = payload.requesterId || null;
+    const data =
+      requesterId && payload.data && typeof payload.data === 'object' && !Array.isArray(payload.data)
+        ? { ...payload.data, requesterId }
+        : payload.data;
 
     const responseHelper = {
+      requestId,
+      requesterId,
+      // True once the requester asked for the request to stop.
+      get cancelled() {
+        return cancelled.get(requestId) === true;
+      },
       progress: (percent, msg) =>
         reportEvent(requestId, { status: 'progress', progress: { percent, message: msg } }),
-      complete: (data) =>
-        reportEvent(requestId, { status: 'completed', data }),
-      error: (error) =>
-        reportEvent(requestId, { status: 'error', data: { error: error?.message || error } }),
+      complete: (data) => {
+        finished();
+        return reportEvent(requestId, { status: 'completed', data });
+      },
+      error: (error) => {
+        finished();
+        return reportEvent(requestId, { status: 'error', data: { error: error?.message || error } });
+      },
     };
 
     try {
-      onServiceRequest(payload.data, responseHelper);
+      onServiceRequest(data, responseHelper);
     } catch (error) {
       responseHelper.error(error?.message || error);
     }
@@ -172,6 +204,13 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
  * response (no broadcast). Rejects if no service is connected (503), if the
  * service reports an error, or on timeout.
  *
+ * The request outlives this call: after a timeout, an abort, or a dropped
+ * connection the service goes on, and `attachServiceRequest` collects the
+ * result given the request id, which `opts.onAccepted` receives as soon as
+ * the server has taken the request. Pass `opts.requestId` (a UUID you mint)
+ * to know the id before submitting; submitting an id that names a request
+ * you already made rejoins it instead of starting another.
+ *
  * @param {Object} client - PlaidClient instance
  * @param {string} projectId - Project UUID
  * @param {string} serviceId - Service ID to request
@@ -179,9 +218,12 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
  * @param {number} [timeout=10000] - Timeout in ms
  * @param {function} [onProgress] - Called with each progress payload {percent, message}
  * @param {AbortSignal} [signal] - Abort to stop waiting; rejects with an AbortError
+ * @param {Object} [opts]
+ * @param {string} [opts.requestId] - A client-minted request id (UUID)
+ * @param {function} [opts.onAccepted] - Called with the request id once the server has it
  * @returns {Promise<any>} The service's result
  */
-export function requestService(client, projectId, serviceId, data, timeout = 10000, onProgress, signal) {
+export function requestService(client, projectId, serviceId, data, timeout = 10000, onProgress, signal, opts = {}) {
   // Propagate an open logical operation (client.beginOperation) to the
   // service: its writes then fold under the requester's audit-log entry
   // (the Python BaseService adopts the id around process_request). Only for a
@@ -192,6 +234,73 @@ export function requestService(client, projectId, serviceId, data, timeout = 100
     group && data && typeof data === 'object' && !Array.isArray(data)
       ? { ...data, operationGroup: { id: group.id, message: group.message } }
       : data;
+  const qs = opts.requestId ? `?request-id=${encodeURIComponent(opts.requestId)}` : '';
+  return streamServiceRequest(
+    client,
+    {
+      url: `${client.baseUrl}/api/v1/projects/${projectId}/services/${encodeURIComponent(serviceId)}/requests${qs}`,
+      method: 'POST',
+      body: JSON.stringify(payload === undefined ? null : transformRequest(payload)),
+      onStatus: (response) =>
+        response.status === 503 ? new Error(`No live service '${serviceId}' on this project`) : null,
+      what: 'Service request',
+    },
+    timeout,
+    onProgress,
+    signal,
+    opts.onAccepted,
+  );
+}
+
+/**
+ * Rejoin a service request made earlier (by this user) and await its result:
+ * the latest progress is replayed, then the result comes, or at once if the
+ * request already finished. Rejects with an error whose `status` is 404 when
+ * the request is unknown or expired (the server keeps a finished request's
+ * result for a while, not forever).
+ *
+ * @param {Object} client - PlaidClient instance
+ * @param {string} projectId - Project UUID
+ * @param {string} requestId - The request id (from `onAccepted` or your own)
+ * @param {number} [timeout=10000] - Timeout in ms
+ * @param {function} [onProgress] - Called with each progress payload {percent, message}
+ * @param {AbortSignal} [signal] - Abort to stop waiting; rejects with an AbortError
+ * @returns {Promise<any>} The service's result
+ */
+export function attachServiceRequest(client, projectId, requestId, timeout = 10000, onProgress, signal) {
+  return streamServiceRequest(
+    client,
+    {
+      url: `${client.baseUrl}/api/v1/projects/${projectId}/service-requests/${encodeURIComponent(requestId)}`,
+      method: 'GET',
+      what: 'Attach to service request',
+    },
+    timeout,
+    onProgress,
+    signal,
+  );
+}
+
+/**
+ * Ask the service to stop a request made earlier (by this user). The request
+ * still ends with whatever the service then reports, on the stream of whoever
+ * is awaiting it. Rejects with 404 if unknown or expired, 409 once finished.
+ *
+ * @param {Object} client - PlaidClient instance
+ * @param {string} projectId - Project UUID
+ * @param {string} requestId - The request id
+ * @returns {Promise<void>}
+ */
+export function cancelServiceRequest(client, projectId, requestId) {
+  return client._request('DELETE', `/api/v1/projects/${projectId}/service-requests/${encodeURIComponent(requestId)}`);
+}
+
+/**
+ * Open a request stream (submit or attach) and read it to its terminal
+ * event: `accepted` names the request, `progress` events go to `onProgress`,
+ * and `result` / `error` settle the promise.
+ */
+function streamServiceRequest(client, { url, method, body, onStatus, what }, timeout, onProgress, signal, onAccepted) {
   return new Promise((resolve, reject) => {
     const abortController = new AbortController();
     let settled = false;
@@ -203,14 +312,14 @@ export function requestService(client, projectId, serviceId, data, timeout = 100
       fn(arg);
     };
     const timer = setTimeout(
-      () => finish(reject, new Error(`Service request timed out after ${timeout}ms`)),
+      () => finish(reject, new Error(`${what} timed out after ${timeout}ms`)),
       timeout,
     );
 
     // An external signal stops waiting on a long request (a UI's Stop button).
     // Reject with an AbortError so a caller can tell a deliberate stop from a
-    // failure. The service is not told: it finishes its work and its reply
-    // goes nowhere, which is safe because it has already been asked for.
+    // failure. The service is not told here: it goes on, and its result can
+    // still be collected by request id (see cancelServiceRequest to stop it).
     const stop = () => {
       const err = new Error('The service request was stopped');
       err.name = 'AbortError';
@@ -227,30 +336,30 @@ export function requestService(client, projectId, serviceId, data, timeout = 100
     (async () => {
       let response;
       try {
-        response = await fetch(
-          `${client.baseUrl}/api/v1/projects/${projectId}/services/${encodeURIComponent(serviceId)}/requests`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${client.token}`,
-              'Content-Type': 'application/json',
-              'Accept': 'text/event-stream',
-            },
-            body: JSON.stringify(payload === undefined ? null : transformRequest(payload)),
-            signal: abortController.signal,
+        response = await fetch(url, {
+          method,
+          headers: {
+            'Authorization': `Bearer ${client.token}`,
+            'Content-Type': 'application/json',
+            'Accept': 'text/event-stream',
           },
-        );
+          ...(body === undefined ? {} : { body }),
+          signal: abortController.signal,
+        });
       } catch (error) {
-        if (error.name !== 'AbortError') finish(reject, new Error(`Failed to submit service request: ${error.message}`));
+        if (error.name !== 'AbortError') finish(reject, new Error(`${what} could not be sent: ${error.message}`));
         return;
       }
 
-      if (response.status === 503) {
-        finish(reject, new Error(`No live service '${serviceId}' on this project`));
+      const special = onStatus ? onStatus(response) : null;
+      if (special) {
+        finish(reject, special);
         return;
       }
       if (!response.ok) {
-        finish(reject, new Error(`Service request failed: HTTP ${response.status} ${response.statusText}`));
+        const err = new Error(`${what} failed: HTTP ${response.status} ${response.statusText}`);
+        err.status = response.status;
+        finish(reject, err);
         return;
       }
 
@@ -275,13 +384,15 @@ export function requestService(client, projectId, serviceId, data, timeout = 100
               dataLine = line.slice(6);
             } else if (line === '' && eventType && dataLine) {
               const payload = transformResponse(JSON.parse(dataLine));
-              if (eventType === 'progress') {
+              if (eventType === 'accepted') {
+                if (onAccepted) { try { onAccepted(payload.requestId); } catch (_) { /* ignore */ } }
+              } else if (eventType === 'progress') {
                 if (onProgress) { try { onProgress(payload.progress); } catch (_) { /* ignore */ } }
               } else if (eventType === 'result') {
                 finish(resolve, payload.data);
                 return;
               } else if (eventType === 'error') {
-                finish(reject, new Error(payload?.error || 'Service request failed'));
+                finish(reject, new Error(payload?.error || `${what} failed`));
                 return;
               }
               eventType = '';
@@ -291,7 +402,7 @@ export function requestService(client, projectId, serviceId, data, timeout = 100
         }
         finish(reject, new Error('Service closed the connection without a result'));
       } catch (error) {
-        if (error.name !== 'AbortError') finish(reject, new Error(`Service request stream error: ${error.message}`));
+        if (error.name !== 'AbortError') finish(reject, new Error(`${what} stream error: ${error.message}`));
       }
     })();
   });
