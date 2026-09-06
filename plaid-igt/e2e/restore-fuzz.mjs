@@ -78,6 +78,15 @@ const EDITS = {
     const body = (idx.text.body.slice(0, b) + idx.text.body.slice(e)).replace(/  +/g, ' ');
     await client.texts.update(idx.text.id, body);
   },
+  async deleteSentenceText(idx) {
+    // A whole sentence cut out of the text, tokens and all.
+    const sents = [...idx.layers.sentence.tokens.values()].sort((a, b) => a.begin - b.begin);
+    if (sents.length < 2) return;
+    const s = pick(rng, sents);
+    const cps = [...idx.text.body];
+    cps.splice(s.begin, s.end - s.begin);
+    await client.texts.update(idx.text.id, cps.join('').trim());
+  },
   async respell(idx) {
     const words = [...idx.layers.word.tokens.values()];
     if (!words.length) return;

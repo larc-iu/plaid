@@ -16,6 +16,11 @@
 
 import { cpLength } from '@larc-iu/plaid-client';
 import {
+  applyInsertToTokens,
+  applyDeleteToTokens,
+  compensatePartition,
+} from '../domain/textEdits.js';
+import {
   findBaselineTextLayer,
   findSentenceTokenLayer,
   findWordTokenLayer,
@@ -176,6 +181,161 @@ export function planText(cur, tgt) {
   return null;
 }
 
+// ---- the text phase, simulated ----------------------------------------------
+
+/**
+ * A minimal insert/delete script turning `a` into `b`, over code points, of
+ * the kind the server computes for itself when it is handed a whole body
+ * (`plaid.algos.text/diff`). Ops come in application order with indices
+ * into the progressively edited string, which is how `texts.update` takes
+ * them. Past `maxD` edits the differing middle is replaced whole: correct,
+ * just not minimal.
+ */
+export function diffCodePoints(a, b, maxD = 2000) {
+  const A = Array.from(a);
+  const B = Array.from(b);
+  let p = 0;
+  while (p < A.length && p < B.length && A[p] === B[p]) p++;
+  let s = 0;
+  while (s < A.length - p && s < B.length - p && A[A.length - 1 - s] === B[B.length - 1 - s]) s++;
+  const X = A.slice(p, A.length - s);
+  const Y = B.slice(p, B.length - s);
+  const N = X.length;
+  const M = Y.length;
+  if (!N && !M) return [];
+  const ops = [];
+  const whole = () => {
+    if (N) ops.push({ type: 'delete', index: p, value: N });
+    if (M) ops.push({ type: 'insert', index: p, value: Y.join('') });
+    return ops;
+  };
+  if (!N || !M) return whole();
+
+  // Myers' O(ND): `trace[d]` is the furthest-reaching frontier before step d.
+  const max = Math.min(N + M, maxD);
+  const off = max + 1;
+  const V = new Int32Array(2 * off + 1);
+  const trace = [];
+  let found = false;
+  for (let d = 0; d <= max && !found; d++) {
+    trace.push(V.slice());
+    for (let k = -d; k <= d; k += 2) {
+      let x =
+        k === -d || (k !== d && V[k - 1 + off] < V[k + 1 + off])
+          ? V[k + 1 + off]
+          : V[k - 1 + off] + 1;
+      let y = x - k;
+      while (x < N && y < M && X[x] === Y[y]) {
+        x++;
+        y++;
+      }
+      V[k + off] = x;
+      if (x >= N && y >= M) {
+        found = true;
+        break;
+      }
+    }
+  }
+  if (!found) return whole();
+
+  // Walk the path back: each step is one code point inserted or deleted, in
+  // the original string's coordinates.
+  const edits = [];
+  let x = N;
+  let y = M;
+  for (let d = trace.length - 1; d > 0; d--) {
+    const Vd = trace[d];
+    const k = x - y;
+    const prevK = k === -d || (k !== d && Vd[k - 1 + off] < Vd[k + 1 + off]) ? k + 1 : k - 1;
+    const prevX = Vd[prevK + off];
+    const prevY = prevX - prevK;
+    while (x > prevX && y > prevY) {
+      x--;
+      y--;
+    }
+    if (x === prevX) edits.push({ insert: Y[prevY], at: x });
+    else edits.push({ at: prevX });
+    x = prevX;
+    y = prevY;
+  }
+  edits.reverse();
+
+  // Into sequential ops, runs merged.
+  let shift = 0;
+  for (const e of edits) {
+    const index = p + e.at + shift;
+    const prev = ops[ops.length - 1];
+    if (e.insert !== undefined) {
+      if (prev?.type === 'insert' && prev.index + cpLength(prev.value) === index)
+        prev.value += e.insert;
+      else ops.push({ type: 'insert', index, value: e.insert });
+      shift += 1;
+    } else {
+      if (prev?.type === 'delete' && prev.index === index) prev.value += 1;
+      else ops.push({ type: 'delete', index, value: 1 });
+      shift -= 1;
+    }
+  }
+  return ops;
+}
+
+/**
+ * The current state carried through the text phase without writing: what
+ * the server would leave once it had applied the diff to the target body,
+ * by the same rules the app mirrors for its own baseline edits
+ * (`domain/textEdits.js`). The preview plans the later phases against
+ * this, so it counts what the restore will actually do to the tokens rather
+ * than comparing extents across two different texts.
+ */
+export function simulateText(cur, tgt) {
+  if (!cur.text || !tgt.text || cur.text.body === tgt.text.body) return cur;
+  const ops = diffCodePoints(cur.text.body, tgt.text.body);
+  const newLength = cpLength(tgt.text.body);
+  const dead = new Set();
+  const layers = {};
+  const tokens = new Map();
+  for (const role of LAYER_ROLES) {
+    const L = cur.layers[role];
+    if (!L) {
+      layers[role] = null;
+      continue;
+    }
+    let toks = [...L.tokens.values()];
+    for (const op of ops) {
+      if (op.type === 'insert') toks = applyInsertToTokens(toks, op.index, cpLength(op.value));
+      else {
+        const r = applyDeleteToTokens(toks, op.index, op.value);
+        toks = r.tokens;
+        for (const id of r.deletedIds) dead.add(id);
+      }
+    }
+    if (L.overlapMode === 'partitioning') toks = compensatePartition(toks, newLength);
+    const map = new Map();
+    for (const t of toks) {
+      map.set(t.id, t);
+      tokens.set(t.id, t);
+    }
+    layers[role] = { ...L, tokens: map };
+  }
+  const alive = (rec) => !rec.tokens.some((id) => dead.has(id));
+  const keep = (m) => new Map([...m].filter(([, rec]) => alive(rec)));
+  for (const role of LAYER_ROLES) {
+    if (!layers[role]) continue;
+    layers[role].spanLayers = layers[role].spanLayers.map((sl) => ({
+      ...sl,
+      spans: keep(sl.spans),
+    }));
+  }
+  return {
+    ...cur,
+    text: { ...cur.text, body: tgt.text.body },
+    layers,
+    tokens,
+    spans: keep(cur.spans),
+    links: keep(cur.links),
+  };
+}
+
 // ---- the sentence partition -------------------------------------------------
 
 const sorted = (layer) => [...(layer?.tokens.values() || [])].sort((a, b) => a.begin - b.begin);
@@ -195,11 +355,11 @@ const sorted = (layer) => [...(layer?.tokens.values() || [])].sort((a, b) => a.b
 export function planPartition(cur, tgt, role = 'sentence') {
   const curL = cur.layers[role];
   const tgtL = tgt.layers[role];
-  if (!curL || !tgtL) return { ops: [], bulkDelete: [], bulkCreate: [] };
+  if (!curL || !tgtL) return { ops: [], bulkDelete: [], bulkCreate: [], unresolved: 0 };
   const curToks = sorted(curL);
   const tgtToks = sorted(tgtL);
   if (tgtToks.length === 0) {
-    return { ops: [], bulkDelete: curToks.map((t) => t.id), bulkCreate: [] };
+    return { ops: [], bulkDelete: curToks.map((t) => t.id), bulkCreate: [], unresolved: 0 };
   }
   if (curToks.length === 0) {
     return {
@@ -212,8 +372,10 @@ export function planPartition(cur, tgt, role = 'sentence') {
         precedence: t.precedence,
         metadata: t.metadata,
       })),
+      unresolved: 0,
     };
   }
+  let unresolved = 0;
   const interior = (toks) => toks.slice(1).map((t) => t.begin);
   const bCur = new Set(interior(curToks));
   const bTgt = new Set(interior(tgtToks));
@@ -243,24 +405,25 @@ export function planPartition(cur, tgt, role = 'sentence') {
   const endingAt = (pos) => work.find((t) => t.end === pos);
   const ops = [];
   for (const [x, y] of pairs) {
-    if (x < y) {
-      const left = endingAt(x);
-      const right = at(x);
-      ops.push({ op: 'shift', id: left.id, end: y });
-      left.end = y;
-      right.begin = y;
-    } else {
-      const right = at(x);
-      const left = endingAt(x);
-      ops.push({ op: 'shift', id: right.id, begin: y });
-      right.begin = y;
-      left.end = y;
+    const left = endingAt(x);
+    const right = at(x);
+    if (!left || !right) {
+      unresolved += 1;
+      continue;
     }
+    if (x < y) ops.push({ op: 'shift', id: left.id, end: y });
+    else ops.push({ op: 'shift', id: right.id, begin: y });
+    left.end = y;
+    right.begin = y;
   }
   const remainingCur = [...bCur].filter((p) => !bTgt.has(p) && !used.has(p)).sort((a, b) => a - b);
   for (const x of remainingCur) {
     const left = endingAt(x);
     const right = at(x);
+    if (!left || !right) {
+      unresolved += 1;
+      continue;
+    }
     ops.push({ op: 'merge', left: left.id, right: right.id });
     left.end = right.end;
     work.splice(work.indexOf(right), 1);
@@ -268,13 +431,19 @@ export function planPartition(cur, tgt, role = 'sentence') {
   const remainingTgt = [...bTgt].filter((p) => !bCur.has(p) && !used.has(p)).sort((a, b) => a - b);
   let refN = 0;
   for (const y of remainingTgt) {
+    // A boundary with no sentence to split lies outside the current text; the
+    // runner never sees one (the texts agree by then), the preview can.
     const host = work.find((t) => t.begin < y && y < t.end);
+    if (!host) {
+      unresolved += 1;
+      continue;
+    }
     const ref = `split${refN++}`;
     ops.push({ op: 'split', id: host.id, position: y, ref });
     work.push({ id: { ref }, begin: y, end: host.end });
     host.end = y;
   }
-  return { ops, bulkDelete: [], bulkCreate: [] };
+  return { ops, bulkDelete: [], bulkCreate: [], unresolved };
 }
 
 // ---- non-partitioning layers ------------------------------------------------
@@ -664,26 +833,32 @@ export function compareStates(a, b, limit = 8) {
 // ---- the preview ------------------------------------------------------------
 
 /**
- * What a restore would change, counted from the two states as they stand.
- * Later phases are re-planned against fresh reads, so these are the counts
- * of the first plan, which is what a person confirms. `total` is zero only
- * when nothing at all differs.
+ * What a restore would change, counted from the two states as they stand,
+ * with the text phase simulated locally first. Later phases are re-planned
+ * against fresh reads, so these are the counts of the first plan, which is
+ * what a person confirms. `total` is zero only when nothing at all differs.
  */
 export function summarizeRestore(cur, tgt) {
   const text = planText(cur, tgt);
-  const partition = planPartition(cur, tgt);
+  // The later phases are planned against the text the restore will have
+  // left, not against the current one.
+  const base = text?.kind === 'update' ? simulateText(cur, tgt) : cur;
+  const partition = planPartition(base, tgt);
   const idMap = new Map();
-  mapPartitionIds(cur, tgt, idMap);
+  mapPartitionIds(base, tgt, idMap);
   const layers = {};
   for (const role of ['word', 'morpheme', 'alignment']) {
-    const p = planLayer(cur, tgt, role, idMap);
+    const p = planLayer(base, tgt, role, idMap);
     // A token to be created stands for itself once it exists.
     for (const c of p.creates) idMap.set(c.tid, c.tid);
     layers[role] = p.deletes.length + p.patches.length + p.creates.length + p.metadata.length;
   }
-  const withCreated = { ...cur, tokens: { has: (id) => cur.tokens.has(id) || idMap.has(id) } };
+  const withCreated = { ...base, tokens: { has: (id) => base.tokens.has(id) || idMap.has(id) } };
   layers.sentence =
-    partition.ops.length + partition.bulkDelete.length + partition.bulkCreate.length;
+    partition.ops.length +
+    partition.bulkDelete.length +
+    partition.bulkCreate.length +
+    partition.unresolved;
   const sp = planSpans(withCreated, tgt, idMap);
   const annotations =
     sp.deletes.length +

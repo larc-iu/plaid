@@ -9,6 +9,8 @@ import {
   planMetadata,
   mapPartitionIds,
   normalizeState,
+  diffCodePoints,
+  simulateText,
   compareStates,
   summarizeRestore,
 } from './restorePlan.js';
@@ -635,5 +637,170 @@ describe('summarizeRestore', () => {
   it('a differing name alone is one change', () => {
     const s = summarizeRestore(indexDocument({ ...raw(), name: 'Renamed' }), idx());
     expect(s).toMatchObject({ name: true, metadata: false, total: 1 });
+  });
+});
+
+// Apply insert/delete ops the way `texts.update` does, one after another.
+const applyOps = (body, ops) => {
+  let cps = Array.from(body);
+  for (const op of ops) {
+    if (op.type === 'insert') cps.splice(op.index, 0, ...Array.from(op.value));
+    else cps.splice(op.index, op.value);
+  }
+  return cps.join('');
+};
+
+describe('diffCodePoints', () => {
+  it('turns a into b with insert and delete ops in application order', () => {
+    const cases = [
+      ['perros corren rapido', 'perros corren rapido'],
+      ['perros corren rapido', 'Nuevo perros corren rapido'],
+      ['perros corren rapido', 'perros rapido'],
+      ['perros corren rapido', 'perros CORREN rapido!'],
+      ['', 'algo'],
+      ['algo', ''],
+      ['a😀b', 'a😀😀b'],
+      ['todos los seres', 'ninguno de los seres humanos'],
+    ];
+    for (const [a, b] of cases) {
+      const ops = diffCodePoints(a, b);
+      expect(applyOps(a, ops), `${a} -> ${b}`).toBe(b);
+    }
+    expect(diffCodePoints('perros corren rapido', 'perros rapido')).toEqual([
+      { type: 'delete', index: 7, value: 7 },
+    ]);
+    expect(diffCodePoints('abc', 'aXbc')).toEqual([{ type: 'insert', index: 1, value: 'X' }]);
+  });
+
+  it('survives random edits', () => {
+    let seed = 7;
+    const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+    const alphabet = 'ab c😀';
+    for (let n = 0; n < 200; n++) {
+      const len = Math.floor(rnd() * 12);
+      const a = Array.from({ length: len }, () => alphabet[Math.floor(rnd() * 5)]).join('');
+      const b = Array.from(
+        { length: Math.floor(rnd() * 12) },
+        () => alphabet[Math.floor(rnd() * 5)],
+      ).join('');
+      expect(applyOps(a, diffCodePoints(a, b)), `${a} -> ${b}`).toBe(b);
+    }
+  });
+
+  it('replaces the middle whole past the edit budget', () => {
+    const ops = diffCodePoints('xabcdefy', 'xABCDEFy', 2);
+    expect(ops).toEqual([
+      { type: 'delete', index: 1, value: 6 },
+      { type: 'insert', index: 1, value: 'ABCDEF' },
+    ]);
+  });
+});
+
+describe('simulateText', () => {
+  it('shifts every token past an insertion and keeps the partition tiled', () => {
+    const cur = idx({ spans: [['sp1', 'POS', ['w1'], 'NOUN']] });
+    const tgt = idx({ body: 'Nuevo perros corren rapido' });
+    const sim = simulateText(cur, tgt);
+    expect(sim.text.body).toBe('Nuevo perros corren rapido');
+    expect([...sim.layers.sentence.tokens.values()]).toEqual([
+      expect.objectContaining({ id: 's1', begin: 0, end: 26 }),
+    ]);
+    expect([...sim.layers.word.tokens.values()].map((t) => [t.id, t.begin, t.end])).toEqual([
+      ['w1', 6, 12],
+      ['w2', 13, 19],
+      ['w3', 20, 26],
+    ]);
+    expect(sim.spans.has('sp1')).toBe(true);
+    expect(cur.layers.word.tokens.get('w1').begin).toBe(0);
+  });
+
+  it('drops the tokens and annotations inside a deleted stretch', () => {
+    const cur = idx({
+      sentences: [
+        ['s1', 0, 14],
+        ['s2', 14, 20],
+      ],
+      spans: [
+        ['sp1', 'POS', ['w2'], 'VERB'],
+        ['sp2', 'POS', ['w3'], 'ADV'],
+      ],
+      links: [['l1', 'item1', ['w2']]],
+    });
+    const tgt = idx({ body: 'perros rapido', sentences: [['s1', 0, 13]] });
+    const sim = simulateText(cur, tgt);
+    expect([...sim.layers.word.tokens.values()].map((t) => [t.id, t.begin, t.end])).toEqual([
+      ['w1', 0, 6],
+      ['w3', 7, 13],
+    ]);
+    expect([...sim.layers.sentence.tokens.values()].map((t) => [t.id, t.begin, t.end])).toEqual([
+      ['s1', 0, 7],
+      ['s2', 7, 13],
+    ]);
+    expect([...sim.spans.keys()]).toEqual(['sp2']);
+    expect(sim.links.size).toBe(0);
+  });
+});
+
+describe('summarizeRestore (text differs)', () => {
+  it('plans the later phases against the simulated text, and never throws', () => {
+    // Now: a longer text with an extra sentence at the end; then: the short
+    // original. The extra sentence's boundary lies past the target text.
+    const cur = idx({
+      body: 'perros corren rapido gatos duermen',
+      sentences: [
+        ['s1', 0, 21],
+        ['s2', 21, 34],
+      ],
+      words: [
+        ['w1', 0, 6],
+        ['w2', 7, 13],
+        ['w3', 14, 20],
+        ['w4', 21, 26],
+        ['w5', 27, 34],
+      ],
+      spans: [['sp1', 'POS', ['w4'], 'NOUN']],
+    });
+    const tgt = idx({ spans: [['sp2', 'POS', ['w1'], 'NOUN']] });
+    const s = summarizeRestore(cur, tgt);
+    expect(s.text).toBe(true);
+    // The text phase removes the extra sentence, its words and its annotation
+    // on its own, so only the target's annotation is left to create.
+    expect(s).toMatchObject({ sentences: 0, words: 0, annotations: 1 });
+  });
+
+  it('counts a boundary it cannot place instead of throwing', () => {
+    const cur = idx({
+      body: 'perros corren',
+      sentences: [['s1', 0, 13]],
+      words: [
+        ['w1', 0, 6],
+        ['w2', 7, 13],
+      ],
+    });
+    const tgt = idx({
+      body: 'perros corren',
+      sentences: [
+        ['s1', 0, 7],
+        ['s2', 7, 13],
+      ],
+      words: [
+        ['w1', 0, 6],
+        ['w2', 7, 13],
+      ],
+    });
+    // Same text, so no simulation: the split at 7 is hosted.
+    expect(summarizeRestore(cur, tgt).sentences).toBe(1);
+    // A boundary past the current text cannot be hosted by anything.
+    const far = idx({
+      body: 'perros corren',
+      sentences: [
+        ['s1', 0, 5],
+        ['s2', 5, 13],
+      ],
+      words: [],
+    });
+    const short = idx({ body: 'perr', sentences: [['s1', 0, 4]], words: [] });
+    expect(() => planPartition(short, far)).not.toThrow();
+    expect(planPartition(short, far).unresolved).toBe(1);
   });
 });
