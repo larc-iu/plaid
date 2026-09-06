@@ -81,14 +81,14 @@ export const replyToMarkdown = (text, citations, ctx) => {
   return `${out}\n\n**Cited examples**\n\n${inline.map((c) => citationToMarkdown(c, ctx)).join('\n\n')}`;
 };
 
-const planToMarkdown = (plan, status) => {
+const planToMarkdown = (plan, status, interrupted) => {
   const outcome =
     status === 'applied'
       ? 'Approved and applied.'
       : status === 'discarded'
         ? 'Discarded.'
-        : status === 'applying'
-          ? 'Approved, but interrupted before the result came back.'
+        : interrupted
+          ? 'Approved, but applying did not finish.'
           : 'Not yet approved.';
   const lines = [`**Proposed changes:** ${plan.summary || ''} (${outcome})`, ''];
   (plan.labels || []).forEach((l, i) => lines.push(`${i + 1}. ${l}`));
@@ -113,7 +113,7 @@ export const conversationToMarkdown = (conv, meta, { origin, projectId, projectN
       // What it did before answering, in the service's own words.
       if (d.stepsSummary) out.push(`*${d.stepsSummary}*`, '');
       if (d.text) out.push(replyToMarkdown(d.text, d.citations, ctx), '');
-      if (d.plan) out.push(planToMarkdown(d.plan, d.status), '');
+      if (d.plan) out.push(planToMarkdown(d.plan, d.status, !!d.interrupted), '');
     }
   });
   return (

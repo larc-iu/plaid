@@ -54,39 +54,62 @@ import {
   linkifyCitations,
   sentenceHref,
 } from './citations.js';
-import { applyingIndex, rewindForRetry, unansweredTurn } from './resume.js';
-import { pruneConversation } from './prune.js';
+import { rewindForRetry } from './resume.js';
+import {
+  ROWS_COLLAPSED,
+  changeHref,
+  changeRef,
+  changeTitle,
+  collapseGroups,
+  groupRows,
+  planRows,
+} from './planChanges.js';
 
 // The Assistant tab: a chat with whatever `assist` service(s) the operator
 // runs (see ../../../../../plaid-igt-agent), laid out like any chat app: past
 // conversations on the left, the active one on the right.
 //
-// The browser owns the conversation. It keeps the model-facing transcript
-// (`messages`, including the assistant's tool calls and their results, so a
-// later turn can build on an earlier one) and sends the whole thing with
-// every turn, so the service is stateless. Conversations are private to the
-// user and follow them across devices: they live in the user's key/value
-// store (client.userData) under `igt:assistant:<project>:...`, one small
-// `meta` entry per conversation for the sidebar and one `conv` entry with
-// the transcript, loaded on open.
+// The record is the conversation. It lives in the user's key/value store
+// (client.userData) under `igt:assistant:<project>:...`: one small `meta`
+// entry per conversation for the sidebar, with `pending` while work is under
+// way, and one `conv` entry with the model-facing transcript (`messages`,
+// tool calls and results included) and what the person sees (`display`).
+// Conversations are private to the user and follow them across devices.
+//
+// Who writes it: this tab appends the user's message and marks the
+// conversation pending, then submits a request naming the conversation. The
+// service loads the record, works, and writes the outcome back BEFORE
+// reporting the request done. So the reply lands whether or not this page is
+// still open; the request stream only carries progress, and its end is the
+// cue to read the record again. A tab that comes back to a pending
+// conversation rejoins the request by id (the id is minted here and stored in
+// `pending` before submitting) and reads the record when that ends; if the
+// request is gone (the server restarted, or it expired), the record is
+// settled here instead.
 //
 // The assistant never writes during a turn; a turn that would change data
 // comes back with a plan, shown as a list of concrete changes with Approve /
-// Discard. Approving sends the plan back for the service to apply under the
-// user's own account (the service delegates, so Plaid mints the user a
-// short-lived token per request).
+// Discard. Approving submits the plan's id back; the service applies it under
+// the user's own account (it delegates, so Plaid mints the user a short-lived
+// token per request) and settles the plan in the record.
 
-const TURN_TIMEOUT_MS = 30 * 60 * 1000;
+// A stream, not a deadline: the service keeps its own budget per turn.
+const REQUEST_TIMEOUT_MS = 12 * 60 * 60 * 1000;
 const TITLE_MAX = 60;
 
 const metaKey = (projectId, id) => `igt:assistant:${projectId}:meta:${id}`;
 const convKey = (projectId, id) => `igt:assistant:${projectId}:conv:${id}`;
 const metaPrefix = (projectId) => `igt:assistant:${projectId}:meta:`;
 
+// A UUID: request ids must be one (the server checks), and conversation ids
+// share the generator.
 const newId = () =>
   typeof crypto !== 'undefined' && crypto.randomUUID
     ? crypto.randomUUID()
-    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+      });
 
 const titleFrom = (text) => {
   const t = text.replace(/\s+/g, ' ').trim();
@@ -105,38 +128,38 @@ const timeAgo = (iso) => {
 };
 
 // --- work that outlives the component ------------------------------------------
-// A turn, and applying an approved plan, can each take minutes, and meanwhile
-// the user may switch tabs (which unmounts this component) or a dev reload may
-// remount it. So both run here, at module level, persist their own outcome,
-// and the component only subscribes to whatever is in flight for the
-// conversation it shows. A job is {id, projectId, kind: 'turn' | 'apply',
-// conv, progress, steps, done, result}.
-const serviceCache = new Map(); // project id -> services, so a remount need not blank the picker
-const saveQueues = new Map(); // conversation id -> Promise (writes in order)
-const turns = new Map(); // conversation id -> turn in flight
-const applies = new Map(); // conversation id -> plan application in flight
-const jobListeners = new Set(); // mounted components
+// A request's stream can run for minutes, and meanwhile the user may switch
+// tabs (which unmounts this component) or a dev reload may remount it. So a
+// job runs here, at module level, and the component only subscribes to
+// whatever is in flight for the conversation it shows. A job is {id (the
+// conversation), projectId, serviceId, kind: 'turn' | 'apply', requestId,
+// planId, conv, prevMeta, controller, progress, steps, stopping, stopped,
+// error, outcome, done, result}. At most one job runs per conversation: the
+// composer and the plan's buttons are disabled while one is in flight. A job
+// stays in the registry until the record is read back and any settling write
+// has landed, so a conversation reopened in that window serves the finished
+// copy, and deleting it cannot race the write.
+//
+// The registry lives on globalThis rather than in this module's scope, so a
+// hot update of this file in development (which re-evaluates the module
+// while a job may be running) finds the same maps instead of empty ones.
+const registry = (globalThis.__igtAssistantJobs ??= {
+  serviceCache: new Map(), // project id -> services, so a remount need not blank the picker
+  saveQueues: new Map(), // conversation id -> Promise (writes in order)
+  jobs: new Map(), // conversation id -> job in flight
+  jobListeners: new Set(), // mounted components
+  lastOpen: new Map(), // project id -> the conversation shown when the tab was last left
+});
+const { serviceCache, saveQueues, jobs, jobListeners, lastOpen } = registry;
 
-// At most one job runs per conversation: the composer and the plan's buttons
-// are both disabled while one is in flight. A job stays in its registry until
-// its final write lands, so a conversation reopened in that window serves the
-// finished copy rather than a stale read, and deleting it cannot race the
-// write.
-const allJobs = () => [...turns.values(), ...applies.values()];
-const jobFor = (id) => (id ? turns.get(id) || applies.get(id) || null : null);
-const jobInProject = (projectId) => allJobs().find((j) => j.projectId === projectId) || null;
-const convOf = (j) => (j.done ? j.result.conv : j.conv);
-
-// A service dispatches requests inline on its single event-stream reader, so
-// it handles exactly one at a time: a second request would sit unread until
-// the first returned, with no progress in the meantime. Better to say so than
-// to spin. Another online assistant is still free to take a turn.
-const serviceBusy = (projectId, serviceId) =>
-  allJobs().some((j) => j.projectId === projectId && j.serviceId === serviceId && !j.done);
+const jobFor = (id) => (id ? jobs.get(id) || null : null);
+const notifyJob = (j) => jobListeners.forEach((fn) => fn(j));
 
 const upsert = (meta) => (prev) => [meta, ...prev.filter((m) => m.id !== meta.id)];
 
-const buildMeta = (prev, conv, service) => {
+// The sidebar entry after a write. `pending` names the request under way, if
+// any: {kind, requestId, serviceId, planId, asHuman, contributedBy, startedAt}.
+const buildMeta = (prev, conv, service, pending = null) => {
   const firstUser = conv.display.find((d) => d.kind === 'user');
   return {
     id: conv.id,
@@ -146,25 +169,24 @@ const buildMeta = (prev, conv, service) => {
     serviceId: service?.serviceId || prev?.serviceId || null,
     model: service?.extras?.model || prev?.model || null,
     turns: conv.display.filter((d) => d.kind === 'user').length,
-    // Work was under way at the last write. With no job in flight for the
-    // conversation this means it was interrupted, which the sidebar shows
-    // without having to load every transcript.
-    pending: unansweredTurn(conv) || applyingIndex(conv) >= 0,
+    pending,
   };
 };
 
-// Write a conversation (transcript + sidebar entry). Writes for one
-// conversation run one after another so a slow earlier PUT cannot land on
-// top of a newer one.
-const persistConv = (client, userId, projectId, conv, meta) => {
+// Write a conversation (transcript + sidebar entry, or the entry alone).
+// Writes for one conversation run one after another so a slow earlier PUT
+// cannot land on top of a newer one.
+const persistConv = (client, userId, projectId, conv, meta, { metaOnly = false } = {}) => {
   if (!userId) return Promise.resolve();
   const prev = saveQueues.get(conv.id) || Promise.resolve();
   const next = prev
     .then(async () => {
-      await client.userData.put(userId, convKey(projectId, conv.id), {
-        messages: conv.messages,
-        display: conv.display,
-      });
+      if (!metaOnly) {
+        await client.userData.put(userId, convKey(projectId, conv.id), {
+          messages: conv.messages,
+          display: conv.display,
+        });
+      }
       await client.userData.put(userId, metaKey(projectId, conv.id), meta);
     })
     .catch((e) => {
@@ -179,116 +201,183 @@ const persistConv = (client, userId, projectId, conv, meta) => {
   return next;
 };
 
-const notifyJob = (j) => jobListeners.forEach((fn) => fn(j));
+// The record as the server has it. Read after any write of ours has landed.
+const readConv = async (client, userId, projectId, id) => {
+  await (saveQueues.get(id) || Promise.resolve());
+  const [c, m] = await Promise.all([
+    client.userData.get(userId, convKey(projectId, id)),
+    client.userData.get(userId, metaKey(projectId, id)),
+  ]);
+  const v = c?.value || {};
+  return {
+    conv: { id, messages: v.messages || [], display: v.display || [] },
+    meta: m?.value || null,
+  };
+};
 
-// A plan's outcome: the status shown on its card, plus a note in the model
-// transcript (user role) so the next turn knows whether its proposal happened.
+// A plan's outcome decided here (a discard): the status on its card, plus a
+// note in the model transcript (user role) so the next turn knows.
 const settle = (conv, index, status, note) => ({
   ...conv,
   messages: note ? [...conv.messages, { role: 'user', content: note }] : conv.messages,
   display: conv.display.map((d, i) => (i === index ? { ...d, status } : d)),
 });
 
-// Run one turn for `conv`, whose last message is the user's. The outcome
-// (the assistant's reply, or an error item) is persisted here, then handed to
-// whichever component is mounted.
+// The user's message leaves the model transcript when its turn ends without
+// an answer, so a retry does not send it twice; it stays on screen.
+const dropUnanswered = (conv) =>
+  conv.messages.at(-1)?.role === 'user' ? conv.messages.slice(0, -1) : conv.messages;
+
+const progressOf = (j) => (p) => {
+  const msg = p?.message || '';
+  j.progress = msg;
+  if (
+    msg &&
+    !/^(Thinking|Done|Planning|Applying)/.test(msg) &&
+    j.steps[j.steps.length - 1] !== msg
+  ) {
+    j.steps = [...j.steps, msg];
+  }
+  notifyJob(j);
+};
+
+// Run a request stream to its end, recording how it ended on the job.
+const watch = async (j, run) => {
+  try {
+    j.outcome = await run();
+  } catch (e) {
+    if (e?.name === 'AbortError') j.stopped = true;
+    else {
+      j.error = e;
+      if (e?.status !== 404) console.error('[Assistant] request failed', e);
+    }
+  }
+};
+
+// However a job's stream ended, the record is the outcome: the service wrote
+// it before finishing. Read it back; if it still says this request is under
+// way, the service never got to write (it or the server went away, or the
+// request expired unseen), so settle it here.
+const finishJob = async (j, client, userId, projectId, service) => {
+  let conv;
+  let meta;
+  try {
+    ({ conv, meta } = await readConv(client, userId, projectId, j.id));
+  } catch (e) {
+    console.error('[Assistant] could not read the conversation back', e);
+    conv = j.conv;
+    meta = buildMeta(j.prevMeta, conv, service);
+  }
+  if (meta?.pending?.requestId === j.requestId) {
+    if (j.kind === 'turn') {
+      if (j.stopped) {
+        conv = {
+          ...conv,
+          messages: dropUnanswered(conv),
+          display: [...conv.display, { kind: 'error', stopped: true, text: 'Stopped.' }],
+        };
+      } else if (j.error && j.error.status !== 404) {
+        conv = {
+          ...conv,
+          messages: dropUnanswered(conv),
+          display: [
+            ...conv.display,
+            { kind: 'error', text: humanizeError(j.error, 'The assistant could not answer.') },
+          ],
+        };
+      }
+      // Else the request is simply gone: the message stays unanswered and the
+      // tab offers to send it again.
+    } else {
+      conv = {
+        ...conv,
+        display: conv.display.map((d) =>
+          d.plan?.id === j.planId && d.status === null ? { ...d, interrupted: true } : d,
+        ),
+      };
+    }
+    meta = buildMeta(meta, conv, service, null);
+    await persistConv(client, userId, projectId, conv, meta);
+  }
+  j.done = true;
+  j.result = { conv, meta };
+  notifyJob(j);
+  jobs.delete(j.id);
+  notifyJob(j);
+  return j.result;
+};
+
+const newJob = (fields) => ({
+  controller: new AbortController(),
+  steps: [],
+  stopping: false,
+  stopped: false,
+  error: null,
+  outcome: null,
+  done: false,
+  result: null,
+  ...fields,
+});
+
+// Run one turn for `conv`, whose last message is the user's.
 const startTurn = ({ client, userId, projectId, service, conv, prevMeta }) => {
-  const t = {
+  const requestId = newId();
+  const j = newJob({
     id: conv.id,
     projectId,
     serviceId: service.serviceId,
     kind: 'turn',
-    // Lives on the job so Stop still works after a remount.
-    controller: new AbortController(),
+    requestId,
+    planId: null,
     conv,
+    prevMeta,
     progress: 'Thinking…',
-    steps: [],
-    done: false,
-    result: null,
-  };
-  turns.set(conv.id, t);
-  t.promise = (async () => {
-    let next;
-    try {
-      const result = await client.messages.requestService(
+  });
+  jobs.set(conv.id, j);
+  const meta = buildMeta(prevMeta, conv, service, {
+    kind: 'turn',
+    requestId,
+    serviceId: service.serviceId,
+    startedAt: new Date().toISOString(),
+  });
+  j.promise = (async () => {
+    // The record first: the service reads the message from it, and a tab
+    // that comes back finds the request there.
+    await persistConv(client, userId, projectId, conv, meta);
+    await watch(j, () =>
+      client.messages.requestService(
         projectId,
         service.serviceId,
-        { projectId, messages: conv.messages },
-        TURN_TIMEOUT_MS,
-        (p) => {
-          const msg = p?.message || '';
-          t.progress = msg;
-          if (
-            msg &&
-            !/^(Thinking|Done|Planning)/.test(msg) &&
-            t.steps[t.steps.length - 1] !== msg
-          ) {
-            t.steps = [...t.steps, msg];
-          }
-          notifyJob(t);
-        },
-        t.controller.signal,
-      );
-      if (result?.kind !== 'turn') throw new Error('Unexpected reply from the assistant service');
-      next = {
-        ...conv,
-        messages: [...conv.messages, ...(result.messages || [])],
-        display: [
-          ...conv.display,
-          {
-            kind: 'assistant',
-            text: result.message || '',
-            plan: result.plan || null,
-            citations: result.citations || [],
-            status: null,
-            model: service?.extras?.model || null,
-            // What the assistant did, described by the service (see
-            // plaid-igt-agent/src/plaid_igt_agent/trace.py). Each step names
-            // the tool call it belongs to, so its output is read back out of
-            // the transcript rather than stored a second time.
-            steps: result.steps || [],
-            stepsSummary: result.stepsSummary || '',
-          },
-        ],
-      };
-      next = pruneConversation(next);
-    } catch (e) {
-      // A stop is the user's own doing, so it reads as a note rather than a
-      // failure, but it settles the turn the same way.
-      const stopped = e?.name === 'AbortError';
-      if (!stopped) console.error('[Assistant] turn failed', e);
-      next = {
-        ...conv,
-        // Drop the unanswered user turn from the model transcript so a retry
-        // does not send it twice; keep it visible with what happened.
-        messages: conv.messages.slice(0, -1),
-        display: [
-          ...conv.display,
-          stopped
-            ? { kind: 'error', stopped: true, text: 'Stopped.' }
-            : { kind: 'error', text: humanizeError(e, 'The assistant could not answer.') },
-        ],
-      };
-    }
-    const meta = buildMeta(prevMeta, next, service);
-    t.done = true;
-    t.result = { conv: next, meta };
-    notifyJob(t);
-    await persistConv(client, userId, projectId, next, meta);
-    turns.delete(conv.id);
-    notifyJob(t);
-    return t.result;
+        { projectId, conversationId: conv.id },
+        REQUEST_TIMEOUT_MS,
+        progressOf(j),
+        j.controller.signal,
+        { requestId },
+      ),
+    );
+    return finishJob(j, client, userId, projectId, service);
   })();
-  return t;
+  return j;
 };
 
-// Apply the plan at `index` in `conv`. What a plan writes is recorded as
-// verified (made by the assistant, confirmed by the approver) unless the user
-// asks for it to count as human-made; a contributor's approval records it as
-// their own unreviewed work (`contributedBy`, provenance convention). The plan
-// id lets the service refuse a second application of the same plan (a retried
-// request, a double click), so a failure leaves the plan undecided and
-// approving again is safe.
+const applyToasts = (j, summary) => {
+  if (j.error && j.error.status !== 404) {
+    notifyError(
+      humanizeError(j.error, 'The changes could not be applied.') +
+        ' Approving again is safe: a plan that was already applied is not written twice.',
+      'Not applied',
+    );
+  } else if (j.outcome && !j.outcome.duplicate) {
+    notifySuccess(j.outcome.message || `Applied ${summary}.`, 'Changes applied');
+  }
+};
+
+// Apply `plan` from `conv`. What a plan writes is recorded as verified (made
+// by the assistant, confirmed by the approver) unless the user asks for it to
+// count as human-made; a contributor's approval records it as their own
+// unreviewed work (`contributedBy`, provenance convention). The service
+// refuses a second application of the same plan (a retried request, a double
+// click), so a failure leaves the plan undecided and approving again is safe.
 const startApply = ({
   client,
   userId,
@@ -296,86 +385,106 @@ const startApply = ({
   service,
   conv,
   prevMeta,
-  index,
   plan,
   asHuman,
   contributedBy = null,
 }) => {
-  const j = {
+  const requestId = newId();
+  const j = newJob({
     id: conv.id,
     projectId,
     serviceId: service.serviceId,
     kind: 'apply',
+    requestId,
+    planId: plan.id,
     conv,
+    prevMeta,
     progress: 'Applying changes…',
-    steps: [],
-    done: false,
-    result: null,
-  };
-  applies.set(conv.id, j);
-  // Record the attempt before making it, so a reload mid-apply is
-  // recognisable afterwards and offers a retry, instead of looking like a plan
-  // the user never approved. `asHuman` rides along so a retry stamps
-  // provenance the way the approver chose.
-  const started = {
-    ...conv,
-    display: conv.display.map((d, i) => (i === index ? { ...d, status: 'applying', asHuman } : d)),
-  };
-  j.conv = started;
-  persistConv(client, userId, projectId, started, buildMeta(prevMeta, started, service));
+  });
+  jobs.set(conv.id, j);
+  // The attempt is recorded before it is made, so a tab that comes back
+  // knows a plan was approved and rejoins, or offers to apply again.
+  const meta = buildMeta(prevMeta, conv, service, {
+    kind: 'apply',
+    requestId,
+    serviceId: service.serviceId,
+    planId: plan.id,
+    asHuman,
+    contributedBy,
+    startedAt: new Date().toISOString(),
+  });
   j.promise = (async () => {
-    let next;
-    try {
-      const res = await client.messages.requestService(
+    await persistConv(client, userId, projectId, conv, meta, { metaOnly: true });
+    await watch(j, () =>
+      client.messages.requestService(
         projectId,
         service.serviceId,
         {
           projectId,
-          approve: {
-            id: plan.id,
-            ops: plan.ops,
-            label: `Assistant: ${plan.summary}`,
-            asHuman,
-            contributedBy,
-            // Versions the plan was made against; the service refuses a plan
-            // whose documents changed since (its offsets and ids may not fit).
-            documents: plan.documents || [],
-          },
+          conversationId: conv.id,
+          approve: { planId: plan.id, asHuman, contributedBy },
         },
-        TURN_TIMEOUT_MS,
-        (p) => {
-          j.progress = p?.message || '';
-          notifyJob(j);
-        },
-      );
-      const data = res?.data || res || {};
-      next = settle(
-        started,
-        index,
-        'applied',
-        `(note) The plan was approved and applied: ${plan.summary}.` +
-          (data.message && /;/.test(data.message) ? ` ${data.message}` : ''),
-      );
-      notifySuccess(data.message || `Applied ${plan.summary}.`, 'Changes applied');
-    } catch (e) {
-      console.error('[Assistant] apply failed', e);
-      next = settle(started, index, null, null);
-      notifyError(
-        humanizeError(e, 'The changes could not be applied.') +
-          ' Approving again is safe: a plan that was already applied is not written twice.',
-        'Not applied',
-      );
-    }
-    const meta = buildMeta(prevMeta, next, service);
-    j.done = true;
-    j.result = { conv: next, meta };
-    notifyJob(j);
-    await persistConv(client, userId, projectId, next, meta);
-    applies.delete(conv.id);
-    notifyJob(j);
-    return j.result;
+        REQUEST_TIMEOUT_MS,
+        progressOf(j),
+        undefined,
+        { requestId },
+      ),
+    );
+    applyToasts(j, plan.summary);
+    return finishJob(j, client, userId, projectId, service);
   })();
   return j;
+};
+
+// Rejoin the request a conversation's record says is under way (it was
+// submitted from a page that is gone). The record gets the outcome either
+// way; this is for showing progress and refreshing when it lands.
+const attachJob = ({ client, userId, projectId, conv, meta }) => {
+  const p = meta.pending;
+  const j = newJob({
+    id: conv.id,
+    projectId,
+    serviceId: p.serviceId || null,
+    kind: p.kind === 'apply' ? 'apply' : 'turn',
+    requestId: p.requestId,
+    planId: p.planId || null,
+    conv,
+    prevMeta: meta,
+    progress: p.kind === 'apply' ? 'Applying changes…' : 'Thinking…',
+  });
+  jobs.set(conv.id, j);
+  j.promise = (async () => {
+    await watch(j, () =>
+      client.messages.attachServiceRequest(
+        projectId,
+        p.requestId,
+        REQUEST_TIMEOUT_MS,
+        progressOf(j),
+        j.controller.signal,
+      ),
+    );
+    if (j.kind === 'apply') {
+      const plan = conv.display.find((d) => d.plan?.id === j.planId)?.plan;
+      applyToasts(j, plan?.summary || 'the changes');
+    }
+    return finishJob(j, client, userId, projectId, null);
+  })();
+  return j;
+};
+
+// Ask the service to stop a turn. It stops between steps and settles the
+// record; if the request is already gone, end our side and settle here.
+const stopJob = async (client, projectId, j) => {
+  if (!j || j.kind !== 'turn' || j.stopping || j.done) return;
+  j.stopping = true;
+  j.progress = 'Stopping…';
+  notifyJob(j);
+  try {
+    await client.messages.cancelServiceRequest(projectId, j.requestId);
+  } catch (e) {
+    if (e?.status === 404) j.controller.abort();
+    // 409: it just finished; the stream delivers the result.
+  }
 };
 
 // A conversation that has not been sent yet. It gets its id up front so it can
@@ -418,11 +527,12 @@ export const ProjectAssistant = ({
   const [active, setActive] = useState(null); // {id, messages, display, draft?}
   const [opening, setOpening] = useState(null); // id being fetched
 
-  // --- the turn in flight ------------------------------------------------
+  // --- the job in flight for the shown conversation ----------------------
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(null); // null | 'turn' | 'apply'
   const [progress, setProgress] = useState('');
-  const [liveSteps, setLiveSteps] = useState([]); // progress messages so far this turn
+  const [liveSteps, setLiveSteps] = useState([]); // progress messages so far
+  const [stopping, setStopping] = useState(false);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const openSeq = useRef(0); // the latest open() request, so a stale read is ignored
@@ -503,33 +613,76 @@ export const ProjectAssistant = ({
     }
   }, [client, userId, projectId]);
 
-  // On mount: work still running for this project (we were unmounted mid-turn
-  // or mid-apply) is shown first; otherwise the most recent conversation, the
-  // way a chat app reopens where you left off, and a fresh one when there is
-  // nothing to reopen. "+" starts a fresh one at any time.
+  const showJob = (j) => {
+    setBusy(j.kind);
+    setProgress(j.progress);
+    setLiveSteps(j.steps);
+    setStopping(!!j.stopping);
+  };
+  const clearJob = () => {
+    setBusy(null);
+    setProgress('');
+    setLiveSteps([]);
+    setStopping(false);
+  };
+
+  // Open a saved conversation. Work its record says is under way, with
+  // nothing here following it, is rejoined: the record gets the outcome
+  // either way, this shows it landing.
+  const open = useCallback(
+    async (id) => {
+      if (activeRef.current?.id === id) return;
+      const seq = ++openSeq.current;
+      const j = jobFor(id);
+      if (j) {
+        setActive(j.done ? j.result.conv : j.conv);
+        return;
+      }
+      setOpening(id);
+      try {
+        const { conv, meta } = await readConv(client, userId, projectId, id);
+        // A later click (or "+") won the race: its choice stands.
+        if (seq !== openSeq.current) return;
+        setActive(conv);
+        // The record is newer than the list (a reply may have landed since).
+        if (meta) setConvs(upsert(meta));
+        if (meta?.pending?.requestId && !jobFor(id)) {
+          attachJob({ client, userId, projectId, conv, meta });
+        }
+      } catch (e) {
+        if (seq === openSeq.current) {
+          notifyError(humanizeError(e, 'That conversation could not be opened.'));
+        }
+      } finally {
+        if (seq === openSeq.current) setOpening(null);
+      }
+    },
+    [client, userId, projectId],
+  );
+  const openRef = useRef(open);
+  openRef.current = open;
+
+  // On mount: a new conversation, the way a chat app opens; the sidebar has
+  // the rest. Within one page session, coming back to the tab returns to the
+  // conversation that was open when it was left.
   useEffect(() => {
     let cancelled = false;
-    const seq = openSeq.current;
-    const inFlight = jobInProject(projectId);
-    setActive(inFlight ? convOf(inFlight) : newConversation());
-    loadList().then(async (metas) => {
-      if (cancelled || inFlight || !metas.length) return;
-      try {
-        const entry = await client.userData.get(userId, convKey(projectId, metas[0].id));
-        const v = entry?.value || {};
-        // A conversation the user opened, or a "+" they pressed, meanwhile
-        // wins over reopening the last one.
-        if (!cancelled && seq === openSeq.current) {
-          setActive({ id: metas[0].id, messages: v.messages || [], display: v.display || [] });
-        }
-      } catch {
-        /* the fresh conversation is fine */
+    const seq = ++openSeq.current;
+    setActive(newConversation());
+    const remembered = lastOpen.get(projectId);
+    loadList().then((metas) => {
+      if (cancelled || seq !== openSeq.current || !remembered) return;
+      if (jobFor(remembered) || metas.some((m) => m.id === remembered)) {
+        openRef.current(remembered);
       }
     });
     return () => {
       cancelled = true;
+      const a = activeRef.current;
+      if (a && !a.draft) lastOpen.set(projectId, a.id);
+      else lastOpen.delete(projectId);
     };
-  }, [loadList, projectId, client, userId]);
+  }, [loadList, projectId]);
 
   // Reflect jobs as they progress and finish, for whichever conversation is
   // shown; a finished job always refreshes the sidebar entry.
@@ -540,14 +693,10 @@ export const ProjectAssistant = ({
       if (j.done) {
         activeRef.current = j.result.conv;
         setActive(j.result.conv);
-        setBusy(null);
-        setProgress('');
-        setLiveSteps([]);
+        clearJob();
         inputRef.current?.focus();
       } else {
-        setBusy(j.kind);
-        setProgress(j.progress);
-        setLiveSteps(j.steps);
+        showJob(j);
       }
     };
     jobListeners.add(onJob);
@@ -557,15 +706,8 @@ export const ProjectAssistant = ({
   // Switching conversations: pick up a job in flight for the new one.
   useEffect(() => {
     const j = jobFor(active?.id);
-    if (j && !j.done) {
-      setBusy(j.kind);
-      setProgress(j.progress);
-      setLiveSteps(j.steps);
-    } else if (busy) {
-      setBusy(null);
-      setProgress('');
-      setLiveSteps([]);
-    }
+    if (j && !j.done) showJob(j);
+    else if (busy) clearJob();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.id]);
 
@@ -587,30 +729,6 @@ export const ProjectAssistant = ({
     },
     [client, userId, projectId],
   );
-
-  const open = async (id) => {
-    if (active?.id === id) return;
-    const seq = ++openSeq.current;
-    const j = jobFor(id);
-    if (j) {
-      setActive(convOf(j));
-      return;
-    }
-    setOpening(id);
-    try {
-      const entry = await client.userData.get(userId, convKey(projectId, id));
-      // A later click (or "+") won the race: its choice stands.
-      if (seq !== openSeq.current) return;
-      const v = entry?.value || {};
-      setActive({ id, messages: v.messages || [], display: v.display || [] });
-    } catch (e) {
-      if (seq === openSeq.current) {
-        notifyError(humanizeError(e, 'That conversation could not be opened.'));
-      }
-    } finally {
-      if (seq === openSeq.current) setOpening(null);
-    }
-  };
 
   const remove = async (id) => {
     const j = jobFor(id);
@@ -653,11 +771,7 @@ export const ProjectAssistant = ({
     bottomRef.current?.scrollIntoView({ block: 'end' });
   }, [active?.display.length, busy, progress]);
 
-  // The chosen assistant takes one request at a time, so a job on another
-  // conversation blocks the composer just as this conversation's own does.
-  const occupied = !!service && serviceBusy(projectId, service.serviceId);
-  const blockedByOther = occupied && !busy;
-  const canSend = !!service && !busy && !occupied;
+  const canSend = !!service && !busy;
 
   const send = (textOverride) => {
     const text = (textOverride ?? input).trim();
@@ -671,25 +785,17 @@ export const ProjectAssistant = ({
       messages: [...base.messages, { role: 'user', content: text }],
       display: [...base.display, { kind: 'user', text }],
     };
-    const meta = buildMeta(
-      convsRef.current.find((m) => m.id === conv.id),
-      conv,
-      service,
-    );
+    const prevMeta = convsRef.current.find((m) => m.id === conv.id);
     openSeq.current++; // sending settles which conversation is open
     activeRef.current = conv;
     setActive(conv);
-    setConvs(upsert(meta));
-    persistConv(client, userId, projectId, conv, meta);
-    setBusy('turn');
-    setProgress('Thinking…');
-    setLiveSteps([]);
-    startTurn({ client, userId, projectId, service, conv, prevMeta: meta });
+    setConvs(upsert(buildMeta(prevMeta, conv, service)));
+    showJob(startTurn({ client, userId, projectId, service, conv, prevMeta }));
   };
 
-  // Send the user's last message again, whether the turn was interrupted (the
-  // page went away mid-turn) or failed. Both rewind the same way, to just
-  // before the user's item.
+  // Send the user's last message again, whether the turn was lost (its
+  // request went away with the server or the service) or failed. Both rewind
+  // the same way, to just before the user's item.
   const retryTurn = () => {
     const conv = activeRef.current;
     if (!conv || !canSend) return;
@@ -699,30 +805,27 @@ export const ProjectAssistant = ({
     send(rewound.text);
   };
 
-  // Stop waiting on a turn. The service keeps working and its reply is
-  // discarded, which is safe because a turn never writes. Only turns can be
-  // stopped: an apply's writes are already under way, and abandoning one would
-  // hide what landed.
-  const stopTurn = () => turns.get(activeRef.current?.id)?.controller?.abort();
+  // Stop a turn: the service is asked to stop, and does so between steps.
+  // Only turns can be stopped: an apply's writes are already under way, and
+  // abandoning one would hide what landed.
+  const stopTurn = () => stopJob(client, projectId, jobFor(activeRef.current?.id));
 
-  const approve = (index, plan, { asHuman = false } = {}) => {
+  const approve = (plan, { asHuman = false } = {}) => {
     const conv = activeRef.current;
     if (!conv || !canSend) return;
-    setBusy('apply');
-    setProgress('Applying changes…');
-    setLiveSteps([]);
-    startApply({
-      client,
-      userId,
-      projectId,
-      service,
-      conv,
-      prevMeta: convsRef.current.find((m) => m.id === conv.id),
-      index,
-      plan,
-      asHuman,
-      contributedBy: contributor ? userId : null,
-    });
+    showJob(
+      startApply({
+        client,
+        userId,
+        projectId,
+        service,
+        conv,
+        prevMeta: convsRef.current.find((m) => m.id === conv.id),
+        plan,
+        asHuman,
+        contributedBy: contributor ? userId : null,
+      }),
+    );
   };
 
   const discard = (index) =>
@@ -756,11 +859,11 @@ export const ProjectAssistant = ({
     : convs;
   const pendingPlan = display.some((d) => d.plan && d.status === null);
   // Nothing is running for this conversation, so anything left mid-flight in
-  // it was interrupted rather than in progress.
+  // it was lost rather than in progress.
   const idle = !busy && !jobFor(active?.id);
   const lastKind = display.at(-1)?.kind;
   const canRetryTurn = idle && (lastKind === 'user' || lastKind === 'error');
-  const stuckApply = idle ? applyingIndex(active) : -1;
+  const applyingPlanId = busy === 'apply' ? jobFor(active?.id)?.planId || null : null;
 
   return (
     <div className="tw flex h-[calc(100vh-15rem)] min-h-[32rem] gap-4">
@@ -923,9 +1026,10 @@ export const ProjectAssistant = ({
                 }
                 canWrite={canWrite}
                 contributor={contributor}
-                busy={!!busy || blockedByOther}
-                interrupted={i === stuckApply}
-                onApprove={(opts) => approve(i, d.plan, opts)}
+                busy={!!busy}
+                interrupted={!!d.interrupted}
+                applying={!!d.plan && applyingPlanId === d.plan.id}
+                onApprove={(opts) => approve(d.plan, opts)}
                 onDiscard={() => discard(i)}
               />
             ))}
@@ -934,7 +1038,7 @@ export const ProjectAssistant = ({
                 <span className="flex-1">
                   {lastKind === 'error'
                     ? 'That turn did not finish.'
-                    : 'No answer came back for this message. The page was probably closed or reloaded while the assistant was working.'}
+                    : 'No answer came back for this message.'}
                 </span>
                 <Button
                   type="button"
@@ -965,9 +1069,10 @@ export const ProjectAssistant = ({
                       size="sm"
                       variant="ghost"
                       onClick={stopTurn}
+                      disabled={stopping}
                       className="h-6 px-2 text-xs"
                     >
-                      <X className="h-3 w-3" /> Stop
+                      <X className="h-3 w-3" /> {stopping ? 'Stopping…' : 'Stop'}
                     </Button>
                   )}
                 </div>
@@ -1006,11 +1111,9 @@ export const ProjectAssistant = ({
               placeholder={
                 !service
                   ? 'No assistant online'
-                  : blockedByOther
-                    ? 'This assistant is busy with another conversation…'
-                    : pendingPlan
-                      ? 'Approve or discard the plan above, or keep talking'
-                      : 'Message the assistant… (Enter to send, Shift+Enter for a new line)'
+                  : pendingPlan
+                    ? 'Approve or discard the plan above, or keep talking'
+                    : 'Message the assistant… (Enter to send, Shift+Enter for a new line)'
               }
               disabled={!canSend}
               rows={2}
@@ -1282,6 +1385,7 @@ const Turn = ({
   contributor,
   busy,
   interrupted,
+  applying,
   onApprove,
   onDiscard,
 }) => {
@@ -1337,6 +1441,8 @@ const Turn = ({
             status={item.status}
             recordedAsHuman={item.asHuman}
             interrupted={interrupted}
+            applying={applying}
+            projectId={projectId}
             canWrite={canWrite}
             contributor={contributor}
             busy={busy}
@@ -1404,34 +1510,39 @@ const ToolTrace = ({ steps, summary, results }) => {
   );
 };
 
-// A proposed plan: what it does in one line, every change as a row, and the
-// decision. Once settled it stays in the transcript as a record.
+// A proposed plan: what it does in one line, every change as a row under the
+// document or lexicon it lands in, and the decision. Once settled it stays in
+// the transcript as a record.
 const PlanCard = ({
   plan,
   status,
   recordedAsHuman,
   interrupted,
+  applying,
   canWrite,
   busy,
   onApprove,
   onDiscard,
   contributor = false,
+  projectId,
 }) => {
-  const labels = plan.labels || [];
-  const [expanded, setExpanded] = useState(labels.length <= 12);
+  const allRows = useMemo(() => planRows(plan), [plan]);
+  const groups = useMemo(() => groupRows(allRows, projectId), [allRows, projectId]);
+  const [expanded, setExpanded] = useState(allRows.length <= ROWS_COLLAPSED);
   const [asHuman, setAsHuman] = useState(!!recordedAsHuman);
   const humanId = `plan-human-${plan.id}`;
-  const shown = expanded ? labels : labels.slice(0, 12);
-  // 'applying' with nothing in flight means the page went away mid-apply, so
-  // whether the changes landed is unknown. Offer the same buttons as an
-  // undecided plan: re-approving is safe, since the service refuses to write
-  // the same plan twice.
-  const undecided = status === null || interrupted;
+  const shown = expanded ? { groups, hidden: 0 } : collapseGroups(groups);
+  const undecided = status === null;
+  // The record says the plan was approved but the request that applied it is
+  // gone, so whether the changes landed is unknown. The same buttons as an
+  // undecided plan: applying again is safe, since the service refuses to
+  // write the same plan twice.
+  const lost = undecided && interrupted && !applying;
   return (
     <div
       className={cn(
         'rounded-lg border px-3 py-2 text-sm',
-        (status === null || status === 'applying') && 'border-primary/40 bg-primary/5',
+        undecided && 'border-primary/40 bg-primary/5',
         status === 'applied' && 'border-green-600/40 bg-green-600/5',
         status === 'discarded' && 'opacity-60',
       )}
@@ -1449,42 +1560,73 @@ const PlanCard = ({
             Discarded
           </Badge>
         )}
-        {status === 'applying' && !interrupted && (
+        {applying && (
           <Badge variant="secondary" className="ml-auto">
             <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Applying…
           </Badge>
         )}
-        {interrupted && (
+        {lost && (
           <Badge variant="outline" className="ml-auto">
-            Interrupted
+            Not finished
           </Badge>
         )}
       </div>
-      {interrupted && (
+      {lost && (
         <p className="mt-2 text-xs text-muted-foreground">
-          The page closed while these changes were being applied, so whether they landed is unknown.
-          Applying again is safe: a plan that was already applied is not written twice.
+          Applying did not finish. Applying again is safe: a plan that was already applied is not
+          written twice.
         </p>
       )}
-      <ol className="mt-2 max-h-72 list-decimal overflow-auto pl-5 font-mono text-xs leading-5">
-        {shown.map((l, i) => (
-          <li key={i}>{l}</li>
-        ))}
-      </ol>
-      {labels.length > shown.length && (
+      <div className="mt-1 max-h-80 overflow-auto">
+        <table className="w-full border-collapse text-xs leading-5">
+          <tbody>
+            {shown.groups.map((g) => (
+              <Fragment key={g.key}>
+                <tr>
+                  <th
+                    colSpan={2}
+                    scope="colgroup"
+                    className="pt-2 text-left font-medium text-foreground"
+                  >
+                    {g.href ? (
+                      <a
+                        href={g.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:underline"
+                      >
+                        {g.title}
+                      </a>
+                    ) : (
+                      g.title
+                    )}
+                    <span className="ml-1.5 font-normal text-muted-foreground">
+                      {g.rows.length}
+                    </span>
+                  </th>
+                </tr>
+                {g.rows.map((r) => (
+                  <ChangeRow key={r.index} row={r} projectId={projectId} />
+                ))}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {shown.hidden > 0 && (
         <button
           type="button"
           onClick={() => setExpanded(true)}
           className="mt-1 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
         >
-          <ChevronDown className="h-3 w-3" /> Show all {labels.length}
+          <ChevronDown className="h-3 w-3" /> Show all {allRows.length}
         </button>
       )}
       {undecided && (
         <div className="mt-2 flex items-center gap-2">
           {canWrite ? (
             <Button type="button" size="sm" onClick={() => onApprove({ asHuman })} disabled={busy}>
-              {interrupted ? (
+              {lost ? (
                 <>
                   <RotateCcw className="h-4 w-4" /> Apply again
                 </>
@@ -1520,5 +1662,54 @@ const PlanCard = ({
         </div>
       )}
     </div>
+  );
+};
+
+// One change: where it lands, as a link into the editor (the word itself,
+// with its reference; a sentence by number; a lexicon entry by form), and
+// what changes.
+const ChangeRow = ({ row, projectId }) => {
+  const w = row.where;
+  const href = changeHref(projectId, w);
+  const title = changeTitle(w);
+  let place = null;
+  if (w?.kind === 'token') {
+    const isSentence = !w.word;
+    place = (
+      <>
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={title}
+          className="font-medium text-foreground hover:underline"
+        >
+          {isSentence ? `Sentence ${w.sentence}` : w.surface}
+        </a>
+        <span className="ml-1.5 text-muted-foreground">
+          {isSentence ? w.surface : changeRef(w)}
+        </span>
+      </>
+    );
+  } else if (w?.kind === 'entry') {
+    place = href ? (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={title}
+        className="font-medium text-foreground hover:underline"
+      >
+        {w.form}
+      </a>
+    ) : (
+      <span className="font-medium">{w.form}</span>
+    );
+  }
+  return (
+    <tr className="align-top">
+      <td className="max-w-[16rem] truncate whitespace-nowrap py-0.5 pr-3">{place}</td>
+      <td className="py-0.5">{row.change ?? row.label}</td>
+    </tr>
   );
 };

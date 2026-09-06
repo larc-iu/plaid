@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { applyingIndex, rewindForRetry, unansweredTurn } from './resume.js';
+import { rewindForRetry, unansweredTurn } from './resume.js';
 
 const conv = (messages, display) => ({ id: 'c1', messages, display });
 
@@ -32,27 +32,6 @@ describe('unansweredTurn', () => {
   it('is false for an empty or missing conversation', () => {
     expect(unansweredTurn(conv([], []))).toBe(false);
     expect(unansweredTurn(null)).toBe(false);
-  });
-});
-
-describe('applyingIndex', () => {
-  it('finds the plan left mid-apply', () => {
-    const c = conv(
-      [],
-      [
-        { kind: 'user', text: 'do it' },
-        { kind: 'assistant', plan: { id: 'p1' }, status: 'applying' },
-      ],
-    );
-    expect(applyingIndex(c)).toBe(1);
-  });
-
-  it('is -1 for settled or undecided plans, and for no conversation', () => {
-    const settled = conv([], [{ kind: 'assistant', plan: { id: 'p1' }, status: 'applied' }]);
-    const undecided = conv([], [{ kind: 'assistant', plan: { id: 'p1' }, status: null }]);
-    expect(applyingIndex(settled)).toBe(-1);
-    expect(applyingIndex(undecided)).toBe(-1);
-    expect(applyingIndex(null)).toBe(-1);
   });
 });
 
