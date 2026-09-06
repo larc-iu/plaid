@@ -173,11 +173,15 @@ def _doc_name(ws, doc_id: str) -> str:
 # --- the change without its location -------------------------------------------
 
 _WHAT = r'(?: "[^"]*"| \(in "[^"]*"\))?'
+# A positional reference as the tools print it: `s3`, `s3.w2`, `s3.w2.m1`, and
+# a span of words `s3 w2+w3` (a phrase).
+_REF = r's\d+(?:[. ]w\d+(?:\+w\d+)*)?(?:\.m\d+)?'
 
 
 def split_change(ws, label: str, where: Optional[Dict[str, Any]]) -> Optional[str]:
     """The label after its location head, in the shapes the planning tools
-    write: ``<doc> <ref>[ "what"|(in "…")]: <change>``, ``<doc>: <change>``,
+    write: ``<doc> <ref>[ "what"|(in "…")]: <change>`` (``<ref>`` a sentence,
+    word, morpheme, or a phrase ``s1 w2+w3``), ``<doc>: <change>``,
     ``"<doc>"[ "what"]: <change>`` (an unloaded document), ``entry "form":
     <change>`` and ``<lexicon>: <change>``."""
     if not label or not where:
@@ -188,13 +192,9 @@ def split_change(ws, label: str, where: Optional[Dict[str, Any]]) -> Optional[st
                 return label[len(head):]
         return None
     doc_label = ws.doc_label(where['document_id'])
-    heads = []
-    if where['kind'] == 'token':
-        ref = f's{where["sentence"]}' + (f'.w{where["word"]}' if where.get('word') else '') \
-            + (f'.m{where["morpheme"]}' if where.get('morpheme') else '')
-        heads.append(re.escape(f'{doc_label} {ref}') + _WHAT + ': ')
-    heads.append(re.escape(doc_label) + ': ')
-    heads.append(re.escape(f'"{doc_label}"') + _WHAT + ': ')
+    heads = [re.escape(doc_label) + ' ' + _REF + _WHAT + ': ',
+             re.escape(doc_label) + ': ',
+             re.escape(f'"{doc_label}"') + _WHAT + ': ']
     for head in heads:
         m = re.match(head, label)
         if m:

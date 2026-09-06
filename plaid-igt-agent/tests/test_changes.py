@@ -75,3 +75,16 @@ def test_the_plan_payload_carries_the_changes():
     payload = ws.plan_payload()
     assert len(payload['changes']) == len(payload['ops']) == len(payload['labels']) == 2
     assert [c['where']['word'] for c in payload['changes']] == [2, 3]
+
+
+def test_phrase_and_document_comment_labels_split_too():
+    ws = _plan()
+    ws.doc('Text 1')
+    phrase = {'kind': 'link_phrase', 'token_ids': ['w-2', 'w-3'], 'item_id': 'vi-gam',
+              'label': 'Text 1 s1 w2+w3 "gam akuna": link phrase "gam akuna"'}
+    d = describe_change(ws, phrase)
+    assert d['where']['word'] == 2 and d['change'] == 'link phrase "gam akuna"'
+    comment = {'kind': 'add_comment', 'entity_type': 'document', 'entity_id': 'd1', 'document_id': 'd1',
+               'label': '"Text 1": comment "nice"'}
+    d = describe_change(ws, comment)
+    assert d['where']['kind'] == 'document' and d['change'] == 'comment "nice"'
