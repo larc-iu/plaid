@@ -1,5 +1,5 @@
 // Seeds a "Provenance demo" project on the dev core for poking at the four
-// provenance states and the "Review writers' work" setting: a glossed Spanish
+// provenance states and the per-member "Review work" mark: a glossed Spanish
 // text where every word shows a different mix of plain, machine-made,
 // contributed and confirmed material, a linked lexicon, and two extra
 // accounts, a writer (the contributor) and a maintainer (a verifier), both

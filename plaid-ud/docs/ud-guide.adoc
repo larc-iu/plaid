@@ -182,7 +182,9 @@ Below the grid, each sentence's dependency tree is drawn as arcs between words.
 == Machine vs. Human Annotations
 
 When annotations come from an automatic parser rather than a person, they are shown in a distinct **violet, dashed** style so you can see what still needs review.
-Any edit you make to a cell or relation confirms it as human-checked and clears the styling.
+Work entered by a member whose work the project reviews (see <<_sharing_and_permissions>>) is shown the same way, and hovering a cell or relation says which it is.
+Any edit you make to a cell or relation confirms it as checked and clears the styling.
+If your own work is reviewed, the styling stays on what you enter until a maintainer or another trusted member confirms it, and accepting a prediction records it as your contribution rather than confirming it.
 
 If a prediction is already correct, you don't have to retype it:
 
@@ -229,6 +231,10 @@ Projects are shared by adding members with a role:
 
 Add members from the project's **Users & Permissions** settings by searching for a name or email address.
 When you only have Reader access, the editor shows everything but its controls are inert.
+
+Each member also has a **Review work** checkbox, independent of their role.
+Tick it and everything that person enters is marked as needing review until someone else confirms it (see <<_machine_vs_human_annotations>>).
+The mark is shared with every Plaid app on the project.
 
 == Customization
 

@@ -186,9 +186,9 @@ const DocumentEditor = () => {
     setLoadError('');
     (async () => {
       try {
-        // The user rides along for the provenance convention: a writer in a
-        // project that reviews writers' work is a contributor, whose edits
-        // are stamped as such (IgtDocument.contributorId).
+        // The user rides along for the provenance convention: a person whose
+        // work the project reviews (plaid.review) is a contributor, whose
+        // edits are stamped as such (IgtDocument.contributorId).
         const d = await IgtDocument.load(client, projectId, documentId, null, { user });
         if (cancelled) return;
         d.onError = (msg, err, label) =>
@@ -265,6 +265,12 @@ const DocumentEditor = () => {
   // against tokens that are about to be deleted. The initial pass takes the tab
   // strip's place; the Analyze re-entry pass covers only that panel, and only
   // after a delay, so the common no-op re-entry stays invisible.
+  //
+  // The gate reads the DOCUMENT's asOf as well as the page's: on the way back
+  // from history the page's asOf is already null while `doc` is still the
+  // snapshot, and a pass over the snapshot's data would write what was missing
+  // THEN into the live document, racing the pass the live document gets once
+  // it arrives (the loser 409s and toasts "Repair failed").
   const reconciledDocRef = useRef(null);
   const [reconciling, setReconciling] = useState(true);
   const [reanalyzing, setReanalyzing] = useState(false);
@@ -272,7 +278,7 @@ const DocumentEditor = () => {
   useEffect(() => {
     // Paths with nothing to repair still have to lower the gate, or the editor
     // waits forever on a pass that will never run.
-    if (!doc || asOf || !permissions?.canWrite) {
+    if (!doc || asOf || doc.asOf || !permissions?.canWrite) {
       if (doc) setReconciling(false);
       return undefined;
     }
@@ -464,9 +470,16 @@ const DocumentEditor = () => {
         documentId={documentId}
         entry={restoreEntry}
         onRestored={async () => {
-          // Back to the live state, which the snapshot effect re-reads, and
-          // the history rail shows the restore as its newest entry.
-          handleSelectHistoryEntry(null);
+          // Back to the live state, and the history rail shows the restore as
+          // its newest entry. From history the snapshot effect re-reads the
+          // document; from live (the toast's Undo) it is swapped for a fresh
+          // read here, since setting asOf to null again changes nothing.
+          if (asOf != null) handleSelectHistoryEntry(null);
+          else if (doc) {
+            const next = await doc.atAsOf(null);
+            next.onError = doc.onError;
+            setDoc(next);
+          }
           await history.fetchAuditLog();
         }}
       />
