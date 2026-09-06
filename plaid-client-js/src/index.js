@@ -1344,6 +1344,25 @@ class PlaidClient {
           },
         }),
       /**
+       * Restore a document to its state at an earlier time, as one
+       * operation: what was deleted since then comes back under its original
+       * id, what was added since is removed, and what changed is set back,
+       * across every layer. A layer deleted since then, or a vocabulary entry
+       * that no longer exists, is skipped and reported under `skipped`.
+       * Resolves to a summary of the changes. Maintainers only.
+       * @param {string} documentId - The document ID
+       * @param {string} asOf - The moment to go back to (ISO-8601 instant),
+       *   typically a history entry's `endTime`
+       * @param {object} [options] - `{ dryRun }`: with `dryRun` true nothing
+       *   is written and the summary says what would change
+       * @param {string} [auditMessage] - Custom audit message for this operation
+       */
+      restore: (documentId, asOf, { dryRun } = {}, auditMessage) =>
+        this._request("POST", `/api/v1/documents/${documentId}/restore`, {
+          queryParams: { "as-of": asOf, "dry-run": dryRun ? "true" : undefined },
+          auditMessage,
+        }),
+      /**
        * Get a document. Set `includeBody` to true to include all data.
        *
        * `layers` narrows a body read to the layers you name (ids of any kind:

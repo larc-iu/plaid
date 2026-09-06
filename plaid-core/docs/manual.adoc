@@ -1397,6 +1397,10 @@ A document GET accepts an `as-of` query parameter carrying an ISO-8601 instant, 
 * Documents that have since been deleted remain readable at timestamps when they existed, for users with current access to the project.
 * Access control always reflects *current* project membership, not membership as of the requested time.
 
+==== Restoring a Document
+
+`POST /api/v1/documents/{id}/restore?as-of=2026-06-01T12:00:00Z` brings the document back to its state at that moment, as one operation. Every layer is covered: what was deleted since then comes back under its original id, what was added since is removed, and what changed is set back, token lists and metadata included. Because ids come back, anything that still refers to an entity by id, such as a comment, finds it again. A layer deleted since that time, and a vocabulary link whose entry no longer exists or whose vocabulary has left the project, cannot come back; they are skipped and listed under `skipped` in the response, along with whatever depended on them. The response is a summary of the changes, and with `dry-run=true` nothing is written and the summary says what would change. A restore is an ordinary entry in the audit log, so the state just before it can be restored in turn. Restoring requires maintainer privileges, and `document-version` applies as on any other write.
+
 == Further Reading
 
 See link:query.html[the query language reference] for comprehensive information about how queries work.

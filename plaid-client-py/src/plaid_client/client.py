@@ -1607,6 +1607,29 @@ class DocumentsResource(_Resource):
                         query={'start-time': start_time, 'end-time': end_time,
                                'as-of': as_of, 'op-types': _op_types_param(op_types)})
 
+    def restore(self, document_id: str, as_of: str, *, dry_run: bool = False,
+                audit_message: str | None = None) -> Any:
+        """Restore a document to its state at an earlier time, as one operation.
+
+        What was deleted since then comes back under its original id, what
+        was added since is removed, and what changed is set back, across
+        every layer. A layer deleted since then, or a vocabulary entry that
+        no longer exists, is skipped and reported under ``skipped``. Returns
+        a summary of the changes. Maintainers only.
+
+        Args:
+            document_id: The document ID
+            as_of: The moment to go back to (ISO-8601 instant), typically a
+                history entry's ``end_time``
+            dry_run: When true nothing is written and the summary says what
+                would change
+            audit_message: Custom audit message for this operation
+        """
+        return self._request('POST', f'/api/v1/documents/{document_id}/restore',
+                             query_params={'as-of': as_of,
+                                           'dry-run': 'true' if dry_run else None},
+                             audit_message=audit_message)
+
 
 class MessagesResource(_Resource):
     def listen(self, project_id: str, on_event, path: str | None = None) -> SSEConnection:
