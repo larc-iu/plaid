@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   Title,
@@ -143,29 +143,37 @@ export const ProjectManagement = ({ embedded = false }) => {
   // Everyone here was EXPLICITLY granted a role — including admins who were
   // explicitly added (they get an "Admin" badge). Admins with only implicit
   // global access are never in the ACL arrays, so they don't show up.
+  // Keyed on WHO is on the ACL, not on the project object: a refetch that
+  // changed only config (the review mark) or the name must neither re-resolve
+  // nor blank the table. Roles are read off the project at render (see
+  // `rows`), so a role change shows the moment the project refreshes. The
+  // spinner shows only before the first resolve; a later one (someone added
+  // or removed) swaps the rows in place.
+  const aclKey = [
+    ...new Set([
+      ...(project?.maintainers || []),
+      ...(project?.writers || []),
+      ...(project?.readers || []),
+    ]),
+  ].join('\n');
+  const projectLoaded = !!project;
+  const membersRef = useRef(members);
+  membersRef.current = members;
   useEffect(() => {
-    if (!project) return;
+    if (!projectLoaded) return;
     let cancelled = false;
     (async () => {
-      setMembersLoading(true);
+      if (membersRef.current.length === 0) setMembersLoading(true);
       const client = getClient();
-      const ids = [
-        ...new Set([
-          ...(project.maintainers || []),
-          ...(project.writers || []),
-          ...(project.readers || []),
-        ]),
-      ];
+      const ids = aclKey ? aclKey.split('\n') : [];
       try {
         const resolved = await Promise.all(
           ids.map((id) =>
             client.users.get(id).catch(() => ({ id, displayName: id, isAdmin: false })),
           ),
         );
-        const rows = resolved
-          .map((u) => ({ ...u, role: roleOf(project, u.id) }))
-          .sort((a, b) => (a.displayName || '').localeCompare(b.displayName || ''));
-        if (!cancelled) setMembers(rows);
+        resolved.sort((a, b) => (a.displayName || '').localeCompare(b.displayName || ''));
+        if (!cancelled) setMembers(resolved);
       } catch (err) {
         console.error('Error resolving members:', err);
         if (!cancelled) setMembers([]);
@@ -176,7 +184,8 @@ export const ProjectManagement = ({ embedded = false }) => {
     return () => {
       cancelled = true;
     };
-  }, [project, getClient]);
+  }, [aclKey, projectLoaded, getClient]);
+  const rows = members.map((m) => ({ ...m, role: roleOf(project, m.id) }));
 
   // Search the directory (server-side ?q=). Runs once the box is touched, so an
   // empty query browses everyone (first page); typing filters. Members already
@@ -235,6 +244,8 @@ export const ProjectManagement = ({ embedded = false }) => {
   // until a verifier confirms them. Independent of the role: any member can be
   // marked. A project may also mark whole roles (another app's setting); such
   // members show as reviewed and cannot be unmarked one by one here.
+  // { id, on } while a toggle is in flight, so the box shows the new state
+  // at once instead of snapping back until the project refreshes.
   const [updatingReview, setUpdatingReview] = useState(null);
   const reviewedByRole = (m) => {
     const { users, roles } = readReview(project?.config);
@@ -244,7 +255,7 @@ export const ProjectManagement = ({ embedded = false }) => {
   };
   const setReviewed = async (userId, on) => {
     try {
-      setUpdatingReview(userId);
+      setUpdatingReview({ id: userId, on });
       const client = getClient();
       const next = withReviewedUser(project?.config?.[PLAID_NAMESPACE]?.[REVIEW_KEY], userId, on);
       await client.projects.setConfig(projectId, PLAID_NAMESPACE, REVIEW_KEY, next);
@@ -469,7 +480,7 @@ export const ProjectManagement = ({ embedded = false }) => {
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {members.map((m) => (
+                {rows.map((m) => (
                   <Table.Tr key={m.id}>
                     <Table.Td>
                       <Group gap="xs" wrap="nowrap">
@@ -513,8 +524,12 @@ export const ProjectManagement = ({ embedded = false }) => {
                       <Checkbox
                         size="sm"
                         aria-label={`Review ${m.displayName}'s work`}
-                        checked={isReviewed(project, m.id, { isAdmin: m.isAdmin })}
-                        disabled={updatingReview === m.id || reviewedByRole(m)}
+                        checked={
+                          updatingReview?.id === m.id
+                            ? updatingReview.on
+                            : isReviewed(project, m.id, { isAdmin: m.isAdmin })
+                        }
+                        disabled={updatingReview?.id === m.id || reviewedByRole(m)}
                         title={
                           reviewedByRole(m)
                             ? `Every ${projectRole(project, m.id, { isAdmin: m.isAdmin })} is reviewed in this project`

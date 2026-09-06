@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { UserPlus, Plus, MoreVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -111,6 +111,8 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
   // until a verifier confirms them. Independent of the role: any member can
   // be marked. A project may also mark whole roles (another app's setting);
   // such members show as reviewed and cannot be unmarked one by one here.
+  // { id, on } while a toggle is in flight, so the box shows the new state
+  // at once instead of snapping back until the project refreshes.
   const [updatingReview, setUpdatingReview] = useState(null);
   const reviewedByRole = (m) => {
     const { users, roles } = readReview(project?.config);
@@ -120,7 +122,7 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
   };
   const setReviewed = async (userId, on) => {
     try {
-      setUpdatingReview(userId);
+      setUpdatingReview({ id: userId, on });
       const next = withReviewedUser(project?.config?.[PLAID_NAMESPACE]?.[REVIEW_KEY], userId, on);
       await client.projects.setConfig(projectId, PLAID_NAMESPACE, REVIEW_KEY, next);
       await onDataUpdate();
@@ -137,29 +139,37 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
     return () => clearTimeout(t);
   }, [search]);
 
-  // Resolve ACL member ids to user objects (project-sized, so per-id GETs are fine).
+  // Resolve ACL member ids to user objects (project-sized, so per-id GETs are
+  // fine). Keyed on WHO is on the ACL, not on the project object: a refetch
+  // that changed only config (the review mark) or the name must neither
+  // re-resolve nor blank the table. Roles are read off the project at render
+  // (see `rows`), so a role change shows the moment the project refreshes.
+  // The spinner shows only before the first resolve; a later one (someone
+  // added or removed) swaps the rows in place.
+  const aclKey = [
+    ...new Set([
+      ...(project?.maintainers || []),
+      ...(project?.writers || []),
+      ...(project?.readers || []),
+    ]),
+  ].join('\n');
+  const projectLoaded = !!project;
+  const membersRef = useRef(members);
+  membersRef.current = members;
   useEffect(() => {
-    if (!project) return;
+    if (!projectLoaded) return;
     let cancelled = false;
     (async () => {
-      setMembersLoading(true);
-      const ids = [
-        ...new Set([
-          ...(project.maintainers || []),
-          ...(project.writers || []),
-          ...(project.readers || []),
-        ]),
-      ];
+      if (membersRef.current.length === 0) setMembersLoading(true);
+      const ids = aclKey ? aclKey.split('\n') : [];
       try {
         const resolved = await Promise.all(
           ids.map((id) =>
             client.users.get(id).catch(() => ({ id, displayName: id, isAdmin: false })),
           ),
         );
-        const rows = resolved
-          .map((u) => ({ ...u, role: roleOf(project, u.id) }))
-          .sort((a, b) => (a.displayName || '').localeCompare(b.displayName || ''));
-        if (!cancelled) setMembers(rows);
+        resolved.sort((a, b) => (a.displayName || '').localeCompare(b.displayName || ''));
+        if (!cancelled) setMembers(resolved);
       } catch (err) {
         console.error('Error resolving members:', err);
         if (!cancelled) setMembers([]);
@@ -170,7 +180,8 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
     return () => {
       cancelled = true;
     };
-  }, [project, client]);
+  }, [aclKey, projectLoaded, client]);
+  const rows = members.map((m) => ({ ...m, role: roleOf(project, m.id) }));
 
   // Server-side search (?q=). Runs once the box is touched; empty browses the
   // first page. Members already on the project are dropped.
@@ -374,7 +385,7 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
                 </tr>
               </thead>
               <tbody>
-                {members.map((m) => (
+                {rows.map((m) => (
                   <tr key={m.id} className="border-t">
                     <td className="px-4 py-2">
                       <div className="flex items-center gap-2">
@@ -417,8 +428,12 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
                         type="checkbox"
                         className="h-4 w-4"
                         aria-label={`Review ${m.displayName}'s work`}
-                        checked={isReviewed(project, m.id, { isAdmin: m.isAdmin })}
-                        disabled={updatingReview === m.id || reviewedByRole(m)}
+                        checked={
+                          updatingReview?.id === m.id
+                            ? updatingReview.on
+                            : isReviewed(project, m.id, { isAdmin: m.isAdmin })
+                        }
+                        disabled={updatingReview?.id === m.id || reviewedByRole(m)}
                         title={
                           reviewedByRole(m)
                             ? `Every ${projectRole(project, m.id, { isAdmin: m.isAdmin })} is reviewed in this project`
