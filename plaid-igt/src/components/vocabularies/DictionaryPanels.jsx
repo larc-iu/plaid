@@ -328,8 +328,8 @@ const SenseTree = ({ root, current, tree, homonyms, itemTo, canManage, onDrop, o
           Drag a sense to
         </li>
       )}
-      {canManage && dropZone('root', 'Own entry', () => onDrop(dragId, { kind: 'root' }))}
-      {canManage && dropZone('pick', 'Another entry…', () => onPickEntry(dragId))}
+      {canManage && dropZone('root', 'Make separate entry', () => onDrop(dragId, { kind: 'root' }))}
+      {canManage && dropZone('pick', 'Move to other entry…', () => onPickEntry(dragId))}
       {rows.map(({ item, depth }) => {
         const isCurrent = item.id === current;
         const isOver = over && over.id === item.id;
@@ -363,7 +363,8 @@ const SenseTree = ({ root, current, tree, homonyms, itemTo, canManage, onDrop, o
             }}
             className={cn(
               'relative flex items-baseline gap-2 py-0.5 pr-3',
-              canManage && 'cursor-grab',
+              canManage &&
+                'cursor-grab [&_a]:underline [&_a]:decoration-dotted [&_a]:underline-offset-2 [&_.igt-sense-self]:underline [&_.igt-sense-self]:decoration-dotted [&_.igt-sense-self]:underline-offset-2',
               isCurrent && 'bg-accent/60',
               dragId === item.id && 'opacity-40',
               zone === 'into' && 'bg-accent ring-1 ring-inset ring-primary',
@@ -381,7 +382,7 @@ const SenseTree = ({ root, current, tree, homonyms, itemTo, canManage, onDrop, o
                   <FormLabel
                     form={item.form}
                     index={homonyms?.get(item.id)}
-                    className="font-medium"
+                    className="igt-sense-self font-medium"
                   />
                   {item.metadata?.gloss ? (
                     <span className="ml-1 text-xs text-muted-foreground">
