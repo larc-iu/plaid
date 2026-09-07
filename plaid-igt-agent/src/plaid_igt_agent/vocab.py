@@ -313,9 +313,13 @@ def build_sense_tree(items: Optional[List[dict]]) -> SenseTree:
             cur = parents.get(cur)
         base = root_of.get(cur) if cur else None
         base_depth = depth_of.get(cur, 0) if cur else -1
+        # The chain's root: what the resolved ancestor rolls up to, or, with no
+        # resolved ancestor, the chain's own top. Every link on the chain shares
+        # it (a sense listed before its headword resolves the two together).
+        root_id = base if base is not None else chain[-1]
         for i in range(len(chain) - 1, -1, -1):
             c = chain[i]
-            root_of[c] = base if base is not None else c
+            root_of[c] = root_id
             depth_of[c] = base_depth + (len(chain) - i)
         return root_of.get(start)
 
