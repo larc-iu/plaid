@@ -43,9 +43,11 @@
         bs (.digest md (fs/read-all-bytes f))]
     (apply str (map (fn [b] (format "%02x" (bit-and b 0xff))) bs))))
 
-;; Python comes from the mamba `base` env — this repo's default Python (it holds
-;; the deps the bundled services use). Activate it (`mamba activate base`) so
-;; `python` resolves to it before running, the way Node needs `nvm use`.
+;; Python comes from a mamba env — activate it (`mamba activate plaid-agent`) so
+;; `python` resolves to it before running, the way Node needs `nvm use`. It has
+;; to hold the plaid client, `build`, pytest, AND the assistant itself, since
+;; the test gate runs the assistant's suite: `base` carries the first three but
+;; not the assistant, so `plaid-agent` is the env for the whole pipeline.
 ;; mamba/conda are shell functions, so the build can't activate the env itself.
 ;; Throws (not System/exit) so a caller's `finally` still restores files.
 (defn python-exe []
@@ -66,10 +68,33 @@
       (fail (str "Node " v " is too old — the SPA build needs Node >= 20 (CI uses 20). "
                  "Activate a newer Node (e.g. `nvm use 24.1.0`), then re-run.")))))
 
+;; Apps whose own `npm test` is part of the gate, in the order they fail fastest.
+(def ^:private js-suites ["plaid-ud" "plaid-igt" "plaid-dict"])
+
 (defn run-tests! []
   (ensure-repo-root!)
-  (step "Run the full Clojure test suite (the release gate)")
-  (p/shell {:dir "plaid-core"} "clojure" "-M:test"))
+  (step "Run the Clojure test suite (plaid-core)")
+  (p/shell {:dir "plaid-core"} "clojure" "-M:test")
+  ;; The JS and Python suites are part of the gate too. They were not, and a
+  ;; tag could therefore ship an app whose own tests were red: the Clojure
+  ;; suite says nothing about either SPA or about the assistant. Slower, but
+  ;; this runs on tags and nightly only, never per-commit.
+  (ensure-node!)
+  (doseq [app js-suites]
+    (step (str "Run the JavaScript test suite (" app ")"))
+    (p/shell {:dir app} "npm" "install")
+    (p/shell {:dir app} "npm" "test"))
+  ;; After the JS step, deliberately: the assistant's mirror test runs the
+  ;; app's own domain modules through node and SKIPS ITSELF when plaid-igt's
+  ;; node_modules are missing, which would make it pass by not running.
+  (let [py (python-exe)]
+    (step "Run the Python test suite (plaid-igt-agent)")
+    ;; The live suites talk to a running server, which a gate does not have.
+    (p/shell {:dir "plaid-igt-agent"} py "-m" "pytest" "-q"
+             "--ignore=tests/test_live_corpus.py"
+             "--ignore=tests/test_live_dictionary.py")
+    (step "Run the Python test suite (plaid-igt services)")
+    (p/shell {:dir "plaid-igt"} py "-m" "pytest" "-q" "services/tests")))
 
 ;; Boot the jar unattended and assert /health reports the release version
 ;; (proves version.edn + the SPAs/services were bundled). Runs in a throwaway

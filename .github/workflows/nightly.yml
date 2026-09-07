@@ -62,6 +62,12 @@ jobs:
         with:
           cli: latest
           bb: latest
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
       - name: Cache Maven + gitlibs
         uses: actions/cache@v5
         with:
@@ -70,7 +76,16 @@ jobs:
             ~/.gitlibs
           key: ${{ runner.os }}-cljdeps-${{ hashFiles('plaid-core/deps.edn') }}
           restore-keys: ${{ runner.os }}-cljdeps-
-      # `bb test` == `clojure -M:test` in plaid-core — shared with release.yml
-      # and local dev (bb/pipeline.clj), so the gate can't drift.
+      # The client goes in first and editable, so the assistant resolves its
+      # `larc-plaid-client` dependency against THIS checkout rather than
+      # against whatever is on PyPI.
+      - name: Install the Python packages under test
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ./plaid-client-py
+          pip install -e './plaid-igt-agent[dev]'
+      # `bb test` is every suite: the Clojure core, all three SPAs, and the
+      # Python assistant and services. Shared with release.yml and local dev
+      # (bb/pipeline.clj), so the gate can't drift.
       - name: Run tests
         run: bb test
