@@ -4,8 +4,11 @@ import { CatalogProvider } from '@/contexts/CatalogContext';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { DictionaryProvider } from '@/contexts/DictionaryContext';
 import { Home } from '@/pages/Home';
 import { Setup } from '@/pages/Setup';
+import { FrontPage } from '@/pages/FrontPage';
+import { FormPage } from '@/pages/FormPage';
 
 // Every screen but the login form is inside the catalog, which resolves a slug
 // to the vocabulary behind it.
@@ -39,6 +42,19 @@ function App() {
               </Reader>
             }
           />
+          {/* A dictionary and its pages share one loaded vocabulary, so they
+              sit under a provider that fetches it once. */}
+          <Route
+            path="/:slug"
+            element={
+              <Reader>
+                <DictionaryProvider />
+              </Reader>
+            }
+          >
+            <Route index element={<FrontPage />} />
+            <Route path=":form" element={<FormPage />} />
+          </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>

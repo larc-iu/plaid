@@ -10,6 +10,7 @@
 // vocabDictionary.js, so an entry is called the same thing in both apps.
 
 import { buildItemNumbers, buildSenseTree, homographOf } from '@igt/domain/vocabDictionary.js';
+import { searchableText } from './entryFields.js';
 import { isPublished } from './publication.js';
 
 /**
@@ -130,4 +131,37 @@ export const buildIndex = (pages, collator = new Intl.Collator()) => {
   return [...byLetter.entries()]
     .sort(([a], [b]) => collator.compare(a, b))
     .map(([letter, forms]) => ({ letter, forms }));
+};
+
+/**
+ * Every published entry's searchable text, built once per dictionary: the form,
+ * the part of speech, the glosses, the definitions and whatever else the
+ * compiler wrote. Keyed by item id, so a keystroke is a lookup rather than a
+ * re-read of the whole vocabulary.
+ */
+export const buildSearchIndex = (items, fields) => {
+  const index = new Map();
+  for (const it of items || []) {
+    if (isPublished(it)) index.set(it.id, searchableText(it, fields));
+  }
+  return index;
+};
+
+/**
+ * The pages a query leaves standing: a page matches when its form matches, or
+ * when any entry on it does. Pages whose form STARTS with the query come first,
+ * the rest keep the dictionary's own order.
+ */
+export const searchPages = (pages, query, index) => {
+  const q = String(query ?? '')
+    .trim()
+    .toLowerCase();
+  if (!q) return pages || [];
+  const hit = (node) => (index.get(node.item.id) || '').includes(q) || node.senses.some(hit);
+  const matched = (pages || []).filter(
+    (p) => p.form.toLowerCase().includes(q) || p.headwords.some(hit),
+  );
+  const starts = matched.filter((p) => p.form.toLowerCase().startsWith(q));
+  const rest = matched.filter((p) => !p.form.toLowerCase().startsWith(q));
+  return [...starts, ...rest];
 };

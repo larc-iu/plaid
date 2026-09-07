@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { buildFormPages, buildIndex, indexLetter, readDictionary } from './dictionaryView.js';
+import {
+  buildFormPages,
+  buildIndex,
+  buildSearchIndex,
+  indexLetter,
+  readDictionary,
+  searchPages,
+} from './dictionaryView.js';
+import { normalizeVocabFields } from '@igt/domain/vocabFields.js';
 
 // An item as the server returns one. `parent` and `senseOrder` are plaid-igt's
 // reserved keys; `homograph` orders entries spelled alike.
@@ -107,5 +115,48 @@ describe('buildIndex', () => {
 
   it('is empty for a dictionary with no pages', () => {
     expect(buildIndex([])).toEqual([]);
+  });
+});
+
+describe('buildSearchIndex / searchPages', () => {
+  const fields = normalizeVocabFields({ gloss: { inline: true }, pos: { inline: true } });
+  const items = [
+    { id: 'water', form: 'madzi', metadata: { status: 'published', gloss: 'water' } },
+    { id: 'melon', form: 'bvembe', metadata: { status: 'published', gloss: 'watermelon' } },
+    { id: 'head', form: 'nsolo', metadata: { status: 'published' } },
+    {
+      id: 'sense',
+      form: 'nsolo',
+      metadata: { status: 'published', parent: 'head', gloss: 'water pot' },
+    },
+    { id: 'draft', form: 'zzz', metadata: { status: 'draft', gloss: 'water' } },
+  ];
+  const index = buildSearchIndex(items, fields);
+  const pages = buildFormPages(items);
+
+  it('indexes only what is published', () => {
+    expect(index.has('draft')).toBe(false);
+    expect(index.get('water')).toContain('madzi');
+  });
+
+  it('returns every page untouched for a blank query', () => {
+    expect(searchPages(pages, '  ', index)).toEqual(pages);
+  });
+
+  it('matches a form or a gloss, and finds a hit on a sense', () => {
+    expect(searchPages(pages, 'water', index).map((p) => p.form)).toEqual([
+      'bvembe',
+      'madzi',
+      'nsolo',
+    ]);
+    expect(searchPages(pages, 'madz', index).map((p) => p.form)).toEqual(['madzi']);
+  });
+
+  it('puts the forms that start with the query first', () => {
+    expect(searchPages(pages, 'b', index).map((p) => p.form)[0]).toBe('bvembe');
+  });
+
+  it('finds nothing for a query nothing carries', () => {
+    expect(searchPages(pages, 'zzzz', index)).toEqual([]);
   });
 });
