@@ -165,16 +165,19 @@ test('a reference field is a picker whose value is a link to the entry', async (
 
 test('a concordance row can be promoted to an example and removed again', async ({ page }) => {
   await openView(page, ids.kat);
+  await page.getByRole('tab', { name: /Concordance/ }).click();
   const use = page.getByRole('button', { name: 'Use as example' });
+  await use.hover();
   await expect(use).toBeVisible();
   await use.click();
-  await expect(page.getByText('Examples')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Example' })).toBeVisible();
   await expect
     .poll(() => meta(ids.kat))
     .toMatchObject({
       examples: [{ document: documentId, token: ids.tok }],
     });
-  await expect(use).toBeDisabled();
+  await page.getByRole('tab', { name: /^Entry$/ }).click();
+  await expect(page.getByText('Examples')).toBeVisible();
   await expect(page.getByRole('list').getByText('kappa').first()).toBeVisible();
   await page.getByRole('button', { name: 'Remove example' }).click();
   await expect.poll(() => meta(ids.kat)).not.toHaveProperty('examples');

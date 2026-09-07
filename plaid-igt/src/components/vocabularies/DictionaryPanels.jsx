@@ -664,13 +664,16 @@ export const ExamplesPanel = ({ item, client, linkedTokenIds, canManage, onRemov
           }
           const hit = resolved?.get(`${ex.document}/${ex.token}`) || null;
           const unlinked = linkedTokenIds && !linkedTokenIds.has(ex.token);
-          const gone = !loading && resolved && (!hit || unlinked);
+          // Until the first lookup has answered (`resolved` null), a missing
+          // hit is not yet a missing example.
+          const pending = loading || resolved == null;
+          const gone = !pending && (!hit || unlinked);
           return (
             <li key={i} className="flex items-start gap-2 px-1 py-1">
               <span className="w-6 shrink-0 pt-1.5 text-right text-xs tabular-nums text-muted-foreground">
                 {i + 1}
               </span>
-              {loading && !hit ? (
+              {pending && !hit ? (
                 <div className="min-w-0 flex-1 px-3 py-1.5 text-sm text-muted-foreground">…</div>
               ) : gone ? (
                 <div className="min-w-0 flex-1 px-3 py-1.5 text-sm text-muted-foreground">

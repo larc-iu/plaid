@@ -1105,6 +1105,14 @@
   background: #bbf7d0;
   border-color: #4ade80;
 }
+/* A headword shown only because a sense under it matched: there for its
+   place in the dictionary, not offered as the thing to link to. */
+.igt-vocab-pop__item.is-context {
+  opacity: 0.55;
+}
+.igt-vocab-pop__item.is-context.is-active {
+  opacity: 0.85;
+}
 .igt-vocab-pop__item:focus-visible {
   outline: 2px solid var(--igt-blue);
   outline-offset: -1px;

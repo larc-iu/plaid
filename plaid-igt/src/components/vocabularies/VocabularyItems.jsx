@@ -14,6 +14,7 @@ import {
   Quote,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { SearchInput, ListCount, ListPager, SortHeader } from '@/components/ui/list-search';
@@ -25,6 +26,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { pageSlice, pageKey, useResetOnChange, LIST_PAGE_SIZE } from '@/hooks/usePagedList';
+import { useTabParam } from '@/hooks/useTabParam';
 import { listPrefKey, useStickyState, useStickySort } from '@/hooks/useStickyState';
 import {
   AlertDialog,
@@ -200,6 +202,16 @@ export const VocabularyItems = ({
   };
   const itemTo = (id) => ({ search: itemQuery(id) });
   const newSenseTo = (parentId) => ({ search: itemQuery(NEW_ID, parentId) });
+  // The right pane's tab (`?pane=`): the entry itself, its concordance, or
+  // its comments. The entry is the default and keeps the URL clean.
+  const [pane, setPane] = useTabParam(['entry', 'concordance', 'comments'], 'entry', 'pane');
+  const paneTo = (name) => {
+    const next = new URLSearchParams(searchParams);
+    if (name === 'entry') next.delete('pane');
+    else next.set('pane', name);
+    const q = next.toString();
+    return { search: q ? `?${q}` : '' };
+  };
   const goItem = (id, options) => setSearchParams(itemQuery(id).replace(/^\?/, ''), options);
   const newParent = itemParam === 'new' ? searchParams.get('parent') : null;
 
@@ -259,7 +271,7 @@ export const VocabularyItems = ({
   const tree = useMemo(() => buildSenseTree(items), [items]);
   const [treeViewPref, setTreeView] = useStickyState(
     listPrefKey('view', 'vocab-items', vocabularyId),
-    false,
+    dictionary,
     (v) => typeof v === 'boolean',
   );
   const treeView = dictionary && treeViewPref;
@@ -1004,6 +1016,166 @@ export const VocabularyItems = ({
     [fields, isNew, newParent, selectedItem, dictionary],
   );
 
+  // The entry card: the form and its bands. On the Entry tab, and on its own
+  // while a new entry is being written.
+  const entryEditor = (
+    <>
+      {/* detail editor */}
+      <div className="rounded-lg border bg-card p-4">
+        <div className="mb-3 flex items-start justify-between gap-2">
+          <h3 className="text-base font-semibold">
+            {isNew ? (
+              'New entry'
+            ) : dictionary && homographs.length > 1 && !tree.parentOf.get(selectedId) ? (
+              <>
+                {selectedItem?.form ?? ''}
+                <HomographNumber
+                  number={homonyms.get(selectedItem?.id)}
+                  onOpen={() => setHomographOpen(true)}
+                  className="ml-1 text-[0.85em] font-normal"
+                />
+              </>
+            ) : (
+              <FormLabel form={selectedItem?.form ?? ''} index={homonyms.get(selectedItem?.id)} />
+            )}
+          </h3>
+          {formGroups.status && (
+            <div className="ml-auto mr-3 flex items-center gap-2">
+              <Label
+                htmlFor={`${uid}-status`}
+                className="text-xs font-medium text-muted-foreground"
+              >
+                Status
+              </Label>
+              <TagsetField
+                id={`${uid}-status`}
+                field={formGroups.status}
+                value={editFields[STATUS_FIELD] || ''}
+                tagset={tagsetFor(STATUS_FIELD)}
+                className="h-7 w-32 text-xs"
+                disabled={!canManage}
+                onChange={(v) => setEditFields({ ...editFields, [STATUS_FIELD]: v })}
+              />
+            </div>
+          )}
+          {!isNew && selectedItem && (
+            <div className="text-right text-xs text-muted-foreground">
+              <span>
+                {(usageCounts?.[selectedItem.id] ?? 0).toLocaleString()} use
+                {(usageCounts?.[selectedItem.id] ?? 0) === 1 ? '' : 's'}
+              </span>
+              {usageKinds?.[selectedItem.id] && (
+                <span className="ml-1.5" title="Linked from this many words and morphemes">
+                  ·{' '}
+                  {['word', 'morpheme']
+                    .filter((k) => usageKinds[selectedItem.id][k])
+                    .map((k) => {
+                      const n = usageKinds[selectedItem.id][k];
+                      return `${n.toLocaleString()} ${k}${n === 1 ? '' : 's'}`;
+                    })
+                    .join(', ')}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {dictionary && !isNew && selectedItem && (
+          <div className="mb-3">
+            <EntryPlace
+              item={selectedItem}
+              tree={tree}
+              items={items}
+              homonyms={homonyms}
+              itemTo={itemTo}
+              canManage={canManage}
+              onMoveUnder={handleMoveUnder}
+              onRaiseHeadword={handleRaiseHeadword}
+              onDrop={handleSenseDrop}
+              onReorderHomographs={() => setHomographOpen(true)}
+              newSenseTo={newSenseTo}
+            />
+          </div>
+        )}
+        {dictionary && isNew && newParent && tree.byId.has(newParent) && (
+          <p className="mb-3 text-xs text-muted-foreground">
+            A new sense of <strong>{tree.byId.get(newParent).form}</strong>
+          </p>
+        )}
+
+        <div className="flex flex-col gap-4 [&>*+*]:border-t [&>*+*]:pt-3">
+          <FormGroup>
+            <div className="flex min-w-0 flex-col gap-1">
+              <Label htmlFor={`${uid}-form`} className="text-xs font-medium text-muted-foreground">
+                Form <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id={`${uid}-form`}
+                compose
+                className="h-8"
+                value={editForm}
+                autoFocus={isNew}
+                placeholder="Form"
+                spellCheck={false}
+                disabled={!canManage}
+                onChange={(e) => setEditForm(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (dirty) handleSave();
+                  }
+                }}
+              />
+            </div>
+            {formGroups.builtIn.map((f) => renderField(f, editFields, setEditFields, !canManage))}
+          </FormGroup>
+          {formGroups.custom.length > 0 && (
+            <FormGroup title="Fields">
+              {formGroups.custom.map((f) => renderField(f, editFields, setEditFields, !canManage))}
+            </FormGroup>
+          )}
+          {formGroups.refs.length > 0 && (
+            <FormGroup title="References">
+              {formGroups.refs.map((f) => renderField(f, editFields, setEditFields, !canManage))}
+            </FormGroup>
+          )}
+        </div>
+        {!isNew && selectedItem && (
+          <ImportedExtras metadata={selectedItem.metadata} showExamples={!dictionary} />
+        )}
+
+        {canManage && (
+          <div className="mt-4 flex items-center justify-between">
+            <div>
+              {!isNew && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground hover:text-destructive"
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  <Trash2 className="h-4 w-4" /> Delete
+                </Button>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={cancelEdit} disabled={!dirty}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSave}
+                disabled={!dirty || !editForm.trim() || !saveAllowed}
+              >
+                {isNew ? 'Create' : 'Save'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  );
+
   if (loading) {
     return (
       <div className="tw flex flex-col items-center gap-6 py-6">
@@ -1165,17 +1337,20 @@ export const VocabularyItems = ({
             </p>
           ) : (
             <ul className="divide-y">
-              {paged.pageItems.map(({ item, depth }) => (
+              {paged.pageItems.map(({ item, depth, context }) => (
                 <li key={item.id}>
                   <Link
                     to={itemTo(item.id)}
                     onClick={(e) => guardSelect(e, item.id)}
                     data-selected={selectedId === item.id || undefined}
                     data-depth={depth || undefined}
+                    data-context={context || undefined}
                     className={cn(
                       'grid w-full items-center gap-2 px-3 py-2 text-left text-sm no-underline hover:bg-accent/40',
                       listCols,
                       selectedId === item.id && 'bg-accent/60',
+                      // Not a hit, only the entry a hit sits under.
+                      context && 'opacity-50',
                     )}
                     style={depth ? { paddingLeft: `${0.75 + depth * 1.25}rem` } : undefined}
                   >
@@ -1251,323 +1426,199 @@ export const VocabularyItems = ({
         </div>
       </div>
 
-      {/* ---- right pane: detail + concordance ---- */}
+      {/* ---- right pane: the entry, its concordance, its comments ---- */}
       <div className="min-w-0 flex-1">
         {!selectedId ? (
           <div className="flex min-h-[24rem] items-center justify-center rounded-lg border border-dashed bg-card/50">
             <p className="text-sm text-muted-foreground">
-              Select an item, or click “New” to add one.
+              Select an entry, or click “New” to add one.
             </p>
           </div>
+        ) : isNew ? (
+          entryEditor
         ) : (
-          <div className="flex flex-col gap-4">
-            {/* detail editor */}
-            <div className="rounded-lg border bg-card p-4">
-              <div className="mb-3 flex items-start justify-between gap-2">
-                <h3 className="text-base font-semibold">
-                  {isNew ? (
-                    'New entry'
-                  ) : dictionary && homographs.length > 1 && !tree.parentOf.get(selectedId) ? (
-                    <>
-                      {selectedItem?.form ?? ''}
-                      <HomographNumber
-                        number={homonyms.get(selectedItem?.id)}
-                        onOpen={() => setHomographOpen(true)}
-                        className="ml-1 text-[0.85em] font-normal"
-                      />
-                    </>
-                  ) : (
-                    <FormLabel
-                      form={selectedItem?.form ?? ''}
-                      index={homonyms.get(selectedItem?.id)}
-                    />
-                  )}
-                </h3>
-                {formGroups.status && (
-                  <div className="ml-auto mr-3 flex items-center gap-2">
-                    <Label
-                      htmlFor={`${uid}-status`}
-                      className="text-xs font-medium text-muted-foreground"
-                    >
-                      Status
-                    </Label>
-                    <TagsetField
-                      id={`${uid}-status`}
-                      field={formGroups.status}
-                      value={editFields[STATUS_FIELD] || ''}
-                      tagset={tagsetFor(STATUS_FIELD)}
-                      className="h-7 w-32 text-xs"
-                      disabled={!canManage}
-                      onChange={(v) => setEditFields({ ...editFields, [STATUS_FIELD]: v })}
-                    />
-                  </div>
+          <Tabs value={pane} onValueChange={setPane}>
+            <TabsList className="tw mb-3">
+              <TabsTrigger value="entry" to={paneTo('entry')}>
+                Entry
+              </TabsTrigger>
+              <TabsTrigger value="concordance" to={paneTo('concordance')}>
+                Concordance
+                {concPlan && (
+                  <span className="rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
+                    {concPlan.totalHits.toLocaleString()}
+                  </span>
                 )}
-                {!isNew && selectedItem && (
-                  <div className="text-right text-xs text-muted-foreground">
-                    {(usageCounts?.[selectedItem.id] ?? 0).toLocaleString()} use
-                    {(usageCounts?.[selectedItem.id] ?? 0) === 1 ? '' : 's'}
-                    {usageKinds?.[selectedItem.id] && (
-                      <span className="ml-1.5" title="Linked from this many words and morphemes">
-                        ·{' '}
-                        {['word', 'morpheme']
-                          .filter((k) => usageKinds[selectedItem.id][k])
-                          .map((k) => {
-                            const n = usageKinds[selectedItem.id][k];
-                            return `${n.toLocaleString()} ${k}${n === 1 ? '' : 's'}`;
-                          })
-                          .join(', ')}
+              </TabsTrigger>
+              <TabsTrigger value="comments" to={paneTo('comments')}>
+                Comments
+                {(comments?.countFor(selectedId) ?? 0) > 0 && (
+                  <span className="rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
+                    {comments.countFor(selectedId)}
+                  </span>
+                )}
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="entry">
+              <div className="flex flex-col gap-4">
+                {entryEditor}
+                {dictionary && !isNew && selectedItem && (
+                  <>
+                    <ExamplesPanel
+                      item={selectedItem}
+                      client={client}
+                      linkedTokenIds={concPlan && !concPlan.truncated ? concPlan.hitIds : null}
+                      canManage={canManage}
+                      onRemove={handleRemoveExample}
+                    />
+                    <ReferencedByPanel
+                      item={selectedItem}
+                      items={items}
+                      fields={fields}
+                      homonyms={homonyms}
+                      itemTo={itemTo}
+                    />
+                  </>
+                )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="concordance">
+              {/* concordance */}
+              {!isNew && (
+                <div className="rounded-lg border bg-card">
+                  <div className="flex items-center justify-between border-b px-4 py-2">
+                    <span className="text-sm font-medium">Concordance</span>
+                    {concPlan && (
+                      <span className="text-xs text-muted-foreground">
+                        {concPlan.totalHits.toLocaleString()} use
+                        {concPlan.totalHits === 1 ? '' : 's'} in {concPlan.totalDocs} document
+                        {concPlan.totalDocs === 1 ? '' : 's'}
+                        {concPlan.truncated ? ' (capped)' : ''}
                       </span>
                     )}
                   </div>
-                )}
-              </div>
 
-              {dictionary && !isNew && selectedItem && (
-                <div className="mb-3">
-                  <EntryPlace
-                    item={selectedItem}
-                    tree={tree}
-                    items={items}
-                    homonyms={homonyms}
-                    itemTo={itemTo}
-                    canManage={canManage}
-                    onMoveUnder={handleMoveUnder}
-                    onRaiseHeadword={handleRaiseHeadword}
-                    onDrop={handleSenseDrop}
-                    onReorderHomographs={() => setHomographOpen(true)}
-                    newSenseTo={newSenseTo}
-                  />
+                  {concLoading ? (
+                    <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-muted border-t-foreground" />
+                      Loading usage examples…
+                    </div>
+                  ) : concError ? (
+                    <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+                      {concError}
+                    </p>
+                  ) : !concPlan || concPlan.totalHits === 0 ? (
+                    <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+                      Not linked to any words or morphemes yet.
+                    </p>
+                  ) : (
+                    <div className="flex flex-col gap-3 p-3">
+                      {concGroups.map((g) => (
+                        <div key={g.docId} className="overflow-hidden rounded-md border">
+                          <div className="flex items-center gap-2 border-b bg-muted/50 px-3 py-1.5">
+                            <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="text-sm font-medium">{g.docName}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {g.docHits} use{g.docHits === 1 ? '' : 's'}
+                            </span>
+                          </div>
+                          <div className="divide-y">
+                            {g.rows.map((row) => {
+                              // Deep-link the target sentence via query params, so
+                              // the row is an ordinary link: a new tab lands on the
+                              // same sentence.
+                              const tokenId = row.tokenIds?.[0];
+                              const chosen =
+                                !!tokenId &&
+                                (selectedItem?.metadata?.examples || []).some(
+                                  (ex) => ex?.document === g.docId && ex?.token === tokenId,
+                                );
+                              return (
+                                <div key={row.sentenceId} className="group flex items-start">
+                                  <ContextRow
+                                    row={row}
+                                    to={sentenceTo(g.projectId, g.docId, row.sentenceId)}
+                                  />
+                                  {dictionary && canManage && tokenId && (
+                                    <button
+                                      type="button"
+                                      disabled={chosen}
+                                      onClick={() => handleAddExample(g.docId, tokenId)}
+                                      className={cn(
+                                        'mr-2 mt-1.5 inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded border px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:opacity-100',
+                                        chosen
+                                          ? 'opacity-60'
+                                          : 'opacity-0 group-hover:opacity-100 disabled:opacity-30',
+                                      )}
+                                    >
+                                      <Quote className="h-3 w-3" />
+                                      {chosen ? 'Example' : 'Use as example'}
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                            {g.rows.length === 0 && (
+                              <p className="px-3 py-2 text-xs text-muted-foreground">
+                                Uses in this document could not be located (it may have changed).
+                                Open it to look.
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+
+                      {concHasMore && (
+                        <div ref={sentinelRef} className="flex justify-center py-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => loadMoreRef.current()}
+                            disabled={concLoadingMore}
+                          >
+                            {concLoadingMore
+                              ? 'Loading…'
+                              : `Load more (${(concPlan.totalDocs - concLoaded).toLocaleString()} document${concPlan.totalDocs - concLoaded === 1 ? '' : 's'} left)`}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
-              {dictionary && isNew && newParent && tree.byId.has(newParent) && (
-                <p className="mb-3 text-xs text-muted-foreground">
-                  A new sense of <strong>{tree.byId.get(newParent).form}</strong>
-                </p>
-              )}
+            </TabsContent>
 
-              <div className="flex flex-col gap-4 [&>*+*]:border-t [&>*+*]:pt-3">
-                <FormGroup>
-                  <div className="flex min-w-0 flex-col gap-1">
-                    <Label
-                      htmlFor={`${uid}-form`}
-                      className="text-xs font-medium text-muted-foreground"
-                    >
-                      Form <span className="text-destructive">*</span>
-                    </Label>
-                    <Input
-                      id={`${uid}-form`}
-                      compose
-                      className="h-8"
-                      value={editForm}
-                      autoFocus={isNew}
-                      placeholder="Form"
-                      spellCheck={false}
-                      disabled={!canManage}
-                      onChange={(e) => setEditForm(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          if (dirty) handleSave();
-                        }
-                      }}
+            <TabsContent value="comments">
+              {/* comments on this entry */}
+              {!isNew && selectedItem && comments && (
+                <div className="rounded-lg border bg-card">
+                  <div className="flex items-center justify-between border-b px-4 py-2">
+                    <span className="text-sm font-medium">Comments</span>
+                    {comments.countFor(selectedItem.id) > 0 && (
+                      <span className="text-xs text-muted-foreground">
+                        {comments.countFor(selectedItem.id)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="px-4 py-3">
+                    <EntryComments
+                      store={comments}
+                      itemId={selectedItem.id}
+                      caption={anchorCaption({
+                        kind: 'entry',
+                        label: selectedItem.form,
+                        detail: hasGloss ? selectedItem.metadata?.gloss || '' : '',
+                      })}
+                      canWrite={canComment}
+                      canDeleteAny={canManage}
                     />
                   </div>
-                  {formGroups.builtIn.map((f) =>
-                    renderField(f, editFields, setEditFields, !canManage),
-                  )}
-                </FormGroup>
-                {formGroups.custom.length > 0 && (
-                  <FormGroup title="Fields">
-                    {formGroups.custom.map((f) =>
-                      renderField(f, editFields, setEditFields, !canManage),
-                    )}
-                  </FormGroup>
-                )}
-                {formGroups.refs.length > 0 && (
-                  <FormGroup title="References">
-                    {formGroups.refs.map((f) =>
-                      renderField(f, editFields, setEditFields, !canManage),
-                    )}
-                  </FormGroup>
-                )}
-              </div>
-              {!isNew && selectedItem && (
-                <ImportedExtras metadata={selectedItem.metadata} showExamples={!dictionary} />
-              )}
-
-              {canManage && (
-                <div className="mt-4 flex items-center justify-between">
-                  <div>
-                    {!isNew && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-muted-foreground hover:text-destructive"
-                        onClick={() => setDeleteOpen(true)}
-                      >
-                        <Trash2 className="h-4 w-4" /> Delete
-                      </Button>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={cancelEdit} disabled={!dirty}>
-                      Cancel
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={handleSave}
-                      disabled={!dirty || !editForm.trim() || !saveAllowed}
-                    >
-                      {isNew ? 'Create' : 'Save'}
-                    </Button>
-                  </div>
                 </div>
               )}
-            </div>
-
-            {dictionary && !isNew && selectedItem && (
-              <>
-                <ExamplesPanel
-                  item={selectedItem}
-                  client={client}
-                  linkedTokenIds={concPlan && !concPlan.truncated ? concPlan.hitIds : null}
-                  canManage={canManage}
-                  onRemove={handleRemoveExample}
-                />
-                <ReferencedByPanel
-                  item={selectedItem}
-                  items={items}
-                  fields={fields}
-                  homonyms={homonyms}
-                  itemTo={itemTo}
-                />
-              </>
-            )}
-
-            {/* comments on this entry */}
-            {!isNew && selectedItem && comments && (
-              <div className="rounded-lg border bg-card">
-                <div className="flex items-center justify-between border-b px-4 py-2">
-                  <span className="text-sm font-medium">Comments</span>
-                  {comments.countFor(selectedItem.id) > 0 && (
-                    <span className="text-xs text-muted-foreground">
-                      {comments.countFor(selectedItem.id)}
-                    </span>
-                  )}
-                </div>
-                <div className="px-4 py-3">
-                  <EntryComments
-                    store={comments}
-                    itemId={selectedItem.id}
-                    caption={anchorCaption({
-                      kind: 'entry',
-                      label: selectedItem.form,
-                      detail: hasGloss ? selectedItem.metadata?.gloss || '' : '',
-                    })}
-                    canWrite={canComment}
-                    canDeleteAny={canManage}
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* concordance */}
-            {!isNew && (
-              <div className="rounded-lg border bg-card">
-                <div className="flex items-center justify-between border-b px-4 py-2">
-                  <span className="text-sm font-medium">Concordance</span>
-                  {concPlan && (
-                    <span className="text-xs text-muted-foreground">
-                      {concPlan.totalHits.toLocaleString()} use{concPlan.totalHits === 1 ? '' : 's'}{' '}
-                      in {concPlan.totalDocs} document{concPlan.totalDocs === 1 ? '' : 's'}
-                      {concPlan.truncated ? ' (capped)' : ''}
-                    </span>
-                  )}
-                </div>
-
-                {concLoading ? (
-                  <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-muted border-t-foreground" />
-                    Loading usage examples…
-                  </div>
-                ) : concError ? (
-                  <p className="px-4 py-6 text-center text-sm text-muted-foreground">{concError}</p>
-                ) : !concPlan || concPlan.totalHits === 0 ? (
-                  <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-                    Not linked to any words or morphemes yet.
-                  </p>
-                ) : (
-                  <div className="flex flex-col gap-3 p-3">
-                    {concGroups.map((g) => (
-                      <div key={g.docId} className="overflow-hidden rounded-md border">
-                        <div className="flex items-center gap-2 border-b bg-muted/50 px-3 py-1.5">
-                          <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-                          <span className="text-sm font-medium">{g.docName}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {g.docHits} use{g.docHits === 1 ? '' : 's'}
-                          </span>
-                        </div>
-                        <div className="divide-y">
-                          {g.rows.map((row) => {
-                            // Deep-link the target sentence via query params, so
-                            // the row is an ordinary link: a new tab lands on the
-                            // same sentence.
-                            const tokenId = row.tokenIds?.[0];
-                            const chosen =
-                              !!tokenId &&
-                              (selectedItem?.metadata?.examples || []).some(
-                                (ex) => ex?.document === g.docId && ex?.token === tokenId,
-                              );
-                            return (
-                              <div key={row.sentenceId} className="flex items-start">
-                                <ContextRow
-                                  row={row}
-                                  to={sentenceTo(g.projectId, g.docId, row.sentenceId)}
-                                />
-                                {dictionary && canManage && tokenId && (
-                                  <button
-                                    type="button"
-                                    title={chosen ? 'Already an example' : 'Use as example'}
-                                    aria-label="Use as example"
-                                    disabled={chosen}
-                                    onClick={() => handleAddExample(g.docId, tokenId)}
-                                    className="mt-1.5 mr-2 rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
-                                  >
-                                    <Quote className="h-3.5 w-3.5" />
-                                  </button>
-                                )}
-                              </div>
-                            );
-                          })}
-                          {g.rows.length === 0 && (
-                            <p className="px-3 py-2 text-xs text-muted-foreground">
-                              Uses in this document could not be located (it may have changed). Open
-                              it to look.
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-
-                    {concHasMore && (
-                      <div ref={sentinelRef} className="flex justify-center py-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => loadMoreRef.current()}
-                          disabled={concLoadingMore}
-                        >
-                          {concLoadingMore
-                            ? 'Loading…'
-                            : `Load more (${(concPlan.totalDocs - concLoaded).toLocaleString()} document${concPlan.totalDocs - concLoaded === 1 ? '' : 's'} left)`}
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+            </TabsContent>
+          </Tabs>
         )}
       </div>
 

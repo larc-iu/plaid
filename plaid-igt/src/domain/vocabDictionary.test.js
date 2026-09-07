@@ -4,6 +4,7 @@ import {
   buildSenseTree,
   buildItemNumbers,
   arrangeAsTree,
+  groupRankedByHeadword,
   descendantsOf,
   nextSenseOrder,
   withParentSet,
@@ -197,11 +198,14 @@ describe('placing and moving senses', () => {
       ['kat2a', 2],
       ['run', 0],
     ]);
-    // A search that matched only the subsense and the variant.
-    const some = arrangeAsTree([list[3], list[4]], t).map((r) => [r.item.id, r.depth]);
+    // A search that matched only the subsense and the variant: the subsense
+    // sits under its entry and its sense, both shown as context.
+    const some = arrangeAsTree([list[3], list[4]], t).map((r) => [r.item.id, r.depth, !!r.context]);
     expect(some).toEqual([
-      ['kat2a', 0],
-      ['run', 0],
+      ['kat', 0, true],
+      ['kat2', 1, true],
+      ['kat2a', 2, false],
+      ['run', 0, false],
     ]);
   });
 });
@@ -311,5 +315,41 @@ describe('examples', () => {
     expect(withExampleAdded(added, { document: 'd', token: 't' })).toBe(added);
     expect(withExampleRemoved(added, 0)).toEqual({ examples: [{ document: 'd', token: 't' }] });
     expect(withExampleRemoved(withExampleRemoved(added, 0), 0)).toEqual({});
+  });
+});
+
+describe('groupRankedByHeadword', () => {
+  it('shows each headword once, at its best member, with its ranked senses under it', () => {
+    const list = [...items(), item('kat9', 'kat', { gloss: 'other kat' })];
+    // Ranked as the popover would: the sense first (precedent), then others.
+    const ranked = [
+      { ...list[1], _tier: 0 }, // kat2 (sense of kat)
+      { ...list[5], _tier: 1 }, // kat9
+      { ...list[0], _tier: 2 }, // kat
+      { ...list[3], _tier: 3 }, // kat2a (sense of kat2)
+      { ...list[4], _tier: 3 }, // run
+    ];
+    const rows = groupRankedByHeadword(ranked, list).map((r) => [r.item.id, r.depth, !!r.context]);
+    expect(rows).toEqual([
+      ['kat', 0, false],
+      ['kat2', 1, false],
+      ['kat2a', 2, false],
+      ['kat9', 0, false],
+      ['run', 0, false],
+    ]);
+    // The rank annotations ride along on the ranked rows.
+    expect(groupRankedByHeadword(ranked, list)[1].item._tier).toBe(0);
+  });
+
+  it('shows an unranked headword as context above a ranked sense', () => {
+    const list = items();
+    const ranked = [{ ...list[3], _tier: 0 }]; // only kat2a matched
+    expect(
+      groupRankedByHeadword(ranked, list).map((r) => [r.item.id, r.depth, !!r.context]),
+    ).toEqual([
+      ['kat', 0, true],
+      ['kat2', 1, true],
+      ['kat2a', 2, false],
+    ]);
   });
 });

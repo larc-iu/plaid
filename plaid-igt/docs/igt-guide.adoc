@@ -358,8 +358,10 @@ A whole entry can be dragged the same way, senses and all.
 **Set parent** works for any entry, dragging or not.
 When several entries share a form, the number after the headword is a button: it opens the list of those entries, and dragging them into a new order gives them their numbers.
 **Make its own entry** takes a sense back out.
-The entry list gains a **By entry** view, beside **Flat**, that draws senses indented under their entry.
-A search shows every matching entry in either view, so a sense that matches is shown even when its entry does not.
+The entry list opens in a **By entry** view, beside **Flat**, that draws senses indented under their entry.
+A search shows every matching entry in either view; in the By entry view a sense that matches is shown under its entry, which is dimmed when it did not match itself.
+The open entry has three tabs: **Entry**, its fields, senses, examples and references; **Concordance**, every place it is linked; and **Comments**.
+In the interlinear view, the link popover lists a dictionary the same way: each headword once, its senses numbered under it.
 
 A field can hold a reference to another entry.
 On the Settings tab, set the field's **Type** to **Entry** for one reference or **Entries** for a list, and name it for what it means: *Variant of*, *See also*, *Compound of*.

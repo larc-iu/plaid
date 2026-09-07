@@ -52,7 +52,11 @@ import {
   splitChainText,
 } from '@/domain/affixMarkers';
 import { buildHomonymIndex } from '@/domain/vocabHomonyms';
-import { buildItemNumbers, readDictionaryEnabled } from '@/domain/vocabDictionary';
+import {
+  buildItemNumbers,
+  groupRankedByHeadword,
+  readDictionaryEnabled,
+} from '@/domain/vocabDictionary';
 
 // The number that tells an entry apart, drawn after its form: a homonym
 // subscript (a NUMBER, form₂) for a vocabulary without Lexicography Mode, a
@@ -4538,8 +4542,19 @@ export class IgtEditor {
         items.unshift(x);
       }
     }
-    const limited = items.slice(0, 30);
-    const truncated = items.length - limited.length;
+    // In Lexicography Mode the candidates read like the dictionary: each
+    // headword once, its senses under it, numbered; a headword that only
+    // carries senses is shown for context, dimmed. Each row keeps its rank.
+    const grouped =
+      activeVocab && readDictionaryEnabled(activeVocab.config)
+        ? groupRankedByHeadword(items, activeVocab.items || [])
+        : items.map((it) => ({ item: it, depth: 0 }));
+    const limited = grouped.slice(0, 30).map((r) => ({
+      ...r.item,
+      _depth: r.depth,
+      _context: !!r.context,
+    }));
+    const truncated = grouped.length - limited.length;
     // The form a new entry would get: the word/morpheme's surface with edge
     // punctuation trimmed by the project's own ignored-tokens rule
     // (`derechos.` → `derechos`; user decision 2026-08-26).
@@ -4728,9 +4743,10 @@ export class IgtEditor {
                 const confirmable = linked && inferredCurrent;
                 return html`<button
                   type="button"
-                  class="igt-vocab-pop__item ${linked ? 'is-linked' : ''} ${i === activeIdx
-                    ? 'is-active'
-                    : ''}"
+                  class="igt-vocab-pop__item ${linked ? 'is-linked' : ''} ${
+                    i === activeIdx ? 'is-active' : ''
+                  } ${it._context ? 'is-context' : ''}"
+                  style=${it._depth ? `margin-left:${it._depth * 14}px` : ''}"
                   @mousemove=${(e) => {
                     if (!this._pointerMoved(e)) return;
                     if (this._popoverActiveIndex !== i) {
@@ -4745,43 +4761,51 @@ export class IgtEditor {
                   }}
                 >
                   <span class="igt-vocab-pop__main">
-                    ${linked
-                      ? html`<a
-                          class="igt-vocab-pop__form igt-vocab-pop__goto"
-                          href=${`#/vocabularies/${activeVocab.id}?item=${it.id}`}
-                          title="Open this entry in the lexicon"
-                          @click=${(e) => e.stopPropagation()}
-                          >${it.form}${numHtml(it._sub, 'igt-vocab-pop')}</a
-                        >`
-                      : html`<span class="igt-vocab-pop__form"
-                          >${it.form}${numHtml(it._sub, 'igt-vocab-pop')}</span
-                        >`}
-                    ${it._prec
-                      ? html`<span
-                          class="igt-vocab-pop__prec"
-                          title=${`“${precForm}” was linked to this entry ${it._prec} time${
-                            it._prec === 1 ? '' : 's'
-                          } in this project`}
-                          >×${it._prec}</span
-                        >`
-                      : nothing}
+                    ${
+                      linked
+                        ? html`<a
+                            class="igt-vocab-pop__form igt-vocab-pop__goto"
+                            href=${`#/vocabularies/${activeVocab.id}?item=${it.id}`}
+                            title="Open this entry in the lexicon"
+                            @click=${(e) => e.stopPropagation()}
+                            >${it.form}${numHtml(it._sub, 'igt-vocab-pop')}</a
+                          >`
+                        : html`<span class="igt-vocab-pop__form"
+                            >${it.form}${numHtml(it._sub, 'igt-vocab-pop')}</span
+                          >`
+                    }
+                    ${
+                      it._prec
+                        ? html`<span
+                            class="igt-vocab-pop__prec"
+                            title=${`“${precForm}” was linked to this entry ${it._prec} time${
+                              it._prec === 1 ? '' : 's'
+                            } in this project`}
+                            >×${it._prec}</span
+                          >`
+                        : nothing
+                    }
                     ${confirmable ? html`<span class="igt-vocab-pop__ok">confirm</span>` : nothing}
-                    ${linked
-                      ? html`<span
-                          class="igt-vocab-pop__x"
-                          role="button"
-                          tabindex="-1"
-                          @click=${(e) => {
-                            e.stopPropagation();
-                            act.toggle(it, true);
-                          }}
-                          >unlink</span
-                        >`
-                      : nothing}
+                    ${
+                      linked
+                        ? html`<span
+                            class="igt-vocab-pop__x"
+                            role="button"
+                            tabindex="-1"
+                            @click=${(e) => {
+                              e.stopPropagation();
+                              act.toggle(it, true);
+                            }}
+                            >unlink</span
+                          >`
+                        : nothing
+                    }
                   </span>
-                  ${it._detail
-                    ? html`<span class="igt-vocab-pop__detail">${it._detail}</span>`
-                    : nothing}
+                  ${
+                    it._detail
+                      ? html`<span class="igt-vocab-pop__detail">${it._detail}</span>`
+                      : nothing
+                  }
                 </button>`;
               })
             : html`<div class="igt-vocab-pop__empty">No matches</div>`}

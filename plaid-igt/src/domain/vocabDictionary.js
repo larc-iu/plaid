@@ -410,22 +410,41 @@ const renumbered = (sibs, p) =>
 
 /**
  * Lay out a (possibly filtered, sorted) list as a tree for display: an item
- * nests under its parent only when the parent is ALSO in the list, so a
- * search never hides a hit and never drags in an entry that did not match.
- * Top-level items keep the list's order; nested ones follow sense order.
+ * nests under its parent, and a hit whose ancestors are not in the list gets
+ * them above it as CONTEXT rows (`context: true`), so a sense found by a
+ * search still shows which entry it belongs to without the search having
+ * to match the entry. Nothing that matched is hidden; nothing else is
+ * listed except as context. Top-level items keep the list's order; nested
+ * ones follow sense order.
  *
- * @returns {{item: object, depth: number}[]}
+ * @returns {{item: object, depth: number, context?: boolean}[]}
  */
 export const arrangeAsTree = (listed, tree) => {
   const shown = new Set(listed.map((it) => it.id));
+  const placed = new Set();
   const out = [];
-  const place = (it, depth) => {
-    out.push({ item: it, depth });
-    for (const c of tree.childrenOf.get(it.id) || []) if (shown.has(c.id)) place(c, depth + 1);
+  const place = (it, depth, context = false) => {
+    if (placed.has(it.id)) return;
+    placed.add(it.id);
+    out.push({ item: it, depth, ...(context ? { context: true } : {}) });
+    for (const c of tree.childrenOf.get(it.id) || []) {
+      // A child comes along when it matched, or when something under it did.
+      if (shown.has(c.id) || descendantsOf(tree, c.id).some((d) => shown.has(d.id))) {
+        place(c, depth + 1, !shown.has(c.id));
+      }
+    }
   };
   for (const it of listed) {
-    const p = tree.parentOf.get(it.id);
-    if (!p || !shown.has(p)) place(it, 0);
+    if (placed.has(it.id)) continue;
+    // Start from the top of its chain, so the hit sits under its context.
+    const chain = [];
+    let cur = it;
+    while (cur) {
+      chain.unshift(cur);
+      const p = tree.parentOf.get(cur.id);
+      cur = p ? tree.byId.get(p) : null;
+    }
+    place(chain[0], 0, !shown.has(chain[0].id));
   }
   return out;
 };
@@ -581,4 +600,43 @@ export const planMergeRefs = (items, fields, survivorId, loserIds) => {
     if (changed) patches.push({ id: it.id, metadata: meta });
   }
   return patches;
+};
+
+/**
+ * Ranked popover candidates regrouped under their headwords, for a
+ * dictionary vocabulary: each headword appears once, at the place of its
+ * best-ranked member, followed by the ranked members under it in tree
+ * order. A headword none of whose own rank made the list is still shown
+ * above its senses, marked `context`, so a sense is never listed adrift.
+ * Anything not in `ranked` is left out. Rows carry the ranked item's own
+ * annotations (rank fields, number) and a `depth`.
+ *
+ * @param {object[]} ranked items in rank order, annotated
+ * @param {object[]} items the whole vocabulary, in creation order
+ * @returns {{item: object, depth: number, context?: boolean}[]}
+ */
+export const groupRankedByHeadword = (ranked, items) => {
+  const tree = buildSenseTree(items);
+  const byRankedId = new Map(ranked.map((it) => [it.id, it]));
+  const done = new Set();
+  const out = [];
+  const walk = (id, depth) => {
+    for (const c of tree.childrenOf.get(id) || []) {
+      const hit = byRankedId.get(c.id);
+      const below = descendantsOf(tree, c.id).some((d) => byRankedId.has(d.id));
+      if (!hit && !below) continue;
+      out.push({ item: hit ?? c, depth, ...(hit ? {} : { context: true }) });
+      walk(c.id, depth + 1);
+    }
+  };
+  for (const it of ranked) {
+    const rootId = tree.rootOf.get(it.id) ?? it.id;
+    if (done.has(rootId)) continue;
+    done.add(rootId);
+    const head = byRankedId.get(rootId);
+    const root = tree.byId.get(rootId) ?? it;
+    out.push({ item: head ?? root, depth: 0, ...(head ? {} : { context: true }) });
+    walk(rootId, 1);
+  }
+  return out;
 };

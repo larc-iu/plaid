@@ -50,7 +50,9 @@ export const SearchInput = React.forwardRef(
 );
 SearchInput.displayName = 'SearchInput';
 
-const plural = (n, noun) => (n === 1 ? noun : `${noun}s`);
+// English enough for the nouns lists here use: entry/entries, item/items.
+const plural = (n, noun) =>
+  n === 1 ? noun : /[^aeiou]y$/.test(noun) ? `${noun.slice(0, -1)}ies` : `${noun}s`;
 
 // How much of the list a search is hiding. Sits beside the search box.
 export const ListCount = ({ shown, total, noun = 'item', className }) => (
