@@ -47,6 +47,9 @@ export const ImportFlexProject = () => {
   // Where the lexicon goes: a new vocab (named here; null = the default name
   // until edited) or one of the existing vocabs this user maintains.
   const [lexiconMode, setLexiconMode] = useState('new'); // new | existing
+  // Keep FLEx's sense structure and turn the vocabulary's Dictionary switch
+  // on. Off unless asked: it changes what the vocabulary shows everywhere.
+  const [importDictionary, setImportDictionary] = useState(false);
   const [lexiconName, setLexiconName] = useState(null);
   const [existingVocabs, setExistingVocabs] = useState([]);
   const [existingVocabId, setExistingVocabId] = useState('');
@@ -157,6 +160,7 @@ export const ImportFlexProject = () => {
           ws: o.ws,
           name: (orthoNames[o.ws] || o.ws).trim() || o.ws,
         })),
+        dictionary: importDictionary,
       };
 
       // 1. Project + layer setup (shared with the setup wizard), once.
@@ -455,6 +459,22 @@ export const ImportFlexProject = () => {
                     </p>
                   </div>
                 )}
+                <label className="mt-1 flex cursor-pointer items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={importDictionary}
+                    disabled={locked}
+                    onChange={(e) => setImportDictionary(e.target.checked)}
+                  />
+                  <span>
+                    Dictionary
+                    <span className="block text-xs text-muted-foreground">
+                      Senses are kept under their entry, in FLEx order, and the lexicon's Dictionary
+                      switch is turned on.
+                    </span>
+                  </span>
+                </label>
               </div>
             </div>
 

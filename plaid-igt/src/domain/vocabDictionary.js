@@ -40,6 +40,24 @@ export const statusTagset = () => ({
 /** Whether a vocabulary's Dictionary switch is on. */
 export const readDictionaryEnabled = (config) => config?.[IGT_NAMESPACE]?.[DICTIONARY_KEY] === true;
 
+/**
+ * What turning the switch on adds to a vocabulary's config, given what it
+ * has: the Status tagset if missing, and the Status field held to it if
+ * missing. Both the settings switch and an import that ticks Dictionary go
+ * through here, so a vocabulary is set up the same way either way. Returns
+ * `null` for a part that needs no write.
+ */
+export const dictionaryEnablement = ({ fieldsConfig, tagsets }) => {
+  const nextTagsets = tagsets?.[STATUS_TAGSET]
+    ? null
+    : { ...(tagsets || {}), [STATUS_TAGSET]: statusTagset() };
+  const nextFields =
+    fieldsConfig && STATUS_FIELD in fieldsConfig
+      ? null
+      : { ...(fieldsConfig || {}), [STATUS_FIELD]: { inline: false, tagset: STATUS_TAGSET } };
+  return { tagsets: nextTagsets, fieldsConfig: nextFields };
+};
+
 const isId = (v) => typeof v === 'string' && v.trim() !== '';
 
 /** The fields that hold references to other entries. */

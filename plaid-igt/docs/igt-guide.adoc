@@ -102,8 +102,11 @@ Every field in a project belongs to exactly one scope, which decides which row o
 
 == Documents
 
-The **Documents** tab lists a project's texts with their word counts.
+The **Documents** tab lists a project's texts with their word counts, when each was last changed by anyone, and when you last changed it yourself.
+Click a column heading to sort by it, and again to reverse it.
+Sorting by **Your last edit** is the quickest way back to what you were working on. A document you have never edited shows a dash.
 Once there are many, the list can be searched and paged.
+How a list is sorted, and which page of it you were on, are remembered per project for the next time you open it.
 **New Document** creates an empty document and opens it on its Baseline tab.
 A document is renamed and deleted from its own Metadata tab.
 
@@ -331,6 +334,44 @@ Define one there, then pick it on the field.
 A closed tagset becomes a dropdown on the entry form and refuses a value outside the list in Bulk Add.
 It also marks the entries already outside it: the table counts them, and a click shows only those.
 A lexicon imported before the tagset existed can thus be brought into line one entry at a time, or by adding the value to the list.
+
+== Dictionary
+
+A vocabulary can also be a dictionary.
+The switch is on its **Settings** tab, under **Dictionary**, and it is off for a new vocabulary.
+With it off, the vocabulary is the flat list of entries described above and nothing in this section appears.
+Turning it on adds a **Status** field held to a closed list (draft, reviewed, published), and turning it off again leaves every field and every entry as it is.
+
+With the switch on, an entry is a headword and its first sense.
+Any entry can be made a sense of another: open it and choose **Make a sense of…**, then find the entry it belongs under.
+Senses are numbered from 2 under their entry, and a sense can have senses of its own (2.1, 2.2).
+An entry's **Senses** panel lists them in order, with arrows to reorder them and **Add sense** to write a new one directly under it.
+**Make its own entry** takes a sense back out.
+The item list gains a **By entry** view, beside **Flat**, that draws senses indented under their entry.
+A search shows every matching entry in either view, so a sense that matches is shown even when its entry does not.
+
+A field can hold a reference to another entry.
+On the Settings tab, set the field's **Type** to **Entry** for one reference or **Entries** for a list, and name it for what it means: *Variant of*, *See also*, *Compound of*.
+On the entry form such a field is a picker: type part of a form or gloss and choose.
+Each chosen entry is shown as a link to it, and the entry it points at lists it under **Referenced by**.
+References stay within one vocabulary.
+Whether a variant is its own entry pointing at the main one, or simply another entry, is up to you.
+
+A field can also be set to **Entry only**, so it is shown on a headword and not on its senses: an etymology or a pronunciation belongs to the entry, a gloss to each sense.
+
+Examples are chosen from the text, never typed in.
+Beside each row of an entry's **Concordance** is **Use as example**.
+The chosen sentences are listed in the entry's **Examples** panel, in context, with their translation, each a link into the document.
+An example is a reference to that word in that document.
+When the word is deleted, or linked to a different entry, the example says so and can be removed.
+A sentence worth citing that is not in any text belongs in a document, where it is glossed like any other, and is chosen from there.
+Examples brought in by a FLEx import are shown in the same panel as text.
+
+Deleting an entry frees its senses, which become entries of their own, and clears the fields that named it, and the confirmation says how many entries that touches.
+Merging entries with **Bulk Edit** points those references at the surviving entry.
+
+A FLEx import can keep the sense structure of the lexicon: tick **Dictionary** on the review screen and each entry's senses and subsenses are placed under it in FLEx order, with the switch turned on.
+It is off unless ticked.
 
 == Multi-word expressions
 

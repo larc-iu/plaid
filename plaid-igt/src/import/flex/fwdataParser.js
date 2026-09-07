@@ -475,26 +475,30 @@ export function parseFwdata(xml) {
     });
   }
 
-  // Lexicon: every entry, senses flattened (subsenses included, depth-first)
+  // Lexicon: every entry, senses flattened (subsenses included, depth-first).
+  // Each sense keeps the FLEx structure it came from: `parentSense` is the
+  // guid of the sense that owns it (null for an entry's own senses) and
+  // `senseIndex` its place among its siblings, so an import that wants the
+  // sense tree can rebuild it.
   const lexicon = [];
   for (const e of cls('LexEntry')) {
     const lf = allomorphs.get(refGuid(e, 'LexemeForm')) ?? null;
     const senses = [];
-    const walkSenses = (owner) => {
-      for (const sGuid of refGuids(owner, 'Senses')) {
+    const walkSenses = (owner, parentSense) => {
+      refGuids(owner, 'Senses').forEach((sGuid, senseIndex) => {
         const sNode = get(sGuid, 'LexSense');
-        if (!sNode) continue;
+        if (!sNode) return;
         const s = senseOf(sGuid);
         if (s) {
-          senses.push(s);
+          senses.push({ ...s, parentSense, senseIndex });
           track(usage.lexGloss, s.gloss);
           track(usage.lexDefinition, s.definition);
           noteExtra('senses', s.extra);
         }
-        walkSenses(sNode);
-      }
+        walkSenses(sNode, sGuid);
+      });
     };
-    walkSenses(e);
+    walkSenses(e, null);
     const extra = extraFields(e, ENTRY_HANDLED);
     noteExtra('entries', extra);
     lexicon.push({

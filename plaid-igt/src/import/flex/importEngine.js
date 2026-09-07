@@ -22,6 +22,8 @@ import {
   readScope,
   readVocabFields,
 } from '../../domain/igtConfig.js';
+import { readTagsets } from '../../domain/tagsets.js';
+import { dictionaryEnablement, DICTIONARY_KEY } from '../../domain/vocabDictionary.js';
 import { pickEn } from './fwdataParser.js';
 
 // Chunk sizes for the bulk endpoints. Each chunk is ONE server transaction
@@ -199,6 +201,7 @@ export async function importLexicon({
   analysisWss = null,
   lexiconFields = [],
   customFieldWs = {},
+  dictionary = false,
   onProgress,
   shouldStop,
 }) {
@@ -319,7 +322,56 @@ export async function importLexicon({
     done += chunk.length;
     onProgress?.({ phase: 'lexicon', done, total: pending.length });
   }
+
+  if (dictionary)
+    await placeSenses({ client, vocabId, lexicon, senseToItem, existing, shouldStop });
   return senseToItem;
+}
+
+// With Dictionary ticked, the vocabulary keeps FLEx's sense structure: an
+// entry's first sense is the entry (headword and sense 1), its other senses
+// are senses of it in FLEx order, and a subsense is a sense of the sense
+// that owned it. Written after creation, since a parent is an item id; only
+// items made in this run are placed, so an entry already in the lexicon is
+// left as it is. The vocabulary's switch goes on, with the Status field.
+async function placeSenses({ client, vocabId, lexicon, senseToItem, existing, shouldStop }) {
+  const patches = [];
+  for (const entry of lexicon) {
+    const top = entry.senses.filter((s) => !s.parentSense);
+    const root = top[0] ? senseToItem.get(top[0].guid) : null;
+    if (!root) continue;
+    for (const s of entry.senses) {
+      if (s === top[0]) continue;
+      const id = senseToItem.get(s.guid);
+      const parent = s.parentSense ? senseToItem.get(s.parentSense) : root;
+      if (!id || !parent || id === parent) continue;
+      // Under the entry, sense 1 is the entry itself, so the rest count on
+      // from there; under a sense, subsenses count from 1.
+      const senseOrder = s.parentSense ? s.senseIndex + 1 : s.senseIndex;
+      patches.push({ id, parent, senseOrder });
+    }
+  }
+  const already = new Set((existing.items || []).map((it) => it.id));
+  const fresh = patches.filter((p) => !already.has(p.id));
+  for (let i = 0; i < fresh.length; i += BULK_CHUNK) {
+    if (shouldStop?.()) throw new Error('Import cancelled');
+    const chunk = fresh.slice(i, i + BULK_CHUNK);
+    await client.batched(async () => {
+      for (const p of chunk) {
+        client.vocabItems.patchMetadata(p.id, { parent: p.parent, senseOrder: p.senseOrder });
+      }
+    });
+  }
+  const layer = await client.vocabLayers.get(vocabId);
+  const add = dictionaryEnablement({
+    fieldsConfig: readVocabFields(layer.config) ?? {},
+    tagsets: readTagsets(layer.config),
+  });
+  if (add.tagsets)
+    await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'tagsets', add.tagsets);
+  if (add.fieldsConfig)
+    await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', add.fieldsConfig);
+  await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, DICTIONARY_KEY, true);
 }
 
 /** Flatten a document's FLEx metadata onto the configured metadata fields. */
@@ -572,6 +624,7 @@ async function runImportImpl({
     customFieldWs: config.customFieldWs ?? {},
     analysisWss: config.analysisWss ?? null,
     lexiconFields: config.lexiconFields ?? [],
+    dictionary: config.dictionary === true,
     onProgress,
     shouldStop,
   });

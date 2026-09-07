@@ -165,3 +165,33 @@ test('deleting an entry frees its senses and clears references to it', async ({ 
   await expect.poll(() => meta(ids.run)).not.toHaveProperty('variantOf');
   await expect(page.getByText('cat')).toHaveCount(0);
 });
+
+test('the Settings switch turns a plain vocabulary into a dictionary, with a Status field', async ({
+  page,
+}) => {
+  const plain = await client.vocabLayers.create(`plain ${stamp}`);
+  try {
+    await seedAuth(page);
+    await page.goto(`/#/vocabularies/${plain.id}?tab=settings`);
+    const sw = page.getByRole('switch', { name: 'Dictionary' });
+    await expect(sw).toBeVisible();
+    await expect(page.getByText('Every sense')).toHaveCount(0);
+    await sw.click();
+    await expect
+      .poll(async () => (await client.vocabLayers.get(plain.id)).config?.igt?.dictionary)
+      .toBe(true);
+    const config = (await client.vocabLayers.get(plain.id)).config.igt;
+    expect(config.fields.status).toEqual({ inline: false, tagset: 'Status' });
+    expect(config.tagsets.Status.mode).toBe('closed');
+    // Type and scope controls appear on the fields that can take them.
+    await expect(page.getByText('Every sense').first()).toBeVisible();
+    await sw.click();
+    await expect
+      .poll(async () => (await client.vocabLayers.get(plain.id)).config?.igt?.dictionary)
+      .toBe(false);
+    // The field stays: turning the switch off changes nothing else.
+    expect((await client.vocabLayers.get(plain.id)).config.igt.fields.status).toBeTruthy();
+  } finally {
+    await client.vocabLayers.delete(plain.id).catch(() => {});
+  }
+});

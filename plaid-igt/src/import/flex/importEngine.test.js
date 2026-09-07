@@ -123,7 +123,8 @@ const lexicon = [
         extra: { GeneralNote: { en: 'rare', ru: 'редко' } },
         examples: [{ text: { [BASE_WS]: 'мах ава' }, translations: [{ en: 'there is a tale' }] }],
       },
-      { guid: 's3', gloss: { en: 'story' }, pos: 'n' },
+      { guid: 's3', gloss: { en: 'story' }, pos: 'n', senseIndex: 1 },
+      { guid: 's3a', gloss: { en: 'short story' }, pos: 'n', parentSense: 's3', senseIndex: 0 },
     ],
   },
 ];
@@ -235,6 +236,7 @@ function makeFakeClient({ existingDocs = [], existingItems = [], existingFields 
     vocabItems: {
       bulkCreate: (body) =>
         record('vocabItems.bulkCreate', { body }, { ids: body.map(() => id('item')) }),
+      patchMetadata: (itemId, body) => record('vocabItems.patchMetadata', { itemId, body }, {}),
     },
     vocabLinks: {
       create: (itemId, tokens, metadata) =>
@@ -300,13 +302,49 @@ describe('resolveTargets', () => {
 });
 
 describe('importLexicon', () => {
+  it('places senses under their entry, and subsenses under their sense, when asked', async () => {
+    const client = makeFakeClient();
+    const map = await importLexicon({
+      client,
+      vocabId: 'v1',
+      lexicon,
+      baselineWs: BASE_WS,
+      dictionary: true,
+    });
+    const placed = client.calls
+      .filter((c) => c.kind === 'vocabItems.patchMetadata')
+      .map((c) => [c.args.itemId, c.args.body]);
+    expect(placed).toEqual([
+      [map.get('s3'), { parent: map.get('s2'), senseOrder: 1 }],
+      [map.get('s3a'), { parent: map.get('s3'), senseOrder: 1 }],
+    ]);
+    const configs = client.calls
+      .filter((c) => c.kind === 'vocabLayers.setConfig')
+      .map((c) => [c.args.key, c.args.value]);
+    expect(configs.find(([k]) => k === 'dictionary')).toEqual(['dictionary', true]);
+    expect(configs.find(([k]) => k === 'tagsets')[1].Status.mode).toBe('closed');
+    expect(configs.filter(([k]) => k === 'fields').at(-1)[1].status).toEqual({
+      inline: false,
+      tagset: 'Status',
+    });
+  });
+
+  it('leaves every sense flat and the switch alone by default', async () => {
+    const client = makeFakeClient();
+    await importLexicon({ client, vocabId: 'v1', lexicon, baselineWs: BASE_WS });
+    expect(client.calls.some((c) => c.kind === 'vocabItems.patchMetadata')).toBe(false);
+    expect(
+      client.calls.some((c) => c.kind === 'vocabLayers.setConfig' && c.args.key === 'dictionary'),
+    ).toBe(false);
+  });
+
   it('creates one item per sense with flex guids and skips existing', async () => {
     const client = makeFakeClient({
       existingItems: [{ id: 'old1', form: 'за', metadata: { flexSense: 's1' } }],
     });
     const map = await importLexicon({ client, vocabId: 'v1', lexicon, baselineWs: BASE_WS });
     const creates = createdItems(client);
-    expect(creates).toHaveLength(2); // s2 + s3; s1 already present
+    expect(creates).toHaveLength(3); // s2 + s3 + s3a; s1 already present
     expect(creates[0].metadata).toMatchObject({
       flexEntry: 'e2',
       flexSense: 's2',

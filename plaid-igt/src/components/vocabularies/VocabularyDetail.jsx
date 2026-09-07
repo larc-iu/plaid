@@ -38,9 +38,7 @@ import {
 import {
   readDictionaryEnabled,
   DICTIONARY_KEY,
-  STATUS_FIELD,
-  STATUS_TAGSET,
-  statusTagset,
+  dictionaryEnablement,
 } from '@/domain/vocabDictionary';
 import { readTagsets, byTagsetName } from '@/domain/tagsets';
 import { TagsetsManager } from '@/components/projects/settings/TagsetsManager.jsx';
@@ -390,24 +388,23 @@ export const VocabularyDetail = () => {
   // every entry as it is.
   const handleSetDictionary = async (on) => {
     try {
-      await client.vocabLayers.setConfig(vocabularyId, IGT_NAMESPACE, DICTIONARY_KEY, on);
+      // The Status field and its list go in first, the flag last, so anyone
+      // who sees the flag also sees the field.
       if (on) {
-        if (!tagsets[STATUS_TAGSET]) {
-          await client.vocabLayers.setConfig(vocabularyId, IGT_NAMESPACE, 'tagsets', {
-            ...tagsets,
-            [STATUS_TAGSET]: statusTagset(),
-          });
+        const add = dictionaryEnablement({ fieldsConfig: fieldsToConfig(fields), tagsets });
+        if (add.tagsets) {
+          await client.vocabLayers.setConfig(vocabularyId, IGT_NAMESPACE, 'tagsets', add.tagsets);
         }
-        if (!fields.some((f) => f.name === STATUS_FIELD)) {
-          await saveFields(
-            [
-              ...fields,
-              { name: STATUS_FIELD, inline: false, immutable: false, tagset: STATUS_TAGSET },
-            ],
-            { quiet: true },
+        if (add.fieldsConfig) {
+          await client.vocabLayers.setConfig(
+            vocabularyId,
+            IGT_NAMESPACE,
+            'fields',
+            add.fieldsConfig,
           );
         }
       }
+      await client.vocabLayers.setConfig(vocabularyId, IGT_NAMESPACE, DICTIONARY_KEY, on);
       await updateVocabulary();
     } catch (err) {
       console.error('Failed to save the dictionary setting:', err);
