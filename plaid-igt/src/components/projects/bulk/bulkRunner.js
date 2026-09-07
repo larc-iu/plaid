@@ -266,6 +266,8 @@ export async function applyMerge(
   return {
     linksMoved: links.length,
     entriesRemoved: loserIds.length,
-    entriesRepointed: refPatches.length,
+    // The survivor can be in here too, when its own parent was one of the
+    // losers. It does not point at itself, so it is not counted.
+    entriesRepointed: refPatches.filter((p) => p.id !== survivorId).length,
   };
 }

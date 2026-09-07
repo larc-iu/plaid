@@ -563,12 +563,10 @@ export async function runExport({
         data: serializeVocabTsv({
           items: vocab.items || [],
           fieldNames,
-          ...(dictionary
-            ? {
-                numbers: buildItemNumbers(vocab.items || []),
-                refFields: fieldNames.filter((n) => fieldSpecs[n]?.type === 'item'),
-              }
-            : {}),
+          // A reference reads as the entry it names in any mode. Only the
+          // dotted numbering needs Lexicography Mode.
+          refFields: fieldNames.filter((n) => fieldSpecs[n]?.type === 'item'),
+          ...(dictionary ? { numbers: buildItemNumbers(vocab.items || []) } : {}),
         }),
       });
     });

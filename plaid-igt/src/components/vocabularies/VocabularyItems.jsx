@@ -18,6 +18,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { SearchInput, ListCount, ListPager, SortHeader } from '@/components/ui/list-search';
+import { useConfirm } from '@/components/shared/ConfirmProvider';
 import {
   Select,
   SelectContent,
@@ -225,6 +226,7 @@ export const VocabularyItems = ({
     return { search: q ? `?${q}` : '' };
   };
   const navigate = useNavigate();
+  const confirm = useConfirm();
   const goItem = (id, options, parent = null) =>
     setSearchParams(itemQuery(id, parent).replace(/^\?/, ''), options);
   const newParent = itemParam === 'new' ? searchParams.get('parent') : null;
@@ -494,19 +496,24 @@ export const VocabularyItems = ({
   // import) clear it first.
   const seededRef = useRef(undefined);
   useEffect(() => {
-    if (seededRef.current === selectedId) return;
+    // A new entry and a new sense of some entry share one id in the URL, so
+    // the parent is part of what the draft was filled from. Without it, going
+    // from one to the other leaves the typing behind on a form that now means
+    // something else.
+    const seedKey = selectedId === NEW_ID ? `${NEW_ID}|${newParent ?? ''}` : selectedId;
+    if (seededRef.current === seedKey) return;
     if (!selectedId || selectedId === NEW_ID) {
-      seededRef.current = selectedId;
+      seededRef.current = seedKey;
       setEditForm('');
       setEditFields({});
       return;
     }
     const item = items.find((i) => i.id === selectedId);
     if (!item) return; // not loaded yet (or gone); leave the draft as it is
-    seededRef.current = selectedId;
+    seededRef.current = seedKey;
     setEditForm(item.form);
     setEditFields(editableMetadata(item.metadata));
-  }, [selectedId, items]);
+  }, [selectedId, newParent, items]);
 
   // Plan the concordance + load the first batch whenever a real item is selected.
   useEffect(() => {
@@ -735,8 +742,8 @@ export const VocabularyItems = ({
   // it (which become entries) and the fields that name it (cleared), all in
   // the same operation as the delete.
   const deleteRefPatches = useMemo(
-    () => (dictionary && selectedItem ? planDeleteRefs(items, fields, [selectedItem.id]) : []),
-    [dictionary, items, fields, selectedItem],
+    () => (selectedItem ? planDeleteRefs(items, fields, [selectedItem.id]) : []),
+    [items, fields, selectedItem],
   );
   const handleConfirmDelete = async () => {
     if (!selectedItem) return;
@@ -791,6 +798,17 @@ export const VocabularyItems = ({
   const handleRaiseHeadword = async (id) => {
     const it = tree.byId.get(id);
     if (!it) return;
+    // The split moves fields the form edits up to the new headword, so the
+    // draft is re-seeded from what comes back. Unsaved typing goes with it.
+    if (dirty && id === selectedId) {
+      const ok = await confirm({
+        title: 'Discard unsaved changes?',
+        description: 'Adding a headword reloads this entry.',
+        confirmLabel: 'Discard changes',
+        destructive: true,
+      });
+      if (!ok) return;
+    }
     try {
       let created = null;
       await client.withOperation(`Add a headword over "${it.form}"`, async () => {
@@ -893,12 +911,10 @@ export const VocabularyItems = ({
       fieldNames,
       fieldLabels: fields.map(fieldLabel),
       usageCounts,
-      ...(dictionary
-        ? {
-            numbers: homonyms,
-            refFields: fields.filter((f) => f.type === FIELD_TYPES.ITEM).map((f) => f.name),
-          }
-        : {}),
+      // A reference reads as the entry it names in any mode. Only the dotted
+      // numbering needs Lexicography Mode.
+      refFields: fields.filter((f) => f.type === FIELD_TYPES.ITEM).map((f) => f.name),
+      ...(dictionary ? { numbers: homonyms } : {}),
     });
     downloadBlob(
       `${sanitizeFilename(vocabulary?.name || 'vocabulary')}.tsv`,
@@ -954,25 +970,28 @@ export const VocabularyItems = ({
     ],
   );
 
-  // Paged with the shared helper rather than the hook: the selection effect
-  // below needs to drive the page itself, so the state stays local.
-  //
-  // The MATCHES are what is paged, which is also what the count above the list
-  // reports. The tree view then lays out one page of them, so the context rows
-  // it adds (a headword whose sense matched but which did not match itself) do
-  // not push matches onto a page the count says nothing about.
-  const paged = pageSlice(filteredItems, page);
-  const currentPage = paged.page;
-
   // The rows the list draws: in the tree view an entry's senses follow it,
-  // indented, when they are on this page too (see arrangeAsTree).
-  const pageRows = useMemo(
+  // indented, when they are in the result set too (see arrangeAsTree).
+  //
+  // The whole result set is laid out and THEN paged, never the other way
+  // round. Arranging one page at a time draws a headword twice when the page
+  // boundary falls between it and its senses: once as a match at the foot of
+  // one page, once dimmed as their context at the head of the next.
+  const listRows = useMemo(
     () =>
       treeView
-        ? arrangeAsTree(paged.pageItems, tree)
-        : paged.pageItems.map((item) => ({ item, depth: 0 })),
-    [treeView, paged.pageItems, tree],
+        ? arrangeAsTree(filteredItems, tree)
+        : filteredItems.map((item) => ({ item, depth: 0 })),
+    [treeView, filteredItems, tree],
   );
+
+  // Paged with the shared helper rather than the hook: the selection effect
+  // below needs to drive the page itself, so the state stays local. The count
+  // above the list reports MATCHES while this pages ROWS, which differ in the
+  // tree view by the context rows: two true numbers about two different
+  // things, and the context rows are drawn dimmed to say which is which.
+  const paged = pageSlice(listRows, page);
+  const currentPage = paged.page;
 
   // Reset to page 1 when the result set is re-scoped, and only then, so the
   // page this vocabulary was left on survives the mount; jump the list back to
@@ -996,7 +1015,7 @@ export const VocabularyItems = ({
   const positionedRef = useRef(null);
   useEffect(() => {
     if (!selectedId || selectedId === NEW_ID || positionedRef.current === selectedId) return;
-    const index = filteredItems.findIndex((it) => it.id === selectedId);
+    const index = listRows.findIndex((r) => r.item.id === selectedId);
     if (index < 0) return; // not loaded yet, or the search box has it filtered out
     const wanted = Math.floor(index / LIST_PAGE_SIZE);
     if (currentPage !== wanted) {
@@ -1009,7 +1028,7 @@ export const VocabularyItems = ({
     if (!row || !pane) return;
     const r = row.getBoundingClientRect();
     if (r.top < pane.top || r.bottom > pane.bottom) row.scrollIntoView({ block: 'center' });
-  }, [selectedId, filteredItems, currentPage, setPage]);
+  }, [selectedId, listRows, currentPage, setPage]);
 
   const listCols = hasGloss
     ? 'grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto]'
@@ -1430,7 +1449,7 @@ export const VocabularyItems = ({
               </p>
             ) : (
               <ul className="divide-y">
-                {pageRows.map(({ item, depth, context }) => (
+                {paged.pageItems.map(({ item, depth, context }) => (
                   <li key={item.id}>
                     <Link
                       to={itemTo(item.id)}
