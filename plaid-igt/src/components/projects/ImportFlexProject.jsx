@@ -48,8 +48,8 @@ export const ImportFlexProject = () => {
   // until edited) or one of the existing vocabs this user maintains.
   const [lexiconMode, setLexiconMode] = useState('new'); // new | existing
   // Keep FLEx's sense structure and turn the vocabulary's Dictionary switch
-  // on. Off unless asked: it changes what the vocabulary shows everywhere.
-  const [importDictionary, setImportDictionary] = useState(false);
+  // on. On unless unticked: a FLEx lexicon is a dictionary.
+  const [importDictionary, setImportDictionary] = useState(true);
   const [lexiconName, setLexiconName] = useState(null);
   const [existingVocabs, setExistingVocabs] = useState([]);
   const [existingVocabId, setExistingVocabId] = useState('');

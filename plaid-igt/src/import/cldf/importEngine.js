@@ -46,8 +46,16 @@ async function bulkInChunks(items, check, send) {
   return ids;
 }
 
-/** The setup-wizard input derived from a build. */
-export function deriveSetupData(build, projectName, { vocabularyName = 'Lexicon' } = {}) {
+/**
+ * The setup-wizard input derived from a build. `dictionary` (default on: an
+ * imported lexicon is a dictionary) sets the vocabulary up as one, see
+ * executeSetup.
+ */
+export function deriveSetupData(
+  build,
+  projectName,
+  { vocabularyName = 'Lexicon', dictionary = true } = {},
+) {
   return {
     basicInfo: { projectName },
     orthographies: {
@@ -61,7 +69,15 @@ export function deriveSetupData(build, projectName, { vocabularyName = 'Lexicon'
     },
     vocabulary: {
       vocabularies: build.lexicon.length
-        ? [{ id: 'new-cldf-lexicon', name: vocabularyName, enabled: true, isCustom: true }]
+        ? [
+            {
+              id: 'new-cldf-lexicon',
+              name: vocabularyName,
+              enabled: true,
+              isCustom: true,
+              dictionary: dictionary === true,
+            },
+          ]
         : [],
     },
     documentMetadata: {

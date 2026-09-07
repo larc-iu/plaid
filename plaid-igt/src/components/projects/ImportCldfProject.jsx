@@ -48,6 +48,9 @@ export const ImportCldfProject = () => {
   const [dataset, setDataset] = useState(null);
   const [options, setOptions] = useState(null);
   const [projectName, setProjectName] = useState('');
+  // The lexicon becomes a dictionary (senses, references, examples, a
+  // status). On unless unticked: an imported lexicon is one.
+  const [dictionary, setDictionary] = useState(true);
   const [progress, setProgress] = useState(null);
   const [runError, setRunError] = useState(null);
   const [results, setResults] = useState(null);
@@ -95,7 +98,7 @@ export const ImportCldfProject = () => {
           client,
           isNewProject: true,
           resumeProjectId: projectIdRef.current,
-          setupData: deriveSetupData(build, projectName.trim()),
+          setupData: deriveSetupData(build, projectName.trim(), { dictionary }),
           onProgress: (pct, msg) => setProgress({ label: msg, pct: pct * 0.15 }),
           onProjectCreated: (id) => {
             projectIdRef.current = id;
@@ -233,6 +236,23 @@ export const ImportCldfProject = () => {
                 <p className="mt-2 border-t pt-2 text-xs text-muted-foreground">
                   Fields: {build.schema.fields.map((f) => `${f.name} (${f.scope})`).join(', ')}
                 </p>
+              )}
+              {build.lexicon.length > 0 && (
+                <label className="mt-2 flex cursor-pointer items-start gap-2 border-t pt-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={dictionary}
+                    disabled={stage !== 'review'}
+                    onChange={(e) => setDictionary(e.target.checked)}
+                  />
+                  <span>
+                    Dictionary
+                    <span className="block text-xs text-muted-foreground">
+                      The lexicon's Dictionary switch is turned on, with a Status field.
+                    </span>
+                  </span>
+                </label>
               )}
               {build.languages.object && (
                 <p className="mt-2 border-t pt-2 text-xs text-muted-foreground">

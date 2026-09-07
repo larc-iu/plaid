@@ -31,6 +31,11 @@ export const VocabularyManager = ({
 }) => {
   const [vocabularies, setVocabularies] = useState([]);
   const [newVocabName, setNewVocabName] = useState('');
+  // Whether the next vocabulary added starts as a dictionary (senses,
+  // references, examples, a status). Off for a fresh project: it changes
+  // what the vocabulary shows everywhere, and its Settings switch can turn
+  // it on later.
+  const [newVocabDictionary, setNewVocabDictionary] = useState(false);
   const [hoveredVocab, setHoveredVocab] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -148,6 +153,7 @@ export const VocabularyManager = ({
       id: `new-${Date.now()}`, // Temporary ID for new vocabs
       enabled: true, // New custom vocabs are enabled by default
       isCustom: true,
+      dictionary: newVocabDictionary,
     };
 
     const updatedVocabs = [...vocabularies, newVocab];
@@ -282,6 +288,11 @@ export const VocabularyManager = ({
                             · {String(record.id).slice(-6)}
                           </span>
                         )}
+                        {record.isCustom && record.dictionary && (
+                          <span className="ml-1.5 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                            Dictionary
+                          </span>
+                        )}
                       </span>
                       <div className="flex items-center gap-2">
                         {/* Only show move buttons in setup mode, and only for
@@ -388,6 +399,22 @@ export const VocabularyManager = ({
                 <Plus className="h-4 w-4" /> Add Vocabulary
               </Button>
             </div>
+            <label className="mt-2 flex cursor-pointer items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={newVocabDictionary}
+                onChange={(event) => setNewVocabDictionary(event.target.checked)}
+              />
+              <span>
+                Dictionary
+                <span className="block text-xs text-muted-foreground">
+                  Entries can be grouped into senses, refer to one another, carry examples chosen
+                  from the text, and hold a status. Can be turned on later in the vocabulary's
+                  settings.
+                </span>
+              </span>
+            </label>
           </div>
         )}
       </div>

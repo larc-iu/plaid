@@ -129,6 +129,12 @@ describe('deriveSetupData', () => {
       ]),
     );
     expect(setup.vocabulary.vocabularies).toHaveLength(1);
+    // An imported lexicon is a dictionary unless asked otherwise.
+    expect(setup.vocabulary.vocabularies[0].dictionary).toBe(true);
+    expect(
+      deriveSetupData(fixtureBuild(), 'My Corpus', { dictionary: false }).vocabulary.vocabularies[0]
+        .dictionary,
+    ).toBe(false);
     expect(setup.documentMetadata.enabledFields.map((f) => f.name).sort()).toEqual([
       'Genre',
       'Source',

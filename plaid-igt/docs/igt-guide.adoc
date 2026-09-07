@@ -370,8 +370,9 @@ Examples brought in by a FLEx import are shown in the same panel as text.
 Deleting an entry frees its senses, which become entries of their own, and clears the fields that named it, and the confirmation says how many entries that touches.
 Merging entries with **Bulk Edit** points those references at the surviving entry.
 
-A FLEx import can keep the sense structure of the lexicon: tick **Dictionary** on the review screen and each entry's senses and subsenses are placed under it in FLEx order, with the switch turned on.
-It is off unless ticked.
+A vocabulary added while setting up a new project can start as a dictionary: tick **Dictionary** under the name.
+An imported lexicon starts as one unless you untick it on the review screen.
+A FLEx import also keeps the sense structure of the lexicon: each entry's senses and subsenses are placed under it in FLEx order.
 
 == Multi-word expressions
 
