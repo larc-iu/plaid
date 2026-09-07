@@ -32,6 +32,7 @@ export const GrewQueryInput = ({ value, onChange, onRun, running, error, action 
           onKeyDown={onKeyDown}
           padding={10}
           textareaId="grew-query"
+          insertSpaces={false}
           placeholder={'pattern { X [upos=VERB]; Y [upos=NOUN]; X -[nsubj]-> Y }'}
           spellCheck={false}
           style={{

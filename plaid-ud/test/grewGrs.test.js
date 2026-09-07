@@ -270,3 +270,20 @@ test('lexicon references parse in brackets and dot constraints; the search box r
     (e) => e instanceof GrewUnsupportedError && e.feature === 'lexicon',
   );
 });
+
+test('a rule with a lexicon compiles for discovery as a value list', async () => {
+  const { compileGrew } = await import('../src/grew/compile.js');
+  const LI = {
+    sentenceTokenLayer: { id: 'S' },
+    morphemeTokenLayer: { id: 'M' },
+    lemmaLayer: { id: 'L' },
+    featuresLayer: { id: 'F' },
+  };
+  const grs = parseGrs(
+    'pattern { X [lemma=lex.noun, Gender=lex.g] } commands { X.Done = Yes }\n#BEGIN lex\nnoun\tg\ndog\tMasc\ncat\tFem\ndog\tFem\n#END',
+  );
+  const { query } = compileGrew(grs.rules[0], LI, { projectId: 'p' });
+  const spans = query.where.filter((c) => c[0] === 'span');
+  assert.deepEqual(spans[0][2].value, ['dog', 'cat']);
+  assert.deepEqual(spans[1][2].value, ['Gender=Masc', 'Gender=Fem']);
+});

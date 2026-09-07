@@ -22,7 +22,7 @@ const SPEC = [
   ['string', /\/(?:\\.|[^/\n\\])*\/[A-Za-z]*/y], // /pcre/flags
   [
     'keyword',
-    /\b(?:pattern|with|without|global|rule|commands|strat|del_edge|add_edge|del_node|add_node|shift_in|shift_out|shift|del_feat|append_feats|prepend_feats)\b/y,
+    /#BEGIN\b|#END\b|\b(?:pattern|with|without|global|rule|commands|strat|del_edge|add_edge|del_node|add_node|shift_in|shift_out|shift|del_feat|append_feats|prepend_feats)\b/y,
   ],
   ['global', /\bis_[A-Za-z_]+\b|\b(?:Onf|Iter|Seq|Alt|Pick|Try|Empty)\b/y],
   ['operator', /->>|-\[|->|><|<<|>>|<>|<=|>=|==>|=\[|\]=>|:<|:>|[<>=|^!$*+]/y],

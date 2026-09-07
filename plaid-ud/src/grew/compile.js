@@ -29,6 +29,9 @@ import {
 } from './regex.js';
 
 const COLUMN_FEATS = { upos: 'uposLayer', xpos: 'xposLayer', lemma: 'lemmaLayer' };
+// A lexicon field with more distinct values than this is not turned into a
+// value list for the search (the rule then visits every document).
+const MAX_LEXICON_VALUES = 500;
 const MAX_LINEAR_DISTANCE = 50;
 const MAX_BRANCHES = 128;
 const MAX_DEPTH = 64;
@@ -42,6 +45,7 @@ class Compiler {
   constructor(layerInfo, opts) {
     this.li = layerInfo || {};
     this.opts = opts;
+    this.lexicons = null; // a rule's inline lexicons, set by compile()
     this.where = [];
     this.find = ['?S'];
     this.warnings = [];
@@ -70,6 +74,7 @@ class Compiler {
   }
 
   compile(ast) {
+    this.lexicons = ast.lexicons || null;
     const SENT = this.layerId('sentenceTokenLayer', 'Sentences');
     this.where.push(['token', '?S', { layer: SENT }]);
 
@@ -778,7 +783,7 @@ class Compiler {
 
   valueConstraint(v, ctx) {
     if (!v) return undefined;
-    if (v.type === 'lexref') this.refuseLexicon();
+    if (v.type === 'lexref') return this.lexiconValues(v);
     if (v.type === 'lit') return v.value;
     if (v.type === 'any') return undefined; // 'defined' handled by caller
     if (v.type === 'regex') return this.regexConstraint(v);
@@ -793,7 +798,7 @@ class Compiler {
   }
 
   featValueConstraint(name, v) {
-    if (v.type === 'lexref') this.refuseLexicon();
+    if (v.type === 'lexref') return this.lexiconValues(v).map((x) => featEqValue(name, x));
     if (v.type === 'lit') return featEqValue(name, v.value);
     if (v.type === 'disj' && v.items.every((it) => it.type === 'lit'))
       return v.items.map((it) => featEqValue(name, it.value));
@@ -817,6 +822,28 @@ class Compiler {
       'lexicon',
       'A lexicon (lex.field) only works in a rewriting rule.',
     );
+  }
+
+  // `lex.field` as a search constraint: the field's distinct values, so the
+  // documents a lexicon rule could touch are found without a full scan. The
+  // local matcher does the exact narrowing afterwards.
+  lexiconValues(v) {
+    const lex = this.lexicons?.[v.lex];
+    if (!lex) this.refuseLexicon();
+    if (!lex.fields.includes(v.field)) {
+      throw new GrewUnsupportedError(
+        'lexicon-field',
+        `Lexicon '${v.lex}' has no field '${v.field}'.`,
+      );
+    }
+    const values = [...new Set(lex.entries.map((e) => e[v.field]))];
+    if (!values.length || values.length > MAX_LEXICON_VALUES) {
+      throw new GrewUnsupportedError(
+        'lexicon-size',
+        `Lexicon '${v.lex}' is too large to narrow the search.`,
+      );
+    }
+    return values;
   }
 
   litValue(v) {

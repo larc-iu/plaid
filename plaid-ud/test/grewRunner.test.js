@@ -196,3 +196,22 @@ test('apply: a document changed since the preview stops the run after the ones b
   // The operation was still closed.
   assert.equal(client.operationGroup, null);
 });
+
+test('apply as a reviewed contributor: creates and edits are marked contributed', async () => {
+  const { raw, client, project } = setup();
+  project.config = { plaid: { review: { users: ['u1'] } } };
+  const user = { id: 'u1', isAdmin: false };
+  const grs = parseGrs('pattern { X [upos=DET, !Seen] } commands { X.upos = PRON; X.Seen = Yes }');
+  const plan = await planRewrite(client, { project, user, layerInfo: getUdLayerInfo(raw), grs });
+  await applyRewrite(client, { rows: plan.rows, docs: plan.docs, label: 'Rewrite' });
+  const ops = client.calls.map((c) => c.op);
+  // Two DET words: an update + its stamp and a create each.
+  assert.deepEqual(ops.filter((o) => o === 'spans.update').length, 2);
+  assert.deepEqual(ops.filter((o) => o === 'spans.patchMetadata').length, 2);
+  assert.deepEqual(ops.filter((o) => o === 'spans.create').length, 2);
+  const stamp = client.calls.find((c) => c.op === 'spans.patchMetadata').args[1];
+  assert.equal(stamp.prov, 'contributed');
+  assert.equal(stamp.provSource, 'user:u1');
+  const create = client.calls.find((c) => c.op === 'spans.create').args[3];
+  assert.equal(create.prov, 'contributed');
+});

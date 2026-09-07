@@ -103,6 +103,9 @@ test('a feature rewrite: preview, apply, and the rule then matches nothing', asy
   await expect(page.getByText('No sentences to change.')).toBeVisible();
   const { li } = await fetchDoc();
   expect(spanValues(li.uposLayer).filter((v) => v === 'DET')).toEqual([]);
+  // One history entry for the whole rewrite, labelled by its rules.
+  const audit = await S.client.documents.audit(S.docId);
+  expect(audit.some((e) => e.message === 'Rewrite: rule')).toBe(true);
   // The five determiners plus "she".
   expect(spanValues(li.uposLayer).filter((v) => v === 'PRON')).toHaveLength(6);
 });
@@ -174,6 +177,31 @@ test('a document changed between preview and apply is refused and left alone', a
   await expect(page.getByText('Changed 3 sentences in 1 document.')).toBeVisible();
   const done = await fetchDoc();
   expect(spanValues(done.li.featuresLayer).filter((v) => v === 'Seen=Yes')).toHaveLength(5);
+});
+
+test('an inline lexicon supplies values, and narrows discovery', async ({ page }) => {
+  const box = await openSearch(page);
+  await preview(
+    page,
+    box,
+    [
+      'pattern { X [upos=NOUN, lemma=lex.noun, !Gender] } commands { X.Gender = lex.Gender }',
+      '#BEGIN lex',
+      'noun\tGender',
+      'dog\tMasc',
+      'cat\tFem',
+      '#END',
+    ].join('\n'),
+  );
+  await expect(page.getByText('2 sentences in 1 document, 2 selected')).toBeVisible();
+  await expect(page.getByText('dog: Gender=Masc added')).toBeVisible();
+  await expect(page.getByText('cat: Gender=Fem added')).toHaveCount(2);
+  await applyAll(page, 2);
+  await expect(page.getByText('Changed 2 sentences in 1 document.')).toBeVisible();
+  const { li } = await fetchDoc();
+  const feats = spanValues(li.featuresLayer);
+  expect(feats.filter((v) => v === 'Gender=Masc')).toHaveLength(1);
+  expect(feats.filter((v) => v === 'Gender=Fem')).toHaveLength(2);
 });
 
 test('a rule that fails on a sentence shows the error on that sentence', async ({ page }) => {
