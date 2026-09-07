@@ -50,6 +50,40 @@ describe('computeAutoLinkProposals', () => {
     ]);
   });
 
+  it('links to a sense, not to the headword standing over it', () => {
+    // A FLEx entry with several senses imports as a headword (no gloss of its
+    // own) plus its senses, all sharing the form. The headword sorts first by
+    // id, so without the rule every word would link to the empty one.
+    const vocabs = {
+      v1: {
+        id: 'v1',
+        items: [
+          { id: 'i1', form: 'kwatha', metadata: {} },
+          { id: 'i2', form: 'kwatha', metadata: { gloss: 'do', parent: 'i1', senseOrder: 1 } },
+          { id: 'i3', form: 'kwatha', metadata: { gloss: 'make', parent: 'i1', senseOrder: 2 } },
+        ],
+      },
+    };
+    expect(buildItemIndex(vocabs).exact.get('kwatha')).toEqual(['i2', 'i3']);
+    const proposals = computeAutoLinkProposals({
+      sentences: sentence([word('w1', 'kwatha')]),
+      vocabularies: vocabs,
+      precedent: precedentOf(),
+    });
+    expect(proposals).toEqual([{ tokenId: 'w1', vocabItemId: 'i2', form: 'kwatha', kind: 'word' }]);
+    // A headword whose senses are spelled differently is still a candidate.
+    const other = {
+      v1: {
+        id: 'v1',
+        items: [
+          { id: 'j1', form: 'ntsi', metadata: { gloss: 'tree' } },
+          { id: 'j2', form: 'ntsi-ntsi', metadata: { gloss: 'wood', parent: 'j1' } },
+        ],
+      },
+    };
+    expect(buildItemIndex(other).exact.get('ntsi')).toEqual(['j1']);
+  });
+
   it('replaces a machine-unverified link when the rule resolves a different item; leaves same-item and protected links', () => {
     const precedent = precedentOf(res([['i-all', null, 'todos', 'word', null, 5]]));
     const sentences = sentence([

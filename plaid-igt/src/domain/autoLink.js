@@ -5,7 +5,9 @@
 //   words linked, a morpheme what morphemes linked) over precedent of any kind;
 //   a tie on count breaks to the lexicographically smallest item id. With no
 //   precedent, link to a matching vocab item; if several share the form, again
-//   the lexicographically smallest id wins. Ties are rare, and the result is
+//   the lexicographically smallest id wins. In Lexicography Mode a headword
+//   that has a sense of the same form is not a candidate: the link is about a
+//   sense, and the headword of a FLEx import carries no gloss of its own. Ties are rare, and the result is
 //   stamped unverified for review, so an arbitrary-but-deterministic pick beats
 //   refusing to link. An entry may be linked from words AND morphemes (a stem
 //   is a morpheme in `dog-s` and the whole word in `dog`); the kind only ranks,
@@ -63,6 +65,7 @@ export function buildItemIndex(vocabularies) {
   const folded = new Map();
   const bound = new Set();
   const phrase = new Set();
+  const parentOf = new Map();
   const add = (map, key, id) => {
     const list = map.get(key);
     if (list) {
@@ -76,6 +79,22 @@ export function buildItemIndex(vocabularies) {
       add(folded, it.form.toLowerCase(), it.id);
       if (isBoundType(it.metadata?.morphType)) bound.add(it.id);
       if (isMweType(it.metadata?.morphType)) phrase.add(it.id);
+      const parent = it.metadata?.parent;
+      if (typeof parent === 'string' && parent) parentOf.set(it.id, parent);
+    }
+  }
+  // In Lexicography Mode a headword and its senses share a form, so both land
+  // in the same list. A link is about a sense: that is where the gloss is, and
+  // a headword made by a FLEx import has none of its own. So a headword drops
+  // out of a list that also holds one of its senses, which leaves the rule
+  // picking between senses as it always did between same-form entries.
+  for (const map of [exact, folded]) {
+    for (const [key, ids] of map) {
+      if (ids.length < 2) continue;
+      const parents = new Set(ids.map((id) => parentOf.get(id)).filter(Boolean));
+      if (!parents.size) continue;
+      const kept = ids.filter((id) => !parents.has(id));
+      if (kept.length) map.set(key, kept);
     }
   }
   return { exact, folded, bound, phrase };
