@@ -261,6 +261,9 @@ const DecisionRow = ({ d, columns, override, fallback, onChoose }) => {
                   >
                     {d.matches.length > 1 && `${i + 1}. `}
                     {m.pending ? 'Earlier in file' : 'Already here'}
+                    {/* In a dictionary every sense of an entry answers to the
+                        same form, and the number is what tells them apart. */}
+                    {m.number ? <span className="ml-1 tabular-nums">{m.number}</span> : null}
                     {/* The form only earns space when it isn't the row's own,
                         which happens under case-insensitive matching. */}
                     {m.form !== d.form && <div className="text-foreground">{m.form}</div>}
@@ -304,6 +307,10 @@ export const BulkAddDialog = ({
   // refuses is left out of the row, the way an unknown morph type is.
   tagsetFor = NO_TAGSETS,
   existingItems,
+  // In Lexicography Mode a headword and its senses share a form. A row names
+  // the entry; the senses are still on the comparison, numbered, and can be
+  // picked by hand.
+  dictionary = false,
   client,
   onImported,
 }) => {
@@ -355,8 +362,9 @@ export const BulkAddDialog = ({
         caseInsensitive,
         strategies,
         overrides,
+        dictionary,
       }),
-    [entries, existingItems, fieldNames, caseInsensitive, strategies, overrides],
+    [entries, existingItems, fieldNames, caseInsensitive, strategies, overrides, dictionary],
   );
   const overrideCount = Object.keys(overrides).length;
   // Open on the rows that need a person. When there are none, the useful first

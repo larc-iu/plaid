@@ -27,6 +27,7 @@
 
 import { FLEX_MORPH_TYPES } from '../domain/affixMarkers.js';
 import { isValueAllowed, tagsetEnforces } from '../domain/tagsets.js';
+import { buildItemNumbers } from '../domain/vocabDictionary.js';
 
 /** Mapping sentinels: a column becomes the item's form, or is left out. */
 export const FORM = '__form__';
@@ -372,6 +373,8 @@ const parseAnswer = (raw) => {
  * @param {boolean} [opts.caseInsensitive] - match forms ignoring capitalization
  * @param {object} [opts.strategies] - the per-classification policy, see DEFAULT_STRATEGIES
  * @param {object} [opts.overrides] - `{[line]: policy}`, one row's answer overriding its bucket
+ * @param {boolean} [opts.dictionary] - the vocabulary is in Lexicography Mode, where a headword
+ *   and its senses share a form: a row names the ENTRY, and its senses can still be picked by hand
  * @returns {{
  *   decisions: {
  *     line, form, values, kind, detail,
@@ -392,8 +395,13 @@ export const planVocabImport = ({
   caseInsensitive = false,
   strategies = DEFAULT_STRATEGIES,
   overrides = {},
+  dictionary = false,
 }) => {
   const policies = { ...DEFAULT_STRATEGIES, ...strategies };
+  // In Lexicography Mode a headword and every sense under it carry the same
+  // form, so all of them answer to a row. The numbers tell them apart on the
+  // comparison, and the headword is what a bare form means (see `heads` below).
+  const numbers = dictionary ? buildItemNumbers(existingItems) : null;
 
   // The row's own answer wins over its bucket's, as long as it still makes
   // sense for how the row classified this time round.
@@ -425,7 +433,13 @@ export const planVocabImport = ({
       const v = item?.metadata?.[f];
       if (!blank(v)) values[f] = String(v);
     }
-    push(item?.form ?? '', { id: item.id, form: item.form, values });
+    push(item?.form ?? '', {
+      id: item.id,
+      form: item.form,
+      values,
+      root: !dictionary || !item?.metadata?.parent,
+      number: numbers?.get(item.id) ?? '',
+    });
   }
 
   const decisions = [];
@@ -459,6 +473,7 @@ export const planVocabImport = ({
   // ambiguous row can only expand an entry it agrees with.
   const snapshot = (c, target, canTarget = true) => ({
     form: c.form,
+    number: c.number ?? '',
     values: { ...c.values },
     pending: c.id == null,
     target: !!target,
@@ -484,7 +499,15 @@ export const planVocabImport = ({
     const metadata = { ...entry.values };
     const pending = { form: String(entry.form).trim(), metadata };
     creates.push(pending);
-    push(entry.form, { id: null, form: pending.form, values: metadata, pending });
+    // What this run creates is an entry of its own, never a sense.
+    push(entry.form, {
+      id: null,
+      form: pending.form,
+      values: metadata,
+      pending,
+      root: true,
+      number: '',
+    });
     record(entry, { kind, action: 'create', detail, changes: additions(entry, fields), ...extra });
   };
 
@@ -556,6 +579,36 @@ export const planVocabImport = ({
       } else {
         addUpdate(target.id, patch);
       }
+      record(entry, { ...base, action: 'update', detail: `adds ${added}` });
+      continue;
+    }
+
+    // A form shared by a headword and its senses is not really a question: the
+    // row names the ENTRY, as a bare form does everywhere else. The senses stay
+    // on the comparison, and a reviewer can still target one. Two headwords
+    // sharing a form are a real question, and stay one.
+    const heads = compatible.filter((c) => c.root);
+    if (compatible.length > 1 && heads.length === 1) {
+      counts.enrich += 1;
+      const target = heads[0];
+      const changes = diffAgainst(target, entry, fields);
+      const patch = Object.fromEntries(changes.map((c) => [c.field, c.to]));
+      const added = changes.map((c) => c.field).join(', ');
+      const base = {
+        kind: 'enrich',
+        targetId: target.id,
+        targetForm: target.form,
+        candidates: candidates.length,
+        matches: candidates.map((c) => snapshot(c, c === target, compatible.includes(c))),
+        changes,
+      };
+      if (policyFor('enrich', entry.line) !== ENRICH_FILL) {
+        record(entry, { ...base, action: 'skip', detail: `could add ${added}` });
+        continue;
+      }
+      Object.assign(target.values, patch);
+      if (target.id == null) Object.assign(target.pending.metadata, patch);
+      else addUpdate(target.id, patch);
       record(entry, { ...base, action: 'update', detail: `adds ${added}` });
       continue;
     }

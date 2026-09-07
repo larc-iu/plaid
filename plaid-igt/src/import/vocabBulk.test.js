@@ -411,6 +411,7 @@ describe('matched entries on a decision', () => {
     expect(p.decisions[0].matches).toEqual([
       {
         form: 'kan',
+        number: '',
         values: { gloss: 'house', pos: 'N' },
         pending: false,
         target: false,
@@ -418,12 +419,42 @@ describe('matched entries on a decision', () => {
       },
       {
         form: 'kan',
+        number: '',
         values: { gloss: 'mouth', pos: 'N' },
         pending: false,
         target: false,
         canTarget: true,
       },
     ]);
+  });
+
+  it('lets a row name the ENTRY when a dictionary spreads a form over senses', () => {
+    // A headword and its senses share a form, so all three answer to the row.
+    // The row means the entry, as a bare form does everywhere else, and the
+    // senses stay on the comparison with their numbers.
+    const dict = [
+      { id: 'h', form: 'kwatha', metadata: { pos: 'V' } },
+      { id: 's1', form: 'kwatha', metadata: { gloss: 'boil', parent: 'h', senseOrder: 1 } },
+      { id: 's2', form: 'kwatha', metadata: { gloss: 'ferment', parent: 'h', senseOrder: 2 } },
+    ];
+    const p = plan([entry(1, 'kwatha', { definition: 'to apply heat' })], dict, {
+      dictionary: true,
+    });
+    expect(p.decisions[0]).toMatchObject({ kind: 'enrich', targetId: 'h', action: 'update' });
+    expect(p.updates).toEqual([{ id: 'h', patch: { definition: 'to apply heat' } }]);
+    expect(p.decisions[0].matches.map((m) => [m.number, m.target])).toEqual([
+      ['1', true],
+      ['1.1', false],
+      ['1.2', false],
+    ]);
+    // Two HEADWORDS sharing a form is a real question, and stays one.
+    const two = [
+      { id: 'a', form: 'kan', metadata: {} },
+      { id: 'b', form: 'kan', metadata: {} },
+    ];
+    expect(
+      plan([entry(1, 'kan', { gloss: 'house' })], two, { dictionary: true }).decisions[0].kind,
+    ).toBe('ambiguous');
   });
 
   it('marks which entry an enrichment would change', () => {
@@ -435,7 +466,14 @@ describe('matched entries on a decision', () => {
     const p = plan([entry(1, 'yalu', { gloss: 'fire' }), entry(2, 'yalu', { gloss: 'wood' })], []);
     expect(p.decisions[1]).toMatchObject({ kind: 'conflict' });
     expect(p.decisions[1].matches).toEqual([
-      { form: 'yalu', values: { gloss: 'fire' }, pending: true, target: true, canTarget: true },
+      {
+        form: 'yalu',
+        number: '',
+        values: { gloss: 'fire' },
+        pending: true,
+        target: true,
+        canTarget: true,
+      },
     ]);
   });
 

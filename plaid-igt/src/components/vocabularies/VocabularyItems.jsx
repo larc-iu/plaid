@@ -1674,6 +1674,7 @@ export const VocabularyItems = ({
         fields={fields}
         tagsetFor={tagsetFor}
         existingItems={items}
+        dictionary={dictionary}
         client={client}
         onImported={handleImported}
       />
