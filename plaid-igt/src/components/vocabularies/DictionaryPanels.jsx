@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Input } from '@/components/ui/input';
 import { Link } from 'react-router-dom';
 import { ArrowUp, ArrowDown, X, FileText, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -35,6 +36,46 @@ const ItemLink = ({ item, homonyms, itemTo, className }) => (
     ) : null}
   </Link>
 );
+
+/**
+ * A sense's number, editable: type the number it should be shown with and
+ * press Enter (or leave the box), and it moves there among its siblings.
+ * The box only ever edits the last segment ("3.1" -> the 1).
+ */
+const SenseNumber = ({ number, canManage, onSet, className }) => {
+  const parts = String(number ?? '').split('.');
+  const last = parts.pop();
+  const prefix = parts.length ? `${parts.join('.')}.` : '';
+  const [draft, setDraft] = useState(last);
+  useEffect(() => setDraft(last), [last]);
+  const commit = () => {
+    if (draft.trim() !== '' && draft.trim() !== last) onSet(draft.trim());
+    else setDraft(last);
+  };
+  if (!canManage) return <span className={cn('tabular-nums', className)}>{number}</span>;
+  return (
+    <span className={cn('inline-flex items-center tabular-nums', className)}>
+      {prefix}
+      <Input
+        aria-label="Sense number"
+        inputMode="numeric"
+        className="h-6 w-10 px-1 text-center text-xs tabular-nums"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commit();
+          } else if (e.key === 'Escape') {
+            setDraft(last);
+            e.currentTarget.blur();
+          }
+        }}
+      />
+    </span>
+  );
+};
 
 const Chip = ({ children, onRemove, disabled }) => (
   <span className="inline-flex max-w-full items-center gap-1 rounded border bg-muted/40 px-1.5 py-0.5 text-sm">
@@ -108,7 +149,16 @@ export const ItemRefField = ({
  * Where the entry sits: "Entry" with a way to make it a sense of another, or
  * "Sense N of <parent>" with a way to make it an entry again.
  */
-export const EntryPlace = ({ item, tree, items, homonyms, itemTo, canManage, onSetParent }) => {
+export const EntryPlace = ({
+  item,
+  tree,
+  items,
+  homonyms,
+  itemTo,
+  canManage,
+  onSetParent,
+  onSetNumber,
+}) => {
   const [open, setOpen] = useState(false);
   const parentId = tree.parentOf.get(item.id);
   const parent = parentId ? tree.byId.get(parentId) : null;
@@ -121,7 +171,14 @@ export const EntryPlace = ({ item, tree, items, homonyms, itemTo, canManage, onS
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
       {parent ? (
         <span>
-          Sense {number} of <ItemLink item={parent} homonyms={homonyms} itemTo={itemTo} />
+          Sense{' '}
+          <SenseNumber
+            number={number}
+            canManage={canManage}
+            onSet={(n) => onSetNumber(item.id, n)}
+            className="mx-0.5"
+          />{' '}
+          of <ItemLink item={parent} homonyms={homonyms} itemTo={itemTo} />
         </span>
       ) : (
         <span>Entry</span>
@@ -162,7 +219,16 @@ export const EntryPlace = ({ item, tree, items, homonyms, itemTo, canManage, onS
 };
 
 /** The senses under an entry, numbered, reorderable, with a way to add one. */
-export const SensesPanel = ({ item, tree, homonyms, itemTo, newSenseTo, canManage, onMove }) => {
+export const SensesPanel = ({
+  item,
+  tree,
+  homonyms,
+  itemTo,
+  newSenseTo,
+  canManage,
+  onMove,
+  onSetNumber,
+}) => {
   const children = tree.childrenOf.get(item.id) || [];
   if (!children.length && !canManage) return null;
   return (
@@ -183,9 +249,12 @@ export const SensesPanel = ({ item, tree, homonyms, itemTo, newSenseTo, canManag
         <ul className="divide-y">
           {children.map((c, i) => (
             <li key={c.id} className="flex items-center gap-2 px-4 py-1.5 text-sm">
-              <span className="w-8 shrink-0 tabular-nums text-muted-foreground">
-                {tree.numberOf.get(c.id)}
-              </span>
+              <SenseNumber
+                number={tree.numberOf.get(c.id)}
+                canManage={canManage}
+                onSet={(n) => onSetNumber(c.id, n)}
+                className="w-14 shrink-0 text-muted-foreground"
+              />
               <span className="min-w-0 flex-1 truncate">
                 <ItemLink item={c} homonyms={homonyms} itemTo={itemTo} />
                 {(tree.childrenOf.get(c.id) || []).length > 0 && (

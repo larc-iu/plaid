@@ -52,6 +52,7 @@ import {
   validateVocabRefs,
   planDeleteRefs,
   planSenseMove,
+  planSenseSetNumber,
   withParentSet,
   withExampleAdded,
   withExampleRemoved,
@@ -105,42 +106,50 @@ const FormLabel = ({ form, index, className = '' }) => (
   </span>
 );
 
-// Read-only facts a FLEx import stores outside the field schema: the FLEx
-// homograph number and the sense's example sentences (metadata.examples is
-// structured, so it is never a field column). A dictionary vocabulary has
-// its own Examples panel, which shows these too, so it hides them here.
+// The example sentences a FLEx import stores outside the field schema
+// (metadata.examples is structured, so it is never a field column). A
+// dictionary vocabulary has its own Examples panel, which shows these too,
+// so it hides them here.
 const ImportedExtras = ({ metadata, showExamples = true }) => {
   const examples =
     showExamples && Array.isArray(metadata?.examples)
       ? metadata.examples.filter((ex) => ex && ex.text)
       : [];
-  const homograph = Number(metadata?.homograph) || 0;
-  if (!examples.length && !homograph) return null;
+  if (!examples.length) return null;
   return (
     <div className="mt-4 flex flex-col gap-2 border-t pt-3 text-sm">
-      {homograph > 0 && (
-        <p className="text-xs text-muted-foreground">FLEx homograph number {homograph}</p>
-      )}
-      {examples.length > 0 && (
-        <div>
-          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Examples
-          </p>
-          <ul className="flex flex-col gap-1.5">
-            {examples.map((ex, i) => (
-              <li key={i}>
-                <span>{ex.text}</span>
-                {ex.translation && (
-                  <span className="block text-muted-foreground">{ex.translation}</span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <div>
+        <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Examples
+        </p>
+        <ul className="flex flex-col gap-1.5">
+          {examples.map((ex, i) => (
+            <li key={i}>
+              <span>{ex.text}</span>
+              {ex.translation && (
+                <span className="block text-muted-foreground">{ex.translation}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 };
+
+// A titled band of the entry form. The grid is three across when the pane is
+// wide, so a lexicon's dozen fields fit on one screen. Module-level, so a
+// keystroke in a field does not remount the band it sits in.
+const FormGroup = ({ title, children }) => (
+  <div className="flex flex-col gap-2">
+    {title && (
+      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        {title}
+      </p>
+    )}
+    <div className="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">{children}</div>
+  </div>
+);
 
 // The columns this list sorts by, named once so a remembered sort on a column
 // that is no longer here is rejected rather than reaching the comparator.
@@ -710,6 +719,20 @@ export const VocabularyItems = ({
       notifyError('Failed to reorder senses', 'Error');
     }
   };
+  const handleSetSenseNumber = async (id, n) => {
+    const patches = planSenseSetNumber(tree, id, n);
+    if (!patches.length) return;
+    try {
+      await client.withOperation('Renumber senses', async () => {
+        for (const p of patches) await writeMetadata(p.id, p.metadata);
+      });
+      if (!dirty) seededRef.current = undefined;
+      foldPatches(patches);
+    } catch (err) {
+      console.error('Renumbering senses failed:', err);
+      notifyError('Failed to renumber senses', 'Error');
+    }
+  };
   const handleAddExample = async (docId, tokenId) => {
     if (!selectedItem) return;
     const next = withExampleAdded(selectedItem.metadata, { document: docId, token: tokenId });
@@ -915,21 +938,6 @@ export const VocabularyItems = ({
         { statusField: dictionary ? STATUS_FIELD : null },
       ),
     [fields, isNew, newParent, editFields, dictionary],
-  );
-
-  // A titled band of the form. The grid is three across when the pane is
-  // wide, so a lexicon's dozen fields fit on one screen.
-  const FormGroup = ({ title, children }) => (
-    <div className="flex flex-col gap-2">
-      {title && (
-        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-          {title}
-        </p>
-      )}
-      <div className="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
-        {children}
-      </div>
-    </div>
   );
 
   if (loading) {
@@ -1256,6 +1264,7 @@ export const VocabularyItems = ({
                     itemTo={itemTo}
                     canManage={canManage}
                     onSetParent={handleSetParent}
+                    onSetNumber={handleSetSenseNumber}
                   />
                 </div>
               )}
@@ -1355,6 +1364,7 @@ export const VocabularyItems = ({
                   newSenseTo={newSenseTo}
                   canManage={canManage}
                   onMove={handleMoveSense}
+                  onSetNumber={handleSetSenseNumber}
                 />
                 <ExamplesPanel
                   item={selectedItem}

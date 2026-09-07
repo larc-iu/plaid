@@ -385,7 +385,7 @@ export const VocabularyDetail = () => {
     await saveFields(fields.map((f) => (f.name === fieldName ? { ...f, scope } : f)));
   };
 
-  // The Dictionary switch. Turning it on also gives the vocabulary a Status
+  // The Lexicography Mode switch. Turning it on also gives the vocabulary a Status
   // field held to a closed list, once; turning it off leaves every field and
   // every entry as it is.
   const handleSetDictionary = async (on) => {
@@ -409,8 +409,8 @@ export const VocabularyDetail = () => {
       await client.vocabLayers.setConfig(vocabularyId, IGT_NAMESPACE, DICTIONARY_KEY, on);
       await updateVocabulary();
     } catch (err) {
-      console.error('Failed to save the dictionary setting:', err);
-      notifyError('Failed to save the dictionary setting', 'Error');
+      console.error('Failed to save the lexicography setting:', err);
+      notifyError('Failed to save the lexicography setting', 'Error');
     }
   };
 
@@ -471,173 +471,189 @@ export const VocabularyDetail = () => {
     }
   };
 
+  // The field table. One row per field, one column per setting, so the eye
+  // runs down a column instead of across a ragged line of controls. Type and
+  // Shown on exist in lexicography mode only; Tagset needs a saved vocabulary.
+  const showTagsetCol = !isNewVocabulary;
   const renderCustomFieldsEditor = () => (
     <>
       {fields.length > 0 && (
-        <div className="flex flex-col gap-0.5">
-          {fields.map((field, idx) => {
-            const canMoveUp = idx > 0 && !field.immutable && !fields[idx - 1].immutable;
-            const canMoveDown = idx < fields.length - 1 && !field.immutable;
-            return (
-              <div
-                key={field.name}
-                className="group flex items-center justify-between rounded-md px-1 py-1 hover:bg-muted/40"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-sm">{fieldLabel(field)}</span>
-                  {field.immutable ? (
-                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                      Required
-                    </span>
-                  ) : isBuiltInField(field.name) ? (
-                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                      Built in
-                    </span>
-                  ) : null}
-                  <div className="flex items-center gap-2">
-                    <Label
-                      htmlFor={`inline-${field.name}`}
-                      className="text-xs text-muted-foreground"
-                    >
-                      Show inline
-                    </Label>
-                    <Switch
-                      id={`inline-${field.name}`}
-                      checked={field.inline}
-                      onCheckedChange={() => handleToggleInline(field.name)}
-                    />
-                  </div>
-                  {/* Type and scope exist for a dictionary only. The core
-                      fields hold text on every entry, so they get neither. */}
-                  {dictionary && !field.immutable && (
-                    <div className="flex items-center gap-2">
-                      <Label
-                        htmlFor={`type-${field.name}`}
-                        className="text-xs text-muted-foreground"
-                      >
-                        Type
-                      </Label>
-                      <Select
-                        value={typeChoiceOf(field)}
-                        onValueChange={(v) => handleSetType(field.name, v)}
-                      >
-                        <SelectTrigger id={`type-${field.name}`} className="h-7 w-24 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {TYPE_CHOICES.map((c) => (
-                            <SelectItem key={c.key} value={c.key}>
-                              {c.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                  {dictionary && !field.immutable && (
-                    <div className="flex items-center gap-2">
-                      <Label
-                        htmlFor={`scope-${field.name}`}
-                        className="text-xs text-muted-foreground"
-                      >
-                        On
-                      </Label>
-                      <Select
-                        value={field.scope}
-                        onValueChange={(v) => handleSetScope(field.name, v)}
-                      >
-                        <SelectTrigger id={`scope-${field.name}`} className="h-7 w-28 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={FIELD_SCOPES.SENSE}>Every sense</SelectItem>
-                          <SelectItem value={FIELD_SCOPES.ENTRY}>Entry only</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                  {/* Morph type is its own fixed list, so it never takes a
-                      tagset, and a reference field's values are entries.
-                      Everything else can, once the vocabulary has one
-                      (or already points at one that was since removed). */}
-                  {!isNewVocabulary &&
-                    field.name !== 'morphType' &&
-                    field.type !== FIELD_TYPES.ITEM &&
-                    (tagsetNames.length > 0 || field.tagset) && (
-                      <div className="flex items-center gap-2">
-                        <Label
-                          htmlFor={`tagset-${field.name}`}
-                          className="text-xs text-muted-foreground"
-                        >
-                          Tagset
-                        </Label>
-                        <Select
-                          value={field.tagset ?? NO_TAGSET}
-                          onValueChange={(v) => handleSetTagset(field.name, v)}
-                        >
-                          <SelectTrigger id={`tagset-${field.name}`} className="h-7 w-40 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value={NO_TAGSET}>No tagset</SelectItem>
-                            {tagsetNames.map((n) => (
-                              <SelectItem key={n} value={n}>
-                                {n}
-                              </SelectItem>
-                            ))}
-                            {/* A dangling name stays selectable so the picker
-                                shows what is stored rather than reading as
-                                "none" and overwriting it. */}
-                            {field.tagset && !tagsetNames.includes(field.tagset) && (
-                              <SelectItem value={field.tagset}>{field.tagset} (missing)</SelectItem>
-                            )}
-                          </SelectContent>
-                        </Select>
-                      </div>
+        <div className="overflow-x-auto rounded-md border">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-muted/50 text-left text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                <th className="px-3 py-2">Field</th>
+                <th className="px-3 py-2">Inline</th>
+                {dictionary && <th className="px-3 py-2">Type</th>}
+                {dictionary && <th className="px-3 py-2">Shown on</th>}
+                {showTagsetCol && <th className="px-3 py-2">Tagset</th>}
+                <th className="w-24 px-3 py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {fields.map((field, idx) => {
+                const canMoveUp = idx > 0 && !field.immutable && !fields[idx - 1].immutable;
+                const canMoveDown = idx < fields.length - 1 && !field.immutable;
+                const isRef = field.type === FIELD_TYPES.ITEM;
+                const takesTagset = field.name !== 'morphType' && !isRef;
+                return (
+                  <tr key={field.name} className="border-t hover:bg-muted/30">
+                    <td className="px-3 py-1.5">
+                      <span className="flex items-center gap-2">
+                        <span>{fieldLabel(field)}</span>
+                        {field.immutable ? (
+                          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                            Required
+                          </span>
+                        ) : isBuiltInField(field.name) ? (
+                          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                            Built in
+                          </span>
+                        ) : null}
+                      </span>
+                    </td>
+                    <td className="px-3 py-1.5">
+                      <Switch
+                        id={`inline-${field.name}`}
+                        aria-label={`Show ${fieldLabel(field)} inline`}
+                        checked={field.inline}
+                        onCheckedChange={() => handleToggleInline(field.name)}
+                      />
+                    </td>
+                    {dictionary && (
+                      <td className="px-3 py-1.5">
+                        {field.immutable ? (
+                          <span className="text-xs text-muted-foreground">Text</span>
+                        ) : (
+                          <Select
+                            value={typeChoiceOf(field)}
+                            onValueChange={(v) => handleSetType(field.name, v)}
+                          >
+                            <SelectTrigger
+                              id={`type-${field.name}`}
+                              aria-label={`Type of ${fieldLabel(field)}`}
+                              className="h-7 w-24 text-xs"
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {TYPE_CHOICES.map((c) => (
+                                <SelectItem key={c.key} value={c.key}>
+                                  {c.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </td>
                     )}
-                </div>
-                <div className="flex items-center gap-0.5 text-muted-foreground">
-                  <button
-                    type="button"
-                    aria-label="Move up"
-                    disabled={!canMoveUp}
-                    onClick={() => handleMoveField(field.name, -1)}
-                    className="rounded p-1 hover:text-foreground disabled:opacity-25 disabled:hover:text-muted-foreground"
-                  >
-                    <ChevronUp className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Move down"
-                    disabled={!canMoveDown}
-                    onClick={() => handleMoveField(field.name, 1)}
-                    className="rounded p-1 hover:text-foreground disabled:opacity-25 disabled:hover:text-muted-foreground"
-                  >
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  </button>
-                  {!field.immutable && (
-                    <button
-                      type="button"
-                      aria-label={`Remove ${humanizeFieldName(field.name)}`}
-                      onClick={() => handleRemoveField(field.name)}
-                      className="rounded p-1 hover:text-destructive"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+                    {dictionary && (
+                      <td className="px-3 py-1.5">
+                        {field.immutable ? (
+                          <span className="text-xs text-muted-foreground">Every sense</span>
+                        ) : (
+                          <Select
+                            value={field.scope}
+                            onValueChange={(v) => handleSetScope(field.name, v)}
+                          >
+                            <SelectTrigger
+                              id={`scope-${field.name}`}
+                              aria-label={`Where ${fieldLabel(field)} is shown`}
+                              className="h-7 w-32 text-xs"
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={FIELD_SCOPES.SENSE}>Every sense</SelectItem>
+                              <SelectItem value={FIELD_SCOPES.ENTRY}>Entry only</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </td>
+                    )}
+                    {showTagsetCol && (
+                      <td className="px-3 py-1.5">
+                        {/* Morph type is its own fixed list, and a reference
+                            field's values are entries; neither takes a
+                            tagset. A dangling name stays selectable so the
+                            picker shows what is stored rather than reading as
+                            "none" and overwriting it. */}
+                        {takesTagset && (tagsetNames.length > 0 || field.tagset) ? (
+                          <Select
+                            value={field.tagset ?? NO_TAGSET}
+                            onValueChange={(v) => handleSetTagset(field.name, v)}
+                          >
+                            <SelectTrigger
+                              id={`tagset-${field.name}`}
+                              aria-label={`Tagset of ${fieldLabel(field)}`}
+                              className="h-7 w-36 text-xs"
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={NO_TAGSET}>None</SelectItem>
+                              {tagsetNames.map((n) => (
+                                <SelectItem key={n} value={n}>
+                                  {n}
+                                </SelectItem>
+                              ))}
+                              {field.tagset && !tagsetNames.includes(field.tagset) && (
+                                <SelectItem value={field.tagset}>
+                                  {field.tagset} (missing)
+                                </SelectItem>
+                              )}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
+                    )}
+                    <td className="px-3 py-1.5">
+                      <div className="flex items-center justify-end gap-0.5 text-muted-foreground">
+                        <button
+                          type="button"
+                          aria-label="Move up"
+                          disabled={!canMoveUp}
+                          onClick={() => handleMoveField(field.name, -1)}
+                          className="rounded p-1 hover:text-foreground disabled:opacity-25 disabled:hover:text-muted-foreground"
+                        >
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Move down"
+                          disabled={!canMoveDown}
+                          onClick={() => handleMoveField(field.name, 1)}
+                          className="rounded p-1 hover:text-foreground disabled:opacity-25 disabled:hover:text-muted-foreground"
+                        >
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Remove ${fieldLabel(field)}`}
+                          disabled={field.immutable}
+                          onClick={() => handleRemoveField(field.name)}
+                          className="rounded p-1 hover:text-destructive disabled:opacity-25 disabled:hover:text-muted-foreground"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
       <div className="flex items-center gap-2">
         <Input
-          placeholder="Enter field name"
+          placeholder="New field name"
           value={newFieldName}
           onChange={(event) => setNewFieldName(event.target.value)}
-          className="flex-1"
+          className="max-w-md flex-1"
           onKeyDown={(event) => {
             if (event.key === 'Enter') {
               handleAddField();
@@ -805,15 +821,15 @@ export const VocabularyDetail = () => {
                     <div className="flex flex-col gap-4">
                       <div className="flex items-center justify-between gap-4">
                         <div>
-                          <h3 className="text-base font-semibold">Dictionary</h3>
+                          <h3 className="text-base font-semibold">Lexicography Mode</h3>
                           <p className="mt-1 text-sm text-muted-foreground">
-                            Entries can be grouped into senses, refer to one another, carry examples
-                            chosen from the concordance, and hold a status.
+                            Entries can be grouped into senses, refer to each other, have
+                            highlighted usage examples, and track publication status.
                           </p>
                         </div>
                         <Switch
                           id="dictionary-switch"
-                          aria-label="Dictionary"
+                          aria-label="Lexicography Mode"
                           checked={dictionary}
                           onCheckedChange={handleSetDictionary}
                         />
@@ -825,16 +841,14 @@ export const VocabularyDetail = () => {
                     <div className="flex flex-col gap-4">
                       <h3 className="text-base font-semibold">Fields</h3>
                       <p className="text-sm text-muted-foreground">
-                        Fields on every vocabulary item. Field names cannot be "form" or duplicate
-                        existing fields (case-insensitive). Fields set to{' '}
-                        <strong>Show inline</strong> also appear in the interlinear view. A field
-                        can be held to a tagset, defined below.
+                        Every entry has these fields. <strong>Inline</strong> puts a field in the
+                        interlinear view as well. A tagset, defined below, holds a field to a list.
                         {dictionary && (
                           <>
                             {' '}
-                            A field of type <strong>Entry</strong> or <strong>Entries</strong>{' '}
-                            refers to other entries of this vocabulary. A field set to{' '}
-                            <strong>Entry only</strong> is shown on a headword, not on its senses.
+                            An <strong>Entry</strong> or <strong>Entries</strong> field refers to
+                            other entries. <strong>Entry only</strong> shows a field on a headword,
+                            not on its senses.
                           </>
                         )}
                       </p>
@@ -914,8 +928,8 @@ export const VocabularyDetail = () => {
               <div className="flex flex-col gap-4">
                 <h3 className="text-base font-semibold">Fields</h3>
                 <p className="text-sm text-muted-foreground">
-                  Fields on every vocabulary item. Field names cannot be "form" or duplicate
-                  existing fields (case-insensitive).
+                  Every entry has these fields. <strong>Inline</strong> puts a field in the
+                  interlinear view as well.
                 </p>
 
                 {renderCustomFieldsEditor()}

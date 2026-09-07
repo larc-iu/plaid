@@ -247,9 +247,10 @@ export const ImportCldfProject = () => {
                     onChange={(e) => setDictionary(e.target.checked)}
                   />
                   <span>
-                    Dictionary
+                    Lexicography Mode
                     <span className="block text-xs text-muted-foreground">
-                      The lexicon's Dictionary switch is turned on, with a Status field.
+                      Entries can be grouped into senses, refer to each other, have highlighted
+                      usage examples, and track publication status.
                     </span>
                   </span>
                 </label>

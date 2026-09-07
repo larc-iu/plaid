@@ -7,6 +7,7 @@ import {
   nextSenseOrder,
   withParentSet,
   planSenseMove,
+  planSenseSetNumber,
   referencesTo,
   validateVocabRefs,
   planDeleteRefs,
@@ -95,6 +96,22 @@ describe('placing and moving senses', () => {
     ]);
     expect(planSenseMove(t, 'kat3', -1)).toEqual([]);
     expect(planSenseMove(t, 'kat', 1)).toEqual([]);
+  });
+
+  it('places a sense at the number it is shown with', () => {
+    const t = buildSenseTree(items());
+    // kat3 is shown as 2, kat2 as 3: ask for kat3 to be 3.
+    expect(planSenseSetNumber(t, 'kat3', 3)).toEqual([
+      { id: 'kat2', metadata: { gloss: 'lion', parent: 'kat', senseOrder: 1 } },
+      { id: 'kat3', metadata: { gloss: 'scratch', parent: 'kat', senseOrder: 2 } },
+    ]);
+    // Already there, out of range, or not a number: nothing.
+    expect(planSenseSetNumber(t, 'kat3', 2)).toEqual([]);
+    expect(planSenseSetNumber(t, 'kat3', 1)).toEqual([]);
+    expect(planSenseSetNumber(t, 'kat2', 99)).toEqual([]);
+    expect(planSenseSetNumber(t, 'kat2', 'x')).toEqual([]);
+    // A subsense counts from 1 under its sense.
+    expect(planSenseSetNumber(t, 'kat2a', 1)).toEqual([]);
   });
 
   it('lays out a filtered list as a tree without hiding or adding hits', () => {

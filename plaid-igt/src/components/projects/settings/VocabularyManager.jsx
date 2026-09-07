@@ -290,7 +290,7 @@ export const VocabularyManager = ({
                         )}
                         {record.isCustom && record.dictionary && (
                           <span className="ml-1.5 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                            Dictionary
+                            Lexicography
                           </span>
                         )}
                       </span>
@@ -407,10 +407,10 @@ export const VocabularyManager = ({
                 onChange={(event) => setNewVocabDictionary(event.target.checked)}
               />
               <span>
-                Dictionary
+                Lexicography Mode
                 <span className="block text-xs text-muted-foreground">
-                  Entries can be grouped into senses, refer to one another, carry examples chosen
-                  from the text, and hold a status. Can be turned on later in the vocabulary's
+                  Entries can be grouped into senses, refer to each other, have highlighted usage
+                  examples, and track publication status. Can be turned on later in the vocabulary's
                   settings.
                 </span>
               </span>

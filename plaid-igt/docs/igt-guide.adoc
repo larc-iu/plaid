@@ -335,10 +335,10 @@ A closed tagset becomes a dropdown on the entry form and refuses a value outside
 It also marks the entries already outside it: the table counts them, and a click shows only those.
 A lexicon imported before the tagset existed can thus be brought into line one entry at a time, or by adding the value to the list.
 
-== Dictionary
+== Lexicography Mode
 
 A vocabulary can also be a dictionary.
-The switch is on its **Settings** tab, under **Dictionary**, and it is off for a new vocabulary.
+The switch is on its **Settings** tab, under **Lexicography Mode**, and it is off for a new vocabulary.
 With it off, the vocabulary is the flat list of entries described above and nothing in this section appears.
 Turning it on adds a **Status** field held to a closed list (draft, reviewed, published), and turning it off again leaves every field and every entry as it is.
 
@@ -346,6 +346,7 @@ With the switch on, an entry is a headword and its first sense.
 Any entry can be made a sense of another: open it and choose **Make a sense of…**, then find the entry it belongs under.
 Senses are numbered from 2 under their entry, and a sense can have senses of its own (2.1, 2.2).
 An entry's **Senses** panel lists them in order, with arrows to reorder them and **Add sense** to write a new one directly under it.
+To put a sense at a particular number, type over its number and press Enter.
 **Make its own entry** takes a sense back out.
 The item list gains a **By entry** view, beside **Flat**, that draws senses indented under their entry.
 A search shows every matching entry in either view, so a sense that matches is shown even when its entry does not.
@@ -370,7 +371,7 @@ Examples brought in by a FLEx import are shown in the same panel as text.
 Deleting an entry frees its senses, which become entries of their own, and clears the fields that named it, and the confirmation says how many entries that touches.
 Merging entries with **Bulk Edit** points those references at the surviving entry.
 
-A vocabulary added while setting up a new project can start as a dictionary: tick **Dictionary** under the name.
+A vocabulary added while setting up a new project can start as a dictionary: tick **Lexicography Mode** under the name.
 An imported lexicon starts as one unless you untick it on the review screen.
 A FLEx import also keeps the sense structure of the lexicon: each entry's senses and subsenses are placed under it in FLEx order.
 

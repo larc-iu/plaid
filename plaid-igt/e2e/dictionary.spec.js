@@ -102,7 +102,7 @@ test('the list draws senses under their entry in the By entry view', async ({ pa
 
 test('an entry says where it sits, and can be freed and placed again', async ({ page }) => {
   await openView(page, ids.kat2);
-  await expect(page.getByText(/^Sense 2 of/)).toBeVisible();
+  await expect(page.getByLabel('Sense number')).toHaveValue('2');
   await page.getByRole('button', { name: 'Make its own entry' }).click();
   await expect(page.getByText(/^Entry$/)).toBeVisible();
   await expect.poll(() => meta(ids.kat2)).not.toHaveProperty('parent');
@@ -112,7 +112,7 @@ test('an entry says where it sits, and can be freed and placed again', async ({ 
   await page.getByRole('button', { name: 'Make a sense of…' }).click();
   await page.getByPlaceholder('Find the entry…').fill(`kat${stamp}`);
   await page.getByRole('option').filter({ hasText: 'cat' }).click();
-  await expect(page.getByText(/^Sense 2 of/)).toBeVisible();
+  await expect(page.getByLabel('Sense number')).toHaveValue('2');
   await expect.poll(() => meta(ids.kat2)).toMatchObject({ parent: ids.kat, senseOrder: 1 });
   await expect(page.getByLabel('Etymology')).toHaveCount(0);
 });
@@ -173,7 +173,7 @@ test('the Settings switch turns a plain vocabulary into a dictionary, with a Sta
   try {
     await seedAuth(page);
     await page.goto(`/#/vocabularies/${plain.id}?tab=settings`);
-    const sw = page.getByRole('switch', { name: 'Dictionary' });
+    const sw = page.getByRole('switch', { name: 'Lexicography Mode' });
     await expect(sw).toBeVisible();
     await expect(page.getByText('Every sense')).toHaveCount(0);
     await sw.click();

@@ -280,11 +280,36 @@ export const planSenseMove = (tree, id, dir) => {
   const j = i + dir;
   if (i < 0 || j < 0 || j >= sibs.length) return [];
   [sibs[i], sibs[j]] = [sibs[j], sibs[i]];
-  return sibs
+  return renumbered(sibs, p);
+};
+
+/**
+ * The sibling list with `id` placed at the number it is SHOWN with: under an
+ * entry the senses are numbered from 2 (the entry is sense 1), deeper down
+ * from 1. Out-of-range numbers land at the nearest end. Same dense
+ * renumbering as a move.
+ */
+export const planSenseSetNumber = (tree, id, shown) => {
+  const p = tree.parentOf.get(id);
+  if (!p) return [];
+  const sibs = [...(tree.childrenOf.get(p) || [])];
+  const i = sibs.findIndex((s) => s.id === id);
+  const n = Number(shown);
+  if (i < 0 || !Number.isFinite(n)) return [];
+  const first = tree.depthOf.get(id) === 1 ? 2 : 1;
+  const j = Math.max(0, Math.min(sibs.length - 1, Math.round(n) - first));
+  if (j === i) return [];
+  const [moved] = sibs.splice(i, 1);
+  sibs.splice(j, 0, moved);
+  return renumbered(sibs, p);
+};
+
+// Patches renumbering `sibs` 1..n under `p`, for those whose order changes.
+const renumbered = (sibs, p) =>
+  sibs
     .map((s, k) => ({ id: s.id, metadata: withParent(s.metadata, p, k + 1), was: senseOrderOf(s) }))
     .filter((x) => x.was !== x.metadata[SENSE_ORDER_KEY])
     .map(({ id: sid, metadata }) => ({ id: sid, metadata }));
-};
 
 /**
  * Lay out a (possibly filtered, sorted) list as a tree for display: an item

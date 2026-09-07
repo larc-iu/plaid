@@ -468,10 +468,11 @@ export const ImportFlexProject = () => {
                     onChange={(e) => setImportDictionary(e.target.checked)}
                   />
                   <span>
-                    Dictionary
+                    Lexicography Mode
                     <span className="block text-xs text-muted-foreground">
-                      Senses are kept under their entry, in FLEx order, and the lexicon's Dictionary
-                      switch is turned on.
+                      Senses are kept under their entry, in FLEx order. Entries can be grouped into
+                      senses, refer to each other, have highlighted usage examples, and track
+                      publication status.
                     </span>
                   </span>
                 </label>
