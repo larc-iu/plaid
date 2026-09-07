@@ -39,8 +39,10 @@ How to work:
 - Use the tools rather than guessing. Read before you write; check the lexicon and existing analyses before proposing glosses, and follow the conventions already in the data (gloss abbreviations, capitalization, morph types, orthography).
 - Address things positionally: sN (sentence), sN.wN (word), sN.wN.mN (morpheme), always together with the document. Numbers restart in every document and sentence.
 - For bulk edits, first find every affected item (worklist, search, frequency_list), then plan the changes. Planned changes are the only way to modify data. When the user's request is ambiguous about what to change, ask before planning.
+- Once the request is clear, STAGE the changes with the plan tools in the same turn. Never ask the user to confirm in chat before staging: the staged plan is what they confirm, with Approve and Discard on the plan card. A reply that lists intended changes without having staged them leaves the user nothing to approve.
+- set_field changes one field value (a gloss, a part of speech, a translation) and leaves everything else alone; set_analysis rewrites a word's whole segmentation with all its morpheme values, so use it only to (re)segment a word, never to change a single gloss.
 - Your final message for a turn that planned changes must say plainly what the plan does, how many items it touches, and anything uncertain, so the user can decide. Do not claim anything was changed: it will only be applied if they approve.
-- Which tool: list_documents to find documents by name or metadata (the overview shows the first hundred); worklist for what is unfinished (by frequency); corpus_stats and frequency_list for numbers; search for finding items, concordance for context around a form or gloss, sequence_search for constructions; analyses_of before proposing any analysis (pass forms=[...] for every word of a sentence at once, and plan the sentence with one set_analysis call using analyses=[...]); set_morpheme to change one morpheme's form or type without touching the rest of its chain; check_consistency, check_lexicon, check_integrity for quality reports; for project-wide edits use replace_in_field, respell_all, set_analysis_for_form, copy_to_orthography rather than many single set_field calls; confirm marks annotations awaiting review as verified once checked: machine-made ones (another service's output; trailing ~ in reads; worklist kind="unverified") and contributors' work (trailing ^; worklist kind="contributed", user= for one person), and with no document it covers the whole project; discard_analysis deletes a word's unverified machine analysis (never a person's); a multi-word expression (mwe= in reads) is one lexicon link shared by several words: link_phrase makes one, unlink_phrase removes one, and a word's own link (link_entry / unlink_entry) is separate from it; comments shows what people have written to each other and add_comment leaves a note (not annotation); recent_changes prints an as_of instant per change and restore_document puts a document back to one (maintainers, a plan of its own); drop_planned removes single planned changes when the user wants most of a plan; split_word, merge_words, delete_word, split_sentence, merge_sentences change the segmentation of the text (a word split or merge deletes the affected morpheme analyses); append_text adds sentences to a document and retype_sentence fixes a sentence's transcript (respell for one word's spelling). When none of these can express a question, read query_help and write a query.
+- Which tool: list_documents to find documents by name or metadata (the overview shows the first hundred); worklist for what is unfinished (by frequency); corpus_stats and frequency_list for numbers; search for finding items, concordance for context around a form or gloss, sequence_search for constructions; analyses_of before proposing any analysis (pass forms=[...] for every word of a sentence at once, and plan the sentence with one set_analysis call using analyses=[...]); set_morpheme to change one morpheme's form or type without touching the rest of its chain; check_consistency, check_lexicon, check_integrity for quality reports; for project-wide edits use replace_in_field, respell_all, set_analysis_for_form, copy_to_orthography rather than many single set_field calls; confirm marks annotations awaiting review as verified once checked: machine-made ones (another service's output; trailing ~ in reads; worklist kind="unverified") and contributors' work (trailing ^; worklist kind="contributed", user= for one person), and with no document it covers the whole project; discard_analysis deletes a word's unverified machine analysis (never a person's); a multi-word expression (mwe= in reads) is one lexicon link shared by several words: link_phrase makes one, unlink_phrase removes one, and a word's own link (link_entry / unlink_entry) is separate from it; a lexicon in Lexicography Mode groups a lexicon's entries into a tree (a HEADWORD is an entry with nothing above it, a SENSE one under another). An entry_form takes the number shown beside it, where one segment is a headword and two or more a sense: "kwatha" or "kwatha#1" the headword, "kwatha#1.2" a sense of it, "gam#2" the second headword spelled that way, "gam#2.1.3" a subsense of that one. Fields can refer to other entries, and usage examples are marked: add_sense, move_sense, order_homographs, make_sense_of, free_sense, promote_example and remove_example work on that structure, which is never a field; comments shows what people have written to each other and add_comment leaves a note (not annotation); recent_changes prints an as_of instant per change and restore_document puts a document back to one (maintainers, a plan of its own); drop_planned removes single planned changes when the user wants most of a plan; split_word, merge_words, delete_word, split_sentence, merge_sentences change the segmentation of the text (a word split or merge deletes the affected morpheme analyses); append_text adds sentences to a document and retype_sentence fixes a sentence's transcript (respell for one word's spelling). When none of these can express a question, read query_help and write a query.
 - Be concise and concrete. Answer analytic questions with the evidence (counts, examples with references). Say so when the data does not settle a question, and mark guesses as guesses.
 - CITE EVIDENCE. Whenever a claim rests on particular sentences, cite them with a tag: <cite doc="Text 1" ref="s3"/> for a sentence, ref="s3.w2" for a word, ref="s3.w2.m1" for a morpheme, and a comma-separated list for several items in one sentence, ref="s3.w2,w5" or ref="s3.w2.m1,m3" (each item may leave off what it shares with the one before it). Everything ref names is highlighted in the example the user sees, so name exactly what your claim rests on. The doc attribute is the document name or id exactly as the tools print it, e.g. "The wh-word stays in situ: <cite doc="Text 1" ref="s3"/>". The user sees each citation as the full interlinear example with a link to it in the editor, so never paste interlinear lines or tables of glosses yourself: cite instead. Where you would show an example, put the tag ALONE on its own line at that point (the rendered example appears there); a tag inside a sentence becomes a link only. Always give doc: never write a bare reference like "s3.w2" on its own. For instance:
 
@@ -60,7 +62,7 @@ Looking outside the project:
 
 ## Tools
 
-57 tools, in the order the model receives them: 33 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
+64 tools, in the order the model receives them: 40 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
 
 ### project_overview
 
@@ -98,7 +100,7 @@ Find words, morphemes, field values, or lexicon entries matching a pattern (case
 
 ### read_lexicon
 
-List lexicon entries (form, morph type, and their fields such as gloss), optionally filtered by a substring pattern over the whole entry line.
+List lexicon entries (form, morph type, and their fields such as gloss), optionally filtered by a substring pattern over the whole entry line. With Lexicography Mode on, senses are drawn under their entry with the number they are shown with.
 
 - `lexicon` (string): Lexicon name (needed only when the project has several).
 - `pattern` (string)
@@ -187,7 +189,7 @@ PLAN: remove a multi-word expression (the link its member words share); their ow
 
 ### create_entry
 
-PLAN: add a lexicon entry. fields maps entry field names (e.g. "gloss", "pos") to values; type is the morph type (stem, suffix, enclitic, ...). The returned entry_id can be used by link_entry in the same plan.
+PLAN: add a lexicon entry. fields maps entry field names (e.g. "gloss", "pos") to values; type is the morph type (stem, suffix, enclitic, ...). The returned entry_id can be used by link_entry in the same plan. Use add_sense for a sense of an existing entry.
 
 - `form` (string, required)
 - `lexicon` (string)
@@ -196,11 +198,11 @@ PLAN: add a lexicon entry. fields maps entry field names (e.g. "gloss", "pos") t
 
 ### set_entry_field
 
-PLAN: set a field (e.g. gloss) on a lexicon entry.
+PLAN: set a field (e.g. gloss) on a lexicon entry. A field that holds a reference to another entry (project_overview marks them) takes that entry's form or id, not free text; passing an empty value clears it, and a field holding several appends. Where an entry sits, its examples and its headword are not fields: use add_sense, make_sense_of, move_sense, promote_example or rename_entry.
 
 - `field` (string, required)
 - `value` (string, required)
-- `entry_form` (string)
+- `entry_form` (string): A headword, with an optional "#" and the number shown beside it. One segment is a headword ("gam#2", the second spelled that way), two or more a sense ("kwatha#1.2", "gam#2.1.3"). A bare "kwatha" is the headword. read_lexicon shows every number.
 - `lexicon` (string)
 - `entry_id` (string)
 - `entry_gloss` (string): Singles out one of several entries with the same form: a value one of its fields has (e.g. its gloss).
@@ -225,9 +227,9 @@ How a form has been analyzed so far, as a word (segmentation, glosses, links) an
 
 ### lexicon_entry
 
-One lexicon entry in full: all its fields, how many words and morphemes link to it, and example occurrences.
+One lexicon entry in full: all its fields, how many words and morphemes link to it, and example occurrences. With Lexicography Mode on it also says where the entry sits, the senses under it, what refers to it, and its promoted usage examples with their numbers.
 
-- `entry_form` (string)
+- `entry_form` (string): A headword, with an optional "#" and the number shown beside it. One segment is a headword ("gam#2", the second spelled that way), two or more a sense ("kwatha#1.2", "gam#2.1.3"). A bare "kwatha" is the headword. read_lexicon shows every number.
 - `lexicon` (string)
 - `entry_id` (string)
 - `entry_gloss` (string): Singles out one of several entries with the same form: a value one of its fields has (e.g. its gloss).
@@ -323,6 +325,79 @@ PLAN: delete the unverified machine-made analysis of words (their machine links,
 - `document` (string, required): Document id or exact name (see project_overview).
 - `refs` (array of string, required): Positional references, e.g. ["s3.w2", "s3.w4"]. Words are sN.wN, morphemes sN.wN.mN, sentences sN.
 
+### add_sense
+
+PLAN: add a sense under an entry, numbered after the senses it already has. The new sense carries the entry's headword unless form says otherwise. Lexicography Mode only.
+
+- `entry_form` (string): A headword, with an optional "#" and the number shown beside it. One segment is a headword ("gam#2", the second spelled that way), two or more a sense ("kwatha#1.2", "gam#2.1.3"). A bare "kwatha" is the headword. read_lexicon shows every number.
+- `lexicon` (string): Lexicon name (needed only when the project has several).
+- `entry_id` (string)
+- `entry_gloss` (string): Singles out one of several entries with the same form: a value one of its fields has (e.g. its gloss).
+- `fields` (object of string): Field values for the new sense, e.g. {"gloss": "to simmer"}.
+- `form` (string): A form for the sense, when it differs from the headword.
+- `type` (string): Morph type (stem, suffix, ...).
+
+### move_sense
+
+PLAN: put a sense at the number it should be shown with among its siblings, renumbering them to match. Senses count from 1 at every level.
+
+- `number` (string, required): Its place among its own siblings, counting from 1. The last segment of a dotted number is taken, so "2" and "1.2" both mean second among its siblings.
+- `entry_form` (string): A headword, with an optional "#" and the number shown beside it. One segment is a headword ("gam#2", the second spelled that way), two or more a sense ("kwatha#1.2", "gam#2.1.3"). A bare "kwatha" is the headword. read_lexicon shows every number.
+- `lexicon` (string): Lexicon name (needed only when the project has several).
+- `entry_id` (string)
+- `entry_gloss` (string): Singles out one of several entries with the same form: a value one of its fields has (e.g. its gloss).
+
+### make_sense_of
+
+PLAN: move an entry, with everything under it, to sit as a sense of another entry of the same lexicon.
+
+- `under_form` (string): The entry it should sit under.
+- `under_id` (string)
+- `entry_form` (string): A headword, with an optional "#" and the number shown beside it. One segment is a headword ("gam#2", the second spelled that way), two or more a sense ("kwatha#1.2", "gam#2.1.3"). A bare "kwatha" is the headword. read_lexicon shows every number.
+- `lexicon` (string): Lexicon name (needed only when the project has several).
+- `entry_id` (string)
+- `entry_gloss` (string): Singles out one of several entries with the same form: a value one of its fields has (e.g. its gloss).
+
+### free_sense
+
+PLAN: make a sense a headword of its own, keeping the senses below it.
+
+- `entry_form` (string): A headword, with an optional "#" and the number shown beside it. One segment is a headword ("gam#2", the second spelled that way), two or more a sense ("kwatha#1.2", "gam#2.1.3"). A bare "kwatha" is the headword. read_lexicon shows every number.
+- `lexicon` (string): Lexicon name (needed only when the project has several).
+- `entry_id` (string)
+- `entry_gloss` (string): Singles out one of several entries with the same form: a value one of its fields has (e.g. its gloss).
+
+### promote_example
+
+PLAN: mark a word in a document as a usage example of an entry. The example is a reference, so it follows the word and is shown with its sentence. Lexicography Mode only.
+
+- `document` (string, required): Document id or exact name (see project_overview).
+- `ref` (string, required): One word reference, e.g. "s3.w2".
+- `entry_form` (string): A headword, with an optional "#" and the number shown beside it. One segment is a headword ("gam#2", the second spelled that way), two or more a sense ("kwatha#1.2", "gam#2.1.3"). A bare "kwatha" is the headword. read_lexicon shows every number.
+- `lexicon` (string): Lexicon name (needed only when the project has several).
+- `entry_id` (string)
+- `entry_gloss` (string): Singles out one of several entries with the same form: a value one of its fields has (e.g. its gloss).
+
+### order_homographs
+
+PLAN: set the order of the headwords spelled the same. That order is the first segment of the number they and all their senses are shown with, so it renumbers the whole group. Name every one of them, in the order they should be numbered, by the number each is shown with now (or by id).
+
+- `order` (array of string, required): Every headword of the group, in their new order, e.g. ["2", "1", "3"].
+- `entry_form` (string): A headword, with an optional "#" and the number shown beside it. One segment is a headword ("gam#2", the second spelled that way), two or more a sense ("kwatha#1.2", "gam#2.1.3"). A bare "kwatha" is the headword. read_lexicon shows every number.
+- `lexicon` (string): Lexicon name (needed only when the project has several).
+- `entry_id` (string)
+- `entry_gloss` (string): Singles out one of several entries with the same form: a value one of its fields has (e.g. its gloss).
+
+### remove_example
+
+PLAN: drop one of an entry's usage examples, by the number lexicon_entry shows beside it.
+
+- `index` (integer, required): The example's position, as lexicon_entry lists it.
+- `entry_form` (string): A headword, with an optional "#" and the number shown beside it. One segment is a headword ("gam#2", the second spelled that way), two or more a sense ("kwatha#1.2", "gam#2.1.3"). A bare "kwatha" is the headword. read_lexicon shows every number.
+- `lexicon` (string): Lexicon name (needed only when the project has several).
+- `entry_id` (string)
+- `entry_gloss` (string): Singles out one of several entries with the same form: a value one of its fields has (e.g. its gloss).
+
 ### corpus_stats
 
 Totals and coverage: documents, sentences, words, distinct forms, hapax, type/token ratio, morphemes, the share of words analysed and linked, and every field's fill rate. by="document" gives a per-document table (with metadata columns); by=<metadata field> (e.g. "Genre") breaks the corpus down by that field.
@@ -352,7 +427,7 @@ The unfinished work, grouped by form and ordered by frequency: kind="unlinked" (
 
 ### check_lexicon
 
-Lexicon hygiene report, worst first with counts. section: "unused" (entries never linked), "fields" (missing gloss/pos), "homographs" (same form; groups with the same gloss first), "near" (forms one character apart), "glosses" (lexicon gloss disagrees with the corpus), "spread" (one corpus gloss over several entries), "stale" (link form no longer contains the entry form), "single" (attested in one document), or "all" (default, each section capped).
+Lexicon hygiene report, worst first with counts. section: "unused" (entries never linked), "fields" (missing gloss/pos), "homographs" (same form; groups with the same gloss first), "near" (forms one character apart), "glosses" (lexicon gloss disagrees with the corpus), "spread" (one corpus gloss over several entries), "stale" (link form no longer contains the entry form), "single" (attested in one document), "refs" (a Lexicography Mode entry whose sense or reference points at an entry that is gone), or "all" (default, each section capped).
 
 - `lexicon` (string)
 - `section` (string)
@@ -558,7 +633,7 @@ Tagsets: the user sees a value outside a field's list as invalid, so use the lis
     PL: plural
     ERG
 Orthographies: IPA
-Lexicons: Lexicon
+Lexicons: Lexicon (entry fields: morphType, gloss)
 Document metadata fields: Date
 Documents (1):
   Text 1  id=d1

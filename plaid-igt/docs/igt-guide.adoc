@@ -351,6 +351,7 @@ Whether a headword's own gloss is a meaning that words link to, or the headword 
 That is the name an entry goes by everywhere: the list, the picker, the link popover in the interlinear view.
 Any entry can be made a sense of another: open it, choose **Set parent**, and find the entry it belongs under.
 **Add headword** in the same place raises a new entry over the open one, with the same form, and makes the open one its first sense: how a word with one meaning gets a second.
+What belongs to the entry rather than to the meaning goes up with it: its number among the entries spelled alike, and any headword-only field.
 Every item in a vocabulary is an entry: a headword, or a sense under another entry.
 A sense says where it sits on the line under its name: **Sense 1.2 of** its entry.
 Beside it, **Senses** unfolds the whole entry as a tree, numbered, each sense a link, and **Add sense** writes a new one directly under the open entry.
@@ -366,6 +367,7 @@ In the interlinear view, the link popover lists a dictionary the same way: each 
 
 A field can hold a reference to another entry.
 On the Settings tab, set the field's **Type** to **Entry** for one reference or **Entries** for a list, and name it for what it means: *Variant of*, *See also*, *Compound of*.
+A field that already holds text cannot hold references, so changing its type says how many values that clears and asks first.
 A sense is an entry too, so a reference can point at one.
 On the entry form such a field is a picker: type part of a form or gloss and choose.
 Each chosen entry is shown as a link to it, and the entry it points at lists it under **Referenced by**.
@@ -393,7 +395,7 @@ A CLDF import does the same with its entry and sense tables.
 FLEx's variants and complex forms come in when you tick **Variants and complex forms** on the review screen: a variant gets a *variantOf* field naming what it varies, a complex form a *components* field naming what it is built from, and each keeps FLEx's name for the relation (*Spelling Variant*, *Compound*) beside it.
 
 Exports follow the same structure.
-A LIFT file has one entry per headword, its senses as senses and their senses as subsenses; a CLDF dataset puts headwords in its entry table and every sense under them in its sense table; the vocabulary's TSV carries each entry's number and names the entries a reference field points at.
+A LIFT file has one entry per headword, its senses as senses and their senses as subsenses; a CLDF dataset puts headwords in its entry table and every sense under them in its sense table, each sense with its own part of speech and fields; the vocabulary's TSV carries each entry's number and names the entries a reference field points at.
 A reference field is a relation in LIFT, pointing at the entry or sense it names, and the relation's name is declared in the ranges file beside it.
 Promoted examples go out with the lexicon: LIFT carries each one's sentence and translation, and a CLDF sense names the example rows its sentences became.
 An example whose document is outside a LIFT export is fetched for its sentence, and one whose word is gone is left out and counted in the export's warnings.
