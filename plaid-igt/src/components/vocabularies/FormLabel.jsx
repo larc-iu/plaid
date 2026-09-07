@@ -1,5 +1,3 @@
-import { cn } from '@/lib/utils';
-
 // An entry's name: its form and the number that tells it apart. A NUMBER is
 // a homonym subscript (form₂), what a vocabulary without Lexicography Mode
 // uses. A STRING is a dotted number ("1.2", see buildItemNumbers), drawn as
@@ -18,9 +16,3 @@ export const FormLabel = ({ form, index, className = '' }) => (
     )}
   </span>
 );
-
-/** The name as one string, for titles and plain text. */
-export const formLabelText = (form, index) =>
-  index == null || index === '' ? String(form ?? '') : `${form ?? ''} ${index}`;
-
-export const formLabelClass = cn;

@@ -1103,7 +1103,10 @@ const MergePanel = ({ project, client }) => {
     );
     if (!res) return;
     notifySuccess(
-      `${plural(res.entriesRemoved, 'entry', 'entries')} merged; ${plural(res.linksMoved, 'link')} moved to “${survivorItem?.form ?? ''}”.`,
+      `${plural(res.entriesRemoved, 'entry', 'entries')} merged. ${plural(res.linksMoved, 'link')} moved to “${survivorItem?.form ?? ''}”.` +
+        (res.entriesRepointed
+          ? ` ${plural(res.entriesRepointed, 'entry', 'entries')} now point at it.`
+          : ''),
       'Merged',
     );
     const patched = new Map(refPatches.map((p) => [p.id, p.metadata]));

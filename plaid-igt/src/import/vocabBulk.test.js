@@ -17,6 +17,7 @@ import {
   serializeImportReport,
   describeChange,
   targetedAnswer,
+  TARGETED_POLICY,
   OVERRIDE_VALUES,
   CONFLICT_SKIP,
   ENRICH_FILL,
@@ -447,6 +448,13 @@ describe('matched entries on a decision', () => {
       ['1.1', false],
       ['1.2', false],
     ]);
+    // A reviewer who means one of the senses says which, and gets it.
+    const onSense = plan([entry(1, 'kwatha', { definition: 'to apply heat' })], dict, {
+      dictionary: true,
+      overrides: { 1: targetedAnswer(TARGETED_POLICY.enrich, 2) },
+    });
+    expect(onSense.decisions[0]).toMatchObject({ kind: 'enrich', targetId: 's2' });
+    expect(onSense.updates).toEqual([{ id: 's2', patch: { definition: 'to apply heat' } }]);
     // Two HEADWORDS sharing a form is a real question, and stays one.
     const two = [
       { id: 'a', form: 'kan', metadata: {} },

@@ -347,6 +347,9 @@ export const targetedAnswer = (policy, index) => `${policy}:${index + 1}`;
 export const TARGETED_POLICY = {
   conflict: CONFLICT_OVERWRITE,
   ambiguous: ENRICH_FILL,
+  // A row naming a headword that has senses fills the headword by default,
+  // and a reviewer who means one of the senses picks it here.
+  enrich: ENRICH_FILL,
 };
 
 const parseAnswer = (raw) => {
@@ -590,7 +593,13 @@ export const planVocabImport = ({
     const heads = compatible.filter((c) => c.root);
     if (compatible.length > 1 && heads.length === 1) {
       counts.enrich += 1;
-      const target = heads[0];
+      const { policy: enrichPolicy, index: enrichIndex } = answerFor(
+        'enrich',
+        entry.line,
+        candidates,
+      );
+      // The row names the ENTRY unless a reviewer has picked one of its senses.
+      const target = enrichIndex != null ? candidates[enrichIndex] : heads[0];
       const changes = diffAgainst(target, entry, fields);
       const patch = Object.fromEntries(changes.map((c) => [c.field, c.to]));
       const added = changes.map((c) => c.field).join(', ');
@@ -602,7 +611,7 @@ export const planVocabImport = ({
         matches: candidates.map((c) => snapshot(c, c === target, compatible.includes(c))),
         changes,
       };
-      if (policyFor('enrich', entry.line) !== ENRICH_FILL) {
+      if (enrichPolicy !== ENRICH_FILL) {
         record(entry, { ...base, action: 'skip', detail: `could add ${added}` });
         continue;
       }

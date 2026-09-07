@@ -282,6 +282,10 @@ export const VocabularyItems = ({
   );
   // The sense tree, and whether the list draws it. Only a dictionary has one.
   const tree = useMemo(() => buildSenseTree(items), [items]);
+  // `?parent=` as the lexicon actually has it. A stale id (the entry was
+  // deleted, or the link was pasted) names nothing, and the new entry is
+  // written as a headword, so every reader of it agrees on that.
+  const liveNewParent = dictionary && newParent && tree.byId.has(newParent) ? newParent : null;
   const [treeViewPref, setTreeView] = useStickyState(
     listPrefKey('view', 'vocab-items', vocabularyId),
     dictionary,
@@ -683,10 +687,9 @@ export const VocabularyItems = ({
         ...(Object.keys(meta).length ? { metadata: meta } : {}),
       });
       if (isNew) {
-        const withPlace =
-          dictionary && newParent && tree.byId.has(newParent)
-            ? withParentSet(tree, { metadata }, newParent)
-            : metadata;
+        const withPlace = liveNewParent
+          ? withParentSet(tree, { metadata }, liveNewParent)
+          : metadata;
         const created = await client.vocabItems.create(
           vocabularyId,
           form,
@@ -1078,8 +1081,8 @@ export const VocabularyItems = ({
           fields,
           {
             metadata: isNew
-              ? newParent
-                ? { parent: newParent }
+              ? liveNewParent
+                ? { parent: liveNewParent }
                 : {}
               : reservedMetadata(selectedItem?.metadata),
           },
@@ -1087,7 +1090,7 @@ export const VocabularyItems = ({
         ),
         { statusField: dictionary ? STATUS_FIELD : null },
       ),
-    [fields, isNew, newParent, selectedItem, dictionary],
+    [fields, isNew, liveNewParent, selectedItem, dictionary],
   );
 
   // The entry card: the form and its bands. On the Entry tab, and on its own
@@ -1171,9 +1174,9 @@ export const VocabularyItems = ({
             />
           </div>
         )}
-        {dictionary && isNew && newParent && tree.byId.has(newParent) && (
+        {isNew && liveNewParent && (
           <p className="mb-3 text-xs text-muted-foreground">
-            A new sense of <strong>{tree.byId.get(newParent).form}</strong>
+            A new sense of <strong>{tree.byId.get(liveNewParent).form}</strong>
           </p>
         )}
 
