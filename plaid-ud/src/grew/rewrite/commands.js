@@ -6,11 +6,11 @@
 // the rule with a GrewRuntimeError. Grew never enforces a tree, so neither
 // does this: an `add_edge` may give a word a second head.
 //
-// Two UD-model points Grew has no equivalent for:
-//   - the root is the self-loop `root` edge, so shifting a word's incoming
-//     edges moves that loop wholesale (root status travels with it);
-//   - dependencies hang on the lemma span, so a lemma cannot be removed while
-//     the word still has one.
+// The root is an edge from the anchor node (graph.js), so shifting a word's
+// incoming edges moves its root status like any other head. One UD-model
+// point Grew has no equivalent for: dependencies hang on the lemma span, so a
+// lemma cannot be removed while the word still has one. Features set on the
+// anchor are kept in the graph (Grew allows them) and never written.
 
 import { GrewRuntimeError, GrewUnsupportedError } from '../errors.js';
 import {
@@ -30,6 +30,7 @@ export function applyCommands(rule, match, graph) {
     graph,
     nodes: new Map(match.nodes),
     edges: new Map([...match.edges].filter(([k]) => typeof k === 'string')),
+    lexicons: match.lexicons || {},
   };
   for (const cmd of rule.commands) applyCommand(ctx, cmd);
 }
@@ -109,6 +110,7 @@ function applyCommand(ctx, cmd) {
     }
     case 'del_node': {
       const n = nodeOf(ctx, cmd, cmd.node);
+      if (n.anchor) fail(ctx, cmd, `'${cmd.node}' is the root anchor; it cannot be deleted.`);
       n.deleted = true;
       for (const e of [...g.edges.values()])
         if (e.src === n.id || e.tgt === n.id) g.edges.delete(e.id);
@@ -123,15 +125,10 @@ function applyCommand(ctx, cmd) {
     case 'shift': {
       const src = nodeOf(ctx, cmd, cmd.src);
       const tgt = nodeOf(ctx, cmd, cmd.tgt);
+      // Edges between the two words stay where they are.
       for (const e of [...g.edges.values()]) {
         if (!labelMatches(cmd.filter, e.label)) continue;
-        const loop = e.src === e.tgt;
-        if (loop && e.src === src.id) {
-          // The root loop is an incoming edge from the pseudo-root.
-          if (cmd.mode === 'out') continue;
-          e.src = tgt.id;
-          e.tgt = tgt.id;
-        } else if (e.tgt === src.id && e.src !== tgt.id && cmd.mode !== 'out') {
+        if (e.tgt === src.id && e.src !== tgt.id && cmd.mode !== 'out') {
           e.tgt = tgt.id;
         } else if (e.src === src.id && e.tgt !== tgt.id && cmd.mode !== 'in') {
           e.src = tgt.id;
@@ -174,15 +171,20 @@ function applyCommand(ctx, cmd) {
     }
     case 'append_feats':
     case 'prepend_feats': {
+      // Every FEATS key of X (never form/lemma/upos/xpos), optionally only
+      // those the filter names, onto Y; joined with the separator where Y
+      // already has the key.
       const src = nodeOf(ctx, cmd, cmd.src);
       const tgt = nodeOf(ctx, cmd, cmd.tgt);
-      const names = ['form', 'lemma', 'upos', 'xpos', ...src.feats.keys()];
-      for (const name of names) {
-        const v = getFeat(src, name);
-        if (v === undefined) continue;
-        const cur = getFeat(tgt, name);
-        if (cur === undefined) setFeat(tgt, name, v);
-        else setFeat(tgt, name, cmd.kind === 'append_feats' ? `${cur}${v}` : `${v}${cur}`);
+      for (const [name, v] of src.feats) {
+        if (cmd.filter && !labelMatches(cmd.filter, name)) continue;
+        const cur = tgt.feats.get(name);
+        if (cur === undefined) tgt.feats.set(name, v);
+        else
+          tgt.feats.set(
+            name,
+            cmd.kind === 'append_feats' ? `${cur}${cmd.sep}${v}` : `${v}${cmd.sep}${cur}`,
+          );
       }
       return;
     }
@@ -214,6 +216,9 @@ function evalExpr(ctx, cmd, atoms) {
   return atoms
     .map((a) => {
       if (a.type === 'lit') return String(a.value);
+      if (!ctx.nodes.has(a.node) && !ctx.edges.has(a.node) && ctx.lexicons[a.node]) {
+        return lexValue(ctx, cmd, a);
+      }
       const n = nodeOf(ctx, cmd, a.node);
       let v;
       if (n) v = getFeat(n, a.feat);
@@ -229,4 +234,24 @@ function evalExpr(ctx, cmd, atoms) {
       return chars.slice(s ?? 0, e ?? chars.length).join('');
     })
     .join('');
+}
+
+// `lex.field` in a command: the one value the entries the pattern left agree
+// on. Several different values is an error, as Grew reports it.
+function lexValue(ctx, cmd, a) {
+  const lex = ctx.lexicons[a.node];
+  if (!lex.fields.includes(a.feat)) fail(ctx, cmd, `Lexicon '${a.node}' has no field '${a.feat}'.`);
+  const values = [...new Set(lex.entries.map((e) => e[a.feat]))];
+  if (values.length !== 1) {
+    fail(
+      ctx,
+      cmd,
+      `${a.node}.${a.feat} is ambiguous: ${lex.entries.length} entries match, with ${values.length} different values.`,
+    );
+  }
+  const v = values[0];
+  if (!a.slice) return v;
+  const chars = Array.from(v);
+  const [s, e] = a.slice;
+  return chars.slice(s ?? 0, e ?? chars.length).join('');
 }

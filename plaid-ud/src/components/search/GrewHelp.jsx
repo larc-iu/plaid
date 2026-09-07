@@ -32,6 +32,10 @@ const REWRITE_EXAMPLES = [
     'pattern { H -[obj]-> N; e: N -[nmod]-> M; M [Case=Ins] } commands { del_edge e; add_edge H -[obl]-> M }',
   ],
   [
+    'Gender from a lexicon',
+    'pattern { X [upos=NOUN, lemma=lex.noun, !Gender] } commands { X.Gender = lex.Gender }\n#BEGIN lex\nnoun\tGender\ndog\tMasc\ncat\tFem\n#END',
+  ],
+  [
     'Two rules in order',
     'rule det { pattern { X [upos=DET, !Done] } commands { X.Done = Yes } }\nrule drop { pattern { X [Done=Yes] } commands { del_feat X.Done } }\nstrat main { Seq(Onf(det), Onf(drop)) }',
   ],
@@ -103,7 +107,17 @@ export const GrewHelp = ({ onPick }) => (
             </List.Item>
             <List.Item>
               <Code>del_node X</Code> — delete the word and its edges;{' '}
-              <Code>append_feats X ==&gt; Y</Code>
+              <Code>append_feats "/" X =[re"Number|Gender"]=&gt; Y</Code> — copy X's features (never
+              form/lemma/upos/xpos)
+            </List.Item>
+            <List.Item>
+              <Code>X [lemma=lex.noun]</Code> … <Code>X.Gender = lex.Gender</Code> — a lexicon
+              declared in the rule between <Code>#BEGIN lex</Code> and <Code>#END</Code>:
+              tab-separated, first line the field names
+            </List.Item>
+            <List.Item>
+              The root is an edge from an anchor node with <Code>form="__0__"</Code>, as in Grew:{' '}
+              <Code>X []</Code> matches it, <Code>X [upos]</Code> does not
             </List.Item>
             <List.Item>
               <Code>
@@ -117,8 +131,8 @@ export const GrewHelp = ({ onPick }) => (
             </List.Item>
           </List>
           <Text size="sm" c="dimmed">
-            Not supported: <Code>add_node</Code>, <Code>unorder</Code>, <Code>insert</Code>,
-            lexicons. A rule that matches but changes nothing stops with an error.
+            Not supported: <Code>add_node</Code>, <Code>unorder</Code>, <Code>insert</Code>, lexicon
+            files. A rule that matches but changes nothing stops with an error.
           </Text>
         </Stack>
       </Accordion.Panel>
@@ -146,8 +160,9 @@ export const GrewHelp = ({ onPick }) => (
               <Code>-[^a|b]-&gt;</Code>, <Code>-[re"…"]-&gt;</Code>, <Code>X -&gt; Y</Code> any)
             </List.Item>
             <List.Item>
-              <Code>X &lt; Y</Code> / <Code>X &lt;&lt; Y</Code> — immediate / any precedence;{' '}
-              <Code>X -&gt;&gt; Y</Code> — dominates
+              <Code>X &lt; Y</Code> / <Code>X &lt;&lt; Y</Code> — immediate / any precedence (
+              <Code>&gt;</Code> / <Code>&gt;&gt;</Code> reversed); <Code>X -&gt;&gt; Y</Code> —
+              dominates
             </List.Item>
             <List.Item>
               <Code>X.lemma = Y.lemma</Code> — same value across nodes; <Code>delta(X,Y)=2</Code> —

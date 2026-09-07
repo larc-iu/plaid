@@ -778,6 +778,7 @@ class Compiler {
 
   valueConstraint(v, ctx) {
     if (!v) return undefined;
+    if (v.type === 'lexref') this.refuseLexicon();
     if (v.type === 'lit') return v.value;
     if (v.type === 'any') return undefined; // 'defined' handled by caller
     if (v.type === 'regex') return this.regexConstraint(v);
@@ -792,6 +793,7 @@ class Compiler {
   }
 
   featValueConstraint(name, v) {
+    if (v.type === 'lexref') this.refuseLexicon();
     if (v.type === 'lit') return featEqValue(name, v.value);
     if (v.type === 'disj' && v.items.every((it) => it.type === 'lit'))
       return v.items.map((it) => featEqValue(name, it.value));
@@ -810,8 +812,16 @@ class Compiler {
     return c;
   }
 
+  refuseLexicon() {
+    throw new GrewUnsupportedError(
+      'lexicon',
+      'A lexicon (lex.field) only works in a rewriting rule.',
+    );
+  }
+
   litValue(v) {
     if (v && v.type === 'lit') return v.value;
+    if (v && v.type === 'lexref') this.refuseLexicon();
     if (v && v.type === 'regex') {
       throw new GrewUnsupportedError(
         'regex-inequality',

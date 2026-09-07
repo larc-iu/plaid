@@ -11,7 +11,7 @@
 // where Grew's is arbitrary.
 
 import { GrewUnsupportedError } from '../errors.js';
-import { getFeat, liveNodes, sortedEdges } from './graph.js';
+import { getFeat, liveNodes, liveWords, structureEdges, sortedEdges } from './graph.js';
 
 const analysed = new WeakMap();
 
@@ -34,9 +34,64 @@ function analyse(rule) {
     globals,
     topNodes: nodeIdsOf(positive),
     nonInjective: new Set(rule.nonInjective || []),
+    lexicons: rule.lexicons || {},
+    lexConstraints: lexConstraintsOf(positive),
+    withoutLex: withouts.map(lexConstraintsOf),
   };
   analysed.set(rule, a);
   return a;
+}
+
+// The `feat = lex.field` constraints in a clause list: each narrows the
+// named lexicon to the entries whose field equals the node's feature.
+function lexConstraintsOf(items) {
+  const out = [];
+  const add = (node, feat, op, value) => {
+    if (!value || value.type !== 'lexref') return;
+    if (op !== '=') {
+      throw new GrewUnsupportedError('lexicon-op', 'A lexicon field can only be matched with `=`.');
+    }
+    out.push({ node, feat, lex: value.lex, field: value.field });
+  };
+  for (const item of items) {
+    if (item.kind === 'nodefeat') add(item.node, item.feat, item.op, item.value);
+    if (item.kind !== 'node') continue;
+    const hasLex = item.alts.some((alt) => alt.some((fi) => mentionsLex(fi.value)));
+    if (!hasLex) continue;
+    if (item.alts.length > 1) {
+      throw new GrewUnsupportedError(
+        'lexicon-disj',
+        'A lexicon field cannot be used inside a feature-structure disjunction.',
+      );
+    }
+    for (const fi of item.alts[0]) add(item.id, fi.name, fi.op, fi.value);
+  }
+  return out;
+}
+
+const mentionsLex = (v) =>
+  !!v && (v.type === 'lexref' || (v.type === 'disj' && v.items.some(mentionsLex)));
+
+// Narrow `base` lexicons by the constraints under `nodes`; null when one runs
+// out of entries (the match fails), else the narrowed copy.
+function reduceLexicons(constraints, base, graph, nodes) {
+  const out = { ...base };
+  for (const c of constraints) {
+    const lex = out[c.lex];
+    if (!lex) throw new GrewUnsupportedError('lexicon-unknown', `Unknown lexicon '${c.lex}'.`);
+    if (!lex.fields.includes(c.field)) {
+      throw new GrewUnsupportedError(
+        'lexicon-field',
+        `Lexicon '${c.lex}' has no field '${c.field}'.`,
+      );
+    }
+    const v = getFeat(graph.nodes.get(nodes.get(c.node)), c.feat);
+    if (v === undefined) return null;
+    const entries = lex.entries.filter((e) => e[c.field] === String(v));
+    if (!entries.length) return null;
+    out[c.lex] = { fields: lex.fields, entries };
+  }
+  return out;
 }
 
 // Node ids a clause list mentions, in first-mention order.
@@ -111,8 +166,15 @@ export function findMatches(rule, graph, { limit = Infinity } = {}) {
   if (!checkGlobals(a.globals, graph)) return out;
   const ctx = { graph, nonInjective: a.nonInjective };
   solve(ctx, a.positive, a.topNodes, new Map(), new Map(), (nodes, edges) => {
-    if (a.withouts.some((items) => hasExtension(ctx, items, nodes, edges))) return true;
-    out.push({ nodes: new Map(nodes), edges: new Map(edges) });
+    const lexicons = reduceLexicons(a.lexConstraints, a.lexicons, graph, nodes);
+    if (!lexicons) return true;
+    if (
+      a.withouts.some((items, i) =>
+        hasExtension(ctx, items, nodes, edges, a.withoutLex[i], lexicons),
+      )
+    )
+      return true;
+    out.push({ nodes: new Map(nodes), edges: new Map(edges), lexicons });
     return out.length < limit;
   });
   return out;
@@ -232,10 +294,11 @@ function qualifyingEdges(g, it, nodes) {
 }
 
 // True when the `without` items can be satisfied on top of the match.
-function hasExtension(ctx, items, nodes, edges) {
+function hasExtension(ctx, items, nodes, edges, lexConstraints = [], lexicons = {}) {
   let found = false;
   const localVars = nodeIdsOf(items).filter((v) => !nodes.has(v));
-  solve(ctx, items, [...nodes.keys(), ...localVars], new Map(nodes), new Map(edges), () => {
+  solve(ctx, items, [...nodes.keys(), ...localVars], new Map(nodes), new Map(edges), (nodesB) => {
+    if (!reduceLexicons(lexConstraints, lexicons, ctx.graph, nodesB)) return true;
     found = true;
     return false;
   });
@@ -293,6 +356,8 @@ function checkFeatItem(node, fi) {
     case 'undefined':
       return v === undefined;
     case '=':
+      // A lexicon value is settled once every node is bound (reduceLexicons).
+      if (fi.value?.type === 'lexref') return v !== undefined;
       return v !== undefined && matchValue(v, fi.value);
     case '<>':
       return v !== undefined && !matchValue(v, fi.value);
@@ -444,23 +509,24 @@ function checkFlag(name, g) {
   }
 }
 
-const nonLoopEdges = (g) => [...g.edges.values()].filter((e) => e.src !== e.tgt);
-
+// The tree flags and projectivity read the structure between words; the
+// anchor's root edge is not part of it (every sentence would be non-
+// projective otherwise).
 function rootCount(g) {
-  const withHead = new Set(nonLoopEdges(g).map((e) => e.tgt));
-  return liveNodes(g).filter((n) => !withHead.has(n.id)).length;
+  const withHead = new Set(structureEdges(g).map((e) => e.tgt));
+  return liveWords(g).filter((n) => !withHead.has(n.id)).length;
 }
 
 function isForest(g) {
   const heads = new Map();
-  for (const e of nonLoopEdges(g)) heads.set(e.tgt, (heads.get(e.tgt) || 0) + 1);
+  for (const e of structureEdges(g)) heads.set(e.tgt, (heads.get(e.tgt) || 0) + 1);
   if ([...heads.values()].some((n) => n > 1)) return false;
   return !hasCycle(g);
 }
 
 function hasCycle(g) {
   const out = new Map();
-  for (const e of nonLoopEdges(g)) {
+  for (const e of structureEdges(g)) {
     if (!out.has(e.src)) out.set(e.src, []);
     out.get(e.src).push(e.tgt);
   }
@@ -481,8 +547,8 @@ function hasCycle(g) {
 
 // Every node strictly between an edge's endpoints is dominated by its head.
 export function isProjective(g) {
-  const live = liveNodes(g);
-  for (const e of nonLoopEdges(g)) {
+  const live = liveWords(g);
+  for (const e of structureEdges(g)) {
     const h = g.nodes.get(e.src);
     const d = g.nodes.get(e.tgt);
     if (!h || !d || h.deleted || d.deleted) continue;

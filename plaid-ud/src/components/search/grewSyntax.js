@@ -25,7 +25,7 @@ const SPEC = [
     /\b(?:pattern|with|without|global|rule|commands|strat|del_edge|add_edge|del_node|add_node|shift_in|shift_out|shift|del_feat|append_feats|prepend_feats)\b/y,
   ],
   ['global', /\bis_[A-Za-z_]+\b|\b(?:Onf|Iter|Seq|Alt|Pick|Try|Empty)\b/y],
-  ['operator', /->>|-\[|->|><|<<|<>|<=|>=|==>|=\[|\]=>|:<|:>|[<>=|^!$*+]/y],
+  ['operator', /->>|-\[|->|><|<<|>>|<>|<=|>=|==>|=\[|\]=>|:<|:>|[<>=|^!$*+]/y],
   ['number', /-?\d+/y],
   ['plain', /[A-Za-z_][A-Za-z0-9_]*/y], // identifiers (default color)
   ['punct', /[{}[\](),;:.]/y],

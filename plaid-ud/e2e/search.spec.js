@@ -43,7 +43,7 @@ test('runs a Grew query and shows highlighted matching sentences', async ({ page
   const box = page.getByPlaceholder(/pattern \{/);
   await expect(box).toBeVisible();
   await box.fill('pattern { H []; D []; H -[nsubj]-> D }');
-  await page.getByRole('button', { name: 'Search' }).click();
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
 
   // Results summary appears and at least one highlighted token is shown.
   await expect(page.getByText(/matching sentence/)).toBeVisible();
@@ -60,7 +60,7 @@ test('reports a clear error for an unsupported feature', async ({ page }) => {
   await page.goto(`${BASE}/#/projects/${PID}/search`);
   const box = page.getByPlaceholder(/pattern \{/);
   await box.fill('pattern { X [] } global { is_cyclic }');
-  await page.getByRole('button', { name: 'Search' }).click();
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
   // is_cyclic is constant-folded to empty under the UD tree invariant.
   await expect(page.getByText('No matching sentences.')).toBeVisible();
 });

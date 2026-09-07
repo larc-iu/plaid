@@ -19,6 +19,7 @@ import { GrewParseError, GrewUnsupportedError } from './errors.js';
 import { BLOCK_TYPES } from './ast.js';
 
 const STRAT_OPS = new Set(['Onf', 'Iter', 'Seq', 'Alt', 'Pick', 'Try', 'Empty']);
+const FIELD_SEP = '\t';
 const GRS_KEYWORDS = new Set(['rule', 'strat', 'commands', 'package', 'include', 'import']);
 
 export function parse(src) {
@@ -44,6 +45,7 @@ export function looksLikeGrs(src) {
       if ((t.value === 'rule' || t.value === 'strat') && toks[i + 1]?.type === TT.IDENT && brace(2))
         return true;
       if (t.value === 'package' || t.value === 'include' || t.value === 'import') return true;
+      if (t.type === TT.LEXICON) return true;
     }
     return false;
   } catch {
@@ -99,6 +101,13 @@ function createParser(src) {
       if (atKw('rule')) {
         if (anon) fail('Expected a `commands { … }` block to close the pattern above');
         addRule(parseRule());
+      } else if (at(TT.LEXICON)) {
+        // A lexicon goes with the anonymous rule around it: the one being
+        // written, or the one just closed.
+        const last = rules[rules.length - 1];
+        const owner = anon || (last?.name === 'rule' ? last : null);
+        if (!owner) fail('A lexicon belongs inside a rule');
+        addLexicon(owner, next());
       } else if (atKw('strat')) {
         strats.push(parseStrat());
       } else if (atKw('package') || atKw('include') || atKw('import')) {
@@ -108,7 +117,7 @@ function createParser(src) {
           peek().line,
         );
       } else if (at(TT.IDENT) && BLOCK_TYPES.has(peek().value)) {
-        if (!anon) anon = { blocks: [], line: peek().line };
+        if (!anon) anon = { blocks: [], lexicons: {}, line: peek().line };
         anon.blocks.push(parseBlock());
       } else if (atKw('commands')) {
         if (!anon) fail('`commands` needs a `pattern { … }` block before it');
@@ -118,6 +127,7 @@ function createParser(src) {
           blocks: anon.blocks,
           nonInjective: takeNonInjective(),
           commands,
+          lexicons: anon.lexicons,
           line: anon.line,
         });
         anon = null;
@@ -127,7 +137,73 @@ function createParser(src) {
     }
     if (anon) fail('Expected a `commands { … }` block after the pattern');
     if (rules.length === 0) fail('Empty rule set — expected a `rule` or a pattern with `commands`');
+    rules.forEach(resolveLexiconRefs);
     return { rules, strats };
+  }
+
+  // --- lexicons ---
+
+  // `#BEGIN name … #END`: tab-separated, first line the field names, blank
+  // lines and `%` lines ignored, every row as wide as the header.
+  function addLexicon(rule, tok) {
+    const { name, body, bodyLine } = tok.value;
+    if (rule.lexicons[name]) fail(`Lexicon '${name}' is declared twice`, tok);
+    const lines = body.split('\n');
+    let fields = null;
+    const entries = [];
+    lines.forEach((raw, k) => {
+      const text = raw.replace(/\r$/, '');
+      if (!text.trim() || text.trimStart().startsWith('%')) return;
+      const cells = text.split(FIELD_SEP).map((c) => c.trim());
+      if (!fields) {
+        fields = cells;
+        return;
+      }
+      if (cells.length !== fields.length) {
+        const lines2 = src.split('\n');
+        throw new GrewParseError(
+          `Lexicon '${name}': ${cells.length} fields on a line, ${fields.length} in the header (fields are tab-separated)`,
+          bodyLine + k,
+          1,
+          lines2[bodyLine + k - 1] ?? '',
+        );
+      }
+      entries.push(Object.fromEntries(fields.map((f, i) => [f, cells[i]])));
+    });
+    if (!fields) fail(`Lexicon '${name}' has no header line`, tok);
+    rule.lexicons[name] = { fields, entries };
+  }
+
+  // `X.lemma = lex.noun` parses as a comparison between two nodes; once the
+  // rule's lexicons are known, the side that names one becomes a lexicon
+  // reference value.
+  function resolveLexiconRefs(rule) {
+    const isLex = (id) => Object.prototype.hasOwnProperty.call(rule.lexicons, id);
+    for (const block of rule.blocks) {
+      block.items = block.items.map((item) => {
+        if (item.kind !== 'featcmp') return item;
+        const lexRight = isLex(item.right.node);
+        const lexLeft = isLex(item.left.node);
+        if (!lexRight && !lexLeft) return item;
+        if (lexRight && lexLeft) {
+          throw new GrewUnsupportedError(
+            'lexicon-cmp',
+            'Comparing two lexicon fields is not supported.',
+            item.line,
+          );
+        }
+        const side = lexRight ? item.left : item.right;
+        const lex = lexRight ? item.right : item.left;
+        return {
+          kind: 'nodefeat',
+          node: side.node,
+          feat: side.feat,
+          op: item.op,
+          value: { type: 'lexref', lex: lex.node, field: lex.feat },
+          line: item.line,
+        };
+      });
+    }
   }
 
   function takeNonInjective() {
@@ -141,24 +217,41 @@ function createParser(src) {
   function parseRule() {
     const kw = next(); // 'rule'
     const name = expect(TT.IDENT, 'a rule name').value;
+    if (at(TT.LPAREN)) {
+      // `rule r (lex from "file.lex")`: lexicon files.
+      throw new GrewUnsupportedError(
+        'lexicon-file',
+        'Lexicon files are not supported; put the lexicon in the rule between #BEGIN name and #END.',
+        peek().line,
+      );
+    }
     expect(TT.LBRACE, "'{'");
-    const blocks = [];
-    let commands = null;
+    const rule = {
+      name,
+      blocks: [],
+      nonInjective: [],
+      commands: null,
+      lexicons: {},
+      line: kw.line,
+    };
     while (!at(TT.RBRACE) && !at(TT.EOF)) {
       if (at(TT.IDENT) && BLOCK_TYPES.has(peek().value)) {
-        if (commands) fail('Pattern blocks go before `commands`');
-        blocks.push(parseBlock());
+        if (rule.commands) fail('Pattern blocks go before `commands`');
+        rule.blocks.push(parseBlock());
       } else if (atKw('commands')) {
-        if (commands) fail('A rule has one `commands` block');
-        commands = parseCommands();
+        if (rule.commands) fail('A rule has one `commands` block');
+        rule.commands = parseCommands();
+      } else if (at(TT.LEXICON)) {
+        addLexicon(rule, next());
       } else {
-        fail('Expected pattern, with, without, global, or commands');
+        fail('Expected pattern, with, without, global, commands, or a #BEGIN lexicon');
       }
     }
     expect(TT.RBRACE, "'}'");
-    if (blocks.length === 0) fail(`Rule '${name}' has no \`pattern\` block`, kw);
-    if (!commands) fail(`Rule '${name}' has no \`commands\` block`, kw);
-    return { name, blocks, nonInjective: takeNonInjective(), commands, line: kw.line };
+    if (rule.blocks.length === 0) fail(`Rule '${name}' has no \`pattern\` block`, kw);
+    if (!rule.commands) fail(`Rule '${name}' has no \`commands\` block`, kw);
+    rule.nonInjective = takeNonInjective();
+    return rule;
   }
 
   function parseStrat() {
@@ -272,10 +365,18 @@ function createParser(src) {
       }
       case 'append_feats':
       case 'prepend_feats': {
+        // `append_feats "/" X ==> Y`, `append_feats X =[re"Number|Gender"]=> Y`
+        const sep = at(TT.STRING) ? next().value : '';
         const src = expectNode();
-        expect(TT.SHIFT, "'==>'");
+        let filter = null;
+        if (at(TT.SHIFT)) next();
+        else {
+          expect(TT.SHIFT_OPEN, "'==>' or '=['");
+          filter = parseLabelExpr();
+          expect(TT.SHIFT_CLOSE, "']=>'");
+        }
         const tgt = expectNode();
-        return { kind: kw, src, tgt, line };
+        return { kind: kw, src, tgt, sep, filter, line };
       }
       case 'unorder':
       case 'insert':
@@ -399,6 +500,8 @@ function createParser(src) {
         return parseNodeDotConstraint(id, idTok.line);
       case TT.LT:
       case TT.LTLT:
+      case TT.GT:
+      case TT.GTGT:
         return parseOrder(id);
       case TT.ARROW:
       case TT.DOMINATES:
@@ -488,6 +591,12 @@ function createParser(src) {
       const r = next().value;
       return { type: 'regex', pattern: r.pattern, flavor: r.flavor, flags: r.flags };
     }
+    if (at(TT.IDENT) && at(TT.DOT, 1)) {
+      // `lex.field`: a lexicon reference (only meaningful in a rule).
+      const lex = next().value;
+      next();
+      return { type: 'lexref', lex, field: expect(TT.IDENT, 'a lexicon field').value };
+    }
     if (at(TT.IDENT) || at(TT.NUMBER)) {
       // allow subtyped values like Number=Sing[psor]? — keep simple: ident/number
       return { type: 'lit', value: next().value };
@@ -516,11 +625,14 @@ function createParser(src) {
     return { kind: 'nodefeat', node: id, feat, op, value: parseValueExpr(), line };
   }
 
+  // `X > Y` / `X >> Y` are `Y < X` / `Y << X`.
   function parseOrder(id) {
-    const op = at(TT.LTLT) ? '<<' : '<';
-    next();
-    const right = expect(TT.IDENT, 'a node identifier').value;
-    return { kind: 'order', op, left: id, right };
+    const tok = next();
+    const op = tok.type === TT.LTLT || tok.type === TT.GTGT ? '<<' : '<';
+    const other = expect(TT.IDENT, 'a node identifier').value;
+    if (tok.type === TT.GT || tok.type === TT.GTGT)
+      return { kind: 'order', op, left: other, right: id };
+    return { kind: 'order', op, left: id, right: other };
   }
 
   function parseEdgeRest(edgeId, src) {

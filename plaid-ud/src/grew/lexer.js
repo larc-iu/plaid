@@ -9,7 +9,7 @@
 // operators must be matched greedily and BEFORE their prefixes:
 //   ->>  (dominance)   -[  (edge-label open)   ->  (edge)
 //   ><   (edge crossing)
-//   <<   (precedence)  <>  (feature inequality)  <=  >=
+//   <<  >>  (precedence)  <>  (feature inequality)  <=  >=
 //   ==>  (shift)       =[  ]=>  (filtered shift)   :<  :>  (add_node side)
 // A leading '-' is also the sign of a negative number in `delta(X,Y) = -3`.
 //
@@ -43,6 +43,7 @@ export const TT = {
   NEQ: 'NEQ',
   LT: 'LT',
   LTLT: 'LTLT',
+  GTGT: 'GTGT',
   LE: 'LE',
   GT: 'GT',
   GE: 'GE',
@@ -56,6 +57,7 @@ export const TT = {
   SHIFT_CLOSE: 'SHIFT_CLOSE', // ]=>
   BEFORE: 'BEFORE', // :<
   AFTER: 'AFTER', // :>
+  LEXICON: 'LEXICON', // #BEGIN name … #END, value { name, body, bodyLine }
   EOF: 'EOF',
 };
 
@@ -107,6 +109,30 @@ export function lex(src) {
       continue;
     }
 
+    // Inline lexicon: `#BEGIN name` through the line `#END`, body kept raw.
+    if (c === '#') {
+      const sl = line,
+        sc = col;
+      if (!match('#BEGIN')) fail("Unexpected '#' (a lexicon starts with '#BEGIN name')");
+      advance(6);
+      while (src[i] === ' ' || src[i] === '\t') advance();
+      let name = '';
+      while (i < src.length && isIdentPart(src[i])) {
+        name += src[i];
+        advance();
+      }
+      if (!name) fail('Expected a lexicon name after #BEGIN');
+      while (i < src.length && src[i] !== '\n') advance();
+      advance(); // the newline
+      const bodyLine = line;
+      const endAt = src.indexOf('#END', i);
+      if (endAt === -1) fail('Unterminated lexicon (#BEGIN without #END)');
+      const body = src.slice(i, endAt);
+      advance(endAt - i + 4);
+      push(TT.LEXICON, { name, body, bodyLine }, sl, sc);
+      continue;
+    }
+
     const sl = line,
       sc = col;
 
@@ -134,6 +160,11 @@ export function lex(src) {
     if (match('<<')) {
       advance(2);
       push(TT.LTLT, '<<', sl, sc);
+      continue;
+    }
+    if (match('>>')) {
+      advance(2);
+      push(TT.GTGT, '>>', sl, sc);
       continue;
     }
     if (match('<>')) {

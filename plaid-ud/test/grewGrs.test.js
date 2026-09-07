@@ -187,9 +187,14 @@ test('every command shape parses', () => {
     kind: 'append_feats',
     src: 'X',
     tgt: 'Y',
+    sep: '',
+    filter: null,
     line: 1,
   });
   assert.equal(cmds('prepend_feats X ==> Y')[0].kind, 'prepend_feats');
+  const ap = cmds('append_feats "/" X =[re"Number|Gender"]=> Y')[0];
+  assert.equal(ap.sep, '/');
+  assert.equal(ap.filter.type, 'regex');
   // Semicolons and newlines both separate commands; comments are skipped.
   assert.equal(cmds('del_node X; % gone\n del_node Y').length, 2);
 });
@@ -217,5 +222,51 @@ test('errors: unknown command, missing commands, duplicate names, unsupported ke
   assert.throws(
     () => parseGrs('package p { rule r { pattern { X [] } commands { del_node X } } }'),
     (e) => e instanceof GrewUnsupportedError && e.feature === 'package',
+  );
+});
+
+test('X > Y and X >> Y are Y < X and Y << X', () => {
+  const items = (s) => parse(s).blocks[0].items;
+  assert.deepEqual(items('pattern { X > Y }')[0], {
+    kind: 'order',
+    op: '<',
+    left: 'Y',
+    right: 'X',
+  });
+  assert.deepEqual(items('pattern { X >> Y }')[0], {
+    kind: 'order',
+    op: '<<',
+    left: 'Y',
+    right: 'X',
+  });
+  assert.deepEqual(items('pattern { X << Y }')[0], {
+    kind: 'order',
+    op: '<<',
+    left: 'X',
+    right: 'Y',
+  });
+});
+
+test('lexicon references parse in brackets and dot constraints; the search box refuses them', async () => {
+  const { parseAndCompile } = await import('../src/grew/index.js');
+  const grs = parseGrs(
+    'pattern { X [lemma=lex.noun]; X.upos = lex.pos } commands { X.Gender = lex.g }\n#BEGIN lex\nnoun\tpos\tg\na\tb\tc\n#END',
+  );
+  const [node, dot] = grs.rules[0].blocks[0].items;
+  assert.deepEqual(node.alts[0][0].value, { type: 'lexref', lex: 'lex', field: 'noun' });
+  assert.equal(dot.kind, 'nodefeat');
+  assert.deepEqual(dot.value, { type: 'lexref', lex: 'lex', field: 'pos' });
+  assert.deepEqual(grs.rules[0].lexicons.lex, {
+    fields: ['noun', 'pos', 'g'],
+    entries: [{ noun: 'a', pos: 'b', g: 'c' }],
+  });
+  assert.throws(
+    () =>
+      parseAndCompile('pattern { X [lemma=lex.noun] }', {
+        sentenceTokenLayer: { id: 'S' },
+        morphemeTokenLayer: { id: 'M' },
+        lemmaLayer: { id: 'L' },
+      }),
+    (e) => e instanceof GrewUnsupportedError && e.feature === 'lexicon',
   );
 });

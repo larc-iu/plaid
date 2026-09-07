@@ -4,6 +4,10 @@
 // syntactic-word token ids and edge ids are relation ids, so the address book
 // each node carries (spanIds) turns a feature change into a span write.
 //
+// The graph's root edge runs from the anchor node; the server stores it as a
+// self-loop on the root word, so an edge's server source is its target when
+// its source is the anchor. Features a rule set on the anchor stay local.
+//
 // Writes come in three phases the runner keeps in order:
 //   tokens        delete the words `del_node` removed (their spans and
 //                 relations go with them, so nothing else is written for them)
@@ -14,7 +18,7 @@
 //                 endpoint moves name their words, and the runner resolves a
 //                 word to its lemma span (existing or just created)
 
-import { liveNodes, columnOf } from './graph.js';
+import { liveNodes, ANCHOR } from './graph.js';
 
 const COLUMN_LAYER = {
   form: 'formLayer',
@@ -28,14 +32,15 @@ export function diffGraphs(before, after, layerInfo) {
   const writes = { tokens: [], lemmaCreates: [], main: [] };
   const warnings = [];
   const layer = (key) => layerInfo[key]?.id;
-  const formOf = (g, id) => g.nodes.get(id)?.form ?? '?';
+  const formOf = (g, id) => (id === ANCHOR ? '(root)' : (g.nodes.get(id)?.form ?? '?'));
+  const serverSrc = (e) => (e.src === ANCHOR ? e.tgt : e.src);
   const deleted = new Set();
 
   // --- words ---
   for (const id of before.order) {
     const b = before.nodes.get(id);
     const a = after.nodes.get(id);
-    if (b.deleted) continue;
+    if (b.deleted || b.anchor) continue;
     if (a.deleted) {
       deleted.add(id);
       changes.push({ kind: 'node', node: id, text: `${b.form}: word deleted` });
@@ -113,8 +118,6 @@ export function diffGraphs(before, after, layerInfo) {
         kind: 'edge',
         text: `${a.label} of ${formOf(after, a.tgt)}: head ${formOf(before, b.src)} → ${formOf(after, a.src)}`,
       });
-      writes.main.push({ op: 'setSource', id, node: a.src });
-      needsLemma.add(a.src);
     }
     if (a.tgt !== b.tgt) {
       changes.push({
@@ -123,6 +126,10 @@ export function diffGraphs(before, after, layerInfo) {
       });
       writes.main.push({ op: 'setTarget', id, node: a.tgt });
       needsLemma.add(a.tgt);
+    }
+    if (serverSrc(a) !== serverSrc(b)) {
+      writes.main.push({ op: 'setSource', id, node: serverSrc(a) });
+      needsLemma.add(serverSrc(a));
     }
   }
   for (const [id, a] of after.edges) {
@@ -134,16 +141,17 @@ export function diffGraphs(before, after, layerInfo) {
     writes.main.push({
       op: 'createRelation',
       layer: layer('relationLayer'),
-      src: a.src,
+      src: serverSrc(a),
       tgt: a.tgt,
       value: a.label,
     });
-    needsLemma.add(a.src);
+    needsLemma.add(serverSrc(a));
     needsLemma.add(a.tgt);
   }
 
   // --- lemma spans that must exist first ---
   for (const n of liveNodes(after)) {
+    if (n.anchor) continue;
     const b = before.nodes.get(n.id);
     const gained = b.lemma === undefined && n.lemma !== undefined;
     if (b.spanIds.lemma || !(gained || needsLemma.has(n.id))) continue;
@@ -159,10 +167,10 @@ export function diffGraphs(before, after, layerInfo) {
     });
   }
 
-  // --- what Grew allows and UD does not ---
+  // --- what Grew allows and UD does not: heads among words, as the editor counts ---
   const heads = new Map();
   for (const e of after.edges.values())
-    if (e.src !== e.tgt) heads.set(e.tgt, (heads.get(e.tgt) || 0) + 1);
+    if (e.src !== ANCHOR) heads.set(e.tgt, (heads.get(e.tgt) || 0) + 1);
   for (const [id, n] of heads) if (n > 1) warnings.push(`${formOf(after, id)} has ${n} heads.`);
 
   return { changes, writes, warnings };
@@ -185,5 +193,3 @@ function columnWrite(list, node, col, value, layerId) {
 }
 
 const describe = (v) => (v === undefined ? '(none)' : String(v));
-
-export const isColumn = (name) => !!columnOf(name);

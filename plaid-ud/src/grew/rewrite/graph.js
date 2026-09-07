@@ -6,63 +6,72 @@
 //
 // Grew features map onto the UD columns the way the search compiler maps them
 // (compile.js): `form`, `lemma`, `upos`, `xpos` are the column features (case-
-// insensitive names), anything else is a FEATS key. The root relation is the
-// self-loop the UD import stores (source = target, label `root`), not Grew's
-// pseudo-node, matching what the search box already matches.
+// insensitive names), anything else is a FEATS key.
+//
+// The root is modelled as Grew models it: an anchor node at position 0 whose
+// only feature is `form=__0__`, and a `root` edge from the anchor to the root
+// word. The UD import stores that edge as a self-loop on the root word; the
+// conversion happens here on the way in and in diff.js on the way out. So
+// `X []` matches the anchor (as in Grew), `X [upos]` does not, and `shift`
+// needs no special case for the root.
 
 const COLUMNS = { form: 'form', lemma: 'lemma', upos: 'upos', xpos: 'xpos' };
+
+export const ANCHOR = '__0__';
 
 // The column a Grew feature name addresses, or null for a FEATS key.
 export const columnOf = (name) => COLUMNS[String(name).toLowerCase()] || null;
 
+const emptyNode = (id, pos) => ({
+  id,
+  pos,
+  form: '',
+  lemma: undefined,
+  upos: undefined,
+  xpos: undefined,
+  feats: new Map(),
+  spanIds: { form: null, lemma: null, upos: null, xpos: null, features: new Map() },
+  spanMeta: { form: null, lemma: null, upos: null, xpos: null, features: new Map() },
+  substring: '',
+  wordId: null,
+  wordHasMultiple: false,
+  anchor: false,
+  deleted: false,
+});
+
 export function graphFromSentence(row) {
   const nodes = new Map();
-  const order = [];
+  const order = [ANCHOR];
+  nodes.set(ANCHOR, { ...emptyNode(ANCHOR, 0), form: ANCHOR, anchor: true });
   for (const entry of row.tokens) {
     const id = entry.token.id;
-    const feats = new Map();
-    const featSpanIds = new Map();
-    const featMeta = new Map();
+    const n = emptyNode(id, order.length);
     for (const f of entry.feats) {
       const eq = String(f.value).indexOf('=');
       const key = eq === -1 ? String(f.value) : String(f.value).slice(0, eq);
       const val = eq === -1 ? '' : String(f.value).slice(eq + 1);
-      feats.set(key, val);
-      featSpanIds.set(key, f.id);
-      featMeta.set(key, f.metadata || null);
+      n.feats.set(key, val);
+      n.spanIds.features.set(key, f.id);
+      n.spanMeta.features.set(key, f.metadata || null);
     }
-    nodes.set(id, {
-      id,
-      pos: order.length,
-      form: entry.tokenForm ?? '',
-      lemma: entry.lemma?.value ?? undefined,
-      upos: entry.upos?.value ?? undefined,
-      xpos: entry.xpos?.value ?? undefined,
-      feats,
-      // Where each current value lives on the server (null = no span yet).
-      spanIds: {
-        form: entry.form?.id || null,
-        lemma: entry.lemma?.id || null,
-        upos: entry.upos?.id || null,
-        xpos: entry.xpos?.id || null,
-        features: featSpanIds,
-      },
-      spanMeta: {
-        form: entry.form?.metadata || null,
-        lemma: entry.lemma?.metadata || null,
-        upos: entry.upos?.metadata || null,
-        xpos: entry.xpos?.metadata || null,
-        features: featMeta,
-      },
-      substring: entry.word ? entry.wordForm : entry.tokenForm,
-      wordId: entry.word?.id || null,
-      wordHasMultiple: !!entry.wordHasMultipleMorphemes,
-      deleted: false,
-    });
+    n.form = entry.tokenForm ?? '';
+    n.lemma = entry.lemma?.value ?? undefined;
+    n.upos = entry.upos?.value ?? undefined;
+    n.xpos = entry.xpos?.value ?? undefined;
+    // Where each current value lives on the server (null = no span yet).
+    for (const col of ['form', 'lemma', 'upos', 'xpos']) {
+      n.spanIds[col] = entry[col]?.id || null;
+      n.spanMeta[col] = entry[col]?.metadata || null;
+    }
+    n.substring = entry.word ? entry.wordForm : entry.tokenForm;
+    n.wordId = entry.word?.id || null;
+    n.wordHasMultiple = !!entry.wordHasMultipleMorphemes;
+    nodes.set(id, n);
     order.push(id);
   }
 
-  // Relations are anchored on lemma spans; resolve them to node ids.
+  // Relations are anchored on lemma spans; resolve them to node ids. A
+  // self-loop is the import's root: an edge from the anchor here.
   const nodeByLemmaSpan = new Map();
   for (const n of nodes.values()) if (n.spanIds.lemma) nodeByLemmaSpan.set(n.spanIds.lemma, n.id);
   const edges = new Map();
@@ -72,7 +81,7 @@ export function graphFromSentence(row) {
     if (!src || !tgt) continue; // an inter-sentential or dangling relation
     edges.set(rel.id, {
       id: rel.id,
-      src,
+      src: src === tgt ? ANCHOR : src,
       tgt,
       label: rel.value ?? '',
       metadata: rel.metadata || null,
@@ -108,8 +117,15 @@ export function cloneGraph(g) {
   return { sentence: g.sentence, nodes, order: [...g.order], edges, nextId: g.nextId };
 }
 
-// Live nodes in linear order.
+// Live nodes in linear order, the anchor first.
 export const liveNodes = (g) => g.order.map((id) => g.nodes.get(id)).filter((n) => !n.deleted);
+
+// Live words: the nodes that are tokens.
+export const liveWords = (g) => liveNodes(g).filter((n) => !n.anchor);
+
+// Edges between words: the dependency structure without the anchor's root edge.
+export const structureEdges = (g) =>
+  [...g.edges.values()].filter((e) => e.src !== ANCHOR && e.src !== e.tgt);
 
 export function getFeat(node, name) {
   const col = columnOf(name);

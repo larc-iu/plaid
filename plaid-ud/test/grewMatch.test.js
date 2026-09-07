@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { ConlluDocument } from '../src/domain/ConlluDocument.js';
 import { rawDocFromConllu } from './helpers/rawDoc.js';
 import { parse } from '../src/grew/parser.js';
-import { graphFromSentence } from '../src/grew/rewrite/graph.js';
+import { graphFromSentence, liveWords } from '../src/grew/rewrite/graph.js';
 import { findMatches, firstMatch, isProjective } from '../src/grew/rewrite/match.js';
 
 // "the dog saw a cat" with a passive-ish subtype and a projective tree, plus a
@@ -37,11 +37,16 @@ const forms = (g, m, ...vars) => vars.map((v) => g.nodes.get(m.nodes.get(v)).for
 const all = (g, src) => findMatches(parse(src), g);
 
 test('graph: nodes carry columns, FEATS, span ids; edges resolve to nodes', () => {
+  // The anchor comes first, at position 0, as in Grew.
   assert.deepEqual(
     g1.order.map((id) => g1.nodes.get(id).form),
+    ['__0__', 'the', 'dog', 'saw', 'a', 'cat'],
+  );
+  assert.deepEqual(
+    liveWords(g1).map((n) => n.form),
     ['the', 'dog', 'saw', 'a', 'cat'],
   );
-  const dog = g1.nodes.get(g1.order[1]);
+  const dog = g1.nodes.get(g1.order[2]);
   assert.equal(dog.lemma, 'dog');
   assert.equal(dog.upos, 'NOUN');
   assert.equal(dog.xpos, 'NN');
@@ -52,7 +57,7 @@ test('graph: nodes carry columns, FEATS, span ids; edges resolve to nodes', () =
   );
   assert.deepEqual(
     edges.sort(),
-    ['cat-det->a', 'dog-det->the', 'saw-nsubj:pass->dog', 'saw-obj->cat', 'saw-root->saw'].sort(),
+    ['cat-det->a', 'dog-det->the', 'saw-nsubj:pass->dog', 'saw-obj->cat', '__0__-root->saw'].sort(),
   );
   assert.equal(g1.sentence.metadata.sent_id, 's1');
 });
@@ -63,7 +68,9 @@ test('node features: literal, list, regex, defined, undefined, not-equal', () =>
   assert.equal(all(g1, 'pattern { X [lemma=re"^s"] }').length, 1);
   assert.equal(all(g1, 'pattern { X [lemma=/^S/i] }').length, 1);
   assert.equal(all(g1, 'pattern { X [xpos] }').length, 3);
-  assert.equal(all(g1, 'pattern { X [!xpos] }').length, 2);
+  assert.equal(all(g1, 'pattern { X [!xpos] }').length, 3); // the anchor too
+  assert.equal(all(g1, 'pattern { X [] }').length, 6);
+  assert.equal(all(g1, 'pattern { X [form="__0__"] }').length, 1);
   assert.equal(all(g1, 'pattern { X [Number=Sing] }').length, 2);
   assert.equal(all(g1, 'pattern { X [Number<>Plur] }').length, 2);
   assert.equal(all(g1, 'pattern { X [upos<>NOUN] }').length, 3);
@@ -77,10 +84,11 @@ test('edges: exact label, list, negation, regex, subtype prefix, wildcards, name
   assert.equal(all(g1, 'pattern { X -[1=nsubj]-> Y }').length, 1); // main type
   assert.equal(all(g1, 'pattern { X -[1=nsubj, 2=pass]-> Y }').length, 1);
   assert.equal(all(g1, 'pattern { X -[det|obj]-> Y }').length, 3);
-  assert.equal(all(g1, 'pattern { X -[^det]-> Y }').length, 2); // nsubj:pass, obj (root loop needs X≠Y)
+  assert.equal(all(g1, 'pattern { X -[^det]-> Y }').length, 3); // nsubj:pass, obj, root (from the anchor)
   assert.equal(all(g1, 'pattern { X -[re"^n"]-> Y }').length, 1);
-  assert.equal(all(g1, 'pattern { X [upos=VERB]; X -> * }').length, 3); // incl. the root loop
+  assert.equal(all(g1, 'pattern { X [upos=VERB]; X -> * }').length, 2);
   assert.equal(all(g1, 'pattern { X []; * -[root]-> X }').length, 1);
+  assert.equal(all(g1, 'pattern { R [form="__0__"]; R -[root]-> X }').length, 1);
   const [m] = all(g1, 'pattern { e: X -[obj]-> Y }');
   assert.ok(g1.edges.get(m.edges.get('e')).label === 'obj');
   assert.deepEqual(forms(g1, m, 'X', 'Y'), ['saw', 'cat']);
@@ -93,6 +101,8 @@ test('injective by default, $ relaxes it', () => {
 
 test('order, distance, dominance, feature comparison', () => {
   assert.equal(all(g1, 'pattern { D [upos=DET]; N [upos=NOUN]; D < N }').length, 2);
+  assert.equal(all(g1, 'pattern { D [upos=DET]; N [upos=NOUN]; N > D }').length, 2);
+  assert.equal(all(g1, 'pattern { X [upos=DET]; Y [upos=NOUN]; X >> Y }').length, 1); // a >> dog
   assert.equal(all(g1, 'pattern { X [upos=DET]; Y [upos=NOUN]; Y << X }').length, 1); // dog << a
   assert.equal(all(g1, 'pattern { X [form="the"]; Y []; delta(X,Y) = 2 }').length, 1);
   assert.equal(all(g1, 'pattern { X [form="saw"]; Y []; length(X,Y) <= 1 }').length, 2);
@@ -142,7 +152,7 @@ test('global block: projectivity, tree flags, and sentence metadata', () => {
   assert.equal(all(g1, 'pattern { X [upos=VERB] } global { !newpar }').length, 1);
   // A dangling head (3 has no node) drops that relation: y is then a root.
   const g3 = graphFromSentence(doc.sentences[2]);
-  assert.equal(all(g3, 'pattern { X [] } global { is_tree }').length, 2);
+  assert.equal(all(g3, 'pattern { X [upos] } global { is_tree }').length, 2);
   assert.equal(all(g3, 'pattern { X [] } global { is_not_tree }').length, 0);
 });
 

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { ConlluDocument } from '../src/domain/ConlluDocument.js';
 import { rawDocFromConllu } from './helpers/rawDoc.js';
 import { parseGrs } from '../src/grew/parser.js';
-import { graphFromSentence, liveNodes } from '../src/grew/rewrite/graph.js';
+import { graphFromSentence, liveNodes, liveWords } from '../src/grew/rewrite/graph.js';
 import { rewriteSentence, mainStrategy } from '../src/grew/rewrite/engine.js';
 import { GrewRuntimeError, GrewUnsupportedError } from '../src/grew/errors.js';
 
@@ -93,65 +93,75 @@ test('an add_edge that is already there is ineffective, so the rule loops and st
   );
 });
 
-test('shift moves incident edges, the root loop travels, edges between the two stay', () => {
+test('shift moves incident edges, root status travels, edges between the two stay', () => {
   // Promote "dog" to head of everything "saw" governs, and make it the root.
   const { graph } = once('pattern { V [upos=VERB]; N [form="dog"] } commands { shift V ==> N }');
   assert.deepEqual(edgeList(graph), [
+    '__0__-root->dog',
     'cat-det->a',
     'dog-det->the',
     'dog-obj->cat',
-    'dog-root->dog',
     'saw-nsubj:pass->dog',
   ]);
   const out = once(
     'pattern { V [upos=VERB]; N [form="dog"] } commands { shift_out V =[obj]=> N }',
   ).graph;
   assert.deepEqual(edgeList(out), [
+    '__0__-root->saw',
     'cat-det->a',
     'dog-det->the',
     'dog-obj->cat',
     'saw-nsubj:pass->dog',
-    'saw-root->saw',
   ]);
   const inn = once(
     'pattern { V [upos=VERB]; N [form="dog"] } commands { shift_in V =[^root]=> N }',
   ).graph;
   assert.deepEqual(edgeList(inn), [
+    '__0__-root->saw',
     'cat-det->a',
     'dog-det->the',
     'saw-nsubj:pass->dog',
     'saw-obj->cat',
-    'saw-root->saw',
   ]);
 });
 
 test('del_node removes the word and its edges; later commands on it fail', () => {
   const { graph } = rewrite('pattern { D [upos=DET] } commands { del_node D }');
   assert.deepEqual(
-    liveNodes(graph).map((n) => n.form),
+    liveWords(graph).map((n) => n.form),
     ['dog', 'saw', 'cat'],
   );
-  assert.deepEqual(edgeList(graph), ['saw-nsubj:pass->dog', 'saw-obj->cat', 'saw-root->saw']);
+  assert.deepEqual(edgeList(graph), ['__0__-root->saw', 'saw-nsubj:pass->dog', 'saw-obj->cat']);
   assert.throws(
     () => rewrite('pattern { D [upos=DET] } commands { del_node D; D.upos = X }'),
     (e) => e instanceof GrewRuntimeError && /deleted/.test(e.message),
   );
 });
 
-test('append_feats and prepend_feats', () => {
+test('append_feats and prepend_feats: FEATS only, separator, name filter', () => {
   const { graph } = rewrite(
     'pattern { D [form="the"]; N [form="dog"] } commands { append_feats D ==> N; del_node D }',
   );
-  // Every feature travels, form included (Grew's merge idiom).
-  const dog = liveNodes(graph).find((n) => n.lemma === 'dogthe');
-  assert.equal(dog.form, 'dogthe');
+  const dog = byForm(graph, 'dog');
   assert.equal(dog.feats.get('Definite'), 'Def');
+  assert.equal(dog.feats.get('PronType'), 'Art');
   assert.equal(dog.feats.get('Number'), 'Sing');
-  assert.equal(dog.upos, 'NOUNDET');
-  const { graph: g2 } = rewrite(
-    'pattern { D [form="the"]; N [form="dog"] } commands { prepend_feats D ==> N; del_node D }',
+  assert.equal(dog.upos, 'NOUN'); // the columns never travel
+  // Both have Definite: joined with the separator, in append or prepend order.
+  const a1 = byForm(
+    once('pattern { D [form="the"]; N [form="a"] } commands { append_feats "/" D ==> N }').graph,
+    'a',
   );
-  assert.equal(liveNodes(g2).find((n) => n.lemma === 'thedog').upos, 'DETNOUN');
+  assert.equal(a1.feats.get('Definite'), 'Ind/Def');
+  assert.equal(a1.feats.get('PronType'), 'Art');
+  const a2 = byForm(
+    once(
+      'pattern { D [form="the"]; N [form="a"] } commands { prepend_feats "/" D =[re"Definite"]=> N }',
+    ).graph,
+    'a',
+  );
+  assert.equal(a2.feats.get('Definite'), 'Def/Ind');
+  assert.equal(a2.feats.has('PronType'), false); // filtered out
 });
 
 test('runtime errors: undefined feature, lemma with dependencies, unknown node; unsupported add_node', () => {
@@ -259,5 +269,65 @@ test('strategies: default Onf(Alt), main strat, Seq, Alt, Try, Empty, Iter', () 
         'rule det { pattern { X [upos=DET] } commands { X.upos = D } } strat main { Onf(nope) }',
       ),
     (e) => e instanceof GrewRuntimeError && /Unknown rule or strategy 'nope'/.test(e.message),
+  );
+});
+
+test('an inline lexicon narrows the match and supplies command values', () => {
+  const src = [
+    'pattern { X [upos=NOUN, !Gender]; X.lemma = lex.noun }',
+    'commands { X.Gender = lex.Gender; X.Note = lex.Gender[:1] + "." }',
+    '#BEGIN lex',
+    'noun\tGender',
+    '%--------------',
+    'dog\tMasc',
+    '',
+    'cat\tFem',
+    '#END',
+  ].join('\n');
+  const { graph, applications } = rewrite(src);
+  assert.equal(applications.length, 2);
+  assert.equal(byForm(graph, 'dog').feats.get('Gender'), 'Masc');
+  assert.equal(byForm(graph, 'dog').feats.get('Note'), 'M.');
+  assert.equal(byForm(graph, 'cat').feats.get('Gender'), 'Fem');
+  // The bracket form and a named rule with the lexicon inside it.
+  const named = rewrite(
+    [
+      'rule g { pattern { X [upos=NOUN, lemma=lex.noun, !Gender] } commands { X.Gender = lex.Gender }',
+      '#BEGIN lex',
+      'noun\tGender',
+      'cat\tFem',
+      '#END',
+      '}',
+    ].join('\n'),
+  );
+  assert.equal(named.applications.length, 1);
+  assert.equal(byForm(named.graph, 'cat').feats.get('Gender'), 'Fem');
+  assert.equal(byForm(named.graph, 'dog').feats.has('Gender'), false);
+});
+
+test('lexicon errors: ambiguous value, unknown field, files, and the search box', () => {
+  const two = [
+    'pattern { X [upos=NOUN, lemma=lex.noun, !Gender] } commands { X.Gender = lex.Gender }',
+    '#BEGIN lex',
+    'noun\tGender',
+    'dog\tMasc',
+    'dog\tFem',
+    '#END',
+  ].join('\n');
+  assert.throws(
+    () => rewrite(two),
+    (e) => e instanceof GrewRuntimeError && /lex.Gender is ambiguous: 2 entries/.test(e.message),
+  );
+  assert.throws(
+    () => rewrite(two.replace('lex.Gender', 'lex.Nope')),
+    (e) => e instanceof GrewRuntimeError && /no field 'Nope'/.test(e.message),
+  );
+  assert.throws(
+    () => parseGrs('rule r (lex from "x.lex") { pattern { X [] } commands { del_node X } }'),
+    (e) => e instanceof GrewUnsupportedError && e.feature === 'lexicon-file',
+  );
+  assert.throws(
+    () => parseGrs('pattern { X [] } commands { del_node X }\n#BEGIN lex\na\tb\nc\n#END'),
+    (e) => /1 fields on a line, 2 in the header/.test(e.message) && e.line === 4,
   );
 });

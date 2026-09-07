@@ -158,7 +158,7 @@ test('apply: phases in order — token deletes, lemma creates, then relations on
   assert.equal(relCreate.args[1], 'spans.create-0'); // the id the batch handed back
   assert.equal(relCreate.args[3], 'nsubj');
   // The surface token of a one-word token is what gets deleted.
-  const theWord = plan.rows[0].nodes.get([...plan.rows[0].nodes.keys()][0]);
+  const theWord = plan.rows[0].nodes.get([...plan.rows[0].nodes.keys()][1]); // [0] is the anchor
   assert.equal(client.calls[0].args[0], theWord.wordId);
 });
 

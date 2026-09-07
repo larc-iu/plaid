@@ -14,7 +14,7 @@
 //   { kind:'featcmp', left:{node,feat}, op:'='|'<>', right:{node,feat} } // X.lemma = Y.lemma
 //   { kind:'edge', id|null, src:Ref, tgt:Ref, label: Label }   // X -[nsubj]-> Y
 //   { kind:'dominates', id|null, left:Ref, right:Ref, label: Label } // X ->> Y
-//   { kind:'order', op:'<'|'<<', left, right }                 // X < Y / X << Y
+//   { kind:'order', op:'<'|'<<', left, right }                 // X < Y / X << Y (X > Y is Y < X)
 //   { kind:'cross', left, right }                              // e1 >< e2
 //   { kind:'dist', fn:'delta'|'length', a, b, op, n }          // delta(X,Y) = 3
 //
@@ -27,6 +27,7 @@
 // FeatItem:      { name, op:'='|'<>'|'defined'|'undefined', value: Value|null }
 // Value:         { type:'lit', value } | { type:'regex', pattern, flavor, flags }
 //              | { type:'any' } | { type:'disj', items: Value[] }
+//              | { type:'lexref', lex, field }   // lex.field, a rule's lexicon (rewrite only)
 // Label:         { type:'any' }
 //              | { type:'list', labels: string[], negated: bool }
 //              | { type:'regex', pattern, flavor, flags }
@@ -35,7 +36,8 @@
 // Rewriting system (parseGrs):
 //   { rules: Rule[], strats: Strat[] }
 //
-// Rule:   { name, blocks: Block[], nonInjective: string[], commands: Command[], line }
+// Rule:   { name, blocks: Block[], nonInjective: string[], commands: Command[],
+//           lexicons: { [name]: { fields: string[], entries: object[] } }, line }
 //         (a bare `pattern … commands { … }` with no `rule` wrapper is one
 //         anonymous rule named 'rule')
 // Strat:  { name, expr: StratExpr, line }
@@ -52,7 +54,7 @@
 //   { kind:'shift', mode:'all'|'in'|'out', src, tgt, filter: Label }
 //   { kind:'set_feat', node, feat, expr: Expr }                // X.upos = VERB, e.2 = pass
 //   { kind:'del_feat', node, feat }
-//   { kind:'append_feats'|'prepend_feats', src, tgt }
+//   { kind:'append_feats'|'prepend_feats', src, tgt, sep, filter: Label|null }
 //
 // Expr:  Atom[] (concatenated with `+`)
 // Atom:  { type:'lit', value } | { type:'ref', node, feat, slice: null|[start|null, end|null] }
