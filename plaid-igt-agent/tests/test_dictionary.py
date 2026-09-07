@@ -183,6 +183,18 @@ def test_an_entry_may_not_refer_to_itself():
     assert 'cannot refer to itself' in out
 
 
+def test_a_headword_only_field_is_not_reported_on_a_sense():
+    """The entry form does not show it there, and set_entry_field refuses it
+    there, so reporting it offers the model a value it cannot act on."""
+    w = dict_ws()
+    call_tool(w, 'make_sense_of', {'entry_form': 'kwatha', 'under_form': 'phika'})
+    on_sense = call_tool(w, 'lexicon_entry', {'entry_form': 'phika#1.1'})
+    assert 'etymology' not in on_sense
+    on_entry = call_tool(w, 'lexicon_entry', {'entry_form': 'phika'})
+    assert 'etymology' not in on_entry  # phika has none of its own
+    assert 'etymology: Proto-Bantu' in call_tool(dict_ws(), 'lexicon_entry', {'entry_form': 'kwatha'})
+
+
 def test_an_entry_scope_field_is_refused_on_a_sense():
     w = dict_ws()
     out = call_tool(w, 'set_entry_field', {'entry_form': 'kwatha#1.1', 'field': 'etymology', 'value': 'x'})
@@ -227,6 +239,39 @@ def test_moving_a_sense_nowhere_says_so_and_plans_nothing():
     out = call_tool(w, 'move_sense', {'entry_form': 'kwatha#1.1.1', 'number': '1'})
     assert 'Planned 0 changes' in out and 'no siblings to move among' in out
     assert not w.ops
+
+
+def test_the_move_is_described_on_the_sense_that_moves():
+    """The plan card is the only place a user says no, so it has to be true."""
+    w = dict_ws()
+    call_tool(w, 'move_sense', {'entry_form': 'kwatha#1.1', 'number': '2'})
+    by_id = {o['item_id']: o['label'] for o in ops_of(w, 'set_entry_metadata')}
+    # d-boil is sense 1.1, the one asked to move. d-ferment is the sibling that
+    # gets renumbered, and used to carry the move's own description.
+    assert 'sense 1.1 becomes sense 2' in by_id['d-boil']
+    assert 'renumbered' in by_id['d-ferment']
+    assert 'becomes' not in by_id['d-ferment']
+
+
+def test_a_number_past_the_end_is_planned_as_the_place_it_lands():
+    w = dict_ws()
+    call_tool(w, 'move_sense', {'entry_form': 'kwatha#1.1', 'number': '9'})
+    by_id = {o['item_id']: o for o in ops_of(w, 'set_entry_metadata')}
+    assert by_id['d-boil']['patch'] == {'senseOrder': 2}
+    assert 'becomes sense 2' in by_id['d-boil']['label']
+
+
+def test_a_number_that_is_not_a_number_is_refused():
+    out = call_tool(dict_ws(), 'move_sense', {'entry_form': 'kwatha#1.1', 'number': 'first'})
+    assert 'is not a sense number' in out
+
+
+def test_a_lone_headword_answers_to_hash_one():
+    """The prompt teaches "kwatha#1" for a headword, and a headword with no
+    senses and no homographs is shown with no number at all."""
+    w = dict_ws()
+    assert 'id d-phika' in call_tool(w, 'lexicon_entry', {'entry_form': 'phika#1'})
+    assert 'id d-phika' in call_tool(w, 'lexicon_entry', {'entry_form': 'phika'})
 
 
 def test_an_entry_cannot_be_renumbered():

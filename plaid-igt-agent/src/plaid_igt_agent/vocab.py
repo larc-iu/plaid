@@ -12,6 +12,12 @@ a few pieces nothing here calls yet, so the two can be read side by side and
 checked against each other. Keep it that way: a mirror that is missing is a
 divergence waiting to happen, not dead weight.
 
+Five JS exports have no counterpart here on purpose, because each belongs to a
+gesture the app has and the agent does not: ``dictionaryEnablement`` and
+``statusTagset`` seed a vocabulary when the switch goes on, ``splitEntryLevel``
+is Add headword, ``groupRankedByHeadword`` is the link popover's list, and
+``exampleKey`` keys a rendering cache. Anything else missing is a bug.
+
 Nothing on the dictionary side applies to a vocabulary whose Lexicography Mode
 switch (``config.igt.dictionary``) is off: it is the flat list it always was.
 
@@ -367,11 +373,15 @@ def descendants_of(tree: SenseTree, item_id: str) -> List[dict]:
     return out
 
 
-def next_sense_order(tree: SenseTree, parent_id: str) -> int:
-    """One past the largest numbered sibling, or past the count when none is."""
+def next_sense_order(tree: SenseTree, parent_id: str):
+    """One past the largest numbered sibling, or past the count when none is.
+
+    Not coerced to an int: the JS does not, and rounding here would make the
+    two disagree about a sibling whose order is fractional.
+    """
     sibs = tree.children_of.get(parent_id) or []
     largest = max([0] + [sense_order_of(s) or 0 for s in sibs])
-    return int(max(largest, len(sibs))) + 1
+    return max(largest, len(sibs)) + 1
 
 
 def with_parent_set(tree: SenseTree, item: dict, parent_id: Optional[str]) -> dict:

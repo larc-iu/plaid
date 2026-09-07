@@ -86,7 +86,7 @@ def _case(seed: int) -> dict:
         if c < 0.55:
             meta['parent'] = r.choice(ids + ['gone', i])   # real, dangling, or itself
             if r.random() < 0.75:
-                meta['senseOrder'] = r.choice([1, 2, 3, 3, 7, 0])
+                meta['senseOrder'] = r.choice([1, 2, 3, 3, 7, 0, 2.5])
         elif c < 0.62:
             meta['senseOrder'] = r.randint(1, 4)           # a stray order on a headword
         if r.random() < 0.45:

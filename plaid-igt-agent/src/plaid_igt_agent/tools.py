@@ -44,7 +44,7 @@ from .vocab import (RESERVED_ITEM_KEYS, FIELD_ITEM, FIELD_TEXT, SCOPE_ENTRY, SCO
                     next_sense_order, plan_sense_set_number, all_examples, with_example_added,
                     with_example_removed, references_to, arrange_as_tree, vocab_field_summary,
                     build_item_numbers, build_homonym_index, homograph_group,
-                    plan_homograph_order)
+                    plan_homograph_order, SENSE_ORDER_KEY, fields_for_item)
 
 
 class ToolError(Exception):
@@ -442,9 +442,10 @@ class LexView:
         self.items = items
         self.dictionary = bool(vocab.get('dictionary'))
         self.fields = vocab.get('fields') or []
-        # Type and scope only mean anything under Lexicography Mode; without it
-        # the app's entry form shows every field as plain text, and so do we.
-        self.ref_fields = item_ref_fields(self.fields) if self.dictionary else []
+        # A reference field is a reference in any mode, as the app's entry form
+        # has it. Only `scope` needs Lexicography Mode, since it says headword
+        # or sense and without the mode there are no senses.
+        self.ref_fields = item_ref_fields(self.fields)
         self.tree = build_sense_tree(items)
         # The number the USER sees beside a form, which is what a "#" suffix
         # has to mean: the dotted sense number under Lexicography Mode, the
@@ -460,6 +461,14 @@ class LexView:
 
     def number(self, item_id: str) -> str:
         return self.numbers.get(item_id, '')
+
+    def hidden_fields(self, item: dict) -> set:
+        """Field names the app's entry form does not show on this item. A
+        headword-only field sits on the headword, so reporting it on a sense
+        offers the model a value the user cannot see and set_entry_field will
+        refuse to write."""
+        shown = {f['name'] for f in fields_for_item(self.fields, item, self.dictionary)}
+        return {f['name'] for f in self.fields} - shown
 
     def is_sense(self, item_id: str) -> bool:
         return self.dictionary and self.tree.is_sense(item_id)
@@ -481,8 +490,11 @@ class LexView:
             return f'a deleted entry ({item_id})'
         if self.is_sense(item_id):
             return f'"{self.head_of(item_id)}" sense {self.number(item_id)}'
+        # Spelled the way a tool takes it back, so a line can be copied into
+        # one: "gam#2", never "gam (2)", which no tool accepts.
         num = self.number(item_id) if item_id in self.shared else ''
-        return f'"{it.get("form") or ""}"' + (f' ({num})' if num else '')
+        form = it.get('form') or ''
+        return f'"{form}#{num}"' if num else f'"{form}"'
 
     def address(self, item_id: str) -> str:
         """The entry_form that names this item back to a tool: "kwatha", or
@@ -531,7 +543,13 @@ def _dict_hits(view: LexView, form: str, suffix: Optional[str], deep: bool = Fal
         family.extend(descendants_of(view.tree, r['id']))
     if suffix is None:
         return family if deep else roots
-    return [it for it in family if view.number(it['id']) == suffix]
+    hits = [it for it in family if view.number(it['id']) == suffix]
+    # A lone headword with no senses is shown with no number at all, and "#1"
+    # is what the prompt teaches for a headword, so it names that one rather
+    # than failing with a complaint about senses it does not have.
+    if not hits and suffix == '1' and len(roots) == 1 and not view.number(roots[0]['id']):
+        return roots
+    return hits
 
 
 def entry_line(it: dict, view: Optional[LexView] = None) -> str:
@@ -545,8 +563,9 @@ def entry_line(it: dict, view: Optional[LexView] = None) -> str:
     if meta.get('morphType'):
         parts.append(f'type={meta["morphType"]}')
     ref_names = {f['name'] for f in (view.ref_fields if view is not None else [])}
+    hidden = view.hidden_fields(it) if view is not None else set()
     for k, v in meta.items():
-        if (k in RESERVED_ITEM_KEYS or k == 'morphType' or k in ref_names
+        if (k in RESERVED_ITEM_KEYS or k == 'morphType' or k in ref_names or k in hidden
                 or k.startswith('prov') or v in (None, '', [], {})):
             continue
         if isinstance(v, (list, dict)):
@@ -1037,8 +1056,9 @@ def t_lexicon_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Op
     else:
         lines = [f'Entry "{target.get("form")}" (id {target["id"]})']  # a flat lexicon has no headwords
     ref_names = {f['name'] for f in (view.ref_fields if view is not None else [])}
+    hidden = view.hidden_fields(target) if view is not None else set()
     for k, v in meta.items():
-        if (k in RESERVED_ITEM_KEYS or k in ref_names or k.startswith('prov')
+        if (k in RESERVED_ITEM_KEYS or k in ref_names or k in hidden or k.startswith('prov')
                 or v in (None, '', [], {})):
             continue
         lines.append(f'  {k}: {json.dumps(v, ensure_ascii=False) if isinstance(v, (list, dict)) else v}')
@@ -1885,17 +1905,34 @@ def t_move_sense(ws: Workspace, number, entry_form: Optional[str] = None, lexico
     was = view.number(target['id'])
     # A sense is shown with a dotted number ("2.1.3"), but it moves among its
     # own siblings, so only the last segment says where it should land.
-    number = str(number).strip().rsplit('.', 1)[-1]
-    patches = plan_sense_set_number(view.tree, target['id'], number)
+    raw = str(number).strip().rsplit('.', 1)[-1]
+    try:
+        wanted = int(round(float(raw)))
+    except (TypeError, ValueError):
+        raise ToolError(f'"{number}" is not a sense number. Give the place among the senses of '
+                        f'"{view.head_of(target["id"])}", counting from 1.')
+    patches = plan_sense_set_number(view.tree, target['id'], wanted)
     if not patches:
         sibs = len(view.tree.senses_of(view.tree.parent_of[target['id']]))
         return ws.planned_note(0) + (f' {view.label(target["id"])} is already sense {was}'
                                      + (' and has no siblings to move among.' if sibs < 2 else '.'))
-    ops = [_meta_op(ws, x['id'], _meta_of(ws, view.tree.by_id[x['id']]), x['metadata'],
-                    f'entry "{view.head_of(target["id"])}": sense {view.number(x["id"])} renumbered')
-           for x in patches]
-    ops[0]['label'] = (f'entry "{view.head_of(target["id"])}": sense {was} becomes sense {number}'
-                       + (f' ({len(ops) - 1} sibling{"s" if len(ops) != 2 else ""} renumbered)' if len(ops) > 1 else ''))
+    by_id = {x['id']: x for x in patches}
+    # A number past either end lands at the nearest one, so the plan says where
+    # the sense actually goes rather than what was asked for.
+    landed = (by_id.get(target['id']) or {}).get('metadata', {}).get(SENSE_ORDER_KEY, wanted)
+    head = view.head_of(target['id'])
+    others = len(patches) - 1
+    ops = []
+    for x in patches:
+        # The line describing the move belongs on the sense that moves, not on
+        # whichever sibling the renumbering happens to list first.
+        if x['id'] == target['id']:
+            label = (f'entry "{head}": sense {was} becomes sense {landed}'
+                     + (f' ({others} sibling{"s" if others != 1 else ""} renumbered)'
+                        if others else ''))
+        else:
+            label = f'entry "{head}": sense {view.number(x["id"])} renumbered'
+        ops.append(_meta_op(ws, x['id'], _meta_of(ws, view.tree.by_id[x['id']]), x['metadata'], label))
     ws.add_ops(ops)
     return ws.planned_note(len(ops))
 
