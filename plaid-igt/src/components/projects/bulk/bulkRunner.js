@@ -239,9 +239,16 @@ export async function planMerge(client, project, vocabId, loserIds, onProgress) 
   return { links, docs };
 }
 
-// Recreate each link on the survivor, then delete the losing entries (their
-// old links cascade away server-side). Under one operation.
-export async function applyMerge(client, { links }, { survivorId, loserIds, label }) {
+// Recreate each link on the survivor, repoint every entry that referred to a
+// loser (a dictionary's senses and reference fields, see planMergeRefs),
+// then delete the losing entries (their old links cascade away server-side).
+// Under one operation. `refPatches` is `[{id, metadata}]`, whole metadata
+// maps, written the way the entry editor writes them.
+export async function applyMerge(
+  client,
+  { links, refPatches = [] },
+  { survivorId, loserIds, label },
+) {
   await client.withOperation(label, async () => {
     for (const part of chunk(links, BATCH_CHUNK)) {
       await client.batched(async () => {
@@ -250,7 +257,15 @@ export async function applyMerge(client, { links }, { survivorId, loserIds, labe
         );
       });
     }
+    for (const p of refPatches) {
+      if (Object.keys(p.metadata).length) await client.vocabItems.setMetadata(p.id, p.metadata);
+      else await client.vocabItems.deleteMetadata(p.id);
+    }
     await client.vocabItems.bulkDelete(loserIds);
   });
-  return { linksMoved: links.length, entriesRemoved: loserIds.length };
+  return {
+    linksMoved: links.length,
+    entriesRemoved: loserIds.length,
+    entriesRepointed: refPatches.length,
+  };
 }

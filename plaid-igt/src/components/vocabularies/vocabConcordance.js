@@ -62,3 +62,10 @@ export async function loadConcordanceGroups(client, hitIds, docEntries) {
     }),
   );
 }
+
+// The Analyze-tab link for one sentence of a document, or null when the
+// project is unreadable (there is nowhere to go).
+export const sentenceTo = (projectId, docId, sentenceId) =>
+  projectId
+    ? `/projects/${projectId}/documents/${docId}?tab=analyze&focusSentence=${sentenceId}`
+    : null;

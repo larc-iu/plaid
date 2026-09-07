@@ -31,7 +31,17 @@ import {
   fieldsToConfig,
   humanizeFieldName,
   vocabGovernedFields,
+  isReservedFieldName,
+  FIELD_TYPES,
+  FIELD_SCOPES,
 } from '@/domain/vocabFields';
+import {
+  readDictionaryEnabled,
+  DICTIONARY_KEY,
+  STATUS_FIELD,
+  STATUS_TAGSET,
+  statusTagset,
+} from '@/domain/vocabDictionary';
 import { readTagsets, byTagsetName } from '@/domain/tagsets';
 import { TagsetsManager } from '@/components/projects/settings/TagsetsManager.jsx';
 import {
@@ -53,6 +63,17 @@ import { useTabParam, tabTo } from '@/hooks/useTabParam';
 
 // Radix Select has no empty-string item value, so "no tagset" needs a sentinel.
 const NO_TAGSET = '__none__';
+
+// What a field holds, as the Type picker offers it: text, one entry, or a
+// list of entries. `many` only means anything with the item type, so the two
+// travel as one choice.
+const TYPE_CHOICES = [
+  { key: 'text', label: 'Text', type: FIELD_TYPES.TEXT, many: false },
+  { key: 'item', label: 'Entry', type: FIELD_TYPES.ITEM, many: false },
+  { key: 'items', label: 'Entries', type: FIELD_TYPES.ITEM, many: true },
+];
+const typeChoiceOf = (field) =>
+  field.type === FIELD_TYPES.ITEM ? (field.many ? 'items' : 'item') : 'text';
 
 export const VocabularyDetail = () => {
   const { vocabularyId } = useParams();
@@ -82,6 +103,7 @@ export const VocabularyDetail = () => {
     () => byTagsetName(vocabGovernedFields(fields, vocabulary?.config)),
     [fields, vocabulary],
   );
+  const dictionary = readDictionaryEnabled(vocabulary?.config);
   const [deleteModalOpened, setDeleteModalOpened] = useState(false);
   const openDeleteModal = () => setDeleteModalOpened(true);
   const closeDeleteModal = () => setDeleteModalOpened(false);
@@ -273,8 +295,11 @@ export const VocabularyDetail = () => {
     }
 
     // Check for reserved name
-    if (trimmedName.toLowerCase() === 'form') {
-      notifyError('Field name "form" is reserved and cannot be used', 'Reserved Field Name');
+    if (isReservedFieldName(trimmedName)) {
+      notifyError(
+        `Field name "${trimmedName}" is reserved and cannot be used`,
+        'Reserved Field Name',
+      );
       return;
     }
 
@@ -335,6 +360,59 @@ export const VocabularyDetail = () => {
   const handleSetTagset = async (fieldName, choice) => {
     const tagset = choice === NO_TAGSET ? null : choice;
     await saveFields(fields.map((f) => (f.name === fieldName ? { ...f, tagset } : f)));
+  };
+
+  // What a field holds. A reference field has no tagset (its values are
+  // entries), so switching to one lets the tagset go.
+  const handleSetType = async (fieldName, key) => {
+    const choice = TYPE_CHOICES.find((c) => c.key === key);
+    if (!choice) return;
+    await saveFields(
+      fields.map((f) =>
+        f.name === fieldName
+          ? {
+              ...f,
+              type: choice.type,
+              many: choice.many,
+              ...(choice.type === FIELD_TYPES.ITEM ? { tagset: null } : {}),
+            }
+          : f,
+      ),
+    );
+  };
+
+  const handleSetScope = async (fieldName, scope) => {
+    await saveFields(fields.map((f) => (f.name === fieldName ? { ...f, scope } : f)));
+  };
+
+  // The Dictionary switch. Turning it on also gives the vocabulary a Status
+  // field held to a closed list, once; turning it off leaves every field and
+  // every entry as it is.
+  const handleSetDictionary = async (on) => {
+    try {
+      await client.vocabLayers.setConfig(vocabularyId, IGT_NAMESPACE, DICTIONARY_KEY, on);
+      if (on) {
+        if (!tagsets[STATUS_TAGSET]) {
+          await client.vocabLayers.setConfig(vocabularyId, IGT_NAMESPACE, 'tagsets', {
+            ...tagsets,
+            [STATUS_TAGSET]: statusTagset(),
+          });
+        }
+        if (!fields.some((f) => f.name === STATUS_FIELD)) {
+          await saveFields(
+            [
+              ...fields,
+              { name: STATUS_FIELD, inline: false, immutable: false, tagset: STATUS_TAGSET },
+            ],
+            { quiet: true },
+          );
+        }
+      }
+      await updateVocabulary();
+    } catch (err) {
+      console.error('Failed to save the dictionary setting:', err);
+      notifyError('Failed to save the dictionary setting', 'Error');
+    }
   };
 
   // Fields reference a tagset by name, so a rename repoints every field that
@@ -426,11 +504,62 @@ export const VocabularyDetail = () => {
                       onCheckedChange={() => handleToggleInline(field.name)}
                     />
                   </div>
+                  {/* Type and scope exist for a dictionary only. The core
+                      fields hold text on every entry, so they get neither. */}
+                  {dictionary && !field.immutable && (
+                    <div className="flex items-center gap-2">
+                      <Label
+                        htmlFor={`type-${field.name}`}
+                        className="text-xs text-muted-foreground"
+                      >
+                        Type
+                      </Label>
+                      <Select
+                        value={typeChoiceOf(field)}
+                        onValueChange={(v) => handleSetType(field.name, v)}
+                      >
+                        <SelectTrigger id={`type-${field.name}`} className="h-7 w-24 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {TYPE_CHOICES.map((c) => (
+                            <SelectItem key={c.key} value={c.key}>
+                              {c.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  {dictionary && !field.immutable && (
+                    <div className="flex items-center gap-2">
+                      <Label
+                        htmlFor={`scope-${field.name}`}
+                        className="text-xs text-muted-foreground"
+                      >
+                        On
+                      </Label>
+                      <Select
+                        value={field.scope}
+                        onValueChange={(v) => handleSetScope(field.name, v)}
+                      >
+                        <SelectTrigger id={`scope-${field.name}`} className="h-7 w-28 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={FIELD_SCOPES.SENSE}>Every sense</SelectItem>
+                          <SelectItem value={FIELD_SCOPES.ENTRY}>Entry only</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                   {/* Morph type is its own fixed list, so it never takes a
-                      tagset. Everything else can, once the vocabulary has one
+                      tagset, and a reference field's values are entries.
+                      Everything else can, once the vocabulary has one
                       (or already points at one that was since removed). */}
                   {!isNewVocabulary &&
                     field.name !== 'morphType' &&
+                    field.type !== FIELD_TYPES.ITEM &&
                     (tagsetNames.length > 0 || field.tagset) && (
                       <div className="flex items-center gap-2">
                         <Label
@@ -616,6 +745,7 @@ export const VocabularyDetail = () => {
                 canManage={canManageVocabulary()}
                 comments={comments}
                 canComment={canComment}
+                dictionary={dictionary}
               />
             </TabsContent>
 
@@ -670,12 +800,40 @@ export const VocabularyDetail = () => {
 
                   <div className="rounded-lg border bg-card p-4">
                     <div className="flex flex-col gap-4">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <h3 className="text-base font-semibold">Dictionary</h3>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            Entries can be grouped into senses, refer to one another, carry examples
+                            chosen from the concordance, and hold a status.
+                          </p>
+                        </div>
+                        <Switch
+                          id="dictionary-switch"
+                          aria-label="Dictionary"
+                          checked={dictionary}
+                          onCheckedChange={handleSetDictionary}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border bg-card p-4">
+                    <div className="flex flex-col gap-4">
                       <h3 className="text-base font-semibold">Fields</h3>
                       <p className="text-sm text-muted-foreground">
                         Fields on every vocabulary item. Field names cannot be "form" or duplicate
                         existing fields (case-insensitive). Fields set to{' '}
                         <strong>Show inline</strong> also appear in the interlinear view. A field
                         can be held to a tagset, defined below.
+                        {dictionary && (
+                          <>
+                            {' '}
+                            A field of type <strong>Entry</strong> or <strong>Entries</strong>{' '}
+                            refers to other entries of this vocabulary. A field set to{' '}
+                            <strong>Entry only</strong> is shown on a headword, not on its senses.
+                          </>
+                        )}
                       </p>
 
                       {renderCustomFieldsEditor()}

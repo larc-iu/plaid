@@ -34,15 +34,18 @@ export function locateHits(doc, domain, hitIds) {
   const row = (s, idx) => {
     let r = bySentence.get(s.id);
     if (!r) {
-      r = { sentenceId: s.id, sentenceIndex: idx, sentence: s, marks: [], notes: [] };
+      r = { sentenceId: s.id, sentenceIndex: idx, sentence: s, marks: [], notes: [], tokenIds: [] };
       bySentence.set(s.id, r);
     }
     return r;
   };
-  const mark = (r, token) => {
+  // `hit` is the token (word or morpheme) that matched, recorded so a row can
+  // name what it found; the mark always covers the word.
+  const mark = (r, token, hit = token) => {
     if (!r.marks.some((m) => m.begin === token.begin && m.end === token.end)) {
       r.marks.push({ begin: token.begin, end: token.end });
     }
+    if (hit?.id && !r.tokenIds.includes(hit.id)) r.tokenIds.push(hit.id);
   };
 
   const sentenceScope = domain.kind === 'span' && domain.scope === 'sentence';
@@ -70,7 +73,7 @@ export function locateHits(doc, domain, hitIds) {
       for (const m of t.morphemes || []) {
         if ((domain.kind === 'morpheme' || domain.kind === 'lexicon') && hitIds.has(m.id)) {
           const r = row(s, idx);
-          mark(r, t);
+          mark(r, t, m);
           if (domain.kind === 'morpheme') r.notes.push(`morpheme: ${morphFormOf(m)}`);
         }
         if (domain.kind === 'span' && domain.scope === 'morpheme') {
@@ -112,6 +115,8 @@ export function buildContextRows(doc, domain, hitIds) {
         hitBegin: r.marks.length ? Math.min(...r.marks.map((m) => m.begin)) : null,
         notes: r.notes,
         translation,
+        // The matched tokens (word or morpheme ids), for a row to act on.
+        tokenIds: r.tokenIds,
       };
     })
     .sort((a, b) => a.sentenceIndex - b.sentenceIndex);

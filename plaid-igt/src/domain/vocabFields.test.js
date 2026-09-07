@@ -31,6 +31,29 @@ describe('normalizeVocabFields / fieldsToConfig', () => {
     });
   });
 
+  it('carries type, many and scope through, writing only the non-defaults', () => {
+    const fields = normalizeVocabFields({
+      gloss: { inline: true, type: 'item', scope: 'entry' },
+      variantOf: { inline: false, type: 'item' },
+      seeAlso: { inline: false, type: 'item', many: true },
+      etymology: { inline: false, scope: 'entry', many: true },
+      parent: { inline: false },
+    });
+    // A core field holds text whatever the config says; `many` needs `item`.
+    expect(fields.find((f) => f.name === 'gloss')).toMatchObject({ type: 'text', scope: 'entry' });
+    expect(fields.find((f) => f.name === 'variantOf')).toMatchObject({ type: 'item', many: false });
+    expect(fields.find((f) => f.name === 'seeAlso')).toMatchObject({ type: 'item', many: true });
+    expect(fields.find((f) => f.name === 'etymology')).toMatchObject({ type: 'text', many: false });
+    expect(fields.find((f) => f.name === 'parent')).toBeUndefined();
+    expect(fieldsToConfig(fields)).toEqual({
+      morphType: { inline: false },
+      gloss: { inline: true, scope: 'entry' },
+      variantOf: { inline: false, type: 'item' },
+      seeAlso: { inline: false, type: 'item', many: true },
+      etymology: { inline: false, scope: 'entry' },
+    });
+  });
+
   it('treats a blank tagset name as none', () => {
     const [, , pos] = normalizeVocabFields({ pos: { inline: true, tagset: '  ' } });
     expect(pos.tagset).toBeNull();

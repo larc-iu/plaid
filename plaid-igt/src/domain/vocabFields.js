@@ -16,6 +16,13 @@
 // FLEx custom field, read back by the LIFT export. Both ride along untouched
 // through normalize/serialize; only `inline` is this module's own.
 //
+// `type` is what a field holds: `text` (the default) or `item`, a reference
+// to another entry of the same vocabulary (`many` makes it a list of them).
+// `scope` says whether the field belongs to the ENTRY (shown on a headword
+// only) or to every SENSE (the default). Both only matter to a vocabulary
+// with the Dictionary switch on (see vocabDictionary.js); a vocabulary
+// without it never shows the controls that set them.
+//
 // Some fields are immutable — they can never be removed, because the app relies
 // on them: `morphType` for rendering (affix joiners + the stem accent; see
 // affixMarkers.js), `gloss` for the vocab list's Gloss column. New vocabs are
@@ -88,7 +95,35 @@ export const fieldDescription = (name) =>
 /** Which input control a field uses: morphType is a controlled-vocab select. */
 export const fieldControl = (name) => (name === 'morphType' ? 'morphType' : 'text');
 
+/** The values `type` and `scope` may take. */
+export const FIELD_TYPES = Object.freeze({ TEXT: 'text', ITEM: 'item' });
+export const FIELD_SCOPES = Object.freeze({ ENTRY: 'entry', SENSE: 'sense' });
+
+/**
+ * Metadata keys an entry may carry that are never fields: the form is the
+ * item's own column, and the rest are structure the app reads directly (the
+ * sense tree, promoted examples, the FLEx import's identity keys). A field
+ * may not take one of these names, so a schema can never shadow them.
+ */
+export const RESERVED_ITEM_KEYS = new Set([
+  'form',
+  'parent',
+  'senseOrder',
+  'examples',
+  'flexEntry',
+  'flexSense',
+  'homograph',
+]);
+
+/** Whether a field name is refused: reserved, compared without case. */
+export const isReservedFieldName = (name) => {
+  const n = String(name ?? '').trim();
+  return [...RESERVED_ITEM_KEYS].some((k) => k.toLowerCase() === n.toLowerCase());
+};
+
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
+const typeOf = (v) => (str(v) === FIELD_TYPES.ITEM ? FIELD_TYPES.ITEM : FIELD_TYPES.TEXT);
+const scopeOf = (v) => (str(v) === FIELD_SCOPES.ENTRY ? FIELD_SCOPES.ENTRY : FIELD_SCOPES.SENSE);
 
 /**
  * Read a vocab layer's config into an ordered list of fields, tolerating the
@@ -96,22 +131,29 @@ const str = (v) => (typeof v === 'string' ? v.trim() : '');
  * core fields are present. `form` is never a field (it's the item's own form).
  *
  * @param {object} vocabFields - the raw `igt.fields` map (from readVocabFields)
- * @returns {{name: string, inline: boolean, immutable: boolean, tagset: string|null, lang: string|null}[]}
+ * @returns {{name: string, inline: boolean, immutable: boolean, tagset: string|null, lang: string|null, type: string, many: boolean, scope: string}[]}
  */
 export const normalizeVocabFields = (vocabFields) => {
   const out = [];
   const seen = new Set();
   const add = (name, cfg) => {
-    if (!name || name.toLowerCase() === 'form' || seen.has(name)) return;
+    if (!name || isReservedFieldName(name) || seen.has(name)) return;
     seen.add(name);
     const obj = typeof cfg === 'object' && cfg !== null ? cfg : null;
     const inline = obj ? !!obj.inline : !!cfg;
+    // The core fields hold text whatever the config says: the editor reads
+    // gloss and morphType as strings.
+    const immutable = IMMUTABLE_NAMES.has(name);
+    const type = immutable ? FIELD_TYPES.TEXT : typeOf(obj?.type);
     out.push({
       name,
       inline,
-      immutable: IMMUTABLE_NAMES.has(name),
+      immutable,
       tagset: str(obj?.tagset) || null,
       lang: str(obj?.lang) || null,
+      type,
+      many: type === FIELD_TYPES.ITEM && !!obj?.many,
+      scope: scopeOf(obj?.scope),
     });
   };
 
@@ -157,6 +199,9 @@ export const fieldsToConfig = (fields) =>
         inline: !!f.inline,
         ...(str(f.tagset) ? { tagset: str(f.tagset) } : {}),
         ...(str(f.lang) ? { lang: str(f.lang) } : {}),
+        ...(f.type === FIELD_TYPES.ITEM ? { type: FIELD_TYPES.ITEM } : {}),
+        ...(f.type === FIELD_TYPES.ITEM && f.many ? { many: true } : {}),
+        ...(f.scope === FIELD_SCOPES.ENTRY ? { scope: FIELD_SCOPES.ENTRY } : {}),
       },
     ]),
   );

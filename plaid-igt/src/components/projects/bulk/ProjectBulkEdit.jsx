@@ -30,6 +30,7 @@ import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/util
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { buildHomonymIndex } from '@/domain/vocabHomonyms';
 import { normalizeVocabFields, humanizeFieldName } from '@/domain/vocabFields';
+import { planMergeRefs } from '@/domain/vocabDictionary';
 import { readVocabFields } from '@/domain/igtConfig';
 import {
   analysisViolations,
@@ -1073,10 +1074,14 @@ const MergePanel = ({ project, client }) => {
 
   const doApply = async () => {
     const survivorItem = itemById.get(survivor);
+    // The vocabulary's own references to the losers (senses, reference
+    // fields) follow the links to the survivor. Nothing to do for a
+    // vocabulary without the Dictionary switch: it has no such references.
+    const refPatches = planMergeRefs(items || [], fields, survivor, losers);
     const res = await r.run('Apply', () =>
       applyMerge(
         client,
-        { links: plan.links },
+        { links: plan.links, refPatches },
         {
           survivorId: survivor,
           loserIds: losers,
@@ -1089,7 +1094,12 @@ const MergePanel = ({ project, client }) => {
       `${plural(res.entriesRemoved, 'entry', 'entries')} merged; ${plural(res.linksMoved, 'link')} moved to “${survivorItem?.form ?? ''}”.`,
       'Merged',
     );
-    setItems((prev) => (prev || []).filter((it) => !chosen.has(it.id) || it.id === survivor));
+    const patched = new Map(refPatches.map((p) => [p.id, p.metadata]));
+    setItems((prev) =>
+      (prev || [])
+        .filter((it) => !chosen.has(it.id) || it.id === survivor)
+        .map((it) => (patched.has(it.id) ? { ...it, metadata: patched.get(it.id) } : it)),
+    );
     setChosen(new Set());
     setSurvivor(null);
     r.setPlan(null);
