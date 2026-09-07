@@ -14,7 +14,8 @@ import { EntryArticle } from '@/components/dictionary/EntryArticle';
 export const FormPage = () => {
   const { form } = useParams();
   const { client } = useAuth();
-  const { slug, vocab, pages, fields, objectLang, resolveRef, loading, missing } = useDictionary();
+  const { slug, vocab, pages, fields, objectLang, resolveRef, exampleLayers, loading, missing } =
+    useDictionary();
 
   const page = useMemo(() => (pages || []).find((p) => p.form === form) || null, [pages, form]);
   // The forms either side, so a reader can page through the dictionary.
@@ -72,6 +73,7 @@ export const FormPage = () => {
             lang={objectLang}
             resolveRef={resolveRef}
             sentences={sentences}
+            exampleLayers={exampleLayers}
           />
         ))}
       </div>

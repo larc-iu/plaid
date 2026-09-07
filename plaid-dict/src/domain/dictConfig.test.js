@@ -33,6 +33,14 @@ describe('readDictRecord', () => {
     expect(record.languages.meta.name).toBe('');
     expect(record.about).toBe('');
   });
+
+  it('tells a dictionary that chose no layers from one that has not chosen', () => {
+    expect(readDictRecord({ dict: { slug: 'x' } }).exampleLayers).toBeNull();
+    expect(readDictRecord({ dict: { slug: 'x', exampleLayers: [] } }).exampleLayers).toEqual([]);
+    expect(
+      readDictRecord({ dict: { slug: 'x', exampleLayers: ['Translation', ' ', 7] } }).exampleLayers,
+    ).toEqual(['Translation']);
+  });
 });
 
 describe('isDictionary', () => {
@@ -105,9 +113,12 @@ describe('saveDictRecord', () => {
     expect(client.calls[0]).toEqual(['operation', 'Set up dictionary "Sena Dictionary"']);
     const written = client.calls.filter(([kind]) => kind === 'set').map(([, , , key]) => key);
     const removed = client.calls.filter(([kind]) => kind === 'delete').map(([, , , key]) => key);
-    // `languages` is an object, always written; the blank strings are removed.
-    expect(written).toEqual(['title', 'slug', 'languages']);
+    // `languages` and `exampleLayers` are not strings, so they are always
+    // written; the blank strings are removed. An empty exampleLayers is a
+    // choice (show no layer) and must not read back as "not chosen".
+    expect(written).toEqual(['title', 'slug', 'languages', 'exampleLayers']);
     expect(removed).toEqual(['credits', 'citation', 'about']);
+    expect(client.calls.find(([, , , key]) => key === 'exampleLayers')[4]).toEqual([]);
     expect(client.calls.every((c) => c[0] === 'operation' || c[2] === DICT_NAMESPACE)).toBe(true);
   });
 

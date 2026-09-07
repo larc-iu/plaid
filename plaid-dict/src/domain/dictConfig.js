@@ -11,6 +11,7 @@
 //     credits:   "Compiled by ...",
 //     citation:  "Cite as ...",
 //     about:     "...",                          // the front page body
+//     exampleLayers: ["Translation", ...],       // sentence layers under an example
 //   }
 //
 // A vocabulary with no `config.dict` is not a dictionary: it is not listed here
@@ -20,7 +21,15 @@
 export const DICT_NAMESPACE = 'dict';
 
 /** The keys of the record, in the order the setup form writes them. */
-export const DICT_KEYS = ['title', 'slug', 'languages', 'credits', 'citation', 'about'];
+export const DICT_KEYS = [
+  'title',
+  'slug',
+  'languages',
+  'credits',
+  'citation',
+  'about',
+  'exampleLayers',
+];
 
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
 const num = (v) => {
@@ -62,6 +71,11 @@ export const readDictRecord = (config) => {
     credits: str(raw.credits),
     citation: str(raw.citation),
     about: str(raw.about),
+    // null means the dictionary has not chosen, and every sentence layer with a
+    // value is shown. An empty list is a choice: show none of them.
+    exampleLayers: Array.isArray(raw.exampleLayers)
+      ? raw.exampleLayers.map(str).filter(Boolean)
+      : null,
   };
 };
 
@@ -115,6 +129,9 @@ export const saveDictRecord = async (client, vocabularyId, draft, { label } = {}
     credits: str(draft.credits),
     citation: str(draft.citation),
     about: str(draft.about),
+    exampleLayers: Array.isArray(draft.exampleLayers)
+      ? draft.exampleLayers.map(str).filter(Boolean)
+      : [],
   };
   await client.withOperation(label || `Set up dictionary "${record.title}"`, async () => {
     for (const key of DICT_KEYS) {

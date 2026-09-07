@@ -153,20 +153,47 @@ export const entryRefs = (item, fields, resolve) => {
 };
 
 /**
- * An entry's examples, each already carrying whatever text it has. An imported
- * FLEx example is its own text; a promoted one is a reference into a document
- * and is looked up in `sentences` (see resolveExamples), keyed by document and
- * token. A promoted example whose sentence could not be read is left out: a
- * dictionary shows an example or nothing, never a placeholder.
+ * An entry's examples, ready to draw. An imported FLEx example is its own text
+ * and its own translation, which no layer choice applies to. A promoted one is
+ * a reference into a document, looked up in `sentences` (see resolveExamples)
+ * and carrying every sentence layer that had a value.
+ *
+ * `layers` is the dictionary's chosen sentence layers, in the order it wants
+ * them; null means it has not chosen and every layer is shown. A layer with
+ * nothing in it for this sentence was already dropped by the resolver, so it
+ * takes up no room here. A promoted example whose sentence could not be read is
+ * left out: a dictionary shows an example or nothing, never a placeholder.
  */
-export const entryExamples = (item, sentences = null) =>
+export const entryExamples = (item, sentences = null, layers = null) =>
   allExamples(item)
     .map((example) => {
-      if (!example.document) return { text: example.text, translation: example.translation || '' };
+      if (!example.document) {
+        // An imported example has one translation and no layer to name it.
+        const translation = example.translation ? [{ name: null, value: example.translation }] : [];
+        return example.text ? { text: example.text, lines: translation } : null;
+      }
       const found = sentences?.get(`${example.document}/${example.token}`);
-      return found ? { ...found, document: example.document } : null;
+      if (!found) return null;
+      return {
+        text: found.text,
+        lines: pickLines(found.lines, layers),
+        document: example.document,
+      };
     })
-    .filter((e) => e && e.text);
+    .filter((example) => example && example.text);
+
+// The lines a dictionary shows, in the order it asked for them. A line with no
+// layer name is an imported translation and is never filtered out: there was
+// nothing to choose.
+const pickLines = (lines, layers) => {
+  if (!layers) return lines || [];
+  const byName = new Map(
+    (lines || []).filter((line) => line.name).map((line) => [line.name, line]),
+  );
+  const out = (lines || []).filter((line) => !line.name);
+  for (const name of layers) if (byName.has(name)) out.push(byName.get(name));
+  return out;
+};
 
 /** Every `{document, token}` a headword and its senses point at. */
 export const collectExampleRefs = (node, out = []) => {

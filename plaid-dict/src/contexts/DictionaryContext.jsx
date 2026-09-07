@@ -86,6 +86,9 @@ export const DictionaryProvider = () => {
       // The object language's tag, put on every piece of object-language text
       // so a browser knows what it is rendering.
       objectLang,
+      // The sentence layers shown under an example, in the order the dictionary
+      // asked for them. Null until it has chosen, which shows every one.
+      exampleLayers: record?.exampleLayers ?? null,
       resolveRef,
       items,
       pages,

@@ -13,6 +13,7 @@ import {
   validateSetup,
 } from '@/domain/dictConfig';
 import { publicationCounts, publishAll } from '@/domain/publication';
+import { discoverExampleLayers } from '@/domain/exampleLayers';
 import { readDictionaryEnabled } from '@igt/domain/vocabDictionary.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,6 +33,7 @@ const emptyDraft = () => ({
   credits: '',
   citation: '',
   about: '',
+  exampleLayers: null,
 });
 
 const Field = ({ id, label, hint, error, children }) => (
@@ -143,6 +145,9 @@ export const Setup = () => {
   const [saving, setSaving] = useState(false);
   const [items, setItems] = useState(null);
   const [publishing, setPublishing] = useState(null); // {done, total} while running
+  // The sentence layers this vocabulary's examples could show. Null while the
+  // lookup is out; empty when no example points into a document.
+  const [layerChoices, setLayerChoices] = useState(null);
 
   // Seed once from what the server has, or from the vocabulary's name for a
   // dictionary being set up for the first time.
@@ -168,6 +173,19 @@ export const Setup = () => {
       alive = false;
     };
   }, [client, vocabularyId]);
+
+  // Discovered from the examples themselves, so only layers this dictionary
+  // could actually show are offered.
+  useEffect(() => {
+    if (!client || !items) return undefined;
+    let alive = true;
+    discoverExampleLayers(client, items).then((names) => {
+      if (alive) setLayerChoices(names);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [client, items]);
 
   const counts = useMemo(() => (items ? publicationCounts(items) : null), [items]);
   const errors = useMemo(() => validateSetup(draft, taken), [draft, taken]);
@@ -316,6 +334,49 @@ export const Setup = () => {
             />
           </Field>
         </section>
+
+        {layerChoices?.length > 0 && (
+          <section className="rounded-md border p-4">
+            <p className="text-sm font-medium">Example sentences</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Shown under an example, in this order.
+            </p>
+            <ul className="mt-3 flex flex-col gap-1.5">
+              {layerChoices.map((name) => {
+                const chosen = draft.exampleLayers === null || draft.exampleLayers.includes(name);
+                return (
+                  <li key={name}>
+                    <label className="flex cursor-pointer items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 cursor-pointer accent-primary"
+                        checked={chosen}
+                        onChange={(e) =>
+                          set({
+                            exampleLayers: e.target.checked
+                              ? layerChoices.filter(
+                                  (n) =>
+                                    n === name ||
+                                    draft.exampleLayers === null ||
+                                    draft.exampleLayers.includes(n),
+                                )
+                              : layerChoices.filter(
+                                  (n) =>
+                                    n !== name &&
+                                    (draft.exampleLayers === null ||
+                                      draft.exampleLayers.includes(n)),
+                                ),
+                          })
+                        }
+                      />
+                      {name}
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
 
         <section className="rounded-md border p-4">
           <p className="text-sm font-medium">Published entries</p>

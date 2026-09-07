@@ -142,17 +142,54 @@ describe('entryRefs', () => {
 describe('entryExamples', () => {
   const imported = { text: 'kugwa bola', translation: 'jogar bola' };
   const promoted = { document: 'd1', token: 't1' };
+  const sentences = new Map([
+    [
+      'd1/t1',
+      {
+        text: 'Ndine.',
+        lines: [
+          { name: 'Translation', value: 'It is me.' },
+          { name: 'Note', value: 'said in greeting' },
+        ],
+      },
+    ],
+  ]);
 
-  it('takes an imported example as it stands', () => {
+  it('takes an imported example as it stands, its translation unnamed', () => {
     expect(entryExamples(item({ examples: [imported] }))).toEqual([
-      { text: 'kugwa bola', translation: 'jogar bola' },
+      { text: 'kugwa bola', lines: [{ name: null, value: 'jogar bola' }] },
     ]);
   });
 
-  it('fills a promoted one in from the sentences it was given', () => {
-    const sentences = new Map([['d1/t1', { text: 'Ndine.', translation: 'It is me.' }]]);
+  it('shows every layer of a promoted one when the dictionary has not chosen', () => {
     expect(entryExamples(item({ examples: [promoted] }), sentences)).toEqual([
-      { text: 'Ndine.', translation: 'It is me.', document: 'd1' },
+      { text: 'Ndine.', lines: sentences.get('d1/t1').lines, document: 'd1' },
+    ]);
+  });
+
+  it('shows the chosen layers, in the order they were chosen', () => {
+    const [example] = entryExamples(item({ examples: [promoted] }), sentences, [
+      'Note',
+      'Translation',
+    ]);
+    expect(example.lines.map((l) => l.name)).toEqual(['Note', 'Translation']);
+  });
+
+  it('leaves out a layer that was not chosen, and one nothing chose', () => {
+    const [example] = entryExamples(item({ examples: [promoted] }), sentences, ['Translation']);
+    expect(example.lines.map((l) => l.name)).toEqual(['Translation']);
+    expect(entryExamples(item({ examples: [promoted] }), sentences, [])[0].lines).toEqual([]);
+    expect(entryExamples(item({ examples: [promoted] }), sentences, ['Nothing'])[0].lines).toEqual(
+      [],
+    );
+  });
+
+  it('never filters out an imported translation, which named no layer', () => {
+    expect(
+      entryExamples(item({ examples: [imported] }), sentences, ['Translation'])[0].lines,
+    ).toEqual([{ name: null, value: 'jogar bola' }]);
+    expect(entryExamples(item({ examples: [imported] }), sentences, [])[0].lines).toEqual([
+      { name: null, value: 'jogar bola' },
     ]);
   });
 

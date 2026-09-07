@@ -15,19 +15,26 @@ const TextLine = ({ entry, className }) => (
   </p>
 );
 
-// An example: the sentence, then its translation under it.
-const Examples = ({ examples }) => (
-  <ul className="mt-1.5 flex flex-col gap-1">
+// An example: the sentence, then the lines the dictionary chose to show under
+// it. A line is named only when there is more than one, since a lone
+// translation needs no label to say what it is.
+const Examples = ({ examples, lang }) => (
+  <ul className="mt-1.5 flex flex-col gap-1.5">
     {examples.map((example, i) => (
       <li key={i} className="border-l-2 pl-3">
-        <p className="font-serif text-sm">{example.text}</p>
-        {example.translation && (
-          <p className="font-serif text-sm italic text-muted-foreground">
+        <p className="font-serif text-sm" lang={lang}>
+          {example.text}
+        </p>
+        {example.lines.map((line, j) => (
+          <p key={j} className="font-serif text-sm italic text-muted-foreground">
+            {example.lines.length > 1 && line.name && (
+              <span className="mr-1.5 align-baseline text-[0.8em] not-italic">{line.name}</span>
+            )}
             {'\u2018'}
-            {example.translation}
+            {line.value}
             {'\u2019'}
           </p>
-        )}
+        ))}
       </li>
     ))}
   </ul>
@@ -64,10 +71,10 @@ const References = ({ refs }) => (
   </dl>
 );
 
-const Meanings = ({ item, fields, resolveRef, sentences }) => {
+const Meanings = ({ item, fields, resolveRef, sentences, exampleLayers, lang }) => {
   const { pos, glosses, definitions, others } = entryText(item, fields);
   const refs = resolveRef ? entryRefs(item, fields, resolveRef) : [];
-  const examples = entryExamples(item, sentences);
+  const examples = entryExamples(item, sentences, exampleLayers);
   // A container headword carries no text of its own, only senses.
   if (
     !pos &&
@@ -87,7 +94,7 @@ const Meanings = ({ item, fields, resolveRef, sentences }) => {
       {definitions.map((d) => (
         <TextLine key={d.name} entry={d} className="font-serif text-sm text-muted-foreground" />
       ))}
-      {examples.length > 0 && <Examples examples={examples} />}
+      {examples.length > 0 && <Examples examples={examples} lang={lang} />}
       {others.length > 0 && (
         <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-sm">
           {others.map((o) => (
@@ -105,14 +112,21 @@ const Meanings = ({ item, fields, resolveRef, sentences }) => {
 
 // A sense: its number in the margin, its meanings beside it, its own senses
 // indented under it.
-const Sense = ({ node, fields, resolveRef, sentences }) => (
+const Sense = ({ node, fields, resolveRef, sentences, exampleLayers, lang }) => (
   <li>
     <div className="flex gap-3">
       <span className="w-10 shrink-0 pt-0.5 text-right text-sm tabular-nums text-muted-foreground">
         {node.number}
       </span>
       {node.shown ? (
-        <Meanings item={node.item} fields={fields} resolveRef={resolveRef} sentences={sentences} />
+        <Meanings
+          item={node.item}
+          fields={fields}
+          resolveRef={resolveRef}
+          sentences={sentences}
+          exampleLayers={exampleLayers}
+          lang={lang}
+        />
       ) : (
         <span className="pt-0.5 font-serif">{displayForm(node.item)}</span>
       )}
@@ -126,6 +140,8 @@ const Sense = ({ node, fields, resolveRef, sentences }) => (
             fields={fields}
             resolveRef={resolveRef}
             sentences={sentences}
+            exampleLayers={exampleLayers}
+            lang={lang}
           />
         ))}
       </ol>
@@ -137,7 +153,15 @@ const Sense = ({ node, fields, resolveRef, sentences }) => (
  * One headword and everything under it. `to` makes the headword a link, which
  * is what the front page wants and the form page does not.
  */
-export const EntryArticle = ({ node, fields, to = null, lang, resolveRef, sentences }) => {
+export const EntryArticle = ({
+  node,
+  fields,
+  to = null,
+  lang,
+  resolveRef,
+  sentences,
+  exampleLayers,
+}) => {
   const heading = (
     <>
       <span className="font-serif text-2xl font-semibold" lang={lang}>
@@ -170,6 +194,8 @@ export const EntryArticle = ({ node, fields, to = null, lang, resolveRef, senten
             fields={fields}
             resolveRef={resolveRef}
             sentences={sentences}
+            exampleLayers={exampleLayers}
+            lang={lang}
           />
         </div>
       )}
@@ -182,6 +208,8 @@ export const EntryArticle = ({ node, fields, to = null, lang, resolveRef, senten
               fields={fields}
               resolveRef={resolveRef}
               sentences={sentences}
+              exampleLayers={exampleLayers}
+              lang={lang}
             />
           ))}
         </ol>
