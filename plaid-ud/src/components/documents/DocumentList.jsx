@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   Title,
   Button,
@@ -13,11 +13,11 @@ import {
   Loader,
   Tooltip,
 } from '@mantine/core';
-import { IconPlus } from '@tabler/icons-react';
+import { IconPlus, IconInfoCircle } from '@tabler/icons-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { DocumentForm } from './DocumentForm';
 import { ProjectTabs } from '../projects/ProjectTabs.jsx';
-import { canEditProject } from '../../utils/permissions.js';
+import { canEditProject, canManageProject } from '../../utils/permissions.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { timeAgo, fullTimestamp } from '../../utils/formatTime.js';
 import { SortButton } from '../common/SortHeader.jsx';
@@ -34,6 +34,7 @@ const W_UPDATED = 124;
 
 export const DocumentList = () => {
   const { projectId } = useParams();
+  const navigate = useNavigate();
   const [project, setProject] = useState(null);
   const [documents, setDocuments] = useState([]);
   useDocumentTitle(project?.name);
@@ -160,6 +161,18 @@ export const DocumentList = () => {
   // A new search or sort is a different list, so it starts at page 1.
   const paged = usePagedList(sortedDocuments, { resetKey: `${filter}|${sort.key}|${sort.dir}` });
 
+  // Setting the project up for UD belongs HERE, at the door: a project is
+  // either set up or it isn't, and finding that out is what clicking into it
+  // should tell you. Opening a document is far too late — that used to bounce
+  // the reader out of the editor mid-task.
+  const configured = getUdLayerInfo(project).isConfigured;
+  const canManage = canManageProject(project, user);
+  useEffect(() => {
+    if (project && !configured && canManage) {
+      navigate(`/projects/${projectId}/configuration`, { replace: true });
+    }
+  }, [project, configured, canManage, projectId, navigate]);
+
   if (loading) {
     return (
       <Center py={48}>
@@ -170,6 +183,28 @@ export const DocumentList = () => {
 
   if (!project) {
     return <Alert color="red">Project not found</Alert>;
+  }
+
+  // A maintainer is on their way to the setup page (the effect above). Everyone
+  // else can't create layers, so they get a notice rather than a dead-end
+  // redirect into a wizard they cannot complete.
+  if (!configured) {
+    return (
+      <>
+        <ProjectTabs projectId={projectId} project={project} />
+        <Center py={64}>
+          <Alert
+            color="yellow"
+            title="Not set up for UD"
+            maw={520}
+            icon={<IconInfoCircle size={18} />}
+          >
+            This project hasn’t been set up for Universal Dependencies yet. Ask a project maintainer
+            to add UD support.
+          </Alert>
+        </Center>
+      </>
+    );
   }
 
   // Writers (and up) create/delete documents. Readers get a view-only list.

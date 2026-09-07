@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Box, Group, Button, Loader, Text, Center, Alert, Stack } from '@mantine/core';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Anchor, Box, Group, Button, Loader, Text, Center, Alert, Stack } from '@mantine/core';
 import { IconHistory, IconInfoCircle } from '@tabler/icons-react';
 import { NlpServiceControls } from './NlpServiceControls.jsx';
 import { VirtualSentenceRow } from './annotation/VirtualSentenceRow.jsx';
@@ -15,6 +15,7 @@ import { notifications } from '@mantine/notifications';
 import { formatFindingsForClipboard } from '../../domain/validate.js';
 import { notifyError } from '../../utils/feedback.jsx';
 import { canEditProject, canManageProject } from '../../utils/permissions.js';
+import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 const DRAWER_WIDTH = 384;
@@ -96,7 +97,6 @@ const reportIntegrityFindings = (findings, documentId) => {
 };
 
 export const AnnotationEditor = () => {
-  const navigate = useNavigate();
   // Project, document, the breadcrumbs/tab strip and the version-counter
   // subscription all come from DocumentEditorShell, which guarantees both the
   // project and the document are loaded before this renders.
@@ -307,26 +307,6 @@ export const AnnotationEditor = () => {
     return () => cancelAnimationFrame(raf);
   }, [reconciling, sentParam, processedSentences]);
 
-  useEffect(() => {
-    if (reconciling) return;
-    if (!projectId || !project) return;
-    if (!user) return;
-    if (!activeDocument) return;
-    if (!layerInfo || layerInfo.isConfigured) return;
-
-    const missing = layerInfo.missingLayers || [];
-    if (missing.length === 0) return;
-
-    const isAdmin = user?.isAdmin || false;
-    const isMaintainer = project?.maintainers?.includes(user?.id) || false;
-
-    if (isAdmin || isMaintainer) {
-      navigate(`/projects/${projectId}/configuration`, { replace: true });
-    }
-    // Non-maintainers can't configure/adopt; rather than bouncing them out, the
-    // render shows a clear "not set up for UD" notice (see below).
-  }, [reconciling, layerInfo, project, projectId, user, navigate, activeDocument]);
-
   // Bind annotation/relation handlers to the current document. When viewing
   // historical state we pass `null` so VirtualSentenceRow disables editing.
   // useCallback keeps their identity stable across the transient saving
@@ -459,10 +439,15 @@ export const AnnotationEditor = () => {
   ) : null;
 
   // Always render the main container with drawer to maintain state.
-  // A project not set up for UD, opened by a non-maintainer: maintainers are
-  // redirected to /configuration to set it up/adopt it; everyone else gets a
-  // clear notice instead of a broken editor or a silent bounce.
-  if (!reconciling && layerInfo && !layerInfo.isConfigured && !canManageProject(project, user)) {
+  // Reaching the editor in an unconfigured project means a link straight to
+  // this URL, since clicking into the project sends you to the setup page
+  // first. Say so and offer the way there, rather than redirecting: a bounce
+  // out of the editor is exactly what this stopped doing.
+  //
+  // Read the PROJECT's layers, never the open document's. During time travel
+  // `layerInfo` is the structure as it was at that moment, which for an early
+  // enough entry predates the setup and is not a statement about the project.
+  if (!reconciling && project && !getUdLayerInfo(project).isConfigured) {
     return (
       <Box style={{ width: '100%', minHeight: '100vh' }}>
         <Center py={64}>
@@ -472,8 +457,20 @@ export const AnnotationEditor = () => {
             maw={520}
             icon={<IconInfoCircle size={18} />}
           >
-            This project hasn’t been set up for Universal Dependencies yet. Ask a project maintainer
-            to add UD support.
+            {canManageProject(project, user) ? (
+              <>
+                This project hasn’t been set up for Universal Dependencies yet.{' '}
+                <Anchor component={Link} to={`/projects/${projectId}/configuration`}>
+                  Set up its layers
+                </Anchor>{' '}
+                to annotate it.
+              </>
+            ) : (
+              <>
+                This project hasn’t been set up for Universal Dependencies yet. Ask a project
+                maintainer to add UD support.
+              </>
+            )}
           </Alert>
         </Center>
       </Box>

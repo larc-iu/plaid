@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import { DocumentProvider } from './contexts/DocumentContext.jsx';
 import { IgtDocument } from '../../domain/IgtDocument.js';
 import { formatFindingsForClipboard } from '../../domain/validate.js';
+import { readInitialized } from '@/domain/igtConfig';
 import { notifyError, toast, humanizeError } from '@/utils/feedback';
 import { History, FileText, Type, Mic, Play, Table, Download, MessageSquare } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -443,6 +444,34 @@ const DocumentEditor = () => {
 
   if (!doc) {
     return <Spinner />;
+  }
+
+  // Reaching a document in a project never set up for IGT means a link
+  // straight to this URL: the project door (ProjectDetail) sends a maintainer
+  // to the setup wizard before they can get here. Say so and offer the way
+  // there rather than redirecting, and rather than handing over an editor
+  // whose fields and orthographies were never configured.
+  if (!readInitialized(doc.project?.config)) {
+    return (
+      <div className="tw mx-auto max-w-5xl px-4 py-8">
+        <div role="status" className="rounded-md border bg-muted px-4 py-3 text-sm">
+          {permissions.canManage ? (
+            <>
+              This project hasn’t been set up for IGT yet.{' '}
+              <Link className="underline" to={`/projects/${projectId}/setup`}>
+                Set it up
+              </Link>{' '}
+              to annotate it.
+            </>
+          ) : (
+            <>
+              This project hasn’t been set up for IGT yet. Ask a project maintainer to add IGT
+              support.
+            </>
+          )}
+        </div>
+      </div>
+    );
   }
 
   const isViewingHistorical = asOf != null;
