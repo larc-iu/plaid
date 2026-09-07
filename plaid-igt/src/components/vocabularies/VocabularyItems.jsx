@@ -1119,7 +1119,7 @@ export const VocabularyItems = ({
               onMoveUnder={handleMoveUnder}
               onRaiseHeadword={handleRaiseHeadword}
               onDrop={handleSenseDrop}
-              onReorderHomographs={() => setHomographOpen(true)}
+              onReorderHomographs={homographs.length > 1 ? () => setHomographOpen(true) : null}
               newSenseTo={newSenseTo}
             />
           </div>

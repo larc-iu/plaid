@@ -410,8 +410,7 @@ export const VocabularyManager = ({
                 Lexicography Mode
                 <span className="block text-xs text-muted-foreground">
                   Entries can be grouped into senses, refer to each other, have highlighted usage
-                  examples, and track publication status. Can be turned on later in the vocabulary's
-                  settings.
+                  examples, and track publication status.
                 </span>
               </span>
             </label>

@@ -380,11 +380,14 @@ const SenseTree = ({
 };
 
 /**
- * An entry's homograph number, a button that opens the dialog to reorder
- * the entries spelled that way. Nothing when the entry is the only one.
+ * An entry's homograph number. A button that opens the dialog to reorder the
+ * entries spelled that way, when there are any: with no `onOpen` the number is
+ * just a number, which is what a lone headword with senses has.
  */
 export const HomographNumber = ({ number, onOpen, className }) => {
   if (!number) return <span className={className} />;
+  if (!onOpen)
+    return <span className={cn('tabular-nums text-muted-foreground', className)}>{number}</span>;
   return (
     <button
       type="button"

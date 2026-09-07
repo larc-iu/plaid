@@ -401,7 +401,7 @@ export const VocabularyDetail = () => {
         lost = await countClearedValues(fieldName, next);
       } catch (err) {
         console.error('Error reading entries before a field type change:', err);
-        notifyError('The entries could not be read, so the field was left alone.', 'Not changed');
+        notifyError('The entries could not be read.', 'Not changed');
         return;
       }
       if (

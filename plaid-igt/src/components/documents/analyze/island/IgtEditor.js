@@ -4898,7 +4898,7 @@ export class IgtEditor {
                 : html`+ Create "${createForm}${numHtml(newFormSub, 'igt-vocab-pop')}"`}
               ${newFormSub != null
                 ? html`<span class="igt-vocab-pop__note"
-                    >“${effectiveForm}” already exists. This adds a separate sense</span
+                    >“${effectiveForm}” already exists. This adds a separate entry</span
                   >`
                 : nothing}
             </button>`
