@@ -97,6 +97,14 @@
           (when-not ok?
             (throw (ex-info "jar failed to boot / report the release version at /health" {})))
           (println "  jar booted; /health reports the release version")
+          ;; Every bundled SPA must answer from the classpath. /health alone
+          ;; passes with an app missing from resources/ or from
+          ;; bundled-spa-roots, which is how an app ships invisibly broken.
+          (doseq [path ["/ud/" "/igt/" "/dict/"]]
+            (let [r (p/sh ["curl" "-sf" (str "http://localhost:8080" path)])]
+              (when-not (and (zero? (:exit r)) (str/includes? (:out r) "<div id=\"root\""))
+                (throw (ex-info (str path " did not serve its SPA from the jar") {:path path})))))
+          (println "  bundled SPAs served at /ud/, /igt/, /dict/")
           ;; First boot must also have extracted the bundled services next to data/.
           (doseq [f ["ud_parse_stanza.py" "igt_tokenize_punkt.py" "igt_transcribe_whisper.py"]]
             (when-not (fs/exists? (fs/path tmp "services" f))
