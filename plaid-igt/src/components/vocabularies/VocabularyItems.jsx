@@ -73,6 +73,7 @@ import {
   HomographDialog,
   ReferencedByPanel,
   ExamplesPanel,
+  NavGuardProvider,
   ContextRow,
 } from './DictionaryPanels';
 import { validateValue } from '@/domain/tagsets';
@@ -197,7 +198,7 @@ export const VocabularyItems = ({
   const [editFields, setEditFields] = useState({});
   // Confirm before discarding unsaved edits on a selection switch.
   const [discardOpen, setDiscardOpen] = useState(false);
-  const [pendingTarget, setPendingTarget] = useState(null); // item id | NEW_ID | null
+  const [pendingTarget, setPendingTarget] = useState(null); // {id, parent} | null
 
   // `?item=` for one entry, keeping whatever else is on the URL (`?tab=`).
   // `?parent=` rides with `?item=new` only: "Add sense" opens the new-entry
@@ -223,7 +224,8 @@ export const VocabularyItems = ({
     const q = next.toString();
     return { search: q ? `?${q}` : '' };
   };
-  const goItem = (id, options) => setSearchParams(itemQuery(id).replace(/^\?/, ''), options);
+  const goItem = (id, options, parent = null) =>
+    setSearchParams(itemQuery(id, parent).replace(/^\?/, ''), options);
   const newParent = itemParam === 'new' ? searchParams.get('parent') : null;
 
   // Left-list search, pagination, usage counts, bulk add, delete confirm.
@@ -431,7 +433,7 @@ export const VocabularyItems = ({
   // nothing left to repair.
   const repairedRef = useRef(false);
   const repairRefs = async (fetched) => {
-    if (!dictionary || !canManage || repairedRef.current) return;
+    if (!canManage || repairedRef.current) return;
     repairedRef.current = true;
     const { patches, findings } = validateVocabRefs(fetched, fields);
     if (!patches.length) return;
@@ -449,6 +451,10 @@ export const VocabularyItems = ({
           });
         }
       });
+      // The repair lands a round trip after the draft was seeded, so an entry
+      // it touched is re-seeded from the repaired metadata. Left alone the
+      // form still holds the cleared value and a Save writes it back.
+      if (patches.some((p) => p.id === seededRef.current)) seededRef.current = undefined;
       foldPatches(patches);
       if (findings.length) {
         console.group('Vocabulary references repaired');
@@ -618,18 +624,32 @@ export const VocabularyItems = ({
   // would lose the draft: a modified click opens a new browser tab and leaves
   // this one (draft and all) exactly as it was.
   const isModifiedClick = (e) => e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0;
-  const guardSelect = (e, id) => {
+  const guardSelect = (e, id, parent = null) => {
     if (isModifiedClick(e)) return;
-    if (id === selectedId) {
+    // `?parent=` gives NEW_ID two destinations: a new entry, and a new sense of
+    // some entry. Only the one on screen is already open, or New would do
+    // nothing while an Add sense form is up.
+    const sameTarget = id === selectedId && (parent ?? null) === (id === NEW_ID ? newParent : null);
+    if (sameTarget) {
       e.preventDefault(); // already open
       return;
     }
     if (dirty) {
       e.preventDefault();
-      setPendingTarget(id);
+      setPendingTarget({ id, parent });
       setDiscardOpen(true);
     }
   };
+  // The same guard for the links inside the dictionary panels, which open
+  // another entry exactly as a row does.
+  const navGuard = useMemo(
+    () => ({
+      select: (e, id) => guardSelect(e, id),
+      newSense: (e, parentId) => guardSelect(e, NEW_ID, parentId),
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedId, newParent, dirty],
+  );
 
   const handleSave = async () => {
     if (!editForm.trim()) {
@@ -778,8 +798,12 @@ export const VocabularyItems = ({
         );
         await writeMetadata(id, { ...sense, parent: created.id, senseOrder: 1 });
       });
-      // One GET to resync rather than folding the new entry in by hand: the
-      // draft is untouched (nothing the form edits changed).
+      // One GET to resync rather than folding the new entry in by hand. The
+      // split moved fields the form edits (the headword-only ones, the morph
+      // type, the lexeme form) off this item, so the open draft is re-seeded
+      // from what came back. Left alone it reads dirty without an edit, and a
+      // Save would put those fields back on the sense.
+      seededRef.current = undefined;
       await fetchItems({ quiet: true });
     } catch (err) {
       console.error('Adding the headword failed:', err);
@@ -1250,561 +1274,564 @@ export const VocabularyItems = ({
   }
 
   return (
-    <div ref={paneWrapRef} className="tw flex items-start gap-4">
-      {/* ---- left pane: item list ---- */}
-      <div
-        className="sticky top-4 flex max-h-[calc(100vh-14rem)] w-96 shrink-0 flex-col rounded-lg border bg-card"
-        style={paneMaxH ? { maxHeight: paneMaxH } : undefined}
-      >
-        <div className="flex flex-col gap-2 border-b p-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">Entries</span>
+    <NavGuardProvider value={navGuard}>
+      <div ref={paneWrapRef} className="tw flex items-start gap-4">
+        {/* ---- left pane: item list ---- */}
+        <div
+          className="sticky top-4 flex max-h-[calc(100vh-14rem)] w-96 shrink-0 flex-col rounded-lg border bg-card"
+          style={paneMaxH ? { maxHeight: paneMaxH } : undefined}
+        >
+          <div className="flex flex-col gap-2 border-b p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Entries</span>
+              {canManage && (
+                <Button size="sm" className="h-7" asChild>
+                  <Link to={itemTo(NEW_ID)} onClick={(e) => guardSelect(e, NEW_ID)}>
+                    <Plus className="h-3.5 w-3.5" /> New
+                  </Link>
+                </Button>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <SearchInput
+                className="min-w-0 flex-1"
+                inputClassName="h-8"
+                placeholder="Search entries…"
+                value={search}
+                onChange={setSearch}
+              />
+              <Select value={searchField} onValueChange={setSearchField}>
+                <SelectTrigger className="h-8 w-28 shrink-0 text-xs" aria-label="Search in">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ANY_FIELD}>All fields</SelectItem>
+                  <SelectItem value="form">Form</SelectItem>
+                  {fieldNames.map((name) => (
+                    <SelectItem key={name} value={name}>
+                      {humanizeFieldName(name)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {items.length > 0 && (
+                <ListCount shown={filteredItems.length} total={items.length} noun="entry" />
+              )}
+            </div>
+            {dictionary && (
+              <div className="flex items-center gap-1" role="group" aria-label="View">
+                <button
+                  type="button"
+                  aria-pressed={!treeView}
+                  title="Every entry in one list"
+                  onClick={() => setTreeView(false)}
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground',
+                    !treeView && 'bg-accent text-foreground',
+                  )}
+                >
+                  <List className="h-3.5 w-3.5" /> Flat
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={treeView}
+                  title="Senses under their entry"
+                  onClick={() => setTreeView(true)}
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground',
+                    treeView && 'bg-accent text-foreground',
+                  )}
+                >
+                  <ListTree className="h-3.5 w-3.5" /> By entry
+                </button>
+              </div>
+            )}
+            {emptyField && emptyCount > 0 && (
+              <button
+                type="button"
+                aria-pressed={emptyOnly}
+                onClick={() => setEmptyOnly((v) => !v)}
+                className={cn(
+                  'inline-flex w-fit items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:underline',
+                  emptyOnly ? 'bg-accent' : 'bg-muted',
+                )}
+              >
+                {emptyCount.toLocaleString()} without {humanizeFieldName(emptyField)}
+              </button>
+            )}
+            {offTagsetIds.size > 0 && (
+              <button
+                type="button"
+                aria-pressed={offTagsetOnly}
+                onClick={() => setOffTagsetOnly((v) => !v)}
+                title={
+                  offTagsetOnly
+                    ? 'Show every entry'
+                    : 'Show only the entries with a value outside its tagset'
+                }
+                className={cn(
+                  'inline-flex w-fit items-center gap-1 rounded px-1.5 py-0.5 text-xs text-destructive hover:underline',
+                  offTagsetOnly ? 'bg-destructive/20' : 'bg-destructive/10',
+                )}
+              >
+                <AlertTriangle className="h-3 w-3" />
+                {offTagsetIds.size.toLocaleString()} outside tagset
+              </button>
+            )}
+          </div>
+
+          <ListPager {...paged} onPage={setPage} position="top" />
+
+          {items.length > 0 && filteredItems.length > 0 && (
+            <div
+              className={cn(
+                'grid items-center gap-2 border-b px-3 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground',
+                listCols,
+              )}
+            >
+              <SortHeader field="form" label="Form" sort={sort} onSort={onSort} />
+              {hasGloss && <SortHeader field="gloss" label="Gloss" sort={sort} onSort={onSort} />}
+              <SortHeader
+                field="uses"
+                label="Uses"
+                sort={sort}
+                onSort={onSort}
+                className="justify-self-end"
+              />
+            </div>
+          )}
+
+          <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto">
+            {items.length === 0 ? (
+              <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+                No entries yet. Click “New”.
+              </p>
+            ) : filteredItems.length === 0 ? (
+              <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+                {search.trim() ? `No entries match “${search.trim()}”.` : 'No entries match.'}
+              </p>
+            ) : (
+              <ul className="divide-y">
+                {paged.pageItems.map(({ item, depth, context }) => (
+                  <li key={item.id}>
+                    <Link
+                      to={itemTo(item.id)}
+                      onClick={(e) => guardSelect(e, item.id)}
+                      data-selected={selectedId === item.id || undefined}
+                      data-depth={depth || undefined}
+                      data-context={context || undefined}
+                      className={cn(
+                        'grid w-full items-center gap-2 px-3 py-2 text-left text-sm no-underline hover:bg-accent/40',
+                        listCols,
+                        selectedId === item.id && 'bg-accent/60',
+                        // Not a hit, only the entry a hit sits under.
+                        context && 'opacity-50',
+                      )}
+                      style={depth ? { paddingLeft: `${0.75 + depth * 1.25}rem` } : undefined}
+                    >
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <FormLabel
+                          form={item.form}
+                          index={homonyms.get(item.id)}
+                          className="truncate font-medium"
+                        />
+                        {(comments?.countFor(item.id) ?? 0) > 0 && (
+                          <span
+                            className="inline-flex shrink-0 items-center gap-0.5 text-[10px] tabular-nums text-muted-foreground"
+                            title={`${comments.countFor(item.id)} comment${comments.countFor(item.id) === 1 ? '' : 's'}`}
+                          >
+                            <MessageSquare className="h-3 w-3" />
+                            {comments.countFor(item.id)}
+                          </span>
+                        )}
+                      </span>
+                      {hasGloss && (
+                        <span className="truncate text-xs text-muted-foreground">
+                          {item.metadata?.gloss || ''}
+                        </span>
+                      )}
+                      <span className="text-right text-xs tabular-nums text-muted-foreground">
+                        {offTagsetIds.has(item.id) && (
+                          <span title="A value is outside its tagset">
+                            <AlertTriangle className="mr-1 inline h-3 w-3 text-destructive" />
+                          </span>
+                        )}
+                        {usageCounts ? (usageCounts[item.id] ?? 0) : ''}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <ListPager {...paged} onPage={setPage} />
+
+          <div className="flex items-center gap-2 border-t p-2">
             {canManage && (
-              <Button size="sm" className="h-7" asChild>
-                <Link to={itemTo(NEW_ID)} onClick={(e) => guardSelect(e, NEW_ID)}>
-                  <Plus className="h-3.5 w-3.5" /> New
-                </Link>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 flex-1"
+                onClick={() => setBulkOpen(true)}
+              >
+                <Upload className="h-3.5 w-3.5" /> Bulk Add
               </Button>
             )}
-          </div>
-          <div className="flex items-center gap-2">
-            <SearchInput
-              className="min-w-0 flex-1"
-              inputClassName="h-8"
-              placeholder="Search entries…"
-              value={search}
-              onChange={setSearch}
-            />
-            <Select value={searchField} onValueChange={setSearchField}>
-              <SelectTrigger className="h-8 w-28 shrink-0 text-xs" aria-label="Search in">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ANY_FIELD}>All fields</SelectItem>
-                <SelectItem value="form">Form</SelectItem>
-                {fieldNames.map((name) => (
-                  <SelectItem key={name} value={name}>
-                    {humanizeFieldName(name)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {items.length > 0 && (
-              <ListCount shown={filteredItems.length} total={items.length} noun="entry" />
-            )}
-          </div>
-          {dictionary && (
-            <div className="flex items-center gap-1" role="group" aria-label="View">
-              <button
-                type="button"
-                aria-pressed={!treeView}
-                title="Every entry in one list"
-                onClick={() => setTreeView(false)}
-                className={cn(
-                  'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground',
-                  !treeView && 'bg-accent text-foreground',
-                )}
+            {canManage && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 flex-1"
+                onClick={() => setReplaceOpen(true)}
+                disabled={!items.length}
               >
-                <List className="h-3.5 w-3.5" /> Flat
-              </button>
-              <button
-                type="button"
-                aria-pressed={treeView}
-                title="Senses under their entry"
-                onClick={() => setTreeView(true)}
-                className={cn(
-                  'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground',
-                  treeView && 'bg-accent text-foreground',
-                )}
-              >
-                <ListTree className="h-3.5 w-3.5" /> By entry
-              </button>
-            </div>
-          )}
-          {emptyField && emptyCount > 0 && (
-            <button
-              type="button"
-              aria-pressed={emptyOnly}
-              onClick={() => setEmptyOnly((v) => !v)}
-              className={cn(
-                'inline-flex w-fit items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:underline',
-                emptyOnly ? 'bg-accent' : 'bg-muted',
-              )}
-            >
-              {emptyCount.toLocaleString()} without {humanizeFieldName(emptyField)}
-            </button>
-          )}
-          {offTagsetIds.size > 0 && (
-            <button
-              type="button"
-              aria-pressed={offTagsetOnly}
-              onClick={() => setOffTagsetOnly((v) => !v)}
-              title={
-                offTagsetOnly
-                  ? 'Show every entry'
-                  : 'Show only the entries with a value outside its tagset'
-              }
-              className={cn(
-                'inline-flex w-fit items-center gap-1 rounded px-1.5 py-0.5 text-xs text-destructive hover:underline',
-                offTagsetOnly ? 'bg-destructive/20' : 'bg-destructive/10',
-              )}
-            >
-              <AlertTriangle className="h-3 w-3" />
-              {offTagsetIds.size.toLocaleString()} outside tagset
-            </button>
-          )}
-        </div>
-
-        <ListPager {...paged} onPage={setPage} position="top" />
-
-        {items.length > 0 && filteredItems.length > 0 && (
-          <div
-            className={cn(
-              'grid items-center gap-2 border-b px-3 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground',
-              listCols,
+                <Replace className="h-3.5 w-3.5" /> Replace
+              </Button>
             )}
-          >
-            <SortHeader field="form" label="Form" sort={sort} onSort={onSort} />
-            {hasGloss && <SortHeader field="gloss" label="Gloss" sort={sort} onSort={onSort} />}
-            <SortHeader
-              field="uses"
-              label="Uses"
-              sort={sort}
-              onSort={onSort}
-              className="justify-self-end"
-            />
-          </div>
-        )}
-
-        <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto">
-          {items.length === 0 ? (
-            <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-              No entries yet. Click “New”.
-            </p>
-          ) : filteredItems.length === 0 ? (
-            <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-              {search.trim() ? `No entries match “${search.trim()}”.` : 'No entries match.'}
-            </p>
-          ) : (
-            <ul className="divide-y">
-              {paged.pageItems.map(({ item, depth, context }) => (
-                <li key={item.id}>
-                  <Link
-                    to={itemTo(item.id)}
-                    onClick={(e) => guardSelect(e, item.id)}
-                    data-selected={selectedId === item.id || undefined}
-                    data-depth={depth || undefined}
-                    data-context={context || undefined}
-                    className={cn(
-                      'grid w-full items-center gap-2 px-3 py-2 text-left text-sm no-underline hover:bg-accent/40',
-                      listCols,
-                      selectedId === item.id && 'bg-accent/60',
-                      // Not a hit, only the entry a hit sits under.
-                      context && 'opacity-50',
-                    )}
-                    style={depth ? { paddingLeft: `${0.75 + depth * 1.25}rem` } : undefined}
-                  >
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      <FormLabel
-                        form={item.form}
-                        index={homonyms.get(item.id)}
-                        className="truncate font-medium"
-                      />
-                      {(comments?.countFor(item.id) ?? 0) > 0 && (
-                        <span
-                          className="inline-flex shrink-0 items-center gap-0.5 text-[10px] tabular-nums text-muted-foreground"
-                          title={`${comments.countFor(item.id)} comment${comments.countFor(item.id) === 1 ? '' : 's'}`}
-                        >
-                          <MessageSquare className="h-3 w-3" />
-                          {comments.countFor(item.id)}
-                        </span>
-                      )}
-                    </span>
-                    {hasGloss && (
-                      <span className="truncate text-xs text-muted-foreground">
-                        {item.metadata?.gloss || ''}
-                      </span>
-                    )}
-                    <span className="text-right text-xs tabular-nums text-muted-foreground">
-                      {offTagsetIds.has(item.id) && (
-                        <span title="A value is outside its tagset">
-                          <AlertTriangle className="mr-1 inline h-3 w-3 text-destructive" />
-                        </span>
-                      )}
-                      {usageCounts ? (usageCounts[item.id] ?? 0) : ''}
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <ListPager {...paged} onPage={setPage} />
-
-        <div className="flex items-center gap-2 border-t p-2">
-          {canManage && (
             <Button
               variant="ghost"
               size="sm"
               className="h-7 flex-1"
-              onClick={() => setBulkOpen(true)}
-            >
-              <Upload className="h-3.5 w-3.5" /> Bulk Add
-            </Button>
-          )}
-          {canManage && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 flex-1"
-              onClick={() => setReplaceOpen(true)}
+              onClick={handleExportTsv}
               disabled={!items.length}
             >
-              <Replace className="h-3.5 w-3.5" /> Replace
+              <Download className="h-3.5 w-3.5" /> Export
             </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 flex-1"
-            onClick={handleExportTsv}
-            disabled={!items.length}
-          >
-            <Download className="h-3.5 w-3.5" /> Export
-          </Button>
-        </div>
-      </div>
-
-      {/* ---- right pane: the entry, its concordance, its comments ---- */}
-      <div className="min-w-0 flex-1">
-        {!selectedId ? (
-          <div className="flex min-h-[24rem] items-center justify-center rounded-lg border border-dashed bg-card/50">
-            <p className="text-sm text-muted-foreground">
-              Select an entry, or click “New” to add one.
-            </p>
           </div>
-        ) : isNew ? (
-          entryEditor
-        ) : (
-          <Tabs value={pane} onValueChange={setPane}>
-            <TabsList className="tw mb-3">
-              <TabsTrigger value="entry" to={paneTo('entry')}>
-                Entry
-              </TabsTrigger>
-              <TabsTrigger value="concordance" to={paneTo('concordance')}>
-                Concordance
-                {concPlan && (
-                  <span className="rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
-                    {concPlan.totalHits.toLocaleString()}
-                  </span>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="comments" to={paneTo('comments')}>
-                Comments
-                {(comments?.countFor(selectedId) ?? 0) > 0 && (
-                  <span className="rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
-                    {comments.countFor(selectedId)}
-                  </span>
-                )}
-              </TabsTrigger>
-            </TabsList>
+        </div>
 
-            <TabsContent value="entry">
-              <div className="flex flex-col gap-4">
-                {entryEditor}
-                {dictionary && !isNew && selectedItem && (
-                  <>
-                    <ExamplesPanel
-                      item={selectedItem}
-                      client={client}
-                      linkedTokenIds={concPlan && !concPlan.truncated ? concPlan.hitIds : null}
-                      canManage={canManage}
-                      onRemove={handleRemoveExample}
-                    />
-                    <ReferencedByPanel
-                      item={selectedItem}
-                      items={items}
-                      fields={fields}
-                      homonyms={homonyms}
-                      itemTo={itemTo}
-                    />
-                  </>
-                )}
-              </div>
-            </TabsContent>
+        {/* ---- right pane: the entry, its concordance, its comments ---- */}
+        <div className="min-w-0 flex-1">
+          {!selectedId ? (
+            <div className="flex min-h-[24rem] items-center justify-center rounded-lg border border-dashed bg-card/50">
+              <p className="text-sm text-muted-foreground">
+                Select an entry, or click “New” to add one.
+              </p>
+            </div>
+          ) : isNew ? (
+            entryEditor
+          ) : (
+            <Tabs value={pane} onValueChange={setPane}>
+              <TabsList className="tw mb-3">
+                <TabsTrigger value="entry" to={paneTo('entry')}>
+                  Entry
+                </TabsTrigger>
+                <TabsTrigger value="concordance" to={paneTo('concordance')}>
+                  Concordance
+                  {concPlan && (
+                    <span className="rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
+                      {concPlan.totalHits.toLocaleString()}
+                    </span>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="comments" to={paneTo('comments')}>
+                  Comments
+                  {(comments?.countFor(selectedId) ?? 0) > 0 && (
+                    <span className="rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
+                      {comments.countFor(selectedId)}
+                    </span>
+                  )}
+                </TabsTrigger>
+              </TabsList>
 
-            <TabsContent value="concordance">
-              {/* concordance */}
-              {!isNew && (
-                <div className="rounded-lg border bg-card">
-                  <div className="flex items-center justify-between border-b px-4 py-2">
-                    <span className="text-sm font-medium">Concordance</span>
-                    {concPlan && (
-                      <span className="text-xs text-muted-foreground">
-                        {concPlan.totalHits.toLocaleString()} use
-                        {concPlan.totalHits === 1 ? '' : 's'} in {concPlan.totalDocs} document
-                        {concPlan.totalDocs === 1 ? '' : 's'}
-                        {concPlan.truncated ? ' (capped)' : ''}
-                      </span>
-                    )}
-                  </div>
+              <TabsContent value="entry">
+                <div className="flex flex-col gap-4">
+                  {entryEditor}
+                  {dictionary && !isNew && selectedItem && (
+                    <>
+                      <ExamplesPanel
+                        item={selectedItem}
+                        client={client}
+                        linkedTokenIds={concPlan && !concPlan.truncated ? concPlan.hitIds : null}
+                        canManage={canManage}
+                        onRemove={handleRemoveExample}
+                      />
+                      <ReferencedByPanel
+                        item={selectedItem}
+                        items={items}
+                        fields={fields}
+                        homonyms={homonyms}
+                        itemTo={itemTo}
+                      />
+                    </>
+                  )}
+                </div>
+              </TabsContent>
 
-                  {concLoading ? (
-                    <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-muted border-t-foreground" />
-                      Loading usage examples…
-                    </div>
-                  ) : concError ? (
-                    <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-                      {concError}
-                    </p>
-                  ) : !concPlan || concPlan.totalHits === 0 ? (
-                    <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-                      Not linked to any words or morphemes yet.
-                    </p>
-                  ) : (
-                    <div className="flex flex-col gap-3 p-3">
-                      {concGroups.map((g) => (
-                        <div key={g.docId} className="overflow-hidden rounded-md border">
-                          <div className="flex items-center gap-2 border-b bg-muted/50 px-3 py-1.5">
-                            <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-                            <span className="text-sm font-medium">{g.docName}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {g.docHits} use{g.docHits === 1 ? '' : 's'}
-                            </span>
-                          </div>
-                          <div className="divide-y">
-                            {g.rows.map((row) => {
-                              // Deep-link the target sentence via query params, so
-                              // the row is an ordinary link: a new tab lands on the
-                              // same sentence.
-                              const tokenId = row.tokenIds?.[0];
-                              const chosen =
-                                !!tokenId &&
-                                (selectedItem?.metadata?.examples || []).some(
-                                  (ex) => ex?.document === g.docId && ex?.token === tokenId,
-                                );
-                              return (
-                                <div key={row.sentenceId} className="group flex items-start">
-                                  <ContextRow
-                                    row={row}
-                                    to={sentenceTo(g.projectId, g.docId, row.sentenceId)}
-                                  />
-                                  {dictionary && canManage && tokenId && (
-                                    <button
-                                      type="button"
-                                      disabled={chosen}
-                                      onClick={() => handleAddExample(g.docId, tokenId)}
-                                      className={cn(
-                                        'mr-2 mt-1.5 inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded border px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:opacity-100',
-                                        chosen
-                                          ? 'opacity-60'
-                                          : 'opacity-0 group-hover:opacity-100 disabled:opacity-30',
-                                      )}
-                                    >
-                                      <Quote className="h-3 w-3" />
-                                      {chosen ? 'Example' : 'Use as example'}
-                                    </button>
-                                  )}
-                                </div>
-                              );
-                            })}
-                            {g.rows.length === 0 && (
-                              <p className="px-3 py-2 text-xs text-muted-foreground">
-                                Uses in this document could not be located (it may have changed).
-                                Open it to look.
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-
-                      {concHasMore && (
-                        <div ref={sentinelRef} className="flex justify-center py-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => loadMoreRef.current()}
-                            disabled={concLoadingMore}
-                          >
-                            {concLoadingMore
-                              ? 'Loading…'
-                              : `Load more (${(concPlan.totalDocs - concLoaded).toLocaleString()} document${concPlan.totalDocs - concLoaded === 1 ? '' : 's'} left)`}
-                          </Button>
-                        </div>
+              <TabsContent value="concordance">
+                {/* concordance */}
+                {!isNew && (
+                  <div className="rounded-lg border bg-card">
+                    <div className="flex items-center justify-between border-b px-4 py-2">
+                      <span className="text-sm font-medium">Concordance</span>
+                      {concPlan && (
+                        <span className="text-xs text-muted-foreground">
+                          {concPlan.totalHits.toLocaleString()} use
+                          {concPlan.totalHits === 1 ? '' : 's'} in {concPlan.totalDocs} document
+                          {concPlan.totalDocs === 1 ? '' : 's'}
+                          {concPlan.truncated ? ' (capped)' : ''}
+                        </span>
                       )}
                     </div>
-                  )}
-                </div>
-              )}
-            </TabsContent>
 
-            <TabsContent value="comments">
-              {/* comments on this entry */}
-              {!isNew && selectedItem && comments && (
-                <div className="rounded-lg border bg-card">
-                  <div className="flex items-center justify-between border-b px-4 py-2">
-                    <span className="text-sm font-medium">Comments</span>
-                    {comments.countFor(selectedItem.id) > 0 && (
-                      <span className="text-xs text-muted-foreground">
-                        {comments.countFor(selectedItem.id)}
-                      </span>
+                    {concLoading ? (
+                      <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-muted border-t-foreground" />
+                        Loading usage examples…
+                      </div>
+                    ) : concError ? (
+                      <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+                        {concError}
+                      </p>
+                    ) : !concPlan || concPlan.totalHits === 0 ? (
+                      <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+                        Not linked to any words or morphemes yet.
+                      </p>
+                    ) : (
+                      <div className="flex flex-col gap-3 p-3">
+                        {concGroups.map((g) => (
+                          <div key={g.docId} className="overflow-hidden rounded-md border">
+                            <div className="flex items-center gap-2 border-b bg-muted/50 px-3 py-1.5">
+                              <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                              <span className="text-sm font-medium">{g.docName}</span>
+                              <span className="text-xs text-muted-foreground">
+                                {g.docHits} use{g.docHits === 1 ? '' : 's'}
+                              </span>
+                            </div>
+                            <div className="divide-y">
+                              {g.rows.map((row) => {
+                                // Deep-link the target sentence via query params, so
+                                // the row is an ordinary link: a new tab lands on the
+                                // same sentence.
+                                const tokenId = row.tokenIds?.[0];
+                                const chosen =
+                                  !!tokenId &&
+                                  (selectedItem?.metadata?.examples || []).some(
+                                    (ex) => ex?.document === g.docId && ex?.token === tokenId,
+                                  );
+                                return (
+                                  <div key={row.sentenceId} className="group flex items-start">
+                                    <ContextRow
+                                      row={row}
+                                      to={sentenceTo(g.projectId, g.docId, row.sentenceId)}
+                                    />
+                                    {dictionary && canManage && tokenId && (
+                                      <button
+                                        type="button"
+                                        disabled={chosen}
+                                        onClick={() => handleAddExample(g.docId, tokenId)}
+                                        className={cn(
+                                          'mr-2 mt-1.5 inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded border px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:opacity-100',
+                                          chosen
+                                            ? 'opacity-60'
+                                            : 'opacity-0 group-hover:opacity-100 disabled:opacity-30',
+                                        )}
+                                      >
+                                        <Quote className="h-3 w-3" />
+                                        {chosen ? 'Example' : 'Use as example'}
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                              {g.rows.length === 0 && (
+                                <p className="px-3 py-2 text-xs text-muted-foreground">
+                                  Uses in this document could not be located (it may have changed).
+                                  Open it to look.
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+
+                        {concHasMore && (
+                          <div ref={sentinelRef} className="flex justify-center py-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => loadMoreRef.current()}
+                              disabled={concLoadingMore}
+                            >
+                              {concLoadingMore
+                                ? 'Loading…'
+                                : `Load more (${(concPlan.totalDocs - concLoaded).toLocaleString()} document${concPlan.totalDocs - concLoaded === 1 ? '' : 's'} left)`}
+                            </Button>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
-                  <div className="px-4 py-3">
-                    <EntryComments
-                      store={comments}
-                      itemId={selectedItem.id}
-                      caption={anchorCaption({
-                        kind: 'entry',
-                        label: selectedItem.form,
-                        detail: hasGloss ? selectedItem.metadata?.gloss || '' : '',
-                      })}
-                      canWrite={canComment}
-                      canDeleteAny={canManage}
-                    />
+                )}
+              </TabsContent>
+
+              <TabsContent value="comments">
+                {/* comments on this entry */}
+                {!isNew && selectedItem && comments && (
+                  <div className="rounded-lg border bg-card">
+                    <div className="flex items-center justify-between border-b px-4 py-2">
+                      <span className="text-sm font-medium">Comments</span>
+                      {comments.countFor(selectedItem.id) > 0 && (
+                        <span className="text-xs text-muted-foreground">
+                          {comments.countFor(selectedItem.id)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="px-4 py-3">
+                      <EntryComments
+                        store={comments}
+                        itemId={selectedItem.id}
+                        caption={anchorCaption({
+                          kind: 'entry',
+                          label: selectedItem.form,
+                          detail: hasGloss ? selectedItem.metadata?.gloss || '' : '',
+                        })}
+                        canWrite={canComment}
+                        canDeleteAny={canManage}
+                      />
+                    </div>
                   </div>
-                </div>
-              )}
-            </TabsContent>
-          </Tabs>
+                )}
+              </TabsContent>
+            </Tabs>
+          )}
+        </div>
+
+        {dictionary && homographs.length > 1 && (
+          <HomographDialog
+            open={homographOpen}
+            onOpenChange={setHomographOpen}
+            group={homographs}
+            currentId={tree.rootOf.get(selectedId)}
+            onReorder={handleHomographOrder}
+          />
         )}
-      </div>
 
-      {dictionary && homographs.length > 1 && (
-        <HomographDialog
-          open={homographOpen}
-          onOpenChange={setHomographOpen}
-          group={homographs}
-          currentId={tree.rootOf.get(selectedId)}
-          onReorder={handleHomographOrder}
+        <BulkAddDialog
+          open={bulkOpen}
+          onOpenChange={setBulkOpen}
+          vocabularyId={vocabularyId}
+          vocabularyName={vocabulary?.name}
+          fields={fields}
+          tagsetFor={tagsetFor}
+          existingItems={items}
+          dictionary={dictionary}
+          client={client}
+          onImported={handleImported}
         />
-      )}
 
-      <BulkAddDialog
-        open={bulkOpen}
-        onOpenChange={setBulkOpen}
-        vocabularyId={vocabularyId}
-        vocabularyName={vocabulary?.name}
-        fields={fields}
-        tagsetFor={tagsetFor}
-        existingItems={items}
-        dictionary={dictionary}
-        client={client}
-        onImported={handleImported}
-      />
+        <ReplaceDialog
+          open={replaceOpen}
+          onOpenChange={setReplaceOpen}
+          vocabularyName={vocabulary?.name}
+          fields={fields}
+          tagsetFor={tagsetFor}
+          items={items}
+          homonyms={homonyms}
+          client={client}
+          onApplied={handleImported}
+        />
 
-      <ReplaceDialog
-        open={replaceOpen}
-        onOpenChange={setReplaceOpen}
-        vocabularyName={vocabulary?.name}
-        fields={fields}
-        tagsetFor={tagsetFor}
-        items={items}
-        homonyms={homonyms}
-        client={client}
-        onApplied={handleImported}
-      />
-
-      {/* Delete confirmation */}
-      <AlertDialog
-        open={deleteOpen}
-        onOpenChange={(o) => {
-          if (!o) setDeleteOpen(false);
-        }}
-      >
-        <AlertDialogContent className="max-w-md">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete entry</AlertDialogTitle>
-          </AlertDialogHeader>
-          <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
-            <div className="flex items-start gap-2">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-              <div className="text-sm">
-                <p className="font-medium text-destructive">Warning</p>
-                <p className="mt-1 text-muted-foreground">
-                  You are about to permanently delete the entry{' '}
-                  <strong>"{selectedItem?.form}"</strong>.
-                </p>
-                <p className="mt-1 text-muted-foreground">
-                  {usageCounts && (usageCounts[selectedItem?.id] ?? 0) > 0 ? (
-                    <>
-                      It is linked to{' '}
-                      <strong>
-                        {usageCounts[selectedItem.id]} word
-                        {usageCounts[selectedItem.id] === 1 ? '' : 's'}/morpheme
-                        {usageCounts[selectedItem.id] === 1 ? '' : 's'}
-                      </strong>
-                      . Those links will be removed.{' '}
-                    </>
-                  ) : null}
-                  {deleteRefPatches.length > 0 && (
-                    <>
-                      <strong>
-                        {deleteRefPatches.length} entr{deleteRefPatches.length === 1 ? 'y' : 'ies'}
-                      </strong>{' '}
-                      refer to it. Its senses become entries of their own, and references to it are
-                      removed.{' '}
-                    </>
-                  )}
-                  This action cannot be undone.
-                </p>
+        {/* Delete confirmation */}
+        <AlertDialog
+          open={deleteOpen}
+          onOpenChange={(o) => {
+            if (!o) setDeleteOpen(false);
+          }}
+        >
+          <AlertDialogContent className="max-w-md">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete entry</AlertDialogTitle>
+            </AlertDialogHeader>
+            <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                <div className="text-sm">
+                  <p className="font-medium text-destructive">Warning</p>
+                  <p className="mt-1 text-muted-foreground">
+                    You are about to permanently delete the entry{' '}
+                    <strong>"{selectedItem?.form}"</strong>.
+                  </p>
+                  <p className="mt-1 text-muted-foreground">
+                    {usageCounts && (usageCounts[selectedItem?.id] ?? 0) > 0 ? (
+                      <>
+                        It is linked to{' '}
+                        <strong>
+                          {usageCounts[selectedItem.id]} word
+                          {usageCounts[selectedItem.id] === 1 ? '' : 's'}/morpheme
+                          {usageCounts[selectedItem.id] === 1 ? '' : 's'}
+                        </strong>
+                        . Those links will be removed.{' '}
+                      </>
+                    ) : null}
+                    {deleteRefPatches.length > 0 && (
+                      <>
+                        <strong>
+                          {deleteRefPatches.length} entr
+                          {deleteRefPatches.length === 1 ? 'y' : 'ies'}
+                        </strong>{' '}
+                        refer to it. Its senses become entries of their own, and references to it
+                        are removed.{' '}
+                      </>
+                    )}
+                    This action cannot be undone.
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setDeleteOpen(false)}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={handleConfirmDelete}
-            >
-              <Trash2 className="h-4 w-4" /> Delete entry
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setDeleteOpen(false)}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={handleConfirmDelete}
+              >
+                <Trash2 className="h-4 w-4" /> Delete entry
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
-      {/* Discard-unsaved-changes confirmation */}
-      <AlertDialog
-        open={discardOpen}
-        onOpenChange={(o) => {
-          if (!o) {
-            setDiscardOpen(false);
-            setPendingTarget(null);
-          }
-        }}
-      >
-        <AlertDialogContent className="max-w-md">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
-          </AlertDialogHeader>
-          <p className="text-sm text-muted-foreground">
-            You have unsaved edits to <strong>"{editForm || selectedItem?.form}"</strong>. Switching
-            away will discard them.
-          </p>
-          <AlertDialogFooter>
-            <AlertDialogCancel
-              onClick={() => {
-                setDiscardOpen(false);
-                setPendingTarget(null);
-              }}
-            >
-              Keep editing
-            </AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => {
-                goItem(pendingTarget);
-                setDiscardOpen(false);
-                setPendingTarget(null);
-              }}
-            >
-              Discard changes
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+        {/* Discard-unsaved-changes confirmation */}
+        <AlertDialog
+          open={discardOpen}
+          onOpenChange={(o) => {
+            if (!o) {
+              setDiscardOpen(false);
+              setPendingTarget(null);
+            }
+          }}
+        >
+          <AlertDialogContent className="max-w-md">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
+            </AlertDialogHeader>
+            <p className="text-sm text-muted-foreground">
+              You have unsaved edits to <strong>"{editForm || selectedItem?.form}"</strong>.
+              Switching away will discard them.
+            </p>
+            <AlertDialogFooter>
+              <AlertDialogCancel
+                onClick={() => {
+                  setDiscardOpen(false);
+                  setPendingTarget(null);
+                }}
+              >
+                Keep editing
+              </AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => {
+                  goItem(pendingTarget?.id ?? null, undefined, pendingTarget?.parent ?? null);
+                  setDiscardOpen(false);
+                  setPendingTarget(null);
+                }}
+              >
+                Discard changes
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    </NavGuardProvider>
   );
 };

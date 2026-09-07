@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Link } from 'react-router-dom';
 import { ChevronDown, ChevronRight, CornerLeftUp, X, FileText, Plus } from 'lucide-react';
@@ -22,15 +22,31 @@ import { FormLabel } from './FormLabel';
 // refers to it, and its examples. All of them only mount when the
 // vocabulary's Dictionary switch is on.
 
+/**
+ * The guard the entry list puts on its own rows, as `{select, newSense}`: a
+ * plain click that would discard an unsaved draft asks first. Every link here
+ * opens another entry the same way the list does, so they take the guard from
+ * context rather than through five levels of props.
+ */
+const NavGuardContext = createContext(null);
+export const NavGuardProvider = NavGuardContext.Provider;
+
 /** An entry named inline as a link to it: form, subscript, gloss. */
-const ItemLink = ({ item, homonyms, itemTo, className }) => (
-  <Link to={itemTo(item.id)} className={cn('no-underline hover:underline', className)}>
-    <FormLabel form={item.form} index={homonyms?.get(item.id)} className="font-medium" />
-    {item.metadata?.gloss ? (
-      <span className="ml-1 text-xs text-muted-foreground">{String(item.metadata.gloss)}</span>
-    ) : null}
-  </Link>
-);
+const ItemLink = ({ item, homonyms, itemTo, className }) => {
+  const guard = useContext(NavGuardContext);
+  return (
+    <Link
+      to={itemTo(item.id)}
+      onClick={(e) => guard?.select?.(e, item.id)}
+      className={cn('no-underline hover:underline', className)}
+    >
+      <FormLabel form={item.form} index={homonyms?.get(item.id)} className="font-medium" />
+      {item.metadata?.gloss ? (
+        <span className="ml-1 text-xs text-muted-foreground">{String(item.metadata.gloss)}</span>
+      ) : null}
+    </Link>
+  );
+};
 
 const Chip = ({ children, onRemove, disabled }) => (
   <span className="inline-flex max-w-full items-center gap-1 rounded border bg-muted/40 px-1.5 py-0.5 text-sm">
@@ -123,6 +139,7 @@ export const EntryPlace = ({
   // Which item the picker is choosing a parent for: this one (the lone
   // entry's link) or one dropped on Another entry.
   const [pickFor, setPickFor] = useState(null);
+  const guard = useContext(NavGuardContext);
   const parentId = tree.parentOf.get(item.id);
   const parent = parentId ? tree.byId.get(parentId) : null;
   const number = tree.numberOf.get(item.id);
@@ -201,6 +218,7 @@ export const EntryPlace = ({
         {canManage && (
           <Link
             to={newSenseTo(item.id)}
+            onClick={(e) => guard?.newSense?.(e, item.id)}
             className="inline-flex items-center gap-1 text-primary no-underline hover:underline"
           >
             <Plus className="h-3 w-3" /> Add sense
