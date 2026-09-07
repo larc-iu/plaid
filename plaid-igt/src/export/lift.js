@@ -298,14 +298,18 @@ function senseXml(indent, item, ctx, index, tag = 'sense', children = []) {
 }
 
 /**
- * An entry's LIFT id: its headword and the FLEx guid it came from, else its
- * item id. Same formula in `assignLiftIds`.
+ * An entry's LIFT id: its headword and the id of the item it is. The FLEx
+ * guid is NOT used here, though it is the obvious candidate: a lexicon
+ * imported without Lexicography Mode has one item per FLEx SENSE, so several
+ * entries share a guid and would share an id, which LIFT does not allow. The
+ * guid still rides on the entry's `guid` attribute, which is what a FLEx
+ * re-import merges on. Same formula in `assignLiftIds`.
  */
 function entryIdOf(group) {
   const meta = group.head.metadata || {};
   const citation = scalar(group.head.form) ?? '';
   const headword = scalar(meta.lexemeForm) ?? citation;
-  return `${citation || headword}_${scalar(meta.flexEntry) ?? group.head.id ?? group.key}`;
+  return `${citation || headword}_${group.head.id ?? group.key}`;
 }
 
 /**

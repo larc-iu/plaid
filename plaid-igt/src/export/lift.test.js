@@ -113,11 +113,33 @@ describe('buildLiftLexicon', () => {
     const dom = parse(build().lift);
     const entry = dom.querySelector('entry[guid="E1"]');
     expect(entry).not.toBeNull();
-    expect(entry.getAttribute('id')).toBe('ktab_E1');
+    expect(entry.getAttribute('id')).toBe('ktab_i1');
     expect(entry.querySelectorAll('sense').length).toBe(2);
     expect([...entry.querySelectorAll('sense')].map((s) => s.getAttribute('id'))).toEqual([
       'S1',
       'S2',
+    ]);
+  });
+
+  it('gives every entry its own id, even when they came from one FLEx entry', () => {
+    // Imported without Lexicography Mode, each FLEx sense is its own entry and
+    // they all carry the same guid. Sharing an id would make the file invalid.
+    const { lift } = build([
+      {
+        id: 'v1',
+        items: [
+          item('a', 'kat', { gloss: 'cat', flexEntry: 'E1', flexSense: 'S1' }),
+          item('b', 'kat', { gloss: 'lion', flexEntry: 'E1', flexSense: 'S2' }),
+        ],
+      },
+    ]);
+    const ids = [...parse(lift).querySelectorAll('entry')].map((e) => e.getAttribute('id'));
+    expect(ids).toEqual(['kat_a', 'kat_b']);
+    expect(new Set(ids).size).toBe(2);
+    // The guid, which is what a FLEx re-import merges on, is untouched.
+    expect([...parse(lift).querySelectorAll('entry')].map((e) => e.getAttribute('guid'))).toEqual([
+      'E1',
+      'E1',
     ]);
   });
 
