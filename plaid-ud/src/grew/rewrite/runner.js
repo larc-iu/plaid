@@ -65,7 +65,7 @@ export async function planRewrite(client, { project, user, layerInfo, grs }, onP
     const doc = await ConlluDocument.load(client, projectId, docId, { project, user });
     done += 1;
     docs.set(docId, doc);
-    const docName = doc.document?.name || doc._raw?.name || docId;
+    const docName = doc.name || docId;
     doc.sentences.forEach((row, sentenceIndex) => {
       const before = graphFromSentence(row);
       const base = { id: row.id, docId, docName, sentenceIndex, text: row.text };

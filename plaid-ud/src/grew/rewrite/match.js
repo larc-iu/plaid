@@ -207,7 +207,7 @@ const uniq = (arr) => {
 function runClauses(ctx, ready, nodes, edges, k) {
   const plain = ready.filter((it) => it.kind !== 'edge');
   const edgeClauses = ready.filter((it) => it.kind === 'edge');
-  for (const it of plain) if (!checkClause(ctx, it, nodes, edges)) return;
+  for (const it of plain) if (!checkClause(ctx, it, nodes)) return;
   const go = (j, edgesB) => {
     if (j === edgeClauses.length) return k(edgesB);
     const it = edgeClauses[j];
@@ -244,7 +244,7 @@ function hasExtension(ctx, items, nodes, edges) {
 
 // --- clause predicates ---
 
-function checkClause(ctx, item, nodes, edges) {
+function checkClause(ctx, item, nodes) {
   const g = ctx.graph;
   const node = (v) => g.nodes.get(nodes.get(v));
   switch (item.kind) {

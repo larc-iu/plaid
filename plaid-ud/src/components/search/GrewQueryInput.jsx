@@ -6,7 +6,7 @@ import { highlightGrew } from './grewSyntax.js';
 // The query editor: a syntax-highlighted code box (react-simple-code-editor +
 // our tolerant Grew highlighter) + Run, plus an inline error panel. Parse/
 // compile errors render here with a caret; server errors render as a message.
-export const GrewQueryInput = ({ value, onChange, onRun, running, error }) => {
+export const GrewQueryInput = ({ value, onChange, onRun, running, error, action = 'Search' }) => {
   const onKeyDown = (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
@@ -44,7 +44,7 @@ export const GrewQueryInput = ({ value, onChange, onRun, running, error }) => {
       </Box>
       <Group justify="space-between">
         <Button onClick={onRun} loading={running} leftSection={<IconSearch size={16} />}>
-          Search
+          {action}
         </Button>
       </Group>
       {error && <QueryError error={error} />}
@@ -59,7 +59,9 @@ function QueryError({ error }) {
       ? `Syntax error${error.line ? ` (line ${error.line})` : ''}`
       : isUnsupported
         ? 'Unsupported feature'
-        : 'Search failed';
+        : error.name === 'GrewRuntimeError'
+          ? `Rule error${error.line ? ` (line ${error.line})` : ''}`
+          : 'Search failed';
   return (
     <Alert
       color={isUnsupported ? 'yellow' : 'red'}
