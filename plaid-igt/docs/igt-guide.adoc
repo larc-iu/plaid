@@ -386,7 +386,8 @@ Deleting an entry frees its senses, which become entries of their own, and clear
 Merging entries with **Bulk Edit** points those references at the surviving entry.
 
 A vocabulary added while setting up a new project can start as a dictionary: tick **Lexicography Mode** under the name.
-An imported lexicon starts as one unless you untick it on the review screen.
+An imported lexicon is always one, since a FLEx or CLDF lexicon is entries with senses and there is no honest way to keep that flat.
+Adding entries to a lexicon you already maintain leaves it in whatever mode it is in, since a vocabulary is shared and the mode is shared with it.
 A FLEx import also keeps the sense structure of the lexicon: an entry with several senses becomes an entry with them under it, numbered as FLEx numbered them, and an entry with one sense is that sense.
 A CLDF import does the same with its entry and sense tables.
 FLEx's variants and complex forms come in when you tick **Variants and complex forms** on the review screen: a variant gets a *variantOf* field naming what it varies, a complex form a *components* field naming what it is built from, and each keeps FLEx's name for the relation (*Spelling Variant*, *Compound*) beside it.

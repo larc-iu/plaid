@@ -50,9 +50,6 @@ export const ImportCldfProject = () => {
   const [dataset, setDataset] = useState(null);
   const [options, setOptions] = useState(null);
   const [projectName, setProjectName] = useState('');
-  // The lexicon becomes a dictionary (senses, references, examples, a
-  // status). On unless unticked: an imported lexicon is one.
-  const [dictionary, setDictionary] = useState(true);
   const [progress, setProgress] = useState(null);
   const [runError, setRunError] = useState(null);
   const [results, setResults] = useState(null);
@@ -101,7 +98,7 @@ export const ImportCldfProject = () => {
           client,
           isNewProject: true,
           resumeProjectId: projectIdRef.current,
-          setupData: deriveSetupData(build, projectName.trim(), { dictionary }),
+          setupData: deriveSetupData(build, projectName.trim()),
           onProgress: (pct, msg) => setProgress({ label: msg, pct: pct * 0.15 }),
           onProjectCreated: (id) => {
             projectIdRef.current = id;
@@ -259,22 +256,11 @@ export const ImportCldfProject = () => {
                 </p>
               )}
               {build.lexicon.length > 0 && (
-                <label className="mt-2 flex cursor-pointer items-start gap-2 border-t pt-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5"
-                    checked={dictionary}
-                    disabled={stage !== 'review'}
-                    onChange={(e) => setDictionary(e.target.checked)}
-                  />
-                  <span>
-                    Lexicography Mode
-                    <span className="block text-xs text-muted-foreground">
-                      Entries can be grouped into senses, refer to each other, have highlighted
-                      usage examples, and track publication status.
-                    </span>
-                  </span>
-                </label>
+                <p className="mt-2 border-t pt-2 text-xs text-muted-foreground">
+                  Each entry keeps its senses. The lexicon is in Lexicography Mode: entries can be
+                  grouped into senses, refer to each other, have highlighted usage examples, and
+                  track publication status.
+                </p>
               )}
               {build.languages.object && (
                 <p className="mt-2 border-t pt-2 text-xs text-muted-foreground">

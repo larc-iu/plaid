@@ -9,7 +9,7 @@
 // against the same project; the engine skips documents already marked done
 // and redoes half-imported ones.
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Upload, FileUp, Check, X, RefreshCw, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -52,7 +52,7 @@ export const ImportFlexProject = () => {
   const [lexiconMode, setLexiconMode] = useState('new'); // new | existing
   // Keep FLEx's sense structure and turn the vocabulary's Dictionary switch
   // on. On unless unticked: a FLEx lexicon is a dictionary.
-  const [importDictionary, setImportDictionary] = useState(true);
+
   // Variants and complex forms are references between entries, so they need
   // Lexicography Mode. Off unless asked for.
   const [importVariants, setImportVariants] = useState(false);
@@ -155,16 +155,14 @@ export const ImportFlexProject = () => {
   const defaultLexiconName = `${projectName.trim()} Lexicon`;
   const effectiveLexiconName = lexiconName ?? defaultLexiconName;
   const existingVocab = existingVocabs.find((v) => v.id === existingVocabId) ?? null;
-  // A lexicon of its own starts as a dictionary; an existing one keeps whatever
-  // it already is, since a vocabulary is shared across projects and this import
-  // is not the place to change that for all of them by default.
-  useEffect(() => {
-    if (lexiconMode === 'existing' && existingVocab) {
-      setImportDictionary(readDictionaryEnabled(existingVocab.config));
-    } else if (lexiconMode === 'new') {
-      setImportDictionary(true);
-    }
-  }, [lexiconMode, existingVocab]);
+  // A FLEx lexicon IS a dictionary: entries with senses under them, which is
+  // the only shape that keeps what the file says. A lexicon of its own is
+  // therefore always imported in Lexicography Mode, with no question asked.
+  // An existing lexicon keeps the mode it is in: a vocabulary is shared across
+  // projects, and turning the mode on for one import turns it on for all of
+  // them. Adding to a flat lexicon still lands flat, as it always did.
+  const importDictionary =
+    lexiconMode === 'existing' ? readDictionaryEnabled(existingVocab?.config) : true;
   const lexiconChoiceValid =
     lexiconMode === 'existing' ? !!existingVocab : !!effectiveLexiconName.trim();
 
@@ -503,25 +501,15 @@ export const ImportFlexProject = () => {
                     </p>
                   </div>
                 )}
-                <label className="mt-1 flex cursor-pointer items-start gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5"
-                    checked={importDictionary}
-                    disabled={locked}
-                    onChange={(e) => setImportDictionary(e.target.checked)}
-                  />
-                  <span>
-                    Lexicography Mode
-                    <span className="block text-xs text-muted-foreground">
-                      Senses are kept under their entry, in FLEx order. Entries can be grouped into
-                      senses, refer to each other, have highlighted usage examples, and track
-                      publication status.
-                    </span>
-                  </span>
-                </label>
+                {importDictionary && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Senses are kept under their entry, in FLEx order. The lexicon is in Lexicography
+                    Mode: entries can be grouped into senses, refer to each other, have highlighted
+                    usage examples, and track publication status.
+                  </p>
+                )}
                 {importDictionary && variantEntryCount > 0 && (
-                  <label className="ml-6 flex cursor-pointer items-start gap-2 text-sm">
+                  <label className="flex cursor-pointer items-start gap-2 text-sm">
                     <input
                       type="checkbox"
                       className="mt-0.5"

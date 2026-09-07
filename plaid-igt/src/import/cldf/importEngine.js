@@ -49,9 +49,11 @@ async function bulkInChunks(items, check, send) {
 }
 
 /**
- * The setup-wizard input derived from a build. `dictionary` (default on: an
- * imported lexicon is a dictionary) sets the vocabulary up as one, see
- * executeSetup.
+ * The setup-wizard input derived from a build. The vocabulary is always set up
+ * as a dictionary (see executeSetup): a CLDF lexicon is entries with senses,
+ * and importing it flat throws that away and leaves several entries carrying
+ * one headword with nothing to tell them apart. `dictionary` stays an argument
+ * for a test that wants the flat shape.
  */
 export function deriveSetupData(
   build,
