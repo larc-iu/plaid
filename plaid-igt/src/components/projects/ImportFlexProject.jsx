@@ -232,14 +232,12 @@ export const ImportFlexProject = () => {
             : (setup.resources.vocabularies?.[0]?.id ?? null);
         setupDoneRef.current = true;
       }
-      // The project is now filling. The record is removed when this run
-      // finishes, so a cancelled or lost import is visible on the project.
-      await markImportStarted(client, projectIdRef.current, 'FLEx', parsed.backupName);
-
-      // Resolve the lexicon vocab (a resume has no setup resources). The
-      // record names it, because the name this screen would compute comes from
-      // the backup's file name and a run that renamed the project or the
-      // lexicon left nothing here that matches it.
+      // Resolve the lexicon vocab BEFORE the record is written, since writing
+      // it replaces the whole value: reading afterwards would only ever find
+      // the empty vocabId this run had just put there. A resume has no setup
+      // resources, and the name this screen computes comes from the backup's
+      // file name, which a run that renamed the project or the lexicon leaves
+      // nothing matching, so the record is what names it.
       if (!vocabIdRef.current) {
         const project = await client.projects.get(projectIdRef.current);
         vocabIdRef.current =
@@ -249,8 +247,10 @@ export const ImportFlexProject = () => {
               (project.vocabs || []).find((v) => v.name === vocabName)?.id ??
               null);
       }
-      if (!vocabIdRef.current) throw new Error('Lexicon vocabulary missing after setup');
-      // Now that it is known, so a resume does not have to find it again.
+      // The project is now filling. The record is removed when this run
+      // finishes, so a cancelled or lost import is visible on the project, and
+      // it is written even when the lexicon could not be found, so a project
+      // left half set up is still flagged.
       await markImportStarted(
         client,
         projectIdRef.current,
@@ -258,6 +258,7 @@ export const ImportFlexProject = () => {
         parsed.backupName,
         vocabIdRef.current,
       );
+      if (!vocabIdRef.current) throw new Error('Lexicon vocabulary missing after setup');
 
       // 2. Lexicon + documents via the import engine.
       const totalDocs = filteredBuild.documents.length;
