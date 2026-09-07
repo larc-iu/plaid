@@ -16,18 +16,34 @@ const CONLLU = [
 ].join('\n');
 
 // A recording client: every write lands in `calls` (and in the open batch,
-// whose submit hands back a fresh id per op, as the server would).
-function stubClient(raw) {
+// whose submit hands back a fresh id per op, as the server would). Strict
+// mode is recorded too; a batch for `failOn` is refused with a 409, as the
+// server refuses a stale document version.
+function stubClient(...raws) {
   const c = {
     calls: [],
-    query: async () => ({ results: [[raw.id, 1]] }),
-    documents: { get: async () => structuredClone(raw) },
-    projects: { listDocuments: async () => [{ id: raw.id }] },
+    strict: [],
+    failOn: null,
+    query: async () => ({ results: raws.map((r) => [r.id, 1]) }),
+    documents: { get: async (id) => structuredClone(raws.find((r) => r.id === id)) },
+    projects: { listDocuments: async () => raws.map((r) => ({ id: r.id })) },
+    enterStrictMode: (id) => {
+      c.strict.push(['enter', id]);
+      c._strictDoc = id;
+    },
+    exitStrictMode: () => {
+      c.strict.push(['exit']);
+      c._strictDoc = null;
+    },
     beginBatch: () => {
       c._batch = [];
     },
-    submitBatch: async () =>
-      c._batch.map((call, i) => ({ status: 200, body: { id: `${call.op}-${i}` } })),
+    submitBatch: async () => {
+      if (c._strictDoc && c._strictDoc === c.failOn) {
+        throw Object.assign(new Error('document version mismatch'), { status: 409 });
+      }
+      return c._batch.map((call, i) => ({ status: 200, body: { id: `${call.op}-${i}` } }));
+    },
   };
   const rec =
     (op) =>
@@ -90,6 +106,7 @@ test('plan: one row per rewritten sentence, with change lines and counts', async
   );
   assert.equal(row.error, null);
   assert.deepEqual(progress, ['Loading document 1 of 1…', '']);
+
   assert.equal(client.calls.length, 0); // planning writes nothing
 });
 
@@ -107,7 +124,9 @@ test('apply: updates carry the verifier stamp, all under one operation', async (
   const grs = parseGrs('pattern { X [upos=DET] } commands { X.upos = PRON }');
   const plan = await planRewrite(client, { project, user: null, layerInfo, grs });
   const out = await applyRewrite(client, { rows: plan.rows, docs: plan.docs, label: 'Rewrite' });
-  assert.deepEqual(out, { docsChanged: 1, sentencesChanged: 1 });
+  assert.deepEqual(out, { docsChanged: 1, sentencesChanged: 1, failed: null });
+  // Every document is written in strict mode, and strict mode is left after.
+  assert.deepEqual(client.strict, [['enter', 'doc1-id'], ['exit']]);
   assert.deepEqual(
     client.calls.map((c) => c.op),
     ['spans.update', 'spans.update', 'spans.patchMetadata'],
@@ -141,4 +160,39 @@ test('apply: phases in order — token deletes, lemma creates, then relations on
   // The surface token of a one-word token is what gets deleted.
   const theWord = plan.rows[0].nodes.get([...plan.rows[0].nodes.keys()][0]);
   assert.equal(client.calls[0].args[0], theWord.wordId);
+});
+
+test('apply: a document changed since the preview stops the run after the ones before it', async () => {
+  const raw1 = rawDocFromConllu(CONLLU, 'doc1');
+  const raw2 = rawDocFromConllu(CONLLU, 'doc2');
+  const client = stubClient(raw1, raw2);
+  const project = {
+    id: 'p1',
+    name: 'P',
+    maintainers: [],
+    writers: [],
+    readers: [],
+    textLayers: raw1.textLayers,
+  };
+  const grs = parseGrs('pattern { X [upos=DET] } commands { X.upos = PRON }');
+  const plan = await planRewrite(client, {
+    project,
+    user: null,
+    layerInfo: getUdLayerInfo(raw1),
+    grs,
+  });
+  assert.equal(plan.rows.length, 2);
+  client.failOn = 'doc2-id';
+  const out = await applyRewrite(client, { rows: plan.rows, docs: plan.docs, label: 'Rewrite' });
+  assert.equal(out.docsChanged, 1);
+  assert.equal(out.sentencesChanged, 1);
+  assert.deepEqual(out.failed, {
+    docId: 'doc2-id',
+    docName: 'doc2',
+    status: 409,
+    message: 'document version mismatch',
+  });
+  assert.deepEqual(client.strict, [['enter', 'doc1-id'], ['exit'], ['enter', 'doc2-id'], ['exit']]);
+  // The operation was still closed.
+  assert.equal(client.operationGroup, null);
 });

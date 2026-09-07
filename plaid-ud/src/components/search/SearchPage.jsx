@@ -152,9 +152,13 @@ export const SearchPage = () => {
         { rows, docs: plan.docs, label: `Rewrite: ${names}` },
         setProgress,
       );
-      notifySuccess(
-        `Changed ${out.sentencesChanged} sentence${out.sentencesChanged === 1 ? '' : 's'} in ${out.docsChanged} document${out.docsChanged === 1 ? '' : 's'}.`,
-      );
+      const applied = `${out.sentencesChanged} sentence${out.sentencesChanged === 1 ? '' : 's'} in ${out.docsChanged} document${out.docsChanged === 1 ? '' : 's'}`;
+      if (out.failed) {
+        const why = out.failed.status === 409 ? 'it changed since the preview' : out.failed.message;
+        notifyError(`Stopped at ${out.failed.docName}: ${why}. Applied to ${applied}.`);
+      } else {
+        notifySuccess(`Changed ${applied}.`);
+      }
       // Show what the rules would still change now that these are applied.
       await runPreview();
     } catch (err) {

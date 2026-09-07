@@ -143,8 +143,13 @@ const chunk = (arr, n) => {
   return out;
 };
 
-// Apply the selected rows, document by document, under one operation.
-// Returns { docsChanged, sentencesChanged }.
+// Apply the selected rows, document by document, under one operation. Each
+// document is written in the client's strict mode, so every batch carries the
+// document version the preview loaded: a document someone changed since then
+// is refused by the server (409) before anything in it is touched. The run
+// stops at the first document that fails; the ones before it stay applied.
+// Returns { docsChanged, sentencesChanged, failed }, where `failed` is
+// { docId, docName, status, message } or null.
 export async function applyRewrite(client, { rows, docs, label }, onProgress) {
   const byDoc = new Map();
   for (const r of rows) {
@@ -152,12 +157,25 @@ export async function applyRewrite(client, { rows, docs, label }, onProgress) {
     if (!byDoc.has(r.docId)) byDoc.set(r.docId, []);
     byDoc.get(r.docId).push(r);
   }
-  const out = { docsChanged: 0, sentencesChanged: 0 };
+  const out = { docsChanged: 0, sentencesChanged: 0, failed: null };
   let done = 0;
   await client.withOperation(label, async () => {
     for (const [docId, docRows] of byDoc) {
       onProgress?.(`Applying to document ${done + 1} of ${byDoc.size}…`);
-      await applyToDocument(client, docs.get(docId), docRows);
+      client.enterStrictMode(docId);
+      try {
+        await applyToDocument(client, docs.get(docId), docRows);
+      } catch (e) {
+        out.failed = {
+          docId,
+          docName: docRows[0].docName,
+          status: e?.status ?? null,
+          message: e?.message || String(e),
+        };
+        break;
+      } finally {
+        client.exitStrictMode();
+      }
       done += 1;
       out.docsChanged += 1;
       out.sentencesChanged += docRows.length;
