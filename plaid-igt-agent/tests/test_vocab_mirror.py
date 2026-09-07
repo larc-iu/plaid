@@ -93,6 +93,10 @@ def _case(seed: int) -> dict:
             meta['homograph'] = r.choice([1, 2, 3, 0, -1, '2', 'x', None, 2.0])
         if r.random() < 0.4:
             meta['syn'] = r.choice(ids + ['gone', i, 5, None])
+        if r.random() < 0.25:
+            # A list where one reference is expected: what a field narrowed
+            # from Entries to Entry leaves behind.
+            meta['syn'] = r.sample(ids + ['gone'], r.randint(1, min(3, len(ids) + 1)))
         if r.random() < 0.4:
             meta['rel'] = r.sample(ids + ['gone', i], r.randint(1, min(3, len(ids) + 2)))
         if r.random() < 0.3:

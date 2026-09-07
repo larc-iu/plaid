@@ -985,7 +985,7 @@ export const VocabularyItems = ({
         <Label htmlFor={fieldId} className="text-xs font-medium text-muted-foreground">
           {label}
         </Label>
-        {dictionary && field.type === FIELD_TYPES.ITEM ? (
+        {field.type === FIELD_TYPES.ITEM ? (
           <ItemRefField
             id={fieldId}
             field={field}

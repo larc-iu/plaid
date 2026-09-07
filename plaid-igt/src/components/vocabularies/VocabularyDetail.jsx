@@ -38,7 +38,7 @@ import {
 } from '@/domain/vocabFields';
 import {
   readDictionaryEnabled,
-  validateVocabRefs,
+  refIds,
   DICTIONARY_KEY,
   dictionaryEnablement,
 } from '@/domain/vocabDictionary';
@@ -75,6 +75,7 @@ const TYPE_CHOICES = [
 ];
 const typeChoiceOf = (field) =>
   field.type === FIELD_TYPES.ITEM ? (field.many ? 'items' : 'item') : 'text';
+const FIELD_CLEAR_CHUNK = 100;
 
 export const VocabularyDetail = () => {
   const { vocabularyId } = useParams();
@@ -367,24 +368,57 @@ export const VocabularyDetail = () => {
   // What a field holds. A reference field has no tagset (its values are
   // entries), so switching to one lets the tagset go.
   /**
-   * How many entries would lose their value in `fieldName` under `nextFields`.
-   * A value an Entry field cannot hold (text, or a list where one reference is
-   * expected) is cleared by the vocabulary's load-time repair, so the count
-   * comes from that same check rather than a second reading of the rule.
+   * What changing `fieldName` to its type in `nextFields` would cost, as
+   * `{cleared, trimmed}`: entries whose value goes altogether, and entries
+   * holding more references than a single-reference field keeps.
+   *
+   * Widening one reference to many, and narrowing a single-valued list back,
+   * cost nothing: the ids survive the reshape (see `refIds`).
    */
-  const countClearedValues = async (fieldName, nextFields) => {
+  const countTypeChangeLoss = async (fieldName, nextFields) => {
     const { items = [] } = await client.vocabLayers.get(vocabularyId, true);
-    const byId = new Map(items.map((it) => [it.id, it]));
-    const { patches } = validateVocabRefs(items, nextFields);
-    return patches.filter((p) => {
-      const before = byId.get(p.id)?.metadata?.[fieldName];
-      return before != null && before !== '' && p.metadata[fieldName] == null;
-    }).length;
+    const live = new Set(items.map((it) => it.id));
+    const after = nextFields.find((f) => f.name === fieldName);
+    let cleared = 0;
+    let trimmed = 0;
+    for (const it of items) {
+      const raw = it.metadata?.[fieldName];
+      if (raw == null || raw === '') continue;
+      if (after.type !== FIELD_TYPES.ITEM) {
+        cleared += 1;
+        continue;
+      }
+      const ids = refIds(it, after).filter((x) => x !== it.id && live.has(x));
+      if (!ids.length) cleared += 1;
+      else if (!after.many && ids.length > 1) trimmed += 1;
+    }
+    return { cleared, trimmed };
+  };
+
+  /** Drop `fieldName` from every entry holding it. */
+  const clearFieldValues = async (fieldName, label) => {
+    const { items = [] } = await client.vocabLayers.get(vocabularyId, true);
+    const holders = items.filter((it) => it.metadata?.[fieldName] != null);
+    if (!holders.length) return;
+    await client.withOperation(`Clear "${label}"`, async () => {
+      for (let i = 0; i < holders.length; i += FIELD_CLEAR_CHUNK) {
+        const chunk = holders.slice(i, i + FIELD_CLEAR_CHUNK);
+        await client.batched(async () => {
+          for (const it of chunk) {
+            const rest = { ...it.metadata };
+            delete rest[fieldName];
+            if (Object.keys(rest).length) client.vocabItems.setMetadata(it.id, rest);
+            else client.vocabItems.deleteMetadata(it.id);
+          }
+        });
+      }
+    });
   };
 
   const handleSetType = async (fieldName, key) => {
     const choice = TYPE_CHOICES.find((c) => c.key === key);
     if (!choice) return;
+    const before = fields.find((f) => f.name === fieldName);
     const next = fields.map((f) =>
       f.name === fieldName
         ? {
@@ -395,27 +429,49 @@ export const VocabularyDetail = () => {
           }
         : f,
     );
-    if (choice.type === FIELD_TYPES.ITEM && !isNewVocabulary) {
-      let lost = 0;
+    // Both directions are asked about: values an Entry field cannot hold go,
+    // and so do the entry references a Text field cannot hold.
+    const touchesRefs = choice.type === FIELD_TYPES.ITEM || before?.type === FIELD_TYPES.ITEM;
+    if (touchesRefs && !isNewVocabulary) {
+      let cost = { cleared: 0, trimmed: 0 };
       try {
-        lost = await countClearedValues(fieldName, next);
+        cost = await countTypeChangeLoss(fieldName, next);
       } catch (err) {
         console.error('Error reading entries before a field type change:', err);
         notifyError('The entries could not be read.', 'Not changed');
         return;
       }
+      const label = fieldLabel(before ?? { name: fieldName });
+      const lines = [];
+      if (cost.cleared)
+        lines.push(
+          `${cost.cleared} ${cost.cleared === 1 ? 'entry holds a value' : 'entries hold values'} in ${label} that ${choice.label} cannot hold.`,
+        );
+      if (cost.trimmed)
+        lines.push(
+          `${cost.trimmed} ${cost.trimmed === 1 ? 'entry holds' : 'entries hold'} more than one reference in ${label}. Only the first is kept.`,
+        );
       if (
-        lost > 0 &&
+        lines.length &&
         !(await confirm({
-          title: lost === 1 ? 'Clear one value?' : `Clear ${lost} values?`,
-          description: `${lost} ${lost === 1 ? 'entry holds a value' : 'entries hold values'} in ${fieldLabel(
-            fields.find((f) => f.name === fieldName) ?? { name: fieldName },
-          )} that ${choice.label} cannot hold.`,
+          title: cost.cleared ? `Change ${label}?` : `Keep one reference each?`,
+          description: lines.join(' '),
           confirmLabel: 'Change type',
           destructive: true,
         }))
       ) {
         return;
+      }
+      // Leaving Entry behind: the stored values are entry ids, which a text
+      // field would show raw and let anyone type over. They go with the type.
+      if (before?.type === FIELD_TYPES.ITEM && choice.type !== FIELD_TYPES.ITEM) {
+        try {
+          await clearFieldValues(fieldName, label);
+        } catch (err) {
+          console.error('Error clearing entry references before a field type change:', err);
+          notifyError('The references could not be cleared.', 'Not changed');
+          return;
+        }
       }
     }
     await saveFields(next);
@@ -524,7 +580,7 @@ export const VocabularyDetail = () => {
               <tr className="bg-muted/50 text-left text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                 <th className="px-3 py-2">Field</th>
                 <th className="px-3 py-2">Inline</th>
-                {dictionary && <th className="px-3 py-2">Type</th>}
+                <th className="px-3 py-2">Type</th>
                 {dictionary && <th className="px-3 py-2">Shown on</th>}
                 {showTagsetCol && <th className="px-3 py-2">Tagset</th>}
                 <th className="w-24 px-3 py-2" />
@@ -560,33 +616,31 @@ export const VocabularyDetail = () => {
                         onCheckedChange={() => handleToggleInline(field.name)}
                       />
                     </td>
-                    {dictionary && (
-                      <td className="px-3 py-1.5">
-                        {field.immutable ? (
-                          <span className="text-xs text-muted-foreground">Text</span>
-                        ) : (
-                          <Select
-                            value={typeChoiceOf(field)}
-                            onValueChange={(v) => handleSetType(field.name, v)}
+                    <td className="px-3 py-1.5">
+                      {field.immutable ? (
+                        <span className="text-xs text-muted-foreground">Text</span>
+                      ) : (
+                        <Select
+                          value={typeChoiceOf(field)}
+                          onValueChange={(v) => handleSetType(field.name, v)}
+                        >
+                          <SelectTrigger
+                            id={`type-${field.name}`}
+                            aria-label={`Type of ${fieldLabel(field)}`}
+                            className="h-7 w-24 text-xs"
                           >
-                            <SelectTrigger
-                              id={`type-${field.name}`}
-                              aria-label={`Type of ${fieldLabel(field)}`}
-                              className="h-7 w-24 text-xs"
-                            >
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {TYPE_CHOICES.map((c) => (
-                                <SelectItem key={c.key} value={c.key}>
-                                  {c.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        )}
-                      </td>
-                    )}
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {TYPE_CHOICES.map((c) => (
+                              <SelectItem key={c.key} value={c.key}>
+                                {c.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </td>
                     {dictionary && (
                       <td className="px-3 py-1.5">
                         {field.immutable ? (

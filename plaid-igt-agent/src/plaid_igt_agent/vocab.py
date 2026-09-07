@@ -174,10 +174,16 @@ def sense_order_of(item: Optional[dict]):
 
 
 def ref_ids(item: dict, field: dict) -> List[str]:
-    """The ids a reference field holds on an item, always as a list."""
+    """The ids a reference field holds on an item, always as a list.
+
+    Blind to the field's own `many`, like the JS: a field changed between one
+    reference and many leaves its values in the old shape, and those are still
+    the entries someone picked. `with_ref_ids` writes them back in the field's
+    current shape.
+    """
     v = ((item or {}).get('metadata') or {}).get(field['name'])
-    if field.get('many'):
-        return [x for x in v if _is_id(x)] if isinstance(v, list) else []
+    if isinstance(v, list):
+        return [x for x in v if _is_id(x)]
     return [v] if _is_id(v) else []
 
 
@@ -625,13 +631,17 @@ def validate_vocab_refs(items: List[dict], fields: List[dict]) -> Tuple[List[dic
             ids = ref_ids(it, f)
             live = [x for x in ids if x != it['id'] and x in by_id]
             raw = meta.get(f['name'])
-            raw_ok = raw is None or (all(_is_id(x) for x in raw) if isinstance(raw, list)
-                                     else _is_id(raw)) if f.get('many') else (raw is None or _is_id(raw))
-            if f.get('many') and raw is not None and not isinstance(raw, list):
-                raw_ok = False
-            if len(live) != len(ids) or not raw_ok:
-                meta = with_ref_ids(meta, f, live)
-                changed = True
+            if f.get('many'):
+                raw_ok = raw is None or (isinstance(raw, list) and all(_is_id(x) for x in raw))
+            else:
+                raw_ok = raw is None or _is_id(raw)
+            if len(live) == len(ids) and raw_ok:
+                continue
+            meta = with_ref_ids(meta, f, live)
+            changed = True
+            # A value merely in the other shape is rewritten in this field's
+            # own, which is nothing to report. A target that is gone is.
+            if len(live) != len(ids):
                 why.append(f'{f["name"]} pointed at an entry that no longer exists')
         if not changed:
             continue

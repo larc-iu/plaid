@@ -94,14 +94,23 @@ export const senseOrderOf = (item) => {
  * The ids a reference field holds on an item, always as a list: a single
  * field holds zero or one, a `many` field any number. Anything that is not an
  * id string is ignored.
+ *
+ * Reading is deliberately blind to the field's own `many`. A field changed
+ * from one reference to many (or back) leaves every value in the shape the
+ * old field wrote, and those are still the entries the user picked, so they
+ * are read and then rewritten in the field's current shape by `withRefIds`.
+ * Reading strictly is what once made that change erase every value it held.
  */
 export const refIds = (item, field) => {
   const v = item?.metadata?.[field.name];
-  if (field.many) return Array.isArray(v) ? v.filter(isId) : [];
+  if (Array.isArray(v)) return v.filter(isId);
   return isId(v) ? [v] : [];
 };
 
-/** Write the ids back onto a metadata map, dropping the key when empty. */
+/**
+ * Write the ids back onto a metadata map, dropping the key when empty. A
+ * single-reference field keeps the first id and drops the rest.
+ */
 export const withRefIds = (metadata, field, ids) => {
   const next = { ...(metadata || {}) };
   const clean = [...new Set((ids || []).filter(isId))];
@@ -551,9 +560,12 @@ export const validateVocabRefs = (items, fields) => {
       const live = ids.filter((x) => x !== it.id && byId.has(x));
       const raw = meta[f.name];
       const rawOk = raw == null || (f.many ? Array.isArray(raw) && raw.every(isId) : isId(raw));
-      if (live.length !== ids.length || !rawOk) {
-        meta = withRefIds(meta, f, live);
-        changed = true;
+      if (live.length === ids.length && rawOk) continue;
+      meta = withRefIds(meta, f, live);
+      changed = true;
+      // A value merely in the other shape is rewritten in this field's own,
+      // which is nothing to report. A target that is gone is.
+      if (live.length !== ids.length) {
         why.push(`${f.name} pointed at an entry that no longer exists`);
       }
     }

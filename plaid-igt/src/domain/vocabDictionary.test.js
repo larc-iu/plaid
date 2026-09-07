@@ -308,9 +308,34 @@ describe('validateVocabRefs', () => {
     expect(byId.b).toEqual({});
     expect(byId.c).toEqual({});
     expect(byId.d).toEqual({ seeAlso: ['a'] });
-    expect(byId.e).toEqual({});
+    // A bare id where the field takes many: the reference is kept, rewritten
+    // in the field's shape, and nobody is told about it.
+    expect(byId.e).toEqual({ seeAlso: ['a'] });
     expect(byId.f).toEqual({});
-    expect(findings.map((f) => f.id)).toEqual(['a', 'b', 'c', 'd', 'e']);
+    expect(findings.map((f) => f.id)).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('reshapes a reference a field type change left in the other shape', () => {
+    const one = fields.map((f) => (f.name === 'seeAlso' ? { ...f, many: false } : f));
+    const many = fields.map((f) => (f.name === 'variantOf' ? { ...f, many: true } : f));
+    const list = [
+      item('a', 'a', {}),
+      item('b', 'b', {}),
+      // Entries narrowed to Entry: the first survives, the rest go.
+      item('narrow', 'narrow', { seeAlso: ['a', 'b'] }),
+      // Entry widened to Entries: the id is wrapped, nothing is lost.
+      item('widen', 'widen', { variantOf: 'a' }),
+    ];
+    const narrowed = validateVocabRefs(list, one);
+    expect(Object.fromEntries(narrowed.patches.map((p) => [p.id, p.metadata])).narrow).toEqual({
+      seeAlso: 'a',
+    });
+    expect(narrowed.findings).toEqual([]);
+    const widened = validateVocabRefs(list, many);
+    expect(Object.fromEntries(widened.patches.map((p) => [p.id, p.metadata])).widen).toEqual({
+      variantOf: ['a'],
+    });
+    expect(widened.findings).toEqual([]);
   });
 });
 
