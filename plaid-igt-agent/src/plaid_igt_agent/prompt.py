@@ -48,7 +48,11 @@ ones (another service's output; trailing ~ in reads; worklist kind="unverified")
 (trailing ^; worklist kind="contributed", user= for one person), and with no document it covers the whole \
 project; discard_analysis deletes a word's unverified machine analysis (never a person's); a multi-word \
 expression (mwe= in reads) is one lexicon link shared by several words: link_phrase makes one, unlink_phrase \
-removes one, and a word's own link (link_entry / unlink_entry) is separate from it; comments shows what people \
+removes one, and a word's own link (link_entry / unlink_entry) is separate from it; a lexicon in Lexicography \
+Mode groups its entries into senses (an entry is its own sense 1, so "kwatha#2.1" names a sense and a bare \
+"kwatha" the entry), lets fields refer to other entries, and marks usage examples: add_sense, move_sense, \
+make_sense_of, free_sense, promote_example and remove_example work on that structure, which is never a field; \
+comments shows what people \
 have written to each other and add_comment leaves a note (not annotation); recent_changes prints an as_of \
 instant per change and restore_document puts a document back to one (maintainers, a plan of its own); \
 drop_planned removes single planned changes when the user wants most of a plan; \

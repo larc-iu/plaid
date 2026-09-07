@@ -13,6 +13,7 @@ from plaid_client.provenance import prov_state, CONTRIBUTED_STATE, PROV_SOURCE_K
 
 from .project import IgtDoc, Sentence, Word, REVIEWABLE, mwe_form, render_word, segmentation, word_ref
 from .tools import Workspace, ToolError, _matcher, _truncate, entry_line
+from .vocab import descendants_of
 
 
 def _pct(n, d):
@@ -421,10 +422,28 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
     want = lambda name: only is None or only == name  # noqa: E731
     items: Dict[str, dict] = {}
     item_vocab: Dict[str, str] = {}
+    views = {v['id']: ws.view(v) for v in vocabs}
     for v in vocabs:
         for it in ws.lexicon(v):
             items[it['id']] = it
             item_vocab[it['id']] = v['id']
+
+    def view_of(iid: str):
+        return views.get(item_vocab.get(iid))
+
+    def is_sense(iid: str) -> bool:
+        vw = view_of(iid)
+        return bool(vw and vw.is_sense(iid))
+
+    def tree_uses(iid: str) -> int:
+        """Links to an entry and to everything under it: a sense is attested
+        through its entry, since the corpus links whichever the analyst chose."""
+        vw = view_of(iid)
+        if vw is None or not vw.dictionary:
+            return uses[iid]
+        return uses[iid] + sum(uses[d['id']] for d in descendants_of(vw.tree, iid))
+
+    any_dictionary = any(vw.dictionary for vw in views.values())
     docs = ws.all_docs() if ws.prefer_scan else []
     n_docs = len(docs) if ws.prefer_scan else len(ws.documents())
     gm, gw = project.gloss_field('Morpheme'), project.gloss_field('Word')
@@ -481,7 +500,15 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
         lines.append(f'{len(forms)} {title}' + (': ' + ', '.join(forms[:cap]) + (f' … ({len(forms) - cap} more)' if len(forms) > cap else '') if forms else '.'))
 
     if want('unused'):
-        listing('entries never linked from a text', (it.get('form') or '' for it in items.values() if uses[it['id']] == 0))
+        listing('entries never linked from a text',
+                (it.get('form') or '' for it in items.values()
+                 if not is_sense(it['id']) and tree_uses(it['id']) == 0))
+        if any_dictionary:
+            # A sense of an attested entry is normal, not a defect: the corpus
+            # links the entry the analyst picked, which is often the headword.
+            loose = [it for it in items.values()
+                     if is_sense(it['id']) and uses[it['id']] == 0 and tree_uses(view_of(it['id']).tree.root_of[it['id']])]
+            lines.append(f'{len(loose)} senses not linked from a text themselves, though their entry is attested.')
     if want('fields'):
         for role, table in (('gloss', lex_gloss), ('pos', lex_pos)):
             names = sorted({f for f in table.values() if f})
@@ -494,23 +521,32 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
     by_form: Dict[str, List[dict]] = defaultdict(list)
     for it in items.values():
         by_form[_strip_affix(it.get('form'))].append(it)
+    # Senses share their entry's headword, so grouping every item by form would
+    # call each of them a homograph of the rest. Only entries are compared.
+    by_entry_form: Dict[str, List[dict]] = defaultdict(list)
+    for it in items.values():
+        if not is_sense(it['id']):
+            by_entry_form[_strip_affix(it.get('form'))].append(it)
     if want('homographs'):
-        homographs = {k: v for k, v in by_form.items() if len(v) > 1}
+        homographs = {k: v for k, v in by_entry_form.items() if len(v) > 1}
         if homographs:
             def same_gloss(its):
                 gl = [entry_gloss(it).casefold() for it in its]
                 return len(gl) - len(set(gl))
             ranked = sorted(homographs.items(), key=lambda kv: (-same_gloss(kv[1]), -len(kv[1])))
             dup = sum(1 for _, its in ranked if same_gloss(its))
-            lines.append(f'{len(homographs)} homograph groups ({dup} with a repeated gloss, likely duplicates; the rest look like senses):')
+            tail = ('; the rest are separate entries sharing a form' if any_dictionary
+                    else '; the rest look like senses')
+            lines.append(f'{len(homographs)} homograph groups ({dup} with a repeated gloss, likely duplicates{tail}):')
             for k, its in ranked[:cap]:
-                lines.append('  ' + ' | '.join(f'{entry_line(it)} ({uses[it["id"]]} links)' for it in its))
+                lines.append('  ' + ' | '.join(
+                    f'{entry_line(it, view_of(it["id"]))} ({tree_uses(it["id"])} links)' for it in its))
             if len(ranked) > cap:
                 lines.append(f'  … {len(ranked) - cap} more groups')
         else:
             lines.append('No homographs.')
 
-    forms = sorted(by_form)
+    forms = sorted(by_entry_form)
     near: List[str] = []
     buckets: Dict[tuple, List[str]] = defaultdict(list)
     for fm in forms:

@@ -9,7 +9,8 @@ from typing import Any, Dict, List, Optional
 
 from .project import word_ref
 from .tools import (Workspace, ToolError, t_set_analysis, entry_line, check_respell_overlap, span_op,
-                    has_own_form, morpheme_form_op, parse_analysis, analysis_op)
+                    has_own_form, morpheme_form_op, parse_analysis, analysis_op, _meta_patch)
+from .vocab import plan_delete_refs, plan_merge_refs, ref_ids
 from .stats import _analyzed, _docs
 
 MAX_BULK = 3000
@@ -350,6 +351,48 @@ def _links_to(ws: Workspace, item_id: str) -> List[Dict[str, Any]]:
     return out
 
 
+def _ref_repair_ops(ws: Workspace, view, planner, *args) -> List[Dict[str, Any]]:
+    """The metadata changes a delete or a merge drags behind it inside the
+    lexicon: an entry's senses are freed or moved to the survivor, and a
+    reference field naming it is cleared or repointed. The app does exactly
+    this in the same operation (planDeleteRefs / planMergeRefs), and without it
+    the vocabulary is left holding ids that no longer resolve until a
+    maintainer next opens it and the load-time repair throws the structure away.
+
+    Nothing to do for a lexicon without Lexicography Mode: it has neither.
+    """
+    if view is None or not view.dictionary:
+        return []
+    ops = []
+    for patch in planner(view.items, view.fields, *args):
+        item = view.tree.by_id.get(patch['id'])
+        if item is None:
+            continue
+        before = ws.item_patches.get(patch['id'], item.get('metadata') or {})
+        after = patch['metadata']
+        if before == after:
+            continue
+        ws.patch_item(patch['id'], after)
+        ops.append({'kind': 'set_entry_metadata', 'item_id': patch['id'],
+                    'patch': _meta_patch(before, after),
+                    'label': f'entry {view.label(patch["id"])}: ' + _repair_says(before, after, view)})
+    return ops
+
+
+def _repair_says(before: dict, after: dict, view) -> str:
+    """What one repair does, for the line the user approves."""
+    bits = []
+    if before.get('parent') and not after.get('parent'):
+        bits.append('becomes an entry of its own')
+    elif before.get('parent') != after.get('parent') and after.get('parent'):
+        bits.append(f'becomes a sense of {view.label(after["parent"])}')
+    for f in view.ref_fields:
+        if before.get(f['name']) != after.get(f['name']):
+            kept = ref_ids({'metadata': after}, f)
+            bits.append(f'{f["name"]} ' + (', '.join(view.label(x) for x in kept) if kept else 'cleared'))
+    return '; '.join(bits) or 'reference updated'
+
+
 def t_merge_entries(ws: Workspace, keep_form: Optional[str] = None, remove_form: Optional[str] = None,
                     lexicon: Optional[str] = None, keep_id: Optional[str] = None,
                     remove_id: Optional[str] = None, keep_gloss: Optional[str] = None,
@@ -368,9 +411,14 @@ def t_merge_entries(ws: Workspace, keep_form: Optional[str] = None, remove_form:
     if remove['id'] in doomed:
         raise ToolError(f'"{remove.get("form")}" is already being merged away or deleted in this plan')
     links = _links_to(ws, remove['id'])
+    view = ws.view_of_item(remove['id'])
     ws.add_op({'kind': 'merge_entries', 'keep_id': keep['id'], 'remove_id': remove['id'], 'links': links,
-               'label': f'Merge entry {entry_line(remove)} into {entry_line(keep)}: move {len(links)} link{"s" if len(links) != 1 else ""}, delete the former'})
-    return ws.planned_note(1) + f' {len(links)} link(s) will move.'
+               'label': f'Merge entry {entry_line(remove, view)} into {entry_line(keep, view)}: '
+                        f'move {len(links)} link{"s" if len(links) != 1 else ""}, delete the former'})
+    refs = _ref_repair_ops(ws, view, plan_merge_refs, keep['id'], [remove['id']])
+    ws.add_ops(refs)
+    note = ws.planned_note(1 + len(refs)) + f' {len(links)} link(s) will move.'
+    return note + (f' {len(refs)} entr{"y" if len(refs) == 1 else "ies"} repointed at the survivor.' if refs else '')
 
 
 def t_delete_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Optional[str] = None,
@@ -379,9 +427,14 @@ def t_delete_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Opt
     stay, just unlinked)."""
     it = _existing(ws, entry_form, lexicon, entry_id, entry_gloss)
     links = _links_to(ws, it['id'])
+    view = ws.view_of_item(it['id'])
     ws.add_op({'kind': 'delete_entry', 'item_id': it['id'], 'links': [l['link_id'] for l in links],
-               'label': f'Delete entry {entry_line(it)} ({len(links)} link{"s" if len(links) != 1 else ""} removed)'})
-    return ws.planned_note(1) + f' {len(links)} link(s) would be removed.'
+               'label': f'Delete entry {entry_line(it, view)} '
+                        f'({len(links)} link{"s" if len(links) != 1 else ""} removed)'})
+    refs = _ref_repair_ops(ws, view, plan_delete_refs, [it['id']])
+    ws.add_ops(refs)
+    note = ws.planned_note(1 + len(refs)) + f' {len(links)} link(s) would be removed.'
+    return note + (f' {len(refs)} entr{"y" if len(refs) == 1 else "ies"} freed or cleared.' if refs else '')
 
 
 def t_rename_entry(ws: Workspace, new_form: str, entry_form: Optional[str] = None,

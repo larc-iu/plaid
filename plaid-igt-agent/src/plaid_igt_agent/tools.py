@@ -38,6 +38,13 @@ _DOC_CACHE: 'OrderedDict[tuple, IgtDoc]' = OrderedDict()
 DOC_CACHE_SIZE = 400
 
 
+from .vocab import (RESERVED_ITEM_KEYS, FIELD_ITEM, FIELD_TEXT, SCOPE_ENTRY, SCOPE_SENSE,
+                    build_sense_tree, descendants_of, item_ref_fields, field_by_name,
+                    is_reserved_field_name, parent_of, ref_ids, with_ref_ids, with_parent,
+                    next_sense_order, plan_sense_set_number, all_examples, with_example_added,
+                    with_example_removed, references_to, arrange_as_tree, vocab_field_summary)
+
+
 class ToolError(Exception):
     """A tool-level failure whose message goes back to the model as the result."""
 
@@ -50,6 +57,11 @@ class Workspace:
         self._doc_list: Optional[List[dict]] = None
         self._docs: Dict[str, IgtDoc] = {}
         self._lexicons: Dict[str, List[dict]] = {}
+        self._views: Dict[str, tuple] = {}
+        # The metadata an entry will carry once the plan runs, so a second
+        # structural tool in one turn reads the tree the first is building.
+        self.item_patches: Dict[str, dict] = {}
+        self._patch_version = 0
         self.ops: List[Dict[str, Any]] = []
         self.replaced = 0  # ops superseded by a later op on the same target this turn
         self.new_entries: Dict[str, dict] = {}  # key -> {form, vocab_id, metadata}
@@ -147,6 +159,37 @@ class Workspace:
             self._lexicons[vocab['id']] = list(layer.get('items') or [])
         return self._lexicons[vocab['id']]
 
+    def patch_item(self, item_id: str, metadata: dict) -> None:
+        """Record the metadata an entry will have once the plan runs."""
+        self.item_patches[item_id] = metadata
+        self._patch_version += 1
+
+    def doomed_entries(self) -> frozenset:
+        """The entries this plan removes, by delete or by merge."""
+        return frozenset({op['item_id'] for op in self.ops if op.get('kind') == 'delete_entry'}
+                         | {op['remove_id'] for op in self.ops if op.get('kind') == 'merge_entries'})
+
+    def view(self, vocab: dict) -> 'LexView':
+        """A lexicon with the plan's pending metadata applied and the entries it
+        removes left out, with the sense tree over what is left: what the
+        dictionary screens would show once the plan is approved."""
+        key = vocab['id']
+        items = self.lexicon(vocab)
+        gone = self.doomed_entries()
+        got = self._views.get(key)
+        if got and got[0] is items and got[1] == (self._patch_version, gone):
+            return got[2]
+        planned = [{**it, 'metadata': self.item_patches[it['id']]}
+                   if it['id'] in self.item_patches else it
+                   for it in items if it['id'] not in gone]
+        view = LexView(vocab, planned)
+        self._views[key] = (items, (self._patch_version, gone), view)
+        return view
+
+    def view_of_item(self, item_id: str) -> Optional['LexView']:
+        v = self.vocab_of_item(item_id)
+        return self.view(v) if v else None
+
     def find_entry(self, form: Optional[str], lexicon: Optional[str], entry_id: Optional[str],
                    gloss: Optional[str] = None):
         """-> ('existing', item) | ('new', key). Errors list candidates.
@@ -160,43 +203,44 @@ class Workspace:
                     if it['id'] == entry_id:
                         return 'existing', it
             raise ToolError(f'No lexicon entry with id {entry_id}')
+
         if not form:
             raise ToolError('Give entry_form (or entry_id).')
         vocabs = [self.project.vocab(lexicon)] if lexicon else self.project.vocabs
         if not vocabs:
             raise ToolError('This project has no lexicon.')
-        # "ама#2" picks homograph 2 (the entry's `homograph` metadata).
-        homograph = None
+        # A "#" suffix: the sense number under Lexicography Mode ("ама#2.1"),
+        # the FLEx homograph number without it ("ама#2"), as each is what the
+        # user sees on screen for that vocabulary.
+        suffix = None
         if '#' in form:
             form, _, hn = form.rpartition('#')
-            homograph = hn.strip()
+            suffix = hn.strip()
         g = (gloss or '').strip().casefold()
 
         def has_gloss(meta):
             return not g or any(isinstance(v, str) and v.strip().casefold() == g for v in (meta or {}).values())
-        hits = []
-        for v in vocabs:
-            for it in self.lexicon(v):
-                if (it.get('form') or '').lower() != form.lower():
-                    continue
-                if homograph is not None and str((it.get('metadata') or {}).get('homograph', '')) != homograph:
-                    continue
-                if not has_gloss(it.get('metadata')):
-                    continue
-                hits.append((v, it))
+        hits = [(v, it) for v in vocabs for it in _hits_in(self, v, form, suffix, has_gloss)]
         news = [(k, e) for k, e in self.new_entries.items()
                 if e['form'].lower() == form.lower() and (not lexicon or e['vocab_id'] == vocabs[0]['id'])
                 and has_gloss(e.get('metadata'))]
         if len(hits) + len(news) == 1:
             return ('existing', hits[0][1]) if hits else ('new', news[0][0])
         if not hits and not news:
+            hint = ''
+            if suffix is not None and any(self.view(v).dictionary for v in vocabs):
+                hint = (f' Entry "{form}" has no sense {suffix}; lexicon_entry shows the senses it does have.'
+                        if any(self.view(v).tree_has_form(form) for v in vocabs)
+                        else '')
             raise ToolError(f'No lexicon entry "{form}"' + (f' with a field valued "{gloss}"' if g else '')
-                            + '. Use read_lexicon to look, or create_entry to add one.')
-        lines = [f'Several entries match "{form}"; pass entry_id, entry_gloss (a field value that singles one out), '
-                 f'or entry_form "{form}#<homograph number>" where one is shown:']
+                            + '.' + hint + ' Use read_lexicon to look, or create_entry to add one.')
+        lines = [f'Several entries match "{form}"; pass entry_id, entry_gloss (a field value that singles one '
+                 f'out), or entry_form as the list shows it:']
         for v, it in hits:
-            hn = (it.get('metadata') or {}).get('homograph')
-            lines.append(f'  id={it["id"]}' + (f' form={form}#{hn}' if hn not in (None, '') else '') + f' {entry_line(it)} ({v["name"]})')
+            view = self.view(v)
+            addr = view.address(it['id'])
+            shown = f' form={addr}' if addr != (it.get('form') or '') else ''
+            lines.append(f'  id={it["id"]}{shown} {entry_line(it, view)} ({v["name"]})')
         for k, e in news:
             lines.append(f'  id={k} {e["form"]} (new in this plan)')
         raise ToolError('\n'.join(lines))
@@ -352,6 +396,10 @@ def op_target(op: Dict[str, Any]):
         return ('restore', op.get('document_id'))
     if k == 'set_entry_field':
         return ('entry_field', op.get('item_id'), op.get('field'))
+    if k == 'set_entry_metadata':
+        # Keyed by the keys it writes, so renumbering a sense and promoting an
+        # example on one entry are two changes rather than one replacing the other.
+        return ('entry_meta', op.get('item_id'), tuple(sorted((op.get('patch') or {}).keys())))
     if k == 'rename_entry':
         return ('rename_entry', op.get('item_id'))
     if k == 'delete_entry':
@@ -367,17 +415,115 @@ def op_target(op: Dict[str, Any]):
 
 # --- helpers -----------------------------------------------------------------
 
-def entry_line(it: dict) -> str:
+class LexView:
+    """A lexicon's items and the sense tree over them. Every lexicon has one:
+    without Lexicography Mode every item is an entry and the tree is flat."""
+
+    __slots__ = ('vocab', 'items', 'tree', 'dictionary', 'fields', 'ref_fields')
+
+    def __init__(self, vocab: dict, items: List[dict]):
+        self.vocab = vocab
+        self.items = items
+        self.dictionary = bool(vocab.get('dictionary'))
+        self.fields = vocab.get('fields') or []
+        # Type and scope only mean anything under Lexicography Mode; without it
+        # the app's entry form shows every field as plain text, and so do we.
+        self.ref_fields = item_ref_fields(self.fields) if self.dictionary else []
+        self.tree = build_sense_tree(items)
+
+    def is_sense(self, item_id: str) -> bool:
+        return self.dictionary and self.tree.is_sense(item_id)
+
+    def tree_has_form(self, form: str) -> bool:
+        return any((r.get('form') or '').lower() == (form or '').lower() for r in self.tree.roots)
+
+    def head_of(self, item_id: str) -> str:
+        """The headword an item sits under, which is its own when it is an entry."""
+        it = self.tree.by_id.get(item_id)
+        root = self.tree.entry_of(item_id) if it is not None else None
+        return ((root or it) or {}).get('form') or ''
+
+    def label(self, item_id: str) -> str:
+        """How a line names an entry: its form, plus the sense number it is
+        shown with when it is a sense."""
+        it = self.tree.by_id.get(item_id)
+        if it is None:
+            return f'a deleted entry ({item_id})'
+        if self.is_sense(item_id):
+            return f'"{self.head_of(item_id)}" sense {self.tree.number(item_id)}'
+        return f'"{it.get("form") or ""}"'
+
+    def address(self, item_id: str) -> str:
+        """The entry_form that names this item back to a tool: "kwatha", or
+        "kwatha#2.1" for a sense, or "ама#2" for a FLEx homograph."""
+        it = self.tree.by_id.get(item_id)
+        if it is None:
+            return item_id
+        if self.is_sense(item_id):
+            return f'{self.head_of(item_id)}#{self.tree.number(item_id)}'
+        form = it.get('form') or ''
+        hn = (it.get('metadata') or {}).get('homograph')
+        return f'{form}#{hn}' if not self.dictionary and hn not in (None, '') else form
+
+    def ref_summary(self, it: dict) -> List[str]:
+        """The reference fields an entry carries, as forms rather than ids."""
+        out = []
+        for f in self.ref_fields:
+            ids = ref_ids(it, f)
+            if ids:
+                out.append(f'{f["name"]}=' + ', '.join(self.label(x) for x in ids))
+        return out
+
+
+def _dict_hits(view: LexView, form: str, suffix: Optional[str]) -> List[dict]:
+    """The items a form names in a lexicon with Lexicography Mode on: the ENTRY
+    headed by that form (which is also its sense 1), or with a "#2.1" suffix the
+    sense shown with that number under it. Senses share their entry's headword,
+    so a bare form means the entry and never the pile of its senses. A form that
+    heads no entry falls back to any item carrying it, so a sense renamed away
+    from its headword stays reachable."""
+    roots = [r for r in view.tree.roots if (r.get('form') or '').lower() == (form or '').lower()]
+    if not roots:
+        others = [it for it in view.items if (it.get('form') or '').lower() == (form or '').lower()]
+        return others if suffix is None else [it for it in others if view.tree.number(it['id']) == suffix]
+    if suffix is None:
+        return roots
+    out = []
+    for r in roots:
+        if suffix == '1':
+            out.append(r)
+            continue
+        out.extend(d for d in descendants_of(view.tree, r['id']) if view.tree.number(d['id']) == suffix)
+    return out
+
+
+def entry_line(it: dict, view: Optional[LexView] = None) -> str:
+    """One entry as a line: its form, then its fields. The reserved keys are
+    never fields (they are the sense tree and the promoted examples), so they
+    are left out here and said in words instead when a view is at hand."""
     meta = it.get('metadata') or {}
     parts = [it.get('form') or '']
+    if view is not None and view.is_sense(it['id']):
+        parts.append(f'sense {view.tree.number(it["id"])} of "{view.head_of(it["id"])}"')
     if meta.get('morphType'):
         parts.append(f'type={meta["morphType"]}')
+    ref_names = {f['name'] for f in (view.ref_fields if view is not None else [])}
     for k, v in meta.items():
-        if k in ('morphType', 'flexEntry', 'flexSense') or k.startswith('prov') or v in (None, '', [], {}):
+        if (k in RESERVED_ITEM_KEYS or k == 'morphType' or k in ref_names
+                or k.startswith('prov') or v in (None, '', [], {})):
             continue
         if isinstance(v, (list, dict)):
             v = json.dumps(v, ensure_ascii=False)
         parts.append(f'{k}={v}')
+    if view is not None:
+        parts.extend(view.ref_summary(it))
+    n_ex = len(all_examples(it))
+    if n_ex:
+        parts.append(f'{n_ex} example{"s" if n_ex != 1 else ""}')
+    if view is not None and view.dictionary:
+        n_s = len(view.tree.senses_of(it['id']))
+        if n_s:
+            parts.append(f'{n_s} sense{"s" if n_s != 1 else ""} below')
     return ' | '.join(parts)
 
 
@@ -603,13 +749,34 @@ def t_read_lexicon(ws: Workspace, lexicon: Optional[str] = None, pattern: Option
     limit = max(1, min(int(limit or 80), 500))
     lines = []
     for v in vocabs:
-        items = sorted(ws.lexicon(v), key=lambda it: (it.get('form') or '').casefold())
-        hits = [it for it in items if match(entry_line(it))]
-        lines.append(f'Lexicon "{v["name"]}": {len(items)} entries' + (f', {len(hits)} matching' if pattern else ''))
-        for it in hits[:limit]:
-            lines.append('  ' + entry_line(it))
-        if len(hits) > limit:
-            lines.append(f'  ... {len(hits) - limit} more (narrow with pattern)')
+        view = ws.view(v)
+        items = sorted(view.items, key=lambda it: (it.get('form') or '').casefold())
+        hits = [it for it in items if match(entry_line(it, view))]
+        if not view.dictionary:
+            lines.append(f'Lexicon "{v["name"]}": {len(items)} entries'
+                         + (f', {len(hits)} matching' if pattern else ''))
+            for it in hits[:limit]:
+                lines.append('  ' + entry_line(it, view))
+            if len(hits) > limit:
+                lines.append(f'  ... {len(hits) - limit} more (narrow with pattern)')
+            continue
+        # Lexicography Mode: senses under their entry, numbered as the user
+        # sees them. An entry is sense 1, so the number is its address too.
+        n_entries = len(view.tree.roots)
+        n_senses = len(items) - n_entries
+        head = (f'Lexicon "{v["name"]}" (Lexicography Mode): {n_entries} entries, {n_senses} senses'
+                + (f', {len(hits)} matching' if pattern else ''))
+        lines.append(head)
+        shown = 0
+        for it, depth in arrange_as_tree(hits, view.tree):
+            if shown >= limit:
+                break
+            shown += 1
+            num = view.tree.number(it['id'])
+            mark = f'{num} ' if view.is_sense(it['id']) else ''
+            lines.append('  ' + '  ' * depth + mark + entry_line(it, view))
+        if len(hits) > shown:
+            lines.append(f'  ... {len(hits) - shown} more (narrow with pattern)')
     return _truncate('\n'.join(lines))
 
 
@@ -811,11 +978,22 @@ def t_lexicon_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Op
         e = ws.new_entries[target]
         return f'Entry "{e["form"]}" is new in this plan (not written yet): ' + entry_line({'form': e['form'], 'metadata': e['metadata']})
     meta = target.get('metadata') or {}
-    lines = [f'Entry "{target.get("form")}" (id {target["id"]})']
+    view = ws.view_of_item(target['id'])
+    if view is not None and view.dictionary:
+        where = (f'Sense {view.tree.number(target["id"])} of entry "{view.head_of(target["id"])}"'
+                 if view.is_sense(target['id']) else f'Entry "{target.get("form")}" (also its sense 1)')
+        lines = [f'{where} (id {target["id"]}, entry_form "{view.address(target["id"])}")']
+    else:
+        lines = [f'Entry "{target.get("form")}" (id {target["id"]})']
+    ref_names = {f['name'] for f in (view.ref_fields if view is not None else [])}
     for k, v in meta.items():
-        if k in ('flexEntry', 'flexSense') or k.startswith('prov') or v in (None, '', [], {}):
+        if (k in RESERVED_ITEM_KEYS or k in ref_names or k.startswith('prov')
+                or v in (None, '', [], {})):
             continue
         lines.append(f'  {k}: {json.dumps(v, ensure_ascii=False) if isinstance(v, (list, dict)) else v}')
+    if view is not None:
+        lines.extend(f'  {r}' for r in view.ref_summary(target))
+        lines.extend(_dictionary_lines(ws, view, target))
     word_links, morph_links, mwes, exs = 0, 0, 0, []
     examples = max(0, min(int(examples or 3), 20))
     if not ws.prefer_scan:
@@ -849,6 +1027,50 @@ def t_lexicon_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Op
         lines.append('Examples:')
         lines.extend(exs)
     return _truncate('\n'.join(lines))
+
+
+def _dictionary_lines(ws: Workspace, view: LexView, target: dict) -> List[str]:
+    """An entry's place in its lexicon: the senses under it, what refers to it,
+    and its promoted examples. Nothing when Lexicography Mode is off."""
+    if not view.dictionary:
+        return []
+    out: List[str] = []
+    senses = view.tree.senses_of(target['id'])
+    if senses:
+        out.append(f'Senses ({len(senses)}):')
+        for c in senses:
+            out.append(f'  {view.tree.number(c["id"])} {entry_line(c, view)}')
+    back = [r for r in references_to(view.items, view.fields, target['id'])]
+    if back:
+        out.append('Referred to by:')
+        for r in back[:12]:
+            how = r['field']['name'] if r['field'] else 'a sense of it'
+            out.append(f'  {view.label(r["item"]["id"])} ({how})')
+        if len(back) > 12:
+            out.append(f'  ... {len(back) - 12} more')
+    exs = all_examples(target)
+    if exs:
+        out.append(f'Usage examples ({len(exs)}):')
+        for i, e in enumerate(exs):
+            out.append(f'  [{i}] ' + _example_line(ws, e))
+    return out
+
+
+def _example_line(ws: Workspace, e: dict) -> str:
+    """One promoted example, resolved to its sentence where it still exists.
+    A FLEx import's text examples carry their own text and have no token."""
+    if isinstance(e.get('text'), str):
+        tr = f' || {e["translation"]}' if e.get('translation') else ''
+        return f'{e["text"]}{tr} (imported text)'
+    try:
+        doc = ws.doc(e['document'])
+    except ToolError:
+        return f'a document that is gone ({e["document"]})'
+    for sent in doc.sentences:
+        for w in sent.words:
+            if w.id == e['token']:
+                return f'{ws.doc_tag(doc)}{word_ref(sent, w)} {w.surface} || {sent.text}'
+    return f'{ws.doc_tag(doc)}a word that is gone ({e["token"]})'
 
 
 def _norm_value(v: str) -> str:
@@ -1372,32 +1594,132 @@ def t_unlink_phrase(ws: Workspace, document: str, refs) -> str:
 
 def t_create_entry(ws: Workspace, form: str, lexicon: Optional[str] = None, fields: Optional[dict] = None,
                    type: Optional[str] = None) -> str:
+    return _create_entry(ws, ws.project.vocab(lexicon), form, fields, type, None)
+
+
+def _create_entry(ws: Workspace, v: dict, form: str, fields: Optional[dict],
+                  morph: Optional[str], parent: Optional[dict]) -> str:
+    """A new entry, or a new sense when ``parent`` is the entry it sits under."""
     form = (form or '').strip()
     if not form:
         raise ToolError('form must not be empty')
-    v = ws.project.vocab(lexicon)
-    metadata = {lexicon_field(v, k): ('' if val is None else str(val)) for k, val in (fields or {}).items()}
-    if type:
-        metadata['morphType'] = morph_type(type)
+    view = ws.view(v)
+    metadata: dict = {}
+    for k, val in (fields or {}).items():
+        f = lexicon_field(v, k)
+        if parent is not None and view.dictionary and f['scope'] == SCOPE_ENTRY:
+            raise ToolError(f'"{f["name"]}" belongs to an entry rather than to each sense, so a new sense '
+                            f'cannot carry it. Set it on {view.label(parent["id"])}.')
+        metadata = _entry_field_write(ws, v, f, val, metadata, None)
+    if morph:
+        metadata['morphType'] = morph_type(morph)
+    if parent is not None:
+        metadata = with_parent(metadata, parent['id'], next_sense_order(view.tree, parent['id']))
     # The key is a handle the model passes back; it must not contain spaces
     # (a phrase entry's form does).
     key = f'new:{v["id"]}:{re.sub(r"\s+", "_", form)}#{len(ws.new_entries) + 1}'
     ws.new_entries[key] = {'form': form, 'vocab_id': v['id'], 'metadata': metadata}
+    what = (f'new sense of {view.label(parent["id"])} ' if parent is not None else 'new entry ')
     ws.add_op({'kind': 'create_entry', 'vocab_id': v['id'], 'form': form, 'metadata': metadata, 'key': key,
-               'label': f'{v["name"]}: new entry ' + entry_line({'form': form, 'metadata': metadata})})
+               'label': f'{v["name"]}: ' + what + entry_line({'form': form, 'metadata': metadata})})
     return ws.planned_note(1) + f'\nentry_id: {key}  (use it to link this entry in the same plan)'
 
 
-def lexicon_field(vocab: dict, name: str) -> str:
-    """A lexicon's configured entry field, by case-insensitive name; any name
-    when the lexicon declares no schema. morphType is always allowed."""
+# Which tool owns each reserved key, for the refusal when one is set as a field.
+_RESERVED_HINTS = {
+    'parent': 'Where an entry sits is changed with add_sense, make_sense_of or free_sense.',
+    'senseorder': 'A sense is renumbered with move_sense.',
+    'examples': 'Usage examples are added with promote_example and dropped with remove_example.',
+    'form': 'A headword is changed with rename_entry.',
+}
+
+_FREE_FIELD = {'name': '', 'inline': False, 'immutable': False, 'tagset': None, 'lang': None,
+               'type': FIELD_TEXT, 'many': False, 'scope': SCOPE_SENSE}
+
+
+def lexicon_field(vocab: dict, name: str) -> dict:
+    """A lexicon's configured entry field, by case-insensitive name, as its full
+    spec; any name when the lexicon declares no schema. morphType is always
+    allowed. A reserved key is never a field, and says which tool owns it."""
+    if is_reserved_field_name(name):
+        hint = _RESERVED_HINTS.get(str(name).strip().lower(),
+                                   'It is structure the app keeps on an entry, not a field.')
+        raise ToolError(f'"{name}" is not an entry field. {hint}')
     fields = vocab.get('fields') or []
-    if not fields or name == 'morphType':
-        return name
-    for f in fields:
-        if f.lower() == (name or '').lower():
-            return f
-    raise ToolError(f'"{vocab["name"]}" has no entry field "{name}". Fields: ' + ', '.join(fields))
+    hit = field_by_name(fields, name)
+    if hit:
+        return hit
+    # A lexicon that declares nothing has no schema to break, so any name goes.
+    # The core inventory rides along on every vocabulary and never counts as one.
+    if not any(f.get('declared') for f in fields) or name == 'morphType':
+        return {**_FREE_FIELD, 'name': name}
+    raise ToolError(f'"{vocab["name"]}" has no entry field "{name}". Fields: '
+                    + ', '.join(vocab_field_summary(vocab)))
+
+
+def _hits_in(ws: Workspace, v: dict, form: str, suffix: Optional[str], has_gloss) -> List[dict]:
+    """The entries a form names in one lexicon, by that lexicon's own rules."""
+    view = ws.view(v)
+    if view.dictionary:
+        return [it for it in _dict_hits(view, form, suffix) if has_gloss(it.get('metadata'))]
+    out = []
+    for it in ws.lexicon(v):
+        if (it.get('form') or '').lower() != (form or '').lower():
+            continue
+        if suffix is not None and str((it.get('metadata') or {}).get('homograph', '')) != suffix:
+            continue
+        if not has_gloss(it.get('metadata')):
+            continue
+        out.append(it)
+    return out
+
+
+def _resolve_ref(ws: Workspace, vocab: dict, field: dict, value: str, own_id: Optional[str]) -> str:
+    """The id of the entry a reference field should hold, from a form or an id.
+    References never cross vocabularies, so only this lexicon is searched."""
+    view = ws.view(vocab)
+    if value in view.tree.by_id:
+        target = value
+    elif value in ws.new_entries:
+        raise ToolError(f'"{field["name"]}" must name an entry that already exists. "{value}" is created by this '
+                        'same plan and has no id until it is approved: approve the plan, then set the reference.')
+    else:
+        form, suffix = value, None
+        if '#' in value:
+            form, _, suffix = value.rpartition('#')
+            suffix = suffix.strip()
+        hits = _hits_in(ws, vocab, form, suffix, lambda m: True)
+        if not hits:
+            raise ToolError(f'"{vocab["name"]}" has no entry "{value}" for {field["name"]} to refer to. '
+                            'read_lexicon lists them, and a reference always names an entry of the same lexicon.')
+        if len(hits) > 1:
+            lines = [f'"{value}" names several entries, so {field["name"]} cannot tell which. '
+                     'Pass one of these forms, or its id:']
+            for it in hits:
+                addr = view.address(it['id'])
+                shown = f' form={addr}' if addr != (it.get('form') or '') else ''
+                lines.append(f'  id={it["id"]}{shown} {entry_line(it, view)}')
+            raise ToolError('\n'.join(lines))
+        target = hits[0]['id']
+    if own_id and target == own_id:
+        raise ToolError(f'{view.label(own_id)} cannot refer to itself through {field["name"]}.')
+    return target
+
+
+def _entry_field_write(ws: Workspace, vocab: Optional[dict], field: dict, value,
+                       metadata: Optional[dict], own_id: Optional[str]) -> dict:
+    """The metadata an entry carries once ``field`` is set to ``value``. A text
+    field takes the string. A reference field holds entry ids, so a form is
+    resolved to one here; a `many` field appends, and an empty value clears the
+    field outright."""
+    if field['type'] != FIELD_ITEM or vocab is None:
+        return {**(metadata or {}), field['name']: '' if value is None else str(value)}
+    v = '' if value is None else str(value).strip()
+    if not v:
+        return with_ref_ids(metadata, field, [])
+    target = _resolve_ref(ws, vocab, field, v, own_id)
+    held = ref_ids({'metadata': metadata}, field) if field.get('many') else []
+    return with_ref_ids(metadata, field, held + [target])
 
 
 def t_set_entry_field(ws: Workspace, field: str, value: str, entry_form: Optional[str] = None,
@@ -1406,17 +1728,190 @@ def t_set_entry_field(ws: Workspace, field: str, value: str, entry_form: Optiona
     kind, target = ws.find_entry(entry_form, lexicon, entry_id, entry_gloss)
     vocab = (next((v for v in ws.project.vocabs if v['id'] == ws.new_entries[target]['vocab_id']), None)
              if kind == 'new' else ws.vocab_of_item(target['id']))
-    if vocab:
-        field = lexicon_field(vocab, field)
+    f = lexicon_field(vocab, field) if vocab else {**_FREE_FIELD, 'name': field}
     if kind == 'new':
-        ws.new_entries[target]['metadata'][field] = '' if value is None else str(value)
+        e = ws.new_entries[target]
+        if vocab and ws.view(vocab).dictionary and f['scope'] == SCOPE_ENTRY and parent_of(e):
+            raise ToolError(f'"{f["name"]}" belongs to an entry rather than to each sense.')
+        e['metadata'] = _entry_field_write(ws, vocab, f, value, e['metadata'], None)
         for op in ws.ops:
             if op.get('kind') == 'create_entry' and op.get('key') == target:
-                op['metadata'][field] = '' if value is None else str(value)
+                op['metadata'] = dict(e['metadata'])
         return ws.planned_note(0) + ' (updated the pending new entry)'
-    old = (target.get('metadata') or {}).get(field, '')
-    ws.add_op({'kind': 'set_entry_field', 'item_id': target['id'], 'field': field, 'value': '' if value is None else str(value),
-               'label': f'entry "{target.get("form")}": {field} ' + (f'"{old}" → "{value}"' if old else f'= "{value}"')})
+    view = ws.view(vocab) if vocab else None
+    if view is not None and view.dictionary and f['scope'] == SCOPE_ENTRY and view.is_sense(target['id']):
+        head = view.tree.root_of.get(target['id'])
+        raise ToolError(f'"{f["name"]}" belongs to an entry rather than to each sense, and '
+                        f'{view.label(target["id"])} is a sense. Set it on {view.label(head)} instead.')
+    before = ws.item_patches.get(target['id'], target.get('metadata') or {})
+    meta = _entry_field_write(ws, vocab, f, value, before, target['id'])
+    ws.patch_item(target['id'], meta)
+    new_value = meta.get(f['name'])
+    where = view.label(target['id']) if view is not None else f'"{target.get("form")}"'
+    if f['type'] == FIELD_ITEM and view is not None:
+        shown = ', '.join(view.label(x) for x in ref_ids({'metadata': meta}, f)) or '(cleared)'
+    else:
+        old = before.get(f['name'], '')
+        shown = f'"{old}" → "{value}"' if old else f'= "{value}"'
+    ws.add_op({'kind': 'set_entry_field', 'item_id': target['id'], 'field': f['name'],
+               'value': new_value if new_value is not None else '',
+               'label': f'entry {where}: {f["name"]} {shown}'})
+    return ws.planned_note(1)
+
+
+def _meta_patch(before: dict, after: dict) -> dict:
+    """The patch turning one metadata map into another. A key the new map lacks
+    is sent as null, which is how the API deletes it."""
+    patch = {k: v for k, v in after.items() if before.get(k) != v}
+    for k in before:
+        if k not in after:
+            patch[k] = None
+    return patch
+
+
+def _meta_op(ws: Workspace, item_id: str, before: dict, after: dict, label: str) -> Dict[str, Any]:
+    """One entry's metadata change, recorded so later tools in the same turn
+    read the tree this plan is building."""
+    ws.patch_item(item_id, after)
+    return {'kind': 'set_entry_metadata', 'item_id': item_id, 'patch': _meta_patch(before, after),
+            'label': label}
+
+
+def _dict_entry(ws: Workspace, entry_form, lexicon, entry_id, entry_gloss, what: str):
+    """The entry a dictionary tool names, with its lexicon's view. A lexicon
+    without Lexicography Mode has none of this, and says so."""
+    kind, target = ws.find_entry(entry_form, lexicon, entry_id, entry_gloss)
+    if kind == 'new':
+        raise ToolError(f'"{ws.new_entries[target]["form"]}" is created by this same plan and has no id until it '
+                        f'is approved, so it cannot {what} yet.')
+    vocab = ws.vocab_of_item(target['id'])
+    view = ws.view(vocab) if vocab else None
+    if view is None or not view.dictionary:
+        name = (vocab or {}).get('name')
+        raise ToolError((f'"{name}" is not in Lexicography Mode' if name else 'This lexicon is not in Lexicography '
+                         'Mode') + ', so it has no senses, entry references or usage examples. A maintainer turns '
+                        'the mode on in the vocabulary settings.')
+    # A delete already planned takes the entry's senses and references with it,
+    # so anything hung on it afterwards would be written and then dropped.
+    doomed = ({op['item_id'] for op in ws.ops if op.get('kind') == 'delete_entry'}
+              | {op['remove_id'] for op in ws.ops if op.get('kind') == 'merge_entries'})
+    if target['id'] in doomed:
+        raise ToolError(f'{view.label(target["id"])} is deleted or merged away by this same plan, so it cannot '
+                        f'{what}. Drop that change with drop_planned, or work on the entry that survives.')
+    return vocab, view, target
+
+
+def _meta_of(ws: Workspace, item: dict) -> dict:
+    return ws.item_patches.get(item['id'], item.get('metadata') or {})
+
+
+def t_add_sense(ws: Workspace, entry_form: Optional[str] = None, lexicon: Optional[str] = None,
+                entry_id: Optional[str] = None, entry_gloss: Optional[str] = None,
+                fields: Optional[dict] = None, form: Optional[str] = None,
+                type: Optional[str] = None) -> str:
+    """PLAN: add a sense under an entry, numbered after the senses it has."""
+    vocab, view, target = _dict_entry(ws, entry_form, lexicon, entry_id, entry_gloss, 'take a sense')
+    # A sense is shown under its entry's headword and carries it unless told
+    # otherwise, which is how an imported lexicon reads.
+    return _create_entry(ws, vocab, form or target.get('form') or '', fields, type, target)
+
+
+def t_move_sense(ws: Workspace, number, entry_form: Optional[str] = None, lexicon: Optional[str] = None,
+                 entry_id: Optional[str] = None, entry_gloss: Optional[str] = None) -> str:
+    """PLAN: put a sense at the number it should be shown with, among its siblings."""
+    vocab, view, target = _dict_entry(ws, entry_form, lexicon, entry_id, entry_gloss, 'be renumbered')
+    if not view.is_sense(target['id']):
+        raise ToolError(f'{view.label(target["id"])} is an entry, and an entry is always sense 1. '
+                        'make_sense_of moves it under another entry.')
+    was = view.tree.number(target['id'])
+    patches = plan_sense_set_number(view.tree, target['id'], number)
+    if not patches:
+        sibs = len(view.tree.senses_of(view.tree.parent_of[target['id']]))
+        return ws.planned_note(0) + (f' {view.label(target["id"])} is already sense {was}'
+                                     + (' and has no siblings to move among.' if sibs < 2 else '.'))
+    ops = [_meta_op(ws, x['id'], _meta_of(ws, view.tree.by_id[x['id']]), x['metadata'],
+                    f'entry "{view.head_of(target["id"])}": sense {view.tree.number(x["id"])} renumbered')
+           for x in patches]
+    ops[0]['label'] = (f'entry "{view.head_of(target["id"])}": sense {was} becomes sense {number}'
+                       + (f' ({len(ops) - 1} sibling{"s" if len(ops) != 2 else ""} renumbered)' if len(ops) > 1 else ''))
+    ws.add_ops(ops)
+    return ws.planned_note(len(ops))
+
+
+def t_make_sense_of(ws: Workspace, under_form: Optional[str] = None, under_id: Optional[str] = None,
+                    entry_form: Optional[str] = None, lexicon: Optional[str] = None,
+                    entry_id: Optional[str] = None, entry_gloss: Optional[str] = None) -> str:
+    """PLAN: move an entry (with everything under it) to be a sense of another."""
+    vocab, view, target = _dict_entry(ws, entry_form, lexicon, entry_id, entry_gloss, 'be moved')
+    _, under_view, under = _dict_entry(ws, under_form, lexicon, under_id, None, 'take a sense')
+    if under_view.vocab['id'] != vocab['id']:
+        raise ToolError('A sense sits under an entry of the same lexicon; these are in different ones.')
+    if under['id'] == target['id']:
+        raise ToolError('An entry cannot be a sense of itself.')
+    if under['id'] in {d['id'] for d in descendants_of(view.tree, target['id'])}:
+        raise ToolError(f'{under_view.label(under["id"])} is already below {view.label(target["id"])}, so moving '
+                        'it there would make a loop. Free it first.')
+    before = _meta_of(ws, target)
+    after = with_parent(before, under['id'], next_sense_order(view.tree, under['id']))
+    if before.get('parent') == under['id']:
+        return ws.planned_note(0) + f' {view.label(target["id"])} is already a sense of {view.label(under["id"])}.'
+    kept = len(descendants_of(view.tree, target['id']))
+    ws.add_op(_meta_op(ws, target['id'], before, after,
+                       f'{view.label(target["id"])} becomes a sense of {view.label(under["id"])}'
+                       + (f' (with {kept} below it)' if kept else '')))
+    return ws.planned_note(1)
+
+
+def t_free_sense(ws: Workspace, entry_form: Optional[str] = None, lexicon: Optional[str] = None,
+                 entry_id: Optional[str] = None, entry_gloss: Optional[str] = None) -> str:
+    """PLAN: make a sense an entry of its own, keeping everything under it."""
+    vocab, view, target = _dict_entry(ws, entry_form, lexicon, entry_id, entry_gloss, 'be freed')
+    if not view.is_sense(target['id']):
+        return ws.planned_note(0) + f' {view.label(target["id"])} is already an entry of its own.'
+    before = _meta_of(ws, target)
+    kept = len(descendants_of(view.tree, target['id']))
+    ws.add_op(_meta_op(ws, target['id'], before, with_parent(before, None, None),
+                       f'{view.label(target["id"])} becomes an entry of its own'
+                       + (f' (with {kept} sense{"s" if kept != 1 else ""} below it)' if kept else '')))
+    return ws.planned_note(1)
+
+
+def t_promote_example(ws: Workspace, document: str, ref: str, entry_form: Optional[str] = None,
+                      lexicon: Optional[str] = None, entry_id: Optional[str] = None,
+                      entry_gloss: Optional[str] = None) -> str:
+    """PLAN: mark a word in a document as a usage example of an entry."""
+    vocab, view, target = _dict_entry(ws, entry_form, lexicon, entry_id, entry_gloss, 'take an example')
+    doc = ws.doc(document)
+    found = _words_of(doc, ref)
+    if len(found) != 1:
+        raise ToolError('Give one word reference, e.g. "s3.w2".')
+    _, sent, word = found[0]
+    before = _meta_of(ws, target)
+    after = with_example_added(before, {'document': doc.id, 'token': word.id})
+    if after == before:
+        return ws.planned_note(0) + f' {view.label(target["id"])} already has that example.'
+    ws.add_op(_meta_op(ws, target['id'], before, after,
+                       f'entry {view.label(target["id"])}: usage example '
+                       f'{ws.doc_label(doc.id, quote=True)} {word_ref(sent, word)} "{word.surface}"'))
+    return ws.planned_note(1)
+
+
+def t_remove_example(ws: Workspace, index: int, entry_form: Optional[str] = None,
+                     lexicon: Optional[str] = None, entry_id: Optional[str] = None,
+                     entry_gloss: Optional[str] = None) -> str:
+    """PLAN: drop one of an entry's usage examples, by its position."""
+    vocab, view, target = _dict_entry(ws, entry_form, lexicon, entry_id, entry_gloss, 'lose an example')
+    before = _meta_of(ws, target)
+    exs = all_examples({'metadata': before})
+    i = int(index)
+    if not exs:
+        raise ToolError(f'{view.label(target["id"])} has no usage examples.')
+    if i < 0 or i >= len(exs):
+        raise ToolError(f'{view.label(target["id"])} has {len(exs)} example(s), numbered 0 to {len(exs) - 1}; '
+                        'lexicon_entry lists them with their numbers.')
+    ws.add_op(_meta_op(ws, target['id'], before, with_example_removed(before, i),
+                       f'entry {view.label(target["id"])}: drop usage example [{i}] '
+                       + _example_line(ws, exs[i])))
     return ws.planned_note(1)
 
 
@@ -1864,6 +2359,14 @@ def _fn(name, description, properties, required):
 _DOC = {'type': 'string', 'description': 'Document id or exact name (see project_overview).'}
 _GLOSS = {'type': 'string', 'description': 'Singles out one of several entries with the same form: a value one of '
                                            'its fields has (e.g. its gloss).'}
+_ENTRY_FORM = {'type': 'string',
+               'description': 'The entry\'s headword. With Lexicography Mode on, "kwatha" names the ENTRY (which '
+                              'is also its sense 1) and "kwatha#2.1" the sense shown with that number; without it, '
+                              '"kwatha#2" is the FLEx homograph.'}
+_ENTRY_ADDR = {'entry_form': _ENTRY_FORM,
+               'lexicon': {'type': 'string', 'description': 'Lexicon name (needed only when the project has several).'},
+               'entry_id': {'type': 'string'}}
+
 _REFS = {'type': 'array', 'items': {'type': 'string'},
          'description': 'Positional references, e.g. ["s3.w2", "s3.w4"]. Words are sN.wN, morphemes sN.wN.mN, sentences sN.'}
 _MORPHEMES = {'type': 'array', 'items': {'type': 'object', 'properties': {
@@ -1899,7 +2402,8 @@ TOOLS = [
         ['pattern']),
     _fn('read_lexicon',
         'List lexicon entries (form, morph type, and their fields such as gloss), optionally filtered by a '
-        'substring pattern over the whole entry line.',
+        'substring pattern over the whole entry line. With Lexicography Mode on, senses are drawn under their '
+        'entry with the number they are shown with.',
         {'lexicon': {'type': 'string', 'description': 'Lexicon name (needed only when the project has several).'},
          'pattern': {'type': 'string'},
          'limit': {'type': 'integer', 'description': 'Max entries (default 80).'}},
@@ -1962,12 +2466,17 @@ TOOLS = [
         {'document': _DOC, 'refs': _REFS}, ['document', 'refs']),
     _fn('create_entry',
         'PLAN: add a lexicon entry. fields maps entry field names (e.g. "gloss", "pos") to values; type is the '
-        'morph type (stem, suffix, enclitic, ...). The returned entry_id can be used by link_entry in the same plan.',
+        'morph type (stem, suffix, enclitic, ...). The returned entry_id can be used by link_entry in the same '
+        'plan. Use add_sense for a sense of an existing entry.',
         {'form': {'type': 'string'}, 'lexicon': {'type': 'string'},
          'fields': {'type': 'object', 'additionalProperties': {'type': 'string'}}, 'type': {'type': 'string'}},
         ['form']),
-    _fn('set_entry_field', 'PLAN: set a field (e.g. gloss) on a lexicon entry.',
-        {'field': {'type': 'string'}, 'value': {'type': 'string'}, 'entry_form': {'type': 'string'},
+    _fn('set_entry_field',
+        'PLAN: set a field (e.g. gloss) on a lexicon entry. A field that holds a reference to another entry '
+        '(project_overview marks them) takes that entry\'s form or id, not free text; passing an empty value '
+        'clears it, and a field holding several appends. Where an entry sits, its examples and its headword are '
+        'not fields: use add_sense, make_sense_of, move_sense, promote_example or rename_entry.',
+        {'field': {'type': 'string'}, 'value': {'type': 'string'}, 'entry_form': _ENTRY_FORM,
          'lexicon': {'type': 'string'}, 'entry_id': {'type': 'string'}, 'entry_gloss': _GLOSS},
         ['field', 'value']),
     _fn('concordance',
@@ -1988,8 +2497,10 @@ TOOLS = [
         'forms (a list, up to 40) to check every word of a sentence in one call.',
         {'form': {'type': 'string'}, 'forms': {'type': 'array', 'items': {'type': 'string'}}, 'document': _DOC}, []),
     _fn('lexicon_entry',
-        'One lexicon entry in full: all its fields, how many words and morphemes link to it, and example occurrences.',
-        {'entry_form': {'type': 'string'}, 'lexicon': {'type': 'string'}, 'entry_id': {'type': 'string'},
+        'One lexicon entry in full: all its fields, how many words and morphemes link to it, and example '
+        'occurrences. With Lexicography Mode on it also says where the entry sits, the senses under it, what '
+        'refers to it, and its promoted usage examples with their numbers.',
+        {'entry_form': _ENTRY_FORM, 'lexicon': {'type': 'string'}, 'entry_id': {'type': 'string'},
          'entry_gloss': _GLOSS, 'examples': {'type': 'integer', 'description': 'Example occurrences to show (default 3).'}},
         []),
     _fn('check_consistency',
@@ -2042,6 +2553,40 @@ TOOLS = [
         'PLAN: delete the unverified machine-made analysis of words (their machine links, values, and morphemes); '
         'human-made, contributed, and verified pieces stay. refs: words or sentences.',
         {'document': _DOC, 'refs': _REFS}, ['document', 'refs']),
+    _fn('add_sense',
+        'PLAN: add a sense under an entry, numbered after the senses it already has. The new sense carries the '
+        'entry\'s headword unless form says otherwise. Lexicography Mode only.',
+        {**_ENTRY_ADDR, 'entry_gloss': _GLOSS,
+         'fields': {'type': 'object', 'additionalProperties': {'type': 'string'},
+                    'description': 'Field values for the new sense, e.g. {"gloss": "to simmer"}.'},
+         'form': {'type': 'string', 'description': 'A form for the sense, when it differs from the headword.'},
+         'type': {'type': 'string', 'description': 'Morph type (stem, suffix, ...).'}},
+        []),
+    _fn('move_sense',
+        'PLAN: put a sense at the number it should be shown with among its siblings, renumbering them to match. '
+        'The entry is sense 1, so its own senses run from 2.',
+        {'number': {'type': 'string', 'description': 'The number to show it with, e.g. "2" or "2.1".'},
+         **_ENTRY_ADDR, 'entry_gloss': _GLOSS},
+        ['number']),
+    _fn('make_sense_of',
+        'PLAN: move an entry, with everything under it, to sit as a sense of another entry of the same lexicon.',
+        {'under_form': {'type': 'string', 'description': 'The entry it should sit under.'},
+         'under_id': {'type': 'string'}, **_ENTRY_ADDR, 'entry_gloss': _GLOSS},
+        []),
+    _fn('free_sense',
+        'PLAN: make a sense an entry of its own, keeping the senses below it.',
+        {**_ENTRY_ADDR, 'entry_gloss': _GLOSS}, []),
+    _fn('promote_example',
+        'PLAN: mark a word in a document as a usage example of an entry. The example is a reference, so it '
+        'follows the word and is shown with its sentence. Lexicography Mode only.',
+        {'document': _DOC, 'ref': {'type': 'string', 'description': 'One word reference, e.g. "s3.w2".'},
+         **_ENTRY_ADDR, 'entry_gloss': _GLOSS},
+        ['document', 'ref']),
+    _fn('remove_example',
+        'PLAN: drop one of an entry\'s usage examples, by the number lexicon_entry shows beside it.',
+        {'index': {'type': 'integer', 'description': 'The example\'s position, as lexicon_entry lists it.'},
+         **_ENTRY_ADDR, 'entry_gloss': _GLOSS},
+        ['index']),
 ]
 
 _IMPL = {
@@ -2058,6 +2603,8 @@ _IMPL = {
     'comments': t_comments, 'add_comment': t_add_comment, 'restore_document': t_restore_document,
     'set_document_metadata': t_set_document_metadata, 'create_document': t_create_document,
     'confirm': t_confirm, 'discard_analysis': t_discard_analysis, 'drop_planned': t_drop_planned,
+    'add_sense': t_add_sense, 'move_sense': t_move_sense, 'make_sense_of': t_make_sense_of,
+    'free_sense': t_free_sense, 'promote_example': t_promote_example, 'remove_example': t_remove_example,
 }
 
 

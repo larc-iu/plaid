@@ -162,7 +162,8 @@ def test_morph_types_and_lexicon_fields_are_validated():
     assert 'has no entry field "definition"' in call_tool(w2, 'create_entry', {'form': 'x', 'fields': {'definition': 'y'}})
     call_tool(w2, 'create_entry', {'form': 'x', 'fields': {'Gloss': 'y'}})
     assert w2.ops[-1]['metadata'] == {'gloss': 'y'}
-    assert 'entry fields: gloss, pos' in call_tool(w2, 'project_overview', {})
+    # morphType and gloss ride along on every vocabulary, declared or not.
+    assert 'entry fields: morphType, gloss, pos' in call_tool(w2, 'project_overview', {})
 
 
 def test_homograph_numbers_pick_an_entry():

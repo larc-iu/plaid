@@ -38,6 +38,7 @@ from typing import Dict, List, Optional, Tuple
 import regex as uregex
 from plaid_client import ROLES, find_by_role
 from plaid_client.workflows.igt import read_tagsets, read_tagset_name, vocab_tagset_for, mode_rule, value_lines
+from .vocab import dictionary_enabled, normalize_vocab_fields, vocab_field_summary
 
 SCOPES = ('Word', 'Morpheme', 'Sentence')
 
@@ -134,7 +135,7 @@ class IgtProject:
     fields: Dict[str, Field]
     orthographies: List[str]
     ignored_cfg: Optional[dict]
-    vocabs: List[dict]  # [{id, name, fields: [name], tagsets: {field name: tagset}}]
+    vocabs: List[dict]  # [{id, name, fields: [spec], tagsets: {field name: tagset}, dictionary: bool}]
     document_metadata: List[str]
     # document metadata field -> tagset (dataclasses.field spelled out: the class has a field() method)
     metadata_tagsets: Dict[str, dict] = dataclasses.field(default_factory=dict)
@@ -191,15 +192,20 @@ class IgtProject:
         """The lexicon entry field playing ``role`` ('gloss' or 'pos'): from
         the lexicon's declared schema, the field whose name says so (for pos
         also "part of speech" / "category"); without a schema, the plain
-        conventional name. None when the schema has no such field."""
-        fields = vocab.get('fields') or []
+        conventional name. None when the schema has no such field.
+
+        Only DECLARED fields count. The core inventory is guaranteed on every
+        vocabulary, so an undeclared "gloss" is always present and would
+        otherwise win the role over the "meaning" a lexicon actually keeps.
+        """
+        fields = [f for f in (vocab.get('fields') or []) if f.get('declared')]
         if not fields:
             return role
         names = {'gloss': ('gloss', 'meaning', 'sense'), 'pos': ('pos', 'part of speech', 'category')}[role]
         for f in fields:
-            k = f.casefold()
+            k = f['name'].casefold()
             if any(n in k for n in names):
-                return f
+                return f['name']
         return None
 
     def field_by_layer(self, layer_id: str) -> Optional[Field]:
@@ -279,15 +285,18 @@ def load_project(client, project_id: str) -> IgtProject:
 
 
 def _vocab_entry(v: dict) -> dict:
-    """A lexicon as the tools see it: its entry fields, and for each field a
-    tagset holds, the tagset (the vocabulary's own, never the project's)."""
-    names = list((_igt(v.get('config'), 'fields') or {}).keys())
+    """A lexicon as the tools see it: its entry fields as full specs (name,
+    type, many, scope, and the rest, read the way the app's own editor reads
+    them), whether Lexicography Mode is on, and for each field a tagset holds,
+    the tagset (the vocabulary's own, never the project's)."""
+    fields = normalize_vocab_fields(_igt(v.get('config'), 'fields'))
     tagsets = {}
-    for n in names:
-        t = vocab_tagset_for(v, n)
+    for f in fields:
+        t = vocab_tagset_for(v, f['name'])
         if t:
-            tagsets[n] = t
-    return {'id': v['id'], 'name': v['name'], 'fields': names, 'tagsets': tagsets}
+            tagsets[f['name']] = t
+    return {'id': v['id'], 'name': v['name'], 'fields': fields, 'tagsets': tagsets,
+            'dictionary': dictionary_enabled(v.get('config'))}
 
 
 # --- document ---------------------------------------------------------------
@@ -738,7 +747,8 @@ def render_overview(project: IgtProject, documents: List[dict]) -> str:
         lines.append('Treated as the gloss where a tool takes no field= (' + ', '.join(defaults) + ')')
     lines.extend(tagset_lines(project))
     lines.append('Orthographies: ' + (', '.join(project.orthographies) or '(none)'))
-    lines.append('Lexicons: ' + (', '.join(v['name'] + (f' (entry fields: {", ".join(v["fields"])})' if v.get('fields') else '')
+    lines.append('Lexicons: ' + (', '.join(v['name'] + (' [Lexicography Mode]' if v.get('dictionary') else '')
+                                           + (f' (entry fields: {", ".join(vocab_field_summary(v))})' if v.get('fields') else '')
                                             for v in project.vocabs) or '(none)'))
     if project.document_metadata:
         lines.append('Document metadata fields: ' + ', '.join(project.document_metadata))

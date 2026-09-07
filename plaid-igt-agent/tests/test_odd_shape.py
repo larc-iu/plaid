@@ -21,7 +21,10 @@ def test_gloss_roles_come_from_names_and_schemas():
     wl, plain = p.vocab('Wordlist'), p.vocab('Plain')
     assert (p.lexicon_field(wl, 'gloss'), p.lexicon_field(wl, 'pos')) == ('meaning', 'category')
     assert (p.lexicon_field(plain, 'gloss'), p.lexicon_field(plain, 'pos')) == ('gloss', 'pos')  # no schema: convention
-    assert p.lexicon_field({'fields': ['note']}, 'gloss') is None
+    # A schema that names no gloss-ish field plays no gloss role. The core
+    # inventory rides along on every vocabulary, so only declared fields count.
+    assert p.lexicon_field({'fields': [{'name': 'note', 'declared': True}]}, 'gloss') is None
+    assert p.lexicon_field({'fields': [{'name': 'gloss', 'declared': False}]}, 'gloss') == 'gloss'
 
 
 def test_tools_follow_the_configured_shape():
@@ -46,7 +49,13 @@ def test_tools_follow_the_configured_shape():
     assert 'no morpheme layer' in call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [{'form': 'a'}]}).lower()
     out = call_tool(w, 'set_entry_field', {'entry_form': 'Ali', 'field': 'Meaning', 'value': 'Ali'})
     assert 'Planned 1 change' in out and w.ops[-1]['field'] == 'meaning'  # schema names are matched case-insensitively
-    assert 'has no entry field "gloss"' in call_tool(w, 'set_entry_field', {'entry_form': 'Ali', 'field': 'gloss', 'value': 'x'})
+    # gloss and morphType are guaranteed on every vocabulary (the app injects
+    # them and its entry editor shows them), so they are writable even here,
+    # where the schema names neither. A field it really lacks is still refused.
+    call_tool(w, 'set_entry_field', {'entry_form': 'Ali', 'field': 'gloss', 'value': 'x'})
+    assert w.ops[-1]['field'] == 'gloss'
+    assert 'has no entry field "definition"' in call_tool(
+        w, 'set_entry_field', {'entry_form': 'Ali', 'field': 'definition', 'value': 'x'})
     call_tool(w, 'set_entry_field', {'entry_form': 'akuna', 'field': 'anything', 'value': 'x'})  # schema-less lexicon: any field
     assert w.ops[-1]['field'] == 'anything'
 

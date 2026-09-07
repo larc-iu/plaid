@@ -175,6 +175,18 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
         return f'Planned a new lexicon entry {_q(a.get("form"))}'
     if name == 'set_entry_field':
         return f'Planned {a.get("field")} = {_q(a.get("value"))} on entry {_entry(a)}'
+    if name == 'add_sense':
+        return f'Planned a sense under {_entry(a)}'
+    if name == 'move_sense':
+        return f'Planned {_entry(a)} as sense {a.get("number")}'
+    if name == 'make_sense_of':
+        return f'Planned {_entry(a)} as a sense of {_q(a.get("under_form") or a.get("under_id"))}'
+    if name == 'free_sense':
+        return f'Planned freeing {_entry(a)} into an entry of its own'
+    if name == 'promote_example':
+        return f'Planned a usage example for {_entry(a)}{_in(a)}'
+    if name == 'remove_example':
+        return f'Planned dropping a usage example from {_entry(a)}'
     if name == 'merge_entries':
         return (f'Planned merging {_q(a.get("remove_form") or a.get("remove_id"))} into '
                 f'{_q(a.get("keep_form") or a.get("keep_id"))}')
@@ -263,6 +275,12 @@ _PROGRESS = {
     'frequency_list': lambda a: 'Counting frequencies…',
     'worklist': lambda a: f'Listing {a.get("kind") or "unfinished"} work…',
     'check_lexicon': lambda a: 'Checking the lexicon…',
+    'add_sense': lambda a: 'Adding a sense…',
+    'move_sense': lambda a: 'Renumbering a sense…',
+    'make_sense_of': lambda a: 'Moving an entry under another…',
+    'free_sense': lambda a: 'Freeing a sense…',
+    'promote_example': lambda a: 'Marking a usage example…',
+    'remove_example': lambda a: 'Dropping a usage example…',
     'check_integrity': lambda a: 'Checking data integrity…',
     'sequence_search': lambda a: 'Searching for the sequence…',
     'query_help': lambda a: 'Reading the query reference…',

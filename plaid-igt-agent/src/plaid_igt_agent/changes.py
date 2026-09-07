@@ -35,8 +35,8 @@ _TOKEN_KINDS = {
 }
 # Ops over several tokens (a multi-word expression) read at their first one.
 _MULTI_KINDS = {'link_phrase': 'token_ids', 'unlink': 'token_ids'}
-_ENTRY_KINDS = {'set_entry_field': 'item_id', 'delete_entry': 'item_id', 'rename_entry': 'item_id',
-                'merge_entries': 'keep_id'}
+_ENTRY_KINDS = {'set_entry_field': 'item_id', 'set_entry_metadata': 'item_id', 'delete_entry': 'item_id',
+                'rename_entry': 'item_id', 'merge_entries': 'keep_id'}
 _DOC_KINDS = {'set_doc_metadata', 'rename_document', 'confirm'}
 
 

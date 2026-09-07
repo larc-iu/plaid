@@ -29,6 +29,8 @@ wire's key recasing):
   unlink          {link_id}
   create_entry    {vocab_id, form, metadata, key}
   set_entry_field {item_id, field, value}
+  set_entry_metadata {item_id, patch}   (reserved keys on an entry: the sense tree, promoted examples, and the
+                   reference repair a delete or merge carries; a null in the patch deletes that key)
   set_doc_metadata {document_id, field, value}
   create_document {name, text, metadata}   (needs the project: text layer, token layers, ignored config)
   merge_entries   {keep_id, remove_id, links: [{link_id, token_id}]}
@@ -131,7 +133,7 @@ class PlanError(Exception):
 
 
 KINDS = ('set_span', 'set_analysis', 'set_orthography', 'respell', 'link', 'unlink', 'link_phrase', 'create_entry',
-         'set_entry_field', 'set_doc_metadata', 'create_document', 'merge_entries', 'delete_entry',
+         'set_entry_field', 'set_entry_metadata', 'set_doc_metadata', 'create_document', 'merge_entries', 'delete_entry',
          'rename_entry', 'rename_document', 'confirm', 'discard_analysis', 'set_morpheme_form', 'set_morph_type',
          'split_word', 'merge_words', 'delete_word', 'split_sentence', 'merge_sentences', 'edit_text',
          'add_comment', 'restore_document')
@@ -139,7 +141,8 @@ REQUIRED = {
     'set_span': ('layer_id', 'token_id'), 'set_analysis': ('word_id', 'text_id', 'begin', 'end', 'morpheme_layer_id', 'morphemes'),
     'set_orthography': ('word_id', 'key'), 'respell': ('text_id', 'begin', 'end', 'value'),
     'link': ('token_id',), 'unlink': ('link_id',), 'link_phrase': ('token_ids',), 'create_entry': ('vocab_id', 'form', 'key'),
-    'set_entry_field': ('item_id', 'field'), 'set_doc_metadata': ('document_id', 'field'),
+    'set_entry_field': ('item_id', 'field'), 'set_entry_metadata': ('item_id', 'patch'),
+    'set_doc_metadata': ('document_id', 'field'),
     'create_document': ('name', 'text'), 'merge_entries': ('keep_id', 'remove_id'), 'delete_entry': ('item_id',),
     'rename_entry': ('item_id', 'form'), 'rename_document': ('document_id', 'name'),
     'confirm': (), 'discard_analysis': ('word_id',), 'set_morpheme_form': ('morpheme_id', 'form'),
@@ -459,6 +462,12 @@ def _execute(client, ops, *, source, label, project, counts, notes, stamp_mode, 
                 b.add(lambda o=op: client.vocab_items.patch_metadata(o['item_id'], {o['field']: o.get('value') or None}))
                 counts['entry fields'] += 1
 
+            elif kind == 'set_entry_metadata':
+                # A patch, so a null clears that key and the rest of the
+                # entry's metadata is left alone.
+                b.add(lambda o=op: client.vocab_items.patch_metadata(o['item_id'], o['patch']))
+                counts['entry structure changes'] += 1
+
             elif kind == 'set_doc_metadata':
                 b.add(lambda o=op: client.documents.patch_metadata(o['document_id'], {o['field']: o.get('value') or None}))
                 counts['document metadata values'] += 1
@@ -744,6 +753,7 @@ def summarize(ops: List[Dict[str, Any]]) -> str:
              'set_doc_metadata': ('document metadata value', 'document metadata values'),
              'create_document': ('new document', 'new documents'),
              'merge_entries': ('merged entry', 'merged entries'), 'delete_entry': ('deleted entry', 'deleted entries'),
+             'set_entry_metadata': ('entry structure change', 'entry structure changes'),
              'rename_entry': ('renamed entry', 'renamed entries'), 'rename_document': ('renamed document', 'renamed documents'),
              'confirm': ('confirmation', 'confirmations'), 'discard_analysis': ('discarded analysis', 'discarded analyses'),
              'set_morpheme_form': ('morpheme form', 'morpheme forms'),
