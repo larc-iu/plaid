@@ -136,10 +136,10 @@ export const dictCollator = (record) => {
   const tag = record?.languages?.object?.iso639P3;
   if (tag && /^[a-z]{2,3}$/i.test(tag)) {
     try {
-      return new Intl.Collator(tag, { sensitivity: 'base', numeric: true });
+      return new Intl.Collator(tag, { numeric: true });
     } catch {
       /* not a tag any ICU build knows */
     }
   }
-  return new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
+  return new Intl.Collator(undefined, { numeric: true });
 };
