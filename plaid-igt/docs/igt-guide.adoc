@@ -346,7 +346,7 @@ Turning it on adds a **Status** field held to a closed list (draft, reviewed, pu
 With the switch on, an entry is a headword, and it can have senses under it, each of which can have senses of its own.
 Numbers say what is what: a headword with senses is *adidi 1*, its senses *adidi 1.1* and *adidi 1.2*, and a sense of the second *adidi 1.2.1*.
 Entries that share a form are told apart by that first number, so two entries spelled *a* are *a 1* and *a 2*, and the senses of the second are *a 2.1*, *a 2.2*.
-One number is always a headword and two are always a sense; a headword that is alone and has no senses has no number at all.
+One number is always a headword and two are always a sense. A headword that is alone and has no senses has no number at all.
 Whether a headword's own gloss is a meaning that words link to, or the headword only stands over its senses, is up to you: a word with one meaning is simply an entry with a gloss, and a headword that leaves its gloss empty is one nothing needs to link to.
 That is the name an entry goes by everywhere: the list, the picker, the link popover in the interlinear view.
 Any entry can be made a sense of another: open it, choose **Set parent**, and find the entry it belongs under.
@@ -359,19 +359,19 @@ Senses are rearranged by dragging in that tree: drop one above or below another 
 A whole entry can be dragged the same way, senses and all.
 **Set parent** works for any entry, dragging or not.
 When several entries share a form, the number after the headword is a button: it opens the list of those entries, and dragging them into a new order gives them their numbers.
-**Make its own entry** takes a sense back out.
 The entry list opens in a **By entry** view, beside **Flat**, that draws senses indented under their entry.
-A search shows every matching entry in either view; in the By entry view a sense that matches is shown under its entry, which is dimmed when it did not match itself.
-The open entry has three tabs: **Entry**, its fields, senses, examples and references; **Concordance**, every place it is linked; and **Comments**.
+A search shows every matching entry in either view. In the By entry view a sense that matches is shown under its entry, which is dimmed when it did not match itself.
+The open entry has three tabs: **Entry** for its fields, senses, examples and references, **Concordance** for every place it is linked, and **Comments**.
 In the interlinear view, the link popover lists a dictionary the same way: each headword once, its senses numbered under it.
 
 A field can hold a reference to another entry.
 On the Settings tab, set the field's **Type** to **Entry** for one reference or **Entries** for a list, and name it for what it means: *Variant of*, *See also*, *Compound of*.
-A field that already holds text cannot hold references, so changing its type says how many values that clears and asks first.
+Widening a field from **Entry** to **Entries** keeps every reference it holds, and narrowing it back keeps the first of each.
+A value the new type cannot hold at all, such as text under **Entry** or a reference under **Text**, is cleared, and the change says how many and asks first.
 A sense is an entry too, so a reference can point at one.
 On the entry form such a field is a picker: type part of a form or gloss and choose.
 Each chosen entry is shown as a link to it, and the entry it points at lists it under **Referenced by**.
-References stay within one vocabulary.
+References stay within one vocabulary, and work whether or not the vocabulary is in Lexicography Mode.
 Whether a variant is its own entry pointing at the main one, or simply another entry, is up to you.
 
 A field can also be set to **Headword only**, so it is shown on a headword and not on its senses: an etymology or a pronunciation belongs to the entry, a gloss to each sense.
@@ -395,7 +395,9 @@ A CLDF import does the same with its entry and sense tables.
 FLEx's variants and complex forms come in when you tick **Variants and complex forms** on the review screen: a variant gets a *variantOf* field naming what it varies, a complex form a *components* field naming what it is built from, and each keeps FLEx's name for the relation (*Spelling Variant*, *Compound*) beside it.
 
 Exports follow the same structure.
-A LIFT file has one entry per headword, its senses as senses and their senses as subsenses; a CLDF dataset puts headwords in its entry table and every sense under them in its sense table, each sense with its own part of speech and fields; the vocabulary's TSV carries each entry's number and names the entries a reference field points at.
+A LIFT file has one entry per headword, its senses as senses and their senses as subsenses.
+A CLDF dataset puts headwords in its entry table and every sense under them in its sense table, each sense with its own part of speech and fields.
+The vocabulary's TSV carries each entry's number and names the entries a reference field points at.
 A reference field is a relation in LIFT, pointing at the entry or sense it names, and the relation's name is declared in the ranges file beside it.
 Promoted examples go out with the lexicon: LIFT carries each one's sentence and translation, and a CLDF sense names the example rows its sentences became.
 An example whose document is outside a LIFT export is fetched for its sentence, and one whose word is gone is left out and counted in the export's warnings.

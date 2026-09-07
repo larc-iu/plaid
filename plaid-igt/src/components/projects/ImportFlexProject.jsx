@@ -50,11 +50,8 @@ export const ImportFlexProject = () => {
   // Where the lexicon goes: a new vocab (named here; null = the default name
   // until edited) or one of the existing vocabs this user maintains.
   const [lexiconMode, setLexiconMode] = useState('new'); // new | existing
-  // Keep FLEx's sense structure and turn the vocabulary's Dictionary switch
-  // on. On unless unticked: a FLEx lexicon is a dictionary.
-
-  // Variants and complex forms are references between entries, so they need
-  // Lexicography Mode. Off unless asked for.
+  // Variants and complex forms are references between entries. Off unless
+  // asked for: they are FLEx's own structure, not everyone's.
   const [importVariants, setImportVariants] = useState(false);
   const [lexiconName, setLexiconName] = useState(null);
   const [existingVocabs, setExistingVocabs] = useState([]);

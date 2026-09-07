@@ -103,16 +103,24 @@ the upload's media type is validated from its filename.
   `schema.tagsets`, `null` when it has none. A vocabulary carries its own because it
   is shared across projects.
 - Item `metadata` is exported wholesale (custom fields, FLEx guids, examples, …).
-  Four of its keys are structure rather than fields, and the importer REWRITES
-  them, since every id in the archive is replaced on the way in:
-  `parent` (the entry this one is a sense of) and `senseOrder` (its place among
-  its siblings), the value of every `type: "item"` field, and each entry of
-  `examples`, which is either `{document, token}` (a sentence promoted from a
-  corpus) or `{text, translation}` (an example a FLEx import carried in, left
-  alone). `homograph` is an ordinal, not an id, and travels as it is.
+  Seven of its keys are structure rather than fields, never editable as one
+  (`RESERVED_ITEM_KEYS` in vocabFields.js): `form`, `parent`, `senseOrder`,
+  `homograph`, `examples`, `flexEntry` and `flexSense`. The importer adds an
+  eighth of its own, `nativeImportId`, which is a stamp rather than data.
+  Two of those hold ids, as does every `type: "item"` field, and the importer
+  REWRITES all three, since every id in the archive is replaced on the way in:
+  `parent` (the entry this one is a sense of), that field's value, and each
+  entry of `examples`,
+  which is either `{document, token}` (a sentence promoted from a corpus) or
+  `{text, translation}` (an example a FLEx import carried in, left alone).
+  `senseOrder` and `homograph` are ordinals rather than ids and travel as they
+  are, though `senseOrder` is dropped alongside a `parent` that did not survive.
+  `flexEntry` and `flexSense` are FLEx's own guids and mean nothing here.
   The rewrite is a LAST pass, after every document has been created, and a
   reference whose target is not in the archive is dropped and counted in the
-  import's warnings.
+  import's warnings. It rewrites the whole metadata map, so it also writes
+  `nativeImportId` back: without it a run interrupted during this pass would
+  come back unable to recognize the items it had already made.
 - **Items keep the order the server returned them in, and that order is
   contractual.** It is creation order, which is what homonym subscripts
   (form₁, form₂, …) are numbered by, so a re-importer must recreate items **in
@@ -306,11 +314,13 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
    (`metadata.nativeImported`) only after every write succeeded; resume skips
    done documents and deletes + redoes half-imported ones.
 4. Per vocabulary, LAST, once every document exists: rewrite the ids inside item
-   metadata through the maps built above (`parent`/`senseOrder`, every
-   `type: "item"` field, and each `{document, token}` example, whose document
-   AND token both have to have arrived). What did not survive is dropped and
-   counted in a warning. This runs after the documents because an example
-   points into one.
+   metadata through the maps built above (`parent`, every `type: "item"` field,
+   and each `{document, token}` example, whose document AND token both have to
+   have arrived). `senseOrder` is not an id and is only dropped when its
+   `parent` is. What did not survive is dropped and counted in a warning. This
+   runs after the documents because an example points into one. The write
+   replaces the whole metadata map and restores `nativeImportId` as it goes, so
+   a resume still recognizes an item this pass reached.
 5. All offsets are code points; never re-derive them from UTF-16 indices.
 
 ## Non-goals
