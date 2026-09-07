@@ -367,8 +367,13 @@ export function buildCldfDataset({
   const mediaRows = [];
   // Which example row a token sits in, so a sense's promoted examples can name
   // the rows their sentences became. Only the documents in this export are in
-  // it: an example pointing outside the scope has no row to reference.
+  // it: an example pointing outside the scope has no row to reference. Built
+  // only when something actually points into a document, since it holds an
+  // entry per token in the corpus.
   const exampleIdByToken = new Map();
+  const wantExampleLinks =
+    o.dictionary &&
+    vocabularies.some((v) => (v.items || []).some((it) => exampleRefs(it).length > 0));
   const metadataNames = new Map();
   // Reserved because the ContributionTable always writes them.
   const usedMetadataColumns = new Set(['ID', 'Name', 'Plaid_ID']);
@@ -470,7 +475,7 @@ export function buildCldfDataset({
           .map((t) => listItem(t.orthographies?.[name] ?? ''))
           .join('\t');
       }
-      if (o.dictionary) {
+      if (wantExampleLinks) {
         for (const t of tokens) {
           exampleIdByToken.set(exampleKey(doc.id, t.id), row.ID);
           for (const m of t.morphemes || []) {

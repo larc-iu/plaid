@@ -31,10 +31,14 @@ export const fieldEmpty = (item, field) =>
  * is ANY_FIELD. `emptyOnly` (with a scoped field) keeps only the entries with
  * no value there; the field being empty, the query then reads the form, so
  * the gaps can still be narrowed to a stretch of the alphabet.
+ *
+ * `textOf` overrides what a field reads as. An Entry field holds ids, and the
+ * screen shows the entries they name, so the list passes a reader that does
+ * the same.
  */
 export function filterVocabItems(
   items,
-  { query = '', field = ANY_FIELD, emptyOnly = false, fieldNames = [] },
+  { query = '', field = ANY_FIELD, emptyOnly = false, fieldNames = [], textOf = fieldText },
 ) {
   const scoped = field && field !== ANY_FIELD ? field : null;
   const gaps = scoped && emptyOnly;
@@ -42,7 +46,7 @@ export function filterVocabItems(
   const q = query.trim().toLowerCase();
   if (!q) return list;
   const columns = gaps ? ['form'] : scoped ? [scoped] : ['form', ...fieldNames];
-  return list.filter((it) => columns.some((f) => fieldText(it, f).toLowerCase().includes(q)));
+  return list.filter((it) => columns.some((f) => textOf(it, f).toLowerCase().includes(q)));
 }
 
 /**

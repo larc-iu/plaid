@@ -23,6 +23,22 @@ describe('filterVocabItems', () => {
     expect(ids(filterVocabItems(items, { query: '   ', fieldNames }))).toEqual(ids(items));
   });
 
+  it('reads a field through textOf when one is given', () => {
+    // What an Entry field holds is an id; what the screen shows is the entry
+    // it names, and that is what the box searches.
+    const refs = [
+      { id: 'r1', form: 'kat', metadata: {} },
+      { id: 'r2', form: 'katt', metadata: { variantOf: 'r1' } },
+    ];
+    const textOf = (item, field) =>
+      field === 'variantOf' ? (item.metadata.variantOf === 'r1' ? 'kat' : '') : (item.form ?? '');
+    expect(
+      ids(filterVocabItems(refs, { query: 'kat', field: 'variantOf', fieldNames: [], textOf })),
+    ).toEqual(['r2']);
+    // Without it the id is all there is to match, and nothing does.
+    expect(ids(filterVocabItems(refs, { query: 'kat', field: 'variantOf' }))).toEqual([]);
+  });
+
   it('searches the form and every field, case-insensitively', () => {
     expect(ids(filterVocabItems(items, { query: 'DOG', fieldNames }))).toEqual(['a', 'e']);
     expect(ids(filterVocabItems(items, { query: 'n', field: ANY_FIELD, fieldNames }))).toEqual([

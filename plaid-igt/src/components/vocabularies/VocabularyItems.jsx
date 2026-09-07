@@ -82,7 +82,13 @@ import { planItemConcordance, loadConcordanceGroups, sentenceTo } from './vocabC
 import { serializeVocabTsv } from '@/export/vocabTsv';
 import { BulkAddDialog } from './BulkAddDialog';
 import { ReplaceDialog } from './ReplaceDialog';
-import { filterVocabItems, sortVocabItems, fieldEmpty, ANY_FIELD } from '@/domain/vocabItemFilter';
+import {
+  filterVocabItems,
+  sortVocabItems,
+  fieldText,
+  fieldEmpty,
+  ANY_FIELD,
+} from '@/domain/vocabItemFilter';
 import { EntryComments } from './EntryComments';
 import { useCommentStore } from '@/domain/useCommentStore';
 import { anchorCaption } from '@/domain/commentAnchors';
@@ -840,6 +846,25 @@ export const VocabularyItems = ({
     );
   };
 
+  // An Entry field holds ids. The screen shows the entries they name, so the
+  // search box reads the same thing rather than an id nobody types.
+  const searchTextOf = useMemo(() => {
+    const refs = new Set(fields.filter((f) => f.type === FIELD_TYPES.ITEM).map((f) => f.name));
+    if (!refs.size) return fieldText;
+    const byId = new Map(items.map((it) => [it.id, it]));
+    const nameOf = (id) => {
+      const target = byId.get(id);
+      if (!target) return '';
+      const n = homonyms?.get?.(id);
+      return typeof n === 'string' && n ? `${target.form} ${n}` : (target.form ?? '');
+    };
+    return (item, name) => {
+      if (!refs.has(name)) return fieldText(item, name);
+      const v = item.metadata?.[name];
+      return (Array.isArray(v) ? v : v ? [v] : []).map(nameOf).filter(Boolean).join(' ');
+    };
+  }, [fields, items, homonyms]);
+
   // ---- left list (search + column sort) ----
   const filteredItems = useMemo(
     () =>
@@ -849,6 +874,7 @@ export const VocabularyItems = ({
           field: searchField,
           emptyOnly,
           fieldNames,
+          textOf: searchTextOf,
         }),
         sort,
         { homonyms, usageCounts },
@@ -859,6 +885,7 @@ export const VocabularyItems = ({
       searchField,
       emptyOnly,
       fieldNames,
+      searchTextOf,
       homonyms,
       usageCounts,
       sort,
