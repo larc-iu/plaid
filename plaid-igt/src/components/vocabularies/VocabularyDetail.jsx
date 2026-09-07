@@ -39,6 +39,7 @@ import {
 import {
   readDictionaryEnabled,
   refIds,
+  withRefIds,
   DICTIONARY_KEY,
   dictionaryEnablement,
 } from '@/domain/vocabDictionary';
@@ -395,20 +396,43 @@ export const VocabularyDetail = () => {
     return { cleared, trimmed };
   };
 
-  /** Drop `fieldName` from every entry holding it. */
-  const clearFieldValues = async (fieldName, label) => {
+  /**
+   * Bring every entry's value in `fieldName` into what `after` can hold, and
+   * write only what changes. Leaving Entry drops the ids outright, since a
+   * text field would show them raw and let anyone type over them. Arriving at
+   * Entry keeps the references that resolve, in the new field's own shape, and
+   * drops what was never one.
+   *
+   * Done here rather than left to the entry list's load-time repair: the
+   * dialog has just said how many values go, and a promise kept only once a
+   * writer next opens that screen is not kept.
+   */
+  const pruneFieldValues = async (fieldName, after, label) => {
     const { items = [] } = await client.vocabLayers.get(vocabularyId, true);
-    const holders = items.filter((it) => it.metadata?.[fieldName] != null);
-    if (!holders.length) return;
-    await client.withOperation(`Clear "${label}"`, async () => {
-      for (let i = 0; i < holders.length; i += FIELD_CLEAR_CHUNK) {
-        const chunk = holders.slice(i, i + FIELD_CLEAR_CHUNK);
+    const live = new Set(items.map((it) => it.id));
+    const writes = [];
+    for (const it of items) {
+      const raw = it.metadata?.[fieldName];
+      if (raw == null || raw === '') continue;
+      let metadata;
+      if (after.type !== FIELD_TYPES.ITEM) {
+        metadata = { ...it.metadata };
+        delete metadata[fieldName];
+      } else {
+        const ids = refIds(it, after).filter((x) => x !== it.id && live.has(x));
+        metadata = withRefIds(it.metadata, after, ids);
+      }
+      const now = metadata[fieldName];
+      if (JSON.stringify(now ?? null) !== JSON.stringify(raw)) writes.push({ id: it.id, metadata });
+    }
+    if (!writes.length) return;
+    await client.withOperation(`Change "${label}"`, async () => {
+      for (let i = 0; i < writes.length; i += FIELD_CLEAR_CHUNK) {
+        const chunk = writes.slice(i, i + FIELD_CLEAR_CHUNK);
         await client.batched(async () => {
-          for (const it of chunk) {
-            const rest = { ...it.metadata };
-            delete rest[fieldName];
-            if (Object.keys(rest).length) client.vocabItems.setMetadata(it.id, rest);
-            else client.vocabItems.deleteMetadata(it.id);
+          for (const w of chunk) {
+            if (Object.keys(w.metadata).length) client.vocabItems.setMetadata(w.id, w.metadata);
+            else client.vocabItems.deleteMetadata(w.id);
           }
         });
       }
@@ -443,9 +467,16 @@ export const VocabularyDetail = () => {
       }
       const label = fieldLabel(before ?? { name: fieldName });
       const lines = [];
-      if (cost.cleared)
+      // Said as what is true of each direction. A text field can hold the
+      // strings perfectly well: what it cannot hold is a reference, and that
+      // is why they go.
+      if (cost.cleared && choice.type === FIELD_TYPES.ITEM)
         lines.push(
           `${cost.cleared} ${cost.cleared === 1 ? 'entry holds a value' : 'entries hold values'} in ${label} that ${choice.label} cannot hold.`,
+        );
+      if (cost.cleared && choice.type !== FIELD_TYPES.ITEM)
+        lines.push(
+          `${cost.cleared} ${cost.cleared === 1 ? 'entry holds a reference' : 'entries hold references'} in ${label}. Changing the type to ${choice.label} clears ${cost.cleared === 1 ? 'it' : 'them'}.`,
         );
       if (cost.trimmed)
         lines.push(
@@ -462,16 +493,16 @@ export const VocabularyDetail = () => {
       ) {
         return;
       }
-      // Leaving Entry behind: the stored values are entry ids, which a text
-      // field would show raw and let anyone type over. They go with the type.
-      if (before?.type === FIELD_TYPES.ITEM && choice.type !== FIELD_TYPES.ITEM) {
-        try {
-          await clearFieldValues(fieldName, label);
-        } catch (err) {
-          console.error('Error clearing entry references before a field type change:', err);
-          notifyError('The references could not be cleared.', 'Not changed');
-          return;
-        }
+      try {
+        await pruneFieldValues(
+          fieldName,
+          next.find((f) => f.name === fieldName),
+          label,
+        );
+      } catch (err) {
+        console.error('Error rewriting entry values before a field type change:', err);
+        notifyError('The entries could not be changed.', 'Not changed');
+        return;
       }
     }
     await saveFields(next);

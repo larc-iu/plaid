@@ -367,7 +367,7 @@ In the interlinear view, the link popover lists a dictionary the same way: each 
 A field can hold a reference to another entry.
 On the Settings tab, set the field's **Type** to **Entry** for one reference or **Entries** for a list, and name it for what it means: *Variant of*, *See also*, *Compound of*.
 Widening a field from **Entry** to **Entries** keeps every reference it holds, and narrowing it back keeps the first of each.
-A value the new type cannot hold at all, such as text under **Entry** or a reference under **Text**, is cleared, and the change says how many and asks first.
+A value the new type cannot hold at all, such as text under **Entry** or a reference under **Text**, is cleared as part of the change, which says how many and asks first.
 A sense is an entry too, so a reference can point at one.
 On the entry form such a field is a picker: type part of a form or gloss and choose.
 Each chosen entry is shown as a link to it, and the entry it points at lists it under **Referenced by**.
