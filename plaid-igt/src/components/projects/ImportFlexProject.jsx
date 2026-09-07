@@ -9,7 +9,7 @@
 // against the same project; the engine skips documents already marked done
 // and redoes half-imported ones.
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Upload, FileUp, Check, X, RefreshCw, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,7 @@ import { buildDocuments } from '../../import/flex/buildDocuments';
 import { deriveImportConfig, runImport } from '../../import/flex/importEngine';
 import { executeProjectSetup } from './setup/executeSetup';
 import { markImportStarted, markImportFinished } from '../../domain/igtConfig';
+import { readDictionaryEnabled } from '../../domain/vocabDictionary';
 import { useResumeImport } from '@/hooks/useResumeImport';
 import { documentFraction, documentLabel } from '../../import/progress';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
@@ -154,6 +155,16 @@ export const ImportFlexProject = () => {
   const defaultLexiconName = `${projectName.trim()} Lexicon`;
   const effectiveLexiconName = lexiconName ?? defaultLexiconName;
   const existingVocab = existingVocabs.find((v) => v.id === existingVocabId) ?? null;
+  // A lexicon of its own starts as a dictionary; an existing one keeps whatever
+  // it already is, since a vocabulary is shared across projects and this import
+  // is not the place to change that for all of them by default.
+  useEffect(() => {
+    if (lexiconMode === 'existing' && existingVocab) {
+      setImportDictionary(readDictionaryEnabled(existingVocab.config));
+    } else if (lexiconMode === 'new') {
+      setImportDictionary(true);
+    }
+  }, [lexiconMode, existingVocab]);
   const lexiconChoiceValid =
     lexiconMode === 'existing' ? !!existingVocab : !!effectiveLexiconName.trim();
 
