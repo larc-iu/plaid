@@ -455,24 +455,38 @@ def plan_sense_set_number(tree: SenseTree, item_id: str, shown) -> List[dict]:
     return _renumbered(sibs, p)
 
 
-def arrange_as_tree(listed: List[dict], tree: SenseTree) -> List[Tuple[dict, int]]:
-    """Lay out a (filtered, sorted) list as a tree for display: an item nests
-    under its parent only when the parent is ALSO in the list, so a search never
-    hides a hit and never drags in an entry that did not match. Top-level items
-    keep the list's order, nested ones follow sense order. Mirrors
-    arrangeAsTree, so the agent's listing matches the app's By entry view."""
+def arrange_as_tree(listed: List[dict], tree: SenseTree) -> List[Tuple[dict, int, bool]]:
+    """Lay out a (filtered, sorted) list as a tree for display: a hit is shown
+    under the entry it belongs to, and the entries above it come along as
+    CONTEXT so a sense is never printed as though it were a headword. A context
+    row is one that did not match itself; the third element of each tuple says
+    which. Mirrors arrangeAsTree, so the agent's listing matches the app's By
+    entry view."""
     shown = {it['id'] for it in listed}
-    out: List[Tuple[dict, int]] = []
+    placed = set()
+    out: List[Tuple[dict, int, bool]] = []
 
-    def place(it, depth):
-        out.append((it, depth))
+    def place(it, depth, context=False):
+        if it['id'] in placed:
+            return
+        placed.add(it['id'])
+        out.append((it, depth, context))
         for c in tree.children_of.get(it['id']) or []:
-            if c['id'] in shown:
-                place(c, depth + 1)
+            # A child comes along when it matched, or when something under it did.
+            if c['id'] in shown or any(d['id'] in shown for d in descendants_of(tree, c['id'])):
+                place(c, depth + 1, c['id'] not in shown)
+
     for it in listed:
-        p = tree.parent_of.get(it['id'])
-        if not p or p not in shown:
-            place(it, 0)
+        if it['id'] in placed:
+            continue
+        # Start from the top of its chain, so the hit sits under its context.
+        chain = []
+        cur = it
+        while cur:
+            chain.insert(0, cur)
+            p = tree.parent_of.get(cur['id'])
+            cur = tree.by_id.get(p) if p else None
+        place(chain[0], 0, chain[0]['id'] not in shown)
     return out
 
 

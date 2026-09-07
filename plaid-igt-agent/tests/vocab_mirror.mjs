@@ -13,7 +13,7 @@ const DOMAIN = resolve(dirname(fileURLToPath(import.meta.url)), '../../plaid-igt
 const {
   buildSenseTree, buildItemNumbers, planDeleteRefs, planMergeRefs, planSenseDrop,
   nextSenseOrder, descendantsOf, referencesTo, validateVocabRefs,
-  homographGroup, planHomographOrder, homographOf,
+  homographGroup, planHomographOrder, homographOf, arrangeAsTree,
 } = await import(`${DOMAIN}/vocabDictionary.js`);
 const { buildHomonymIndex } = await import(`${DOMAIN}/vocabHomonyms.js`);
 const { normalizeVocabFields } = await import(`${DOMAIN}/vocabFields.js`);
@@ -44,6 +44,11 @@ const out = cases.map((c) => {
     planDeleteRefs: planDeleteRefs(c.items, c.fields, c.deleted),
     planMergeRefs: planMergeRefs(c.items, c.fields, c.survivor, c.losers),
     validateVocabRefs: validateVocabRefs(c.items, c.fields).patches,
+    // laying a filtered list out as a tree, context rows and all
+    arrangeAsTree: arrangeAsTree(
+      c.items.filter((it) => c.listed.includes(it.id)),
+      t,
+    ).map((r) => [r.item.id, r.depth, !!r.context]),
     // the field schema
     normalizeVocabFields: normalizeVocabFields(c.rawFields),
   };

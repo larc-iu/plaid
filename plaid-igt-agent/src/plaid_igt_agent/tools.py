@@ -792,12 +792,17 @@ def t_read_lexicon(ws: Workspace, lexicon: Optional[str] = None, pattern: Option
                 + (f', {len(hits)} matching' if pattern else ''))
         lines.append(head)
         shown = 0
-        for it, depth in arrange_as_tree(hits, view.tree):
+        for it, depth, context in arrange_as_tree(hits, view.tree):
             if shown >= limit:
                 break
-            shown += 1
+            # A context row is an entry above a hit, printed so a sense is not
+            # read as a headword. It does not count against the limit's tally
+            # of matches, but it does take a line.
+            if not context:
+                shown += 1
             num = view.number(it['id'])
-            lines.append('  ' + '  ' * depth + (f'{num} ' if num else '') + entry_line(it, view))
+            lines.append('  ' + '  ' * depth + (f'{num} ' if num else '')
+                         + entry_line(it, view) + (' | (context)' if context else ''))
         if len(hits) > shown:
             lines.append(f'  ... {len(hits) - shown} more (narrow with pattern)')
     return _truncate('\n'.join(lines))

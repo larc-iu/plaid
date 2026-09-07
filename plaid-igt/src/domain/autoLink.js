@@ -6,8 +6,8 @@
 //   a tie on count breaks to the lexicographically smallest item id. With no
 //   precedent, link to a matching vocab item; if several share the form, again
 //   the lexicographically smallest id wins. In Lexicography Mode a headword
-//   that has a sense of the same form is not a candidate: the link is about a
-//   sense, and the headword of a FLEx import carries no gloss of its own. Ties are rare, and the result is
+//   that has a sense of the same form is not a candidate: the rule takes the
+//   more specific one (see dropCoveredHeadwords). Ties are rare, and the result is
 //   stamped unverified for review, so an arbitrary-but-deterministic pick beats
 //   refusing to link. An entry may be linked from words AND morphemes (a stem
 //   is a morpheme in `dog-s` and the whole word in `dog`); the kind only ranks,
@@ -89,11 +89,19 @@ export function buildItemIndex(vocabularies) {
 
 /**
  * In Lexicography Mode a headword and its senses share a form, so both land in
- * the same list of candidates. A link is about a sense: that is where the gloss
- * is, and the headword a FLEx import makes over several senses has none of its
- * own. So a headword drops out of a list that also holds one of its senses,
- * which leaves the rule picking between senses as it always picked between
- * same-form entries. A headword whose senses are spelled differently stays.
+ * the same list of candidates. The rule takes the MORE SPECIFIC one: a headword
+ * drops out of a list that also holds one of its own senses, whatever it says
+ * itself, which leaves the choice between senses to be made as it always was
+ * between same-form entries. A headword whose senses are spelled differently
+ * stays a candidate, and so does one whose senses are not in this vocabulary's
+ * list at all.
+ *
+ * The gloss is not consulted, deliberately: a glossed headword is no more the
+ * thing a word means than an unglossed one, and reading a particular field
+ * here would tie the rule to a schema. (The analyze service does look, because
+ * it is deciding what to SHOW a model, not what to link: see
+ * services/igt_analyze_llm.py.) A person's own link still wins through
+ * precedent, headword or not.
  */
 function dropCoveredHeadwords(maps, parentOf) {
   if (!parentOf.size) return;

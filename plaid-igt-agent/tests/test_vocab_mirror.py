@@ -37,7 +37,7 @@ from plaid_igt_agent.vocab import (
     build_sense_tree, build_item_numbers, build_homonym_index, plan_delete_refs,
     plan_merge_refs, plan_sense_drop, next_sense_order, descendants_of, references_to,
     validate_vocab_refs, homograph_group, plan_homograph_order, homograph_of,
-    normalize_vocab_fields)
+    arrange_as_tree, normalize_vocab_fields)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUNNER = os.path.join(HERE, 'vocab_mirror.mjs')
@@ -106,6 +106,8 @@ def _case(seed: int) -> dict:
         'deleted': r.sample(ids, r.randint(1, min(3, len(ids)))),
         'survivor': r.choice(ids), 'losers': r.sample(ids, r.randint(1, min(3, len(ids)))),
         'moveId': move, 'orderParent': r.choice(ids),
+        # A search's hits, in list order: what arrange_as_tree lays out.
+        'listed': r.sample(ids, r.randint(0, len(ids))),
         'drops': [{'kind': 'root'}, {'kind': 'into', 'id': r.choice(ids)},
                   {'kind': 'before', 'id': r.choice(ids)}, {'kind': 'after', 'id': r.choice(ids)},
                   {'kind': 'after', 'id': move}, None],
@@ -154,6 +156,8 @@ def _python_side(c: dict) -> dict:
         'planDeleteRefs': plan_delete_refs(c['items'], c['fields'], c['deleted']),
         'planMergeRefs': plan_merge_refs(c['items'], c['fields'], c['survivor'], c['losers']),
         'validateVocabRefs': validate_vocab_refs(c['items'], c['fields'])[0],
+        'arrangeAsTree': [[it['id'], depth, context] for it, depth, context in arrange_as_tree(
+            [it for it in c['items'] if it['id'] in c['listed']], t)],
         # `declared` is the port's own: it tells a core field the config named
         # from one injected for it, which the app reads off the raw config.
         'normalizeVocabFields': [{k: v for k, v in f.items() if k != 'declared'}
@@ -186,7 +190,8 @@ def test_the_two_runners_cover_the_same_functions(compared):
     'numberOf', 'parentOf', 'depthOf', 'rootOf', 'roots', 'childrenOf',
     'itemNumbers', 'homonyms', 'homographOf', 'homographGroup', 'planHomographOrder',
     'planSenseDrop', 'nextSenseOrder', 'descendantsOf', 'referencesTo',
-    'planDeleteRefs', 'planMergeRefs', 'validateVocabRefs', 'normalizeVocabFields',
+    'planDeleteRefs', 'planMergeRefs', 'validateVocabRefs', 'arrangeAsTree',
+    'normalizeVocabFields',
 ])
 def test_the_port_matches_the_app(compared, key):
     cases, js, py = compared

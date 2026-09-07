@@ -64,6 +64,19 @@ def test_read_lexicon_draws_senses_under_their_entry():
     assert '1.2 kwatha | sense 1.2 of "kwatha" | gloss=ferment' in lines[3]
 
 
+def test_read_lexicon_keeps_a_hit_under_the_entry_it_belongs_to():
+    """A pattern that matches only a sense used to print it at the left margin,
+    where it reads as a headword. The entries above it come along as context,
+    which is what the app's By entry view draws."""
+    out = call_tool(dict_ws(), 'read_lexicon', {'pattern': 'simmer'})
+    lines = [l for l in out.splitlines() if 'kwatha' in l]
+    assert len(lines) == 3
+    assert '(context)' in lines[0] and '1 kwatha' in lines[0]
+    assert '(context)' in lines[1] and '1.1 kwatha' in lines[1]
+    assert '(context)' not in lines[2] and 'gloss=simmer' in lines[2]
+    assert lines[2].index('1.1.1') > lines[1].index('1.1 ')
+
+
 def test_a_flat_lexicon_is_unchanged():
     out = call_tool(dict_ws(dictionary=False), 'read_lexicon', {})
     assert 'Lexicography Mode' not in out and 'Lexicon": 6 entries' in out
