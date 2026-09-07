@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { planVocabReplace, replaceWrites } from './vocabReplace.js';
-import { buildReplacer } from './replacer.js';
+import { buildReplacer, MATCH_EMPTY } from './replacer.js';
 
 const items = [
   { id: 'a', form: 'perro', metadata: { gloss: 'dog', pos: 'n' } },
@@ -84,5 +84,60 @@ describe('replaceWrites', () => {
     ];
     expect(replaceWrites(rows, { field: 'pos', itemsById })).toEqual([]);
     expect(replaceWrites(rows, { field: 'form', itemsById })).toEqual([]);
+  });
+});
+
+describe('planVocabReplace, filling a blank', () => {
+  // What an imported lexicon looks like: a status field in the schema, and no
+  // status on any entry.
+  const unpublished = [
+    { id: 'a', form: 'perro', metadata: { gloss: 'dog' } },
+    { id: 'b', form: 'gato', metadata: { gloss: 'cat', status: 'draft' } },
+    { id: 'c', form: 'x', metadata: {} },
+  ];
+  const statusTagset = {
+    name: 'Status',
+    mode: 'closed',
+    delimiters: '',
+    values: [{ value: 'draft' }, { value: 'reviewed' }, { value: 'published' }],
+  };
+  const plan = (replacement, tagset = null) =>
+    planVocabReplace(unpublished, {
+      field: 'status',
+      apply: buildReplacer('', MATCH_EMPTY, replacement).apply,
+      tagset,
+    });
+
+  it('lists every entry the field is missing from, and leaves the rest alone', () => {
+    expect(plan('published').map((r) => [r.id, r.old, r.new])).toEqual([
+      ['a', '', 'published'],
+      ['c', '', 'published'],
+    ]);
+  });
+
+  it('writes the whole metadata map, keeping what was already there', () => {
+    const writes = replaceWrites(plan('published'), {
+      field: 'status',
+      itemsById: new Map(unpublished.map((it) => [it.id, it])),
+    });
+    expect(writes).toEqual([
+      { id: 'a', metadata: { gloss: 'dog', status: 'published' } },
+      { id: 'c', metadata: { status: 'published' } },
+    ]);
+  });
+
+  it('flags a value the tagset refuses rather than writing it', () => {
+    const rows = plan('printed', statusTagset);
+    expect(rows.map((r) => r.invalid)).toEqual(['tagset', 'tagset']);
+    expect(replaceWrites(rows, { field: 'status', itemsById: new Map() })).toEqual([]);
+  });
+
+  it('finds nothing to do on a field every entry already has', () => {
+    expect(
+      planVocabReplace(unpublished, {
+        field: 'form',
+        apply: buildReplacer('', MATCH_EMPTY, 'x').apply,
+      }),
+    ).toEqual([]);
   });
 });

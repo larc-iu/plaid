@@ -1,15 +1,33 @@
 // A substitution function for one (find, matchType, replacement) triple,
 // shared by the project's Bulk Edit tab and a vocabulary's Replace dialog.
 // `matchType` is one of the search tab's MATCH_TYPES ids: `contains` (case-
-// insensitive, literal), `exact`, or `regex`.
+// insensitive, literal), `exact`, or `regex`, or MATCH_EMPTY below, which only
+// the vocabulary's Replace dialog offers.
 
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Fill a value that is not there. The three search match types all skip an
+ * empty value (a `contains` search must not match every blank entry, and an
+ * empty `find` matches nothing at all), so setting a field on the entries that
+ * lack it needs its own kind. It has no `find`: the empty value IS the match.
+ *
+ * This is what makes a whole imported lexicon publishable in one pass, since
+ * an import writes no status on anything.
+ */
+export const MATCH_EMPTY = 'empty';
 
 // Returns { apply, error }: `apply(value)` gives the rewritten value, or null
 // when the value is unchanged (no match, or the match rewrites to itself).
 // A bad regex yields `error` and an `apply` that never matches.
 export function buildReplacer(find, matchType, replacement) {
   const never = () => null;
+  if (matchType === MATCH_EMPTY) {
+    const next = replacement ?? '';
+    // Replacing nothing with nothing changes nothing.
+    if (next === '') return { apply: never, error: null };
+    return { apply: (value) => ((value ?? '') === '' ? next : null), error: null };
+  }
   if (!find) return { apply: never, error: null };
   let re = null;
   if (matchType === 'regex') {

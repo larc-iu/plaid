@@ -25,12 +25,18 @@ import {
 import { cn } from '@/lib/utils';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { humanizeFieldName } from '@/domain/vocabFields';
-import { buildReplacer } from '@/domain/replacer';
+import { buildReplacer, MATCH_EMPTY } from '@/domain/replacer';
 import { planVocabReplace, replaceWrites } from '@/domain/vocabReplace';
 import { MATCH_TYPES } from '../projects/search/searchQueries.js';
 
 // One write is one batch op, and plaid-core caps a batch at 1000.
 const CHUNK = 200;
+
+// The search tab's kinds, plus filling a blank. That last one is Replace's
+// alone: the search tab queries the server, which has no way to ask for the
+// entries where a field is missing, and Bulk Edit rewrites document text,
+// where there is no blank to fill.
+const REPLACE_MATCH_TYPES = [...MATCH_TYPES, { id: MATCH_EMPTY, label: 'is empty' }];
 
 const plural = (n, word, words = `${word}s`) => `${n.toLocaleString()} ${n === 1 ? word : words}`;
 
@@ -88,6 +94,10 @@ export const ReplaceDialog = ({
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState('');
 
+  // Filling a blank has no `find`: what is typed to the right is the whole
+  // instruction, and it is what says whether there is anything to preview.
+  const filling = matchType === MATCH_EMPTY;
+  const asked = filling ? repl !== '' : find !== '';
   const target = targets.find((t) => t.name === field) ?? targets[0];
   const tagset = tagsetFor(target.name);
   const { apply, error } = useMemo(
@@ -132,26 +142,29 @@ export const ReplaceDialog = ({
     setBusy(true);
     let done = 0;
     try {
-      await client.withOperation(
-        `Replace “${find}” → “${repl}” in ${target.label} of ${vocabularyName || 'vocabulary'}`,
-        async () => {
-          for (let i = 0; i < writes.length; i += CHUNK) {
-            const chunk = writes.slice(i, i + CHUNK);
-            await client.batched(async () => {
-              for (const w of chunk) {
-                if (w.form != null) client.vocabItems.update(w.id, w.form);
-                else if (Object.keys(w.metadata).length)
-                  client.vocabItems.setMetadata(w.id, w.metadata);
-                else client.vocabItems.deleteMetadata(w.id);
-              }
-            });
-            done += chunk.length;
-            setProgress(`${done.toLocaleString()} of ${writes.length.toLocaleString()}`);
-          }
-        },
-      );
+      const label = filling
+        ? `Set ${target.label} to “${repl}” where empty in ${vocabularyName || 'vocabulary'}`
+        : `Replace “${find}” → “${repl}” in ${target.label} of ${vocabularyName || 'vocabulary'}`;
+      await client.withOperation(label, async () => {
+        for (let i = 0; i < writes.length; i += CHUNK) {
+          const chunk = writes.slice(i, i + CHUNK);
+          await client.batched(async () => {
+            for (const w of chunk) {
+              if (w.form != null) client.vocabItems.update(w.id, w.form);
+              else if (Object.keys(w.metadata).length)
+                client.vocabItems.setMetadata(w.id, w.metadata);
+              else client.vocabItems.deleteMetadata(w.id);
+            }
+          });
+          done += chunk.length;
+          setProgress(`${done.toLocaleString()} of ${writes.length.toLocaleString()}`);
+        }
+      });
       await onApplied();
-      notifySuccess(`${plural(writes.length, 'value')} replaced in ${target.label}.`, 'Replaced');
+      notifySuccess(
+        `${plural(writes.length, 'value')} ${filling ? 'set' : 'replaced'} in ${target.label}.`,
+        filling ? 'Set' : 'Replaced',
+      );
       setFind('');
       setRepl('');
       onOpenChange(false);
@@ -202,7 +215,7 @@ export const ReplaceDialog = ({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {MATCH_TYPES.map((m) => (
+                  {REPLACE_MATCH_TYPES.map((m) => (
                     <SelectItem key={m.id} value={m.id}>
                       {m.label}
                     </SelectItem>
@@ -212,37 +225,46 @@ export const ReplaceDialog = ({
             </div>
           </div>
           <div className="flex flex-wrap items-end gap-2">
+            {!filling && (
+              <div className="flex min-w-48 flex-1 flex-col gap-1">
+                <Label htmlFor="vocab-replace-find">Find</Label>
+                <Input
+                  id="vocab-replace-find"
+                  compose={matchType !== 'regex'}
+                  value={find}
+                  onChange={(e) => setFind(e.target.value)}
+                  placeholder={matchType === 'regex' ? 'pattern, e.g. ([aeiou])h' : 'text'}
+                  spellCheck={false}
+                  autoFocus
+                />
+              </div>
+            )}
             <div className="flex min-w-48 flex-1 flex-col gap-1">
-              <Label htmlFor="vocab-replace-find">Find</Label>
-              <Input
-                id="vocab-replace-find"
-                compose={matchType !== 'regex'}
-                value={find}
-                onChange={(e) => setFind(e.target.value)}
-                placeholder={matchType === 'regex' ? 'pattern, e.g. ([aeiou])h' : 'text'}
-                spellCheck={false}
-                autoFocus
-              />
-            </div>
-            <div className="flex min-w-48 flex-1 flex-col gap-1">
-              <Label htmlFor="vocab-replace-with">Replace with</Label>
+              <Label htmlFor="vocab-replace-with">{filling ? 'Set to' : 'Replace with'}</Label>
               <Input
                 id="vocab-replace-with"
                 compose={matchType !== 'regex'}
                 value={repl}
                 onChange={(e) => setRepl(e.target.value)}
-                placeholder={matchType === 'regex' ? 'replacement, $1 for groups' : 'replacement'}
+                placeholder={
+                  matchType === 'regex'
+                    ? 'replacement, $1 for groups'
+                    : filling
+                      ? 'value'
+                      : 'replacement'
+                }
                 spellCheck={false}
+                autoFocus={filling}
               />
             </div>
           </div>
           {error && <p className="text-sm text-destructive">Check your regex: {error}</p>}
 
-          {find && !error && (
+          {asked && !error && (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
               <span>
                 <strong>{plural(rows.length, 'match', 'matches')}</strong>,{' '}
-                <strong>{chosen.length}</strong> selected
+                <strong>{chosen.length.toLocaleString()}</strong> selected
               </span>
               {writable.length > 0 && (
                 <>
@@ -277,8 +299,10 @@ export const ReplaceDialog = ({
             </p>
           )}
 
-          {find && !error && rows.length === 0 && (
-            <p className="py-6 text-center text-sm text-muted-foreground">No matching values.</p>
+          {asked && !error && rows.length === 0 && (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              {filling ? 'No empty values.' : 'No matching values.'}
+            </p>
           )}
           {rows.length > 0 && (
             <div className="max-h-[50vh] overflow-y-auto rounded-lg border">
@@ -321,7 +345,11 @@ export const ReplaceDialog = ({
             Cancel
           </Button>
           <Button onClick={doApply} disabled={busy || !!error || chosen.length === 0}>
-            {busy ? 'Replacing…' : `Replace ${plural(chosen.length, 'value')}`}
+            {busy
+              ? filling
+                ? 'Setting…'
+                : 'Replacing…'
+              : `${filling ? 'Set' : 'Replace'} ${plural(chosen.length, 'value')}`}
           </Button>
         </DialogFooter>
       </DialogContent>
