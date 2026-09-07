@@ -368,8 +368,15 @@ async function placeSenses({ client, vocabId, lexicon, senseToItem, existing, sh
       patches.push({ id, parent, senseOrder: s.senseIndex + 1 });
     }
   }
-  const already = new Set((existing.items || []).map((it) => it.id));
-  const fresh = patches.filter((p) => !already.has(p.id));
+  // Place a sense that has no parent YET, rather than one this run created.
+  // An entry created by a run that was cancelled or lost part way through has
+  // none either, and asking "did this run make it" left such an entry flat
+  // forever: the resume neither recreates it nor places it. An entry someone
+  // has since arranged by hand keeps that arrangement.
+  const placedAlready = new Set(
+    (existing.items || []).filter((it) => it.metadata?.parent).map((it) => it.id),
+  );
+  const fresh = patches.filter((p) => !placedAlready.has(p.id));
   for (let i = 0; i < fresh.length; i += BULK_CHUNK) {
     if (shouldStop?.()) throw new Error('Import cancelled');
     const chunk = fresh.slice(i, i + BULK_CHUNK);
@@ -423,12 +430,14 @@ async function placeVariants({ client, vocabId, lexicon, senseToItem, existing, 
     return entry ? headOf(entry) : undefined;
   };
 
-  const already = new Set((existing.items || []).map((it) => it.id));
+  // Same rule as placeSenses: write a reference the entry does not have yet,
+  // so an interrupted run is healed and a person's own edit is not.
+  const existingMeta = new Map((existing.items || []).map((it) => [it.id, it.metadata || {}]));
   const patches = new Map();
   for (const entry of lexicon) {
     if (!entry.entryRefs?.length) continue;
     const id = headOf(entry);
-    if (!id || already.has(id)) continue;
+    if (!id) continue;
     const patch = patches.get(id) ?? {};
     for (const ref of entry.entryRefs) {
       const targets = ref.components.map(itemFor).filter((t) => t && t !== id);
@@ -444,6 +453,10 @@ async function placeVariants({ client, vocabId, lexicon, senseToItem, existing, 
         patch[typeField] = [...types].join(', ');
       }
     }
+    // Drop what the entry already carries: a value there is either this
+    // import's own from an earlier run, or somebody's edit.
+    const held = existingMeta.get(id);
+    if (held) for (const k of Object.keys(patch)) if (held[k] != null) delete patch[k];
     if (Object.keys(patch).length) patches.set(id, patch);
   }
   if (!patches.size) return;

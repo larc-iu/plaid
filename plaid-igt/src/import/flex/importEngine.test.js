@@ -429,6 +429,41 @@ describe('importLexicon', () => {
     expect(fields).not.toHaveProperty('variantOf');
   });
 
+  it('places the senses a cancelled run left flat, and leaves an arranged one alone', async () => {
+    // What an interrupted run leaves behind: the items exist, stamped with
+    // their FLEx guids, and none of them has a parent yet.
+    const client = makeFakeClient({
+      existingItems: [
+        { id: 'old-e2', form: 'махъ', metadata: { flexSense: 'e2', flexEntry: 'e2' } },
+        { id: 'old-s2', form: 'махъ', metadata: { flexSense: 's2', gloss: 'tale' } },
+        { id: 'old-s3', form: 'махъ', metadata: { flexSense: 's3', gloss: 'story' } },
+        // This one a person has already put somewhere by hand.
+        {
+          id: 'old-s3a',
+          form: 'махъ',
+          metadata: { flexSense: 's3a', gloss: 'short story', parent: 'old-e2', senseOrder: 9 },
+        },
+        { id: 'old-s1', form: 'за', metadata: { flexSense: 's1' } },
+      ],
+    });
+    await importLexicon({
+      client,
+      vocabId: 'v1',
+      lexicon,
+      baselineWs: BASE_WS,
+      dictionary: true,
+    });
+    // Nothing to create: every sense is already there.
+    expect(createdItems(client)).toHaveLength(0);
+    const placed = client.calls
+      .filter((c) => c.kind === 'vocabItems.patchMetadata')
+      .map((c) => [c.args.itemId, c.args.body]);
+    expect(placed).toEqual([
+      ['old-s2', { parent: 'old-e2', senseOrder: 1 }],
+      ['old-s3', { parent: 'old-e2', senseOrder: 2 }],
+    ]);
+  });
+
   it('leaves every sense flat and the switch alone by default', async () => {
     const client = makeFakeClient();
     await importLexicon({ client, vocabId: 'v1', lexicon, baselineWs: BASE_WS });

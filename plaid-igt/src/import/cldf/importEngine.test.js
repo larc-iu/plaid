@@ -311,6 +311,37 @@ describe('runCldfImport', () => {
     expect(fields.gloss).toEqual({ inline: true });
   });
 
+  it('places the senses a cancelled run left flat', async () => {
+    const client = stubClient({
+      vocabConfig: { igt: { dictionary: true } },
+      existingItems: [
+        { id: 'old-e1', form: 'perro', metadata: { cldfEntry: 'e1' } },
+        { id: 'old-s1', form: 'perro', metadata: { cldfEntry: 'e1/s1', gloss: 'dog' } },
+        { id: 'old-s2', form: 'perro', metadata: { cldfEntry: 'e1/s2', gloss: 'hound' } },
+      ],
+    });
+    await importLexicon({
+      client,
+      vocabId: 'v1',
+      lexicon: [
+        {
+          id: 'e1',
+          form: 'perro',
+          metadata: { gloss: 'dog' },
+          senses: [
+            { id: 's1', description: 'dog' },
+            { id: 's2', description: 'hound' },
+          ],
+        },
+      ],
+    });
+    expect(callsOf(client, 'vocabItems.bulkCreate')).toHaveLength(0);
+    expect(callsOf(client, 'vocabItems.patchMetadata').map((c) => c.args)).toEqual([
+      { itemId: 'old-s1', body: { parent: 'old-e1', senseOrder: 1 } },
+      { itemId: 'old-s2', body: { parent: 'old-e1', senseOrder: 2 } },
+    ]);
+  });
+
   it('folds the senses into one flat item when the vocabulary is not a dictionary', async () => {
     const client = stubClient();
     await importLexicon({

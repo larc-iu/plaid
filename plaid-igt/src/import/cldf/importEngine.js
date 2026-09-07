@@ -148,13 +148,21 @@ export async function importLexicon({ client, vocabId, lexicon, onProgress, shou
     if (key) byEntry.set(key, item.id);
   }
 
-  // What to create, headword before its senses. A sense carries the entry it
-  // belongs to and its place among its siblings; the parent is patched in
-  // afterwards, once the headword has an id.
+  // What to create, headword before its senses, and where each sense belongs.
+  // The placement is planned for EVERY sense, not only the ones created here:
+  // a run that was cancelled part way leaves its items behind unplaced, and a
+  // resume that only placed its own creations would leave them flat forever.
   const pending = [];
+  const places = [];
+  const senseKey = (entry, sense) => `${entry.id}/${sense.id}`;
   for (const entry of lexicon) {
-    if (byEntry.has(entry.id)) continue;
     const split = dictionary && (entry.senses?.length ?? 0) > 1;
+    if (split) {
+      for (const [i, sense] of entry.senses.entries()) {
+        places.push({ key: senseKey(entry, sense), parentKey: entry.id, senseOrder: i + 1 });
+      }
+    }
+    if (byEntry.has(entry.id)) continue;
     const metadata = { ...entry.metadata };
     if (split) {
       // The senses hold these now, one meaning each.
@@ -163,15 +171,14 @@ export async function importLexicon({ client, vocabId, lexicon, onProgress, shou
     }
     pending.push({ key: entry.id, form: entry.form, metadata });
     if (!split) continue;
-    entry.senses.forEach((sense, i) => {
+    for (const sense of entry.senses) {
+      if (byEntry.has(senseKey(entry, sense))) continue;
       pending.push({
-        key: `${entry.id}/${sense.id}`,
+        key: senseKey(entry, sense),
         form: entry.form,
         metadata: { gloss: sense.description },
-        parentKey: entry.id,
-        senseOrder: i + 1,
       });
-    });
+    }
   }
   // The field schema is the union of what the items actually carry, with the
   // settled core fields always present.
@@ -194,8 +201,14 @@ export async function importLexicon({ client, vocabId, lexicon, onProgress, shou
     onProgress?.({ phase: 'lexicon', done, total: pending.length });
   }
 
-  // The tree, once every item has an id.
-  const placed = pending.filter((p) => p.parentKey && byEntry.has(p.key));
+  // The tree, once every item has an id. A sense that already has a parent is
+  // left as it is: it was placed by an earlier run, or arranged by hand.
+  const parented = new Set(
+    (existing.items || []).filter((it) => it.metadata?.parent).map((it) => it.id),
+  );
+  const placed = places.filter(
+    (p) => byEntry.has(p.key) && byEntry.has(p.parentKey) && !parented.has(byEntry.get(p.key)),
+  );
   for (let i = 0; i < placed.length; i += CHUNK) {
     check();
     const slice = placed.slice(i, i + CHUNK);
