@@ -747,6 +747,17 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
   const byName = new Map(existingDocs.map((d) => [d.name, d]));
 
   const docMaps = new Map(); // archive document id → {docId, tokenIdMap}
+  // The documents a promoted example points into. A resume skips a document an
+  // earlier run finished, and the last pass would then have no map for it and
+  // would drop those examples, so the map is rebuilt for these.
+  const cited = new Set();
+  for (const vocab of archive.vocabularies) {
+    for (const it of vocab.data?.items || []) {
+      for (const ex of it.metadata?.examples || []) {
+        if (ex && typeof ex.document === 'string') cited.add(ex.document);
+      }
+    }
+  }
   const results = { imported: 0, skipped: 0, redone: 0 };
   for (let i = 0; i < archive.documents.length; i += 1) {
     if (shouldStop?.()) throw new ImportCancelled();
@@ -763,6 +774,15 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
       const full = await client.documents.get(existing.id);
       if (full.metadata?.[DONE_KEY]) {
         results.skipped += 1;
+        if (cited.has(doc.data?.id)) {
+          const tokenIdMap = await rebuildTokenMap({
+            client,
+            docId: existing.id,
+            docData: doc.data,
+            targets,
+          });
+          docMaps.set(doc.data.id, { docId: existing.id, tokenIdMap });
+        }
         continue;
       }
       await client.documents.delete(existing.id); // half-imported: redo cleanly
@@ -795,6 +815,39 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
   }
   onProgress?.({ phase: 'done', ...results });
   return { ...results, warnings };
+}
+
+/**
+ * The archive-to-server token map for a document an earlier run finished, so a
+ * resume can still rewrite the examples that point into it. Tokens are matched
+ * on what they ARE rather than on the order they were created in: a word by
+ * its extent, a morpheme by its extent and its place in the word. Only what an
+ * example can point at is mapped.
+ */
+export async function rebuildTokenMap({ client, docId, docData, targets }) {
+  const raw = await client.documents.get(docId, true);
+  const byKey = new Map();
+  for (const tl of (raw.textLayers || []).flatMap((t) => t.tokenLayers || [])) {
+    const word = tl.id === targets.wordLayerId;
+    const morpheme = tl.id === targets.morphemeLayerId;
+    if (!word && !morpheme) continue;
+    for (const t of tl.tokens || []) {
+      const key = morpheme ? `m:${t.begin}:${t.end}:${t.precedence ?? 1}` : `w:${t.begin}:${t.end}`;
+      if (!byKey.has(key)) byKey.set(key, t.id);
+    }
+  }
+  const map = new Map();
+  for (const s of docData.sentences || []) {
+    for (const w of s.words || []) {
+      const wordId = byKey.get(`w:${w.begin}:${w.end}`);
+      if (wordId) map.set(w.id, wordId);
+      for (const m of w.morphemes || []) {
+        const morphId = byKey.get(`m:${m.begin}:${m.end}:${m.precedence ?? 1}`);
+        if (morphId) map.set(m.id, morphId);
+      }
+    }
+  }
+  return map;
 }
 
 /**

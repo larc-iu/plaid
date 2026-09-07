@@ -12,6 +12,7 @@ import {
   importVocabulary,
   planVocabRelink,
   runNativeImport,
+  rebuildTokenMap,
 } from './importEngine.js';
 
 // ---- the archive under test: built by the REAL exporter --------------------
@@ -638,6 +639,70 @@ describe('runNativeImport (full archive)', () => {
     });
     expect(half.result).toMatchObject({ imported: 1, skipped: 0, redone: 1 });
     expect(callsOf(half.client, 'documents.delete')[0][1]).toBe('old1');
+  });
+});
+
+describe('rebuildTokenMap', () => {
+  it('maps a finished document by what its tokens are, not by creation order', async () => {
+    // What a resume has to work from: the archive's document, and the server's
+    // copy of it made by an earlier run, whose ids are its own.
+    const docData = {
+      id: 'old-doc',
+      sentences: [
+        {
+          id: 's1',
+          begin: 0,
+          end: 10,
+          words: [
+            {
+              id: 'w1',
+              begin: 0,
+              end: 4,
+              morphemes: [
+                { id: 'm1', begin: 0, end: 4, precedence: 1 },
+                { id: 'm2', begin: 0, end: 4, precedence: 2 },
+              ],
+            },
+            { id: 'w2', begin: 5, end: 10, morphemes: [] },
+          ],
+        },
+      ],
+    };
+    const raw = {
+      textLayers: [
+        {
+          tokenLayers: [
+            {
+              id: 'W',
+              tokens: [
+                { id: 'nw2', begin: 5, end: 10 },
+                { id: 'nw1', begin: 0, end: 4 },
+              ],
+            },
+            {
+              id: 'M',
+              tokens: [
+                { id: 'nm2', begin: 0, end: 4, precedence: 2 },
+                { id: 'nm1', begin: 0, end: 4, precedence: 1 },
+              ],
+            },
+            { id: 'S', tokens: [{ id: 'ns1', begin: 0, end: 10 }] },
+          ],
+        },
+      ],
+    };
+    const map = await rebuildTokenMap({
+      client: { documents: { get: async () => raw } },
+      docId: 'new-doc',
+      docData,
+      targets: { wordLayerId: 'W', morphemeLayerId: 'M' },
+    });
+    expect([...map]).toEqual([
+      ['w1', 'nw1'],
+      ['m1', 'nm1'],
+      ['m2', 'nm2'],
+      ['w2', 'nw2'],
+    ]);
   });
 });
 
