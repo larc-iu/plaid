@@ -456,8 +456,13 @@ class LexView:
         # Headwords that share their form with another. A lone headword with
         # senses is numbered 1, which says nothing in prose, so only these
         # carry their number when a line names them.
-        counts = Counter((r.get('form') or '') for r in self.tree.roots)
-        self.shared = {r['id'] for r in self.tree.roots if counts[r.get('form') or ''] > 1}
+        # In Lexicography Mode those are the headwords. Without it every item is
+        # an entry of its own, including one still carrying a parent key from a
+        # lexicon whose mode was switched off, which the tree would not count
+        # as a root: leaving those out printed the same bare name twice.
+        pool = self.tree.roots if self.dictionary else self.items
+        counts = Counter((r.get('form') or '') for r in pool)
+        self.shared = {r['id'] for r in pool if counts[r.get('form') or ''] > 1}
 
     def number(self, item_id: str) -> str:
         return self.numbers.get(item_id, '')
@@ -1691,8 +1696,12 @@ def _create_entry(ws: Workspace, v: dict, form: str, fields: Optional[dict],
     for k, val in (fields or {}).items():
         f = lexicon_field(v, k)
         if parent is not None and view.dictionary and f['scope'] == SCOPE_ENTRY:
+            # The HEADWORD the sense will sit under, which is not the parent
+            # when the parent is itself a sense: naming the parent sends the
+            # reader to something that refuses the same write.
+            head = view.tree.root_of.get(parent['id']) or parent['id']
             raise ToolError(f'"{f["name"]}" belongs to a headword rather than to each sense, so a new sense '
-                            f'cannot carry it. Set it on {view.label(parent["id"])}.')
+                            f'cannot carry it. Set it on {view.label(head)}.')
         metadata = _entry_field_write(ws, v, f, val, metadata, None)
     if morph:
         metadata['morphType'] = morph_type(morph)
@@ -1922,7 +1931,8 @@ def t_move_sense(ws: Workspace, number, entry_form: Optional[str] = None, lexico
         wanted = int(round(float(raw)))
     except (TypeError, ValueError, OverflowError):
         raise ToolError(f'"{number}" is not a sense number. Give the place among the senses of '
-                        f'"{view.head_of(target["id"])}", counting from 1.')
+                        f'{view.label(view.tree.root_of.get(target["id"]) or target["id"])}, '
+                        'counting from 1.')
     patches = plan_sense_set_number(view.tree, target['id'], wanted)
     if not patches:
         sibs = len(view.tree.senses_of(view.tree.parent_of[target['id']]))
@@ -1934,21 +1944,27 @@ def t_move_sense(ws: Workspace, number, entry_form: Optional[str] = None, lexico
     landed = (by_id.get(target['id']) or {}).get('metadata', {}).get(SENSE_ORDER_KEY, wanted)
     # Said as the DOTTED number the user will see, not the raw order: a move
     # only ever changes the last segment, so "1.1" going to place 2 is "1.2".
-    landed_shown = '.'.join((was.split('.')[:-1] if was else []) + [str(landed)])
-    head = view.head_of(target['id'])
+    landed_shown = '.'.join(was.split('.')[:-1] + [str(landed)])
+    # The entry's own name, not its bare form: two entries can share the form.
+    head = view.label(view.tree.root_of.get(target['id']) or target['id'])
     others = len(patches) - 1
+    moved = f'entry {head}: sense {was} becomes sense {landed_shown}'
     ops = []
     for x in patches:
         # The line describing the move belongs on the sense that moves, not on
         # whichever sibling the renumbering happens to list first.
         if x['id'] == target['id']:
-            label = (f'entry "{head}": sense {was} becomes sense {landed_shown}'
-                     + (f' ({others} sibling{"s" if others != 1 else ""} renumbered)'
-                        if others else ''))
+            label = moved + (f' ({others} sibling{"s" if others != 1 else ""} renumbered)'
+                             if others else '')
         else:
-            label = f'entry "{head}": sense {view.number(x["id"])} renumbered'
+            label = f'entry {head}: sense {view.number(x["id"])} renumbered'
         ops.append(_meta_op(ws, x['id'], _meta_of(ws, view.tree.by_id[x['id']]), x['metadata'], label))
     ws.add_ops(ops)
+    # A sense already carrying the order it lands on gets no patch of its own,
+    # so nothing above would say it moved. It did: the siblings around it are
+    # what changed, and the plan has to name the gesture that caused them.
+    if target['id'] not in by_id:
+        ops[0]['label'] = f'{moved} ({ops[0]["label"]})' if ops else moved
     return ws.planned_note(len(ops))
 
 

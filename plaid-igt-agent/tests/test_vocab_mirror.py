@@ -225,7 +225,7 @@ SURFACE_ALIAS = {'readDictionaryEnabled': 'dictionary_enabled'}
 # Public in the port with nothing of the name in the app, on purpose.
 PORT_ONLY = {
     'plan_sense_set_number': 'a place-among-siblings gesture, since the agent cannot drag',
-    'homograph_groups': 'every group at once, for check_lexicon',
+    'homograph_groups': 'every group at once, called only from within vocab.py',
     'field_note': "one field's shape in prose, for a tool result",
     'field_by_name': 'a lookup the app does inline',
     'vocab_field_summary': 'the field schema in prose, for a tool result',
@@ -249,7 +249,9 @@ def test_every_app_function_is_ported_or_exempted():
     surface = json.loads(run.stdout)
     # Both modules the port claims to mirror, not just the dictionary half.
     exported = [*surface['vocabDictionary'], *surface['vocabFields']]
-    assert len(exported) > 30, 'the surface report came back suspiciously small'
+    # Per module, so one of them coming back empty cannot hide behind the other.
+    for mod, names in surface.items():
+        assert len(names) > 10, f'the surface report for {mod} came back suspiciously small: {names}'
     ported = {n for n, o in vars(vocab_module).items()
               if not n.startswith('_') and inspect.isfunction(o)
               and o.__module__ == vocab_module.__name__}
@@ -271,6 +273,12 @@ def test_every_app_function_is_ported_or_exempted():
         'Either the app renamed one, or it belongs in PORT_ONLY with the reason.')
     gone = [n for n in PORT_ONLY if n not in ported]
     assert not gone, f'PORT_ONLY names functions the port no longer has: {gone}'
+    # And a PORT_ONLY name the app has since grown is no longer port-only: it
+    # needs comparing against the app's version, not exempting from it.
+    adopted = sorted(n for n in PORT_ONLY if n in expected)
+    assert not adopted, (
+        f'the app now exports these, so they are not port-only any more: {adopted}. '
+        'Drop them from PORT_ONLY and check the two implementations agree.')
 
 
 def test_the_two_runners_cover_the_same_functions(compared):

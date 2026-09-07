@@ -263,6 +263,32 @@ def test_a_number_past_the_end_is_planned_as_the_place_it_lands():
     assert 'becomes sense 1.2' in by_id['d-boil']['label']
 
 
+def test_a_move_that_renumbers_only_its_siblings_still_says_it_moved():
+    """A sense already carrying the order it lands on gets no patch of its own,
+    and the plan used to describe the siblings and never the gesture."""
+    items = [
+        {'id': 'p', 'form': 'kwatha', 'metadata': {'gloss': 'cook'}},
+        {'id': 'a', 'form': 'kwatha', 'metadata': {'gloss': 'one', 'parent': 'p', 'senseOrder': 3}},
+        {'id': 'b', 'form': 'kwatha', 'metadata': {'gloss': 'two', 'parent': 'p', 'senseOrder': 4}},
+        {'id': 'c', 'form': 'kwatha', 'metadata': {'gloss': 'three', 'parent': 'p', 'senseOrder': 5}},
+    ]
+    w = dict_ws(items=items)
+    call_tool(w, 'move_sense', {'entry_form': 'kwatha#1.1', 'number': '9'})
+    labels = [o['label'] for o in ops_of(w, 'set_entry_metadata')]
+    assert any('becomes sense' in l for l in labels), labels
+
+
+def test_a_new_sense_names_the_headword_that_can_hold_the_field():
+    """The parent of a subsense is a sense, which refuses the same write, so
+    naming it sends the model somewhere that says no."""
+    w = dict_ws()
+    out = call_tool(w, 'add_sense',
+                    {'entry_form': 'kwatha#1.1', 'form': 'kwatha',
+                     'fields': {'gloss': 'x', 'etymology': 'Proto-Bantu'}})
+    assert 'Set it on "kwatha"' in out, out
+    assert 'kwatha#1.1' not in out.split('Set it on')[1]
+
+
 def test_a_number_that_is_not_a_number_is_refused():
     out = call_tool(dict_ws(), 'move_sense', {'entry_form': 'kwatha#1.1', 'number': 'first'})
     assert 'is not a sense number' in out
@@ -287,6 +313,21 @@ def test_every_name_a_line_prints_is_accepted_back():
         name = w2.view_of_item(item_id).label(item_id).strip('"')
         assert '#' in name
         assert f'id {item_id}' in call_tool(w2, 'lexicon_entry', {'entry_form': name})
+
+
+def test_a_flat_lexicon_tells_entries_spelled_alike_apart():
+    """Turning Lexicography Mode off leaves the parent keys where they are, so
+    an item that still has one is not a tree root. Counting only roots printed
+    two entries under the same bare name, which no tool can act on."""
+    items = [
+        {'id': 'b1', 'form': 'kwatha', 'metadata': {'gloss': 'cook'}},
+        {'id': 'b2', 'form': 'kwatha', 'metadata': {'gloss': 'boil', 'parent': 'b1'}},
+    ]
+    w = dict_ws(dictionary=False, items=items)
+    names = [w.view_of_item(i).label(i).strip('"') for i in ['b1', 'b2']]
+    assert len(set(names)) == 2, names
+    for item_id, name in zip(['b1', 'b2'], names):
+        assert f'id {item_id}' in call_tool(w, 'lexicon_entry', {'entry_form': name})
 
 
 def test_a_lone_headword_answers_to_hash_one():
