@@ -486,6 +486,11 @@ class LexView:
         return out
 
 
+def _num_key(num: str):
+    """A dotted number as a sort key, so "2.10" follows "2.9"."""
+    return tuple(int(p) for p in (num or '').split('.') if p.isdigit())
+
+
 def _dict_hits(view: LexView, form: str, suffix: Optional[str]) -> List[dict]:
     """The items a form names in a lexicon with Lexicography Mode on. Senses
     share their entry's headword, so a bare form means the ENTRY (or the
@@ -769,11 +774,16 @@ def t_read_lexicon(ws: Workspace, lexicon: Optional[str] = None, pattern: Option
             if len(hits) > limit:
                 lines.append(f'  ... {len(hits) - limit} more (narrow with pattern)')
             continue
-        # Lexicography Mode: senses under their entry, numbered as the user
-        # sees them. An entry is sense 1, so the number is its address too.
+        # Lexicography Mode: senses under their entry, each with the number it
+        # is shown with, which is also how a tool is told which one. Entries
+        # spelled the same carry one too, so they read in that order.
+        items = sorted(view.items, key=lambda it: ((it.get('form') or '').casefold(),
+                                                   _num_key(view.number(it['id']))))
+        hits = [it for it in items if match(entry_line(it, view))]
         n_entries = len(view.tree.roots)
         n_senses = len(items) - n_entries
-        head = (f'Lexicon "{v["name"]}" (Lexicography Mode): {n_entries} entries, {n_senses} senses'
+        head = (f'Lexicon "{v["name"]}" (Lexicography Mode): {n_entries} entries, '
+                f'{n_senses} sense{"s" if n_senses != 1 else ""}'
                 + (f', {len(hits)} matching' if pattern else ''))
         lines.append(head)
         shown = 0
@@ -782,8 +792,7 @@ def t_read_lexicon(ws: Workspace, lexicon: Optional[str] = None, pattern: Option
                 break
             shown += 1
             num = view.number(it['id'])
-            mark = f'{num} ' if view.is_sense(it['id']) else ''
-            lines.append('  ' + '  ' * depth + mark + entry_line(it, view))
+            lines.append('  ' + '  ' * depth + (f'{num} ' if num else '') + entry_line(it, view))
         if len(hits) > shown:
             lines.append(f'  ... {len(hits) - shown} more (narrow with pattern)')
     return _truncate('\n'.join(lines))
@@ -989,8 +998,10 @@ def t_lexicon_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Op
     meta = target.get('metadata') or {}
     view = ws.view_of_item(target['id'])
     if view is not None and view.dictionary:
-        where = (f'Sense {view.number(target["id"])} of entry "{view.head_of(target["id"])}"'
-                 if view.is_sense(target['id']) else f'Entry "{target.get("form")}"')
+        num = view.number(target['id'])
+        where = (f'Sense {num} of entry "{view.head_of(target["id"])}"' if view.is_sense(target['id'])
+                 else f'Entry "{target.get("form")}"' + (f' ({num} of the entries spelled that way)'
+                                                        if num else ''))
         lines = [f'{where} (id {target["id"]}, entry_form "{view.address(target["id"])}")']
     else:
         lines = [f'Entry "{target.get("form")}" (id {target["id"]})']

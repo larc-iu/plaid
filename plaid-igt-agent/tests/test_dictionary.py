@@ -315,7 +315,7 @@ def test_the_plan_is_what_a_later_read_sees():
     out = call_tool(w, 'read_lexicon', {})
     # The entry is gone and its two senses stand on their own, which is what
     # the delete actually does once approved.
-    assert '4 entries, 1 senses' in out and 'gloss=cook | pos=v' not in out
+    assert '4 entries, 1 sense' in out and 'gloss=cook | pos=v' not in out
     assert 'variantOf=' not in out and 'seeAlso="phika"' in out
 
 
@@ -401,3 +401,20 @@ def test_the_homograph_key_is_not_a_field():
     out = call_tool(dict_ws(items=HOMOGRAPHS), 'set_entry_field',
                     {'entry_form': 'x#1', 'field': 'homograph', 'value': '3'})
     assert '"homograph" is not an entry field' in out and 'order_homographs' in out
+
+
+def test_read_lexicon_shows_the_number_on_entries_too_and_orders_by_it():
+    """Without the number on an entry, three entries spelled the same read as
+    three identical lines and nothing tells the model that "x#2" exists."""
+    out = call_tool(dict_ws(items=HOMOGRAPHS), 'read_lexicon', {})
+    lines = [l.strip() for l in out.splitlines()
+             if any(g in l for g in ('gloss=early', 'gloss=late', 'gloss=unnumbered'))]
+    assert lines == ['1 x | gloss=early', '2 x | gloss=late | 1 sense below', '3 x | gloss=unnumbered']
+    assert '4 entries, 1 sense' in out and '1 senses' not in out
+    # A lone entry has no number to show.
+    assert 'y | gloss=alone' in out
+
+
+def test_a_dotted_number_sorts_numerically():
+    from plaid_igt_agent.tools import _num_key
+    assert sorted(['2.10', '2.9', '10', '2'], key=_num_key) == ['2', '2.9', '2.10', '10']
