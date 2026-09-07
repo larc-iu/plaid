@@ -168,6 +168,41 @@ export const readSpeakers = (config) => readIgt(config, 'speakers') ?? [];
 /** Whether a project has been set up by plaid-igt. */
 export const readInitialized = (config) => readIgt(config, 'initialized') === true;
 
+// --- An import in flight ---------------------------------------------------
+
+/**
+ * An import writes this on the project it is filling and removes it when it
+ * finishes, so a project whose import was cancelled, lost or closed is not
+ * mistaken for a complete one: `{kind, source, startedAt}`, `kind` being the
+ * format ('FLEx', 'CLDF', 'ELAN', 'Plaid IGT archive') and `source` the file
+ * it was reading. Every importer resumes, so the way to clear it is to run the
+ * same import again.
+ */
+export const IMPORT_KEY = 'import';
+export const readImportState = (config) => readIgt(config, IMPORT_KEY) ?? null;
+
+/** Record that an import into this project has begun. Never fails the import. */
+export const markImportStarted = async (client, projectId, kind, source) => {
+  try {
+    await client.projects.setConfig(projectId, IGT_NAMESPACE, IMPORT_KEY, {
+      kind,
+      source: source ?? null,
+      startedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('Could not record the import as started:', err);
+  }
+};
+
+/** Record that it finished. */
+export const markImportFinished = async (client, projectId) => {
+  try {
+    await client.projects.deleteConfig(projectId, IGT_NAMESPACE, IMPORT_KEY);
+  } catch (err) {
+    console.error('Could not record the import as finished:', err);
+  }
+};
+
 /** A vocab layer's custom field schema: {field: {inline}}, or null. */
 export const readVocabFields = (config) => readIgt(config, 'fields') ?? null;
 

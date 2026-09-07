@@ -18,6 +18,8 @@ import { notifyError, notifySuccess, notifyWarning } from '@/utils/feedback';
 import { readNativeArchive } from '../../import/native/readArchive';
 import { deriveSetupData, runNativeImport } from '../../import/native/importEngine';
 import { executeProjectSetup } from './setup/executeSetup';
+import { markImportStarted, markImportFinished } from '../../domain/igtConfig';
+import { useResumeImport } from '@/hooks/useResumeImport';
 import { documentFraction, documentLabel } from '../../import/progress';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
@@ -34,7 +36,8 @@ export const ImportNativeProject = () => {
   const [results, setResults] = useState(null);
 
   // Survive retries within this page session (see header comment).
-  const projectIdRef = useRef(null);
+  const { resumeId, resumeName } = useResumeImport(client);
+  const projectIdRef = useRef(resumeId || null);
   const setupDoneRef = useRef(false);
   const stopRef = useRef(false);
 
@@ -75,6 +78,14 @@ export const ImportNativeProject = () => {
         projectIdRef.current = setup.projectId;
         setupDoneRef.current = true;
       }
+      // Removed when this run finishes, so a cancelled or lost import shows
+      // on the project rather than passing for a complete one.
+      await markImportStarted(
+        client,
+        projectIdRef.current,
+        'Plaid IGT archive',
+        archive.manifest?.project?.name ?? null,
+      );
 
       // 2. Vocabularies + documents via the import engine.
       const totalDocs = archive.documents.length;
@@ -97,6 +108,7 @@ export const ImportNativeProject = () => {
           }
         },
       });
+      await markImportFinished(client, projectIdRef.current);
       setResults(res);
       setStage('done');
       if (res.warnings.length) {
@@ -149,6 +161,13 @@ export const ImportNativeProject = () => {
             Recreate a project from a “Plaid IGT JSON” export: texts, analyses, vocabularies, time
             alignment, media, and provenance.
           </p>
+          {resumeId && (
+            <p className="mt-2 text-sm">
+              Continuing the unfinished import into{' '}
+              <span className="font-medium">{resumeName ?? 'this project'}</span>. Choose the same
+              file: what is already there is kept.
+            </p>
+          )}
         </div>
 
         {stage === 'pick' && (
@@ -215,10 +234,15 @@ export const ImportNativeProject = () => {
               </label>
               <Input
                 id="native-project-name"
-                value={projectName}
+                value={resumeId ? (resumeName ?? '') : projectName}
                 onChange={(e) => setProjectName(e.target.value)}
-                disabled={stage !== 'review' || setupDoneRef.current}
+                disabled={!!resumeId || stage !== 'review' || setupDoneRef.current}
               />
+              {resumeId && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Continuing an import into this project. What it already holds is kept.
+                </p>
+              )}
             </div>
 
             {runError && stage === 'review' && (

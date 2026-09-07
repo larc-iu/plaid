@@ -10,7 +10,7 @@ import { ProjectValidation } from './validate/ProjectValidation.jsx';
 import { ProjectAssistant } from './assistant/ProjectAssistant.jsx';
 import { ProjectExport } from './ProjectExport.jsx';
 import { ProjectSettingsPanel } from './ProjectSettingsPanel';
-import { readInitialized } from '@/domain/igtConfig';
+import { readInitialized, readImportState } from '@/domain/igtConfig';
 import { isReviewed } from '@larc-iu/plaid-client';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useTabParam, tabTo } from '@/hooks/useTabParam';
@@ -41,6 +41,16 @@ const SECTION_TITLES = {
 // group — selecting it stays on the page and renders project administration as
 // a left-side vertical tab group (ProjectSettingsPanel), route-backed by the
 // /access, /tokens, /services, /export, /settings suffixes.
+
+// Where an unfinished import is picked up again, by the format it was reading.
+const importRoute = (kind) =>
+  ({
+    FLEx: '/projects/import',
+    CLDF: '/projects/import-cldf',
+    ELAN: '/projects/import-elan',
+    'Plaid IGT archive': '/projects/import-archive',
+  })[kind] ?? null;
+
 export const ProjectDetail = () => {
   const { projectId, presetId = null } = useParams();
   const navigate = useNavigate();
@@ -149,6 +159,9 @@ export const ProjectDetail = () => {
   }, [project, projectId, navigate, canManage]);
 
   const needsSetupNotice = !!project && !readInitialized(project.config) && !canManage;
+  // An import that never reported finishing. Every importer resumes, so the
+  // way out is to run the same one again over the same file.
+  const unfinishedImport = project ? readImportState(project.config) : null;
 
   const handleDocumentCreated = (newDocument) => {
     setDocuments((prev) => [...prev, newDocument]);
@@ -206,6 +219,26 @@ export const ProjectDetail = () => {
           <span className="text-foreground">{project.name}</span>
         </nav>
         <h1 className="text-3xl font-bold tracking-tight">{project.name}</h1>
+        {unfinishedImport && (
+          <div
+            role="status"
+            className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-sm"
+          >
+            <span>
+              The {unfinishedImport.kind} import
+              {unfinishedImport.source ? ` of “${unfinishedImport.source}”` : ''} did not finish.
+              Documents and entries may be missing.
+            </span>
+            {canManage && importRoute(unfinishedImport.kind) && (
+              <Link
+                to={`${importRoute(unfinishedImport.kind)}?resume=${projectId}`}
+                className="shrink-0 font-medium text-primary hover:underline"
+              >
+                Import again
+              </Link>
+            )}
+          </div>
+        )}
       </div>
 
       <Tabs

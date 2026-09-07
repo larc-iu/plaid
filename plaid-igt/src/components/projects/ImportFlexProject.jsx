@@ -22,6 +22,8 @@ import { parseFwdata } from '../../import/flex/fwdataParser';
 import { buildDocuments } from '../../import/flex/buildDocuments';
 import { deriveImportConfig, runImport } from '../../import/flex/importEngine';
 import { executeProjectSetup } from './setup/executeSetup';
+import { markImportStarted, markImportFinished } from '../../domain/igtConfig';
+import { useResumeImport } from '@/hooks/useResumeImport';
 import { documentFraction, documentLabel } from '../../import/progress';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { humanizeFieldName } from '@/domain/vocabFields';
@@ -61,7 +63,8 @@ export const ImportFlexProject = () => {
   const [results, setResults] = useState(null);
 
   // Survive retries within this page session (see header comment).
-  const projectIdRef = useRef(null);
+  const { resumeId, resumeName } = useResumeImport(client);
+  const projectIdRef = useRef(resumeId || null);
   const setupDoneRef = useRef(false);
   const vocabIdRef = useRef(null);
   const stopRef = useRef(false);
@@ -223,6 +226,9 @@ export const ImportFlexProject = () => {
             : (setup.resources.vocabularies?.[0]?.id ?? null);
         setupDoneRef.current = true;
       }
+      // The project is now filling. The record is removed when this run
+      // finishes, so a cancelled or lost import is visible on the project.
+      await markImportStarted(client, projectIdRef.current, 'FLEx', parsed.backupName);
 
       // Resolve the lexicon vocab (a retry may not have setup resources).
       if (!vocabIdRef.current) {
@@ -258,6 +264,7 @@ export const ImportFlexProject = () => {
           }
         },
       });
+      await markImportFinished(client, projectIdRef.current);
       setResults(res);
       setStage('done');
       notifySuccess(
@@ -307,6 +314,13 @@ export const ImportFlexProject = () => {
             morpheme analyses, translations, and the full lexicon are imported. Media (audio and
             pictures) is not yet imported.
           </p>
+          {resumeId && (
+            <p className="mt-2 text-sm">
+              Continuing the unfinished import into{' '}
+              <span className="font-medium">{resumeName ?? 'this project'}</span>. Choose the same
+              backup: what is already there is kept.
+            </p>
+          )}
         </div>
 
         {stage === 'pick' && (
@@ -395,10 +409,15 @@ export const ImportFlexProject = () => {
               </label>
               <Input
                 id="flex-project-name"
-                value={projectName}
+                value={resumeId ? (resumeName ?? '') : projectName}
                 onChange={(e) => setProjectName(e.target.value)}
-                disabled={stage !== 'review' || setupDoneRef.current}
+                disabled={!!resumeId || stage !== 'review' || setupDoneRef.current}
               />
+              {resumeId && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Continuing an import into this project. What it already holds is kept.
+                </p>
+              )}
             </div>
 
             <div className="rounded-lg border bg-card p-4">

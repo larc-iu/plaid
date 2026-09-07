@@ -39,6 +39,8 @@ import {
 import { buildElanDocuments, defaultFieldName } from '../../import/elan/buildDocuments';
 import { deriveSetupData, runElanImport } from '../../import/elan/importEngine';
 import { executeProjectSetup } from './setup/executeSetup';
+import { markImportStarted, markImportFinished } from '../../domain/igtConfig';
+import { useResumeImport } from '@/hooks/useResumeImport';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 const ROLE_LABELS = [
@@ -158,7 +160,8 @@ export const ImportElanProject = () => {
   const [runError, setRunError] = useState(null);
   const [results, setResults] = useState(null);
 
-  const projectIdRef = useRef(null);
+  const { resumeId, resumeName } = useResumeImport(client);
+  const projectIdRef = useRef(resumeId || null);
   const setupDoneRef = useRef(false);
   const stopRef = useRef(false);
 
@@ -256,6 +259,9 @@ export const ImportElanProject = () => {
         projectIdRef.current = setup.projectId;
         setupDoneRef.current = true;
       }
+      // Removed when this run finishes, so a cancelled or lost import shows
+      // on the project rather than passing for a complete one.
+      await markImportStarted(client, projectIdRef.current, 'ELAN', null);
 
       const res = await runElanImport({
         client,
@@ -273,6 +279,7 @@ export const ImportElanProject = () => {
           });
         },
       });
+      await markImportFinished(client, projectIdRef.current);
       setResults(res);
       setStage('done');
       if (res.warnings.length) {
@@ -328,6 +335,13 @@ export const ImportElanProject = () => {
             annotation files. Every file becomes one document, and every file must share the same
             tier structure so one set of decisions covers the whole corpus.
           </p>
+          {resumeId && (
+            <p className="mt-2 text-sm">
+              Continuing the unfinished import into{' '}
+              <span className="font-medium">{resumeName ?? 'this project'}</span>. Choose the same
+              files: what is already there is kept.
+            </p>
+          )}
         </div>
 
         {stage === 'pick' && (
@@ -413,11 +427,16 @@ export const ImportElanProject = () => {
                   <Label htmlFor="project-name">Project name</Label>
                   <Input
                     id="project-name"
-                    value={projectName}
-                    disabled={!editable}
+                    value={resumeId ? (resumeName ?? '') : projectName}
+                    disabled={!!resumeId || !editable}
                     onChange={(e) => setProjectName(e.target.value)}
                     className="max-w-md"
                   />
+                  {resumeId && (
+                    <p className="text-xs text-muted-foreground">
+                      Continuing an import into this project. What it already holds is kept.
+                    </p>
+                  )}
                 </div>
 
                 {nearMissGroups.length > 0 && (

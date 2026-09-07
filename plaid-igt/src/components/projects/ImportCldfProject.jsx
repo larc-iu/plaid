@@ -32,6 +32,8 @@ import {
   SINGLE_TEXT,
 } from '../../import/cldf/buildDocuments';
 import { deriveSetupData, runCldfImport } from '../../import/cldf/importEngine';
+import { markImportStarted, markImportFinished } from '../../domain/igtConfig';
+import { useResumeImport } from '@/hooks/useResumeImport';
 import { executeProjectSetup } from './setup/executeSetup';
 import { documentFraction, documentLabel } from '../../import/progress';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
@@ -55,7 +57,8 @@ export const ImportCldfProject = () => {
   const [runError, setRunError] = useState(null);
   const [results, setResults] = useState(null);
 
-  const projectIdRef = useRef(null);
+  const { resumeId, resumeName } = useResumeImport(client);
+  const projectIdRef = useRef(resumeId || null);
   const setupDoneRef = useRef(false);
   const stopRef = useRef(false);
 
@@ -108,6 +111,9 @@ export const ImportCldfProject = () => {
         projectIdRef.current = setup.projectId;
         setupDoneRef.current = true;
       }
+      // Removed when this run finishes, so a cancelled or lost import shows
+      // on the project rather than passing for a complete one.
+      await markImportStarted(client, projectIdRef.current, 'CLDF', dataset?.title ?? null);
 
       const res = await runCldfImport({
         client,
@@ -128,6 +134,7 @@ export const ImportCldfProject = () => {
           }
         },
       });
+      await markImportFinished(client, projectIdRef.current);
       setResults(res);
       setStage('done');
       if (res.warnings.length) {
@@ -181,6 +188,13 @@ export const ImportCldfProject = () => {
             dataset: its examples become interlinear texts, its lexicon becomes a vocabulary, and
             its language becomes the project’s identity.
           </p>
+          {resumeId && (
+            <p className="mt-2 text-sm">
+              Continuing the unfinished import into{' '}
+              <span className="font-medium">{resumeName ?? 'this project'}</span>. Choose the same
+              file: what is already there is kept.
+            </p>
+          )}
         </div>
 
         {stage === 'pick' && (
@@ -271,10 +285,15 @@ export const ImportCldfProject = () => {
               </Label>
               <Input
                 id="cldf-project-name"
-                value={projectName}
+                value={resumeId ? (resumeName ?? '') : projectName}
                 onChange={(e) => setProjectName(e.target.value)}
-                disabled={!editable || setupDoneRef.current}
+                disabled={!!resumeId || !editable || setupDoneRef.current}
               />
+              {resumeId && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Continuing an import into this project. What it already holds is kept.
+                </p>
+              )}
             </div>
 
             <div className="flex flex-col gap-3 rounded-lg border bg-card p-4">
