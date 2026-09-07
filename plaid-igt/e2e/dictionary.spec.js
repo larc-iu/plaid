@@ -103,7 +103,11 @@ test('the list draws senses under their entry in the By entry view', async ({ pa
 test('an entry says where it sits, and can be freed and placed again', async ({ page }) => {
   await openView(page, ids.kat2);
   await expect(page.getByText(/^Sense 2 of/)).toBeVisible();
-  await page.getByRole('button', { name: 'Make its own entry' }).click();
+  // Drag the sense out of its entry, onto the Own entry zone of the tree.
+  await page.getByRole('button', { name: '1 sense' }).click();
+  const row = page.locator(`[data-sense="${ids.kat2}"]`);
+  await expect(row).toHaveAttribute('aria-current', 'true');
+  await row.dragTo(page.locator('[data-drop="root"]'));
   await expect(page.getByText(/^Entry$/)).toBeVisible();
   await expect.poll(() => meta(ids.kat2)).not.toHaveProperty('parent');
   // The entry-only field shows now that it is an entry.

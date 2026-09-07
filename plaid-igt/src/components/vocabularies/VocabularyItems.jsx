@@ -54,6 +54,7 @@ import {
   validateVocabRefs,
   planDeleteRefs,
   planSenseSetNumber,
+  planSenseDrop,
   withParentSet,
   withExampleAdded,
   withExampleRemoved,
@@ -696,19 +697,36 @@ export const VocabularyItems = ({
     await client.withOperation(label, async () => writeMetadata(id, metadata));
     foldPatches([{ id, metadata }]);
   };
-  const handleSetParent = async (parentId) => {
-    if (!selectedItem) return;
+  // Make `id` a sense of `parentId` (last), or, with null, its own entry.
+  const handleMoveUnder = async (id, parentId) => {
+    const moving = tree.byId.get(id);
+    if (!moving) return;
     try {
       await commitMetadata(
-        selectedItem.id,
-        withParentSet(tree, selectedItem, parentId),
+        id,
+        withParentSet(tree, moving, parentId),
         parentId
-          ? `Make "${selectedItem.form}" a sense of "${tree.byId.get(parentId)?.form ?? ''}"`
-          : `Make "${selectedItem.form}" its own entry`,
+          ? `Make "${moving.form}" a sense of "${tree.byId.get(parentId)?.form ?? ''}"`
+          : `Make "${moving.form}" its own entry`,
       );
     } catch (err) {
       console.error('Moving the entry failed:', err);
       notifyError('Failed to move the entry', 'Error');
+    }
+  };
+  // A drop in the sense tree: before or after a sense, into one, or out.
+  const handleSenseDrop = async (id, target) => {
+    const patches = planSenseDrop(tree, id, target);
+    if (!patches.length) return;
+    const moving = tree.byId.get(id);
+    try {
+      await client.withOperation(`Move "${moving?.form ?? ''}"`, async () => {
+        for (const p of patches) await writeMetadata(p.id, p.metadata);
+      });
+      foldPatches(patches);
+    } catch (err) {
+      console.error('Moving the sense failed:', err);
+      notifyError('Failed to move the sense', 'Error');
     }
   };
   const handleSetSenseNumber = async (id, n) => {
@@ -1262,7 +1280,8 @@ export const VocabularyItems = ({
                     homonyms={homonyms}
                     itemTo={itemTo}
                     canManage={canManage}
-                    onSetParent={handleSetParent}
+                    onMoveUnder={handleMoveUnder}
+                    onDrop={handleSenseDrop}
                     onSetNumber={handleSetSenseNumber}
                     newSenseTo={newSenseTo}
                   />

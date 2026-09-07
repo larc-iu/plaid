@@ -304,6 +304,47 @@ export const planSenseSetNumber = (tree, id, shown) => {
   return renumbered(sibs, p);
 };
 
+/**
+ * Where a dragged item lands, as `[{id, metadata}]` patches:
+ *   {kind: 'root'}            its own entry (parent and order cleared)
+ *   {kind: 'into', id}        last sense of `id`
+ *   {kind: 'before'|'after', id}  a sibling of `id`, just before or after it
+ * A drop onto itself, or into its own subtree, moves nothing. Before or
+ * after an ENTRY (a root) means into it, first or last: entries have no
+ * order among themselves. Siblings are renumbered densely.
+ */
+export const planSenseDrop = (tree, id, target) => {
+  if (!target || !tree.byId.has(id)) return [];
+  const item = tree.byId.get(id);
+  const inSubtree = new Set([id, ...descendantsOf(tree, id).map((d) => d.id)]);
+  if (target.kind === 'root') {
+    if (!tree.parentOf.get(id)) return [];
+    return [{ id, metadata: withParent(item.metadata, null, null) }];
+  }
+  if (!tree.byId.has(target.id) || inSubtree.has(target.id)) return [];
+  let parent;
+  let sibs;
+  let at;
+  if (target.kind === 'into' || !tree.parentOf.get(target.id)) {
+    parent = target.id;
+    sibs = (tree.childrenOf.get(parent) || []).filter((s) => s.id !== id);
+    at = target.kind === 'before' ? 0 : sibs.length;
+  } else {
+    parent = tree.parentOf.get(target.id);
+    sibs = (tree.childrenOf.get(parent) || []).filter((s) => s.id !== id);
+    at = sibs.findIndex((s) => s.id === target.id) + (target.kind === 'after' ? 1 : 0);
+  }
+  sibs.splice(at, 0, item);
+  const moved = tree.parentOf.get(id) !== parent;
+  const patches = renumbered(sibs, parent);
+  // A sibling list that already stood in this order yields no patch for the
+  // moved item, so make sure its new parent is written.
+  if (moved && !patches.some((p) => p.id === id)) {
+    patches.push({ id, metadata: withParent(item.metadata, parent, senseOrderOf(item)) });
+  }
+  return patches;
+};
+
 // Patches renumbering `sibs` 1..n under `p`, for those whose order changes.
 const renumbered = (sibs, p) =>
   sibs

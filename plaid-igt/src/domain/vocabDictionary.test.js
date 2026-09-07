@@ -8,6 +8,7 @@ import {
   withParentSet,
   planSenseMove,
   planSenseSetNumber,
+  planSenseDrop,
   referencesTo,
   validateVocabRefs,
   planDeleteRefs,
@@ -112,6 +113,40 @@ describe('placing and moving senses', () => {
     expect(planSenseSetNumber(t, 'kat2', 'x')).toEqual([]);
     // A subsense counts from 1 under its sense.
     expect(planSenseSetNumber(t, 'kat2a', 1)).toEqual([]);
+  });
+
+  it('lands a dragged sense before, after, into, or out', () => {
+    const t = buildSenseTree(items());
+    const by = (patches) => Object.fromEntries(patches.map((p) => [p.id, p.metadata]));
+    // kat3 (2), kat2 (3, with kat2a under it)
+    expect(by(planSenseDrop(t, 'kat3', { kind: 'after', id: 'kat2' }))).toEqual({
+      kat2: { gloss: 'lion', parent: 'kat', senseOrder: 1 },
+      kat3: { gloss: 'scratch', parent: 'kat', senseOrder: 2 },
+    });
+    // Into kat2: last under it, and its unnumbered sense gets a number too.
+    expect(by(planSenseDrop(t, 'kat3', { kind: 'into', id: 'kat2' }))).toEqual({
+      kat2a: { gloss: 'lioness', parent: 'kat2', senseOrder: 1 },
+      kat3: { gloss: 'scratch', parent: 'kat2', senseOrder: 2 },
+    });
+    expect(by(planSenseDrop(t, 'kat2a', { kind: 'before', id: 'kat3' }))).toEqual({
+      kat2a: { gloss: 'lioness', parent: 'kat', senseOrder: 1 },
+      kat3: { gloss: 'scratch', parent: 'kat', senseOrder: 2 },
+      kat2: { gloss: 'lion', parent: 'kat', senseOrder: 3 },
+    });
+    expect(planSenseDrop(t, 'kat2', { kind: 'root' })).toEqual([
+      { id: 'kat2', metadata: { gloss: 'lion' } },
+    ]);
+    // Before an entry means first under it; a whole entry can move under another.
+    expect(by(planSenseDrop(t, 'run', { kind: 'before', id: 'kat' }))).toMatchObject({
+      run: { parent: 'kat', senseOrder: 1 },
+      kat3: { senseOrder: 2 },
+      kat2: { senseOrder: 3 },
+    });
+    // Nothing: onto itself, into its own subtree, already an entry, unknown.
+    expect(planSenseDrop(t, 'kat2', { kind: 'into', id: 'kat2a' })).toEqual([]);
+    expect(planSenseDrop(t, 'kat2', { kind: 'after', id: 'kat2' })).toEqual([]);
+    expect(planSenseDrop(t, 'kat', { kind: 'root' })).toEqual([]);
+    expect(planSenseDrop(t, 'kat', { kind: 'into', id: 'zzz' })).toEqual([]);
   });
 
   it('lays out a filtered list as a tree without hiding or adding hits', () => {

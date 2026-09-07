@@ -149,8 +149,11 @@ export const ItemRefField = ({
 };
 
 /**
- * Where the entry sits: "Entry" with a way to make it a sense of another, or
- * "Sense N of <parent>" with a way to make it an entry again.
+ * Where the entry sits: "Entry", or "Sense N of <parent>", with the number
+ * editable, then the entry's whole sense tree, unfolded on demand. Moving is
+ * done by dragging in the tree: above or below a sense to reorder, onto one
+ * to nest under it, onto Own entry to free it, onto Another entry to pick
+ * where it goes. A lone entry has nothing to drag, so it keeps a picker.
  */
 export const EntryPlace = ({
   item,
@@ -159,18 +162,22 @@ export const EntryPlace = ({
   homonyms,
   itemTo,
   canManage,
-  onSetParent,
+  onMoveUnder,
+  onDrop,
   onSetNumber,
   newSenseTo,
 }) => {
-  const [open, setOpen] = useState(false);
+  // Which item the picker is choosing a parent for: this one (the lone
+  // entry's link) or one dropped on Another entry.
+  const [pickFor, setPickFor] = useState(null);
   const parentId = tree.parentOf.get(item.id);
   const parent = parentId ? tree.byId.get(parentId) : null;
   const number = tree.numberOf.get(item.id);
   const alone = parentId ? (tree.childrenOf.get(parentId) || []).length < 2 : true;
   const exclude = useMemo(
-    () => new Set([item.id, ...descendantsOf(tree, item.id).map((d) => d.id)]),
-    [tree, item.id],
+    () =>
+      pickFor ? new Set([pickFor, ...descendantsOf(tree, pickFor).map((d) => d.id)]) : new Set(),
+    [tree, pickFor],
   );
   const root = tree.byId.get(tree.rootOf.get(item.id));
   const senseCount = root ? descendantsOf(tree, root.id).length : 0;
@@ -193,37 +200,6 @@ export const EntryPlace = ({
         ) : (
           <span>Entry</span>
         )}
-        {canManage && parent && (
-          <button
-            type="button"
-            className="text-primary hover:underline"
-            onClick={() => onSetParent(null)}
-          >
-            Make its own entry
-          </button>
-        )}
-        {canManage && (
-          <Popover open={open} onOpenChange={setOpen}>
-            <PopoverTrigger asChild>
-              <button type="button" className="text-primary hover:underline">
-                {parent ? 'Move under another entry…' : 'Make a sense of…'}
-              </button>
-            </PopoverTrigger>
-            <PopoverContent align="start" className="w-80 p-2">
-              <ItemPicker
-                autoFocus
-                items={items}
-                homonyms={homonyms}
-                exclude={exclude}
-                onPick={(id) => {
-                  setOpen(false);
-                  onSetParent(id);
-                }}
-                placeholder="Find the entry…"
-              />
-            </PopoverContent>
-          </Popover>
-        )}
         {senseCount > 0 && (
           <button
             type="button"
@@ -235,6 +211,33 @@ export const EntryPlace = ({
             {senseCount} sense{senseCount === 1 ? '' : 's'}
           </button>
         )}
+        <Popover open={!!pickFor} onOpenChange={(o) => !o && setPickFor(null)}>
+          {canManage && senseCount === 0 && !parent && (
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="text-primary hover:underline"
+                onClick={() => setPickFor(item.id)}
+              >
+                Make a sense of…
+              </button>
+            </PopoverTrigger>
+          )}
+          <PopoverContent align="start" className="w-80 p-2">
+            <ItemPicker
+              autoFocus
+              items={items}
+              homonyms={homonyms}
+              exclude={exclude}
+              onPick={(id) => {
+                const moving = pickFor;
+                setPickFor(null);
+                onMoveUnder(moving, id);
+              }}
+              placeholder="Find the entry…"
+            />
+          </PopoverContent>
+        </Popover>
         {canManage && (
           <Link to={newSenseTo(item.id)} className="text-primary no-underline hover:underline">
             <Plus className="inline h-3 w-3" /> Add sense
@@ -242,17 +245,36 @@ export const EntryPlace = ({
         )}
       </div>
       {treeOpen && senseCount > 0 && root && (
-        <SenseTree root={root} current={item.id} tree={tree} homonyms={homonyms} itemTo={itemTo} />
+        <SenseTree
+          root={root}
+          current={item.id}
+          tree={tree}
+          homonyms={homonyms}
+          itemTo={itemTo}
+          canManage={canManage}
+          onDrop={onDrop}
+          onPickEntry={(id) => setPickFor(id)}
+        />
       )}
     </div>
   );
 };
 
+// Which part of a row the pointer is over: the top and bottom quarters mean
+// before and after it, the middle means into it.
+const zoneAt = (event) => {
+  const r = event.currentTarget.getBoundingClientRect();
+  const y = (event.clientY - r.top) / Math.max(1, r.height);
+  return y < 0.25 ? 'before' : y > 0.75 ? 'after' : 'into';
+};
+
 /**
- * The whole entry as a tree, for getting around it: the headword and every
- * sense under it, depth-first and numbered, each a link, the open one marked.
+ * The whole entry as a tree, for getting around it and rearranging it: the
+ * headword and every sense under it, depth-first and numbered, each a link,
+ * the open one marked. Rows drag; while one is in the air two extra rows
+ * appear at the top to drop it on: Own entry, and Another entry.
  */
-const SenseTree = ({ root, current, tree, homonyms, itemTo }) => {
+const SenseTree = ({ root, current, tree, homonyms, itemTo, canManage, onDrop, onPickEntry }) => {
   const rows = [{ item: root, depth: 0 }];
   const walk = (id, depth) => {
     for (const c of tree.childrenOf.get(id) || []) {
@@ -261,41 +283,119 @@ const SenseTree = ({ root, current, tree, homonyms, itemTo }) => {
     }
   };
   walk(root.id, 1);
+  const [dragId, setDragId] = useState(null);
+  const [over, setOver] = useState(null); // {id, zone} | 'root' | 'pick' | null
+  const banned = useMemo(
+    () => (dragId ? new Set([dragId, ...descendantsOf(tree, dragId).map((d) => d.id)]) : new Set()),
+    [tree, dragId],
+  );
+  const end = () => {
+    setDragId(null);
+    setOver(null);
+  };
+  // The two places outside the tree a row can be dropped. Always there
+  // when the tree can be edited, so the ways out are visible before a drag
+  // starts; they light up while one is in the air.
+  const dropZone = (key, label, onDropHere) => (
+    <li
+      key={key}
+      data-drop={key}
+      onDragOver={(e) => {
+        if (!dragId) return;
+        e.preventDefault();
+        setOver(key);
+      }}
+      onDragLeave={() => setOver((o) => (o === key ? null : o))}
+      onDrop={(e) => {
+        if (!dragId) return;
+        e.preventDefault();
+        onDropHere();
+        end();
+      }}
+      className={cn(
+        'mx-2 my-0.5 rounded border border-dashed px-2 py-0.5 text-xs text-muted-foreground/70',
+        dragId && 'text-muted-foreground',
+        over === key && 'border-primary bg-accent text-foreground',
+      )}
+    >
+      {label}
+    </li>
+  );
   return (
-    <ul className="max-h-64 overflow-y-auto rounded-md border bg-muted/20 py-1 text-sm">
-      {rows.map(({ item, depth }) => (
-        <li
-          key={item.id}
-          aria-current={item.id === current ? 'true' : undefined}
-          className={cn(
-            'flex items-baseline gap-2 py-0.5 pr-3',
-            item.id === current && 'bg-accent/60',
-          )}
-          style={{ paddingLeft: `${0.75 + depth * 1.25}rem` }}
-        >
-          <span className="w-8 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-            {tree.numberOf.get(item.id)}
-          </span>
-          <span className="min-w-0 truncate">
-            {item.id === current ? (
-              <>
-                <FormLabel
-                  form={item.form}
-                  index={homonyms?.get(item.id)}
-                  className="font-medium"
-                />
-                {item.metadata?.gloss ? (
-                  <span className="ml-1 text-xs text-muted-foreground">
-                    {String(item.metadata.gloss)}
-                  </span>
-                ) : null}
-              </>
-            ) : (
-              <ItemLink item={item} homonyms={homonyms} itemTo={itemTo} />
-            )}
-          </span>
+    <ul className="max-h-72 overflow-y-auto rounded-md border bg-muted/20 py-1 text-sm">
+      {canManage && (
+        <li className="px-3 pb-0.5 pt-1 text-[10px] uppercase tracking-wide text-muted-foreground/70">
+          Drag a sense to
         </li>
-      ))}
+      )}
+      {canManage && dropZone('root', 'Own entry', () => onDrop(dragId, { kind: 'root' }))}
+      {canManage && dropZone('pick', 'Another entry…', () => onPickEntry(dragId))}
+      {rows.map(({ item, depth }) => {
+        const isCurrent = item.id === current;
+        const isOver = over && over.id === item.id;
+        const zone = isOver ? over.zone : null;
+        const canTake = dragId && !banned.has(item.id);
+        return (
+          <li
+            key={item.id}
+            data-sense={item.id}
+            aria-current={isCurrent ? 'true' : undefined}
+            draggable={canManage}
+            onDragStart={(e) => {
+              e.dataTransfer.effectAllowed = 'move';
+              e.dataTransfer.setData('text/plain', item.id);
+              setDragId(item.id);
+            }}
+            onDragEnd={end}
+            onDragOver={(e) => {
+              if (!canTake) return;
+              e.preventDefault();
+              // An entry (the root) has nothing before or after it.
+              const z = depth === 0 ? 'into' : zoneAt(e);
+              setOver((o) => (o?.id === item.id && o.zone === z ? o : { id: item.id, zone: z }));
+            }}
+            onDragLeave={() => setOver((o) => (o?.id === item.id ? null : o))}
+            onDrop={(e) => {
+              if (!canTake) return;
+              e.preventDefault();
+              onDrop(dragId, { kind: depth === 0 ? 'into' : zoneAt(e), id: item.id });
+              end();
+            }}
+            className={cn(
+              'relative flex items-baseline gap-2 py-0.5 pr-3',
+              canManage && 'cursor-grab',
+              isCurrent && 'bg-accent/60',
+              dragId === item.id && 'opacity-40',
+              zone === 'into' && 'bg-accent ring-1 ring-inset ring-primary',
+              zone === 'before' && 'shadow-[inset_0_2px_0_0_hsl(var(--primary))]',
+              zone === 'after' && 'shadow-[inset_0_-2px_0_0_hsl(var(--primary))]',
+            )}
+            style={{ paddingLeft: `${0.75 + depth * 1.25}rem` }}
+          >
+            <span className="w-8 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+              {tree.numberOf.get(item.id)}
+            </span>
+            <span className="min-w-0 truncate">
+              {isCurrent ? (
+                <>
+                  <FormLabel
+                    form={item.form}
+                    index={homonyms?.get(item.id)}
+                    className="font-medium"
+                  />
+                  {item.metadata?.gloss ? (
+                    <span className="ml-1 text-xs text-muted-foreground">
+                      {String(item.metadata.gloss)}
+                    </span>
+                  ) : null}
+                </>
+              ) : (
+                <ItemLink item={item} homonyms={homonyms} itemTo={itemTo} />
+              )}
+            </span>
+          </li>
+        );
+      })}
     </ul>
   );
 };
