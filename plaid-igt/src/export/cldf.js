@@ -28,6 +28,7 @@
 // documents and returns file contents.
 
 import { morphFormOf, joinMorphemeTexts } from '../domain/igtExport.js';
+import { buildSenseTree, descendantsOf } from '../domain/vocabDictionary.js';
 import { readVocabFields } from '../domain/igtConfig.js';
 import { phraseSpeakerFor } from './flextext.js';
 
@@ -465,13 +466,18 @@ export function buildCldfDataset({
   const entryRows = [];
   const senseRows = [];
   const extraVocabColumns = new Map();
+  let entriesWithoutSenseN = 0;
   if (o.dictionary) {
     const reserved = new Set(['gloss', 'definition', 'pos']);
     let entryN = 0;
     let senseN = 0;
     for (const vocab of vocabularies) {
       const fields = Object.keys(readVocabFields(vocab.config) || {});
-      for (const item of vocab.items || []) {
+      // Every headword is an entry; its senses (and theirs, flattened, since
+      // CLDF has no deeper level) are its senses. A headword's own gloss is
+      // its first sense.
+      const tree = buildSenseTree(vocab.items || []);
+      for (const item of tree.roots) {
         entryN += 1;
         const entryId = `e${entryN}`;
         const meta = item.metadata || {};
@@ -493,20 +499,26 @@ export function buildCldfDataset({
         }
         entryRows.push(entry);
 
-        // SenseTable.Description is required, so an item with nothing to say
-        // gets an entry and no sense rather than an empty required cell.
-        const description = meta.gloss || meta.definition || '';
-        if (description === '') continue;
-        senseN += 1;
-        senseRows.push({
-          ID: `s${senseN}`,
-          Entry_ID: entryId,
-          Description: String(description),
-          Definition: meta.gloss && meta.definition ? String(meta.definition) : '',
-        });
+        // SenseTable.Description is required, so a sense with nothing to say
+        // is left out rather than written with an empty required cell.
+        let wrote = 0;
+        for (const sense of [item, ...descendantsOf(tree, item.id)]) {
+          const m = sense.metadata || {};
+          const description = m.gloss || m.definition || '';
+          if (description === '') continue;
+          senseN += 1;
+          wrote += 1;
+          senseRows.push({
+            ID: `s${senseN}`,
+            Entry_ID: entryId,
+            Description: String(description),
+            Definition: m.gloss && m.definition ? String(m.definition) : '',
+          });
+        }
+        if (!wrote) entriesWithoutSenseN += 1;
       }
     }
-    const entriesWithoutSense = entryRows.length - senseRows.length;
+    const entriesWithoutSense = entriesWithoutSenseN;
     if (entriesWithoutSense > 0) {
       warnings.push(
         `${entriesWithoutSense} lexicon ${

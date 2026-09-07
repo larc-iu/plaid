@@ -24,11 +24,12 @@
 //   metadata.pos            → <grammatical-info value=…>        (sense)
 //   metadata.examples       → <example><form>/<translation>     (sense)
 //   anything else           → <field type="<name>">             (sense)
-// Items sharing a flexEntry guid become ONE entry with several senses, undoing
+// A headword and its senses become ONE entry with senses and subsenses, undoing
 // the importer's item-per-sense flattening. A vocabulary built by hand has no
 // such guids, so each of its items is an entry of its own.
 
 import { xmlEscape } from './flextext.js';
+import { buildSenseTree } from '../domain/vocabDictionary.js';
 import { readVocabFields } from '../domain/igtConfig.js';
 import { FLEX_MORPH_TYPES } from '../domain/affixMarkers.js';
 
@@ -37,7 +38,17 @@ export const LIFT_VERSION = '0.13';
 // Metadata keys this exporter reads structurally. Everything else an item
 // carries becomes a <field>, so a hand-built vocabulary exports its own
 // columns without any configuration.
-const ENTRY_KEYS = new Set(['lexemeForm', 'morphType', 'homograph', 'flexEntry', 'flexSense']);
+// Entry-level keys the entry element carries itself, plus the structure keys
+// the sense tree is built from and the import identity: none is a field.
+const ENTRY_KEYS = new Set([
+  'lexemeForm',
+  'morphType',
+  'homograph',
+  'flexEntry',
+  'flexSense',
+  'parent',
+  'senseOrder',
+]);
 const SENSE_KEYS = new Set(['pos', 'examples']);
 // Multilingual bases: written bare for the primary writing system and
 // suffixed for the others ("gloss", "gloss (ru)"). See fieldName() on the
@@ -170,7 +181,9 @@ function examplesXml(indent, examples, vern, analysisLang) {
   return lines;
 }
 
-function senseXml(indent, item, ctx, index) {
+// A sense, with its own senses nested as <subsense>. `tag` is 'sense' at the
+// top and 'subsense' below; `index` numbers it among its siblings for the id.
+function senseXml(indent, item, ctx, index, tag = 'sense', children = []) {
   const meta = item.metadata || {};
   const { glosses, definitions, fields } = partitionMetadata(meta, ctx.analysisLang);
   const grouped = groupFields(fields, ctx.fieldLangs, ctx.analysisLang);
@@ -202,14 +215,26 @@ function senseXml(indent, item, ctx, index) {
       `${indent}  </field>`,
     );
   }
+  for (const [i, child] of children.entries()) {
+    inner.push(
+      ...senseXml(
+        `${indent}  `,
+        child.item,
+        { ...ctx, entryId: id },
+        i,
+        'subsense',
+        child.children,
+      ),
+    );
+  }
   // An item with nothing but a form says nothing a sense could hold, and an
   // entry is allowed to have none. FLEx makes one on its own when it needs to.
   if (!inner.length) return [];
-  return [`${indent}<sense id="${xmlEscape(id)}">`, ...inner, `${indent}</sense>`];
+  return [`${indent}<${tag} id="${xmlEscape(id)}">`, ...inner, `${indent}</${tag}>`];
 }
 
 function entryXml(indent, group, ctx) {
-  const first = group.items[0];
+  const first = group.head;
   const meta = first.metadata || {};
   const guid = scalar(meta.flexEntry);
   const lexemeForm = scalar(meta.lexemeForm);
@@ -238,9 +263,13 @@ function entryXml(indent, group, ctx) {
   }
   const senseCtx = { ...ctx, entryId };
   let senses = 0;
-  group.items.forEach((item, i) => {
-    const lines = senseXml(`${indent}  `, item, senseCtx, i);
-    if (lines.length) senses += 1;
+  // The headword's own gloss, if any, is the first sense; its senses follow,
+  // each with its own senses nested inside it.
+  const top = [{ item: first, children: [] }, ...group.senses];
+  top.forEach((node, i) => {
+    const lines = senseXml(`${indent}  `, node.item, senseCtx, i, 'sense', node.children);
+    // Count what was written: a sense with nothing to say is left out.
+    senses += lines.filter((l) => /^\s*<(sub)?sense /.test(l)).length;
     inner.push(...lines);
   });
   return {
@@ -252,23 +281,26 @@ function entryXml(indent, group, ctx) {
 // ---- grouping --------------------------------------------------------------
 
 /**
- * Items → entry groups. Items of the same vocabulary sharing a flexEntry guid
- * rejoin as one entry (senses in item order). Everything else stands alone.
- * The guid is scoped by vocabulary: two vocabularies imported from the same
- * FLEx project would otherwise collapse into each other.
+ * Items → entry groups, from the vocabulary's own sense tree and nothing
+ * else: every headword is an entry, its senses its senses, theirs subsenses.
+ * `{key, head, senses: [{item, children}], items}` per group, `items` being
+ * every item in it, headword first, depth-first.
  */
 export function groupEntries(vocabularies) {
-  const groups = new Map();
+  const groups = [];
   for (const vocab of vocabularies || []) {
-    for (const item of vocab.items || []) {
-      const guid = item.metadata?.flexEntry;
-      const key = guid ? `${vocab.id}:${guid}` : `${vocab.id}:item:${item.id}`;
-      const found = groups.get(key);
-      if (found) found.items.push(item);
-      else groups.set(key, { key, items: [item] });
+    const tree = buildSenseTree(vocab.items || []);
+    const node = (it) => ({
+      item: it,
+      children: (tree.childrenOf.get(it.id) || []).map(node),
+    });
+    const flat = (nodes) => nodes.flatMap((n) => [n.item, ...flat(n.children)]);
+    for (const head of tree.roots) {
+      const senses = (tree.childrenOf.get(head.id) || []).map(node);
+      groups.push({ key: `${vocab.id}:${head.id}`, head, senses, items: [head, ...flat(senses)] });
     }
   }
-  return [...groups.values()];
+  return groups;
 }
 
 // ---- the files -------------------------------------------------------------

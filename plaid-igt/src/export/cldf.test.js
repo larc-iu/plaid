@@ -318,6 +318,28 @@ describe('buildCldfDataset — dictionary', () => {
     expect(warnings.join(' ')).toMatch(/no gloss or definition/);
   });
 
+  it('writes a headword as one entry with its senses, and its own gloss first', () => {
+    const dict = {
+      ...vocab,
+      items: [
+        { id: 'h', form: 'kat', metadata: { gloss: 'cat' } },
+        { id: 's1', form: 'kat', metadata: { gloss: 'lion', parent: 'h', senseOrder: 1 } },
+        { id: 's1a', form: 'kat', metadata: { gloss: 'lioness', parent: 's1', senseOrder: 1 } },
+        { id: 'c', form: 'run', metadata: { etymology: 'x' } },
+        { id: 'cs', form: 'run', metadata: { gloss: 'run', parent: 'c', senseOrder: 1 } },
+      ],
+    };
+    const { files, warnings } = build({ vocabularies: [dict] });
+    expect(table(files, 'entries.csv').map((e) => e.Headword)).toEqual(['kat', 'run']);
+    expect(table(files, 'senses.csv').map((s) => [s.Entry_ID, s.Description])).toEqual([
+      ['e1', 'cat'],
+      ['e1', 'lion'],
+      ['e1', 'lioness'],
+      ['e2', 'run'],
+    ]);
+    expect(warnings.join(' ')).not.toMatch(/no gloss/);
+  });
+
   it('carries non-core lexicon fields as custom entry columns', () => {
     const { files } = build({ vocabularies: [vocab] });
     expect(table(files, 'entries.csv')[1].Entry_morphType).toBe('stem');

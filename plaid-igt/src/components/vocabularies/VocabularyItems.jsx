@@ -785,8 +785,14 @@ export const VocabularyItems = ({
     const tsv = serializeVocabTsv({
       items: filteredItems,
       fieldNames,
-      fieldLabels: fieldNames.map(humanizeFieldName),
+      fieldLabels: fields.map(fieldLabel),
       usageCounts,
+      ...(dictionary
+        ? {
+            numbers: homonyms,
+            refFields: fields.filter((f) => f.type === FIELD_TYPES.ITEM).map((f) => f.name),
+          }
+        : {}),
     });
     downloadBlob(
       `${sanitizeFilename(vocabulary?.name || 'vocabulary')}.tsv`,

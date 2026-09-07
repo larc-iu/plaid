@@ -19,6 +19,7 @@ import { discoverExportLayers, intersectSelection } from './exportLayers.js';
 import { serializeDocumentPlain } from './plainTextDoc.js';
 import { interlinearTextXml, flextextEnvelope } from './flextext.js';
 import { buildLiftLexicon } from './lift.js';
+import { buildItemNumbers, readDictionaryEnabled } from '../domain/vocabDictionary.js';
 import { buildEafDocument } from './elan.js';
 import { serializeVocabTsv } from './vocabTsv.js';
 import { buildCldfDataset } from './cldf.js';
@@ -503,12 +504,21 @@ export async function runExport({
     // would be misleading in a per-project archive).
     const names = dedupeFilenames(vocabs.map((v) => `${sanitizeFilename(v.name || v.id)}.tsv`));
     vocabs.forEach((vocab, i) => {
-      const fieldNames = Object.keys(readVocabFields(vocab.config) || {}).filter(
-        (n) => n.toLowerCase() !== 'form',
-      );
+      const fieldSpecs = readVocabFields(vocab.config) || {};
+      const fieldNames = Object.keys(fieldSpecs).filter((n) => n.toLowerCase() !== 'form');
+      const dictionary = readDictionaryEnabled(vocab.config);
       entries.push({
         path: `vocabularies/${names[i]}`,
-        data: serializeVocabTsv({ items: vocab.items || [], fieldNames }),
+        data: serializeVocabTsv({
+          items: vocab.items || [],
+          fieldNames,
+          ...(dictionary
+            ? {
+                numbers: buildItemNumbers(vocab.items || []),
+                refFields: fieldNames.filter((n) => fieldSpecs[n]?.type === 'item'),
+              }
+            : {}),
+        }),
       });
     });
   }

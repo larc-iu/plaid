@@ -175,10 +175,16 @@ export async function importVocabulary({
             inline: !!f.inline,
             ...(f.tagset ? { tagset: f.tagset } : {}),
             ...(f.lang ? { lang: f.lang } : {}),
+            ...(f.type === 'item' ? { type: 'item' } : {}),
+            ...(f.type === 'item' && f.many ? { many: true } : {}),
+            ...(f.scope === 'entry' ? { scope: 'entry' } : {}),
           },
         ]),
       ),
     );
+  }
+  if (vocabData.dictionary === true) {
+    await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'dictionary', true);
   }
   if (vocabData.tagsets && Object.keys(vocabData.tagsets).length) {
     await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'tagsets', vocabData.tagsets);
@@ -348,6 +354,9 @@ export async function importNativeDocument({
   onProgress,
   shouldStop,
   warnings = [],
+  // Optional: archive document id -> {docId, tokenIdMap}, filled in for the
+  // runner, which relinks the vocabularies' examples once every document is in.
+  docMaps = null,
 }) {
   const progress = documentProgress({
     onProgress,
@@ -366,6 +375,7 @@ export async function importNativeDocument({
 
   const body = docData.baseline?.body ?? '';
   const tokenIdMap = new Map(); // archive token id → new token id
+  if (docMaps && docData.id != null) docMaps.set(docData.id, { docId, tokenIdMap });
   const spanIdMap = new Map(); // archive span id → new span id
   let baselineTextId = null; // for comments anchored to the text itself
 
@@ -736,6 +746,7 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
   const existingDocs = await client.projects.listDocuments(projectId);
   const byName = new Map(existingDocs.map((d) => [d.name, d]));
 
+  const docMaps = new Map(); // archive document id → {docId, tokenIdMap}
   const results = { imported: 0, skipped: 0, redone: 0 };
   for (let i = 0; i < archive.documents.length; i += 1) {
     if (shouldStop?.()) throw new ImportCancelled();
@@ -763,6 +774,7 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
       targets,
       docData: doc.data,
       itemIdMap,
+      docMaps,
       mediaBytes: doc.mediaBytes,
       mediaName: doc.mediaFile ? doc.mediaFile.split('/').at(-1) : null,
       index: i,
@@ -773,6 +785,84 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
     });
     results.imported += 1;
   }
+  // Last: the structure a dictionary vocabulary keeps in item metadata
+  // (parents, Entry fields, examples) names ids from the archive, so it is
+  // rewritten through the maps now that every item, document and token
+  // exists. Idempotent, so a resume redoes it harmlessly.
+  for (const vocab of archive.vocabularies) {
+    if (shouldStop?.()) throw new ImportCancelled();
+    await relinkVocabStructure({ client, vocabData: vocab.data, itemIdMap, docMaps, warnings });
+  }
   onProgress?.({ phase: 'done', ...results });
   return { ...results, warnings };
+}
+
+/**
+ * The item metadata that refers to other things, as `[{id, metadata}]` with
+ * every reference mapped onto the ids the import made: `parent`, each
+ * Entry-typed field, and the `examples` list's {document, token} pairs.
+ * A reference to something that did not survive is dropped, and said.
+ */
+export function planVocabRelink(vocabData, itemIdMap, docMaps) {
+  const refFields = (vocabData.fields || []).filter((f) => f.type === 'item');
+  const out = [];
+  const dropped = [];
+  for (const it of vocabData.items || []) {
+    const newId = itemIdMap.get(it.id);
+    const meta = it.metadata;
+    if (!newId || !meta) continue;
+    let next = { ...meta };
+    let changed = false;
+    if (typeof meta.parent === 'string') {
+      const p = itemIdMap.get(meta.parent);
+      if (p) next.parent = p;
+      else {
+        delete next.parent;
+        delete next.senseOrder;
+        dropped.push(`${it.form}: parent`);
+      }
+      changed = true;
+    }
+    for (const f of refFields) {
+      const v = meta[f.name];
+      if (v == null) continue;
+      const ids = (Array.isArray(v) ? v : [v]).filter((x) => typeof x === 'string');
+      const mapped = ids.map((x) => itemIdMap.get(x)).filter(Boolean);
+      if (mapped.length !== ids.length) dropped.push(`${it.form}: ${f.name}`);
+      if (mapped.length) next[f.name] = f.many ? mapped : mapped[0];
+      else delete next[f.name];
+      changed = true;
+    }
+    if (Array.isArray(meta.examples)) {
+      const kept = [];
+      for (const ex of meta.examples) {
+        if (!ex || typeof ex.document !== 'string') {
+          kept.push(ex);
+          continue;
+        }
+        const doc = docMaps?.get(ex.document);
+        const token = doc?.tokenIdMap.get(ex.token);
+        if (doc && token) kept.push({ ...ex, document: doc.docId, token });
+        else dropped.push(`${it.form}: example`);
+      }
+      if (kept.length) next.examples = kept;
+      else delete next.examples;
+      changed = true;
+    }
+    if (changed) out.push({ id: newId, metadata: next });
+  }
+  return { patches: out, dropped };
+}
+
+async function relinkVocabStructure({ client, vocabData, itemIdMap, docMaps, warnings }) {
+  const { patches, dropped } = planVocabRelink(vocabData, itemIdMap, docMaps);
+  for (const p of patches) {
+    if (Object.keys(p.metadata).length) await client.vocabItems.setMetadata(p.id, p.metadata);
+    else await client.vocabItems.deleteMetadata(p.id);
+  }
+  if (dropped.length) {
+    warnings.push(
+      `"${vocabData.name}": ${dropped.length} reference${dropped.length === 1 ? '' : 's'} pointed at something not in the archive and ${dropped.length === 1 ? 'was' : 'were'} dropped (${dropped.slice(0, 5).join('; ')}${dropped.length > 5 ? '; …' : ''})`,
+    );
+  }
 }

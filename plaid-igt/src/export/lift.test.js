@@ -11,7 +11,8 @@ const OPTIONS = { langs: { baseline: 'lez', analysis: 'en' } };
 
 const item = (id, form, metadata = {}) => ({ id, form, metadata });
 
-// Two senses of one FLEx entry, a hand-made item, and an affix.
+// A headword with a sense under it (both once FLEx senses of one entry), a
+// hand-made item, and an affix. The tree, not the FLEx guids, is the structure.
 const VOCAB = {
   id: 'v1',
   name: 'Lexicon',
@@ -32,6 +33,8 @@ const VOCAB = {
       morphType: 'stem',
       flexEntry: 'E1',
       flexSense: 'S2',
+      parent: 'i1',
+      senseOrder: 1,
     }),
     item('i3', 'qhen', { gloss: 'to see', pos: 'Verb' }),
     item('i4', 'ar', { gloss: 'PL', morphType: 'suffix', flexEntry: 'E2', flexSense: 'S3' }),
@@ -51,14 +54,39 @@ describe('parseFieldName', () => {
 });
 
 describe('groupEntries', () => {
-  it('rejoins items that share a FLEx entry guid and keeps the rest apart', () => {
+  it('makes an entry of every headword with its senses under it', () => {
     const groups = groupEntries([VOCAB]);
     expect(groups.map((g) => g.items.map((i) => i.id))).toEqual([['i1', 'i2'], ['i3'], ['i4']]);
+    expect(groups[0].head.id).toBe('i1');
+    expect(groups[0].senses.map((n) => n.item.id)).toEqual(['i2']);
   });
 
-  it('scopes the guid by vocabulary so two lexicons never collapse', () => {
-    const other = { id: 'v2', items: [item('j1', 'ktab', { flexEntry: 'E1' })] };
-    expect(groupEntries([VOCAB, other]).length).toBe(4);
+  it('ignores a shared FLEx guid: items only join through the tree', () => {
+    const other = {
+      id: 'v2',
+      items: [item('j1', 'ktab', { flexEntry: 'E1' }), item('j2', 'ktab', { flexEntry: 'E1' })],
+    };
+    expect(groupEntries([VOCAB, other]).length).toBe(5);
+  });
+
+  it('nests a sense of a sense as a subsense', () => {
+    const vocab = {
+      id: 'v3',
+      items: [
+        item('h', 'kat', { gloss: 'cat' }),
+        item('s', 'kat', { gloss: 'lion', parent: 'h', senseOrder: 1 }),
+        item('ss', 'kat', { gloss: 'lioness', parent: 's', senseOrder: 1 }),
+      ],
+    };
+    const dom = parse(build([vocab]).lift);
+    const entry = dom.querySelector('entry');
+    expect(entry.querySelectorAll(':scope > sense').length).toBe(2);
+    const lion = [...entry.querySelectorAll(':scope > sense')].find((s) =>
+      /lion/.test(s.textContent),
+    );
+    expect(lion.querySelector('subsense')).not.toBeNull();
+    expect(lion.querySelector('subsense gloss text').textContent).toBe('lioness');
+    expect(build([vocab]).senseCount).toBe(3);
   });
 });
 

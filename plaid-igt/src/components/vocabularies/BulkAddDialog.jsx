@@ -307,7 +307,12 @@ export const BulkAddDialog = ({
   client,
   onImported,
 }) => {
-  const fieldNames = useMemo(() => fields.map((f) => f.name), [fields]);
+  // An Entry field holds a reference to another entry, which no spreadsheet
+  // column can supply, so those are not offered as columns.
+  const fieldNames = useMemo(
+    () => fields.filter((f) => f.type !== 'item').map((f) => f.name),
+    [fields],
+  );
   const normalizeValue = useMemo(() => makeValueNormalizer(tagsetFor), [tagsetFor]);
   const fileInputRef = useRef(null);
 

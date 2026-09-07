@@ -385,6 +385,11 @@ A vocabulary added while setting up a new project can start as a dictionary: tic
 An imported lexicon starts as one unless you untick it on the review screen.
 A FLEx import also keeps the sense structure of the lexicon: an entry with several senses becomes an entry with them under it, numbered as FLEx numbered them, and an entry with one sense is that sense.
 
+Exports follow the same structure.
+A LIFT file has one entry per headword, its senses as senses and their senses as subsenses; a CLDF dataset puts headwords in its entry table and every sense under them in its sense table; the vocabulary's TSV carries each entry's number and names the entries a reference field points at.
+The native archive keeps everything, senses, references and examples included, and brings it back on import.
+Bulk Add and Replace leave Entry fields alone, since those hold references and not text.
+
 == Multi-word expressions
 
 Some lexical units are longer than a word: an idiom, a phrasal verb, a compound name.

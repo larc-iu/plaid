@@ -69,12 +69,13 @@ export const ReplaceDialog = ({
   onApplied,
 }) => {
   // The form, then every text field. Morph types are a fixed set shown by
-  // label, edited on the entry form.
+  // label, edited on the entry form; an Entry field holds references, not
+  // text, and is edited there too.
   const targets = useMemo(
     () => [
       { name: 'form', label: 'Form' },
       ...fields
-        .filter((f) => f.name !== 'morphType')
+        .filter((f) => f.name !== 'morphType' && f.type !== 'item')
         .map((f) => ({ name: f.name, label: humanizeFieldName(f.name) })),
     ],
     [fields],

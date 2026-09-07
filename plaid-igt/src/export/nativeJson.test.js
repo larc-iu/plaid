@@ -483,3 +483,39 @@ describe('buildProjectFile', () => {
     expect(out.schema.autoAnalysis).toBeNull();
   });
 });
+
+describe('serializeVocabularyNative — Lexicography Mode', () => {
+  it("carries the switch and each field's type, many and scope", () => {
+    const out = serializeVocabularyNative({
+      id: 'v',
+      name: 'L',
+      config: {
+        igt: {
+          dictionary: true,
+          fields: {
+            gloss: { inline: true },
+            variantOf: { inline: false, type: 'item' },
+            seeAlso: { inline: false, type: 'item', many: true },
+            etymology: { inline: false, scope: 'entry' },
+          },
+        },
+      },
+      items: [],
+    });
+    expect(out.dictionary).toBe(true);
+    expect(out.fields.find((f) => f.name === 'variantOf')).toEqual({
+      name: 'variantOf',
+      inline: false,
+      type: 'item',
+    });
+    expect(out.fields.find((f) => f.name === 'seeAlso')).toMatchObject({
+      type: 'item',
+      many: true,
+    });
+    expect(out.fields.find((f) => f.name === 'etymology')).toMatchObject({ scope: 'entry' });
+    expect(out.fields.find((f) => f.name === 'gloss')).toEqual({ name: 'gloss', inline: true });
+    expect(
+      serializeVocabularyNative({ id: 'v', name: 'L', config: {}, items: [] }),
+    ).not.toHaveProperty('dictionary');
+  });
+});

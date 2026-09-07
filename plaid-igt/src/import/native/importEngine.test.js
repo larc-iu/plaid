@@ -10,6 +10,7 @@ import {
   deriveSetupData,
   resolveNativeTargets,
   importVocabulary,
+  planVocabRelink,
   runNativeImport,
 } from './importEngine.js';
 
@@ -119,6 +120,8 @@ function stubClient({ existingDocs = [], existingItems = [], existingVocabCommen
     vocabItems: {
       bulkCreate: async (body) =>
         record('vocabItems.bulkCreate', [body], { ids: body.map(() => fresh('item')) }),
+      setMetadata: async (...a) => record('vocabItems.setMetadata', a),
+      deleteMetadata: async (...a) => record('vocabItems.deleteMetadata', a),
     },
     vocabLinks: {
       create: (itemId, tokens, metadata) => {
@@ -644,5 +647,86 @@ describe('resolveNativeTargets', () => {
     const { manifest } = buildArchive();
     project.textLayers[0].tokenLayers[0].spanLayers = []; // drop word span layers
     expect(() => resolveNativeTargets(project, manifest)).toThrow(/POS.*missing/);
+  });
+});
+
+describe('planVocabRelink — a dictionary survives the round trip', () => {
+  const vocabData = {
+    name: 'Lex',
+    fields: [
+      { name: 'gloss', inline: true },
+      { name: 'variantOf', inline: false, type: 'item' },
+      { name: 'seeAlso', inline: false, type: 'item', many: true },
+    ],
+    items: [
+      { id: 'old-head', form: 'kat', metadata: { gloss: 'cat' } },
+      {
+        id: 'old-sense',
+        form: 'kat',
+        metadata: { gloss: 'lion', parent: 'old-head', senseOrder: 1 },
+      },
+      {
+        id: 'old-run',
+        form: 'run',
+        metadata: {
+          gloss: 'run',
+          variantOf: 'old-head',
+          seeAlso: ['old-sense', 'gone'],
+          examples: [
+            { document: 'old-doc', token: 'old-tok' },
+            { document: 'old-doc', token: 'lost-tok' },
+            { text: 'imported text', translation: 'stays' },
+          ],
+        },
+      },
+      { id: 'old-orphan', form: 'x', metadata: { parent: 'gone' } },
+    ],
+  };
+  const itemIdMap = new Map([
+    ['old-head', 'new-head'],
+    ['old-sense', 'new-sense'],
+    ['old-run', 'new-run'],
+    ['old-orphan', 'new-orphan'],
+  ]);
+  const docMaps = new Map([
+    ['old-doc', { docId: 'new-doc', tokenIdMap: new Map([['old-tok', 'new-tok']]) }],
+  ]);
+
+  it('maps parents, Entry fields and example references onto the new ids', () => {
+    const { patches, dropped } = planVocabRelink(vocabData, itemIdMap, docMaps);
+    const byId = Object.fromEntries(patches.map((p) => [p.id, p.metadata]));
+    expect(byId['new-sense']).toEqual({ gloss: 'lion', parent: 'new-head', senseOrder: 1 });
+    expect(byId['new-run']).toEqual({
+      gloss: 'run',
+      variantOf: 'new-head',
+      seeAlso: ['new-sense'],
+      examples: [
+        { document: 'new-doc', token: 'new-tok' },
+        { text: 'imported text', translation: 'stays' },
+      ],
+    });
+    // A parent that did not survive: the item becomes a headword.
+    expect(byId['new-orphan']).toEqual({});
+    expect(byId['new-head']).toBeUndefined(); // nothing to relink
+    expect(dropped).toEqual(['run: seeAlso', 'run: example', 'x: parent']);
+  });
+
+  it('runs last in a full import and writes through the client', async () => {
+    const archive = buildArchive();
+    archive.vocabularies[0].data.fields.push({ name: 'variantOf', inline: false, type: 'item' });
+    const [first, second] = archive.vocabularies[0].data.items;
+    second.metadata = { ...(second.metadata || {}), parent: first.id, senseOrder: 1 };
+    const client = stubClient();
+    const result = await runNativeImport({ client, projectId: 'newp', archive });
+    const writes = callsOf(client, 'vocabItems.setMetadata');
+    expect(writes).toHaveLength(1);
+    const meta = writes[0][2];
+    expect(meta.parent).toMatch(/^item-/);
+    expect(meta.senseOrder).toBe(1);
+    const names = client.calls.map((c) => c[0]);
+    expect(names.lastIndexOf('vocabItems.setMetadata')).toBeGreaterThan(
+      names.lastIndexOf('documents.setMetadata'),
+    );
+    expect(result.warnings.filter((w) => /reference/.test(w))).toHaveLength(0);
   });
 });

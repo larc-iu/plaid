@@ -19,11 +19,16 @@ const DIR = '/home/luke/Downloads/fwsamples';
 function lexiconCapture() {
   const items = [];
   const config = { igt: {} };
+  const byId = new Map();
   return {
     items,
     config,
+    // placeSenses writes the tree under a batch; here it just runs.
+    batched: async (fn) => fn(),
     vocabLayers: {
-      get: async () => ({ id: 'v1', items: [], config: {} }),
+      // The first read (before creation) sees nothing; later ones (the
+      // Lexicography Mode enablement) see what was made.
+      get: async () => ({ id: 'v1', items: [...items], config }),
       // Kept, because the field schema is where the importer records which
       // writing system a single-writing-system field is in, and the LIFT
       // export reads it back out.
@@ -33,12 +38,20 @@ function lexiconCapture() {
     },
     vocabItems: {
       bulkCreate: async (body) => {
-        const ids = body.map((b, i) => {
-          const id = `i${items.length + i + 1}`;
-          items.push({ id, form: b.form, metadata: b.metadata });
+        // Sequential, minted as each item lands: the sense tree points at
+        // these ids, so they have to be unique across chunks.
+        const ids = body.map((b) => {
+          const id = `i${items.length + 1}`;
+          const item = { id, form: b.form, metadata: b.metadata };
+          items.push(item);
+          byId.set(id, item);
           return id;
         });
         return { ids };
+      },
+      patchMetadata: async (id, body) => {
+        const item = byId.get(id);
+        if (item) item.metadata = { ...(item.metadata || {}), ...body };
       },
     },
   };
@@ -87,7 +100,9 @@ describe.skipIf(samples.length === 0)('fwbackup sample sweep', () => {
     // ---- and straight back out as LIFT (see src/export/lift.js) ----
     // Real lexicons are where the export's edge cases live: multi-sense
     // entries, non-Latin scripts, a non-English analysis language, FLEx
-    // custom fields (Sena has three).
+    // custom fields (Sena has three). Imported with Lexicography Mode on, so
+    // a multi-sense entry is a headword with senses under it: the export
+    // builds entries from that tree and from nothing FLEx-specific.
     const config = deriveImportConfig(ir, build, { lexiconFields: ir.lexiconFields ?? [] });
     const client = lexiconCapture();
     await importLexicon({
@@ -98,6 +113,7 @@ describe.skipIf(samples.length === 0)('fwbackup sample sweep', () => {
       primaryAnalysisWs: config.primaryAnalysisWs,
       lexiconFields: config.lexiconFields,
       customFieldWs: config.customFieldWs,
+      dictionary: true,
     });
     const { lift, ranges, entryCount, senseCount } = buildLiftLexicon({
       vocabularies: [{ id: 'v1', items: client.items, config: client.config }],
@@ -118,16 +134,19 @@ describe.skipIf(samples.length === 0)('fwbackup sample sweep', () => {
     const dom = new DOMParser().parseFromString(lift, 'text/xml');
     expect(dom.querySelectorAll('entry').length).toBe(entryCount);
     expect(dom.querySelectorAll('lexical-unit').length).toBe(entryCount);
-    expect(dom.querySelectorAll('sense').length).toBe(senseCount);
+    expect(dom.querySelectorAll('sense, subsense').length).toBe(senseCount);
     expect(senseCount).toBeLessThanOrEqual(client.items.length);
 
     // Grouping, checked against the items rather than against the exporter's
-    // own bookkeeping: one entry per distinct FLEx entry guid, and items that
-    // never came from FLEx stand alone. Counting these here is what makes the
-    // assertion an oracle instead of a restatement.
+    // own bookkeeping: one entry per headword (an item with no parent), which
+    // for a FLEx import is also one per distinct FLEx entry guid. Counting
+    // both here is what makes the assertion an oracle instead of a
+    // restatement, and the second count is the independent one.
     const formed = client.items.filter((i) => i.form);
+    const headwords = formed.filter((i) => !i.metadata?.parent).length;
     const distinctEntries = new Set(formed.map((i) => i.metadata?.flexEntry ?? `item:${i.id}`))
       .size;
+    expect(entryCount).toBe(headwords);
     expect(entryCount).toBe(distinctEntries);
 
     // A FLEx custom field pinned to the vernacular has to come out tagged

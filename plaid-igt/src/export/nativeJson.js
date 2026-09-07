@@ -137,14 +137,21 @@ export function serializeVocabularyNative(vocab, { comments = [], onWarning = nu
   // A field's `tagset` names one of the vocabulary's own tagsets (below) and
   // `lang` is a FLEx custom field's writing system; both are carried only
   // when set, so a plain field stays `{name, inline}`.
+  // `type`, `many` and `scope` are the dictionary side of a field (an Entry
+  // field, a headword-only field), written only when set, like the others.
   const fields = normalizeVocabFields(readVocabFields(vocab?.config)).map(
-    ({ name, inline, tagset, lang }) => ({
+    ({ name, inline, tagset, lang, type, many, scope }) => ({
       name,
       inline,
       ...(tagset ? { tagset } : {}),
       ...(lang ? { lang } : {}),
+      ...(type === 'item' ? { type } : {}),
+      ...(type === 'item' && many ? { many: true } : {}),
+      ...(scope === 'entry' ? { scope } : {}),
     }),
   );
+  // Lexicography Mode travels with the vocabulary, or it comes back flat.
+  const dictionary = vocab?.config?.[IGT_NAMESPACE]?.dictionary === true;
   const items = (vocab?.items || []).map((it) =>
     withMetadata({ id: it.id, form: it.form }, it.metadata),
   );
@@ -160,6 +167,7 @@ export function serializeVocabularyNative(vocab, { comments = [], onWarning = nu
   return {
     id: vocab?.id ?? null,
     name: vocab?.name ?? null,
+    ...(dictionary ? { dictionary: true } : {}),
     fields,
     tagsets,
     items,

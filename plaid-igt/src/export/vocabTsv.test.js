@@ -35,3 +35,32 @@ describe('serializeVocabTsv', () => {
     expect(out.split('\n').slice(0, 2)).toEqual(['Form\tGloss', 'perro\tdog']);
   });
 });
+
+describe('serializeVocabTsv — a dictionary', () => {
+  const items = [
+    { id: 'h', form: 'a', metadata: { gloss: 'one' } },
+    { id: 's', form: 'a', metadata: { gloss: 'two', parent: 'h', senseOrder: 1 } },
+    { id: 'r', form: 'run', metadata: { gloss: 'run', variantOf: 'h', seeAlso: ['s', 'h'] } },
+  ];
+  const numbers = new Map([
+    ['h', '1'],
+    ['s', '1.1'],
+    ['r', ''],
+  ]);
+
+  it('adds the number and names referenced entries instead of ids', () => {
+    const out = serializeVocabTsv({
+      items,
+      fieldNames: ['gloss', 'variantOf', 'seeAlso'],
+      numbers,
+      refFields: ['variantOf', 'seeAlso'],
+    });
+    expect(out.split('\n')).toEqual([
+      'Form\tNumber\tgloss\tvariantOf\tseeAlso',
+      'a\t1\tone\t\t',
+      'a\t1.1\ttwo\t\t',
+      'run\t\trun\ta 1\ta 1.1; a 1',
+      '',
+    ]);
+  });
+});
