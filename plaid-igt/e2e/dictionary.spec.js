@@ -108,7 +108,7 @@ test('an entry says where it sits, and can be freed and placed again', async ({ 
   const row = page.locator(`[data-sense="${ids.kat2}"]`);
   await expect(row).toHaveAttribute('aria-current', 'true');
   await row.dragTo(page.locator('[data-drop="root"]'));
-  await expect(page.getByText(/^Entry$/)).toBeVisible();
+  await expect(page.getByText(/^Headword$/)).toBeVisible();
   await expect.poll(() => meta(ids.kat2)).not.toHaveProperty('parent');
   // The entry-only field shows now that it is an entry.
   await expect(page.getByLabel('Etymology')).toBeVisible();
@@ -188,7 +188,7 @@ test('deleting an entry frees its senses and clears references to it', async ({ 
   await page.getByRole('button', { name: /^Delete$/ }).click();
   const dialog = page.getByRole('alertdialog');
   await expect(dialog).toContainText('2 entries');
-  await dialog.getByRole('button', { name: /Delete Item/ }).click();
+  await dialog.getByRole('button', { name: /Delete entry/ }).click();
   await expect.poll(() => meta(ids.kat2)).not.toHaveProperty('parent');
   await expect.poll(() => meta(ids.run)).not.toHaveProperty('variantOf');
   await expect(page.getByText('cat')).toHaveCount(0);

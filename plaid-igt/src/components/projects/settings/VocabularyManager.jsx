@@ -441,8 +441,8 @@ export const VocabularyManager = ({
                   from this project.
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  This will delete all vocabulary item links for this vocabulary in this project.
-                  The vocabulary itself will remain available for other projects.
+                  This will remove every link from this project to the vocabulary's entries. The
+                  vocabulary itself will remain available for other projects.
                 </p>
               </div>
             </div>

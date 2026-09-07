@@ -162,8 +162,8 @@ export const VocabularyMaintainers = ({ vocabulary, user, vocabularyId, client, 
           <span className="text-sm text-muted-foreground">{maintainers.length}</span>
         </div>
         <p className="px-4 pt-3 text-sm text-muted-foreground">
-          Maintainers can edit vocabulary settings, manage vocabulary items, and control access to
-          this vocabulary.
+          Maintainers can edit vocabulary settings, manage entries, and control access to this
+          vocabulary.
         </p>
         {loading ? (
           <div className="flex justify-center py-8 text-muted-foreground">

@@ -325,7 +325,7 @@ export const VocabularyItems = ({
       repairRefs(fetched); // not awaited
       return fetched;
     } catch (err) {
-      setError('Failed to load vocabulary items');
+      setError('Failed to load entries');
       console.error('Error fetching vocabulary items:', err);
       return null;
     } finally {
@@ -597,7 +597,7 @@ export const VocabularyItems = ({
 
   const handleSave = async () => {
     if (!editForm.trim()) {
-      notifyError('Item form cannot be empty', 'Invalid Form');
+      notifyError('The form cannot be empty', 'Invalid Form');
       return;
     }
     if (!saveAllowed) {
@@ -641,7 +641,7 @@ export const VocabularyItems = ({
         // does not return to an empty form for an entry that now exists.
         goItem(created?.id || null, { replace: true });
         if (created?.id) setEditForm(form);
-        notifySuccess('Vocabulary item created successfully', 'Success');
+        notifySuccess('Entry created', 'Success');
       } else {
         const item = selectedItem;
         if (form !== item.form) {
@@ -654,11 +654,11 @@ export const VocabularyItems = ({
         }
         setItems((prev) => prev.map((i) => (i.id === item.id ? saved(item.id) : i)));
         setEditForm(form);
-        notifySuccess('Vocabulary item updated successfully', 'Success');
+        notifySuccess('Entry updated', 'Success');
       }
     } catch (err) {
       console.error('Error saving vocabulary item:', err);
-      notifyError('Failed to save vocabulary item', 'Error');
+      notifyError('Failed to save the entry', 'Error');
     }
   };
 
@@ -685,10 +685,10 @@ export const VocabularyItems = ({
       setDeleteOpen(false);
       goItem(null, { replace: true });
       setItems((prev) => prev.filter((i) => i.id !== deletedId));
-      notifySuccess('Vocabulary item deleted successfully', 'Success');
+      notifySuccess('Entry deleted', 'Success');
     } catch (err) {
       console.error('Error deleting vocabulary item:', err);
-      notifyError('Failed to delete vocabulary item', 'Error');
+      notifyError('Failed to delete the entry', 'Error');
     }
   };
 
@@ -974,7 +974,7 @@ export const VocabularyItems = ({
     return (
       <div className="tw flex flex-col items-center gap-6 py-6">
         <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-foreground" />
-        <p className="text-sm">Loading vocabulary items...</p>
+        <p className="text-sm">Loading entries…</p>
       </div>
     );
   }
@@ -1002,7 +1002,7 @@ export const VocabularyItems = ({
       >
         <div className="flex flex-col gap-2 border-b p-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">Items</span>
+            <span className="text-sm font-medium">Entries</span>
             {canManage && (
               <Button size="sm" className="h-7" asChild>
                 <Link to={itemTo(NEW_ID)} onClick={(e) => guardSelect(e, NEW_ID)}>
@@ -1015,7 +1015,7 @@ export const VocabularyItems = ({
             <SearchInput
               className="min-w-0 flex-1"
               inputClassName="h-8"
-              placeholder="Search items…"
+              placeholder="Search entries…"
               value={search}
               onChange={setSearch}
             />
@@ -1034,7 +1034,7 @@ export const VocabularyItems = ({
               </SelectContent>
             </Select>
             {items.length > 0 && (
-              <ListCount shown={filteredItems.length} total={items.length} noun="item" />
+              <ListCount shown={filteredItems.length} total={items.length} noun="entry" />
             )}
           </div>
           {dictionary && (
@@ -1085,8 +1085,8 @@ export const VocabularyItems = ({
               onClick={() => setOffTagsetOnly((v) => !v)}
               title={
                 offTagsetOnly
-                  ? 'Show every item'
-                  : 'Show only the items with a value outside its tagset'
+                  ? 'Show every entry'
+                  : 'Show only the entries with a value outside its tagset'
               }
               className={cn(
                 'inline-flex w-fit items-center gap-1 rounded px-1.5 py-0.5 text-xs text-destructive hover:underline',
@@ -1123,11 +1123,11 @@ export const VocabularyItems = ({
         <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto">
           {items.length === 0 ? (
             <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-              No items yet. Click “New”.
+              No entries yet. Click “New”.
             </p>
           ) : filteredItems.length === 0 ? (
             <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-              {search.trim() ? `No items match “${search.trim()}”.` : 'No items match.'}
+              {search.trim() ? `No entries match “${search.trim()}”.` : 'No entries match.'}
             </p>
           ) : (
             <ul className="divide-y">
@@ -1232,7 +1232,7 @@ export const VocabularyItems = ({
               <div className="mb-3 flex items-start justify-between gap-2">
                 <h3 className="text-base font-semibold">
                   {isNew ? (
-                    'New item'
+                    'New entry'
                   ) : dictionary && homographs.length > 1 && !tree.parentOf.get(selectedId) ? (
                     <>
                       {selectedItem?.form ?? ''}
@@ -1579,7 +1579,7 @@ export const VocabularyItems = ({
       >
         <AlertDialogContent className="max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Vocabulary Item</AlertDialogTitle>
+            <AlertDialogTitle>Delete entry</AlertDialogTitle>
           </AlertDialogHeader>
           <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
             <div className="flex items-start gap-2">
@@ -1587,7 +1587,7 @@ export const VocabularyItems = ({
               <div className="text-sm">
                 <p className="font-medium text-destructive">Warning</p>
                 <p className="mt-1 text-muted-foreground">
-                  You are about to permanently delete the vocabulary item{' '}
+                  You are about to permanently delete the entry{' '}
                   <strong>"{selectedItem?.form}"</strong>.
                 </p>
                 <p className="mt-1 text-muted-foreground">
@@ -1622,7 +1622,7 @@ export const VocabularyItems = ({
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={handleConfirmDelete}
             >
-              <Trash2 className="h-4 w-4" /> Delete Item
+              <Trash2 className="h-4 w-4" /> Delete entry
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

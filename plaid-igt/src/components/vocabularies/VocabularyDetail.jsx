@@ -565,7 +565,7 @@ export const VocabularyDetail = () => {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value={FIELD_SCOPES.SENSE}>Every sense</SelectItem>
-                              <SelectItem value={FIELD_SCOPES.ENTRY}>Entry only</SelectItem>
+                              <SelectItem value={FIELD_SCOPES.ENTRY}>Headword only</SelectItem>
                             </SelectContent>
                           </Select>
                         )}
@@ -733,7 +733,7 @@ export const VocabularyDetail = () => {
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="tw">
               <TabsTrigger value="items" to={tabTo(vocabPath, 'items', 'items')}>
-                <BookText className="h-4 w-4" /> Vocabulary Items
+                <BookText className="h-4 w-4" /> Entries
               </TabsTrigger>
               <TabsTrigger value="comments" to={tabTo(vocabPath, 'comments', 'items')}>
                 <MessageSquare className="h-4 w-4" /> Comments
@@ -847,8 +847,8 @@ export const VocabularyDetail = () => {
                           <>
                             {' '}
                             An <strong>Entry</strong> or <strong>Entries</strong> field refers to
-                            other entries. <strong>Entry only</strong> shows a field on a headword,
-                            not on its senses.
+                            other entries, senses included. <strong>Headword only</strong> shows a
+                            field on a headword, not on its senses.
                           </>
                         )}
                       </p>
@@ -971,8 +971,7 @@ export const VocabularyDetail = () => {
                     <strong>"{vocabulary?.name}"</strong>.
                   </p>
                   <p className="mt-1 text-muted-foreground">
-                    This action cannot be undone and will remove all vocabulary items and their
-                    links.
+                    This action cannot be undone and will remove all entries and their links.
                   </p>
                 </div>
               </div>

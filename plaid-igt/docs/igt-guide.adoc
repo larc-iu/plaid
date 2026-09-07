@@ -36,7 +36,7 @@ Key features include:
 
 * **Transcription.** Attach audio or video to a document and transcribe it one time-aligned segment at a time, with playback speed control and a speaker label on each segment. The transcript is the text that is then analyzed.
 * **Interlinear analysis.** Divide the text into sentences, words, and morphemes, and annotate them with the fields your project defines: glosses, parts of speech, free translations, and others.
-* **Vocabulary linking.** Words and morphemes may be linked to entries in a shared vocabulary. A linked entry supplies its gloss wherever the form occurs, so an item is analyzed consistently across the corpus. Homonyms, affixes and clitics, and multi-word expressions are supported.
+* **Vocabulary linking.** Words and morphemes may be linked to entries in a shared vocabulary. A linked entry supplies its gloss wherever the form occurs, so a word is analyzed consistently across the corpus. Homonyms, affixes and clitics, and multi-word expressions are supported.
 * **Import and export.** Import a FieldWorks (FLEx) backup, ELAN files, or a CLDF dataset. Export to FLEx (`.flextext` with a LIFT lexicon), ELAN (`.eaf`), CLDF, or plain text, or copy a sentence as LaTeX.
 * **Collaboration.** A project is shared with its members, each of which may have reader, writer, or maintainer privileges. A central database lets all users see the latest state of the data, with no import/export required.
 * **Audited edits.** Every change is recorded in an audit log with its author, and any document can be viewed as it was at an earlier time.
@@ -278,7 +278,7 @@ A vocabulary lives outside any single project, and a project links to one or mor
 While you analyze, you connect a word or morpheme to an entry, by hand with the link button on the word or morpheme, or in bulk with **Auto-analyze**.
 
 Linking does two things for you.
-It keeps the same item analyzed the same way everywhere it appears, and a linked entry offers its gloss (and any other field that shares a name with one of your annotation fields) as a guess in the grid, which you accept with Enter.
+It keeps the same word analyzed the same way everywhere it appears, and a linked entry offers its gloss (and any other field that shares a name with one of your annotation fields) as a guess in the grid, which you accept with Enter.
 A link you made or confirmed puts its entry's gloss ahead of anything the project has seen for the same form.
 An auto-made link you have not confirmed yet ranks behind it, in the grid and in the Alt/Option+Down list alike.
 Because a vocabulary is shared, editing an entry updates every document linked to it.
@@ -296,7 +296,7 @@ Which vocabularies a project draws on is part of the project's settings (see <<_
 == Managing entries
 
 The **Vocabularies** area lists every vocabulary you can see.
-A vocabulary's entries are shown on its **Vocabulary Items** tab as a table you can search, and sort by clicking a column heading.
+A vocabulary's entries are shown on its **Entries** tab as a table you can search, and sort by clicking a column heading.
 The search box reads every column, or one field chosen beside it: pick **Gloss** and type `go` to see the entries glossed with it.
 With a field chosen, a count of the entries that have nothing in that field appears under the box, and clicking it shows just those, which is how a lexicon's gaps are filled.
 A **Uses** column counts the words and morphemes linked to each entry, and a **Concordance** on any entry shows every place it is linked, with a link to each.
@@ -348,24 +348,26 @@ Whether its own gloss is a meaning that words link to, or the entry is only a co
 Entries that share a form are told apart by a first number, so two entries spelled *a* are *a 1* and *a 2*, and the senses of the first are *a 1.1*, *a 1.2*.
 That is the name an entry goes by everywhere: the list, the picker, the link popover in the interlinear view.
 Any entry can be made a sense of another: open it and choose **Make a sense of…**, then find the entry it belongs under.
-The line under the headword says where an entry sits: **Entry**, or **Sense 3 of** its entry.
+Every item in a vocabulary is an entry: a headword, or a sense under another entry.
+The line under the headword says where an entry sits: **Headword**, or **Sense 3 of** its entry.
 Beside it, **5 senses** unfolds the whole entry as a tree, numbered, each sense a link, and **Add sense** writes a new one directly under the open entry.
 Senses are rearranged by dragging in that tree: drop one above or below another to reorder them, onto one to make it a sense of that sense, onto **Make separate entry** to make it an entry of its own, or onto **Move to other entry** and pick where it goes.
 A whole entry can be dragged the same way, senses and all.
 An entry with no senses yet has nothing to drag, so it keeps **Make a sense of…**.
 When several entries share a form, the number after the headword is a button: it opens the list of those entries, and dragging them into a new order gives them their numbers.
 **Make its own entry** takes a sense back out.
-The item list gains a **By entry** view, beside **Flat**, that draws senses indented under their entry.
+The entry list gains a **By entry** view, beside **Flat**, that draws senses indented under their entry.
 A search shows every matching entry in either view, so a sense that matches is shown even when its entry does not.
 
 A field can hold a reference to another entry.
 On the Settings tab, set the field's **Type** to **Entry** for one reference or **Entries** for a list, and name it for what it means: *Variant of*, *See also*, *Compound of*.
+A sense is an entry too, so a reference can point at one.
 On the entry form such a field is a picker: type part of a form or gloss and choose.
 Each chosen entry is shown as a link to it, and the entry it points at lists it under **Referenced by**.
 References stay within one vocabulary.
 Whether a variant is its own entry pointing at the main one, or simply another entry, is up to you.
 
-A field can also be set to **Entry only**, so it is shown on a headword and not on its senses: an etymology or a pronunciation belongs to the entry, a gloss to each sense.
+A field can also be set to **Headword only**, so it is shown on a headword and not on its senses: an etymology or a pronunciation belongs to the entry, a gloss to each sense.
 
 Examples are chosen from the text, never typed in.
 Beside each row of an entry's **Concordance** is **Use as example**.

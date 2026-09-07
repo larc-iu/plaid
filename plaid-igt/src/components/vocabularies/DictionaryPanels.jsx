@@ -142,7 +142,7 @@ export const EntryPlace = ({
             <ItemLink item={parent} homonyms={homonyms} itemTo={itemTo} />
           </span>
         ) : (
-          <span>Entry</span>
+          <span>Headword</span>
         )}
         {senseCount > 0 && (
           <button

@@ -101,7 +101,7 @@ test('B9-01: deleting a linked entry names the link count and removes the links'
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText('3');
   await expect(dialog).toContainText(/links will be removed/i);
-  await dialog.getByRole('button', { name: /Delete Item/ }).click();
+  await dialog.getByRole('button', { name: /Delete entry/ }).click();
   await expect(page.getByText(items.dupForm)).toHaveCount(0);
   await expect
     .poll(async () => {

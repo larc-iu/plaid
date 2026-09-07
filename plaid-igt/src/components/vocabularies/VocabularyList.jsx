@@ -80,8 +80,8 @@ export const VocabularyList = () => {
           // the count query — that's expected, not an error worth a toast.
           if (!isPermissionError(err)) {
             notifyWarning(
-              'Item counts could not be loaded for the vocabulary list.',
-              'Item counts unavailable',
+              'Entry counts could not be loaded for the vocabulary list.',
+              'Entry counts unavailable',
             );
           }
         }
@@ -165,7 +165,7 @@ export const VocabularyList = () => {
                   <th className="px-4 py-2 text-right">
                     <SortHeader
                       field="items"
-                      label="Items"
+                      label="Entries"
                       sort={sort}
                       onSort={onSort}
                       className="justify-end"

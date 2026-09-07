@@ -200,7 +200,7 @@ export const ImportNativeProject = () => {
                   {archive.vocabularies.length} vocabular
                   {archive.vocabularies.length === 1 ? 'y' : 'ies'}
                 </p>
-                <p>{itemCount.toLocaleString()} vocabulary items</p>
+                <p>{itemCount.toLocaleString()} entries</p>
                 <p>{fieldCount} annotation fields</p>
                 <p>{manifest.schema?.orthographies?.length ?? 0} orthographies</p>
                 <p>

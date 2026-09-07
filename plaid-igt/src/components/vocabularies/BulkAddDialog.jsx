@@ -54,7 +54,7 @@ const UPDATE_CHUNK = 200;
 // The three steps a person walks. `running` is an outcome, not a step, so it
 // carries its own title and no counter.
 const STEPS = {
-  source: { title: 'Bulk Add Items', n: 1 },
+  source: { title: 'Bulk Add Entries', n: 1 },
   columns: { title: 'Map Columns', n: 2 },
   review: { title: 'Review Changes', n: 3 },
 };
@@ -458,7 +458,7 @@ export const BulkAddDialog = ({
             setProgress({ done: created + updated, total, phase: 'updating' });
           }
           setMessage(
-            `Bulk add: ${created} item${created === 1 ? '' : 's'} added, ${updated} updated`,
+            `Bulk add: ${created} entr${created === 1 ? 'y' : 'ies'} added, ${updated} updated`,
           );
         },
       );

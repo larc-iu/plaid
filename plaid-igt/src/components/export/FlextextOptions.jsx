@@ -158,7 +158,7 @@ export const FlextextOptions = ({ options, layers, onChange }) => {
           />
         </label>
         <label className="flex cursor-pointer items-center justify-between gap-2 text-sm">
-          <span>Citation forms from linked lexicon items</span>
+          <span>Citation forms from linked lexicon entries</span>
           <Switch
             checked={options.citationForms !== false}
             onCheckedChange={(v) => onChange({ ...options, citationForms: v })}
