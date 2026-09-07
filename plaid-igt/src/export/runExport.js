@@ -18,8 +18,9 @@ import { readVocabFields, readLanguages } from '../domain/igtConfig.js';
 import { discoverExportLayers, intersectSelection } from './exportLayers.js';
 import { serializeDocumentPlain } from './plainTextDoc.js';
 import { interlinearTextXml, flextextEnvelope } from './flextext.js';
-import { buildLiftLexicon } from './lift.js';
-import { buildItemNumbers, readDictionaryEnabled } from '../domain/vocabDictionary.js';
+import { buildLiftLexicon, collectExampleRefs } from './lift.js';
+import { buildItemNumbers, exampleKey, readDictionaryEnabled } from '../domain/vocabDictionary.js';
+import { buildContextRows } from '../components/projects/search/searchRunner.js';
 import { buildEafDocument } from './elan.js';
 import { serializeVocabTsv } from './vocabTsv.js';
 import { buildCldfDataset } from './cldf.js';
@@ -192,6 +193,22 @@ export async function loadVocabComments(client, vocabId, nameCache) {
 }
 
 /**
+ * The sentences behind a document's promoted examples: for each of `tokenIds`
+ * this document holds, its sentence's text and translation, keyed by
+ * `exampleKey`. A token that is no longer in the document yields nothing, and
+ * the LIFT writer leaves that example out and says how many it dropped.
+ */
+function harvestExampleSentences(igtDoc, docId, tokenIds, out) {
+  for (const row of buildContextRows(igtDoc, { kind: 'lexicon' }, tokenIds)) {
+    for (const tokenId of row.tokenIds || []) {
+      if (tokenIds.has(tokenId)) {
+        out.set(exampleKey(docId, tokenId), { text: row.text, translation: row.translation });
+      }
+    }
+  }
+}
+
+/**
  * scope: { type: 'project' } | { type: 'documents', ids: [id] } | { type: 'document', id }
  * asOf: ISO timestamp for historical (time-travel) export — only valid with
  * document scope, since the documents-list endpoint rejects `as-of`.
@@ -259,6 +276,23 @@ export async function runExport({
   }
   checkStop();
 
+  // The lexicon's promoted examples are references into documents, so the
+  // sentences behind them are read out of the documents themselves: for free
+  // from the ones the scope already loads, and from a fetch of their own for
+  // the rest (a lexicon is exported whole, so it can point at a document this
+  // export does not otherwise touch, in this project or another).
+  const exampleTokensByDoc = new Map();
+  if (wantLexicon) {
+    for (const ref of collectExampleRefs(vocabs)) {
+      if (!exampleTokensByDoc.has(ref.document)) exampleTokensByDoc.set(ref.document, new Set());
+      exampleTokensByDoc.get(ref.document).add(ref.token);
+    }
+  }
+  const inScope = new Set(docIds);
+  const exampleDocIds = [...exampleTokensByDoc.keys()].filter((id) => !inScope.has(id));
+  const exampleTexts = new Map();
+  const progressTotal = docIds.length + exampleDocIds.length;
+
   // Media archive names must be decided before each doc is serialized (the
   // doc JSON records its own mediaFile path), so dedupe incrementally.
   const usedMediaNames = new Set();
@@ -270,7 +304,7 @@ export async function runExport({
   const docFiles = [];
   for (let i = 0; i < docIds.length; i++) {
     checkStop();
-    onProgress({ done: i, total: docIds.length, name: null });
+    onProgress({ done: i, total: progressTotal, name: null });
     let igtDoc;
     try {
       const raw = await client.documents.get(docIds[i], true, asOf || undefined);
@@ -283,7 +317,10 @@ export async function runExport({
       continue;
     }
     const name = igtDoc.document?.name || docIds[i];
-    onProgress({ done: i, total: docIds.length, name });
+    onProgress({ done: i, total: progressTotal, name });
+
+    const exampleTokens = exampleTokensByDoc.get(docIds[i]);
+    if (exampleTokens) harvestExampleSentences(igtDoc, docIds[i], exampleTokens, exampleTexts);
 
     let mediaFile = null;
     let mediaEntry = null;
@@ -352,7 +389,20 @@ export async function runExport({
       warnings.push(`"${name}" failed to serialize: ${err?.message ?? err}`);
     }
   }
-  onProgress({ done: docIds.length, total: docIds.length, name: null });
+  // The example documents the scope did not cover. One failing is a warning
+  // and a few examples left out, never a failed export.
+  for (const [i, docId] of exampleDocIds.entries()) {
+    checkStop();
+    onProgress({ done: docIds.length + i, total: progressTotal, name: null });
+    try {
+      const raw = await client.documents.get(docId, true, asOf || undefined);
+      const igtDoc = new IgtDocument({ raw, vocabularies: {}, client });
+      harvestExampleSentences(igtDoc, docId, exampleTokensByDoc.get(docId), exampleTexts);
+    } catch (err) {
+      warnings.push(`Example document ${docId} failed to load: ${err?.message ?? err}`);
+    }
+  }
+  onProgress({ done: progressTotal, total: progressTotal, name: null });
   // A single .eaf that came with media becomes a zip, so its RELATIVE_MEDIA_URL
   // resolves to a file that is actually there.
   if (!wantZip && mediaEntries.length) wantZip = true;
@@ -374,6 +424,7 @@ export async function runExport({
           vocabularies: vocabs,
           options: preset.options || {},
           rangesHref: `${stem}.lift-ranges`,
+          exampleTexts,
         })
       : null;
     // A project with no lexicon to speak of exports the texts alone rather

@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { buildLiftLexicon, groupEntries, parseFieldName, LIFT_VERSION } from './lift.js';
+import {
+  buildLiftLexicon,
+  collectExampleRefs,
+  groupEntries,
+  parseFieldName,
+  LIFT_VERSION,
+} from './lift.js';
+import { exampleKey } from '../domain/vocabDictionary.js';
 
 const parse = (xml) => {
   const dom = new DOMParser().parseFromString(xml, 'text/xml');
@@ -292,6 +299,103 @@ describe('buildLiftLexicon', () => {
     expect(senseCount).toBe(1);
     expect(dom.querySelectorAll('entry').length).toBe(2);
     expect(dom.querySelectorAll('sense').length).toBe(1);
+  });
+
+  it('writes a promoted example from the sentence it points into', () => {
+    const vocab = {
+      id: 'v1',
+      items: [
+        item('i1', 'ktab', {
+          gloss: 'book',
+          examples: [
+            { document: 'd1', token: 't1' },
+            { text: 'ktab kkwa', translation: 'the book is here' },
+          ],
+        }),
+      ],
+    };
+    const { lift } = build([vocab], {
+      exampleTexts: new Map([
+        [exampleKey('d1', 't1'), { text: 'am ktab', translation: 'that book' }],
+      ]),
+    });
+    const examples = [...parse(lift).querySelectorAll('example')];
+    // Both kinds, in the order the entry holds them.
+    expect(examples.map((e) => e.querySelector('form text').textContent)).toEqual([
+      'am ktab',
+      'ktab kkwa',
+    ]);
+    expect(examples[0].querySelector('translation text').textContent).toBe('that book');
+    expect(examples[0].querySelector('form').getAttribute('lang')).toBe('lez');
+  });
+
+  it('leaves out an example whose sentence could not be read, and says how many', () => {
+    const vocab = {
+      id: 'v1',
+      items: [item('i1', 'ktab', { gloss: 'book', examples: [{ document: 'd1', token: 'gone' }] })],
+    };
+    const { lift, warnings } = build([vocab], { exampleTexts: new Map() });
+    expect(parse(lift).querySelector('example')).toBeNull();
+    expect(warnings).toEqual([
+      '1 example could not be read from the document it points into and was left out of the .lift file.',
+    ]);
+  });
+
+  it('collects every promoted reference once', () => {
+    const refs = collectExampleRefs([
+      {
+        id: 'v1',
+        items: [
+          item('i1', 'a', {
+            examples: [{ document: 'd1', token: 't1' }, { text: 'imported' }],
+          }),
+          item('i2', 'b', {
+            examples: [
+              { document: 'd1', token: 't1' },
+              { document: 'd2', token: 't9' },
+            ],
+          }),
+        ],
+      },
+    ]);
+    expect(refs).toEqual([
+      { document: 'd1', token: 't1' },
+      { document: 'd2', token: 't9' },
+    ]);
+  });
+
+  it('writes a reference field as a relation, and declares its type', () => {
+    const vocab = {
+      id: 'v1',
+      config: { igt: { fields: { gloss: {}, variantOf: { type: 'item', many: true } } } },
+      items: [
+        item('h', 'kat', { gloss: 'cat' }),
+        item('s', 'kat', { gloss: 'lion', parent: 'h', senseOrder: 1 }),
+        item('v', 'katt', { gloss: 'cat', variantOf: ['h', 's', 'gone'] }),
+      ],
+    };
+    const { lift, ranges } = build([vocab]);
+    const dom = parse(lift);
+    const relations = [...dom.querySelectorAll('relation')];
+    // A headword is referred to by its entry id, a sense by its sense id, and
+    // a reference to nothing is left out.
+    expect(relations.map((r) => r.getAttribute('ref'))).toEqual(['kat_h', 'kat_h_2']);
+    expect(relations.every((r) => r.getAttribute('type') === 'variantOf')).toBe(true);
+    // The ids it points at are the ones the file actually wrote.
+    expect(dom.querySelector('entry').getAttribute('id')).toBe('kat_h');
+    expect([...dom.querySelectorAll('sense')].map((x) => x.getAttribute('id'))).toContain(
+      'kat_h_2',
+    );
+    // And the relation type is declared as a range, not left to be guessed.
+    const rangeDom = parse(ranges);
+    expect([...rangeDom.querySelectorAll('range')].map((r) => r.getAttribute('id'))).toContain(
+      'lexical-relation',
+    );
+    expect(
+      rangeDom.querySelector('range[id="lexical-relation"] range-element').getAttribute('id'),
+    ).toBe('variantOf');
+    // Never as a field: an id is not text.
+    expect(dom.querySelector('field[type="variantOf"]')).toBeNull();
   });
 
   it('is well-formed with no vocabularies at all', () => {

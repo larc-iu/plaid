@@ -23,14 +23,20 @@
 //   metadata.definition (…) → <definition><form lang=…>         (sense)
 //   metadata.pos            → <grammatical-info value=…>        (sense)
 //   metadata.examples       → <example><form>/<translation>     (sense)
+//                             A promoted example is a {document, token}
+//                             reference, so the sentence text comes from
+//                             `exampleTexts`, keyed by exampleKey(); an
+//                             imported FLEx example carries its own text.
+//   a field of type `item`  → <relation type="<name>" ref=…>     (sense)
 //   anything else           → <field type="<name>">             (sense)
 // A headword and its senses become ONE entry with senses and subsenses, undoing
 // the importer's item-per-sense flattening. A vocabulary built by hand has no
 // such guids, so each of its items is an entry of its own.
 
 import { xmlEscape } from './flextext.js';
-import { buildSenseTree } from '../domain/vocabDictionary.js';
+import { allExamples, buildSenseTree, exampleKey } from '../domain/vocabDictionary.js';
 import { readVocabFields } from '../domain/igtConfig.js';
+import { FIELD_TYPES } from '../domain/vocabFields.js';
 import { FLEX_MORPH_TYPES } from '../domain/affixMarkers.js';
 
 export const LIFT_VERSION = '0.13';
@@ -67,10 +73,7 @@ export function parseFieldName(name) {
   return { base: m?.[1] ?? '', ws: m?.[2] ?? null };
 }
 
-const isStructural = (key) => {
-  if (ENTRY_KEYS.has(key) || SENSE_KEYS.has(key)) return true;
-  return SENSE_BASES.has(parseFieldName(key).base);
-};
+const isId = (v) => typeof v === 'string' && v.trim() !== '';
 
 // Only scalars become field text. A nested object would stringify to
 // "[object Object]", which is worse than omitting it.
@@ -121,12 +124,20 @@ const trait = (indent, name, value) =>
  * dedupe. The suffixed key is the one that was renamed, not the other way
  * around.
  */
-function partitionMetadata(metadata, analysisLang) {
+function partitionMetadata(metadata, analysisLang, refFields = new Set()) {
   const glosses = [];
   const definitions = [];
   const fields = [];
+  const relations = [];
   for (const [key, value] of Object.entries(metadata || {})) {
     if (ENTRY_KEYS.has(key) || SENSE_KEYS.has(key)) continue;
+    // A reference field holds item ids, which are not text: it becomes a
+    // <relation> per target, not a <field>.
+    if (refFields.has(key)) {
+      const targets = Array.isArray(value) ? value : value == null ? [] : [value];
+      for (const target of targets) if (isId(target)) relations.push({ type: key, target });
+      continue;
+    }
     const text = scalar(value);
     if (text == null || text === '') continue;
     const { base, ws } = parseFieldName(key);
@@ -141,7 +152,12 @@ function partitionMetadata(metadata, analysisLang) {
       .map((v, i) => [v, i])
       .sort(([a, ai], [b, bi]) => (a.ws == null ? 0 : 1) - (b.ws == null ? 0 : 1) || ai - bi)
       .map(([v]) => [v.lang, v.text]);
-  return { glosses: primaryFirst(glosses), definitions: primaryFirst(definitions), fields };
+  return {
+    glosses: primaryFirst(glosses),
+    definitions: primaryFirst(definitions),
+    fields,
+    relations,
+  };
 }
 
 /**
@@ -162,18 +178,29 @@ function groupFields(fields, fieldLangs, analysisLang) {
   return byBase;
 }
 
-function examplesXml(indent, examples, vern, analysisLang) {
-  if (!Array.isArray(examples)) return [];
+/**
+ * The examples of one sense. Two kinds live in the same list, in the order the
+ * user put them: a promoted example is a {document, token} reference whose
+ * sentence is read from `ctx.exampleTexts`, and an imported FLEx example
+ * carries its own text. A reference whose sentence is not there — the document
+ * could not be read, or the token is gone — is counted in `ctx.unresolved` and
+ * left out.
+ */
+function examplesXml(indent, item, ctx) {
   const lines = [];
-  for (const ex of examples) {
-    const text = scalar(ex?.text);
-    if (text == null || text === '') continue;
+  for (const ex of allExamples(item)) {
+    const source = ex.document ? ctx.exampleTexts.get(exampleKey(ex.document, ex.token)) : ex;
+    const text = scalar(source?.text);
+    if (text == null || text === '') {
+      if (ex.document) ctx.unresolved.count += 1;
+      continue;
+    }
     const inner = [
-      ...multitext(`${indent}  `, [[vern, text]]),
+      ...multitext(`${indent}  `, [[ctx.vern, text]]),
       ...wrap(
         `${indent}  `,
         'translation',
-        multitext(`${indent}    `, [[analysisLang, scalar(ex?.translation)]]),
+        multitext(`${indent}    `, [[ctx.analysisLang, scalar(source?.translation)]]),
       ),
     ];
     lines.push(...wrap(indent, 'example', inner));
@@ -181,15 +208,27 @@ function examplesXml(indent, examples, vern, analysisLang) {
   return lines;
 }
 
+/**
+ * A sense's LIFT id: the FLEx sense guid it came from, else its place under
+ * the id above it. `assignLiftIds` walks the same tree with the same formula,
+ * so a relation can name a sense that is written later.
+ */
+const senseIdOf = (item, parentId, index) =>
+  scalar(item?.metadata?.flexSense) ?? `${parentId}_${index + 1}`;
+
 // A sense, with its own senses nested as <subsense>. `tag` is 'sense' at the
 // top and 'subsense' below; `index` numbers it among its siblings for the id.
 function senseXml(indent, item, ctx, index, tag = 'sense', children = []) {
   const meta = item.metadata || {};
-  const { glosses, definitions, fields } = partitionMetadata(meta, ctx.analysisLang);
+  const { glosses, definitions, fields, relations } = partitionMetadata(
+    meta,
+    ctx.analysisLang,
+    ctx.refFields,
+  );
   const grouped = groupFields(fields, ctx.fieldLangs, ctx.analysisLang);
   for (const base of grouped.keys()) ctx.customNames.add(base);
 
-  const id = scalar(meta.flexSense) ?? `${ctx.entryId}_${index + 1}`;
+  const id = senseIdOf(item, ctx.entryId, index);
   const pos = scalar(meta.pos);
   const inner = [];
   if (pos != null && pos !== '') {
@@ -207,7 +246,14 @@ function senseXml(indent, item, ctx, index, tag = 'sense', children = []) {
     );
   }
   inner.push(...wrap(`${indent}  `, 'definition', multitext(`${indent}    `, definitions)));
-  inner.push(...examplesXml(`${indent}  `, meta.examples, ctx.vern, ctx.analysisLang));
+  // A reference to an entry this export left out has nothing to point at.
+  for (const { type, target } of relations) {
+    const ref = ctx.liftIds.get(target);
+    if (!ref) continue;
+    ctx.relationTypes.add(type);
+    inner.push(`${indent}  <relation type="${xmlEscape(type)}" ref="${xmlEscape(ref)}"/>`);
+  }
+  inner.push(...examplesXml(`${indent}  `, item, ctx));
   for (const [base, values] of grouped) {
     inner.push(
       `${indent}  <field type="${xmlEscape(base)}">`,
@@ -233,6 +279,40 @@ function senseXml(indent, item, ctx, index, tag = 'sense', children = []) {
   return [`${indent}<${tag} id="${xmlEscape(id)}">`, ...inner, `${indent}</${tag}>`];
 }
 
+/**
+ * An entry's LIFT id: its headword and the FLEx guid it came from, else its
+ * item id. Same formula in `assignLiftIds`.
+ */
+function entryIdOf(group) {
+  const meta = group.head.metadata || {};
+  const citation = scalar(group.head.form) ?? '';
+  const headword = scalar(meta.lexemeForm) ?? citation;
+  return `${citation || headword}_${scalar(meta.flexEntry) ?? group.head.id ?? group.key}`;
+}
+
+/**
+ * Every item's LIFT id, before anything is written: a headword is referred to
+ * by its ENTRY id, a sense by its sense id. Relations point backwards and
+ * forwards alike, so they cannot be resolved as the file is built.
+ */
+function assignLiftIds(groups) {
+  const ids = new Map();
+  for (const group of groups) {
+    const entryId = entryIdOf(group);
+    ids.set(group.head.id, entryId);
+    // The headword's own gloss is the entry's first sense, so its senses
+    // start at index 1.
+    const walk = (nodes, parentId, start) =>
+      nodes.forEach((node, i) => {
+        const id = senseIdOf(node.item, parentId, start + i);
+        ids.set(node.item.id, id);
+        walk(node.children, id, 0);
+      });
+    walk(group.senses, entryId, 1);
+  }
+  return ids;
+}
+
 function entryXml(indent, group, ctx) {
   const first = group.head;
   const meta = first.metadata || {};
@@ -242,7 +322,7 @@ function entryXml(indent, group, ctx) {
   // The importer took the citation form as the item form and kept the lexeme
   // form aside only when the two differed, so put both back where they came from.
   const headword = lexemeForm ?? citation;
-  const entryId = `${citation || headword}_${guid ?? first.id ?? group.key}`;
+  const entryId = entryIdOf(group);
   const homograph = Number(meta.homograph);
 
   const attrs = [
@@ -303,28 +383,50 @@ export function groupEntries(vocabularies) {
   return groups;
 }
 
+/**
+ * Every promoted example reference in these vocabularies, deduplicated. The
+ * caller reads the sentences out of the documents they point into and hands
+ * them back to `buildLiftLexicon` as `exampleTexts`; nothing here fetches.
+ */
+export function collectExampleRefs(vocabularies) {
+  const seen = new Set();
+  const refs = [];
+  for (const vocab of vocabularies || []) {
+    for (const item of vocab.items || []) {
+      for (const ex of allExamples(item)) {
+        if (!ex.document) continue;
+        const key = exampleKey(ex.document, ex.token);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        refs.push({ document: ex.document, token: ex.token });
+      }
+    }
+  }
+  return refs;
+}
+
 // ---- the files -------------------------------------------------------------
 
 /**
- * The `grammatical-info` range, so the categories a FLEx import needs to
- * create are declared rather than guessed at. Morph types are a FLEx builtin
- * list and need no range.
+ * The ranges the file uses: `grammatical-info` for the categories, so a FLEx
+ * import creates them rather than guessing, and `lexical-relation` for the
+ * reference fields that became relations. Morph types are a FLEx builtin list
+ * and need no range.
  */
-function rangesXml(posValues, analysisLang) {
-  const values = [...posValues].sort();
-  const lines = [
-    '<?xml version="1.0" encoding="UTF-8"?>',
-    '<lift-ranges>',
-    '  <range id="grammatical-info">',
-  ];
-  for (const value of values) {
-    lines.push(
-      `    <range-element id="${xmlEscape(value)}">`,
-      ...wrap('      ', 'label', multitext('        ', [[analysisLang, value]])),
-      '    </range-element>',
-    );
+function rangesXml(ranges, analysisLang) {
+  const lines = ['<?xml version="1.0" encoding="UTF-8"?>', '<lift-ranges>'];
+  for (const [id, values] of ranges) {
+    lines.push(`  <range id="${xmlEscape(id)}">`);
+    for (const value of [...values].sort()) {
+      lines.push(
+        `    <range-element id="${xmlEscape(value)}">`,
+        ...wrap('      ', 'label', multitext('        ', [[analysisLang, value]])),
+        '    </range-element>',
+      );
+    }
+    lines.push('  </range>');
   }
-  lines.push('  </range>', '</lift-ranges>', '');
+  lines.push('</lift-ranges>', '');
   return lines.join('\n');
 }
 
@@ -334,26 +436,48 @@ function rangesXml(posValues, analysisLang) {
  *   writing system, langs.analysis the default for glosses and definitions.
  * rangesHref: the .lift-ranges filename to point the header at (null to omit
  *   the ranges header, e.g. when no category is used anywhere).
+ * exampleTexts: Map from exampleKey(document, token) to { text, translation },
+ *   the sentences behind the promoted examples (see collectExampleRefs).
  *
  * @returns {{ lift: string, ranges: string|null, entryCount: number,
  *             senseCount: number, warnings: string[] }}
  */
-export function buildLiftLexicon({ vocabularies = [], options = {}, rangesHref = null }) {
+export function buildLiftLexicon({
+  vocabularies = [],
+  options = {},
+  rangesHref = null,
+  exampleTexts = new Map(),
+}) {
   const vern = options?.langs?.baseline || 'und';
   const analysisLang = options?.langs?.analysis || 'en';
   // A vocabulary can say which writing system a field is in (config.igt.fields
   // <name>.lang). Merged across vocabularies: a name shared by two lexicons is
   // the same field for LIFT's purposes.
   const fieldLangs = {};
+  // The reference fields, by name, merged the same way: their values are item
+  // ids and become <relation>s rather than text.
+  const refFields = new Set();
   for (const vocab of vocabularies) {
     for (const [name, spec] of Object.entries(readVocabFields(vocab?.config) ?? {})) {
       if (typeof spec?.lang === 'string' && spec.lang !== '') fieldLangs[name] = spec.lang;
+      if (spec?.type === FIELD_TYPES.ITEM) refFields.add(name);
     }
   }
-  const ctx = { vern, analysisLang, fieldLangs, posValues: new Set(), customNames: new Set() };
+  const groups = groupEntries(vocabularies);
+  const ctx = {
+    vern,
+    analysisLang,
+    fieldLangs,
+    refFields,
+    liftIds: assignLiftIds(groups),
+    relationTypes: new Set(),
+    posValues: new Set(),
+    customNames: new Set(),
+    exampleTexts,
+    unresolved: { count: 0 },
+  };
   const warnings = [];
 
-  const groups = groupEntries(vocabularies);
   const entries = [];
   let senseCount = 0;
   let formless = 0;
@@ -377,12 +501,27 @@ export function buildLiftLexicon({ vocabularies = [], options = {}, rangesHref =
     );
   }
 
-  const ranges = ctx.posValues.size ? rangesXml(ctx.posValues, analysisLang) : null;
+  if (ctx.unresolved.count > 0) {
+    const n = ctx.unresolved.count;
+    warnings.push(
+      `${n} example${n === 1 ? '' : 's'} could not be read from the document ${
+        n === 1 ? 'it points' : 'they point'
+      } into and ${n === 1 ? 'was' : 'were'} left out of the .lift file.`,
+    );
+  }
+
+  const declared = [
+    ...(ctx.posValues.size ? [['grammatical-info', ctx.posValues]] : []),
+    ...(ctx.relationTypes.size ? [['lexical-relation', ctx.relationTypes]] : []),
+  ];
+  const ranges = declared.length ? rangesXml(declared, analysisLang) : null;
   const header = [];
   if (ranges && rangesHref) {
     header.push(
       '    <ranges>',
-      `      <range id="grammatical-info" href="${xmlEscape(rangesHref)}"/>`,
+      ...declared.map(
+        ([id]) => `      <range id="${xmlEscape(id)}" href="${xmlEscape(rangesHref)}"/>`,
+      ),
       '    </ranges>',
     );
   }

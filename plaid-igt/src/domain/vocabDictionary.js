@@ -133,6 +133,13 @@ export const allExamples = (item) => {
     : [];
 };
 
+/**
+ * The key a promoted example is looked up by once its sentence has been read
+ * out of the document it points into. Shared by the LIFT export and whatever
+ * resolves the references for it.
+ */
+export const exampleKey = (document, token) => `${document}/${token}`;
+
 /** The examples list with one reference added (a duplicate is ignored). */
 export const withExampleAdded = (metadata, ref) => {
   const list = allExamples({ metadata });

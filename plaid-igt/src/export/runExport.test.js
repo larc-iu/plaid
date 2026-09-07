@@ -62,6 +62,7 @@ const VOCAB = {
 
 function stubClient({
   docs,
+  vocab = VOCAB,
   failIds = [],
   vocabFails = false,
   comments = {},
@@ -109,7 +110,7 @@ function stubClient({
       get: async (id) => {
         calls.push(['vocabLayers.get', id]);
         if (vocabFails) throw new Error('vocab boom');
-        return JSON.parse(JSON.stringify(VOCAB));
+        return JSON.parse(JSON.stringify(vocab));
       },
     },
   };
@@ -179,6 +180,70 @@ describe('runExport', () => {
     const readme = new TextDecoder().decode(files['README.txt']);
     expect(readme).toContain('Flex.lift: the lexicon (1 entries, 1 senses)');
     expect(readme).toContain('Flex.flextext: 1 interlinear text');
+  });
+
+  it('reads a promoted example out of a document the scope does not cover', async () => {
+    const docs = [rawDoc('d1', 'Flex', 'hi yo'), rawDoc('d2', 'Other', 'ba do')];
+    const vocab = {
+      ...VOCAB,
+      items: [
+        {
+          id: 'i1',
+          form: 'perro',
+          metadata: { gloss: 'dog', examples: [{ document: 'd2', token: 'd2-w0' }] },
+        },
+      ],
+    };
+    const client = stubClient({ docs, vocab });
+    const preset = newPreset('flextext', discoverExportLayers(PROJECT), 'f');
+    const progress = [];
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset,
+      scope: { type: 'document', id: 'd1' },
+      onProgress: (p) => progress.push(p),
+    });
+    const files = await unzipBlob(result.blob);
+    const dom = new DOMParser().parseFromString(
+      new TextDecoder().decode(files['Flex.lift']),
+      'text/xml',
+    );
+    expect(dom.querySelector('example form text').textContent).toBe('ba do');
+    // The example document was fetched, and counted in the progress total.
+    expect(client.calls).toContainEqual(['documents.get', 'd2']);
+    expect(progress.at(-1)).toEqual({ done: 2, total: 2, name: null });
+    // Only the scope's document is in the .flextext.
+    const xml = new TextDecoder().decode(files['Flex.flextext']);
+    expect(xml).not.toContain('ba do');
+  });
+
+  it('warns and keeps going when an example document cannot be read', async () => {
+    const docs = [rawDoc('d1', 'Flex', 'hi yo'), rawDoc('d2', 'Other', 'ba do')];
+    const vocab = {
+      ...VOCAB,
+      items: [
+        {
+          id: 'i1',
+          form: 'perro',
+          metadata: { gloss: 'dog', examples: [{ document: 'd2', token: 'd2-w0' }] },
+        },
+      ],
+    };
+    const client = stubClient({ docs, vocab, failIds: ['d2'] });
+    const preset = newPreset('flextext', discoverExportLayers(PROJECT), 'f');
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset,
+      scope: { type: 'document', id: 'd1' },
+    });
+    const files = await unzipBlob(result.blob);
+    expect(new TextDecoder().decode(files['Flex.lift'])).not.toContain('<example>');
+    expect(result.warnings).toEqual([
+      'Example document d2 failed to load: boom',
+      '1 example could not be read from the document it points into and was left out of the .lift file.',
+    ]);
   });
 
   it('includes the lexicon for a preset saved before the option existed', async () => {

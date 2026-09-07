@@ -345,6 +345,55 @@ describe('buildCldfDataset — dictionary', () => {
     expect(table(files, 'entries.csv')[1].Entry_morphType).toBe('stem');
   });
 
+  it('points a sense at the example rows its promoted examples became', () => {
+    const dict = {
+      ...vocab,
+      config: { igt: { dictionary: true, fields: { gloss: {} } } },
+      items: [
+        {
+          id: 'i1',
+          form: 'perro',
+          metadata: {
+            gloss: 'dog',
+            examples: [
+              { document: 'd1', token: 'm1' },
+              { document: 'elsewhere', token: 'x' },
+            ],
+          },
+        },
+      ],
+    };
+    const { files } = build({ vocabularies: [dict] });
+    const senses = table(files, 'senses.csv');
+    // The morpheme's own sentence, once; the example outside this export has
+    // no row to name.
+    expect(senses[0].Example_IDs).toBe('1-1');
+    expect(table(files, 'examples.csv')[0].ID).toBe('1-1');
+    const senseTable = metadata(files).tables.find((t) => t.url === 'senses.csv');
+    expect(senseTable.tableSchema.foreignKeys).toContainEqual({
+      columnReference: 'Example_IDs',
+      reference: { resource: 'examples.csv', columnReference: 'ID' },
+    });
+  });
+
+  it('writes a reference field as the entry it points at, never as an id', () => {
+    const dict = {
+      id: 'v1',
+      name: 'Lexicon',
+      config: {
+        igt: { dictionary: true, fields: { gloss: {}, variantOf: { type: 'item', many: true } } },
+      },
+      items: [
+        { id: 'i1', form: 'perro', metadata: { gloss: 'dog' } },
+        { id: 'i2', form: 'perra', metadata: { gloss: 'dog (f)', variantOf: ['i1'] } },
+      ],
+    };
+    const { files } = build({ vocabularies: [dict] });
+    const entries = table(files, 'entries.csv');
+    expect(entries[1].Entry_variantOf).toBe('perro');
+    expect(entries[0].Entry_variantOf).toBe('');
+  });
+
   it('skips the dictionary entirely when the option is off', () => {
     const { files } = build({ vocabularies: [vocab], options: { ...OPTIONS, dictionary: false } });
     expect(fileNamed(files, 'entries.csv')).toBeUndefined();

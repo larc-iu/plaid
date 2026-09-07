@@ -28,8 +28,16 @@
 // documents and returns file contents.
 
 import { morphFormOf, joinMorphemeTexts } from '../domain/igtExport.js';
-import { buildSenseTree, descendantsOf } from '../domain/vocabDictionary.js';
+import {
+  buildItemNumbers,
+  buildSenseTree,
+  descendantsOf,
+  exampleKey,
+  exampleRefs,
+  readDictionaryEnabled,
+} from '../domain/vocabDictionary.js';
 import { readVocabFields } from '../domain/igtConfig.js';
+import { FIELD_TYPES } from '../domain/vocabFields.js';
 import { phraseSpeakerFor } from './flextext.js';
 
 const TERMS = 'http://cldf.clld.org/v1.0/terms.rdf#';
@@ -357,6 +365,10 @@ export function buildCldfDataset({
   const contributionRows = [];
   const exampleRows = [];
   const mediaRows = [];
+  // Which example row a token sits in, so a sense's promoted examples can name
+  // the rows their sentences became. Only the documents in this export are in
+  // it: an example pointing outside the scope has no row to reference.
+  const exampleIdByToken = new Map();
   const metadataNames = new Map();
   // Reserved because the ContributionTable always writes them.
   const usedMetadataColumns = new Set(['ID', 'Name', 'Plaid_ID']);
@@ -458,6 +470,14 @@ export function buildCldfDataset({
           .map((t) => listItem(t.orthographies?.[name] ?? ''))
           .join('\t');
       }
+      if (o.dictionary) {
+        for (const t of tokens) {
+          exampleIdByToken.set(exampleKey(doc.id, t.id), row.ID);
+          for (const m of t.morphemes || []) {
+            exampleIdByToken.set(exampleKey(doc.id, m.id), row.ID);
+          }
+        }
+      }
       exampleRows.push(row);
     });
   });
@@ -472,7 +492,21 @@ export function buildCldfDataset({
     let entryN = 0;
     let senseN = 0;
     for (const vocab of vocabularies) {
-      const fields = Object.keys(readVocabFields(vocab.config) || {});
+      const fieldSpecs = readVocabFields(vocab.config) || {};
+      const fields = Object.keys(fieldSpecs);
+      // A reference field holds another entry's id, which means nothing
+      // outside this project, so it is written the way the vocabulary shows
+      // it: the entry's form and, in a dictionary, its number.
+      const byId = new Map((vocab.items || []).map((it) => [it.id, it]));
+      const numbers = readDictionaryEnabled(vocab.config)
+        ? buildItemNumbers(vocab.items || [])
+        : null;
+      const refLabel = (id) => {
+        const target = byId.get(id);
+        if (!target) return '';
+        const n = numbers?.get(id);
+        return n ? `${target.form} ${n}` : (target.form ?? '');
+      };
       // Every headword is an entry; its senses (and theirs, flattened, since
       // CLDF has no deeper level) are its senses. A headword's own gloss is
       // its first sense.
@@ -493,9 +527,14 @@ export function buildCldfDataset({
           if (reserved.has(field.toLowerCase())) continue;
           const value = meta[field];
           if (value === null || value === undefined || value === '') continue;
+          const written =
+            fieldSpecs[field]?.type === FIELD_TYPES.ITEM
+              ? (Array.isArray(value) ? value : [value]).map(refLabel).filter(Boolean).join('; ')
+              : String(value);
+          if (written === '') continue;
           const name = `Entry_${field}`;
           extraVocabColumns.set(name, field);
-          entry[name] = String(value);
+          entry[name] = written;
         }
         entryRows.push(entry);
 
@@ -508,11 +547,21 @@ export function buildCldfDataset({
           if (description === '') continue;
           senseN += 1;
           wrote += 1;
+          // The sentences the sense's promoted examples point into, when this
+          // export carries the documents they live in.
+          const examples = [
+            ...new Set(
+              exampleRefs(sense)
+                .map((ref) => exampleIdByToken.get(exampleKey(ref.document, ref.token)))
+                .filter(Boolean),
+            ),
+          ];
           senseRows.push({
             ID: `s${senseN}`,
             Entry_ID: entryId,
             Description: String(description),
             Definition: m.gloss && m.definition ? String(m.definition) : '',
+            Example_IDs: examples.join(' '),
           });
         }
         if (!wrote) entriesWithoutSenseN += 1;
@@ -635,12 +684,13 @@ export function buildCldfDataset({
     url: 'senses.csv',
     conformsTo: 'SenseTable',
     rows: senseRows,
-    foreignKeys: [foreignKey('Entry_ID', 'entries.csv')],
+    foreignKeys: [foreignKey('Entry_ID', 'entries.csv'), foreignKey('Example_IDs', 'examples.csv')],
     columns: [
       col('ID', { required: true, propertyUrl: 'id' }),
       col('Entry_ID', { required: true, propertyUrl: 'entryReference' }),
       col('Description', { required: true, propertyUrl: 'description' }),
       col('Definition', { description: 'A longer definition, when the sense also has a gloss.' }),
+      col('Example_IDs', { propertyUrl: 'exampleReference', separator: ' ' }),
     ],
   });
 
