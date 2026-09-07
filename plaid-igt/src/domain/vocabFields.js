@@ -196,6 +196,19 @@ export const RESERVED_ITEM_KEYS = new Set([
   'homograph',
 ]);
 
+/**
+ * A metadata map without its reserved keys: what the entry form edits. The
+ * reserved keys are structure (the sense tree, examples, import identity)
+ * that other controls write, so they never ride in the form's draft, or a
+ * Save would write back what the draft remembered.
+ */
+export const editableMetadata = (metadata) =>
+  Object.fromEntries(Object.entries(metadata || {}).filter(([k]) => !RESERVED_ITEM_KEYS.has(k)));
+
+/** The reserved keys of a metadata map, the part a Save carries over unchanged. */
+export const reservedMetadata = (metadata) =>
+  Object.fromEntries(Object.entries(metadata || {}).filter(([k]) => RESERVED_ITEM_KEYS.has(k)));
+
 /** Whether a field name is refused: reserved, compared without case. */
 export const isReservedFieldName = (name) => {
   const n = String(name ?? '').trim();

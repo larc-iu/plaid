@@ -345,8 +345,9 @@ Turning it on adds a **Status** field held to a closed list (draft, reviewed, pu
 With the switch on, an entry is a headword and its first sense.
 Any entry can be made a sense of another: open it and choose **Make a sense of…**, then find the entry it belongs under.
 Senses are numbered from 2 under their entry, and a sense can have senses of its own (2.1, 2.2).
-An entry's **Senses** panel lists them in order, with arrows to reorder them and **Add sense** to write a new one directly under it.
-To put a sense at a particular number, type over its number and press Enter.
+The line under the headword says where an entry sits: **Entry**, or **Sense 3 of** its entry.
+Beside it, **5 senses** unfolds the whole entry as a tree, numbered, each sense a link, and **Add sense** writes a new one directly under the open entry.
+To put a sense at a particular number, type over the number on that line and press Enter.
 **Make its own entry** takes a sense back out.
 The item list gains a **By entry** view, beside **Flat**, that draws senses indented under their entry.
 A search shows every matching entry in either view, so a sense that matches is shown even when its entry does not.

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Link } from 'react-router-dom';
-import { ArrowUp, ArrowDown, X, FileText, Plus } from 'lucide-react';
+import { ChevronDown, ChevronRight, X, FileText, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -161,6 +161,7 @@ export const EntryPlace = ({
   canManage,
   onSetParent,
   onSetNumber,
+  newSenseTo,
 }) => {
   const [open, setOpen] = useState(false);
   const parentId = tree.parentOf.get(item.id);
@@ -171,131 +172,131 @@ export const EntryPlace = ({
     () => new Set([item.id, ...descendantsOf(tree, item.id).map((d) => d.id)]),
     [tree, item.id],
   );
+  const root = tree.byId.get(tree.rootOf.get(item.id));
+  const senseCount = root ? descendantsOf(tree, root.id).length : 0;
+  const [treeOpen, setTreeOpen] = useState(false);
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-      {parent ? (
-        <span>
-          Sense{' '}
-          <SenseNumber
-            number={number}
-            canManage={canManage}
-            alone={alone}
-            onSet={(n) => onSetNumber(item.id, n)}
-            className="mx-0.5"
-          />{' '}
-          of <ItemLink item={parent} homonyms={homonyms} itemTo={itemTo} />
-        </span>
-      ) : (
-        <span>Entry</span>
-      )}
-      {canManage && parent && (
-        <button
-          type="button"
-          className="text-primary hover:underline"
-          onClick={() => onSetParent(null)}
-        >
-          Make its own entry
-        </button>
-      )}
-      {canManage && (
-        <Popover open={open} onOpenChange={setOpen}>
-          <PopoverTrigger asChild>
-            <button type="button" className="text-primary hover:underline">
-              {parent ? 'Move under another entry…' : 'Make a sense of…'}
-            </button>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-80 p-2">
-            <ItemPicker
-              autoFocus
-              items={items}
-              homonyms={homonyms}
-              exclude={exclude}
-              onPick={(id) => {
-                setOpen(false);
-                onSetParent(id);
-              }}
-              placeholder="Find the entry…"
-            />
-          </PopoverContent>
-        </Popover>
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        {parent ? (
+          <span>
+            Sense{' '}
+            <SenseNumber
+              number={number}
+              canManage={canManage}
+              alone={alone}
+              onSet={(n) => onSetNumber(item.id, n)}
+              className="mx-0.5"
+            />{' '}
+            of <ItemLink item={parent} homonyms={homonyms} itemTo={itemTo} />
+          </span>
+        ) : (
+          <span>Entry</span>
+        )}
+        {canManage && parent && (
+          <button
+            type="button"
+            className="text-primary hover:underline"
+            onClick={() => onSetParent(null)}
+          >
+            Make its own entry
+          </button>
+        )}
+        {canManage && (
+          <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+              <button type="button" className="text-primary hover:underline">
+                {parent ? 'Move under another entry…' : 'Make a sense of…'}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-80 p-2">
+              <ItemPicker
+                autoFocus
+                items={items}
+                homonyms={homonyms}
+                exclude={exclude}
+                onPick={(id) => {
+                  setOpen(false);
+                  onSetParent(id);
+                }}
+                placeholder="Find the entry…"
+              />
+            </PopoverContent>
+          </Popover>
+        )}
+        {senseCount > 0 && (
+          <button
+            type="button"
+            aria-expanded={treeOpen}
+            onClick={() => setTreeOpen((v) => !v)}
+            className="inline-flex items-center gap-0.5 text-primary hover:underline"
+          >
+            {treeOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+            {senseCount} sense{senseCount === 1 ? '' : 's'}
+          </button>
+        )}
+        {canManage && (
+          <Link to={newSenseTo(item.id)} className="text-primary no-underline hover:underline">
+            <Plus className="inline h-3 w-3" /> Add sense
+          </Link>
+        )}
+      </div>
+      {treeOpen && senseCount > 0 && root && (
+        <SenseTree root={root} current={item.id} tree={tree} homonyms={homonyms} itemTo={itemTo} />
       )}
     </div>
   );
 };
 
-/** The senses under an entry, numbered, reorderable, with a way to add one. */
-export const SensesPanel = ({
-  item,
-  tree,
-  homonyms,
-  itemTo,
-  newSenseTo,
-  canManage,
-  onMove,
-  onSetNumber,
-}) => {
-  const children = tree.childrenOf.get(item.id) || [];
-  if (!children.length && !canManage) return null;
+/**
+ * The whole entry as a tree, for getting around it: the headword and every
+ * sense under it, depth-first and numbered, each a link, the open one marked.
+ */
+const SenseTree = ({ root, current, tree, homonyms, itemTo }) => {
+  const rows = [{ item: root, depth: 0 }];
+  const walk = (id, depth) => {
+    for (const c of tree.childrenOf.get(id) || []) {
+      rows.push({ item: c, depth });
+      walk(c.id, depth + 1);
+    }
+  };
+  walk(root.id, 1);
   return (
-    <div className="rounded-lg border bg-card">
-      <div className="flex items-center justify-between border-b px-4 py-2">
-        <span className="text-sm font-medium">Senses</span>
-        {canManage && (
-          <Button variant="ghost" size="sm" className="h-7" asChild>
-            <Link to={newSenseTo(item.id)}>
-              <Plus className="h-3.5 w-3.5" /> Add sense
-            </Link>
-          </Button>
-        )}
-      </div>
-      {children.length === 0 ? (
-        <p className="px-4 py-3 text-sm text-muted-foreground">No senses under this entry.</p>
-      ) : (
-        <ul className="divide-y">
-          {children.map((c, i) => (
-            <li key={c.id} className="flex items-center gap-2 px-4 py-1.5 text-sm">
-              <SenseNumber
-                number={tree.numberOf.get(c.id)}
-                canManage={canManage}
-                alone={children.length < 2}
-                onSet={(n) => onSetNumber(c.id, n)}
-                className="w-14 shrink-0 text-muted-foreground"
-              />
-              <span className="min-w-0 flex-1 truncate">
-                <ItemLink item={c} homonyms={homonyms} itemTo={itemTo} />
-                {(tree.childrenOf.get(c.id) || []).length > 0 && (
-                  <span className="ml-1.5 text-xs text-muted-foreground">
-                    +{descendantsOf(tree, c.id).length}
+    <ul className="max-h-64 overflow-y-auto rounded-md border bg-muted/20 py-1 text-sm">
+      {rows.map(({ item, depth }) => (
+        <li
+          key={item.id}
+          aria-current={item.id === current ? 'true' : undefined}
+          className={cn(
+            'flex items-baseline gap-2 py-0.5 pr-3',
+            item.id === current && 'bg-accent/60',
+          )}
+          style={{ paddingLeft: `${0.75 + depth * 1.25}rem` }}
+        >
+          <span className="w-8 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+            {tree.numberOf.get(item.id)}
+          </span>
+          <span className="min-w-0 truncate">
+            {item.id === current ? (
+              <>
+                <FormLabel
+                  form={item.form}
+                  index={homonyms?.get(item.id)}
+                  className="font-medium"
+                />
+                {item.metadata?.gloss ? (
+                  <span className="ml-1 text-xs text-muted-foreground">
+                    {String(item.metadata.gloss)}
                   </span>
-                )}
-              </span>
-              {canManage && (
-                <span className="flex items-center gap-0.5 text-muted-foreground">
-                  <button
-                    type="button"
-                    aria-label="Move up"
-                    disabled={i === 0}
-                    onClick={() => onMove(c.id, -1)}
-                    className="rounded p-1 hover:text-foreground disabled:opacity-25"
-                  >
-                    <ArrowUp className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Move down"
-                    disabled={i === children.length - 1}
-                    onClick={() => onMove(c.id, 1)}
-                    className="rounded p-1 hover:text-foreground disabled:opacity-25"
-                  >
-                    <ArrowDown className="h-3.5 w-3.5" />
-                  </button>
-                </span>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+                ) : null}
+              </>
+            ) : (
+              <ItemLink item={item} homonyms={homonyms} itemTo={itemTo} />
+            )}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 };
 

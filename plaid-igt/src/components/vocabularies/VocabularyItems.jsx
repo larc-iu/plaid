@@ -42,6 +42,8 @@ import {
   humanizeFieldName,
   fieldLabel,
   groupFieldsForForm,
+  editableMetadata,
+  reservedMetadata,
   vocabTagsetByField,
   FIELD_TYPES,
 } from '@/domain/vocabFields';
@@ -51,7 +53,6 @@ import {
   fieldsForItem,
   validateVocabRefs,
   planDeleteRefs,
-  planSenseMove,
   planSenseSetNumber,
   withParentSet,
   withExampleAdded,
@@ -61,7 +62,6 @@ import {
 import {
   ItemRefField,
   EntryPlace,
-  SensesPanel,
   ReferencedByPanel,
   ExamplesPanel,
   ContextRow,
@@ -454,7 +454,7 @@ export const VocabularyItems = ({
     if (!item) return; // not loaded yet (or gone); leave the draft as it is
     seededRef.current = selectedId;
     setEditForm(item.form);
-    setEditFields(item.metadata || {});
+    setEditFields(editableMetadata(item.metadata));
   }, [selectedId, items]);
 
   // Plan the concordance + load the first batch whenever a real item is selected.
@@ -555,7 +555,7 @@ export const VocabularyItems = ({
       goItem(null, { replace: true });
     } else if (selectedItem) {
       setEditForm(selectedItem.form);
-      setEditFields(selectedItem.metadata || {});
+      setEditFields(editableMetadata(selectedItem.metadata));
     }
   };
 
@@ -563,14 +563,14 @@ export const VocabularyItems = ({
     ? editForm.trim() !== '' || Object.keys(cleanMeta(editFields)).length > 0
     : !!selectedItem &&
       (editForm.trim() !== selectedItem.form ||
-        !metaEqual(editFields, selectedItem.metadata || {}));
+        !metaEqual(editFields, editableMetadata(selectedItem.metadata)));
   // Only a CHANGED value is held to its tagset, so an off-tagset value an
   // import left behind does not lock the entry (see changedValuesAllowed).
   const saveAllowed = changedValuesAllowed(
     fields,
     editFields,
     (f) => tagsetFor(f.name),
-    isNew ? {} : selectedItem?.metadata || {},
+    isNew ? {} : editableMetadata(selectedItem?.metadata),
   );
 
   // Switching away with unsaved edits would silently discard them — confirm
@@ -601,7 +601,14 @@ export const VocabularyItems = ({
       return;
     }
     try {
-      const metadata = cleanMeta(editFields);
+      // The structure the form does not edit (sense place, examples, import
+      // identity) is carried over from the entry as it is NOW, so a renumber
+      // or an example added while the form was open is not written back
+      // over by this save.
+      const metadata = {
+        ...(isNew ? {} : reservedMetadata(selectedItem?.metadata)),
+        ...cleanMeta(editFields),
+      };
       const form = editForm.trim();
       // The saved entry is folded into `items` locally rather than re-fetching
       // the vocabulary: a re-fetch pulls every entry in the lexicon back over
@@ -687,7 +694,6 @@ export const VocabularyItems = ({
   // which stay theirs.
   const commitMetadata = async (id, metadata, label) => {
     await client.withOperation(label, async () => writeMetadata(id, metadata));
-    if (!dirty) seededRef.current = undefined;
     foldPatches([{ id, metadata }]);
   };
   const handleSetParent = async (parentId) => {
@@ -705,20 +711,6 @@ export const VocabularyItems = ({
       notifyError('Failed to move the entry', 'Error');
     }
   };
-  const handleMoveSense = async (id, dir) => {
-    const patches = planSenseMove(tree, id, dir);
-    if (!patches.length) return;
-    try {
-      await client.withOperation('Reorder senses', async () => {
-        for (const p of patches) await writeMetadata(p.id, p.metadata);
-      });
-      if (!dirty) seededRef.current = undefined;
-      foldPatches(patches);
-    } catch (err) {
-      console.error('Reordering senses failed:', err);
-      notifyError('Failed to reorder senses', 'Error');
-    }
-  };
   const handleSetSenseNumber = async (id, n) => {
     const patches = planSenseSetNumber(tree, id, n);
     if (!patches.length) return;
@@ -726,7 +718,6 @@ export const VocabularyItems = ({
       await client.withOperation('Renumber senses', async () => {
         for (const p of patches) await writeMetadata(p.id, p.metadata);
       });
-      if (!dirty) seededRef.current = undefined;
       foldPatches(patches);
     } catch (err) {
       console.error('Renumbering senses failed:', err);
@@ -930,14 +921,22 @@ export const VocabularyItems = ({
   const formGroups = useMemo(
     () =>
       groupFieldsForForm(
+        // The draft carries no structure, so the entry's own place (or the
+        // parent a new sense is being written under) says which fields show.
         fieldsForItem(
           fields,
-          { metadata: isNew && newParent ? { ...editFields, parent: newParent } : editFields },
+          {
+            metadata: isNew
+              ? newParent
+                ? { parent: newParent }
+                : {}
+              : reservedMetadata(selectedItem?.metadata),
+          },
           dictionary,
         ),
         { statusField: dictionary ? STATUS_FIELD : null },
       ),
-    [fields, isNew, newParent, editFields, dictionary],
+    [fields, isNew, newParent, selectedItem, dictionary],
   );
 
   if (loading) {
@@ -1265,6 +1264,7 @@ export const VocabularyItems = ({
                     canManage={canManage}
                     onSetParent={handleSetParent}
                     onSetNumber={handleSetSenseNumber}
+                    newSenseTo={newSenseTo}
                   />
                 </div>
               )}
@@ -1356,16 +1356,6 @@ export const VocabularyItems = ({
 
             {dictionary && !isNew && selectedItem && (
               <>
-                <SensesPanel
-                  item={selectedItem}
-                  tree={tree}
-                  homonyms={homonyms}
-                  itemTo={itemTo}
-                  newSenseTo={newSenseTo}
-                  canManage={canManage}
-                  onMove={handleMoveSense}
-                  onSetNumber={handleSetSenseNumber}
-                />
                 <ExamplesPanel
                   item={selectedItem}
                   client={client}

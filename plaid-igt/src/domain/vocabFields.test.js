@@ -7,6 +7,8 @@ import {
   vocabTagsetByField,
   fieldBaseName,
   isBuiltInField,
+  editableMetadata,
+  reservedMetadata,
   fieldLabel,
   groupFieldsForForm,
 } from './vocabFields.js';
@@ -97,6 +99,26 @@ describe('resolving a field tagset', () => {
       ['pos (ru)', 'Pos (ru)', 'entry', 'POS'],
     ]);
     expect(vocabTagsetByField(fields, config).get('pos')).toEqual(governed[0].tagset);
+  });
+});
+
+describe('editable and reserved metadata', () => {
+  it('keeps structure out of the form draft and carries it over on save', () => {
+    const meta = { gloss: 'cat', parent: 'p', senseOrder: 2, examples: [], flexSense: 's' };
+    expect(editableMetadata(meta)).toEqual({ gloss: 'cat' });
+    expect(reservedMetadata(meta)).toEqual({
+      parent: 'p',
+      senseOrder: 2,
+      examples: [],
+      flexSense: 's',
+    });
+    expect({ ...reservedMetadata(meta), ...editableMetadata({ gloss: 'lion' }) }).toEqual({
+      parent: 'p',
+      senseOrder: 2,
+      examples: [],
+      flexSense: 's',
+      gloss: 'lion',
+    });
   });
 });
 
