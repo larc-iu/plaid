@@ -36,7 +36,7 @@
 import { xmlEscape } from './flextext.js';
 import { allExamples, buildSenseTree, exampleKey } from '../domain/vocabDictionary.js';
 import { readVocabFields } from '../domain/igtConfig.js';
-import { FIELD_TYPES } from '../domain/vocabFields.js';
+import { FIELD_SCOPES, FIELD_TYPES } from '../domain/vocabFields.js';
 import { FLEX_MORPH_TYPES } from '../domain/affixMarkers.js';
 
 export const LIFT_VERSION = '0.13';
@@ -216,6 +216,23 @@ function examplesXml(indent, item, ctx) {
 const senseIdOf = (item, parentId, index) =>
   scalar(item?.metadata?.flexSense) ?? `${parentId}_${index + 1}`;
 
+/**
+ * <relation> per reference, deduplicated. A reference to an entry this export
+ * left out has nothing to point at, so it is dropped.
+ */
+function relationsXml(indent, relations, ctx) {
+  const lines = [];
+  const seen = new Set();
+  for (const { type, target } of relations) {
+    const ref = ctx.liftIds.get(target);
+    if (!ref || seen.has(`${type}|${ref}`)) continue;
+    seen.add(`${type}|${ref}`);
+    ctx.relationTypes.add(type);
+    lines.push(`${indent}<relation type="${xmlEscape(type)}" ref="${xmlEscape(ref)}"/>`);
+  }
+  return lines;
+}
+
 // A sense, with its own senses nested as <subsense>. `tag` is 'sense' at the
 // top and 'subsense' below; `index` numbers it among its siblings for the id.
 function senseXml(indent, item, ctx, index, tag = 'sense', children = []) {
@@ -246,13 +263,14 @@ function senseXml(indent, item, ctx, index, tag = 'sense', children = []) {
     );
   }
   inner.push(...wrap(`${indent}  `, 'definition', multitext(`${indent}    `, definitions)));
-  // A reference to an entry this export left out has nothing to point at.
-  for (const { type, target } of relations) {
-    const ref = ctx.liftIds.get(target);
-    if (!ref) continue;
-    ctx.relationTypes.add(type);
-    inner.push(`${indent}  <relation type="${xmlEscape(type)}" ref="${xmlEscape(ref)}"/>`);
-  }
+  // A headword-only reference belongs to the entry, and is written there.
+  inner.push(
+    ...relationsXml(
+      `${indent}  `,
+      relations.filter((r) => !ctx.entryRefFields.has(r.type)),
+      ctx,
+    ),
+  );
   inner.push(...examplesXml(`${indent}  `, item, ctx));
   for (const [base, values] of grouped) {
     inner.push(
@@ -341,6 +359,18 @@ function entryXml(indent, group, ctx) {
   if (morphType && FLEX_MORPH_TYPES.includes(morphType)) {
     inner.push(trait(`${indent}  `, 'morph-type', morphType));
   }
+  // Headword-only references are the entry's, wherever in the group they sit.
+  inner.push(
+    ...relationsXml(
+      `${indent}  `,
+      group.items.flatMap((it) =>
+        partitionMetadata(it.metadata, ctx.analysisLang, ctx.refFields).relations.filter((r) =>
+          ctx.entryRefFields.has(r.type),
+        ),
+      ),
+      ctx,
+    ),
+  );
   const senseCtx = { ...ctx, entryId };
   let senses = 0;
   // The headword's own gloss, if any, is the first sense; its senses follow,
@@ -457,10 +487,14 @@ export function buildLiftLexicon({
   // The reference fields, by name, merged the same way: their values are item
   // ids and become <relation>s rather than text.
   const refFields = new Set();
+  // …and which of those are the entry's own rather than a sense's.
+  const entryRefFields = new Set();
   for (const vocab of vocabularies) {
     for (const [name, spec] of Object.entries(readVocabFields(vocab?.config) ?? {})) {
       if (typeof spec?.lang === 'string' && spec.lang !== '') fieldLangs[name] = spec.lang;
-      if (spec?.type === FIELD_TYPES.ITEM) refFields.add(name);
+      if (spec?.type !== FIELD_TYPES.ITEM) continue;
+      refFields.add(name);
+      if (spec.scope === FIELD_SCOPES.ENTRY) entryRefFields.add(name);
     }
   }
   const groups = groupEntries(vocabularies);
@@ -469,6 +503,7 @@ export function buildLiftLexicon({
     analysisLang,
     fieldLangs,
     refFields,
+    entryRefFields,
     liftIds: assignLiftIds(groups),
     relationTypes: new Set(),
     posValues: new Set(),

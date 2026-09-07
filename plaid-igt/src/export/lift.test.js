@@ -398,6 +398,35 @@ describe('buildLiftLexicon', () => {
     expect(dom.querySelector('field[type="variantOf"]')).toBeNull();
   });
 
+  it('writes a headword-only reference on the entry, not inside a sense', () => {
+    const vocab = {
+      id: 'v1',
+      config: {
+        igt: {
+          fields: {
+            gloss: {},
+            variantOf: { type: 'item', many: true, scope: 'entry' },
+            seeAlso: { type: 'item' },
+          },
+        },
+      },
+      items: [
+        item('h', 'kat', { gloss: 'cat' }),
+        item('s', 'kat', { gloss: 'lion', parent: 'h', senseOrder: 1, seeAlso: 'v' }),
+        item('v', 'katt', { gloss: 'cat', variantOf: ['h'] }),
+      ],
+    };
+    const dom = parse(build([vocab]).lift);
+    const entries = [...dom.querySelectorAll('entry')];
+    const variant = entries.find((e) => e.getAttribute('id') === 'katt_v');
+    expect(variant.querySelector(':scope > relation').getAttribute('ref')).toBe('kat_h');
+    expect(variant.querySelector('sense relation')).toBeNull();
+    // A sense-scoped one stays with the sense that holds it.
+    const main = entries.find((e) => e.getAttribute('id') === 'kat_h');
+    expect(main.querySelector(':scope > relation')).toBeNull();
+    expect(main.querySelector('sense relation').getAttribute('type')).toBe('seeAlso');
+  });
+
   it('is well-formed with no vocabularies at all', () => {
     const { lift, entryCount, ranges } = build([]);
     expect(entryCount).toBe(0);
