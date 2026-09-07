@@ -494,6 +494,33 @@ describe('a headword that stands over senses', () => {
     expect(field.textContent.trim()).toBe('from the field');
   });
 
+  it('counts an unresolvable example once, not twice', () => {
+    // headIsASense used to decide by RENDERING the head's examples, and
+    // examplesXml counts an unreadable reference as a side effect.
+    const { warnings } = build(
+      [
+        {
+          id: 'v1',
+          config: FIELDS,
+          items: [
+            item('h', 'perro', {
+              examples: [
+                { document: 'd1', token: 't1' },
+                { document: 'gone', token: 'nope' },
+              ],
+            }),
+            item('s1', 'perro', { gloss: 'dog', parent: 'h', senseOrder: 1 }),
+            item('s2', 'perro', { gloss: 'scoundrel', parent: 'h', senseOrder: 2 }),
+          ],
+        },
+      ],
+      { exampleTexts: new Map([['d1/t1', { text: 'el perro corre' }]]) },
+    );
+    const unresolved = warnings.filter((w) => /could not be read/.test(w));
+    expect(unresolved).toHaveLength(1);
+    expect(unresolved[0]).toMatch(/^1 example/);
+  });
+
   it('is written as the first sense when it has a meaning of its own', () => {
     const { lift, senseCount } = build(container({ gloss: 'dog (generally)' }));
     expect(senseCount).toBe(3);

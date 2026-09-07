@@ -389,7 +389,10 @@ function entryXml(indent, group, ctx) {
     headParts.definitions.length > 0 ||
     (scalar(meta.pos) ?? '') !== '' ||
     headParts.relations.some((r) => !ctx.entryRefFields.has(r.type)) ||
-    examplesXml(`${indent}    `, first, senseCtx).length > 0;
+    // Asked of the DATA, not by rendering: examplesXml counts an unresolvable
+    // reference into ctx.unresolved as a side effect, and the head is rendered
+    // again below when it turns out to be a sense.
+    allExamples(first).length > 0;
   const trailing = [];
   if (!headIsASense) {
     const grouped = groupFields(headParts.fields, ctx.fieldLangs, ctx.analysisLang);
