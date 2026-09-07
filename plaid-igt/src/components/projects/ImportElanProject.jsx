@@ -160,7 +160,7 @@ export const ImportElanProject = () => {
   const [runError, setRunError] = useState(null);
   const [results, setResults] = useState(null);
 
-  const { resumeId, resumeName } = useResumeImport(client);
+  const { resumeId, resumeName, finishAsIs } = useResumeImport(client);
   const projectIdRef = useRef(resumeId || null);
   const setupDoneRef = useRef(false);
   const stopRef = useRef(false);
@@ -339,7 +339,14 @@ export const ImportElanProject = () => {
             <p className="mt-2 text-sm">
               Continuing the unfinished import into{' '}
               <span className="font-medium">{resumeName ?? 'this project'}</span>. Choose the same
-              files: what is already there is kept.
+              files: what is already there is kept.{' '}
+              <button
+                type="button"
+                onClick={finishAsIs}
+                className="font-medium text-primary hover:underline"
+              >
+                Use the project as it is
+              </button>
             </p>
           )}
         </div>

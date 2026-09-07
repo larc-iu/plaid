@@ -5,7 +5,7 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import { DocumentProvider } from './contexts/DocumentContext.jsx';
 import { IgtDocument } from '../../domain/IgtDocument.js';
 import { formatFindingsForClipboard } from '../../domain/validate.js';
-import { readInitialized } from '@/domain/igtConfig';
+import { readInitialized, readImportState, importRouteFor } from '@/domain/igtConfig';
 import { notifyError, toast, humanizeError } from '@/utils/feedback';
 import { History, FileText, Type, Mic, Play, Table, Download, MessageSquare } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -444,6 +444,29 @@ const DocumentEditor = () => {
 
   if (!doc) {
     return <Spinner />;
+  }
+
+  // Same door, same reason: a project whose import never finished sends its
+  // maintainers back to the wizard, and the resume DELETES the documents it
+  // did not complete. Annotating one of them would be work thrown away.
+  const unfinishedImport = readImportState(doc.project?.config);
+  if (unfinishedImport) {
+    const to = importRouteFor(unfinishedImport.kind);
+    return (
+      <div className="tw mx-auto max-w-5xl px-4 py-8">
+        <div role="status" className="rounded-md border bg-muted px-4 py-3 text-sm">
+          The {unfinishedImport.kind} import
+          {unfinishedImport.source ? ` of “${unfinishedImport.source}”` : ''} did not finish.{' '}
+          {permissions.canManage && to ? (
+            <Link className="underline" to={`${to}?resume=${projectId}`}>
+              Finish it
+            </Link>
+          ) : (
+            'Ask a project maintainer to finish it.'
+          )}
+        </div>
+      </div>
+    );
   }
 
   // Reaching a document in a project never set up for IGT means a link

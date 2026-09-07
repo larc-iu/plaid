@@ -194,6 +194,18 @@ export const markImportStarted = async (client, projectId, kind, source) => {
   }
 };
 
+/**
+ * Where an unfinished import of `kind` is picked up again (the routes are in
+ * App.jsx). Null for a kind this app has no wizard for.
+ */
+export const importRouteFor = (kind) =>
+  ({
+    FLEx: '/projects/import',
+    CLDF: '/projects/import-cldf',
+    ELAN: '/projects/import-elan',
+    'Plaid IGT archive': '/projects/import-archive',
+  })[kind] ?? null;
+
 /** Record that it finished. */
 export const markImportFinished = async (client, projectId) => {
   try {

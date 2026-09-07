@@ -10,7 +10,7 @@ import { ProjectValidation } from './validate/ProjectValidation.jsx';
 import { ProjectAssistant } from './assistant/ProjectAssistant.jsx';
 import { ProjectExport } from './ProjectExport.jsx';
 import { ProjectSettingsPanel } from './ProjectSettingsPanel';
-import { readInitialized, readImportState } from '@/domain/igtConfig';
+import { readInitialized, readImportState, importRouteFor } from '@/domain/igtConfig';
 import { isReviewed } from '@larc-iu/plaid-client';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useTabParam, tabTo } from '@/hooks/useTabParam';
@@ -41,15 +41,6 @@ const SECTION_TITLES = {
 // group — selecting it stays on the page and renders project administration as
 // a left-side vertical tab group (ProjectSettingsPanel), route-backed by the
 // /access, /tokens, /services, /export, /settings suffixes.
-
-// Where an unfinished import is picked up again, by the format it was reading.
-const importRoute = (kind) =>
-  ({
-    FLEx: '/projects/import',
-    CLDF: '/projects/import-cldf',
-    ELAN: '/projects/import-elan',
-    'Plaid IGT archive': '/projects/import-archive',
-  })[kind] ?? null;
 
 export const ProjectDetail = () => {
   const { projectId, presetId = null } = useParams();
@@ -159,9 +150,18 @@ export const ProjectDetail = () => {
   }, [project, projectId, navigate, canManage]);
 
   const needsSetupNotice = !!project && !readInitialized(project.config) && !canManage;
-  // An import that never reported finishing. Every importer resumes, so the
-  // way out is to run the same one again over the same file.
+  // An import that never reported finishing: the project is half filled, and
+  // the resume DELETES the documents it did not complete, so there is nothing
+  // safe to do here until it is over. A maintainer is sent back to the wizard
+  // to finish it (or to declare it finished as it stands); anyone else gets
+  // the notice below, since they cannot run an import.
   const unfinishedImport = project ? readImportState(project.config) : null;
+  const importResumeTo = unfinishedImport && importRouteFor(unfinishedImport.kind);
+  useEffect(() => {
+    if (importResumeTo && canManage) {
+      navigate(`${importResumeTo}?resume=${projectId}`, { replace: true });
+    }
+  }, [importResumeTo, canManage, projectId, navigate]);
 
   const handleDocumentCreated = (newDocument) => {
     setDocuments((prev) => [...prev, newDocument]);
@@ -183,6 +183,22 @@ export const ProjectDetail = () => {
           className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
         >
           {error || 'The requested project could not be found.'}
+        </div>
+      </div>
+    );
+  }
+
+  if (unfinishedImport && (!canManage || importResumeTo)) {
+    return (
+      <div className="tw mx-auto max-w-5xl px-4 py-8">
+        <h1 className="text-2xl font-bold tracking-tight">{project.name}</h1>
+        <div
+          role="status"
+          className="mt-4 rounded-md border bg-muted px-4 py-3 text-sm text-muted-foreground"
+        >
+          The {unfinishedImport.kind} import
+          {unfinishedImport.source ? ` of “${unfinishedImport.source}”` : ''} did not finish.
+          {canManage ? ' Continuing it…' : ' Ask a project maintainer to finish it.'}
         </div>
       </div>
     );
@@ -219,26 +235,6 @@ export const ProjectDetail = () => {
           <span className="text-foreground">{project.name}</span>
         </nav>
         <h1 className="text-3xl font-bold tracking-tight">{project.name}</h1>
-        {unfinishedImport && (
-          <div
-            role="status"
-            className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-sm"
-          >
-            <span>
-              The {unfinishedImport.kind} import
-              {unfinishedImport.source ? ` of “${unfinishedImport.source}”` : ''} did not finish.
-              Documents and entries may be missing.
-            </span>
-            {canManage && importRoute(unfinishedImport.kind) && (
-              <Link
-                to={`${importRoute(unfinishedImport.kind)}?resume=${projectId}`}
-                className="shrink-0 font-medium text-primary hover:underline"
-              >
-                Import again
-              </Link>
-            )}
-          </div>
-        )}
       </div>
 
       <Tabs
