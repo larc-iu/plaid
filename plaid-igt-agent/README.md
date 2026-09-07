@@ -138,8 +138,15 @@ receives them, rendered over the test fixture project; regenerate it with
   headword and two or more a sense: "2.1.3"), references between entries, and
   promoted usage examples. Deleting or merging an entry drags
   those along exactly as the app does, so no plan leaves an id that resolves
-  to nothing. A differential fuzz harness checked the port against the
-  JavaScript over randomized lexicons, cycles and dangling references included.
+  to nothing. `tests/test_vocab_mirror.py` runs this port and the JavaScript it
+  mirrors over randomized lexicons (cycles, dangling references, junk in the
+  numbering keys, headwords sharing a form) and compares them function by
+  function. Nothing about a stale port announces itself, since the shapes it
+  writes stay well-formed and its own unit tests, written against the old rule,
+  keep agreeing with themselves, so this is what catches a change in the app's
+  numbering before it silently changes what an `entry_form` names. It skips
+  where it cannot run (no node, or plaid-igt not installed beside the agent),
+  never where the two disagree.
 - `tools.py`: the tools the model gets. Reads run immediately:
   `project_overview`, `list_documents`, `read_document`, `search`, `read_lexicon`,
   `lexicon_entry`, `concordance` (aligned context and pattern tally for a
