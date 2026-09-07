@@ -5,8 +5,13 @@
 //                       can render a caret.
 //   - GrewUnsupportedError — the input is valid Grew, but uses a construct this
 //                       compiler cannot express in Plaid's query language (the
-//                       "residue"; see compile.js). Names the feature so the UI
-//                       can tell the user precisely what to drop.
+//                       "residue"; see compile.js) or the rewriting engine cannot
+//                       apply to UD data. Names the feature so the UI can tell
+//                       the user precisely what to drop.
+//   - GrewRuntimeError — a rule failed while rewriting a sentence: a command
+//                       whose edge or feature is missing, a lemma a dependency
+//                       still needs, a rule that never terminates. Carries the
+//                       rule name and command line.
 //
 // Both extend GrewError so a caller can `catch (e) { if (e instanceof GrewError) … }`
 // to separate "your query is the problem" from "the server/network is the problem".
@@ -28,6 +33,15 @@ export class GrewUnsupportedError extends GrewError {
     super(message || `Unsupported Grew feature: ${feature}`);
     this.name = 'GrewUnsupportedError';
     this.feature = feature;
+    this.line = line;
+  }
+}
+
+export class GrewRuntimeError extends GrewError {
+  constructor(message, { rule = null, line = null } = {}) {
+    super(message);
+    this.name = 'GrewRuntimeError';
+    this.rule = rule;
     this.line = line;
   }
 }

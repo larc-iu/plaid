@@ -12,8 +12,8 @@
 import { parse } from './parser.js';
 import { compileGrew } from './compile.js';
 
-export { GrewError, GrewParseError, GrewUnsupportedError } from './errors.js';
-export { parse } from './parser.js';
+export { GrewError, GrewParseError, GrewUnsupportedError, GrewRuntimeError } from './errors.js';
+export { parse, parseGrs, looksLikeGrs } from './parser.js';
 export { compileGrew } from './compile.js';
 
 export function parseAndCompile(text, layerInfo, opts = {}) {
