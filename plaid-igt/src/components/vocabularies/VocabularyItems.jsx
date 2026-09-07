@@ -159,6 +159,10 @@ const FormGroup = ({ title, children }) => (
   </div>
 );
 
+// How many repairs ride in one batch. A batch is one transaction holding the
+// vocabulary's write lock, so it is sized by how long that lock is held.
+const REPAIR_CHUNK = 100;
+
 // The columns this list sorts by, named once so a remembered sort on a column
 // that is no longer here is rejected rather than reaching the comparator.
 const ITEM_COLUMNS = ['form', 'gloss', 'uses'];
@@ -433,16 +437,28 @@ export const VocabularyItems = ({
     if (!patches.length) return;
     try {
       await client.withOperation('Repair entry references', async () => {
-        for (const p of patches) await writeMetadata(p.id, p.metadata);
+        // Batched rather than one request each: a vocabulary that has lost a
+        // pile of entries has as many writes as it has references to them.
+        // Chunked, since one batch is one transaction holding the write lock.
+        for (let i = 0; i < patches.length; i += REPAIR_CHUNK) {
+          await client.batched(async () => {
+            for (const p of patches.slice(i, i + REPAIR_CHUNK)) {
+              if (Object.keys(p.metadata).length) client.vocabItems.setMetadata(p.id, p.metadata);
+              else client.vocabItems.deleteMetadata(p.id);
+            }
+          });
+        }
       });
       foldPatches(patches);
       if (findings.length) {
         console.group('Vocabulary references repaired');
         for (const f of findings) console.info(f.form, f.id, f.reasons.join('; '));
         console.groupEnd();
+        // Not always a deleted entry: a field changed to Entry holds text that
+        // names no entry either, and this is what clears it.
         notifyWarning(
-          `${findings.length} entr${findings.length === 1 ? 'y' : 'ies'} pointed at entries that no longer exist. Those references were removed.`,
-          'References repaired',
+          `${findings.length} entr${findings.length === 1 ? 'y' : 'ies'} held a value that names no entry. Those values were cleared.`,
+          'Entries repaired',
         );
       }
     } catch (err) {
