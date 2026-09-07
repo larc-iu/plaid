@@ -293,7 +293,8 @@ function senseXml(indent, item, ctx, index, tag = 'sense', children = []) {
   }
   // An item with nothing but a form says nothing a sense could hold, and an
   // entry is allowed to have none. FLEx makes one on its own when it needs to.
-  if (!inner.length) return [];
+  // Unless a reference names it, which would otherwise point at no element.
+  if (!inner.length && !ctx.referenced.has(item.id)) return [];
   return [`${indent}<${tag} id="${xmlEscape(id)}">`, ...inner, `${indent}</${tag}>`];
 }
 
@@ -377,15 +378,41 @@ function entryXml(indent, group, ctx) {
   );
   const senseCtx = { ...ctx, entryId };
   let senses = 0;
+  // A headword that stands over senses and says nothing of its own is not one
+  // of them: writing it as the first sense puts a gloss-less sense in front of
+  // every real one, and re-importing that adds a spurious sense every round.
+  // Its own fields are the entry's, and go after the senses.
+  const headParts = partitionMetadata(meta, ctx.analysisLang, ctx.refFields);
+  const headIsASense =
+    !group.senses.length ||
+    headParts.glosses.length > 0 ||
+    headParts.definitions.length > 0 ||
+    (scalar(meta.pos) ?? '') !== '' ||
+    headParts.relations.some((r) => !ctx.entryRefFields.has(r.type)) ||
+    examplesXml(`${indent}    `, first, senseCtx).length > 0;
+  const trailing = [];
+  if (!headIsASense) {
+    const grouped = groupFields(headParts.fields, ctx.fieldLangs, ctx.analysisLang);
+    for (const [base, values] of grouped) {
+      ctx.customNames.add(base);
+      trailing.push(
+        `${indent}  <field type="${xmlEscape(base)}">`,
+        ...multitext(`${indent}    `, values),
+        `${indent}  </field>`,
+      );
+    }
+  }
   // The headword's own gloss, if any, is the first sense; its senses follow,
   // each with its own senses nested inside it.
   const top = [{ item: first, children: [] }, ...group.senses];
   top.forEach((node, i) => {
+    if (i === 0 && !headIsASense) return;
     const lines = senseXml(`${indent}  `, node.item, senseCtx, i, 'sense', node.children);
     // Count what was written: a sense with nothing to say is left out.
     senses += lines.filter((l) => /^\s*<(sub)?sense /.test(l)).length;
     inner.push(...lines);
   });
+  inner.push(...trailing);
   return {
     lines: [`${indent}<entry ${attrs.join(' ')}>`, ...inner, `${indent}</entry>`],
     senses,
@@ -501,8 +528,24 @@ export function buildLiftLexicon({
       if (spec.scope === FIELD_SCOPES.ENTRY) entryRefFields.add(name);
     }
   }
-  const groups = groupEntries(vocabularies);
+  const allGroups = groupEntries(vocabularies);
+  // An entry with no form at all has nothing to be looked up by, and FLEx
+  // would reject it. Drop it rather than write an empty headword, and say so.
+  // Dropped before the ids are handed out, so no relation can name one.
+  const groups = allGroups.filter((g) => g.items.some((i) => scalar(i.form)));
+  const formless = allGroups.length - groups.length;
+  // Every item a reference names. An empty sense is written anyway when
+  // something points at it, since the alternative is a ref naming nothing.
+  const referenced = new Set();
+  for (const g of groups) {
+    for (const it of g.items) {
+      for (const r of partitionMetadata(it.metadata, analysisLang, refFields).relations) {
+        referenced.add(r.target);
+      }
+    }
+  }
   const ctx = {
+    referenced,
     vern,
     analysisLang,
     fieldLangs,
@@ -519,15 +562,7 @@ export function buildLiftLexicon({
 
   const entries = [];
   let senseCount = 0;
-  let formless = 0;
   for (const group of groups) {
-    // An entry with no form at all has nothing to be looked up by, and FLEx
-    // would reject it. Drop it rather than write an empty headword, and say so.
-    const hasForm = group.items.some((i) => scalar(i.form));
-    if (!hasForm) {
-      formless += 1;
-      continue;
-    }
     const { lines, senses } = entryXml('  ', group, ctx);
     entries.push(...lines);
     senseCount += senses;
@@ -591,7 +626,7 @@ export function buildLiftLexicon({
   return {
     lift,
     ranges,
-    entryCount: groups.length - formless,
+    entryCount: groups.length,
     senseCount,
     warnings,
   };

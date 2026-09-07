@@ -465,3 +465,65 @@ describe('buildLiftLexicon', () => {
     expect(dom.querySelector('gloss').getAttribute('lang')).toBe('en');
   });
 });
+
+describe('a headword that stands over senses', () => {
+  const FIELDS = { igt: { dictionary: true, fields: { Note: { inline: false } } } };
+  const container = (extra = {}) => [
+    {
+      id: 'v1',
+      config: FIELDS,
+      items: [
+        item('h', 'perro', { Note: 'from the field', flexEntry: 'E1', ...extra }),
+        item('s1', 'perro', { gloss: 'dog', parent: 'h', senseOrder: 1, Note: 'from the field' }),
+        item('s2', 'perro', { gloss: 'scoundrel', parent: 'h', senseOrder: 2 }),
+      ],
+    },
+  ];
+
+  it('is not written as a sense of its own, and its fields go on the entry', () => {
+    const { lift, senseCount } = build(container());
+    const doc = parse(lift);
+    expect(senseCount).toBe(2);
+    expect([...doc.querySelectorAll('entry > sense')].length).toBe(2);
+    expect([...doc.querySelectorAll('entry > sense gloss text')].map((t) => t.textContent)).toEqual(
+      ['dog', 'scoundrel'],
+    );
+    // The headword's own field is the entry's, not a gloss-less first sense.
+    const field = doc.querySelector('entry > field[type="Note"]');
+    expect(field).not.toBeNull();
+    expect(field.textContent.trim()).toBe('from the field');
+  });
+
+  it('is written as the first sense when it has a meaning of its own', () => {
+    const { lift, senseCount } = build(container({ gloss: 'dog (generally)' }));
+    expect(senseCount).toBe(3);
+    expect(
+      [...parse(lift).querySelectorAll('entry > sense gloss text')].map((t) => t.textContent),
+    ).toEqual(['dog (generally)', 'dog', 'scoundrel']);
+  });
+});
+
+describe('relations', () => {
+  it('never names an entry or a sense the file does not contain', () => {
+    const { lift } = build([
+      {
+        id: 'v1',
+        config: { igt: { dictionary: true, fields: { seeAlso: { type: 'item', many: true } } } },
+        items: [
+          item('a', 'a', { gloss: 'a', seeAlso: ['formless', 'empty', 'gone'] }),
+          item('formless', '', { gloss: 'no form' }),
+          // A sense with nothing but its place: written only because a
+          // reference names it.
+          item('empty', 'empty', { parent: 'a', senseOrder: 1 }),
+        ],
+      },
+    ]);
+    const doc = parse(lift);
+    const ids = new Set(
+      [...doc.querySelectorAll('entry, sense, subsense')].map((el) => el.getAttribute('id')),
+    );
+    const refs = [...doc.querySelectorAll('relation')].map((r) => r.getAttribute('ref'));
+    expect(refs.length).toBeGreaterThan(0);
+    for (const ref of refs) expect(ids.has(ref)).toBe(true);
+  });
+});
