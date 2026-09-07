@@ -13,6 +13,7 @@
 
 import { documentProgress } from '../progress.js';
 import { readDictionaryEnabled } from '../../domain/vocabDictionary.js';
+import { isReservedFieldName } from '../../domain/vocabFields.js';
 import {
   IGT_NAMESPACE,
   readVocabFields,
@@ -170,6 +171,12 @@ export async function importLexicon({ client, vocabId, lexicon, onProgress, shou
       // The senses hold these now, one meaning each.
       delete metadata.gloss;
       delete metadata.definition;
+    } else {
+      // One sense is the entry's own meaning, so what its row carried (its
+      // part of speech, its definition, its own fields) belongs on the entry
+      // rather than being dropped with the row. The entry's own values win.
+      const only = entry.senses?.[0];
+      if (only) Object.assign(metadata, { ...(only.metadata || {}), ...metadata });
     }
     pending.push({ key: entry.id, form: entry.form, metadata });
     if (!split) continue;
@@ -184,12 +191,19 @@ export async function importLexicon({ client, vocabId, lexicon, onProgress, shou
   }
   // The field schema is the union of what the items actually carry, with the
   // settled core fields always present.
+  // A reserved key is structure, never a field: `homograph` rides in on an
+  // entry's metadata and would otherwise be declared as one, which the UI
+  // forbids creating by hand and the exporter would write out a second time
+  // as its own column.
   const fieldKeys = new Set(['gloss', 'pos', 'definition', 'morphType']);
+  const addKey = (k) => {
+    if (!isReservedFieldName(k)) fieldKeys.add(k);
+  };
   for (const entry of lexicon) {
-    for (const k of Object.keys(entry.metadata)) fieldKeys.add(k);
+    for (const k of Object.keys(entry.metadata)) addKey(k);
     // A sense carries fields of its own, which the schema has to declare too.
     for (const sense of entry.senses || []) {
-      for (const k of Object.keys(sense.metadata || {})) fieldKeys.add(k);
+      for (const k of Object.keys(sense.metadata || {})) addKey(k);
     }
   }
 

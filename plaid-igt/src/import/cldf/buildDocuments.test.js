@@ -641,6 +641,61 @@ describe('round trip through the exporter', () => {
     expect(lexicon[0].metadata.Homograph).toBeUndefined();
   });
 
+  it("keeps a lone sense's own facts on the entry, and homograph off the schema", async () => {
+    const { importLexicon } = await import('./importEngine.js');
+    const vocab = {
+      id: 'v1',
+      name: 'Lexicon',
+      config: { igt: { dictionary: true, fields: { gloss: { inline: true } } } },
+      items: [
+        { id: 'one', form: 'banco', metadata: { gloss: 'bench', pos: 'noun', homograph: 1 } },
+      ],
+    };
+    const { files } = buildCldfDataset({
+      project: { name: 'P' },
+      languages: { object: null, meta: null },
+      documents: [{ igtDoc: makeFixtureDoc() }],
+      vocabularies: [vocab],
+      options: {
+        glossField: 'Gloss',
+        glossScope: 'morpheme',
+        translationField: 'Translation',
+        commentField: 'Note',
+        extras: { sentence: [], word: [], morpheme: [], orthographies: [] },
+        speakers: false,
+        dictionary: true,
+      },
+    });
+    const zipped = zipSync(Object.fromEntries(files.map((f) => [f.path, strToU8(f.data)])));
+    const { lexicon } = buildCldfDocuments(readCldfDataset(zipped));
+    const created = [];
+    let writtenFields = null;
+    await importLexicon({
+      client: {
+        vocabLayers: {
+          get: async () => ({ id: 'v', config: { igt: { dictionary: true } }, items: [] }),
+          setConfig: async (_id, _ns, key, value) => {
+            if (key === 'fields') writtenFields = value;
+          },
+        },
+        vocabItems: {
+          bulkCreate: async (rows) => {
+            created.push(...rows);
+            return { ids: rows.map((_, i) => `n${i}`) };
+          },
+          patchMetadata: async () => {},
+        },
+        batched: async (fn) => fn(),
+      },
+      vocabId: 'v',
+      lexicon,
+    });
+    // One sense IS the entry's meaning, so its part of speech rides along.
+    expect(created[0].metadata).toMatchObject({ gloss: 'bench', pos: 'noun', homograph: 1 });
+    // homograph is structure, never a field the schema declares.
+    expect(Object.keys(writtenFields ?? {})).not.toContain('homograph');
+  });
+
   it('recovers the sentence translation, the word field and the orthography', () => {
     const { documents } = reimport();
     expect(documents[0].sentences[0].fields.Translation).toBe('The dogs run.');
