@@ -3,9 +3,9 @@ name: Release
 # Tag-driven release. Push a tag like `v0.2.0-alpha.1` (e.g. via `bb release
 # 0.2.0-alpha.1`) and this workflow:
 #   1. runs the full test suite (gate — nothing publishes if it's red),
-#   2. builds ALL artifacts (uberjar with the plaid-ud + plaid-igt SPAs and the
-#      official services bundled, npm tarball, Python sdist/wheel) and uploads
-#      them,
+#   2. builds ALL artifacts (uberjar with the plaid-ud + plaid-igt + plaid-dict
+#      SPAs and the official services bundled, npm tarball, Python sdist/wheel)
+#      and uploads them,
 #   3. publishes everything LAST, in one job, each step idempotent
 #      (skip-if-version-already-exists) so re-running a failed tag is safe.
 #

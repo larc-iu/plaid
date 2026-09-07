@@ -163,12 +163,17 @@
       (step "Build plaid-igt SPA")
       (p/shell {:dir "plaid-igt"} "npm" "install")
       (p/shell {:dir "plaid-igt"} "npm" "run" "build")
+      (step "Build plaid-dict SPA")
+      (p/shell {:dir "plaid-dict"} "npm" "install")
+      (p/shell {:dir "plaid-dict"} "npm" "run" "build")
 
       (step "Bundle SPAs + version.edn into plaid-core/resources")
       (rm-rf "plaid-core/resources/ud")
       (rm-rf "plaid-core/resources/igt")
-      (fs/copy-tree "plaid-ud/dist"  "plaid-core/resources/ud")
-      (fs/copy-tree "plaid-igt/dist" "plaid-core/resources/igt")
+      (rm-rf "plaid-core/resources/dict")
+      (fs/copy-tree "plaid-ud/dist"   "plaid-core/resources/ud")
+      (fs/copy-tree "plaid-igt/dist"  "plaid-core/resources/igt")
+      (fs/copy-tree "plaid-dict/dist" "plaid-core/resources/dict")
       (spit "plaid-core/resources/version.edn" (str "{:version \"" version "\"}\n"))
 
       ;; Each app's services/*.py rides the jar and is extracted next to data/
@@ -271,10 +276,12 @@
                "_site"
                "plaid-core/resources/ud"
                "plaid-core/resources/igt"
+               "plaid-core/resources/dict"
                "plaid-core/resources/services"
                "plaid-core/resources/version.edn"
                "plaid-ud/dist"
-               "plaid-igt/dist"]]
+               "plaid-igt/dist"
+               "plaid-dict/dist"]]
     (rm-rf pth))
   (doseq [j (fs/glob "plaid-core/target" "plaid-*.jar")]
     (fs/delete j))

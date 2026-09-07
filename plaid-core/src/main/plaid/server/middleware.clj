@@ -152,7 +152,7 @@
   old cwd-relative \"resources\" default silently published whatever
   sat in ./resources — in a source checkout that's the config templates
   and the full schema migrations. The bundled-SPA classpath serving
-  (/ud, /igt — see bundled-spa-roots) is separate and unaffected."
+  (/ud, /igt, /dict — see bundled-spa-roots) is separate and unaffected."
   [handler]
   (let [resources-path (-> config :plaid.server.middleware/static-resources-path)]
     (if resources-path
@@ -188,15 +188,16 @@
 (def ^:private bundled-spa-roots
   "URL prefix -> classpath resource root for each SPA bundled into the uberjar.
   The release workflow copies each app's Vite build (built with base `/ud/`,
-  `/igt/`) into `resources/{ud,igt}/`, landing them on the classpath as
-  `ud/**` / `igt/**`."
+  `/igt/`, `/dict/`) into `resources/{ud,igt,dict}/`, landing them on the
+  classpath as `ud/**` / `igt/**` / `dict/**`."
   {"/ud" "ud"
-   "/igt" "igt"})
+   "/igt" "igt"
+   "/dict" "dict"})
 
 (defn- bundled-spa-resource-path
   "If `uri` targets a bundled SPA, return the classpath resource path to serve;
   else nil. A bare prefix or trailing slash maps to that app's index.html.
-  Both apps use HashRouter, so client routes live in the URL fragment and never
+  Every app uses HashRouter, so client routes live in the URL fragment and never
   reach the server — no index.html fallback for unknown paths is needed."
   [uri]
   (when-not (str/includes? uri "..")
@@ -210,10 +211,10 @@
           bundled-spa-roots)))
 
 (defn wrap-bundled-spa
-  "Serve the bundled SPAs (plaid-ud at /ud, plaid-igt at /igt) from the
-  CLASSPATH so they work inside the distributed uberjar (where there is no
-  filesystem `resources/` directory). Only serves real files; misses fall
-  through to the next handler."
+  "Serve the bundled SPAs (plaid-ud at /ud, plaid-igt at /igt, plaid-dict at
+  /dict) from the CLASSPATH so they work inside the distributed uberjar (where
+  there is no filesystem `resources/` directory). Only serves real files; misses
+  fall through to the next handler."
   [handler]
   (fn [{:keys [uri request-method] :as request}]
     (if-let [resource-path (and (= :get request-method)
@@ -243,6 +244,7 @@
   <ul>
     <li><a href=\"/ud/\">UD Editor</a></li>
     <li><a href=\"/igt/\">IGT Editor</a></li>
+    <li><a href=\"/dict/\">Dictionary</a></li>
     <li><a href=\"/api/v1/docs/\">API Docs</a></li>
   </ul>
 </body>

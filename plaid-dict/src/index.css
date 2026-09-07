@@ -1,0 +1,41 @@
+@import '@fontsource-variable/source-serif-4';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* shadcn design tokens. The palette is warmer than plaid-igt's: this app is a
+   page of text, so the ground is paper rather than UI grey. */
+@layer base {
+  :root {
+    --background: 40 33% 99%;
+    --foreground: 30 12% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 30 12% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 30 12% 12%;
+    --primary: 202 68% 33%;
+    --primary-foreground: 40 33% 99%;
+    --secondary: 40 18% 94%;
+    --secondary-foreground: 30 12% 12%;
+    --muted: 40 18% 94%;
+    --muted-foreground: 30 8% 42%;
+    --accent: 40 18% 94%;
+    --accent-foreground: 30 12% 12%;
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 40 33% 99%;
+    --border: 36 16% 87%;
+    --input: 36 16% 87%;
+    --ring: 202 68% 33%;
+    --radius: 0.5rem;
+  }
+
+  /* Preflight resets border-width to 0 but leaves the color as currentColor, so
+     default every element to the token. Standard shadcn base. */
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
