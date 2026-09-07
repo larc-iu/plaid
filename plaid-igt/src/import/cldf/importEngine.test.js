@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { zipSync, strToU8 } from 'fflate';
 import { readCldfDataset } from './readDataset.js';
 import { buildCldfDocuments } from './buildDocuments.js';
-import { deriveSetupData, resolveTargets, runCldfImport } from './importEngine.js';
+import { deriveSetupData, importLexicon, resolveTargets, runCldfImport } from './importEngine.js';
 import { documentFraction } from '../progress.js';
 import { buildCldfDataset } from '../../export/cldf.js';
 import { makeFixtureDoc } from '../../export/testFixtures.js';
@@ -62,7 +62,7 @@ const PROJECT = {
   ],
 };
 
-function stubClient({ existingDocs = [], existingItems = [] } = {}) {
+function stubClient({ existingDocs = [], existingItems = [], vocabConfig = {} } = {}) {
   const calls = [];
   let n = 0;
   const id = (p) => `${p}-${++n}`;
@@ -74,6 +74,7 @@ function stubClient({ existingDocs = [], existingItems = [] } = {}) {
   return {
     calls,
     withOperation: async (_message, fn) => fn(),
+    batched: async (fn) => fn(),
     projects: {
       get: () => Promise.resolve(PROJECT),
       listDocuments: () => Promise.resolve(existingDocs.map((d) => ({ id: d.id, name: d.name }))),
@@ -99,13 +100,14 @@ function stubClient({ existingDocs = [], existingItems = [] } = {}) {
       bulkCreate: (body) => record('spans.bulkCreate', body, { ids: body.map(() => id('span')) }),
     },
     vocabLayers: {
-      get: () => Promise.resolve({ id: 'v1', items: existingItems, config: {} }),
+      get: () => Promise.resolve({ id: 'v1', items: existingItems, config: vocabConfig }),
       setConfig: (vocabId, ns, key, value) =>
         record('vocabLayers.setConfig', { vocabId, ns, key, value }, {}),
     },
     vocabItems: {
       bulkCreate: (body) =>
         record('vocabItems.bulkCreate', { body }, { ids: body.map(() => id('item')) }),
+      patchMetadata: (itemId, body) => record('vocabItems.patchMetadata', { itemId, body }, {}),
     },
   };
 }
@@ -249,6 +251,69 @@ describe('runCldfImport', () => {
     expect(Object.keys(config.args.value)).toEqual(
       expect.arrayContaining(['gloss', 'pos', 'definition', 'morphType']),
     );
+  });
+
+  it('gives a multi-sense entry its senses in Lexicography Mode', async () => {
+    const client = stubClient({ vocabConfig: { igt: { dictionary: true } } });
+    const map = await importLexicon({
+      client,
+      vocabId: 'v1',
+      lexicon: [
+        {
+          id: 'e1',
+          form: 'perro',
+          metadata: { gloss: 'dog', definition: 'hound', pos: 'N' },
+          senses: [
+            { id: 's1', description: 'dog' },
+            { id: 's2', description: 'hound' },
+          ],
+        },
+        {
+          id: 'e2',
+          form: 'gato',
+          metadata: { gloss: 'cat' },
+          senses: [{ id: 's3', description: 'cat' }],
+        },
+      ],
+    });
+    const items = callsOf(client, 'vocabItems.bulkCreate').flatMap((c) => c.args.body);
+    // The headword keeps the entry's own fields and none of the meanings; a
+    // one-sense entry is unchanged.
+    expect(items.map((i) => [i.form, i.metadata.gloss ?? null, i.metadata.cldfEntry])).toEqual([
+      ['perro', null, 'e1'],
+      ['perro', 'dog', 'e1/s1'],
+      ['perro', 'hound', 'e1/s2'],
+      ['gato', 'cat', 'e2'],
+    ]);
+    expect(items[0].metadata).not.toHaveProperty('definition');
+    expect(items[0].metadata.pos).toBe('N');
+    expect(callsOf(client, 'vocabItems.patchMetadata').map((c) => c.args)).toEqual([
+      { itemId: map.get('e1/s1'), body: { parent: map.get('e1'), senseOrder: 1 } },
+      { itemId: map.get('e1/s2'), body: { parent: map.get('e1'), senseOrder: 2 } },
+    ]);
+  });
+
+  it('folds the senses into one flat item when the vocabulary is not a dictionary', async () => {
+    const client = stubClient();
+    await importLexicon({
+      client,
+      vocabId: 'v1',
+      lexicon: [
+        {
+          id: 'e1',
+          form: 'perro',
+          metadata: { gloss: 'dog', definition: 'hound' },
+          senses: [
+            { id: 's1', description: 'dog' },
+            { id: 's2', description: 'hound' },
+          ],
+        },
+      ],
+    });
+    const items = callsOf(client, 'vocabItems.bulkCreate').flatMap((c) => c.args.body);
+    expect(items).toHaveLength(1);
+    expect(items[0].metadata).toMatchObject({ gloss: 'dog', definition: 'hound' });
+    expect(callsOf(client, 'vocabItems.patchMetadata')).toHaveLength(0);
   });
 
   it('reuses a lexicon item already stamped with the same entry id', async () => {

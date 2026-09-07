@@ -24,6 +24,7 @@ import {
 } from '../../domain/igtConfig.js';
 import { readTagsets } from '../../domain/tagsets.js';
 import { dictionaryEnablement, DICTIONARY_KEY } from '../../domain/vocabDictionary.js';
+import { FIELD_SCOPES, FIELD_TYPES } from '../../domain/vocabFields.js';
 import { pickEn } from './fwdataParser.js';
 
 // Chunk sizes for the bulk endpoints. Each chunk is ONE server transaction
@@ -202,6 +203,7 @@ export async function importLexicon({
   lexiconFields = [],
   customFieldWs = {},
   dictionary = false,
+  variants = false,
   onProgress,
   shouldStop,
 }) {
@@ -342,6 +344,8 @@ export async function importLexicon({
 
   if (dictionary)
     await placeSenses({ client, vocabId, lexicon, senseToItem, existing, shouldStop });
+  if (dictionary && variants)
+    await placeVariants({ client, vocabId, lexicon, senseToItem, existing, shouldStop });
   return senseToItem;
 }
 
@@ -385,6 +389,84 @@ async function placeSenses({ client, vocabId, lexicon, senseToItem, existing, sh
   if (add.fieldsConfig)
     await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', add.fieldsConfig);
   await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, DICTIONARY_KEY, true);
+}
+
+// The fields FLEx's variants and complex forms land in. A variant entry
+// points at what it varies, a complex form at what it is built from, and each
+// keeps the name FLEx gives the relation ("Dialectal Variant", "Compound").
+// All four are entry-scope: FLEx owns the relation at the entry, not the sense.
+const VARIANT_FIELDS = {
+  variantOf: { inline: false, type: FIELD_TYPES.ITEM, many: true, scope: FIELD_SCOPES.ENTRY },
+  variantType: { inline: false, scope: FIELD_SCOPES.ENTRY },
+  components: { inline: false, type: FIELD_TYPES.ITEM, many: true, scope: FIELD_SCOPES.ENTRY },
+  componentType: { inline: false, scope: FIELD_SCOPES.ENTRY },
+};
+
+/**
+ * Variants and complex forms, written after creation for the same reason the
+ * sense tree is: a reference is an item id. Only items made in this run are
+ * given references, so an entry already in the lexicon keeps what it has.
+ * The fields are declared only if something landed in them.
+ */
+async function placeVariants({ client, vocabId, lexicon, senseToItem, existing, shouldStop }) {
+  // The item that IS an entry: the container of a multi-sense entry, or a
+  // senseless entry's own item, else the item its first sense became.
+  const headOf = (entry) =>
+    senseToItem.get(entry.guid) ??
+    (entry.senses.length ? senseToItem.get(entry.senses[0].guid) : undefined);
+  const byGuid = new Map(lexicon.map((e) => [e.guid, e]));
+  // A component is a LexEntry or a LexSense; either way it is one of our items.
+  const itemFor = (guid) => {
+    const direct = senseToItem.get(guid);
+    if (direct) return direct;
+    const entry = byGuid.get(guid);
+    return entry ? headOf(entry) : undefined;
+  };
+
+  const already = new Set((existing.items || []).map((it) => it.id));
+  const patches = new Map();
+  for (const entry of lexicon) {
+    if (!entry.entryRefs?.length) continue;
+    const id = headOf(entry);
+    if (!id || already.has(id)) continue;
+    const patch = patches.get(id) ?? {};
+    for (const ref of entry.entryRefs) {
+      const targets = ref.components.map(itemFor).filter((t) => t && t !== id);
+      if (!targets.length) continue;
+      const field = ref.variant ? 'variantOf' : 'components';
+      patch[field] = [...new Set([...(patch[field] ?? []), ...targets])];
+      if (ref.types.length) {
+        const typeField = ref.variant ? 'variantType' : 'componentType';
+        const types = new Set([
+          ...(patch[typeField] ? patch[typeField].split(', ') : []),
+          ...ref.types,
+        ]);
+        patch[typeField] = [...types].join(', ');
+      }
+    }
+    if (Object.keys(patch).length) patches.set(id, patch);
+  }
+  if (!patches.size) return;
+
+  const layer = await client.vocabLayers.get(vocabId);
+  const fieldsConfig = { ...(readVocabFields(layer.config) ?? {}) };
+  const used = new Set([...patches.values()].flatMap((p) => Object.keys(p)));
+  let added = false;
+  for (const name of Object.keys(VARIANT_FIELDS)) {
+    if (!used.has(name) || name in fieldsConfig) continue;
+    fieldsConfig[name] = VARIANT_FIELDS[name];
+    added = true;
+  }
+  if (added) await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', fieldsConfig);
+
+  const entries = [...patches.entries()];
+  for (let i = 0; i < entries.length; i += BULK_CHUNK) {
+    if (shouldStop?.()) throw new Error('Import cancelled');
+    const chunk = entries.slice(i, i + BULK_CHUNK);
+    await client.batched(async () => {
+      for (const [id, patch] of chunk) client.vocabItems.patchMetadata(id, patch);
+    });
+  }
 }
 
 /** Flatten a document's FLEx metadata onto the configured metadata fields. */
@@ -638,6 +720,7 @@ async function runImportImpl({
     analysisWss: config.analysisWss ?? null,
     lexiconFields: config.lexiconFields ?? [],
     dictionary: config.dictionary === true,
+    variants: config.variants === true,
     onProgress,
     shouldStop,
   });

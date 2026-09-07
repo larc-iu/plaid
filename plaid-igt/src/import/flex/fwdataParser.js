@@ -28,6 +28,8 @@ const KEEP_CLASSES = new Set([
   'WfiMorphBundle',
   'PunctuationForm',
   'LexEntry',
+  'LexEntryRef',
+  'LexEntryType',
   'LexSense',
   'LexExampleSentence',
   'CmTranslation',
@@ -302,6 +304,27 @@ export function parseFwdata(xml) {
     });
   }
 
+  // Variants and complex forms. A LexEntryRef is OWNED by the entry that IS
+  // the variant (RefType 0) or the complex form (RefType 1); its
+  // ComponentLexemes point at the entries or senses it varies, or is built
+  // from. Its type ("Dialectal Variant", "Compound") is a LexEntryType.
+  const entryTypeName = (guid) => {
+    const t = guid == null ? null : byGuid.get(guid);
+    return t ? (pickEn(multiUni(t, 'Name')) ?? pickEn(multiUni(t, 'Abbreviation'))) : null;
+  };
+  const entryRefsByOwner = new Map();
+  for (const r of cls('LexEntryRef')) {
+    const owner = r.attrs.ownerguid ?? null;
+    const components = refGuids(r, 'ComponentLexemes');
+    if (!owner || !components.length) continue;
+    const variant = String(valAttr(r, 'RefType') ?? '0') === '0';
+    const types = refGuids(r, variant ? 'VariantEntryTypes' : 'ComplexEntryTypes')
+      .map(entryTypeName)
+      .filter(Boolean);
+    if (!entryRefsByOwner.has(owner)) entryRefsByOwner.set(owner, []);
+    entryRefsByOwner.get(owner).push({ variant, components, types });
+  }
+
   // ws usage tracking (drives which fields/orthographies the import offers)
   const usage = {
     wordForms: new Set(),
@@ -475,7 +498,8 @@ export function parseFwdata(xml) {
     });
   }
 
-  // Lexicon: every entry, senses flattened (subsenses included, depth-first).
+  // Lexicon: every entry, senses flattened (subsenses included, depth-first),
+  // plus the variant / complex-form references the entry owns.
   // Each sense keeps the FLEx structure it came from: `parentSense` is the
   // guid of the sense that owns it (null for an entry's own senses) and
   // `senseIndex` its place among its siblings, so an import that wants the
@@ -507,6 +531,7 @@ export function parseFwdata(xml) {
       citationForm: multiUni(e, 'CitationForm'),
       morphType: lf?.morphType ?? null,
       homograph: Number(valAttr(e, 'HomographNumber') ?? 0),
+      entryRefs: entryRefsByOwner.get(e.attrs.guid) ?? [],
       custom: customValues(e),
       extra,
       senses,

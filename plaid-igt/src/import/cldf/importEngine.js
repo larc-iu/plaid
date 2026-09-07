@@ -12,6 +12,7 @@
 // doubles as provenance back to the source dataset.
 
 import { documentProgress } from '../progress.js';
+import { readDictionaryEnabled } from '../../domain/vocabDictionary.js';
 import {
   IGT_NAMESPACE,
   findBaselineTextLayer,
@@ -126,19 +127,51 @@ export function resolveTargets(project, build) {
 /**
  * Import the lexicon as vocabulary items. Returns Map<cldfEntryId, itemId>.
  * Resume-safe: items already stamped with a matching entry id are reused.
+ *
+ * In Lexicography Mode a CLDF entry with more than one sense becomes a
+ * headword with its senses under it, as the FLEx import does; with one sense,
+ * the sense IS the entry. Without it the senses stay folded into the entry's
+ * gloss and definition, which is all a flat vocabulary can hold.
  */
 export async function importLexicon({ client, vocabId, lexicon, onProgress, shouldStop }) {
   const check = () => {
     if (shouldStop?.()) throw new ImportCancelled();
   };
   const existing = await client.vocabLayers.get(vocabId, true);
+  // The vocabulary itself says whether it is in Lexicography Mode: project
+  // setup turned the switch on (or not) before this ran.
+  const dictionary = readDictionaryEnabled(existing.config);
   const byEntry = new Map();
   for (const item of existing.items || []) {
     const key = item.metadata?.[ITEM_SOURCE_KEY];
     if (key) byEntry.set(key, item.id);
   }
 
-  const pending = lexicon.filter((e) => !byEntry.has(e.id));
+  // What to create, headword before its senses. A sense carries the entry it
+  // belongs to and its place among its siblings; the parent is patched in
+  // afterwards, once the headword has an id.
+  const pending = [];
+  for (const entry of lexicon) {
+    if (byEntry.has(entry.id)) continue;
+    const split = dictionary && (entry.senses?.length ?? 0) > 1;
+    const metadata = { ...entry.metadata };
+    if (split) {
+      // The senses hold these now, one meaning each.
+      delete metadata.gloss;
+      delete metadata.definition;
+    }
+    pending.push({ key: entry.id, form: entry.form, metadata });
+    if (!split) continue;
+    entry.senses.forEach((sense, i) => {
+      pending.push({
+        key: `${entry.id}/${sense.id}`,
+        form: entry.form,
+        metadata: { gloss: sense.description },
+        parentKey: entry.id,
+        senseOrder: i + 1,
+      });
+    });
+  }
   // The field schema is the union of what the items actually carry, with the
   // settled core fields always present.
   const fieldKeys = new Set(['gloss', 'pos', 'definition', 'morphType']);
@@ -149,15 +182,30 @@ export async function importLexicon({ client, vocabId, lexicon, onProgress, shou
     check();
     const slice = pending.slice(i, i + CHUNK);
     const res = await client.vocabItems.bulkCreate(
-      slice.map((e) => ({
+      slice.map((p) => ({
         vocabLayerId: vocabId,
-        form: e.form,
-        metadata: { ...e.metadata, [ITEM_SOURCE_KEY]: e.id },
+        form: p.form,
+        metadata: { ...p.metadata, [ITEM_SOURCE_KEY]: p.key },
       })),
     );
-    (res?.ids || []).forEach((id, n) => byEntry.set(slice[n].id, id));
+    (res?.ids || []).forEach((id, n) => byEntry.set(slice[n].key, id));
     done += slice.length;
     onProgress?.({ phase: 'lexicon', done, total: pending.length });
+  }
+
+  // The tree, once every item has an id.
+  const placed = pending.filter((p) => p.parentKey && byEntry.has(p.key));
+  for (let i = 0; i < placed.length; i += CHUNK) {
+    check();
+    const slice = placed.slice(i, i + CHUNK);
+    await client.batched(async () => {
+      for (const p of slice) {
+        client.vocabItems.patchMetadata(byEntry.get(p.key), {
+          parent: byEntry.get(p.parentKey),
+          senseOrder: p.senseOrder,
+        });
+      }
+    });
   }
 
   // The vocab's field schema drives the management table and the item modal.

@@ -646,8 +646,10 @@ export function buildCldfDocuments(dataset, options = {}) {
   const sensesByEntry = new Map();
   for (const row of senses?.rows || []) {
     const key = cell(senses, row, 'entryReference');
+    const description = cell(senses, row, 'description');
+    if (!description) continue;
     if (!sensesByEntry.has(key)) sensesByEntry.set(key, []);
-    sensesByEntry.get(key).push(cell(senses, row, 'description'));
+    sensesByEntry.get(key).push({ id: cell(senses, row, 'id'), description });
   }
   const lexicon = [];
   for (const row of entries?.rows || []) {
@@ -657,10 +659,12 @@ export function buildCldfDocuments(dataset, options = {}) {
     const metadata = {};
     const pos = cell(entries, row, 'partOfSpeech');
     if (pos) metadata.pos = pos;
-    const glosses = sensesByEntry.get(id) || [];
+    const entrySenses = sensesByEntry.get(id) || [];
+    const glosses = entrySenses.map((sn) => sn.description);
+    // A flat vocab item has one gloss, so the other senses are kept as a
+    // definition rather than dropped. In Lexicography Mode the importer uses
+    // `senses` instead and gives each one its own entry.
     if (glosses.length) metadata.gloss = glosses[0];
-    // A CLDF entry may have many senses; Plaid's vocab item has one gloss, so
-    // the rest are kept as a definition rather than dropped.
     if (glosses.length > 1) metadata.definition = glosses.slice(1).join('; ');
     for (const name of customColumnsOf(entries)) {
       if (name === 'Plaid_ID' || name === 'Vocabulary') continue;
@@ -668,7 +672,7 @@ export function buildCldfDocuments(dataset, options = {}) {
       if (!v) continue;
       metadata[name.startsWith('Entry_') ? name.slice('Entry_'.length) : name] = v;
     }
-    lexicon.push({ id, form, metadata });
+    lexicon.push({ id, form, metadata, senses: entrySenses });
   }
 
   // --- schema for the setup wizard ---

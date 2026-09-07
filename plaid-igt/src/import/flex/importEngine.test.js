@@ -339,6 +339,96 @@ describe('importLexicon', () => {
     });
   });
 
+  it('writes variants and complex forms as references between entries', async () => {
+    const client = makeFakeClient();
+    const withRefs = [
+      ...lexicon,
+      {
+        guid: 'e3',
+        forms: { [BASE_WS]: 'заъ' },
+        citationForm: null,
+        morphType: 'stem',
+        homograph: 0,
+        entryRefs: [{ variant: true, components: ['e1'], types: ['Spelling Variant'] }],
+        senses: [{ guid: 's4', gloss: { en: '1sg' }, senseIndex: 0 }],
+      },
+      {
+        guid: 'e4',
+        forms: { [BASE_WS]: 'за-мах' },
+        citationForm: null,
+        morphType: 'stem',
+        homograph: 0,
+        entryRefs: [{ variant: false, components: ['e1', 'e2'], types: ['Compound'] }],
+        senses: [{ guid: 's5', gloss: { en: 'my tale' }, senseIndex: 0 }],
+      },
+    ];
+    const map = await importLexicon({
+      client,
+      vocabId: 'v1',
+      lexicon: withRefs,
+      baselineWs: BASE_WS,
+      dictionary: true,
+      variants: true,
+    });
+    const patches = new Map(
+      client.calls
+        .filter((c) => c.kind === 'vocabItems.patchMetadata')
+        .map((c) => [c.args.itemId, c.args.body]),
+    );
+    // A one-sense entry IS its sense's item; a multi-sense one is its container.
+    expect(patches.get(map.get('s4'))).toEqual({
+      variantOf: [map.get('s1')],
+      variantType: 'Spelling Variant',
+    });
+    expect(patches.get(map.get('s5'))).toEqual({
+      components: [map.get('s1'), map.get('e2')],
+      componentType: 'Compound',
+    });
+    const fields = client.calls
+      .filter((c) => c.kind === 'vocabLayers.setConfig' && c.args.key === 'fields')
+      .at(-1).args.value;
+    expect(fields.variantOf).toEqual({
+      inline: false,
+      type: 'item',
+      many: true,
+      scope: 'entry',
+    });
+    expect(fields.componentType).toEqual({ inline: false, scope: 'entry' });
+    // Nothing was invented for the entries that have no references.
+    expect(patches.get(map.get('s1'))).toBeUndefined();
+  });
+
+  it('leaves variants alone unless asked, even in Lexicography Mode', async () => {
+    const client = makeFakeClient();
+    const withRefs = [
+      ...lexicon,
+      {
+        guid: 'e3',
+        forms: { [BASE_WS]: 'заъ' },
+        citationForm: null,
+        morphType: 'stem',
+        homograph: 0,
+        entryRefs: [{ variant: true, components: ['e1'], types: [] }],
+        senses: [{ guid: 's4', gloss: { en: '1sg' }, senseIndex: 0 }],
+      },
+    ];
+    await importLexicon({
+      client,
+      vocabId: 'v1',
+      lexicon: withRefs,
+      baselineWs: BASE_WS,
+      dictionary: true,
+    });
+    const bodies = client.calls
+      .filter((c) => c.kind === 'vocabItems.patchMetadata')
+      .map((c) => c.args.body);
+    expect(bodies.some((b) => 'variantOf' in b)).toBe(false);
+    const fields = client.calls
+      .filter((c) => c.kind === 'vocabLayers.setConfig' && c.args.key === 'fields')
+      .at(-1).args.value;
+    expect(fields).not.toHaveProperty('variantOf');
+  });
+
   it('leaves every sense flat and the switch alone by default', async () => {
     const client = makeFakeClient();
     await importLexicon({ client, vocabId: 'v1', lexicon, baselineWs: BASE_WS });

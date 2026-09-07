@@ -193,6 +193,36 @@ describe.skipIf(!existsSync(SENA))('parseFwdata — Sena 3 sample (newer format)
     for (const ex of examples) expect(Object.values(ex.text)[0]).toBeTruthy();
   });
 
+  it('extracts variants and complex forms with the type FLEx names them by', () => {
+    const withRefs = ir.lexicon.filter((e) => e.entryRefs.length);
+    expect(withRefs).toHaveLength(19);
+    const byGuid = new Map(ir.lexicon.map((e) => [e.guid, e]));
+    const cite = (e) => Object.values(e.citationForm ?? e.forms ?? {})[0];
+    const sia = withRefs.find((e) => cite(e) === 'sia');
+    expect(sia.entryRefs).toHaveLength(1);
+    expect(sia.entryRefs[0].variant).toBe(true);
+    expect(sia.entryRefs[0].types).toEqual(['Spelling Variant']);
+    expect(sia.entryRefs[0].components.map((g) => cite(byGuid.get(g)))).toEqual(['siya']);
+    // A complex form points at every part it is built from.
+    const compound = withRefs.find((e) => cite(e) === 'mwana-cinthu');
+    expect(compound.entryRefs[0].variant).toBe(false);
+    expect(compound.entryRefs[0].types).toEqual(['Compound']);
+    expect(compound.entryRefs[0].components.map((g) => cite(byGuid.get(g)))).toEqual([
+      'mwana',
+      'cinthu',
+    ]);
+    // Every component resolves to an entry or a sense of one.
+    for (const e of withRefs) {
+      for (const ref of e.entryRefs) {
+        for (const g of ref.components) {
+          expect(
+            byGuid.has(g) || ir.lexicon.some((x) => x.senses.some((sn) => sn.guid === g)),
+          ).toBe(true);
+        }
+      }
+    }
+  });
+
   it('extracts coherent segments with words', () => {
     const segs = ir.texts.flatMap((t) => t.paragraphs.flatMap((p) => p.segments));
     expect(segs.length).toBeGreaterThan(0);

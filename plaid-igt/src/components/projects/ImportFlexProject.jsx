@@ -50,6 +50,9 @@ export const ImportFlexProject = () => {
   // Keep FLEx's sense structure and turn the vocabulary's Dictionary switch
   // on. On unless unticked: a FLEx lexicon is a dictionary.
   const [importDictionary, setImportDictionary] = useState(true);
+  // Variants and complex forms are references between entries, so they need
+  // Lexicography Mode. Off unless asked for.
+  const [importVariants, setImportVariants] = useState(false);
   const [lexiconName, setLexiconName] = useState(null);
   const [existingVocabs, setExistingVocabs] = useState([]);
   const [existingVocabId, setExistingVocabId] = useState('');
@@ -142,6 +145,9 @@ export const ImportFlexProject = () => {
     [parsed, filteredBuild, selectedWss, selectedLexFields],
   );
 
+  // Entries FLEx marks as a variant of, or a complex form built from, others.
+  const variantEntryCount = (parsed?.ir.lexicon ?? []).filter((e) => e.entryRefs.length).length;
+
   const defaultLexiconName = `${projectName.trim()} Lexicon`;
   const effectiveLexiconName = lexiconName ?? defaultLexiconName;
   const existingVocab = existingVocabs.find((v) => v.id === existingVocabId) ?? null;
@@ -161,6 +167,7 @@ export const ImportFlexProject = () => {
           name: (orthoNames[o.ws] || o.ws).trim() || o.ws,
         })),
         dictionary: importDictionary,
+        variants: importDictionary && importVariants,
       };
 
       // 1. Project + layer setup (shared with the setup wizard), once.
@@ -476,6 +483,24 @@ export const ImportFlexProject = () => {
                     </span>
                   </span>
                 </label>
+                {importDictionary && variantEntryCount > 0 && (
+                  <label className="ml-6 flex cursor-pointer items-start gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={importVariants}
+                      disabled={locked}
+                      onChange={(e) => setImportVariants(e.target.checked)}
+                    />
+                    <span>
+                      Variants and complex forms
+                      <span className="block text-xs text-muted-foreground">
+                        {variantEntryCount} {variantEntryCount === 1 ? 'entry' : 'entries'}. A
+                        variant refers to what it varies, a complex form to what it is built from.
+                      </span>
+                    </span>
+                  </label>
+                )}
               </div>
             </div>
 

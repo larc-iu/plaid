@@ -67,112 +67,133 @@ const samples = existsSync(DIR)
   : [];
 
 describe.skipIf(samples.length === 0)('fwbackup sample sweep', () => {
-  it.for(samples)('%s parses, aligns, and re-exports as LIFT', async (file) => {
-    const { xml } = readFwbackup(new Uint8Array(readFileSync(`${DIR}/${file}`)));
-    const ir = parseFwdata(xml);
-    const build = buildDocuments(ir);
-    const { documents, stats } = build;
+  it.for(samples)(
+    '%s parses, aligns, and re-exports as LIFT',
+    async (file) => {
+      const { xml } = readFwbackup(new Uint8Array(readFileSync(`${DIR}/${file}`)));
+      const ir = parseFwdata(xml);
+      const build = buildDocuments(ir);
+      const { documents, stats } = build;
 
-    // every word the file claims must align to the surface
-    expect(stats.unalignedWords).toBe(0);
-    expect(stats.warnings).toBe(0);
+      // every word the file claims must align to the surface
+      expect(stats.unalignedWords).toBe(0);
+      expect(stats.warnings).toBe(0);
 
-    for (const doc of documents) {
-      const len = cpLength(doc.body);
-      if (doc.body.length > 0) {
-        // sentences tile the body exactly (partitioning invariant)
-        expect(doc.sentences[0].begin).toBe(0);
-        expect(doc.sentences[doc.sentences.length - 1].end).toBe(len);
-        for (let i = 1; i < doc.sentences.length; i += 1) {
-          expect(doc.sentences[i].begin).toBe(doc.sentences[i - 1].end);
+      for (const doc of documents) {
+        const len = cpLength(doc.body);
+        if (doc.body.length > 0) {
+          // sentences tile the body exactly (partitioning invariant)
+          expect(doc.sentences[0].begin).toBe(0);
+          expect(doc.sentences[doc.sentences.length - 1].end).toBe(len);
+          for (let i = 1; i < doc.sentences.length; i += 1) {
+            expect(doc.sentences[i].begin).toBe(doc.sentences[i - 1].end);
+          }
+        }
+        // words in order, in bounds, non-overlapping
+        let prev = 0;
+        for (const w of doc.words) {
+          expect(w.begin).toBeGreaterThanOrEqual(prev);
+          expect(w.end).toBeGreaterThan(w.begin);
+          expect(w.end).toBeLessThanOrEqual(len);
+          prev = w.end;
         }
       }
-      // words in order, in bounds, non-overlapping
-      let prev = 0;
-      for (const w of doc.words) {
-        expect(w.begin).toBeGreaterThanOrEqual(prev);
-        expect(w.end).toBeGreaterThan(w.begin);
-        expect(w.end).toBeLessThanOrEqual(len);
-        prev = w.end;
+
+      // ---- and straight back out as LIFT (see src/export/lift.js) ----
+      // Real lexicons are where the export's edge cases live: multi-sense
+      // entries, non-Latin scripts, a non-English analysis language, FLEx
+      // custom fields (Sena has three). Imported with Lexicography Mode on, so
+      // a multi-sense entry is a headword with senses under it: the export
+      // builds entries from that tree and from nothing FLEx-specific.
+      const config = deriveImportConfig(ir, build, { lexiconFields: ir.lexiconFields ?? [] });
+      const client = lexiconCapture();
+      await importLexicon({
+        client,
+        vocabId: 'v1',
+        lexicon: ir.lexicon,
+        baselineWs: config.baselineWs,
+        primaryAnalysisWs: config.primaryAnalysisWs,
+        lexiconFields: config.lexiconFields,
+        customFieldWs: config.customFieldWs,
+        dictionary: true,
+        variants: true,
+      });
+      const { lift, ranges, entryCount, senseCount } = buildLiftLexicon({
+        vocabularies: [{ id: 'v1', items: client.items, config: client.config }],
+        options: { langs: { baseline: config.baselineWs, analysis: config.primaryAnalysisWs } },
+        rangesHref: 'sweep.lift-ranges',
+      });
+
+      for (const [label, doc] of [
+        ['lift', lift],
+        ['ranges', ranges],
+      ]) {
+        if (doc == null) continue;
+        expect(BAD_XML_CHAR.test(doc), `${label} holds characters XML 1.0 forbids`).toBe(false);
+        const dom = new DOMParser().parseFromString(doc, 'text/xml');
+        expect(dom.querySelector('parsererror'), `${label} is not well-formed`).toBeNull();
       }
-    }
 
-    // ---- and straight back out as LIFT (see src/export/lift.js) ----
-    // Real lexicons are where the export's edge cases live: multi-sense
-    // entries, non-Latin scripts, a non-English analysis language, FLEx
-    // custom fields (Sena has three). Imported with Lexicography Mode on, so
-    // a multi-sense entry is a headword with senses under it: the export
-    // builds entries from that tree and from nothing FLEx-specific.
-    const config = deriveImportConfig(ir, build, { lexiconFields: ir.lexiconFields ?? [] });
-    const client = lexiconCapture();
-    await importLexicon({
-      client,
-      vocabId: 'v1',
-      lexicon: ir.lexicon,
-      baselineWs: config.baselineWs,
-      primaryAnalysisWs: config.primaryAnalysisWs,
-      lexiconFields: config.lexiconFields,
-      customFieldWs: config.customFieldWs,
-      dictionary: true,
-    });
-    const { lift, ranges, entryCount, senseCount } = buildLiftLexicon({
-      vocabularies: [{ id: 'v1', items: client.items, config: client.config }],
-      options: { langs: { baseline: config.baselineWs, analysis: config.primaryAnalysisWs } },
-      rangesHref: 'sweep.lift-ranges',
-    });
+      const dom = new DOMParser().parseFromString(lift, 'text/xml');
+      expect(dom.querySelectorAll('entry').length).toBe(entryCount);
+      expect(dom.querySelectorAll('lexical-unit').length).toBe(entryCount);
+      expect(dom.querySelectorAll('sense, subsense').length).toBe(senseCount);
+      expect(senseCount).toBeLessThanOrEqual(client.items.length);
 
-    for (const [label, doc] of [
-      ['lift', lift],
-      ['ranges', ranges],
-    ]) {
-      if (doc == null) continue;
-      expect(BAD_XML_CHAR.test(doc), `${label} holds characters XML 1.0 forbids`).toBe(false);
-      const dom = new DOMParser().parseFromString(doc, 'text/xml');
-      expect(dom.querySelector('parsererror'), `${label} is not well-formed`).toBeNull();
-    }
+      // Grouping, checked against the items rather than against the exporter's
+      // own bookkeeping: one entry per headword (an item with no parent), which
+      // for a FLEx import is also one per distinct FLEx entry guid. Counting
+      // both here is what makes the assertion an oracle instead of a
+      // restatement, and the second count is the independent one.
+      const formed = client.items.filter((i) => i.form);
+      const headwords = formed.filter((i) => !i.metadata?.parent).length;
+      const distinctEntries = new Set(formed.map((i) => i.metadata?.flexEntry ?? `item:${i.id}`))
+        .size;
+      expect(entryCount).toBe(headwords);
+      expect(entryCount).toBe(distinctEntries);
 
-    const dom = new DOMParser().parseFromString(lift, 'text/xml');
-    expect(dom.querySelectorAll('entry').length).toBe(entryCount);
-    expect(dom.querySelectorAll('lexical-unit').length).toBe(entryCount);
-    expect(dom.querySelectorAll('sense, subsense').length).toBe(senseCount);
-    expect(senseCount).toBeLessThanOrEqual(client.items.length);
+      // A FLEx custom field pinned to the vernacular has to come out tagged
+      // vernacular. Sena's "Plural" is the real case: its values are bare
+      // strings, so the field's own writing system is the only record of what
+      // language they are in. The expectation is read straight off the file's
+      // own <CustomField wsSelector> rather than from the importer's reading of
+      // it, or this would just be the pipeline agreeing with itself.
+      for (const f of ir.customFields ?? []) {
+        if (f.class !== 'LexEntry' && f.class !== 'LexSense') continue;
+        const form = dom.querySelector(`sense field[type="${f.name}"] form`);
+        if (!form) continue;
+        const vernacular = String(f.wsSelector) === '-2';
+        expect(form.getAttribute('lang'), `custom field "${f.name}"`).toBe(
+          vernacular ? config.baselineWs : config.primaryAnalysisWs,
+        );
+      }
 
-    // Grouping, checked against the items rather than against the exporter's
-    // own bookkeeping: one entry per headword (an item with no parent), which
-    // for a FLEx import is also one per distinct FLEx entry guid. Counting
-    // both here is what makes the assertion an oracle instead of a
-    // restatement, and the second count is the independent one.
-    const formed = client.items.filter((i) => i.form);
-    const headwords = formed.filter((i) => !i.metadata?.parent).length;
-    const distinctEntries = new Set(formed.map((i) => i.metadata?.flexEntry ?? `item:${i.id}`))
-      .size;
-    expect(entryCount).toBe(headwords);
-    expect(entryCount).toBe(distinctEntries);
+      // A variant or complex form is a reference between entries, so it comes
+      // out as a <relation> pointing at an id the file itself wrote.
+      const referring = ir.lexicon.filter((e) => e.entryRefs.length).length;
+      if (referring > 0) {
+        const relations = [...dom.querySelectorAll('relation')];
+        expect(relations.length).toBeGreaterThan(0);
+        const ids = new Set(
+          [...dom.querySelectorAll('entry, sense, subsense')].map((e) => e.getAttribute('id')),
+        );
+        for (const r of relations) expect(ids.has(r.getAttribute('ref'))).toBe(true);
+        // And never as text: an item id says nothing to a reader.
+        expect(dom.querySelector('field[type="variantOf"], field[type="components"]')).toBeNull();
+      }
 
-    // A FLEx custom field pinned to the vernacular has to come out tagged
-    // vernacular. Sena's "Plural" is the real case: its values are bare
-    // strings, so the field's own writing system is the only record of what
-    // language they are in. The expectation is read straight off the file's
-    // own <CustomField wsSelector> rather than from the importer's reading of
-    // it, or this would just be the pipeline agreeing with itself.
-    for (const f of ir.customFields ?? []) {
-      if (f.class !== 'LexEntry' && f.class !== 'LexSense') continue;
-      const form = dom.querySelector(`sense field[type="${f.name}"] form`);
-      if (!form) continue;
-      const vernacular = String(f.wsSelector) === '-2';
-      expect(form.getAttribute('lang'), `custom field "${f.name}"`).toBe(
-        vernacular ? config.baselineWs : config.primaryAnalysisWs,
-      );
-    }
-
-    // ...and where the source lexicon actually has multi-sense entries, the
-    // export has to show them rejoined, not flattened back into one entry each.
-    const multiSense = ir.lexicon.filter((e) => (e.senses?.length ?? 0) > 1).length;
-    if (multiSense > 0) {
-      const rejoined = [...dom.querySelectorAll('entry')].filter(
-        (e) => e.querySelectorAll('sense').length > 1,
-      ).length;
-      expect(rejoined).toBeGreaterThan(0);
-    }
-  });
+      // ...and where the source lexicon actually has multi-sense entries, the
+      // export has to show them rejoined, not flattened back into one entry each.
+      const multiSense = ir.lexicon.filter((e) => (e.senses?.length ?? 0) > 1).length;
+      if (multiSense > 0) {
+        const rejoined = [...dom.querySelectorAll('entry')].filter(
+          (e) => e.querySelectorAll('sense').length > 1,
+        ).length;
+        expect(rejoined).toBeGreaterThan(0);
+      }
+      // The largest samples are 15MB backups whose LIFT is queried as a DOM, so
+      // the default 5s is not enough for them alongside the rest.
+    },
+    30000,
+  );
 });

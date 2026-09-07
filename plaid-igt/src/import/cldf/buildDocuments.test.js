@@ -317,7 +317,16 @@ describe('buildCldfDocuments — languages and lexicon', () => {
     );
     const { lexicon } = buildCldfDocuments(ds);
     expect(lexicon).toEqual([
-      { id: 'e1', form: 'perro', metadata: { pos: 'N', gloss: 'dog', definition: 'hound' } },
+      {
+        id: 'e1',
+        form: 'perro',
+        metadata: { pos: 'N', gloss: 'dog', definition: 'hound' },
+        // Kept whole as well, for the importer to make senses of.
+        senses: [
+          { id: 's1', description: 'dog' },
+          { id: 's2', description: 'hound' },
+        ],
+      },
     ]);
   });
 });
