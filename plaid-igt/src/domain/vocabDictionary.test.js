@@ -255,6 +255,14 @@ describe('delete and merge', () => {
     expect(byId.kat2a).toMatchObject({ parent: 'kat', senseOrder: 3 });
     expect(byId.run.seeAlso).toEqual(['kat', 'kat2a']);
   });
+
+  // Only the API or another app can write a parent that points at its own
+  // entry; the walk up past losing ancestors used to follow it forever.
+  it('terminates when a losing ancestor points at itself', () => {
+    const list = [item('a', 'a', { parent: 'a' }), item('b', 'b', { parent: 'a' })];
+    const patches = planMergeRefs(list, fields, 'b', ['a']);
+    expect(Object.fromEntries(patches.map((p) => [p.id, p.metadata])).b).toEqual({});
+  });
 });
 
 describe('examples', () => {

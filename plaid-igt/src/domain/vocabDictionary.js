@@ -494,7 +494,6 @@ export const planDeleteRefs = (items, fields, deletedIds) => {
 export const planMergeRefs = (items, fields, survivorId, loserIds) => {
   const losers = new Set(loserIds);
   losers.delete(survivorId);
-  const byId = new Map((items || []).map((it) => [it.id, it]));
   const refFields = itemRefFields(fields);
   const tree = buildSenseTree(items);
   const patches = [];
@@ -506,9 +505,10 @@ export const planMergeRefs = (items, fields, survivorId, loserIds) => {
     const p = parentOf(it);
     if (p && losers.has(p)) {
       if (it.id === survivorId) {
-        // Walk up past every losing ancestor.
+        // Walk up past every losing ancestor, through the tree rather than the
+        // raw metadata: a self-parent or a cycle there never terminates.
         let up = p;
-        while (up && (losers.has(up) || up === survivorId)) up = parentOf(byId.get(up));
+        while (up && (losers.has(up) || up === survivorId)) up = tree.parentOf.get(up) ?? null;
         meta = withParent(meta, up || null, up ? nextSenseOrder(tree, up) : null);
       } else {
         meta = withParent(meta, survivorId, order++);
