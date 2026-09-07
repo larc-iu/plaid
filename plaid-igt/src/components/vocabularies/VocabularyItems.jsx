@@ -21,7 +21,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { pageSlice, LIST_PAGE_SIZE } from '@/hooks/usePagedList';
+import { pageSlice, pageKey, useResetOnChange, LIST_PAGE_SIZE } from '@/hooks/usePagedList';
+import { listPrefKey, useStickyState, useStickySort } from '@/hooks/useStickyState';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -131,6 +132,10 @@ const ImportedExtras = ({ metadata }) => {
   );
 };
 
+// The columns this list sorts by, named once so a remembered sort on a column
+// that is no longer here is rejected rather than reaching the comparator.
+const ITEM_COLUMNS = ['form', 'gloss', 'uses'];
+
 export const VocabularyItems = ({
   vocabularyId,
   vocabulary,
@@ -180,12 +185,16 @@ export const VocabularyItems = ({
   const [searchField, setSearchField] = useState(ANY_FIELD);
   const [emptyOnly, setEmptyOnly] = useState(false);
   // The column the list is ordered by; a heading click sorts by it or flips it.
-  const [sort, setSort] = useState({ key: 'form', dir: 'asc' });
-  const onSort = (key) =>
-    setSort((prev) =>
-      prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' },
-    );
-  const [page, setPage] = useState(0);
+  const [sort, onSort] = useStickySort(
+    listPrefKey('sort', 'vocab-items', vocabularyId),
+    { key: 'form', dir: 'asc' },
+    ITEM_COLUMNS,
+  );
+  const [page, setPage] = useStickyState(
+    pageKey('vocab-items', vocabularyId),
+    0,
+    (v) => Number.isInteger(v) && v >= 0,
+  );
   const listRef = useRef(null);
   // Size the sticky left pane to fit from its own top to the viewport bottom, so
   // its footer is always visible without scrolling — measured (not a guessed
@@ -616,11 +625,13 @@ export const VocabularyItems = ({
   const paged = pageSlice(filteredItems, page);
   const currentPage = paged.page;
 
-  // Reset to page 1 when the result set is re-scoped; jump the list back to top
-  // when the page changes.
-  useEffect(() => {
-    setPage(0);
-  }, [search, searchField, emptyOnly, offTagsetOnly, sort]);
+  // Reset to page 1 when the result set is re-scoped, and only then, so the
+  // page this vocabulary was left on survives the mount; jump the list back to
+  // top when the page changes.
+  useResetOnChange(
+    `${search}|${searchField}|${emptyOnly}|${offTagsetOnly}|${sort.key}|${sort.dir}`,
+    () => setPage(0),
+  );
   useEffect(() => {
     if (listRef.current) listRef.current.scrollTop = 0;
   }, [currentPage]);
@@ -649,7 +660,7 @@ export const VocabularyItems = ({
     if (!row || !pane) return;
     const r = row.getBoundingClientRect();
     if (r.top < pane.top || r.bottom > pane.bottom) row.scrollIntoView({ block: 'center' });
-  }, [selectedId, filteredItems, currentPage]);
+  }, [selectedId, filteredItems, currentPage, setPage]);
 
   const listCols = hasGloss
     ? 'grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto]'

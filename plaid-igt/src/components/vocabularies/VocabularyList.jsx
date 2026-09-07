@@ -3,12 +3,17 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Plus } from 'lucide-react';
 import { SortHeader } from '@/components/ui/list-search';
+import { listPrefKey, useStickySort } from '@/hooks/useStickyState';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 import { notifyWarning, isPermissionError } from '@/utils/feedback';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+
+// The columns this list sorts by, named once so a remembered sort on a column
+// that is no longer here is rejected rather than reaching the comparator.
+const VOCABULARY_COLUMNS = ['name', 'items', 'updated'];
 
 export const VocabularyList = () => {
   useDocumentTitle('Vocabularies');
@@ -18,7 +23,11 @@ export const VocabularyList = () => {
   // vocabLayerId -> item count (number), or undefined while still loading.
   const [itemCounts, setItemCounts] = useState({});
   const [countsLoading, setCountsLoading] = useState(true);
-  const [sort, setSort] = useState({ key: 'name', dir: 'asc' });
+  const [sort, onSort] = useStickySort(
+    listPrefKey('sort', 'vocabularies'),
+    { key: 'name', dir: 'asc' },
+    VOCABULARY_COLUMNS,
+  );
   const { client, logout } = useAuth();
 
   const fetchVocabularies = async () => {
@@ -84,11 +93,6 @@ export const VocabularyList = () => {
       cancelled = true;
     };
   }, [vocabularies, client]);
-
-  const onSort = (key) =>
-    setSort((prev) =>
-      prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' },
-    );
 
   const sortedVocabularies = useMemo(() => {
     const extract = {

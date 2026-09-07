@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Plus } from 'lucide-react';
 import { SortHeader } from '@/components/ui/list-search';
+import { listPrefKey, useStickySort } from '@/hooks/useStickyState';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
@@ -10,6 +11,10 @@ import { notifyWarning } from '@/utils/feedback';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+
+// The columns this list sorts by, named once so a remembered sort on a column
+// that is no longer here is rejected rather than reaching the comparator.
+const PROJECT_COLUMNS = ['name', 'documents', 'words', 'updated'];
 
 export const ProjectList = () => {
   useDocumentTitle('Projects');
@@ -21,7 +26,11 @@ export const ProjectList = () => {
   // word-token layer. `undefined` (missing key) means "still loading".
   const [wordCounts, setWordCounts] = useState({});
   const [wordsLoading, setWordsLoading] = useState(true);
-  const [sort, setSort] = useState({ key: 'updated', dir: 'desc' });
+  const [sort, onSort] = useStickySort(
+    listPrefKey('sort', 'projects'),
+    { key: 'updated', dir: 'desc' },
+    PROJECT_COLUMNS,
+  );
 
   const fetchProjects = async () => {
     try {
@@ -88,11 +97,6 @@ export const ProjectList = () => {
       cancelled = true;
     };
   }, [projects, client]);
-
-  const onSort = (key) =>
-    setSort((prev) =>
-      prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' },
-    );
 
   const sortedProjects = useMemo(() => {
     const extract = {

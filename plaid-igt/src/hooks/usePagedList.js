@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
+import { listPrefKey, useStickyState } from '@/hooks/useStickyState';
 
 // Rows per page for every browsable list in the app. A call site should never
 // have to name a number, so that the lists page alike by default.
@@ -25,16 +26,35 @@ export const pageSlice = (items, page, pageSize = LIST_PAGE_SIZE) => {
   };
 };
 
+/** The storage key for a list's remembered page, or null to not remember one. */
+export const pageKey = (list, id) => listPrefKey('page', list, id);
+
+const isPage = (v) => Number.isInteger(v) && v >= 0;
+
+// Turn the page back to the first when `resetKey` changes, and only then. It
+// compares against the last value rather than skipping the first effect run:
+// StrictMode mounts, unmounts and mounts again on the same refs, so a run-once
+// guard would let that second mount clear a page restored from storage. The
+// skipped mount run was a no-op before this anyway, since the page starts at 0.
+export const useResetOnChange = (resetKey, reset) => {
+  const last = useRef(resetKey);
+  useEffect(() => {
+    if (last.current === resetKey) return;
+    last.current = resetKey;
+    reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetKey]);
+};
+
 // Paging state for a client-side list. `resetKey` is whatever re-scopes the
 // result set (the search text, the sort): when it changes the reader is looking
 // at a different list, so page 1 is where they mean to be. Keep it a primitive,
-// since it is an effect dependency.
-export const usePagedList = (items, { pageSize = LIST_PAGE_SIZE, resetKey } = {}) => {
-  const [page, setPage] = useState(0);
+// since it is an effect dependency. `storageKey` (from `pageKey`) remembers the
+// page across visits; without one the paging is per-mount as before.
+export const usePagedList = (items, { pageSize = LIST_PAGE_SIZE, resetKey, storageKey } = {}) => {
+  const [page, setPage] = useStickyState(storageKey ?? null, 0, isPage);
 
-  useEffect(() => {
-    setPage(0);
-  }, [resetKey]);
+  useResetOnChange(resetKey, () => setPage(0));
 
   const slice = useMemo(() => pageSlice(items, page, pageSize), [items, page, pageSize]);
   return { ...slice, setPage };

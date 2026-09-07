@@ -6,7 +6,8 @@ import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/util
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { usePagedList } from '@/hooks/usePagedList';
+import { pageKey, usePagedList } from '@/hooks/usePagedList';
+import { listPrefKey, useStickySort } from '@/hooks/useStickyState';
 import {
   Dialog,
   DialogContent,
@@ -19,6 +20,10 @@ import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/comp
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { findBaselineTextLayer } from '@/domain/igtConfig';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
+
+// The columns this list sorts by, named once so a remembered sort on a column
+// that is no longer here is rejected rather than reaching the comparator.
+const DOCUMENT_COLUMNS = ['name', 'words', 'updated'];
 
 export const DocumentList = ({
   documents,
@@ -37,7 +42,11 @@ export const DocumentList = ({
   const [wordCounts, setWordCounts] = useState({});
   const [hasWordLayer, setHasWordLayer] = useState(true);
   const [wordsLoading, setWordsLoading] = useState(true);
-  const [sort, setSort] = useState({ key: 'updated', dir: 'desc' });
+  const [sort, onSort] = useStickySort(
+    listPrefKey('sort', 'documents', projectId),
+    { key: 'updated', dir: 'desc' },
+    DOCUMENT_COLUMNS,
+  );
   const [filter, setFilter] = useState('');
 
   // Per-document word counts: one aggregate query over the project's primary
@@ -117,11 +126,6 @@ export const DocumentList = ({
     }
   };
 
-  const onSort = (key) =>
-    setSort((prev) =>
-      prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' },
-    );
-
   const sortedDocuments = useMemo(() => {
     const q = filter.trim().toLowerCase();
     const matched = q
@@ -144,6 +148,7 @@ export const DocumentList = ({
 
   const paged = usePagedList(sortedDocuments, {
     resetKey: `${filter}|${sort.key}|${sort.dir}`,
+    storageKey: pageKey('documents', projectId),
   });
 
   const renderWords = (documentId) => {

@@ -67,9 +67,8 @@ export const ListHint = ({ children, className }) => (
 );
 
 // A column heading that sorts the list: click to sort by it, click again to
-// flip. `sort` is `{key, dir}`; the active column wears an arrow. The state
-// update behind `onSort` is the caller's (same key flips `dir`, a new key
-// starts ascending), since a hook file may not export plain functions.
+// flip. `sort` is `{key, dir}` and the active column wears an arrow. Both come
+// from `useStickySort`, which owns the toggle and remembers the order.
 export const SortHeader = ({ field, label, sort, onSort, className }) => {
   const active = sort.key === field;
   const Arrow = sort.dir === 'asc' ? ArrowUp : ArrowDown;
