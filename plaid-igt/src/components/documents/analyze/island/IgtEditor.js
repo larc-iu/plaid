@@ -57,6 +57,7 @@ import {
   groupRankedByHeadword,
   readDictionaryEnabled,
 } from '@/domain/vocabDictionary';
+import { FIELD_TYPES } from '@/domain/vocabFields';
 
 // The number that tells an entry apart, drawn after its form: a homonym
 // subscript (a NUMBER, form₂) for a vocabulary without Lexicography Mode, a
@@ -4475,6 +4476,22 @@ export class IgtEditor {
     return idx != null ? idx : null;
   }
 
+  // A vocabulary's entries by id, for the fields that hold references to them.
+  // Cached like the homonym index, and invalidated with the same key: this is
+  // read once per row of a popover that lists the whole lexicon.
+  _vocabItemIndexFor(vocabId) {
+    const dv = this.doc?.dataVersion;
+    if (this._itemIndexKey !== dv) {
+      this._itemIndexKey = dv;
+      this._itemIndexCache = new Map();
+    }
+    if (!this._itemIndexCache.has(vocabId)) {
+      const vocab = (this.doc?.vocabularies || {})[vocabId];
+      this._itemIndexCache.set(vocabId, new Map((vocab?.items || []).map((i) => [i.id, i])));
+    }
+    return this._itemIndexCache.get(vocabId);
+  }
+
   // The secondary line for a popover item row: values of the vocab's
   // inline-flagged custom fields (vocab config igt.fields {name: {inline}}),
   // falling back to the item's first non-empty metadata value when no field
@@ -4485,8 +4502,25 @@ export class IgtEditor {
     const fields = readVocabFields(vocab?.config) || {};
     const inlineNames = Object.keys(fields).filter((n) => fields[n]?.inline);
     const names = inlineNames.length ? inlineNames : Object.keys(meta);
+    // A field of type `item` holds entry ids. It reads as the entries they
+    // name, numbered as everything else in the popover is.
+    const hasRefs = names.some((n) => fields[n]?.type === FIELD_TYPES.ITEM);
+    const byId = hasRefs ? this._vocabItemIndexFor(vocab?.id) : null;
+    const numbers = hasRefs ? this._homonymIndexFor(vocab?.id) : null;
+    const refLabel = (id) => {
+      const target = byId.get(id);
+      if (!target) return '';
+      const n = numbers?.get(id);
+      return typeof n === 'string' && n ? `${target.form} ${n}` : (target.form ?? '');
+    };
+    const valueOf = (n) => {
+      if (n === 'morphType') return morphTypeLabel(meta[n]);
+      if (!hasRefs || fields[n]?.type !== FIELD_TYPES.ITEM) return meta[n];
+      const v = meta[n];
+      return (Array.isArray(v) ? v : v ? [v] : []).map(refLabel).filter(Boolean).join(', ');
+    };
     const vals = names
-      .map((n) => (n === 'morphType' ? morphTypeLabel(meta[n]) : meta[n]))
+      .map(valueOf)
       .filter((v) => v != null && String(v).trim() !== '')
       .map(String);
     return inlineNames.length ? vals.join(' · ') : (vals[0] ?? '');
