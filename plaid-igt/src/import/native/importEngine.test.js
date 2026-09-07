@@ -760,7 +760,12 @@ describe('planVocabRelink — a dictionary survives the round trip', () => {
   it('maps parents, Entry fields and example references onto the new ids', () => {
     const { patches, dropped } = planVocabRelink(vocabData, itemIdMap, docMaps);
     const byId = Object.fromEntries(patches.map((p) => [p.id, p.metadata]));
-    expect(byId['new-sense']).toEqual({ gloss: 'lion', parent: 'new-head', senseOrder: 1 });
+    expect(byId['new-sense']).toEqual({
+      gloss: 'lion',
+      parent: 'new-head',
+      senseOrder: 1,
+      nativeImportId: 'old-sense',
+    });
     expect(byId['new-run']).toEqual({
       gloss: 'run',
       variantOf: 'new-head',
@@ -769,11 +774,36 @@ describe('planVocabRelink — a dictionary survives the round trip', () => {
         { document: 'new-doc', token: 'new-tok' },
         { text: 'imported text', translation: 'stays' },
       ],
+      nativeImportId: 'old-run',
     });
     // A parent that did not survive: the item becomes a headword.
-    expect(byId['new-orphan']).toEqual({});
+    expect(byId['new-orphan']).toEqual({ nativeImportId: 'old-orphan' });
     expect(byId['new-head']).toBeUndefined(); // nothing to relink
     expect(dropped).toEqual(['run: seeAlso', 'run: example', 'x: parent']);
+  });
+
+  it('restamps every relinked item so a resume does not create it again', () => {
+    // The relink replaces the whole metadata map with the archive's copy. That
+    // copy has no stamp of this run, and an archive exported from a project
+    // that was itself imported carries the stale one.
+    const stale = {
+      ...vocabData,
+      items: [
+        { id: 'old-head', form: 'lion', metadata: { gloss: 'lion' } },
+        {
+          id: 'old-sense',
+          form: 'lion',
+          metadata: { parent: 'old-head', senseOrder: 1, nativeImportId: 'from-an-older-archive' },
+        },
+      ],
+    };
+    const { patches } = planVocabRelink(stale, itemIdMap, docMaps);
+    expect(patches).toEqual([
+      {
+        id: 'new-sense',
+        metadata: { parent: 'new-head', senseOrder: 1, nativeImportId: 'old-sense' },
+      },
+    ]);
   });
 
   it('keeps an example pointing into a document an earlier run finished', async () => {

@@ -811,7 +811,14 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
   // exists. Idempotent, so a resume redoes it harmlessly.
   for (const vocab of archive.vocabularies) {
     if (shouldStop?.()) throw new ImportCancelled();
-    await relinkVocabStructure({ client, vocabData: vocab.data, itemIdMap, docMaps, warnings });
+    await relinkVocabStructure({
+      client,
+      vocabData: vocab.data,
+      itemIdMap,
+      docMaps,
+      warnings,
+      shouldStop,
+    });
   }
   onProgress?.({ phase: 'done', ...results });
   return { ...results, warnings };
@@ -902,16 +909,30 @@ export function planVocabRelink(vocabData, itemIdMap, docMaps) {
       else delete next.examples;
       changed = true;
     }
-    if (changed) out.push({ id: newId, metadata: next });
+    // The write below replaces the whole map, and `meta` is the ARCHIVE's copy,
+    // which carries no stamp of this run (and may carry the stale one of the
+    // run that produced the archive). Restamping here is what lets a resume
+    // still recognize these items instead of creating them a second time.
+    if (changed) out.push({ id: newId, metadata: { ...next, [ITEM_SOURCE_KEY]: it.id } });
   }
   return { patches: out, dropped };
 }
 
-async function relinkVocabStructure({ client, vocabData, itemIdMap, docMaps, warnings }) {
+async function relinkVocabStructure({
+  client,
+  vocabData,
+  itemIdMap,
+  docMaps,
+  warnings,
+  shouldStop,
+}) {
   const { patches, dropped } = planVocabRelink(vocabData, itemIdMap, docMaps);
-  for (const p of patches) {
-    if (Object.keys(p.metadata).length) await client.vocabItems.setMetadata(p.id, p.metadata);
-    else await client.vocabItems.deleteMetadata(p.id);
+  for (let i = 0; i < patches.length; i += CHUNK) {
+    if (shouldStop?.()) throw new ImportCancelled();
+    const chunk = patches.slice(i, i + CHUNK);
+    await client.batched(async () => {
+      for (const p of chunk) client.vocabItems.setMetadata(p.id, p.metadata);
+    });
   }
   if (dropped.length) {
     warnings.push(
