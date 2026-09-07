@@ -178,20 +178,31 @@ def vocab_entries(items, vocab_name, dictionary: bool = False) -> List[dict]:
     that leaves its own gloss empty says nothing the senses under it do not say
     better. Listing it would spend the lexicon budget on "form: ?" and offer
     the model an entry nothing is meant to link to, so it is left out. Its
-    senses share its form and are in this list already.
+    senses carry its form and are in this list already.
 
     Only with the mode on. Turning it off leaves the parent keys where they
     are, and the app then shows every item as an ordinary entry a word can be
-    linked to, so skipping one here would hide it from the model alone."""
-    parents = set()
+    linked to, so skipping one here would hide it from the model alone.
+
+    And only when a sense really does carry the headword's form. Nothing
+    enforces that: a sense can be added under another form, or renamed away
+    from its headword. Where that has happened the headword is the only thing
+    carrying its own form, so dropping it would take that form out of the
+    model's reach entirely."""
+    covered = set()
     if dictionary:
-        parents = {(it.get('metadata') or {}).get('parent') for it in items}
-        parents.discard(None)
+        sense_forms = {}
+        for it in items:
+            parent = (it.get('metadata') or {}).get('parent')
+            if parent:
+                sense_forms.setdefault(parent, set()).add((it.get('form') or '').casefold())
+        covered = {it['id'] for it in items
+                   if (it.get('form') or '').casefold() in sense_forms.get(it.get('id'), ())}
     entries = []
     for it in items:
         meta = it.get('metadata') or {}
         gloss = _field(meta, 'gloss')
-        if not gloss and it.get('id') in parents:
+        if not gloss and it.get('id') in covered:
             continue
         entries.append({
             'id': it['id'], 'form': it.get('form') or '', 'vocab': vocab_name or '',

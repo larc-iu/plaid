@@ -52,6 +52,18 @@ def test_vocab_entries_leave_out_a_headword_that_only_holds_senses():
     assert [e['id'] for e in flat] == ['h', 's1', 's2', 'g', 'gs', 'bare']
 
 
+def test_a_headword_no_sense_spells_out_is_kept():
+    # Nothing makes a sense carry its headword's form: it can be added under
+    # another, or renamed. Then the headword is the only thing spelling it.
+    items = [
+        {'id': 'h', 'form': 'kwatha', 'metadata': {}},
+        {'id': 's1', 'form': 'kuphika', 'metadata': {'gloss': 'do', 'parent': 'h'}},
+    ]
+    entries = llm.vocab_entries(items, 'L', True)
+    assert [e['id'] for e in entries] == ['h', 's1']
+    assert [e['form'] for e in llm.matching_entries(entries, ['kwatha'])] == ['kwatha']
+
+
 def test_rank_examples_prefers_shared_forms_then_character_overlap():
     pool = [{'words': ['kedi', 'uyuyor'], 'line': 'b'}, {'words': ['ev', 'geliyor'], 'line': 'a'},
             {'words': ['evler', 'geliyorum'], 'line': 'c'}]
