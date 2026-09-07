@@ -121,6 +121,30 @@ test('an entry says where it sits, and can be freed and placed again', async ({ 
   await expect(page.getByLabel('Etymology')).toHaveCount(0);
 });
 
+test('the entries spelled alike are reordered by dragging in a dialog', async ({ page }) => {
+  // A second entry spelled kat: now there are two, numbered 1 and 2.
+  const twin = (await client.vocabItems.create(vocab.id, `kat${stamp}`, { gloss: 'twin' })).id;
+  try {
+    await openView(page, twin);
+    await expect(page.getByRole('heading', { level: 3 })).toContainText('2');
+    await page
+      .getByRole('button', { name: /Reorder the entries spelled this way/ })
+      .first()
+      .click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toContainText('twin');
+    await dialog
+      .locator(`[data-homograph="${twin}"]`)
+      .dragTo(dialog.locator(`[data-homograph="${ids.kat}"]`), { targetPosition: { x: 40, y: 4 } });
+    await expect.poll(() => meta(twin)).toMatchObject({ homograph: 1 });
+    await expect.poll(() => meta(ids.kat)).toMatchObject({ homograph: 2 });
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('heading', { level: 3 })).toContainText('1');
+  } finally {
+    await client.vocabItems.delete(twin).catch(() => {});
+  }
+});
+
 test('a reference field is a picker whose value is a link to the entry', async ({ page }) => {
   await openView(page, ids.run);
   const chip = page.getByRole('link', { name: new RegExp(`kat${stamp}`) }).first();

@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { ChevronDown, ChevronRight, X, FileText, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { humanizeFieldName } from '@/domain/vocabFields';
 import {
@@ -30,49 +31,6 @@ const ItemLink = ({ item, homonyms, itemTo, className }) => (
     ) : null}
   </Link>
 );
-
-/**
- * A sense's number, editable: type the number it should be shown with and
- * press Enter (or leave the box), and it moves there among its siblings.
- * The box only ever edits the last segment ("3.1" -> the 1).
- */
-const SenseNumber = ({ number, canManage, onSet, className, alone = false }) => {
-  const parts = String(number ?? '').split('.');
-  const last = parts.pop();
-  const prefix = parts.length ? `${parts.join('.')}.` : '';
-  const [draft, setDraft] = useState(last);
-  useEffect(() => setDraft(last), [last]);
-  // The box always snaps back to what the sense is numbered; when the
-  // number changes, the effect above brings the new one in.
-  const commit = () => {
-    if (draft.trim() !== '' && draft.trim() !== last) onSet(draft.trim());
-    setDraft(last);
-  };
-  // Nothing to move an only sense among, so its number is plain text.
-  if (!canManage || alone) return <span className={cn('tabular-nums', className)}>{number}</span>;
-  return (
-    <span className={cn('inline-flex items-center tabular-nums', className)}>
-      {prefix}
-      <Input
-        aria-label="Sense number"
-        inputMode="numeric"
-        className="h-6 w-10 px-1 text-center text-xs tabular-nums"
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            commit();
-          } else if (e.key === 'Escape') {
-            setDraft(last);
-            e.currentTarget.blur();
-          }
-        }}
-      />
-    </span>
-  );
-};
 
 const Chip = ({ children, onRemove, disabled }) => (
   <span className="inline-flex max-w-full items-center gap-1 rounded border bg-muted/40 px-1.5 py-0.5 text-sm">
@@ -158,7 +116,7 @@ export const EntryPlace = ({
   canManage,
   onMoveUnder,
   onDrop,
-  onSetNumber,
+  onReorderHomographs,
   newSenseTo,
 }) => {
   // Which item the picker is choosing a parent for: this one (the lone
@@ -167,7 +125,6 @@ export const EntryPlace = ({
   const parentId = tree.parentOf.get(item.id);
   const parent = parentId ? tree.byId.get(parentId) : null;
   const number = tree.numberOf.get(item.id);
-  const alone = parentId ? (tree.childrenOf.get(parentId) || []).length < 2 : true;
   const exclude = useMemo(
     () =>
       pickFor ? new Set([pickFor, ...descendantsOf(tree, pickFor).map((d) => d.id)]) : new Set(),
@@ -181,15 +138,8 @@ export const EntryPlace = ({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         {parent ? (
           <span>
-            Sense{' '}
-            <SenseNumber
-              number={number}
-              canManage={canManage}
-              alone={alone}
-              onSet={(n) => onSetNumber(item.id, n)}
-              className="mx-0.5"
-            />{' '}
-            of <ItemLink item={parent} homonyms={homonyms} itemTo={itemTo} />
+            Sense <span className="tabular-nums">{number}</span> of{' '}
+            <ItemLink item={parent} homonyms={homonyms} itemTo={itemTo} />
           </span>
         ) : (
           <span>Entry</span>
@@ -248,6 +198,7 @@ export const EntryPlace = ({
           canManage={canManage}
           onDrop={onDrop}
           onPickEntry={(id) => setPickFor(id)}
+          onReorderHomographs={onReorderHomographs}
         />
       )}
     </div>
@@ -268,7 +219,17 @@ const zoneAt = (event) => {
  * the open one marked. Rows drag; while one is in the air two extra rows
  * appear at the top to drop it on: Own entry, and Another entry.
  */
-const SenseTree = ({ root, current, tree, homonyms, itemTo, canManage, onDrop, onPickEntry }) => {
+const SenseTree = ({
+  root,
+  current,
+  tree,
+  homonyms,
+  itemTo,
+  canManage,
+  onDrop,
+  onPickEntry,
+  onReorderHomographs,
+}) => {
   const rows = [{ item: root, depth: 0 }];
   const walk = (id, depth) => {
     for (const c of tree.childrenOf.get(id) || []) {
@@ -367,9 +328,17 @@ const SenseTree = ({ root, current, tree, homonyms, itemTo, canManage, onDrop, o
             )}
             style={{ paddingLeft: `${0.75 + depth * 1.25}rem` }}
           >
-            <span className="w-8 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-              {depth === 0 ? homonyms?.get(item.id) || '' : tree.numberOf.get(item.id)}
-            </span>
+            {depth === 0 ? (
+              <HomographNumber
+                number={homonyms?.get(item.id) || ''}
+                onOpen={onReorderHomographs}
+                className="w-8 shrink-0 text-right text-xs"
+              />
+            ) : (
+              <span className="w-8 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                {tree.numberOf.get(item.id)}
+              </span>
+            )}
             <span className="min-w-0 truncate">
               {isCurrent ? (
                 <>
@@ -388,6 +357,118 @@ const SenseTree = ({ root, current, tree, homonyms, itemTo, canManage, onDrop, o
         );
       })}
     </ul>
+  );
+};
+
+/**
+ * An entry's homograph number, a button that opens the dialog to reorder
+ * the entries spelled that way. Nothing when the entry is the only one.
+ */
+export const HomographNumber = ({ number, onOpen, className }) => {
+  if (!number) return <span className={className} />;
+  return (
+    <button
+      type="button"
+      title="Reorder the entries spelled this way"
+      aria-label={`${number}. Reorder the entries spelled this way`}
+      onClick={onOpen}
+      className={cn(
+        'rounded px-0.5 tabular-nums text-muted-foreground underline decoration-dotted underline-offset-2 hover:bg-accent hover:text-foreground',
+        className,
+      )}
+    >
+      {number}
+    </button>
+  );
+};
+
+/**
+ * The entries that share a form, in order, for dragging into a new order.
+ * Each drop writes the numbers straight away.
+ */
+export const HomographDialog = ({ open, onOpenChange, group, currentId, onReorder }) => {
+  const [dragId, setDragId] = useState(null);
+  const [overIdx, setOverIdx] = useState(null);
+  const form = group[0]?.form ?? '';
+  const end = () => {
+    setDragId(null);
+    setOverIdx(null);
+  };
+  // Where a drop over row `i` lands, as an index in the list without the
+  // dragged row: before or after that row.
+  const landing = (e, i) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const before = e.clientY - rect.top < rect.height / 2;
+    const from = group.findIndex((x) => x.id === dragId);
+    return i - (from < i ? 1 : 0) + (before ? 0 : 1);
+  };
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Entries spelled “{form}”</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">Drag to reorder. The order is their number.</p>
+        <ol className="divide-y rounded-md border">
+          {group.map((r, i) => (
+            <li
+              key={r.id}
+              data-homograph={r.id}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', r.id);
+                setDragId(r.id);
+              }}
+              onDragEnd={end}
+              onDragOver={(e) => {
+                if (!dragId || dragId === r.id) return;
+                e.preventDefault();
+                setOverIdx(landing(e, i));
+              }}
+              onDrop={(e) => {
+                if (!dragId || dragId === r.id) return;
+                e.preventDefault();
+                // Where the LAST dragover said, not where this event says: a
+                // layout shift between the two would move the rows under
+                // the pointer.
+                const at = overIdx ?? landing(e, i);
+                const ids = group.map((x) => x.id).filter((id) => id !== dragId);
+                ids.splice(at, 0, dragId);
+                onReorder(ids);
+                end();
+              }}
+              className={cn(
+                'flex cursor-grab items-baseline gap-3 px-3 py-1.5 text-sm',
+                r.id === currentId && 'bg-accent/60',
+                dragId === r.id && 'opacity-40',
+                // The landing line: above the row that would follow the
+                // dropped one, or under the last row.
+                overIdx != null &&
+                  i === overIdx + (group.findIndex((x) => x.id === dragId) < overIdx ? 1 : 0) &&
+                  'shadow-[inset_0_2px_0_0_hsl(var(--primary))]',
+                overIdx != null &&
+                  i === group.length - 1 &&
+                  overIdx >= group.length - 1 &&
+                  'shadow-[inset_0_-2px_0_0_hsl(var(--primary))]',
+              )}
+            >
+              <span className="w-6 shrink-0 text-right tabular-nums text-muted-foreground">
+                {i + 1}
+              </span>
+              <span className="font-medium underline decoration-dotted underline-offset-2">
+                {r.form}
+              </span>
+              {r.metadata?.gloss ? (
+                <span className="truncate text-xs text-muted-foreground">
+                  {String(r.metadata.gloss)}
+                </span>
+              ) : null}
+            </li>
+          ))}
+        </ol>
+      </DialogContent>
+    </Dialog>
   );
 };
 

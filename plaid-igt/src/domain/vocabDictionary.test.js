@@ -7,9 +7,9 @@ import {
   descendantsOf,
   nextSenseOrder,
   withParentSet,
-  planSenseMove,
-  planSenseSetNumber,
   planSenseDrop,
+  homographGroup,
+  planHomographOrder,
   referencesTo,
   validateVocabRefs,
   planDeleteRefs,
@@ -89,30 +89,33 @@ describe('placing and moving senses', () => {
     expect(freed.gloss).toBe('lion');
   });
 
-  it('moves a sense among its siblings by renumbering them densely', () => {
-    const t = buildSenseTree(items());
-    // kat3 (order 1), kat2 (order 2): move kat2 up
-    expect(planSenseMove(t, 'kat2', -1)).toEqual([
-      { id: 'kat2', metadata: { gloss: 'lion', parent: 'kat', senseOrder: 1 } },
-      { id: 'kat3', metadata: { gloss: 'scratch', parent: 'kat', senseOrder: 2 } },
+  it('orders homographs by their stored number, and renumbers them on demand', () => {
+    const list = [
+      item('x1', 'x', { gloss: 'late', homograph: 2 }),
+      item('x2', 'x', { gloss: 'early', homograph: 1 }),
+      item('x3', 'x', { gloss: 'unnumbered' }),
+      item('x1s', 'x', { gloss: 'a sense', parent: 'x1' }),
+      item('y', 'y', {}),
+    ];
+    expect(homographGroup(list, 'x1s').map((r) => r.id)).toEqual(['x2', 'x1', 'x3']);
+    expect(homographGroup(list, 'y')).toEqual([]);
+    const n = buildItemNumbers(list);
+    expect([n.get('x2'), n.get('x1'), n.get('x3'), n.get('x1s'), n.get('y')]).toEqual([
+      '1',
+      '2',
+      '3',
+      '2.1',
+      '',
     ]);
-    expect(planSenseMove(t, 'kat3', -1)).toEqual([]);
-    expect(planSenseMove(t, 'kat', 1)).toEqual([]);
-  });
-
-  it('places a sense at the number it is shown with', () => {
-    const t = buildSenseTree(items());
-    // kat3 is shown as 1, kat2 as 2: ask for kat3 to be 2.
-    expect(planSenseSetNumber(t, 'kat3', 2)).toEqual([
-      { id: 'kat2', metadata: { gloss: 'lion', parent: 'kat', senseOrder: 1 } },
-      { id: 'kat3', metadata: { gloss: 'scratch', parent: 'kat', senseOrder: 2 } },
+    // Move the unnumbered one first: everyone whose number changes is written.
+    expect(planHomographOrder(homographGroup(list, 'x1'), ['x3', 'x2', 'x1'])).toEqual([
+      { id: 'x3', metadata: { gloss: 'unnumbered', homograph: 1 } },
+      { id: 'x2', metadata: { gloss: 'early', homograph: 2 } },
+      { id: 'x1', metadata: { gloss: 'late', homograph: 3 } },
     ]);
-    // Already there, out of range, or not a number: nothing.
-    expect(planSenseSetNumber(t, 'kat3', 1)).toEqual([]);
-    expect(planSenseSetNumber(t, 'kat3', 0)).toEqual([]);
-    expect(planSenseSetNumber(t, 'kat2', 99)).toEqual([]);
-    expect(planSenseSetNumber(t, 'kat2', 'x')).toEqual([]);
-    expect(planSenseSetNumber(t, 'kat2a', 1)).toEqual([]);
+    expect(planHomographOrder(homographGroup(list, 'x1'), ['x2', 'x1', 'x3'])).toEqual([
+      { id: 'x3', metadata: { gloss: 'unnumbered', homograph: 3 } },
+    ]);
   });
 
   it('gives every item one dotted number, entries told apart by a first segment', () => {

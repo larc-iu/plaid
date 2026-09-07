@@ -352,8 +352,8 @@ The line under the headword says where an entry sits: **Entry**, or **Sense 3 of
 Beside it, **5 senses** unfolds the whole entry as a tree, numbered, each sense a link, and **Add sense** writes a new one directly under the open entry.
 Senses are rearranged by dragging in that tree: drop one above or below another to reorder them, onto one to make it a sense of that sense, onto **Make separate entry** to make it an entry of its own, or onto **Move to other entry** and pick where it goes.
 A whole entry can be dragged the same way, senses and all.
-To put a sense at a particular number instead, type over the number on that line and press Enter.
 An entry with no senses yet has nothing to drag, so it keeps **Make a sense of…**.
+When several entries share a form, the number after the headword is a button: it opens the list of those entries, and dragging them into a new order gives them their numbers.
 **Make its own entry** takes a sense back out.
 The item list gains a **By entry** view, beside **Flat**, that draws senses indented under their entry.
 A search shows every matching entry in either view, so a sense that matches is shown even when its entry does not.

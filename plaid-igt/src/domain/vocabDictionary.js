@@ -15,6 +15,8 @@
 //               the user's, not the app's.
 //   senseOrder  an integer ordering an item among its siblings. Missing
 //               orders sort after the numbered ones, in creation order.
+//   homograph   an integer ordering an ENTRY among the entries spelled the
+//               same. Same fallback.
 //   examples    a list of example references, each {document, token}, chosen
 //               from the concordance. A FLEx import stores {text, translation}
 //               entries in the same list; those are read-only text.
@@ -27,6 +29,10 @@ import { IGT_NAMESPACE } from './igtConfig.js';
 
 export const PARENT_KEY = 'parent';
 export const SENSE_ORDER_KEY = 'senseOrder';
+// The order of an entry among the entries that share its form. A FLEx
+// import writes FLEx's homograph number here; reordering in the app
+// rewrites it 1..n. Missing or zero sorts after the numbered ones.
+export const HOMOGRAPH_KEY = 'homograph';
 export const EXAMPLES_KEY = 'examples';
 export const DICTIONARY_KEY = 'dictionary';
 
@@ -251,10 +257,8 @@ export const buildSenseTree = (items) => {
  */
 export const buildItemNumbers = (items) => {
   const tree = buildSenseTree(items);
-  const byForm = new Map();
-  for (const r of tree.roots) byForm.set(r.form ?? '', [...(byForm.get(r.form ?? '') || []), r]);
   const segOf = new Map();
-  for (const group of byForm.values()) {
+  for (const group of homographGroups(items, tree).values()) {
     if (group.length > 1) group.forEach((r, i) => segOf.set(r.id, String(i + 1)));
   }
   const out = new Map();
@@ -263,6 +267,57 @@ export const buildItemNumbers = (items) => {
     const path = tree.numberOf.get(it.id) ?? '';
     out.set(it.id, seg && path ? `${seg}.${path}` : seg || path);
   }
+  return out;
+};
+
+/** An entry's stored homograph number, or null when unnumbered or zero. */
+export const homographOf = (item) => {
+  const v = Number(item?.metadata?.[HOMOGRAPH_KEY]);
+  return Number.isFinite(v) && v > 0 ? v : null;
+};
+
+// form -> the entries spelled that way, in homograph order then creation
+// order. `tree` may be passed to save building it twice.
+const homographGroups = (items, tree = buildSenseTree(items)) => {
+  const position = new Map((items || []).map((it, i) => [it.id, i]));
+  const byForm = new Map();
+  for (const r of tree.roots) byForm.set(r.form ?? '', [...(byForm.get(r.form ?? '') || []), r]);
+  const byNumber = (a, b) => {
+    const ha = homographOf(a);
+    const hb = homographOf(b);
+    if (ha != null && hb != null && ha !== hb) return ha - hb;
+    if (ha != null && hb == null) return -1;
+    if (ha == null && hb != null) return 1;
+    return position.get(a.id) - position.get(b.id);
+  };
+  for (const g of byForm.values()) g.sort(byNumber);
+  return byForm;
+};
+
+/**
+ * The entries spelled like `id`'s entry, in their order: what the homograph
+ * dialog lists. Empty when there is only one, since one needs no number.
+ */
+export const homographGroup = (items, id) => {
+  const tree = buildSenseTree(items);
+  const root = tree.byId.get(tree.rootOf.get(id));
+  if (!root) return [];
+  const group = homographGroups(items, tree).get(root.form ?? '') || [];
+  return group.length > 1 ? group : [];
+};
+
+/**
+ * Patches writing the homograph numbers 1..n onto `group` in the order of
+ * `orderedIds`, for the entries whose number changes.
+ */
+export const planHomographOrder = (group, orderedIds) => {
+  const byId = new Map(group.map((r) => [r.id, r]));
+  const out = [];
+  orderedIds.forEach((id, i) => {
+    const r = byId.get(id);
+    if (!r || homographOf(r) === i + 1) return;
+    out.push({ id, metadata: { ...(r.metadata || {}), [HOMOGRAPH_KEY]: i + 1 } });
+  });
   return out;
 };
 
@@ -295,41 +350,6 @@ export const nextSenseOrder = (tree, parentId) => {
  */
 export const withParentSet = (tree, item, parentId) =>
   withParent(item.metadata, parentId, parentId ? nextSenseOrder(tree, parentId) : null);
-
-/**
- * The sibling list renumbered 1..n with `id` moved by `dir` (-1 up, +1 down):
- * `[{id, metadata}]` patches for every sibling whose order changes. Renumbering
- * the whole list keeps orders dense, so a later move is always a swap.
- */
-export const planSenseMove = (tree, id, dir) => {
-  const p = tree.parentOf.get(id);
-  if (!p) return [];
-  const sibs = [...(tree.childrenOf.get(p) || [])];
-  const i = sibs.findIndex((s) => s.id === id);
-  const j = i + dir;
-  if (i < 0 || j < 0 || j >= sibs.length) return [];
-  [sibs[i], sibs[j]] = [sibs[j], sibs[i]];
-  return renumbered(sibs, p);
-};
-
-/**
- * The sibling list with `id` placed at the number it is SHOWN with (its last
- * segment: the 2 of "1.2"). Out-of-range numbers land at the nearest end.
- * Same dense renumbering as a move.
- */
-export const planSenseSetNumber = (tree, id, shown) => {
-  const p = tree.parentOf.get(id);
-  if (!p) return [];
-  const sibs = [...(tree.childrenOf.get(p) || [])];
-  const i = sibs.findIndex((s) => s.id === id);
-  const n = Number(shown);
-  if (i < 0 || !Number.isFinite(n)) return [];
-  const j = Math.max(0, Math.min(sibs.length - 1, Math.round(n) - 1));
-  if (j === i) return [];
-  const [moved] = sibs.splice(i, 1);
-  sibs.splice(j, 0, moved);
-  return renumbered(sibs, p);
-};
 
 /**
  * Where a dragged item lands, as `[{id, metadata}]` patches:

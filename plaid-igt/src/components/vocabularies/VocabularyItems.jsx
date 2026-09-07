@@ -54,8 +54,9 @@ import {
   fieldsForItem,
   validateVocabRefs,
   planDeleteRefs,
-  planSenseSetNumber,
   planSenseDrop,
+  homographGroup,
+  planHomographOrder,
   withParentSet,
   withExampleAdded,
   withExampleRemoved,
@@ -64,6 +65,8 @@ import {
 import {
   ItemRefField,
   EntryPlace,
+  HomographNumber,
+  HomographDialog,
   ReferencedByPanel,
   ExamplesPanel,
   ContextRow,
@@ -729,17 +732,27 @@ export const VocabularyItems = ({
       notifyError('Failed to move the sense', 'Error');
     }
   };
-  const handleSetSenseNumber = async (id, n) => {
-    const patches = planSenseSetNumber(tree, id, n);
+  // The entries spelled like the open one, reordered by dragging in the
+  // homograph dialog: their numbers are written 1..n under one operation.
+  const [homographOpen, setHomographOpen] = useState(false);
+  const homographs = useMemo(
+    () => (dictionary && selectedItem ? homographGroup(items, selectedItem.id) : []),
+    [dictionary, items, selectedItem],
+  );
+  const handleHomographOrder = async (orderedIds) => {
+    const patches = planHomographOrder(homographs, orderedIds);
     if (!patches.length) return;
     try {
-      await client.withOperation('Renumber senses', async () => {
-        for (const p of patches) await writeMetadata(p.id, p.metadata);
-      });
+      await client.withOperation(
+        `Reorder the entries spelled "${homographs[0]?.form ?? ''}"`,
+        async () => {
+          for (const p of patches) await writeMetadata(p.id, p.metadata);
+        },
+      );
       foldPatches(patches);
     } catch (err) {
-      console.error('Renumbering senses failed:', err);
-      notifyError('Failed to renumber senses', 'Error');
+      console.error('Reordering homographs failed:', err);
+      notifyError('Failed to reorder the entries', 'Error');
     }
   };
   const handleAddExample = async (docId, tokenId) => {
@@ -1220,6 +1233,15 @@ export const VocabularyItems = ({
                 <h3 className="text-base font-semibold">
                   {isNew ? (
                     'New item'
+                  ) : dictionary && homographs.length > 1 && !tree.parentOf.get(selectedId) ? (
+                    <>
+                      {selectedItem?.form ?? ''}
+                      <HomographNumber
+                        number={homonyms.get(selectedItem?.id)}
+                        onOpen={() => setHomographOpen(true)}
+                        className="ml-1 text-[0.85em] font-normal"
+                      />
+                    </>
                   ) : (
                     <FormLabel
                       form={selectedItem?.form ?? ''}
@@ -1277,7 +1299,7 @@ export const VocabularyItems = ({
                     canManage={canManage}
                     onMoveUnder={handleMoveUnder}
                     onDrop={handleSenseDrop}
-                    onSetNumber={handleSetSenseNumber}
+                    onReorderHomographs={() => setHomographOpen(true)}
                     newSenseTo={newSenseTo}
                   />
                 </div>
@@ -1513,6 +1535,16 @@ export const VocabularyItems = ({
           </div>
         )}
       </div>
+
+      {dictionary && homographs.length > 1 && (
+        <HomographDialog
+          open={homographOpen}
+          onOpenChange={setHomographOpen}
+          group={homographs}
+          currentId={tree.rootOf.get(selectedId)}
+          onReorder={handleHomographOrder}
+        />
+      )}
 
       <BulkAddDialog
         open={bulkOpen}
