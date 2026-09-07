@@ -98,7 +98,11 @@ const ROW_CHOICES = {
 const rowChoices = (d) => {
   const base = OVERRIDE_VALUES[d.kind] ?? [];
   const targeted = TARGETED_POLICY[d.kind];
-  if (!targeted || d.matches.length < 2) {
+  // Counted over what can actually take the row, not over every match shown:
+  // a row with one candidate it does not contradict has nothing to choose
+  // between, and a numbered option there would only restate the default.
+  const targetable = d.matches.filter((m) => m.canTarget !== false).length;
+  if (!targeted || targetable < 2) {
     return base.map((v) => ({ value: v, label: ROW_CHOICES[v] }));
   }
   const out = base.filter((v) => v !== targeted).map((v) => ({ value: v, label: ROW_CHOICES[v] }));

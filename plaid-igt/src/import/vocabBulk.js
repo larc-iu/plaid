@@ -556,7 +556,12 @@ export const planVocabImport = ({
 
     if (compatible.length === 1) {
       counts.enrich += 1;
-      const target = compatible[0];
+      const { policy: onePolicy, index: oneIndex } = answerFor('enrich', entry.line, candidates);
+      // Only a candidate the row does not contradict can take it: filling a
+      // blank is what enrich means, and the other candidates are here for the
+      // reader to see, not to be written over.
+      const onePick = oneIndex != null ? candidates[oneIndex] : null;
+      const target = onePick && compatible.includes(onePick) ? onePick : compatible[0];
       const changes = diffAgainst(target, entry, fields);
       const patch = Object.fromEntries(changes.map((c) => [c.field, c.to]));
       const added = changes.map((c) => c.field).join(', ');
@@ -565,10 +570,10 @@ export const planVocabImport = ({
         targetId: target.id,
         targetForm: target.form,
         candidates: candidates.length,
-        matches: candidates.map((c) => snapshot(c, c === target)),
+        matches: candidates.map((c) => snapshot(c, c === target, compatible.includes(c))),
         changes,
       };
-      if (policyFor('enrich', entry.line) !== ENRICH_FILL) {
+      if (onePolicy !== ENRICH_FILL) {
         record(entry, { ...base, action: 'skip', detail: `could add ${added}` });
         continue;
       }
@@ -598,8 +603,10 @@ export const planVocabImport = ({
         entry.line,
         candidates,
       );
-      // The row names the ENTRY unless a reviewer has picked one of its senses.
-      const target = enrichIndex != null ? candidates[enrichIndex] : heads[0];
+      // The row names the ENTRY unless a reviewer has picked one of its senses,
+      // and only a candidate the row does not contradict can be picked.
+      const enrichPick = enrichIndex != null ? candidates[enrichIndex] : null;
+      const target = enrichPick && compatible.includes(enrichPick) ? enrichPick : heads[0];
       const changes = diffAgainst(target, entry, fields);
       const patch = Object.fromEntries(changes.map((c) => [c.field, c.to]));
       const added = changes.map((c) => c.field).join(', ');

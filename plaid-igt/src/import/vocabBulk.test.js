@@ -429,6 +429,24 @@ describe('matched entries on a decision', () => {
     ]);
   });
 
+  it('only offers a target the row does not contradict', () => {
+    // An enrich row with one compatible candidate used to report every match
+    // as targetable, and then ignore whichever the reviewer picked.
+    const two = [
+      { id: 'h', form: 'kan', metadata: { gloss: 'to eat' } },
+      { id: 'other', form: 'kan', metadata: { gloss: 'a can' } },
+    ];
+    const p = plan([entry(1, 'kan', { gloss: 'to eat', pos: 'V' })], two);
+    expect(p.decisions[0].kind).toBe('enrich');
+    expect(p.decisions[0].matches.map((m) => m.canTarget)).toEqual([true, false]);
+    // Naming the one it contradicts changes nothing: the compatible entry
+    // still takes the row.
+    const forced = plan([entry(1, 'kan', { gloss: 'to eat', pos: 'V' })], two, {
+      overrides: { 1: targetedAnswer(TARGETED_POLICY.enrich, 1) },
+    });
+    expect(forced.updates).toEqual([{ id: 'h', patch: { pos: 'V' } }]);
+  });
+
   it('lets a row name the ENTRY when a dictionary spreads a form over senses', () => {
     // A headword and its senses share a form, so all three answer to the row.
     // The row means the entry, as a bare form does everywhere else, and the
