@@ -509,6 +509,13 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
             loose = [it for it in items.values()
                      if is_sense(it['id']) and uses[it['id']] == 0 and tree_uses(view_of(it['id']).tree.root_of[it['id']])]
             lines.append(f'{len(loose)} senses not linked from a text themselves, though their entry is attested.')
+    def stands_over_senses(iid: str) -> bool:
+        """A headword whose meanings are its senses. It is not missing a gloss:
+        the senses under it carry them, and a FLEx import makes such a headword
+        for every entry it read with more than one sense."""
+        vw = view_of(iid)
+        return bool(vw and vw.dictionary and vw.tree.children_of.get(iid))
+
     if want('fields'):
         for role, table in (('gloss', lex_gloss), ('pos', lex_pos)):
             names = sorted({f for f in table.values() if f})
@@ -516,7 +523,9 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
                 continue
             listing(f'entries without a {"/".join(names)}',
                     (it.get('form') or '' for it in items.values()
-                     if table.get(item_vocab[it['id']]) and not (it.get('metadata') or {}).get(table[item_vocab[it['id']]])))
+                     if table.get(item_vocab[it['id']])
+                     and not (it.get('metadata') or {}).get(table[item_vocab[it['id']]])
+                     and not stands_over_senses(it['id'])))
 
     by_form: Dict[str, List[dict]] = defaultdict(list)
     for it in items.values():

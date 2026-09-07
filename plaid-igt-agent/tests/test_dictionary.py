@@ -434,3 +434,18 @@ def test_check_lexicon_reports_references_that_point_nowhere():
     assert 'lost: its parent entry no longer exists' in out
     assert 'bad: variantOf pointed at an entry that no longer exists' in out
     assert 'No references pointing nowhere.' in call_tool(dict_ws(), 'check_lexicon', {'section': 'refs'})
+
+
+def test_check_lexicon_does_not_call_a_headword_glossless():
+    """A FLEx import makes a headword with no gloss over every entry that had
+    several senses. Its meanings are the senses under it, so the hygiene report
+    must not list it as an entry missing a gloss."""
+    items = [dict(it, metadata=dict(it['metadata'])) for it in ITEMS]
+    items[0]['metadata'].pop('gloss')  # kwatha, the headword over boil/ferment
+    items.append({'id': 'd-bare', 'form': 'bare', 'metadata': {'pos': 'n'}})
+    out = call_tool(dict_ws(items=items), 'check_lexicon', {'section': 'fields'})
+    assert 'bare' in out
+    assert 'kwatha' not in out.split('entries without a gloss')[1].split('\n')[0]
+    # With the mode off there is no tree, so every glossless entry is one.
+    flat = call_tool(dict_ws(dictionary=False, items=items), 'check_lexicon', {'section': 'fields'})
+    assert 'kwatha' in flat.split('entries without a gloss')[1].split('\n')[0]
