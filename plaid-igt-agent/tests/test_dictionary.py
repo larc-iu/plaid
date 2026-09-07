@@ -77,6 +77,16 @@ def test_read_lexicon_keeps_a_hit_under_the_entry_it_belongs_to():
     assert lines[2].index('1.1.1') > lines[1].index('1.1 ')
 
 
+def test_entry_gloss_reaches_a_sense():
+    """A bare form names the ENTRY, but entry_gloss is how the agent singles one
+    out, and in a dictionary the gloss that does it usually belongs to a sense."""
+    out = call_tool(dict_ws(), 'lexicon_entry', {'entry_form': 'kwatha', 'entry_gloss': 'ferment'})
+    assert 'gloss: ferment' in out and 'Sense 1.2 of headword "kwatha"' in out
+    # Without it, the bare form still means the headword.
+    head = call_tool(dict_ws(), 'lexicon_entry', {'entry_form': 'kwatha'})
+    assert 'gloss: cook' in head and 'Sense' not in head.splitlines()[0]
+
+
 def test_a_flat_lexicon_is_unchanged():
     out = call_tool(dict_ws(dictionary=False), 'read_lexicon', {})
     assert 'Lexicography Mode' not in out and 'Lexicon": 6 entries' in out

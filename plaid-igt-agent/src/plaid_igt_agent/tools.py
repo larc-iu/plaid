@@ -222,7 +222,10 @@ class Workspace:
 
         def has_gloss(meta):
             return not g or any(isinstance(v, str) and v.strip().casefold() == g for v in (meta or {}).values())
-        hits = [(v, it) for v in vocabs for it in _hits_in(self, v, form, suffix, has_gloss)]
+        # With a gloss to go on, the senses are searched too: a bare form means
+        # the entry, but the value that tells two apart is usually a sense's.
+        hits = [(v, it) for v in vocabs
+                for it in _hits_in(self, v, form, suffix, has_gloss, deep=bool(g))]
         news = [(k, e) for k, e in self.new_entries.items()
                 if e['form'].lower() == form.lower() and (not lexicon or e['vocab_id'] == vocabs[0]['id'])
                 and has_gloss(e.get('metadata'))]
@@ -496,23 +499,27 @@ def _num_key(num: str):
     return tuple(int(p) for p in (num or '').split('.') if p.isdigit())
 
 
-def _dict_hits(view: LexView, form: str, suffix: Optional[str]) -> List[dict]:
+def _dict_hits(view: LexView, form: str, suffix: Optional[str], deep: bool = False) -> List[dict]:
     """The items a form names in a lexicon with Lexicography Mode on. Senses
     share their entry's headword, so a bare form means the ENTRY (or the
     entries, where several share it) and never the pile of its senses; a "#"
     suffix is the number the user sees, which tells apart both the senses under
     an entry ("kwatha#1.2") and entries that share a form ("gam#2"). A form that
     heads no entry falls back to any item carrying it, so a sense renamed away
-    from its headword stays reachable."""
+    from its headword stays reachable.
+
+    ``deep`` widens a bare form to the senses as well. It is for a caller that
+    has something else to tell them apart with, such as entry_gloss: the gloss
+    that singles one out usually IS a sense's."""
     roots = [r for r in view.tree.roots if (r.get('form') or '').lower() == (form or '').lower()]
     if not roots:
         others = [it for it in view.items if (it.get('form') or '').lower() == (form or '').lower()]
         return others if suffix is None else [it for it in others if view.number(it['id']) == suffix]
-    if suffix is None:
-        return roots
     family = list(roots)
     for r in roots:
         family.extend(descendants_of(view.tree, r['id']))
+    if suffix is None:
+        return family if deep else roots
     return [it for it in family if view.number(it['id']) == suffix]
 
 
@@ -1691,11 +1698,12 @@ def lexicon_field(vocab: dict, name: str) -> dict:
                     + ', '.join(vocab_field_summary(vocab)))
 
 
-def _hits_in(ws: Workspace, v: dict, form: str, suffix: Optional[str], has_gloss) -> List[dict]:
+def _hits_in(ws: Workspace, v: dict, form: str, suffix: Optional[str], has_gloss,
+             deep: bool = False) -> List[dict]:
     """The entries a form names in one lexicon, by that lexicon's own rules."""
     view = ws.view(v)
     if view.dictionary:
-        return [it for it in _dict_hits(view, form, suffix) if has_gloss(it.get('metadata'))]
+        return [it for it in _dict_hits(view, form, suffix, deep) if has_gloss(it.get('metadata'))]
     out = []
     for it in view.items:
         if (it.get('form') or '').lower() != (form or '').lower():
