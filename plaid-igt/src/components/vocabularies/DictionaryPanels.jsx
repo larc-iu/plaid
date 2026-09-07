@@ -42,17 +42,20 @@ const ItemLink = ({ item, homonyms, itemTo, className }) => (
  * press Enter (or leave the box), and it moves there among its siblings.
  * The box only ever edits the last segment ("3.1" -> the 1).
  */
-const SenseNumber = ({ number, canManage, onSet, className }) => {
+const SenseNumber = ({ number, canManage, onSet, className, alone = false }) => {
   const parts = String(number ?? '').split('.');
   const last = parts.pop();
   const prefix = parts.length ? `${parts.join('.')}.` : '';
   const [draft, setDraft] = useState(last);
   useEffect(() => setDraft(last), [last]);
+  // The box always snaps back to what the sense is numbered; when the
+  // number changes, the effect above brings the new one in.
   const commit = () => {
     if (draft.trim() !== '' && draft.trim() !== last) onSet(draft.trim());
-    else setDraft(last);
+    setDraft(last);
   };
-  if (!canManage) return <span className={cn('tabular-nums', className)}>{number}</span>;
+  // Nothing to move an only sense among, so its number is plain text.
+  if (!canManage || alone) return <span className={cn('tabular-nums', className)}>{number}</span>;
   return (
     <span className={cn('inline-flex items-center tabular-nums', className)}>
       {prefix}
@@ -163,6 +166,7 @@ export const EntryPlace = ({
   const parentId = tree.parentOf.get(item.id);
   const parent = parentId ? tree.byId.get(parentId) : null;
   const number = tree.numberOf.get(item.id);
+  const alone = parentId ? (tree.childrenOf.get(parentId) || []).length < 2 : true;
   const exclude = useMemo(
     () => new Set([item.id, ...descendantsOf(tree, item.id).map((d) => d.id)]),
     [tree, item.id],
@@ -175,6 +179,7 @@ export const EntryPlace = ({
           <SenseNumber
             number={number}
             canManage={canManage}
+            alone={alone}
             onSet={(n) => onSetNumber(item.id, n)}
             className="mx-0.5"
           />{' '}
@@ -252,6 +257,7 @@ export const SensesPanel = ({
               <SenseNumber
                 number={tree.numberOf.get(c.id)}
                 canManage={canManage}
+                alone={children.length < 2}
                 onSet={(n) => onSetNumber(c.id, n)}
                 className="w-14 shrink-0 text-muted-foreground"
               />
