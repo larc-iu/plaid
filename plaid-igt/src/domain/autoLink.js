@@ -83,12 +83,21 @@ export function buildItemIndex(vocabularies) {
       if (typeof parent === 'string' && parent) parentOf.set(it.id, parent);
     }
   }
-  // In Lexicography Mode a headword and its senses share a form, so both land
-  // in the same list. A link is about a sense: that is where the gloss is, and
-  // a headword made by a FLEx import has none of its own. So a headword drops
-  // out of a list that also holds one of its senses, which leaves the rule
-  // picking between senses as it always did between same-form entries.
-  for (const map of [exact, folded]) {
+  dropCoveredHeadwords([exact, folded], parentOf);
+  return { exact, folded, bound, phrase };
+}
+
+/**
+ * In Lexicography Mode a headword and its senses share a form, so both land in
+ * the same list of candidates. A link is about a sense: that is where the gloss
+ * is, and the headword a FLEx import makes over several senses has none of its
+ * own. So a headword drops out of a list that also holds one of its senses,
+ * which leaves the rule picking between senses as it always picked between
+ * same-form entries. A headword whose senses are spelled differently stays.
+ */
+function dropCoveredHeadwords(maps, parentOf) {
+  if (!parentOf.size) return;
+  for (const map of maps) {
     for (const [key, ids] of map) {
       if (ids.length < 2) continue;
       const parents = new Set(ids.map((id) => parentOf.get(id)).filter(Boolean));
@@ -97,7 +106,6 @@ export function buildItemIndex(vocabularies) {
       if (kept.length) map.set(key, kept);
     }
   }
-  return { exact, folded, bound, phrase };
 }
 
 // Resolution tiers, first hit wins: exact precedent (same kind, then any) >
@@ -207,6 +215,7 @@ function buildPhraseIndex(vocabularies) {
       if (!list.includes(id)) list.push(id);
     } else map.set(key, [id]);
   };
+  const parentOf = new Map();
   for (const vocab of Object.values(vocabularies || {})) {
     for (const it of vocab.items || []) {
       if (!it.form || !isMweType(it.metadata?.morphType)) continue;
@@ -215,8 +224,11 @@ function buildPhraseIndex(vocabularies) {
       add(exact, form, it.id);
       add(folded, form.toLowerCase(), it.id);
       longest = Math.max(longest, wordCount(form));
+      const parent = it.metadata?.parent;
+      if (typeof parent === 'string' && parent) parentOf.set(it.id, parent);
     }
   }
+  dropCoveredHeadwords([exact, folded], parentOf);
   return { exact, folded, longest };
 }
 

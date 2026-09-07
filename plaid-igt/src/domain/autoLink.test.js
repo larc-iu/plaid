@@ -84,6 +84,22 @@ describe('computeAutoLinkProposals', () => {
     expect(buildItemIndex(other).exact.get('ntsi')).toEqual(['j1']);
   });
 
+  it('links a multi-word expression to a sense, not to the headword above it', () => {
+    const phrase = (id, extra) => ({
+      id,
+      form: 'kwatha basa',
+      metadata: { morphType: 'phrase', ...extra },
+    });
+    const vocabs = {
+      v1: { id: 'v1', items: [phrase('p1', {}), phrase('p2', { gloss: 'give up', parent: 'p1' })] },
+    };
+    const proposals = computeMweProposals({
+      sentences: sentence([word('w1', 'kwatha'), word('w2', 'basa')]),
+      vocabularies: vocabs,
+    });
+    expect(proposals).toEqual([{ tokenIds: ['w1', 'w2'], vocabItemId: 'p2', form: 'kwatha basa' }]);
+  });
+
   it('replaces a machine-unverified link when the rule resolves a different item; leaves same-item and protected links', () => {
     const precedent = precedentOf(res([['i-all', null, 'todos', 'word', null, 5]]));
     const sentences = sentence([
