@@ -35,11 +35,11 @@ const VOCAB = {
 
 let host;
 
-const mount = () => {
+const mount = (rawOpts) => {
   const client = makeFakeClient();
   client.query = async () => ({ results: [] });
   const doc = new IgtDocument({
-    raw: buildRawDoc(),
+    raw: buildRawDoc(rawOpts),
     project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {}, igt: {} } },
     vocabularies: { v1: structuredClone(VOCAB) },
     client,

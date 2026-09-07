@@ -4794,10 +4794,10 @@ export class IgtEditor {
                 const confirmable = linked && inferredCurrent;
                 return html`<button
                   type="button"
-                  class="igt-vocab-pop__item ${linked ? 'is-linked' : ''} ${
-                    i === activeIdx ? 'is-active' : ''
-                  } ${it._context ? 'is-context' : ''}"
-                  style=${it._depth ? `margin-left:${it._depth * 14}px` : ''}"
+                  class="igt-vocab-pop__item ${linked ? 'is-linked' : ''} ${i === activeIdx
+                    ? 'is-active'
+                    : ''} ${it._context ? 'is-context' : ''}"
+                  style=${it._depth ? `margin-left:${it._depth * 14}px` : ''}
                   @mousemove=${(e) => {
                     if (!this._pointerMoved(e)) return;
                     if (this._popoverActiveIndex !== i) {
@@ -4812,51 +4812,43 @@ export class IgtEditor {
                   }}
                 >
                   <span class="igt-vocab-pop__main">
-                    ${
-                      linked
-                        ? html`<a
-                            class="igt-vocab-pop__form igt-vocab-pop__goto"
-                            href=${`#/vocabularies/${activeVocab.id}?item=${it.id}`}
-                            title="Open this entry in the lexicon"
-                            @click=${(e) => e.stopPropagation()}
-                            >${it.form}${numHtml(it._sub, 'igt-vocab-pop')}</a
-                          >`
-                        : html`<span class="igt-vocab-pop__form"
-                            >${it.form}${numHtml(it._sub, 'igt-vocab-pop')}</span
-                          >`
-                    }
-                    ${
-                      it._prec
-                        ? html`<span
-                            class="igt-vocab-pop__prec"
-                            title=${`“${precForm}” was linked to this entry ${it._prec} time${
-                              it._prec === 1 ? '' : 's'
-                            } in this project`}
-                            >×${it._prec}</span
-                          >`
-                        : nothing
-                    }
+                    ${linked
+                      ? html`<a
+                          class="igt-vocab-pop__form igt-vocab-pop__goto"
+                          href=${`#/vocabularies/${activeVocab.id}?item=${it.id}`}
+                          title="Open this entry in the lexicon"
+                          @click=${(e) => e.stopPropagation()}
+                          >${it.form}${numHtml(it._sub, 'igt-vocab-pop')}</a
+                        >`
+                      : html`<span class="igt-vocab-pop__form"
+                          >${it.form}${numHtml(it._sub, 'igt-vocab-pop')}</span
+                        >`}
+                    ${it._prec
+                      ? html`<span
+                          class="igt-vocab-pop__prec"
+                          title=${`“${precForm}” was linked to this entry ${it._prec} time${
+                            it._prec === 1 ? '' : 's'
+                          } in this project`}
+                          >×${it._prec}</span
+                        >`
+                      : nothing}
                     ${confirmable ? html`<span class="igt-vocab-pop__ok">confirm</span>` : nothing}
-                    ${
-                      linked
-                        ? html`<span
-                            class="igt-vocab-pop__x"
-                            role="button"
-                            tabindex="-1"
-                            @click=${(e) => {
-                              e.stopPropagation();
-                              act.toggle(it, true);
-                            }}
-                            >unlink</span
-                          >`
-                        : nothing
-                    }
+                    ${linked
+                      ? html`<span
+                          class="igt-vocab-pop__x"
+                          role="button"
+                          tabindex="-1"
+                          @click=${(e) => {
+                            e.stopPropagation();
+                            act.toggle(it, true);
+                          }}
+                          >unlink</span
+                        >`
+                      : nothing}
                   </span>
-                  ${
-                    it._detail
-                      ? html`<span class="igt-vocab-pop__detail">${it._detail}</span>`
-                      : nothing
-                  }
+                  ${it._detail
+                    ? html`<span class="igt-vocab-pop__detail">${it._detail}</span>`
+                    : nothing}
                 </button>`;
               })
             : html`<div class="igt-vocab-pop__empty">No matches</div>`}
