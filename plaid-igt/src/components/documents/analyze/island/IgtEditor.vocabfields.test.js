@@ -69,6 +69,16 @@ describe('the popover detail line', () => {
     expect(detail('h')).toBe('cat');
   });
 
+  it("falls back to the entry's own values, never to a reserved key", () => {
+    const { editor, doc } = mount();
+    const vocab = doc.vocabularies.v1;
+    // No inline field: the line falls back to what the entry carries, and
+    // `parent` is an id written before the fields.
+    const bare = { ...vocab, config: { igt: { dictionary: true, fields: {} } } };
+    const sense = { id: 's', form: 'kat', metadata: { parent: 'h', senseOrder: 1, gloss: 'lion' } };
+    expect(editor._vocabItemDetail(sense, bare)).toBe('lion');
+  });
+
   it('leaves out a reference to an entry that is gone', () => {
     const { editor, doc } = mount();
     const vocab = doc.vocabularies.v1;

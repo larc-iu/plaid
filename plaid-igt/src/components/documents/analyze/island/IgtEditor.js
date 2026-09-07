@@ -57,7 +57,7 @@ import {
   groupRankedByHeadword,
   readDictionaryEnabled,
 } from '@/domain/vocabDictionary';
-import { FIELD_TYPES } from '@/domain/vocabFields';
+import { FIELD_TYPES, RESERVED_ITEM_KEYS } from '@/domain/vocabFields';
 
 // The number that tells an entry apart, drawn after its form: a homonym
 // subscript (a NUMBER, form₂) for a vocabulary without Lexicography Mode, a
@@ -683,7 +683,7 @@ export class IgtEditor {
     this._releaseCommentLive = null;
     this._popover = { tokenId, kind, variant: 'vocab' };
     this._popoverSearch = '';
-    this._popoverActiveIndex = 0;
+    this._popoverActiveIndex = null; // the render picks the best-ranked row
     this._popoverVocabId = null; // re-default to the linked item's vocab each open
     this._popoverCreateEdit = null; // string while the "+ Create" row is being edited
     clearTimeout(this._createClickTimer);
@@ -4501,7 +4501,12 @@ export class IgtEditor {
     const meta = item.metadata || {};
     const fields = readVocabFields(vocab?.config) || {};
     const inlineNames = Object.keys(fields).filter((n) => fields[n]?.inline);
-    const names = inlineNames.length ? inlineNames : Object.keys(meta);
+    // The fallback reads whatever the entry carries, so it has to skip the
+    // reserved keys: `parent` is an id, and it is written first, so a
+    // vocabulary with no inline field would show a UUID here.
+    const names = inlineNames.length
+      ? inlineNames
+      : Object.keys(meta).filter((n) => !RESERVED_ITEM_KEYS.has(n));
     // A field of type `item` holds entry ids. It reads as the entries they
     // name, numbered as everything else in the popover is.
     const hasRefs = names.some((n) => fields[n]?.type === FIELD_TYPES.ITEM);
@@ -4585,6 +4590,11 @@ export class IgtEditor {
         : items.map((it) => ({ item: it, depth: 0 }));
     const limited = grouped.slice(0, 30).map((r) => ({
       ...r.item,
+      // A row shown only for context never went through the ranking, so it
+      // arrives undecorated: give it the same number and detail line, or a
+      // headword reads like a lone entry.
+      _sub: r.item._sub ?? (homIdx ? homIdx.get(r.item.id) : null),
+      _detail: r.item._detail ?? this._vocabItemDetail(r.item, activeVocab),
       _depth: r.depth,
       _context: !!r.context,
     }));
@@ -4644,6 +4654,13 @@ export class IgtEditor {
     }
     // Rows the keyboard can land on: every item, the create row, the extras.
     const total = limited.length + (canCreate ? 1 : 0) + extraRows.length;
+    // Where the keyboard lands before it is moved: the best-ranked candidate.
+    // Grouping puts a headword above its senses, so that is not row 0, and a
+    // headword listed only for context did not rank at all. Both stay
+    // selectable by arrow or click: linking to a headword is the user's call,
+    // just never the one Enter makes on its own.
+    const best = limited.findIndex((r) => !r._context && r.id === items[0]?.id);
+    if (this._popoverActiveIndex == null) this._popoverActiveIndex = Math.max(0, best);
     const activeIdx = Math.min(this._popoverActiveIndex ?? 0, Math.max(0, total - 1));
     // The three actions, routed by mode: a word's or morpheme's own link, or
     // the multi-word expression's.
@@ -4742,7 +4759,7 @@ export class IgtEditor {
     };
     const selectVocab = (id) => {
       this._popoverVocabId = id;
-      this._popoverActiveIndex = 0;
+      this._popoverActiveIndex = null; // another lexicon, another best row
       this._render(true);
     };
 
@@ -4765,7 +4782,7 @@ export class IgtEditor {
           .value=${live(this._popoverSearch || '')}
           @input=${(e) => {
             this._popoverSearch = e.target.value;
-            this._popoverActiveIndex = 0;
+            this._popoverActiveIndex = null; // re-pick the best-ranked row
             this._render(true);
           }}
           @keydown=${onSearchKey}
