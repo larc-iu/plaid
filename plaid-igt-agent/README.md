@@ -133,9 +133,10 @@ receives them, rendered over the test fixture project; regenerate it with
   `vocabFields.js` and `vocabDictionary.js`: the field schema (a field's type,
   `many`, and scope, with the core inventory guaranteed on every vocabulary)
   and, for a lexicon in Lexicography Mode, the sense tree, the dotted number
-  each item is shown with (its entry's place among the entries spelled the
-  same, then its own path down the sense hierarchy: "2.1.3"), references
-  between entries, and promoted usage examples. Deleting or merging an entry drags
+  each item is shown with (its headword's place among the headwords spelled
+  the same, then its own path down the sense hierarchy, so one segment is a
+  headword and two or more a sense: "2.1.3"), references between entries, and
+  promoted usage examples. Deleting or merging an entry drags
   those along exactly as the app does, so no plan leaves an id that resolves
   to nothing. A differential fuzz harness checked the port against the
   JavaScript over randomized lexicons, cycles and dangling references included.

@@ -231,7 +231,7 @@ class Workspace:
         if not hits and not news:
             hint = ''
             if suffix is not None and any(self.view(v).dictionary for v in vocabs):
-                hint = (f' Entry "{form}" has no sense {suffix}; lexicon_entry shows the senses it does have.'
+                hint = (f' Headword "{form}" has no sense {suffix}; lexicon_entry shows the senses it has.'
                         if any(self.view(v).tree_has_form(form) for v in vocabs)
                         else '')
             raise ToolError(f'No lexicon entry "{form}"' + (f' with a field valued "{gloss}"' if g else '')
@@ -421,7 +421,7 @@ class LexView:
     """A lexicon's items and the sense tree over them. Every lexicon has one:
     without Lexicography Mode every item is an entry and the tree is flat."""
 
-    __slots__ = ('vocab', 'items', 'tree', 'dictionary', 'fields', 'ref_fields', 'numbers')
+    __slots__ = ('vocab', 'items', 'tree', 'dictionary', 'fields', 'ref_fields', 'numbers', 'shared')
 
     def __init__(self, vocab: dict, items: List[dict]):
         self.vocab = vocab
@@ -438,6 +438,11 @@ class LexView:
         self.numbers = (build_item_numbers(items) if self.dictionary
                         else {k: ('' if v is None else str(v))
                               for k, v in build_homonym_index(items).items()})
+        # Headwords that share their form with another. A lone headword with
+        # senses is numbered 1, which says nothing in prose, so only these
+        # carry their number when a line names them.
+        counts = Counter((r.get('form') or '') for r in self.tree.roots)
+        self.shared = {r['id'] for r in self.tree.roots if counts[r.get('form') or ''] > 1}
 
     def number(self, item_id: str) -> str:
         return self.numbers.get(item_id, '')
@@ -462,7 +467,7 @@ class LexView:
             return f'a deleted entry ({item_id})'
         if self.is_sense(item_id):
             return f'"{self.head_of(item_id)}" sense {self.number(item_id)}'
-        num = self.number(item_id)
+        num = self.number(item_id) if item_id in self.shared else ''
         return f'"{it.get("form") or ""}"' + (f' ({num})' if num else '')
 
     def address(self, item_id: str) -> str:
@@ -782,8 +787,8 @@ def t_read_lexicon(ws: Workspace, lexicon: Optional[str] = None, pattern: Option
         hits = [it for it in items if match(entry_line(it, view))]
         n_entries = len(view.tree.roots)
         n_senses = len(items) - n_entries
-        head = (f'Lexicon "{v["name"]}" (Lexicography Mode): {n_entries} entries, '
-                f'{n_senses} sense{"s" if n_senses != 1 else ""}'
+        head = (f'Lexicon "{v["name"]}" (Lexicography Mode): {n_entries} '
+                f'headword{"s" if n_entries != 1 else ""}, {n_senses} sense{"s" if n_senses != 1 else ""}'
                 + (f', {len(hits)} matching' if pattern else ''))
         lines.append(head)
         shown = 0
@@ -999,12 +1004,15 @@ def t_lexicon_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Op
     view = ws.view_of_item(target['id'])
     if view is not None and view.dictionary:
         num = view.number(target['id'])
-        where = (f'Sense {num} of entry "{view.head_of(target["id"])}"' if view.is_sense(target['id'])
-                 else f'Entry "{target.get("form")}"' + (f' ({num} of the entries spelled that way)'
-                                                        if num else ''))
+        if view.is_sense(target['id']):
+            where = f'Sense {num} of headword "{view.head_of(target["id"])}"'
+        else:
+            group = homograph_group(view.items, target['id'])
+            where = (f'Headword "{target.get("form")}"'
+                     + (f' ({num} of {len(group)} spelled that way)' if group else ''))
         lines = [f'{where} (id {target["id"]}, entry_form "{view.address(target["id"])}")']
     else:
-        lines = [f'Entry "{target.get("form")}" (id {target["id"]})']
+        lines = [f'Entry "{target.get("form")}" (id {target["id"]})']  # a flat lexicon has no headwords
     ref_names = {f['name'] for f in (view.ref_fields if view is not None else [])}
     for k, v in meta.items():
         if (k in RESERVED_ITEM_KEYS or k in ref_names or k.startswith('prov')
@@ -1628,7 +1636,7 @@ def _create_entry(ws: Workspace, v: dict, form: str, fields: Optional[dict],
     for k, val in (fields or {}).items():
         f = lexicon_field(v, k)
         if parent is not None and view.dictionary and f['scope'] == SCOPE_ENTRY:
-            raise ToolError(f'"{f["name"]}" belongs to an entry rather than to each sense, so a new sense '
+            raise ToolError(f'"{f["name"]}" belongs to a headword rather than to each sense, so a new sense '
                             f'cannot carry it. Set it on {view.label(parent["id"])}.')
         metadata = _entry_field_write(ws, v, f, val, metadata, None)
     if morph:
@@ -1753,7 +1761,7 @@ def t_set_entry_field(ws: Workspace, field: str, value: str, entry_form: Optiona
     if kind == 'new':
         e = ws.new_entries[target]
         if vocab and ws.view(vocab).dictionary and f['scope'] == SCOPE_ENTRY and parent_of(e):
-            raise ToolError(f'"{f["name"]}" belongs to an entry rather than to each sense.')
+            raise ToolError(f'"{f["name"]}" belongs to a headword rather than to each sense.')
         e['metadata'] = _entry_field_write(ws, vocab, f, value, e['metadata'], None)
         for op in ws.ops:
             if op.get('kind') == 'create_entry' and op.get('key') == target:
@@ -1762,7 +1770,7 @@ def t_set_entry_field(ws: Workspace, field: str, value: str, entry_form: Optiona
     view = ws.view(vocab) if vocab else None
     if view is not None and view.dictionary and f['scope'] == SCOPE_ENTRY and view.is_sense(target['id']):
         head = view.tree.root_of.get(target['id'])
-        raise ToolError(f'"{f["name"]}" belongs to an entry rather than to each sense, and '
+        raise ToolError(f'"{f["name"]}" belongs to a headword rather than to each sense, and '
                         f'{view.label(target["id"])} is a sense. Set it on {view.label(head)} instead.')
     before = ws.item_patches.get(target['id'], target.get('metadata') or {})
     meta = _entry_field_write(ws, vocab, f, value, before, target['id'])
@@ -1842,8 +1850,8 @@ def t_move_sense(ws: Workspace, number, entry_form: Optional[str] = None, lexico
     """PLAN: put a sense at the number it should be shown with, among its siblings."""
     vocab, view, target = _dict_entry(ws, entry_form, lexicon, entry_id, entry_gloss, 'be renumbered')
     if not view.is_sense(target['id']):
-        raise ToolError(f'{view.label(target["id"])} is an entry, and an entry carries no sense number of its '
-                        'own. make_sense_of moves it under another entry.')
+        raise ToolError(f'{view.label(target["id"])} is a headword, and a headword is not numbered among '
+                        'senses. make_sense_of moves it under another entry.')
     was = view.number(target['id'])
     # A sense is shown with a dotted number ("2.1.3"), but it moves among its
     # own siblings, so only the last segment says where it should land.
@@ -1888,14 +1896,14 @@ def t_make_sense_of(ws: Workspace, under_form: Optional[str] = None, under_id: O
 
 def t_free_sense(ws: Workspace, entry_form: Optional[str] = None, lexicon: Optional[str] = None,
                  entry_id: Optional[str] = None, entry_gloss: Optional[str] = None) -> str:
-    """PLAN: make a sense an entry of its own, keeping everything under it."""
+    """PLAN: make a sense a headword of its own, keeping everything under it."""
     vocab, view, target = _dict_entry(ws, entry_form, lexicon, entry_id, entry_gloss, 'be freed')
     if not view.is_sense(target['id']):
-        return ws.planned_note(0) + f' {view.label(target["id"])} is already an entry of its own.'
+        return ws.planned_note(0) + f' {view.label(target["id"])} is already a headword of its own.'
     before = _meta_of(ws, target)
     kept = len(descendants_of(view.tree, target['id']))
     ws.add_op(_meta_op(ws, target['id'], before, with_parent(before, None, None),
-                       f'{view.label(target["id"])} becomes an entry of its own'
+                       f'{view.label(target["id"])} becomes a headword of its own'
                        + (f' (with {kept} sense{"s" if kept != 1 else ""} below it)' if kept else '')))
     return ws.planned_note(1)
 
@@ -1908,8 +1916,8 @@ def t_order_homographs(ws: Workspace, order, entry_form: Optional[str] = None,
     vocab, view, target = _dict_entry(ws, entry_form, lexicon, entry_id, entry_gloss, 'be renumbered')
     group = homograph_group(view.items, target['id'])
     if not group:
-        raise ToolError(f'{view.label(target["id"])} is the only entry spelled that way, so it carries no '
-                        'number to order.')
+        raise ToolError(f'{view.label(target["id"])} is the only headword spelled that way, so there is '
+                        'no order to set.')
     wanted = [str(x).strip() for x in (order if isinstance(order, list) else [order]) if str(x).strip()]
     by_num = {view.number(r['id']): r for r in group}
     ids = []
@@ -1918,14 +1926,14 @@ def t_order_homographs(ws: Workspace, order, entry_form: Optional[str] = None,
         r = by_num.get(token.rpartition('#')[2] or token) or next(
             (x for x in group if x['id'] == token), None)
         if r is None:
-            raise ToolError(f'"{token}" is not one of the {len(group)} entries spelled '
+            raise ToolError(f'"{token}" is not one of the {len(group)} headwords spelled '
                             f'"{group[0].get("form")}". They are numbered '
                             + ', '.join(view.number(r['id']) for r in group) + '.')
         if r['id'] in ids:
             raise ToolError(f'"{token}" is named twice; give each entry once.')
         ids.append(r['id'])
     if len(ids) != len(group):
-        raise ToolError(f'Give all {len(group)} entries spelled "{group[0].get("form")}" in the order they '
+        raise ToolError(f'Give all {len(group)} headwords spelled "{group[0].get("form")}" in the order they '
                         'should be numbered; ' + str(len(ids)) + ' were given.')
     patches = plan_homograph_order(group, ids)
     if not patches:
@@ -2425,9 +2433,10 @@ _DOC = {'type': 'string', 'description': 'Document id or exact name (see project
 _GLOSS = {'type': 'string', 'description': 'Singles out one of several entries with the same form: a value one of '
                                            'its fields has (e.g. its gloss).'}
 _ENTRY_FORM = {'type': 'string',
-               'description': 'The entry\'s headword, with an optional "#" and the number shown beside it. '
-                              '"kwatha" is the entry; "kwatha#1.2" the sense numbered 1.2 under it; "gam#2" the '
-                              'second of two entries sharing the form gam. read_lexicon shows the numbers.'}
+               'description': 'A headword, with an optional "#" and the number shown beside it. One segment '
+                              'is a headword ("gam#2", the second spelled that way), two or more a sense '
+                              '("kwatha#1.2", "gam#2.1.3"). A bare "kwatha" is the headword. read_lexicon '
+                              'shows every number.'}
 _ENTRY_ADDR = {'entry_form': _ENTRY_FORM,
                'lexicon': {'type': 'string', 'description': 'Lexicon name (needed only when the project has several).'},
                'entry_id': {'type': 'string'}}
@@ -2641,7 +2650,7 @@ TOOLS = [
          'under_id': {'type': 'string'}, **_ENTRY_ADDR, 'entry_gloss': _GLOSS},
         []),
     _fn('free_sense',
-        'PLAN: make a sense an entry of its own, keeping the senses below it.',
+        'PLAN: make a sense a headword of its own, keeping the senses below it.',
         {**_ENTRY_ADDR, 'entry_gloss': _GLOSS}, []),
     _fn('promote_example',
         'PLAN: mark a word in a document as a usage example of an entry. The example is a reference, so it '
@@ -2650,11 +2659,11 @@ TOOLS = [
          **_ENTRY_ADDR, 'entry_gloss': _GLOSS},
         ['document', 'ref']),
     _fn('order_homographs',
-        'PLAN: set the order of the entries spelled the same. That order is the first segment of the number '
-        'every one of their senses is shown with, so it renumbers the whole group. Name every one of them, in '
+        'PLAN: set the order of the headwords spelled the same. That order is the first segment of the number '
+        'they and all their senses are shown with, so it renumbers the whole group. Name every one of them, in '
         'the order they should be numbered, by the number each is shown with now (or by id).',
         {'order': {'type': 'array', 'items': {'type': 'string'},
-                   'description': 'Every entry of the group, in their new order, e.g. ["2", "1", "3"].'},
+                   'description': 'Every headword of the group, in their new order, e.g. ["2", "1", "3"].'},
          **_ENTRY_ADDR, 'entry_gloss': _GLOSS},
         ['order']),
     _fn('remove_example',

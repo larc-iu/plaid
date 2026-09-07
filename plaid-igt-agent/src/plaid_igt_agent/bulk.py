@@ -383,7 +383,7 @@ def _repair_says(before: dict, after: dict, view) -> str:
     """What one repair does, for the line the user approves."""
     bits = []
     if before.get('parent') and not after.get('parent'):
-        bits.append('becomes an entry of its own')
+        bits.append('becomes a headword of its own')
     elif before.get('parent') != after.get('parent') and after.get('parent'):
         bits.append(f'becomes a sense of {view.label(after["parent"])}')
     for f in view.ref_fields:

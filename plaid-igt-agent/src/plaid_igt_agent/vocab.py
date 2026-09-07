@@ -632,7 +632,7 @@ def field_note(field: dict, dictionary: bool) -> str:
     if field.get('type') == FIELD_ITEM:
         bits.append('an entry of this lexicon' if not field.get('many') else 'entries of this lexicon')
     if dictionary and field.get('scope') == SCOPE_ENTRY:
-        bits.append('entries only, not senses')
+        bits.append('headwords only, not senses')
     return ', '.join(bits)
 
 
@@ -724,18 +724,23 @@ def plan_homograph_order(group: List[dict], ordered_ids) -> List[dict]:
 
 def build_item_numbers(items: Optional[List[dict]]) -> Dict[str, str]:
     """One dotted number per item, the name it goes by everywhere in a
-    dictionary vocabulary: entries that share a form are told apart by a first
-    segment in their homograph order ("1", "2"; an entry whose form is its own
-    gets none), and a sense carries its entry's segment, if any, then its own
-    path ("1.2", "2", "2.1.3"). Mirrors buildItemNumbers in vocabDictionary.js,
-    which is what the vocabulary list, Bulk Edit and the interlinear editor
-    draw beside a form."""
+    dictionary vocabulary. The first segment is the HEADWORD's: its place among
+    the entries spelled the same ("1", "2"), or "1" when it is alone but has
+    senses. A sense carries its headword's segment and then its own path
+    ("1.2", "2.1.3"). A lone headword with no senses has no number at all, so
+    one segment always means a headword and two or more always mean a sense.
+
+    Mirrors buildItemNumbers in vocabDictionary.js, which is what the
+    vocabulary list, Bulk Edit and the interlinear editor draw beside a form.
+    """
     tree = build_sense_tree(items)
     seg_of: Dict[str, str] = {}
     for group in homograph_groups(items, tree).values():
         if len(group) > 1:
             for i, r in enumerate(group):
                 seg_of[r['id']] = str(i + 1)
+        elif tree.children_of.get(group[0]['id']):
+            seg_of[group[0]['id']] = '1'
     out: Dict[str, str] = {}
     for it in items or []:
         seg = seg_of.get(tree.root_of.get(it['id']) or '', '')

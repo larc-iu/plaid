@@ -52,14 +52,16 @@ def ops_of(w, kind):
 
 def test_read_lexicon_draws_senses_under_their_entry():
     out = call_tool(dict_ws(), 'read_lexicon', {})
-    assert 'Lexicography Mode): 3 entries, 3 senses' in out
+    assert 'Lexicography Mode): 3 headwords, 3 senses' in out
     lines = [l for l in out.splitlines() if 'kwatha' in l]
     # The entry, then its senses indented and numbered as the user sees them.
-    assert lines[0].strip().startswith('kwatha | gloss=cook')
-    assert '1 kwatha | sense 1 of "kwatha" | gloss=boil' in lines[1]
-    assert lines[1].index('1 kwatha') > lines[0].index('kwatha')
-    assert '1.1 kwatha | sense 1.1 of "kwatha" | gloss=simmer' in lines[2]
-    assert '2 kwatha | sense 2 of "kwatha" | gloss=ferment' in lines[3]
+    # A lone headword with senses is numbered 1, so one segment always means a
+    # headword and two or more always mean a sense.
+    assert lines[0].strip().startswith('1 kwatha | gloss=cook')
+    assert '1.1 kwatha | sense 1.1 of "kwatha" | gloss=boil' in lines[1]
+    assert lines[1].index('1.1 kwatha') > lines[0].index('1 kwatha')
+    assert '1.1.1 kwatha | sense 1.1.1 of "kwatha" | gloss=simmer' in lines[2]
+    assert '1.2 kwatha | sense 1.2 of "kwatha" | gloss=ferment' in lines[3]
 
 
 def test_a_flat_lexicon_is_unchanged():
@@ -78,13 +80,13 @@ def test_reserved_keys_never_read_as_fields():
 
 def test_lexicon_entry_says_where_it_sits():
     w = dict_ws()
-    out = call_tool(w, 'lexicon_entry', {'entry_form': 'kwatha#1'})
-    assert 'Sense 1 of entry "kwatha"' in out and 'entry_form "kwatha#1"' in out
-    assert 'Senses (1):' in out and '1.1 kwatha' in out
+    out = call_tool(w, 'lexicon_entry', {'entry_form': 'kwatha#1.1'})
+    assert 'Sense 1.1 of headword "kwatha"' in out and 'entry_form "kwatha#1.1"' in out
+    assert 'Senses (1):' in out and '1.1.1 kwatha' in out
     out = call_tool(w, 'lexicon_entry', {'entry_form': 'kwatha'})
-    assert 'Entry "kwatha"' in out and 'also its sense' not in out
+    assert 'Headword "kwatha"' in out and 'spelled that way' not in out
     assert 'Referred to by:' in out
-    assert '"kwatha" sense 1 (a sense of it)' in out and '"phika" (variantOf)' in out
+    assert '"kwatha" sense 1.1 (a sense of it)' in out and '"phika" (variantOf)' in out
 
 
 # ---- addressing ------------------------------------------------------------
@@ -93,9 +95,9 @@ def test_a_bare_form_is_the_entry_and_a_suffix_is_the_sense():
     w = dict_ws()
     # Every sense here carries the headword, so without this rule a bare
     # "kwatha" would be four candidates rather than one entry.
-    assert 'Entry "kwatha"' in call_tool(w, 'lexicon_entry', {'entry_form': 'kwatha'})
-    assert 'Sense 1.1' in call_tool(w, 'lexicon_entry', {'entry_form': 'kwatha#1.1'})
-    assert 'Sense 2' in call_tool(w, 'lexicon_entry', {'entry_form': 'kwatha#2'})
+    assert 'Headword "kwatha"' in call_tool(w, 'lexicon_entry', {'entry_form': 'kwatha'})
+    assert 'Sense 1.1.1' in call_tool(w, 'lexicon_entry', {'entry_form': 'kwatha#1.1.1'})
+    assert 'Sense 1.2' in call_tool(w, 'lexicon_entry', {'entry_form': 'kwatha#1.2'})
     out = call_tool(w, 'lexicon_entry', {'entry_form': 'kwatha#9'})
     assert 'no sense 9' in out.lower() or 'No lexicon entry' in out
 
@@ -134,7 +136,7 @@ def test_a_reference_that_names_nothing_is_refused_not_written_as_text():
 
 def test_a_many_reference_appends_and_an_empty_value_clears():
     w = dict_ws()
-    call_tool(w, 'set_entry_field', {'entry_form': 'nyumba', 'field': 'seeAlso', 'value': 'kwatha#2'})
+    call_tool(w, 'set_entry_field', {'entry_form': 'nyumba', 'field': 'seeAlso', 'value': 'kwatha#1.2'})
     assert w.ops[-1]['value'] == ['d-kwatha', 'd-phika', 'd-ferment']
     call_tool(w, 'set_entry_field', {'entry_form': 'nyumba', 'field': 'seeAlso', 'value': ''})
     assert w.ops[-1]['value'] == ''
@@ -148,8 +150,8 @@ def test_an_entry_may_not_refer_to_itself():
 
 def test_an_entry_scope_field_is_refused_on_a_sense():
     w = dict_ws()
-    out = call_tool(w, 'set_entry_field', {'entry_form': 'kwatha#1', 'field': 'etymology', 'value': 'x'})
-    assert 'belongs to an entry rather than to each sense' in out and 'Set it on "kwatha"' in out
+    out = call_tool(w, 'set_entry_field', {'entry_form': 'kwatha#1.1', 'field': 'etymology', 'value': 'x'})
+    assert 'belongs to a headword rather than to each sense' in out and 'Set it on "kwatha"' in out
     assert 'Planned 1 change' in call_tool(w, 'set_entry_field',
                                            {'entry_form': 'kwatha', 'field': 'etymology', 'value': 'x'})
 
@@ -178,23 +180,23 @@ def test_add_sense_numbers_after_the_senses_there_are():
 
 def test_move_sense_renumbers_the_siblings():
     w = dict_ws()
-    out = call_tool(w, 'move_sense', {'entry_form': 'kwatha#2', 'number': '1'})
+    out = call_tool(w, 'move_sense', {'entry_form': 'kwatha#1.2', 'number': '1'})
     assert 'Planned 2 changes' in out
     by_id = {o['item_id']: o['patch'] for o in ops_of(w, 'set_entry_metadata')}
     assert by_id == {'d-ferment': {'senseOrder': 1}, 'd-boil': {'senseOrder': 2}}
-    assert 'sense 2 becomes sense 1' in ops_of(w, 'set_entry_metadata')[0]['label']
+    assert 'sense 1.2 becomes sense 1' in ops_of(w, 'set_entry_metadata')[0]['label']
 
 
 def test_moving_a_sense_nowhere_says_so_and_plans_nothing():
     w = dict_ws()
-    out = call_tool(w, 'move_sense', {'entry_form': 'kwatha#1.1', 'number': '1'})
+    out = call_tool(w, 'move_sense', {'entry_form': 'kwatha#1.1.1', 'number': '1'})
     assert 'Planned 0 changes' in out and 'no siblings to move among' in out
     assert not w.ops
 
 
 def test_an_entry_cannot_be_renumbered():
     out = call_tool(dict_ws(), 'move_sense', {'entry_form': 'phika', 'number': '2'})
-    assert 'carries no sense number of its own' in out
+    assert 'is a headword, and a headword is not numbered among senses' in out
 
 
 def test_make_sense_of_and_free_sense():
@@ -203,7 +205,7 @@ def test_make_sense_of_and_free_sense():
     assert w.ops[-1]['patch'] == {'parent': 'd-kwatha', 'senseOrder': 3}
     assert 'becomes a sense of "kwatha"' in w.ops[-1]['label']
     w2 = dict_ws()
-    call_tool(w2, 'free_sense', {'entry_form': 'kwatha#1'})
+    call_tool(w2, 'free_sense', {'entry_form': 'kwatha#1.1'})
     # The subsense below it comes along: only the parent link is cut.
     assert w2.ops[-1]['patch'] == {'parent': None, 'senseOrder': None}
     assert 'with 1 sense below it' in w2.ops[-1]['label']
@@ -211,17 +213,17 @@ def test_make_sense_of_and_free_sense():
 
 def test_a_sense_cannot_be_moved_under_its_own_descendant():
     w = dict_ws()
-    out = call_tool(w, 'make_sense_of', {'entry_form': 'kwatha', 'under_form': 'kwatha#1.1'})
+    out = call_tool(w, 'make_sense_of', {'entry_form': 'kwatha', 'under_form': 'kwatha#1.1.1'})
     assert 'would make a loop' in out
     assert not w.ops
 
 
 def test_structural_tools_compose_within_one_plan():
     w = dict_ws()
-    call_tool(w, 'free_sense', {'entry_form': 'kwatha#1'})
-    # d-boil is an entry now, so its own former subsense is addressed under it.
+    call_tool(w, 'free_sense', {'entry_form': 'kwatha#1.1'})
+    # d-boil is a headword now, so its own former subsense sits under it.
     out = call_tool(w, 'read_lexicon', {})
-    assert '4 entries, 2 senses' in out
+    assert '4 headwords, 2 senses' in out
 
 
 # ---- usage examples --------------------------------------------------------
@@ -315,7 +317,7 @@ def test_the_plan_is_what_a_later_read_sees():
     out = call_tool(w, 'read_lexicon', {})
     # The entry is gone and its two senses stand on their own, which is what
     # the delete actually does once approved.
-    assert '4 entries, 1 sense' in out and 'gloss=cook | pos=v' not in out
+    assert '4 headwords, 1 sense' in out and 'gloss=cook | pos=v' not in out
     assert 'variantOf=' not in out and 'seeAlso="phika"' in out
 
 
@@ -325,8 +327,9 @@ def test_entries_sharing_a_form_are_told_apart_by_their_shown_number():
     w = dict_ws(items=ITEMS + [{'id': 'd-phika2', 'form': 'phika', 'metadata': {'gloss': 'burn'}}])
     assert '(id d-phika2, entry_form "phika#2")' in call_tool(w, 'lexicon_entry', {'entry_form': 'phika#2'})
     assert '(id d-phika, entry_form "phika#1")' in call_tool(w, 'lexicon_entry', {'entry_form': 'phika#1'})
-    # kwatha heads only one entry, so its senses carry no leading segment.
-    assert 'Sense 1.1 of entry "kwatha" (id d-simmer' in call_tool(w, 'lexicon_entry', {'entry_form': 'kwatha#1.1'})
+    # kwatha is spelled uniquely, so its own segment is just 1.
+    assert 'Sense 1.1.1 of headword "kwatha" (id d-simmer' in call_tool(
+        w, 'lexicon_entry', {'entry_form': 'kwatha#1.1.1'})
 
 
 def test_a_flat_lexicon_numbers_homonyms_positionally():
@@ -340,7 +343,7 @@ def test_a_flat_lexicon_numbers_homonyms_positionally():
 def test_move_sense_takes_the_last_segment_of_a_dotted_number():
     """A sense is shown with a dotted number, but it moves among its siblings."""
     w = dict_ws()
-    call_tool(w, 'move_sense', {'entry_form': 'kwatha#2', 'number': '1.1'})
+    call_tool(w, 'move_sense', {'entry_form': 'kwatha#1.2', 'number': '1.1'})
     by_id = {o['item_id']: o['patch'] for o in ops_of(w, 'set_entry_metadata')}
     assert by_id == {'d-ferment': {'senseOrder': 1}, 'd-boil': {'senseOrder': 2}}
 
@@ -384,17 +387,17 @@ def test_order_homographs_renumbers_the_group():
 
 def test_order_homographs_checks_the_group_is_named_in_full():
     w = dict_ws(items=HOMOGRAPHS)
-    assert 'Give all 3 entries' in call_tool(w, 'order_homographs', {'entry_form': 'x#1', 'order': ['1', '2']})
+    assert 'Give all 3 headwords' in call_tool(w, 'order_homographs', {'entry_form': 'x#1', 'order': ['1', '2']})
     assert 'named twice' in call_tool(w, 'order_homographs', {'entry_form': 'x#1', 'order': ['1', '1', '2']})
     out = call_tool(w, 'order_homographs', {'entry_form': 'x#1', 'order': ['1', '2', '9']})
-    assert 'not one of the 3 entries spelled "x"' in out
+    assert 'not one of the 3 headwords spelled "x"' in out
     assert not w.ops
 
 
 def test_order_homographs_is_refused_for_a_lone_entry():
     w = dict_ws(items=HOMOGRAPHS)
     out = call_tool(w, 'order_homographs', {'entry_form': 'y', 'order': ['1']})
-    assert 'only entry spelled that way' in out
+    assert 'only headword spelled that way' in out
 
 
 def test_the_homograph_key_is_not_a_field():
@@ -410,7 +413,7 @@ def test_read_lexicon_shows_the_number_on_entries_too_and_orders_by_it():
     lines = [l.strip() for l in out.splitlines()
              if any(g in l for g in ('gloss=early', 'gloss=late', 'gloss=unnumbered'))]
     assert lines == ['1 x | gloss=early', '2 x | gloss=late | 1 sense below', '3 x | gloss=unnumbered']
-    assert '4 entries, 1 sense' in out and '1 senses' not in out
+    assert '4 headwords, 1 sense' in out and '1 senses' not in out
     # A lone entry has no number to show.
     assert 'y | gloss=alone' in out
 
