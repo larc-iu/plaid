@@ -245,10 +245,11 @@ export const buildSenseTree = (items) => {
 
 /**
  * One dotted number per item, the name it goes by everywhere in a dictionary
- * vocabulary: entries that share a form are told apart by a first segment in
- * creation order ("a 1", "a 2"; an entry whose form is its own gets none),
- * and a sense carries its entry's segment, if any, then its own path ("a 1.2",
- * "kat 2", "kat 2.1"). Values are strings, so the label draws them as text
+ * vocabulary. The first segment is the HEADWORD's: its place among the
+ * entries spelled the same ("a 1", "a 2"), or "1" when it is alone but has
+ * senses. A sense carries its headword's segment and then its own path
+ * ("a 1.2", "adidi 1.1", "adidi 1.2.1"). A lone headword with no senses has
+ * no number at all. Values are strings, so the label draws them as text
  * (never as subscripts, and never as superscripts, which mark tone);
  * `buildHomonymIndex` is the numeric kind a vocabulary without the switch
  * uses. `items` in creation order, as the server returns them.
@@ -260,6 +261,10 @@ export const buildItemNumbers = (items) => {
   const segOf = new Map();
   for (const group of homographGroups(items, tree).values()) {
     if (group.length > 1) group.forEach((r, i) => segOf.set(r.id, String(i + 1)));
+    // A lone headword with senses is "1" too, so one segment always means a
+    // headword and two always mean a sense: "adidi 1" over "adidi 1.1",
+    // never a bare "adidi" beside an "adidi 1" that could be either.
+    else if (tree.childrenOf.get(group[0].id)?.length) segOf.set(group[0].id, '1');
   }
   const out = new Map();
   for (const it of items || []) {

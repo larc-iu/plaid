@@ -342,10 +342,11 @@ The switch is on its **Settings** tab, under **Lexicography Mode**, and it is of
 With it off, the vocabulary is the flat list of entries described above and nothing in this section appears.
 Turning it on adds a **Status** field held to a closed list (draft, reviewed, published), and turning it off again leaves every field and every entry as it is.
 
-With the switch on, an entry is a headword, and it can have senses under it, numbered 1, 2, 3, each of which can have senses of its own (2.1, 2.2).
-The entry itself has no sense number.
-Whether its own gloss is a meaning that words link to, or the entry is only a container for its senses, is up to you: a word with one meaning is simply an entry with a gloss.
-Entries that share a form are told apart by a first number, so two entries spelled *a* are *a 1* and *a 2*, and the senses of the first are *a 1.1*, *a 1.2*.
+With the switch on, an entry is a headword, and it can have senses under it, each of which can have senses of its own.
+Numbers say what is what: a headword with senses is *adidi 1*, its senses *adidi 1.1* and *adidi 1.2*, and a sense of the second *adidi 1.2.1*.
+Entries that share a form are told apart by that first number, so two entries spelled *a* are *a 1* and *a 2*, and the senses of the second are *a 2.1*, *a 2.2*.
+One number is always a headword and two are always a sense; a headword that is alone and has no senses has no number at all.
+Whether a headword's own gloss is a meaning that words link to, or the headword is only a container for its senses, is up to you: a word with one meaning is simply an entry with a gloss, and a headword with no gloss shows how many senses it has in its place.
 That is the name an entry goes by everywhere: the list, the picker, the link popover in the interlinear view.
 Any entry can be made a sense of another: open it and choose **Make a sense of…**, then find the entry it belongs under.
 Every item in a vocabulary is an entry: a headword, or a sense under another entry.

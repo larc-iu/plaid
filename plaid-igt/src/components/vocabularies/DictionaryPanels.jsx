@@ -138,7 +138,7 @@ export const EntryPlace = ({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         {parent ? (
           <span>
-            Sense <span className="tabular-nums">{number}</span> of{' '}
+            Sense <span className="tabular-nums">{homonyms?.get(item.id) ?? number}</span> of{' '}
             <ItemLink item={parent} homonyms={homonyms} itemTo={itemTo} />
           </span>
         ) : (
@@ -332,11 +332,11 @@ const SenseTree = ({
               <HomographNumber
                 number={homonyms?.get(item.id) || ''}
                 onOpen={onReorderHomographs}
-                className="w-8 shrink-0 text-right text-xs"
+                className="w-12 shrink-0 text-right text-xs"
               />
             ) : (
-              <span className="w-8 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-                {tree.numberOf.get(item.id)}
+              <span className="w-12 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                {homonyms?.get(item.id) ?? tree.numberOf.get(item.id)}
               </span>
             )}
             <span className="min-w-0 truncate">

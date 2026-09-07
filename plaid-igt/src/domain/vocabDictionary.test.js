@@ -127,10 +127,12 @@ describe('placing and moving senses', () => {
     expect(n.get('kat2')).toBe('1.2');
     expect(n.get('kat2a')).toBe('1.2.1');
     expect(n.get('run')).toBe('');
-    // A lone entry's senses carry no entry segment.
+    // A lone headword with senses is 1, so its senses read as senses; a lone
+    // headword without any has no number.
     const m = buildItemNumbers(items());
-    expect(m.get('kat')).toBe('');
-    expect(m.get('kat2a')).toBe('2.1');
+    expect(m.get('kat')).toBe('1');
+    expect(m.get('kat2a')).toBe('1.2.1');
+    expect(m.get('run')).toBe('');
   });
 
   it('lands a dragged sense before, after, into, or out', () => {

@@ -1163,7 +1163,10 @@ export const VocabularyItems = ({
                     </span>
                     {hasGloss && (
                       <span className="truncate text-xs text-muted-foreground">
-                        {item.metadata?.gloss || ''}
+                        {item.metadata?.gloss ||
+                          (dictionary && tree.childrenOf.get(item.id)?.length
+                            ? `${tree.childrenOf.get(item.id).length} sense${tree.childrenOf.get(item.id).length === 1 ? '' : 's'}`
+                            : '')}
                       </span>
                     )}
                     <span className="text-right text-xs tabular-nums text-muted-foreground">

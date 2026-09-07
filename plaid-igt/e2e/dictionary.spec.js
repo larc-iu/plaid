@@ -102,7 +102,7 @@ test('the list draws senses under their entry in the By entry view', async ({ pa
 
 test('an entry says where it sits, and can be freed and placed again', async ({ page }) => {
   await openView(page, ids.kat2);
-  await expect(page.getByText(/^Sense 1 of/)).toBeVisible();
+  await expect(page.getByText(/^Sense 1\.1 of/)).toBeVisible();
   // Drag the sense out of its entry, onto the Own entry zone of the tree.
   await page.getByRole('button', { name: '1 sense' }).click();
   const row = page.locator(`[data-sense="${ids.kat2}"]`);
@@ -116,7 +116,7 @@ test('an entry says where it sits, and can be freed and placed again', async ({ 
   await page.getByRole('button', { name: 'Make a sense of…' }).click();
   await page.getByPlaceholder('Find the entry…').fill(`kat${stamp}`);
   await page.getByRole('option').filter({ hasText: 'cat' }).click();
-  await expect(page.getByText(/^Sense 1 of/)).toBeVisible();
+  await expect(page.getByText(/^Sense 1\.1 of/)).toBeVisible();
   await expect.poll(() => meta(ids.kat2)).toMatchObject({ parent: ids.kat, senseOrder: 1 });
   await expect(page.getByLabel('Etymology')).toHaveCount(0);
 });
