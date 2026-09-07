@@ -361,6 +361,33 @@ export const nextSenseOrder = (tree, parentId) => {
 };
 
 /**
+ * The metadata keys that belong to an ENTRY rather than to one of its senses:
+ * its place among the entries spelled alike, the form facts a headword carries,
+ * the FLEx entry it came from, and every headword-only field. `gloss`, `pos`,
+ * `definition`, the examples and the status stay with the sense.
+ */
+const ENTRY_LEVEL_KEYS = [HOMOGRAPH_KEY, 'morphType', 'lexemeForm', 'flexEntry'];
+
+/**
+ * One entry's metadata split for raising a headword over it: what the new
+ * headword takes, and what the entry keeps as it becomes a sense. Without the
+ * split the number, the morph type and any headword-only field would sit on a
+ * sense, where the entry form does not even show them.
+ */
+export const splitEntryLevel = (metadata, fields) => {
+  const entryFields = new Set(
+    (fields || []).filter((f) => f.scope === FIELD_SCOPES.ENTRY).map((f) => f.name),
+  );
+  const entry = {};
+  const sense = {};
+  for (const [key, value] of Object.entries(metadata || {})) {
+    if (key === PARENT_KEY || key === SENSE_ORDER_KEY) continue; // placement, set by the caller
+    (ENTRY_LEVEL_KEYS.includes(key) || entryFields.has(key) ? entry : sense)[key] = value;
+  }
+  return { entry, sense };
+};
+
+/**
  * Metadata for `item` made a sense of `parentId` (appended last), or its own
  * entry again when `parentId` is null.
  */

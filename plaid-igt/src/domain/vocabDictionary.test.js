@@ -8,6 +8,7 @@ import {
   descendantsOf,
   nextSenseOrder,
   withParentSet,
+  splitEntryLevel,
   planSenseDrop,
   homographGroup,
   planHomographOrder,
@@ -40,6 +41,49 @@ const items = () => [
   item('kat2a', 'kat', { gloss: 'lioness', parent: 'kat2' }),
   item('run', 'run', { gloss: 'run', variantOf: 'kat', seeAlso: ['kat', 'kat2'] }),
 ];
+
+describe('splitEntryLevel', () => {
+  const fields = [{ name: 'gloss' }, { name: 'etymology', scope: 'entry' }, { name: 'status' }];
+  it("sends the entry's own facts up and leaves the meaning behind", () => {
+    const { entry, sense } = splitEntryLevel(
+      {
+        gloss: 'cat',
+        pos: 'N',
+        homograph: 2,
+        morphType: 'stem',
+        lexemeForm: 'kat-',
+        flexEntry: 'E1',
+        flexSense: 'S1',
+        etymology: 'Proto-X',
+        status: 'draft',
+        examples: [{ text: 'a' }],
+        parent: 'p',
+        senseOrder: 3,
+      },
+      fields,
+    );
+    expect(entry).toEqual({
+      homograph: 2,
+      morphType: 'stem',
+      lexemeForm: 'kat-',
+      flexEntry: 'E1',
+      etymology: 'Proto-X',
+    });
+    expect(sense).toEqual({
+      gloss: 'cat',
+      pos: 'N',
+      flexSense: 'S1',
+      status: 'draft',
+      examples: [{ text: 'a' }],
+    });
+  });
+
+  it('keeps everything when the vocabulary has no headword-only field', () => {
+    const { entry, sense } = splitEntryLevel({ gloss: 'cat', etymology: 'x' }, [{ name: 'gloss' }]);
+    expect(entry).toEqual({});
+    expect(sense).toEqual({ gloss: 'cat', etymology: 'x' });
+  });
+});
 
 describe('buildSenseTree', () => {
   it('leaves an entry unnumbered and numbers its senses from 1, subsenses under them', () => {

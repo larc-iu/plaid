@@ -57,6 +57,7 @@ import {
   validateVocabRefs,
   planDeleteRefs,
   planSenseDrop,
+  splitEntryLevel,
   nextSenseOrder,
   homographGroup,
   planHomographOrder,
@@ -748,12 +749,18 @@ export const VocabularyItems = ({
         const place = above
           ? { parent: above, senseOrder: it.metadata?.senseOrder ?? nextSenseOrder(tree, above) }
           : {};
+        // What belongs to the ENTRY goes up with the new headword: its place
+        // among the entries spelled alike, its morph type and lexeme form, the
+        // FLEx entry it came from, and every headword-only field. Left below,
+        // they would sit on a sense, where the form does not even show them.
+        const { entry, sense } = splitEntryLevel(it.metadata, fields);
+        const headMeta = { ...entry, ...place };
         created = await client.vocabItems.create(
           vocabularyId,
           it.form,
-          Object.keys(place).length ? place : undefined,
+          Object.keys(headMeta).length ? headMeta : undefined,
         );
-        await writeMetadata(id, { ...(it.metadata || {}), parent: created.id, senseOrder: 1 });
+        await writeMetadata(id, { ...sense, parent: created.id, senseOrder: 1 });
       });
       // One GET to resync rather than folding the new entry in by hand: the
       // draft is untouched (nothing the form edits changed).
