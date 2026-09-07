@@ -394,6 +394,40 @@ describe('buildCldfDataset — dictionary', () => {
     expect(entries[0].Entry_variantOf).toBe('');
   });
 
+  it("carries a sense's own part of speech and fields, and a headword's only once", () => {
+    const dict = {
+      id: 'v1',
+      name: 'Lexicon',
+      config: { igt: { dictionary: true, fields: { gloss: {}, pos: {}, register: {} } } },
+      items: [
+        { id: 'h', form: 'kat', metadata: { gloss: 'cat', pos: 'N', register: 'plain' } },
+        {
+          id: 's',
+          form: 'kat',
+          metadata: { gloss: 'lion', pos: 'N.aug', register: 'formal', parent: 'h' },
+        },
+      ],
+    };
+    const { files } = build({ vocabularies: [dict] });
+    const senses = table(files, 'senses.csv');
+    expect(senses.map((x) => [x.Description, x.Part_Of_Speech, x.Sense_register])).toEqual([
+      // The headword's own row leaves them to the entry row.
+      ['cat', '', ''],
+      ['lion', 'N.aug', 'formal'],
+    ]);
+    expect(table(files, 'entries.csv')[0]).toMatchObject({
+      Part_Of_Speech: 'N',
+      Entry_register: 'plain',
+    });
+  });
+
+  it('adds no sense columns to a vocabulary that has no senses', () => {
+    const { files } = build({ vocabularies: [vocab] });
+    const header = Object.keys(table(files, 'senses.csv')[0]);
+    expect(header.filter((h) => h.startsWith('Sense_'))).toEqual([]);
+    expect(header).not.toContain('Part_Of_Speech');
+  });
+
   it('skips the dictionary entirely when the option is off', () => {
     const { files } = build({ vocabularies: [vocab], options: { ...OPTIONS, dictionary: false } });
     expect(fileNamed(files, 'entries.csv')).toBeUndefined();

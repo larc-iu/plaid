@@ -491,6 +491,7 @@ export function buildCldfDataset({
   const entryRows = [];
   const senseRows = [];
   const extraVocabColumns = new Map();
+  const extraSenseColumns = new Map();
   let entriesWithoutSenseN = 0;
   if (o.dictionary) {
     const reserved = new Set(['gloss', 'definition', 'pos']);
@@ -561,13 +562,37 @@ export function buildCldfDataset({
                 .filter(Boolean),
             ),
           ];
-          senseRows.push({
+          const row = {
             ID: `s${senseN}`,
             Entry_ID: entryId,
             Description: String(description),
             Definition: m.gloss && m.definition ? String(m.definition) : '',
             Example_IDs: examples.join(' '),
-          });
+          };
+          // A sense of its own carries what the entry row cannot: its part of
+          // speech and its own fields. The HEADWORD's are already in the entry
+          // row, so writing them here too would double every column of a
+          // vocabulary with no senses at all.
+          if (sense.id !== item.id) {
+            row.Part_Of_Speech = m.pos ?? '';
+            for (const field of fields) {
+              if (reserved.has(field.toLowerCase())) continue;
+              const value = m[field];
+              if (value === null || value === undefined || value === '') continue;
+              const written =
+                fieldSpecs[field]?.type === FIELD_TYPES.ITEM
+                  ? (Array.isArray(value) ? value : [value])
+                      .map(refLabel)
+                      .filter(Boolean)
+                      .join('; ')
+                  : String(value);
+              if (written === '') continue;
+              const name = `Sense_${field}`;
+              extraSenseColumns.set(name, field);
+              row[name] = written;
+            }
+          }
+          senseRows.push(row);
         }
         if (!wrote) entriesWithoutSenseN += 1;
       }
@@ -695,7 +720,11 @@ export function buildCldfDataset({
       col('Entry_ID', { required: true, propertyUrl: 'entryReference' }),
       col('Description', { required: true, propertyUrl: 'description' }),
       col('Definition', { description: 'A longer definition, when the sense also has a gloss.' }),
+      col('Part_Of_Speech', { propertyUrl: 'partOfSpeech' }),
       col('Example_IDs', { propertyUrl: 'exampleReference', separator: ' ' }),
+      ...[...extraSenseColumns.entries()].map(([name, field]) =>
+        col(name, { description: `Lexicon field "${field}" from the originating Plaid project.` }),
+      ),
     ],
   });
 
