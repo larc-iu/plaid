@@ -2737,7 +2737,8 @@ TOOLS += [
         'Lexicon hygiene report, worst first with counts. section: "unused" (entries never linked), "fields" (missing '
         'gloss/pos), "homographs" (same form; groups with the same gloss first), "near" (forms one character apart), '
         '"glosses" (lexicon gloss disagrees with the corpus), "spread" (one corpus gloss over several entries), '
-        '"stale" (link form no longer contains the entry form), "single" (attested in one document), or "all" (default, '
+        '"stale" (link form no longer contains the entry form), "single" (attested in one document), "refs" (a '
+        'Lexicography Mode entry whose sense or reference points at an entry that is gone), or "all" (default, '
         'each section capped).',
         {'lexicon': {'type': 'string'}, 'section': {'type': 'string'}}, []),
     _fn('check_integrity',

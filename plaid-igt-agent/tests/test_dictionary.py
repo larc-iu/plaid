@@ -418,3 +418,16 @@ def test_read_lexicon_shows_the_number_on_entries_too_and_orders_by_it():
 def test_a_dotted_number_sorts_numerically():
     from plaid_igt_agent.tools import _num_key
     assert sorted(['2.10', '2.9', '10', '2'], key=_num_key) == ['2', '2.9', '2.10', '10']
+
+
+def test_check_lexicon_reports_references_that_point_nowhere():
+    """Only the API or another app can leave one. The app clears them when a
+    maintainer opens the vocabulary, so the agent reports rather than repairs."""
+    broken = [dict(it, metadata=dict(it['metadata'])) for it in ITEMS]
+    broken.append({'id': 'd-lost', 'form': 'lost', 'metadata': {'gloss': 'x', 'parent': 'gone'}})
+    broken.append({'id': 'd-bad', 'form': 'bad', 'metadata': {'gloss': 'y', 'variantOf': 'gone'}})
+    out = call_tool(dict_ws(items=broken), 'check_lexicon', {'section': 'refs'})
+    assert '2 entries whose references point nowhere' in out
+    assert 'lost: its parent entry no longer exists' in out
+    assert 'bad: variantOf pointed at an entry that no longer exists' in out
+    assert 'No references pointing nowhere.' in call_tool(dict_ws(), 'check_lexicon', {'section': 'refs'})

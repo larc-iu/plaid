@@ -7,6 +7,11 @@ where the app writes all of this. The two must stay in step: these shapes are
 read back by the same screens, and the app's load-time validator
 (validateVocabRefs) repairs on sight anything that does not match.
 
+The public surface deliberately mirrors those modules name for name, including
+a few pieces nothing here calls yet, so the two can be read side by side and
+checked against each other. Keep it that way: a mirror that is missing is a
+divergence waiting to happen, not dead weight.
+
 Nothing on the dictionary side applies to a vocabulary whose Lexicography Mode
 switch (``config.igt.dictionary``) is off: it is the flat list it always was.
 

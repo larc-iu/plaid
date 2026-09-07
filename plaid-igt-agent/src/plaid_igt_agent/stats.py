@@ -13,7 +13,7 @@ from plaid_client.provenance import prov_state, CONTRIBUTED_STATE, PROV_SOURCE_K
 
 from .project import IgtDoc, Sentence, Word, REVIEWABLE, mwe_form, render_word, segmentation, word_ref
 from .tools import Workspace, ToolError, _matcher, _truncate, entry_line
-from .vocab import descendants_of
+from .vocab import descendants_of, validate_vocab_refs
 
 
 def _pct(n, d):
@@ -402,7 +402,7 @@ def _note_stale(stale: Counter, item: dict, form: str) -> None:
         stale[(form, entry)] += 1
 
 
-LEXICON_SECTIONS = ('unused', 'fields', 'homographs', 'near', 'glosses', 'spread', 'stale', 'single')
+LEXICON_SECTIONS = ('unused', 'fields', 'homographs', 'near', 'glosses', 'spread', 'stale', 'single', 'refs')
 
 
 def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optional[str] = None) -> str:
@@ -563,6 +563,25 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
                 near.append(f'{fm} / {other}')
     if want('near'):
         listing('pairs of forms one character apart (possible variants or duplicates)', near, 'pairs')
+
+    if want('refs') and any_dictionary:
+        # A reference that resolves to nothing: an entry deleted through the
+        # API or by another app. The app clears these when a maintainer opens
+        # the vocabulary, so this only reports them.
+        dangling = []
+        for v in vocabs:
+            if not views[v['id']].dictionary:
+                continue
+            for f in validate_vocab_refs(ws.lexicon(v), v['fields'])[1]:
+                dangling.append(f'  {f.get("form")}: ' + '; '.join(f['reasons']))
+        if dangling:
+            lines.append(f'{len(dangling)} entr{"y" if len(dangling) == 1 else "ies"} whose references point '
+                         'nowhere (a maintainer opening the vocabulary clears them):')
+            lines.extend(dangling[:cap])
+            if len(dangling) > cap:
+                lines.append(f'  … {len(dangling) - cap} more')
+        else:
+            lines.append('No references pointing nowhere.')
 
     disagree = []
     for iid, c in corpus_gloss.items():
