@@ -104,6 +104,10 @@ def _case(seed: int) -> dict:
             meta['rel'] = r.sample(ids + ['gone', i], r.randint(1, min(3, len(ids) + 2)))
         if r.random() < 0.3:
             meta['rel'] = r.choice(['notalist', [], [None, 3]])
+        if r.random() < 0.2:
+            # A live bare id where the field takes many: what a field widened
+            # from Entry to Entries leaves behind, which must survive.
+            meta['rel'] = r.choice(ids)
         if r.random() < 0.5:
             meta['gloss'] = r.choice(FORMS)
         items.append({'id': i, 'form': r.choice(FORMS), 'metadata': meta})
@@ -163,6 +167,7 @@ def _python_side(c: dict) -> dict:
         'planDeleteRefs': plan_delete_refs(c['items'], c['fields'], c['deleted']),
         'planMergeRefs': plan_merge_refs(c['items'], c['fields'], c['survivor'], c['losers']),
         'validateVocabRefs': validate_vocab_refs(c['items'], c['fields'])[0],
+        'validateVocabRefsFindings': validate_vocab_refs(c['items'], c['fields'])[1],
         'arrangeAsTree': [[it['id'], depth, context] for it, depth, context in arrange_as_tree(
             [it for it in c['items'] if it['id'] in c['listed']], t)],
         # `declared` is the port's own: it tells a core field the config named
@@ -198,9 +203,35 @@ SURFACE_EXEMPT = {
     'splitEntryLevel': 'Add headword',
     'groupRankedByHeadword': "the link popover's list",
     'exampleKey': 'keys a rendering cache',
+    # vocabFields.js is mostly the entry FORM: labels, controls, grouping and
+    # the seeding of a new vocabulary, none of which the agent draws.
+    'editableMetadata': 'the entry form',
+    'fieldBaseName': 'the entry form',
+    'fieldControl': 'the entry form',
+    'fieldDescription': 'the entry form',
+    'fieldLabel': 'the entry form',
+    'fieldsToConfig': 'the Settings field table',
+    'groupFieldsForForm': 'the entry form',
+    'humanizeFieldName': 'the entry form',
+    'isBuiltInField': 'the Settings field table',
+    'reservedMetadata': 'the entry form',
+    'seedDefaultFields': 'a new vocabulary',
+    'vocabFieldTagset': 'the Settings field table',
+    'vocabGovernedFields': 'the Settings field table',
+    'vocabTagsetByField': 'the Settings field table',
 }
 # Where the port did not keep the app's name.
 SURFACE_ALIAS = {'readDictionaryEnabled': 'dictionary_enabled'}
+# Public in the port with nothing of the name in the app, on purpose.
+PORT_ONLY = {
+    'plan_sense_set_number': 'a place-among-siblings gesture, since the agent cannot drag',
+    'homograph_groups': 'every group at once, for check_lexicon',
+    'field_note': "one field's shape in prose, for a tool result",
+    'field_by_name': 'a lookup the app does inline',
+    'vocab_field_summary': 'the field schema in prose, for a tool result',
+    'with_parent': 'module-private in the app, public here for with_parent_set',
+    'build_homonym_index': 'lives in vocabHomonyms.js in the app',
+}
 
 
 def _snake(name: str) -> str:
@@ -215,7 +246,10 @@ def test_every_app_function_is_ported_or_exempted():
         pytest.skip('node or plaid-igt not available')
     run = subprocess.run([node, RUNNER, '--surface'], capture_output=True, text=True, timeout=120)
     assert run.returncode == 0, run.stderr
-    exported = json.loads(run.stdout)['vocabDictionary']
+    surface = json.loads(run.stdout)
+    # Both modules the port claims to mirror, not just the dictionary half.
+    exported = [*surface['vocabDictionary'], *surface['vocabFields']]
+    assert len(exported) > 30, 'the surface report came back suspiciously small'
     ported = {n for n, o in vars(vocab_module).items()
               if not n.startswith('_') and inspect.isfunction(o)
               and o.__module__ == vocab_module.__name__}
@@ -223,11 +257,20 @@ def test_every_app_function_is_ported_or_exempted():
                if n not in SURFACE_EXEMPT
                and SURFACE_ALIAS.get(n, _snake(n)) not in ported]
     assert not missing, (
-        'plaid-igt exports these from vocabDictionary.js with no counterpart in '
-        f'plaid_igt_agent/vocab.py: {missing}. Port each one, or add it to '
-        'SURFACE_EXEMPT here and to the module docstring with the reason.')
+        'plaid-igt exports these with no counterpart in plaid_igt_agent/vocab.py: '
+        f'{missing}. Port each one, or add it to SURFACE_EXEMPT here and to the '
+        'module docstring with the reason.')
     stale = [n for n in SURFACE_EXEMPT if n not in exported]
     assert not stale, f'SURFACE_EXEMPT names functions the app no longer exports: {stale}'
+    # And the other way: a function invented here, or one the app renamed out
+    # from under the port, both read as a name with nothing behind it.
+    expected = {SURFACE_ALIAS.get(n, _snake(n)) for n in exported}
+    extra = sorted(ported - expected - set(PORT_ONLY))
+    assert not extra, (
+        f'plaid_igt_agent/vocab.py has public functions the app does not export: {extra}. '
+        'Either the app renamed one, or it belongs in PORT_ONLY with the reason.')
+    gone = [n for n in PORT_ONLY if n not in ported]
+    assert not gone, f'PORT_ONLY names functions the port no longer has: {gone}'
 
 
 def test_the_two_runners_cover_the_same_functions(compared):
@@ -239,7 +282,8 @@ def test_the_two_runners_cover_the_same_functions(compared):
     'numberOf', 'parentOf', 'depthOf', 'rootOf', 'roots', 'childrenOf',
     'itemNumbers', 'homonyms', 'homographOf', 'homographGroup', 'planHomographOrder',
     'planSenseDrop', 'nextSenseOrder', 'descendantsOf', 'referencesTo',
-    'planDeleteRefs', 'planMergeRefs', 'validateVocabRefs', 'arrangeAsTree',
+    'planDeleteRefs', 'planMergeRefs', 'validateVocabRefs', 'validateVocabRefsFindings',
+    'arrangeAsTree',
     'normalizeVocabFields',
 ])
 def test_the_port_matches_the_app(compared, key):

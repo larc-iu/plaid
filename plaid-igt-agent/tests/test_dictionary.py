@@ -248,7 +248,8 @@ def test_the_move_is_described_on_the_sense_that_moves():
     by_id = {o['item_id']: o['label'] for o in ops_of(w, 'set_entry_metadata')}
     # d-boil is sense 1.1, the one asked to move. d-ferment is the sibling that
     # gets renumbered, and used to carry the move's own description.
-    assert 'sense 1.1 becomes sense 2' in by_id['d-boil']
+    # Said as the dotted number the user will see, not the raw sense order.
+    assert 'sense 1.1 becomes sense 1.2' in by_id['d-boil']
     assert 'renumbered' in by_id['d-ferment']
     assert 'becomes' not in by_id['d-ferment']
 
@@ -258,7 +259,7 @@ def test_a_number_past_the_end_is_planned_as_the_place_it_lands():
     call_tool(w, 'move_sense', {'entry_form': 'kwatha#1.1', 'number': '9'})
     by_id = {o['item_id']: o for o in ops_of(w, 'set_entry_metadata')}
     assert by_id['d-boil']['patch'] == {'senseOrder': 2}
-    assert 'becomes sense 2' in by_id['d-boil']['label']
+    assert 'becomes sense 1.2' in by_id['d-boil']['label']
 
 
 def test_a_number_that_is_not_a_number_is_refused():

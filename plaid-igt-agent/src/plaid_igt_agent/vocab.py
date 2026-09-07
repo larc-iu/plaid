@@ -12,11 +12,14 @@ a few pieces nothing here calls yet, so the two can be read side by side and
 checked against each other. Keep it that way: a mirror that is missing is a
 divergence waiting to happen, not dead weight.
 
-Five JS exports have no counterpart here on purpose, because each belongs to a
-gesture the app has and the agent does not: ``dictionaryEnablement`` and
-``statusTagset`` seed a vocabulary when the switch goes on, ``splitEntryLevel``
-is Add headword, ``groupRankedByHeadword`` is the link popover's list, and
-``exampleKey`` keys a rendering cache. Anything else missing is a bug.
+Five of vocabDictionary.js's exports have no counterpart here on purpose,
+because each belongs to a gesture the app has and the agent does not:
+``dictionaryEnablement`` and ``statusTagset`` seed a vocabulary when the switch
+goes on, ``splitEntryLevel`` is Add headword, ``groupRankedByHeadword`` is the
+link popover's list, and ``exampleKey`` keys a rendering cache. Most of
+vocabFields.js is the entry FORM (labels, controls, grouping) and is absent for
+the same reason. ``test_every_app_function_is_ported_or_exempted`` holds the
+full list both ways, and anything missing from it is a bug.
 
 Nothing on the dictionary side applies to a vocabulary whose Lexicography Mode
 switch (``config.igt.dictionary``) is off: it is the flat list it always was.

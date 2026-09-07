@@ -44,7 +44,7 @@ from .vocab import (RESERVED_ITEM_KEYS, FIELD_ITEM, FIELD_TEXT, SCOPE_ENTRY, SCO
                     next_sense_order, plan_sense_set_number, all_examples, with_example_added,
                     with_example_removed, references_to, arrange_as_tree, vocab_field_summary,
                     build_item_numbers, build_homonym_index, homograph_group,
-                    plan_homograph_order, SENSE_ORDER_KEY, fields_for_item)
+                    plan_homograph_order, SENSE_ORDER_KEY, fields_for_item, PARENT_KEY)
 
 
 class ToolError(Exception):
@@ -466,8 +466,16 @@ class LexView:
         """Field names the app's entry form does not show on this item. A
         headword-only field sits on the headword, so reporting it on a sense
         offers the model a value the user cannot see and set_entry_field will
-        refuse to write."""
-        shown = {f['name'] for f in fields_for_item(self.fields, item, self.dictionary)}
+        refuse to write.
+
+        Asked of the TREE, not of the raw metadata: a parent naming nothing
+        makes an item a root here and in the app, whose load-time repair
+        clears such a parent on sight. Reading the raw key would call that
+        item a sense and hide fields it is free to carry.
+        """
+        parent = self.tree.parent_of.get(item['id'])
+        as_placed = {'metadata': {PARENT_KEY: parent} if parent else {}}
+        shown = {f['name'] for f in fields_for_item(self.fields, as_placed, self.dictionary)}
         return {f['name'] for f in self.fields} - shown
 
     def is_sense(self, item_id: str) -> bool:
@@ -1908,7 +1916,7 @@ def t_move_sense(ws: Workspace, number, entry_form: Optional[str] = None, lexico
     raw = str(number).strip().rsplit('.', 1)[-1]
     try:
         wanted = int(round(float(raw)))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         raise ToolError(f'"{number}" is not a sense number. Give the place among the senses of '
                         f'"{view.head_of(target["id"])}", counting from 1.')
     patches = plan_sense_set_number(view.tree, target['id'], wanted)
@@ -1920,6 +1928,9 @@ def t_move_sense(ws: Workspace, number, entry_form: Optional[str] = None, lexico
     # A number past either end lands at the nearest one, so the plan says where
     # the sense actually goes rather than what was asked for.
     landed = (by_id.get(target['id']) or {}).get('metadata', {}).get(SENSE_ORDER_KEY, wanted)
+    # Said as the DOTTED number the user will see, not the raw order: a move
+    # only ever changes the last segment, so "1.1" going to place 2 is "1.2".
+    landed_shown = '.'.join((was.split('.')[:-1] if was else []) + [str(landed)])
     head = view.head_of(target['id'])
     others = len(patches) - 1
     ops = []
@@ -1927,7 +1938,7 @@ def t_move_sense(ws: Workspace, number, entry_form: Optional[str] = None, lexico
         # The line describing the move belongs on the sense that moves, not on
         # whichever sibling the renumbering happens to list first.
         if x['id'] == target['id']:
-            label = (f'entry "{head}": sense {was} becomes sense {landed}'
+            label = (f'entry "{head}": sense {was} becomes sense {landed_shown}'
                      + (f' ({others} sibling{"s" if others != 1 else ""} renumbered)'
                         if others else ''))
         else:

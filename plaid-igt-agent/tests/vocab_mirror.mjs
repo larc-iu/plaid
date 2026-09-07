@@ -60,6 +60,7 @@ const out = cases.map((c) => {
     planDeleteRefs: planDeleteRefs(c.items, c.fields, c.deleted),
     planMergeRefs: planMergeRefs(c.items, c.fields, c.survivor, c.losers),
     validateVocabRefs: validateVocabRefs(c.items, c.fields).patches,
+    validateVocabRefsFindings: validateVocabRefs(c.items, c.fields).findings,
     // laying a filtered list out as a tree, context rows and all
     arrangeAsTree: arrangeAsTree(
       c.items.filter((it) => c.listed.includes(it.id)),
