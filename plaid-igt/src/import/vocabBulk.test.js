@@ -439,12 +439,17 @@ describe('matched entries on a decision', () => {
     const p = plan([entry(1, 'kan', { gloss: 'to eat', pos: 'V' })], two);
     expect(p.decisions[0].kind).toBe('enrich');
     expect(p.decisions[0].matches.map((m) => m.canTarget)).toEqual([true, false]);
-    // Naming the one it contradicts changes nothing: the compatible entry
-    // still takes the row.
+    // Naming the one it contradicts writes nothing. A pick can go stale (the
+    // reviewer chose, then changed the mapping), and quietly redirecting the
+    // row to a different entry is worse than writing to none.
     const forced = plan([entry(1, 'kan', { gloss: 'to eat', pos: 'V' })], two, {
       overrides: { 1: targetedAnswer(TARGETED_POLICY.enrich, 1) },
     });
-    expect(forced.updates).toEqual([{ id: 'h', patch: { pos: 'V' } }]);
+    expect(forced.updates).toEqual([]);
+    expect(forced.decisions[0]).toMatchObject({
+      action: 'skip',
+      detail: 'the entry chosen disagrees with this row',
+    });
   });
 
   it('lets a row name the ENTRY when a dictionary spreads a form over senses', () => {

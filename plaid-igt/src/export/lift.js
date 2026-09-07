@@ -383,16 +383,25 @@ function entryXml(indent, group, ctx) {
   // every real one, and re-importing that adds a spurious sense every round.
   // Its own fields are the entry's, and go after the senses.
   const headParts = partitionMetadata(meta, ctx.analysisLang, ctx.refFields);
+  // What the head's examples RENDER to, which is what decides whether the head
+  // says anything a sense says. Asking the raw list instead would turn a
+  // headword whose only example is unreadable into a gloss-less first sense,
+  // the very thing the skip below exists to prevent.
+  const unresolvedBefore = ctx.unresolved.count;
+  const headExamples = examplesXml(`${indent}    `, first, senseCtx);
   const headIsASense =
     !group.senses.length ||
     headParts.glosses.length > 0 ||
     headParts.definitions.length > 0 ||
     (scalar(meta.pos) ?? '') !== '' ||
     headParts.relations.some((r) => !ctx.entryRefFields.has(r.type)) ||
-    // Asked of the DATA, not by rendering: examplesXml counts an unresolvable
-    // reference into ctx.unresolved as a side effect, and the head is rendered
-    // again below when it turns out to be a sense.
-    allExamples(first).length > 0;
+    headExamples.length > 0;
+  // That render counts an unreadable reference into ctx.unresolved as a side
+  // effect. senseXml renders the head a second time when it is a sense, so the
+  // probe's count is rolled back and the real pass does the counting. When the
+  // head is NOT written, those examples really are dropped and the count of
+  // them stands.
+  if (headIsASense) ctx.unresolved.count = unresolvedBefore;
   const trailing = [];
   if (!headIsASense) {
     const grouped = groupFields(headParts.fields, ctx.fieldLangs, ctx.analysisLang);

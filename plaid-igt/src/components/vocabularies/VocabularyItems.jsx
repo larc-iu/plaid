@@ -1807,8 +1807,11 @@ export const VocabularyItems = ({
                           {deleteRefPatches.length} entr
                           {deleteRefPatches.length === 1 ? 'y' : 'ies'}
                         </strong>{' '}
-                        refer to it. Its senses become entries of their own, and references to it
-                        are removed.{' '}
+                        {deleteRefPatches.length === 1 ? 'refers' : 'refer'} to it.{' '}
+                        {dictionary
+                          ? 'Its senses become entries of their own, and those '
+                          : 'Those '}
+                        references are removed.{' '}
                       </>
                     )}
                     This action cannot be undone.

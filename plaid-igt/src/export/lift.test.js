@@ -521,6 +521,34 @@ describe('a headword that stands over senses', () => {
     expect(unresolved[0]).toMatch(/^1 example/);
   });
 
+  it('stays out of the senses when its only example is unreadable', () => {
+    // The example counts as data but renders to nothing, so deciding by the
+    // raw list puts a gloss-less sense in front of every real one.
+    const { lift, senseCount, warnings } = build(
+      [
+        {
+          id: 'v1',
+          config: FIELDS,
+          items: [
+            item('h', 'perro', {
+              Note: 'from the field',
+              examples: [{ document: 'gone', token: 'x' }],
+            }),
+            item('s1', 'perro', { gloss: 'dog', parent: 'h', senseOrder: 1 }),
+            item('s2', 'perro', { gloss: 'scoundrel', parent: 'h', senseOrder: 2 }),
+          ],
+        },
+      ],
+      { exampleTexts: new Map() },
+    );
+    expect(senseCount).toBe(2);
+    const doc = parse(lift);
+    expect([...doc.querySelectorAll('entry > sense')].length).toBe(2);
+    expect(doc.querySelector('entry > field[type="Note"]')).not.toBeNull();
+    // Dropped rather than exported, so it is still reported, exactly once.
+    expect(warnings.filter((w) => /could not be read/.test(w))).toHaveLength(1);
+  });
+
   it('is written as the first sense when it has a meaning of its own', () => {
     const { lift, senseCount } = build(container({ gloss: 'dog (generally)' }));
     expect(senseCount).toBe(3);

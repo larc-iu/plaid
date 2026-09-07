@@ -493,6 +493,13 @@ export const VocabularyDetail = () => {
       ) {
         return;
       }
+      // The schema goes first, then the values. The other order destroys them
+      // for a change that may not land: a failed setConfig would leave the
+      // field as it was with every value already gone, and a vocabulary entry
+      // has no history to restore from. This way a failure part way through
+      // leaves the new type holding values the entry list's load-time repair
+      // finishes clearing.
+      if (!(await saveFields(next))) return;
       try {
         await pruneFieldValues(
           fieldName,
@@ -500,10 +507,10 @@ export const VocabularyDetail = () => {
           label,
         );
       } catch (err) {
-        console.error('Error rewriting entry values before a field type change:', err);
-        notifyError('The entries could not be changed.', 'Not changed');
-        return;
+        console.error('Error rewriting entry values after a field type change:', err);
+        notifyError('Some entries still hold their old value. Open the entries to finish.', label);
       }
+      return;
     }
     await saveFields(next);
   };

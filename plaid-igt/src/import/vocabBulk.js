@@ -561,7 +561,8 @@ export const planVocabImport = ({
       // blank is what enrich means, and the other candidates are here for the
       // reader to see, not to be written over.
       const onePick = oneIndex != null ? candidates[oneIndex] : null;
-      const target = onePick && compatible.includes(onePick) ? onePick : compatible[0];
+      const oneRefused = onePick != null && !compatible.includes(onePick);
+      const target = oneRefused || !onePick ? compatible[0] : onePick;
       const changes = diffAgainst(target, entry, fields);
       const patch = Object.fromEntries(changes.map((c) => [c.field, c.to]));
       const added = changes.map((c) => c.field).join(', ');
@@ -573,6 +574,17 @@ export const planVocabImport = ({
         matches: candidates.map((c) => snapshot(c, c === target, compatible.includes(c))),
         changes,
       };
+      // A pick the row contradicts is not quietly rerouted to another entry:
+      // the reviewer named one, and writing to a different one is worse than
+      // writing to none.
+      if (oneRefused) {
+        record(entry, {
+          ...base,
+          action: 'skip',
+          detail: 'the entry chosen disagrees with this row',
+        });
+        continue;
+      }
       if (onePolicy !== ENRICH_FILL) {
         record(entry, { ...base, action: 'skip', detail: `could add ${added}` });
         continue;
@@ -606,7 +618,8 @@ export const planVocabImport = ({
       // The row names the ENTRY unless a reviewer has picked one of its senses,
       // and only a candidate the row does not contradict can be picked.
       const enrichPick = enrichIndex != null ? candidates[enrichIndex] : null;
-      const target = enrichPick && compatible.includes(enrichPick) ? enrichPick : heads[0];
+      const enrichRefused = enrichPick != null && !compatible.includes(enrichPick);
+      const target = enrichRefused || !enrichPick ? heads[0] : enrichPick;
       const changes = diffAgainst(target, entry, fields);
       const patch = Object.fromEntries(changes.map((c) => [c.field, c.to]));
       const added = changes.map((c) => c.field).join(', ');
@@ -618,6 +631,14 @@ export const planVocabImport = ({
         matches: candidates.map((c) => snapshot(c, c === target, compatible.includes(c))),
         changes,
       };
+      if (enrichRefused) {
+        record(entry, {
+          ...base,
+          action: 'skip',
+          detail: 'the entry chosen disagrees with this row',
+        });
+        continue;
+      }
       if (enrichPolicy !== ENRICH_FILL) {
         record(entry, { ...base, action: 'skip', detail: `could add ${added}` });
         continue;

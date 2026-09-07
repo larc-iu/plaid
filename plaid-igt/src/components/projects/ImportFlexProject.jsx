@@ -241,11 +241,9 @@ export const ImportFlexProject = () => {
       if (!vocabIdRef.current) {
         const project = await client.projects.get(projectIdRef.current);
         vocabIdRef.current =
-          lexiconMode === 'existing'
-            ? existingVocab.id
-            : (readImportState(project.config)?.vocabId ??
-              (project.vocabs || []).find((v) => v.name === vocabName)?.id ??
-              null);
+          readImportState(project.config)?.vocabId ??
+          (project.vocabs || []).find((v) => v.name === vocabName)?.id ??
+          null;
       }
       // The project is now filling. The record is removed when this run
       // finishes, so a cancelled or lost import is visible on the project, and

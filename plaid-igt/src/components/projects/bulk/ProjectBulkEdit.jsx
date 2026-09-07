@@ -1105,9 +1105,9 @@ const MergePanel = ({ project, client }) => {
     notifySuccess(
       `${plural(res.entriesRemoved, 'entry', 'entries')} merged. ${plural(res.linksMoved, 'link')} moved to “${survivorItem?.form ?? ''}”.` +
         (res.entriesRepointed
-          ? res.entriesRepointed === 1
-            ? ' 1 entry now points at it.'
-            : ` ${res.entriesRepointed} entries now point at it.`
+          ? ` ${plural(res.entriesRepointed, 'entry', 'entries')} now ${
+              res.entriesRepointed === 1 ? 'points' : 'point'
+            } at it.`
           : ''),
       'Merged',
     );

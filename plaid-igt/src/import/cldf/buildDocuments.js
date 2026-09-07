@@ -25,6 +25,7 @@
 
 import { makeCpIndexer, splitAnalyzed, surfaceOf, alignWords } from '../align.js';
 import { cell, list, customColumnsOf } from './readDataset.js';
+import { isReservedFieldName } from '../../domain/vocabFields.js';
 
 /**
  * Grouping sentinel: one document per example row. Not every corpus is running
@@ -659,7 +660,11 @@ export function buildCldfDocuments(dataset, options = {}) {
     if (definition) metadata.definition = definition;
     for (const name of senseCustom) {
       const v = row[name] ?? '';
-      if (v) metadata[name.slice('Sense_'.length)] = v;
+      const key = name.slice('Sense_'.length);
+      // A reserved name is structure, not a field. A column called
+      // Sense_parent would otherwise write a string into the key the sense
+      // tree is built from and make the item a child of nothing.
+      if (v && !isReservedFieldName(key)) metadata[key] = v;
     }
     if (!sensesByEntry.has(key)) sensesByEntry.set(key, []);
     sensesByEntry.get(key).push({ id: cell(senses, row, 'id'), description, metadata });
@@ -691,7 +696,13 @@ export function buildCldfDocuments(dataset, options = {}) {
       if (name === 'Homograph' && ordinal) continue;
       const v = row[name] ?? '';
       if (!v) continue;
-      metadata[name.startsWith('Entry_') ? name.slice('Entry_'.length) : name] = v;
+      const key = name.startsWith('Entry_') ? name.slice('Entry_'.length) : name;
+      // As above: a reserved name never becomes a field, so it never reaches
+      // an item's metadata from a data column either. That drops a foreign
+      // Homograph column whose value is not an ordinal, which has nowhere to
+      // go: the name is reserved, so no field of it can exist to hold it.
+      if (isReservedFieldName(key)) continue;
+      metadata[key] = v;
     }
     lexicon.push({ id, form, metadata, senses: entrySenses });
   }
