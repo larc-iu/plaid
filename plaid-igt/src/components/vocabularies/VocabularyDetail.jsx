@@ -558,7 +558,7 @@ export const VocabularyDetail = () => {
                             <SelectTrigger
                               id={`scope-${field.name}`}
                               aria-label={`Where ${fieldLabel(field)} is shown`}
-                              className="h-7 w-32 text-xs"
+                              className="h-7 w-36 text-xs"
                             >
                               <SelectValue />
                             </SelectTrigger>
