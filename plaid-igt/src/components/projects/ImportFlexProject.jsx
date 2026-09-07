@@ -63,7 +63,7 @@ export const ImportFlexProject = () => {
   const [results, setResults] = useState(null);
 
   // Survive retries within this page session (see header comment).
-  const { resumeId, resumeName } = useResumeImport(client);
+  const { resumeId, resumeName, finishAsIs } = useResumeImport(client);
   const projectIdRef = useRef(resumeId || null);
   const setupDoneRef = useRef(false);
   const vocabIdRef = useRef(null);
@@ -318,7 +318,14 @@ export const ImportFlexProject = () => {
             <p className="mt-2 text-sm">
               Continuing the unfinished import into{' '}
               <span className="font-medium">{resumeName ?? 'this project'}</span>. Choose the same
-              backup: what is already there is kept.
+              backup: what is already there is kept.{' '}
+              <button
+                type="button"
+                onClick={finishAsIs}
+                className="font-medium text-primary hover:underline"
+              >
+                Use the project as it is
+              </button>
             </p>
           )}
         </div>
@@ -515,7 +522,8 @@ export const ImportFlexProject = () => {
                       Variants and complex forms
                       <span className="block text-xs text-muted-foreground">
                         {variantEntryCount} {variantEntryCount === 1 ? 'entry' : 'entries'}. A
-                        variant refers to what it varies, a complex form to what it is built from.
+                        variant refers to its canonical form, and a complex form to what it is built
+                        from.
                       </span>
                     </span>
                   </label>
