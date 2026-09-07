@@ -79,22 +79,40 @@ the upload's media type is validated from its filename.
 ## vocabularies/*.json
 
 ```jsonc
-{ "id": "…", "name": "Lexicon",
+{ "id": "…", "name": "Lexicon", "dictionary": true,
   "fields": [{ "name": "morphType", "inline": false }, { "name": "gloss", "inline": true },
-             { "name": "pos", "inline": true, "tagset": "POS" }, …],
+             { "name": "pos", "inline": true, "tagset": "POS" },
+             { "name": "variantOf", "inline": false, "type": "item", "many": true,
+               "scope": "entry" }, …],
   "tagsets": { "POS": { "delimiters": "", "mode": "closed", "values": [{ "value": "n" }, …] } },
   "items":  [{ "id": "…", "form": "perro", "metadata": { "gloss": "dog", … } }, …],
   "comments": [{ "id": "…", "anchor": { "type": "vocab-item", "id": "…" }, … }] }
 ```
 
+- `dictionary` is the vocabulary's Lexicography Mode switch, present only when it
+  is on. Without it the lexicon comes back as a flat list of entries, and the
+  structure below is not read.
 - `fields` is the normalized, ordered field inventory (`form` is never a field — it
   is the item's own headword). A field's `tagset` names one of the vocabulary's own
   tagsets and is absent when none governs it; `lang` (a FLEx custom field's writing
-  system) is likewise present only when set.
+  system) is likewise present only when set. The dictionary side of a field is
+  `type: "item"` (its values are ids of other entries in the SAME vocabulary),
+  `many: true` (a list of them rather than one) and `scope: "entry"` (shown on a
+  headword, not on its senses), each written only when set.
 - `tagsets` is the vocabulary's own tagset map, the same shape as the project's
   `schema.tagsets`, `null` when it has none. A vocabulary carries its own because it
   is shared across projects.
 - Item `metadata` is exported wholesale (custom fields, FLEx guids, examples, …).
+  Four of its keys are structure rather than fields, and the importer REWRITES
+  them, since every id in the archive is replaced on the way in:
+  `parent` (the entry this one is a sense of) and `senseOrder` (its place among
+  its siblings), the value of every `type: "item"` field, and each entry of
+  `examples`, which is either `{document, token}` (a sentence promoted from a
+  corpus) or `{text, translation}` (an example a FLEx import carried in, left
+  alone). `homograph` is an ordinal, not an id, and travels as it is.
+  The rewrite is a LAST pass, after every document has been created, and a
+  reference whose target is not in the archive is dropped and counted in the
+  import's warnings.
 - **Items keep the order the server returned them in, and that order is
   contractual.** It is creation order, which is what homonym subscripts
   (form₁, form₂, …) are numbered by, so a re-importer must recreate items **in
@@ -266,8 +284,10 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
    `documentMetadata` again (the wizard creates it as bare `{name}` rows, so the
    archive's version is written over it to restore each field's `tagset`).
    Each governed field's `tagset` is then set on its own span layer.
-2. Per vocabulary: write `fields` (with each `tagset`/`lang`) and `tagsets`, then create
-   items **in array order**, mapping old item ids to new.
+2. Per vocabulary: write `fields` (with each `tagset`/`lang`, and `type`/`many`/
+   `scope`), the `dictionary` switch when the archive carries it, and `tagsets`,
+   then create items **in array order**, mapping old item ids to new. Item
+   metadata is written as it stands here, ids and all, and corrected in step 4.
    The importer stamps each created item's metadata with `nativeImportId` (the
    archive item id) for resume dedupe and provenance. Then `comments.create`
    per archived entry comment, against the mapped item id (see Comments). Items
@@ -285,7 +305,13 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
    marked done
    (`metadata.nativeImported`) only after every write succeeded; resume skips
    done documents and deletes + redoes half-imported ones.
-4. All offsets are code points; never re-derive them from UTF-16 indices.
+4. Per vocabulary, LAST, once every document exists: rewrite the ids inside item
+   metadata through the maps built above (`parent`/`senseOrder`, every
+   `type: "item"` field, and each `{document, token}` example, whose document
+   AND token both have to have arrived). What did not survive is dropped and
+   counted in a warning. This runs after the documents because an example
+   points into one.
+5. All offsets are code points; never re-derive them from UTF-16 indices.
 
 ## Non-goals
 
