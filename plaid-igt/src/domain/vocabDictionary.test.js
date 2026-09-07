@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { normalizeVocabFields } from './vocabFields.js';
 import {
   buildSenseTree,
+  buildItemNumbers,
   arrangeAsTree,
   descendantsOf,
   nextSenseOrder,
@@ -40,14 +41,14 @@ const items = () => [
 ];
 
 describe('buildSenseTree', () => {
-  it('numbers an entry 1, its senses from 2 in sense order, subsenses under them', () => {
+  it('leaves an entry unnumbered and numbers its senses from 1, subsenses under them', () => {
     const t = buildSenseTree(items());
     expect(t.roots.map((r) => r.id)).toEqual(['kat', 'run']);
     expect(t.childrenOf.get('kat').map((c) => c.id)).toEqual(['kat3', 'kat2']);
-    expect(t.numberOf.get('kat')).toBe('1');
-    expect(t.numberOf.get('kat3')).toBe('2');
-    expect(t.numberOf.get('kat2')).toBe('3');
-    expect(t.numberOf.get('kat2a')).toBe('3.1');
+    expect(t.numberOf.get('kat')).toBe('');
+    expect(t.numberOf.get('kat3')).toBe('1');
+    expect(t.numberOf.get('kat2')).toBe('2');
+    expect(t.numberOf.get('kat2a')).toBe('2.1');
     expect(t.depthOf.get('kat2a')).toBe(2);
     expect(t.rootOf.get('kat2a')).toBe('kat');
     expect(descendantsOf(t, 'kat').map((c) => c.id)).toEqual(['kat3', 'kat2', 'kat2a']);
@@ -61,7 +62,7 @@ describe('buildSenseTree', () => {
       item('d', 'd', { parent: 'd' }),
     ]);
     expect(t.roots.map((r) => r.id)).toEqual(['a', 'b', 'c', 'd']);
-    expect(t.numberOf.get('c')).toBe('1');
+    expect(t.numberOf.get('c')).toBe('');
   });
 
   it('orders unnumbered siblings after numbered ones, by creation', () => {
@@ -101,18 +102,32 @@ describe('placing and moving senses', () => {
 
   it('places a sense at the number it is shown with', () => {
     const t = buildSenseTree(items());
-    // kat3 is shown as 2, kat2 as 3: ask for kat3 to be 3.
-    expect(planSenseSetNumber(t, 'kat3', 3)).toEqual([
+    // kat3 is shown as 1, kat2 as 2: ask for kat3 to be 2.
+    expect(planSenseSetNumber(t, 'kat3', 2)).toEqual([
       { id: 'kat2', metadata: { gloss: 'lion', parent: 'kat', senseOrder: 1 } },
       { id: 'kat3', metadata: { gloss: 'scratch', parent: 'kat', senseOrder: 2 } },
     ]);
     // Already there, out of range, or not a number: nothing.
-    expect(planSenseSetNumber(t, 'kat3', 2)).toEqual([]);
     expect(planSenseSetNumber(t, 'kat3', 1)).toEqual([]);
+    expect(planSenseSetNumber(t, 'kat3', 0)).toEqual([]);
     expect(planSenseSetNumber(t, 'kat2', 99)).toEqual([]);
     expect(planSenseSetNumber(t, 'kat2', 'x')).toEqual([]);
-    // A subsense counts from 1 under its sense.
     expect(planSenseSetNumber(t, 'kat2a', 1)).toEqual([]);
+  });
+
+  it('gives every item one dotted number, entries told apart by a first segment', () => {
+    const list = [...items(), item('kat9', 'kat', { gloss: 'other kat' })];
+    const n = buildItemNumbers(list);
+    expect(n.get('kat')).toBe('1');
+    expect(n.get('kat9')).toBe('2');
+    expect(n.get('kat3')).toBe('1.1');
+    expect(n.get('kat2')).toBe('1.2');
+    expect(n.get('kat2a')).toBe('1.2.1');
+    expect(n.get('run')).toBe('');
+    // A lone entry's senses carry no entry segment.
+    const m = buildItemNumbers(items());
+    expect(m.get('kat')).toBe('');
+    expect(m.get('kat2a')).toBe('2.1');
   });
 
   it('lands a dragged sense before, after, into, or out', () => {

@@ -259,6 +259,16 @@ export async function importLexicon({
       flexEntry: entry.guid,
       flexSense: sense?.guid ?? entry.guid,
     });
+    // In Lexicography Mode an entry with more than one sense is a CONTAINER
+    // (its form and entry-level fields, no gloss) with every FLEx sense under
+    // it, numbered as FLEx numbered them. With one sense, the sense is the
+    // entry, as always.
+    const container = dictionary && entry.senses.length > 1;
+    if (container) {
+      const metadata = entryMeta(null);
+      note(metadata);
+      if (!senseToItem.has(entry.guid)) pending.push({ form, metadata, senseGuid: entry.guid });
+    }
     for (const sense of entry.senses) {
       const examples = (sense.examples ?? [])
         .map((ex) => ({
@@ -335,27 +345,23 @@ export async function importLexicon({
   return senseToItem;
 }
 
-// With Dictionary ticked, the vocabulary keeps FLEx's sense structure: an
-// entry's first sense is the entry (headword and sense 1), its other senses
-// are senses of it in FLEx order, and a subsense is a sense of the sense
-// that owned it. Written after creation, since a parent is an item id; only
-// items made in this run are placed, so an entry already in the lexicon is
-// left as it is. The vocabulary's switch goes on, with the Status field.
+// With Lexicography Mode ticked, the vocabulary keeps FLEx's sense structure:
+// an entry with several senses is a container item, its senses are senses
+// of it in FLEx order, and a subsense is a sense of the sense that owned it.
+// Written after creation, since a parent is an item id; only items made in
+// this run are placed, so an entry already in the lexicon is left as it is.
+// The vocabulary's switch goes on, with the Status field.
 async function placeSenses({ client, vocabId, lexicon, senseToItem, existing, shouldStop }) {
   const patches = [];
   for (const entry of lexicon) {
-    const top = entry.senses.filter((s) => !s.parentSense);
-    const root = top[0] ? senseToItem.get(top[0].guid) : null;
+    if (entry.senses.length < 2) continue;
+    const root = senseToItem.get(entry.guid);
     if (!root) continue;
     for (const s of entry.senses) {
-      if (s === top[0]) continue;
       const id = senseToItem.get(s.guid);
       const parent = s.parentSense ? senseToItem.get(s.parentSense) : root;
       if (!id || !parent || id === parent) continue;
-      // Under the entry, sense 1 is the entry itself, so the rest count on
-      // from there; under a sense, subsenses count from 1.
-      const senseOrder = s.parentSense ? s.senseIndex + 1 : s.senseIndex;
-      patches.push({ id, parent, senseOrder });
+      patches.push({ id, parent, senseOrder: s.senseIndex + 1 });
     }
   }
   const already = new Set((existing.items || []).map((it) => it.id));

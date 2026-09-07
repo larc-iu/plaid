@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
+import { FormLabel } from './FormLabel';
 
 // Find one entry of a vocabulary by typing part of its form or gloss, and
 // pick it. Used wherever an entry is chosen as a value: a reference field,
@@ -12,14 +13,6 @@ import { cn } from '@/lib/utils';
 // gloss, so two entries with one form can be told apart before picking.
 
 const LIMIT = 30;
-
-// A form with its homonym subscript, the way the item list draws one.
-const FormLabel = ({ form, index }) => (
-  <span className="font-medium">
-    {form}
-    {index != null && <sub className="ml-0.5 text-[0.7em] text-muted-foreground">{index}</sub>}
-  </span>
-);
 
 /**
  * @param {object[]} items every entry of the vocabulary, in creation order
@@ -134,7 +127,7 @@ export const ItemPicker = ({
                 i === active && 'bg-accent',
               )}
             >
-              <FormLabel form={it.form} index={homonyms?.get(it.id)} />
+              <FormLabel form={it.form} index={homonyms?.get(it.id)} className="font-medium" />
               {it.metadata?.gloss && (
                 <span className="truncate text-xs text-muted-foreground">
                   {String(it.metadata.gloss)}

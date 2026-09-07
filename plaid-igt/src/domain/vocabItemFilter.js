@@ -61,7 +61,13 @@ export function sortVocabItems(items, sort, { homonyms, usageCounts } = {}) {
     if (af > bf) return 1;
     // Homonyms in subscript order. Not by id: ids do not sort into creation
     // order within a bulk write.
-    return (homonyms?.get(a.id) ?? 0) - (homonyms?.get(b.id) ?? 0);
+    const ha = homonyms?.get(a.id);
+    const hb = homonyms?.get(b.id);
+    // Dotted numbers ("1.2") are strings; subscripts are numbers.
+    if (typeof ha === 'string' || typeof hb === 'string') {
+      return String(ha ?? '').localeCompare(String(hb ?? ''), undefined, { numeric: true });
+    }
+    return (ha ?? 0) - (hb ?? 0);
   };
   const column = {
     form: (a, b) => byForm(a, b) * dir,

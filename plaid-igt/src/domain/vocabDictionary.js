@@ -8,8 +8,11 @@
 //
 // Reserved keys (never fields, see RESERVED_ITEM_KEYS in vocabFields.js):
 //   parent      the id of the entry this one is a sense of. An item with no
-//               parent is an ENTRY: its form is the headword, and it is also
-//               sense 1. Its children are senses 2, 3, ..., theirs 2.1, 2.2.
+//               parent is an ENTRY: its form is the headword. Its senses are
+//               numbered 1, 2, ..., theirs 1.1, 1.2. The entry has no sense
+//               number of its own; whether its own gloss is a meaning people
+//               link to, or the entry is only a container for its senses, is
+//               the user's, not the app's.
 //   senseOrder  an integer ordering an item among its siblings. Missing
 //               orders sort after the numbered ones, in creation order.
 //   examples    a list of example references, each {document, token}, chosen
@@ -157,7 +160,7 @@ export const withExampleRemoved = (metadata, index) => {
  *   childrenOf: Map<string, object[]>,   // ordered siblings, every item has an entry
  *   parentOf: Map<string, string|null>,
  *   roots: object[],
- *   numberOf: Map<string, string>,       // "1" for a root, "2", "2.1" below it
+ *   numberOf: Map<string, string>,       // "" for a root, "1", "1.2" below it
  *   depthOf: Map<string, number>,
  *   rootOf: Map<string, string>,         // the entry an item belongs to
  * }}
@@ -224,17 +227,43 @@ export const buildSenseTree = (items) => {
   for (const l of childrenOf.values()) l.sort(byOrder);
   const roots = list.filter((it) => !parents.get(it.id));
   const numberOf = new Map();
-  const number = (it, prefix, depth) => {
+  const number = (it, prefix) => {
     numberOf.set(it.id, prefix);
     childrenOf.get(it.id).forEach((c, i) => {
-      // The entry is sense 1, so its own senses count from 2; deeper levels
-      // count from 1 under their parent's number.
-      const n = depth === 0 ? i + 2 : i + 1;
-      number(c, depth === 0 ? String(n) : `${prefix}.${n}`, depth + 1);
+      number(c, prefix ? `${prefix}.${i + 1}` : String(i + 1));
     });
   };
-  for (const r of roots) number(r, '1', 0);
+  for (const r of roots) number(r, '');
   return { byId, childrenOf, parentOf: parents, roots, numberOf, depthOf, rootOf };
+};
+
+/**
+ * One dotted number per item, the name it goes by everywhere in a dictionary
+ * vocabulary: entries that share a form are told apart by a first segment in
+ * creation order ("a 1", "a 2"; an entry whose form is its own gets none),
+ * and a sense carries its entry's segment, if any, then its own path ("a 1.2",
+ * "kat 2", "kat 2.1"). Values are strings, so the label draws them as text
+ * (never as subscripts, and never as superscripts, which mark tone);
+ * `buildHomonymIndex` is the numeric kind a vocabulary without the switch
+ * uses. `items` in creation order, as the server returns them.
+ *
+ * @returns {Map<string, string>} item id -> its number, '' for a lone entry
+ */
+export const buildItemNumbers = (items) => {
+  const tree = buildSenseTree(items);
+  const byForm = new Map();
+  for (const r of tree.roots) byForm.set(r.form ?? '', [...(byForm.get(r.form ?? '') || []), r]);
+  const segOf = new Map();
+  for (const group of byForm.values()) {
+    if (group.length > 1) group.forEach((r, i) => segOf.set(r.id, String(i + 1)));
+  }
+  const out = new Map();
+  for (const it of items || []) {
+    const seg = segOf.get(tree.rootOf.get(it.id)) ?? '';
+    const path = tree.numberOf.get(it.id) ?? '';
+    out.set(it.id, seg && path ? `${seg}.${path}` : seg || path);
+  }
+  return out;
 };
 
 /** Every item under `id`, depth-first in sense order (not including it). */
@@ -284,10 +313,9 @@ export const planSenseMove = (tree, id, dir) => {
 };
 
 /**
- * The sibling list with `id` placed at the number it is SHOWN with: under an
- * entry the senses are numbered from 2 (the entry is sense 1), deeper down
- * from 1. Out-of-range numbers land at the nearest end. Same dense
- * renumbering as a move.
+ * The sibling list with `id` placed at the number it is SHOWN with (its last
+ * segment: the 2 of "1.2"). Out-of-range numbers land at the nearest end.
+ * Same dense renumbering as a move.
  */
 export const planSenseSetNumber = (tree, id, shown) => {
   const p = tree.parentOf.get(id);
@@ -296,8 +324,7 @@ export const planSenseSetNumber = (tree, id, shown) => {
   const i = sibs.findIndex((s) => s.id === id);
   const n = Number(shown);
   if (i < 0 || !Number.isFinite(n)) return [];
-  const first = tree.depthOf.get(id) === 1 ? 2 : 1;
-  const j = Math.max(0, Math.min(sibs.length - 1, Math.round(n) - first));
+  const j = Math.max(0, Math.min(sibs.length - 1, Math.round(n) - 1));
   if (j === i) return [];
   const [moved] = sibs.splice(i, 1);
   sibs.splice(j, 0, moved);

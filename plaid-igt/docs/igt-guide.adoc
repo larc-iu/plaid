@@ -342,9 +342,12 @@ The switch is on its **Settings** tab, under **Lexicography Mode**, and it is of
 With it off, the vocabulary is the flat list of entries described above and nothing in this section appears.
 Turning it on adds a **Status** field held to a closed list (draft, reviewed, published), and turning it off again leaves every field and every entry as it is.
 
-With the switch on, an entry is a headword and its first sense.
+With the switch on, an entry is a headword, and it can have senses under it, numbered 1, 2, 3, each of which can have senses of its own (2.1, 2.2).
+The entry itself has no sense number.
+Whether its own gloss is a meaning that words link to, or the entry is only a container for its senses, is up to you: a word with one meaning is simply an entry with a gloss.
+Entries that share a form are told apart by a first number, so two entries spelled *a* are *a 1* and *a 2*, and the senses of the first are *a 1.1*, *a 1.2*.
+That is the name an entry goes by everywhere: the list, the picker, the link popover in the interlinear view.
 Any entry can be made a sense of another: open it and choose **Make a sense of…**, then find the entry it belongs under.
-Senses are numbered from 2 under their entry, and a sense can have senses of its own (2.1, 2.2).
 The line under the headword says where an entry sits: **Entry**, or **Sense 3 of** its entry.
 Beside it, **5 senses** unfolds the whole entry as a tree, numbered, each sense a link, and **Add sense** writes a new one directly under the open entry.
 Senses are rearranged by dragging in that tree: drop one above or below another to reorder them, onto one to make it a sense of that sense, onto **Make separate entry** to make it an entry of its own, or onto **Move to other entry** and pick where it goes.
@@ -377,7 +380,7 @@ Merging entries with **Bulk Edit** points those references at the surviving entr
 
 A vocabulary added while setting up a new project can start as a dictionary: tick **Lexicography Mode** under the name.
 An imported lexicon starts as one unless you untick it on the review screen.
-A FLEx import also keeps the sense structure of the lexicon: each entry's senses and subsenses are placed under it in FLEx order.
+A FLEx import also keeps the sense structure of the lexicon: an entry with several senses becomes an entry with them under it, numbered as FLEx numbered them, and an entry with one sense is that sense.
 
 == Multi-word expressions
 

@@ -52,6 +52,18 @@ import {
   splitChainText,
 } from '@/domain/affixMarkers';
 import { buildHomonymIndex } from '@/domain/vocabHomonyms';
+import { buildItemNumbers, readDictionaryEnabled } from '@/domain/vocabDictionary';
+
+// The number that tells an entry apart, drawn after its form: a homonym
+// subscript (a NUMBER, form₂) for a vocabulary without Lexicography Mode, a
+// dotted number (a STRING, "1.2") as text for one with it. Never a
+// superscript: those mark tone.
+const numHtml = (sub, cls) =>
+  sub == null || sub === ''
+    ? nothing
+    : typeof sub === 'string'
+      ? html`<span class="${cls}__num">${sub}</span>`
+      : html`<sub class="${cls}__sub">${sub}</sub>`;
 import { rankVocabItems } from '@/domain/vocabRank';
 import { composeAppend, composePending } from '@/domain/compose';
 import { ZERO_MORPH } from '@/domain/zeroMorph';
@@ -1188,9 +1200,7 @@ export class IgtEditor {
     if (mwe) {
       const item = this._mweItem(mwe);
       const sub = this._homonymSub(item);
-      content = html`${mwe.item.form}${sub != null
-        ? html`<sub class="igt-vocab__sub">${sub}</sub>`
-        : nothing}`;
+      content = html`${mwe.item.form}${numHtml(sub, 'igt-vocab')}`;
       const words = this._mweWords(mwe.memberTokenIds);
       title = `“${words}” ${this._linkStateText(state, mwe.provOrigin, mwe.item.form, canLink)}`;
     } else {
@@ -4323,7 +4333,7 @@ export class IgtEditor {
         title=${title}
         @click=${openerClick}
       >
-        ${vocabItem.form}${sub != null ? html`<sub class="igt-vocab__sub">${sub}</sub>` : nothing}
+        ${vocabItem.form}${numHtml(sub, 'igt-vocab')}
       </button>`;
     } else if (canLink) {
       opener = html`<button
@@ -4372,8 +4382,12 @@ export class IgtEditor {
       this._homonymCache = new Map();
     }
     if (!this._homonymCache.has(vocabId)) {
-      const items = (this.doc?.vocabularies || {})[vocabId]?.items || [];
-      this._homonymCache.set(vocabId, buildHomonymIndex(items));
+      const vocab = (this.doc?.vocabularies || {})[vocabId];
+      const items = vocab?.items || [];
+      this._homonymCache.set(
+        vocabId,
+        readDictionaryEnabled(vocab?.config) ? buildItemNumbers(items) : buildHomonymIndex(items),
+      );
     }
     return this._homonymCache.get(vocabId);
   }
@@ -4542,11 +4556,17 @@ export class IgtEditor {
     // If the form already exists in the active vocab, the new item would be a
     // homonym — preview the subscript it would get (existing count + 1) and
     // say so, since a duplicate is usually a mis-click on the existing entry.
+    // In Lexicography Mode only ENTRIES count (a new entry is one), and the
+    // number is drawn as text.
+    const dictionary = !!activeVocab && readDictionaryEnabled(activeVocab.config);
     const newFormDupes =
       canCreate && effectiveForm
-        ? (activeVocab.items || []).filter((it) => it.form === effectiveForm).length
+        ? (activeVocab.items || []).filter(
+            (it) => it.form === effectiveForm && (!dictionary || !it.metadata?.parent),
+          ).length
         : 0;
-    const newFormSub = newFormDupes >= 1 ? newFormDupes + 1 : null;
+    const newFormSub =
+      newFormDupes >= 1 ? (dictionary ? String(newFormDupes + 1) : newFormDupes + 1) : null;
     // Rows on a WORD's popover for its multi-word expressions: one per MWE it
     // belongs to (opens that one), then "Part of a longer expression…", which
     // starts gathering words around it.
@@ -4731,14 +4751,10 @@ export class IgtEditor {
                           href=${`#/vocabularies/${activeVocab.id}?item=${it.id}`}
                           title="Open this entry in the lexicon"
                           @click=${(e) => e.stopPropagation()}
-                          >${it.form}${it._sub != null
-                            ? html`<sub class="igt-vocab-pop__sub">${it._sub}</sub>`
-                            : nothing}</a
+                          >${it.form}${numHtml(it._sub, 'igt-vocab-pop')}</a
                         >`
                       : html`<span class="igt-vocab-pop__form"
-                          >${it.form}${it._sub != null
-                            ? html`<sub class="igt-vocab-pop__sub">${it._sub}</sub>`
-                            : nothing}</span
+                          >${it.form}${numHtml(it._sub, 'igt-vocab-pop')}</span
                         >`}
                     ${it._prec
                       ? html`<span
@@ -4803,13 +4819,8 @@ export class IgtEditor {
                         this._render(true);
                       }}
                       @keydown=${onCreateEditKey}
-                    />${newFormSub != null
-                      ? html`<sub class="igt-vocab-pop__sub">${newFormSub}</sub>`
-                      : nothing}`
-                : html`+ Create
-                  "${createForm}${newFormSub != null
-                    ? html`<sub class="igt-vocab-pop__sub">${newFormSub}</sub>`
-                    : nothing}"`}
+                    />${numHtml(newFormSub, 'igt-vocab-pop')}`
+                : html`+ Create "${createForm}${numHtml(newFormSub, 'igt-vocab-pop')}"`}
               ${newFormSub != null
                 ? html`<span class="igt-vocab-pop__note"
                     >“${effectiveForm}” already exists. This adds a separate sense</span
@@ -4839,9 +4850,10 @@ export class IgtEditor {
               <path d="M1.5 3v6h13V3" stroke-width="1.2" stroke-linecap="round"></path>
             </svg>
             ${r.kind === 'in'
-              ? html`<span class="igt-vocab-pop__mwe-in">In:</span> ${r.label}${r.sub != null
-                    ? html`<sub class="igt-vocab-pop__sub">${r.sub}</sub>`
-                    : nothing}`
+              ? html`<span class="igt-vocab-pop__mwe-in">In:</span> ${r.label}${numHtml(
+                    r.sub,
+                    'igt-vocab-pop',
+                  )}`
               : r.label}
           </button>`;
         })}

@@ -29,6 +29,8 @@ import { cn } from '@/lib/utils';
 import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { buildHomonymIndex } from '@/domain/vocabHomonyms';
+import { buildItemNumbers, readDictionaryEnabled } from '@/domain/vocabDictionary';
+import { FormLabel } from '@/components/vocabularies/FormLabel';
 import { normalizeVocabFields, humanizeFieldName } from '@/domain/vocabFields';
 import { planMergeRefs } from '@/domain/vocabDictionary';
 import { readVocabFields } from '@/domain/igtConfig';
@@ -1017,6 +1019,7 @@ const MergePanel = ({ project, client }) => {
       .then((layer) => {
         if (cancelled) return;
         setItems(layer.items || []);
+        setVocabConfig(layer.config || {});
         setFields(normalizeVocabFields(readVocabFields(layer.config)));
       })
       .catch((err) => {
@@ -1029,7 +1032,16 @@ const MergePanel = ({ project, client }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vocabId, client]);
 
-  const homonyms = useMemo(() => buildHomonymIndex(items || []), [items]);
+  const [vocabConfig, setVocabConfig] = useState(null);
+  // Entries are named the vocabulary's own way: dotted numbers in
+  // Lexicography Mode, homonym subscripts otherwise.
+  const homonyms = useMemo(
+    () =>
+      readDictionaryEnabled(vocabConfig)
+        ? buildItemNumbers(items || [])
+        : buildHomonymIndex(items || []),
+    [items, vocabConfig],
+  );
   const shown = useMemo(() => {
     if (!items) return [];
     const q = filter.trim().toLowerCase();
@@ -1189,10 +1201,7 @@ const MergePanel = ({ project, client }) => {
                     title="Keep this entry"
                   />
                   <span className="min-w-0 truncate">
-                    <span className="font-medium">{it.form}</span>
-                    {idx != null && (
-                      <sub className="ml-0.5 text-[0.7em] text-muted-foreground">{idx}</sub>
-                    )}
+                    <FormLabel form={it.form} index={idx} className="font-medium" />
                     {!on && inlineLine(it) && (
                       <span className="ml-2 text-xs text-muted-foreground">{inlineLine(it)}</span>
                     )}

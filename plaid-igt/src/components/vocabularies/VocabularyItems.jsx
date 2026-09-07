@@ -49,6 +49,7 @@ import {
 } from '@/domain/vocabFields';
 import {
   buildSenseTree,
+  buildItemNumbers,
   arrangeAsTree,
   fieldsForItem,
   validateVocabRefs,
@@ -70,6 +71,7 @@ import {
 import { validateValue } from '@/domain/tagsets';
 import { TagsetField, changedValuesAllowed } from '@/components/shared/TagsetField.jsx';
 import { buildHomonymIndex } from '@/domain/vocabHomonyms';
+import { FormLabel } from './FormLabel';
 import { planItemConcordance, loadConcordanceGroups, sentenceTo } from './vocabConcordance';
 import { serializeVocabTsv } from '@/export/vocabTsv';
 import { BulkAddDialog } from './BulkAddDialog';
@@ -98,14 +100,6 @@ const metaEqual = (a, b) => {
   if (ka.length !== Object.keys(cb).length) return false;
   return ka.every((k) => String(ca[k]) === String(cb[k]));
 };
-
-// A form with its homonym subscript (form₂) when the form is shared by 2+ items.
-const FormLabel = ({ form, index, className = '' }) => (
-  <span className={className}>
-    {form}
-    {index != null && <sub className="ml-0.5 text-[0.7em] text-muted-foreground">{index}</sub>}
-  </span>
-);
 
 // The example sentences a FLEx import stores outside the field schema
 // (metadata.examples is structured, so it is never a field column). A
@@ -250,7 +244,13 @@ export const VocabularyItems = ({
 
   const fieldNames = useMemo(() => fields.map((f) => f.name), [fields]);
   const hasGloss = useMemo(() => fields.some((f) => f.name === 'gloss'), [fields]);
-  const homonyms = useMemo(() => buildHomonymIndex(items), [items]);
+  // How entries are told apart: dotted numbers in Lexicography Mode ("a 1.2"),
+  // homonym subscripts (a₂) otherwise. Same map, either way, wherever an
+  // entry is named.
+  const homonyms = useMemo(
+    () => (dictionary ? buildItemNumbers(items) : buildHomonymIndex(items)),
+    [items, dictionary],
+  );
   // The sense tree, and whether the list draws it. Only a dictionary has one.
   const tree = useMemo(() => buildSenseTree(items), [items]);
   const [treeViewPref, setTreeView] = useStickyState(
@@ -1133,11 +1133,6 @@ export const VocabularyItems = ({
                     style={depth ? { paddingLeft: `${0.75 + depth * 1.25}rem` } : undefined}
                   >
                     <span className="flex min-w-0 items-center gap-1.5">
-                      {depth > 0 && (
-                        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                          {tree.numberOf.get(item.id)}
-                        </span>
-                      )}
                       <FormLabel
                         form={item.form}
                         index={homonyms.get(item.id)}

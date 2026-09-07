@@ -15,17 +15,11 @@ import {
 } from '@/domain/vocabDictionary';
 import { loadConcordanceGroups, sentenceTo } from './vocabConcordance';
 import { ItemPicker } from './ItemPicker';
+import { FormLabel } from './FormLabel';
 
 // The dictionary panels of an entry: where it sits in its sense tree, what
 // refers to it, and its examples. All of them only mount when the
 // vocabulary's Dictionary switch is on.
-
-const FormLabel = ({ form, index, className = '' }) => (
-  <span className={className}>
-    {form}
-    {index != null && <sub className="ml-0.5 text-[0.7em] text-muted-foreground">{index}</sub>}
-  </span>
-);
 
 /** An entry named inline as a link to it: form, subscript, gloss. */
 const ItemLink = ({ item, homonyms, itemTo, className }) => (
@@ -374,16 +368,12 @@ const SenseTree = ({ root, current, tree, homonyms, itemTo, canManage, onDrop, o
             style={{ paddingLeft: `${0.75 + depth * 1.25}rem` }}
           >
             <span className="w-8 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-              {tree.numberOf.get(item.id)}
+              {depth === 0 ? homonyms?.get(item.id) || '' : tree.numberOf.get(item.id)}
             </span>
             <span className="min-w-0 truncate">
               {isCurrent ? (
                 <>
-                  <FormLabel
-                    form={item.form}
-                    index={homonyms?.get(item.id)}
-                    className="igt-sense-self font-medium"
-                  />
+                  <span className="igt-sense-self font-medium">{item.form}</span>
                   {item.metadata?.gloss ? (
                     <span className="ml-1 text-xs text-muted-foreground">
                       {String(item.metadata.gloss)}
@@ -391,7 +381,7 @@ const SenseTree = ({ root, current, tree, homonyms, itemTo, canManage, onDrop, o
                   ) : null}
                 </>
               ) : (
-                <ItemLink item={item} homonyms={homonyms} itemTo={itemTo} />
+                <ItemLink item={item} itemTo={itemTo} />
               )}
             </span>
           </li>

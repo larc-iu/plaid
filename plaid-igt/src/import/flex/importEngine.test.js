@@ -116,6 +116,7 @@ const lexicon = [
     senses: [
       {
         guid: 's2',
+        senseIndex: 0,
         gloss: { en: 'tale', ru: 'сказка' },
         definition: { en: 'a traditional tale' },
         pos: 'n',
@@ -302,7 +303,7 @@ describe('resolveTargets', () => {
 });
 
 describe('importLexicon', () => {
-  it('places senses under their entry, and subsenses under their sense, when asked', async () => {
+  it('places senses under a container entry, and subsenses under their sense, when asked', async () => {
     const client = makeFakeClient();
     const map = await importLexicon({
       client,
@@ -311,11 +312,20 @@ describe('importLexicon', () => {
       baselineWs: BASE_WS,
       dictionary: true,
     });
+    // e1 has one sense: the sense is the entry. e2 has two: a container
+    // (form, entry-level fields, no gloss) with s2, s3 under it, s3a under s3.
+    const creates = createdItems(client);
+    expect(creates).toHaveLength(5);
+    const container = creates.find((c) => c.metadata.flexSense === 'e2');
+    expect(container.form).toBe('махъ');
+    expect(container.metadata).not.toHaveProperty('gloss');
+    expect(container.metadata).toMatchObject({ morphType: 'root', Plural: 'махар' });
     const placed = client.calls
       .filter((c) => c.kind === 'vocabItems.patchMetadata')
       .map((c) => [c.args.itemId, c.args.body]);
     expect(placed).toEqual([
-      [map.get('s3'), { parent: map.get('s2'), senseOrder: 1 }],
+      [map.get('s2'), { parent: map.get('e2'), senseOrder: 1 }],
+      [map.get('s3'), { parent: map.get('e2'), senseOrder: 2 }],
       [map.get('s3a'), { parent: map.get('s3'), senseOrder: 1 }],
     ]);
     const configs = client.calls

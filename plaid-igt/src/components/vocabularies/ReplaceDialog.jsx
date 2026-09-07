@@ -3,6 +3,7 @@
 // review, and the chosen ones are written under one operation.
 
 import { useEffect, useMemo, useState } from 'react';
+import { FormLabel } from './FormLabel';
 import { ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -295,14 +296,11 @@ export const ReplaceDialog = ({
                       onChange={(v) => toggle(r.id, v)}
                       aria-label={`Replace in ${r.form}`}
                     />
-                    <span className="w-32 shrink-0 truncate text-sm font-medium" title={r.form}>
-                      {r.form}
-                      {homonyms?.get(r.id) != null && (
-                        <sub className="ml-0.5 text-[0.7em] text-muted-foreground">
-                          {homonyms.get(r.id)}
-                        </sub>
-                      )}
-                    </span>
+                    <FormLabel
+                      form={r.form}
+                      index={homonyms?.get(r.id)}
+                      className="w-32 shrink-0 truncate text-sm font-medium"
+                    />
                     <Change from={r.old} to={r.new} />
                   </label>
                 ))}
