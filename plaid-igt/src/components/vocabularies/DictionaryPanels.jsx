@@ -561,6 +561,7 @@ export const MarkedText = ({ text, marks }) => {
 
 /** One sentence of context, as the concordance and the examples draw it. */
 export const ContextRow = ({ row, to }) => {
+  const guard = useContext(NavGuardContext);
   const body = (
     <>
       <p className="text-sm text-foreground">
@@ -582,6 +583,7 @@ export const ContextRow = ({ row, to }) => {
   return to ? (
     <Link
       to={to}
+      onClick={(e) => guard?.leave?.(e, to)}
       className="block min-w-0 flex-1 px-3 py-1.5 text-left no-underline hover:bg-muted/50"
       title="Open in Analyze (middle-click for a new tab)"
     >

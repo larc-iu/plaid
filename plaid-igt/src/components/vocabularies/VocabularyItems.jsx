@@ -1,5 +1,5 @@
 import { useState, useEffect, useId, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus,
   Trash2,
@@ -198,7 +198,7 @@ export const VocabularyItems = ({
   const [editFields, setEditFields] = useState({});
   // Confirm before discarding unsaved edits on a selection switch.
   const [discardOpen, setDiscardOpen] = useState(false);
-  const [pendingTarget, setPendingTarget] = useState(null); // {id, parent} | null
+  const [pendingTarget, setPendingTarget] = useState(null); // {id, parent} | {to} | null
 
   // `?item=` for one entry, keeping whatever else is on the URL (`?tab=`).
   // `?parent=` rides with `?item=new` only: "Add sense" opens the new-entry
@@ -224,6 +224,7 @@ export const VocabularyItems = ({
     const q = next.toString();
     return { search: q ? `?${q}` : '' };
   };
+  const navigate = useNavigate();
   const goItem = (id, options, parent = null) =>
     setSearchParams(itemQuery(id, parent).replace(/^\?/, ''), options);
   const newParent = itemParam === 'new' ? searchParams.get('parent') : null;
@@ -644,12 +645,21 @@ export const VocabularyItems = ({
       setDiscardOpen(true);
     }
   };
-  // The same guard for the links inside the dictionary panels, which open
+  // A link that leaves this screen altogether (a concordance row, an example)
+  // would discard the draft with no dialog at all, so it asks the same way.
+  const guardLeave = (e, to) => {
+    if (isModifiedClick(e) || !dirty) return;
+    e.preventDefault();
+    setPendingTarget({ to });
+    setDiscardOpen(true);
+  };
+  // The same guards for the links inside the dictionary panels, which open
   // another entry exactly as a row does.
   const navGuard = useMemo(
     () => ({
       select: (e, id) => guardSelect(e, id),
       newSense: (e, parentId) => guardSelect(e, NEW_ID, parentId),
+      leave: guardLeave,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [selectedId, newParent, dirty],
@@ -944,20 +954,25 @@ export const VocabularyItems = ({
     ],
   );
 
-  // The rows the list draws: in the tree view an entry's senses follow it,
-  // indented, when they are in the result set too (see arrangeAsTree).
-  const listRows = useMemo(
-    () =>
-      treeView
-        ? arrangeAsTree(filteredItems, tree)
-        : filteredItems.map((item) => ({ item, depth: 0 })),
-    [treeView, filteredItems, tree],
-  );
-
   // Paged with the shared helper rather than the hook: the selection effect
   // below needs to drive the page itself, so the state stays local.
-  const paged = pageSlice(listRows, page);
+  //
+  // The MATCHES are what is paged, which is also what the count above the list
+  // reports. The tree view then lays out one page of them, so the context rows
+  // it adds (a headword whose sense matched but which did not match itself) do
+  // not push matches onto a page the count says nothing about.
+  const paged = pageSlice(filteredItems, page);
   const currentPage = paged.page;
+
+  // The rows the list draws: in the tree view an entry's senses follow it,
+  // indented, when they are on this page too (see arrangeAsTree).
+  const pageRows = useMemo(
+    () =>
+      treeView
+        ? arrangeAsTree(paged.pageItems, tree)
+        : paged.pageItems.map((item) => ({ item, depth: 0 })),
+    [treeView, paged.pageItems, tree],
+  );
 
   // Reset to page 1 when the result set is re-scoped, and only then, so the
   // page this vocabulary was left on survives the mount; jump the list back to
@@ -981,7 +996,7 @@ export const VocabularyItems = ({
   const positionedRef = useRef(null);
   useEffect(() => {
     if (!selectedId || selectedId === NEW_ID || positionedRef.current === selectedId) return;
-    const index = listRows.findIndex((r) => r.item.id === selectedId);
+    const index = filteredItems.findIndex((it) => it.id === selectedId);
     if (index < 0) return; // not loaded yet, or the search box has it filtered out
     const wanted = Math.floor(index / LIST_PAGE_SIZE);
     if (currentPage !== wanted) {
@@ -994,7 +1009,7 @@ export const VocabularyItems = ({
     if (!row || !pane) return;
     const r = row.getBoundingClientRect();
     if (r.top < pane.top || r.bottom > pane.bottom) row.scrollIntoView({ block: 'center' });
-  }, [selectedId, listRows, currentPage, setPage]);
+  }, [selectedId, filteredItems, currentPage, setPage]);
 
   const listCols = hasGloss
     ? 'grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto]'
@@ -1415,7 +1430,7 @@ export const VocabularyItems = ({
               </p>
             ) : (
               <ul className="divide-y">
-                {paged.pageItems.map(({ item, depth, context }) => (
+                {pageRows.map(({ item, depth, context }) => (
                   <li key={item.id}>
                     <Link
                       to={itemTo(item.id)}
@@ -1824,7 +1839,8 @@ export const VocabularyItems = ({
               <AlertDialogAction
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 onClick={() => {
-                  goItem(pendingTarget?.id ?? null, undefined, pendingTarget?.parent ?? null);
+                  if (pendingTarget?.to) navigate(pendingTarget.to);
+                  else goItem(pendingTarget?.id ?? null, undefined, pendingTarget?.parent ?? null);
                   setDiscardOpen(false);
                   setPendingTarget(null);
                 }}
