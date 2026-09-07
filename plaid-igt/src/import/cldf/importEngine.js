@@ -15,6 +15,7 @@ import { documentProgress } from '../progress.js';
 import { readDictionaryEnabled } from '../../domain/vocabDictionary.js';
 import {
   IGT_NAMESPACE,
+  readVocabFields,
   findBaselineTextLayer,
   findSentenceTokenLayer,
   findWordTokenLayer,
@@ -209,14 +210,15 @@ export async function importLexicon({ client, vocabId, lexicon, onProgress, shou
   }
 
   // The vocab's field schema drives the management table and the item modal.
-  await client.vocabLayers.setConfig(
-    vocabId,
-    IGT_NAMESPACE,
-    'fields',
-    Object.fromEntries(
-      [...fieldKeys].map((name) => [name, { inline: name === 'gloss' || name === 'pos' }]),
-    ),
-  );
+  // MERGED into what the vocabulary already declares, never written over it:
+  // project setup puts the Status field there when it makes a dictionary, and
+  // a vocabulary being added to keeps its own fields, order and inline flags.
+  const fieldsConfig = { ...(readVocabFields(existing.config) ?? {}) };
+  for (const name of fieldKeys) {
+    if (name in fieldsConfig) continue;
+    fieldsConfig[name] = { inline: name === 'gloss' || name === 'pos' };
+  }
+  await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', fieldsConfig);
   return byEntry;
 }
 // The steps one document goes through, in order, so progress can report how

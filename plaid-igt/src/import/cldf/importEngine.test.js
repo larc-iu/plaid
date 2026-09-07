@@ -293,6 +293,24 @@ describe('runCldfImport', () => {
     ]);
   });
 
+  it('keeps the fields the vocabulary already declares, Status included', async () => {
+    // Project setup writes Status when it makes a dictionary, and this ran
+    // after it: writing the schema over it left the mode on with no Status.
+    const client = stubClient({
+      vocabConfig: {
+        igt: { dictionary: true, fields: { status: { inline: false, tagset: 'Status' } } },
+      },
+    });
+    await importLexicon({
+      client,
+      vocabId: 'v1',
+      lexicon: [{ id: 'e1', form: 'perro', metadata: { gloss: 'dog' }, senses: [] }],
+    });
+    const fields = callsOf(client, 'vocabLayers.setConfig').at(-1).args.value;
+    expect(fields.status).toEqual({ inline: false, tagset: 'Status' });
+    expect(fields.gloss).toEqual({ inline: true });
+  });
+
   it('folds the senses into one flat item when the vocabulary is not a dictionary', async () => {
     const client = stubClient();
     await importLexicon({
