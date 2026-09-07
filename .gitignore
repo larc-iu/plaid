@@ -62,3 +62,6 @@ playwright-report/
 # Local dev convenience: boots all 3 dev processes in a zellij session
 /dev
 /dev.kdl
+
+# Agent-facing plan, kept out of history (see the agent-doc convention)
+/DICT.md
