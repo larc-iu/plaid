@@ -348,13 +348,14 @@ Entries that share a form are told apart by that first number, so two entries sp
 One number is always a headword and two are always a sense; a headword that is alone and has no senses has no number at all.
 Whether a headword's own gloss is a meaning that words link to, or the headword is only a container for its senses, is up to you: a word with one meaning is simply an entry with a gloss, and a headword with no gloss shows how many senses it has in its place.
 That is the name an entry goes by everywhere: the list, the picker, the link popover in the interlinear view.
-Any entry can be made a sense of another: open it and choose **Make a sense of…**, then find the entry it belongs under.
+Any entry can be made a sense of another: open it, choose **Set parent**, and find the entry it belongs under.
+**Add headword** in the same place raises a new entry over the open one, with the same form, and makes the open one its first sense: how a word with one meaning gets a second.
 Every item in a vocabulary is an entry: a headword, or a sense under another entry.
-The line under the headword says where an entry sits: **Headword**, or **Sense 3 of** its entry.
-Beside it, **5 senses** unfolds the whole entry as a tree, numbered, each sense a link, and **Add sense** writes a new one directly under the open entry.
+A sense says where it sits on the line under its name: **Sense 1.2 of** its entry.
+Beside it, **Senses** unfolds the whole entry as a tree, numbered, each sense a link, and **Add sense** writes a new one directly under the open entry.
 Senses are rearranged by dragging in that tree: drop one above or below another to reorder them, onto one to make it a sense of that sense, onto **Make separate entry** to make it an entry of its own, or onto **Move to other entry** and pick where it goes.
 A whole entry can be dragged the same way, senses and all.
-An entry with no senses yet has nothing to drag, so it keeps **Make a sense of…**.
+**Set parent** works for any entry, dragging or not.
 When several entries share a form, the number after the headword is a button: it opens the list of those entries, and dragging them into a new order gives them their numbers.
 **Make its own entry** takes a sense back out.
 The entry list gains a **By entry** view, beside **Flat**, that draws senses indented under their entry.

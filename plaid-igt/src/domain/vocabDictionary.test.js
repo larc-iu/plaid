@@ -54,6 +54,23 @@ describe('buildSenseTree', () => {
     expect(descendantsOf(t, 'kat').map((c) => c.id)).toEqual(['kat3', 'kat2', 'kat2a']);
   });
 
+  it('resolves a sense listed before its headword to that headword', () => {
+    // A raised headword is created after the sense it is raised over, so the
+    // sense comes first in creation order.
+    const list = [
+      item('s', 'lone', { gloss: 'one', parent: 'h', senseOrder: 1 }),
+      item('ss', 'lone', { gloss: 'deeper', parent: 's', senseOrder: 1 }),
+      item('h', 'lone', {}),
+    ];
+    const t = buildSenseTree(list);
+    expect(t.roots.map((r) => r.id)).toEqual(['h']);
+    expect(t.rootOf.get('s')).toBe('h');
+    expect(t.rootOf.get('ss')).toBe('h');
+    expect(t.depthOf.get('ss')).toBe(2);
+    const n = buildItemNumbers(list);
+    expect([n.get('h'), n.get('s'), n.get('ss')]).toEqual(['1', '1.1', '1.1.1']);
+  });
+
   it('treats a missing or looping parent as none', () => {
     const t = buildSenseTree([
       item('a', 'a', { parent: 'zzz' }),

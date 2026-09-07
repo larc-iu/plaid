@@ -55,6 +55,7 @@ import {
   validateVocabRefs,
   planDeleteRefs,
   planSenseDrop,
+  nextSenseOrder,
   homographGroup,
   planHomographOrder,
   withParentSet,
@@ -717,6 +718,33 @@ export const VocabularyItems = ({
       notifyError('Failed to move the entry', 'Error');
     }
   };
+  // A new headword over `id`, with the same form, taking its place: the
+  // entry becomes that headword's first sense. How one meaning becomes two.
+  const handleRaiseHeadword = async (id) => {
+    const it = tree.byId.get(id);
+    if (!it) return;
+    try {
+      let created = null;
+      await client.withOperation(`Add a headword over "${it.form}"`, async () => {
+        const above = tree.parentOf.get(id);
+        const place = above
+          ? { parent: above, senseOrder: it.metadata?.senseOrder ?? nextSenseOrder(tree, above) }
+          : {};
+        created = await client.vocabItems.create(
+          vocabularyId,
+          it.form,
+          Object.keys(place).length ? place : undefined,
+        );
+        await writeMetadata(id, { ...(it.metadata || {}), parent: created.id, senseOrder: 1 });
+      });
+      // One GET to resync rather than folding the new entry in by hand: the
+      // draft is untouched (nothing the form edits changed).
+      await fetchItems({ quiet: true });
+    } catch (err) {
+      console.error('Adding the headword failed:', err);
+      notifyError('Failed to add the headword', 'Error');
+    }
+  };
   // A drop in the sense tree: before or after a sense, into one, or out.
   const handleSenseDrop = async (id, target) => {
     const patches = planSenseDrop(tree, id, target);
@@ -1304,6 +1332,7 @@ export const VocabularyItems = ({
                     itemTo={itemTo}
                     canManage={canManage}
                     onMoveUnder={handleMoveUnder}
+                    onRaiseHeadword={handleRaiseHeadword}
                     onDrop={handleSenseDrop}
                     onReorderHomographs={() => setHomographOpen(true)}
                     newSenseTo={newSenseTo}

@@ -206,11 +206,15 @@ export const buildSenseTree = (items) => {
       chain.push(cur);
       cur = parents.get(cur);
     }
+    // The chain's root: what the resolved ancestor rolls up to, or, with no
+    // resolved ancestor, the chain's own top. Every link on the chain shares
+    // it (a sense listed before its headword resolves the two together).
     const base = cur ? rootOf.get(cur) : null;
     const baseDepth = cur ? depthOf.get(cur) : -1;
+    const rootId = base ?? chain[chain.length - 1];
     for (let i = chain.length - 1; i >= 0; i--) {
       const c = chain[i];
-      rootOf.set(c, base ?? c);
+      rootOf.set(c, rootId);
       depthOf.set(c, baseDepth + (chain.length - i));
     }
     return rootOf.get(id);

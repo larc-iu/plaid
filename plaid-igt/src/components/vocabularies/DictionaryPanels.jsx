@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Link } from 'react-router-dom';
-import { ChevronDown, ChevronRight, X, FileText, Plus } from 'lucide-react';
+import { ChevronDown, ChevronRight, CornerLeftUp, X, FileText, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -115,6 +115,7 @@ export const EntryPlace = ({
   itemTo,
   canManage,
   onMoveUnder,
+  onRaiseHeadword,
   onDrop,
   onReorderHomographs,
   newSenseTo,
@@ -136,13 +137,11 @@ export const EntryPlace = ({
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        {parent ? (
+        {parent && (
           <span>
             Sense <span className="tabular-nums">{homonyms?.get(item.id) ?? number}</span> of{' '}
             <ItemLink item={parent} homonyms={homonyms} itemTo={itemTo} />
           </span>
-        ) : (
-          <span>Headword</span>
         )}
         {senseCount > 0 && (
           <button
@@ -152,22 +151,22 @@ export const EntryPlace = ({
             className="inline-flex items-center gap-0.5 text-primary hover:underline"
           >
             {treeOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-            {senseCount} sense{senseCount === 1 ? '' : 's'}
+            Senses
           </button>
         )}
         <Popover open={!!pickFor} onOpenChange={(o) => !o && setPickFor(null)}>
-          {canManage && senseCount === 0 && !parent && (
+          {canManage && (
             <PopoverTrigger asChild>
               <button
                 type="button"
-                className="text-primary hover:underline"
+                className="inline-flex items-center gap-1 text-primary hover:underline"
                 onClick={() => setPickFor(item.id)}
               >
-                Make a sense of…
+                <CornerLeftUp className="h-3 w-3" /> Set parent
               </button>
             </PopoverTrigger>
           )}
-          <PopoverContent align="start" className="w-80 p-2">
+          <PopoverContent align="start" className="flex w-80 flex-col gap-2 p-2">
             <ItemPicker
               autoFocus
               items={items}
@@ -178,13 +177,33 @@ export const EntryPlace = ({
                 setPickFor(null);
                 onMoveUnder(moving, id);
               }}
-              placeholder="Find the entry…"
+              placeholder="Find the entry"
             />
+            {/* Only the open entry can be raised: a row dropped on Move to
+                other entry is choosing among the entries that exist. */}
+            {pickFor === item.id && (
+              <button
+                type="button"
+                className="flex items-center gap-1 rounded px-1 py-0.5 text-left text-xs text-primary hover:bg-accent"
+                onClick={() => {
+                  setPickFor(null);
+                  onRaiseHeadword(item.id);
+                }}
+              >
+                <Plus className="h-3 w-3" /> Add headword
+                <span className="text-muted-foreground">
+                  a new entry over this one, with the same form
+                </span>
+              </button>
+            )}
           </PopoverContent>
         </Popover>
         {canManage && (
-          <Link to={newSenseTo(item.id)} className="text-primary no-underline hover:underline">
-            <Plus className="inline h-3 w-3" /> Add sense
+          <Link
+            to={newSenseTo(item.id)}
+            className="inline-flex items-center gap-1 text-primary no-underline hover:underline"
+          >
+            <Plus className="h-3 w-3" /> Add sense
           </Link>
         )}
       </div>
@@ -284,7 +303,7 @@ const SenseTree = ({
         </li>
       )}
       {canManage && dropZone('root', 'Make separate entry', () => onDrop(dragId, { kind: 'root' }))}
-      {canManage && dropZone('pick', 'Move to other entry…', () => onPickEntry(dragId))}
+      {canManage && dropZone('pick', 'Move to other entry', () => onPickEntry(dragId))}
       {rows.map(({ item, depth }) => {
         const isCurrent = item.id === current;
         const isOver = over && over.id === item.id;

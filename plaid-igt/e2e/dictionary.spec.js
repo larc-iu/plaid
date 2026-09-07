@@ -104,17 +104,17 @@ test('an entry says where it sits, and can be freed and placed again', async ({ 
   await openView(page, ids.kat2);
   await expect(page.getByText(/^Sense 1\.1 of/)).toBeVisible();
   // Drag the sense out of its entry, onto the Own entry zone of the tree.
-  await page.getByRole('button', { name: '1 sense' }).click();
+  await page.getByRole('button', { name: 'Senses' }).click();
   const row = page.locator(`[data-sense="${ids.kat2}"]`);
   await expect(row).toHaveAttribute('aria-current', 'true');
   await row.dragTo(page.locator('[data-drop="root"]'));
-  await expect(page.getByText(/^Headword$/)).toBeVisible();
+  await expect(page.getByText(/^Sense /)).toHaveCount(0);
   await expect.poll(() => meta(ids.kat2)).not.toHaveProperty('parent');
   // The entry-only field shows now that it is an entry.
   await expect(page.getByLabel('Etymology')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Make a sense of…' }).click();
-  await page.getByPlaceholder('Find the entry…').fill(`kat${stamp}`);
+  await page.getByRole('button', { name: 'Set parent' }).click();
+  await page.getByPlaceholder('Find the entry').fill(`kat${stamp}`);
   await page.getByRole('option').filter({ hasText: 'cat' }).click();
   await expect(page.getByText(/^Sense 1\.1 of/)).toBeVisible();
   await expect.poll(() => meta(ids.kat2)).toMatchObject({ parent: ids.kat, senseOrder: 1 });
@@ -221,5 +221,24 @@ test('the Settings switch turns a plain vocabulary into a dictionary, with a Sta
     expect((await client.vocabLayers.get(plain.id)).config.igt.fields.status).toBeTruthy();
   } finally {
     await client.vocabLayers.delete(plain.id).catch(() => {});
+  }
+});
+
+test('Add headword raises a new entry over the open one', async ({ page }) => {
+  const lone = (await client.vocabItems.create(vocab.id, `lone${stamp}`, { gloss: 'one' })).id;
+  let above = null;
+  try {
+    await openView(page, lone);
+    await page.getByRole('button', { name: 'Set parent' }).click();
+    await page.getByRole('button', { name: /Add headword/ }).click();
+    await expect.poll(() => meta(lone)).toMatchObject({ senseOrder: 1 });
+    above = (await meta(lone)).parent;
+    expect(above).toBeTruthy();
+    const head = await client.vocabItems.get(above);
+    expect(head.form).toBe(`lone${stamp}`);
+    await expect(page.getByText(/^Sense 1\.1 of/)).toBeVisible();
+  } finally {
+    await client.vocabItems.delete(lone).catch(() => {});
+    if (above) await client.vocabItems.delete(above).catch(() => {});
   }
 });
