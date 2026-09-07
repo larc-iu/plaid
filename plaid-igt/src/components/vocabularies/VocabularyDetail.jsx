@@ -29,7 +29,6 @@ import {
   normalizeVocabFields,
   seedDefaultFields,
   fieldsToConfig,
-  humanizeFieldName,
   fieldLabel,
   isBuiltInField,
   vocabGovernedFields,
