@@ -214,7 +214,6 @@ export const SearchPage = () => {
             {plan ? (
               <RewritePreview
                 rows={plan.rows}
-                documentsVisited={plan.documentsVisited}
                 selected={selected}
                 onSelect={setSelected}
                 hrefFor={sentenceHref}

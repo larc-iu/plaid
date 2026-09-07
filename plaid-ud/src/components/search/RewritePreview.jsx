@@ -4,7 +4,6 @@ import {
   Paper,
   Text,
   Box,
-  Alert,
   Divider,
   Group,
   Checkbox,
@@ -14,7 +13,6 @@ import {
 } from '@mantine/core';
 import { Link } from 'react-router-dom';
 import { modals } from '@mantine/modals';
-import { IconInfoCircle } from '@tabler/icons-react';
 import { pageSlice } from '../../hooks/usePagedList.js';
 import { ListPager } from '../common/ListChrome.jsx';
 
@@ -26,16 +24,7 @@ const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 // each with its change lines and a checkbox. `rows` come from planRewrite;
 // `selected` is the set of row keys to apply. Sentences are links into the
 // annotation editor (deep-linked via ?sent=), built by `hrefFor`.
-export const RewritePreview = ({
-  rows,
-  documentsVisited,
-  selected,
-  onSelect,
-  hrefFor,
-  canApply,
-  busy,
-  onApply,
-}) => {
+export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, busy, onApply }) => {
   const [page, setPage] = useState(0);
   useEffect(() => {
     setPage(0);
@@ -81,7 +70,7 @@ export const RewritePreview = ({
       <Group justify="space-between" align="center">
         <Text size="sm" c="dimmed">
           {rows.length === 0
-            ? `No sentence changes in ${plural(documentsVisited, 'document')}.`
+            ? 'No sentences to change.'
             : `${plural(rows.length, 'sentence')} in ${plural(new Set(rows.map((r) => r.docId)).size, 'document')}, ${chosen.length} selected` +
               (errors ? `, ${plural(errors, 'error')}` : '') +
               (warned ? `, ${plural(warned, 'warning')}` : '')}
@@ -192,12 +181,6 @@ export const RewritePreview = ({
       })}
 
       <ListPager {...paged} onPage={setPage} />
-
-      {rows.length > 0 && (
-        <Alert color="blue" variant="light" icon={<IconInfoCircle size={16} />}>
-          One history entry per document. Restore a document from its history to undo.
-        </Alert>
-      )}
     </Stack>
   );
 };
