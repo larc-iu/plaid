@@ -5,6 +5,10 @@ import {
   vocabFieldTagset,
   vocabGovernedFields,
   vocabTagsetByField,
+  fieldBaseName,
+  isBuiltInField,
+  fieldLabel,
+  groupFieldsForForm,
 } from './vocabFields.js';
 
 const POS = { delimiters: '', mode: 'closed', values: [{ value: 'n' }, { value: 'v' }] };
@@ -93,5 +97,55 @@ describe('resolving a field tagset', () => {
       ['pos (ru)', 'Pos (ru)', 'entry', 'POS'],
     ]);
     expect(vocabTagsetByField(fields, config).get('pos')).toEqual(governed[0].tagset);
+  });
+});
+
+describe('labels and form groups', () => {
+  it('strips a language suffix, and knows the built-in fields in any language', () => {
+    expect(fieldBaseName('gloss (ru)')).toBe('gloss');
+    expect(fieldBaseName('Parsing Note')).toBe('Parsing Note');
+    expect(isBuiltInField('definition (en)')).toBe(true);
+    expect(isBuiltInField('lexemeForm')).toBe(true);
+    expect(isBuiltInField('Plural')).toBe(false);
+  });
+
+  it('labels a field with its language when it carries one and its name does not', () => {
+    expect(fieldLabel({ name: 'gloss', lang: 'pt' })).toBe('Gloss (pt)');
+    expect(fieldLabel({ name: 'gloss (en)', lang: null })).toBe('Gloss (en)');
+    expect(fieldLabel({ name: 'gloss (en)', lang: 'en' })).toBe('Gloss (en)');
+    expect(fieldLabel({ name: 'Plural', lang: 'seh' })).toBe('Plural (seh)');
+    expect(fieldLabel('morphType')).toBe('Morph Type');
+  });
+
+  it('groups the form: built-ins with their variants, then custom, then references', () => {
+    const fields = normalizeVocabFields({
+      pos: { inline: true },
+      'gloss (en)': { inline: false },
+      etymology: { inline: false, scope: 'entry' },
+      'Parsing Note': { inline: false, lang: 'pt' },
+      morphType: { inline: false },
+      lexemeForm: { inline: false },
+      status: { inline: false, tagset: 'Status' },
+      'definition (en)': { inline: false },
+      gloss: { inline: true, lang: 'pt' },
+      variantOf: { inline: false, type: 'item' },
+      definition: { inline: false },
+      seeAlso: { inline: false, type: 'item', many: true },
+    });
+    const g = groupFieldsForForm(fields, { statusField: 'status' });
+    expect(g.builtIn.map((f) => f.name)).toEqual([
+      'morphType',
+      'gloss',
+      'gloss (en)',
+      'pos',
+      'definition',
+      'definition (en)',
+      'lexemeForm',
+    ]);
+    expect(g.custom.map((f) => f.name)).toEqual(['etymology', 'Parsing Note']);
+    expect(g.refs.map((f) => f.name)).toEqual(['variantOf', 'seeAlso']);
+    expect(g.status?.name).toBe('status');
+    // Without a status field named, status is an ordinary custom field.
+    expect(groupFieldsForForm(fields).custom.map((f) => f.name)).toContain('status');
   });
 });

@@ -292,14 +292,21 @@ export async function importLexicon({
   // A vocab that already has a schema (an existing lexicon being extended)
   // keeps its fields, order and inline flags; keys new to it are appended.
   const fieldsConfig = { ...(readVocabFields(existing.config) ?? {}) };
+  // A gloss or definition in more than one analysis language: the other
+  // languages carry theirs in the name ("gloss (ru)"), and the primary one,
+  // which keeps the bare name, records its language in `lang` so the form
+  // can label it ("Gloss (pt)") rather than leave it to be guessed.
+  const multilingual = new Set(
+    [...fieldKeys].filter((n) => /^(gloss|definition) \(/.test(n)).map((n) => n.split(' ')[0]),
+  );
   for (const n of fieldKeys) {
     if (n in fieldsConfig) continue;
     // `lang` records the writing system for the fields that have exactly one
-    // (FLEx's custom fields). The multilingual fields carry theirs in the name
-    // instead ("gloss (ru)"), so they get none here.
+    // (FLEx's custom fields, and the primary language of a multilingual one).
     fieldsConfig[n] = {
       inline: n === 'gloss' || n === 'pos',
       ...(customFieldWs[n] ? { lang: customFieldWs[n] } : {}),
+      ...(multilingual.has(n) ? { lang: primaryAnalysisWs } : {}),
     };
   }
   await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', fieldsConfig);

@@ -38,7 +38,13 @@ import {
 import { cn } from '@/lib/utils';
 import { notifySuccess, notifyError, notifyWarning, isPermissionError } from '@/utils/feedback';
 import { morphTypeLabel, morphTypeOptions } from '@/domain/affixMarkers';
-import { humanizeFieldName, vocabTagsetByField, FIELD_TYPES } from '@/domain/vocabFields';
+import {
+  humanizeFieldName,
+  fieldLabel,
+  groupFieldsForForm,
+  vocabTagsetByField,
+  FIELD_TYPES,
+} from '@/domain/vocabFields';
 import {
   buildSenseTree,
   arrangeAsTree,
@@ -49,6 +55,7 @@ import {
   withParentSet,
   withExampleAdded,
   withExampleRemoved,
+  STATUS_FIELD,
 } from '@/domain/vocabDictionary';
 import {
   ItemRefField,
@@ -825,75 +832,105 @@ export const VocabularyItems = ({
     ? 'grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto]'
     : 'grid-cols-[minmax(0,1fr)_auto]';
 
-  // Field inputs for the detail editor (morphType is a controlled vocab). In
-  // a dictionary an entry-only field is left off a sense's form, and a
-  // reference field is a picker rather than a text box.
-  const renderFieldInputs = (values, onChange, disabled = false) =>
-    fieldsForItem(
-      fields,
-      { metadata: isNew && newParent ? { ...values, parent: newParent } : values },
-      dictionary,
-    ).map((field) => {
-      // Index, not the field name: a name is free text and may not be a legal
-      // id fragment.
-      const fieldId = `${uid}-field-${fields.indexOf(field)}`;
-      return (
-        <div key={field.name} className="flex flex-col gap-1.5">
-          <Label htmlFor={fieldId}>{humanizeFieldName(field.name)}</Label>
-          {dictionary && field.type === FIELD_TYPES.ITEM ? (
-            <ItemRefField
-              id={fieldId}
-              field={field}
-              values={values}
-              onChange={onChange}
-              items={items}
-              homonyms={homonyms}
-              itemTo={itemTo}
-              selfId={isNew ? null : selectedId}
-              disabled={disabled}
-            />
-          ) : field.name === 'morphType' ? (
-            <select
-              id={fieldId}
-              className="h-9 rounded-md border border-input bg-background px-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
-              value={values.morphType || ''}
-              disabled={disabled}
-              onChange={(event) =>
-                onChange({ ...values, morphType: event.target.value || undefined })
-              }
-            >
-              <option value="">—</option>
-              {morphTypeOptions(values.morphType).map((t) => (
-                <option key={t} value={t}>
-                  {morphTypeLabel(t)}
-                </option>
-              ))}
-            </select>
-          ) : tagsetFor(field.name) ? (
-            <TagsetField
-              id={fieldId}
-              field={field}
-              value={values[field.name] || ''}
-              tagset={tagsetFor(field.name)}
-              placeholder={`Enter ${humanizeFieldName(field.name).toLowerCase()}`}
-              spellCheck={false}
-              disabled={disabled}
-              onChange={(v) => onChange({ ...values, [field.name]: v })}
-            />
-          ) : (
-            <Input
-              compose
-              id={fieldId}
-              placeholder={`Enter ${humanizeFieldName(field.name).toLowerCase()}`}
-              spellCheck={false}
-              value={values[field.name] || ''}
-              disabled={disabled}
-              onChange={(event) => onChange({ ...values, [field.name]: event.target.value })}
-            />
-          )}
-        </div>
-      );
-    });
+  // One field input for the entry form. morphType is a controlled vocab, a
+  // reference field a picker, a tagset field its own control, the rest text.
+  const renderField = (field, values, onChange, disabled) => {
+    // Index, not the field name: a name is free text and may not be a legal
+    // id fragment.
+    const fieldId = `${uid}-field-${fields.indexOf(field)}`;
+    const label = fieldLabel(field);
+    return (
+      <div key={field.name} className="flex min-w-0 flex-col gap-1">
+        <Label htmlFor={fieldId} className="text-xs font-medium text-muted-foreground">
+          {label}
+        </Label>
+        {dictionary && field.type === FIELD_TYPES.ITEM ? (
+          <ItemRefField
+            id={fieldId}
+            field={field}
+            values={values}
+            onChange={onChange}
+            items={items}
+            homonyms={homonyms}
+            itemTo={itemTo}
+            selfId={isNew ? null : selectedId}
+            disabled={disabled}
+          />
+        ) : field.name === 'morphType' ? (
+          <select
+            id={fieldId}
+            className="h-8 rounded-md border border-input bg-background px-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+            value={values.morphType || ''}
+            disabled={disabled}
+            onChange={(event) =>
+              onChange({ ...values, morphType: event.target.value || undefined })
+            }
+          >
+            <option value="">—</option>
+            {morphTypeOptions(values.morphType).map((t) => (
+              <option key={t} value={t}>
+                {morphTypeLabel(t)}
+              </option>
+            ))}
+          </select>
+        ) : tagsetFor(field.name) ? (
+          <TagsetField
+            id={fieldId}
+            field={field}
+            value={values[field.name] || ''}
+            tagset={tagsetFor(field.name)}
+            placeholder={label}
+            className="h-8"
+            spellCheck={false}
+            disabled={disabled}
+            onChange={(v) => onChange({ ...values, [field.name]: v })}
+          />
+        ) : (
+          <Input
+            compose
+            id={fieldId}
+            className="h-8"
+            placeholder={label}
+            spellCheck={false}
+            value={values[field.name] || ''}
+            disabled={disabled}
+            onChange={(event) => onChange({ ...values, [field.name]: event.target.value })}
+          />
+        )}
+      </div>
+    );
+  };
+
+  // The fields the open entry shows (an entry-only field is left off a
+  // sense's form), in the form's groups: built-ins, custom, references. A
+  // dictionary's status field is lifted out to the header.
+  const formGroups = useMemo(
+    () =>
+      groupFieldsForForm(
+        fieldsForItem(
+          fields,
+          { metadata: isNew && newParent ? { ...editFields, parent: newParent } : editFields },
+          dictionary,
+        ),
+        { statusField: dictionary ? STATUS_FIELD : null },
+      ),
+    [fields, isNew, newParent, editFields, dictionary],
+  );
+
+  // A titled band of the form. The grid is three across when the pane is
+  // wide, so a lexicon's dozen fields fit on one screen.
+  const FormGroup = ({ title, children }) => (
+    <div className="flex flex-col gap-2">
+      {title && (
+        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          {title}
+        </p>
+      )}
+      <div className="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
+        {children}
+      </div>
+    </div>
+  );
 
   if (loading) {
     return (
@@ -1170,6 +1207,25 @@ export const VocabularyItems = ({
                     />
                   )}
                 </h3>
+                {formGroups.status && (
+                  <div className="ml-auto mr-3 flex items-center gap-2">
+                    <Label
+                      htmlFor={`${uid}-status`}
+                      className="text-xs font-medium text-muted-foreground"
+                    >
+                      Status
+                    </Label>
+                    <TagsetField
+                      id={`${uid}-status`}
+                      field={formGroups.status}
+                      value={editFields[STATUS_FIELD] || ''}
+                      tagset={tagsetFor(STATUS_FIELD)}
+                      className="h-7 w-32 text-xs"
+                      disabled={!canManage}
+                      onChange={(v) => setEditFields({ ...editFields, [STATUS_FIELD]: v })}
+                    />
+                  </div>
+                )}
                 {!isNew && selectedItem && (
                   <div className="text-right text-xs text-muted-foreground">
                     {(usageCounts?.[selectedItem.id] ?? 0).toLocaleString()} use
@@ -1209,29 +1265,51 @@ export const VocabularyItems = ({
                 </p>
               )}
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor={`${uid}-form`}>
-                    Form <span className="text-destructive">*</span>
-                  </Label>
-                  <Input
-                    id={`${uid}-form`}
-                    compose
-                    value={editForm}
-                    autoFocus={isNew}
-                    placeholder="Enter item form"
-                    spellCheck={false}
-                    disabled={!canManage}
-                    onChange={(e) => setEditForm(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        if (dirty) handleSave();
-                      }
-                    }}
-                  />
-                </div>
-                {renderFieldInputs(editFields, setEditFields, !canManage)}
+              <div className="flex flex-col gap-4 [&>*+*]:border-t [&>*+*]:pt-3">
+                <FormGroup>
+                  <div className="flex min-w-0 flex-col gap-1">
+                    <Label
+                      htmlFor={`${uid}-form`}
+                      className="text-xs font-medium text-muted-foreground"
+                    >
+                      Form <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id={`${uid}-form`}
+                      compose
+                      className="h-8"
+                      value={editForm}
+                      autoFocus={isNew}
+                      placeholder="Form"
+                      spellCheck={false}
+                      disabled={!canManage}
+                      onChange={(e) => setEditForm(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          if (dirty) handleSave();
+                        }
+                      }}
+                    />
+                  </div>
+                  {formGroups.builtIn.map((f) =>
+                    renderField(f, editFields, setEditFields, !canManage),
+                  )}
+                </FormGroup>
+                {formGroups.custom.length > 0 && (
+                  <FormGroup title="Fields">
+                    {formGroups.custom.map((f) =>
+                      renderField(f, editFields, setEditFields, !canManage),
+                    )}
+                  </FormGroup>
+                )}
+                {formGroups.refs.length > 0 && (
+                  <FormGroup title="References">
+                    {formGroups.refs.map((f) =>
+                      renderField(f, editFields, setEditFields, !canManage),
+                    )}
+                  </FormGroup>
+                )}
               </div>
               {!isNew && selectedItem && (
                 <ImportedExtras metadata={selectedItem.metadata} showExamples={!dictionary} />

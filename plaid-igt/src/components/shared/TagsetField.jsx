@@ -56,6 +56,7 @@ export const TagsetField = ({ field, value, tagset, onChange, ...inputProps }) =
         <SelectTrigger
           id={inputProps.id}
           className={cn(
+            inputProps.className,
             invalid && 'underline decoration-destructive decoration-wavy underline-offset-2',
           )}
         >

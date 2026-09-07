@@ -30,6 +30,8 @@ import {
   seedDefaultFields,
   fieldsToConfig,
   humanizeFieldName,
+  fieldLabel,
+  isBuiltInField,
   vocabGovernedFields,
   isReservedFieldName,
   FIELD_TYPES,
@@ -482,12 +484,16 @@ export const VocabularyDetail = () => {
                 className="group flex items-center justify-between rounded-md px-1 py-1 hover:bg-muted/40"
               >
                 <div className="flex items-center gap-3">
-                  <span className="text-sm">{humanizeFieldName(field.name)}</span>
-                  {field.immutable && (
+                  <span className="text-sm">{fieldLabel(field)}</span>
+                  {field.immutable ? (
                     <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                       Required
                     </span>
-                  )}
+                  ) : isBuiltInField(field.name) ? (
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                      Built in
+                    </span>
+                  ) : null}
                   <div className="flex items-center gap-2">
                     <Label
                       htmlFor={`inline-${field.name}`}
@@ -647,7 +653,7 @@ export const VocabularyDetail = () => {
 
   if (loading) {
     return (
-      <div className="tw mx-auto max-w-5xl px-4 py-8">
+      <div className="tw mx-auto max-w-7xl px-4 py-8">
         <div className="flex flex-col items-center gap-4">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-foreground" />
           <p>Loading vocabulary...</p>
@@ -658,7 +664,7 @@ export const VocabularyDetail = () => {
 
   if (error) {
     return (
-      <div className="tw mx-auto max-w-5xl px-4 py-8">
+      <div className="tw mx-auto max-w-7xl px-4 py-8">
         <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
           <div className="flex items-start gap-2">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
@@ -674,7 +680,7 @@ export const VocabularyDetail = () => {
 
   if (!vocabulary && !isNewVocabulary) {
     return (
-      <div className="tw mx-auto max-w-5xl px-4 py-8">
+      <div className="tw mx-auto max-w-7xl px-4 py-8">
         <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
           <div className="flex items-start gap-2">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
@@ -691,7 +697,7 @@ export const VocabularyDetail = () => {
   }
 
   return (
-    <div className="tw mx-auto max-w-5xl px-4 py-8">
+    <div className="tw mx-auto max-w-7xl px-4 py-8">
       <div className="flex flex-col gap-6">
         <nav className="flex items-center gap-2 text-sm text-muted-foreground">
           <Link to="/vocabularies" className="text-primary hover:underline">

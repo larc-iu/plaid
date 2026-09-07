@@ -92,6 +92,87 @@ const FIELD_DESCRIPTIONS = {
 export const fieldDescription = (name) =>
   FIELD_DESCRIPTIONS[name] ?? 'A custom field on this vocabulary. Free text.';
 
+/**
+ * A field's name without its writing-system suffix: "gloss (ru)" -> "gloss".
+ * The FLEx import names the non-primary language of a multilingual field
+ * this way, and the primary one keeps the bare name.
+ */
+export const fieldBaseName = (name) => String(name ?? '').replace(/\s\([^()]+\)$/, '');
+
+const BUILT_IN_BASES = new Set([...CORE_VOCAB_FIELDS.map((f) => f.name), 'lexemeForm']);
+
+/**
+ * Whether a field is one the app itself knows (the core inventory and the
+ * FLEx lexeme form), in any language, as opposed to one a user or an import
+ * added. Shown apart on the entry form and marked in the field editor.
+ */
+export const isBuiltInField = (name) => BUILT_IN_BASES.has(fieldBaseName(name));
+
+/**
+ * The label a field is shown under. A field that carries a `lang` and does
+ * not already say it in its name gets it appended, so the primary language
+ * of a multilingual lexicon reads "Gloss (pt)" beside its "Gloss (en)"
+ * rather than a bare "Gloss" that does not say which it is.
+ */
+export const fieldLabel = (field) => {
+  const name = typeof field === 'string' ? field : field?.name;
+  const lang = typeof field === 'string' ? null : str(field?.lang);
+  const base = humanizeFieldName(name);
+  return lang && fieldBaseName(name) === name ? `${base} (${lang})` : base;
+};
+
+/**
+ * The entry form's groups, in the order they are shown: the built-in fields
+ * (each followed by its other-language variants), then the custom text
+ * fields, then the reference fields, with the named status field (a
+ * dictionary's) pulled out to sit in the header. Within a group the config
+ * order holds, except that a field's language variants follow it.
+ */
+export const groupFieldsForForm = (fields, { statusField = null } = {}) => {
+  const out = { builtIn: [], custom: [], refs: [], status: null };
+  const placed = new Set();
+  const withVariants = (f, list) => {
+    if (placed.has(f.name)) return;
+    placed.add(f.name);
+    list.push(f);
+    for (const g of fields) {
+      if (
+        !placed.has(g.name) &&
+        g.name !== f.name &&
+        fieldBaseName(g.name) === fieldBaseName(f.name)
+      ) {
+        placed.add(g.name);
+        list.push(g);
+      }
+    }
+  };
+  for (const f of fields || []) {
+    if (statusField && f.name === statusField) {
+      placed.add(f.name);
+      out.status = f;
+    }
+  }
+  // Bare built-in names first in core order, so "Gloss (en)" follows "Gloss"
+  // even when the config lists it earlier.
+  const coreOrder = [...BUILT_IN_BASES];
+  const builtIn = (fields || []).filter((f) => isBuiltInField(f.name) && !placed.has(f.name));
+  builtIn.sort(
+    (a, b) =>
+      coreOrder.indexOf(fieldBaseName(a.name)) - coreOrder.indexOf(fieldBaseName(b.name)) ||
+      (fieldBaseName(a.name) === a.name ? 0 : 1) - (fieldBaseName(b.name) === b.name ? 0 : 1),
+  );
+  for (const f of builtIn) withVariants(f, out.builtIn);
+  for (const f of fields || []) {
+    if (placed.has(f.name) || f.type === FIELD_TYPES.ITEM) continue;
+    withVariants(f, out.custom);
+  }
+  for (const f of fields || []) {
+    if (placed.has(f.name)) continue;
+    withVariants(f, out.refs);
+  }
+  return out;
+};
+
 /** Which input control a field uses: morphType is a controlled-vocab select. */
 export const fieldControl = (name) => (name === 'morphType' ? 'morphType' : 'text');
 

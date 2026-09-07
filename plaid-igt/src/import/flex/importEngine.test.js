@@ -386,7 +386,8 @@ describe('importLexicon', () => {
     const cfg = client.calls.find((c) => c.kind === 'vocabLayers.setConfig');
     expect(cfg.args).toMatchObject({ vocabId: 'v1', ns: 'igt', key: 'fields' });
     expect(cfg.args.value).toEqual({
-      gloss: { inline: true },
+      // gloss has a Russian sibling, so the primary says which language it is
+      gloss: { inline: true, lang: 'en' },
       pos: { inline: true },
       definition: { inline: false },
       morphType: { inline: false },
