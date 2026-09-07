@@ -346,7 +346,7 @@ With the switch on, an entry is a headword, and it can have senses under it, eac
 Numbers say what is what: a headword with senses is *adidi 1*, its senses *adidi 1.1* and *adidi 1.2*, and a sense of the second *adidi 1.2.1*.
 Entries that share a form are told apart by that first number, so two entries spelled *a* are *a 1* and *a 2*, and the senses of the second are *a 2.1*, *a 2.2*.
 One number is always a headword and two are always a sense; a headword that is alone and has no senses has no number at all.
-Whether a headword's own gloss is a meaning that words link to, or the headword is only a container for its senses, is up to you: a word with one meaning is simply an entry with a gloss, and a headword with no gloss shows how many senses it has in its place.
+Whether a headword's own gloss is a meaning that words link to, or the headword only stands over its senses, is up to you: a word with one meaning is simply an entry with a gloss, and a headword that leaves its gloss empty is one nothing needs to link to.
 That is the name an entry goes by everywhere: the list, the picker, the link popover in the interlinear view.
 Any entry can be made a sense of another: open it, choose **Set parent**, and find the entry it belongs under.
 **Add headword** in the same place raises a new entry over the open one, with the same form, and makes the open one its first sense: how a word with one meaning gets a second.
