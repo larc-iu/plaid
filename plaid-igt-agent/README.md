@@ -132,8 +132,10 @@ receives them, rendered over the test fixture project; regenerate it with
 - `vocab.py`: the vocabulary domain, ported from the app's own
   `vocabFields.js` and `vocabDictionary.js`: the field schema (a field's type,
   `many`, and scope, with the core inventory guaranteed on every vocabulary)
-  and, for a lexicon in Lexicography Mode, the sense tree, references between
-  entries, and promoted usage examples. Deleting or merging an entry drags
+  and, for a lexicon in Lexicography Mode, the sense tree, the dotted number
+  each item is shown with (its entry's place among the entries spelled the
+  same, then its own path down the sense hierarchy: "2.1.3"), references
+  between entries, and promoted usage examples. Deleting or merging an entry drags
   those along exactly as the app does, so no plan leaves an id that resolves
   to nothing. A differential fuzz harness checked the port against the
   JavaScript over randomized lexicons, cycles and dangling references included.
@@ -158,9 +160,10 @@ receives them, rendered over the test fixture project; regenerate it with
   two or more words, which a member's own link never displaces),
   `create_entry`, `set_entry_field`, `set_document_metadata`,
   `create_document`, `add_comment`, the Lexicography Mode tools `add_sense`,
-  `move_sense`, `make_sense_of`, `free_sense`, `promote_example` and
-  `remove_example` (the sense tree, entry references and usage examples, which
-  are structure on an entry rather than fields), and the corpus-wide `replace_in_field`
+  `move_sense`, `make_sense_of`, `free_sense`, `order_homographs`,
+  `promote_example` and `remove_example` (the sense tree, the order of entries
+  spelled the same, entry references and usage examples, which are structure on
+  an entry rather than fields), and the corpus-wide `replace_in_field`
   (also on stored morpheme forms), `set_field_for_form`, `respell_all`
   (carrying morpheme forms and lexicon headwords along, as Bulk Edit does),
   `copy_to_orthography`, `set_analysis_for_form`, plus `merge_entries`,

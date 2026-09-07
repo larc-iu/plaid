@@ -343,3 +343,61 @@ def test_move_sense_takes_the_last_segment_of_a_dotted_number():
     call_tool(w, 'move_sense', {'entry_form': 'kwatha#2', 'number': '1.1'})
     by_id = {o['item_id']: o['patch'] for o in ops_of(w, 'set_entry_metadata')}
     assert by_id == {'d-ferment': {'senseOrder': 1}, 'd-boil': {'senseOrder': 2}}
+
+
+# ---- homographs ------------------------------------------------------------
+
+# Entries spelled the same, deliberately out of creation order: the second one
+# created is homograph 1. A FLEx import writes FLEx's numbers this way.
+HOMOGRAPHS = [
+    {'id': 'h-late', 'form': 'x', 'metadata': {'gloss': 'late', 'homograph': 2}},
+    {'id': 'h-early', 'form': 'x', 'metadata': {'gloss': 'early', 'homograph': 1}},
+    {'id': 'h-none', 'form': 'x', 'metadata': {'gloss': 'unnumbered'}},
+    {'id': 'h-sense', 'form': 'x', 'metadata': {'gloss': 'a sense', 'parent': 'h-late'}},
+    {'id': 'h-solo', 'form': 'y', 'metadata': {'gloss': 'alone'}},
+]
+
+
+def test_the_number_follows_the_stored_homograph_order_not_creation_order():
+    """The shown number is homograph segment then sense path, so a sense of the
+    second entry reads 2.1. Ordering by creation instead would name a different
+    entry than the user sees, which is what a FLEx import makes likely."""
+    w = dict_ws(items=HOMOGRAPHS)
+    out = call_tool(w, 'read_lexicon', {})
+    assert 'id h-early' in call_tool(w, 'lexicon_entry', {'entry_form': 'x#1'})
+    assert 'id h-late' in call_tool(w, 'lexicon_entry', {'entry_form': 'x#2'})
+    assert 'id h-none' in call_tool(w, 'lexicon_entry', {'entry_form': 'x#3'})
+    assert 'id h-sense' in call_tool(w, 'lexicon_entry', {'entry_form': 'x#2.1'})
+    # An entry whose form is its own carries no number at all.
+    assert 'entry_form "y")' in call_tool(w, 'lexicon_entry', {'entry_form': 'y'})
+    assert out.count('sense 2.1') == 1
+
+
+def test_order_homographs_renumbers_the_group():
+    w = dict_ws(items=HOMOGRAPHS)
+    out = call_tool(w, 'order_homographs', {'entry_form': 'x#1', 'order': ['3', '1', '2']})
+    assert 'Planned 3 changes' in out
+    by_id = {o['item_id']: o['patch'] for o in ops_of(w, 'set_entry_metadata')}
+    assert by_id == {'h-none': {'homograph': 1}, 'h-early': {'homograph': 2}, 'h-late': {'homograph': 3}}
+    assert 'entry "x" (3) becomes number 1' in ops_of(w, 'set_entry_metadata')[0]['label']
+
+
+def test_order_homographs_checks_the_group_is_named_in_full():
+    w = dict_ws(items=HOMOGRAPHS)
+    assert 'Give all 3 entries' in call_tool(w, 'order_homographs', {'entry_form': 'x#1', 'order': ['1', '2']})
+    assert 'named twice' in call_tool(w, 'order_homographs', {'entry_form': 'x#1', 'order': ['1', '1', '2']})
+    out = call_tool(w, 'order_homographs', {'entry_form': 'x#1', 'order': ['1', '2', '9']})
+    assert 'not one of the 3 entries spelled "x"' in out
+    assert not w.ops
+
+
+def test_order_homographs_is_refused_for_a_lone_entry():
+    w = dict_ws(items=HOMOGRAPHS)
+    out = call_tool(w, 'order_homographs', {'entry_form': 'y', 'order': ['1']})
+    assert 'only entry spelled that way' in out
+
+
+def test_the_homograph_key_is_not_a_field():
+    out = call_tool(dict_ws(items=HOMOGRAPHS), 'set_entry_field',
+                    {'entry_form': 'x#1', 'field': 'homograph', 'value': '3'})
+    assert '"homograph" is not an entry field' in out and 'order_homographs' in out

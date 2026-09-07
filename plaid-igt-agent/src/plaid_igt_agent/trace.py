@@ -181,6 +181,8 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
         return f'Planned {_entry(a)} as sense {a.get("number")}'
     if name == 'make_sense_of':
         return f'Planned {_entry(a)} as a sense of {_q(a.get("under_form") or a.get("under_id"))}'
+    if name == 'order_homographs':
+        return f'Planned an order for the entries spelled like {_entry(a)}'
     if name == 'free_sense':
         return f'Planned freeing {_entry(a)} into an entry of its own'
     if name == 'promote_example':
@@ -279,6 +281,7 @@ _PROGRESS = {
     'move_sense': lambda a: 'Renumbering a sense…',
     'make_sense_of': lambda a: 'Moving an entry under another…',
     'free_sense': lambda a: 'Freeing a sense…',
+    'order_homographs': lambda a: 'Ordering the entries spelled the same…',
     'promote_example': lambda a: 'Marking a usage example…',
     'remove_example': lambda a: 'Dropping a usage example…',
     'check_integrity': lambda a: 'Checking data integrity…',

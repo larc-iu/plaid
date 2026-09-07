@@ -43,7 +43,8 @@ from .vocab import (RESERVED_ITEM_KEYS, FIELD_ITEM, FIELD_TEXT, SCOPE_ENTRY, SCO
                     is_reserved_field_name, parent_of, ref_ids, with_ref_ids, with_parent,
                     next_sense_order, plan_sense_set_number, all_examples, with_example_added,
                     with_example_removed, references_to, arrange_as_tree, vocab_field_summary,
-                    build_item_numbers, build_homonym_index)
+                    build_item_numbers, build_homonym_index, homograph_group,
+                    plan_homograph_order)
 
 
 class ToolError(Exception):
@@ -1639,6 +1640,7 @@ _RESERVED_HINTS = {
     'senseorder': 'A sense is renumbered with move_sense.',
     'examples': 'Usage examples are added with promote_example and dropped with remove_example.',
     'form': 'A headword is changed with rename_entry.',
+    'homograph': 'The order of entries spelled the same is set with order_homographs.',
 }
 
 _FREE_FIELD = {'name': '', 'inline': False, 'immutable': False, 'tagset': None, 'lang': None,
@@ -1885,6 +1887,47 @@ def t_free_sense(ws: Workspace, entry_form: Optional[str] = None, lexicon: Optio
                        f'{view.label(target["id"])} becomes an entry of its own'
                        + (f' (with {kept} sense{"s" if kept != 1 else ""} below it)' if kept else '')))
     return ws.planned_note(1)
+
+
+def t_order_homographs(ws: Workspace, order, entry_form: Optional[str] = None,
+                       lexicon: Optional[str] = None, entry_id: Optional[str] = None,
+                       entry_gloss: Optional[str] = None) -> str:
+    """PLAN: set the order of the entries spelled the same, which is the first
+    segment of the number every one of their senses is shown with."""
+    vocab, view, target = _dict_entry(ws, entry_form, lexicon, entry_id, entry_gloss, 'be renumbered')
+    group = homograph_group(view.items, target['id'])
+    if not group:
+        raise ToolError(f'{view.label(target["id"])} is the only entry spelled that way, so it carries no '
+                        'number to order.')
+    wanted = [str(x).strip() for x in (order if isinstance(order, list) else [order]) if str(x).strip()]
+    by_num = {view.number(r['id']): r for r in group}
+    ids = []
+    for token in wanted:
+        # Each entry is named by the number it is shown with now, or by its id.
+        r = by_num.get(token.rpartition('#')[2] or token) or next(
+            (x for x in group if x['id'] == token), None)
+        if r is None:
+            raise ToolError(f'"{token}" is not one of the {len(group)} entries spelled '
+                            f'"{group[0].get("form")}". They are numbered '
+                            + ', '.join(view.number(r['id']) for r in group) + '.')
+        if r['id'] in ids:
+            raise ToolError(f'"{token}" is named twice; give each entry once.')
+        ids.append(r['id'])
+    if len(ids) != len(group):
+        raise ToolError(f'Give all {len(group)} entries spelled "{group[0].get("form")}" in the order they '
+                        'should be numbered; ' + str(len(ids)) + ' were given.')
+    patches = plan_homograph_order(group, ids)
+    if not patches:
+        return ws.planned_note(0) + ' They already stand in that order.'
+    ops = []
+    for x in patches:
+        item = view.tree.by_id[x['id']]
+        before = _meta_of(ws, item)
+        was = view.number(x['id'])
+        ops.append(_meta_op(ws, x['id'], before, x['metadata'],
+                            f'entry "{item.get("form")}" ({was}) becomes number {x["metadata"]["homograph"]}'))
+    ws.add_ops(ops)
+    return ws.planned_note(len(ops))
 
 
 def t_promote_example(ws: Workspace, document: str, ref: str, entry_form: Optional[str] = None,
@@ -2595,6 +2638,14 @@ TOOLS = [
         {'document': _DOC, 'ref': {'type': 'string', 'description': 'One word reference, e.g. "s3.w2".'},
          **_ENTRY_ADDR, 'entry_gloss': _GLOSS},
         ['document', 'ref']),
+    _fn('order_homographs',
+        'PLAN: set the order of the entries spelled the same. That order is the first segment of the number '
+        'every one of their senses is shown with, so it renumbers the whole group. Name every one of them, in '
+        'the order they should be numbered, by the number each is shown with now (or by id).',
+        {'order': {'type': 'array', 'items': {'type': 'string'},
+                   'description': 'Every entry of the group, in their new order, e.g. ["2", "1", "3"].'},
+         **_ENTRY_ADDR, 'entry_gloss': _GLOSS},
+        ['order']),
     _fn('remove_example',
         'PLAN: drop one of an entry\'s usage examples, by the number lexicon_entry shows beside it.',
         {'index': {'type': 'integer', 'description': 'The example\'s position, as lexicon_entry lists it.'},
@@ -2618,6 +2669,7 @@ _IMPL = {
     'confirm': t_confirm, 'discard_analysis': t_discard_analysis, 'drop_planned': t_drop_planned,
     'add_sense': t_add_sense, 'move_sense': t_move_sense, 'make_sense_of': t_make_sense_of,
     'free_sense': t_free_sense, 'promote_example': t_promote_example, 'remove_example': t_remove_example,
+    'order_homographs': t_order_homographs,
 }
 
 

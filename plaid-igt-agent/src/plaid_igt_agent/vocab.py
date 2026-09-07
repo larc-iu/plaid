@@ -17,6 +17,8 @@ Reserved item keys, which are never fields:
               number of its own.
   senseOrder  an integer ordering an item among its siblings. Missing orders
               sort after the numbered ones, in creation order.
+  homograph   an integer ordering an ENTRY among the entries spelled the same.
+              Same fallback.
   examples    a list of {document, token} references. A FLEx import stores
               {text, translation} entries in the same list; those are text.
 
@@ -31,6 +33,9 @@ IGT_NAMESPACE = 'igt'
 
 PARENT_KEY = 'parent'
 SENSE_ORDER_KEY = 'senseOrder'
+# The order of an entry among the entries that share its form. A FLEx import
+# writes FLEx's homograph number here; reordering in the app rewrites it 1..n.
+HOMOGRAPH_KEY = 'homograph'
 EXAMPLES_KEY = 'examples'
 DICTIONARY_KEY = 'dictionary'
 
@@ -253,8 +258,10 @@ class SenseTree:
         self.root_of = root_of
 
     def number(self, item_id: str) -> str:
-        """The sense number an item is shown with: "" for an entry, which has
-        none of its own, then "1", "2", "1.1" below it."""
+        """An item's place in its own entry's sense hierarchy: "" for an entry,
+        then "1", "2", "1.1" below it. This is the PATH only. The number the
+        user is shown also carries the entry's homograph segment in front of
+        it, which is what :func:`build_item_numbers` assembles."""
         return self.number_of.get(item_id, '')
 
     def is_sense(self, item_id: str) -> bool:
@@ -369,11 +376,57 @@ def _renumbered(sibs: List[dict], parent_id: str) -> List[dict]:
     return out
 
 
+def plan_sense_drop(tree: SenseTree, item_id: str, target: Optional[dict]) -> List[dict]:
+    """Where a moved item lands, as [{id, metadata}] patches:
+      {kind: 'root'}                its own entry (parent and order cleared)
+      {kind: 'into', id}            last sense of that item
+      {kind: 'before'|'after', id}  a sibling of that item, just before or after
+
+    A move onto itself, or into its own subtree, moves nothing. Before or after
+    an ENTRY means into it, first or last: entries have no order among
+    themselves. Siblings are renumbered densely. Mirrors planSenseDrop, which
+    is the app's own reordering gesture.
+    """
+    if not target or item_id not in tree.by_id:
+        return []
+    item = tree.by_id[item_id]
+    in_subtree = {item_id} | {d['id'] for d in descendants_of(tree, item_id)}
+    kind = target.get('kind')
+    if kind == 'root':
+        if not tree.parent_of.get(item_id):
+            return []
+        return [{'id': item_id, 'metadata': with_parent(item.get('metadata'), None, None)}]
+    tid = target.get('id')
+    if tid not in tree.by_id or tid in in_subtree:
+        return []
+    if kind == 'into' or not tree.parent_of.get(tid):
+        parent = tid
+        sibs = [s for s in (tree.children_of.get(parent) or []) if s['id'] != item_id]
+        at = 0 if kind == 'before' else len(sibs)
+    else:
+        parent = tree.parent_of.get(tid)
+        sibs = [s for s in (tree.children_of.get(parent) or []) if s['id'] != item_id]
+        at = next((k for k, s in enumerate(sibs) if s['id'] == tid), -1) + (1 if kind == 'after' else 0)
+    sibs.insert(at, item)
+    moved = tree.parent_of.get(item_id) != parent
+    patches = _renumbered(sibs, parent)
+    # A sibling list that already stood in this order yields no patch for the
+    # moved item, so make sure its new parent is written.
+    if moved and not any(p['id'] == item_id for p in patches):
+        patches.append({'id': item_id,
+                        'metadata': with_parent(item.get('metadata'), parent, sense_order_of(item))})
+    return patches
+
+
 def plan_sense_set_number(tree: SenseTree, item_id: str, shown) -> List[dict]:
-    """The sibling list with ``item_id`` placed at the number it is SHOWN with,
-    counting from 1 at every level. Out-of-range numbers land at the nearest
-    end. Renumbering the whole list keeps orders dense, so a later move is
-    always a swap."""
+    """The sibling list with ``item_id`` placed at the position it should be
+    shown at among its siblings, counting from 1. Out-of-range numbers land at
+    the nearest end, and the whole list is renumbered densely.
+
+    The app dropped its own version of this when senses became draggable, and
+    dragging is not a gesture an assistant has. The write is the same dense
+    renumbering :func:`plan_sense_drop` produces, so the two agree.
+    """
     p = tree.parent_of.get(item_id)
     if not p:
         return []
@@ -609,19 +662,72 @@ def build_homonym_index(items: Optional[List[dict]]) -> Dict[str, Optional[int]]
     return index
 
 
-def build_item_numbers(items: Optional[List[dict]]) -> Dict[str, str]:
-    """One dotted number per item, the name it goes by everywhere in a
-    dictionary vocabulary: entries that share a form are told apart by a first
-    segment in creation order ("1", "2"; an entry whose form is its own gets
-    none), and a sense carries its entry's segment, if any, then its own path
-    ("1.2", "2", "2.1"). Mirrors buildItemNumbers in vocabDictionary.js, which
-    is what the vocabulary list, Bulk Edit and the interlinear editor draw."""
-    tree = build_sense_tree(items)
+def homograph_of(item: Optional[dict]):
+    """An entry's stored homograph number, or None when unnumbered or zero."""
+    v = ((item or {}).get('metadata') or {}).get(HOMOGRAPH_KEY)
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        return None
+    return n if math.isfinite(n) and n > 0 else None
+
+
+def homograph_groups(items: Optional[List[dict]], tree: Optional[SenseTree] = None) -> Dict[str, List[dict]]:
+    """form -> the entries spelled that way, in homograph order then creation
+    order. A FLEx import writes FLEx's homograph number, and reordering in the
+    app rewrites it 1..n, so this order is the one the user set."""
+    if tree is None:
+        tree = build_sense_tree(items)
+    position = {it['id']: i for i, it in enumerate(items or [])}
     by_form: Dict[str, List[dict]] = {}
     for r in tree.roots:
         by_form.setdefault(r.get('form') or '', []).append(r)
+
+    def key(r):
+        h = homograph_of(r)
+        # Numbered entries first, in their number; the rest after, as created.
+        return (0, h, position.get(r['id'], 0)) if h is not None else (1, 0.0, position.get(r['id'], 0))
+    for g in by_form.values():
+        g.sort(key=key)
+    return by_form
+
+
+def homograph_group(items: Optional[List[dict]], item_id: str) -> List[dict]:
+    """The entries spelled like ``item_id``'s entry, in their order: what the
+    homograph dialog lists. Empty when there is only one, which needs no
+    number. Mirrors homographGroup in vocabDictionary.js."""
+    tree = build_sense_tree(items)
+    root = tree.by_id.get(tree.root_of.get(item_id) or '')
+    if root is None:
+        return []
+    group = homograph_groups(items, tree).get(root.get('form') or '', [])
+    return group if len(group) > 1 else []
+
+
+def plan_homograph_order(group: List[dict], ordered_ids) -> List[dict]:
+    """Patches writing the homograph numbers 1..n onto ``group`` in the order of
+    ``ordered_ids``, for the entries whose number changes."""
+    by_id = {r['id']: r for r in group or []}
+    out = []
+    for i, iid in enumerate(ordered_ids or []):
+        r = by_id.get(iid)
+        if r is None or homograph_of(r) == i + 1:
+            continue
+        out.append({'id': iid, 'metadata': {**(r.get('metadata') or {}), HOMOGRAPH_KEY: i + 1}})
+    return out
+
+
+def build_item_numbers(items: Optional[List[dict]]) -> Dict[str, str]:
+    """One dotted number per item, the name it goes by everywhere in a
+    dictionary vocabulary: entries that share a form are told apart by a first
+    segment in their homograph order ("1", "2"; an entry whose form is its own
+    gets none), and a sense carries its entry's segment, if any, then its own
+    path ("1.2", "2", "2.1.3"). Mirrors buildItemNumbers in vocabDictionary.js,
+    which is what the vocabulary list, Bulk Edit and the interlinear editor
+    draw beside a form."""
+    tree = build_sense_tree(items)
     seg_of: Dict[str, str] = {}
-    for group in by_form.values():
+    for group in homograph_groups(items, tree).values():
         if len(group) > 1:
             for i, r in enumerate(group):
                 seg_of[r['id']] = str(i + 1)
