@@ -387,9 +387,14 @@ Merging entries with **Bulk Edit** points those references at the surviving entr
 A vocabulary added while setting up a new project can start as a dictionary: tick **Lexicography Mode** under the name.
 An imported lexicon starts as one unless you untick it on the review screen.
 A FLEx import also keeps the sense structure of the lexicon: an entry with several senses becomes an entry with them under it, numbered as FLEx numbered them, and an entry with one sense is that sense.
+A CLDF import does the same with its entry and sense tables.
+FLEx's variants and complex forms come in when you tick **Variants and complex forms** on the review screen: a variant gets a *variantOf* field naming what it varies, a complex form a *components* field naming what it is built from, and each keeps FLEx's name for the relation (*Spelling Variant*, *Compound*) beside it.
 
 Exports follow the same structure.
 A LIFT file has one entry per headword, its senses as senses and their senses as subsenses; a CLDF dataset puts headwords in its entry table and every sense under them in its sense table; the vocabulary's TSV carries each entry's number and names the entries a reference field points at.
+A reference field is a relation in LIFT, pointing at the entry or sense it names, and the relation's name is declared in the ranges file beside it.
+Promoted examples go out with the lexicon: LIFT carries each one's sentence and translation, and a CLDF sense names the example rows its sentences became.
+An example whose document is outside a LIFT export is fetched for its sentence, and one whose word is gone is left out and counted in the export's warnings.
 The native archive keeps everything, senses, references and examples included, and brings it back on import.
 Bulk Add and Replace leave Entry fields alone, since those hold references and not text.
 
