@@ -181,12 +181,19 @@ export const readInitialized = (config) => readIgt(config, 'initialized') === tr
 export const IMPORT_KEY = 'import';
 export const readImportState = (config) => readIgt(config, IMPORT_KEY) ?? null;
 
-/** Record that an import into this project has begun. Never fails the import. */
-export const markImportStarted = async (client, projectId, kind, source) => {
+/**
+ * Record that an import into this project has begun. Never fails the import.
+ *
+ * `vocabId` is the lexicon the run writes into, once it is known. A resume
+ * reads it from here rather than looking the vocabulary up by a name it
+ * recomputes, which a renamed project or a hand-named lexicon does not match.
+ */
+export const markImportStarted = async (client, projectId, kind, source, vocabId = null) => {
   try {
     await client.projects.setConfig(projectId, IGT_NAMESPACE, IMPORT_KEY, {
       kind,
       source: source ?? null,
+      vocabId,
       startedAt: new Date().toISOString(),
     });
   } catch (err) {

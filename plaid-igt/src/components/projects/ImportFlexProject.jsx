@@ -22,7 +22,7 @@ import { parseFwdata } from '../../import/flex/fwdataParser';
 import { buildDocuments } from '../../import/flex/buildDocuments';
 import { deriveImportConfig, runImport } from '../../import/flex/importEngine';
 import { executeProjectSetup } from './setup/executeSetup';
-import { markImportStarted, markImportFinished } from '../../domain/igtConfig';
+import { markImportStarted, markImportFinished, readImportState } from '../../domain/igtConfig';
 import { readDictionaryEnabled } from '../../domain/vocabDictionary';
 import { useResumeImport } from '@/hooks/useResumeImport';
 import { documentFraction, documentLabel } from '../../import/progress';
@@ -239,15 +239,28 @@ export const ImportFlexProject = () => {
       // finishes, so a cancelled or lost import is visible on the project.
       await markImportStarted(client, projectIdRef.current, 'FLEx', parsed.backupName);
 
-      // Resolve the lexicon vocab (a retry may not have setup resources).
+      // Resolve the lexicon vocab (a resume has no setup resources). The
+      // record names it, because the name this screen would compute comes from
+      // the backup's file name and a run that renamed the project or the
+      // lexicon left nothing here that matches it.
       if (!vocabIdRef.current) {
         const project = await client.projects.get(projectIdRef.current);
         vocabIdRef.current =
           lexiconMode === 'existing'
             ? existingVocab.id
-            : ((project.vocabs || []).find((v) => v.name === vocabName)?.id ?? null);
+            : (readImportState(project.config)?.vocabId ??
+              (project.vocabs || []).find((v) => v.name === vocabName)?.id ??
+              null);
       }
       if (!vocabIdRef.current) throw new Error('Lexicon vocabulary missing after setup');
+      // Now that it is known, so a resume does not have to find it again.
+      await markImportStarted(
+        client,
+        projectIdRef.current,
+        'FLEx',
+        parsed.backupName,
+        vocabIdRef.current,
+      );
 
       // 2. Lexicon + documents via the import engine.
       const totalDocs = filteredBuild.documents.length;
