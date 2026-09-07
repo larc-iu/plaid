@@ -306,6 +306,7 @@ The table tells them apart with subscripts, in the order they were created.
 **Bulk Add** takes rows pasted from a spreadsheet or read from a file.
 It lets you map the columns onto the entry fields, then reviews each row against the entries that already exist before anything is created, so a homonym stays separate and an existing entry is never overwritten unless you say so.
 **Replace** finds text in one field of every entry, the form included, and replaces it: as plain text, as a whole value, or as a regular expression.
+A fourth kind, **is empty**, matches the entries that have no value in the field and sets one, which is how a status is given to a lexicon imported without any.
 Each entry it would change is listed with its old and new value, and only the ticked ones are written.
 A value the field's tagset refuses is listed but never written.
 **Export** downloads the table as a tab-separated file that opens in any spreadsheet.
