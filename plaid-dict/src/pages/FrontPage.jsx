@@ -9,6 +9,16 @@ import { dictTitle } from '@/domain/dictConfig';
 import { Input } from '@/components/ui/input';
 import { formPath } from '@/domain/paths';
 
+// The letter buttons scroll rather than link. The app is a HashRouter, so the
+// URL fragment IS the route: an `href="#letter-A"` replaces `#/sena` and lands
+// on nothing. The jump is instant, as an anchor's would be; `behavior: 'smooth'`
+// was tried and is ignored outright in some browsers.
+const goToLetter = (letter) => {
+  document.getElementById(`letter-${encodeURIComponent(letter)}`)?.scrollIntoView({
+    block: 'start',
+  });
+};
+
 const FormLink = ({ slug, form, lang }) => (
   <Link
     to={formPath(slug, form)}
@@ -112,13 +122,14 @@ export const FrontPage = () => {
           {index.length > 1 && (
             <nav className="mb-6 flex flex-wrap gap-x-3 gap-y-1" aria-label="Letters">
               {index.map(({ letter }) => (
-                <a
+                <button
                   key={letter}
-                  href={`#letter-${encodeURIComponent(letter)}`}
+                  type="button"
+                  onClick={() => goToLetter(letter)}
                   className="font-serif text-lg underline-offset-4 hover:underline"
                 >
                   {letter}
-                </a>
+                </button>
               ))}
             </nav>
           )}

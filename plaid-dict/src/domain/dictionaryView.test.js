@@ -101,6 +101,12 @@ describe('indexLetter', () => {
   it('leaves an uncased first character as it stands', () => {
     expect(indexLetter("'ala")).toBe("'");
     expect(indexLetter('3sg')).toBe('3');
+    expect(indexLetter('\u2205kap')).toBe('\u2205');
+  });
+
+  it('files a superscript letter under the letter, not a bucket of its own', () => {
+    expect(indexLetter('\u1d3fkap')).toBe('R');
+    expect(indexLetter('\u1d35nkat')).toBe('I');
   });
 });
 

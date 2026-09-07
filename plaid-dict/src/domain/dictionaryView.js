@@ -102,15 +102,19 @@ export const buildFormPages = (items, collator = new Intl.Collator(), dict = nul
 };
 
 /**
- * The letter a form is filed under: its first character, without its
- * diacritics, uppercased. A form that starts with something uncased (a digit, a
- * glottal stop mark) is filed under that character as it stands. Digraphs get
+ * The letter a form is filed under: its first character, without its diacritics,
+ * uppercased. A form that starts with something uncased (a digit, a glottal stop
+ * mark, the zero morph) is filed under that character as it stands. Digraphs get
  * no bucket of their own.
+ *
+ * The folding is compatibility (NFKD), not just canonical, so a form written
+ * with a superscript letter is filed under the letter rather than in a bucket
+ * of its own.
  */
 export const indexLetter = (form) => {
   const first = [...String(form ?? '')][0];
   if (!first) return '';
-  const bare = first.normalize('NFD').replace(/[\u0300-\u036f]/g, '') || first;
+  const bare = [...first.normalize('NFKD').replace(/[\u0300-\u036f]/g, '')][0] || first;
   return bare.toUpperCase();
 };
 
