@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { displayForm, entryText, firstGloss, searchableText } from './entryFields.js';
+import {
+  collectExampleRefs,
+  displayForm,
+  entryExamples,
+  entryRefs,
+  entryText,
+  firstGloss,
+  searchableText,
+} from './entryFields.js';
 import { normalizeVocabFields } from '@igt/domain/vocabFields.js';
 
 // The Sena demo's shape: a Portuguese primary gloss, an English one named in
@@ -102,5 +110,71 @@ describe('searchableText', () => {
     expect(text).toContain('wednesday');
     expect(text).toContain('pitatu');
     expect(text).toBe(text.toLowerCase());
+  });
+});
+
+describe('entryRefs', () => {
+  const scoped = normalizeVocabFields({
+    gloss: { inline: true },
+    variantOf: { inline: false, type: 'item', scope: 'entry' },
+    seeAlso: { inline: false, type: 'item', many: true },
+  });
+  const resolve = (id) => (id === 'gone' ? null : { id, form: id, number: '1' });
+
+  it('reads a single reference and a many one', () => {
+    const refs = entryRefs(item({ variantOf: 'head', seeAlso: ['one', 'two'] }), scoped, resolve);
+    expect(refs.map((r) => r.name)).toEqual(['variantOf', 'seeAlso']);
+    expect(refs[1].targets.map((t) => t.id)).toEqual(['one', 'two']);
+  });
+
+  it('drops a target the dictionary does not show, and the field with its last one', () => {
+    const refs = entryRefs(item({ seeAlso: ['one', 'gone'] }), scoped, resolve);
+    expect(refs[0].targets.map((t) => t.id)).toEqual(['one']);
+    expect(entryRefs(item({ seeAlso: ['gone'] }), scoped, resolve)).toEqual([]);
+  });
+
+  it('leaves a headword-scope reference off a sense', () => {
+    const sense = item({ parent: 'head', variantOf: 'head', seeAlso: ['one'] });
+    expect(entryRefs(sense, scoped, resolve).map((r) => r.name)).toEqual(['seeAlso']);
+  });
+});
+
+describe('entryExamples', () => {
+  const imported = { text: 'kugwa bola', translation: 'jogar bola' };
+  const promoted = { document: 'd1', token: 't1' };
+
+  it('takes an imported example as it stands', () => {
+    expect(entryExamples(item({ examples: [imported] }))).toEqual([
+      { text: 'kugwa bola', translation: 'jogar bola' },
+    ]);
+  });
+
+  it('fills a promoted one in from the sentences it was given', () => {
+    const sentences = new Map([['d1/t1', { text: 'Ndine.', translation: 'It is me.' }]]);
+    expect(entryExamples(item({ examples: [promoted] }), sentences)).toEqual([
+      { text: 'Ndine.', translation: 'It is me.', document: 'd1' },
+    ]);
+  });
+
+  it('shows nothing for a promoted one whose sentence could not be read', () => {
+    expect(entryExamples(item({ examples: [promoted] }), new Map())).toEqual([]);
+    expect(entryExamples(item({ examples: [promoted] }), null)).toEqual([]);
+    expect(entryExamples(item({}))).toEqual([]);
+  });
+});
+
+describe('collectExampleRefs', () => {
+  it('gathers the references on a headword and every sense under it', () => {
+    const node = (metadata, senses = []) => ({ item: item(metadata), senses });
+    const tree = node({ examples: [{ document: 'd1', token: 't1' }, { text: 'no ref' }] }, [
+      node({ examples: [{ document: 'd2', token: 't2' }] }, [
+        node({ examples: [{ document: 'd1', token: 't3' }] }),
+      ]),
+    ]);
+    expect(collectExampleRefs(tree).map((r) => `${r.document}/${r.token}`)).toEqual([
+      'd1/t1',
+      'd2/t2',
+      'd1/t3',
+    ]);
   });
 });

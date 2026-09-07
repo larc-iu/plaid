@@ -71,12 +71,12 @@ const nodeOf = (item, { tree, numbers, visible }) => ({
  *
  * @returns {{form: string, headwords: Node[]}[]}
  */
-export const buildFormPages = (items, collator = new Intl.Collator()) => {
-  const dict = readDictionary(items);
+export const buildFormPages = (items, collator = new Intl.Collator(), dict = null) => {
+  const reading = dict ?? readDictionary(items);
   const position = new Map((items || []).map((it, i) => [it.id, i]));
 
   const byForm = new Map();
-  for (const r of dict.headwords) {
+  for (const r of reading.headwords) {
     const form = r.form ?? '';
     if (!byForm.has(form)) byForm.set(form, []);
     byForm.get(form).push(r);
@@ -97,7 +97,7 @@ export const buildFormPages = (items, collator = new Intl.Collator()) => {
     .sort(([a], [b]) => collator.compare(a, b))
     .map(([form, roots]) => ({
       form,
-      headwords: roots.sort(byNumber).map((r) => nodeOf(r, dict)),
+      headwords: roots.sort(byNumber).map((r) => nodeOf(r, reading)),
     }));
 };
 

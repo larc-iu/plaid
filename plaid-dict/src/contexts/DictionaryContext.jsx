@@ -4,7 +4,14 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useCatalog } from '@/contexts/CatalogContext';
 import { findBySlug } from '@/domain/dictionaries';
 import { dictCollator, readDictRecord } from '@/domain/dictConfig';
-import { buildFormPages, buildIndex, buildSearchIndex } from '@/domain/dictionaryView';
+import {
+  buildFormPages,
+  buildIndex,
+  buildSearchIndex,
+  readDictionary,
+} from '@/domain/dictionaryView';
+import { displayForm } from '@/domain/entryFields';
+import { formPath } from '@/domain/paths';
 import { normalizeVocabFields } from '@igt/domain/vocabFields.js';
 import { readVocabFields } from '@igt/domain/igtConfig.js';
 
@@ -54,7 +61,22 @@ export const DictionaryProvider = () => {
   const value = useMemo(() => {
     const fields = normalizeVocabFields(readVocabFields(vocab?.config));
     const collator = dictCollator(record);
-    const pages = items ? buildFormPages(items, collator) : [];
+    const dictionary = readDictionary(items || []);
+    const pages = items ? buildFormPages(items, collator, dictionary) : [];
+    const objectLang = record?.languages?.object?.iso639P3 || undefined;
+    // A reference to an entry the dictionary does not show is not a link to
+    // nowhere: it is dropped.
+    const resolveRef = (id) => {
+      const target = dictionary.visible.has(id) ? dictionary.tree.byId.get(id) : null;
+      if (!target) return null;
+      return {
+        id,
+        form: displayForm(target),
+        number: dictionary.numbers.get(id) ?? '',
+        to: formPath(slug, dictionary.tree.byId.get(dictionary.tree.rootOf.get(id)).form),
+        lang: objectLang,
+      };
+    };
     return {
       slug,
       vocab,
@@ -63,7 +85,8 @@ export const DictionaryProvider = () => {
       collator,
       // The object language's tag, put on every piece of object-language text
       // so a browser knows what it is rendering.
-      objectLang: record?.languages?.object?.iso639P3 || undefined,
+      objectLang,
+      resolveRef,
       items,
       pages,
       index: buildIndex(pages, collator),

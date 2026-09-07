@@ -13,9 +13,19 @@
 // `morphType` (it decorates the form instead, "-ka" for a suffix), and the
 // reference fields, which are links rather than text.
 
-import { fieldBaseName, fieldLabel, FIELD_TYPES } from '@igt/domain/vocabFields.js';
-import { groupFieldsForForm } from '@igt/domain/vocabFields.js';
-import { STATUS_FIELD } from '@igt/domain/vocabDictionary.js';
+import {
+  fieldBaseName,
+  fieldLabel,
+  groupFieldsForForm,
+  FIELD_TYPES,
+} from '@igt/domain/vocabFields.js';
+import {
+  allExamples,
+  fieldsForItem,
+  itemRefFields,
+  refIds,
+  STATUS_FIELD,
+} from '@igt/domain/vocabDictionary.js';
 import { decorateWithAffixMarkers } from '@igt/domain/affixMarkers.js';
 
 export const POS_FIELD = 'pos';
@@ -62,7 +72,11 @@ export const displayForm = (item) =>
  * @returns {{pos: string|null, glosses: object[], definitions: object[], others: object[]}}
  */
 export const entryText = (item, fields) => {
-  const groups = groupFieldsForForm(fields || [], { statusField: STATUS_FIELD });
+  // A headword-scope field belongs to the headword, so a sense never repeats
+  // its entry's etymology.
+  const groups = groupFieldsForForm(fieldsForItem(fields, item, true), {
+    statusField: STATUS_FIELD,
+  });
   const text = [...groups.builtIn, ...groups.custom].filter(
     (f) => f.type !== FIELD_TYPES.ITEM && !SILENT.has(f.name),
   );
@@ -119,4 +133,46 @@ export const firstGloss = (node, fields, query = '') => {
   };
   const matched = q ? walk(node, (gs) => gs.find((g) => g.value.toLowerCase().includes(q))) : null;
   return matched ?? walk(node, (gs) => gs[0]);
+};
+
+/**
+ * The entries this one points at, field by field. `resolve` turns a target id
+ * into whatever the page needs to draw a link, and returns null for a target
+ * the dictionary does not show: a reference to an unpublished entry is not a
+ * link to nowhere, it is not a reference at all.
+ *
+ * @returns {{name: string, label: string, targets: object[]}[]}
+ */
+export const entryRefs = (item, fields, resolve) => {
+  const out = [];
+  for (const field of itemRefFields(fieldsForItem(fields, item, true))) {
+    const targets = refIds(item, field).map(resolve).filter(Boolean);
+    if (targets.length) out.push({ name: field.name, label: fieldLabel(field), targets });
+  }
+  return out;
+};
+
+/**
+ * An entry's examples, each already carrying whatever text it has. An imported
+ * FLEx example is its own text; a promoted one is a reference into a document
+ * and is looked up in `sentences` (see resolveExamples), keyed by document and
+ * token. A promoted example whose sentence could not be read is left out: a
+ * dictionary shows an example or nothing, never a placeholder.
+ */
+export const entryExamples = (item, sentences = null) =>
+  allExamples(item)
+    .map((example) => {
+      if (!example.document) return { text: example.text, translation: example.translation || '' };
+      const found = sentences?.get(`${example.document}/${example.token}`);
+      return found ? { ...found, document: example.document } : null;
+    })
+    .filter((e) => e && e.text);
+
+/** Every `{document, token}` a headword and its senses point at. */
+export const collectExampleRefs = (node, out = []) => {
+  for (const example of allExamples(node.item)) {
+    if (example.document && example.token) out.push(example);
+  }
+  for (const sense of node.senses || []) collectExampleRefs(sense, out);
+  return out;
 };

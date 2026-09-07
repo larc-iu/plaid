@@ -1,7 +1,9 @@
 import { useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 import { useDictionary } from '@/contexts/DictionaryContext';
+import { useExamples } from '@/hooks/useExamples';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { dictTitle } from '@/domain/dictConfig';
 import { dictionaryPath, formPath } from '@/domain/paths';
@@ -11,7 +13,8 @@ import { EntryArticle } from '@/components/dictionary/EntryArticle';
 // it, in homograph order.
 export const FormPage = () => {
   const { form } = useParams();
-  const { slug, vocab, pages, fields, objectLang, loading, missing } = useDictionary();
+  const { client } = useAuth();
+  const { slug, vocab, pages, fields, objectLang, resolveRef, loading, missing } = useDictionary();
 
   const page = useMemo(() => (pages || []).find((p) => p.form === form) || null, [pages, form]);
   // The forms either side, so a reader can page through the dictionary.
@@ -23,6 +26,8 @@ export const FormPage = () => {
       next: at < pages.length - 1 ? pages[at + 1].form : null,
     };
   }, [pages, form]);
+
+  const sentences = useExamples(client, page?.headwords);
 
   useDocumentTitle(form, vocab ? dictTitle(vocab) : null);
 
@@ -60,7 +65,14 @@ export const FormPage = () => {
 
       <div className="divide-y">
         {page.headwords.map((node) => (
-          <EntryArticle key={node.item.id} node={node} fields={fields} lang={objectLang} />
+          <EntryArticle
+            key={node.item.id}
+            node={node}
+            fields={fields}
+            lang={objectLang}
+            resolveRef={resolveRef}
+            sentences={sentences}
+          />
         ))}
       </div>
 
