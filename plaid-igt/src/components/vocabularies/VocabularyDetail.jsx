@@ -38,6 +38,7 @@ import {
 } from '@/domain/vocabFields';
 import {
   readDictionaryEnabled,
+  validateVocabRefs,
   DICTIONARY_KEY,
   dictionaryEnablement,
 } from '@/domain/vocabDictionary';
@@ -57,6 +58,7 @@ import { VocabularyCommentsTab } from './VocabularyCommentsTab';
 import { CommentStore } from '@/domain/CommentStore';
 import { useCommentStore } from '@/domain/useCommentStore';
 import { canEditProject } from '@/utils/permissions';
+import { useConfirm } from '@/components/shared/ConfirmProvider';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useTabParam, tabTo } from '@/hooks/useTabParam';
 
@@ -77,6 +79,7 @@ const typeChoiceOf = (field) =>
 export const VocabularyDetail = () => {
   const { vocabularyId } = useParams();
   const navigate = useNavigate();
+  const confirm = useConfirm();
   const { user, client, logout } = useAuth();
   const isNewVocabulary = !vocabularyId;
 
@@ -363,21 +366,59 @@ export const VocabularyDetail = () => {
 
   // What a field holds. A reference field has no tagset (its values are
   // entries), so switching to one lets the tagset go.
+  /**
+   * How many entries would lose their value in `fieldName` under `nextFields`.
+   * A value an Entry field cannot hold (text, or a list where one reference is
+   * expected) is cleared by the vocabulary's load-time repair, so the count
+   * comes from that same check rather than a second reading of the rule.
+   */
+  const countClearedValues = async (fieldName, nextFields) => {
+    const { items = [] } = await client.vocabLayers.get(vocabularyId, true);
+    const byId = new Map(items.map((it) => [it.id, it]));
+    const { patches } = validateVocabRefs(items, nextFields);
+    return patches.filter((p) => {
+      const before = byId.get(p.id)?.metadata?.[fieldName];
+      return before != null && before !== '' && p.metadata[fieldName] == null;
+    }).length;
+  };
+
   const handleSetType = async (fieldName, key) => {
     const choice = TYPE_CHOICES.find((c) => c.key === key);
     if (!choice) return;
-    await saveFields(
-      fields.map((f) =>
-        f.name === fieldName
-          ? {
-              ...f,
-              type: choice.type,
-              many: choice.many,
-              ...(choice.type === FIELD_TYPES.ITEM ? { tagset: null } : {}),
-            }
-          : f,
-      ),
+    const next = fields.map((f) =>
+      f.name === fieldName
+        ? {
+            ...f,
+            type: choice.type,
+            many: choice.many,
+            ...(choice.type === FIELD_TYPES.ITEM ? { tagset: null } : {}),
+          }
+        : f,
     );
+    if (choice.type === FIELD_TYPES.ITEM && !isNewVocabulary) {
+      let lost = 0;
+      try {
+        lost = await countClearedValues(fieldName, next);
+      } catch (err) {
+        console.error('Error reading entries before a field type change:', err);
+        notifyError('The entries could not be read, so the field was left alone.', 'Not changed');
+        return;
+      }
+      if (
+        lost > 0 &&
+        !(await confirm({
+          title: lost === 1 ? 'Clear one value?' : `Clear ${lost} values?`,
+          description: `${lost} ${lost === 1 ? 'entry holds a value' : 'entries hold values'} in ${fieldLabel(
+            fields.find((f) => f.name === fieldName) ?? { name: fieldName },
+          )} that ${choice.label} cannot hold.`,
+          confirmLabel: 'Change type',
+          destructive: true,
+        }))
+      ) {
+        return;
+      }
+    }
+    await saveFields(next);
   };
 
   const handleSetScope = async (fieldName, scope) => {
