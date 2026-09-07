@@ -323,10 +323,56 @@ describe('buildCldfDocuments — languages and lexicon', () => {
         metadata: { pos: 'N', gloss: 'dog', definition: 'hound' },
         // Kept whole as well, for the importer to make senses of.
         senses: [
-          { id: 's1', description: 'dog' },
-          { id: 's2', description: 'hound' },
+          { id: 's1', description: 'dog', metadata: {} },
+          { id: 's2', description: 'hound', metadata: {} },
         ],
       },
+    ]);
+  });
+
+  it("reads a sense's own part of speech, definition and fields", () => {
+    const ds = dataset(
+      'ID,Primary_Text\r\n1,x\r\n',
+      BASIC_COLUMNS,
+      [
+        {
+          url: 'entries.csv',
+          'dc:conformsTo': `${TERMS}EntryTable`,
+          tableSchema: {
+            columns: [col('ID', 'id'), col('Headword', 'headword')],
+          },
+        },
+        {
+          url: 'senses.csv',
+          'dc:conformsTo': `${TERMS}SenseTable`,
+          tableSchema: {
+            columns: [
+              col('ID', 'id'),
+              col('Entry_ID', 'entryReference'),
+              col('Description', 'description'),
+              col('Definition'),
+              col('Part_Of_Speech', 'partOfSpeech'),
+              col('Sense_Status'),
+            ],
+          },
+        },
+      ],
+      {
+        'entries.csv': 'ID,Headword\r\ne1,banco\r\n',
+        'senses.csv':
+          'ID,Entry_ID,Description,Definition,Part_Of_Speech,Sense_Status\r\n' +
+          's1,e1,bench,a long seat,noun,reviewed\r\n' +
+          's2,e1,bank,,verb,\r\n',
+      },
+    );
+    const { lexicon } = buildCldfDocuments(ds);
+    expect(lexicon[0].senses).toEqual([
+      {
+        id: 's1',
+        description: 'bench',
+        metadata: { pos: 'noun', definition: 'a long seat', Status: 'reviewed' },
+      },
+      { id: 's2', description: 'bank', metadata: { pos: 'verb' } },
     ]);
   });
 });

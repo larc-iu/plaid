@@ -178,14 +178,20 @@ export async function importLexicon({ client, vocabId, lexicon, onProgress, shou
       pending.push({
         key: senseKey(entry, sense),
         form: entry.form,
-        metadata: { gloss: sense.description },
+        metadata: { ...(sense.metadata || {}), gloss: sense.description },
       });
     }
   }
   // The field schema is the union of what the items actually carry, with the
   // settled core fields always present.
   const fieldKeys = new Set(['gloss', 'pos', 'definition', 'morphType']);
-  for (const entry of lexicon) for (const k of Object.keys(entry.metadata)) fieldKeys.add(k);
+  for (const entry of lexicon) {
+    for (const k of Object.keys(entry.metadata)) fieldKeys.add(k);
+    // A sense carries fields of its own, which the schema has to declare too.
+    for (const sense of entry.senses || []) {
+      for (const k of Object.keys(sense.metadata || {})) fieldKeys.add(k);
+    }
+  }
 
   let done = 0;
   for (let i = 0; i < pending.length; i += CHUNK) {

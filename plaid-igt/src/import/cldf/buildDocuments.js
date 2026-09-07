@@ -644,12 +644,25 @@ export function buildCldfDocuments(dataset, options = {}) {
   const entries = dataset.components?.EntryTable;
   const senses = dataset.components?.SenseTable;
   const sensesByEntry = new Map();
+  // A sense row carries what the entry row cannot: its own part of speech,
+  // its longer definition, and one `Sense_<field>` column per lexicon field.
+  // The export has always written them, so read them back.
+  const senseCustom = (senses ? customColumnsOf(senses) : []).filter((n) => n.startsWith('Sense_'));
   for (const row of senses?.rows || []) {
     const key = cell(senses, row, 'entryReference');
     const description = cell(senses, row, 'description');
     if (!description) continue;
+    const metadata = {};
+    const pos = cell(senses, row, 'partOfSpeech');
+    if (pos) metadata.pos = pos;
+    const definition = row.Definition ?? '';
+    if (definition) metadata.definition = definition;
+    for (const name of senseCustom) {
+      const v = row[name] ?? '';
+      if (v) metadata[name.slice('Sense_'.length)] = v;
+    }
     if (!sensesByEntry.has(key)) sensesByEntry.set(key, []);
-    sensesByEntry.get(key).push({ id: cell(senses, row, 'id'), description });
+    sensesByEntry.get(key).push({ id: cell(senses, row, 'id'), description, metadata });
   }
   const lexicon = [];
   for (const row of entries?.rows || []) {
