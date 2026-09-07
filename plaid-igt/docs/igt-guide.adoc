@@ -612,6 +612,10 @@ Four formats are supported:
 * **ELAN** (`.eaf`): a set of annotation files that share one tier structure. Each file becomes a document, with its tiers, speakers, and time alignment.
 * **Plaid IGT archive** (`.zip`): recreates a project exactly, including its vocabularies, media, and comments.
 
+An import that stops before it finishes, whether you cancel it, it fails, or the tab is closed, leaves a project that is only part filled.
+Opening such a project takes you back to the import instead: choose the same file and it carries on, keeping the documents and entries already there and finishing the ones it never reached.
+If what arrived is enough, **Use the project as it is** on that screen puts the project back in your hands.
+
 == Exporting
 
 Exports are driven by **presets**.
