@@ -87,6 +87,18 @@ def test_entry_gloss_reaches_a_sense():
     assert 'gloss: cook' in head and 'Sense' not in head.splitlines()[0]
 
 
+def test_two_new_senses_in_one_plan_are_numbered_apart():
+    """The tree is the server's, so the plan's own senses have to be counted
+    too. And a sense just planned carries its entry's form, which must not make
+    that form ambiguous for the next call."""
+    w = dict_ws()
+    call_tool(w, 'add_sense', {'entry_form': 'kwatha', 'fields': {'gloss': 'stew'}})
+    out = call_tool(w, 'add_sense', {'entry_form': 'kwatha', 'fields': {'gloss': 'brew'}})
+    assert 'Several entries match' not in out
+    orders = [e['metadata']['senseOrder'] for e in w.new_entries.values()]
+    assert orders == [3, 4]  # after the two senses the entry has
+
+
 def test_a_flat_lexicon_is_unchanged():
     out = call_tool(dict_ws(dictionary=False), 'read_lexicon', {})
     assert 'Lexicography Mode' not in out and 'Lexicon": 6 entries' in out

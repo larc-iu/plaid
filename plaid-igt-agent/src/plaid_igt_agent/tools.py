@@ -226,9 +226,20 @@ class Workspace:
         # the entry, but the value that tells two apart is usually a sense's.
         hits = [(v, it) for v in vocabs
                 for it in _hits_in(self, v, form, suffix, has_gloss, deep=bool(g))]
+        # A sense this plan has just added carries its entry's form, so a bare
+        # form would suddenly name two things. It counts only when there is
+        # something to tell it apart by, exactly as an existing sense does.
+        def planned_ok(e):
+            if suffix is not None or g:
+                return True
+            if not (e.get('metadata') or {}).get('parent'):
+                return True
+            v = next((x for x in vocabs if x['id'] == e['vocab_id']), None)
+            return not (v and self.view(v).dictionary)
+
         news = [(k, e) for k, e in self.new_entries.items()
                 if e['form'].lower() == form.lower() and (not lexicon or e['vocab_id'] == vocabs[0]['id'])
-                and has_gloss(e.get('metadata'))]
+                and has_gloss(e.get('metadata')) and planned_ok(e)]
         if len(hits) + len(news) == 1:
             return ('existing', hits[0][1]) if hits else ('new', news[0][0])
         if not hits and not news:
@@ -1654,7 +1665,13 @@ def _create_entry(ws: Workspace, v: dict, form: str, fields: Optional[dict],
     if morph:
         metadata['morphType'] = morph_type(morph)
     if parent is not None:
-        metadata = with_parent(metadata, parent['id'], next_sense_order(view.tree, parent['id']))
+        # The tree is the lexicon as the SERVER has it, so the senses this plan
+        # has already added to the same entry are counted here as well: without
+        # that, two add_sense calls in one plan both take the same number.
+        planned = sum(1 for e in ws.new_entries.values()
+                      if (e.get('metadata') or {}).get('parent') == parent['id'])
+        metadata = with_parent(metadata, parent['id'],
+                               next_sense_order(view.tree, parent['id']) + planned)
     # The key is a handle the model passes back; it must not contain spaces
     # (a phrase entry's form does).
     key = f'new:{v["id"]}:{re.sub(r"\s+", "_", form)}#{len(ws.new_entries) + 1}'
