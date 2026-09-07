@@ -526,6 +526,13 @@ export function buildCldfDataset({
           Language_ID: objId,
           Headword: item.form ?? '',
           Part_Of_Speech: meta.pos ?? '',
+          // Which of the entries spelled alike this one is. LIFT, the TSV and
+          // the archive all carry it, and row order alone does not survive a
+          // round trip through a tool that reorders.
+          Homograph:
+            Number.isInteger(Number(meta.homograph)) && Number(meta.homograph) > 0
+              ? String(Number(meta.homograph))
+              : '',
           Vocabulary: vocab.name ?? '',
           Plaid_ID: item.id ?? '',
         };
@@ -702,6 +709,9 @@ export function buildCldfDataset({
       col('Language_ID', { required: true, propertyUrl: 'languageReference' }),
       col('Headword', { required: true, propertyUrl: 'headword' }),
       col('Part_Of_Speech', { propertyUrl: 'partOfSpeech' }),
+      col('Homograph', {
+        description: 'Which of the entries spelled alike this one is, counting from 1.',
+      }),
       col('Vocabulary', { description: 'The Plaid vocabulary layer this entry came from.' }),
       col('Plaid_ID', { description: 'The vocabulary item id in the originating Plaid project.' }),
       ...[...extraVocabColumns.entries()].map(([name, field]) =>

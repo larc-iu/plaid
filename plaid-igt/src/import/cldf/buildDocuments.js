@@ -672,6 +672,8 @@ export function buildCldfDocuments(dataset, options = {}) {
     const metadata = {};
     const pos = cell(entries, row, 'partOfSpeech');
     if (pos) metadata.pos = pos;
+    const homograph = Number(row.Homograph ?? '');
+    if (Number.isInteger(homograph) && homograph > 0) metadata.homograph = homograph;
     const entrySenses = sensesByEntry.get(id) || [];
     const glosses = entrySenses.map((sn) => sn.description);
     // A flat vocab item has one gloss, so the other senses are kept as a
@@ -680,7 +682,7 @@ export function buildCldfDocuments(dataset, options = {}) {
     if (glosses.length) metadata.gloss = glosses[0];
     if (glosses.length > 1) metadata.definition = glosses.slice(1).join('; ');
     for (const name of customColumnsOf(entries)) {
-      if (name === 'Plaid_ID' || name === 'Vocabulary') continue;
+      if (name === 'Plaid_ID' || name === 'Vocabulary' || name === 'Homograph') continue;
       const v = row[name] ?? '';
       if (!v) continue;
       metadata[name.startsWith('Entry_') ? name.slice('Entry_'.length) : name] = v;

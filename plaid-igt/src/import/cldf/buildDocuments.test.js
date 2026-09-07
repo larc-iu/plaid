@@ -606,6 +606,41 @@ describe('round trip through the exporter', () => {
     );
   });
 
+  it('carries homograph order through a round trip', () => {
+    const vocab = {
+      id: 'v1',
+      name: 'Lexicon',
+      config: { igt: { dictionary: true, fields: { gloss: { inline: true } } } },
+      items: [
+        { id: 'late', form: 'banco', metadata: { gloss: 'bench', homograph: 2 } },
+        { id: 'early', form: 'banco', metadata: { gloss: 'bank', homograph: 1 } },
+      ],
+    };
+    const { files } = buildCldfDataset({
+      project: { name: 'P' },
+      languages: { object: null, meta: null },
+      documents: [{ igtDoc: makeFixtureDoc() }],
+      vocabularies: [vocab],
+      options: {
+        glossField: 'Gloss',
+        glossScope: 'morpheme',
+        translationField: 'Translation',
+        commentField: 'Note',
+        extras: { sentence: [], word: [], morpheme: [], orthographies: [] },
+        speakers: false,
+        dictionary: true,
+      },
+    });
+    const zipped = zipSync(Object.fromEntries(files.map((f) => [f.path, strToU8(f.data)])));
+    const { lexicon } = buildCldfDocuments(readCldfDataset(zipped));
+    expect(lexicon.map((e) => [e.form, e.metadata.homograph])).toEqual([
+      ['banco', 2],
+      ['banco', 1],
+    ]);
+    // The column is bookkeeping, not an annotation field of its own.
+    expect(lexicon[0].metadata.Homograph).toBeUndefined();
+  });
+
   it('recovers the sentence translation, the word field and the orthography', () => {
     const { documents } = reimport();
     expect(documents[0].sentences[0].fields.Translation).toBe('The dogs run.');
