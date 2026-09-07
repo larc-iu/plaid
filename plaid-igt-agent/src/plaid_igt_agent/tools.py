@@ -42,7 +42,8 @@ from .vocab import (RESERVED_ITEM_KEYS, FIELD_ITEM, FIELD_TEXT, SCOPE_ENTRY, SCO
                     build_sense_tree, descendants_of, item_ref_fields, field_by_name,
                     is_reserved_field_name, parent_of, ref_ids, with_ref_ids, with_parent,
                     next_sense_order, plan_sense_set_number, all_examples, with_example_added,
-                    with_example_removed, references_to, arrange_as_tree, vocab_field_summary)
+                    with_example_removed, references_to, arrange_as_tree, vocab_field_summary,
+                    build_item_numbers, build_homonym_index)
 
 
 class ToolError(Exception):
@@ -209,9 +210,9 @@ class Workspace:
         vocabs = [self.project.vocab(lexicon)] if lexicon else self.project.vocabs
         if not vocabs:
             raise ToolError('This project has no lexicon.')
-        # A "#" suffix: the sense number under Lexicography Mode ("ама#2.1"),
-        # the FLEx homograph number without it ("ама#2"), as each is what the
-        # user sees on screen for that vocabulary.
+        # A "#" suffix is always the number the user is SHOWN beside the form:
+        # the dotted sense number under Lexicography Mode ("kwatha#1.2"), the
+        # positional homonym number without it ("gam#2").
         suffix = None
         if '#' in form:
             form, _, hn = form.rpartition('#')
@@ -419,7 +420,7 @@ class LexView:
     """A lexicon's items and the sense tree over them. Every lexicon has one:
     without Lexicography Mode every item is an entry and the tree is flat."""
 
-    __slots__ = ('vocab', 'items', 'tree', 'dictionary', 'fields', 'ref_fields')
+    __slots__ = ('vocab', 'items', 'tree', 'dictionary', 'fields', 'ref_fields', 'numbers')
 
     def __init__(self, vocab: dict, items: List[dict]):
         self.vocab = vocab
@@ -430,6 +431,15 @@ class LexView:
         # the app's entry form shows every field as plain text, and so do we.
         self.ref_fields = item_ref_fields(self.fields) if self.dictionary else []
         self.tree = build_sense_tree(items)
+        # The number the USER sees beside a form, which is what a "#" suffix
+        # has to mean: the dotted sense number under Lexicography Mode, the
+        # positional homonym number without it.
+        self.numbers = (build_item_numbers(items) if self.dictionary
+                        else {k: ('' if v is None else str(v))
+                              for k, v in build_homonym_index(items).items()})
+
+    def number(self, item_id: str) -> str:
+        return self.numbers.get(item_id, '')
 
     def is_sense(self, item_id: str) -> bool:
         return self.dictionary and self.tree.is_sense(item_id)
@@ -450,20 +460,20 @@ class LexView:
         if it is None:
             return f'a deleted entry ({item_id})'
         if self.is_sense(item_id):
-            return f'"{self.head_of(item_id)}" sense {self.tree.number(item_id)}'
-        return f'"{it.get("form") or ""}"'
+            return f'"{self.head_of(item_id)}" sense {self.number(item_id)}'
+        num = self.number(item_id)
+        return f'"{it.get("form") or ""}"' + (f' ({num})' if num else '')
 
     def address(self, item_id: str) -> str:
         """The entry_form that names this item back to a tool: "kwatha", or
-        "kwatha#2.1" for a sense, or "ама#2" for a FLEx homograph."""
+        "kwatha#1.2" for a sense, or "gam#2" for the second entry of that form.
+        Always the number the user is shown, never an internal one."""
         it = self.tree.by_id.get(item_id)
         if it is None:
             return item_id
-        if self.is_sense(item_id):
-            return f'{self.head_of(item_id)}#{self.tree.number(item_id)}'
-        form = it.get('form') or ''
-        hn = (it.get('metadata') or {}).get('homograph')
-        return f'{form}#{hn}' if not self.dictionary and hn not in (None, '') else form
+        head = self.head_of(item_id) if self.is_sense(item_id) else (it.get('form') or '')
+        num = self.number(item_id)
+        return f'{head}#{num}' if num else head
 
     def ref_summary(self, it: dict) -> List[str]:
         """The reference fields an entry carries, as forms rather than ids."""
@@ -476,25 +486,23 @@ class LexView:
 
 
 def _dict_hits(view: LexView, form: str, suffix: Optional[str]) -> List[dict]:
-    """The items a form names in a lexicon with Lexicography Mode on: the ENTRY
-    headed by that form (which is also its sense 1), or with a "#2.1" suffix the
-    sense shown with that number under it. Senses share their entry's headword,
-    so a bare form means the entry and never the pile of its senses. A form that
+    """The items a form names in a lexicon with Lexicography Mode on. Senses
+    share their entry's headword, so a bare form means the ENTRY (or the
+    entries, where several share it) and never the pile of its senses; a "#"
+    suffix is the number the user sees, which tells apart both the senses under
+    an entry ("kwatha#1.2") and entries that share a form ("gam#2"). A form that
     heads no entry falls back to any item carrying it, so a sense renamed away
     from its headword stays reachable."""
     roots = [r for r in view.tree.roots if (r.get('form') or '').lower() == (form or '').lower()]
     if not roots:
         others = [it for it in view.items if (it.get('form') or '').lower() == (form or '').lower()]
-        return others if suffix is None else [it for it in others if view.tree.number(it['id']) == suffix]
+        return others if suffix is None else [it for it in others if view.number(it['id']) == suffix]
     if suffix is None:
         return roots
-    out = []
+    family = list(roots)
     for r in roots:
-        if suffix == '1':
-            out.append(r)
-            continue
-        out.extend(d for d in descendants_of(view.tree, r['id']) if view.tree.number(d['id']) == suffix)
-    return out
+        family.extend(descendants_of(view.tree, r['id']))
+    return [it for it in family if view.number(it['id']) == suffix]
 
 
 def entry_line(it: dict, view: Optional[LexView] = None) -> str:
@@ -504,7 +512,7 @@ def entry_line(it: dict, view: Optional[LexView] = None) -> str:
     meta = it.get('metadata') or {}
     parts = [it.get('form') or '']
     if view is not None and view.is_sense(it['id']):
-        parts.append(f'sense {view.tree.number(it["id"])} of "{view.head_of(it["id"])}"')
+        parts.append(f'sense {view.number(it["id"])} of "{view.head_of(it["id"])}"')
     if meta.get('morphType'):
         parts.append(f'type={meta["morphType"]}')
     ref_names = {f['name'] for f in (view.ref_fields if view is not None else [])}
@@ -772,7 +780,7 @@ def t_read_lexicon(ws: Workspace, lexicon: Optional[str] = None, pattern: Option
             if shown >= limit:
                 break
             shown += 1
-            num = view.tree.number(it['id'])
+            num = view.number(it['id'])
             mark = f'{num} ' if view.is_sense(it['id']) else ''
             lines.append('  ' + '  ' * depth + mark + entry_line(it, view))
         if len(hits) > shown:
@@ -980,8 +988,8 @@ def t_lexicon_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Op
     meta = target.get('metadata') or {}
     view = ws.view_of_item(target['id'])
     if view is not None and view.dictionary:
-        where = (f'Sense {view.tree.number(target["id"])} of entry "{view.head_of(target["id"])}"'
-                 if view.is_sense(target['id']) else f'Entry "{target.get("form")}" (also its sense 1)')
+        where = (f'Sense {view.number(target["id"])} of entry "{view.head_of(target["id"])}"'
+                 if view.is_sense(target['id']) else f'Entry "{target.get("form")}"')
         lines = [f'{where} (id {target["id"]}, entry_form "{view.address(target["id"])}")']
     else:
         lines = [f'Entry "{target.get("form")}" (id {target["id"]})']
@@ -1039,7 +1047,7 @@ def _dictionary_lines(ws: Workspace, view: LexView, target: dict) -> List[str]:
     if senses:
         out.append(f'Senses ({len(senses)}):')
         for c in senses:
-            out.append(f'  {view.tree.number(c["id"])} {entry_line(c, view)}')
+            out.append(f'  {view.number(c["id"])} {entry_line(c, view)}')
     back = [r for r in references_to(view.items, view.fields, target['id'])]
     if back:
         out.append('Referred to by:')
@@ -1663,10 +1671,10 @@ def _hits_in(ws: Workspace, v: dict, form: str, suffix: Optional[str], has_gloss
     if view.dictionary:
         return [it for it in _dict_hits(view, form, suffix) if has_gloss(it.get('metadata'))]
     out = []
-    for it in ws.lexicon(v):
+    for it in view.items:
         if (it.get('form') or '').lower() != (form or '').lower():
             continue
-        if suffix is not None and str((it.get('metadata') or {}).get('homograph', '')) != suffix:
+        if suffix is not None and view.number(it['id']) != suffix:
             continue
         if not has_gloss(it.get('metadata')):
             continue
@@ -1821,16 +1829,19 @@ def t_move_sense(ws: Workspace, number, entry_form: Optional[str] = None, lexico
     """PLAN: put a sense at the number it should be shown with, among its siblings."""
     vocab, view, target = _dict_entry(ws, entry_form, lexicon, entry_id, entry_gloss, 'be renumbered')
     if not view.is_sense(target['id']):
-        raise ToolError(f'{view.label(target["id"])} is an entry, and an entry is always sense 1. '
-                        'make_sense_of moves it under another entry.')
-    was = view.tree.number(target['id'])
+        raise ToolError(f'{view.label(target["id"])} is an entry, and an entry carries no sense number of its '
+                        'own. make_sense_of moves it under another entry.')
+    was = view.number(target['id'])
+    # A sense is shown with a dotted number ("2.1.3"), but it moves among its
+    # own siblings, so only the last segment says where it should land.
+    number = str(number).strip().rsplit('.', 1)[-1]
     patches = plan_sense_set_number(view.tree, target['id'], number)
     if not patches:
         sibs = len(view.tree.senses_of(view.tree.parent_of[target['id']]))
         return ws.planned_note(0) + (f' {view.label(target["id"])} is already sense {was}'
                                      + (' and has no siblings to move among.' if sibs < 2 else '.'))
     ops = [_meta_op(ws, x['id'], _meta_of(ws, view.tree.by_id[x['id']]), x['metadata'],
-                    f'entry "{view.head_of(target["id"])}": sense {view.tree.number(x["id"])} renumbered')
+                    f'entry "{view.head_of(target["id"])}": sense {view.number(x["id"])} renumbered')
            for x in patches]
     ops[0]['label'] = (f'entry "{view.head_of(target["id"])}": sense {was} becomes sense {number}'
                        + (f' ({len(ops) - 1} sibling{"s" if len(ops) != 2 else ""} renumbered)' if len(ops) > 1 else ''))
@@ -2360,9 +2371,9 @@ _DOC = {'type': 'string', 'description': 'Document id or exact name (see project
 _GLOSS = {'type': 'string', 'description': 'Singles out one of several entries with the same form: a value one of '
                                            'its fields has (e.g. its gloss).'}
 _ENTRY_FORM = {'type': 'string',
-               'description': 'The entry\'s headword. With Lexicography Mode on, "kwatha" names the ENTRY (which '
-                              'is also its sense 1) and "kwatha#2.1" the sense shown with that number; without it, '
-                              '"kwatha#2" is the FLEx homograph.'}
+               'description': 'The entry\'s headword, with an optional "#" and the number shown beside it. '
+                              '"kwatha" is the entry; "kwatha#1.2" the sense numbered 1.2 under it; "gam#2" the '
+                              'second of two entries sharing the form gam. read_lexicon shows the numbers.'}
 _ENTRY_ADDR = {'entry_form': _ENTRY_FORM,
                'lexicon': {'type': 'string', 'description': 'Lexicon name (needed only when the project has several).'},
                'entry_id': {'type': 'string'}}
@@ -2564,8 +2575,10 @@ TOOLS = [
         []),
     _fn('move_sense',
         'PLAN: put a sense at the number it should be shown with among its siblings, renumbering them to match. '
-        'The entry is sense 1, so its own senses run from 2.',
-        {'number': {'type': 'string', 'description': 'The number to show it with, e.g. "2" or "2.1".'},
+        'Senses count from 1 at every level.',
+        {'number': {'type': 'string', 'description': 'Its place among its own siblings, counting from 1. The '
+                                                     'last segment of a dotted number is taken, so "2" and '
+                                                     '"1.2" both mean second among its siblings.'},
          **_ENTRY_ADDR, 'entry_gloss': _GLOSS},
         ['number']),
     _fn('make_sense_of',

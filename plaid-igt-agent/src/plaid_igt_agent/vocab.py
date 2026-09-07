@@ -12,8 +12,9 @@ switch (``config.igt.dictionary``) is off: it is the flat list it always was.
 
 Reserved item keys, which are never fields:
   parent      the id of the entry this one is a sense of. An item with no
-              parent is an ENTRY: its form is the headword, and it is also
-              sense 1. Its children are senses 2, 3, ..., theirs 2.1, 2.2.
+              parent is an ENTRY: its form is the headword. Its senses are
+              numbered 1, 2, ..., theirs 1.1, 1.2. The entry has no sense
+              number of its own.
   senseOrder  an integer ordering an item among its siblings. Missing orders
               sort after the numbered ones, in creation order.
   examples    a list of {document, token} references. A FLEx import stores
@@ -252,8 +253,9 @@ class SenseTree:
         self.root_of = root_of
 
     def number(self, item_id: str) -> str:
-        """The sense number an item is shown with: "1" for an entry, "2", "2.1"."""
-        return self.number_of.get(item_id, '1')
+        """The sense number an item is shown with: "" for an entry, which has
+        none of its own, then "1", "2", "1.1" below it."""
+        return self.number_of.get(item_id, '')
 
     def is_sense(self, item_id: str) -> bool:
         return bool(self.parent_of.get(item_id))
@@ -322,15 +324,12 @@ def build_sense_tree(items: Optional[List[dict]]) -> SenseTree:
     roots = [it for it in lst if not parents.get(it['id'])]
     number_of: Dict[str, str] = {}
 
-    def number(it, prefix, depth):
+    def number(it, prefix):
         number_of[it['id']] = prefix
         for i, c in enumerate(children[it['id']]):
-            # The entry is sense 1, so its own senses count from 2; deeper
-            # levels count from 1 under their parent's number.
-            n = i + 2 if depth == 0 else i + 1
-            number(c, str(n) if depth == 0 else f'{prefix}.{n}', depth + 1)
+            number(c, f'{prefix}.{i + 1}' if prefix else str(i + 1))
     for r in roots:
-        number(r, '1', 0)
+        number(r, '')
     return SenseTree(by_id, children, parents, roots, number_of, depth_of, root_of)
 
 
@@ -371,10 +370,10 @@ def _renumbered(sibs: List[dict], parent_id: str) -> List[dict]:
 
 
 def plan_sense_set_number(tree: SenseTree, item_id: str, shown) -> List[dict]:
-    """The sibling list with ``item_id`` placed at the number it is SHOWN with:
-    under an entry the senses are numbered from 2 (the entry is sense 1), deeper
-    down from 1. Out-of-range numbers land at the nearest end. Renumbering the
-    whole list keeps orders dense, so a later move is always a swap."""
+    """The sibling list with ``item_id`` placed at the number it is SHOWN with,
+    counting from 1 at every level. Out-of-range numbers land at the nearest
+    end. Renumbering the whole list keeps orders dense, so a later move is
+    always a swap."""
     p = tree.parent_of.get(item_id)
     if not p:
         return []
@@ -386,8 +385,7 @@ def plan_sense_set_number(tree: SenseTree, item_id: str, shown) -> List[dict]:
         return []
     if i < 0:
         return []
-    first = 2 if tree.depth_of.get(item_id) == 1 else 1
-    j = max(0, min(len(sibs) - 1, n - first))
+    j = max(0, min(len(sibs) - 1, n - 1))
     if j == i:
         return []
     moved = sibs.pop(i)
@@ -588,4 +586,48 @@ def vocab_field_summary(vocab: dict) -> List[str]:
     for f in vocab.get('fields') or []:
         note = field_note(f, dictionary)
         out.append(f'{f["name"]} ({note})' if note else f['name'])
+    return out
+
+
+# ---- the number an item goes by ---------------------------------------------
+
+def build_homonym_index(items: Optional[List[dict]]) -> Dict[str, Optional[int]]:
+    """Items sharing a form numbered 1..n in creation order, None for a form
+    only one item carries. Mirrors buildHomonymIndex in vocabHomonyms.js: the
+    number a vocabulary WITHOUT Lexicography Mode shows beside a headword."""
+    by_form: Dict[str, List[dict]] = {}
+    for it in items or []:
+        by_form.setdefault(it.get('form') or '', []).append(it)
+    index: Dict[str, Optional[int]] = {}
+    for group in by_form.values():
+        if len(group) < 2:
+            if len(group) == 1:
+                index[group[0]['id']] = None
+            continue
+        for i, it in enumerate(group):
+            index[it['id']] = i + 1
+    return index
+
+
+def build_item_numbers(items: Optional[List[dict]]) -> Dict[str, str]:
+    """One dotted number per item, the name it goes by everywhere in a
+    dictionary vocabulary: entries that share a form are told apart by a first
+    segment in creation order ("1", "2"; an entry whose form is its own gets
+    none), and a sense carries its entry's segment, if any, then its own path
+    ("1.2", "2", "2.1"). Mirrors buildItemNumbers in vocabDictionary.js, which
+    is what the vocabulary list, Bulk Edit and the interlinear editor draw."""
+    tree = build_sense_tree(items)
+    by_form: Dict[str, List[dict]] = {}
+    for r in tree.roots:
+        by_form.setdefault(r.get('form') or '', []).append(r)
+    seg_of: Dict[str, str] = {}
+    for group in by_form.values():
+        if len(group) > 1:
+            for i, r in enumerate(group):
+                seg_of[r['id']] = str(i + 1)
+    out: Dict[str, str] = {}
+    for it in items or []:
+        seg = seg_of.get(tree.root_of.get(it['id']) or '', '')
+        path = tree.number_of.get(it['id'], '')
+        out[it['id']] = f'{seg}.{path}' if seg and path else (seg or path)
     return out

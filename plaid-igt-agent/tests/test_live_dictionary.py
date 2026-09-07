@@ -64,8 +64,8 @@ def run(lex, w):
 def test_the_tree_reads_back_as_the_app_stores_it(lex):
     out = call_tool(ws_of(lex), 'read_lexicon', {'lexicon': 'LiveLex'})
     assert '3 entries, 3 senses' in out
-    assert '2 kwatha | sense 2 of "kwatha" | gloss=boil | 1 sense below' in out
-    assert '2.1 kwatha | sense 2.1 of "kwatha" | gloss=simmer' in out
+    assert '1 kwatha | sense 1 of "kwatha" | gloss=boil | 1 sense below' in out
+    assert '1.1 kwatha | sense 1.1 of "kwatha" | gloss=simmer' in out
     # Ids never reach the model as though they were field values.
     assert lex.item_ids['kwatha'] not in out
     assert 'variantOf="kwatha"' in out and 'seeAlso="kwatha", "phika"' in out
@@ -75,8 +75,8 @@ def test_writes_land_in_the_shape_the_app_reads(lex):
     ids = lex.item_ids
     w = ws_of(lex)
     # A reference given as a form, a sense renumbered, a sense added, an example.
-    call_tool(w, 'set_entry_field', {'entry_form': 'nyumba', 'field': 'variantOf', 'value': 'kwatha#3'})
-    call_tool(w, 'move_sense', {'entry_form': 'kwatha#3', 'number': '2'})
+    call_tool(w, 'set_entry_field', {'entry_form': 'nyumba', 'field': 'variantOf', 'value': 'kwatha#2'})
+    call_tool(w, 'move_sense', {'entry_form': 'kwatha#2', 'number': '1'})
     call_tool(w, 'add_sense', {'entry_form': 'kwatha', 'fields': {'gloss': 'stew'}})
     call_tool(w, 'promote_example', {'entry_form': 'phika', 'document': 'Text 1', 'ref': 's1.w2'})
     run(lex, w)

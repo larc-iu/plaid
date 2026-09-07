@@ -103,7 +103,11 @@ def test_orthography_respell_links_entries():
                          'label': 'Text 1 s1.w3: respell "akuna" → "akun"'}
     # ambiguous entry -> candidates with ids
     out = call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w2'], 'entry_form': 'gam'})
-    assert 'Several entries match "gam"' in out and 'id=vi-gam gam | gloss=fish' in out
+    # Each candidate is offered under the number the app shows beside it, so
+    # the model can answer with "gam#2" rather than only with an id.
+    assert 'Several entries match "gam"' in out
+    assert 'id=vi-gam form=gam#1 gam | gloss=fish' in out
+    assert 'id=vi-gam2 form=gam#2 gam | gloss=net' in out
     call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w2'], 'entry_id': 'vi-gam'})
     assert w.ops[-1] == {'kind': 'link', 'token_id': 'w-2', 'item_id': 'vi-gam', 'new_entry_key': None,
                          'existing_link_id': None, 'label': 'Text 1 s1.w2 "gam": link "gam"'}
