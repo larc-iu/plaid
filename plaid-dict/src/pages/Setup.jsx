@@ -48,7 +48,7 @@ const Field = ({ id, label, hint, error, children }) => (
   </div>
 );
 
-const LanguageGroup = ({ prefix, title, description, lang, onChange, coordinates }) => {
+const LanguageGroup = ({ prefix, title, description, lang, onChange, coordinates, examples }) => {
   const set = (patch) => onChange({ ...lang, ...patch });
   return (
     <div className="flex flex-col gap-3 rounded-md border p-4">
@@ -61,7 +61,7 @@ const LanguageGroup = ({ prefix, title, description, lang, onChange, coordinates
           id={`${prefix}-name`}
           className="h-8"
           value={lang.name}
-          placeholder="e.g. Sena"
+          placeholder={examples.name}
           onChange={(e) => set({ name: e.target.value })}
         />
       </Field>
@@ -79,7 +79,7 @@ const LanguageGroup = ({ prefix, title, description, lang, onChange, coordinates
             id={`${prefix}-glottocode`}
             className="h-8"
             value={lang.glottocode}
-            placeholder="sena1266"
+            placeholder={examples.glottocode}
             onChange={(e) => set({ glottocode: e.target.value.trim() })}
           />
         </Field>
@@ -92,7 +92,7 @@ const LanguageGroup = ({ prefix, title, description, lang, onChange, coordinates
             id={`${prefix}-iso`}
             className="h-8"
             value={lang.iso639P3}
-            placeholder="seh"
+            placeholder={examples.iso}
             onChange={(e) => set({ iso639P3: e.target.value.trim() })}
           />
         </Field>
@@ -274,6 +274,7 @@ export const Setup = () => {
             title="Object language"
             description="The language of the headwords."
             lang={draft.languages.object}
+            examples={{ name: 'e.g. Sena', glottocode: 'sena1266', iso: 'seh' }}
             coordinates
             onChange={(object) => set({ languages: { ...draft.languages, object } })}
           />
@@ -282,6 +283,7 @@ export const Setup = () => {
             title="Meta language"
             description="The language of the definitions."
             lang={draft.languages.meta}
+            examples={{ name: 'e.g. Portuguese', glottocode: 'port1283', iso: 'por' }}
             onChange={(meta) => set({ languages: { ...draft.languages, meta } })}
           />
         </section>

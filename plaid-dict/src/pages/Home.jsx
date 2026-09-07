@@ -8,7 +8,14 @@ import { classifyVocabularies, canManage } from '@/domain/dictionaries';
 import { readDictRecord, dictTitle } from '@/domain/dictConfig';
 import { Button } from '@/components/ui/button';
 
-const DictionaryCard = ({ vocab, user }) => {
+// Several vocabularies routinely share a name, so every row carries its entry
+// count: often the only thing that tells two of them apart.
+const entryCount = (counts, id) => {
+  const n = counts?.[id];
+  return typeof n === 'number' ? `${n.toLocaleString()} ${n === 1 ? 'entry' : 'entries'}` : '';
+};
+
+const DictionaryCard = ({ vocab, user, counts }) => {
   const record = readDictRecord(vocab.config);
   const language = record?.languages?.object?.name || '';
   return (
@@ -21,7 +28,7 @@ const DictionaryCard = ({ vocab, user }) => {
           {dictTitle(vocab)}
         </Link>
         <p className="truncate text-sm text-muted-foreground">
-          {[language, `/${record.slug}`].filter(Boolean).join(' · ')}
+          {[language, entryCount(counts, vocab.id), `/${record.slug}`].filter(Boolean).join(' · ')}
         </p>
       </div>
       {canManage(vocab, user) && (
@@ -39,7 +46,7 @@ const DictionaryCard = ({ vocab, user }) => {
 export const Home = () => {
   useDocumentTitle();
   const { user } = useAuth();
-  const { vocabularies, loading, error } = useCatalog();
+  const { vocabularies, itemCounts, loading, error } = useCatalog();
   const { dictionaries, unpublished } = useMemo(
     () => classifyVocabularies(vocabularies, user),
     [vocabularies, user],
@@ -69,7 +76,7 @@ export const Home = () => {
           <h1 className="mb-3 font-serif text-2xl font-semibold">Dictionaries</h1>
           <ul className="flex flex-col gap-2">
             {dictionaries.map((v) => (
-              <DictionaryCard key={v.id} vocab={v} user={user} />
+              <DictionaryCard key={v.id} vocab={v} user={user} counts={itemCounts} />
             ))}
           </ul>
         </section>
@@ -84,7 +91,12 @@ export const Home = () => {
                 key={v.id}
                 className="flex items-center justify-between gap-4 rounded-lg border bg-card p-4"
               >
-                <span className="min-w-0 truncate">{v.name}</span>
+                <div className="min-w-0">
+                  <p className="truncate">{v.name}</p>
+                  {entryCount(itemCounts, v.id) && (
+                    <p className="text-sm text-muted-foreground">{entryCount(itemCounts, v.id)}</p>
+                  )}
+                </div>
                 <Button asChild size="sm">
                   <Link to={`/setup/${v.id}`}>Set up</Link>
                 </Button>

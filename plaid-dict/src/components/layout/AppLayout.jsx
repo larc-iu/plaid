@@ -11,7 +11,7 @@ export const AppLayout = ({ children }) => {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
-        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-4">
+        <div className="mx-auto flex h-14 max-w-3xl items-center justify-between gap-4 px-4">
           <Link to="/" className="font-serif text-lg font-semibold">
             Plaid Dictionary
           </Link>
