@@ -776,6 +776,40 @@ describe('planVocabRelink — a dictionary survives the round trip', () => {
     expect(dropped).toEqual(['run: seeAlso', 'run: example', 'x: parent']);
   });
 
+  it('keeps an example pointing into a document an earlier run finished', async () => {
+    // The resume skips a document that is already done, so the last pass has
+    // no token map for it and used to drop every example pointing into it.
+    const archive = buildArchive();
+    const [first] = archive.vocabularies[0].data.items;
+    const word = archive.documents[0].data.sentences[0].words[0];
+    first.metadata = {
+      ...(first.metadata || {}),
+      examples: [{ document: archive.documents[0].data.id, token: word.id }],
+    };
+    const client = stubClient({
+      existingDocs: [
+        {
+          id: 'srv-doc',
+          name: 'Doc One',
+          metadata: { nativeImported: true },
+          // The server's copy of it, with ids of its own.
+          textLayers: [
+            {
+              tokenLayers: [
+                { id: 'new-wl', tokens: [{ id: 'srv-w1', begin: word.begin, end: word.end }] },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    const result = await runNativeImport({ client, projectId: 'newp', archive });
+    expect(result.skipped).toBe(1);
+    const write = callsOf(client, 'vocabItems.setMetadata').find((c) => c[2]?.examples);
+    expect(write[2].examples).toEqual([{ document: 'srv-doc', token: 'srv-w1' }]);
+    expect(result.warnings.filter((w) => /reference/.test(w))).toHaveLength(0);
+  });
+
   it('runs last in a full import and writes through the client', async () => {
     const archive = buildArchive();
     archive.vocabularies[0].data.fields.push({ name: 'variantOf', inline: false, type: 'item' });
