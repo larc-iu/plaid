@@ -24,15 +24,18 @@ because dragging is not one it has. ``plan_sense_drop`` below covers the write
 those two share. See its docstring in vocab.py.
 """
 
+import inspect
 import json
 import os
 import random
+import re
 import shutil
 import subprocess
 import tempfile
 
 import pytest
 
+from plaid_igt_agent import vocab as vocab_module
 from plaid_igt_agent.vocab import (
     build_sense_tree, build_item_numbers, build_homonym_index, plan_delete_refs,
     plan_merge_refs, plan_sense_drop, next_sense_order, descendants_of, references_to,
@@ -183,6 +186,48 @@ def compared():
     if run.returncode != 0:
         pytest.fail(f'the app\'s domain modules would not run:\n{run.stderr[:2000]}')
     return cases, json.loads(run.stdout), [_python_side(c) for c in cases]
+
+
+# What the app exports from vocabDictionary.js and does NOT have a port, on
+# purpose. Each belongs to a gesture the app has and the agent does not. A new
+# name showing up unexplained is the drift this check exists to catch: the value
+# comparison below can only ever run what both sides already have.
+SURFACE_EXEMPT = {
+    'dictionaryEnablement': 'seeds a vocabulary when the switch goes on',
+    'statusTagset': 'the same seeding',
+    'splitEntryLevel': 'Add headword',
+    'groupRankedByHeadword': "the link popover's list",
+    'exampleKey': 'keys a rendering cache',
+}
+# Where the port did not keep the app's name.
+SURFACE_ALIAS = {'readDictionaryEnabled': 'dictionary_enabled'}
+
+
+def _snake(name: str) -> str:
+    return re.sub(r'(?<!^)(?=[A-Z])', '_', name).lower()
+
+
+def test_every_app_function_is_ported_or_exempted():
+    """The value comparison runs the functions both sides have, so it is blind
+    to one the app grew and the port never got. This is not."""
+    node = _node()
+    if not node:
+        pytest.skip('node or plaid-igt not available')
+    run = subprocess.run([node, RUNNER, '--surface'], capture_output=True, text=True, timeout=120)
+    assert run.returncode == 0, run.stderr
+    exported = json.loads(run.stdout)['vocabDictionary']
+    ported = {n for n, o in vars(vocab_module).items()
+              if not n.startswith('_') and inspect.isfunction(o)
+              and o.__module__ == vocab_module.__name__}
+    missing = [n for n in exported
+               if n not in SURFACE_EXEMPT
+               and SURFACE_ALIAS.get(n, _snake(n)) not in ported]
+    assert not missing, (
+        'plaid-igt exports these from vocabDictionary.js with no counterpart in '
+        f'plaid_igt_agent/vocab.py: {missing}. Port each one, or add it to '
+        'SURFACE_EXEMPT here and to the module docstring with the reason.')
+    stale = [n for n in SURFACE_EXEMPT if n not in exported]
+    assert not stale, f'SURFACE_EXEMPT names functions the app no longer exports: {stale}'
 
 
 def test_the_two_runners_cover_the_same_functions(compared):

@@ -10,13 +10,29 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const DOMAIN = resolve(dirname(fileURLToPath(import.meta.url)), '../../plaid-igt/src/domain');
+const dictMod = await import(`${DOMAIN}/vocabDictionary.js`);
+const fieldsMod = await import(`${DOMAIN}/vocabFields.js`);
 const {
   buildSenseTree, buildItemNumbers, planDeleteRefs, planMergeRefs, planSenseDrop,
   nextSenseOrder, descendantsOf, referencesTo, validateVocabRefs,
   homographGroup, planHomographOrder, homographOf, arrangeAsTree,
-} = await import(`${DOMAIN}/vocabDictionary.js`);
+} = dictMod;
 const { buildHomonymIndex } = await import(`${DOMAIN}/vocabHomonyms.js`);
-const { normalizeVocabFields } = await import(`${DOMAIN}/vocabFields.js`);
+const { normalizeVocabFields } = fieldsMod;
+
+// The names the app exports, for the surface check: a function added there and
+// not ported (or not deliberately exempted) is drift the value comparison
+// below cannot see, because it only ever runs what both sides already have.
+if (process.argv[2] === '--surface') {
+  const fns = (mod) =>
+    Object.keys(mod)
+      .filter((k) => typeof mod[k] === 'function')
+      .sort();
+  process.stdout.write(
+    JSON.stringify({ vocabDictionary: fns(dictMod), vocabFields: fns(fieldsMod) }),
+  );
+  process.exit(0);
+}
 
 const cases = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 const out = cases.map((c) => {
