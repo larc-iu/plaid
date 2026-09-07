@@ -491,15 +491,19 @@ class LexView:
         return ((root or it) or {}).get('form') or ''
 
     def label(self, item_id: str) -> str:
-        """How a line names an entry: its form, plus the sense number it is
-        shown with when it is a sense."""
+        """How a line names an entry, always spelled the way a tool takes it
+        back, so a line can be copied into one: "kwatha", "gam#2" for the
+        second entry spelled that way, "kwatha#1.2" for a sense.
+
+        Never "gam (2)" or "kwatha" sense 1.2, which read as prose and then
+        fail as input. A lone headword keeps its bare form, since the number
+        it would carry is always 1 and says nothing.
+        """
         it = self.tree.by_id.get(item_id)
         if it is None:
             return f'a deleted entry ({item_id})'
         if self.is_sense(item_id):
-            return f'"{self.head_of(item_id)}" sense {self.number(item_id)}'
-        # Spelled the way a tool takes it back, so a line can be copied into
-        # one: "gam#2", never "gam (2)", which no tool accepts.
+            return f'"{self.address(item_id)}"'
         num = self.number(item_id) if item_id in self.shared else ''
         form = it.get('form') or ''
         return f'"{form}#{num}"' if num else f'"{form}"'

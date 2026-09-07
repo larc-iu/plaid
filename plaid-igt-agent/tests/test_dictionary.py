@@ -121,7 +121,8 @@ def test_lexicon_entry_says_where_it_sits():
     out = call_tool(w, 'lexicon_entry', {'entry_form': 'kwatha'})
     assert 'Headword "kwatha"' in out and 'spelled that way' not in out
     assert 'Referred to by:' in out
-    assert '"kwatha" sense 1.1 (a sense of it)' in out and '"phika" (variantOf)' in out
+    # Spelled as a tool takes it back, so a reader can act on the line.
+    assert '"kwatha#1.1" (a sense of it)' in out and '"phika" (variantOf)' in out
 
 
 # ---- addressing ------------------------------------------------------------
@@ -265,6 +266,27 @@ def test_a_number_past_the_end_is_planned_as_the_place_it_lands():
 def test_a_number_that_is_not_a_number_is_refused():
     out = call_tool(dict_ws(), 'move_sense', {'entry_form': 'kwatha#1.1', 'number': 'first'})
     assert 'is not a sense number' in out
+
+
+def test_every_name_a_line_prints_is_accepted_back():
+    """A tool result is something a model acts on, so every entry named in one
+    has to be a name the tools take. "gam (2)" and \'"kwatha" sense 1.1\' both
+    read well and both failed as input."""
+    w = dict_ws()
+    homographs = [
+        {'id': 'g-late', 'form': 'gam', 'metadata': {'gloss': 'late', 'homograph': 2}},
+        {'id': 'g-early', 'form': 'gam', 'metadata': {'gloss': 'early', 'homograph': 1}},
+    ]
+    for item_id in [it['id'] for it in ITEMS]:
+        name = w.view_of_item(item_id).label(item_id).strip('"')
+        out = call_tool(w, 'lexicon_entry', {'entry_form': name})
+        assert f'id {item_id}' in out, f'label {name!r} did not name {item_id}: {out}'
+    # And the same for entries spelled alike, whose number is the whole point.
+    w2 = dict_ws(items=ITEMS + homographs)
+    for item_id in ['g-late', 'g-early']:
+        name = w2.view_of_item(item_id).label(item_id).strip('"')
+        assert '#' in name
+        assert f'id {item_id}' in call_tool(w2, 'lexicon_entry', {'entry_form': name})
 
 
 def test_a_lone_headword_answers_to_hash_one():
