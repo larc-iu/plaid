@@ -1,4 +1,5 @@
-// Tokenizer for Grew "request" syntax (pattern/with/without/global blocks).
+// Tokenizer for Grew syntax: requests (pattern/with/without/global blocks)
+// and rewriting systems (rule/commands/strat blocks).
 //
 // Produces a flat token stream the recursive-descent parser consumes. Each token
 // carries a 1-based {line, col} and the text of its source line, so both parse
@@ -9,6 +10,7 @@
 //   ->>  (dominance)   -[  (edge-label open)   ->  (edge)
 //   ><   (edge crossing)
 //   <<   (precedence)  <>  (feature inequality)  <=  >=
+//   ==>  (shift)       =[  ]=>  (filtered shift)   :<  :>  (add_node side)
 // A leading '-' is also the sign of a negative number in `delta(X,Y) = -3`.
 //
 // Value literals come in three flavors: "double-quoted strings", OCaml-style
@@ -48,6 +50,12 @@ export const TT = {
   ARROW: 'ARROW',
   DOMINATES: 'DOMINATES',
   EDGE_OPEN: 'EDGE_OPEN',
+  PLUS: 'PLUS',
+  SHIFT: 'SHIFT', // ==>
+  SHIFT_OPEN: 'SHIFT_OPEN', // =[
+  SHIFT_CLOSE: 'SHIFT_CLOSE', // ]=>
+  BEFORE: 'BEFORE', // :<
+  AFTER: 'AFTER', // :>
   EOF: 'EOF',
 };
 
@@ -141,6 +149,31 @@ export function lex(src) {
     if (match('>=')) {
       advance(2);
       push(TT.GE, '>=', sl, sc);
+      continue;
+    }
+    if (match('==>')) {
+      advance(3);
+      push(TT.SHIFT, '==>', sl, sc);
+      continue;
+    }
+    if (match('=[')) {
+      advance(2);
+      push(TT.SHIFT_OPEN, '=[', sl, sc);
+      continue;
+    }
+    if (match(']=>')) {
+      advance(3);
+      push(TT.SHIFT_CLOSE, ']=>', sl, sc);
+      continue;
+    }
+    if (match(':<')) {
+      advance(2);
+      push(TT.BEFORE, ':<', sl, sc);
+      continue;
+    }
+    if (match(':>')) {
+      advance(2);
+      push(TT.AFTER, ':>', sl, sc);
       continue;
     }
 
@@ -241,6 +274,7 @@ export function lex(src) {
       '=': TT.EQ,
       '<': TT.LT,
       '>': TT.GT,
+      '+': TT.PLUS,
     }[c];
     if (single) {
       advance();

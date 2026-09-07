@@ -1,24 +1,65 @@
-// Recursive-descent parser for Grew request syntax → AST (see ast.js).
+// Recursive-descent parser for Grew syntax → AST (see ast.js).
 //
 // Hand-written to match house style (src/utils/conlluParser.js is also
 // hand-written) and to keep precise line/col on every error. The parser is a
 // pure grammar recognizer: it accepts the full surface syntax and never decides
-// what is "supported" — that judgement belongs to compile.js, which walks this
-// AST and throws GrewUnsupportedError for the residue. So e.g. labeled
-// transitive edges or edge-feature labels parse fine here and may be rejected
-// later.
+// what is "supported" — that judgement belongs to compile.js (search) and the
+// rewrite engine (rules), which walk this AST and throw GrewUnsupportedError
+// for the residue. So e.g. labeled transitive edges, edge-feature labels, or
+// an `add_node` command parse fine here and may be rejected later.
+//
+// Two entry points share one grammar:
+//   parse(src)    — a REQUEST: pattern/with/without/global blocks (the search box)
+//   parseGrs(src) — a REWRITING SYSTEM: `rule` blocks (a request plus a
+//                   `commands` block each), optional `strat` declarations, or a
+//                   bare anonymous rule (blocks followed by `commands { … }`).
 
 import { lex, TT } from './lexer.js';
-import { GrewParseError } from './errors.js';
+import { GrewParseError, GrewUnsupportedError } from './errors.js';
 import { BLOCK_TYPES } from './ast.js';
 
+const STRAT_OPS = new Set(['Onf', 'Iter', 'Seq', 'Alt', 'Pick', 'Try', 'Empty']);
+const GRS_KEYWORDS = new Set(['rule', 'strat', 'commands', 'package', 'include', 'import']);
+
 export function parse(src) {
+  return createParser(src).request();
+}
+
+export function parseGrs(src) {
+  return createParser(src).grs();
+}
+
+// True when `src` reads as a rewriting system rather than a request: a
+// `commands {` block, a `rule NAME {` / `strat NAME {` declaration, or a
+// package/include/import keyword. Unlexable input is "not a GRS", so the
+// caller reports the error through the request path.
+export function looksLikeGrs(src) {
+  try {
+    const toks = lex(src);
+    for (let i = 0; i < toks.length; i++) {
+      const t = toks[i];
+      if (t.type !== TT.IDENT) continue;
+      const brace = (k) => toks[i + k]?.type === TT.LBRACE;
+      if (t.value === 'commands' && brace(1)) return true;
+      if ((t.value === 'rule' || t.value === 'strat') && toks[i + 1]?.type === TT.IDENT && brace(2))
+        return true;
+      if (t.value === 'package' || t.value === 'include' || t.value === 'import') return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function createParser(src) {
   const tokens = lex(src);
   let pos = 0;
-  const nonInjective = new Set();
+  // Node ids marked `X$` in the blocks parsed since the last snapshot.
+  let nonInjective = new Set();
 
   const peek = (k = 0) => tokens[pos + k];
   const at = (type, k = 0) => peek(k).type === type;
+  const atKw = (word, k = 0) => at(TT.IDENT, k) && peek(k).value === word;
   const next = () => tokens[pos++];
   const fail = (msg, tok = peek()) => {
     const lines = src.split('\n');
@@ -28,14 +69,273 @@ export function parse(src) {
     if (!at(type)) fail(`Expected ${what || type} but found ${describe(peek())}`);
     return next();
   };
+  const expectNode = () => expect(TT.IDENT, 'a node identifier').value;
 
-  const blocks = [];
-  while (!at(TT.EOF)) {
-    blocks.push(parseBlock());
+  // --- entry points ---
+
+  function request() {
+    const blocks = [];
+    while (!at(TT.EOF)) {
+      if (at(TT.IDENT) && GRS_KEYWORDS.has(peek().value)) {
+        fail(`\`${peek().value}\` is a rewriting keyword; a search takes only pattern blocks`);
+      }
+      blocks.push(parseBlock());
+    }
+    if (blocks.length === 0) fail('Empty query — expected a `pattern { … }` block');
+    return { blocks, nonInjective: [...nonInjective] };
   }
-  if (blocks.length === 0) fail('Empty query — expected a `pattern { … }` block');
 
-  return { blocks, nonInjective: [...nonInjective] };
+  function grs() {
+    const rules = [];
+    const strats = [];
+    const names = new Set();
+    let anon = null; // blocks of an anonymous rule, until its `commands`
+    const addRule = (rule) => {
+      if (names.has(rule.name)) fail(`Rule '${rule.name}' is declared twice`, peek(-1));
+      names.add(rule.name);
+      rules.push(rule);
+    };
+    while (!at(TT.EOF)) {
+      if (atKw('rule')) {
+        if (anon) fail('Expected a `commands { … }` block to close the pattern above');
+        addRule(parseRule());
+      } else if (atKw('strat')) {
+        strats.push(parseStrat());
+      } else if (atKw('package') || atKw('include') || atKw('import')) {
+        throw new GrewUnsupportedError(
+          peek().value,
+          `\`${peek().value}\` is not supported; put every rule in this one box.`,
+          peek().line,
+        );
+      } else if (at(TT.IDENT) && BLOCK_TYPES.has(peek().value)) {
+        if (!anon) anon = { blocks: [], line: peek().line };
+        anon.blocks.push(parseBlock());
+      } else if (atKw('commands')) {
+        if (!anon) fail('`commands` needs a `pattern { … }` block before it');
+        const commands = parseCommands();
+        addRule({
+          name: 'rule',
+          blocks: anon.blocks,
+          nonInjective: takeNonInjective(),
+          commands,
+          line: anon.line,
+        });
+        anon = null;
+      } else {
+        fail('Expected `rule`, `strat`, or a pattern block');
+      }
+    }
+    if (anon) fail('Expected a `commands { … }` block after the pattern');
+    if (rules.length === 0) fail('Empty rule set — expected a `rule` or a pattern with `commands`');
+    return { rules, strats };
+  }
+
+  function takeNonInjective() {
+    const out = [...nonInjective];
+    nonInjective = new Set();
+    return out;
+  }
+
+  // --- rules and strategies ---
+
+  function parseRule() {
+    const kw = next(); // 'rule'
+    const name = expect(TT.IDENT, 'a rule name').value;
+    expect(TT.LBRACE, "'{'");
+    const blocks = [];
+    let commands = null;
+    while (!at(TT.RBRACE) && !at(TT.EOF)) {
+      if (at(TT.IDENT) && BLOCK_TYPES.has(peek().value)) {
+        if (commands) fail('Pattern blocks go before `commands`');
+        blocks.push(parseBlock());
+      } else if (atKw('commands')) {
+        if (commands) fail('A rule has one `commands` block');
+        commands = parseCommands();
+      } else {
+        fail('Expected pattern, with, without, global, or commands');
+      }
+    }
+    expect(TT.RBRACE, "'}'");
+    if (blocks.length === 0) fail(`Rule '${name}' has no \`pattern\` block`, kw);
+    if (!commands) fail(`Rule '${name}' has no \`commands\` block`, kw);
+    return { name, blocks, nonInjective: takeNonInjective(), commands, line: kw.line };
+  }
+
+  function parseStrat() {
+    const kw = next(); // 'strat'
+    const name = expect(TT.IDENT, 'a strategy name').value;
+    expect(TT.LBRACE, "'{'");
+    const expr = parseStratExpr();
+    expect(TT.RBRACE, "'}'");
+    return { name, expr, line: kw.line };
+  }
+
+  function parseStratExpr() {
+    const tok = expect(TT.IDENT, 'a strategy');
+    const op = tok.value;
+    if (!STRAT_OPS.has(op)) return { op: 'rule', name: op };
+    if (op === 'Empty') return { op };
+    expect(TT.LPAREN, "'('");
+    const args = [parseStratExpr()];
+    while (at(TT.COMMA)) {
+      next();
+      args.push(parseStratExpr());
+    }
+    expect(TT.RPAREN, "')'");
+    if ((op === 'Seq' || op === 'Alt') === false && args.length !== 1) {
+      fail(`${op} takes exactly one strategy`, tok);
+    }
+    return { op, args };
+  }
+
+  // --- commands ---
+
+  function parseCommands() {
+    next(); // 'commands'
+    expect(TT.LBRACE, "'{'");
+    const items = [];
+    while (!at(TT.RBRACE) && !at(TT.EOF)) {
+      items.push(parseCommand());
+      while (at(TT.SEMI)) next();
+    }
+    expect(TT.RBRACE, "'}'");
+    return items;
+  }
+
+  function parseCommand() {
+    const tok = expect(TT.IDENT, 'a command');
+    const kw = tok.value;
+    const line = tok.line;
+    switch (kw) {
+      case 'del_edge': {
+        // `del_edge e` (a bound edge) or `del_edge X -[obj]-> Y` (by description).
+        if (at(TT.IDENT) && (at(TT.SEMI, 1) || at(TT.RBRACE, 1))) {
+          return { kind: 'del_edge', edge: next().value, line };
+        }
+        const src = expectNode();
+        expect(TT.EDGE_OPEN, "'-['");
+        const label = parseLabelExpr();
+        expect(TT.RBRACK, "']'");
+        expect(TT.ARROW, "'->'");
+        const tgt = expectNode();
+        return { kind: 'del_edge', src, tgt, label, line };
+      }
+      case 'add_edge': {
+        // `add_edge X -[obj]-> Y`, `add_edge e: X -> Y` (the label of the bound
+        // edge e), or `add_edge f: X -[obj]-> Y` (a new edge named f).
+        let id = null;
+        if (at(TT.IDENT) && at(TT.COLON, 1)) {
+          id = next().value;
+          next();
+        }
+        const src = expectNode();
+        let label = null;
+        if (at(TT.EDGE_OPEN)) {
+          next();
+          label = parseLabelExpr();
+          expect(TT.RBRACK, "']'");
+        }
+        expect(TT.ARROW, "'->'");
+        const tgt = expectNode();
+        if (!label && !id) fail('add_edge needs a label: add_edge X -[label]-> Y', tok);
+        return { kind: 'add_edge', id, src, tgt, label, line };
+      }
+      case 'del_node':
+        return { kind: 'del_node', node: expectNode(), line };
+      case 'add_node': {
+        const node = expectNode();
+        let pos = null;
+        if (at(TT.BEFORE) || at(TT.AFTER)) {
+          const side = next().type === TT.BEFORE ? '<' : '>';
+          pos = { side, ref: expectNode() };
+        }
+        return { kind: 'add_node', node, pos, line };
+      }
+      case 'shift':
+      case 'shift_in':
+      case 'shift_out': {
+        const src = expectNode();
+        let filter = { type: 'any' };
+        if (at(TT.SHIFT)) next();
+        else {
+          expect(TT.SHIFT_OPEN, "'==>' or '=['");
+          filter = parseLabelExpr();
+          expect(TT.SHIFT_CLOSE, "']=>'");
+        }
+        const tgt = expectNode();
+        const mode = kw === 'shift' ? 'all' : kw === 'shift_in' ? 'in' : 'out';
+        return { kind: 'shift', mode, src, tgt, filter, line };
+      }
+      case 'del_feat': {
+        const { node, feat } = parseFeatRef();
+        return { kind: 'del_feat', node, feat, line };
+      }
+      case 'append_feats':
+      case 'prepend_feats': {
+        const src = expectNode();
+        expect(TT.SHIFT, "'==>'");
+        const tgt = expectNode();
+        return { kind: kw, src, tgt, line };
+      }
+      case 'unorder':
+      case 'insert':
+        throw new GrewUnsupportedError(
+          kw,
+          `\`${kw}\` is not supported: word order follows the text.`,
+          line,
+        );
+      default: {
+        // `X.upos = VERB`, `X.lemma = Y.lemma + "s"`, `e.2 = pass`
+        if (!at(TT.DOT)) fail(`Unknown command '${kw}'`, tok);
+        next();
+        const feat = expectFeatName();
+        expect(TT.EQ, "'='");
+        const expr = parseExpr();
+        return { kind: 'set_feat', node: kw, feat, expr, line };
+      }
+    }
+  }
+
+  function expectFeatName() {
+    if (at(TT.IDENT) || at(TT.NUMBER)) return String(next().value);
+    fail(`Expected a feature name but found ${describe(peek())}`);
+  }
+
+  function parseFeatRef() {
+    const node = expectNode();
+    expect(TT.DOT, "'.'");
+    return { node, feat: expectFeatName() };
+  }
+
+  // atom ('+' atom)*
+  function parseExpr() {
+    const atoms = [parseAtom()];
+    while (at(TT.PLUS)) {
+      next();
+      atoms.push(parseAtom());
+    }
+    return atoms;
+  }
+
+  function parseAtom() {
+    if (at(TT.STRING)) return { type: 'lit', value: next().value };
+    if (at(TT.NUMBER)) return { type: 'lit', value: String(next().value) };
+    if (at(TT.IDENT)) {
+      if (!at(TT.DOT, 1)) return { type: 'lit', value: next().value };
+      const { node, feat } = parseFeatRef();
+      let slice = null;
+      if (at(TT.LBRACK)) {
+        next();
+        const start = at(TT.NUMBER) ? parseInt(next().value, 10) : null;
+        expect(TT.COLON, "':'");
+        const end = at(TT.NUMBER) ? parseInt(next().value, 10) : null;
+        expect(TT.RBRACK, "']'");
+        slice = [start, end];
+      }
+      return { type: 'ref', node, feat, slice };
+    }
+    fail(`Expected a value but found ${describe(peek())}`);
+  }
 
   // --- blocks ---
 
@@ -329,6 +629,8 @@ export function parse(src) {
     if (op === '<>') next();
     return { kind: 'globalmeta', key: idTok.value, op, value: parseValueExpr(), line: idTok.line };
   }
+
+  return { request, grs };
 }
 
 function describe(tok) {

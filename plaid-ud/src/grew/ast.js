@@ -32,4 +32,31 @@
 //              | { type:'regex', pattern, flavor, flags }
 //              | { type:'features', feats: {key,val}[] }
 
+// Rewriting system (parseGrs):
+//   { rules: Rule[], strats: Strat[] }
+//
+// Rule:   { name, blocks: Block[], nonInjective: string[], commands: Command[], line }
+//         (a bare `pattern … commands { … }` with no `rule` wrapper is one
+//         anonymous rule named 'rule')
+// Strat:  { name, expr: StratExpr, line }
+// StratExpr: { op:'rule', name } | { op:'Empty' }
+//          | { op:'Onf'|'Iter'|'Pick'|'Try'|'Seq'|'Alt', args: StratExpr[] }
+//
+// Command:
+//   { kind:'del_edge', edge }                                  // del_edge e
+//   { kind:'del_edge', src, tgt, label: Label }                // del_edge X -[obj]-> Y
+//   { kind:'add_edge', id|null, src, tgt, label: Label|null }  // add_edge X -[obj]-> Y
+//                                                              // add_edge e: X -> Y (label of e)
+//   { kind:'del_node', node }
+//   { kind:'add_node', node, pos: null|{side:'<'|'>', ref} }   // parsed, never applied
+//   { kind:'shift', mode:'all'|'in'|'out', src, tgt, filter: Label }
+//   { kind:'set_feat', node, feat, expr: Expr }                // X.upos = VERB, e.2 = pass
+//   { kind:'del_feat', node, feat }
+//   { kind:'append_feats'|'prepend_feats', src, tgt }
+//
+// Expr:  Atom[] (concatenated with `+`)
+// Atom:  { type:'lit', value } | { type:'ref', node, feat, slice: null|[start|null, end|null] }
+//
+// Every command carries `line` for error reporting.
+
 export const BLOCK_TYPES = new Set(['pattern', 'with', 'without', 'global']);
