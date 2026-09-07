@@ -30,6 +30,24 @@ def test_matching_entries_are_substrings_ranked_by_precedent_then_length():
     assert llm.format_entry(entry('ev', 'house', pos='N')) == 'ev: house [N]'
 
 
+def test_vocab_entries_leave_out_a_headword_that_only_holds_senses():
+    items = [
+        {'id': 'h', 'form': 'kwatha', 'metadata': {'morphType': 'stem'}},
+        {'id': 's1', 'form': 'kwatha', 'metadata': {'gloss': 'do', 'parent': 'h'}},
+        {'id': 's2', 'form': 'kwatha', 'metadata': {'gloss': 'make', 'parent': 'h'}},
+        # A headword with a gloss of its own stays, senses or not.
+        {'id': 'g', 'form': 'ntsi', 'metadata': {'gloss': 'tree'}},
+        {'id': 'gs', 'form': 'ntsi', 'metadata': {'gloss': 'wood', 'parent': 'g'}},
+        # So does an entry with no gloss and nothing under it: it is all there is.
+        {'id': 'bare', 'form': 'zi', 'metadata': {}},
+    ]
+    entries = llm.vocab_entries(items, 'L')
+    assert [e['id'] for e in entries] == ['s1', 's2', 'g', 'gs', 'bare']
+    assert all(e['vocab'] == 'L' for e in entries)
+    # The form the container carried is still reachable through its senses.
+    assert [e['form'] for e in llm.matching_entries(entries, ['kwatha'])] == ['kwatha', 'kwatha']
+
+
 def test_rank_examples_prefers_shared_forms_then_character_overlap():
     pool = [{'words': ['kedi', 'uyuyor'], 'line': 'b'}, {'words': ['ev', 'geliyor'], 'line': 'a'},
             {'words': ['evler', 'geliyorum'], 'line': 'c'}]

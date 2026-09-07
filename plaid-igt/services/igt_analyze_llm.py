@@ -171,19 +171,37 @@ def _field(meta, *names):
     return None
 
 
+def vocab_entries(items, vocab_name) -> List[dict]:
+    """One vocabulary's entries as the prompt shows them.
+
+    A lexicon in Lexicography Mode groups entries into senses, and a headword
+    that leaves its own gloss empty says nothing the senses under it do not say
+    better. Listing it would spend the lexicon budget on "form: ?" and offer
+    the model an entry nothing is meant to link to, so it is left out. Its
+    senses share its form and are in this list already."""
+    parents = {(it.get('metadata') or {}).get('parent') for it in items}
+    parents.discard(None)
+    entries = []
+    for it in items:
+        meta = it.get('metadata') or {}
+        gloss = _field(meta, 'gloss')
+        if not gloss and it.get('id') in parents:
+            continue
+        entries.append({
+            'id': it['id'], 'form': it.get('form') or '', 'vocab': vocab_name or '',
+            'gloss': gloss, 'pos': _field(meta, 'pos', 'part of speech'),
+            'type': _field(meta, 'morphType', 'morph type'), 'count': 0,
+        })
+    return entries
+
+
 def load_lexicon(client, project) -> List[dict]:
     """Every entry of every vocab linked to the project, with the fields the
     prompt shows and its project-wide link count (precedent)."""
     entries = []
     for v in project.get('vocabs') or []:
         vl = client.vocab_layers.get(v['id'], include_items=True)
-        for it in vl.get('items') or []:
-            meta = it.get('metadata') or {}
-            entries.append({
-                'id': it['id'], 'form': it.get('form') or '', 'vocab': vl.get('name') or v.get('name') or '',
-                'gloss': _field(meta, 'gloss'), 'pos': _field(meta, 'pos', 'part of speech'),
-                'type': _field(meta, 'morphType', 'morph type'), 'count': 0,
-            })
+        entries.extend(vocab_entries(vl.get('items') or [], vl.get('name') or v.get('name')))
         try:
             res = client.query({
                 'where': [['vocab', '?v', {'layer': v['id']}], ['vocab-link', '?t', '?v']],
