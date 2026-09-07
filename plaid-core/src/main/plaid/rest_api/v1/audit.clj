@@ -88,6 +88,17 @@
                           query
                           (fn [opts start end] (audit/get-project-audit-log db project-id start end opts))))}}]
 
+   ["/projects/:project-id/audit/last-edits"
+    {:parameters {:path [:map [:project-id :uuid]]}
+     :get {:summary    (str "When the calling user last wrote to each document in a project, as a "
+                            "<code>{document-id: timestamp}</code> map. Documents they have never "
+                            "written to are absent. One cheap request marks up a whole document "
+                            "list without asking per document.")
+           :middleware [[pra/wrap-reader-required get-project-id-from-audit-path]]
+           :handler    (fn [{{{:keys [project-id]} :path} :parameters db :db user-id :user/id}]
+                         {:status 200
+                          :body (audit/last-edits-in-project db project-id user-id)})}}]
+
    ["/documents/:document-id/audit"
     {:parameters {:path [:map [:document-id :uuid]]}
      :get {:summary    (str "Get audit log for a document. " op-types-doc)

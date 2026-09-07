@@ -2024,6 +2024,22 @@ class ProjectsResource(_Resource):
                         query={'start-time': start_time, 'end-time': end_time,
                                'as-of': as_of, 'op-types': _op_types_param(op_types)})
 
+    def my_last_edits(self, project_id: str) -> Any:
+        """When you last wrote to each document in a project, as a
+        ``{document_id: timestamp}`` dict.
+
+        Documents you have never written to are absent. One request covers a
+        whole document list.
+
+        The response is NOT key-transformed: its keys are document ids, and
+        recasing would mangle the hyphens in a UUID.
+
+        Args:
+            project_id: The project ID
+        """
+        return self._request('GET', f'/api/v1/projects/{project_id}/audit/last-edits',
+                             skip_response_transform=True)
+
     def link_vocab(self, id: str, vocab_id: str, audit_message=None) -> Any:
         """Link a vocabulary to a project.
 

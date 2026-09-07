@@ -1523,6 +1523,20 @@ class PlaidClient {
           },
         }),
       /**
+       * When the calling user last wrote to each document in a project, as a
+       * `{documentId: timestamp}` map. Documents they have never written to
+       * are absent. One request covers a whole document list.
+       *
+       * The response is NOT key-transformed: its keys are document ids, and
+       * camelCasing would mangle the hyphens in a UUID.
+       * @param {string} projectId - The project ID
+       * @returns {Promise<Object<string, string>>}
+       */
+      myLastEdits: (projectId) =>
+        this._request("GET", `/api/v1/projects/${projectId}/audit/last-edits`, {
+          skipResponseTransform: true,
+        }),
+      /**
        * Link a vocabulary to a project.
        * @param {string} id - The resource ID
        * @param {string} vocabId - The vocab layer ID

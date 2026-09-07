@@ -268,3 +268,27 @@
    (get-user-audit-log db user-id start-time end-time nil))
   ([db user-id start-time end-time opts]
    (audit-page db [:operations] [:= :user_id user-id] [start-time end-time] opts)))
+
+(defn last-edits-in-project
+  "`{document-id -> ts}`: when `user-id` last wrote to each document in
+  `project-id`. One grouped read, in the spirit of `comment/count-in-project`,
+  so a client can mark up a whole document list without asking per document.
+
+  Read from the log rather than kept as a column on the document. It is
+  already true of every document that exists, including all the ones written
+  before anyone wanted to see it, and it counts every writer of the substrate
+  (this app, another one, a script through a client library, a service)
+  without any of them having to remember to stamp a field.
+
+  `idx_operations_user_ts` serves the scan, and one person's own rows are the
+  small side of a table that holds everybody's."
+  [db project-id user-id]
+  (into {}
+        (map (juxt :document_id :ts))
+        (psc/q db {:select   [:document_id [[:max :ts] :ts]]
+                   :from     [:operations]
+                   :where    [:and
+                              [:= :project_id project-id]
+                              [:= :user_id user-id]
+                              [:not= :document_id nil]]
+                   :group-by [:document_id]})))

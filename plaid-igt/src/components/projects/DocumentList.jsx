@@ -23,7 +23,7 @@ import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 
 // The columns this list sorts by, named once so a remembered sort on a column
 // that is no longer here is rejected rather than reaching the comparator.
-const DOCUMENT_COLUMNS = ['name', 'words', 'updated'];
+const DOCUMENT_COLUMNS = ['name', 'words', 'updated', 'mine'];
 
 export const DocumentList = ({
   documents,
@@ -42,6 +42,11 @@ export const DocumentList = ({
   const [wordCounts, setWordCounts] = useState({});
   const [hasWordLayer, setHasWordLayer] = useState(true);
   const [wordsLoading, setWordsLoading] = useState(true);
+  // documentId -> when THIS reader last wrote to it. Absent means never, which
+  // is a fact about them and not a gap in the data, so the cell reads as a dash
+  // rather than a spinner once the read has landed.
+  const [myLastEdits, setMyLastEdits] = useState({});
+  const [mineLoading, setMineLoading] = useState(true);
   const [sort, onSort] = useStickySort(
     listPrefKey('sort', 'documents', projectId),
     { key: 'updated', dir: 'desc' },
@@ -96,6 +101,35 @@ export const DocumentList = ({
     };
   }, [project, client]);
 
+  // When this reader last touched each document, from the audit log in one
+  // request. A failure here costs a column, not the list, so it warns and
+  // leaves every cell empty.
+  useEffect(() => {
+    if (!client || !projectId) return;
+    let cancelled = false;
+    (async () => {
+      setMineLoading(true);
+      try {
+        const edits = await client.projects.myLastEdits(projectId);
+        if (!cancelled) setMyLastEdits(edits || {});
+      } catch (err) {
+        console.error('Last-edited query failed:', err);
+        if (!cancelled) {
+          setMyLastEdits({});
+          notifyWarning(
+            'Your last edit could not be loaded for the document list.',
+            'Column unavailable',
+          );
+        }
+      } finally {
+        if (!cancelled) setMineLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, client]);
+
   const navigate = useNavigate();
 
   const handleCreateDocument = async () => {
@@ -135,6 +169,9 @@ export const DocumentList = ({
       name: (d) => d.name?.toLowerCase() ?? '',
       words: (d) => (hasWordLayer ? (wordCounts[d.id] ?? 0) : -1),
       updated: (d) => (d.timeModified ? new Date(d.timeModified).getTime() : 0),
+      // Never touched sorts as the oldest, so descending puts the documents
+      // this reader has actually worked on at the top.
+      mine: (d) => (myLastEdits[d.id] ? new Date(myLastEdits[d.id]).getTime() : 0),
     }[sort.key];
     const dir = sort.dir === 'asc' ? 1 : -1;
     return [...matched].sort((a, b) => {
@@ -144,7 +181,7 @@ export const DocumentList = ({
       if (av > bv) return 1 * dir;
       return 0;
     });
-  }, [documents, wordCounts, hasWordLayer, sort, filter]);
+  }, [documents, wordCounts, hasWordLayer, myLastEdits, sort, filter]);
 
   const paged = usePagedList(sortedDocuments, {
     resetKey: `${filter}|${sort.key}|${sort.dir}`,
@@ -159,6 +196,24 @@ export const DocumentList = ({
     }
     if (!hasWordLayer) return '—';
     return (wordCounts[documentId] ?? 0).toLocaleString();
+  };
+
+  const renderMine = (documentId) => {
+    if (mineLoading) {
+      return (
+        <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-muted border-t-primary align-middle" />
+      );
+    }
+    const at = myLastEdits[documentId];
+    if (!at) return '—';
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span>{timeAgo(at) || '—'}</span>
+        </TooltipTrigger>
+        <TooltipContent>{fullTimestamp(at)}</TooltipContent>
+      </Tooltip>
+    );
   };
 
   return (
@@ -206,6 +261,7 @@ export const DocumentList = ({
                 <col />
                 <col className="w-[88px]" />
                 <col className="w-[160px]" />
+                <col className="w-[150px]" />
               </colgroup>
               <thead className="border-b bg-muted/40">
                 <tr>
@@ -225,6 +281,15 @@ export const DocumentList = ({
                     <SortHeader
                       field="updated"
                       label="Updated"
+                      sort={sort}
+                      onSort={onSort}
+                      className="justify-end"
+                    />
+                  </th>
+                  <th className="px-4 py-2 text-right">
+                    <SortHeader
+                      field="mine"
+                      label="Your last edit"
                       sort={sort}
                       onSort={onSort}
                       className="justify-end"
@@ -277,6 +342,14 @@ export const DocumentList = ({
                           ) : (
                             '—'
                           )}
+                        </a>
+                      </td>
+                      <td className="p-0">
+                        <a
+                          href={href}
+                          className="block whitespace-nowrap px-4 py-3 text-right text-muted-foreground"
+                        >
+                          {renderMine(d.id)}
                         </a>
                       </td>
                     </tr>

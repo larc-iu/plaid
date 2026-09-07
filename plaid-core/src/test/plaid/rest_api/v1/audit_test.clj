@@ -129,3 +129,50 @@
           (let [op (first (:audit/ops entry))]
             (is (some? (:op/type op)))
             (is (some? (:op/description op)))))))))
+
+;; --- /audit/last-edits: when the CALLER last wrote to each document --------
+
+(defn- get-last-edits
+  "The endpoint's body keyed by document id as a STRING: the test harness reads
+  responses as EDN, so a UUID key comes back as a UUID rather than the string a
+  JSON client would see."
+  [user-request-fn project-id]
+  (let [r (api-call user-request-fn
+                    {:method :get
+                     :path (str "/api/v1/projects/" project-id "/audit/last-edits")})]
+    (update r :body #(into {} (map (fn [[k v]] [(str k) v])) %))))
+
+(deftest last-edits-covers-only-the-callers-own-writes
+  (let [proj (create-test-project admin-request "LastEditsProj")
+        touched (create-test-document admin-request proj "Touched")
+        _ (assert-status 204 (add-project-writer admin-request proj "user1@example.com"))]
+
+    (testing "a document the caller wrote to is there, with a timestamp"
+      (let [r (get-last-edits admin-request proj)]
+        (assert-ok r)
+        (is (string? (get (:body r) (str touched))))))
+
+    (testing "a member who has written nothing sees nothing"
+      (let [r (get-last-edits user1-request proj)]
+        (assert-ok r)
+        (is (empty? (:body r)))))
+
+    (testing "and then sees only their own document, not the admin's"
+      (let [theirs (create-test-document user1-request proj "Theirs")
+            r (get-last-edits user1-request proj)]
+        (assert-ok r)
+        (is (contains? (:body r) (str theirs)))
+        (is (not (contains? (:body r) (str touched))))))
+
+    (testing "the newest write wins for a document written to twice"
+      (let [before (get (:body (get-last-edits admin-request proj)) (str touched))
+            _ (Thread/sleep 10)
+            _ (assert-ok (update-document-metadata admin-request touched {:note "again"}))
+            after (get (:body (get-last-edits admin-request proj)) (str touched))]
+        (is (some? after))
+        (is (pos? (compare after before)) "the timestamp moved forward")))))
+
+(deftest last-edits-access-control
+  (let [proj (create-test-project admin-request "LastEditsACProj")]
+    (testing "a non-member cannot read it"
+      (assert-forbidden (get-last-edits user2-request proj)))))

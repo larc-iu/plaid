@@ -227,6 +227,25 @@ WARNING: The SSE stream spells the same operation differently — `span_layer:cr
 
 Filtering applies to individual **operations**, exactly the way the time window and the endpoint's own scope do. An entry appears when one of its operations matches, and carries only the operations that matched. So a batch that created a span layer and fifty spans comes back, under a `span-layer/create` filter, as that batch holding its one layer-create.
 
+=== When you last touched each document
+
+`my_last_edits` / `myLastEdits` answers, in one request, when the calling user last wrote to each document in a project.
+It returns a `{document id: timestamp}` map, and a document the caller has never written to is simply absent.
+
+[,python]
+----
+mine = c.projects.my_last_edits(project_id)
+----
+
+[,javascript]
+----
+const mine = await c.projects.myLastEdits(projectId);
+----
+
+This is read from the log rather than kept as a field, so it accounts for every write to the project, whether through either client, an import, a service, or another application on the same substrate.
+It is as true of documents written years ago as of the one edited a minute ago.
+Deriving the same answer by paging the audit log would mean reading a project's whole history, where this is one indexed read.
+
 == Real-time Messaging
 Plaid offers a simple system for real-time communication on a per-project basis.
 This is intended to support two purposes:
