@@ -171,16 +171,22 @@ def _field(meta, *names):
     return None
 
 
-def vocab_entries(items, vocab_name) -> List[dict]:
+def vocab_entries(items, vocab_name, dictionary: bool = False) -> List[dict]:
     """One vocabulary's entries as the prompt shows them.
 
     A lexicon in Lexicography Mode groups entries into senses, and a headword
     that leaves its own gloss empty says nothing the senses under it do not say
     better. Listing it would spend the lexicon budget on "form: ?" and offer
     the model an entry nothing is meant to link to, so it is left out. Its
-    senses share its form and are in this list already."""
-    parents = {(it.get('metadata') or {}).get('parent') for it in items}
-    parents.discard(None)
+    senses share its form and are in this list already.
+
+    Only with the mode on. Turning it off leaves the parent keys where they
+    are, and the app then shows every item as an ordinary entry a word can be
+    linked to, so skipping one here would hide it from the model alone."""
+    parents = set()
+    if dictionary:
+        parents = {(it.get('metadata') or {}).get('parent') for it in items}
+        parents.discard(None)
     entries = []
     for it in items:
         meta = it.get('metadata') or {}
@@ -201,7 +207,9 @@ def load_lexicon(client, project) -> List[dict]:
     entries = []
     for v in project.get('vocabs') or []:
         vl = client.vocab_layers.get(v['id'], include_items=True)
-        entries.extend(vocab_entries(vl.get('items') or [], vl.get('name') or v.get('name')))
+        cfg = (vl.get('config') or {}).get('igt') or {}
+        entries.extend(vocab_entries(vl.get('items') or [], vl.get('name') or v.get('name'),
+                                     cfg.get('dictionary') is True))
         try:
             res = client.query({
                 'where': [['vocab', '?v', {'layer': v['id']}], ['vocab-link', '?t', '?v']],

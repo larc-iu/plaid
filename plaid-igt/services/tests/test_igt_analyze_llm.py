@@ -41,11 +41,15 @@ def test_vocab_entries_leave_out_a_headword_that_only_holds_senses():
         # So does an entry with no gloss and nothing under it: it is all there is.
         {'id': 'bare', 'form': 'zi', 'metadata': {}},
     ]
-    entries = llm.vocab_entries(items, 'L')
+    entries = llm.vocab_entries(items, 'L', True)
     assert [e['id'] for e in entries] == ['s1', 's2', 'g', 'gs', 'bare']
     assert all(e['vocab'] == 'L' for e in entries)
     # The form the container carried is still reachable through its senses.
     assert [e['form'] for e in llm.matching_entries(entries, ['kwatha'])] == ['kwatha', 'kwatha']
+    # Without Lexicography Mode the parent keys are still there, but the app
+    # shows every item as an entry a word can link to, so none is held back.
+    flat = llm.vocab_entries(items, 'L')
+    assert [e['id'] for e in flat] == ['h', 's1', 's2', 'g', 'gs', 'bare']
 
 
 def test_rank_examples_prefers_shared_forms_then_character_overlap():
