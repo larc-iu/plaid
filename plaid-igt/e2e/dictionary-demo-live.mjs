@@ -1,9 +1,9 @@
 // Seed a dictionary demo from a FLEx backup (scratchpad-convention: disposable).
-// Runs the REAL setup + import engine against the live core (:8085) with the
-// Dictionary option on, then dresses the lexicon up the way a lexicographer
-// would: two reference fields (Variant of, See also), an entry-only field
-// (Etymology), one variant pointing at its main entry, and one example
-// promoted from the concordance. The project is KEPT.
+// Runs the REAL setup + import engine against the live core (:8085) with
+// Lexicography Mode and FLEx's variants on, then dresses the lexicon up the
+// way a lexicographer would: a reference field of its own (See also), an
+// entry-only field (Etymology), and one example promoted from the
+// concordance. The project is KEPT.
 //
 //   node e2e/dictionary-demo-live.mjs [--docs N]      (default 8 smallest texts)
 //   PLAID_FWBACKUP=... to pick another backup.
@@ -29,7 +29,7 @@ const build = buildDocuments(ir);
 build.documents = [...build.documents]
   .sort((a, b) => a.words.length - b.words.length)
   .slice(0, DOCS);
-const config = { ...deriveImportConfig(ir, build), dictionary: true };
+const config = { ...deriveImportConfig(ir, build), dictionary: true, variants: true };
 console.log(`parsed in ${Date.now() - t0}ms:`, JSON.stringify(build.stats));
 
 const projectName = `Dictionary demo (${ir.projectName || 'FLEx'})`;
@@ -99,7 +99,6 @@ if (found) {
 // ---- dress the lexicon up ----
 const layer = await client.vocabLayers.get(vocabId, true);
 const fields = { ...(layer.config?.igt?.fields ?? {}) };
-fields.variantOf = { inline: false, type: 'item' };
 fields.seeAlso = { inline: false, type: 'item', many: true };
 fields.etymology = { inline: false, scope: 'entry' };
 await client.vocabLayers.setConfig(vocabId, 'igt', 'fields', fields);
@@ -109,24 +108,23 @@ const roots = items.filter((it) => !it.metadata?.parent);
 const withSenses = roots.filter((r) => items.some((it) => it.metadata?.parent === r.id));
 console.log(`${items.length} items, ${roots.length} entries, ${withSenses.length} with senses`);
 
-// A variant: the second homograph of some form points at the first.
+// A cross-reference of the reader's own: one homograph points at the other.
+// (The variants FLEx knows about came in with the import.)
 const byForm = new Map();
 for (const r of roots) byForm.set(r.form, [...(byForm.get(r.form) || []), r]);
 const homs = [...byForm.values()].find((g) => g.length >= 2);
 if (homs) {
-  const [main, variant] = homs;
-  await client.vocabItems.setMetadata(variant.id, {
-    ...(variant.metadata || {}),
-    variantOf: main.id,
-  });
+  const [main, other] = homs;
   await client.vocabItems.setMetadata(main.id, {
     ...(main.metadata || {}),
-    seeAlso: [variant.id],
+    seeAlso: [other.id],
     etymology: 'Demo: an entry-only field',
     status: 'reviewed',
   });
-  console.log(`variant: ${variant.form} -> ${main.form}`);
+  console.log(`see also: ${main.form} -> ${other.form}`);
 }
+const variants = items.filter((it) => it.metadata?.variantOf || it.metadata?.components);
+console.log(`${variants.length} entries came in as variants or complex forms`);
 
 // An example: the busiest linked entry gets its first attested sentence.
 const usage = await client.query({
