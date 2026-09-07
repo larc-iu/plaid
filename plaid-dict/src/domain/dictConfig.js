@@ -12,11 +12,14 @@
 //     citation:  "Cite as ...",
 //     about:     "...",                          // the front page body
 //     exampleLayers: ["Translation", ...],       // sentence layers under an example
+//     alphabet:  ["a", "b", "bv", "c", "ch", ...], // the dictionary's own order
 //   }
 //
 // A vocabulary with no `config.dict` is not a dictionary: it is not listed here
 // and has no page. Language identity has to live in this record because a
 // vocabulary is cross-project and cannot borrow any one project's.
+
+import { alphabetCollator } from './collation.js';
 
 export const DICT_NAMESPACE = 'dict';
 
@@ -29,6 +32,7 @@ export const DICT_KEYS = [
   'citation',
   'about',
   'exampleLayers',
+  'alphabet',
 ];
 
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
@@ -76,6 +80,9 @@ export const readDictRecord = (config) => {
     exampleLayers: Array.isArray(raw.exampleLayers)
       ? raw.exampleLayers.map(str).filter(Boolean)
       : null,
+    // Empty means the dictionary states no alphabet and the locale's collator
+    // decides, which knows nothing about n-graphs.
+    alphabet: Array.isArray(raw.alphabet) ? raw.alphabet.map(str).filter(Boolean) : [],
   };
 };
 
@@ -132,6 +139,7 @@ export const saveDictRecord = async (client, vocabularyId, draft, { label } = {}
     exampleLayers: Array.isArray(draft.exampleLayers)
       ? draft.exampleLayers.map(str).filter(Boolean)
       : [],
+    alphabet: Array.isArray(draft.alphabet) ? draft.alphabet.map(str).filter(Boolean) : [],
   };
   await client.withOperation(label || `Set up dictionary "${record.title}"`, async () => {
     for (const key of DICT_KEYS) {
@@ -145,12 +153,17 @@ export const saveDictRecord = async (client, vocabularyId, draft, { label } = {}
 };
 
 /**
- * The collator a dictionary sorts by: the object language's ISO 639-3 code when
- * it has one, otherwise the browser's default. Digraphs get no bucket of their
- * own; a per-dictionary alphabet is not stored.
+ * The collator a dictionary sorts by. A stated alphabet wins, since it is the
+ * only thing that knows an n-graph is one letter. Otherwise the object
+ * language's ISO 639-3 code, and failing that the browser's default.
  */
 export const dictCollator = (record) => {
-  const tag = record?.languages?.object?.iso639P3;
+  if (record?.alphabet?.length) return alphabetCollator(record.alphabet);
+  return localeCollator(record?.languages?.object?.iso639P3);
+};
+
+/** The locale collator alone, which is also what the setup form suggests from. */
+export const localeCollator = (tag) => {
   if (tag && /^[a-z]{2,3}$/i.test(tag)) {
     try {
       return new Intl.Collator(tag, { numeric: true });

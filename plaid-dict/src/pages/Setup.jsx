@@ -6,6 +6,7 @@ import { useCatalog } from '@/contexts/CatalogContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { canManage, takenSlugs } from '@/domain/dictionaries';
 import {
+  dictCollator,
   EMPTY_LANGUAGE,
   readDictRecord,
   saveDictRecord,
@@ -14,6 +15,13 @@ import {
 } from '@/domain/dictConfig';
 import { publicationCounts, publishAll } from '@/domain/publication';
 import { discoverExampleLayers } from '@/domain/exampleLayers';
+import {
+  formatAlphabet,
+  outsideAlphabet,
+  parseAlphabet,
+  suggestAlphabet,
+} from '@/domain/collation';
+import { parentOf } from '@igt/domain/vocabDictionary.js';
 import { readDictionaryEnabled } from '@igt/domain/vocabDictionary.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,6 +42,7 @@ const emptyDraft = () => ({
   citation: '',
   about: '',
   exampleLayers: null,
+  alphabet: [],
 });
 
 const Field = ({ id, label, hint, error, children }) => (
@@ -148,12 +157,17 @@ export const Setup = () => {
   // The sentence layers this vocabulary's examples could show. Null while the
   // lookup is out; empty when no example points into a document.
   const [layerChoices, setLayerChoices] = useState(null);
+  // The alphabet is edited as text so a trailing space survives typing; the
+  // draft holds the parsed units.
+  const [alphabetText, setAlphabetText] = useState('');
 
   // Seed once from what the server has, or from the vocabulary's name for a
   // dictionary being set up for the first time.
   useEffect(() => {
     if (seeded || !vocab) return;
-    setDraft(saved ?? { ...emptyDraft(), title: vocab.name, slug: slugify(vocab.name) });
+    const seed = saved ?? { ...emptyDraft(), title: vocab.name, slug: slugify(vocab.name) };
+    setDraft(seed);
+    setAlphabetText(formatAlphabet(seed.alphabet));
     setSeeded(true);
   }, [vocab, saved, seeded]);
 
@@ -186,6 +200,17 @@ export const Setup = () => {
       alive = false;
     };
   }, [client, items]);
+
+  // Only a headword gets a place in the index, so only headwords are measured
+  // against the alphabet.
+  const headwordForms = useMemo(
+    () => (items || []).filter((it) => !parentOf(it)).map((it) => it.form ?? ''),
+    [items],
+  );
+  const stray = useMemo(
+    () => outsideAlphabet(headwordForms, draft.alphabet),
+    [headwordForms, draft.alphabet],
+  );
 
   const counts = useMemo(() => (items ? publicationCounts(items) : null), [items]);
   const errors = useMemo(() => validateSetup(draft, taken), [draft, taken]);
@@ -333,6 +358,48 @@ export const Setup = () => {
               onChange={(e) => set({ about: e.target.value })}
             />
           </Field>
+        </section>
+
+        <section className="rounded-md border p-4">
+          <p className="text-sm font-medium">Alphabet</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Letters in order, separated by spaces. A letter may be more than one character.
+          </p>
+          <Input
+            id="alphabet"
+            className="mt-3 font-serif"
+            value={alphabetText}
+            placeholder="a b bv c ch d e …"
+            spellCheck={false}
+            onChange={(e) => {
+              setAlphabetText(e.target.value);
+              set({ alphabet: parseAlphabet(e.target.value) });
+            }}
+          />
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={!headwordForms.length}
+              onClick={() => {
+                const units = suggestAlphabet(
+                  headwordForms,
+                  dictCollator({ ...draft, alphabet: [] }),
+                );
+                setAlphabetText(formatAlphabet(units));
+                set({ alphabet: units });
+              }}
+            >
+              Fill from entries
+            </Button>
+            {draft.alphabet.length > 0 && stray.length > 0 && (
+              <span className="text-sm text-muted-foreground">
+                {stray.length.toLocaleString()}{' '}
+                {stray.length === 1 ? 'headword starts' : 'headwords start'} outside it.
+              </span>
+            )}
+          </div>
         </section>
 
         {layerChoices?.length > 0 && (

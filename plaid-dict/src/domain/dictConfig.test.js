@@ -34,6 +34,13 @@ describe('readDictRecord', () => {
     expect(record.about).toBe('');
   });
 
+  it('reads a stated alphabet, and nothing when there is none', () => {
+    expect(readDictRecord({ dict: { slug: 'x' } }).alphabet).toEqual([]);
+    expect(readDictRecord({ dict: { slug: 'x', alphabet: ['a', 'ch', ' ', 3] } }).alphabet).toEqual(
+      ['a', 'ch'],
+    );
+  });
+
   it('tells a dictionary that chose no layers from one that has not chosen', () => {
     expect(readDictRecord({ dict: { slug: 'x' } }).exampleLayers).toBeNull();
     expect(readDictRecord({ dict: { slug: 'x', exampleLayers: [] } }).exampleLayers).toEqual([]);
@@ -116,7 +123,7 @@ describe('saveDictRecord', () => {
     // `languages` and `exampleLayers` are not strings, so they are always
     // written; the blank strings are removed. An empty exampleLayers is a
     // choice (show no layer) and must not read back as "not chosen".
-    expect(written).toEqual(['title', 'slug', 'languages', 'exampleLayers']);
+    expect(written).toEqual(['title', 'slug', 'languages', 'exampleLayers', 'alphabet']);
     expect(removed).toEqual(['credits', 'citation', 'about']);
     expect(client.calls.find(([, , , key]) => key === 'exampleLayers')[4]).toEqual([]);
     expect(client.calls.every((c) => c[0] === 'operation' || c[2] === DICT_NAMESPACE)).toBe(true);

@@ -126,9 +126,12 @@ export const indexLetter = (form) => {
  * @returns {{letter: string, forms: string[]}[]}
  */
 export const buildIndex = (pages, collator = new Intl.Collator()) => {
+  // A dictionary with a stated alphabet heads its buckets with that alphabet's
+  // own letters, n-graphs included; otherwise a first character does.
+  const letterOf = collator.letterOf ?? indexLetter;
   const byLetter = new Map();
   for (const { form } of pages || []) {
-    const letter = indexLetter(form);
+    const letter = letterOf(form);
     if (!byLetter.has(letter)) byLetter.set(letter, []);
     byLetter.get(letter).push(form);
   }
