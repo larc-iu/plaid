@@ -1706,7 +1706,10 @@ def _create_entry(ws: Workspace, v: dict, form: str, fields: Optional[dict],
                                next_sense_order(view.tree, parent['id']) + planned)
     # The key is a handle the model passes back; it must not contain spaces
     # (a phrase entry's form does).
-    key = f'new:{v["id"]}:{re.sub(r"\s+", "_", form)}#{len(ws.new_entries) + 1}'
+    # CI runs Python 3.11, which refuses a backslash inside an f-string
+    # expression, so the slug is made first.
+    slug = re.sub(r'\s+', '_', form)
+    key = f'new:{v["id"]}:{slug}#{len(ws.new_entries) + 1}'
     ws.new_entries[key] = {'form': form, 'vocab_id': v['id'], 'metadata': metadata}
     what = (f'new sense of {view.label(parent["id"])} ' if parent is not None else 'new entry ')
     ws.add_op({'kind': 'create_entry', 'vocab_id': v['id'], 'form': form, 'metadata': metadata, 'key': key,
