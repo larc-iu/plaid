@@ -17,7 +17,7 @@
             [plaid.rest-api.v1.user :refer [user-routes]]
             [plaid.rest-api.v1.api-token :refer [api-token-routes]]
             [plaid.rest-api.v1.user-data :refer [user-data-routes]]
-            [plaid.rest-api.v1.invite :refer [invite-routes public-invite-routes]]
+            [plaid.rest-api.v1.invite :refer [invite-routes]]
             [plaid.rest-api.v1.project :refer [project-routes]]
             [plaid.rest-api.v1.message :refer [message-routes]]
             [plaid.rest-api.v1.document :refer [document-routes]]
@@ -77,11 +77,13 @@
            health-routes
            info-routes
            authentication-routes
-           ;; Unauthenticated by design: whoever holds an invite code has no
-           ;; account yet (or has lost the password to the one they have), so
-           ;; these sit outside wrap-login-required alongside /login. They
-           ;; carry their own IP rate limiter.
-           public-invite-routes
+
+           ;; Mounted outside the login-required group below, because
+           ;; `/invites/lookup` and `/invites/redeem` have to be reachable
+           ;; without a session: the redeemer has no account yet. The rest of
+           ;; the tree carries `wrap-login-required` per subtree instead. See
+           ;; the invite namespace docstring.
+           ["" {:middleware [prm/wrap-reject-as-of]} invite-routes]
 
            ;; Login required
            [""
@@ -101,7 +103,6 @@
              user-routes
              api-token-routes
              user-data-routes
-             invite-routes
              project-routes
              message-routes
              text-routes

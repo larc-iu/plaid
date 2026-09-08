@@ -2,27 +2,34 @@
   "REST surface for invite links (signup) and admin-issued password resets.
   See `plaid.sql.invite` for the model.
 
-  The surface splits in two:
+  Everything lives under `/invites`, and the tree carries no blanket auth.
+  Each part says for itself which side of the boundary it is on, because a
+  reader who sees only one subtree should still be able to tell.
 
-    UNAUTHENTICATED — `/invite-codes/lookup` and `/invite-codes/redeem`.
-    These mount beside `/login`, outside `wrap-login-required`, because the
-    whole point is that the redeemer has no account yet. Both are POSTs even
-    though lookup is a read: an invite code is a bearer credential that can
-    create an admin account or reset a password, and a GET would write it
-    into the access log, the browser's history, and any proxy in between.
-    Bodies stay out of all three. Both are IP rate-limited.
+    UNAUTHENTICATED: `/invites/lookup` and `/invites/redeem`, reachable
+    without a session because the whole point is that the redeemer has no
+    account yet. Both are POSTs even though lookup is a read. An invite code
+    is a bearer credential that can create an admin account or reset a
+    password, and a GET would write it into the access log, the browser
+    history, and any proxy in between. Bodies stay out of all three. Both are
+    IP rate-limited.
 
-    They live under a different path than the authenticated routes rather
-    than at `/invites/lookup`, which would collide with `/invites/:id`. The
-    split turns out to read correctly anyway: `/invite-codes` acts on the
-    bearer credential someone was handed, `/invites` on the records behind
-    them, and the URL says which side of the auth boundary you are on.
+    `:conflicting true` is what lets a literal `/lookup` sit beside `/:id`.
+    Reitit then prefers the literal, exactly as `/spans/bulk` is preferred
+    over `/spans/:span-id`. (These two once lived at `/invite-codes` on the
+    belief that the collision was unavoidable. It was not.)
 
-    AUTHENTICATED — mint, list, revoke. Any logged-in user may call mint;
+    AUTHENTICATED: mint, list, and revoke, each subtree carrying
+    `wrap-login-required` itself. Any logged-in user may call mint.
     `plaid.sql.invite/check-grant-authority!` decides whether they may grant
     what they asked for, and 403s if not. That keeps one place authoritative
     about who can grant what, rather than splitting the rule between a
-    middleware and the write path."
+    middleware and the write path.
+
+    Auth is stated per subtree rather than inherited, because this tree is
+    mounted outside the login-required group in `core.clj` so that the two
+    public routes can reach a handler at all. A new subtree here is
+    unauthenticated until it says otherwise: say otherwise."
   (:require [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.pagination :as pagination]
             [plaid.rest-api.v1.rate-limit :as rl]
@@ -51,15 +58,21 @@
    :project-role   (:invite/project-role inv)})
 
 ;; ============================================================
-;; Public (no login) — lookup + redeem
+;; Routes — lookup and redeem without a session, the rest with one
 ;; ============================================================
 
-(def public-invite-routes
-  ["/invite-codes"
-   {:middleware [rl/wrap-invite-rate-limit]}
+(defn- may-see-project-invites?
+  [db user-id project-id]
+  (or (user/admin? (user/get-internal db user-id))
+      (boolean (some #{user-id} (prj/maintainer-ids db project-id)))))
+
+(def invite-routes
+  ["/invites"
 
    ["/lookup"
-    {:post {:summary (str "Describe an invite code so a signup page can render itself. "
+    {:conflicting true
+     :middleware [rl/wrap-invite-rate-limit]
+     :post {:summary (str "Describe an invite code so a signup page can render itself. "
                           "POST rather than GET so the code never lands in an access log, "
                           "browser history, or proxy log. Returns the kind of link "
                           "(<body>signup</body> or <body>password-reset</body>), its status, "
@@ -74,7 +87,9 @@
                              {:status 404 :body {:error "That invite code is not valid."}})))}}]
 
    ["/redeem"
-    {:post {:summary (str "Redeem an invite code. For a signup invite, supply "
+    {:conflicting true
+     :middleware [rl/wrap-invite-rate-limit]
+     :post {:summary (str "Redeem an invite code. For a signup invite, supply "
                           "<body>email</body> and <body>password</body> to create the "
                           "account (plus an optional <body>display-name</body>); the invite's "
                           "grants (project role, admin) are applied in the same transaction. "
@@ -111,24 +126,12 @@
                              (when (#{404 410} status-code)
                                (rl/record-invite-failure! request))
                              {:status (or status-code 500)
-                              :body {:error error}}))))}}]])
-
-;; ============================================================
-;; Authenticated — mint, list, revoke
-;; ============================================================
-
-(defn- may-see-project-invites?
-  [db user-id project-id]
-  (or (user/admin? (user/get-internal db user-id))
-      (boolean (some #{user-id} (prj/maintainer-ids db project-id)))))
-
-(def invite-routes
-  ["/invites"
-   {:openapi {:security [{:auth []}]}
-    :middleware [pra/wrap-login-required]}
+                              :body {:error error}}))))}}]
 
    [""
-    {:get {:summary (str "List invites you minted, oldest first, keyset-paginated. "
+    {:openapi {:security [{:auth []}]}
+     :middleware [pra/wrap-login-required]
+     :get {:summary (str "List invites you minted, oldest first, keyset-paginated. "
                          "With <body>project-id</body>, lists that project's invites instead "
                          "(including ones minted by co-maintainers) — requires maintainer or "
                          "admin on that project. Never includes invite codes.")
@@ -212,7 +215,10 @@
                            {:status (or status-code 500) :body {:error error}})))}}]
 
    ["/:id"
-    {:parameters {:path [:map [:id string?]]}}
+    {:conflicting true
+     :openapi {:security [{:auth []}]}
+     :middleware [pra/wrap-login-required]
+     :parameters {:path [:map [:id string?]]}}
     [""
      {:delete {:summary (str "Revoke an invite, killing the link immediately. Idempotent. "
                              "Allowed for the invite's creator, an admin, or a maintainer of "

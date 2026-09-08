@@ -2759,7 +2759,7 @@ class PlaidClient {
   static async lookupInvite(baseUrl, code, options = {}) {
     return anonymousPost(
       baseUrl,
-      "/api/v1/invite-codes/lookup",
+      "/api/v1/invites/lookup",
       { code },
       options,
     );
@@ -2793,7 +2793,7 @@ class PlaidClient {
   ) {
     const data = await anonymousPost(
       baseUrl,
-      "/api/v1/invite-codes/redeem",
+      "/api/v1/invites/redeem",
       bodyOf({ code, email, password, "display-name": displayName }),
       options,
     );

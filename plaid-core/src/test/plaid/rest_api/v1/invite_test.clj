@@ -34,12 +34,12 @@
 
 (defn- lookup!
   [code]
-  (api-call anon-request {:method :post :path "/api/v1/invite-codes/lookup"
+  (api-call anon-request {:method :post :path "/api/v1/invites/lookup"
                           :body {:code code}}))
 
 (defn- redeem!
   [body]
-  (api-call anon-request {:method :post :path "/api/v1/invite-codes/redeem" :body body}))
+  (api-call anon-request {:method :post :path "/api/v1/invites/redeem" :body body}))
 
 (defn- login!
   [user-id password]

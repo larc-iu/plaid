@@ -2958,7 +2958,7 @@ class PlaidClient:
             code: The invite code
             timeout: Per-request timeout in seconds
         """
-        return cls._anonymous_post(base_url, '/api/v1/invite-codes/lookup',
+        return cls._anonymous_post(base_url, '/api/v1/invites/lookup',
                                    {'code': code}, timeout=timeout)
 
     @classmethod
@@ -2994,7 +2994,7 @@ class PlaidClient:
             body['email'] = email
         if display_name is not None:
             body['display-name'] = display_name
-        data = cls._anonymous_post(base_url, '/api/v1/invite-codes/redeem', body,
+        data = cls._anonymous_post(base_url, '/api/v1/invites/redeem', body,
                                    timeout=timeout)
         client = cls(base_url.rstrip('/'), data.get('token', ''), timeout=timeout)
         return client, data
