@@ -617,6 +617,8 @@ Four formats are supported:
 
 An import that stops before it finishes, whether you cancel it, it fails, or the tab is closed, leaves a project that is only part filled.
 Opening such a project takes you back to the import instead: choose the same file and it carries on, keeping the documents and entries already there and finishing the ones it never reached.
+A document is recognised by the file's own identifier for it, not by its name, so two texts called the same thing are kept apart, and a document you made by hand is never taken for one of the import's.
+A FLEx import writes into the lexicon it started with.
 If what arrived is enough, **Use the project as it is** on that screen puts the project back in your hands.
 
 == Exporting

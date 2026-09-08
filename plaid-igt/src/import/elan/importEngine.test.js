@@ -244,7 +244,7 @@ describe('importDocument', () => {
     await importDocument({ client, projectId: 'p1', targets, doc: BUILD.documents[0] });
     const last = client.calls.at(-1);
     expect(last[0]).toBe('documents.setMetadata');
-    expect(last[2]).toEqual({ Source: 'notes', elanImported: true });
+    expect(last[2]).toEqual({ Source: 'notes', importSource: 'a.eaf', importDone: true });
   });
 
   it('warns instead of failing when the project has no alignment layer', async () => {
@@ -296,7 +296,7 @@ describe('runElanImport', () => {
   it('skips a document already marked done and redoes a half-imported one', async () => {
     const done = stubClient({
       documents: [{ id: 'old', name: 'Story' }],
-      docMetadata: { old: { elanImported: true } },
+      docMetadata: { old: { importSource: 'a.eaf', importDone: true } },
     });
     expect(await runElanImport({ client: done, projectId: 'p1', build: BUILD })).toMatchObject({
       imported: 0,
@@ -306,7 +306,7 @@ describe('runElanImport', () => {
 
     const partial = stubClient({
       documents: [{ id: 'old', name: 'Story' }],
-      docMetadata: { old: {} },
+      docMetadata: { old: { importSource: 'a.eaf' } },
     });
     expect(await runElanImport({ client: partial, projectId: 'p1', build: BUILD })).toMatchObject({
       imported: 1,

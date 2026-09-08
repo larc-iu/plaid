@@ -12,6 +12,8 @@
 // their FLEx sense guid (metadata.flexSense).
 
 import { stampInferred, confirmedInferred } from '@larc-iu/plaid-client';
+import { ImportCancelled, importStamp, priorImports, settlePrior } from '../resume.js';
+import { isReservedFieldName } from '../../domain/vocabFields.js';
 import { documentProgress } from '../progress.js';
 import {
   IGT_NAMESPACE,
@@ -25,12 +27,6 @@ import {
 import { FIELD_SCOPES, FIELD_TYPES } from '../../domain/vocabFields.js';
 import { pickEn } from './fwdataParser.js';
 
-// Chunk sizes for the bulk endpoints. Each chunk is ONE server transaction
-// holding the single SQLite write lock for its whole duration, so the number
-// that matters is how long that is, not how few round trips we make: any other
-// writer that arrives mid-chunk waits, and is refused with a 503 once the
-// server's busy_timeout (5s by default) runs out. Keeping a chunk to a few
-// hundred rows keeps a hold well under a second even on a large database.
 // Rows per bulk request. Each chunk is ONE server transaction holding the
 // single SQLite write lock for its whole duration, so what this bounds is how
 // long another writer can be made to wait — not just how many round trips we
@@ -39,7 +35,6 @@ import { pickEn } from './fwdataParser.js';
 // under a second even on a large database. Nothing here may be unbounded: a
 // document's token count is set by the data, not by us.
 const BULK_CHUNK = 500;
-const DONE_KEY = 'flexImported';
 
 /**
  * Send `items` to a bulk endpoint in BULK_CHUNK-sized slices, concatenating
@@ -174,9 +169,9 @@ export function resolveTargets(project, config) {
   };
 }
 
-// Item metadata keys that are bookkeeping or structured data, never a field
-// in the vocab's schema (`examples` is shown read-only in the item detail).
-const HIDDEN_ITEM_KEYS = new Set(['flexEntry', 'flexSense', 'homograph', 'examples']);
+// Item metadata keys that are bookkeeping or structured data are never a
+// field in the vocab's schema: the reserved keys, matched the way the field
+// editor refuses them (see isReservedFieldName).
 
 /**
  * Import the lexicon as vocab items, one per FLEx sense (multi-sense entries
@@ -233,7 +228,7 @@ export async function importLexicon({
   // The settled core fields come first even when no item fills them.
   const fieldKeys = new Set(['gloss', 'pos', 'definition', 'morphType', 'lexemeForm']);
   const note = (metadata) => {
-    for (const k of Object.keys(metadata)) if (!HIDDEN_ITEM_KEYS.has(k)) fieldKeys.add(k);
+    for (const k of Object.keys(metadata)) if (!isReservedFieldName(k)) fieldKeys.add(k);
   };
   const pickWs = (m) => (m == null ? null : (m[baselineWs] ?? pickEn(m)));
   for (const entry of lexicon) {
@@ -326,7 +321,7 @@ export async function importLexicon({
   // input order.
   let done = 0;
   for (let i = 0; i < pending.length; i += BULK_CHUNK) {
-    if (shouldStop?.()) throw new Error('Import cancelled');
+    if (shouldStop?.()) throw new ImportCancelled();
     const chunk = pending.slice(i, i + BULK_CHUNK);
     const { ids } = await client.vocabItems.bulkCreate(
       chunk.map((p) => ({ vocabLayerId: vocabId, form: p.form, metadata: p.metadata })),
@@ -365,14 +360,15 @@ async function placeSenses({ client, lexicon, senseToItem, existing, shouldStop 
   // Place a sense that has no parent YET, rather than one this run created.
   // An entry created by a run that was cancelled or lost part way through has
   // none either, and asking "did this run make it" left such an entry flat
-  // forever: the resume neither recreates it nor places it. An entry someone
-  // has since arranged by hand keeps that arrangement.
+  // forever: the resume neither recreates it nor places it. A sense someone
+  // has since moved under another entry keeps that place; one they made a
+  // separate entry has no parent and is filed under its FLEx entry again.
   const placedAlready = new Set(
     (existing.items || []).filter((it) => it.metadata?.parent).map((it) => it.id),
   );
   const fresh = patches.filter((p) => !placedAlready.has(p.id));
   for (let i = 0; i < fresh.length; i += BULK_CHUNK) {
-    if (shouldStop?.()) throw new Error('Import cancelled');
+    if (shouldStop?.()) throw new ImportCancelled();
     const chunk = fresh.slice(i, i + BULK_CHUNK);
     await client.batched(async () => {
       for (const p of chunk) {
@@ -458,7 +454,7 @@ async function placeVariants({ client, vocabId, lexicon, senseToItem, existing, 
 
   const entries = [...patches.entries()];
   for (let i = 0; i < entries.length; i += BULK_CHUNK) {
-    if (shouldStop?.()) throw new Error('Import cancelled');
+    if (shouldStop?.()) throw new ImportCancelled();
     const chunk = entries.slice(i, i + BULK_CHUNK);
     await client.batched(async () => {
       for (const [id, patch] of chunk) client.vocabItems.patchMetadata(id, patch);
@@ -511,11 +507,15 @@ export async function importDocument({
     steps: DOCUMENT_STEPS,
   });
   const check = () => {
-    if (shouldStop?.()) throw new Error('Import cancelled');
+    if (shouldStop?.()) throw new ImportCancelled();
   };
 
   progress('Creating document');
-  const newDoc = await client.documents.create(projectId, doc.name, documentMetadataOf(doc));
+  const newDoc = await client.documents.create(
+    projectId,
+    doc.name,
+    importStamp(documentMetadataOf(doc), doc.guid),
+  );
   const docId = newDoc.id ?? newDoc;
 
   if (doc.body.length > 0) {
@@ -675,7 +675,7 @@ export async function importDocument({
   }
 
   // Mark complete LAST — resume treats unmarked documents as partial.
-  await client.documents.setMetadata(docId, { ...documentMetadataOf(doc), [DONE_KEY]: true });
+  await client.documents.setMetadata(docId, importStamp(documentMetadataOf(doc), doc.guid, true));
   return docId;
 }
 
@@ -721,13 +721,12 @@ async function runImportImpl({
     shouldStop,
   });
 
-  // Resume bookkeeping: list existing documents once (auto-paginated)
-  const existingDocs = await client.projects.listDocuments(projectId);
-  const byName = new Map(existingDocs.map((d) => [d.name, d]));
+  // Resume bookkeeping: what an earlier run made, by FLEx text guid.
+  const prior = await priorImports(client, projectId);
 
   const results = { imported: 0, skipped: 0, redone: 0 };
   for (let i = 0; i < build.documents.length; i += 1) {
-    if (shouldStop?.()) throw new Error('Import cancelled');
+    if (shouldStop?.()) throw new ImportCancelled();
     const doc = build.documents[i];
     onProgress?.({
       phase: 'document',
@@ -736,16 +735,7 @@ async function runImportImpl({
       total: build.documents.length,
       step: 'Starting',
     });
-    const existing = byName.get(doc.name);
-    if (existing) {
-      const full = await client.documents.get(existing.id);
-      if (full.metadata?.[DONE_KEY]) {
-        results.skipped += 1;
-        continue;
-      }
-      await client.documents.delete(existing.id); // half-imported: redo cleanly
-      results.redone += 1;
-    }
+    if (!(await settlePrior(client, prior, doc.guid, results))) continue;
     await importDocument({
       client,
       projectId,

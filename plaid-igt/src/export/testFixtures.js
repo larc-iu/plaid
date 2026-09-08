@@ -131,7 +131,7 @@ export function makeNativeRaw() {
     id: 'doc1',
     name: 'Doc One',
     version: 7,
-    metadata: { Source: 'notes', flexImported: true, custom: { k: 1 } }, // trap (a)
+    metadata: { Source: 'notes', importDone: true, custom: { k: 1 } }, // trap (a)
     textLayers: [
       {
         id: 'tl1',

@@ -100,17 +100,29 @@ export const ImportCldfProject = () => {
           resumeProjectId: projectIdRef.current,
           setupData: deriveSetupData(build, projectName.trim()),
           onProgress: (pct, msg) => setProgress({ label: msg, pct: pct * 0.15 }),
+          // The record goes on the project the moment it exists, so a setup
+          // that fails part way leaves a project that reopens this import
+          // rather than one with no way back into it.
           onProjectCreated: (id) => {
             projectIdRef.current = id;
+            markImportStarted(client, id, 'CLDF', dataset?.title ?? null);
           },
         });
         if (setup.failures.length > 0) throw new Error(setup.failures.join('. '));
         projectIdRef.current = setup.projectId;
         setupDoneRef.current = true;
       }
-      // Removed when this run finishes, so a cancelled or lost import shows
-      // on the project rather than passing for a complete one.
-      await markImportStarted(client, projectIdRef.current, 'CLDF', dataset?.title ?? null);
+      // Rewritten with the lexicon once setup has made it. Removed when this
+      // run finishes, so a cancelled or lost import shows on the project
+      // rather than passing for a complete one.
+      const project = await client.projects.get(projectIdRef.current);
+      await markImportStarted(
+        client,
+        projectIdRef.current,
+        'CLDF',
+        dataset?.title ?? null,
+        (project.vocabs || [])[0]?.id ?? null,
+      );
 
       const res = await runCldfImport({
         client,
@@ -131,7 +143,12 @@ export const ImportCldfProject = () => {
           }
         },
       });
-      await markImportFinished(client, projectIdRef.current);
+      if (!(await markImportFinished(client, projectIdRef.current))) {
+        notifyWarning(
+          'The import record could not be cleared, so the project still opens this import.',
+          'Import Complete',
+        );
+      }
       setResults(res);
       setStage('done');
       if (res.warnings.length) {

@@ -12,6 +12,7 @@
 // doubles as provenance back to the source dataset.
 
 import { documentProgress } from '../progress.js';
+import { ImportCancelled, importStamp, priorImports, settlePrior } from '../resume.js';
 import { isReservedFieldName } from '../../domain/vocabFields.js';
 import {
   IGT_NAMESPACE,
@@ -28,15 +29,9 @@ import {
 // another writer can be made to wait (and be refused with a 503 once the
 // server's busy_timeout runs out), not just how many round trips we make.
 const CHUNK = 500;
-const DONE_KEY = 'cldfImported';
 const ITEM_SOURCE_KEY = 'cldfEntry';
 
-export class ImportCancelled extends Error {
-  constructor() {
-    super('Import cancelled');
-    this.name = 'ImportCancelled';
-  }
-}
+export { ImportCancelled };
 
 async function bulkInChunks(items, check, send) {
   const ids = [];
@@ -288,7 +283,11 @@ export async function importDocument({
   const spanLayerFor = (scope, name) => targets.spanLayerByScopeName.get(`${scope}:${name}`);
 
   progress('Creating document');
-  const created = await client.documents.create(projectId, doc.name, doc.metadata);
+  const created = await client.documents.create(
+    projectId,
+    doc.name,
+    importStamp(doc.metadata, doc.id),
+  );
   const docId = created.id ?? created;
 
   if (doc.body.length > 0) {
@@ -422,7 +421,7 @@ export async function importDocument({
   // Marked LAST: resume treats an unmarked document as partial and redoes it,
   // which is also how a failed media upload gets another chance.
   if (!mediaFailed) {
-    await client.documents.setMetadata(docId, { ...doc.metadata, [DONE_KEY]: true });
+    await client.documents.setMetadata(docId, importStamp(doc.metadata, doc.id, true));
   }
   return docId;
 }
@@ -465,9 +464,8 @@ async function runCldfImportImpl({ client, projectId, build, onProgress, shouldS
     }
   }
 
-  // Resume bookkeeping: list existing documents once (auto-paginated).
-  const existing = await client.projects.listDocuments(projectId);
-  const byName = new Map(existing.map((d) => [d.name, d]));
+  // Resume bookkeeping: what an earlier run made, by CLDF document id.
+  const prior = await priorImports(client, projectId);
 
   const results = { imported: 0, skipped: 0, redone: 0 };
   for (let i = 0; i < build.documents.length; i += 1) {
@@ -480,16 +478,7 @@ async function runCldfImportImpl({ client, projectId, build, onProgress, shouldS
       total: build.documents.length,
       step: 'Starting',
     });
-    const prior = byName.get(doc.name);
-    if (prior) {
-      const full = await client.documents.get(prior.id);
-      if (full.metadata?.[DONE_KEY]) {
-        results.skipped += 1;
-        continue;
-      }
-      await client.documents.delete(prior.id); // half-imported: redo cleanly
-      results.redone += 1;
-    }
+    if (!(await settlePrior(client, prior, doc.id, results))) continue;
     await importDocument({
       client,
       projectId,

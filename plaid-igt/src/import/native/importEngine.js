@@ -16,6 +16,7 @@
 // at creation — it doubles as provenance back to the source archive).
 
 import { documentProgress } from '../progress.js';
+import { ImportCancelled, importStamp, priorImports, settlePrior } from '../resume.js';
 import { attributedBody } from './commentAttribution.js';
 import {
   IGT_NAMESPACE,
@@ -32,15 +33,7 @@ import {
 // another writer can be made to wait (and be refused with a 503 once the
 // server's busy_timeout runs out), not just how many round trips we make.
 const CHUNK = 500;
-const DONE_KEY = 'nativeImported';
 const ITEM_SOURCE_KEY = 'nativeImportId';
-
-class ImportCancelled extends Error {
-  constructor() {
-    super('Import cancelled');
-    this.name = 'ImportCancelled';
-  }
-}
 
 /** The setup-wizard input derived from an archive manifest. */
 export function deriveSetupData(manifest, projectName) {
@@ -379,7 +372,11 @@ export async function importNativeDocument({
   };
 
   progress('Creating document');
-  const newDoc = await client.documents.create(projectId, docData.name, docData.metadata || {});
+  const newDoc = await client.documents.create(
+    projectId,
+    docData.name,
+    importStamp(docData.metadata, docData.id),
+  );
   const docId = newDoc.id ?? newDoc;
 
   const body = docData.baseline?.body ?? '';
@@ -571,9 +568,9 @@ export async function importNativeDocument({
       byLayer.get(s.spanLayerId).push(s);
     }
     for (const specs of byLayer.values()) {
-      for (let i = 0; i < specs.length; i += 1000) {
+      for (let i = 0; i < specs.length; i += CHUNK) {
         check();
-        const chunk = specs.slice(i, i + 1000);
+        const chunk = specs.slice(i, i + CHUNK);
         const { ids } = await client.spans.bulkCreate(
           chunk.map(({ archiveId: _archiveId, ...spec }) => spec),
         );
@@ -608,11 +605,11 @@ export async function importNativeDocument({
     for (const extra of docData.extraVocabLinks || []) {
       addLink(extra, extra.tokens || [], extra.id);
     }
-    for (let i = 0; i < linkSpecs.length; i += 1000) {
+    for (let i = 0; i < linkSpecs.length; i += CHUNK) {
       check();
       await client.vocabLinks.bulkCreate(
         linkSpecs
-          .slice(i, i + 1000)
+          .slice(i, i + CHUNK)
           .map((l) => ({ vocabItem: l.itemId, tokens: l.tokenIds, metadata: l.metadata })),
       );
     }
@@ -667,7 +664,7 @@ export async function importNativeDocument({
   // deletes-and-redoes it (recovering the media) instead of silently marking it
   // done and losing the media forever.
   if (!mediaFailed) {
-    await client.documents.setMetadata(docId, { ...(docData.metadata || {}), [DONE_KEY]: true });
+    await client.documents.setMetadata(docId, importStamp(docData.metadata, docData.id, true));
   }
   return docId;
 }
@@ -751,9 +748,8 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
     for (const [oldId, newId] of map) itemIdMap.set(oldId, newId);
   }
 
-  // Resume bookkeeping: list existing documents once (auto-paginated).
-  const existingDocs = await client.projects.listDocuments(projectId);
-  const byName = new Map(existingDocs.map((d) => [d.name, d]));
+  // Resume bookkeeping: what an earlier run made, by archive document id.
+  const prior = await priorImports(client, projectId);
 
   const docMaps = new Map(); // archive document id → {docId, tokenIdMap}
   // The documents a promoted example points into. A resume skips a document an
@@ -778,22 +774,21 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
       total: archive.documents.length,
       step: 'Starting',
     });
-    const existing = byName.get(doc.name);
-    if (existing) {
-      const full = await client.documents.get(existing.id);
-      if (full.metadata?.[DONE_KEY]) {
-        results.skipped += 1;
-        if (cited.has(doc.data?.id)) {
-          const tokenIdMap = await rebuildTokenMap({
-            client,
-            docId: existing.id,
-            docData: doc.data,
-            targets,
-          });
-          docMaps.set(doc.data.id, { docId: existing.id, tokenIdMap });
-        }
-        continue;
+    const existing = prior.find(doc.data?.id);
+    if (existing && prior.done(existing)) {
+      results.skipped += 1;
+      if (cited.has(doc.data?.id)) {
+        const tokenIdMap = await rebuildTokenMap({
+          client,
+          docId: existing.id,
+          docData: doc.data,
+          targets,
+        });
+        docMaps.set(doc.data.id, { docId: existing.id, tokenIdMap });
       }
+      continue;
+    }
+    if (existing) {
       await client.documents.delete(existing.id); // half-imported: redo cleanly
       results.redone += 1;
     }

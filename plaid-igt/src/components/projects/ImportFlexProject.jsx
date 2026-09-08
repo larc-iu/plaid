@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '../../contexts/AuthContext';
-import { notifyError, notifySuccess } from '@/utils/feedback';
+import { notifyError, notifySuccess, notifyWarning } from '@/utils/feedback';
 import { readFwbackup } from '../../import/flex/fwbackup';
 import { parseFwdata } from '../../import/flex/fwdataParser';
 import { buildDocuments } from '../../import/flex/buildDocuments';
@@ -60,7 +60,12 @@ export const ImportFlexProject = () => {
   const [results, setResults] = useState(null);
 
   // Survive retries within this page session (see header comment).
-  const { resumeId, resumeName, finishAsIs } = useResumeImport(client);
+  const { resumeId, resumeName, resumeProject, finishAsIs } = useResumeImport(client);
+  // On a resume the lexicon is the one the record names: the run writes into
+  // it whatever the screen would otherwise offer.
+  const resumeRecord = resumeProject ? readImportState(resumeProject.config) : null;
+  const resumedLexicon =
+    (resumeProject?.vocabs || []).find((v) => v.id === resumeRecord?.vocabId) ?? null;
   const projectIdRef = useRef(resumeId || null);
   const setupDoneRef = useRef(false);
   const vocabIdRef = useRef(null);
@@ -208,16 +213,25 @@ export const ImportFlexProject = () => {
           resumeProjectId: projectIdRef.current,
           setupData,
           onProgress: (pct, msg) => setProgress({ label: msg, pct: pct * 0.1 }),
+          // The record goes on the project the moment it exists, so a setup
+          // that fails part way leaves a project that reopens this import
+          // rather than one with no way back into it.
           onProjectCreated: (id) => {
             projectIdRef.current = id;
+            markImportStarted(client, id, 'FLEx', parsed.backupName);
           },
         });
         if (setup.failures.length > 0) {
           throw new Error(setup.failures.join('. '));
         }
         projectIdRef.current = setup.projectId;
-        vocabIdRef.current =
-          lexiconMode === 'existing'
+        // A resume writes into the lexicon its record names (read below):
+        // setup returned early for the project already set up, so a choice
+        // made on this screen would name a vocabulary the project is never
+        // linked to.
+        vocabIdRef.current = resumeId
+          ? null
+          : lexiconMode === 'existing'
             ? existingVocab.id
             : (setup.resources.vocabularies?.[0]?.id ?? null);
         setupDoneRef.current = true;
@@ -230,9 +244,13 @@ export const ImportFlexProject = () => {
       // nothing matching, so the record is what names it.
       if (!vocabIdRef.current) {
         const project = await client.projects.get(projectIdRef.current);
+        const vocabs = project.vocabs || [];
+        // The record's lexicon only if the project still carries it: one
+        // deleted since would be written into forever, request after request.
+        const recorded = readImportState(project.config)?.vocabId;
         vocabIdRef.current =
-          readImportState(project.config)?.vocabId ??
-          (project.vocabs || []).find((v) => v.name === vocabName)?.id ??
+          (vocabs.some((v) => v.id === recorded) ? recorded : null) ??
+          vocabs.find((v) => v.name === vocabName)?.id ??
           null;
       }
       // The project is now filling. The record is removed when this run
@@ -246,7 +264,8 @@ export const ImportFlexProject = () => {
         parsed.backupName,
         vocabIdRef.current,
       );
-      if (!vocabIdRef.current) throw new Error('Lexicon vocabulary missing after setup');
+      if (!vocabIdRef.current)
+        throw new Error('The lexicon this import writes into is not on the project.');
 
       // 2. Lexicon + documents via the import engine.
       const totalDocs = filteredBuild.documents.length;
@@ -272,7 +291,12 @@ export const ImportFlexProject = () => {
           }
         },
       });
-      await markImportFinished(client, projectIdRef.current);
+      if (!(await markImportFinished(client, projectIdRef.current))) {
+        notifyWarning(
+          'The import record could not be cleared, so the project still opens this import.',
+          'Import Complete',
+        );
+      }
       setResults(res);
       setStage('done');
       notifySuccess(
@@ -298,7 +322,7 @@ export const ImportFlexProject = () => {
   const irWarningSamples = irWarnings.slice(0, 8);
   // Selections lock once setup has run: a resume must re-target the same
   // project shape, and the engine skips/redoes per document by name.
-  const locked = stage !== 'review' || setupDoneRef.current;
+  const locked = stage !== 'review' || setupDoneRef.current || !!resumeId;
 
   return (
     <div className="tw mx-auto max-w-3xl px-4 py-8">
@@ -442,63 +466,78 @@ export const ImportFlexProject = () => {
                 vocabulary the interlinear links to.
               </p>
               <div className="flex flex-col gap-3">
-                <label className="flex cursor-pointer items-center gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name="flex-lexicon-mode"
-                    checked={lexiconMode === 'new'}
-                    disabled={locked}
-                    onChange={() => setLexiconMode('new')}
-                  />
-                  Create a new lexicon
-                </label>
-                {lexiconMode === 'new' && (
-                  <Input
-                    id="flex-lexicon-name"
-                    aria-label="Lexicon name"
-                    className="ml-6 max-w-md"
-                    value={effectiveLexiconName}
-                    onChange={(e) => setLexiconName(e.target.value)}
-                    disabled={locked}
-                  />
-                )}
-                <label
-                  className={`flex items-center gap-2 text-sm ${
-                    existingVocabs.length ? 'cursor-pointer' : 'text-muted-foreground'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="flex-lexicon-mode"
-                    checked={lexiconMode === 'existing'}
-                    disabled={locked || existingVocabs.length === 0}
-                    onChange={() => setLexiconMode('existing')}
-                  />
-                  Add to a lexicon you maintain
-                  {existingVocabs.length === 0 && <span className="text-xs">(none available)</span>}
-                </label>
-                {lexiconMode === 'existing' && (
-                  <div className="ml-6 flex flex-col gap-1.5">
-                    <select
-                      id="flex-lexicon-existing"
-                      aria-label="Existing lexicon"
-                      className="h-9 max-w-md rounded-md border border-input bg-background px-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
-                      value={existingVocabId}
-                      disabled={locked}
-                      onChange={(e) => setExistingVocabId(e.target.value)}
+                {resumeId ? (
+                  <p className="text-sm">
+                    Entries go into{' '}
+                    <strong>
+                      {resumedLexicon?.name ??
+                        (resumeProject ? 'a lexicon no longer on the project' : '…')}
+                    </strong>
+                    .
+                  </p>
+                ) : (
+                  <>
+                    <label className="flex cursor-pointer items-center gap-2 text-sm">
+                      <input
+                        type="radio"
+                        name="flex-lexicon-mode"
+                        checked={lexiconMode === 'new'}
+                        disabled={locked}
+                        onChange={() => setLexiconMode('new')}
+                      />
+                      Create a new lexicon
+                    </label>
+                    {lexiconMode === 'new' && (
+                      <Input
+                        id="flex-lexicon-name"
+                        aria-label="Lexicon name"
+                        className="ml-6 max-w-md"
+                        value={effectiveLexiconName}
+                        onChange={(e) => setLexiconName(e.target.value)}
+                        disabled={locked}
+                      />
+                    )}
+                    <label
+                      className={`flex items-center gap-2 text-sm ${
+                        existingVocabs.length ? 'cursor-pointer' : 'text-muted-foreground'
+                      }`}
                     >
-                      <option value="">Choose a lexicon…</option>
-                      {existingVocabs.map((v) => (
-                        <option key={v.id} value={v.id}>
-                          {v.name}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-xs text-muted-foreground">
-                      Entries are added to it and its existing fields stay as they are. Senses
-                      already imported from this FLEx project are reused, not duplicated.
-                    </p>
-                  </div>
+                      <input
+                        type="radio"
+                        name="flex-lexicon-mode"
+                        checked={lexiconMode === 'existing'}
+                        disabled={locked || existingVocabs.length === 0}
+                        onChange={() => setLexiconMode('existing')}
+                      />
+                      Add to a lexicon you maintain
+                      {existingVocabs.length === 0 && (
+                        <span className="text-xs">(none available)</span>
+                      )}
+                    </label>
+                    {lexiconMode === 'existing' && (
+                      <div className="ml-6 flex flex-col gap-1.5">
+                        <select
+                          id="flex-lexicon-existing"
+                          aria-label="Existing lexicon"
+                          className="h-9 max-w-md rounded-md border border-input bg-background px-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                          value={existingVocabId}
+                          disabled={locked}
+                          onChange={(e) => setExistingVocabId(e.target.value)}
+                        >
+                          <option value="">Choose a lexicon…</option>
+                          {existingVocabs.map((v) => (
+                            <option key={v.id} value={v.id}>
+                              {v.name}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-xs text-muted-foreground">
+                          Entries are added to it and its existing fields stay as they are. Senses
+                          already imported from this FLEx project are reused, not duplicated.
+                        </p>
+                      </div>
+                    )}
+                  </>
                 )}
                 <p className="mt-1 text-xs text-muted-foreground">
                   Senses are kept under their entry, in FLEx order.

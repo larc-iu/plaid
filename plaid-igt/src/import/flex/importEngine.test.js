@@ -685,7 +685,8 @@ describe('runImport', () => {
     const last = client.calls[client.calls.length - 1];
     expect(last.kind).toBe('documents.setMetadata');
     expect(last.args.body).toMatchObject({
-      flexImported: true,
+      importDone: true,
+      importSource: 'g-doc1',
       Source: 'Rosa',
       Genre: 'Folktale',
       'Title (en)': 'The Tale',
@@ -694,7 +695,8 @@ describe('runImport', () => {
 
   it('skips done documents and redoes half-imported ones', async () => {
     client = makeFakeClient({
-      existingDocs: [{ id: 'doc-old', name: '01 Мах', metadata: {} }], // no done marker
+      // Stamped with the text's guid but not marked done.
+      existingDocs: [{ id: 'doc-old', name: '01 Мах', metadata: { importSource: 'g-doc1' } }],
     });
     const results = await runImport({
       client,
@@ -708,7 +710,9 @@ describe('runImport', () => {
     expect(client.calls.some((c) => c.kind === 'documents.delete')).toBe(true);
 
     client = makeFakeClient({
-      existingDocs: [{ id: 'doc-old', name: '01 Мах', metadata: { flexImported: true } }],
+      existingDocs: [
+        { id: 'doc-old', name: '01 Мах', metadata: { importSource: 'g-doc1', importDone: true } },
+      ],
     });
     const results2 = await runImport({
       client,

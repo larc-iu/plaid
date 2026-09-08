@@ -173,10 +173,11 @@ export const readInitialized = (config) => readIgt(config, 'initialized') === tr
 /**
  * An import writes this on the project it is filling and removes it when it
  * finishes, so a project whose import was cancelled, lost or closed is not
- * mistaken for a complete one: `{kind, source, startedAt}`, `kind` being the
- * format ('FLEx', 'CLDF', 'ELAN', 'Plaid IGT archive') and `source` the file
- * it was reading. Every importer resumes, so the way to clear it is to run the
- * same import again.
+ * mistaken for a complete one: `{kind, source, vocabId, startedAt}`, `kind`
+ * being the format ('FLEx', 'CLDF', 'ELAN', 'Plaid IGT archive'), `source` the
+ * file it was reading and `vocabId` the lexicon it writes into once known.
+ * Every importer resumes, so the way to clear it is to run the same import
+ * again.
  */
 export const IMPORT_KEY = 'import';
 export const readImportState = (config) => readIgt(config, IMPORT_KEY) ?? null;
@@ -213,12 +214,17 @@ export const importRouteFor = (kind) =>
     'Plaid IGT archive': '/projects/import-archive',
   })[kind] ?? null;
 
-/** Record that it finished. */
+/**
+ * Record that it finished. Says whether the record went, since a project
+ * that keeps it goes on opening the import wizard rather than itself.
+ */
 export const markImportFinished = async (client, projectId) => {
   try {
     await client.projects.deleteConfig(projectId, IGT_NAMESPACE, IMPORT_KEY);
+    return true;
   } catch (err) {
     console.error('Could not record the import as finished:', err);
+    return false;
   }
 };
 

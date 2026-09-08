@@ -18,7 +18,7 @@ describe('serializeDocumentNative', () => {
     expect(out.id).toBe('doc1');
     expect(out.version).toBe(7);
     expect(out.mediaFile).toBe('media/Doc One.wav');
-    expect(out.metadata).toEqual({ Source: 'notes', flexImported: true, custom: { k: 1 } });
+    expect(out.metadata).toEqual({ Source: 'notes', importDone: true, custom: { k: 1 } });
     expect(out.baseline).toEqual({
       textId: 'text1',
       body: 'perros corren. extra',

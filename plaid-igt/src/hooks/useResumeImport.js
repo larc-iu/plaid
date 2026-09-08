@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useConfirm } from '@/components/shared/ConfirmProvider';
 import { markImportFinished } from '@/domain/igtConfig';
+import { notifyError } from '@/utils/feedback';
 
 /**
  * The project an import is being run over again, named by `?resume=<id>` on an
@@ -16,21 +17,23 @@ import { markImportFinished } from '@/domain/igtConfig';
  * the lexicon's structure is filled in for the entries still missing it.
  *
  * `finishAsIs` is the other way out, for a partial import somebody decides is
- * enough: it drops the record and opens the project.
+ * enough: it drops the record and opens the project. `resumeProject` is the
+ * project as read, for what the record names (the lexicon it writes into).
  */
 export function useResumeImport(client) {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const confirm = useConfirm();
   const resumeId = params.get('resume');
-  const [resumeName, setResumeName] = useState(null);
+  const [resumeProject, setResumeProject] = useState(null);
+  const resumeName = resumeProject?.name ?? null;
   useEffect(() => {
     if (!resumeId) return undefined;
     let alive = true;
     client.projects
       .get(resumeId)
       .then((p) => {
-        if (alive) setResumeName(p?.name ?? null);
+        if (alive) setResumeProject(p ?? null);
       })
       .catch(() => {});
     return () => {
@@ -46,9 +49,12 @@ export function useResumeImport(client) {
       confirmLabel: 'Use it',
     });
     if (!ok) return;
-    await markImportFinished(client, resumeId);
+    if (!(await markImportFinished(client, resumeId))) {
+      notifyError('The import record could not be cleared.', 'Not finished');
+      return;
+    }
     navigate(`/projects/${resumeId}`, { replace: true });
   };
 
-  return { resumeId, resumeName, finishAsIs };
+  return { resumeId, resumeName, resumeProject, finishAsIs };
 }

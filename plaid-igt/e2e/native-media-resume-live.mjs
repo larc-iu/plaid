@@ -1,5 +1,5 @@
 // Live e2e (TEST_PLAN C8-04): native import whose media upload FAILS once.
-// The document must be left unmarked (metadata.nativeImported absent) so a
+// The document must be left unmarked (metadata.importDone absent) so a
 // re-import redoes it and recovers the media. Runs against the dev core.
 //   cd plaid-igt && node e2e/native-media-resume-live.mjs
 import { File } from 'node:buffer';
@@ -95,7 +95,7 @@ try {
   const docs1 = await client.projects.listDocuments(setupB.projectId);
   check(docs1.length === 1, 'one document after the first run', `${docs1.length}`);
   const d1 = await client.documents.get(docs1[0].id);
-  check(!d1.metadata?.nativeImported, 'document is left UNMARKED after the media failure');
+  check(!d1.metadata?.importDone, 'document is left UNMARKED after the media failure');
   const archiveB1 = await exportNative(setupB.projectId);
   check(!archiveB1.documents[0]?.mediaBytes, 'no media on the half-imported document');
 
@@ -105,7 +105,7 @@ try {
   const docs2 = await client.projects.listDocuments(setupB.projectId);
   check(docs2.length === 1, 'resume did not duplicate the document', `${docs2.length} docs`);
   const d2 = await client.documents.get(docs2[0].id);
-  check(!!d2.metadata?.nativeImported, 'document is marked imported after the resume');
+  check(!!d2.metadata?.importDone, 'document is marked imported after the resume');
   const archiveB2 = await exportNative(setupB.projectId);
   check(!!archiveB2.documents[0]?.mediaBytes, 'media recovered by the resume');
   check(

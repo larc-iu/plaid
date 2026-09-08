@@ -70,8 +70,16 @@ export const ImportNativeProject = () => {
           resumeProjectId: projectIdRef.current,
           setupData: deriveSetupData(archive.manifest, projectName.trim()),
           onProgress: (pct, msg) => setProgress({ label: msg, pct: pct * 0.15 }),
+          // The record goes on the project the moment it exists, so a setup
+          // that fails part way leaves a project that reopens this import.
           onProjectCreated: (id) => {
             projectIdRef.current = id;
+            markImportStarted(
+              client,
+              id,
+              'Plaid IGT archive',
+              archive.manifest?.project?.name ?? null,
+            );
           },
         });
         if (setup.failures.length > 0) throw new Error(setup.failures.join('. '));
@@ -108,7 +116,12 @@ export const ImportNativeProject = () => {
           }
         },
       });
-      await markImportFinished(client, projectIdRef.current);
+      if (!(await markImportFinished(client, projectIdRef.current))) {
+        notifyWarning(
+          'The import record could not be cleared, so the project still opens this import.',
+          'Import Complete',
+        );
+      }
       setResults(res);
       setStage('done');
       if (res.warnings.length) {

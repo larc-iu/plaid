@@ -188,7 +188,7 @@ export const ProjectDetail = () => {
     );
   }
 
-  if (unfinishedImport && (!canManage || importResumeTo)) {
+  if (unfinishedImport && !(canManage && importResumeTo)) {
     return (
       <div className="tw mx-auto max-w-5xl px-4 py-8">
         <h1 className="text-2xl font-bold tracking-tight">{project.name}</h1>

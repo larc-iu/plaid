@@ -574,7 +574,7 @@ describe('runNativeImport (full archive)', () => {
     expect(callsOf(client, 'documents.uploadMedia')[0][2]).toBe('Doc One.wav');
     const last = client.calls.at(-1);
     expect(last[0]).toBe('documents.setMetadata');
-    expect(last[2]).toMatchObject({ Source: 'notes', nativeImported: true });
+    expect(last[2]).toMatchObject({ Source: 'notes', importDone: true });
   });
 
   it('writes autoAnalysis config from the schema', async () => {
@@ -631,12 +631,14 @@ describe('runNativeImport (full archive)', () => {
 
   it('skips done documents and redoes half-imported ones on resume', async () => {
     const done = await run({
-      existingDocs: [{ id: 'old1', name: 'Doc One', metadata: { nativeImported: true } }],
+      existingDocs: [
+        { id: 'old1', name: 'Doc One', metadata: { importSource: 'doc1', importDone: true } },
+      ],
     });
     expect(done.result).toMatchObject({ imported: 0, skipped: 1, redone: 0 });
 
     const half = await run({
-      existingDocs: [{ id: 'old1', name: 'Doc One', metadata: {} }],
+      existingDocs: [{ id: 'old1', name: 'Doc One', metadata: { importSource: 'doc1' } }],
     });
     expect(half.result).toMatchObject({ imported: 1, skipped: 0, redone: 1 });
     expect(callsOf(half.client, 'documents.delete')[0][1]).toBe('old1');
@@ -822,7 +824,7 @@ describe('planVocabRelink — a dictionary survives the round trip', () => {
         {
           id: 'srv-doc',
           name: 'Doc One',
-          metadata: { nativeImported: true },
+          metadata: { importSource: 'doc1', importDone: true },
           // The server's copy of it, with ids of its own.
           textLayers: [
             {

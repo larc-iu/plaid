@@ -5,15 +5,17 @@
 // deriveSetupData and runs the normal setup), and this engine runs AFTER setup
 // against the resolved project.
 //
-// Resumability follows the same scheme: a document is marked done
-// (metadata.elanImported) only once every write for it succeeded, so on resume
-// finished documents are skipped and half-imported ones are deleted and redone.
+// Resumability follows the same scheme (see ../resume.js): a document is
+// stamped with its .eaf file name and marked done only once every write for it
+// succeeded, so on resume finished documents are skipped and half-imported ones
+// are deleted and redone.
 //
 // The one thing this engine writes that the others do not is the time-alignment
 // layer: a token per aligned segment carrying {timeBegin, timeEnd, speaker} in
 // seconds, which is the whole reason an ELAN corpus is worth importing as such
 // rather than as plain text.
 
+import { ImportCancelled, importStamp, priorImports, settlePrior } from '../resume.js';
 import {
   findBaselineTextLayer,
   findSentenceTokenLayer,
@@ -27,14 +29,8 @@ import {
 // single SQLite write lock for its whole duration, so this bounds how long
 // another writer can be made to wait, not just how many round trips we make.
 const CHUNK = 500;
-const DONE_KEY = 'elanImported';
 
-export class ImportCancelled extends Error {
-  constructor() {
-    super('Import cancelled');
-    this.name = 'ImportCancelled';
-  }
-}
+export { ImportCancelled };
 
 async function bulkInChunks(items, check, send) {
   const ids = [];
@@ -123,7 +119,11 @@ export async function importDocument({
   const spanLayerFor = (scope, name) => targets.spanLayerByScopeName.get(`${scope}:${name}`);
 
   progress('Creating document');
-  const created = await client.documents.create(projectId, doc.name, doc.metadata);
+  const created = await client.documents.create(
+    projectId,
+    doc.name,
+    importStamp(doc.metadata, doc.id),
+  );
   const docId = created.id ?? created;
 
   if (doc.body.length > 0) {
@@ -260,7 +260,7 @@ export async function importDocument({
   }
 
   // Marked LAST: resume treats an unmarked document as partial and redoes it.
-  await client.documents.setMetadata(docId, { ...doc.metadata, [DONE_KEY]: true });
+  await client.documents.setMetadata(docId, importStamp(doc.metadata, doc.id, true));
   return docId;
 }
 
@@ -285,9 +285,8 @@ async function runElanImportImpl({ client, projectId, build, onProgress, onWarni
   };
   for (const w of build.warnings) note(w);
 
-  // Resume bookkeeping: list existing documents once (auto-paginated).
-  const existing = await client.projects.listDocuments(projectId);
-  const byName = new Map(existing.map((d) => [d.name, d]));
+  // Resume bookkeeping: what an earlier run made, by .eaf file name.
+  const prior = await priorImports(client, projectId);
 
   const results = { imported: 0, skipped: 0, redone: 0 };
   for (let i = 0; i < build.documents.length; i += 1) {
@@ -300,16 +299,7 @@ async function runElanImportImpl({ client, projectId, build, onProgress, onWarni
       total: build.documents.length,
       step: 'Starting',
     });
-    const prior = byName.get(doc.name);
-    if (prior) {
-      const full = await client.documents.get(prior.id);
-      if (full.metadata?.[DONE_KEY]) {
-        results.skipped += 1;
-        continue;
-      }
-      await client.documents.delete(prior.id); // half-imported: redo cleanly
-      results.redone += 1;
-    }
+    if (!(await settlePrior(client, prior, doc.id, results))) continue;
     await importDocument({
       client,
       projectId,
