@@ -391,6 +391,16 @@ def _repair_says(before: dict, after: dict, view) -> str:
     return '; '.join(bits) or 'reference updated'
 
 
+
+def _name(view, it: dict) -> str:
+    """An entry the way a tool takes it back ("gam#2", "kwatha#1.2"), with its
+    gloss beside it so a reader knows which it is; the bare form when the
+    lexicon has no view to number it by."""
+    if view is None:
+        return entry_line(it)
+    gloss = (it.get('metadata') or {}).get('gloss')
+    return view.label(it['id']) + (f' ({gloss})' if isinstance(gloss, str) and gloss else '')
+
 def t_merge_entries(ws: Workspace, keep_form: Optional[str] = None, remove_form: Optional[str] = None,
                     lexicon: Optional[str] = None, keep_id: Optional[str] = None,
                     remove_id: Optional[str] = None, keep_gloss: Optional[str] = None,
@@ -410,8 +420,10 @@ def t_merge_entries(ws: Workspace, keep_form: Optional[str] = None, remove_form:
         raise ToolError(f'"{remove.get("form")}" is already being merged away or deleted in this plan')
     links = _links_to(ws, remove['id'])
     view = ws.view_of_item(remove['id'])
+    # Named the way a tool takes them back, so two entries spelled alike
+    # (the very pair a merge is for) read apart on the card.
     ws.add_op({'kind': 'merge_entries', 'keep_id': keep['id'], 'remove_id': remove['id'], 'links': links,
-               'label': f'Merge entry {entry_line(remove, view)} into {entry_line(keep, view)}: '
+               'label': f'Merge entry {_name(view, remove)} into {_name(view, keep)}: '
                         f'move {len(links)} link{"s" if len(links) != 1 else ""}, delete the former'})
     refs = _ref_repair_ops(ws, view, plan_merge_refs, keep['id'], [remove['id']])
     ws.add_ops(refs)
@@ -427,7 +439,7 @@ def t_delete_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Opt
     links = _links_to(ws, it['id'])
     view = ws.view_of_item(it['id'])
     ws.add_op({'kind': 'delete_entry', 'item_id': it['id'], 'links': [l['link_id'] for l in links],
-               'label': f'Delete entry {entry_line(it, view)} '
+               'label': f'Delete entry {_name(view, it)} '
                         f'({len(links)} link{"s" if len(links) != 1 else ""} removed)'})
     refs = _ref_repair_ops(ws, view, plan_delete_refs, [it['id']])
     ws.add_ops(refs)
@@ -445,8 +457,9 @@ def t_rename_entry(ws: Workspace, new_form: str, entry_form: Optional[str] = Non
     it = _existing(ws, entry_form, lexicon, entry_id, entry_gloss)
     if it.get('form') == new_form:
         return ws.planned_note(0)
+    view = ws.view_of_item(it['id'])
     ws.add_op({'kind': 'rename_entry', 'item_id': it['id'], 'form': new_form,
-               'label': f'Rename entry "{it.get("form")}" → "{new_form}"'})
+               'label': f'Rename entry {_name(view, it)} → "{new_form}"'})
     return ws.planned_note(1)
 
 

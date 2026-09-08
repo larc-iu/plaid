@@ -142,12 +142,12 @@ def test_lexicon_and_document_ops():
     assert '1 link(s) will move' in out
     assert w.ops[-1] == {'kind': 'merge_entries', 'keep_id': 'vi-ali', 'remove_id': 'vi-erg',
                          'links': [{'link_id': 'l-2', 'token_ids': ['m-1b']}],
-                         'label': 'Merge entry -di | type=suffix | gloss=ERG into Ali | gloss=Ali | pos=N: move 1 link, delete the former'}
+                         'label': 'Merge entry "-di" (ERG) into "Ali" (Ali): move 1 link, delete the former'}
     assert 'same entry' in call_tool(w, 'merge_entries', {'keep_id': 'vi-ali', 'remove_id': 'vi-ali'})
     call_tool(w, 'delete_entry', {'entry_id': 'vi-ali'})
     assert w.ops[-1]['kind'] == 'delete_entry' and w.ops[-1]['links'] == ['l-1']
     call_tool(w, 'rename_entry', {'entry_id': 'vi-gam', 'new_form': 'gam1'})
-    assert w.ops[-1] == {'kind': 'rename_entry', 'item_id': 'vi-gam', 'form': 'gam1', 'label': 'Rename entry "gam" → "gam1"'}
+    assert w.ops[-1] == {'kind': 'rename_entry', 'item_id': 'vi-gam', 'form': 'gam1', 'label': 'Rename entry "gam#1" (fish) → "gam1"'}
     call_tool(w, 'rename_document', {'document': 'Text 1', 'new_name': 'Text One'})
     assert w.ops[-1] == {'kind': 'rename_document', 'document_id': 'd1', 'name': 'Text One', 'label': 'Rename document "Text 1" → "Text One"'}
     assert call_tool(w, 'rename_document', {'document': 'Text 1', 'new_name': 'Text 1'}).startswith('Planned 0')

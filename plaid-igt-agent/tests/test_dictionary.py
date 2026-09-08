@@ -502,7 +502,8 @@ def test_order_homographs_renumbers_the_group():
     assert 'Planned 3 changes' in out
     by_id = {o['item_id']: o['patch'] for o in ops_of(w, 'set_entry_metadata')}
     assert by_id == {'h-none': {'homograph': 1}, 'h-early': {'homograph': 2}, 'h-late': {'homograph': 3}}
-    assert 'entry "x" (3) becomes number 1' in ops_of(w, 'set_entry_metadata')[0]['label']
+    # The STORED number is what the write changes; these carry none yet.
+    assert '"x#3": homograph number none → 1' in ops_of(w, 'set_entry_metadata')[0]['label']
 
 
 def test_order_homographs_checks_the_group_is_named_in_full():

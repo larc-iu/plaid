@@ -36,11 +36,15 @@
 
 (defn get-all-in-layer
   "Get all vocab items in a specific vocab layer, each with metadata
-  attached."
+  attached, in creation order. The order is load-bearing: plaid-igt numbers
+  the entries spelled alike, and the senses under an entry that carry no
+  order of their own, by their place in this list, and its exports write
+  those numbers. The table has no timestamp, so the rowid is the order."
   [db layer-id]
   (let [rows (psc/q db {:select [:*]
                         :from [:vocab_items]
-                        :where [:= :vocab_layer_id layer-id]})]
+                        :where [:= :vocab_layer_id layer-id]
+                        :order-by [:rowid]})]
     (mapv (fn [r]
             (let [item (row->vocab-item r)]
               (metadata/add-metadata-to-response db item "vocab-item" (:id r))))

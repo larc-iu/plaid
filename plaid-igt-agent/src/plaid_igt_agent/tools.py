@@ -38,7 +38,8 @@ _DOC_CACHE: 'OrderedDict[tuple, IgtDoc]' = OrderedDict()
 DOC_CACHE_SIZE = 400
 
 
-from .vocab import (RESERVED_ITEM_KEYS, FIELD_ITEM, FIELD_TEXT, SCOPE_ENTRY, SCOPE_SENSE,
+from .vocab import (
+    homograph_of,RESERVED_ITEM_KEYS, FIELD_ITEM, FIELD_TEXT, SCOPE_ENTRY, SCOPE_SENSE,
                     build_sense_tree, descendants_of, item_ref_fields, field_by_name,
                     is_reserved_field_name, parent_of, ref_ids, with_ref_ids, with_parent,
                     next_sense_order, plan_sense_set_number, all_examples, with_example_added,
@@ -220,8 +221,17 @@ class Workspace:
             suffix = hn.strip()
         g = (gloss or '').strip().casefold()
 
-        def has_gloss(meta):
-            return not g or any(isinstance(v, str) and v.strip().casefold() == g for v in (meta or {}).values())
+        def has_gloss(meta, view=None):
+            # A value one of the entry's FIELDS holds: never the morph type, the
+            # provenance or a structural key, which are not what a user quotes.
+            # An entry this plan is adding has no view yet, so its own keys
+            # stand in for the schema.
+            if not g:
+                return True
+            names = ([f['name'] for f in fields_for_item(view.fields, {'metadata': meta})] if view is not None
+                     else [k for k in (meta or {})
+                           if k not in RESERVED_ITEM_KEYS and k != 'morphType' and not k.startswith('prov')])
+            return any(isinstance((meta or {}).get(n), str) and meta[n].strip().casefold() == g for n in names)
         # With a gloss to go on, the senses are searched too: a bare form means
         # the entry, but the value that tells two apart is usually a sense's.
         hits = [(v, it) for v in vocabs
@@ -558,12 +568,17 @@ def entry_line(it: dict, view: Optional[LexView] = None) -> str:
     are left out here and said in words instead when a view is at hand."""
     meta = it.get('metadata') or {}
     parts = [it.get('form') or '']
-    if view is not None and view.is_sense(it['id']):
+    # An entry this plan is creating has no id yet: it is placed by its
+    # metadata alone, and its references still read as the entries they name.
+    placed = view is not None and bool(it.get('id'))
+    if placed and view.is_sense(it['id']):
         parts.append(f'sense {view.number(it["id"])} of "{view.head_of(it["id"])}"')
     if meta.get('morphType'):
         parts.append(f'type={meta["morphType"]}')
     ref_names = {f['name'] for f in (view.ref_fields if view is not None else [])}
-    hidden = view.hidden_fields(it) if view is not None else set()
+    hidden = (view.hidden_fields(it) if placed
+              else {f['name'] for f in (view.fields if view is not None else [])}
+              - {f['name'] for f in fields_for_item(view.fields if view is not None else [], it)})
     for k, v in meta.items():
         if (k in RESERVED_ITEM_KEYS or k == 'morphType' or k in ref_names or k in hidden
                 or k.startswith('prov') or v in (None, '', [], {})):
@@ -576,7 +591,7 @@ def entry_line(it: dict, view: Optional[LexView] = None) -> str:
     n_ex = len(all_examples(it))
     if n_ex:
         parts.append(f'{n_ex} example{"s" if n_ex != 1 else ""}')
-    if view is not None:
+    if placed:
         n_s = len(view.tree.senses_of(it['id']))
         if n_s:
             parts.append(f'{n_s} sense{"s" if n_s != 1 else ""} below')
@@ -1032,7 +1047,10 @@ def t_lexicon_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Op
     if kind == 'new':
         e = ws.new_entries[target]
         return f'Entry "{e["form"]}" is new in this plan (not written yet): ' + entry_line({'form': e['form'], 'metadata': e['metadata']})
-    meta = target.get('metadata') or {}
+    # The plan's own copy of the entry, so a value set or an example promoted
+    # a moment ago reads back the same whether the entry was named by id or
+    # by form.
+    meta = _meta_of(ws, target)
     view = ws.view_of_item(target['id'])
     if view is not None:
         num = view.number(target['id'])
@@ -1107,7 +1125,9 @@ def _dictionary_lines(ws: Workspace, view: LexView, target: dict) -> List[str]:
             out.append(f'  {view.label(r["item"]["id"])} ({how})')
         if len(back) > 12:
             out.append(f'  ... {len(back) - 12} more')
-    exs = all_examples(target)
+    # The plan's own copy, so an example promoted a moment ago is listed
+    # (and numbered) the same whether the entry was named by id or by form.
+    exs = all_examples({'metadata': _meta_of(ws, target)})
     if exs:
         out.append(f'Usage examples ({len(exs)}):')
         for i, e in enumerate(exs):
@@ -1690,7 +1710,7 @@ def _create_entry(ws: Workspace, v: dict, form: str, fields: Optional[dict],
     ws.new_entries[key] = {'form': form, 'vocab_id': v['id'], 'metadata': metadata}
     what = (f'new sense of {view.label(parent["id"])} ' if parent is not None else 'new entry ')
     ws.add_op({'kind': 'create_entry', 'vocab_id': v['id'], 'form': form, 'metadata': metadata, 'key': key,
-               'label': f'{v["name"]}: ' + what + entry_line({'form': form, 'metadata': metadata})})
+               'label': f'{v["name"]}: ' + what + entry_line({'form': form, 'metadata': metadata}, view)})
     return ws.planned_note(1) + f'\nentry_id: {key}  (use it to link this entry in the same plan)'
 
 
@@ -1731,7 +1751,7 @@ def _hits_in(ws: Workspace, v: dict, form: str, suffix: Optional[str], has_gloss
              deep: bool = False) -> List[dict]:
     """The entries a form names in one lexicon, by that lexicon's own rules."""
     view = ws.view(v)
-    return [it for it in _dict_hits(view, form, suffix, deep) if has_gloss(it.get('metadata'))]
+    return [it for it in _dict_hits(view, form, suffix, deep) if has_gloss(it.get('metadata'), view)]
 
 
 def _resolve_ref(ws: Workspace, vocab: dict, field: dict, value: str, own_id: Optional[str]) -> str:
@@ -1748,7 +1768,7 @@ def _resolve_ref(ws: Workspace, vocab: dict, field: dict, value: str, own_id: Op
         if '#' in value:
             form, _, suffix = value.rpartition('#')
             suffix = suffix.strip()
-        hits = _hits_in(ws, vocab, form, suffix, lambda m: True)
+        hits = _hits_in(ws, vocab, form, suffix, lambda m, v: True)
         if not hits:
             raise ToolError(f'"{vocab["name"]}" has no entry "{value}" for {field["name"]} to refer to. '
                             'read_lexicon lists them, and a reference always names an entry of the same lexicon.')
@@ -1786,6 +1806,8 @@ def t_set_entry_field(ws: Workspace, field: str, value: str, entry_form: Optiona
                       lexicon: Optional[str] = None, entry_id: Optional[str] = None,
                       entry_gloss: Optional[str] = None) -> str:
     kind, target = ws.find_entry(entry_form, lexicon, entry_id, entry_gloss)
+    if kind == 'existing':
+        _refuse_doomed(ws, target['id'], 'take a value')
     vocab = (next((v for v in ws.project.vocabs if v['id'] == ws.new_entries[target]['vocab_id']), None)
              if kind == 'new' else ws.vocab_of_item(target['id']))
     f = lexicon_field(vocab, field) if vocab else {**_FREE_FIELD, 'name': field}
@@ -1847,14 +1869,20 @@ def _dict_entry(ws: Workspace, entry_form, lexicon, entry_id, entry_gloss, what:
     # is the list vocab_of_item scans, so the lookup lands.
     vocab = ws.vocab_of_item(target['id'])
     view = ws.view(vocab)
-    # A delete already planned takes the entry's senses and references with it,
-    # so anything hung on it afterwards would be written and then dropped.
+    _refuse_doomed(ws, target['id'], what)
+    return vocab, view, target
+
+
+def _refuse_doomed(ws: Workspace, item_id: str, what: str):
+    """A delete already planned takes the entry's senses and references with
+    it, so anything hung on it afterwards would be written and then dropped."""
     doomed = ({op['item_id'] for op in ws.ops if op.get('kind') == 'delete_entry'}
               | {op['remove_id'] for op in ws.ops if op.get('kind') == 'merge_entries'})
-    if target['id'] in doomed:
-        raise ToolError(f'{view.label(target["id"])} is deleted or merged away by this same plan, so it cannot '
+    if item_id in doomed:
+        view = ws.view_of_item(item_id)
+        name = view.label(item_id) if view else item_id
+        raise ToolError(f'{name} is deleted or merged away by this same plan, so it cannot '
                         f'{what}. Drop that change with drop_planned, or work on the entry that survives.')
-    return vocab, view, target
 
 
 def _meta_of(ws: Workspace, item: dict) -> dict:
@@ -1938,13 +1966,22 @@ def t_make_sense_of(ws: Workspace, under_form: Optional[str] = None, under_id: O
         raise ToolError(f'{under_view.label(under["id"])} is already below {view.label(target["id"])}, so moving '
                         'it there would make a loop. Free it first.')
     before = _meta_of(ws, target)
-    after = with_parent(before, under['id'], next_sense_order(view.tree, under['id']))
+    # Senses this same plan adds under the entry take the orders after its
+    # own, so two writes never claim one place.
+    planned = sum(1 for e in ws.new_entries.values()
+                  if (e.get('metadata') or {}).get('parent') == under['id'])
+    after = with_parent(before, under['id'], next_sense_order(view.tree, under['id']) + planned)
     if before.get('parent') == under['id']:
         return ws.planned_note(0) + f' {view.label(target["id"])} is already a sense of {view.label(under["id"])}.'
     kept = len(descendants_of(view.tree, target['id']))
+    # A headword-only field's value stays on the entry but is shown on a
+    # headword alone, so the card says which values go out of sight.
+    hidden = sorted(k for k in view.hidden_fields({**target, 'metadata': after})
+                    if before.get(k) not in (None, ''))
     ws.add_op(_meta_op(ws, target['id'], before, after,
                        f'{view.label(target["id"])} becomes a sense of {view.label(under["id"])}'
-                       + (f' (with {kept} below it)' if kept else '')))
+                       + (f' (with {kept} below it)' if kept else '')
+                       + (f'; {", ".join(hidden)} shown on a headword only' if hidden else '')))
     return ws.planned_note(1)
 
 
@@ -1996,9 +2033,12 @@ def t_order_homographs(ws: Workspace, order, entry_form: Optional[str] = None,
     for x in patches:
         item = view.tree.by_id[x['id']]
         before = _meta_of(ws, item)
-        was = view.number(x['id'])
+        # The STORED number, which is what changes: the number shown is the
+        # entry's place in the group, and the write is what puts it there.
+        was = homograph_of(item)
         ops.append(_meta_op(ws, x['id'], before, x['metadata'],
-                            f'entry "{item.get("form")}" ({was}) becomes number {x["metadata"]["homograph"]}'))
+                            f'{view.label(x["id"])}: homograph number {was if was is not None else "none"} → '
+                            f'{x["metadata"]["homograph"]}'))
     ws.add_ops(ops)
     return ws.planned_note(len(ops))
 
