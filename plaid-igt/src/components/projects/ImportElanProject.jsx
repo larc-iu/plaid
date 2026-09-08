@@ -34,8 +34,9 @@ import { useResumeImport } from '@/hooks/useResumeImport';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { partitionPicked, useElanBatch } from './elan/useElanBatch';
 import { ElanBuildSummary, ElanTierReview, SchemaMismatch } from './elan/ElanTierReview.jsx';
-import { ElanMediaPanel } from './elan/ElanMediaPanel.jsx';
 import { ElanDocumentsPanel } from './elan/ElanDocumentsPanel.jsx';
+import { ElanStagedFiles } from './elan/ElanStagedFiles.jsx';
+import { useMediaDurations } from './elan/useMediaDurations';
 import { useRecordingConversion } from './elan/useRecordingConversion';
 import { useServerLimits } from '@/hooks/useServerLimits';
 
@@ -55,12 +56,15 @@ export const ImportElanProject = () => {
   const batch = useElanBatch();
   const limits = useServerLimits();
   const conversion = useRecordingConversion(batch.setMediaFiles);
+  const durations = useMediaDurations(batch.mediaFiles);
   const { resumeId, resumeName, finishAsIs } = useResumeImport(client);
   const projectIdRef = useRef(resumeId || null);
   const setupDoneRef = useRef(false);
   const stopRef = useRef(false);
 
   const handleFiles = async (fileList) => {
+    // Cancelling the file dialog is not an error to report at someone.
+    if (!fileList || fileList.length === 0) return;
     // Recordings added from the review step carry no .eaf, and re-reading is
     // what would throw the tier mapping away.
     if (partitionPicked(fileList).eafs.length) setStage('parsing');
@@ -219,10 +223,11 @@ export const ImportElanProject = () => {
           >
             <Upload className="h-8 w-8 text-muted-foreground" />
             <p className="text-sm text-muted-foreground">
-              Drop your .eaf files here, or choose them below. Include the recordings to upload
-              those too.
+              Drop your .eaf files and their recordings here, or choose them below.
             </p>
-            <Button onClick={() => fileInputRef.current?.click()}>Choose files</Button>
+            <Button onClick={() => fileInputRef.current?.click()}>
+              Choose .eaf files and recordings
+            </Button>
           </div>
         )}
 
@@ -260,21 +265,23 @@ export const ImportElanProject = () => {
 
                 <ElanTierReview batch={batch} editable={editable} />
 
-                <ElanDocumentsPanel
-                  build={batch.build}
+                <ElanStagedFiles
+                  files={batch.files}
+                  mediaFiles={batch.mediaFiles}
+                  media={batch.media}
+                  durations={durations}
                   maxBytes={limits?.mediaFileBytes ?? null}
+                  editable={editable}
                   converting={conversion.converting}
-                  onAddRecordings={editable ? () => fileInputRef.current?.click() : null}
-                  onConvertRecordings={editable ? conversion.convertRecordings : null}
+                  onAddFiles={() => fileInputRef.current?.click()}
+                  onRemoveEaf={batch.removeEaf}
+                  onRemoveMedia={batch.removeMedia}
+                  onConvert={conversion.convertRecordings}
                 />
+
+                <ElanDocumentsPanel build={batch.build} />
 
                 <ElanBuildSummary batch={batch} />
-
-                <ElanMediaPanel
-                  media={batch.media}
-                  editable={editable}
-                  onRemove={(file) => batch.setMediaFiles((prev) => prev.filter((f) => f !== file))}
-                />
 
                 {runError && (
                   <Panel tone="error" icon={AlertTriangle} title="Import failed">

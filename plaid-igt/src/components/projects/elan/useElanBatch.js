@@ -104,7 +104,16 @@ export function useElanBatch({ skipEmptyTiers = false, namesFor = null } = {}) {
    */
   const readFiles = async (fileList) => {
     const { eafs, media: picked } = partitionPicked(fileList);
-    if (picked.length) setMediaFiles((prev) => [...prev, ...picked]);
+    // Picking the same recording twice (choosing again, or dragging a folder
+    // over one already staged) must not stage it twice: the second copy would
+    // find its .eaf already claimed and sit there reading "no .eaf names this
+    // file". Name and size is what identifies a picked file.
+    if (picked.length) {
+      setMediaFiles((prev) => {
+        const seen = new Set(prev.map((f) => `${f.name}:${f.size}`));
+        return [...prev, ...picked.filter((f) => !seen.has(`${f.name}:${f.size}`))];
+      });
+    }
     if (!eafs.length) {
       if (picked.length) return false; // media added to an existing batch
       throw new Error('Choose one or more .eaf files.');
@@ -117,6 +126,26 @@ export function useElanBatch({ skipEmptyTiers = false, namesFor = null } = {}) {
     setNearMissChoices({});
     applySchema(parsed, result);
     return true;
+  };
+
+  /**
+   * Drop one .eaf from the batch. The schema is re-derived from what is left,
+   * since a tier tree that only the removed file had is no longer part of it.
+   */
+  const removeEaf = (fileName) => {
+    const kept = (files || []).filter((f) => f.fileName !== fileName);
+    if (!kept.length) {
+      setFiles(null);
+      setComparison(null);
+      setNearMissGroups([]);
+      setNearMissChoices({});
+      return;
+    }
+    const result = compareSchemas(kept);
+    setFiles(kept);
+    setNearMissGroups(result.nearMisses);
+    setNearMissChoices({});
+    applySchema(kept, result);
   };
 
   const reset = () => {
@@ -142,6 +171,8 @@ export function useElanBatch({ skipEmptyTiers = false, namesFor = null } = {}) {
     nearMissChoices,
     undecidedNearMisses: nearMissGroups.filter((g) => !nearMissChoices[g.fold]),
     readFiles,
+    removeEaf,
+    removeMedia: (file) => setMediaFiles((prev) => prev.filter((f) => f !== file)),
     chooseNearMiss,
     setRole: (key, role) => setRoles((r) => ({ ...r, [key]: role })),
     setName: (key, name) => setFieldNames((n) => ({ ...n, [key]: name })),
