@@ -300,9 +300,10 @@ function senseXml(indent, item, ctx, index, tag = 'sense', children = []) {
 
 /**
  * An entry's LIFT id: its headword and the id of the item it is. The FLEx
- * guid is NOT used here, though it is the obvious candidate: a lexicon
- * imported without Lexicography Mode has one item per FLEx SENSE, so several
- * entries share a guid and would share an id, which LIFT does not allow. The
+ * guid is NOT used here, though it is the obvious candidate: a lexicon whose
+ * senses were never placed under their headword has one item per FLEx SENSE,
+ * so several entries share a guid and would share an id, which LIFT
+ * does not allow. The
  * guid still rides on the entry's `guid` attribute, which is what a FLEx
  * re-import merges on. Same formula in `assignLiftIds`.
  */

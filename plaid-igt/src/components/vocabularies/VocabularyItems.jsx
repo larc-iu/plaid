@@ -79,7 +79,6 @@ import {
 } from './DictionaryPanels';
 import { validateValue } from '@/domain/tagsets';
 import { TagsetField, changedValuesAllowed } from '@/components/shared/TagsetField.jsx';
-import { buildHomonymIndex } from '@/domain/vocabHomonyms';
 import { FormLabel } from './FormLabel';
 import { planItemConcordance, loadConcordanceGroups, sentenceTo } from './vocabConcordance';
 import { serializeVocabTsv } from '@/export/vocabTsv';
@@ -116,37 +115,6 @@ const metaEqual = (a, b) => {
   return ka.every((k) => String(ca[k]) === String(cb[k]));
 };
 
-// The example sentences a FLEx import stores outside the field schema
-// (metadata.examples is structured, so it is never a field column). A
-// dictionary vocabulary has its own Examples panel, which shows these too,
-// so it hides them here.
-const ImportedExtras = ({ metadata, showExamples = true }) => {
-  const examples =
-    showExamples && Array.isArray(metadata?.examples)
-      ? metadata.examples.filter((ex) => ex && ex.text)
-      : [];
-  if (!examples.length) return null;
-  return (
-    <div className="mt-4 flex flex-col gap-2 border-t pt-3 text-sm">
-      <div>
-        <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Examples
-        </p>
-        <ul className="flex flex-col gap-1.5">
-          {examples.map((ex, i) => (
-            <li key={i}>
-              <span>{ex.text}</span>
-              {ex.translation && (
-                <span className="block text-muted-foreground">{ex.translation}</span>
-              )}
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
-  );
-};
-
 // A titled band of the entry form. The grid is three across when the pane is
 // wide, so a lexicon's dozen fields fit on one screen. Module-level, so a
 // keystroke in a field does not remount the band it sits in.
@@ -177,7 +145,6 @@ export const VocabularyItems = ({
   canManage = true,
   comments = null,
   canComment = false,
-  dictionary = false,
 }) => {
   // Prefix for the detail editor's input ids, so every label addresses its own
   // field (clicking the label focuses it) even with another copy on the page.
@@ -276,25 +243,20 @@ export const VocabularyItems = ({
 
   const fieldNames = useMemo(() => fields.map((f) => f.name), [fields]);
   const hasGloss = useMemo(() => fields.some((f) => f.name === 'gloss'), [fields]);
-  // How entries are told apart: dotted numbers in Lexicography Mode ("a 1.2"),
-  // homonym subscripts (a₂) otherwise. Same map, either way, wherever an
+  // How entries are told apart: the dotted number ("a 1.2"), used wherever an
   // entry is named.
-  const homonyms = useMemo(
-    () => (dictionary ? buildItemNumbers(items) : buildHomonymIndex(items)),
-    [items, dictionary],
-  );
-  // The sense tree, and whether the list draws it. Only a dictionary has one.
+  const numbers = useMemo(() => buildItemNumbers(items), [items]);
+  // The sense tree, and whether the list draws it.
   const tree = useMemo(() => buildSenseTree(items), [items]);
   // `?parent=` as the lexicon actually has it. A stale id (the entry was
   // deleted, or the link was pasted) names nothing, and the new entry is
   // written as a headword, so every reader of it agrees on that.
-  const liveNewParent = dictionary && newParent && tree.byId.has(newParent) ? newParent : null;
-  const [treeViewPref, setTreeView] = useStickyState(
+  const liveNewParent = newParent && tree.byId.has(newParent) ? newParent : null;
+  const [treeView, setTreeView] = useStickyState(
     listPrefKey('view', 'vocab-items', vocabularyId),
-    dictionary,
+    true,
     (v) => typeof v === 'boolean',
   );
-  const treeView = dictionary && treeViewPref;
 
   // field name -> the tagset governing it, the vocabulary's own (see
   // vocabFields.js). Everything below that judges a value asks this.
@@ -860,8 +822,8 @@ export const VocabularyItems = ({
   // homograph dialog: their numbers are written 1..n under one operation.
   const [homographOpen, setHomographOpen] = useState(false);
   const homographs = useMemo(
-    () => (dictionary && selectedItem ? homographGroup(items, selectedItem.id) : []),
-    [dictionary, items, selectedItem],
+    () => (selectedItem ? homographGroup(items, selectedItem.id) : []),
+    [items, selectedItem],
   );
   const handleHomographOrder = async (orderedIds) => {
     const patches = planHomographOrder(homographs, orderedIds);
@@ -911,10 +873,8 @@ export const VocabularyItems = ({
       fieldNames,
       fieldLabels: fields.map(fieldLabel),
       usageCounts,
-      // A reference reads as the entry it names in any mode. Only the dotted
-      // numbering needs Lexicography Mode.
       refFields: fields.filter((f) => f.type === FIELD_TYPES.ITEM).map((f) => f.name),
-      ...(dictionary ? { numbers: homonyms } : {}),
+      numbers,
     });
     downloadBlob(
       `${sanitizeFilename(vocabulary?.name || 'vocabulary')}.tsv`,
@@ -931,7 +891,7 @@ export const VocabularyItems = ({
     const nameOf = (id) => {
       const target = byId.get(id);
       if (!target) return '';
-      const n = homonyms?.get?.(id);
+      const n = numbers?.get?.(id);
       return typeof n === 'string' && n ? `${target.form} ${n}` : (target.form ?? '');
     };
     return (item, name) => {
@@ -939,7 +899,7 @@ export const VocabularyItems = ({
       const v = item.metadata?.[name];
       return (Array.isArray(v) ? v : v ? [v] : []).map(nameOf).filter(Boolean).join(' ');
     };
-  }, [fields, items, homonyms]);
+  }, [fields, items, numbers]);
 
   // ---- left list (search + column sort) ----
   const filteredItems = useMemo(
@@ -953,7 +913,7 @@ export const VocabularyItems = ({
           textOf: searchTextOf,
         }),
         sort,
-        { homonyms, usageCounts },
+        { numbers, usageCounts },
       ),
     [
       items,
@@ -962,7 +922,7 @@ export const VocabularyItems = ({
       emptyOnly,
       fieldNames,
       searchTextOf,
-      homonyms,
+      numbers,
       usageCounts,
       sort,
       offTagsetOnly,
@@ -1053,7 +1013,7 @@ export const VocabularyItems = ({
             values={values}
             onChange={onChange}
             items={items}
-            homonyms={homonyms}
+            numbers={numbers}
             itemTo={itemTo}
             selfId={isNew ? null : selectedId}
             disabled={disabled}
@@ -1104,27 +1064,23 @@ export const VocabularyItems = ({
   };
 
   // The fields the open entry shows (an entry-only field is left off a
-  // sense's form), in the form's groups: built-ins, custom, references. A
-  // dictionary's status field is lifted out to the header.
+  // sense's form), in the form's groups: built-ins, custom, references. The
+  // status field is lifted out to the header.
   const formGroups = useMemo(
     () =>
       groupFieldsForForm(
         // The draft carries no structure, so the entry's own place (or the
         // parent a new sense is being written under) says which fields show.
-        fieldsForItem(
-          fields,
-          {
-            metadata: isNew
-              ? liveNewParent
-                ? { parent: liveNewParent }
-                : {}
-              : reservedMetadata(selectedItem?.metadata),
-          },
-          dictionary,
-        ),
-        { statusField: dictionary ? STATUS_FIELD : null },
+        fieldsForItem(fields, {
+          metadata: isNew
+            ? liveNewParent
+              ? { parent: liveNewParent }
+              : {}
+            : reservedMetadata(selectedItem?.metadata),
+        }),
+        { statusField: STATUS_FIELD },
       ),
-    [fields, isNew, liveNewParent, selectedItem, dictionary],
+    [fields, isNew, liveNewParent, selectedItem],
   );
 
   // The entry card: the form and its bands. On the Entry tab, and on its own
@@ -1137,17 +1093,17 @@ export const VocabularyItems = ({
           <h3 className="text-base font-semibold">
             {isNew ? (
               'New entry'
-            ) : dictionary && homographs.length > 1 && !tree.parentOf.get(selectedId) ? (
+            ) : homographs.length > 1 && !tree.parentOf.get(selectedId) ? (
               <>
                 {selectedItem?.form ?? ''}
                 <HomographNumber
-                  number={homonyms.get(selectedItem?.id)}
+                  number={numbers.get(selectedItem?.id)}
                   onOpen={() => setHomographOpen(true)}
                   className="ml-1 text-[0.85em] font-normal"
                 />
               </>
             ) : (
-              <FormLabel form={selectedItem?.form ?? ''} index={homonyms.get(selectedItem?.id)} />
+              <FormLabel form={selectedItem?.form ?? ''} index={numbers.get(selectedItem?.id)} />
             )}
           </h3>
           {formGroups.status && (
@@ -1191,13 +1147,13 @@ export const VocabularyItems = ({
           )}
         </div>
 
-        {dictionary && !isNew && selectedItem && (
+        {!isNew && selectedItem && (
           <div className="mb-3">
             <EntryPlace
               item={selectedItem}
               tree={tree}
               items={items}
-              homonyms={homonyms}
+              numbers={numbers}
               itemTo={itemTo}
               canManage={canManage}
               onMoveUnder={handleMoveUnder}
@@ -1251,10 +1207,6 @@ export const VocabularyItems = ({
             </FormGroup>
           )}
         </div>
-        {!isNew && selectedItem && (
-          <ImportedExtras metadata={selectedItem.metadata} showExamples={!dictionary} />
-        )}
-
         {canManage && (
           <div className="mt-4 flex items-center justify-between">
             <div>
@@ -1355,34 +1307,32 @@ export const VocabularyItems = ({
                 <ListCount shown={filteredItems.length} total={items.length} noun="entry" />
               )}
             </div>
-            {dictionary && (
-              <div className="flex items-center gap-1" role="group" aria-label="View">
-                <button
-                  type="button"
-                  aria-pressed={!treeView}
-                  title="Every entry in one list"
-                  onClick={() => setTreeView(false)}
-                  className={cn(
-                    'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground',
-                    !treeView && 'bg-accent text-foreground',
-                  )}
-                >
-                  <List className="h-3.5 w-3.5" /> Flat
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={treeView}
-                  title="Senses under their entry"
-                  onClick={() => setTreeView(true)}
-                  className={cn(
-                    'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground',
-                    treeView && 'bg-accent text-foreground',
-                  )}
-                >
-                  <ListTree className="h-3.5 w-3.5" /> By entry
-                </button>
-              </div>
-            )}
+            <div className="flex items-center gap-1" role="group" aria-label="View">
+              <button
+                type="button"
+                aria-pressed={!treeView}
+                title="Every entry in one list"
+                onClick={() => setTreeView(false)}
+                className={cn(
+                  'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground',
+                  !treeView && 'bg-accent text-foreground',
+                )}
+              >
+                <List className="h-3.5 w-3.5" /> Flat
+              </button>
+              <button
+                type="button"
+                aria-pressed={treeView}
+                title="Senses under their entry"
+                onClick={() => setTreeView(true)}
+                className={cn(
+                  'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground',
+                  treeView && 'bg-accent text-foreground',
+                )}
+              >
+                <ListTree className="h-3.5 w-3.5" /> By entry
+              </button>
+            </div>
             {emptyField && emptyCount > 0 && (
               <button
                 type="button"
@@ -1469,7 +1419,7 @@ export const VocabularyItems = ({
                       <span className="flex min-w-0 items-center gap-1.5">
                         <FormLabel
                           form={item.form}
-                          index={homonyms.get(item.id)}
+                          index={numbers.get(item.id)}
                           className="truncate font-medium"
                         />
                         {(comments?.countFor(item.id) ?? 0) > 0 && (
@@ -1575,7 +1525,7 @@ export const VocabularyItems = ({
               <TabsContent value="entry">
                 <div className="flex flex-col gap-4">
                   {entryEditor}
-                  {dictionary && !isNew && selectedItem && (
+                  {!isNew && selectedItem && (
                     <>
                       <ExamplesPanel
                         item={selectedItem}
@@ -1588,7 +1538,7 @@ export const VocabularyItems = ({
                         item={selectedItem}
                         items={items}
                         fields={fields}
-                        homonyms={homonyms}
+                        numbers={numbers}
                         itemTo={itemTo}
                       />
                     </>
@@ -1653,7 +1603,7 @@ export const VocabularyItems = ({
                                       row={row}
                                       to={sentenceTo(g.projectId, g.docId, row.sentenceId)}
                                     />
-                                    {dictionary && canManage && tokenId && (
+                                    {canManage && tokenId && (
                                       <button
                                         type="button"
                                         disabled={chosen}
@@ -1734,7 +1684,7 @@ export const VocabularyItems = ({
           )}
         </div>
 
-        {dictionary && homographs.length > 1 && (
+        {homographs.length > 1 && (
           <HomographDialog
             open={homographOpen}
             onOpenChange={setHomographOpen}
@@ -1752,7 +1702,6 @@ export const VocabularyItems = ({
           fields={fields}
           tagsetFor={tagsetFor}
           existingItems={items}
-          dictionary={dictionary}
           client={client}
           onImported={handleImported}
         />
@@ -1764,7 +1713,7 @@ export const VocabularyItems = ({
           fields={fields}
           tagsetFor={tagsetFor}
           items={items}
-          homonyms={homonyms}
+          numbers={numbers}
           client={client}
           onApplied={handleImported}
         />
@@ -1807,11 +1756,8 @@ export const VocabularyItems = ({
                           {deleteRefPatches.length} entr
                           {deleteRefPatches.length === 1 ? 'y' : 'ies'}
                         </strong>{' '}
-                        {deleteRefPatches.length === 1 ? 'refers' : 'refer'} to it.{' '}
-                        {dictionary
-                          ? 'Its senses become entries of their own, and those '
-                          : 'Those '}
-                        references are removed.{' '}
+                        {deleteRefPatches.length === 1 ? 'refers' : 'refer'} to it. Its senses
+                        become entries of their own, and those references are removed.{' '}
                       </>
                     )}
                     This action cannot be undone.

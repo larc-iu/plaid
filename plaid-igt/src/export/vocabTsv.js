@@ -8,10 +8,10 @@ export const tsvCell = (v) => String(v ?? '').replace(/[\t\r\n]+/g, ' ');
  * columns; fieldLabels: optional display names for the header (parallel to
  * fieldNames); usageCounts: { [itemId]: n } or null to omit the Uses column.
  *
- * A dictionary vocabulary passes `numbers` (item id -> its dotted number,
- * see buildItemNumbers) and gets a Number column after the form, and
- * `refFields` (the names of its Entry fields) so those cells hold the
- * referenced entry's name ("a 1.2") rather than an id.
+ * `numbers` (item id -> its dotted number, see buildItemNumbers) makes
+ * `refFields` (the names of the Entry fields) hold the referenced entry's
+ * name ("a 1.2") rather than an id, and adds a Number column after the form
+ * when anything is actually numbered.
  */
 export function serializeVocabTsv({
   items,
@@ -34,13 +34,16 @@ export function serializeVocabTsv({
     if (!refs.has(f)) return v ?? '';
     return (Array.isArray(v) ? v : v ? [v] : []).map(nameOf).filter(Boolean).join('; ');
   };
-  const header = ['Form', ...(numbers ? ['Number'] : []), ...(fieldLabels ?? fieldNames)];
+  // The Number column earns its place only when something carries a number: a
+  // vocabulary with no senses and no two entries spelled alike numbers nothing.
+  const numbered = !!numbers && (items || []).some((it) => numbers.get(it.id));
+  const header = ['Form', ...(numbered ? ['Number'] : []), ...(fieldLabels ?? fieldNames)];
   if (usageCounts) header.push('Uses');
   const lines = [header.map(tsvCell).join('\t')];
   for (const it of items || []) {
     const row = [
       it.form,
-      ...(numbers ? [numbers.get(it.id) ?? ''] : []),
+      ...(numbered ? [numbers.get(it.id) ?? ''] : []),
       ...fieldNames.map((f) => cell(it, f)),
     ];
     if (usageCounts) row.push(usageCounts[it.id] ?? 0);

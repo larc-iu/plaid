@@ -19,9 +19,7 @@
 // `type` is what a field holds: `text` (the default) or `item`, a reference
 // to another entry of the same vocabulary (`many` makes it a list of them).
 // `scope` says whether the field belongs to the ENTRY (shown on a headword
-// only) or to every SENSE (the default). Both only matter to a vocabulary
-// with the Dictionary switch on (see vocabDictionary.js); a vocabulary
-// without it never shows the controls that set them.
+// only) or to every SENSE (the default). See vocabDictionary.js.
 //
 // Some fields are immutable — they can never be removed, because the app relies
 // on them: `morphType` for rendering (affix joiners + the stem accent; see

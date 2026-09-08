@@ -107,21 +107,21 @@ describe('sortVocabItems', () => {
     { id: 'p1', form: 'perro', metadata: { gloss: 'dog' } },
     { id: 'x', form: 'ave' },
   ];
-  const homonyms = new Map([
-    ['p1', 1],
-    ['p2', 2],
+  const numbers = new Map([
+    ['p1', '1'],
+    ['p2', '2'],
   ]);
   const usageCounts = { p1: 3, g: 10, x: 0 };
   const ids = (list) => list.map((it) => it.id);
 
-  it('sorts by form, case-insensitively, homonyms in subscript order', () => {
-    expect(ids(sortVocabItems(rows, { key: 'form', dir: 'asc' }, { homonyms }))).toEqual([
+  it('sorts by form, case-insensitively, entries alike in number order', () => {
+    expect(ids(sortVocabItems(rows, { key: 'form', dir: 'asc' }, { numbers }))).toEqual([
       'x',
       'g',
       'p1',
       'p2',
     ]);
-    expect(ids(sortVocabItems(rows, { key: 'form', dir: 'desc' }, { homonyms }))).toEqual([
+    expect(ids(sortVocabItems(rows, { key: 'form', dir: 'desc' }, { numbers }))).toEqual([
       'p2',
       'p1',
       'g',
@@ -130,13 +130,13 @@ describe('sortVocabItems', () => {
   });
 
   it('sorts by gloss, with the unglossed last either way', () => {
-    expect(ids(sortVocabItems(rows, { key: 'gloss', dir: 'asc' }, { homonyms }))).toEqual([
+    expect(ids(sortVocabItems(rows, { key: 'gloss', dir: 'asc' }, { numbers }))).toEqual([
       'g',
       'p1',
       'p2',
       'x',
     ]);
-    expect(ids(sortVocabItems(rows, { key: 'gloss', dir: 'desc' }, { homonyms }))).toEqual([
+    expect(ids(sortVocabItems(rows, { key: 'gloss', dir: 'desc' }, { numbers }))).toEqual([
       'p2',
       'p1',
       'g',
@@ -146,16 +146,16 @@ describe('sortVocabItems', () => {
 
   it('sorts by uses, an unknown count as zero, ties by form', () => {
     expect(
-      ids(sortVocabItems(rows, { key: 'uses', dir: 'desc' }, { homonyms, usageCounts })),
+      ids(sortVocabItems(rows, { key: 'uses', dir: 'desc' }, { numbers, usageCounts })),
     ).toEqual(['g', 'p1', 'x', 'p2']);
     expect(
-      ids(sortVocabItems(rows, { key: 'uses', dir: 'asc' }, { homonyms, usageCounts })),
+      ids(sortVocabItems(rows, { key: 'uses', dir: 'asc' }, { numbers, usageCounts })),
     ).toEqual(['x', 'p2', 'p1', 'g']);
   });
 
   it('falls back to the form for an unknown column, and never mutates its input', () => {
     const copy = [...rows];
-    expect(ids(sortVocabItems(rows, { key: 'nope', dir: 'asc' }, { homonyms }))).toEqual([
+    expect(ids(sortVocabItems(rows, { key: 'nope', dir: 'asc' }, { numbers }))).toEqual([
       'x',
       'g',
       'p1',

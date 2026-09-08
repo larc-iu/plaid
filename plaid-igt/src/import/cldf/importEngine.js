@@ -12,7 +12,6 @@
 // doubles as provenance back to the source dataset.
 
 import { documentProgress } from '../progress.js';
-import { readDictionaryEnabled } from '../../domain/vocabDictionary.js';
 import { isReservedFieldName } from '../../domain/vocabFields.js';
 import {
   IGT_NAMESPACE,
@@ -49,18 +48,8 @@ async function bulkInChunks(items, check, send) {
   return ids;
 }
 
-/**
- * The setup-wizard input derived from a build. The vocabulary is always set up
- * as a dictionary (see executeSetup): a CLDF lexicon is entries with senses,
- * and importing it flat throws that away and leaves several entries carrying
- * one headword with nothing to tell them apart. `dictionary` stays an argument
- * for a test that wants the flat shape.
- */
-export function deriveSetupData(
-  build,
-  projectName,
-  { vocabularyName = 'Lexicon', dictionary = true } = {},
-) {
+/** The setup-wizard input derived from a build. */
+export function deriveSetupData(build, projectName, { vocabularyName = 'Lexicon' } = {}) {
   return {
     basicInfo: { projectName },
     orthographies: {
@@ -80,7 +69,6 @@ export function deriveSetupData(
               name: vocabularyName,
               enabled: true,
               isCustom: true,
-              dictionary: dictionary === true,
             },
           ]
         : [],
@@ -132,19 +120,14 @@ export function resolveTargets(project, build) {
  * Import the lexicon as vocabulary items. Returns Map<cldfEntryId, itemId>.
  * Resume-safe: items already stamped with a matching entry id are reused.
  *
- * In Lexicography Mode a CLDF entry with more than one sense becomes a
- * headword with its senses under it, as the FLEx import does; with one sense,
- * the sense IS the entry. Without it the senses stay folded into the entry's
- * gloss and definition, which is all a flat vocabulary can hold.
+ * A CLDF entry with more than one sense becomes a headword with its senses
+ * under it, as the FLEx import does; with one sense, the sense IS the entry.
  */
 export async function importLexicon({ client, vocabId, lexicon, onProgress, shouldStop }) {
   const check = () => {
     if (shouldStop?.()) throw new ImportCancelled();
   };
   const existing = await client.vocabLayers.get(vocabId, true);
-  // The vocabulary itself says whether it is in Lexicography Mode: project
-  // setup turned the switch on (or not) before this ran.
-  const dictionary = readDictionaryEnabled(existing.config);
   const byEntry = new Map();
   for (const item of existing.items || []) {
     const key = item.metadata?.[ITEM_SOURCE_KEY];
@@ -159,7 +142,7 @@ export async function importLexicon({ client, vocabId, lexicon, onProgress, shou
   const places = [];
   const senseKey = (entry, sense) => `${entry.id}/${sense.id}`;
   for (const entry of lexicon) {
-    const split = dictionary && (entry.senses?.length ?? 0) > 1;
+    const split = (entry.senses?.length ?? 0) > 1;
     if (split) {
       for (const [i, sense] of entry.senses.entries()) {
         places.push({ key: senseKey(entry, sense), parentKey: entry.id, senseOrder: i + 1 });
@@ -246,8 +229,9 @@ export async function importLexicon({ client, vocabId, lexicon, onProgress, shou
 
   // The vocab's field schema drives the management table and the item modal.
   // MERGED into what the vocabulary already declares, never written over it:
-  // project setup puts the Status field there when it makes a dictionary, and
-  // a vocabulary being added to keeps its own fields, order and inline flags.
+  // project setup puts the Status field there when it makes the vocabulary,
+  // and a vocabulary being added to keeps its own fields, order and inline
+  // flags.
   const fieldsConfig = { ...(readVocabFields(existing.config) ?? {}) };
   for (const name of fieldKeys) {
     if (name in fieldsConfig) continue;

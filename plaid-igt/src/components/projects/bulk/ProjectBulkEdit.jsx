@@ -28,8 +28,7 @@ import {
 import { cn } from '@/lib/utils';
 import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
-import { buildHomonymIndex } from '@/domain/vocabHomonyms';
-import { buildItemNumbers, readDictionaryEnabled } from '@/domain/vocabDictionary';
+import { buildItemNumbers } from '@/domain/vocabDictionary';
 import { FormLabel } from '@/components/vocabularies/FormLabel';
 import { normalizeVocabFields, humanizeFieldName } from '@/domain/vocabFields';
 import { planMergeRefs } from '@/domain/vocabDictionary';
@@ -1019,7 +1018,6 @@ const MergePanel = ({ project, client }) => {
       .then((layer) => {
         if (cancelled) return;
         setItems(layer.items || []);
-        setVocabConfig(layer.config || {});
         setFields(normalizeVocabFields(readVocabFields(layer.config)));
       })
       .catch((err) => {
@@ -1032,16 +1030,7 @@ const MergePanel = ({ project, client }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vocabId, client]);
 
-  const [vocabConfig, setVocabConfig] = useState(null);
-  // Entries are named the vocabulary's own way: dotted numbers in
-  // Lexicography Mode, homonym subscripts otherwise.
-  const homonyms = useMemo(
-    () =>
-      readDictionaryEnabled(vocabConfig)
-        ? buildItemNumbers(items || [])
-        : buildHomonymIndex(items || []),
-    [items, vocabConfig],
-  );
+  const numbers = useMemo(() => buildItemNumbers(items || []), [items]);
   const shown = useMemo(() => {
     if (!items) return [];
     const q = filter.trim().toLowerCase();
@@ -1087,8 +1076,7 @@ const MergePanel = ({ project, client }) => {
   const doApply = async () => {
     const survivorItem = itemById.get(survivor);
     // The vocabulary's own references to the losers (senses, reference
-    // fields) follow the links to the survivor. Nothing to do for a
-    // vocabulary without the Dictionary switch: it has no such references.
+    // fields) follow the links to the survivor.
     const refPatches = planMergeRefs(items || [], fields, survivor, losers);
     const res = await r.run('Apply', () =>
       applyMerge(
@@ -1179,7 +1167,7 @@ const MergePanel = ({ project, client }) => {
           <div className="divide-y">
             {shown.map((it) => {
               const on = chosen.has(it.id);
-              const idx = homonyms.get(it.id);
+              const idx = numbers.get(it.id);
               return (
                 <div
                   key={it.id}

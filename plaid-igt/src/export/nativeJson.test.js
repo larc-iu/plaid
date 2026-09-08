@@ -484,14 +484,13 @@ describe('buildProjectFile', () => {
   });
 });
 
-describe('serializeVocabularyNative — Lexicography Mode', () => {
-  it("carries the switch and each field's type, many and scope", () => {
+describe('serializeVocabularyNative — the dictionary side of a field', () => {
+  it("carries each field's type, many and scope", () => {
     const out = serializeVocabularyNative({
       id: 'v',
       name: 'L',
       config: {
         igt: {
-          dictionary: true,
           fields: {
             gloss: { inline: true },
             variantOf: { inline: false, type: 'item' },
@@ -502,7 +501,6 @@ describe('serializeVocabularyNative — Lexicography Mode', () => {
       },
       items: [],
     });
-    expect(out.dictionary).toBe(true);
     expect(out.fields.find((f) => f.name === 'variantOf')).toEqual({
       name: 'variantOf',
       inline: false,
@@ -514,8 +512,5 @@ describe('serializeVocabularyNative — Lexicography Mode', () => {
     });
     expect(out.fields.find((f) => f.name === 'etymology')).toMatchObject({ scope: 'entry' });
     expect(out.fields.find((f) => f.name === 'gloss')).toEqual({ name: 'gloss', inline: true });
-    expect(
-      serializeVocabularyNative({ id: 'v', name: 'L', config: {}, items: [] }),
-    ).not.toHaveProperty('dictionary');
   });
 });

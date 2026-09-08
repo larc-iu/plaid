@@ -125,7 +125,7 @@ export function buildProjectFile({ project, documents, vocabularies, asOf = null
 /**
  * One vocabulary. Items keep the order the server returned them in, which IS
  * creation order, and a re-importer recreates them in array order to preserve
- * it (homonym subscripts are numbered by creation order).
+ * it (entries spelled alike are numbered by creation order).
  *
  * Do NOT re-sort by id. UUIDv7 ids only order across MILLISECONDS, and a bulk
  * import writes thousands of items inside one millisecond, where the rest of
@@ -137,8 +137,8 @@ export function serializeVocabularyNative(vocab, { comments = [], onWarning = nu
   // A field's `tagset` names one of the vocabulary's own tagsets (below) and
   // `lang` is a FLEx custom field's writing system; both are carried only
   // when set, so a plain field stays `{name, inline}`.
-  // `type`, `many` and `scope` are the dictionary side of a field (an Entry
-  // field, a headword-only field), written only when set, like the others.
+  // `type`, `many` and `scope` say a field is an Entry field or a
+  // headword-only one, written only when set, like the others.
   const fields = normalizeVocabFields(readVocabFields(vocab?.config)).map(
     ({ name, inline, tagset, lang, type, many, scope }) => ({
       name,
@@ -150,8 +150,6 @@ export function serializeVocabularyNative(vocab, { comments = [], onWarning = nu
       ...(scope === 'entry' ? { scope } : {}),
     }),
   );
-  // Lexicography Mode travels with the vocabulary, or it comes back flat.
-  const dictionary = vocab?.config?.[IGT_NAMESPACE]?.dictionary === true;
   const items = (vocab?.items || []).map((it) =>
     withMetadata({ id: it.id, form: it.form }, it.metadata),
   );
@@ -167,7 +165,6 @@ export function serializeVocabularyNative(vocab, { comments = [], onWarning = nu
   return {
     id: vocab?.id ?? null,
     name: vocab?.name ?? null,
-    ...(dictionary ? { dictionary: true } : {}),
     fields,
     tagsets,
     items,

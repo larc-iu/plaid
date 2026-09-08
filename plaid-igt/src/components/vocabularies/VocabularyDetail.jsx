@@ -36,13 +36,7 @@ import {
   FIELD_TYPES,
   FIELD_SCOPES,
 } from '@/domain/vocabFields';
-import {
-  readDictionaryEnabled,
-  refIds,
-  withRefIds,
-  DICTIONARY_KEY,
-  dictionaryEnablement,
-} from '@/domain/vocabDictionary';
+import { refIds, withRefIds } from '@/domain/vocabDictionary';
 import { readTagsets, byTagsetName } from '@/domain/tagsets';
 import { TagsetsManager } from '@/components/projects/settings/TagsetsManager.jsx';
 import {
@@ -107,7 +101,6 @@ export const VocabularyDetail = () => {
     () => byTagsetName(vocabGovernedFields(fields, vocabulary?.config)),
     [fields, vocabulary],
   );
-  const dictionary = readDictionaryEnabled(vocabulary?.config);
   const [deleteModalOpened, setDeleteModalOpened] = useState(false);
   const openDeleteModal = () => setDeleteModalOpened(true);
   const closeDeleteModal = () => setDeleteModalOpened(false);
@@ -519,35 +512,6 @@ export const VocabularyDetail = () => {
     await saveFields(fields.map((f) => (f.name === fieldName ? { ...f, scope } : f)));
   };
 
-  // The Lexicography Mode switch. Turning it on also gives the vocabulary a Status
-  // field held to a closed list, once; turning it off leaves every field and
-  // every entry as it is.
-  const handleSetDictionary = async (on) => {
-    try {
-      // The Status field and its list go in first, the flag last, so anyone
-      // who sees the flag also sees the field.
-      if (on) {
-        const add = dictionaryEnablement({ fieldsConfig: fieldsToConfig(fields), tagsets });
-        if (add.tagsets) {
-          await client.vocabLayers.setConfig(vocabularyId, IGT_NAMESPACE, 'tagsets', add.tagsets);
-        }
-        if (add.fieldsConfig) {
-          await client.vocabLayers.setConfig(
-            vocabularyId,
-            IGT_NAMESPACE,
-            'fields',
-            add.fieldsConfig,
-          );
-        }
-      }
-      await client.vocabLayers.setConfig(vocabularyId, IGT_NAMESPACE, DICTIONARY_KEY, on);
-      await updateVocabulary();
-    } catch (err) {
-      console.error('Failed to save the lexicography setting:', err);
-      notifyError('Failed to save the lexicography setting', 'Error');
-    }
-  };
-
   // Fields reference a tagset by name, so a rename repoints every field that
   // used the old name in the same operation, or they quietly fall back to
   // free. Same contract as the project's TagsetsSettings.
@@ -607,7 +571,7 @@ export const VocabularyDetail = () => {
 
   // The field table. One row per field, one column per setting, so the eye
   // runs down a column instead of across a ragged line of controls. Type and
-  // Shown on exist in lexicography mode only; Tagset needs a saved vocabulary.
+  // Tagset needs a saved vocabulary to hold the list.
   const showTagsetCol = !isNewVocabulary;
   const renderCustomFieldsEditor = () => (
     <>
@@ -619,7 +583,7 @@ export const VocabularyDetail = () => {
                 <th className="px-3 py-2">Field</th>
                 <th className="px-3 py-2">Inline</th>
                 <th className="px-3 py-2">Type</th>
-                {dictionary && <th className="px-3 py-2">Shown on</th>}
+                <th className="px-3 py-2">Shown on</th>
                 {showTagsetCol && <th className="px-3 py-2">Tagset</th>}
                 <th className="w-24 px-3 py-2" />
               </tr>
@@ -679,30 +643,28 @@ export const VocabularyDetail = () => {
                         </Select>
                       )}
                     </td>
-                    {dictionary && (
-                      <td className="px-3 py-1.5">
-                        {field.immutable ? (
-                          <span className="text-xs text-muted-foreground">Every sense</span>
-                        ) : (
-                          <Select
-                            value={field.scope}
-                            onValueChange={(v) => handleSetScope(field.name, v)}
+                    <td className="px-3 py-1.5">
+                      {field.immutable ? (
+                        <span className="text-xs text-muted-foreground">Every sense</span>
+                      ) : (
+                        <Select
+                          value={field.scope}
+                          onValueChange={(v) => handleSetScope(field.name, v)}
+                        >
+                          <SelectTrigger
+                            id={`scope-${field.name}`}
+                            aria-label={`Where ${fieldLabel(field)} is shown`}
+                            className="h-7 w-36 text-xs"
                           >
-                            <SelectTrigger
-                              id={`scope-${field.name}`}
-                              aria-label={`Where ${fieldLabel(field)} is shown`}
-                              className="h-7 w-36 text-xs"
-                            >
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value={FIELD_SCOPES.SENSE}>Every sense</SelectItem>
-                              <SelectItem value={FIELD_SCOPES.ENTRY}>Headword only</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        )}
-                      </td>
-                    )}
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={FIELD_SCOPES.SENSE}>Every sense</SelectItem>
+                            <SelectItem value={FIELD_SCOPES.ENTRY}>Headword only</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </td>
                     {showTagsetCol && (
                       <td className="px-3 py-1.5">
                         {/* Morph type is its own fixed list, and a reference
@@ -896,7 +858,6 @@ export const VocabularyDetail = () => {
                 canManage={canManageVocabulary()}
                 comments={comments}
                 canComment={canComment}
-                dictionary={dictionary}
               />
             </TabsContent>
 
@@ -951,38 +912,13 @@ export const VocabularyDetail = () => {
 
                   <div className="rounded-lg border bg-card p-4">
                     <div className="flex flex-col gap-4">
-                      <div className="flex items-center justify-between gap-4">
-                        <div>
-                          <h3 className="text-base font-semibold">Lexicography Mode</h3>
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            Entries can be grouped into senses, refer to each other, have
-                            highlighted usage examples, and track publication status.
-                          </p>
-                        </div>
-                        <Switch
-                          id="dictionary-switch"
-                          aria-label="Lexicography Mode"
-                          checked={dictionary}
-                          onCheckedChange={handleSetDictionary}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg border bg-card p-4">
-                    <div className="flex flex-col gap-4">
                       <h3 className="text-base font-semibold">Fields</h3>
                       <p className="text-sm text-muted-foreground">
                         Every entry has these fields. <strong>Inline</strong> puts a field in the
                         interlinear view as well. A tagset, defined below, holds a field to a list.
-                        {dictionary && (
-                          <>
-                            {' '}
-                            An <strong>Entry</strong> or <strong>Entries</strong> field refers to
-                            other entries, senses included. <strong>Headword only</strong> shows a
-                            field on a headword, not on its senses.
-                          </>
-                        )}
+                        An <strong>Entry</strong> or <strong>Entries</strong> field refers to other
+                        entries, senses included. <strong>Headword only</strong> shows a field on a
+                        headword, not on its senses.
                       </p>
 
                       {renderCustomFieldsEditor()}

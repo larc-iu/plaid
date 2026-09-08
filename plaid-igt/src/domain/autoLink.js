@@ -5,8 +5,8 @@
 //   words linked, a morpheme what morphemes linked) over precedent of any kind;
 //   a tie on count breaks to the lexicographically smallest item id. With no
 //   precedent, link to a matching vocab item; if several share the form, again
-//   the lexicographically smallest id wins. In Lexicography Mode a headword
-//   that has a sense of the same form is not a candidate: the rule takes the
+//   the lexicographically smallest id wins. A headword that has a sense of
+//   the same form is not a candidate: the rule takes the
 //   more specific one (see dropCoveredHeadwords). Ties are rare, and the result is
 //   stamped unverified for review, so an arbitrary-but-deterministic pick beats
 //   refusing to link. An entry may be linked from words AND morphemes (a stem
@@ -88,8 +88,8 @@ export function buildItemIndex(vocabularies) {
 }
 
 /**
- * In Lexicography Mode a headword and its senses share a form, so both land in
- * the same list of candidates. The rule takes the MORE SPECIFIC one: a headword
+ * A headword and its senses share a form, so both land in the same list of
+ * candidates. The rule takes the MORE SPECIFIC one: a headword
  * drops out of a list that also holds one of its own senses, whatever it says
  * itself, which leaves the choice between senses to be made as it always was
  * between same-form entries. A headword whose senses are spelled differently

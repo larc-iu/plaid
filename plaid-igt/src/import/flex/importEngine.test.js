@@ -303,15 +303,9 @@ describe('resolveTargets', () => {
 });
 
 describe('importLexicon', () => {
-  it('places senses under a container entry, and subsenses under their sense, when asked', async () => {
+  it('places senses under a container entry, and subsenses under their sense', async () => {
     const client = makeFakeClient();
-    const map = await importLexicon({
-      client,
-      vocabId: 'v1',
-      lexicon,
-      baselineWs: BASE_WS,
-      dictionary: true,
-    });
+    const map = await importLexicon({ client, vocabId: 'v1', lexicon, baselineWs: BASE_WS });
     // e1 has one sense: the sense is the entry. e2 has two: a container
     // (form, entry-level fields, no gloss) with s2, s3 under it, s3a under s3.
     const creates = createdItems(client);
@@ -328,15 +322,6 @@ describe('importLexicon', () => {
       [map.get('s3'), { parent: map.get('e2'), senseOrder: 2 }],
       [map.get('s3a'), { parent: map.get('s3'), senseOrder: 1 }],
     ]);
-    const configs = client.calls
-      .filter((c) => c.kind === 'vocabLayers.setConfig')
-      .map((c) => [c.args.key, c.args.value]);
-    expect(configs.find(([k]) => k === 'dictionary')).toEqual(['dictionary', true]);
-    expect(configs.find(([k]) => k === 'tagsets')[1].Status.mode).toBe('closed');
-    expect(configs.filter(([k]) => k === 'fields').at(-1)[1].status).toEqual({
-      inline: false,
-      tagset: 'Status',
-    });
   });
 
   it('writes variants and complex forms as references between entries', async () => {
@@ -464,23 +449,17 @@ describe('importLexicon', () => {
     ]);
   });
 
-  it('leaves every sense flat and the switch alone by default', async () => {
-    const client = makeFakeClient();
-    await importLexicon({ client, vocabId: 'v1', lexicon, baselineWs: BASE_WS });
-    expect(client.calls.some((c) => c.kind === 'vocabItems.patchMetadata')).toBe(false);
-    expect(
-      client.calls.some((c) => c.kind === 'vocabLayers.setConfig' && c.args.key === 'dictionary'),
-    ).toBe(false);
-  });
-
   it('creates one item per sense with flex guids and skips existing', async () => {
     const client = makeFakeClient({
       existingItems: [{ id: 'old1', form: 'за', metadata: { flexSense: 's1' } }],
     });
     const map = await importLexicon({ client, vocabId: 'v1', lexicon, baselineWs: BASE_WS });
     const creates = createdItems(client);
-    expect(creates).toHaveLength(3); // s2 + s3 + s3a; s1 already present
-    expect(creates[0].metadata).toMatchObject({
+    // The e2 container + s2 + s3 + s3a; s1 is already present as its own entry.
+    expect(creates).toHaveLength(4);
+    expect(creates[0].metadata).toMatchObject({ flexSense: 'e2' });
+    expect(creates[0].metadata).not.toHaveProperty('gloss');
+    expect(creates[1].metadata).toMatchObject({
       flexEntry: 'e2',
       flexSense: 's2',
       gloss: 'tale',
@@ -490,7 +469,7 @@ describe('importLexicon', () => {
       'Parsing Note': 'check',
     });
     // gloss first: the popover's no-config fallback shows the first value
-    expect(Object.keys(creates[0].metadata)[0]).toBe('gloss');
+    expect(Object.keys(creates[1].metadata)[0]).toBe('gloss');
     expect(map.get('s1')).toBe('old1');
     expect(map.get('s2')).toBeTruthy();
   });

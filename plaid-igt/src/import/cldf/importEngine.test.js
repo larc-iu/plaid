@@ -131,12 +131,6 @@ describe('deriveSetupData', () => {
       ]),
     );
     expect(setup.vocabulary.vocabularies).toHaveLength(1);
-    // An imported lexicon is a dictionary unless asked otherwise.
-    expect(setup.vocabulary.vocabularies[0].dictionary).toBe(true);
-    expect(
-      deriveSetupData(fixtureBuild(), 'My Corpus', { dictionary: false }).vocabulary.vocabularies[0]
-        .dictionary,
-    ).toBe(false);
     expect(setup.documentMetadata.enabledFields.map((f) => f.name).sort()).toEqual([
       'Genre',
       'Source',
@@ -253,8 +247,8 @@ describe('runCldfImport', () => {
     );
   });
 
-  it('gives a multi-sense entry its senses in Lexicography Mode', async () => {
-    const client = stubClient({ vocabConfig: { igt: { dictionary: true } } });
+  it('gives a multi-sense entry its senses', async () => {
+    const client = stubClient();
     const map = await importLexicon({
       client,
       vocabId: 'v1',
@@ -313,7 +307,6 @@ describe('runCldfImport', () => {
 
   it('places the senses a cancelled run left flat', async () => {
     const client = stubClient({
-      vocabConfig: { igt: { dictionary: true } },
       existingItems: [
         { id: 'old-e1', form: 'perro', metadata: { cldfEntry: 'e1' } },
         { id: 'old-s1', form: 'perro', metadata: { cldfEntry: 'e1/s1', gloss: 'dog' } },
@@ -342,7 +335,7 @@ describe('runCldfImport', () => {
     ]);
   });
 
-  it('folds the senses into one flat item when the vocabulary is not a dictionary', async () => {
+  it('leaves a one-sense entry as one item, its meaning its own', async () => {
     const client = stubClient();
     await importLexicon({
       client,
@@ -352,10 +345,7 @@ describe('runCldfImport', () => {
           id: 'e1',
           form: 'perro',
           metadata: { gloss: 'dog', definition: 'hound' },
-          senses: [
-            { id: 's1', description: 'dog' },
-            { id: 's2', description: 'hound' },
-          ],
+          senses: [{ id: 's1', description: 'dog' }],
         },
       ],
     });

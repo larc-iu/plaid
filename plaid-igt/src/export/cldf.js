@@ -34,7 +34,6 @@ import {
   descendantsOf,
   exampleKey,
   exampleRefs,
-  readDictionaryEnabled,
 } from '../domain/vocabDictionary.js';
 import { readVocabFields } from '../domain/igtConfig.js';
 import { FIELD_TYPES } from '../domain/vocabFields.js';
@@ -502,15 +501,13 @@ export function buildCldfDataset({
       const fields = Object.keys(fieldSpecs);
       // A reference field holds another entry's id, which means nothing
       // outside this project, so it is written the way the vocabulary shows
-      // it: the entry's form and, in a dictionary, its number.
+      // it: the entry's form and its number.
       const byId = new Map((vocab.items || []).map((it) => [it.id, it]));
-      const numbers = readDictionaryEnabled(vocab.config)
-        ? buildItemNumbers(vocab.items || [])
-        : null;
+      const numbers = buildItemNumbers(vocab.items || []);
       const refLabel = (id) => {
         const target = byId.get(id);
         if (!target) return '';
-        const n = numbers?.get(id);
+        const n = numbers.get(id);
         return n ? `${target.form} ${n}` : (target.form ?? '');
       };
       // Every headword is an entry; its senses (and theirs, flattened, since

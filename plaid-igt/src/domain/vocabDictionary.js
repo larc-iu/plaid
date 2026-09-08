@@ -1,10 +1,7 @@
 // The dictionary side of a vocabulary: the sense tree, references from one
 // entry to another, and promoted examples. All of it is metadata on ordinary
-// items, read here and nowhere else in core.
-//
-// Nothing in this module exists for a vocabulary unless its Dictionary switch
-// (`config.igt.dictionary`) is on. With it off, a vocabulary is the flat list
-// it always was, and no screen shows a control from here.
+// items, read here and nowhere else in core. Every vocabulary is a dictionary,
+// so nothing here is conditional.
 //
 // Reserved keys (never fields, see RESERVED_ITEM_KEYS in vocabFields.js):
 //   parent      the id of the entry this one is a sense of. An item with no
@@ -34,9 +31,8 @@ export const SENSE_ORDER_KEY = 'senseOrder';
 // rewrites it 1..n. Missing or zero sorts after the numbered ones.
 export const HOMOGRAPH_KEY = 'homograph';
 export const EXAMPLES_KEY = 'examples';
-export const DICTIONARY_KEY = 'dictionary';
 
-/** The editorial status field a dictionary vocabulary gets, and its list. */
+/** The editorial status field a new vocabulary is seeded with, and its list. */
 export const STATUS_FIELD = 'status';
 export const STATUS_TAGSET = 'Status';
 export const STATUS_VALUES = ['draft', 'reviewed', 'published'];
@@ -46,17 +42,16 @@ export const statusTagset = () => ({
   values: STATUS_VALUES.map((value) => ({ value })),
 });
 
-/** Whether a vocabulary's Dictionary switch is on. */
-export const readDictionaryEnabled = (config) => config?.[IGT_NAMESPACE]?.[DICTIONARY_KEY] === true;
-
 /**
- * What turning the switch on adds to a vocabulary's config, given what it
- * has: the Status tagset if missing, and the Status field held to it if
- * missing. Both the settings switch and an import that ticks Dictionary go
- * through here, so a vocabulary is set up the same way either way. Returns
- * `null` for a part that needs no write.
+ * What a NEW vocabulary's config gains, given what it has: the Status tagset
+ * if missing, and the Status field held to it if missing. Every path that
+ * creates a vocabulary goes through here, so they all set one up the same
+ * way. Returns `null` for a part that needs no write.
+ *
+ * Only creation calls this. An existing vocabulary is left as its owner
+ * arranged it, so nothing sprouts a Status field it was never given.
  */
-export const dictionaryEnablement = ({ fieldsConfig, tagsets }) => {
+export const statusFieldSeed = ({ fieldsConfig, tagsets }) => {
   const nextTagsets = tagsets?.[STATUS_TAGSET]
     ? null
     : { ...(tagsets || {}), [STATUS_TAGSET]: statusTagset() };
@@ -73,10 +68,8 @@ const isId = (v) => typeof v === 'string' && v.trim() !== '';
 export const itemRefFields = (fields) => (fields || []).filter((f) => f.type === FIELD_TYPES.ITEM);
 
 /** The fields shown on an item: entry-scope fields only on an entry (a root). */
-export const fieldsForItem = (fields, item, dictionary) =>
-  dictionary
-    ? (fields || []).filter((f) => f.scope !== FIELD_SCOPES.ENTRY || !parentOf(item))
-    : fields || [];
+export const fieldsForItem = (fields, item) =>
+  (fields || []).filter((f) => f.scope !== FIELD_SCOPES.ENTRY || !parentOf(item));
 
 /** The id this item is a sense of, or null. */
 export const parentOf = (item) => {
@@ -264,15 +257,14 @@ export const buildSenseTree = (items) => {
 };
 
 /**
- * One dotted number per item, the name it goes by everywhere in a dictionary
- * vocabulary. The first segment is the HEADWORD's: its place among the
+ * One dotted number per item, the name it goes by everywhere. The first
+ * segment is the HEADWORD's: its place among the
  * entries spelled the same ("a 1", "a 2"), or "1" when it is alone but has
  * senses. A sense carries its headword's segment and then its own path
  * ("a 1.2", "adidi 1.1", "adidi 1.2.1"). A lone headword with no senses has
- * no number at all. Values are strings, so the label draws them as text
- * (never as subscripts, and never as superscripts, which mark tone);
- * `buildHomonymIndex` is the numeric kind a vocabulary without the switch
- * uses. `items` in creation order, as the server returns them.
+ * no number at all. Values are strings, so the label draws them as text,
+ * never as subscripts, and never as superscripts, which mark tone. `items`
+ * in creation order, as the server returns them.
  *
  * @returns {Map<string, string>} item id -> its number, '' for a lone entry
  */
@@ -649,8 +641,8 @@ export const planMergeRefs = (items, fields, survivorId, loserIds) => {
 };
 
 /**
- * Ranked popover candidates regrouped under their headwords, for a
- * dictionary vocabulary: each headword appears once, at the place of its
+ * Ranked popover candidates regrouped under their headwords: each headword
+ * appears once, at the place of its
  * best-ranked member, followed by the ranked members under it in tree
  * order. A headword none of whose own rank made the list is still shown
  * above its senses, marked `context`, so a sense is never listed adrift.

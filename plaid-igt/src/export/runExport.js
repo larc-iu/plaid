@@ -19,7 +19,7 @@ import { discoverExportLayers, intersectSelection } from './exportLayers.js';
 import { serializeDocumentPlain } from './plainTextDoc.js';
 import { interlinearTextXml, flextextEnvelope } from './flextext.js';
 import { buildLiftLexicon, collectExampleRefs } from './lift.js';
-import { buildItemNumbers, exampleKey, readDictionaryEnabled } from '../domain/vocabDictionary.js';
+import { buildItemNumbers, exampleKey } from '../domain/vocabDictionary.js';
 import { buildContextRows } from '../components/projects/search/searchRunner.js';
 import { buildEafDocument } from './elan.js';
 import { serializeVocabTsv } from './vocabTsv.js';
@@ -557,16 +557,13 @@ export async function runExport({
     vocabs.forEach((vocab, i) => {
       const fieldSpecs = readVocabFields(vocab.config) || {};
       const fieldNames = Object.keys(fieldSpecs).filter((n) => n.toLowerCase() !== 'form');
-      const dictionary = readDictionaryEnabled(vocab.config);
       entries.push({
         path: `vocabularies/${names[i]}`,
         data: serializeVocabTsv({
           items: vocab.items || [],
           fieldNames,
-          // A reference reads as the entry it names in any mode. Only the
-          // dotted numbering needs Lexicography Mode.
           refFields: fieldNames.filter((n) => fieldSpecs[n]?.type === 'item'),
-          ...(dictionary ? { numbers: buildItemNumbers(vocab.items || []) } : {}),
+          numbers: buildItemNumbers(vocab.items || []),
         }),
       });
     });

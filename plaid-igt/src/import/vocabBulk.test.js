@@ -401,18 +401,19 @@ describe('decision detail for review', () => {
 });
 
 describe('matched entries on a decision', () => {
-  const homonyms = [
+  const sameForm = [
     { id: 'a', form: 'kan', metadata: { gloss: 'house', pos: 'N' } },
     { id: 'b', form: 'kan', metadata: { gloss: 'mouth', pos: 'N' } },
   ];
 
   it('carries every entry sharing the form, so a reviewer can see them', () => {
-    const p = plan([entry(1, 'kan', { definition: 'an opening' })], homonyms);
+    const p = plan([entry(1, 'kan', { definition: 'an opening' })], sameForm);
     expect(p.decisions[0].kind).toBe('ambiguous');
+    // Entries spelled alike are numbered, which is what tells them apart here.
     expect(p.decisions[0].matches).toEqual([
       {
         form: 'kan',
-        number: '',
+        number: '1',
         values: { gloss: 'house', pos: 'N' },
         pending: false,
         target: false,
@@ -420,7 +421,7 @@ describe('matched entries on a decision', () => {
       },
       {
         form: 'kan',
-        number: '',
+        number: '2',
         values: { gloss: 'mouth', pos: 'N' },
         pending: false,
         target: false,
@@ -489,7 +490,7 @@ describe('matched entries on a decision', () => {
   });
 
   it('marks which entry an enrichment would change', () => {
-    const p = plan([entry(1, 'kan', { gloss: 'mouth', definition: 'an opening' })], homonyms);
+    const p = plan([entry(1, 'kan', { gloss: 'mouth', definition: 'an opening' })], sameForm);
     expect(p.decisions[0].matches.map((m) => m.target)).toEqual([false, true]);
   });
 
@@ -520,7 +521,7 @@ describe('matched entries on a decision', () => {
   });
 
   it('carries the row own values for display', () => {
-    const p = plan([entry(1, 'kan', { definition: 'an opening' })], homonyms);
+    const p = plan([entry(1, 'kan', { definition: 'an opening' })], sameForm);
     expect(p.decisions[0].values).toEqual({ definition: 'an opening' });
   });
 });

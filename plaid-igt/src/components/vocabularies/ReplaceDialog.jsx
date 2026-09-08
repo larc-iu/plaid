@@ -70,7 +70,7 @@ export const ReplaceDialog = ({
   fields,
   tagsetFor,
   items,
-  homonyms,
+  numbers,
   client,
   onApplied,
 }) => {
@@ -323,7 +323,7 @@ export const ReplaceDialog = ({
                     />
                     <FormLabel
                       form={r.form}
-                      index={homonyms?.get(r.id)}
+                      index={numbers?.get(r.id)}
                       className="w-32 shrink-0 truncate text-sm font-medium"
                     />
                     <Change from={r.old} to={r.new} />

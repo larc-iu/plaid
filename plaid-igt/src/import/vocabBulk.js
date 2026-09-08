@@ -376,8 +376,9 @@ const parseAnswer = (raw) => {
  * @param {boolean} [opts.caseInsensitive] - match forms ignoring capitalization
  * @param {object} [opts.strategies] - the per-classification policy, see DEFAULT_STRATEGIES
  * @param {object} [opts.overrides] - `{[line]: policy}`, one row's answer overriding its bucket
- * @param {boolean} [opts.dictionary] - the vocabulary is in Lexicography Mode, where a headword
- *   and its senses share a form: a row names the ENTRY, and its senses can still be picked by hand
+ * A headword and its senses share a form, so a row names the ENTRY, and its
+ * senses can still be picked by hand.
+ *
  * @returns {{
  *   decisions: {
  *     line, form, values, kind, detail,
@@ -398,13 +399,12 @@ export const planVocabImport = ({
   caseInsensitive = false,
   strategies = DEFAULT_STRATEGIES,
   overrides = {},
-  dictionary = false,
 }) => {
   const policies = { ...DEFAULT_STRATEGIES, ...strategies };
-  // In Lexicography Mode a headword and every sense under it carry the same
-  // form, so all of them answer to a row. The numbers tell them apart on the
-  // comparison, and the headword is what a bare form means (see `heads` below).
-  const numbers = dictionary ? buildItemNumbers(existingItems) : null;
+  // A headword and every sense under it carry the same form, so all of them
+  // answer to a row. The numbers tell them apart on the comparison, and the
+  // headword is what a bare form means (see `heads` below).
+  const numbers = buildItemNumbers(existingItems);
 
   // The row's own answer wins over its bucket's, as long as it still makes
   // sense for how the row classified this time round.
@@ -440,8 +440,8 @@ export const planVocabImport = ({
       id: item.id,
       form: item.form,
       values,
-      root: !dictionary || !item?.metadata?.parent,
-      number: numbers?.get(item.id) ?? '',
+      root: !item?.metadata?.parent,
+      number: numbers.get(item.id) ?? '',
     });
   }
 

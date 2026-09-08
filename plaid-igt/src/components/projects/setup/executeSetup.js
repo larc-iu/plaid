@@ -25,7 +25,7 @@ import {
   findAlignmentTokenLayer,
 } from '../../../domain/igtConfig.js';
 import { seedDefaultFields } from '../../../domain/vocabFields.js';
-import { dictionaryEnablement, DICTIONARY_KEY } from '../../../domain/vocabDictionary.js';
+import { statusFieldSeed } from '../../../domain/vocabDictionary.js';
 
 // The whole setup (project + layers + config + vocabularies) is ONE logical
 // operation in the audit log; each write keeps its own description underneath.
@@ -293,21 +293,16 @@ async function executeProjectSetupImpl({
           }
           updateProgress(70, `Creating vocabulary: ${vocab.name}...`);
           const newVocab = await client.vocabLayers.create(vocab.name);
-          // A vocabulary asked to be a dictionary starts as one: the core
-          // fields plus Status, its list, then the switch (the switch last,
-          // so a reader who sees it also sees the field). The same setup
-          // the Settings switch does, see dictionaryEnablement.
-          if (vocab.dictionary === true) {
-            const add = dictionaryEnablement({ fieldsConfig: seedDefaultFields(), tagsets: {} });
-            await client.vocabLayers.setConfig(newVocab.id, IGT_NAMESPACE, 'tagsets', add.tagsets);
-            await client.vocabLayers.setConfig(
-              newVocab.id,
-              IGT_NAMESPACE,
-              'fields',
-              add.fieldsConfig,
-            );
-            await client.vocabLayers.setConfig(newVocab.id, IGT_NAMESPACE, DICTIONARY_KEY, true);
-          }
+          // A new vocabulary starts with the core fields plus Status and its
+          // list, the same setup every creation path does (statusFieldSeed).
+          const add = statusFieldSeed({ fieldsConfig: seedDefaultFields(), tagsets: {} });
+          await client.vocabLayers.setConfig(newVocab.id, IGT_NAMESPACE, 'tagsets', add.tagsets);
+          await client.vocabLayers.setConfig(
+            newVocab.id,
+            IGT_NAMESPACE,
+            'fields',
+            add.fieldsConfig,
+          );
           await client.projects.linkVocab(currentProjectId, newVocab.id);
           vocabulariesProcessed.push(newVocab);
         } else {

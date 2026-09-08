@@ -686,9 +686,9 @@ export function buildCldfDocuments(dataset, options = {}) {
     if (ordinal) metadata.homograph = homograph;
     const entrySenses = sensesByEntry.get(id) || [];
     const glosses = entrySenses.map((sn) => sn.description);
-    // A flat vocab item has one gloss, so the other senses are kept as a
-    // definition rather than dropped. In Lexicography Mode the importer uses
-    // `senses` instead and gives each one its own entry.
+    // What a ONE-sense entry carries: its gloss, and any further sense text
+    // as a definition rather than dropped. An entry with several senses gets
+    // one entry each instead, and the importer drops these (see importLexicon).
     if (glosses.length) metadata.gloss = glosses[0];
     if (glosses.length > 1) metadata.definition = glosses.slice(1).join('; ');
     for (const name of customColumnsOf(entries)) {

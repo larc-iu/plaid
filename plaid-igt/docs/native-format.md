@@ -79,7 +79,7 @@ the upload's media type is validated from its filename.
 ## vocabularies/*.json
 
 ```jsonc
-{ "id": "…", "name": "Lexicon", "dictionary": true,
+{ "id": "…", "name": "Lexicon",
   "fields": [{ "name": "morphType", "inline": false }, { "name": "gloss", "inline": true },
              { "name": "pos", "inline": true, "tagset": "POS" },
              { "name": "variantOf", "inline": false, "type": "item", "many": true,
@@ -89,13 +89,10 @@ the upload's media type is validated from its filename.
   "comments": [{ "id": "…", "anchor": { "type": "vocab-item", "id": "…" }, … }] }
 ```
 
-- `dictionary` is the vocabulary's Lexicography Mode switch, present only when it
-  is on. Without it the lexicon comes back as a flat list of entries, and the
-  structure below is not read.
 - `fields` is the normalized, ordered field inventory (`form` is never a field — it
   is the item's own headword). A field's `tagset` names one of the vocabulary's own
   tagsets and is absent when none governs it; `lang` (a FLEx custom field's writing
-  system) is likewise present only when set. The dictionary side of a field is
+  system) is likewise present only when set. A field that refers to entries is
   `type: "item"` (its values are ids of other entries in the SAME vocabulary),
   `many: true` (a list of them rather than one) and `scope: "entry"` (shown on a
   headword, not on its senses), each written only when set.
@@ -293,8 +290,8 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
    archive's version is written over it to restore each field's `tagset`).
    Each governed field's `tagset` is then set on its own span layer.
 2. Per vocabulary: write `fields` (with each `tagset`/`lang`, and `type`/`many`/
-   `scope`), the `dictionary` switch when the archive carries it, and `tagsets`,
-   then create items **in array order**, mapping old item ids to new. Item
+   `scope`) and `tagsets`, then create items **in array order**, mapping old item
+   ids to new. Item
    metadata is written as it stands here, ids and all, and corrected in step 4.
    The importer stamps each created item's metadata with `nativeImportId` (the
    archive item id) for resume dedupe and provenance. Then `comments.create`

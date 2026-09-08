@@ -279,12 +279,11 @@ describe('references', () => {
     ]);
   });
 
-  it('shows entry-scope fields on an entry only, and only with the switch on', () => {
+  it('shows entry-scope fields on an entry only', () => {
     const list = items();
-    const names = (it, on) => fieldsForItem(fields, it, on).map((f) => f.name);
-    expect(names(list[0], true)).toContain('etymology');
-    expect(names(list[1], true)).not.toContain('etymology');
-    expect(names(list[1], false)).toContain('etymology');
+    const names = (it) => fieldsForItem(fields, it).map((f) => f.name);
+    expect(names(list[0])).toContain('etymology');
+    expect(names(list[1])).not.toContain('etymology');
   });
 });
 

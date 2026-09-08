@@ -257,9 +257,7 @@ export const ImportCldfProject = () => {
               )}
               {build.lexicon.length > 0 && (
                 <p className="mt-2 border-t pt-2 text-xs text-muted-foreground">
-                  Each entry keeps its senses. The lexicon is in Lexicography Mode: entries can be
-                  grouped into senses, refer to each other, have highlighted usage examples, and
-                  track publication status.
+                  Each entry keeps its senses.
                 </p>
               )}
               {build.languages.object && (

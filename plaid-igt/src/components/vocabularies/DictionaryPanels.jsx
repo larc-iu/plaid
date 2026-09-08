@@ -32,7 +32,7 @@ const NavGuardContext = createContext(null);
 export const NavGuardProvider = NavGuardContext.Provider;
 
 /** An entry named inline as a link to it: form, subscript, gloss. */
-const ItemLink = ({ item, homonyms, itemTo, className }) => {
+const ItemLink = ({ item, numbers, itemTo, className }) => {
   const guard = useContext(NavGuardContext);
   return (
     <Link
@@ -40,7 +40,7 @@ const ItemLink = ({ item, homonyms, itemTo, className }) => {
       onClick={(e) => guard?.select?.(e, item.id)}
       className={cn('no-underline hover:underline', className)}
     >
-      <FormLabel form={item.form} index={homonyms?.get(item.id)} className="font-medium" />
+      <FormLabel form={item.form} index={numbers?.get(item.id)} className="font-medium" />
       {item.metadata?.gloss ? (
         <span className="ml-1 text-xs text-muted-foreground">{String(item.metadata.gloss)}</span>
       ) : null}
@@ -75,7 +75,7 @@ export const ItemRefField = ({
   values,
   onChange,
   items,
-  homonyms,
+  numbers,
   itemTo,
   selfId,
   disabled,
@@ -93,7 +93,7 @@ export const ItemRefField = ({
             return (
               <Chip key={x} disabled={disabled} onRemove={() => set(ids.filter((y) => y !== x))}>
                 {it ? (
-                  <ItemLink item={it} homonyms={homonyms} itemTo={itemTo} />
+                  <ItemLink item={it} numbers={numbers} itemTo={itemTo} />
                 ) : (
                   <span className="text-muted-foreground">(missing entry)</span>
                 )}
@@ -106,7 +106,7 @@ export const ItemRefField = ({
         <ItemPicker
           id={id}
           items={items}
-          homonyms={homonyms}
+          numbers={numbers}
           exclude={exclude}
           onPick={(x) => set([...ids, x])}
           placeholder={`Find an entry for ${humanizeFieldName(field.name).toLowerCase()}…`}
@@ -127,7 +127,7 @@ export const EntryPlace = ({
   item,
   tree,
   items,
-  homonyms,
+  numbers,
   itemTo,
   canManage,
   onMoveUnder,
@@ -156,8 +156,8 @@ export const EntryPlace = ({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         {parent && (
           <span>
-            Sense <span className="tabular-nums">{homonyms?.get(item.id) ?? number}</span> of{' '}
-            <ItemLink item={parent} homonyms={homonyms} itemTo={itemTo} />
+            Sense <span className="tabular-nums">{numbers?.get(item.id) ?? number}</span> of{' '}
+            <ItemLink item={parent} numbers={numbers} itemTo={itemTo} />
           </span>
         )}
         {senseCount > 0 && (
@@ -187,7 +187,7 @@ export const EntryPlace = ({
             <ItemPicker
               autoFocus
               items={items}
-              homonyms={homonyms}
+              numbers={numbers}
               exclude={exclude}
               onPick={(id) => {
                 const moving = pickFor;
@@ -230,7 +230,7 @@ export const EntryPlace = ({
           root={root}
           current={item.id}
           tree={tree}
-          homonyms={homonyms}
+          numbers={numbers}
           itemTo={itemTo}
           canManage={canManage}
           onDrop={onDrop}
@@ -260,7 +260,7 @@ const SenseTree = ({
   root,
   current,
   tree,
-  homonyms,
+  numbers,
   itemTo,
   canManage,
   onDrop,
@@ -367,13 +367,13 @@ const SenseTree = ({
           >
             {depth === 0 ? (
               <HomographNumber
-                number={homonyms?.get(item.id) || ''}
+                number={numbers?.get(item.id) || ''}
                 onOpen={onReorderHomographs}
                 className="w-12 shrink-0 text-right text-xs"
               />
             ) : (
               <span className="w-12 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-                {homonyms?.get(item.id) ?? tree.numberOf.get(item.id)}
+                {numbers?.get(item.id) ?? tree.numberOf.get(item.id)}
               </span>
             )}
             <span className="min-w-0 truncate">
@@ -513,7 +513,7 @@ export const HomographDialog = ({ open, onOpenChange, group, currentId, onReorde
 };
 
 /** Everything that points at this entry, computed, read-only. */
-export const ReferencedByPanel = ({ item, items, fields, homonyms, itemTo }) => {
+export const ReferencedByPanel = ({ item, items, fields, numbers, itemTo }) => {
   const refs = useMemo(
     () => referencesTo(items, fields, item.id).filter((r) => r.field),
     [items, fields, item.id],
@@ -528,7 +528,7 @@ export const ReferencedByPanel = ({ item, items, fields, homonyms, itemTo }) => 
         {refs.map((r, i) => (
           <li key={i} className="flex items-center gap-2 px-4 py-1.5 text-sm">
             <span className="min-w-0 flex-1 truncate">
-              <ItemLink item={r.item} homonyms={homonyms} itemTo={itemTo} />
+              <ItemLink item={r.item} numbers={numbers} itemTo={itemTo} />
             </span>
             <span className="text-xs text-muted-foreground">{humanizeFieldName(r.field.name)}</span>
           </li>

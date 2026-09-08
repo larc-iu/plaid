@@ -9,20 +9,20 @@ import { FormLabel } from './FormLabel';
 // the parent of a sense. Every entry is already in memory, so the list is a
 // local filter; nothing is fetched.
 //
-// The entries are shown form first with the homonym subscript, then the
+// The entries are shown form first with the dotted number, then the
 // gloss, so two entries with one form can be told apart before picking.
 
 const LIMIT = 30;
 
 /**
  * @param {object[]} items every entry of the vocabulary, in creation order
- * @param {Map} homonyms id -> subscript (buildHomonymIndex)
+ * @param {Map} numbers id -> its dotted number (buildItemNumbers)
  * @param {Set<string>} [exclude] ids never offered (the entry itself, say)
  * @param {(id: string) => void} onPick
  */
 export const ItemPicker = ({
   items,
-  homonyms,
+  numbers,
   exclude,
   onPick,
   placeholder = 'Type a form or gloss…',
@@ -127,7 +127,7 @@ export const ItemPicker = ({
                 i === active && 'bg-accent',
               )}
             >
-              <FormLabel form={it.form} index={homonyms?.get(it.id)} className="font-medium" />
+              <FormLabel form={it.form} index={numbers?.get(it.id)} className="font-medium" />
               {it.metadata?.gloss && (
                 <span className="truncate text-xs text-muted-foreground">
                   {String(it.metadata.gloss)}

@@ -7,7 +7,7 @@
 // Archive ids are correlation keys, never written: every created entity gets
 // a fresh id and old→new maps thread references (vocab items ← links, tokens
 // ← spans/links). Vocab items are created IN ARRAY ORDER — the archive
-// contract that preserves homonym subscripts.
+// contract that preserves the order entries spelled alike are numbered in.
 //
 // Resumability (same scheme as FLEx): a document is marked done
 // (metadata.nativeImported) only after every write succeeded; on resume, done
@@ -143,7 +143,7 @@ export function resolveNativeTargets(project, manifest) {
 }
 
 /**
- * Import one vocabulary's items IN ARRAY ORDER (the homonym-subscript
+ * Import one vocabulary's items IN ARRAY ORDER (the entry-numbering
  * contract). Returns Map<archiveItemId, newItemId>. Resume-safe: items
  * already stamped with a matching nativeImportId are reused.
  */
@@ -182,9 +182,6 @@ export async function importVocabulary({
         ]),
       ),
     );
-  }
-  if (vocabData.dictionary === true) {
-    await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'dictionary', true);
   }
   if (vocabData.tagsets && Object.keys(vocabData.tagsets).length) {
     await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'tagsets', vocabData.tagsets);
@@ -805,8 +802,8 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
     });
     results.imported += 1;
   }
-  // Last: the structure a dictionary vocabulary keeps in item metadata
-  // (parents, Entry fields, examples) names ids from the archive, so it is
+  // Last: the structure a vocabulary keeps in item metadata (parents, Entry
+  // fields, examples) names ids from the archive, so it is
   // rewritten through the maps now that every item, document and token
   // exists. Idempotent, so a resume redoes it harmlessly.
   for (const vocab of archive.vocabularies) {

@@ -51,24 +51,12 @@ import {
   morphTypeOptions,
   splitChainText,
 } from '@/domain/affixMarkers';
-import { buildHomonymIndex } from '@/domain/vocabHomonyms';
-import {
-  buildItemNumbers,
-  groupRankedByHeadword,
-  readDictionaryEnabled,
-} from '@/domain/vocabDictionary';
+import { buildItemNumbers, groupRankedByHeadword } from '@/domain/vocabDictionary';
 import { FIELD_TYPES, RESERVED_ITEM_KEYS } from '@/domain/vocabFields';
 
-// The number that tells an entry apart, drawn after its form: a homonym
-// subscript (a NUMBER, form₂) for a vocabulary without Lexicography Mode, a
-// dotted number (a STRING, "1.2") as text for one with it. Never a
-// superscript: those mark tone.
-const numHtml = (sub, cls) =>
-  sub == null || sub === ''
-    ? nothing
-    : typeof sub === 'string'
-      ? html`<span class="${cls}__num">${sub}</span>`
-      : html`<sub class="${cls}__sub">${sub}</sub>`;
+// The dotted number that tells an entry apart ("1.2"), drawn after its form
+// as text. Never a superscript: those mark tone.
+const numHtml = (sub, cls) => (sub ? html`<span class="${cls}__num">${sub}</span>` : nothing);
 import { rankVocabItems } from '@/domain/vocabRank';
 import { composeAppend, composePending } from '@/domain/compose';
 import { ZERO_MORPH } from '@/domain/zeroMorph';
@@ -1204,7 +1192,7 @@ export class IgtEditor {
     let title;
     if (mwe) {
       const item = this._mweItem(mwe);
-      const sub = this._homonymSub(item);
+      const sub = this._itemNumber(item);
       content = html`${mwe.item.form}${numHtml(sub, 'igt-vocab')}`;
       const words = this._mweWords(mwe.memberTokenIds);
       title = `“${words}” ${this._linkStateText(state, mwe.provOrigin, mwe.item.form, canLink)}`;
@@ -4328,7 +4316,7 @@ export class IgtEditor {
       const state = vocabItem.prov;
       const stateClass = provClass('igt-vocab__hint', state === PROV_STATES.HUMAN ? null : state);
       const title = this._linkStateText(state, vocabItem.provOrigin, vocabItem.form, canLink, true);
-      const sub = this._homonymSub(vocabItem);
+      const sub = this._itemNumber(vocabItem);
       opener = html`<button
         type="button"
         class="igt-vocab__opener igt-vocab__hint ${stateClass}"
@@ -4380,21 +4368,17 @@ export class IgtEditor {
     return !last || last.x !== e.clientX || last.y !== e.clientY;
   }
 
-  _homonymIndexFor(vocabId) {
+  _itemNumbersFor(vocabId) {
     const dv = this.doc?.dataVersion;
-    if (this._homonymCacheKey !== dv) {
-      this._homonymCacheKey = dv;
-      this._homonymCache = new Map();
+    if (this._numbersCacheKey !== dv) {
+      this._numbersCacheKey = dv;
+      this._numbersCache = new Map();
     }
-    if (!this._homonymCache.has(vocabId)) {
+    if (!this._numbersCache.has(vocabId)) {
       const vocab = (this.doc?.vocabularies || {})[vocabId];
-      const items = vocab?.items || [];
-      this._homonymCache.set(
-        vocabId,
-        readDictionaryEnabled(vocab?.config) ? buildItemNumbers(items) : buildHomonymIndex(items),
-      );
+      this._numbersCache.set(vocabId, buildItemNumbers(vocab?.items || []));
     }
-    return this._homonymCache.get(vocabId);
+    return this._numbersCache.get(vocabId);
   }
 
   // Precedent (domain/precedent.js) behind the popover's ranking and the
@@ -4470,14 +4454,13 @@ export class IgtEditor {
     return precedentForm(formText, kind, this._ignoredCfg);
   }
 
-  _homonymSub(vocabItem) {
+  _itemNumber(vocabItem) {
     if (!vocabItem?.vocabId) return null;
-    const idx = this._homonymIndexFor(vocabItem.vocabId).get(vocabItem.id);
-    return idx != null ? idx : null;
+    return this._itemNumbersFor(vocabItem.vocabId).get(vocabItem.id) ?? null;
   }
 
   // A vocabulary's entries by id, for the fields that hold references to them.
-  // Cached like the homonym index, and invalidated with the same key: this is
+  // Cached like the number index, and invalidated with the same key: this is
   // read once per row of a popover that lists the whole lexicon.
   _vocabItemIndexFor(vocabId) {
     const dv = this.doc?.dataVersion;
@@ -4511,12 +4494,12 @@ export class IgtEditor {
     // name, numbered as everything else in the popover is.
     const hasRefs = names.some((n) => fields[n]?.type === FIELD_TYPES.ITEM);
     const byId = hasRefs ? this._vocabItemIndexFor(vocab?.id) : null;
-    const numbers = hasRefs ? this._homonymIndexFor(vocab?.id) : null;
+    const numbers = hasRefs ? this._itemNumbersFor(vocab?.id) : null;
     const refLabel = (id) => {
       const target = byId.get(id);
       if (!target) return '';
       const n = numbers?.get(id);
-      return typeof n === 'string' && n ? `${target.form} ${n}` : (target.form ?? '');
+      return n ? `${target.form} ${n}` : (target.form ?? '');
     };
     const valueOf = (n) => {
       if (n === 'morphType') return morphTypeLabel(meta[n]);
@@ -4545,7 +4528,7 @@ export class IgtEditor {
     this._popoverVocabId = activeVocab?.id ?? null;
 
     const search = this._popoverSearch || '';
-    const homIdx = activeVocab ? this._homonymIndexFor(activeVocab.id) : null;
+    const numIdx = activeVocab ? this._itemNumbersFor(activeVocab.id) : null;
     // Ranked by vocabRank.js: what this form was linked to before comes
     // first, then form-match tiers; a typed search ranks against the typed
     // text alone.
@@ -4555,7 +4538,7 @@ export class IgtEditor {
       (activeVocab?.items || []).map((it) => ({
         ...it,
         _detail: this._vocabItemDetail(it, activeVocab),
-        _sub: homIdx ? homIdx.get(it.id) : null,
+        _sub: numIdx ? numIdx.get(it.id) : null,
       })),
       {
         form: formText || '',
@@ -4581,19 +4564,18 @@ export class IgtEditor {
         items.unshift(x);
       }
     }
-    // In Lexicography Mode the candidates read like the dictionary: each
-    // headword once, its senses under it, numbered; a headword that only
-    // carries senses is shown for context, dimmed. Each row keeps its rank.
-    const grouped =
-      activeVocab && readDictionaryEnabled(activeVocab.config)
-        ? groupRankedByHeadword(items, activeVocab.items || [])
-        : items.map((it) => ({ item: it, depth: 0 }));
+    // The candidates read like the dictionary: each headword once, its senses
+    // under it, numbered; a headword that only carries senses is shown for
+    // context, dimmed. Each row keeps its rank.
+    const grouped = activeVocab
+      ? groupRankedByHeadword(items, activeVocab.items || [])
+      : items.map((it) => ({ item: it, depth: 0 }));
     const limited = grouped.slice(0, 30).map((r) => ({
       ...r.item,
       // A row shown only for context never went through the ranking, so it
       // arrives undecorated: give it the same number and detail line, or a
       // headword reads like a lone entry.
-      _sub: r.item._sub ?? (homIdx ? homIdx.get(r.item.id) : null),
+      _sub: r.item._sub ?? (numIdx ? numIdx.get(r.item.id) : null),
       _detail: r.item._detail ?? this._vocabItemDetail(r.item, activeVocab),
       _depth: r.depth,
       _context: !!r.context,
@@ -4612,20 +4594,17 @@ export class IgtEditor {
     // While the row is being edited the entry's form is whatever is typed.
     const editingCreate = canCreate && this._popoverCreateEdit != null;
     const effectiveForm = editingCreate ? this._popoverCreateEdit.trim() : createForm;
-    // If the form already exists in the active vocab, the new item would be a
-    // homonym — preview the subscript it would get (existing count + 1) and
-    // say so, since a duplicate is usually a mis-click on the existing entry.
-    // In Lexicography Mode only ENTRIES count (a new entry is one), and the
-    // number is drawn as text.
-    const dictionary = !!activeVocab && readDictionaryEnabled(activeVocab.config);
+    // If the form already exists in the active vocab, the new entry would be
+    // spelled like an existing one — preview the number it would get (existing
+    // count + 1) and say so, since a duplicate is usually a mis-click on the
+    // existing entry. Only ENTRIES count, since a new one is an entry.
     const newFormDupes =
       canCreate && effectiveForm
         ? (activeVocab.items || []).filter(
-            (it) => it.form === effectiveForm && (!dictionary || !it.metadata?.parent),
+            (it) => it.form === effectiveForm && !it.metadata?.parent,
           ).length
         : 0;
-    const newFormSub =
-      newFormDupes >= 1 ? (dictionary ? String(newFormDupes + 1) : newFormDupes + 1) : null;
+    const newFormSub = newFormDupes >= 1 ? String(newFormDupes + 1) : null;
     // Rows on a WORD's popover for its multi-word expressions: one per MWE it
     // belongs to (opens that one), then "Part of a longer expression…", which
     // starts gathering words around it.
@@ -4638,7 +4617,7 @@ export class IgtEditor {
         extraRows.push({
           kind: 'in',
           label: m.item.form,
-          sub: this._homonymSub(this._mweItem(m)),
+          sub: this._itemNumber(this._mweItem(m)),
           title: `Open the multi-word expression “${this._mweWords(m.memberTokenIds)}”`,
           onSelect: () => this._openMweByLink(m.linkId),
         });

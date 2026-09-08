@@ -51,27 +51,23 @@ export function filterVocabItems(
 
 /**
  * The entries in column order. `sort` is `{key, dir}` with key `form`, `gloss`
- * or `uses`. Ties, and every tie among homonyms, fall back to the form and
- * then the homonym subscript, so the list always reads form₁, form₂, …
+ * or `uses`. Ties, and every tie among entries spelled alike, fall back to the
+ * form and then its dotted number, so the list always reads "a 1", "a 2", …
  * regardless of the column. An entry with no gloss sorts after the glossed
  * ones in either direction: the gaps are what the chip is for.
  */
-export function sortVocabItems(items, sort, { homonyms, usageCounts } = {}) {
+export function sortVocabItems(items, sort, { numbers, usageCounts } = {}) {
   const dir = sort?.dir === 'desc' ? -1 : 1;
   const byForm = (a, b) => {
     const af = (a.form ?? '').toLowerCase();
     const bf = (b.form ?? '').toLowerCase();
     if (af < bf) return -1;
     if (af > bf) return 1;
-    // Homonyms in subscript order. Not by id: ids do not sort into creation
-    // order within a bulk write.
-    const ha = homonyms?.get(a.id);
-    const hb = homonyms?.get(b.id);
-    // Dotted numbers ("1.2") are strings; subscripts are numbers.
-    if (typeof ha === 'string' || typeof hb === 'string') {
-      return String(ha ?? '').localeCompare(String(hb ?? ''), undefined, { numeric: true });
-    }
-    return (ha ?? 0) - (hb ?? 0);
+    // In dotted-number order. Not by id: ids do not sort into creation order
+    // within a bulk write. Numeric collation so "a 10" follows "a 9".
+    const na = numbers?.get(a.id) ?? '';
+    const nb = numbers?.get(b.id) ?? '';
+    return String(na).localeCompare(String(nb), undefined, { numeric: true });
   };
   const column = {
     form: (a, b) => byForm(a, b) * dir,

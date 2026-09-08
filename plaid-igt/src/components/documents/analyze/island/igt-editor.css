@@ -982,16 +982,8 @@
   cursor: default;
 }
 
-/* The number that tells an entry apart, shown on the linked chip and in the
-   lexicon popover list: a homonym subscript (form₂) for a plain vocabulary,
-   a dotted number ("1.2") as small text for one in Lexicography Mode. */
-.igt-vocab__sub {
-  opacity: 0.75;
-  text-decoration: none;
-}
-.igt-vocab-pop__sub {
-  color: #6b7280;
-}
+/* The dotted number that tells an entry apart ("1.2"), shown as small text on
+   the linked chip and in the lexicon popover list. */
 .igt-vocab__num,
 .igt-vocab-pop__num {
   margin-left: 0.3em;

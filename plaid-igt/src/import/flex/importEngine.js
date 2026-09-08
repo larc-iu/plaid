@@ -22,8 +22,6 @@ import {
   readScope,
   readVocabFields,
 } from '../../domain/igtConfig.js';
-import { readTagsets } from '../../domain/tagsets.js';
-import { dictionaryEnablement, DICTIONARY_KEY } from '../../domain/vocabDictionary.js';
 import { FIELD_SCOPES, FIELD_TYPES } from '../../domain/vocabFields.js';
 import { pickEn } from './fwdataParser.js';
 
@@ -202,7 +200,6 @@ export async function importLexicon({
   analysisWss = null,
   lexiconFields = [],
   customFieldWs = {},
-  dictionary = false,
   variants = false,
   onProgress,
   shouldStop,
@@ -261,11 +258,10 @@ export async function importLexicon({
       flexEntry: entry.guid,
       flexSense: sense?.guid ?? entry.guid,
     });
-    // In Lexicography Mode an entry with more than one sense is a CONTAINER
-    // (its form and entry-level fields, no gloss) with every FLEx sense under
-    // it, numbered as FLEx numbered them. With one sense, the sense is the
-    // entry, as always.
-    const container = dictionary && entry.senses.length > 1;
+    // An entry with more than one sense is a CONTAINER (its form and
+    // entry-level fields, no gloss) with every FLEx sense under it, numbered
+    // as FLEx numbered them. With one sense, the sense is the entry.
+    const container = entry.senses.length > 1;
     if (container) {
       const metadata = entryMeta(null);
       note(metadata);
@@ -342,20 +338,18 @@ export async function importLexicon({
     onProgress?.({ phase: 'lexicon', done, total: pending.length });
   }
 
-  if (dictionary)
-    await placeSenses({ client, vocabId, lexicon, senseToItem, existing, shouldStop });
-  if (dictionary && variants)
+  await placeSenses({ client, lexicon, senseToItem, existing, shouldStop });
+  if (variants)
     await placeVariants({ client, vocabId, lexicon, senseToItem, existing, shouldStop });
   return senseToItem;
 }
 
-// With Lexicography Mode ticked, the vocabulary keeps FLEx's sense structure:
-// an entry with several senses is a container item, its senses are senses
-// of it in FLEx order, and a subsense is a sense of the sense that owned it.
+// The vocabulary keeps FLEx's sense structure: an entry with several senses
+// is a container item, its senses are senses of it in FLEx order, and a
+// subsense is a sense of the sense that owned it.
 // Written after creation, since a parent is an item id; only items made in
 // this run are placed, so an entry already in the lexicon is left as it is.
-// The vocabulary's switch goes on, with the Status field.
-async function placeSenses({ client, vocabId, lexicon, senseToItem, existing, shouldStop }) {
+async function placeSenses({ client, lexicon, senseToItem, existing, shouldStop }) {
   const patches = [];
   for (const entry of lexicon) {
     if (entry.senses.length < 2) continue;
@@ -386,16 +380,6 @@ async function placeSenses({ client, vocabId, lexicon, senseToItem, existing, sh
       }
     });
   }
-  const layer = await client.vocabLayers.get(vocabId);
-  const add = dictionaryEnablement({
-    fieldsConfig: readVocabFields(layer.config) ?? {},
-    tagsets: readTagsets(layer.config),
-  });
-  if (add.tagsets)
-    await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'tagsets', add.tagsets);
-  if (add.fieldsConfig)
-    await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', add.fieldsConfig);
-  await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, DICTIONARY_KEY, true);
 }
 
 // The fields FLEx's variants and complex forms land in. A variant entry
@@ -732,7 +716,6 @@ async function runImportImpl({
     customFieldWs: config.customFieldWs ?? {},
     analysisWss: config.analysisWss ?? null,
     lexiconFields: config.lexiconFields ?? [],
-    dictionary: config.dictionary === true,
     variants: config.variants === true,
     onProgress,
     shouldStop,

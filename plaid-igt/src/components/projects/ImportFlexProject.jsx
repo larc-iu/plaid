@@ -23,7 +23,6 @@ import { buildDocuments } from '../../import/flex/buildDocuments';
 import { deriveImportConfig, runImport } from '../../import/flex/importEngine';
 import { executeProjectSetup } from './setup/executeSetup';
 import { markImportStarted, markImportFinished, readImportState } from '../../domain/igtConfig';
-import { readDictionaryEnabled } from '../../domain/vocabDictionary';
 import { useResumeImport } from '@/hooks/useResumeImport';
 import { documentFraction, documentLabel } from '../../import/progress';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
@@ -152,14 +151,6 @@ export const ImportFlexProject = () => {
   const defaultLexiconName = `${projectName.trim()} Lexicon`;
   const effectiveLexiconName = lexiconName ?? defaultLexiconName;
   const existingVocab = existingVocabs.find((v) => v.id === existingVocabId) ?? null;
-  // A FLEx lexicon IS a dictionary: entries with senses under them, which is
-  // the only shape that keeps what the file says. A lexicon of its own is
-  // therefore always imported in Lexicography Mode, with no question asked.
-  // An existing lexicon keeps the mode it is in: a vocabulary is shared across
-  // projects, and turning the mode on for one import turns it on for all of
-  // them. Adding to a flat lexicon still lands flat, as it always did.
-  const importDictionary =
-    lexiconMode === 'existing' ? readDictionaryEnabled(existingVocab?.config) : true;
   const lexiconChoiceValid =
     lexiconMode === 'existing' ? !!existingVocab : !!effectiveLexiconName.trim();
 
@@ -175,8 +166,7 @@ export const ImportFlexProject = () => {
           ws: o.ws,
           name: (orthoNames[o.ws] || o.ws).trim() || o.ws,
         })),
-        dictionary: importDictionary,
-        variants: importDictionary && importVariants,
+        variants: importVariants,
       };
 
       // 1. Project + layer setup (shared with the setup wizard), once.
@@ -510,14 +500,10 @@ export const ImportFlexProject = () => {
                     </p>
                   </div>
                 )}
-                {importDictionary && (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Senses are kept under their entry, in FLEx order. The lexicon is in Lexicography
-                    Mode: entries can be grouped into senses, refer to each other, have highlighted
-                    usage examples, and track publication status.
-                  </p>
-                )}
-                {importDictionary && variantEntryCount > 0 && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Senses are kept under their entry, in FLEx order.
+                </p>
+                {variantEntryCount > 0 && (
                   <label className="flex cursor-pointer items-start gap-2 text-sm">
                     <input
                       type="checkbox"
