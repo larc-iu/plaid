@@ -635,8 +635,14 @@ Four formats are supported:
 
 * **FieldWorks (FLEx)**: a project backup (`.fwbackup`), bringing in its texts, words, morphemes, glosses, translations, and the full lexicon. Every lexicon field that carries values comes along as an entry field unless you untick it. Words that cannot be aligned to their baseline are listed before the import and skipped, and some FLEx detail that Plaid does not model is dropped.
 * **CLDF** (`.zip`): a Cross-Linguistic Data Formats dataset. Its examples become interlinear texts, its lexicon a vocabulary, and its language the project's identity.
-* **ELAN** (`.eaf`): a set of annotation files that share one tier structure. Each file becomes a document, with its tiers, speakers, and time alignment.
+* **ELAN** (`.eaf`): a set of annotation files that share one tier structure. Each file becomes a document, with its tiers, speakers, time alignment, and its recording when you choose that alongside.
 * **Plaid IGT archive** (`.zip`): recreates a project exactly, including its vocabularies, media, and comments.
+
+An ELAN import also runs into a project you already have: **New Document → Import from ELAN**, on the project's Documents tab.
+Each tier is written into a field the project already has, chosen from a list, and a tier can be given a field of its own instead.
+A tier with no annotations is left out.
+Recordings are uploaded with the documents when you choose them alongside the `.eaf` files: each one is matched to the file that names it, and a document whose recording you did not choose is imported without it.
+The rest of the project is untouched, and nothing is locked while the import runs.
 
 An import that stops before it finishes, whether you cancel it, it fails, or the tab is closed, leaves a project that is only part filled.
 Opening such a project takes you back to the import instead: choose the same file and it carries on, keeping the documents and entries already there and finishing the ones it never reached.

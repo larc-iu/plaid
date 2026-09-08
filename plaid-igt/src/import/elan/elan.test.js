@@ -9,7 +9,12 @@ import {
   nodeLabel,
   ROLES,
 } from './schema.js';
-import { buildElanDocuments, readMorphForm, alignSegments } from './buildDocuments.js';
+import {
+  buildElanDocuments,
+  matchMediaFiles,
+  readMorphForm,
+  alignSegments,
+} from './buildDocuments.js';
 import { buildEafDocument } from '../../export/elan.js';
 
 // ---- fixtures --------------------------------------------------------------
@@ -355,11 +360,11 @@ describe('tier schema', () => {
 
 // ---- buildDocuments --------------------------------------------------------
 
-const buildFrom = (files, overrides = {}) => {
+const buildFrom = (files, overrides = {}, options = {}) => {
   const parsed = files.map(([xml, name]) => readEaf(xml, name));
   const { nodes } = compareSchemas(parsed);
   const roles = { ...suggestRoles(nodes), ...overrides };
-  const build = buildElanDocuments(parsed, nodes, roles);
+  const build = buildElanDocuments(parsed, nodes, roles, options);
   // Every fixture, not just the one written for it, has to satisfy the
   // partition invariant the server enforces.
   build.documents.forEach(expectSentencesTile);
@@ -527,7 +532,7 @@ describe('buildElanDocuments', () => {
     expect(build.schema.orthographies).toEqual(['IPA']);
   });
 
-  it('records the referenced media file and says it is not imported', () => {
+  it('records the referenced media file and says when it was not supplied', () => {
     const xml = eafXml({
       types: { u: null },
       tiers: [{ id: 'T', type: 'u', anns: [['a1', 'hola', 0, 500]] }],
@@ -535,7 +540,24 @@ describe('buildElanDocuments', () => {
     });
     const { build } = buildFrom([[xml, 'x.eaf']]);
     expect(build.documents[0].metadata['Media file']).toBe('rec.wav');
-    expect(build.warnings[0]).toMatch(/not imported/);
+    expect(build.documents[0].mediaFile).toBeNull();
+    expect(build.warnings[0]).toMatch(/without media/);
+  });
+
+  it('carries a supplied recording on its document and drops the warning', () => {
+    const xml = eafXml({
+      types: { u: null },
+      tiers: [{ id: 'T', type: 'u', anns: [['a1', 'hola', 0, 500]] }],
+      media: 'rec.wav',
+    });
+    const recording = { name: 'rec.wav' };
+    const { build } = buildFrom(
+      [[xml, 'x.eaf']],
+      {},
+      { mediaByFile: new Map([['x.eaf', recording]]) },
+    );
+    expect(build.documents[0].mediaFile).toBe(recording);
+    expect(build.warnings.join(' ')).not.toMatch(/without media/);
   });
 
   it('drops blank utterances rather than emitting a zero-width sentence', () => {
@@ -871,6 +893,53 @@ describe('morph forms', () => {
     // "-" says a boundary is present but not what sits on either side.
     expect(readMorphForm('-s')).toEqual({ form: 's', morphType: null });
     expect(readMorphForm('=lo')).toEqual({ form: 'lo', morphType: 'enclitic' });
+  });
+});
+
+describe('matchMediaFiles', () => {
+  const file = (name) => ({ name });
+  const eaf = (fileName, referenced = null) => ({
+    fileName,
+    media: referenced ? [{ relativeUrl: `./${referenced}`, url: '', mimeType: 'video/mp4' }] : [],
+  });
+
+  it('pairs a file with the .eaf that names it, whatever it is called', () => {
+    const video = file('oni-lifestory-ah-c.mp4');
+    const { byFile, unmatched, missing } = matchMediaFiles(
+      [eaf('oni-lifestory-ah.eaf', 'oni-lifestory-ah-c.mp4')],
+      [video],
+    );
+    expect(byFile.get('oni-lifestory-ah.eaf')).toBe(video);
+    expect(unmatched).toEqual([]);
+    expect(missing).toEqual([]);
+  });
+
+  it('falls back to a file whose stem matches the .eaf', () => {
+    const audio = file('story.wav');
+    const { byFile } = matchMediaFiles([eaf('story.eaf', 'recorded-2019.wav')], [audio]);
+    expect(byFile.get('story.eaf')).toBe(audio);
+  });
+
+  it('claims each file once, so two .eafs cannot take the same recording', () => {
+    const one = file('a.mp4');
+    const { byFile, missing } = matchMediaFiles(
+      [eaf('a.eaf', 'a.mp4'), eaf('b.eaf', 'a.mp4')],
+      [one],
+    );
+    expect(byFile.get('a.eaf')).toBe(one);
+    expect(byFile.has('b.eaf')).toBe(false);
+    expect(missing).toEqual(['a.mp4']);
+  });
+
+  it('reports what nobody claimed and what nobody supplied', () => {
+    const spare = file('unrelated.mp4');
+    const { byFile, unmatched, missing } = matchMediaFiles(
+      [eaf('a.eaf', 'a.mp4'), eaf('b.eaf')],
+      [spare],
+    );
+    expect(byFile.size).toBe(0);
+    expect(unmatched).toEqual([spare]);
+    expect(missing).toEqual(['a.mp4']); // b.eaf names none, so it is not missing one
   });
 });
 

@@ -91,13 +91,13 @@ export const CommentsBrowser = ({
   return (
     <div className="tw mt-2">
       <div className="mb-3 flex flex-wrap items-center gap-2">
+        <ListCount shown={shown.length} total={total} noun="thread" />
         <SearchInput
           className="w-56"
           placeholder="Search comments…"
           value={query}
           onChange={setQuery}
         />
-        <ListCount shown={shown.length} total={total} noun="thread" />
         <Select value={sort} onValueChange={setSort}>
           <SelectTrigger className="h-8 w-40" aria-label="Sort threads">
             <SelectValue />

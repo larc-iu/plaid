@@ -455,6 +455,11 @@ export const TagsetsManager = ({
                       return (
                         <>
                           <div className="flex items-center gap-2">
+                            <ListCount
+                              shown={matched.length}
+                              total={t.values.length}
+                              noun="value"
+                            />
                             <SearchInput
                               className="w-full max-w-[18rem]"
                               inputClassName="h-8"
@@ -464,11 +469,6 @@ export const TagsetsManager = ({
                                 setValueQuery(v);
                                 setValuePage(0);
                               }}
-                            />
-                            <ListCount
-                              shown={matched.length}
-                              total={t.values.length}
-                              noun="value"
                             />
                           </div>
                           {paged.pageItems.length === 0 ? (

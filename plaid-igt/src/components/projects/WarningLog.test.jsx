@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderComponent, texts, byText } from '@/test/renderComponent.jsx';
-import { WarningLog } from './ImportElanProject.jsx';
+import { WarningLog } from './ImportPanels.jsx';
 
 const entry = (text, document = null) => ({ text, document });
 

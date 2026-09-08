@@ -9,149 +9,38 @@
 // import/elan/schema.js for what "the same structure" means (participants are
 // normalized out, so files by different speakers still match).
 //
+// Reading the batch and mapping its tiers is `useElanBatch` + `ElanTierReview`,
+// shared with ImportElanDocuments, which runs the same import into a project
+// that already exists. What is particular to this page is the project it
+// creates first.
+//
 // Resume mirrors the other import pages: the created project id and setup
 // completion live in refs for this page session, so Retry re-runs against the
 // same project and the engine skips documents already marked done.
 
-import { useMemo, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Upload, Check, RefreshCw, Square, AlertTriangle } from 'lucide-react';
+import { Panel, WarningLog } from './ImportPanels.jsx';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
 import { useAuth } from '../../contexts/AuthContext';
 import { notifyError, notifySuccess, notifyWarning } from '@/utils/feedback';
-import { readEaf } from '../../import/elan/readEaf';
-import {
-  compareSchemas,
-  suggestRoles,
-  validateRoles,
-  nodeLabel,
-  ROLES,
-} from '../../import/elan/schema';
-import { buildElanDocuments, defaultFieldName } from '../../import/elan/buildDocuments';
 import { deriveSetupData, runElanImport } from '../../import/elan/importEngine';
 import { executeProjectSetup } from './setup/executeSetup';
 import { markImportStarted, markImportFinished } from '../../domain/igtConfig';
 import { useResumeImport } from '@/hooks/useResumeImport';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-
-const ROLE_LABELS = [
-  [ROLES.UTTERANCE, 'Utterances'],
-  [ROLES.ALIGNMENT, 'Time alignment'],
-  [ROLES.WORD, 'Words'],
-  [ROLES.MORPHEME, 'Morphemes'],
-  [ROLES.SENTENCE_FIELD, 'Sentence field'],
-  [ROLES.WORD_FIELD, 'Word field'],
-  [ROLES.MORPH_FIELD, 'Morpheme field'],
-  [ROLES.ORTHOGRAPHY, 'Orthography'],
-  [ROLES.OFF, 'Don’t import'],
-];
-const NAMED_ROLES = new Set([
-  ROLES.SENTENCE_FIELD,
-  ROLES.WORD_FIELD,
-  ROLES.MORPH_FIELD,
-  ROLES.ORTHOGRAPHY,
-]);
-
-const Panel = ({ tone = 'muted', icon: Icon, title, children }) => {
-  const tones = {
-    muted: 'border-border bg-muted/40',
-    warn: 'border-amber-500/40 bg-amber-500/10',
-    error: 'border-destructive/40 bg-destructive/10',
-  };
-  return (
-    <div className={`flex items-start gap-2 rounded-md border p-3 text-sm ${tones[tone]}`}>
-      {Icon && <Icon className="mt-0.5 h-4 w-4 shrink-0" />}
-      <div className="min-w-0 flex-1">
-        {title && <p className="font-medium">{title}</p>}
-        {children}
-      </div>
-    </div>
-  );
-};
-
-// Every warning the import raises, in the order it raised them, grouped by the
-// document it came from. On screen while the run is still going, because on a
-// long corpus a problem is worth seeing before the end, and scrollable because
-// a real corpus can raise hundreds.
-// Past this many, the list is a wall rather than information, and rendering one
-// node per warning starts to cost. A corpus that capitalises its word tier
-// systematically raises one per utterance, so thousands is a real shape.
-const LOG_RENDER_LIMIT = 200;
-
-export const WarningLog = ({ log }) => {
-  const groups = [];
-  for (const entry of log.slice(0, LOG_RENDER_LIMIT)) {
-    const last = groups[groups.length - 1];
-    if (last && last.document === entry.document) last.items.push(entry.text);
-    else groups.push({ document: entry.document, items: [entry.text] });
-  }
-  const hidden = log.length - Math.min(log.length, LOG_RENDER_LIMIT);
-  // Copy takes the whole log, not just the part on screen: the cap is about
-  // what is readable, not about what was recorded.
-  const asText = () => log.map((e) => `${e.document ?? 'Corpus'}\t${e.text}`).join('\n');
-  return (
-    <Panel
-      tone="warn"
-      icon={AlertTriangle}
-      title={`${log.length} warning${log.length === 1 ? '' : 's'}`}
-    >
-      <div className="mt-2 max-h-64 overflow-y-auto rounded border bg-background/60 p-2">
-        {groups.map((g, gi) => (
-          <div key={gi} className={gi ? 'mt-2' : ''}>
-            <p className="text-xs font-medium">{g.document ?? 'The corpus as a whole'}</p>
-            <ul className="list-inside list-disc text-xs text-muted-foreground">
-              {g.items.map((t, i) => (
-                <li key={i}>{t}</li>
-              ))}
-            </ul>
-          </div>
-        ))}
-        {hidden > 0 && (
-          <p className="mt-2 text-xs font-medium">and {hidden} more, which Copy includes.</p>
-        )}
-      </div>
-      <Button
-        variant="outline"
-        size="sm"
-        className="mt-2"
-        onClick={() => {
-          navigator.clipboard?.writeText(asText());
-          notifySuccess('Warnings copied.', 'Import');
-        }}
-      >
-        Copy
-      </Button>
-    </Panel>
-  );
-};
+import { useElanBatch } from './elan/useElanBatch';
+import { ElanTierReview, SchemaMismatch } from './elan/ElanTierReview.jsx';
+import { ElanMediaPanel } from './elan/ElanMediaPanel.jsx';
 
 export const ImportElanProject = () => {
   useDocumentTitle('Import ELAN');
   const { client } = useAuth();
   const fileInputRef = useRef(null);
-
   const [stage, setStage] = useState('pick'); // pick | parsing | review | running | done
-  // One decision per near-miss pair, keyed by the pair's folded name: either
-  // 'separate' (they really are two tiers) or the name to merge them onto. The
-  // import is blocked until every pair has one. Reset on every new pick, so a
-  // decision never carries over to a different batch.
-  const [nearMissChoices, setNearMissChoices] = useState({});
-  // The pairs themselves come from the UNMERGED schema, so a pair stays on
-  // screen (and stays changeable) after it has been merged away.
-  const [nearMissGroups, setNearMissGroups] = useState([]);
-  const [files, setFiles] = useState(null); // parsed .eaf objects
-  const [comparison, setComparison] = useState(null);
-  const [roles, setRoles] = useState({});
-  const [fieldNames, setFieldNames] = useState({});
   const [projectName, setProjectName] = useState('');
   const [progress, setProgress] = useState(null);
   // Every warning the run raises, in order, kept on screen while it happens
@@ -160,83 +49,24 @@ export const ImportElanProject = () => {
   const [runError, setRunError] = useState(null);
   const [results, setResults] = useState(null);
 
+  const batch = useElanBatch();
   const { resumeId, resumeName, finishAsIs } = useResumeImport(client);
   const projectIdRef = useRef(resumeId || null);
   const setupDoneRef = useRef(false);
   const stopRef = useRef(false);
 
-  const nodes = comparison?.nodes ?? [];
-  const problems = useMemo(
-    () => (comparison?.consistent ? validateRoles(nodes, roles) : []),
-    [comparison, nodes, roles],
-  );
-
-  // Re-derived whenever a mapping choice changes, so the review numbers always
-  // describe what the import would actually do.
-  const build = useMemo(() => {
-    if (!files || !comparison?.consistent || problems.length) return null;
-    try {
-      return buildElanDocuments(files, nodes, roles, { fieldNames });
-    } catch (e) {
-      console.error('ELAN build failed:', e);
-      return null;
-    }
-  }, [files, comparison, nodes, roles, fieldNames, problems]);
-
-  // Adopt a schema: suggest the roles and field names for it, keeping whatever
-  // the user has already chosen for nodes that survive. A merge changes node
-  // keys, so the mapping has to be rebuilt rather than carried over wholesale.
-  const applySchema = (parsed, result) => {
-    setComparison(result);
-    const suggested = result.consistent ? suggestRoles(result.nodes) : {};
-    setRoles((prev) => {
-      const next = { ...suggested };
-      for (const n of result.nodes) if (prev[n.key] !== undefined) next[n.key] = prev[n.key];
-      return next;
-    });
-    setFieldNames((prev) =>
-      Object.fromEntries(result.nodes.map((n) => [n.key, prev[n.key] ?? defaultFieldName(n)])),
-    );
-  };
-
-  // Re-read the batch under a new set of merge decisions.
-  const chooseNearMiss = (fold, choice) => {
-    const choices = { ...nearMissChoices, [fold]: choice };
-    setNearMissChoices(choices);
-    const canonical = new Map(
-      Object.entries(choices).filter(([, v]) => v !== 'separate' && v !== undefined),
-    );
-    applySchema(files, compareSchemas(files, canonical.size ? canonical : null));
-  };
-
   const handleFiles = async (fileList) => {
-    const picked = [...(fileList || [])].filter((f) => /\.eaf$/i.test(f.name));
-    if (!picked.length) {
-      notifyError('Choose one or more .eaf files.', 'Nothing to import');
-      return;
-    }
     setStage('parsing');
     try {
-      const parsed = [];
-      for (const file of picked) {
-        parsed.push(readEaf(await file.text(), file.name));
-      }
-      const result = compareSchemas(parsed);
-      setFiles(parsed);
-      setNearMissGroups(result.nearMisses);
-      setNearMissChoices({});
-      applySchema(parsed, result);
+      await batch.readFiles(fileList);
       setProjectName((name) => name || 'ELAN corpus');
       setStage('review');
     } catch (e) {
       console.error('ELAN read failed:', e);
       notifyError(e.message, 'Could not read the files');
-      setStage('pick');
+      setStage(batch.files ? 'review' : 'pick');
     }
   };
-
-  const setRole = (key, role) => setRoles((r) => ({ ...r, [key]: role }));
-  const setName = (key, name) => setFieldNames((n) => ({ ...n, [key]: name }));
 
   const startImport = async () => {
     setStage('running');
@@ -249,7 +79,7 @@ export const ImportElanProject = () => {
           client,
           isNewProject: true,
           resumeProjectId: projectIdRef.current,
-          setupData: deriveSetupData(build, projectName.trim()),
+          setupData: deriveSetupData(batch.build, projectName.trim()),
           onProgress: (pct, msg) => setProgress({ label: msg, pct: pct * 0.15 }),
           // The record goes on the project the moment it exists, so a setup
           // that fails part way leaves a project that reopens this import.
@@ -269,13 +99,13 @@ export const ImportElanProject = () => {
       const res = await runElanImport({
         client,
         projectId: projectIdRef.current,
-        build,
+        build: batch.build,
         shouldStop: () => stopRef.current,
         onWarning: (text, { document }) => setLog((l) => [...l, { text, document }]),
         onProgress: (p) => {
           if (p.phase !== 'document') return;
           const n = (p.index ?? 0) + 1;
-          const total = p.total ?? build.documents.length;
+          const total = p.total ?? batch.build.documents.length;
           setProgress({
             label: `${p.doc}${p.step ? `: ${p.step}` : ''} (${n}/${total})`,
             pct: 15 + (n / total) * 85,
@@ -309,9 +139,9 @@ export const ImportElanProject = () => {
     }
   };
 
-  const undecidedNearMisses = nearMissGroups.filter((g) => !nearMissChoices[g.fold]);
   const editable = stage === 'review';
-  const canRun = editable && !!build && !!projectName.trim() && undecidedNearMisses.length === 0;
+  const canRun =
+    editable && !!batch.build && !!projectName.trim() && batch.undecidedNearMisses.length === 0;
 
   return (
     <div className="tw mx-auto max-w-3xl px-4 py-8">
@@ -370,73 +200,36 @@ export const ImportElanProject = () => {
           >
             <Upload className="h-8 w-8 text-muted-foreground" />
             <p className="text-sm text-muted-foreground">
-              Drop your .eaf files here, or choose them below. Media files are not imported.
+              Drop your .eaf files here, or choose them below. Include the recordings to upload
+              those too.
             </p>
             <input
               ref={fileInputRef}
               type="file"
-              accept=".eaf"
+              accept=".eaf,audio/*,video/*"
               multiple
               className="hidden"
               onChange={(e) => handleFiles(e.target.files)}
             />
-            <Button onClick={() => fileInputRef.current?.click()}>Choose .eaf files</Button>
+            <Button onClick={() => fileInputRef.current?.click()}>Choose files</Button>
           </div>
         )}
 
         {stage === 'parsing' && <p className="text-sm text-muted-foreground">Reading files…</p>}
 
-        {(stage === 'review' || stage === 'running') && comparison && (
+        {(stage === 'review' || stage === 'running') && batch.comparison && (
           <div className="flex flex-col gap-6">
-            {!comparison.consistent && (
-              <Panel
-                tone="error"
-                icon={AlertTriangle}
-                title="These files do not share one tier structure"
-              >
-                <p className="mt-1 text-xs">
-                  One mapping has to describe the whole batch, so importing a mixture would apply
-                  decisions to files they were never made for. Import each structure separately, or
-                  make the tiers match in ELAN first.
-                </p>
-                <ul className="mt-2 flex flex-col gap-2 text-xs">
-                  {comparison.differences.map((d, i) => (
-                    <li key={i}>
-                      <span className="font-medium">
-                        {d.files.length} file{d.files.length === 1 ? '' : 's'}
-                      </span>{' '}
-                      ({d.files.slice(0, 3).join(', ')}
-                      {d.files.length > 3 ? `, +${d.files.length - 3} more` : ''}):
-                      {d.missing.length > 0 && <> missing {d.missing.join(', ')}.</>}
-                      {d.extra.length > 0 && <> extra {d.extra.join(', ')}.</>}
-                      {d.nearMiss?.length > 0 && (
-                        <>
-                          {' '}
-                          <span className="font-medium">
-                            {d.nearMiss.join(', ')} differs only in how it is spelled
-                          </span>
-                          , which is likely a typo in the tier name rather than a real difference.
-                        </>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-3"
-                  onClick={() => {
-                    setFiles(null);
-                    setComparison(null);
-                    setStage('pick');
-                  }}
-                >
-                  Choose different files
-                </Button>
-              </Panel>
+            {!batch.comparison.consistent && (
+              <SchemaMismatch
+                comparison={batch.comparison}
+                onReset={() => {
+                  batch.reset();
+                  setStage('pick');
+                }}
+              />
             )}
 
-            {comparison.consistent && (
+            {batch.comparison.consistent && (
               <>
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="project-name">Project name</Label>
@@ -454,164 +247,14 @@ export const ImportElanProject = () => {
                   )}
                 </div>
 
-                {nearMissGroups.length > 0 && (
-                  <Panel
-                    tone={undecidedNearMisses.length ? 'error' : 'warn'}
-                    icon={AlertTriangle}
-                    title={`${nearMissGroups.length} pair${nearMissGroups.length === 1 ? '' : 's'} of tier names read alike`}
-                  >
-                    <p className="mt-1 text-xs">
-                      Tiers are matched by their exact names, so these are separate tiers unless you
-                      say otherwise. Two rows that read alike is how a tier gets mapped by mistake
-                      and its twin silently dropped, so this usually means a typo in the corpus.
-                    </p>
-                    <div className="mt-2 flex flex-col gap-2">
-                      {nearMissGroups.map((g) => (
-                        <div key={g.fold} className="flex flex-wrap items-center gap-2 text-xs">
-                          <span className="font-medium">{g.names.join(' / ')}</span>
-                          <span className="text-muted-foreground">
-                            differ only in {g.differsBy}
-                            {!g.mergeable &&
-                              ', but ELAN gives them different types, so they cannot be merged'}
-                          </span>
-                          <Select
-                            value={nearMissChoices[g.fold] ?? ''}
-                            onValueChange={(v) => chooseNearMiss(g.fold, v)}
-                            disabled={!editable}
-                          >
-                            <SelectTrigger className="h-7 w-56 text-xs">
-                              <SelectValue placeholder="Decide…" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="separate">Different tiers, keep both</SelectItem>
-                              {g.mergeable &&
-                                g.names.map((n) => (
-                                  <SelectItem key={n} value={n}>
-                                    Same tier, merge as “{n}”
-                                  </SelectItem>
-                                ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      ))}
-                    </div>
-                    {undecidedNearMisses.length > 0 && (
-                      <p className="mt-2 text-xs font-medium">
-                        Decide each pair to continue. Renaming the tiers in ELAN is the durable fix.
-                      </p>
-                    )}
-                  </Panel>
-                )}
+                <ElanTierReview batch={batch} editable={editable} />
 
-                <div className="flex flex-col gap-3">
-                  <div>
-                    <h2 className="text-lg font-semibold">Tiers</h2>
-                    <p className="text-sm text-muted-foreground">
-                      {files.length} file{files.length === 1 ? '' : 's'}, all with the same{' '}
-                      {nodes.length} tier{nodes.length === 1 ? '' : 's'}. Speaker suffixes are
-                      ignored when matching, so files by different speakers count as the same
-                      structure.
-                    </p>
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    {nodes.map((node) => (
-                      <div key={node.key} className="flex items-center gap-2">
-                        <div
-                          className="min-w-0 flex-1 truncate text-sm"
-                          style={{ paddingLeft: `${node.depth * 16}px` }}
-                          title={`type ${node.typeRef}${node.stereotype ? `, ${node.stereotype}` : ''}`}
-                        >
-                          <span className="font-medium">{nodeLabel(node)}</span>
-                          <span className="ml-2 text-xs text-muted-foreground">
-                            {node.stereotype ?? 'top level'} · {node.annotationCount}
-                            {node.participants.length > 1
-                              ? ` · ${node.participants.length} speakers`
-                              : ''}
-                            {' · '}
-                            <span className="font-mono">{node.tierIds.slice(0, 3).join(' ')}</span>
-                            {node.tierIds.length > 3 ? ` +${node.tierIds.length - 3}` : ''}
-                          </span>
-                        </div>
-                        {NAMED_ROLES.has(roles[node.key]) && (
-                          <Input
-                            aria-label={`Name for ${nodeLabel(node)}`}
-                            value={fieldNames[node.key] ?? ''}
-                            disabled={!editable}
-                            onChange={(e) => setName(node.key, e.target.value)}
-                            className="h-8 w-40 shrink-0"
-                          />
-                        )}
-                        <Select
-                          value={roles[node.key] ?? ROLES.OFF}
-                          disabled={!editable}
-                          onValueChange={(v) => setRole(node.key, v)}
-                        >
-                          <SelectTrigger className="h-8 w-44 shrink-0">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {ROLE_LABELS.map(([value, label]) => (
-                              <SelectItem key={value} value={value}>
-                                {label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {problems.length > 0 && (
-                  <Panel tone="warn" icon={AlertTriangle} title="Finish the mapping">
-                    <ul className="mt-1 list-inside list-disc text-xs">
-                      {problems.map((p) => (
-                        <li key={p}>{p}</li>
-                      ))}
-                    </ul>
-                  </Panel>
-                )}
-
-                {build && (
-                  <Panel title="What will be imported">
-                    <p className="mt-1 text-xs">
-                      {build.documents.length} document
-                      {build.documents.length === 1 ? '' : 's'} · {build.stats.sentences} sentences
-                      · {build.stats.words} words · {build.stats.morphemes} morphemes ·{' '}
-                      {build.stats.alignments} time-aligned segments
-                      {build.stats.speakers.length > 0 && (
-                        <> · speakers: {build.stats.speakers.join(', ')}</>
-                      )}
-                    </p>
-                    {build.warnings.length > 0 && (
-                      <ul className="mt-2 list-inside list-disc text-xs text-muted-foreground">
-                        {build.warnings.map((w) => (
-                          <li key={w}>{w}</li>
-                        ))}
-                      </ul>
-                    )}
-                  </Panel>
-                )}
-
-                {build && build.stats.skipped.length > 0 && (
-                  <Panel
-                    tone="warn"
-                    icon={AlertTriangle}
-                    title={`Not imported: ${build.stats.skipped.reduce((n, s) => n + s.values, 0)} annotations on ${build.stats.skipped.length} tier${build.stats.skipped.length === 1 ? '' : 's'}`}
-                  >
-                    <p className="mt-1 text-xs">
-                      These tiers are set to “Don’t import” above. Give one a role to keep it.
-                    </p>
-                    <ul className="mt-2 list-inside list-disc text-xs text-muted-foreground">
-                      {build.stats.skipped.map((sk) => (
-                        <li key={sk.label}>
-                          {sk.tiers.join(', ')} — {sk.values} annotation
-                          {sk.values === 1 ? '' : 's'}
-                        </li>
-                      ))}
-                    </ul>
-                  </Panel>
-                )}
+                <ElanMediaPanel
+                  media={batch.media}
+                  files={batch.files}
+                  editable={editable}
+                  onRemove={(file) => batch.setMediaFiles((prev) => prev.filter((f) => f !== file))}
+                />
 
                 {runError && (
                   <Panel tone="error" icon={AlertTriangle} title="Import failed">

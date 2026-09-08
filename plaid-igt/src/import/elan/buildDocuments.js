@@ -92,6 +92,57 @@ export function alignSegments(body, begin, end, texts) {
   return spans;
 }
 
+/** The last path segment of a media URL, or '' when there is none. */
+const mediaBasename = (eaf) => {
+  const ref = eaf?.media?.[0]?.relativeUrl || eaf?.media?.[0]?.url || '';
+  return String(ref).split(/[\\/]/).pop() || '';
+};
+
+/** A file name without its extension, case-folded, for matching. */
+const stem = (name) =>
+  String(name || '')
+    .split(/[\\/]/)
+    .pop()
+    .replace(/\.[^.]*$/, '')
+    .toLowerCase();
+
+/**
+ * Pair picked media files with the .eaf files that reference them.
+ *
+ * The .eaf names its recording in MEDIA_DESCRIPTOR, so that name is the key: a
+ * file called `oni-lifestory-ah-c.mp4` belongs to `oni-lifestory-ah.eaf`
+ * because the .eaf says so, not because the names look alike. Failing that, a
+ * media file whose stem matches the .eaf's own is taken as its recording,
+ * which is the other convention corpora follow.
+ *
+ * @returns {{byFile: Map<string, File>, unmatched: File[], missing: string[]}}
+ *   missing = the media names .eaf files reference but nothing supplied.
+ */
+export function matchMediaFiles(eafs, mediaFiles) {
+  const pool = [...(mediaFiles || [])];
+  const taken = new Set();
+  const byFile = new Map();
+  const missing = [];
+  const claim = (predicate) => pool.find((f, i) => !taken.has(i) && predicate(f, i));
+  for (const eaf of eafs || []) {
+    const referenced = mediaBasename(eaf);
+    const pick =
+      (referenced && claim((f) => f.name.toLowerCase() === referenced.toLowerCase())) ||
+      claim((f) => stem(f.name) === stem(eaf.fileName));
+    if (pick) {
+      taken.add(pool.indexOf(pick));
+      byFile.set(eaf.fileName, pick);
+    } else if (referenced) {
+      missing.push(referenced);
+    }
+  }
+  return {
+    byFile,
+    unmatched: pool.filter((_, i) => !taken.has(i)),
+    missing,
+  };
+}
+
 /** Default target name for a field/orthography node. */
 export const defaultFieldName = (node) => nodeLabel(node);
 
@@ -130,6 +181,7 @@ const tiersOfNodes = (eaf, nodeList) => {
  */
 export function buildElanDocuments(files, nodes, roles, options = {}) {
   const fieldNames = options.fieldNames || {};
+  const mediaByFile = options.mediaByFile || null;
   const nameOf = (node) => (fieldNames[node.key] || defaultFieldName(node)).trim();
   const { byRole } = resolveMapping(nodes, roles);
   const warnings = [];
@@ -474,8 +526,12 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
       sentences,
       words,
       alignments,
-      mediaBytes: null,
-      mediaName: null,
+      // The File the user picked for this .eaf, when they picked one (see
+      // matchMediaFiles). The CLDF importer carries media as bytes because its
+      // zip already holds them in memory; here the file is on disk and a
+      // recording can be hundreds of megabytes, so the File itself rides along
+      // and the upload streams it.
+      mediaFile: mediaByFile?.get(eaf.fileName) ?? null,
       warnings: docWarnings,
     });
   }
@@ -503,9 +559,12 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
     );
   }
 
-  if (files.some((f) => f.media.length)) {
+  // Only the recordings nobody supplied: one that was picked rides along with
+  // its document (mediaFile) and needs no warning.
+  const unsupplied = files.filter((f) => f.media.length && !mediaByFile?.get(f.fileName));
+  if (unsupplied.length) {
     warnings.push(
-      'Media files are referenced by the .eaf files but are not imported. Attach them to each document afterwards.',
+      `${unsupplied.length} of ${files.length} file${files.length === 1 ? '' : 's'} name a recording that was not chosen. Those documents are imported without media, which can be attached on the Media tab afterwards.`,
     );
   }
 

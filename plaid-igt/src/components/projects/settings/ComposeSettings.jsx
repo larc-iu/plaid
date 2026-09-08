@@ -138,6 +138,7 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
 
       <div className="flex max-w-4xl flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
+          <ListCount shown={matches.length} total={draft.length} noun="code" />
           <SearchInput
             className="w-full max-w-[20rem]"
             inputClassName="h-8"
@@ -145,7 +146,6 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
             value={q}
             onChange={setQ}
           />
-          <ListCount shown={matches.length} total={draft.length} noun="code" />
           {changedCount > 0 && (
             <span className="whitespace-nowrap text-xs text-muted-foreground">
               · {changedCount} changed by this project

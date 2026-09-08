@@ -10,6 +10,11 @@
 // succeeded, so on resume finished documents are skipped and half-imported ones
 // are deleted and redone.
 //
+// The engine is indifferent to WHERE it writes: it resolves every layer and
+// field off the project it is handed, so the same run imports into a project
+// the ELAN wizard just created or into one that has been worked in for months
+// (see ImportElanDocuments). Only the caller differs.
+//
 // The one thing this engine writes that the others do not is the time-alignment
 // layer: a token per aligned segment carrying {timeBegin, timeEnd, speaker} in
 // seconds, which is the whole reason an ELAN corpus is worth importing as such
@@ -259,8 +264,32 @@ export async function importDocument({
     }
   }
 
-  // Marked LAST: resume treats an unmarked document as partial and redoes it.
-  await client.documents.setMetadata(docId, importStamp(doc.metadata, doc.id, true));
+  // The recording the .eaf names, when the user supplied it. Same contract as
+  // the CLDF importer: a failure is a warning and the document is left
+  // unfinished, so re-importing retries the upload instead of leaving a
+  // document that quietly has no media.
+  let mediaFailed = false;
+  if (doc.mediaFile) {
+    check();
+    try {
+      await client.documents.uploadMedia(docId, doc.mediaFile, `Import media for ${doc.name}`, {
+        onProgress: (bytes) =>
+          onProgress?.({ phase: 'document', doc: doc.name, step: 'Uploading media', bytes }),
+      });
+    } catch (err) {
+      mediaFailed = true;
+      warnings?.push(
+        `"${doc.name}": media upload failed. The document is left unfinished so re-importing ` +
+          `retries it: ${err?.message ?? err}`,
+      );
+    }
+  }
+
+  // Marked LAST: resume treats an unmarked document as partial and redoes it,
+  // which is also how a failed media upload gets another chance.
+  if (!mediaFailed) {
+    await client.documents.setMetadata(docId, importStamp(doc.metadata, doc.id, true));
+  }
   return docId;
 }
 
