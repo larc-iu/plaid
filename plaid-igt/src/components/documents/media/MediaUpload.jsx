@@ -3,10 +3,8 @@ import { AudioLines, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { formatBytes } from '@/utils/formatBytes';
-import { conversionNeed, estimateMp3Bytes, MP3_BITRATE_KBPS } from '@/domain/media/transcodeToMp3';
+import { conversionNeed, conversionNote, estimateMp3Bytes } from '@/domain/media/transcodeToMp3';
 import { readDuration } from '@/domain/media/mediaDuration';
-
-const HOUR_MB = Math.round((3600 * MP3_BITRATE_KBPS * 1000) / 8 / 1e6);
 
 // The upload prompt, and the upload itself once a file is chosen: the bytes
 // going up as a bar with the count, then a pulsing bar while the server checks
@@ -94,7 +92,7 @@ export const MediaUpload = ({
                 </span>
               </div>
               <Progress value={convertProgress.fraction * 100} label="Conversion progress" />
-              <p className="text-xs text-muted-foreground">Converting to audio.</p>
+              <p className="text-xs text-muted-foreground">Converting to MP3.</p>
             </div>
           ) : progress ? (
             <div className="flex w-[28rem] max-w-full flex-col gap-2" aria-live="polite">
@@ -124,10 +122,7 @@ export const MediaUpload = ({
                 </p>
               )}
               <p className="text-xs text-muted-foreground">
-                Mono at 16 kHz, timed exactly as the original: clear enough to transcribe from, too
-                coarse for phonetic measurement
-                {pending.type?.startsWith('video/') ? ', and without the picture' : ''}.
-                {smaller ? '' : ` An MP3 is about ${HOUR_MB} MB an hour.`}
+                {conversionNote({ bytes: smaller, video: pending.type?.startsWith('video/') })}
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <Button onClick={() => send(true)}>

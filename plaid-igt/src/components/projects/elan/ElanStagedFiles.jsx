@@ -11,10 +11,8 @@ import { AudioLines, FileText, Film, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { formatBytes } from '@/utils/formatBytes';
-import { conversionNeed, estimateMp3Bytes, MP3_BITRATE_KBPS } from '@/domain/media/transcodeToMp3';
+import { conversionNeed, conversionNote, estimateMp3Bytes } from '@/domain/media/transcodeToMp3';
 import { Panel } from '../ImportPanels.jsx';
-
-const HOUR_MB = Math.round((3600 * MP3_BITRATE_KBPS * 1000) / 8 / 1e6);
 
 /** What a recording will become, once its duration is known. */
 const convertedBytes = (seconds) =>
@@ -152,10 +150,7 @@ export const ElanStagedFiles = ({
                 </span>
               ) : null}
               <span className="text-muted-foreground">
-                Mono at 16 kHz, timed exactly as the original: clear enough to transcribe from, too
-                coarse for phonetic measurement
-                {anyVideo ? ', and without the picture' : ''}.
-                {totalConverted ? '' : ` An MP3 is about ${HOUR_MB} MB an hour.`}
+                {conversionNote({ bytes: totalConverted, video: anyVideo })}
               </span>
             </p>
           )}

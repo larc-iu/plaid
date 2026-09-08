@@ -21,6 +21,22 @@ import { decodeTo16kMono, TARGET_RATE } from '../vad/decodeTo16kMono.js';
 /** Mono speech at 16 kHz. Enough for transcription, small enough to send. */
 export const MP3_BITRATE_KBPS = 32;
 
+/** Roughly what an hour of it comes to, for when the real size is not known. */
+export const MP3_MB_PER_HOUR = Math.round((3600 * MP3_BITRATE_KBPS * 1000) / 8 / 1e6);
+
+/**
+ * What converting costs and what it produces, in one sentence. Every surface
+ * that offers it says the same thing, because it is the same trade.
+ *
+ * `bytes` is the size it will produce when that is known; without it the
+ * sentence falls back to a rate. `video` says whether there is a picture to
+ * lose, since a .wav has none.
+ */
+export const conversionNote = ({ bytes = null, video = false } = {}) =>
+  'Mono at 16 kHz, timed exactly as the original: clear enough to transcribe from, too coarse ' +
+  `for phonetic measurement${video ? ', and without the picture' : ''}.` +
+  (bytes ? '' : ` An MP3 is about ${MP3_MB_PER_HOUR} MB an hour.`);
+
 /**
  * Big enough that sending audio alone is worth offering even when the server
  * would accept the file as it is. A judgement about the user's time and
