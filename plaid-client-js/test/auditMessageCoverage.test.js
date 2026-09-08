@@ -8,6 +8,13 @@ import assert from 'node:assert';
 import { PlaidClient } from '../src/index.js';
 
 const WRITE = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+// How many arguments come before `auditMessage`, for methods where `fn.length`
+// cannot say. A parameter with a default stops the count, so
+// `restore(documentId, asOf, { dryRun } = {}, auditMessage)` reports 2 and the
+// probe would otherwise put its sentinel in `asOf` and report a false failure.
+const ARGS_BEFORE_AUDIT_MESSAGE = {
+  'documents.restore': 3,
+};
 // CRUD bundles whose writes hit document state. `messages`/services are
 // real-time/registry (not audit-logged) and use streaming transports.
 const BUNDLES = [
@@ -31,7 +38,8 @@ test('every CRUD write method threads a per-call auditMessage', async () => {
   const SENT = 'COVPROBE';
   const checked = [];
   const probe = async (label, fn) => {
-    const args = Array(Math.max(fn.length - 1, 0)).fill('x');
+    const before = ARGS_BEFORE_AUDIT_MESSAGE[label] ?? Math.max(fn.length - 1, 0);
+    const args = Array(before).fill('x');
     args.push(SENT);
     lastCall = null;
     try { await fn(...args); } catch { return; } // GET pagination chokes on the stub — skip
