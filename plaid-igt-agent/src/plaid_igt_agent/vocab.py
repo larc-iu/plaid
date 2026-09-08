@@ -544,32 +544,57 @@ def plan_delete_refs(items: List[dict], fields: List[dict], deleted_ids) -> List
 
 def plan_merge_refs(items: List[dict], fields: List[dict], survivor_id: str, loser_ids) -> List[dict]:
     """Patches for a merge: every reference to a losing entry now names the
-    survivor, the losers' senses become the survivor's, and a survivor whose own
-    parent was a loser takes that loser's parent. Losers get no patch (they are
-    deleted). Mirrors planMergeRefs, which is what Bulk Edit's merge does."""
+    survivor, the losers' senses become the survivor's (each loser's in its own
+    sense order, appended after the survivor's), and a survivor that hangs
+    anywhere under a loser is lifted to where the topmost such loser stood.
+    Losers get no patch (they are deleted). Mirrors planMergeRefs, which is
+    what Bulk Edit's merge does.
+
+    The lift looks at the survivor's whole ancestor chain, not only its parent:
+    a headword merged into a sense two levels down makes the sense between
+    them the survivor's, and the survivor must not keep it as a parent."""
     losers = set(loser_ids or [])
     losers.discard(survivor_id)
     ref_fields = item_ref_fields(fields)
     tree = build_sense_tree(items)
-    patches = []
+    # The survivor's new parent: the parent of the topmost loser above it, when
+    # there is one. `_unchanged` leaves it where it is.
+    _unchanged = object()
+    survivor_parent = _unchanged
+    chain = []
+    seen = set()
+    up = tree.parent_of.get(survivor_id)
+    while up and up not in seen:
+        seen.add(up)
+        chain.append(up)
+        up = tree.parent_of.get(up)
+    top = max((i for i, x in enumerate(chain) if x in losers), default=-1)
+    if top >= 0:
+        survivor_parent = tree.parent_of.get(chain[top])
+    # Each loser's senses, in sense order, take the orders after the survivor's.
+    order_of = {}
     order = next_sense_order(tree, survivor_id)
+    for it in items or []:
+        if it['id'] not in losers:
+            continue
+        for c in tree.children_of.get(it['id'], []):
+            if c['id'] in losers or c['id'] == survivor_id:
+                continue
+            order_of[c['id']] = order
+            order += 1
+    patches = []
     for it in items or []:
         if it['id'] in losers:
             continue
         meta = it.get('metadata') or {}
         changed = False
-        p = parent_of(it)
-        if p and p in losers:
-            if it['id'] == survivor_id:
-                # Walk up past every losing ancestor, through the tree rather
-                # than the raw metadata: a self-parent or a cycle never ends.
-                up = p
-                while up and (up in losers or up == survivor_id):
-                    up = tree.parent_of.get(up)
-                meta = with_parent(meta, up or None, next_sense_order(tree, up) if up else None)
-            else:
-                meta = with_parent(meta, survivor_id, order)
-                order += 1
+        if it['id'] == survivor_id:
+            if survivor_parent is not _unchanged:
+                meta = with_parent(meta, survivor_parent or None,
+                                   next_sense_order(tree, survivor_parent) if survivor_parent else None)
+                changed = True
+        elif it['id'] in order_of:
+            meta = with_parent(meta, survivor_id, order_of[it['id']])
             changed = True
         for f in ref_fields:
             ids = ref_ids(it, f)
@@ -581,6 +606,23 @@ def plan_merge_refs(items: List[dict], fields: List[dict], survivor_id: str, los
         if changed:
             patches.append({'id': it['id'], 'metadata': meta})
     return patches
+
+
+def morph_type_of(tree: SenseTree, item_id: str):
+    """The morph type an item is rendered and classified by: its own, else the
+    nearest ancestor's. A sense made by hand carries none of its own, and it is
+    the same morph as its headword. None when no item on the chain has one.
+    Mirrors morphTypeOf."""
+    cur = item_id
+    seen = set()
+    while cur and cur not in seen:
+        seen.add(cur)
+        it = tree.by_id.get(cur)
+        t = (it.get('metadata') or {}).get('morphType') if it else None
+        if isinstance(t, str) and t != '':
+            return t
+        cur = tree.parent_of.get(cur)
+    return None
 
 
 def validate_vocab_refs(items: List[dict], fields: List[dict]) -> Tuple[List[dict], List[dict]]:

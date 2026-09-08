@@ -782,9 +782,11 @@ export const VocabularyItems = ({
           ? { parent: above, senseOrder: it.metadata?.senseOrder ?? nextSenseOrder(tree, above) }
           : {};
         // What belongs to the ENTRY goes up with the new headword: its place
-        // among the entries spelled alike, its morph type and lexeme form, the
-        // FLEx entry it came from, and every headword-only field. Left below,
-        // they would sit on a sense, where the form does not even show them.
+        // among the entries spelled alike, the FLEx entry it came from, and
+        // every headword-only field. Left below, they would sit on a sense,
+        // where the form does not even show them. The morph type and lexeme
+        // form go to both: the interlinear line reads the morph type off the
+        // item a token is linked to, which stays the sense.
         const { entry, sense } = splitEntryLevel(it.metadata, fields);
         const headMeta = { ...entry, ...place };
         created = await client.vocabItems.create(
@@ -795,10 +797,9 @@ export const VocabularyItems = ({
         await writeMetadata(id, { ...sense, parent: created.id, senseOrder: 1 });
       });
       // One GET to resync rather than folding the new entry in by hand. The
-      // split moved fields the form edits (the headword-only ones, the morph
-      // type, the lexeme form) off this item, so the open draft is re-seeded
-      // from what came back. Left alone it reads dirty without an edit, and a
-      // Save would put those fields back on the sense.
+      // split moved the headword-only fields off this item, so the open draft
+      // is re-seeded from what came back. Left alone it reads dirty without an
+      // edit, and a Save would put those fields back on the sense.
       seededRef.current = undefined;
       await fetchItems({ quiet: true });
     } catch (err) {

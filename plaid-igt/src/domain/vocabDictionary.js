@@ -379,18 +379,26 @@ export const nextSenseOrder = (tree, parentId) => {
 };
 
 /**
- * The metadata keys that belong to an ENTRY rather than to one of its senses:
- * its place among the entries spelled alike, the form facts a headword carries,
- * the FLEx entry it came from, and every headword-only field. `gloss`, `pos`,
- * `definition`, the examples and the status stay with the sense.
+ * The metadata keys that belong to an ENTRY alone: its place among the entries
+ * spelled alike, the FLEx entry it came from, and every headword-only field.
+ * `gloss`, `pos`, `definition`, the examples and the status stay with the sense.
  */
-const ENTRY_LEVEL_KEYS = [HOMOGRAPH_KEY, 'morphType', 'lexemeForm', 'flexEntry'];
+const ENTRY_LEVEL_KEYS = [HOMOGRAPH_KEY, 'flexEntry'];
+
+/**
+ * The keys a headword and each of its senses BOTH carry. A FLEx import writes
+ * them on every sense, and the interlinear line, the auto-linker and the
+ * exports read the morph type off the item a token is linked to, which is
+ * the sense. See `morphTypeOf` for the item that has none of its own.
+ */
+const SHARED_KEYS = ['morphType', 'lexemeForm'];
 
 /**
  * One entry's metadata split for raising a headword over it: what the new
- * headword takes, and what the entry keeps as it becomes a sense. Without the
- * split the number, the morph type and any headword-only field would sit on a
- * sense, where the entry form does not even show them.
+ * headword takes, and what the entry keeps as it becomes a sense. The shared
+ * keys go to both, the entry-level ones up, the rest stay. Without the split
+ * the number and any headword-only field would sit on a sense, where the
+ * entry form does not even show them.
  */
 export const splitEntryLevel = (metadata, fields) => {
   const entryFields = new Set(
@@ -400,9 +408,34 @@ export const splitEntryLevel = (metadata, fields) => {
   const sense = {};
   for (const [key, value] of Object.entries(metadata || {})) {
     if (key === PARENT_KEY || key === SENSE_ORDER_KEY) continue; // placement, set by the caller
-    (ENTRY_LEVEL_KEYS.includes(key) || entryFields.has(key) ? entry : sense)[key] = value;
+    if (SHARED_KEYS.includes(key)) {
+      entry[key] = value;
+      sense[key] = value;
+    } else if (ENTRY_LEVEL_KEYS.includes(key) || entryFields.has(key)) {
+      entry[key] = value;
+    } else {
+      sense[key] = value;
+    }
   }
   return { entry, sense };
+};
+
+/**
+ * The morph type an item is rendered and classified by: its own, else the
+ * nearest ancestor's. A sense made by hand (Add sense, Set parent) carries
+ * none of its own, and it is the same morph as its headword. Null when no
+ * item on the chain has one.
+ */
+export const morphTypeOf = (tree, id) => {
+  let cur = id;
+  const seen = new Set();
+  while (cur && !seen.has(cur)) {
+    seen.add(cur);
+    const t = tree.byId.get(cur)?.metadata?.morphType;
+    if (typeof t === 'string' && t !== '') return t;
+    cur = tree.parentOf.get(cur) ?? null;
+  }
+  return null;
 };
 
 /**
@@ -617,32 +650,62 @@ export const planDeleteRefs = (items, fields, deletedIds) => {
 
 /**
  * Patches for a merge: every reference to a losing entry now names the
- * survivor, the losers' senses become the survivor's, and a survivor whose
- * own parent was a loser takes that loser's parent. Losers themselves get no
- * patch (they are deleted).
+ * survivor, the losers' senses become the survivor's (each loser's in its own
+ * sense order, appended after the survivor's), and a survivor that hangs
+ * anywhere under a loser is lifted to where the topmost such loser stood.
+ * Losers themselves get no patch (they are deleted).
+ *
+ * The lift looks at the survivor's whole ancestor chain, not only its parent.
+ * With a headword merged into a sense two levels down, the sense between them
+ * is a loser's child and so becomes the survivor's; had the survivor kept
+ * that sense as its parent, the two would have pointed at each other.
  */
 export const planMergeRefs = (items, fields, survivorId, loserIds) => {
   const losers = new Set(loserIds);
   losers.delete(survivorId);
   const refFields = itemRefFields(fields);
   const tree = buildSenseTree(items);
-  const patches = [];
+  // The survivor's new parent: the parent of the topmost loser above it, when
+  // there is one. `undefined` leaves it where it is.
+  let survivorParent;
+  {
+    const chain = [];
+    const seen = new Set();
+    let up = tree.parentOf.get(survivorId) ?? null;
+    while (up && !seen.has(up)) {
+      seen.add(up);
+      chain.push(up);
+      up = tree.parentOf.get(up) ?? null;
+    }
+    const top = chain.map((id) => losers.has(id)).lastIndexOf(true);
+    if (top >= 0) survivorParent = tree.parentOf.get(chain[top]) ?? null;
+  }
+  // Each loser's senses, in sense order, take the orders after the survivor's.
+  const orderOf = new Map();
   let order = nextSenseOrder(tree, survivorId);
+  for (const it of items || []) {
+    if (!losers.has(it.id)) continue;
+    for (const c of tree.childrenOf.get(it.id) || []) {
+      if (losers.has(c.id) || c.id === survivorId) continue;
+      orderOf.set(c.id, order++);
+    }
+  }
+  const patches = [];
   for (const it of items || []) {
     if (losers.has(it.id)) continue;
     let meta = it.metadata || {};
     let changed = false;
-    const p = parentOf(it);
-    if (p && losers.has(p)) {
-      if (it.id === survivorId) {
-        // Walk up past every losing ancestor, through the tree rather than the
-        // raw metadata: a self-parent or a cycle there never terminates.
-        let up = p;
-        while (up && (losers.has(up) || up === survivorId)) up = tree.parentOf.get(up) ?? null;
-        meta = withParent(meta, up || null, up ? nextSenseOrder(tree, up) : null);
-      } else {
-        meta = withParent(meta, survivorId, order++);
+    if (it.id === survivorId) {
+      if (survivorParent !== undefined) {
+        meta = withParent(
+          meta,
+          survivorParent,
+          survivorParent ? nextSenseOrder(tree, survivorParent) : null,
+        );
+        changed = true;
       }
+    } else if (orderOf.has(it.id)) {
+      meta = withParent(meta, survivorId, orderOf.get(it.id));
       changed = true;
     }
     for (const f of refFields) {

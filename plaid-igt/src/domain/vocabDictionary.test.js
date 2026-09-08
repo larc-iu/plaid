@@ -16,6 +16,7 @@ import {
   validateVocabRefs,
   planDeleteRefs,
   planMergeRefs,
+  morphTypeOf,
   fieldsForItem,
   withExampleAdded,
   withExampleRemoved,
@@ -139,9 +140,13 @@ describe('splitEntryLevel', () => {
       flexEntry: 'E1',
       etymology: 'Proto-X',
     });
+    // The morph type and the lexeme form stay on the sense as well: the
+    // interlinear line reads the morph type off the item a token links to.
     expect(sense).toEqual({
       gloss: 'cat',
       pos: 'N',
+      morphType: 'stem',
+      lexemeForm: 'kat-',
       flexSense: 'S1',
       status: 'draft',
       examples: [{ text: 'a' }],
@@ -422,8 +427,9 @@ describe('delete and merge', () => {
     const list = [...items(), item('kat4', 'kat', { gloss: 'tomcat' })];
     const patches = planMergeRefs(list, fields, 'kat4', ['kat']);
     const byId = Object.fromEntries(patches.map((p) => [p.id, p.metadata]));
-    expect(byId.kat2).toMatchObject({ parent: 'kat4', senseOrder: 1 });
-    expect(byId.kat3).toMatchObject({ parent: 'kat4', senseOrder: 2 });
+    // In the loser's own sense order: kat3 is its sense 1, kat2 its sense 2.
+    expect(byId.kat3).toMatchObject({ parent: 'kat4', senseOrder: 1 });
+    expect(byId.kat2).toMatchObject({ parent: 'kat4', senseOrder: 2 });
     expect(byId.run).toEqual({ gloss: 'run', variantOf: 'kat4', seeAlso: ['kat4', 'kat2'] });
     expect(byId.kat2a).toBeUndefined();
   });
@@ -441,6 +447,56 @@ describe('delete and merge', () => {
     const list = [item('a', 'a', { parent: 'a' }), item('b', 'b', { parent: 'a' })];
     const patches = planMergeRefs(list, fields, 'b', ['a']);
     expect(Object.fromEntries(patches.map((p) => [p.id, p.metadata])).b).toEqual({});
+  });
+
+  // A headword merged into a sense two levels down: the sense between them
+  // becomes the survivor's, so the survivor must not keep it as a parent, or
+  // the two would point at each other and the next load would flatten both.
+  it('lifts a survivor above the topmost losing ancestor, never under its own new sense', () => {
+    const list = [
+      item('L', 'a', { gloss: 'head' }),
+      item('A', 'a', { parent: 'L', senseOrder: 1 }),
+      item('S', 'a', { parent: 'A', senseOrder: 1 }),
+    ];
+    const patches = planMergeRefs(list, fields, 'S', ['L']);
+    const byId = Object.fromEntries(patches.map((p) => [p.id, p.metadata]));
+    expect(byId.S).toEqual({});
+    expect(byId.A).toEqual({ parent: 'S', senseOrder: 1 });
+    const after = list.filter((x) => x.id !== 'L').map((x) => ({ ...x, metadata: byId[x.id] }));
+    expect(validateVocabRefs(after, fields).patches).toEqual([]);
+  });
+
+  it("appends a loser's senses in their own order, not in creation order", () => {
+    const list = [
+      item('s', 's', { gloss: 'survivor' }),
+      item('l', 'l', { gloss: 'loser' }),
+      item('c3', 'l', { parent: 'l', senseOrder: 3 }),
+      item('c1', 'l', { parent: 'l', senseOrder: 1 }),
+      item('c2', 'l', { parent: 'l', senseOrder: 2 }),
+    ];
+    const byId = Object.fromEntries(
+      planMergeRefs(list, fields, 's', ['l']).map((p) => [p.id, p.metadata]),
+    );
+    expect([byId.c1.senseOrder, byId.c2.senseOrder, byId.c3.senseOrder]).toEqual([1, 2, 3]);
+  });
+});
+
+describe('morphTypeOf', () => {
+  it("reads the item's own type, else the nearest ancestor's", () => {
+    const list = [
+      item('h', 'ler', { morphType: 'suffix' }),
+      item('s', 'ler', { parent: 'h' }),
+      item('ss', 'ler', { parent: 's', morphType: 'enclitic' }),
+      item('sss', 'ler', { parent: 'ss' }),
+      item('lone', 'x'),
+    ];
+    const tree = buildSenseTree(list);
+    expect(morphTypeOf(tree, 'h')).toBe('suffix');
+    expect(morphTypeOf(tree, 's')).toBe('suffix');
+    expect(morphTypeOf(tree, 'ss')).toBe('enclitic');
+    expect(morphTypeOf(tree, 'sss')).toBe('enclitic');
+    expect(morphTypeOf(tree, 'lone')).toBeNull();
+    expect(morphTypeOf(tree, 'missing')).toBeNull();
   });
 });
 

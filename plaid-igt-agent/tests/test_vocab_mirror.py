@@ -39,6 +39,7 @@ from plaid_igt_agent import vocab as vocab_module
 from plaid_igt_agent.vocab import (
     build_sense_tree, build_item_numbers, plan_delete_refs,
     plan_merge_refs, plan_sense_drop, next_sense_order, descendants_of, references_to,
+    morph_type_of,
     validate_vocab_refs, homograph_group, plan_homograph_order, homograph_of,
     arrange_as_tree, normalize_vocab_fields)
 
@@ -110,6 +111,8 @@ def _case(seed: int) -> dict:
             meta['rel'] = r.choice(ids)
         if r.random() < 0.5:
             meta['gloss'] = r.choice(FORMS)
+        if r.random() < 0.3:
+            meta['morphType'] = r.choice(['stem', 'suffix', '', None, 3])
         items.append({'id': i, 'form': r.choice(FORMS), 'metadata': meta})
     move = r.choice(ids)
     return {
@@ -161,6 +164,7 @@ def _python_side(c: dict) -> dict:
         'planSenseDrop': [plan_sense_drop(t, c['moveId'], d) for d in c['drops']],
         'nextSenseOrder': next_sense_order(t, c['orderParent']),
         'descendantsOf': [x['id'] for x in descendants_of(t, c['orderParent'])],
+        'morphTypeOf': {it['id']: morph_type_of(t, it['id']) for it in c['items']},
         'referencesTo': [[x['item']['id'], x['field']['name'] if x['field'] else None]
                          for x in references_to(c['items'], c['fields'], c['orderParent'])],
         'planDeleteRefs': plan_delete_refs(c['items'], c['fields'], c['deleted']),

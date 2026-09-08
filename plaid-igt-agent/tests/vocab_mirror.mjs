@@ -15,7 +15,7 @@ const fieldsMod = await import(`${DOMAIN}/vocabFields.js`);
 const {
   buildSenseTree, buildItemNumbers, planDeleteRefs, planMergeRefs, planSenseDrop,
   nextSenseOrder, descendantsOf, referencesTo, validateVocabRefs,
-  homographGroup, planHomographOrder, homographOf, arrangeAsTree,
+  homographGroup, planHomographOrder, homographOf, arrangeAsTree, morphTypeOf,
 } = dictMod;
 const { normalizeVocabFields } = fieldsMod;
 
@@ -53,6 +53,7 @@ const out = cases.map((c) => {
     planSenseDrop: c.drops.map((d) => planSenseDrop(t, c.moveId, d)),
     nextSenseOrder: nextSenseOrder(t, c.orderParent),
     descendantsOf: descendantsOf(t, c.orderParent).map((x) => x.id),
+    morphTypeOf: Object.fromEntries(c.items.map((it) => [it.id, morphTypeOf(t, it.id)])),
     referencesTo: referencesTo(c.items, c.fields, c.orderParent)
       .map((x) => [x.item.id, x.field ? x.field.name : null]),
     planDeleteRefs: planDeleteRefs(c.items, c.fields, c.deleted),
