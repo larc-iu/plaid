@@ -33,8 +33,9 @@ import { markImportStarted, markImportFinished } from '../../domain/igtConfig';
 import { useResumeImport } from '@/hooks/useResumeImport';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useElanBatch } from './elan/useElanBatch';
-import { ElanTierReview, SchemaMismatch } from './elan/ElanTierReview.jsx';
+import { ElanBuildSummary, ElanTierReview, SchemaMismatch } from './elan/ElanTierReview.jsx';
 import { ElanMediaPanel } from './elan/ElanMediaPanel.jsx';
+import { ElanDocumentsPanel } from './elan/ElanDocumentsPanel.jsx';
 
 export const ImportElanProject = () => {
   useDocumentTitle('Import ELAN');
@@ -249,9 +250,12 @@ export const ImportElanProject = () => {
 
                 <ElanTierReview batch={batch} editable={editable} />
 
+                <ElanDocumentsPanel build={batch.build} />
+
+                <ElanBuildSummary batch={batch} />
+
                 <ElanMediaPanel
                   media={batch.media}
-                  files={batch.files}
                   editable={editable}
                   onRemove={(file) => batch.setMediaFiles((prev) => prev.filter((f) => f !== file))}
                 />

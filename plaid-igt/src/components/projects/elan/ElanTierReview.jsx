@@ -261,7 +261,15 @@ export const ElanTierReview = ({ batch, editable, renderFieldControl = null }) =
           )}
         </div>
       </div>
+    </>
+  );
+};
 
+/** What the mapping would produce, and what it leaves behind. */
+export const ElanBuildSummary = ({ batch }) => {
+  const { build, problems } = batch;
+  return (
+    <>
       {problems.length > 0 && (
         <Panel tone="warn" icon={AlertTriangle} title="Finish the mapping">
           <ul className="mt-1 list-inside list-disc text-xs">

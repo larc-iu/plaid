@@ -50,8 +50,14 @@ import { suggestFieldNames } from '../../import/elan/tierNaming';
 import { defaultFieldName } from '../../import/elan/buildDocuments';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useElanBatch } from './elan/useElanBatch';
-import { ElanTierReview, SchemaMismatch, SCOPE_OF_ROLE } from './elan/ElanTierReview.jsx';
+import {
+  ElanBuildSummary,
+  ElanTierReview,
+  SchemaMismatch,
+  SCOPE_OF_ROLE,
+} from './elan/ElanTierReview.jsx';
 import { ElanMediaPanel } from './elan/ElanMediaPanel.jsx';
+import { ElanDocumentsPanel } from './elan/ElanDocumentsPanel.jsx';
 
 const NEW_FIELD = '__new__';
 
@@ -359,9 +365,12 @@ export const ImportElanDocuments = () => {
                   />
                 )}
 
+                <ElanDocumentsPanel build={batch.build} />
+
+                <ElanBuildSummary batch={batch} />
+
                 <ElanMediaPanel
                   media={batch.media}
-                  files={batch.files}
                   editable={editable}
                   onRemove={(file) => batch.setMediaFiles((prev) => prev.filter((f) => f !== file))}
                 />
