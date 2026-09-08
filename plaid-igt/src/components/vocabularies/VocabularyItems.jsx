@@ -66,6 +66,7 @@ import {
   withExampleAdded,
   withExampleRemoved,
   statusFieldKey,
+  itemLabel,
 } from '@/domain/vocabDictionary';
 import {
   ItemRefField,
@@ -468,7 +469,11 @@ export const VocabularyItems = ({
     if (seededRef.current === seedKey) return;
     if (!selectedId || selectedId === NEW_ID) {
       seededRef.current = seedKey;
-      setEditForm('');
+      // A sense is spelled like its headword (a FLEx import gives every
+      // sense the entry's form, and "adidi 1.2" reads that way), so Add sense
+      // starts from that form. A new entry starts blank.
+      const parent = newParent && tree.byId.get(newParent);
+      setEditForm(parent?.form ?? '');
       setEditFields({});
       return;
     }
@@ -477,7 +482,7 @@ export const VocabularyItems = ({
     seededRef.current = seedKey;
     setEditForm(item.form);
     setEditFields(editableMetadata(item.metadata));
-  }, [selectedId, newParent, items]);
+  }, [selectedId, newParent, items, tree]);
 
   // Plan the concordance + load the first batch whenever a real item is selected.
   useEffect(() => {
@@ -894,12 +899,7 @@ export const VocabularyItems = ({
     const refs = new Set(fields.filter((f) => f.type === FIELD_TYPES.ITEM).map((f) => f.name));
     if (!refs.size) return fieldText;
     const byId = new Map(items.map((it) => [it.id, it]));
-    const nameOf = (id) => {
-      const target = byId.get(id);
-      if (!target) return '';
-      const n = numbers?.get?.(id);
-      return n ? `${target.form} ${n}` : (target.form ?? '');
-    };
+    const nameOf = (id) => itemLabel(byId.get(id), numbers);
     return (item, name) => {
       if (!refs.has(name)) return fieldText(item, name);
       const v = item.metadata?.[name];

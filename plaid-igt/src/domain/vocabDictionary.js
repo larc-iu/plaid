@@ -322,6 +322,21 @@ export const buildItemNumbers = (items, tree = buildSenseTree(items)) => {
   return out;
 };
 
+/**
+ * The name an entry goes by wherever it is written as text: its form and its
+ * dotted number, "kwatha 1.2", or the bare form when it has no number. Every
+ * reader of a reference field, the exports and the search box name the target
+ * through this, so they cannot drift apart.
+ *
+ * @param {object|null} item the entry, or null for one that no longer exists ('')
+ * @param {Map<string,string>|null} numbers buildItemNumbers over its vocabulary
+ */
+export const itemLabel = (item, numbers) => {
+  if (!item) return '';
+  const n = numbers?.get(item.id);
+  return n ? `${item.form} ${n}` : (item.form ?? '');
+};
+
 /** An entry's stored homograph number, or null when unnumbered or zero. */
 export const homographOf = (item) => {
   const v = Number(item?.metadata?.[HOMOGRAPH_KEY]);

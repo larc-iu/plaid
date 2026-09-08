@@ -51,7 +51,7 @@ import {
   morphTypeOptions,
   splitChainText,
 } from '@/domain/affixMarkers';
-import { groupRankedByHeadword, lexiconView, refIds } from '@/domain/vocabDictionary';
+import { groupRankedByHeadword, itemLabel, lexiconView, refIds } from '@/domain/vocabDictionary';
 import { FIELD_TYPES, RESERVED_ITEM_KEYS } from '@/domain/vocabFields';
 
 // The dotted number that tells an entry apart ("1.2"), drawn after its form
@@ -4498,12 +4498,7 @@ export class IgtEditor {
       : Object.keys(meta).filter((n) => !RESERVED_ITEM_KEYS.has(n));
     // A field of type `item` holds entry ids. It reads as the entries they
     // name, numbered as everything else in the popover is.
-    const refLabel = (id) => {
-      const target = memo.byId.get(id);
-      if (!target) return '';
-      const n = memo.numbers.get(id);
-      return n ? `${target.form} ${n}` : (target.form ?? '');
-    };
+    const refLabel = (id) => itemLabel(memo.byId.get(id), memo.numbers);
     const valueOf = (n) => {
       if (n === 'morphType') return morphTypeLabel(meta[n]);
       if (!hasRefs || fields[n]?.type !== FIELD_TYPES.ITEM) return meta[n];

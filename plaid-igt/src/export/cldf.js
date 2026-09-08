@@ -31,6 +31,7 @@ import { morphFormOf, joinMorphemeTexts } from '../domain/igtExport.js';
 import {
   buildItemNumbers,
   buildSenseTree,
+  itemLabel,
   descendantsOf,
   exampleKey,
   exampleRefs,
@@ -491,7 +492,7 @@ export function buildCldfDataset({
   const senseRows = [];
   const extraVocabColumns = new Map();
   const extraSenseColumns = new Map();
-  let entriesWithoutSenseN = 0;
+  let entriesWithoutSense = 0;
   if (o.dictionary) {
     const reserved = new Set(['gloss', 'definition', 'pos']);
     let entryN = 0;
@@ -504,12 +505,7 @@ export function buildCldfDataset({
       // it: the entry's form and its number.
       const byId = new Map((vocab.items || []).map((it) => [it.id, it]));
       const numbers = buildItemNumbers(vocab.items || []);
-      const refLabel = (id) => {
-        const target = byId.get(id);
-        if (!target) return '';
-        const n = numbers.get(id);
-        return n ? `${target.form} ${n}` : (target.form ?? '');
-      };
+      const refLabel = (id) => itemLabel(byId.get(id), numbers);
       // Every headword is an entry; its senses (and theirs, flattened, since
       // CLDF has no deeper level) are its senses. A headword's own gloss is
       // its first sense.
@@ -601,10 +597,9 @@ export function buildCldfDataset({
           }
           senseRows.push(row);
         }
-        if (!wrote) entriesWithoutSenseN += 1;
+        if (!wrote) entriesWithoutSense += 1;
       }
     }
-    const entriesWithoutSense = entriesWithoutSenseN;
     if (entriesWithoutSense > 0) {
       warnings.push(
         `${entriesWithoutSense} lexicon ${

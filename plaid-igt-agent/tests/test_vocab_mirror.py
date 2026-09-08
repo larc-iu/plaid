@@ -207,6 +207,7 @@ SURFACE_EXEMPT = {
     'splitEntryLevel': 'Add headword',
     'groupRankedByHeadword': "the link popover's list",
     'lexiconView': "one memo over the tree for the app's screens and exports",
+    'itemLabel': 'form plus number as text; the port has LexView.label, spelled the way a tool takes it back',
     'exampleKey': 'keys a rendering cache',
     # vocabFields.js is mostly the entry FORM: labels, controls, grouping and
     # the seeding of a new vocabulary, none of which the agent draws.
@@ -251,10 +252,14 @@ def test_every_app_function_is_ported_or_exempted():
     run = subprocess.run([node, RUNNER, '--surface'], capture_output=True, text=True, timeout=120)
     assert run.returncode == 0, run.stderr
     surface = json.loads(run.stdout)
+    # The constants the port copies by hand, compared outright.
+    assert sorted(vocab_module.RESERVED_ITEM_KEYS) == surface['constants']['reservedItemKeys']
+    assert [f['name'] for f in vocab_module.CORE_VOCAB_FIELDS] == surface['constants']['coreVocabFields']
     # Both modules the port claims to mirror, not just the dictionary half.
     exported = [*surface['vocabDictionary'], *surface['vocabFields']]
     # Per module, so one of them coming back empty cannot hide behind the other.
-    for mod, names in surface.items():
+    for mod in ('vocabDictionary', 'vocabFields'):
+        names = surface[mod]
         assert len(names) > 10, f'the surface report for {mod} came back suspiciously small: {names}'
     ported = {n for n, o in vars(vocab_module).items()
               if not n.startswith('_') and inspect.isfunction(o)

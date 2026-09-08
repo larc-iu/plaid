@@ -27,8 +27,17 @@ if (process.argv[2] === '--surface') {
     Object.keys(mod)
       .filter((k) => typeof mod[k] === 'function')
       .sort();
+  // The hand-copied constants too: a reserved key the app adds and the port
+  // does not know would let lexicon_field write into a structural slot.
   process.stdout.write(
-    JSON.stringify({ vocabDictionary: fns(dictMod), vocabFields: fns(fieldsMod) }),
+    JSON.stringify({
+      vocabDictionary: fns(dictMod),
+      vocabFields: fns(fieldsMod),
+      constants: {
+        reservedItemKeys: [...fieldsMod.RESERVED_ITEM_KEYS].sort(),
+        coreVocabFields: fieldsMod.CORE_VOCAB_FIELDS.map((f) => f.name),
+      },
+    }),
   );
   process.exit(0);
 }

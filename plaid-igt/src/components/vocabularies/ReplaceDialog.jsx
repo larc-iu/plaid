@@ -24,7 +24,7 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
-import { humanizeFieldName } from '@/domain/vocabFields';
+import { humanizeFieldName, FIELD_TYPES } from '@/domain/vocabFields';
 import { buildReplacer, MATCH_EMPTY } from '@/domain/replacer';
 import { planVocabReplace, replaceWrites } from '@/domain/vocabReplace';
 import { MATCH_TYPES } from '../projects/search/searchQueries.js';
@@ -81,7 +81,7 @@ export const ReplaceDialog = ({
     () => [
       { name: 'form', label: 'Form' },
       ...fields
-        .filter((f) => f.name !== 'morphType' && f.type !== 'item')
+        .filter((f) => f.name !== 'morphType' && f.type !== FIELD_TYPES.ITEM)
         .map((f) => ({ name: f.name, label: humanizeFieldName(f.name) })),
     ],
     [fields],

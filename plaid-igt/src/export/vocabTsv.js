@@ -1,3 +1,5 @@
+import { itemLabel } from '../domain/vocabDictionary.js';
+
 // Vocabulary → TSV. Cells can't contain tabs or newlines, so those collapse
 // to a single space (no quoting layer — that's the point of TSV).
 
@@ -23,12 +25,7 @@ export function serializeVocabTsv({
 }) {
   const refs = new Set(refFields);
   const byId = new Map((items || []).map((it) => [it.id, it]));
-  const nameOf = (id) => {
-    const it = byId.get(id);
-    if (!it) return '';
-    const n = numbers?.get(id);
-    return n ? `${it.form} ${n}` : (it.form ?? '');
-  };
+  const nameOf = (id) => itemLabel(byId.get(id), numbers);
   const cell = (it, f) => {
     const v = it.metadata?.[f];
     if (!refs.has(f)) return v ?? '';

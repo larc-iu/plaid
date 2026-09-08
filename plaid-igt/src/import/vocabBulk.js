@@ -407,8 +407,6 @@ export const planVocabImport = ({
   const numbers = buildItemNumbers(existingItems);
 
   // The row's own answer wins over its bucket's, as long as it still makes
-  // sense for how the row classified this time round.
-  // The row's own answer wins over its bucket's, as long as it still makes
   // sense for how the row classified this time round. A targeted answer also
   // has to still point at a candidate that exists.
   const answerFor = (kind, line, candidates = []) => {
@@ -703,9 +701,7 @@ export const planVocabImport = ({
       continue;
     }
 
-    // Disagreement with every candidate. Diff against the first, which is the
-    // only sensible target when there is exactly one, and the clearest
-    // illustration of the clash when there are several.
+    // Disagreement with every candidate.
     counts.conflict += 1;
     const { policy: mode, index: chosenIndex } = answerFor('conflict', entry.line, candidates);
     // Diff against whichever entry the answer names, falling back to the

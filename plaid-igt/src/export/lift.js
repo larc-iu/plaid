@@ -36,7 +36,7 @@
 import { xmlEscape } from './flextext.js';
 import { allExamples, buildSenseTree, exampleKey } from '../domain/vocabDictionary.js';
 import { readVocabFields } from '../domain/igtConfig.js';
-import { FIELD_SCOPES, FIELD_TYPES } from '../domain/vocabFields.js';
+import { FIELD_SCOPES, FIELD_TYPES, RESERVED_ITEM_KEYS } from '../domain/vocabFields.js';
 import { FLEX_MORPH_TYPES } from '../domain/affixMarkers.js';
 
 export const LIFT_VERSION = '0.13';
@@ -44,16 +44,13 @@ export const LIFT_VERSION = '0.13';
 // Metadata keys this exporter reads structurally. Everything else an item
 // carries becomes a <field>, so a hand-built vocabulary exports its own
 // columns without any configuration.
-// Entry-level keys the entry element carries itself, plus the structure keys
-// the sense tree is built from and the import identity: none is a field.
+// Entry-level keys the entry element carries itself, plus the reserved keys
+// (the sense tree, the homograph number, the import identity): none is a
+// field. The examples are the sense's, and the form is the item's own column.
 const ENTRY_KEYS = new Set([
   'lexemeForm',
   'morphType',
-  'homograph',
-  'flexEntry',
-  'flexSense',
-  'parent',
-  'senseOrder',
+  ...[...RESERVED_ITEM_KEYS].filter((k) => k !== 'form' && k !== 'examples'),
 ]);
 const SENSE_KEYS = new Set(['pos', 'examples']);
 // Multilingual bases: written bare for the primary writing system and

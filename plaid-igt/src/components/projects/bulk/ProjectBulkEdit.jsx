@@ -36,7 +36,7 @@ import {
   editableMetadata,
   FIELD_TYPES,
 } from '@/domain/vocabFields';
-import { planMergeRefs, refIds } from '@/domain/vocabDictionary';
+import { itemLabel, planMergeRefs, refIds } from '@/domain/vocabDictionary';
 import { readVocabFields } from '@/domain/igtConfig';
 import {
   analysisViolations,
@@ -1044,12 +1044,7 @@ const MergePanel = ({ project, client }) => {
   const numbers = useMemo(() => buildItemNumbers(items || []), [items]);
   const itemById = useMemo(() => new Map((items || []).map((it) => [it.id, it])), [items]);
   // An entry named the way the vocabulary names it: form and number.
-  const nameOf = (id) => {
-    const target = itemById.get(id);
-    if (!target) return '';
-    const n = numbers.get(id);
-    return n ? `${target.form} ${n}` : (target.form ?? '');
-  };
+  const nameOf = (id) => itemLabel(itemById.get(id), numbers);
   const shown = useMemo(() => {
     if (!items) return [];
     const q = filter.trim().toLowerCase();

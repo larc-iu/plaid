@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { notifySuccess, notifyError } from '@/utils/feedback';
-import { humanizeFieldName, fieldDescription } from '@/domain/vocabFields';
+import { humanizeFieldName, fieldDescription, FIELD_TYPES } from '@/domain/vocabFields';
 import { downloadBlob, sanitizeFilename } from '@/export/files';
 import {
   FORM,
@@ -319,7 +319,7 @@ export const BulkAddDialog = ({
   // An Entry field holds a reference to another entry, which no spreadsheet
   // column can supply, so those are not offered as columns.
   const fieldNames = useMemo(
-    () => fields.filter((f) => f.type !== 'item').map((f) => f.name),
+    () => fields.filter((f) => f.type !== FIELD_TYPES.ITEM).map((f) => f.name),
     [fields],
   );
   const normalizeValue = useMemo(() => makeValueNormalizer(tagsetFor), [tagsetFor]);
