@@ -187,7 +187,7 @@ test('B5-04..09: create-row forms per token shape', async ({ page }) => {
   await expect(createRow(page)).toHaveCount(0);
 });
 
-test('B5-10/11: homonyms get subscripts; creating a third is announced and numbered', async ({
+test('B5-10/11: entries spelled alike are numbered, and a third is announced with its number', async ({
   page,
 }) => {
   await openAnalyze(page);
@@ -196,13 +196,13 @@ test('B5-10/11: homonyms get subscripts; creating a third is announced and numbe
     has: page.locator('.igt-vocab-pop__form', { hasText: /^ser/ }),
   });
   await expect(serRows).toHaveCount(2);
-  await expect(serRows.nth(0).locator('.igt-vocab-pop__sub')).toHaveText('1');
-  await expect(serRows.nth(1).locator('.igt-vocab-pop__sub')).toHaveText('2');
-  await expect(createRow(page).locator('.igt-vocab-pop__sub')).toHaveText('3');
+  await expect(serRows.nth(0).locator('.igt-vocab-pop__num')).toHaveText('1');
+  await expect(serRows.nth(1).locator('.igt-vocab-pop__num')).toHaveText('2');
+  await expect(createRow(page).locator('.igt-vocab-pop__num')).toHaveText('3');
   await expect(page.locator('.igt-vocab-pop__note')).toContainText('already exists');
   await createRow(page).dblclick();
   await expect(chip(page, ids.w[W.ser])).toContainText('ser');
-  await expect(chip(page, ids.w[W.ser]).locator('.igt-vocab__sub')).toHaveText('3');
+  await expect(chip(page, ids.w[W.ser]).locator('.igt-vocab__num')).toHaveText('3');
   await page.waitForLoadState('networkidle');
   const forms = (await client.vocabLayers.get(lexB.id, true)).items.filter(
     (it) => it.form === 'ser',
@@ -355,9 +355,9 @@ test('B7-03/04: deleting or renaming a homonym renumbers the rest', async ({ pag
     has: page.locator('.igt-vocab-pop__form', { hasText: /^ser/ }),
   });
   await expect(serRows).toHaveCount(sers.length - 1);
-  await expect(serRows.nth(0).locator('.igt-vocab-pop__sub')).toHaveText('1');
+  await expect(serRows.nth(0).locator('.igt-vocab-pop__num')).toHaveText('1');
   await page.keyboard.press('Escape');
-  // Rename all but one `ser`: the survivor loses its subscript.
+  // Rename all but one `ser`: the survivor loses its number.
   const rest = (await client.vocabLayers.get(lexB.id, true)).items.filter(
     (it) => it.form === 'ser',
   );
@@ -373,7 +373,7 @@ test('B7-03/04: deleting or renaming a homonym renumbers the rest', async ({ pag
   await expect(one, `rows: ${JSON.stringify(forms)} api: ${JSON.stringify(apiForms)}`).toHaveCount(
     1,
   );
-  await expect(one.locator('.igt-vocab-pop__sub')).toHaveCount(0);
+  await expect(one.locator('.igt-vocab-pop__num')).toHaveCount(0);
   await page.keyboard.press('Escape');
 });
 

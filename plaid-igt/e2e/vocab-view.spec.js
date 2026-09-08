@@ -73,9 +73,11 @@ async function openView(page) {
   await page.waitForLoadState('networkidle');
 }
 
-test('B7-02: homonyms are numbered in creation order in the vocabulary view', async ({ page }) => {
+test('B7-02: entries spelled alike are numbered in creation order in the vocabulary view', async ({
+  page,
+}) => {
   await openView(page);
-  const serRows = page.locator('sub').filter({ hasText: /^[12]$/ });
+  const serRows = page.locator('.vocab-num').filter({ hasText: /^[12]$/ });
   await expect(serRows).toHaveCount(2);
   await expect(serRows.nth(0)).toHaveText('1');
   await expect(serRows.nth(1)).toHaveText('2');
@@ -86,7 +88,7 @@ test('B9-04: usage counts match the links, singular wording for one use', async 
   const dupRow = page.getByText(items.dupForm).first();
   await dupRow.click();
   await expect(page.getByText(/^3 uses$/)).toBeVisible();
-  const serRow = page.locator('sub', { hasText: /^1$/ }).first();
+  const serRow = page.locator('.vocab-num', { hasText: /^1$/ }).first();
   await serRow.click();
   await expect(page.getByText(/^1 use$/)).toBeVisible();
 });
