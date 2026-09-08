@@ -30,8 +30,13 @@ import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/util
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { buildItemNumbers } from '@/domain/vocabDictionary';
 import { FormLabel } from '@/components/vocabularies/FormLabel';
-import { normalizeVocabFields, humanizeFieldName } from '@/domain/vocabFields';
-import { planMergeRefs } from '@/domain/vocabDictionary';
+import {
+  normalizeVocabFields,
+  humanizeFieldName,
+  editableMetadata,
+  FIELD_TYPES,
+} from '@/domain/vocabFields';
+import { planMergeRefs, refIds } from '@/domain/vocabDictionary';
 import { readVocabFields } from '@/domain/igtConfig';
 import {
   analysisViolations,
@@ -933,19 +938,21 @@ const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
 
 // ---- merge ----------------------------------------------------------------------
 
-// Metadata keys that are bookkeeping rather than content: import identifiers
-// and provenance. Everything else on an entry is shown when it is ticked.
-const isBookkeepingKey = (k) => k === 'flexEntry' || k === 'flexSense' || k.startsWith('prov');
+// Provenance keys are bookkeeping rather than content. The structural keys
+// (the sense tree, the examples, the import identity) are set apart by
+// editableMetadata, and the two the panel draws itself are drawn below.
+const isBookkeepingKey = (k) => k.startsWith('prov');
 
 // The whole of one lexicon entry (minus its attestations): every configured
 // field in schema order, then any other content the entry carries (custom
 // keys, a FLEx homograph number, example sentences). Shown under a ticked row
-// so what survives and what is lost in a merge is plain to see.
-const EntryDetail = ({ item, fields }) => {
+// so what survives and what is lost in a merge is plain to see. `nameOf`
+// names another entry of the vocabulary, for the fields that refer to one.
+const EntryDetail = ({ item, fields, nameOf }) => {
   const meta = item.metadata || {};
   const known = new Set(fields.map((f) => f.name));
-  const extras = Object.keys(meta).filter(
-    (k) => !known.has(k) && !isBookkeepingKey(k) && k !== 'examples' && k !== 'homograph',
+  const extras = Object.keys(editableMetadata(meta)).filter(
+    (k) => !known.has(k) && !isBookkeepingKey(k),
   );
   const examples = Array.isArray(meta.examples) ? meta.examples.filter((ex) => ex?.text) : [];
   const homograph = Number(meta.homograph) || 0;
@@ -960,7 +967,11 @@ const EntryDetail = ({ item, fields }) => {
       {fields.map((f) => (
         <Fragment key={f.name}>
           <dt className="text-xs text-muted-foreground">{humanizeFieldName(f.name)}</dt>
-          <dd>{show(meta[f.name])}</dd>
+          <dd>
+            {f.type === FIELD_TYPES.ITEM
+              ? show(refIds(item, f).map(nameOf).filter(Boolean).join(', '))
+              : show(meta[f.name])}
+          </dd>
         </Fragment>
       ))}
       {extras.map((k) => (
@@ -1031,14 +1042,20 @@ const MergePanel = ({ project, client }) => {
   }, [vocabId, client]);
 
   const numbers = useMemo(() => buildItemNumbers(items || []), [items]);
+  const itemById = useMemo(() => new Map((items || []).map((it) => [it.id, it])), [items]);
+  // An entry named the way the vocabulary names it: form and number.
+  const nameOf = (id) => {
+    const target = itemById.get(id);
+    if (!target) return '';
+    const n = numbers.get(id);
+    return n ? `${target.form} ${n}` : (target.form ?? '');
+  };
   const shown = useMemo(() => {
     if (!items) return [];
     const q = filter.trim().toLowerCase();
     const list = q ? items.filter((it) => (it.form || '').toLowerCase().includes(q)) : items;
     return [...list].sort((a, b) => (a.form || '').localeCompare(b.form || '')).slice(0, 200);
   }, [items, filter]);
-  const itemById = useMemo(() => new Map((items || []).map((it) => [it.id, it])), [items]);
-
   const pick = (id, on) => {
     setChosen((prev) => {
       const next = new Set(prev);
@@ -1201,7 +1218,7 @@ const MergePanel = ({ project, client }) => {
                   </span>
                   {on && (
                     <div className="col-start-3 pb-1 pt-1">
-                      <EntryDetail item={it} fields={fields} />
+                      <EntryDetail item={it} fields={fields} nameOf={nameOf} />
                     </div>
                   )}
                 </div>

@@ -554,7 +554,16 @@ export const planVocabImport = ({
       fields.every((f) => blank(c.values[f]) || norm(c.values[f]) === norm(entry.values[f])),
     );
 
-    if (compatible.length === 1) {
+    // A form shared by a headword and its senses is one entry: a row names
+    // the ENTRY, so a headword that contradicts the row is a disagreement
+    // even when a blank sense under it would take the row's values. Left to
+    // enrich, the row would land on that sense, which nothing on the
+    // comparison lets the reviewer redirect.
+    const onlySenseWhileHeadwordDisagrees =
+      compatible.length === 1 &&
+      !compatible[0].root &&
+      candidates.some((c) => c.root && !compatible.includes(c));
+    if (compatible.length === 1 && !onlySenseWhileHeadwordDisagrees) {
       counts.enrich += 1;
       const { policy: onePolicy, index: oneIndex } = answerFor('enrich', entry.line, candidates);
       // Only a candidate the row does not contradict can take it: filling a
@@ -699,10 +708,18 @@ export const planVocabImport = ({
     // illustration of the clash when there are several.
     counts.conflict += 1;
     const { policy: mode, index: chosenIndex } = answerFor('conflict', entry.line, candidates);
-    // Diff against whichever entry the answer names, falling back to the first,
-    // which is the only sensible target when there is one and the clearest
-    // illustration of the clash when there are several.
-    const first = candidates[chosenIndex ?? 0];
+    // Diff against whichever entry the answer names, falling back to the
+    // headword when there is one among them (a row names the entry), else the
+    // first, which is the only sensible target when there is one and the
+    // clearest illustration of the clash when there are several.
+    const first =
+      candidates[
+        chosenIndex ??
+          Math.max(
+            0,
+            candidates.findIndex((c) => c.root),
+          )
+      ];
     const changes = diffAgainst(first, entry, fields);
     const clashed = changes
       .filter((c) => c.from !== '')

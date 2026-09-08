@@ -106,7 +106,9 @@ const rowChoices = (d) => {
     return base.map((v) => ({ value: v, label: ROW_CHOICES[v] }));
   }
   const out = base.filter((v) => v !== targeted).map((v) => ({ value: v, label: ROW_CHOICES[v] }));
-  d.matches.forEach((m, i) => {
+  // Only the entries the comparison shows can be picked: a number past the
+  // table would name an entry the reviewer has not seen.
+  d.matches.slice(0, MAX_MATCHES).forEach((m, i) => {
     if (m.canTarget === false) return;
     out.push({ value: targetedAnswer(targeted, i), label: `${ROW_CHOICES[targeted]} ${i + 1}` });
   });
@@ -658,7 +660,7 @@ export const BulkAddDialog = ({
             ))}
             {ignoredColumns > 0 && (
               <LegendEntry name="Don't import" note="left out">
-                To keep one of these, add a field to this vocabulary on the Fields tab first.
+                To keep one of these, add a field to this vocabulary in its Settings first.
               </LegendEntry>
             )}
           </dl>

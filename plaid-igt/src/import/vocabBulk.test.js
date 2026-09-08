@@ -484,6 +484,20 @@ describe('matched entries on a decision', () => {
     expect(plan([entry(1, 'kan', { gloss: 'house' })], two).decisions[0].kind).toBe('ambiguous');
   });
 
+  // A headword that contradicts the row is a disagreement even when a blank
+  // sense under it could take the row: the row names the entry, and an
+  // enrichment of the sense would be a write nothing on the comparison lets
+  // the reviewer redirect.
+  it('treats a row the headword contradicts as a conflict, not a fill of its sense', () => {
+    const dict = [
+      { id: 'h', form: 'dog', metadata: { gloss: 'canine' } },
+      { id: 's1', form: 'dog', metadata: { parent: 'h', senseOrder: 1 } },
+    ];
+    const p = plan([entry(1, 'dog', { gloss: 'perro' })], dict);
+    expect(p.decisions[0]).toMatchObject({ kind: 'conflict', targetId: 'h', action: 'skip' });
+    expect(p.updates).toEqual([]);
+  });
+
   it('marks which entry an enrichment would change', () => {
     const p = plan([entry(1, 'kan', { gloss: 'mouth', definition: 'an opening' })], sameForm);
     expect(p.decisions[0].matches.map((m) => m.target)).toEqual([false, true]);

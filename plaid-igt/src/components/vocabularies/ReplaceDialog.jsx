@@ -289,7 +289,7 @@ export const ReplaceDialog = ({
           {outsideTagset > 0 && (
             <p className="rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2 text-sm text-destructive">
               {plural(outsideTagset, 'value')} would fall outside the{' '}
-              <strong>{tagset?.name ?? 'field'}</strong> tagset and cannot be written.
+              <strong>{target?.tagset ?? 'field'}</strong> tagset and cannot be written.
             </p>
           )}
           {emptied > 0 && (

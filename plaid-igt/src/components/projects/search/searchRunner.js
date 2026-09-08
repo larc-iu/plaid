@@ -199,19 +199,30 @@ export async function runFreqSearch(client, domain, queryText, matchType) {
   let display = counts;
   if (domain.kind === 'lexicon') {
     const nameById = new Map();
+    const vocabOfName = new Map(); // name -> the vocabularies that have an entry so named
     await Promise.all(
       domain.vocabIds.map(async (vid) => {
         const layer = await client.vocabLayers.get(vid, true);
         const numbers = buildItemNumbers(layer.items || []);
         for (const it of layer.items || []) {
           const n = numbers.get(it.id);
-          nameById.set(String(it.id), n ? `${it.form} ${n}` : (it.form ?? ''));
+          const name = n ? `${it.form} ${n}` : (it.form ?? '');
+          nameById.set(String(it.id), { name, vocab: layer.name ?? '' });
+          if (!vocabOfName.has(name)) vocabOfName.set(name, new Set());
+          vocabOfName.get(name).add(vid);
         }
       }),
     );
     display = new Map();
     for (const [id, n] of counts) {
-      const name = nameById.get(id) ?? id;
+      const named = nameById.get(id);
+      // Two vocabularies holding an entry of one name are two rows, each
+      // saying which lexicon it counts.
+      const name = !named
+        ? id
+        : vocabOfName.get(named.name)?.size > 1
+          ? `${named.name} (${named.vocab})`
+          : named.name;
       display.set(name, (display.get(name) || 0) + n);
     }
   }
