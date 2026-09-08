@@ -400,9 +400,28 @@ def test_check_lexicon_counts_entries_not_senses():
 
 
 def test_senses_of_an_attested_entry_are_reported_apart():
-    w = dict_ws()
-    out = call_tool(w, 'check_lexicon', {'section': 'unused'})
-    assert 'senses not linked from a text themselves' in out
+    """A sense nothing links to is normal when its headword IS linked: the
+    corpus links whichever the analyst picked. It is reported apart from the
+    entries nothing reaches at all, and not at all when there are none."""
+    raw = project_raw()
+    raw['vocabs'][0]['config'] = {'igt': {'fields': dict(FIELDS)}}
+    doc = document_raw()
+    # Point the fixture's links at the headword, so its two senses are the
+    # unlinked ones and the headword itself is attested.
+    for tl in doc['text_layers'][0]['token_layers']:
+        for vl in tl.get('vocabs') or []:
+            for link in vl.get('vocab_links') or []:
+                link['vocab_item'] = {'id': 'd-kwatha', 'form': 'kwatha'}
+    c = FakeClient(project=raw, documents={'d1': doc})
+    c._lexicon = {'id': VOCAB, 'name': 'Lexicon',
+                  'items': [dict(it, metadata=dict(it['metadata'])) for it in ITEMS]}
+    out = call_tool(scan_ws(c), 'check_lexicon', {'section': 'unused'})
+    # boil, its subsense simmer, and ferment: every sense under the headword.
+    assert '3 senses not linked from a text themselves' in out
+
+    # With nothing attested there are no such senses, and no line about them.
+    bare = call_tool(dict_ws(), 'check_lexicon', {'section': 'unused'})
+    assert 'senses not linked from a text themselves' not in bare
 
 
 def test_a_structural_change_on_a_doomed_entry_is_refused():

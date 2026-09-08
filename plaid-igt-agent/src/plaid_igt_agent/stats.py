@@ -506,7 +506,9 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
         # links the entry the analyst picked, which is often the headword.
         loose = [it for it in items.values()
                  if is_sense(it['id']) and uses[it['id']] == 0 and tree_uses(view_of(it['id']).tree.root_of[it['id']])]
-        lines.append(f'{len(loose)} senses not linked from a text themselves, though their entry is attested.')
+        if loose:
+            lines.append(f'{len(loose)} senses not linked from a text themselves, '
+                         'though their entry is attested.')
     def stands_over_senses(iid: str) -> bool:
         """A headword whose meanings are its senses. It is not missing a gloss:
         the senses under it carry them, and a FLEx import makes such a headword

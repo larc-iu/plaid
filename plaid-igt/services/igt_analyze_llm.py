@@ -183,12 +183,33 @@ def vocab_entries(items, vocab_name) -> List[dict]:
     that: a sense can be added under another form, or renamed away from its
     headword. Where that has happened the headword is the only thing carrying
     its own form, so dropping it would take that form out of the model's reach
-    entirely."""
+    entirely.
+
+    A parent counts only where the app's own buildSenseTree counts one: it must
+    name a different item that exists, and its chain must reach a root. A
+    self-parent or a cycle makes every item on it an entry, there as here.
+    Reading the raw key instead hid such an entry from the model, and the
+    analyst saw the form come back unglossed with no reason given."""
+    by_id = {it['id']: it for it in items}
+
+    def parent_of(it):
+        p = (it.get('metadata') or {}).get('parent')
+        return p if p and p != it.get('id') and p in by_id else None
+
+    def is_sense(it):
+        seen = {it['id']}
+        cur = parent_of(it)
+        while cur:
+            if cur in seen:
+                return False          # a cycle: the app calls all of them entries
+            seen.add(cur)
+            cur = parent_of(by_id[cur])
+        return parent_of(it) is not None
+
     sense_forms = {}
     for it in items:
-        parent = (it.get('metadata') or {}).get('parent')
-        if parent:
-            sense_forms.setdefault(parent, set()).add((it.get('form') or '').casefold())
+        if is_sense(it):
+            sense_forms.setdefault(parent_of(it), set()).add((it.get('form') or '').casefold())
     covered = {it['id'] for it in items
                if (it.get('form') or '').casefold() in sense_forms.get(it.get('id'), ())}
     entries = []

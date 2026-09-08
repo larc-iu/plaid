@@ -806,7 +806,6 @@ def t_read_lexicon(ws: Workspace, lexicon: Optional[str] = None, pattern: Option
     lines = []
     for v in vocabs:
         view = ws.view(v)
-        items = sorted(view.items, key=lambda it: (it.get('form') or '').casefold())
         # Senses under their entry, each with the number it is shown with,
         # which is also how a tool is told which one. Entries spelled the same
         # carry one too, so they read in that order.
@@ -1844,10 +1843,10 @@ def _dict_entry(ws: Workspace, entry_form, lexicon, entry_id, entry_gloss, what:
     if kind == 'new':
         raise ToolError(f'"{ws.new_entries[target]["form"]}" is created by this same plan and has no id until it '
                         f'is approved, so it cannot {what} yet.')
+    # find_entry found this item by scanning the project's own lexicons, which
+    # is the list vocab_of_item scans, so the lookup lands.
     vocab = ws.vocab_of_item(target['id'])
-    view = ws.view(vocab) if vocab else None
-    if view is None:
-        raise ToolError(f'"{entry_form or entry_id}" is not in a lexicon this project links.')
+    view = ws.view(vocab)
     # A delete already planned takes the entry's senses and references with it,
     # so anything hung on it afterwards would be written and then dropped.
     doomed = ({op['item_id'] for op in ws.ops if op.get('kind') == 'delete_entry'}

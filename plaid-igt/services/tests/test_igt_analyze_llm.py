@@ -60,6 +60,22 @@ def test_a_headword_no_sense_spells_out_is_kept():
     assert [e['form'] for e in llm.matching_entries(entries, ['kwatha'])] == ['kwatha']
 
 
+def test_a_broken_parent_leaves_the_entry_in_the_model_s_reach():
+    """The app's buildSenseTree ignores a parent that names the item itself,
+    names nothing, or lies on a cycle, and calls those items entries. Reading
+    the raw key instead dropped a glossless one from the prompt, so the form
+    came back unglossed with nothing to say why."""
+    lone = [{'id': 'x', 'form': 'zi', 'metadata': {'parent': 'x'}}]
+    assert [e['id'] for e in llm.vocab_entries(lone, 'L')] == ['x']
+
+    dangling = [{'id': 'y', 'form': 'zi', 'metadata': {'parent': 'gone'}}]
+    assert [e['id'] for e in llm.vocab_entries(dangling, 'L')] == ['y']
+
+    cycle = [{'id': 'f1', 'form': 'nya', 'metadata': {'parent': 'f2'}},
+             {'id': 'f2', 'form': 'nya', 'metadata': {'parent': 'f1'}}]
+    assert [e['id'] for e in llm.vocab_entries(cycle, 'L')] == ['f1', 'f2']
+
+
 def test_rank_examples_prefers_shared_forms_then_character_overlap():
     pool = [{'words': ['kedi', 'uyuyor'], 'line': 'b'}, {'words': ['ev', 'geliyor'], 'line': 'a'},
             {'words': ['evler', 'geliyorum'], 'line': 'c'}]
