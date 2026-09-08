@@ -94,6 +94,17 @@ describe('publishAll', () => {
     expect(tagsets.Register).toEqual({ mode: 'closed', values: [{ value: 'formal' }] });
   });
 
+  it('takes a user\'s own "Status" field as this one, so no pair is made', async () => {
+    // plaid-igt's field editor rejects a duplicate case-insensitively, and
+    // seeds nothing beside such a field. Testing the exact key here rebuilt
+    // the very pair it refuses: two fields both labelled Status, writing
+    // different metadata keys, only one of which is published by.
+    const client = fakeClient();
+    client.layer = { id: 'v', config: { igt: { fields: { Status: { inline: true } } } } };
+    await publishAll(client, [entry('a')], { vocabularyId: 'v' });
+    expect(client.configs).toEqual([]);
+  });
+
   it('leaves the schema alone when Status is already declared', async () => {
     const client = fakeClient();
     client.layer = {
@@ -109,7 +120,7 @@ describe('publishAll', () => {
   it('patches only the entries that are not published yet', async () => {
     const client = fakeClient();
     const items = [entry('a', 'published'), entry('b', 'draft'), entry('c')];
-    const n = await publishAll(client, items, { name: 'Sena' });
+    const n = await publishAll(client, items, { vocabularyId: 'v', name: 'Sena' });
     expect(n).toBe(2);
     expect(client.patched).toEqual([
       ['b', { status: 'published' }],
@@ -120,7 +131,7 @@ describe('publishAll', () => {
 
   it('writes nothing when everything is already published', async () => {
     const client = fakeClient();
-    const n = await publishAll(client, [entry('a', 'published')]);
+    const n = await publishAll(client, [entry('a', 'published')], { vocabularyId: 'v' });
     expect(n).toBe(0);
     expect(client.operations).toEqual([]);
   });
@@ -129,7 +140,10 @@ describe('publishAll', () => {
     const client = fakeClient();
     const items = Array.from({ length: 450 }, (_, i) => entry(`e${i}`));
     const progress = [];
-    const n = await publishAll(client, items, { onProgress: (p) => progress.push(p.done) });
+    const n = await publishAll(client, items, {
+      vocabularyId: 'v',
+      onProgress: (p) => progress.push(p.done),
+    });
     expect(n).toBe(450);
     expect(client.chunks).toEqual([200, 200, 50]);
     expect(progress).toEqual([200, 400, 450]);

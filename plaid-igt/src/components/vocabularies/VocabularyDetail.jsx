@@ -36,7 +36,13 @@ import {
   FIELD_TYPES,
   FIELD_SCOPES,
 } from '@/domain/vocabFields';
-import { refIds, withRefIds, statusFieldSeed } from '@/domain/vocabDictionary';
+import {
+  refIds,
+  withRefIds,
+  statusTagset,
+  STATUS_FIELD,
+  STATUS_TAGSET,
+} from '@/domain/vocabDictionary';
 import { readTagsets, byTagsetName } from '@/domain/tagsets';
 import { TagsetsManager } from '@/components/projects/settings/TagsetsManager.jsx';
 import {
@@ -78,6 +84,8 @@ export const VocabularyDetail = () => {
   // The layer a failed creation already made, so pressing Create again
   // finishes it instead of leaving an unreachable second one behind.
   const createdRef = useRef(null);
+  // A save in flight, so a second click cannot start another one.
+  const [saving, setSaving] = useState(false);
   const confirm = useConfirm();
   const { user, client, logout } = useAuth();
   const isNewVocabulary = !vocabularyId;
@@ -118,7 +126,15 @@ export const VocabularyDetail = () => {
       });
       setEditedName('');
       // Seed a new vocab with the full core inventory.
-      setFields(normalizeVocabFields(seedDefaultFields()));
+      // Status is a row like any other, so the table below really is "these
+      // fields": a vocabulary that wants no editorial status can remove it
+      // here, before the vocabulary exists.
+      setFields(
+        normalizeVocabFields({
+          ...seedDefaultFields(),
+          [STATUS_FIELD]: { inline: false, tagset: STATUS_TAGSET },
+        }),
+      );
       setIsEditing(true);
       setLoading(false);
       return;
@@ -253,33 +269,48 @@ export const VocabularyDetail = () => {
       notifyError('Vocabulary name cannot be empty', 'Invalid Name');
       return;
     }
+    // Two fast clicks used to run two creates, each reading createdRef before
+    // the other resolved, leaving two vocabularies under the one name.
+    if (saving) return;
+    setSaving(true);
 
     try {
       let savedVocabulary;
 
       if (isNewVocabulary) {
-        // The layer, its field inventory (always non-empty, morphType is core)
-        // and the Status field with its list, under ONE operation: three
-        // requests make one gesture, and the history restores it as one. The
-        // same seeding the setup wizard does, see statusFieldSeed.
-        const add = statusFieldSeed({ fieldsConfig: fieldsToConfig(fields), tagsets });
-        await client.withOperation(`Create vocabulary "${editedName.trim()}"`, async () => {
-          savedVocabulary =
-            createdRef.current ?? (await client.vocabLayers.create(editedName.trim()));
-          // Remembered, so a retry after a failed config write finishes THIS
-          // vocabulary rather than leaving an unreachable second one behind.
-          createdRef.current = savedVocabulary;
-          await client.vocabLayers.setConfig(
-            savedVocabulary.id,
-            IGT_NAMESPACE,
-            'tagsets',
-            add.tagsets,
-          );
+        const name = editedName.trim();
+        const fieldsConfig = fieldsToConfig(fields);
+        // The list only goes in when a field points at it, since Status is a
+        // row the user may have removed above.
+        const needsStatusTagset = fields.some((f) => f.tagset === STATUS_TAGSET);
+        // The layer and its config under ONE operation, so the audit log names
+        // the three requests as the single gesture they are. Not atomic, and
+        // not restorable: restore takes a document, never a vocab layer.
+        await client.withOperation(`Create vocabulary "${name}"`, async () => {
+          // A layer a failed attempt already made is finished rather than
+          // abandoned, or pressing Create again would leave an unreachable
+          // second vocabulary under the same name. The name is reapplied,
+          // since it may be what the user changed before retrying.
+          if (createdRef.current) {
+            savedVocabulary = createdRef.current;
+            if (createdRef.current.name !== name) {
+              await client.vocabLayers.update(savedVocabulary.id, name);
+              createdRef.current = { ...savedVocabulary, name };
+            }
+          } else {
+            savedVocabulary = await client.vocabLayers.create(name);
+            createdRef.current = { ...savedVocabulary, name };
+          }
+          if (needsStatusTagset) {
+            await client.vocabLayers.setConfig(savedVocabulary.id, IGT_NAMESPACE, 'tagsets', {
+              [STATUS_TAGSET]: statusTagset(),
+            });
+          }
           await client.vocabLayers.setConfig(
             savedVocabulary.id,
             IGT_NAMESPACE,
             'fields',
-            add.fieldsConfig,
+            fieldsConfig,
           );
         });
 
@@ -299,6 +330,8 @@ export const VocabularyDetail = () => {
     } catch (err) {
       console.error('Error saving vocabulary:', err);
       notifyError('Failed to save vocabulary', 'Error');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -1028,7 +1061,7 @@ export const VocabularyDetail = () => {
               <Button variant="secondary" onClick={() => navigate('/vocabularies')}>
                 Cancel
               </Button>
-              <Button onClick={handleSave} disabled={!editedName.trim()}>
+              <Button onClick={handleSave} disabled={!editedName.trim() || saving}>
                 Create Vocabulary
               </Button>
             </div>

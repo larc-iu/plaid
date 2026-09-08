@@ -325,8 +325,10 @@ A new vocabulary starts with a few built in:
 * **Gloss**: the entry's gloss, offered as a guess for the Gloss field of anything linked to it. Required.
 * **POS**: the entry's part of speech.
 * **Definition**: a fuller definition or note.
+* **Status**: how far along the entry is, held to a closed list (draft, reviewed, published). It is what the dictionary reader publishes by.
 
 You can add your own fields, reorder them, and remove any except Form, Morph Type, and Gloss.
+The New vocabulary screen lists these before the vocabulary exists, so one that needs no editorial status can drop it there.
 A field marked **inline** shows both as a column in the vocabulary table and on each entry's row in the link popover.
 Other fields stay on the entry's own edit form.
 
@@ -341,7 +343,6 @@ A lexicon imported before the tagset existed can thus be brought into line one e
 
 Every vocabulary is a dictionary.
 An entry is a headword, and it can have senses under it, each of which can have senses of its own.
-A new vocabulary also gets a **Status** field held to a closed list (draft, reviewed, published).
 Numbers say what is what: a headword with senses is *adidi 1*, its senses *adidi 1.1* and *adidi 1.2*, and a sense of the second *adidi 1.2.1*.
 Entries that share a form are told apart by that first number, so two entries spelled *a* are *a 1* and *a 2*, and the senses of the second are *a 2.1*, *a 2.2*.
 One number is always a headword and two are always a sense. A headword that is alone and has no senses has no number at all.

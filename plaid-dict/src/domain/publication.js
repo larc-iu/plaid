@@ -6,7 +6,12 @@
 // not itself published still appears as the heading over its published senses,
 // with its own gloss hidden: the tree's spine is structure, not content.
 
-import { STATUS_FIELD, STATUS_TAGSET, statusTagset } from '@igt/domain/vocabDictionary.js';
+import {
+  STATUS_FIELD,
+  STATUS_TAGSET,
+  statusTagset,
+  declaresStatusField,
+} from '@igt/domain/vocabDictionary.js';
 import { IGT_NAMESPACE } from '@igt/domain/igtConfig.js';
 
 export const PUBLISHED = 'published';
@@ -44,23 +49,23 @@ const BATCH_CHUNK = 200;
  * raw rather than through `readTagsets`, which rebuilds each tagset and would
  * drop anything it does not know on the way back out.
  */
-export const publishAll = async (client, items, { vocabularyId, name, onProgress } = {}) => {
+export const publishAll = async (client, items, { vocabularyId, name, onProgress }) => {
   const pending = (items || []).filter((it) => !isPublished(it));
   if (!pending.length) return 0;
-  const igt = vocabularyId
-    ? ((await client.vocabLayers.get(vocabularyId))?.config?.[IGT_NAMESPACE] ?? {})
-    : null;
-  const addField = igt && !(igt.fields && STATUS_FIELD in igt.fields);
-  const addTagset = igt && !igt.tagsets?.[STATUS_TAGSET];
+  const igt = (await client.vocabLayers.get(vocabularyId))?.config?.[IGT_NAMESPACE] ?? {};
+  // `declaresStatusField` is plaid-igt's own, matched case-insensitively the
+  // way its field editor rejects a duplicate. The list only goes in with the
+  // field, or it would sit there governing nothing.
+  const addField = !declaresStatusField(igt.fields);
   let done = 0;
   await client.withOperation(`Publish every entry in "${name || 'vocabulary'}"`, async () => {
-    if (addTagset) {
-      await client.vocabLayers.setConfig(vocabularyId, IGT_NAMESPACE, 'tagsets', {
-        ...(igt.tagsets || {}),
-        [STATUS_TAGSET]: statusTagset(),
-      });
-    }
     if (addField) {
+      if (!igt.tagsets?.[STATUS_TAGSET]) {
+        await client.vocabLayers.setConfig(vocabularyId, IGT_NAMESPACE, 'tagsets', {
+          ...(igt.tagsets || {}),
+          [STATUS_TAGSET]: statusTagset(),
+        });
+      }
       await client.vocabLayers.setConfig(vocabularyId, IGT_NAMESPACE, 'fields', {
         ...(igt.fields || {}),
         [STATUS_FIELD]: { inline: false, tagset: STATUS_TAGSET },

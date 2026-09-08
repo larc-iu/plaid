@@ -53,13 +53,21 @@ export const statusTagset = () => ({
  * creation calls it. An existing vocabulary is left as its owner arranged it,
  * so nothing sprouts a Status field it was never given.
  */
+/**
+ * Whether a field schema already has the Status field, matched the way the
+ * field editor rejects a duplicate: case-insensitively. A user who names their
+ * own field "Status" (the label the app shows) has this field, and writing
+ * `status` beside it would make the very pair the editor forbids, two metadata
+ * keys reading as one. Every writer of the field asks this, here and in
+ * plaid-dict, so the two cannot drift apart again.
+ */
+export const declaresStatusField = (fieldsConfig) =>
+  Object.keys(fieldsConfig || {}).some((k) => k.toLowerCase() === STATUS_FIELD);
+
 export const statusFieldSeed = ({ fieldsConfig, tagsets }) => {
-  // Case-insensitively, the way the field editor rejects a duplicate. A user
-  // who names their own field "Status" (the label the app shows) already has
-  // this field, and adding `status` beside it would make the very pair the
-  // editor forbids, writing two metadata keys that read as one.
-  const declared = Object.keys(fieldsConfig || {}).some((k) => k.toLowerCase() === STATUS_FIELD);
-  if (declared) return { fieldsConfig: fieldsConfig ?? {}, tagsets: tagsets ?? {} };
+  if (declaresStatusField(fieldsConfig)) {
+    return { fieldsConfig: fieldsConfig ?? {}, tagsets: tagsets ?? {} };
+  }
   return {
     fieldsConfig: {
       ...(fieldsConfig || {}),
