@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useCatalog } from '@/contexts/CatalogContext';
 import { findBySlug } from '@/domain/dictionaries';
 import { dictCollator, readDictRecord } from '@/domain/dictConfig';
+import { statusKeyOf } from '@/domain/publication';
 import {
   buildFormPages,
   buildIndex,
@@ -61,7 +62,7 @@ export const DictionaryProvider = () => {
   const value = useMemo(() => {
     const fields = normalizeVocabFields(readVocabFields(vocab?.config));
     const collator = dictCollator(record);
-    const dictionary = readDictionary(items || []);
+    const dictionary = readDictionary(items || [], statusKeyOf(fields));
     const pages = items ? buildFormPages(items, collator, dictionary) : [];
     const objectLang = record?.languages?.object?.iso639P3 || undefined;
     // A reference to an entry the dictionary does not show is not a link to

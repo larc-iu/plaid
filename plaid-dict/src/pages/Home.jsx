@@ -111,7 +111,7 @@ export const Home = () => {
           <BookOpen className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
           <p className="text-sm font-medium">No dictionaries.</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Publish a vocabulary from Plaid IGT to make one.
+            Create a vocabulary in Plaid IGT to set one up.
           </p>
         </div>
       )}

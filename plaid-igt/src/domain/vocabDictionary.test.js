@@ -25,6 +25,7 @@ import {
   refIds,
   withRefIds,
   statusFieldSeed,
+  statusFieldKey,
   STATUS_FIELD,
   STATUS_TAGSET,
 } from './vocabDictionary.js';
@@ -76,7 +77,34 @@ describe('numbering is by creation order, never by id', () => {
   });
 });
 
+describe('statusFieldKey', () => {
+  it('finds the declared key in any case, from a config map or a field list', () => {
+    expect(statusFieldKey({ gloss: {}, Status: {} })).toBe('Status');
+    expect(statusFieldKey([{ name: 'gloss' }, { name: 'STATUS' }])).toBe('STATUS');
+    expect(statusFieldKey({ gloss: {} })).toBeNull();
+    expect(statusFieldKey(null)).toBeNull();
+  });
+});
+
 describe('statusFieldSeed', () => {
+  it('adds the three values to a Status tagset already there, keeping its own', () => {
+    const tagsets = { Status: { mode: 'closed', delimiters: '', values: [{ value: 'checked' }] } };
+    const seed = statusFieldSeed({ fieldsConfig: {}, tagsets });
+    expect(seed.tagsets.Status.values.map((t) => t.value)).toEqual([
+      'checked',
+      'draft',
+      'reviewed',
+      'published',
+    ]);
+    expect(seed.tagsets.Status.mode).toBe('closed');
+  });
+
+  it('declares nothing beside a field already named Status in another case', () => {
+    const seed = statusFieldSeed({ fieldsConfig: { Status: { inline: true } }, tagsets: {} });
+    expect(Object.keys(seed.fieldsConfig)).toEqual(['Status']);
+    expect(seed.tagsets).toEqual({});
+  });
+
   it('adds the Status field and its list to what a new vocabulary was given', () => {
     const seed = statusFieldSeed({ fieldsConfig: { gloss: { inline: true } }, tagsets: {} });
     expect(seed.fieldsConfig).toEqual({

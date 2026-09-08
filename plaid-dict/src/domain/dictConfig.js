@@ -136,15 +136,17 @@ export const saveDictRecord = async (client, vocabularyId, draft, { label } = {}
     credits: str(draft.credits),
     citation: str(draft.citation),
     about: str(draft.about),
+    // null means no choice made (every layer shows), and stays null: written
+    // as [] it would read back as "chose none" and hide every translation.
     exampleLayers: Array.isArray(draft.exampleLayers)
       ? draft.exampleLayers.map(str).filter(Boolean)
-      : [],
+      : null,
     alphabet: Array.isArray(draft.alphabet) ? draft.alphabet.map(str).filter(Boolean) : [],
   };
   await client.withOperation(label || `Set up dictionary "${record.title}"`, async () => {
     for (const key of DICT_KEYS) {
       const value = record[key];
-      const empty = typeof value === 'string' && value === '';
+      const empty = value === null || (typeof value === 'string' && value === '');
       if (empty) await client.vocabLayers.deleteConfig(vocabularyId, DICT_NAMESPACE, key);
       else await client.vocabLayers.setConfig(vocabularyId, DICT_NAMESPACE, key, value);
     }

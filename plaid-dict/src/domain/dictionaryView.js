@@ -9,9 +9,9 @@
 // The tree, the numbering and the homograph order all come from plaid-igt's
 // vocabDictionary.js, so an entry is called the same thing in both apps.
 
-import { buildItemNumbers, buildSenseTree, homographOf } from '@igt/domain/vocabDictionary.js';
+import { homographOf, lexiconView, STATUS_FIELD } from '@igt/domain/vocabDictionary.js';
 import { searchableText } from './entryFields.js';
-import { isPublished } from './publication.js';
+import { isPublished, statusKeyOf } from './publication.js';
 
 /**
  * One entry and the senses under it, as the page draws them.
@@ -33,17 +33,16 @@ import { isPublished } from './publication.js';
  *   headwords: object[],           roots with something published under them
  * }}
  */
-export const readDictionary = (items) => {
+export const readDictionary = (items, statusKey = STATUS_FIELD) => {
   const list = items || [];
-  const tree = buildSenseTree(list);
-  const numbers = buildItemNumbers(list);
+  const { tree, numbers } = lexiconView(list);
 
   // An item is on the spine if it is published or something under it is.
   // Walking up from each published item reaches every ancestor exactly once
   // more than it is already marked, so this stays linear in the tree's depth.
   const visible = new Set();
   for (const it of list) {
-    if (!isPublished(it)) continue;
+    if (!isPublished(it, statusKey)) continue;
     let cur = it.id;
     while (cur && !visible.has(cur)) {
       visible.add(cur);
@@ -148,8 +147,9 @@ export const buildIndex = (pages, collator = new Intl.Collator()) => {
  */
 export const buildSearchIndex = (items, fields) => {
   const index = new Map();
+  const key = statusKeyOf(fields);
   for (const it of items || []) {
-    if (isPublished(it)) index.set(it.id, searchableText(it, fields));
+    if (isPublished(it, key)) index.set(it.id, searchableText(it, fields));
   }
   return index;
 };

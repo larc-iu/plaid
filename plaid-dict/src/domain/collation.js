@@ -15,7 +15,7 @@
 // which is matched first). One it still cannot place sorts after every letter,
 // in code-point order, under a heading of its own.
 
-// Every unlisted grapheme ranks above every listed one, and among themselves by
+// Every unlisted grapheme ranks after every listed one, and among themselves by
 // code point, so they gather after Z instead of scattering.
 const UNLISTED = 1e7;
 

@@ -13,7 +13,7 @@ import {
   slugify,
   validateSetup,
 } from '@/domain/dictConfig';
-import { publicationCounts, publishAll } from '@/domain/publication';
+import { publicationCounts, publishAll, statusKeyOfConfig } from '@/domain/publication';
 import { discoverExampleLayers } from '@/domain/exampleLayers';
 import {
   formatAlphabet,
@@ -211,7 +211,10 @@ export const Setup = () => {
     [headwordForms, draft.alphabet],
   );
 
-  const counts = useMemo(() => (items ? publicationCounts(items) : null), [items]);
+  const counts = useMemo(
+    () => (items ? publicationCounts(items, statusKeyOfConfig(vocab?.config)) : null),
+    [items, vocab],
+  );
   const errors = useMemo(() => validateSetup(draft, taken), [draft, taken]);
   const set = (patch) => setDraft((d) => ({ ...d, ...patch }));
 

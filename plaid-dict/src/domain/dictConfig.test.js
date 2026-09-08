@@ -16,7 +16,7 @@ describe('readDictRecord', () => {
   it('is null for a vocabulary that has no record', () => {
     expect(readDictRecord({})).toBeNull();
     expect(readDictRecord(undefined)).toBeNull();
-    expect(readDictRecord({ igt: { dictionary: true } })).toBeNull();
+    expect(readDictRecord({ igt: { fields: {} } })).toBeNull();
   });
 
   it('fills in every key, trimming strings and normalizing languages', () => {
@@ -120,13 +120,26 @@ describe('saveDictRecord', () => {
     expect(client.calls[0]).toEqual(['operation', 'Set up dictionary "Sena Dictionary"']);
     const written = client.calls.filter(([kind]) => kind === 'set').map(([, , , key]) => key);
     const removed = client.calls.filter(([kind]) => kind === 'delete').map(([, , , key]) => key);
-    // `languages` and `exampleLayers` are not strings, so they are always
-    // written; the blank strings are removed. An empty exampleLayers is a
-    // choice (show no layer) and must not read back as "not chosen".
-    expect(written).toEqual(['title', 'slug', 'languages', 'exampleLayers', 'alphabet']);
-    expect(removed).toEqual(['credits', 'citation', 'about']);
-    expect(client.calls.find(([, , , key]) => key === 'exampleLayers')[4]).toEqual([]);
+    // `languages` and `alphabet` are never strings, so they are always
+    // written; the blank strings are removed, and so is an exampleLayers no
+    // choice was made about, which reads back as null (show every layer).
+    expect(written).toEqual(['title', 'slug', 'languages', 'alphabet']);
+    expect(removed).toEqual(['credits', 'citation', 'about', 'exampleLayers']);
     expect(client.calls.every((c) => c[0] === 'operation' || c[2] === DICT_NAMESPACE)).toBe(true);
+  });
+
+  // An empty exampleLayers is a choice (show no layer) and must not read back
+  // as "not chosen", so it is written, where an unmade choice is removed.
+  it('writes a chosen-none example layer list and removes an unmade choice', async () => {
+    const client = fakeClient();
+    await saveDictRecord(client, 'v1', { title: 'T', slug: 't', exampleLayers: [] });
+    expect(client.calls.find(([, , , key]) => key === 'exampleLayers').slice(0, 1)).toEqual([
+      'set',
+    ]);
+    expect(client.calls.find(([, , , key]) => key === 'exampleLayers')[4]).toEqual([]);
+    const none = fakeClient();
+    await saveDictRecord(none, 'v1', { title: 'T', slug: 't', exampleLayers: null });
+    expect(none.calls.find(([, , , key]) => key === 'exampleLayers')[0]).toBe('delete');
   });
 
   it('takes the label the caller passes', async () => {

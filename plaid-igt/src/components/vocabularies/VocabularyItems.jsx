@@ -65,7 +65,7 @@ import {
   withParentSet,
   withExampleAdded,
   withExampleRemoved,
-  STATUS_FIELD,
+  statusFieldKey,
 } from '@/domain/vocabDictionary';
 import {
   ItemRefField,
@@ -243,6 +243,8 @@ export const VocabularyItems = ({
 
   const fieldNames = useMemo(() => fields.map((f) => f.name), [fields]);
   const hasGloss = useMemo(() => fields.some((f) => f.name === 'gloss'), [fields]);
+  // The editorial status field, by whatever name this vocabulary declares it.
+  const statusKey = useMemo(() => statusFieldKey(fields), [fields]);
   // How entries are told apart: the dotted number ("a 1.2"), used wherever an
   // entry is named.
   const numbers = useMemo(() => buildItemNumbers(items), [items]);
@@ -1082,9 +1084,9 @@ export const VocabularyItems = ({
               : {}
             : reservedMetadata(selectedItem?.metadata),
         }),
-        { statusField: STATUS_FIELD },
+        { statusField: statusKey },
       ),
-    [fields, isNew, liveNewParent, selectedItem],
+    [fields, isNew, liveNewParent, selectedItem, statusKey],
   );
 
   // The entry card: the form and its bands. On the Entry tab, and on its own
@@ -1121,11 +1123,11 @@ export const VocabularyItems = ({
               <TagsetField
                 id={`${uid}-status`}
                 field={formGroups.status}
-                value={editFields[STATUS_FIELD] || ''}
-                tagset={tagsetFor(STATUS_FIELD)}
+                value={editFields[statusKey] || ''}
+                tagset={tagsetFor(statusKey)}
                 className="h-7 w-32 text-xs"
                 disabled={!canManage}
-                onChange={(v) => setEditFields({ ...editFields, [STATUS_FIELD]: v })}
+                onChange={(v) => setEditFields({ ...editFields, [statusKey]: v })}
               />
             </div>
           )}

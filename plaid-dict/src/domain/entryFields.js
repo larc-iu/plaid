@@ -24,12 +24,14 @@ import {
   fieldsForItem,
   itemRefFields,
   refIds,
-  STATUS_FIELD,
+  statusFieldKey,
 } from '@igt/domain/vocabDictionary.js';
 import { decorateWithAffixMarkers } from '@igt/domain/affixMarkers.js';
 
 export const POS_FIELD = 'pos';
-const SILENT = new Set([STATUS_FIELD, 'morphType', POS_FIELD]);
+// Fields the article never prints as text: the status decides what is shown,
+// the morph type decorates the form, the part of speech has its own place.
+const silentFields = (fields) => new Set([statusFieldKey(fields), 'morphType', POS_FIELD]);
 
 const value = (item, field) => {
   const v = item?.metadata?.[field.name];
@@ -74,11 +76,12 @@ export const displayForm = (item) =>
 export const entryText = (item, fields) => {
   // A headword-scope field belongs to the headword, so a sense never repeats
   // its entry's etymology.
-  const groups = groupFieldsForForm(fieldsForItem(fields, item, true), {
-    statusField: STATUS_FIELD,
+  const groups = groupFieldsForForm(fieldsForItem(fields, item), {
+    statusField: statusFieldKey(fields),
   });
+  const silent = silentFields(fields);
   const text = [...groups.builtIn, ...groups.custom].filter(
-    (f) => f.type !== FIELD_TYPES.ITEM && !SILENT.has(f.name),
+    (f) => f.type !== FIELD_TYPES.ITEM && !silent.has(f.name),
   );
   const posField = (fields || []).find((f) => f.name === POS_FIELD);
   return {
@@ -121,7 +124,9 @@ export const firstGloss = (node, fields, query = '') => {
   const q = String(query ?? '')
     .trim()
     .toLowerCase();
-  const glossesOf = (n) => entryText(n.item, fields).glosses;
+  // A node on the spine only (an unpublished headword over a published sense)
+  // lends its structure, never its gloss.
+  const glossesOf = (n) => (n.shown === false ? [] : entryText(n.item, fields).glosses);
   const walk = (n, pick) => {
     const found = pick(glossesOf(n));
     if (found) return found.value;
@@ -145,7 +150,7 @@ export const firstGloss = (node, fields, query = '') => {
  */
 export const entryRefs = (item, fields, resolve) => {
   const out = [];
-  for (const field of itemRefFields(fieldsForItem(fields, item, true))) {
+  for (const field of itemRefFields(fieldsForItem(fields, item))) {
     const targets = refIds(item, field).map(resolve).filter(Boolean);
     if (targets.length) out.push({ name: field.name, label: fieldLabel(field), targets });
   }

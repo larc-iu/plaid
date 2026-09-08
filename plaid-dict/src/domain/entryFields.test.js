@@ -94,6 +94,15 @@ describe('firstGloss', () => {
     expect(firstGloss(tree, fields, 'wednes')).toBe('Wednesday');
   });
 
+  it("never lends an unpublished headword's gloss to a result", () => {
+    const tree = {
+      ...node({ gloss: 'DRAFT do not publish' }, [node({ gloss: 'spear' })]),
+      shown: false,
+    };
+    expect(firstGloss(tree, fields)).toBe('spear');
+    expect(firstGloss(tree, fields, 'draft')).toBe('spear');
+  });
+
   it('falls back to a first gloss when nothing matched', () => {
     expect(firstGloss(node({ gloss: 'agua' }), fields, 'zzz')).toBe('agua');
     expect(firstGloss(node({}), fields)).toBeNull();

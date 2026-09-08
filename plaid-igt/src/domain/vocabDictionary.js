@@ -42,40 +42,58 @@ export const statusTagset = () => ({
 });
 
 /**
- * A NEW vocabulary's config: what it was given, plus the Status tagset and the
- * Status field held to it wherever either is missing. Both parts always come
- * back whole and ready to write, so a caller never asks which half changed.
- * Returning null for the unchanged half is what the retroactive callers
- * needed, and writing that null would have wiped a field inventory.
+ * The key under which a vocabulary keeps its editorial status: the declared
+ * field whose name is `status` in any case, or null when it declares none.
+ * Takes the raw `igt.fields` map or a normalized field list.
  *
- * The two paths that create a vocabulary both call this: the New vocabulary
- * screen (VocabularyDetail) and the project setup wizard (executeSetup). Only
- * creation calls it. An existing vocabulary is left as its owner arranged it,
- * so nothing sprouts a Status field it was never given.
+ * Matched the way the field editor rejects a duplicate, case-insensitively: a
+ * user (or a FLEx custom field) that names it "Status" HAS the field, and
+ * writing `status` beside it would make the very pair the editor forbids, two
+ * metadata keys reading as one. Every reader and writer of the value asks
+ * this for the key, here and in plaid-dict, so none of them can disagree with
+ * the seed about which field it is.
  */
-/**
- * Whether a field schema already has the Status field, matched the way the
- * field editor rejects a duplicate: case-insensitively. A user who names their
- * own field "Status" (the label the app shows) has this field, and writing
- * `status` beside it would make the very pair the editor forbids, two metadata
- * keys reading as one. Every writer of the field asks this, here and in
- * plaid-dict, so the two cannot drift apart again.
- */
-export const declaresStatusField = (fieldsConfig) =>
-  Object.keys(fieldsConfig || {}).some((k) => k.toLowerCase() === STATUS_FIELD);
+export const statusFieldKey = (fields) => {
+  const names = Array.isArray(fields) ? fields.map((f) => f?.name) : Object.keys(fields || {});
+  return names.find((k) => typeof k === 'string' && k.toLowerCase() === STATUS_FIELD) ?? null;
+};
 
+/**
+ * A vocabulary's config with the Status field and its tagset, whole and ready
+ * to write: what it was given, plus the field and the list wherever either is
+ * missing. Both halves always come back, so a caller never asks which changed
+ * (writing a null half once wiped a field inventory).
+ *
+ * Called where a vocabulary is CREATED, by the New vocabulary screen
+ * (VocabularyDetail) and the project setup wizard (executeSetup), and by
+ * plaid-dict's Publish all on a vocabulary that declares no status field at
+ * all, since a value under an undeclared field is invisible in plaid-igt. An
+ * existing field of the name, in any case, is left as its owner arranged it,
+ * and a Status tagset already there keeps its own values and gains the three
+ * the field is written with.
+ */
 export const statusFieldSeed = ({ fieldsConfig, tagsets }) => {
-  if (declaresStatusField(fieldsConfig)) {
+  if (statusFieldKey(fieldsConfig)) {
     return { fieldsConfig: fieldsConfig ?? {}, tagsets: tagsets ?? {} };
   }
+  const existing = tagsets?.[STATUS_TAGSET];
+  const list = existing
+    ? {
+        ...existing,
+        values: [
+          ...(existing.values || []),
+          ...STATUS_VALUES.filter((v) => !(existing.values || []).some((t) => t?.value === v)).map(
+            (value) => ({ value }),
+          ),
+        ],
+      }
+    : statusTagset();
   return {
     fieldsConfig: {
       ...(fieldsConfig || {}),
       [STATUS_FIELD]: { inline: false, tagset: STATUS_TAGSET },
     },
-    tagsets: tagsets?.[STATUS_TAGSET]
-      ? tagsets
-      : { ...(tagsets || {}), [STATUS_TAGSET]: statusTagset() },
+    tagsets: { ...(tagsets || {}), [STATUS_TAGSET]: list },
   };
 };
 

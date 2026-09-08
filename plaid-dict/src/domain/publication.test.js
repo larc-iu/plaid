@@ -56,6 +56,19 @@ describe('publishAll', () => {
     return client;
   };
 
+  it('writes under the key the vocabulary declares, in whatever case, and declares nothing', async () => {
+    const client = fakeClient();
+    client.layer = {
+      id: 'v',
+      config: { igt: { fields: { gloss: {}, Status: { inline: true } } } },
+    };
+    const items = [entry('a'), { id: 'b', metadata: { Status: 'published' } }];
+    const n = await publishAll(client, items, { vocabularyId: 'v' });
+    expect(n).toBe(1);
+    expect(client.configs).toEqual([]);
+    expect(client.patched).toEqual([['a', { Status: 'published' }]]);
+  });
+
   it('declares the Status field first on a vocabulary that has none', async () => {
     // A value under a field the schema does not name is invisible in
     // plaid-igt: no control on the entry, nothing in Bulk Edit.

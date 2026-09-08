@@ -40,7 +40,7 @@ import {
   refIds,
   withRefIds,
   statusTagset,
-  STATUS_FIELD,
+  statusFieldSeed,
   STATUS_TAGSET,
 } from '@/domain/vocabDictionary';
 import { readTagsets, byTagsetName } from '@/domain/tagsets';
@@ -125,15 +125,14 @@ export const VocabularyDetail = () => {
         maintainers: [user?.id].filter(Boolean),
       });
       setEditedName('');
-      // Seed a new vocab with the full core inventory.
-      // Status is a row like any other, so the table below really is "these
-      // fields": a vocabulary that wants no editorial status can remove it
-      // here, before the vocabulary exists.
+      // Seed a new vocab with the full core inventory, the same seed the
+      // setup wizard writes. Status is a row like any other, so the table
+      // below really is "these fields": a vocabulary that wants no editorial
+      // status can remove it here, before the vocabulary exists.
       setFields(
-        normalizeVocabFields({
-          ...seedDefaultFields(),
-          [STATUS_FIELD]: { inline: false, tagset: STATUS_TAGSET },
-        }),
+        normalizeVocabFields(
+          statusFieldSeed({ fieldsConfig: seedDefaultFields(), tagsets: {} }).fieldsConfig,
+        ),
       );
       setIsEditing(true);
       setLoading(false);
@@ -383,11 +382,11 @@ export const VocabularyDetail = () => {
     await saveFields(next);
   };
 
+  // Write the schema and say whether it landed. The table shows the new
+  // schema only once the server holds it: shown first, a failed write left
+  // the next edit building on a type or tagset the server never had.
   const saveFields = async (updatedFields, { quiet = false } = {}) => {
     try {
-      setFields(updatedFields);
-
-      // Save to server if not a new vocabulary
       if (!isNewVocabulary) {
         await client.vocabLayers.setConfig(
           vocabularyId,
@@ -397,9 +396,12 @@ export const VocabularyDetail = () => {
         );
         if (!quiet) notifySuccess('Fields updated successfully', 'Success');
       }
+      setFields(updatedFields);
+      return true;
     } catch (err) {
       console.error('Error saving custom fields:', err);
       notifyError('Failed to save fields', 'Error');
+      return false;
     }
   };
 
@@ -552,7 +554,15 @@ export const VocabularyDetail = () => {
         );
       } catch (err) {
         console.error('Error rewriting entry values after a field type change:', err);
-        notifyError('Some entries still hold their old value. Open the entries to finish.', label);
+        // Arriving at Entry, the entry list's load-time repair finishes the
+        // clearing. Leaving it, nothing else will: the ids stay in a text
+        // field until the type is changed again.
+        notifyError(
+          choice.type === FIELD_TYPES.ITEM
+            ? 'Some entries still hold their old value. Open the entries to finish.'
+            : 'Some entries still hold their references. Change the type again to finish.',
+          label,
+        );
       }
       return;
     }
