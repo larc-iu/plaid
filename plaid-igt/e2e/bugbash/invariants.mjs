@@ -21,10 +21,14 @@ export function tokenOffsetsInBounds(doc) {
   const v = [];
   const check = (toks, label) => {
     for (const t of toks) {
-      if (t.begin == null || t.end == null) { v.push(`${label} ${t.id}: null offset (begin=${t.begin} end=${t.end})`); continue; }
+      if (t.begin == null || t.end == null) {
+        v.push(`${label} ${t.id}: null offset (begin=${t.begin} end=${t.end})`);
+        continue;
+      }
       if (t.begin < 0) v.push(`${label} ${t.id}: begin<0 (${t.begin})`);
       if (t.end > len) v.push(`${label} ${t.id}: end>bodyLen (${t.end} > ${len})`);
-      if (t.begin >= t.end) v.push(`${label} ${t.id}: begin>=end (${t.begin}>=${t.end}) [zero/neg width]`);
+      if (t.begin >= t.end)
+        v.push(`${label} ${t.id}: begin>=end (${t.begin}>=${t.end}) [zero/neg width]`);
     }
   };
   check(align(doc), 'alignment');
@@ -32,7 +36,8 @@ export function tokenOffsetsInBounds(doc) {
   check(sentences(doc), 'sentence');
   // morphemes may legitimately share extent; only flag out-of-bounds, not width.
   for (const m of morphemes(doc)) {
-    if (m.begin < 0 || m.end > len || m.begin > m.end) v.push(`morpheme ${m.id}: out of bounds (${m.begin},${m.end}) len=${len}`);
+    if (m.begin < 0 || m.end > len || m.begin > m.end)
+      v.push(`morpheme ${m.id}: out of bounds (${m.begin},${m.end}) len=${len}`);
   }
   return v;
 }
@@ -44,7 +49,9 @@ export function noOverlappingAlignments(doc) {
   for (let i = 0; i < toks.length; i++) {
     for (let j = i + 1; j < toks.length; j++) {
       if (overlaps(toks[i].begin, toks[i].end, toks[j].begin, toks[j].end)) {
-        v.push(`alignments overlap: ${toks[i].id}[${toks[i].begin},${toks[i].end}) ∩ ${toks[j].id}[${toks[j].begin},${toks[j].end})`);
+        v.push(
+          `alignments overlap: ${toks[i].id}[${toks[i].begin},${toks[i].end}) ∩ ${toks[j].id}[${toks[j].begin},${toks[j].end})`,
+        );
       }
     }
   }
@@ -61,7 +68,9 @@ export function alignmentTimeOrderMatchesText(doc) {
   const v = [];
   for (let i = 1; i < toks.length; i++) {
     if (toks[i].begin < toks[i - 1].begin) {
-      v.push(`temporal/positional inversion: ${toks[i - 1].id}(t=${toks[i - 1].tb},pos=${toks[i - 1].begin}) then ${toks[i].id}(t=${toks[i].tb},pos=${toks[i].begin})`);
+      v.push(
+        `temporal/positional inversion: ${toks[i - 1].id}(t=${toks[i - 1].tb},pos=${toks[i - 1].begin}) then ${toks[i].id}(t=${toks[i].tb},pos=${toks[i].begin})`,
+      );
     }
   }
   return v;
@@ -77,12 +86,20 @@ export function partitionCoversBody(doc) {
     if (toks.length > 0) v.push(`empty body but ${toks.length} sentence token(s)`);
     return v;
   }
-  if (toks.length === 0) { v.push(`body len ${len} but NO sentence tokens (unpartitioned)`); return v; }
+  if (toks.length === 0) {
+    v.push(`body len ${len} but NO sentence tokens (unpartitioned)`);
+    return v;
+  }
   if (toks[0].begin !== 0) v.push(`partition does not start at 0 (first begin=${toks[0].begin})`);
-  if (toks[toks.length - 1].end !== len) v.push(`partition does not end at body len (last end=${toks[toks.length - 1].end}, len=${len})`);
+  if (toks[toks.length - 1].end !== len)
+    v.push(
+      `partition does not end at body len (last end=${toks[toks.length - 1].end}, len=${len})`,
+    );
   for (let i = 1; i < toks.length; i++) {
     if (toks[i].begin !== toks[i - 1].end) {
-      v.push(`partition gap/overlap between ${toks[i - 1].id}[..${toks[i - 1].end}) and ${toks[i].id}[${toks[i].begin}..)`);
+      v.push(
+        `partition gap/overlap between ${toks[i - 1].id}[..${toks[i - 1].end}) and ${toks[i].id}[${toks[i].begin}..)`,
+      );
     }
   }
   return v;
@@ -129,10 +146,13 @@ export function runAllInvariants(doc) {
 // ---- optimistic-vs-server divergence ------------------------------------
 // For ops that DON'T _reload (alignBaseline, updateAlignmentBounds, metadata),
 // the optimistic in-memory doc should match a fresh server load.
-const sig = (toks) => [...toks]
-  .map((t) => `[${t.begin},${t.end})@${t.metadata?.timeBegin ?? '-'}..${t.metadata?.timeEnd ?? '-'}`)
-  .sort()
-  .join(' ');
+const sig = (toks) =>
+  [...toks]
+    .map(
+      (t) => `[${t.begin},${t.end})@${t.metadata?.timeBegin ?? '-'}..${t.metadata?.timeEnd ?? '-'}`,
+    )
+    .sort()
+    .join(' ');
 
 export function optimisticMatchesServer(optimisticDoc, serverDoc) {
   const v = [];
@@ -140,11 +160,19 @@ export function optimisticMatchesServer(optimisticDoc, serverDoc) {
     v.push(`body diverged:\n  optimistic="${optimisticDoc.body}"\n  server   ="${serverDoc.body}"`);
   }
   if (sig(align(optimisticDoc)) !== sig(align(serverDoc))) {
-    v.push(`alignment tokens diverged:\n  optimistic=${sig(align(optimisticDoc))}\n  server    =${sig(align(serverDoc))}`);
+    v.push(
+      `alignment tokens diverged:\n  optimistic=${sig(align(optimisticDoc))}\n  server    =${sig(align(serverDoc))}`,
+    );
   }
-  const ssig = (d) => [...sentences(d)].map((t) => `[${t.begin},${t.end})`).sort().join(' ');
+  const ssig = (d) =>
+    [...sentences(d)]
+      .map((t) => `[${t.begin},${t.end})`)
+      .sort()
+      .join(' ');
   if (ssig(optimisticDoc) !== ssig(serverDoc)) {
-    v.push(`sentence tokens diverged:\n  optimistic=${ssig(optimisticDoc)}\n  server    =${ssig(serverDoc)}`);
+    v.push(
+      `sentence tokens diverged:\n  optimistic=${ssig(optimisticDoc)}\n  server    =${ssig(serverDoc)}`,
+    );
   }
   return v;
 }

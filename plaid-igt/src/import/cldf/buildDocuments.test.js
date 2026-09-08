@@ -610,7 +610,7 @@ describe('round trip through the exporter', () => {
     const vocab = {
       id: 'v1',
       name: 'Lexicon',
-      config: { igt: { dictionary: true, fields: { gloss: { inline: true } } } },
+      config: { igt: { fields: { gloss: { inline: true } } } },
       items: [
         { id: 'late', form: 'banco', metadata: { gloss: 'bench', homograph: 2 } },
         { id: 'early', form: 'banco', metadata: { gloss: 'bank', homograph: 1 } },
@@ -646,7 +646,7 @@ describe('round trip through the exporter', () => {
     const vocab = {
       id: 'v1',
       name: 'Lexicon',
-      config: { igt: { dictionary: true, fields: { gloss: { inline: true } } } },
+      config: { igt: { fields: { gloss: { inline: true } } } },
       items: [
         { id: 'one', form: 'banco', metadata: { gloss: 'bench', pos: 'noun', homograph: 1 } },
       ],
@@ -673,7 +673,7 @@ describe('round trip through the exporter', () => {
     await importLexicon({
       client: {
         vocabLayers: {
-          get: async () => ({ id: 'v', config: { igt: { dictionary: true } }, items: [] }),
+          get: async () => ({ id: 'v', config: { igt: {} }, items: [] }),
           setConfig: async (_id, _ns, key, value) => {
             if (key === 'fields') writtenFields = value;
           },

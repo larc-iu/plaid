@@ -44,9 +44,11 @@ function resolveLayers(project) {
     morpheme: find(ROLES.MORPHEME),
     alignment: find(ROLES.TIME_ALIGNMENT),
     spanByName: Object.fromEntries(
-      [...spanLayersOf(find(ROLES.SENTENCE)), ...spanLayersOf(find(ROLES.WORD)), ...spanLayersOf(find(ROLES.MORPHEME))].map(
-        (sl) => [sl.name, sl],
-      ),
+      [
+        ...spanLayersOf(find(ROLES.SENTENCE)),
+        ...spanLayersOf(find(ROLES.WORD)),
+        ...spanLayersOf(find(ROLES.MORPHEME)),
+      ].map((sl) => [sl.name, sl]),
     ),
   };
 }
@@ -233,11 +235,33 @@ async function analyze(project, raw, content, spec, items, nth = 0) {
   await client.tokens.patchMetadata(morphIds[0], { form: spec.morphs[0].form, ...stamp });
   for (let i = 0; i < spec.morphs.length; i++) {
     const m = spec.morphs[i];
-    if (m.gloss) await client.spans.create(gloss.id, [morphIds[i]], m.gloss, Object.keys(stamp).length ? stamp : undefined);
-    if (m.item && items[m.item]) await client.vocabLinks.create(items[m.item], [morphIds[i]], Object.keys(stamp).length ? stamp : undefined);
+    if (m.gloss)
+      await client.spans.create(
+        gloss.id,
+        [morphIds[i]],
+        m.gloss,
+        Object.keys(stamp).length ? stamp : undefined,
+      );
+    if (m.item && items[m.item])
+      await client.vocabLinks.create(
+        items[m.item],
+        [morphIds[i]],
+        Object.keys(stamp).length ? stamp : undefined,
+      );
   }
-  if (spec.pos) await client.spans.create(pos.id, [word.id], spec.pos, Object.keys(stamp).length ? stamp : undefined);
-  if (spec.wordItem && items[spec.wordItem]) await client.vocabLinks.create(items[spec.wordItem], [word.id], Object.keys(stamp).length ? stamp : undefined);
+  if (spec.pos)
+    await client.spans.create(
+      pos.id,
+      [word.id],
+      spec.pos,
+      Object.keys(stamp).length ? stamp : undefined,
+    );
+  if (spec.wordItem && items[spec.wordItem])
+    await client.vocabLinks.create(
+      items[spec.wordItem],
+      [word.id],
+      Object.keys(stamp).length ? stamp : undefined,
+    );
 }
 
 async function userId(email) {
@@ -249,7 +273,7 @@ async function userId(email) {
 
 const SPANISH = ' Todos los seres humanos nacen libres e iguales en dignidad y derechos.';
 const EDGE_TEXT = [
-  'Todos los derechos. ¿Qué? ? dog\'s 😀 ... $',
+  "Todos los derechos. ¿Qué? ? dog's 😀 ... $",
   '"hola," ser ser los',
   'los los ngoko',
 ].join('\n');
@@ -260,14 +284,29 @@ const out = {};
 {
   const p = await ensureProject('P-MAIN');
   const lexA = await ensureVocab('LEX-A', [
-    'all', 'the', 'human', 'be.born', 'free', 'equal', 'ser', 'ser', 'derechos', 'Qué', 'todos',
+    'all',
+    'the',
+    'human',
+    'be.born',
+    'free',
+    'equal',
+    'ser',
+    'ser',
+    'derechos',
+    'Qué',
+    'todos',
   ]);
   const lexB = await ensureVocab('LEX-B', ['the', 'human']);
   await linkVocab(p, lexA.id);
   await linkVocab(p, lexB.id);
   const d1 = await ensureDoc(p, 'Sample IGT Document', SPANISH);
   const d2 = await ensureDoc(p, 'Edge cases', EDGE_TEXT);
-  out['P-MAIN'] = { projectId: p.id, docs: { sample: d1.id, edge: d2.id }, lexA: lexA.id, lexB: lexB.id };
+  out['P-MAIN'] = {
+    projectId: p.id,
+    docs: { sample: d1.id, edge: d2.id },
+    lexA: lexA.id,
+    lexB: lexB.id,
+  };
 }
 
 // ---------- P-NOVOCAB ----------
@@ -292,7 +331,17 @@ const out = {};
 {
   const p = await ensureProject('P-PREC');
   const lexP = await ensureVocab('LEX-P', [
-    'ngo', 'ko', 'bal', 'a', 'ba', 'la', 'machi', 'wiri', 'todos', 'ser', 'ser',
+    'ngo',
+    'ko',
+    'bal',
+    'a',
+    'ba',
+    'la',
+    'machi',
+    'wiri',
+    'todos',
+    'ser',
+    'ser',
   ]);
   await linkVocab(p, lexP.id);
   const full = await client.vocabLayers.get(lexP.id, true);
@@ -308,17 +357,69 @@ const out = {};
   const d1 = await ensureDoc(p, 'Precedent 1', 'ngoko bala machi wiri ser ser');
   const d2 = await ensureDoc(p, 'Precedent 2', 'ngoko bala ser');
   const d3 = await ensureDoc(p, 'Target', 'Todos ngoko bala machi wiri ser');
-  const A = { morphs: [{ form: 'ngo', gloss: 'go', item: 'ngo' }, { form: 'ko', gloss: 'PST', item: 'ko' }], pos: 'V' };
+  const A = {
+    morphs: [
+      { form: 'ngo', gloss: 'go', item: 'ngo' },
+      { form: 'ko', gloss: 'PST', item: 'ko' },
+    ],
+    pos: 'V',
+  };
   await analyze(p, d1, 'ngoko', A, items);
   await analyze(p, d2, 'ngoko', A, items);
-  await analyze(p, d1, 'bala', { morphs: [{ form: 'bal', gloss: 'ball', item: 'bal' }, { form: 'a', gloss: 'PL', item: 'a' }] }, items);
-  await analyze(p, d2, 'bala', { morphs: [{ form: 'ba', gloss: 'hit', item: 'ba' }, { form: 'la', gloss: 'NMLZ', item: 'la' }] }, items);
-  await analyze(p, d1, 'machi', { morphs: [{ form: 'machi', gloss: 'shaman', item: 'machi' }], stamp: stampInferred('rule:analysis-precedent') }, items);
-  await analyze(p, d1, 'wiri', { morphs: [{ form: 'wiri', gloss: 'grass', item: 'wiri' }], pos: 'N', stamp: confirmedInferred('flex-import') }, items);
+  await analyze(
+    p,
+    d1,
+    'bala',
+    {
+      morphs: [
+        { form: 'bal', gloss: 'ball', item: 'bal' },
+        { form: 'a', gloss: 'PL', item: 'a' },
+      ],
+    },
+    items,
+  );
+  await analyze(
+    p,
+    d2,
+    'bala',
+    {
+      morphs: [
+        { form: 'ba', gloss: 'hit', item: 'ba' },
+        { form: 'la', gloss: 'NMLZ', item: 'la' },
+      ],
+    },
+    items,
+  );
+  await analyze(
+    p,
+    d1,
+    'machi',
+    {
+      morphs: [{ form: 'machi', gloss: 'shaman', item: 'machi' }],
+      stamp: stampInferred('rule:analysis-precedent'),
+    },
+    items,
+  );
+  await analyze(
+    p,
+    d1,
+    'wiri',
+    {
+      morphs: [{ form: 'wiri', gloss: 'grass', item: 'wiri' }],
+      pos: 'N',
+      stamp: confirmedInferred('flex-import'),
+    },
+    items,
+  );
   // precedent for the homonym: both `ser` in doc 1 link to the NEWER item
   await analyze(p, d1, 'ser', { morphs: [{ form: 'ser', item: 'ser2' }] }, items, 0);
   await analyze(p, d1, 'ser', { morphs: [{ form: 'ser', item: 'ser2' }] }, items, 1);
-  out['P-PREC'] = { projectId: p.id, docs: { p1: d1.id, p2: d2.id, target: d3.id }, lexP: lexP.id, items };
+  out['P-PREC'] = {
+    projectId: p.id,
+    docs: { p1: d1.id, p2: d2.id, target: d3.id },
+    lexP: lexP.id,
+    items,
+  };
 }
 
 // ---------- P-PERM ----------
@@ -336,7 +437,8 @@ const out = {};
   if (!has('writers', ids.writer)) await client.projects.addWriter(p.id, ids.writer);
   if (!has('maintainers', ids.maint)) await client.projects.addMaintainer(p.id, ids.maint);
   const vocab = await client.vocabLayers.get(lexA.id);
-  if (!(vocab.maintainers || []).includes(ids.vocab)) await client.vocabLayers.addMaintainer(lexA.id, ids.vocab);
+  if (!(vocab.maintainers || []).includes(ids.vocab))
+    await client.vocabLayers.addMaintainer(lexA.id, ids.vocab);
   out['P-PERM'] = { projectId: p.id, docs: { edge: d.id }, lexA: lexA.id, users: ids };
 }
 
@@ -349,7 +451,9 @@ if (BIG) {
   if (!big) {
     big = await client.vocabLayers.create('LEX-BIG');
     for (let i = 0; i < forms.length; i += 500) {
-      await client.vocabItems.bulkCreate(forms.slice(i, i + 500).map((f) => ({ vocabLayerId: big.id, form: f })));
+      await client.vocabItems.bulkCreate(
+        forms.slice(i, i + 500).map((f) => ({ vocabLayerId: big.id, form: f })),
+      );
     }
   }
   await linkVocab(p, big.id);

@@ -28,7 +28,9 @@ async function main() {
   const documentId = process.argv[2];
   const outPng = process.argv[3];
   if (!documentId || !outPng) {
-    console.error('usage: node e2e/uxshot.mjs <documentId> <outPng> [--width=] [--height=] [--tab=] [--full] [--wait=]');
+    console.error(
+      'usage: node e2e/uxshot.mjs <documentId> <outPng> [--width=] [--height=] [--tab=] [--full] [--wait=]',
+    );
     process.exit(2);
   }
   const width = parseInt(arg('width', '1400'), 10);
@@ -42,25 +44,38 @@ async function main() {
   const browser = await chromium.launch();
   const context = await browser.newContext({ viewport: { width, height } });
   // Prime auth before the app boots (AuthProvider reads localStorage on mount).
-  await context.addInitScript(({ token, userId }) => {
-    localStorage.setItem('token', token);
-    localStorage.setItem('userId', userId);
-    localStorage.setItem('displayName', userId);
-    localStorage.setItem('isAdmin', 'true');
-  }, { token, userId });
+  await context.addInitScript(
+    ({ token, userId }) => {
+      localStorage.setItem('token', token);
+      localStorage.setItem('userId', userId);
+      localStorage.setItem('displayName', userId);
+      localStorage.setItem('isAdmin', 'true');
+    },
+    { token, userId },
+  );
 
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
-  page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text()}`); });
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console: ${m.text()}`);
+  });
 
-  await page.goto(`${BASE}/#/projects/${PROJECT_ID}/documents/${documentId}`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE}/#/projects/${PROJECT_ID}/documents/${documentId}`, {
+    waitUntil: 'networkidle',
+  });
   if (tab) {
     const t = page.getByRole('tab', { name: tab });
-    if (await t.count()) { await t.first().click(); }
+    if (await t.count()) {
+      await t.first().click();
+    }
   }
   // Best-effort wait for the island to paint; don't hard-fail empty-state docs.
-  await page.locator('.igt-island').first().waitFor({ state: 'visible', timeout: 8000 }).catch(() => {});
+  await page
+    .locator('.igt-island')
+    .first()
+    .waitFor({ state: 'visible', timeout: 8000 })
+    .catch(() => {});
   await page.waitForTimeout(extraWait);
 
   await page.screenshot({ path: outPng, fullPage: hasFlag('full') });
@@ -72,4 +87,7 @@ async function main() {
   await browser.close();
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

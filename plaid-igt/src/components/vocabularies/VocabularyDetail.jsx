@@ -36,7 +36,7 @@ import {
   FIELD_TYPES,
   FIELD_SCOPES,
 } from '@/domain/vocabFields';
-import { refIds, withRefIds } from '@/domain/vocabDictionary';
+import { refIds, withRefIds, statusFieldSeed } from '@/domain/vocabDictionary';
 import { readTagsets, byTagsetName } from '@/domain/tagsets';
 import { TagsetsManager } from '@/components/projects/settings/TagsetsManager.jsx';
 import {
@@ -257,12 +257,21 @@ export const VocabularyDetail = () => {
       if (isNewVocabulary) {
         savedVocabulary = await client.vocabLayers.create(editedName.trim());
 
-        // Persist the field inventory (always non-empty — morphType is core).
+        // The field inventory (always non-empty, morphType is core) plus the
+        // Status field and its list: the same seeding every creation path
+        // does, see statusFieldSeed.
+        const add = statusFieldSeed({ fieldsConfig: fieldsToConfig(fields), tagsets });
+        await client.vocabLayers.setConfig(
+          savedVocabulary.id,
+          IGT_NAMESPACE,
+          'tagsets',
+          add.tagsets,
+        );
         await client.vocabLayers.setConfig(
           savedVocabulary.id,
           IGT_NAMESPACE,
           'fields',
-          fieldsToConfig(fields),
+          add.fieldsConfig,
         );
 
         navigate(`/vocabularies/${savedVocabulary.id}`, { replace: true });
@@ -997,7 +1006,9 @@ export const VocabularyDetail = () => {
                 <h3 className="text-base font-semibold">Fields</h3>
                 <p className="text-sm text-muted-foreground">
                   Every entry has these fields. <strong>Inline</strong> puts a field in the
-                  interlinear view as well.
+                  interlinear view as well. An <strong>Entry</strong> or <strong>Entries</strong>{' '}
+                  field refers to other entries, senses included. <strong>Headword only</strong>{' '}
+                  shows a field on a headword, not on its senses.
                 </p>
 
                 {renderCustomFieldsEditor()}

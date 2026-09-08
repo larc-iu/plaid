@@ -348,7 +348,7 @@ describe('buildCldfDataset — dictionary', () => {
   it('points a sense at the example rows its promoted examples became', () => {
     const dict = {
       ...vocab,
-      config: { igt: { dictionary: true, fields: { gloss: {} } } },
+      config: { igt: { fields: { gloss: {} } } },
       items: [
         {
           id: 'i1',
@@ -381,7 +381,7 @@ describe('buildCldfDataset — dictionary', () => {
       id: 'v1',
       name: 'Lexicon',
       config: {
-        igt: { dictionary: true, fields: { gloss: {}, variantOf: { type: 'item', many: true } } },
+        igt: { fields: { gloss: {}, variantOf: { type: 'item', many: true } } },
       },
       items: [
         { id: 'i1', form: 'perro', metadata: { gloss: 'dog' } },
@@ -398,7 +398,7 @@ describe('buildCldfDataset — dictionary', () => {
     const dict = {
       id: 'v1',
       name: 'Lexicon',
-      config: { igt: { dictionary: true, fields: { gloss: {}, pos: {}, register: {} } } },
+      config: { igt: { fields: { gloss: {}, pos: {}, register: {} } } },
       items: [
         { id: 'h', form: 'kat', metadata: { gloss: 'cat', pos: 'N', register: 'plain' } },
         {

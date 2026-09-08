@@ -31,7 +31,8 @@ export function makeClient() {
 export function makeRng(seed) {
   let a = seed >>> 0;
   return () => {
-    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
     let t = Math.imul(a ^ (a >>> 15), 1 | a);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
@@ -42,7 +43,9 @@ export const randInt = (rng, lo, hi) => lo + Math.floor(rng() * (hi - lo + 1));
 
 // ---- layer resolution (mirrors fixture.js resolveLayers + alignment) ----
 export function resolveLayers(project) {
-  const tl = (project.textLayers || []).find((l) => l.config?.plaid?.primary) || (project.textLayers || [])[0];
+  const tl =
+    (project.textLayers || []).find((l) => l.config?.plaid?.primary) ||
+    (project.textLayers || [])[0];
   const tks = tl?.tokenLayers || [];
   return {
     textLayerId: tl?.id,
@@ -56,7 +59,10 @@ export function resolveLayers(project) {
 export async function getFixtureProjectId(client) {
   const projects = await client.projects.list();
   const p = projects.find((x) => x.name === FIXTURE_PROJECT_NAME);
-  if (!p) throw new Error(`Fixture project "${FIXTURE_PROJECT_NAME}" not found — run: node e2e/fixture.js`);
+  if (!p)
+    throw new Error(
+      `Fixture project "${FIXTURE_PROJECT_NAME}" not found — run: node e2e/fixture.js`,
+    );
   return p.id;
 }
 
@@ -105,14 +111,31 @@ export async function freshDoc(client, projectId, opts = {}) {
 
   if (textId && len > 0) {
     if (L.sentenceLayerId) {
-      await client.tokens.bulkCreate([{ tokenLayerId: L.sentenceLayerId, text: textId, begin: 0, end: len }]);
+      await client.tokens.bulkCreate([
+        { tokenLayerId: L.sentenceLayerId, text: textId, begin: 0, end: len },
+      ]);
     }
     const words = cpTokenize(body);
     if (seedWords && L.wordLayerId && words.length) {
-      await client.tokens.bulkCreate(words.map((w) => ({ tokenLayerId: L.wordLayerId, text: textId, begin: w.begin, end: w.end })));
+      await client.tokens.bulkCreate(
+        words.map((w) => ({
+          tokenLayerId: L.wordLayerId,
+          text: textId,
+          begin: w.begin,
+          end: w.end,
+        })),
+      );
     }
     if (seedMorphemes && L.morphemeLayerId && words.length) {
-      await client.tokens.bulkCreate(words.map((w) => ({ tokenLayerId: L.morphemeLayerId, text: textId, begin: w.begin, end: w.end, precedence: 1 })));
+      await client.tokens.bulkCreate(
+        words.map((w) => ({
+          tokenLayerId: L.morphemeLayerId,
+          text: textId,
+          begin: w.begin,
+          end: w.end,
+          precedence: 1,
+        })),
+      );
     }
   }
 
@@ -127,14 +150,20 @@ export async function reloadFresh(client, projectId, documentId) {
 }
 
 export async function cleanupDoc(client, documentId) {
-  try { await client.documents.delete(documentId); } catch { /* best effort */ }
+  try {
+    await client.documents.delete(documentId);
+  } catch {
+    /* best effort */
+  }
 }
 
 // ---- minimal valid WAV (16-bit PCM, 8kHz mono, silence) -----------------
 // Tika validates uploaded media content, so a random blob is rejected; this is
 // a real RIFF/WAVE file Tika recognizes as audio.
 export function wavBytes(seconds = 0.25) {
-  const sampleRate = 8000, numCh = 1, bits = 16;
+  const sampleRate = 8000,
+    numCh = 1,
+    bits = 16;
   const numSamples = Math.max(1, Math.floor(sampleRate * seconds));
   const blockAlign = numCh * (bits / 8);
   const dataSize = numSamples * blockAlign;

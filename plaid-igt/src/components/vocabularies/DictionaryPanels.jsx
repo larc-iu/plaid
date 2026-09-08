@@ -19,8 +19,7 @@ import { ItemPicker } from './ItemPicker';
 import { FormLabel } from './FormLabel';
 
 // The dictionary panels of an entry: where it sits in its sense tree, what
-// refers to it, and its examples. All of them only mount when the
-// vocabulary's Dictionary switch is on.
+// refers to it, and its examples.
 
 /**
  * The guard the entry list puts on its own rows, as `{select, newSense}`: a
@@ -31,7 +30,7 @@ import { FormLabel } from './FormLabel';
 const NavGuardContext = createContext(null);
 export const NavGuardProvider = NavGuardContext.Provider;
 
-/** An entry named inline as a link to it: form, subscript, gloss. */
+/** An entry named inline as a link to it: form, number, gloss. */
 const ItemLink = ({ item, numbers, itemTo, className }) => {
   const guard = useContext(NavGuardContext);
   return (

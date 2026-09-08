@@ -5,14 +5,19 @@ const [projectId, documentId, outPng] = process.argv.slice(2);
 const { token, userId } = readToken();
 const browser = await firefox.launch();
 const context = await browser.newContext({ viewport: { width: 1990, height: 1170 } });
-await context.addInitScript(({ token, userId }) => {
-  localStorage.setItem('token', token);
-  localStorage.setItem('userId', userId);
-  localStorage.setItem('displayName', userId);
-  localStorage.setItem('isAdmin', 'true');
-}, { token, userId });
+await context.addInitScript(
+  ({ token, userId }) => {
+    localStorage.setItem('token', token);
+    localStorage.setItem('userId', userId);
+    localStorage.setItem('displayName', userId);
+    localStorage.setItem('isAdmin', 'true');
+  },
+  { token, userId },
+);
 const page = await context.newPage();
-await page.goto(`${BASE}/#/projects/${projectId}/documents/${documentId}`, { waitUntil: 'networkidle' });
+await page.goto(`${BASE}/#/projects/${projectId}/documents/${documentId}`, {
+  waitUntil: 'networkidle',
+});
 const t = page.getByRole('tab', { name: 'Analyze' });
 if (await t.count()) await t.first().click();
 await page.locator('.igt-island').first().waitFor({ state: 'visible', timeout: 8000 });

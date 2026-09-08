@@ -4355,8 +4355,8 @@ export class IgtEditor {
     `;
   }
 
-  // Homonym subscripts (form₂) for vocab items that share a form within a
-  // vocab — FLEx-style sense numbering by creation order. Cached per
+  // The dotted number an entry goes by (buildItemNumbers), which tells apart
+  // both the senses under an entry and the entries spelled alike. Cached per
   // doc.dataVersion so we regroup only when the data actually changes.
   // Browsers fire mousemove when content re-flows UNDER a stationary pointer
   // (a popover re-render, a row growing). Only a real pointer movement should
@@ -4595,7 +4595,7 @@ export class IgtEditor {
     const editingCreate = canCreate && this._popoverCreateEdit != null;
     const effectiveForm = editingCreate ? this._popoverCreateEdit.trim() : createForm;
     // If the form already exists in the active vocab, the new entry would be
-    // spelled like an existing one — preview the number it would get (existing
+    // spelled like an existing one. Preview the number it would get (existing
     // count + 1) and say so, since a duplicate is usually a mis-click on the
     // existing entry. Only ENTRIES count, since a new one is an entry.
     const newFormDupes =

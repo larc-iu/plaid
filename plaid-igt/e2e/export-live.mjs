@@ -236,7 +236,10 @@ try {
     'multi-sense FLEx entries rejoined (fewer entries than senses)',
     `${liftEntries} entries / ${liftSenses} senses`,
   );
-  check(/<entry [^>]*guid="/.test(lift), 'lift entries keep their FLEx guid, so a re-import merges');
+  check(
+    /<entry [^>]*guid="/.test(lift),
+    'lift entries keep their FLEx guid, so a re-import merges',
+  );
   check(lift.includes('<trait name="morph-type"'), 'lift carries morph types');
   check(lift.includes('<lexical-unit>'), 'lift has headwords');
   check(lift.includes('<gloss lang='), 'lift has glosses');

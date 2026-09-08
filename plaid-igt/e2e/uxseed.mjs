@@ -11,7 +11,13 @@ import { readToken } from './fixtures.js';
 
 const CORE_URL = process.env.PLAID_CORE_URL || 'http://localhost:8085';
 const PROJECT_NAME = 'E2E IGT Fixture';
-const DOC_NAMES = ['UX Review Doc A', 'UX Review Doc B', 'UX Review Doc C', 'UX Review Doc D', 'UX Final Demo'];
+const DOC_NAMES = [
+  'UX Review Doc A',
+  'UX Review Doc B',
+  'UX Review Doc C',
+  'UX Review Doc D',
+  'UX Final Demo',
+];
 const EMPTY_DOC_NAME = 'UX Review Empty Doc';
 
 // A small, realistic interlinear analysis of UDHR Article 1 (Spanish), with
@@ -21,41 +27,151 @@ const ANALYSIS = [
   {
     translation: 'All human beings are born free and equal in dignity and rights.',
     words: [
-      { surface: 'Todos',   pos: 'DET',  ipa: 'ˈto.ðos',   vocab: 'all',     morphs: [['tod', 'all'], ['os', 'M.PL']] },
-      { surface: 'los',     pos: 'DET',  ipa: 'los',        vocab: 'the',     morphs: [['los', 'DEF.M.PL']] },
-      { surface: 'seres',   pos: 'NOUN', ipa: 'ˈse.ɾes',    morphs: [['ser', 'being'], ['es', 'PL']] },
-      { surface: 'humanos', pos: 'ADJ',  ipa: 'uˈma.nos',   vocab: 'human',   morphs: [['human', 'human'], ['os', 'M.PL']] },
-      { surface: 'nacen',   pos: 'VERB', ipa: 'ˈna.θen',    vocab: 'be.born', morphs: [['nac', 'be.born'], ['en', '3PL.PRS']] },
-      { surface: 'libres',  pos: 'ADJ',  ipa: 'ˈli.βɾes',   vocab: 'free',    morphs: [['libre', 'free'], ['s', 'PL']] },
-      { surface: 'e',       pos: 'CONJ', morphs: [['e', 'and']] },
-      { surface: 'iguales', pos: 'ADJ',  vocab: 'equal',    morphs: [['igual', 'equal'], ['es', 'PL']] },
-      { surface: 'en',      pos: 'ADP',  morphs: [['en', 'in']] },
-      { surface: 'dignidad', pos: 'NOUN', morphs: [['dign', 'worthy'], ['idad', 'NMLZ']] },
-      { surface: 'y',       pos: 'CONJ', morphs: [['y', 'and']] },
-      { surface: 'derechos', pos: 'NOUN', morphs: [['derech', 'right'], ['os', 'M.PL']] },
-      { surface: '.',       pos: '',     morphs: [['.', '']] },
+      {
+        surface: 'Todos',
+        pos: 'DET',
+        ipa: 'ˈto.ðos',
+        vocab: 'all',
+        morphs: [
+          ['tod', 'all'],
+          ['os', 'M.PL'],
+        ],
+      },
+      { surface: 'los', pos: 'DET', ipa: 'los', vocab: 'the', morphs: [['los', 'DEF.M.PL']] },
+      {
+        surface: 'seres',
+        pos: 'NOUN',
+        ipa: 'ˈse.ɾes',
+        morphs: [
+          ['ser', 'being'],
+          ['es', 'PL'],
+        ],
+      },
+      {
+        surface: 'humanos',
+        pos: 'ADJ',
+        ipa: 'uˈma.nos',
+        vocab: 'human',
+        morphs: [
+          ['human', 'human'],
+          ['os', 'M.PL'],
+        ],
+      },
+      {
+        surface: 'nacen',
+        pos: 'VERB',
+        ipa: 'ˈna.θen',
+        vocab: 'be.born',
+        morphs: [
+          ['nac', 'be.born'],
+          ['en', '3PL.PRS'],
+        ],
+      },
+      {
+        surface: 'libres',
+        pos: 'ADJ',
+        ipa: 'ˈli.βɾes',
+        vocab: 'free',
+        morphs: [
+          ['libre', 'free'],
+          ['s', 'PL'],
+        ],
+      },
+      { surface: 'e', pos: 'CONJ', morphs: [['e', 'and']] },
+      {
+        surface: 'iguales',
+        pos: 'ADJ',
+        vocab: 'equal',
+        morphs: [
+          ['igual', 'equal'],
+          ['es', 'PL'],
+        ],
+      },
+      { surface: 'en', pos: 'ADP', morphs: [['en', 'in']] },
+      {
+        surface: 'dignidad',
+        pos: 'NOUN',
+        morphs: [
+          ['dign', 'worthy'],
+          ['idad', 'NMLZ'],
+        ],
+      },
+      { surface: 'y', pos: 'CONJ', morphs: [['y', 'and']] },
+      {
+        surface: 'derechos',
+        pos: 'NOUN',
+        morphs: [
+          ['derech', 'right'],
+          ['os', 'M.PL'],
+        ],
+      },
+      { surface: '.', pos: '', morphs: [['.', '']] },
     ],
   },
   {
     translation: 'They are endowed with reason and conscience.',
     words: [
-      { surface: 'Dotados',  pos: 'VERB', morphs: [['dot', 'endow'], ['ados', 'PTCP.M.PL']] },
-      { surface: 'como',     pos: 'SCONJ', morphs: [['como', 'as']] },
-      { surface: 'están',    pos: 'AUX',  ipa: 'esˈtan', morphs: [['est', 'be'], ['án', '3PL.PRS']] },
-      { surface: 'de',       pos: 'ADP',  morphs: [['de', 'of']] },
-      { surface: 'razón',    pos: 'NOUN', ipa: 'raˈson', morphs: [['razón', 'reason']] },
-      { surface: 'y',        pos: 'CONJ', morphs: [['y', 'and']] },
-      { surface: 'conciencia', pos: 'NOUN', morphs: [['concienci', 'conscience'], ['a', 'F.SG']] },
-      { surface: '.',        pos: '',     morphs: [['.', '']] },
+      {
+        surface: 'Dotados',
+        pos: 'VERB',
+        morphs: [
+          ['dot', 'endow'],
+          ['ados', 'PTCP.M.PL'],
+        ],
+      },
+      { surface: 'como', pos: 'SCONJ', morphs: [['como', 'as']] },
+      {
+        surface: 'están',
+        pos: 'AUX',
+        ipa: 'esˈtan',
+        morphs: [
+          ['est', 'be'],
+          ['án', '3PL.PRS'],
+        ],
+      },
+      { surface: 'de', pos: 'ADP', morphs: [['de', 'of']] },
+      { surface: 'razón', pos: 'NOUN', ipa: 'raˈson', morphs: [['razón', 'reason']] },
+      { surface: 'y', pos: 'CONJ', morphs: [['y', 'and']] },
+      {
+        surface: 'conciencia',
+        pos: 'NOUN',
+        morphs: [
+          ['concienci', 'conscience'],
+          ['a', 'F.SG'],
+        ],
+      },
+      { surface: '.', pos: '', morphs: [['.', '']] },
     ],
   },
   {
     translation: 'They should behave fraternally toward one another.',
     words: [
-      { surface: 'Deben',   pos: 'VERB', morphs: [['deb', 'must'], ['en', '3PL.PRS']] },
-      { surface: 'comportarse', pos: 'VERB', morphs: [['comport', 'behave'], ['ar', 'INF'], ['se', 'REFL']] },
-      { surface: 'fraternalmente', pos: 'ADV', morphs: [['fraternal', 'brotherly'], ['mente', 'ADV']] },
-      { surface: '.',       pos: '',     morphs: [['.', '']] },
+      {
+        surface: 'Deben',
+        pos: 'VERB',
+        morphs: [
+          ['deb', 'must'],
+          ['en', '3PL.PRS'],
+        ],
+      },
+      {
+        surface: 'comportarse',
+        pos: 'VERB',
+        morphs: [
+          ['comport', 'behave'],
+          ['ar', 'INF'],
+          ['se', 'REFL'],
+        ],
+      },
+      {
+        surface: 'fraternalmente',
+        pos: 'ADV',
+        morphs: [
+          ['fraternal', 'brotherly'],
+          ['mente', 'ADV'],
+        ],
+      },
+      { surface: '.', pos: '', morphs: [['.', '']] },
     ],
   },
 ];
@@ -71,7 +187,9 @@ function normalizeBulkIds(res, expected) {
   if (res && !Array.isArray(res)) arr = res.ids || res.data || res.tokens || res.body || [];
   const ids = (arr || []).map((x) => (x && typeof x === 'object' ? (x.id ?? x['xt/id']) : x));
   if (ids.length !== expected) {
-    throw new Error(`bulkCreate returned ${ids.length} ids, expected ${expected}: ${JSON.stringify(res).slice(0, 300)}`);
+    throw new Error(
+      `bulkCreate returned ${ids.length} ids, expected ${expected}: ${JSON.stringify(res).slice(0, 300)}`,
+    );
   }
   return ids;
 }
@@ -82,7 +200,9 @@ async function findProjectByName(client, name) {
 }
 
 function resolveLayers(project) {
-  const tl = (project.textLayers || []).find((l) => l.config?.plaid?.primary) || (project.textLayers || [])[0];
+  const tl =
+    (project.textLayers || []).find((l) => l.config?.plaid?.primary) ||
+    (project.textLayers || [])[0];
   const tokenLayers = tl?.tokenLayers || [];
   const wordLayer = tokenLayers.find((l) => l.config?.plaid?.primary);
   const morphemeLayer = tokenLayers.find((l) => l.config?.plaid?.morpheme);
@@ -139,7 +259,8 @@ async function ensureDoc(client, projectId, name, layers, vocabItemsByForm) {
   const raw = await client.documents.get(doc.id, true);
   const tl = (raw.textLayers || []).find((l) => l.config?.plaid?.primary);
   let text = tl?.text;
-  const wordLayerTokens = (tl?.tokenLayers || []).find((l) => l.config?.plaid?.primary)?.tokens || [];
+  const wordLayerTokens =
+    (tl?.tokenLayers || []).find((l) => l.config?.plaid?.primary)?.tokens || [];
   if (wordLayerTokens.length > 0) return { projectId, documentId: doc.id };
 
   const { body, sentences } = buildText(ANALYSIS);
@@ -150,7 +271,12 @@ async function ensureDoc(client, projectId, name, layers, vocabItemsByForm) {
 
   // Sentence tokens must be bulk-created to establish the partition.
   const sentRes = await client.tokens.bulkCreate(
-    sentences.map((s) => ({ tokenLayerId: layers.sentenceLayerId, text: textId, begin: s.partBegin, end: s.partEnd })),
+    sentences.map((s) => ({
+      tokenLayerId: layers.sentenceLayerId,
+      text: textId,
+      begin: s.partBegin,
+      end: s.partEnd,
+    })),
   );
   const sentIds = normalizeBulkIds(sentRes, sentences.length);
 
@@ -164,7 +290,8 @@ async function ensureDoc(client, projectId, name, layers, vocabItemsByForm) {
     for (const w of s.words) {
       const wt = await client.tokens.create(layers.wordLayerId, textId, w.begin, w.end);
       const wtId = wt.id || wt;
-      if (w.pos && layers.posSpanLayerId) await client.spans.create(layers.posSpanLayerId, [wtId], w.pos);
+      if (w.pos && layers.posSpanLayerId)
+        await client.spans.create(layers.posSpanLayerId, [wtId], w.pos);
       if (w.ipa) await client.tokens.setMetadata(wtId, { 'orthog:IPA': w.ipa });
       if (w.vocab && vocabItemsByForm[w.vocab]) {
         await client.vocabLinks.create(vocabItemsByForm[w.vocab], [wtId]);
@@ -172,9 +299,17 @@ async function ensureDoc(client, projectId, name, layers, vocabItemsByForm) {
       // Morphemes: same extent as the word, precedence 1..n, form in metadata.
       let prec = 1;
       for (const [form, gloss] of w.morphs) {
-        const mt = await client.tokens.create(layers.morphemeLayerId, textId, w.begin, w.end, prec, { form });
+        const mt = await client.tokens.create(
+          layers.morphemeLayerId,
+          textId,
+          w.begin,
+          w.end,
+          prec,
+          { form },
+        );
         const mtId = mt.id || mt;
-        if (gloss && layers.glossSpanLayerId) await client.spans.create(layers.glossSpanLayerId, [mtId], gloss);
+        if (gloss && layers.glossSpanLayerId)
+          await client.spans.create(layers.glossSpanLayerId, [mtId], gloss);
         prec += 1;
       }
     }
@@ -191,7 +326,11 @@ async function ensureEmptyDoc(client, projectId, name, layers) {
   const raw = await client.documents.get(doc.id, true);
   const tl = (raw.textLayers || []).find((l) => l.config?.plaid?.primary);
   if (!tl?.text?.body) {
-    await client.texts.create(layers.textLayerId, doc.id, 'Esta oración no ha sido segmentada todavía.');
+    await client.texts.create(
+      layers.textLayerId,
+      doc.id,
+      'Esta oración no ha sido segmentada todavía.',
+    );
   }
   return { projectId, documentId: doc.id };
 }
@@ -219,4 +358,7 @@ async function main() {
   console.log(JSON.stringify(out, null, 2));
 }
 
-main().catch((err) => { console.error(err); process.exit(1); });
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

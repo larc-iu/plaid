@@ -18,7 +18,7 @@ vi.mock('@/utils/feedback', () => ({
 const VOCAB = {
   id: 'v1',
   name: 'Lexicon',
-  config: { igt: { dictionary: true, fields: { gloss: { inline: true } } } },
+  config: { igt: { fields: { gloss: { inline: true } } } },
   items: [
     { id: 'h', form: 'kat', metadata: { gloss: 'cat' } },
     { id: 's', form: 'kat', metadata: { gloss: 'lion', parent: 'h', senseOrder: 1 } },

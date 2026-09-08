@@ -15,29 +15,43 @@ const PROJECT_ID = process.env.UX_PROJECT_ID || '019ea459-75a1-737a-9f4e-1a2c984
 
 const documentId = process.argv[2];
 const outDir = process.argv[3] || '/tmp/igt-ux/tour';
-if (!documentId) { console.error('usage: node e2e/uxdrive.mjs <documentId> <outDir>'); process.exit(2); }
+if (!documentId) {
+  console.error('usage: node e2e/uxdrive.mjs <documentId> <outDir>');
+  process.exit(2);
+}
 fs.mkdirSync(outDir, { recursive: true });
 const shot = (page, name) => page.screenshot({ path: path.join(outDir, name) });
 
 const { token, userId } = readToken();
 const browser = await chromium.launch();
 const context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
-await context.addInitScript(({ token, userId }) => {
-  localStorage.setItem('token', token);
-  localStorage.setItem('userId', userId);
-  localStorage.setItem('displayName', userId);
-  localStorage.setItem('isAdmin', 'true');
-}, { token, userId });
+await context.addInitScript(
+  ({ token, userId }) => {
+    localStorage.setItem('token', token);
+    localStorage.setItem('userId', userId);
+    localStorage.setItem('displayName', userId);
+    localStorage.setItem('isAdmin', 'true');
+  },
+  { token, userId },
+);
 const page = await context.newPage();
 const errs = [];
 page.on('pageerror', (e) => errs.push(`pageerror: ${e.message}`));
-page.on('console', (m) => { if (m.type() === 'error') errs.push(`console: ${m.text()}`); });
+page.on('console', (m) => {
+  if (m.type() === 'error') errs.push(`console: ${m.text()}`);
+});
 
 async function openAnalyze() {
-  await page.goto(`${BASE}/#/projects/${PROJECT_ID}/documents/${documentId}`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE}/#/projects/${PROJECT_ID}/documents/${documentId}`, {
+    waitUntil: 'networkidle',
+  });
   const t = page.getByRole('tab', { name: 'Analyze' });
   if (await t.count()) await t.first().click();
-  await page.locator('.igt-island').first().waitFor({ state: 'visible', timeout: 8000 }).catch(() => {});
+  await page
+    .locator('.igt-island')
+    .first()
+    .waitFor({ state: 'visible', timeout: 8000 })
+    .catch(() => {});
   await page.waitForTimeout(500);
 }
 
@@ -62,7 +76,12 @@ if (await gloss.count()) {
 
 // Focus ring on a word annotation cell (no typing).
 const wcell = page.locator('.igt-field[data-cell-key^="wa:"]').first();
-if (await wcell.count()) { await wcell.focus(); await page.waitForTimeout(150); await shot(page, '04-focus-wordcell.png'); await page.keyboard.press('Escape'); }
+if (await wcell.count()) {
+  await wcell.focus();
+  await page.waitForTimeout(150);
+  await shot(page, '04-focus-wordcell.png');
+  await page.keyboard.press('Escape');
+}
 
 // Morpheme split: type '-' mid-form in a morpheme form field (persists a real split on YOUR doc).
 const mform = page.locator('.igt-morph-field:not(.igt-morph-field--placeholder)').first();
@@ -85,7 +104,11 @@ if (await opener.count()) {
 
 // Placeholder "+" new-morpheme column focus.
 const plus = page.locator('.igt-morph-field--placeholder').first();
-if (await plus.count()) { await plus.focus(); await page.waitForTimeout(150); await shot(page, '07-placeholder-focus.png'); }
+if (await plus.count()) {
+  await plus.focus();
+  await page.waitForTimeout(150);
+  await shot(page, '07-placeholder-focus.png');
+}
 
 // Tab order: from the first orthography cell, tab a few times and capture where focus lands.
 const first = page.locator('.igt-field').first();
@@ -97,5 +120,8 @@ if (await first.count()) {
 }
 
 console.log(`tour written to ${outDir}`);
-if (errs.length) { console.log('--- page errors ---'); for (const e of errs.slice(0, 20)) console.log(e); }
+if (errs.length) {
+  console.log('--- page errors ---');
+  for (const e of errs.slice(0, 20)) console.log(e);
+}
 await browser.close();

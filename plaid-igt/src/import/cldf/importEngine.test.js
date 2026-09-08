@@ -292,7 +292,7 @@ describe('runCldfImport', () => {
     // after it: writing the schema over it left the mode on with no Status.
     const client = stubClient({
       vocabConfig: {
-        igt: { dictionary: true, fields: { status: { inline: false, tagset: 'Status' } } },
+        igt: { fields: { status: { inline: false, tagset: 'Status' } } },
       },
     });
     await importLexicon({

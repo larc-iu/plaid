@@ -10,6 +10,30 @@ describe('tsvCell', () => {
 });
 
 describe('serializeVocabTsv', () => {
+  it('leaves out the Number column when nothing is actually numbered', () => {
+    // Every vocabulary has a numbering, but a lexicon with no senses and no
+    // two entries spelled alike numbers nothing, and an empty column is noise.
+    const items = [
+      { id: 'a', form: 'perro', metadata: { gloss: 'dog' } },
+      { id: 'b', form: 'gato', metadata: { gloss: 'cat' } },
+    ];
+    const numbers = new Map([
+      ['a', ''],
+      ['b', ''],
+    ]);
+    expect(serializeVocabTsv({ items, fieldNames: ['gloss'], numbers })).toBe(
+      'Form\tgloss\nperro\tdog\ngato\tcat\n',
+    );
+    // One numbered entry earns the column for the whole file.
+    const some = new Map([
+      ['a', '1'],
+      ['b', ''],
+    ]);
+    expect(serializeVocabTsv({ items, fieldNames: ['gloss'], numbers: some })).toBe(
+      'Form\tNumber\tgloss\nperro\t1\tdog\ngato\t\tcat\n',
+    );
+  });
+
   const items = [
     { id: 'a', form: 'perro', metadata: { gloss: 'dog', pos: 'N' } },
     { id: 'b', form: 'gato\tmontés', metadata: { gloss: 'wildcat' } },

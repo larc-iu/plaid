@@ -126,7 +126,7 @@ try {
   d = await load(T1.id);
   check(
     link(W(d, 'ser').morphemes[0])?.id === items.ser1,
-    'A5-02 homonym without precedent: smallest id (ser₁)',
+    'A5-02 homonym without precedent: smallest id (ser 1)',
     JSON.stringify(link(W(d, 'ser').morphemes[0])),
   );
   check(
@@ -156,7 +156,7 @@ try {
     JSON.stringify(res),
   );
 
-  // A5-03 precedent beats the homonym rule: P1 links ser -> ser₂ twice (human).
+  // A5-03 precedent beats the homonym rule: P1 links ser -> ser 2 twice (human).
   const P1 = await mkdoc('P1', 'ser ser ser ser ser');
   let p = await load(P1.id);
   const pSer = words(p).map((t) => t.morphemes[0].id);
@@ -171,7 +171,7 @@ try {
   d = await load(T2.id);
   check(
     link(W(d, 'ser').morphemes[0])?.id === items.ser2,
-    'A5-03 precedent (ser₂) wins over the smallest-id rule',
+    'A5-03 precedent (ser 2) wins over the smallest-id rule',
   );
   const serLinkOld = link(W(d, 'ser').morphemes[0])?.linkId;
   check(
@@ -180,7 +180,7 @@ try {
     'A5-05 human link left alone',
   );
 
-  // A5-05 precedent flips: three ser -> ser₁ links now outvote the two ser₂ ones.
+  // A5-05 precedent flips: three ser -> ser 1 links now outvote the two ser 2 ones.
   await client.vocabLinks.create(items.ser1, [pSer[2]]);
   await client.vocabLinks.create(items.ser1, [pSer[3]]);
   await client.vocabLinks.create(items.ser1, [pSer[4]]);

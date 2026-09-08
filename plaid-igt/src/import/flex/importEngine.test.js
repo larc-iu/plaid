@@ -352,7 +352,6 @@ describe('importLexicon', () => {
       vocabId: 'v1',
       lexicon: withRefs,
       baselineWs: BASE_WS,
-      dictionary: true,
       variants: true,
     });
     const patches = new Map(
@@ -402,7 +401,6 @@ describe('importLexicon', () => {
       vocabId: 'v1',
       lexicon: withRefs,
       baselineWs: BASE_WS,
-      dictionary: true,
     });
     const bodies = client.calls
       .filter((c) => c.kind === 'vocabItems.patchMetadata')
@@ -436,7 +434,6 @@ describe('importLexicon', () => {
       vocabId: 'v1',
       lexicon,
       baselineWs: BASE_WS,
-      dictionary: true,
     });
     // Nothing to create: every sense is already there.
     expect(createdItems(client)).toHaveLength(0);

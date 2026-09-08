@@ -484,7 +484,7 @@ describe('buildProjectFile', () => {
   });
 });
 
-describe('serializeVocabularyNative — the dictionary side of a field', () => {
+describe('serializeVocabularyNative, the dictionary side of a field', () => {
   it("carries each field's type, many and scope", () => {
     const out = serializeVocabularyNative({
       id: 'v',

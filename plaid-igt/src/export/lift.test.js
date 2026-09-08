@@ -467,7 +467,7 @@ describe('buildLiftLexicon', () => {
 });
 
 describe('a headword that stands over senses', () => {
-  const FIELDS = { igt: { dictionary: true, fields: { Note: { inline: false } } } };
+  const FIELDS = { igt: { fields: { Note: { inline: false } } } };
   const container = (extra = {}) => [
     {
       id: 'v1',
@@ -563,7 +563,7 @@ describe('relations', () => {
     const { lift } = build([
       {
         id: 'v1',
-        config: { igt: { dictionary: true, fields: { seeAlso: { type: 'item', many: true } } } },
+        config: { igt: { fields: { seeAlso: { type: 'item', many: true } } } },
         items: [
           item('a', 'a', { gloss: 'a', seeAlso: ['formless', 'empty', 'gone'] }),
           item('formless', '', { gloss: 'no form' }),

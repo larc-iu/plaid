@@ -115,7 +115,6 @@ describe.skipIf(samples.length === 0)('fwbackup sample sweep', () => {
         primaryAnalysisWs: config.primaryAnalysisWs,
         lexiconFields: config.lexiconFields,
         customFieldWs: config.customFieldWs,
-        dictionary: true,
         variants: true,
       });
       const { lift, ranges, entryCount, senseCount } = buildLiftLexicon({

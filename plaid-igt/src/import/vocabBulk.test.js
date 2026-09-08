@@ -462,9 +462,7 @@ describe('matched entries on a decision', () => {
       { id: 's1', form: 'kwatha', metadata: { gloss: 'boil', parent: 'h', senseOrder: 1 } },
       { id: 's2', form: 'kwatha', metadata: { gloss: 'ferment', parent: 'h', senseOrder: 2 } },
     ];
-    const p = plan([entry(1, 'kwatha', { definition: 'to apply heat' })], dict, {
-      dictionary: true,
-    });
+    const p = plan([entry(1, 'kwatha', { definition: 'to apply heat' })], dict);
     expect(p.decisions[0]).toMatchObject({ kind: 'enrich', targetId: 'h', action: 'update' });
     expect(p.updates).toEqual([{ id: 'h', patch: { definition: 'to apply heat' } }]);
     expect(p.decisions[0].matches.map((m) => [m.number, m.target])).toEqual([
@@ -474,7 +472,6 @@ describe('matched entries on a decision', () => {
     ]);
     // A reviewer who means one of the senses says which, and gets it.
     const onSense = plan([entry(1, 'kwatha', { definition: 'to apply heat' })], dict, {
-      dictionary: true,
       overrides: { 1: targetedAnswer(TARGETED_POLICY.enrich, 2) },
     });
     expect(onSense.decisions[0]).toMatchObject({ kind: 'enrich', targetId: 's2' });
@@ -484,9 +481,7 @@ describe('matched entries on a decision', () => {
       { id: 'a', form: 'kan', metadata: {} },
       { id: 'b', form: 'kan', metadata: {} },
     ];
-    expect(
-      plan([entry(1, 'kan', { gloss: 'house' })], two, { dictionary: true }).decisions[0].kind,
-    ).toBe('ambiguous');
+    expect(plan([entry(1, 'kan', { gloss: 'house' })], two).decisions[0].kind).toBe('ambiguous');
   });
 
   it('marks which entry an enrichment would change', () => {

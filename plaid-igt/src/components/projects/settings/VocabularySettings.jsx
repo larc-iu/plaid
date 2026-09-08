@@ -1,9 +1,6 @@
 import { useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { VocabularyManager } from './VocabularyManager';
-import { statusFieldSeed } from '@/domain/vocabDictionary';
-import { seedDefaultFields } from '@/domain/vocabFields';
-import { IGT_NAMESPACE } from '@/domain/igtConfig';
 import { notifyError } from '@/utils/feedback';
 
 export const VocabularySettings = ({ projectId, client }) => {
@@ -68,17 +65,8 @@ export const VocabularySettings = ({ projectId, client }) => {
       const customVocabs = data.vocabularies.filter((vocab) => vocab.isCustom && vocab.enabled);
       for (const customVocab of customVocabs) {
         if (customVocab.id.startsWith('new-')) {
-          // Create new vocabulary, with the fields every creation path seeds
-          // (statusFieldSeed), so one made here matches one made in setup.
+          // Create new vocabulary
           const newVocab = await client.vocabLayers.create(customVocab.name);
-          const add = statusFieldSeed({ fieldsConfig: seedDefaultFields(), tagsets: {} });
-          await client.vocabLayers.setConfig(newVocab.id, IGT_NAMESPACE, 'tagsets', add.tagsets);
-          await client.vocabLayers.setConfig(
-            newVocab.id,
-            IGT_NAMESPACE,
-            'fields',
-            add.fieldsConfig,
-          );
           // Link to project
           await client.projects.linkVocab(projectId, newVocab.id);
           // Add the new vocab ID to the target list so it doesn't get unlinked

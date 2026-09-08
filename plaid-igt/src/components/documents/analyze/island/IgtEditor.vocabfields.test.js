@@ -18,7 +18,6 @@ const VOCAB = {
   name: 'Lexicon',
   config: {
     igt: {
-      dictionary: true,
       fields: {
         gloss: { inline: true },
         variantOf: { inline: true, type: 'item', many: true },
@@ -74,7 +73,7 @@ describe('the popover detail line', () => {
     const vocab = doc.vocabularies.v1;
     // No inline field: the line falls back to what the entry carries, and
     // `parent` is an id written before the fields.
-    const bare = { ...vocab, config: { igt: { dictionary: true, fields: {} } } };
+    const bare = { ...vocab, config: { igt: { fields: {} } } };
     const sense = { id: 's', form: 'kat', metadata: { parent: 'h', senseOrder: 1, gloss: 'lion' } };
     expect(editor._vocabItemDetail(sense, bare)).toBe('lion');
   });

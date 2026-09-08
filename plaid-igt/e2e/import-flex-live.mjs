@@ -18,9 +18,7 @@ import { deriveImportConfig, runImport } from '../src/import/flex/importEngine.j
 import { executeProjectSetup } from '../src/components/projects/setup/executeSetup.js';
 import { IgtDocument } from '../src/domain/IgtDocument.js';
 
-const BACKUP =
-  process.env.PLAID_FWBACKUP ||
-  '/home/luke/Downloads/fwbackup/lezgi.fwbackup';
+const BACKUP = process.env.PLAID_FWBACKUP || '/home/luke/Downloads/fwbackup/lezgi.fwbackup';
 const KEEP = process.argv.includes('--keep');
 const SMALL = process.argv.includes('--small');
 

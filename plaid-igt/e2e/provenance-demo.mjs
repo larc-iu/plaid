@@ -234,9 +234,7 @@ const print = (projectId, docId, vocabId) => {
   console.log(`analyze grid:  ${APP}/#/projects/${projectId}/documents/${docId}?tab=analyze`);
   console.log(`access:        ${APP}/#/projects/${projectId}/access`);
   if (vocabId) console.log(`lexicon:       ${APP}/#/vocabularies/${vocabId}`);
-  console.log(
-    `contributor:   ${WRITER.email} / ${PASSWORD}   (a writer whose work is reviewed)`,
-  );
+  console.log(`contributor:   ${WRITER.email} / ${PASSWORD}   (a writer whose work is reviewed)`);
   console.log(`verifier:      ${MAINT.email} / ${PASSWORD}   (a maintainer), or your admin login`);
 };
 

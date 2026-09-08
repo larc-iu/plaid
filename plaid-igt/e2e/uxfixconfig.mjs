@@ -18,7 +18,8 @@ const project = (await client.projects.list()).find((p) => p.name === PROJECT_NA
 if (!project) throw new Error(`Project "${PROJECT_NAME}" not found`);
 const full = await client.projects.get(project.id);
 
-const textLayer = (full.textLayers || []).find((l) => l.config?.plaid?.primary) || (full.textLayers || [])[0];
+const textLayer =
+  (full.textLayers || []).find((l) => l.config?.plaid?.primary) || (full.textLayers || [])[0];
 const tokenLayers = textLayer?.tokenLayers || [];
 const byFlag = (flag) => tokenLayers.find((l) => l.config?.plaid?.[flag]);
 const sentenceLayer = byFlag('sentence');
@@ -28,10 +29,13 @@ const alignmentLayer = byFlag('alignment');
 
 // 1. Tag substrate layers with their shared role.
 await client.textLayers.setConfig(textLayer.id, 'plaid', 'role', ROLES.BASELINE);
-if (sentenceLayer) await client.tokenLayers.setConfig(sentenceLayer.id, 'plaid', 'role', ROLES.SENTENCE);
+if (sentenceLayer)
+  await client.tokenLayers.setConfig(sentenceLayer.id, 'plaid', 'role', ROLES.SENTENCE);
 if (wordLayer) await client.tokenLayers.setConfig(wordLayer.id, 'plaid', 'role', ROLES.WORD);
-if (morphemeLayer) await client.tokenLayers.setConfig(morphemeLayer.id, 'plaid', 'role', ROLES.MORPHEME);
-if (alignmentLayer) await client.tokenLayers.setConfig(alignmentLayer.id, 'plaid', 'role', ROLES.TIME_ALIGNMENT);
+if (morphemeLayer)
+  await client.tokenLayers.setConfig(morphemeLayer.id, 'plaid', 'role', ROLES.MORPHEME);
+if (alignmentLayer)
+  await client.tokenLayers.setConfig(alignmentLayer.id, 'plaid', 'role', ROLES.TIME_ALIGNMENT);
 
 // 2. Private igt config: span-layer scopes (by name), word-layer orthographies +
 //    ignored tokens, project metadata + initialized flag.
@@ -44,10 +48,22 @@ for (const parent of [wordLayer, morphemeLayer, sentenceLayer]) {
 }
 if (wordLayer) {
   await client.tokenLayers.setConfig(wordLayer.id, 'igt', 'orthographies', [{ name: 'IPA' }]);
-  await client.tokenLayers.setConfig(wordLayer.id, 'igt', 'ignoredTokens', { type: 'unicodePunctuation', whitelist: [] });
+  await client.tokenLayers.setConfig(wordLayer.id, 'igt', 'ignoredTokens', {
+    type: 'unicodePunctuation',
+    whitelist: [],
+  });
 }
-await client.projects.setConfig(project.id, 'igt', 'documentMetadata', [{ name: 'Date' }, { name: 'Speakers' }]);
+await client.projects.setConfig(project.id, 'igt', 'documentMetadata', [
+  { name: 'Date' },
+  { name: 'Speakers' },
+]);
 await client.projects.setConfig(project.id, 'igt', 'initialized', true);
 
 console.log('Patched config for project', project.id);
-console.log({ textLayer: textLayer.id, sentenceLayer: sentenceLayer?.id, wordLayer: wordLayer?.id, morphemeLayer: morphemeLayer?.id, alignmentLayer: alignmentLayer?.id });
+console.log({
+  textLayer: textLayer.id,
+  sentenceLayer: sentenceLayer?.id,
+  wordLayer: wordLayer?.id,
+  morphemeLayer: morphemeLayer?.id,
+  alignmentLayer: alignmentLayer?.id,
+});

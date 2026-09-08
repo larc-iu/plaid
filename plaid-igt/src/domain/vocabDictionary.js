@@ -22,7 +22,6 @@
 // to another entry of the SAME vocabulary. References never cross vocabularies.
 
 import { FIELD_SCOPES, FIELD_TYPES } from './vocabFields.js';
-import { IGT_NAMESPACE } from './igtConfig.js';
 
 export const PARENT_KEY = 'parent';
 export const SENSE_ORDER_KEY = 'senseOrder';
@@ -43,24 +42,26 @@ export const statusTagset = () => ({
 });
 
 /**
- * What a NEW vocabulary's config gains, given what it has: the Status tagset
- * if missing, and the Status field held to it if missing. Every path that
- * creates a vocabulary goes through here, so they all set one up the same
- * way. Returns `null` for a part that needs no write.
+ * A NEW vocabulary's config: what it was given, plus the Status tagset and the
+ * Status field held to it wherever either is missing. Both parts always come
+ * back whole and ready to write, so a caller never asks which half changed.
+ * Returning null for the unchanged half is what the retroactive callers
+ * needed, and writing that null would have wiped a field inventory.
  *
- * Only creation calls this. An existing vocabulary is left as its owner
- * arranged it, so nothing sprouts a Status field it was never given.
+ * The two paths that create a vocabulary both call this: the New vocabulary
+ * screen (VocabularyDetail) and the project setup wizard (executeSetup). Only
+ * creation calls it. An existing vocabulary is left as its owner arranged it,
+ * so nothing sprouts a Status field it was never given.
  */
-export const statusFieldSeed = ({ fieldsConfig, tagsets }) => {
-  const nextTagsets = tagsets?.[STATUS_TAGSET]
-    ? null
-    : { ...(tagsets || {}), [STATUS_TAGSET]: statusTagset() };
-  const nextFields =
+export const statusFieldSeed = ({ fieldsConfig, tagsets }) => ({
+  tagsets: tagsets?.[STATUS_TAGSET]
+    ? tagsets
+    : { ...(tagsets || {}), [STATUS_TAGSET]: statusTagset() },
+  fieldsConfig:
     fieldsConfig && STATUS_FIELD in fieldsConfig
-      ? null
-      : { ...(fieldsConfig || {}), [STATUS_FIELD]: { inline: false, tagset: STATUS_TAGSET } };
-  return { tagsets: nextTagsets, fieldsConfig: nextFields };
-};
+      ? fieldsConfig
+      : { ...(fieldsConfig || {}), [STATUS_FIELD]: { inline: false, tagset: STATUS_TAGSET } },
+});
 
 const isId = (v) => typeof v === 'string' && v.trim() !== '';
 

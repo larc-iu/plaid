@@ -4,7 +4,14 @@
 //
 //   node e2e/bugbash/smoke.mjs
 
-import { makeClient, getFixtureProjectId, freshDoc, reloadFresh, cleanupDoc, tinyWav } from './harness.mjs';
+import {
+  makeClient,
+  getFixtureProjectId,
+  freshDoc,
+  reloadFresh,
+  cleanupDoc,
+  tinyWav,
+} from './harness.mjs';
 import { runAllInvariants, optimisticMatchesServer } from './invariants.mjs';
 
 const log = (...a) => console.log(...a);
@@ -17,7 +24,9 @@ async function step(label, doc, fn) {
   const status = ok ? 'ok' : 'FALSE-FAIL';
   log(`\n[${label}] ret=${ok} ${err ? `error="${err}"` : ''} -> ${status}`);
   log(`   body="${fresh.body}"`);
-  log(`   alignments=${(fresh.layerInfo.alignmentTokenLayer?.tokens || []).length} sentences=${(fresh.layerInfo.sentenceTokenLayer?.tokens || []).length}`);
+  log(
+    `   alignments=${(fresh.layerInfo.alignmentTokenLayer?.tokens || []).length} sentences=${(fresh.layerInfo.sentenceTokenLayer?.tokens || []).length}`,
+  );
   if (violations.length) {
     log(`   *** ${violations.length} INVARIANT VIOLATION(S):`);
     for (const v of violations) log(`     - [${v.name}] ${v.msg}`);
@@ -36,9 +45,15 @@ async function main() {
   log(`initial invariants:`, runAllInvariants(doc).violations);
 
   try {
-    await step('createAlignment t=[0,1] "the"', doc, () => doc.createAlignment({ text: 'the', timeBegin: 0, timeEnd: 1 }));
-    await step('createAlignment t=[2,3] "brown"', doc, () => doc.createAlignment({ text: 'brown', timeBegin: 2, timeEnd: 3 }));
-    await step('createAlignment t=[1,2] "quick" (between)', doc, () => doc.createAlignment({ text: 'quick', timeBegin: 1, timeEnd: 2 }));
+    await step('createAlignment t=[0,1] "the"', doc, () =>
+      doc.createAlignment({ text: 'the', timeBegin: 0, timeEnd: 1 }),
+    );
+    await step('createAlignment t=[2,3] "brown"', doc, () =>
+      doc.createAlignment({ text: 'brown', timeBegin: 2, timeEnd: 3 }),
+    );
+    await step('createAlignment t=[1,2] "quick" (between)', doc, () =>
+      doc.createAlignment({ text: 'quick', timeBegin: 1, timeEnd: 2 }),
+    );
 
     // alignBaseline: align existing text WITHOUT inserting (optimistic, no reload).
     // Takes code-point offsets into the body; the fixture text is ASCII.
@@ -64,7 +79,9 @@ async function main() {
       return doc.deleteAlignment(toks[toks.length - 1].id, { deleteText: true });
     });
 
-    await step('saveBaselineText "hello world again"', doc, () => doc.saveBaselineText('hello world again'));
+    await step('saveBaselineText "hello world again"', doc, () =>
+      doc.saveBaselineText('hello world again'),
+    );
 
     // Media upload (Tika-validated). If this fails the harness still works for
     // non-media flows; we just report it.
@@ -79,4 +96,12 @@ async function main() {
   }
 }
 
-main().then(() => { log('\nSMOKE DONE'); process.exit(0); }).catch((e) => { console.error('SMOKE ERROR', e); process.exit(1); });
+main()
+  .then(() => {
+    log('\nSMOKE DONE');
+    process.exit(0);
+  })
+  .catch((e) => {
+    console.error('SMOKE ERROR', e);
+    process.exit(1);
+  });

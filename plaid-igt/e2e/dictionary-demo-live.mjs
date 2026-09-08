@@ -1,6 +1,6 @@
 // Seed a dictionary demo from a FLEx backup (scratchpad-convention: disposable).
 // Runs the REAL setup + import engine against the live core (:8085) with
-// Lexicography Mode and FLEx's variants on, then dresses the lexicon up the
+// FLEx's variants on, then dresses the lexicon up the
 // way a lexicographer would: a reference field of its own (See also), an
 // entry-only field (Etymology), and one example promoted from the
 // concordance. The project is KEPT.
@@ -29,7 +29,7 @@ const build = buildDocuments(ir);
 build.documents = [...build.documents]
   .sort((a, b) => a.words.length - b.words.length)
   .slice(0, DOCS);
-const config = { ...deriveImportConfig(ir, build), dictionary: true, variants: true };
+const config = { ...deriveImportConfig(ir, build), variants: true };
 console.log(`parsed in ${Date.now() - t0}ms:`, JSON.stringify(build.stats));
 
 const projectName = `Dictionary demo (${ir.projectName || 'FLEx'})`;

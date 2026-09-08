@@ -23,6 +23,9 @@ import {
   exampleRefs,
   refIds,
   withRefIds,
+  statusFieldSeed,
+  STATUS_FIELD,
+  STATUS_TAGSET,
 } from './vocabDictionary.js';
 
 const item = (id, form, metadata) => ({ id, form, ...(metadata ? { metadata } : {}) });
@@ -41,6 +44,33 @@ const items = () => [
   item('kat2a', 'kat', { gloss: 'lioness', parent: 'kat2' }),
   item('run', 'run', { gloss: 'run', variantOf: 'kat', seeAlso: ['kat', 'kat2'] }),
 ];
+
+describe('statusFieldSeed', () => {
+  it('adds the Status field and its list to what a new vocabulary was given', () => {
+    const seed = statusFieldSeed({ fieldsConfig: { gloss: { inline: true } }, tagsets: {} });
+    expect(seed.fieldsConfig).toEqual({
+      gloss: { inline: true },
+      [STATUS_FIELD]: { inline: false, tagset: STATUS_TAGSET },
+    });
+    expect(seed.tagsets[STATUS_TAGSET].mode).toBe('closed');
+  });
+
+  it('returns both parts whole even when neither needs adding', () => {
+    // The half that needs no change comes back as it was, never as null: a
+    // caller writes both, and writing null over `fields` would empty it.
+    const fieldsConfig = { [STATUS_FIELD]: { inline: true, tagset: 'Mine' } };
+    const tagsets = { [STATUS_TAGSET]: { mode: 'open', values: [] } };
+    const seed = statusFieldSeed({ fieldsConfig, tagsets });
+    expect(seed.fieldsConfig).toBe(fieldsConfig);
+    expect(seed.tagsets).toBe(tagsets);
+  });
+
+  it('takes a missing config as an empty one', () => {
+    const seed = statusFieldSeed({});
+    expect(Object.keys(seed.fieldsConfig)).toEqual([STATUS_FIELD]);
+    expect(Object.keys(seed.tagsets)).toEqual([STATUS_TAGSET]);
+  });
+});
 
 describe('splitEntryLevel', () => {
   const fields = [{ name: 'gloss' }, { name: 'etymology', scope: 'entry' }, { name: 'status' }];

@@ -895,7 +895,7 @@ export const VocabularyItems = ({
       const target = byId.get(id);
       if (!target) return '';
       const n = numbers?.get?.(id);
-      return typeof n === 'string' && n ? `${target.form} ${n}` : (target.form ?? '');
+      return n ? `${target.form} ${n}` : (target.form ?? '');
     };
     return (item, name) => {
       if (!refs.has(name)) return fieldText(item, name);
