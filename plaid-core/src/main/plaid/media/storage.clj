@@ -226,7 +226,10 @@
           {:success false :error "Media file already exists. Delete existing file first."}
 
           (> (.length temp-file) (get-max-file-size))
-          {:success false :error "File too large"}
+          ;; The sentinel string is what the REST layer maps to 413; the sizes
+          ;; ride alongside so the refusal can say what the limit actually is.
+          {:success false :error "File too large"
+           :max-bytes (get-max-file-size) :size (.length temp-file)}
 
           :else
           (let [validation (validate-media-file temp-file filename)]

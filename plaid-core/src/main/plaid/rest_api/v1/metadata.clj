@@ -5,21 +5,21 @@
             [clojure.data.json :as json]
             [reitit.coercion.malli]))
 
-(def ^:private max-metadata-depth
+(def max-metadata-depth
   "Maximum nesting level allowed in a metadata payload. 10 is plenty
   for any structured metadata a real user would author; deeper than
   that and we start worrying about pathological JSON aimed at exhausting
   stack/serializer time."
   10)
-(def ^:private max-metadata-key-count
+(def max-metadata-key-count
   "Soft cap on the total number of keys (across all nesting levels) in
   a single metadata payload. Stops an unbounded `{k1:..,k2:..,...}`
   blob from monopolizing the audit/serialization pipeline."
   500)
-(def ^:private max-metadata-string-length
+(def max-metadata-string-length
   "Soft cap on individual string-value length, in characters."
   (* 10 1024))
-(def ^:private max-metadata-total-bytes
+(def max-metadata-total-bytes
   "Cumulative cap on the JSON-serialized size of a single metadata
   payload (#118). Stops an attacker from stitching together many
   small-but-numerous values that individually pass the per-key/per-

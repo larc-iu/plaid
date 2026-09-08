@@ -2478,6 +2478,29 @@ class TokensResource(_Resource):
                              body=_body_of(begin=begin, end=end), audit_message=audit_message)
 
 
+class ServerResource(_Resource):
+    """Server-level facts. Fetched at most once: the limits cannot change while
+    the server is up, and a caller asking "will this file be accepted" should
+    not pay a round trip to find out."""
+
+    def info(self) -> Any:
+        """This server's version and the limits it enforces. Sizes are in
+        bytes. Unauthenticated."""
+        cached = getattr(self._client, '_server_info', None)
+        if cached is None:
+            # bypass_batch: a read belongs to whoever asked for it, not to
+            # whatever batch happens to be open on this shared client.
+            cached = self._request('GET', '/api/v1/info', bypass_batch=True)
+            # Only a success is cached: a client that starts before the server
+            # is up would otherwise never see the limits at all.
+            self._client._server_info = cached
+        return cached
+
+    def limits(self) -> Any:
+        """Just the limits, which is what a caller almost always wants."""
+        return self.info()['limits']
+
+
 class BatchResource(_Resource):
     def submit(self, body: list, audit_message=None) -> Any:
         """Execute multiple API operations atomically.
@@ -2569,6 +2592,7 @@ class PlaidClient:
         self.vocab_items = VocabItemsResource(self)
         self.relation_layers = RelationLayersResource(self)
         self.tokens = TokensResource(self)
+        self.server = ServerResource(self)
         self.batch = BatchResource(self)
         self.operation_groups = OperationGroupsResource(self)
 

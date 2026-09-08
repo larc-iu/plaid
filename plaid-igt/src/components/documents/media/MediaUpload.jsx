@@ -1,20 +1,56 @@
-import React, { useRef } from 'react';
-import { Upload } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { AudioLines, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { formatBytes } from '@/utils/formatBytes';
+import { MP3_BITRATE_KBPS } from '@/domain/media/transcodeToMp3';
+
+// Big enough that a smaller upload is worth a question even when the server
+// would accept the file. Over the server's own limit (`maxBytes`, which it
+// reports at /api/v1/info) there is no question to ask: converting is the only
+// way through, and sending it as it is would fail after the whole upload.
+const OFFER_CONVERSION_OVER = 50 * 1000 * 1000;
+
+const HOUR_MB = Math.round((3600 * MP3_BITRATE_KBPS * 1000) / 8 / 1e6);
 
 // The upload prompt, and the upload itself once a file is chosen: the bytes
 // going up as a bar with the count, then a pulsing bar while the server checks
 // the file and the document reloads with it. `progress` is
-// `{ name, loaded, total }` while an upload is in flight, else null.
-export const MediaUpload = ({ onUpload, isUploading, progress = null, readOnly = false }) => {
+// `{ name, loaded, total }` while an upload is in flight, else null, and
+// `convertProgress` is `{ name, fraction }` while a recording is converted.
+export const MediaUpload = ({
+  onUpload,
+  isUploading,
+  progress = null,
+  convertProgress = null,
+  maxBytes = null,
+  readOnly = false,
+}) => {
   const inputRef = useRef(null);
+  // A large file waits here for the choice between sending it and converting
+  // it. A small one is uploaded on sight, as it always was.
+  const [pending, setPending] = useState(null);
 
   const total = progress?.total ?? 0;
   const sent = Math.min(progress?.loaded ?? 0, total);
   const pct = total > 0 ? (sent / total) * 100 : 0;
   const processing = !!progress && total > 0 && sent >= total;
+
+  const overLimit = !!pending && maxBytes != null && pending.size > maxBytes;
+
+  const choose = (file) => {
+    if (!file) return;
+    const threshold =
+      maxBytes == null ? OFFER_CONVERSION_OVER : Math.min(OFFER_CONVERSION_OVER, maxBytes);
+    if (file.size > threshold) setPending(file);
+    else onUpload(file);
+  };
+
+  const send = (convert) => {
+    const file = pending;
+    setPending(null);
+    onUpload(file, { convert });
+  };
 
   return (
     <div className="tw rounded-lg border bg-card p-4">
@@ -34,12 +70,22 @@ export const MediaUpload = ({ onUpload, isUploading, progress = null, readOnly =
             accept="audio/*,video/*"
             className="hidden"
             onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) onUpload(file);
+              choose(e.target.files?.[0]);
               e.target.value = '';
             }}
           />
-          {progress ? (
+          {convertProgress ? (
+            <div className="flex w-[28rem] max-w-full flex-col gap-2" aria-live="polite">
+              <div className="flex items-baseline justify-between gap-3 text-sm">
+                <span className="truncate font-medium">{convertProgress.name}</span>
+                <span className="shrink-0 tabular-nums text-muted-foreground">
+                  {Math.floor(convertProgress.fraction * 100)}%
+                </span>
+              </div>
+              <Progress value={convertProgress.fraction * 100} label="Conversion progress" />
+              <p className="text-xs text-muted-foreground">Converting to audio.</p>
+            </div>
+          ) : progress ? (
             <div className="flex w-[28rem] max-w-full flex-col gap-2" aria-live="polite">
               <div className="flex items-baseline justify-between gap-3 text-sm">
                 <span className="truncate font-medium">{progress.name}</span>
@@ -53,6 +99,34 @@ export const MediaUpload = ({ onUpload, isUploading, progress = null, readOnly =
                   ? 'Checking the file and saving it.'
                   : `${formatBytes(sent)} of ${formatBytes(total)}`}
               </p>
+            </div>
+          ) : pending ? (
+            <div className="flex w-[28rem] max-w-full flex-col gap-3">
+              <p className="text-sm">
+                <span className="font-medium">{pending.name}</span>
+                <span className="text-muted-foreground"> · {formatBytes(pending.size)}</span>
+              </p>
+              {overLimit && (
+                <p className="text-xs font-medium text-destructive">
+                  This server accepts {formatBytes(maxBytes)}. Sending the file as it is would be
+                  refused.
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Converting sends the sound alone, as mono MP3 at 16 kHz: about {HOUR_MB} MB an hour,
+                with the same timing. The picture and the fidelity for phonetic work are lost.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button onClick={() => send(true)}>
+                  <AudioLines className="h-4 w-4" /> Convert to audio
+                </Button>
+                <Button variant="outline" disabled={overLimit} onClick={() => send(false)}>
+                  Upload as it is
+                </Button>
+                <Button variant="ghost" onClick={() => setPending(null)}>
+                  Cancel
+                </Button>
+              </div>
             </div>
           ) : (
             <Button

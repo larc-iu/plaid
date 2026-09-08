@@ -186,7 +186,8 @@
                                                  (and error-msg (.contains error-msg "already exists")) 409
                                                  :else 400)]
                                     {:status status
-                                     :body {:error error-msg}})))
+                                     :body (merge {:error error-msg}
+                                                  (select-keys result [:max-bytes :size]))})))
                               {:status 400
                                :body {:error "Invalid file upload - no temp file"}}))
                           {:status 400

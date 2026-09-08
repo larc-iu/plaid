@@ -633,6 +633,33 @@ class PlaidClient {
         }),
     };
 
+    // Server-level facts. Fetched at most once: the limits cannot change while
+    // the server is up, and a caller asking "will this file be accepted" should
+    // not pay a round trip to find out.
+    let infoPromise = null;
+    this.server = {
+      /**
+       * This server's version and the limits it enforces, e.g.
+       * `{ limits: { mediaFileBytes, jsonBodyBytes, batchOperations, … } }`.
+       * Sizes are in bytes. Unauthenticated.
+       */
+      info: () => {
+        if (!infoPromise) {
+          // bypassBatch: a read belongs to whoever asked for it, not to
+          // whatever batch happens to be open on this shared client.
+          infoPromise = this._request("GET", "/api/v1/info", { bypassBatch: true }).catch((err) => {
+            // A failure must not be cached: a client that starts before the
+            // server is up would never see the limits at all.
+            infoPromise = null;
+            throw err;
+          });
+        }
+        return infoPromise;
+      },
+      /** Just the limits, which is what a caller almost always wants. */
+      limits: async () => (await this.server.info()).limits,
+    };
+
     this.batch = {
       /**
        * Execute multiple API operations atomically. If any operation fails, all

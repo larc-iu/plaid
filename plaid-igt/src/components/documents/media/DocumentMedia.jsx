@@ -16,6 +16,7 @@ import { useMediaOperations } from './useMediaOperations.js';
 import { MediaPlayer } from './MediaPlayer.jsx';
 import { Timeline } from './Timeline.jsx';
 import { TranscriptList } from './TranscriptList.jsx';
+import { useServerLimits } from '@/hooks/useServerLimits';
 import { MediaUpload } from './MediaUpload.jsx';
 import { ServiceSummary } from '../services/ServiceSummary.jsx';
 import { ServiceParamForm } from '../services/ServiceParamForm.jsx';
@@ -26,6 +27,7 @@ export function DocumentMedia() {
 
   // Use media operations hook
   const mediaOps = useMediaOperations();
+  const limits = useServerLimits();
 
   // Manual alignment (drag on the timeline) always works; automatic
   // transcription additionally needs a registered ASR service.
@@ -39,6 +41,8 @@ export function DocumentMedia() {
           onUpload={mediaOps.handleMediaUpload}
           isUploading={mediaOps.isUploading}
           progress={mediaOps.uploadProgress}
+          convertProgress={mediaOps.convertProgress}
+          maxBytes={limits?.mediaFileBytes ?? null}
           readOnly={readOnly}
         />
       </div>

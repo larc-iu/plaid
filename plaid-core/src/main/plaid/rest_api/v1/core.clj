@@ -37,7 +37,8 @@
             [plaid.rest-api.v1.vocab-link :refer [vocab-link-routes]]
             [plaid.rest-api.v1.comment :refer [comment-routes]]
             [plaid.rest-api.v1.query :refer [query-routes]]
-            [plaid.rest-api.v1.health :refer [health-routes]]))
+            [plaid.rest-api.v1.health :refer [health-routes]]
+            [plaid.rest-api.v1.info :refer [info-routes]]))
 
 (def coercion
   (reitit.coercion.malli/create
@@ -74,6 +75,7 @@
            {:responses {200 {:description "Response"}}}
 
            health-routes
+           info-routes
            authentication-routes
            ;; Unauthenticated by design: whoever holds an invite code has no
            ;; account yet (or has lost the password to the one they have), so

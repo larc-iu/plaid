@@ -543,5 +543,11 @@
                   (ring.mock.request/header "accept" "application/edn")))
             {:method :get :path "/api/v1/health"}))
 
+(defn get-info []
+  (api-call (fn [method path]
+              (-> (ring.mock.request/request method path)
+                  (ring.mock.request/header "accept" "application/edn")))
+            {:method :get :path "/api/v1/info"}))
+
 (defn get-openapi [user-request-fn]
   (api-call user-request-fn {:method :get :path "/api/v1/openapi.json"}))

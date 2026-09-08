@@ -6,6 +6,7 @@ import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useServiceRequest } from '../../documents/hooks/useServiceRequest.js';
 import { useServiceParams } from '../../documents/hooks/useServiceParams.js';
 import { whenIdle } from '../../../domain/whenIdle.js';
+import { transcodeToMp3 } from '../../../domain/media/transcodeToMp3.js';
 import { useConfirm } from '@/components/shared/ConfirmProvider';
 import { useVadProposals } from './useVadProposals.js';
 import {
@@ -106,6 +107,8 @@ export const useMediaOperations = () => {
   // `{ name, loaded, total }` while a file is going up, else null. `total`
   // is the request body (the file plus a few bytes of multipart framing).
   const [uploadProgress, setUploadProgress] = useState(null);
+  // {name, fraction} while a recording is being converted, else null.
+  const [convertProgress, setConvertProgress] = useState(null);
 
   // Listening preferences (see the *_KEY constants). `playbackRateRef` mirrors
   // the state for the deps-`[]` element registration, like `volumeRef`.
@@ -382,14 +385,37 @@ export const useMediaOperations = () => {
   }, []);
 
   // Media upload operations
+  // `convert` sends the recording as mono 16 kHz MP3 instead of itself: a
+  // recording too large for the server becomes one that fits, and its timeline
+  // is unchanged, so segments made against either line up with the other.
   const handleMediaUpload = useCallback(
-    async (file) => {
+    async (file, { convert = false } = {}) => {
       if (!file) return;
 
+      let sending = file;
+      if (convert) {
+        setConvertProgress({ name: file.name, fraction: 0 });
+        try {
+          sending = await transcodeToMp3(file, {
+            onProgress: (fraction) => setConvertProgress((p) => (p ? { ...p, fraction } : p)),
+          });
+        } catch (error) {
+          console.error('Converting the recording failed:', error);
+          notifyError(
+            error?.message || 'This file could not be converted. Upload it as it is.',
+            'Conversion failed',
+          );
+          return;
+        } finally {
+          setConvertProgress(null);
+        }
+        if (!sending) return;
+      }
+
       setIsUploading(true);
-      setUploadProgress({ name: file.name, loaded: 0, total: file.size });
+      setUploadProgress({ name: sending.name, loaded: 0, total: sending.size });
       try {
-        const ok = await doc.uploadMedia(file, {
+        const ok = await doc.uploadMedia(sending, {
           onProgress: ({ loaded, total }) =>
             setUploadProgress((p) => (p ? { ...p, loaded, total: total ?? p.total } : p)),
         });
@@ -842,6 +868,7 @@ export const useMediaOperations = () => {
 
     // Media file operations
     handleMediaUpload,
+    convertProgress,
     handleDeleteMedia,
 
     // Segment operations

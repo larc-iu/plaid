@@ -140,6 +140,11 @@ Each segment is a stretch of the recording with its text, which becomes part of 
 Media is optional, and a document with none is simply a text.
 Common audio and video formats are accepted (MP3, WAV, M4A, MP4, WebM, and others), and an upload shows its progress.
 
+A large recording can be sent as audio instead of itself.
+Choosing one offers **Convert to audio**, which converts it in the browser to mono MP3 at 16 kHz, about 14 MB an hour, and uploads that.
+The timing is unchanged, so segments and alignments are the same either way, but the picture is dropped and the sound is no longer good enough for phonetic measurement.
+A server refuses a file over its own size limit, and the offer says so before the upload starts rather than after it.
+
 === Transcript
 
 The transcript is a list of segments in time order, and it is built for typing what you hear.

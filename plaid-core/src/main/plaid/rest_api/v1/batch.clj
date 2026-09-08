@@ -9,7 +9,7 @@
             [taoensso.timbre :as log])
   (:import [java.sql SQLException]))
 
-(def ^:private max-batch-ops
+(def max-batch-ops
   "Hard cap on operations per atomic batch. Picked so an honest client
   has plenty of headroom while a runaway/buggy/malicious client can't
   serialize the whole DB on a single transaction or hold a write lock
