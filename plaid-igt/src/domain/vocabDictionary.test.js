@@ -45,6 +45,36 @@ const items = () => [
   item('run', 'run', { gloss: 'run', variantOf: 'kat', seeAlso: ['kat', 'kat2'] }),
 ];
 
+describe('numbering is by creation order, never by id', () => {
+  // The app shipped an id sort here once, on the belief that UUIDv7 ids order
+  // by creation time. They only do so across MILLISECONDS, and a bulk import
+  // writes thousands of items inside one, where the rest of the id is random.
+  // vocabHomonyms.test.js held the only guard for this and went with the
+  // subscript numbering, so both tie-breaks are pinned here instead. Ids are
+  // chosen to sort the OPPOSITE way to their position.
+  const numbersOf = (items) => Object.fromEntries(buildItemNumbers(items));
+
+  it('numbers entries spelled alike by position, against the id order', () => {
+    expect(
+      numbersOf([
+        { id: 'zzz', form: 'a' },
+        { id: 'mmm', form: 'a' },
+        { id: 'aaa', form: 'a' },
+      ]),
+    ).toEqual({ zzz: '1', mmm: '2', aaa: '3' });
+  });
+
+  it('orders unnumbered siblings by position, against the id order', () => {
+    expect(
+      numbersOf([
+        { id: 'head', form: 'a' },
+        { id: 'zzz', form: 'a', metadata: { parent: 'head' } },
+        { id: 'aaa', form: 'a', metadata: { parent: 'head' } },
+      ]),
+    ).toEqual({ head: '1', zzz: '1.1', aaa: '1.2' });
+  });
+});
+
 describe('statusFieldSeed', () => {
   it('adds the Status field and its list to what a new vocabulary was given', () => {
     const seed = statusFieldSeed({ fieldsConfig: { gloss: { inline: true } }, tagsets: {} });

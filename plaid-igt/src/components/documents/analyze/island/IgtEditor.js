@@ -51,7 +51,7 @@ import {
   morphTypeOptions,
   splitChainText,
 } from '@/domain/affixMarkers';
-import { buildItemNumbers, groupRankedByHeadword } from '@/domain/vocabDictionary';
+import { buildItemNumbers, buildSenseTree, groupRankedByHeadword } from '@/domain/vocabDictionary';
 import { FIELD_TYPES, RESERVED_ITEM_KEYS } from '@/domain/vocabFields';
 
 // The dotted number that tells an entry apart ("1.2"), drawn after its form
@@ -4381,6 +4381,23 @@ export class IgtEditor {
     return this._numbersCache.get(vocabId);
   }
 
+  // The sense tree the popover groups its candidates by. Cached like the
+  // numbers and invalidated with the same key: the popover re-renders on every
+  // keystroke in its search box, and rebuilding this per character costs
+  // several milliseconds on a lexicon of a few thousand entries.
+  _senseTreeFor(vocabId) {
+    const dv = this.doc?.dataVersion;
+    if (this._treeCacheKey !== dv) {
+      this._treeCacheKey = dv;
+      this._treeCache = new Map();
+    }
+    if (!this._treeCache.has(vocabId)) {
+      const vocab = (this.doc?.vocabularies || {})[vocabId];
+      this._treeCache.set(vocabId, buildSenseTree(vocab?.items || []));
+    }
+    return this._treeCache.get(vocabId);
+  }
+
   // Precedent (domain/precedent.js) behind the popover's ranking and the
   // gloss guesses: the project-wide link and annotation-value tallies,
   // fetched once per document with THIS document left out, plus this
@@ -4568,7 +4585,7 @@ export class IgtEditor {
     // under it, numbered; a headword that only carries senses is shown for
     // context, dimmed. Each row keeps its rank.
     const grouped = activeVocab
-      ? groupRankedByHeadword(items, activeVocab.items || [])
+      ? groupRankedByHeadword(items, activeVocab.items || [], this._senseTreeFor(activeVocab.id))
       : items.map((it) => ({ item: it, depth: 0 }));
     const limited = grouped.slice(0, 30).map((r) => ({
       ...r.item,

@@ -686,11 +686,12 @@ export function buildCldfDocuments(dataset, options = {}) {
     if (ordinal) metadata.homograph = homograph;
     const entrySenses = sensesByEntry.get(id) || [];
     const glosses = entrySenses.map((sn) => sn.description);
-    // What a ONE-sense entry carries: its gloss, and any further sense text
-    // as a definition rather than dropped. An entry with several senses gets
-    // one entry each instead, and the importer drops these (see importLexicon).
+    // The entry's own gloss, which is what a ONE-sense entry carries. An entry
+    // with several senses becomes a headword with one entry per sense, and
+    // importLexicon clears this off the headword, so the further senses are
+    // not folded into a definition here: that wrote a value no vocabulary
+    // could ever receive.
     if (glosses.length) metadata.gloss = glosses[0];
-    if (glosses.length > 1) metadata.definition = glosses.slice(1).join('; ');
     for (const name of customColumnsOf(entries)) {
       if (name === 'Plaid_ID' || name === 'Vocabulary') continue;
       if (name === 'Homograph' && ordinal) continue;

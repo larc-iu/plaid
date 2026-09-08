@@ -10,6 +10,7 @@
 import { cpSlice } from '@larc-iu/plaid-client';
 import { IgtDocument, loadProjectVocabularies, rebaseVocabLinks } from '@/domain/IgtDocument';
 import { buildMatchSpec, hitsQueries, hitsByDocQueries, freqQueries } from './searchQueries.js';
+import { buildItemNumbers } from '@/domain/vocabDictionary';
 
 const MAX_DOCS = 12;
 const MAX_FREQ_ROWS = 200;
@@ -191,20 +192,27 @@ export async function runFreqSearch(client, domain, queryText, matchType) {
     }
   }
 
-  // Lexicon rows are item IDs — map to forms via the vocab layers.
+  // Lexicon rows are item ids. They read as the name the entry goes by
+  // everywhere else, form and dotted number, because a headword and every
+  // sense under it share a form: summing by the bare form would pile a
+  // headword and its senses into one row with nothing to tell them apart.
   let display = counts;
   if (domain.kind === 'lexicon') {
-    const formById = new Map();
+    const nameById = new Map();
     await Promise.all(
       domain.vocabIds.map(async (vid) => {
         const layer = await client.vocabLayers.get(vid, true);
-        for (const it of layer.items || []) formById.set(String(it.id), it.form);
+        const numbers = buildItemNumbers(layer.items || []);
+        for (const it of layer.items || []) {
+          const n = numbers.get(it.id);
+          nameById.set(String(it.id), n ? `${it.form} ${n}` : (it.form ?? ''));
+        }
       }),
     );
     display = new Map();
     for (const [id, n] of counts) {
-      const form = formById.get(id) ?? id;
-      display.set(form, (display.get(form) || 0) + n);
+      const name = nameById.get(id) ?? id;
+      display.set(name, (display.get(name) || 0) + n);
     }
   }
 

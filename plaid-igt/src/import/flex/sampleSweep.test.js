@@ -26,8 +26,8 @@ function lexiconCapture() {
     // placeSenses writes the tree under a batch; here it just runs.
     batched: async (fn) => fn(),
     vocabLayers: {
-      // The first read (before creation) sees nothing; later ones (the
-      // the Status-field seeding) see what was made.
+      // The first read, before creation, sees nothing. Later ones, from the
+      // variant-field merge, see what was made.
       get: async () => ({ id: 'v1', items: [...items], config }),
       // Kept, because the field schema is where the importer records which
       // writing system a single-writing-system field is in, and the LIFT

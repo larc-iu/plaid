@@ -12,9 +12,10 @@ a few pieces nothing here calls yet, so the two can be read side by side and
 checked against each other. Keep it that way: a mirror that is missing is a
 divergence waiting to happen, not dead weight.
 
-Five of vocabDictionary.js's exports have no counterpart here on purpose,
+Six of vocabDictionary.js's exports have no counterpart here on purpose,
 because each belongs to a gesture the app has and the agent does not:
-``statusFieldSeed`` and ``statusTagset`` seed a vocabulary as it is created,
+``statusFieldSeed``, ``statusTagset`` and ``declaresStatusField`` seed a
+vocabulary as it is created (the last is the rule plaid-dict asks too),
 ``splitEntryLevel`` is Add headword, ``groupRankedByHeadword`` is the link
 popover's list, and ``exampleKey`` keys a rendering cache. Most of
 vocabFields.js is the entry FORM (labels, controls, grouping) and is absent for
@@ -39,8 +40,6 @@ to another entry of the SAME vocabulary. References never cross vocabularies.
 
 import math
 from typing import Dict, List, Optional, Tuple
-
-IGT_NAMESPACE = 'igt'
 
 PARENT_KEY = 'parent'
 SENSE_ORDER_KEY = 'senseOrder'

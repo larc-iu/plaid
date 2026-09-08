@@ -282,7 +282,7 @@ describe('buildCldfDocuments — languages and lexicon', () => {
     expect(warnings.join(' ')).toMatch(/2 object languages/);
   });
 
-  it('turns entries and senses into lexicon items, folding extra senses into a definition', () => {
+  it('turns entries and senses into lexicon items, the entry keeping its own gloss', () => {
     const ds = dataset(
       'ID,Primary_Text,Analyzed_Word,Gloss\r\n1,hola,hola,hi\r\n',
       BASIC_COLUMNS,
@@ -320,7 +320,10 @@ describe('buildCldfDocuments — languages and lexicon', () => {
       {
         id: 'e1',
         form: 'perro',
-        metadata: { pos: 'N', gloss: 'dog', definition: 'hound' },
+        // No `definition` folded in from the further senses: importLexicon
+        // makes an entry per sense and clears the headword's own meaning, so
+        // such a value could never reach a vocabulary.
+        metadata: { pos: 'N', gloss: 'dog' },
         // Kept whole as well, for the importer to make senses of.
         senses: [
           { id: 's1', description: 'dog', metadata: {} },

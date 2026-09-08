@@ -199,6 +199,7 @@ def compared():
 SURFACE_EXEMPT = {
     'statusFieldSeed': 'seeds a vocabulary as it is created',
     'statusTagset': 'the same seeding',
+    'declaresStatusField': 'the seeding rule, asked by the app and plaid-dict',
     'splitEntryLevel': 'Add headword',
     'groupRankedByHeadword': "the link popover's list",
     'exampleKey': 'keys a rendering cache',

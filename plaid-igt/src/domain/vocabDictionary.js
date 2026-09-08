@@ -668,10 +668,13 @@ export const planMergeRefs = (items, fields, survivorId, loserIds) => {
  *
  * @param {object[]} ranked items in rank order, annotated
  * @param {object[]} items the whole vocabulary, in creation order
+ * @param {object} [tree] the sense tree over `items`, when the caller already
+ *   holds one. This runs on every keystroke in the link popover's search, so
+ *   the island passes its cached tree rather than paying for a rebuild per
+ *   character on a lexicon of several thousand entries.
  * @returns {{item: object, depth: number, context?: boolean}[]}
  */
-export const groupRankedByHeadword = (ranked, items) => {
-  const tree = buildSenseTree(items);
+export const groupRankedByHeadword = (ranked, items, tree = buildSenseTree(items)) => {
   const byRankedId = new Map(ranked.map((it) => [it.id, it]));
   const done = new Set();
   const out = [];
