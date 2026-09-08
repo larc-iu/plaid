@@ -27,7 +27,7 @@ describe('publishAll', () => {
   const fakeClient = () => {
     const patched = [];
     const chunks = [];
-    return {
+    const client = {
       patched,
       chunks,
       operations: [],
@@ -43,8 +43,41 @@ describe('publishAll', () => {
       vocabItems: {
         patchMetadata: (id, patch) => patched.push([id, patch]),
       },
+      configs: [],
+      vocabLayers: {
+        setConfig(id, ns, key, value) {
+          client.configs.push([key, value]);
+        },
+      },
     };
+    return client;
   };
+
+  it('declares the Status field first on a vocabulary that has none', async () => {
+    // A value under a field the schema does not name is invisible in
+    // plaid-igt: no control on the entry, nothing in Bulk Edit.
+    const client = fakeClient();
+    const vocabulary = { id: 'v', config: { igt: { fields: { gloss: { inline: true } } } } };
+    await publishAll(client, [entry('a')], { vocabulary, name: 'Sena' });
+    expect(client.configs.map(([k]) => k)).toEqual(['tagsets', 'fields']);
+    expect(client.configs.find(([k]) => k === 'fields')[1].status).toEqual({
+      inline: false,
+      tagset: 'Status',
+    });
+    expect(client.configs.find(([k]) => k === 'tagsets')[1].Status.mode).toBe('closed');
+    // One operation covers the schema write and the entries alike.
+    expect(client.operations).toEqual(['Publish every entry in "Sena"']);
+  });
+
+  it('leaves the schema alone when Status is already declared', async () => {
+    const client = fakeClient();
+    const vocabulary = {
+      id: 'v',
+      config: { igt: { fields: { status: { inline: false, tagset: 'Status' } } } },
+    };
+    await publishAll(client, [entry('a')], { vocabulary });
+    expect(client.configs).toEqual([]);
+  });
 
   it('patches only the entries that are not published yet', async () => {
     const client = fakeClient();

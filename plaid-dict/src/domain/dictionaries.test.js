@@ -26,6 +26,9 @@ describe('classifyVocabularies', () => {
     vocab('other', { name: 'Aja', dict: { slug: 'aja' } }),
     vocab('mine', { name: 'Sena', maintainers: [luke.id] }),
     vocab('theirs', { name: 'Bemba' }),
+    // Any vocabulary counts, not only one that looked like a dictionary
+    // already: plaid-igt has no such distinction to make any more.
+    vocab('plain', { name: 'A tagset', maintainers: [luke.id] }),
   ];
 
   it('lists every readable dictionary, whoever maintains it', () => {
@@ -33,9 +36,13 @@ describe('classifyVocabularies', () => {
     expect(dictionaries.map((v) => v.id)).toEqual(['other', 'published']);
   });
 
-  it('offers setup only for the vocabularies this user maintains', () => {
-    expect(classifyVocabularies(vocabs, luke).unpublished.map((v) => v.id)).toEqual(['mine']);
+  it('offers setup for every vocabulary this user maintains', () => {
+    expect(classifyVocabularies(vocabs, luke).unpublished.map((v) => v.id)).toEqual([
+      'plain',
+      'mine',
+    ]);
     expect(classifyVocabularies(vocabs, admin).unpublished.map((v) => v.id)).toEqual([
+      'plain',
       'theirs',
       'mine',
     ]);
@@ -54,7 +61,7 @@ describe('findBySlug / takenSlugs', () => {
   const vocabs = [
     vocab('a', { dict: { slug: 'sena' } }),
     vocab('b', { dict: { slug: 'zulu' } }),
-    vocab('c', { lexicography: true }),
+    vocab('c'),
   ];
 
   it('resolves a slug to its vocabulary', () => {
