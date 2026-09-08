@@ -98,7 +98,12 @@ the upload's media type is validated from its filename.
   headword, not on its senses), each written only when set.
 - `tagsets` is the vocabulary's own tagset map, the same shape as the project's
   `schema.tagsets`, `null` when it has none. A vocabulary carries its own because it
-  is shared across projects.
+  is shared across projects. On import the map replaces the new vocabulary's
+  whole, so a seeded list the archive's fields do not use does not linger.
+- `config`, when present, holds every config namespace on the vocabulary other than
+  `igt`, verbatim (`{ "dict": { "title": …, "slug": … } }` is plaid-dict's publication
+  record). Each key is written back as it was, so a dictionary is still one after a
+  round trip.
 - Item `metadata` is exported wholesale (custom fields, FLEx guids, examples, …).
   Seven of its keys are structure rather than fields, never editable as one
   (`RESERVED_ITEM_KEYS` in vocabFields.js): `form`, `parent`, `senseOrder`,

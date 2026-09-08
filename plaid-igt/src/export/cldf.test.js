@@ -312,6 +312,26 @@ describe('buildCldfDataset — dictionary', () => {
     expect(senses[0].Definition).toBe('a canine');
   });
 
+  it('writes a definition-only sense with its definition in both columns', () => {
+    const { files } = build({
+      vocabularies: [
+        {
+          ...vocab,
+          items: [
+            { id: 'd', form: 'x', metadata: { pos: 'N' } },
+            { id: 'ds', form: 'x', metadata: { parent: 'd', definition: 'only a definition' } },
+          ],
+        },
+      ],
+    });
+    const senses = table(files, 'senses.csv');
+    expect(senses).toHaveLength(1);
+    expect(senses[0]).toMatchObject({
+      Description: 'only a definition',
+      Definition: 'only a definition',
+    });
+  });
+
   it('omits the sense rather than writing an empty required Description', () => {
     const { files, warnings } = build({ vocabularies: [vocab] });
     expect(table(files, 'senses.csv').map((s) => s.Entry_ID)).toEqual(['e1', 'e2']);

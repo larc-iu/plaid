@@ -658,6 +658,8 @@ export function buildCldfDocuments(dataset, options = {}) {
     if (pos) metadata.pos = pos;
     const definition = row.Definition ?? '';
     if (definition) metadata.definition = definition;
+    // A description that is the definition again is a sense with no gloss.
+    const gloss = definition && definition === description ? '' : description;
     for (const name of senseCustom) {
       const v = row[name] ?? '';
       const key = name.slice('Sense_'.length);
@@ -667,7 +669,7 @@ export function buildCldfDocuments(dataset, options = {}) {
       if (v && !isReservedFieldName(key)) metadata[key] = v;
     }
     if (!sensesByEntry.has(key)) sensesByEntry.set(key, []);
-    sensesByEntry.get(key).push({ id: cell(senses, row, 'id'), description, metadata });
+    sensesByEntry.get(key).push({ id: cell(senses, row, 'id'), description: gloss, metadata });
   }
   const lexicon = [];
   for (const row of entries?.rows || []) {

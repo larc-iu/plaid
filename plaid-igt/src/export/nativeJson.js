@@ -155,6 +155,12 @@ export function serializeVocabularyNative(vocab, { comments = [], onWarning = nu
   );
   // The vocabulary's tagsets, verbatim like the project's: null when unset.
   const tagsets = vocab?.config?.[IGT_NAMESPACE]?.tagsets ?? null;
+  // What other apps keep on the vocabulary, verbatim: plaid-dict's
+  // publication record lives under `config.dict`, and a dictionary that lost
+  // it on the way through an archive would come back as no dictionary at all.
+  const config = Object.fromEntries(
+    Object.entries(vocab?.config || {}).filter(([ns]) => ns !== IGT_NAMESPACE),
+  );
   // Comments on the vocabulary's entries. An entry is the only thing in a
   // vocabulary a comment can be about, so a comment whose entry is not in
   // `items` is one whose entry has been deleted.
@@ -167,6 +173,7 @@ export function serializeVocabularyNative(vocab, { comments = [], onWarning = nu
     name: vocab?.name ?? null,
     fields,
     tagsets,
+    ...(Object.keys(config).length ? { config } : {}),
     items,
     ...(nodes.length ? { comments: nodes } : {}),
   };

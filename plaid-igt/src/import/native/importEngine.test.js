@@ -114,6 +114,7 @@ function stubClient({ existingDocs = [], existingItems = [], existingVocabCommen
     vocabLayers: {
       get: async (id) => record('vocabLayers.get', [id], { id, items: existingItems }),
       setConfig: async (...a) => record('vocabLayers.setConfig', a),
+      deleteConfig: async (...a) => record('vocabLayers.deleteConfig', a),
     },
     spanLayers: {
       setConfig: async (...a) => record('spanLayers.setConfig', a),

@@ -335,6 +335,33 @@ describe('runCldfImport', () => {
     ]);
   });
 
+  // A run that died between making the entry and its senses: the resume
+  // makes the senses it finds missing and places them, rather than skipping
+  // the whole entry for being there.
+  it('makes the senses of an entry an earlier run created and left childless', async () => {
+    const client = stubClient({
+      existingItems: [{ id: 'old-e1', form: 'perro', metadata: { cldfEntry: 'e1' } }],
+    });
+    await importLexicon({
+      client,
+      vocabId: 'v1',
+      lexicon: [
+        {
+          id: 'e1',
+          form: 'perro',
+          metadata: { gloss: 'dog' },
+          senses: [
+            { id: 's1', description: 'dog' },
+            { id: 's2', description: 'hound' },
+          ],
+        },
+      ],
+    });
+    const created = callsOf(client, 'vocabItems.bulkCreate').flatMap((c) => c.args.body);
+    expect(created.map((it) => it.metadata.cldfEntry)).toEqual(['e1/s1', 'e1/s2']);
+    expect(callsOf(client, 'vocabItems.patchMetadata')).toHaveLength(2);
+  });
+
   it('leaves a one-sense entry as one item, its meaning its own', async () => {
     const client = stubClient();
     await importLexicon({

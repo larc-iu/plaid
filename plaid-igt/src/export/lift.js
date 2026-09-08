@@ -117,14 +117,14 @@ const trait = (indent, name, value) =>
  * Bucket one item's metadata: glosses and definitions as [lang, text] pairs,
  * plus the leftover custom fields in their original order.
  *
- * The unsuffixed key is the primary writing system, whose language is the
- * preset's analysis tag rather than a FLEx writing-system code. That tag can
+ * The unsuffixed key is the primary writing system: the one the vocabulary
+ * records for the field, else the preset's analysis tag. The tag can still
  * collide with a suffixed key's ("gloss" resolving to `en` next to a
- * "gloss (en)"), so the primary sorts first and wins the one-form-per-lang
- * dedupe. The suffixed key is the one that was renamed, not the other way
- * around.
+ * "gloss (en)" when nothing was recorded), so the primary sorts first and
+ * wins the one-form-per-lang dedupe. The suffixed key is the one that was
+ * renamed, not the other way around.
  */
-function partitionMetadata(metadata, analysisLang, refFields = new Set()) {
+function partitionMetadata(metadata, analysisLang, refFields = new Set(), fieldLangs = {}) {
   const glosses = [];
   const definitions = [];
   const fields = [];
@@ -142,7 +142,11 @@ function partitionMetadata(metadata, analysisLang, refFields = new Set()) {
     if (text == null || text === '') continue;
     const { base, ws } = parseFieldName(key);
     if (SENSE_BASES.has(base)) {
-      (base === 'gloss' ? glosses : definitions).push({ lang: ws ?? analysisLang, text, ws });
+      // The unsuffixed key's language is what the vocabulary recorded for the
+      // field (a FLEx import writes the lexicon's primary writing system
+      // there), else the preset's analysis tag.
+      const lang = ws ?? fieldLangs[key] ?? analysisLang;
+      (base === 'gloss' ? glosses : definitions).push({ lang, text, ws });
       continue;
     }
     fields.push({ base, ws, text });
@@ -241,6 +245,7 @@ function senseXml(indent, item, ctx, index, tag = 'sense', children = []) {
     meta,
     ctx.analysisLang,
     ctx.refFields,
+    ctx.fieldLangs,
   );
   const grouped = groupFields(fields, ctx.fieldLangs, ctx.analysisLang);
   for (const base of grouped.keys()) ctx.customNames.add(base);
@@ -370,9 +375,12 @@ function entryXml(indent, group, ctx) {
     ...relationsXml(
       `${indent}  `,
       group.items.flatMap((it) =>
-        partitionMetadata(it.metadata, ctx.analysisLang, ctx.refFields).relations.filter((r) =>
-          ctx.entryRefFields.has(r.type),
-        ),
+        partitionMetadata(
+          it.metadata,
+          ctx.analysisLang,
+          ctx.refFields,
+          ctx.fieldLangs,
+        ).relations.filter((r) => ctx.entryRefFields.has(r.type)),
       ),
       ctx,
     ),
@@ -383,7 +391,7 @@ function entryXml(indent, group, ctx) {
   // of them: writing it as the first sense puts a gloss-less sense in front of
   // every real one, and re-importing that adds a spurious sense every round.
   // Its own fields are the entry's, and go after the senses.
-  const headParts = partitionMetadata(meta, ctx.analysisLang, ctx.refFields);
+  const headParts = partitionMetadata(meta, ctx.analysisLang, ctx.refFields, ctx.fieldLangs);
   // What the head's examples RENDER to, which is what decides whether the head
   // says anything a sense says. Asking the raw list instead would turn a
   // headword whose only example is unreadable into a gloss-less first sense,
@@ -552,7 +560,8 @@ export function buildLiftLexicon({
   const referenced = new Set();
   for (const g of groups) {
     for (const it of g.items) {
-      for (const r of partitionMetadata(it.metadata, analysisLang, refFields).relations) {
+      for (const r of partitionMetadata(it.metadata, analysisLang, refFields, fieldLangs)
+        .relations) {
         referenced.add(r.target);
       }
     }
@@ -582,7 +591,7 @@ export function buildLiftLexicon({
   }
   if (formless > 0) {
     warnings.push(
-      `${formless} lexicon ${formless === 1 ? 'item has' : 'items have'} no form and ${
+      `${formless} lexicon ${formless === 1 ? 'entry has' : 'entries have'} no form and ${
         formless === 1 ? 'was' : 'were'
       } left out of the .lift file.`,
     );

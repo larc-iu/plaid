@@ -266,6 +266,29 @@ describe('buildLiftLexicon', () => {
     expect(one.querySelector('gloss')).toBeNull();
   });
 
+  // A FLEx import records the primary writing system on the bare field
+  // ("gloss" in pt beside "gloss (en)"); the bare one used to claim the
+  // preset's analysis tag and swallow the English gloss as a duplicate.
+  it('gives the bare gloss the writing system the vocabulary records for it', () => {
+    const dom = parse(
+      build([
+        {
+          id: 'v1',
+          config: { igt: { fields: { gloss: { inline: true, lang: 'pt' }, 'gloss (en)': {} } } },
+          items: [item('i1', 'a', { gloss: 'cão', 'gloss (en)': 'dog' })],
+        },
+      ]).lift,
+    );
+    const glosses = [...dom.querySelectorAll('gloss')].map((g) => [
+      g.getAttribute('lang'),
+      g.textContent.trim(),
+    ]);
+    expect(glosses).toEqual([
+      ['pt', 'cão'],
+      ['en', 'dog'],
+    ]);
+  });
+
   it('keeps one form per language when a suffix collides with the primary', () => {
     const dom = parse(
       build([{ id: 'v1', items: [item('i1', 'a', { 'gloss (en)': 'second', gloss: 'primary' })] }])
@@ -308,7 +331,7 @@ describe('buildLiftLexicon', () => {
       { id: 'v1', items: [item('i1', '', { gloss: 'g' }), item('i2', 'ok', {})] },
     ]);
     expect(entryCount).toBe(1);
-    expect(warnings).toEqual(['1 lexicon item has no form and was left out of the .lift file.']);
+    expect(warnings).toEqual(['1 lexicon entry has no form and was left out of the .lift file.']);
     expect(parse(lift).querySelectorAll('entry').length).toBe(1);
   });
 

@@ -570,7 +570,10 @@ export function buildCldfDataset({
             ID: `s${senseN}`,
             Entry_ID: entryId,
             Description: String(description),
-            Definition: m.gloss && m.definition ? String(m.definition) : '',
+            // Written whenever there is one: a sense with a definition and no
+            // gloss has it as its Description too, and the import reads the
+            // pair as a definition, not a gloss.
+            Definition: m.definition ? String(m.definition) : '',
             Example_IDs: examples.join(' '),
           };
           // A sense of its own carries what the entry row cannot: its part of

@@ -148,27 +148,38 @@ export async function importLexicon({ client, vocabId, lexicon, onProgress, shou
         places.push({ key: senseKey(entry, sense), parentKey: entry.id, senseOrder: i + 1 });
       }
     }
-    if (byEntry.has(entry.id)) continue;
-    const metadata = { ...entry.metadata };
-    if (split) {
-      // The senses hold these now, one meaning each.
-      delete metadata.gloss;
-      delete metadata.definition;
-    } else {
-      // One sense is the entry's own meaning, so what its row carried (its
-      // part of speech, its definition, its own fields) belongs on the entry
-      // rather than being dropped with the row. The entry's own values win.
-      const only = entry.senses?.[0];
-      if (only) Object.assign(metadata, { ...(only.metadata || {}), ...metadata });
+    // The entry and each of its senses are asked about one by one: a run
+    // that stopped after making the entry left its senses unmade, and a
+    // resume that skipped the whole entry for being there would never make
+    // them.
+    if (!byEntry.has(entry.id)) {
+      const metadata = { ...entry.metadata };
+      if (split) {
+        // The senses hold these now, one meaning each.
+        delete metadata.gloss;
+        delete metadata.definition;
+      } else {
+        // One sense is the entry's own meaning, so what its row carried (its
+        // part of speech, its definition, its own fields) belongs on the entry
+        // rather than being dropped with the row. The entry's own values win.
+        const only = entry.senses?.[0];
+        if (only) Object.assign(metadata, { ...(only.metadata || {}), ...metadata });
+      }
+      pending.push({ key: entry.id, form: entry.form, metadata });
     }
-    pending.push({ key: entry.id, form: entry.form, metadata });
     if (!split) continue;
     for (const sense of entry.senses) {
       if (byEntry.has(senseKey(entry, sense))) continue;
       pending.push({
         key: senseKey(entry, sense),
         form: entry.form,
-        metadata: { ...(sense.metadata || {}), gloss: sense.description },
+        metadata: {
+          ...(sense.metadata || {}),
+          // A sense row with a definition and no gloss carries the definition
+          // as its description (the column is required); it is a definition
+          // still, not a gloss.
+          ...(sense.description ? { gloss: sense.description } : {}),
+        },
       });
     }
   }

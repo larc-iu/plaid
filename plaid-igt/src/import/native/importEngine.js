@@ -183,8 +183,20 @@ export async function importVocabulary({
       ),
     );
   }
+  // The tagsets go in whole, like the fields: setup seeds a Status list for
+  // the Status field it seeds, and an archive whose fields replaced that
+  // field must not leave its list behind governing nothing.
   if (vocabData.tagsets && Object.keys(vocabData.tagsets).length) {
     await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'tagsets', vocabData.tagsets);
+  } else if (vocabData.fields?.length) {
+    await client.vocabLayers.deleteConfig(vocabId, IGT_NAMESPACE, 'tagsets');
+  }
+  // Other apps' namespaces, verbatim (plaid-dict's publication record).
+  for (const [ns, keys] of Object.entries(vocabData.config || {})) {
+    if (ns === IGT_NAMESPACE || !keys || typeof keys !== 'object') continue;
+    for (const [key, value] of Object.entries(keys)) {
+      await client.vocabLayers.setConfig(vocabId, ns, key, value);
+    }
   }
 
   const existing = await client.vocabLayers.get(vocabId, true);

@@ -378,6 +378,47 @@ describe('buildCldfDocuments — languages and lexicon', () => {
       { id: 's2', description: 'bank', metadata: { pos: 'verb' } },
     ]);
   });
+
+  // The export writes a definition-only sense's definition as its Description
+  // (the column is required) and again as its Definition; the pair reads as
+  // a definition, not a gloss.
+  it('reads a sense whose description is its definition as having no gloss', () => {
+    const ds = dataset(
+      'ID,Primary_Text\r\n1,x\r\n',
+      BASIC_COLUMNS,
+      [
+        {
+          url: 'entries.csv',
+          'dc:conformsTo': `${TERMS}EntryTable`,
+          tableSchema: { columns: [col('ID', 'id'), col('Headword', 'headword')] },
+        },
+        {
+          url: 'senses.csv',
+          'dc:conformsTo': `${TERMS}SenseTable`,
+          tableSchema: {
+            columns: [
+              col('ID', 'id'),
+              col('Entry_ID', 'entryReference'),
+              col('Description', 'description'),
+              col('Definition'),
+            ],
+          },
+        },
+      ],
+      {
+        'entries.csv': 'ID,Headword\r\ne1,banco\r\n',
+        'senses.csv':
+          'ID,Entry_ID,Description,Definition\r\n' +
+          's1,e1,only a definition,only a definition\r\n' +
+          's2,e1,bank,a place for money\r\n',
+      },
+    );
+    const { lexicon } = buildCldfDocuments(ds);
+    expect(lexicon[0].senses).toEqual([
+      { id: 's1', description: '', metadata: { definition: 'only a definition' } },
+      { id: 's2', description: 'bank', metadata: { definition: 'a place for money' } },
+    ]);
+  });
 });
 
 describe('deriveImportOptions', () => {
