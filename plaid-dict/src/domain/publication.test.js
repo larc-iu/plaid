@@ -44,7 +44,10 @@ describe('publishAll', () => {
         patchMetadata: (id, patch) => patched.push([id, patch]),
       },
       configs: [],
+      // What the SERVER holds right now, which is what publishAll must read.
+      layer: { id: 'v', config: { igt: { fields: { gloss: { inline: true } } } } },
       vocabLayers: {
+        get: async () => client.layer,
         setConfig(id, ns, key, value) {
           client.configs.push([key, value]);
         },
@@ -57,8 +60,7 @@ describe('publishAll', () => {
     // A value under a field the schema does not name is invisible in
     // plaid-igt: no control on the entry, nothing in Bulk Edit.
     const client = fakeClient();
-    const vocabulary = { id: 'v', config: { igt: { fields: { gloss: { inline: true } } } } };
-    await publishAll(client, [entry('a')], { vocabulary, name: 'Sena' });
+    await publishAll(client, [entry('a')], { vocabularyId: 'v', name: 'Sena' });
     expect(client.configs.map(([k]) => k)).toEqual(['tagsets', 'fields']);
     expect(client.configs.find(([k]) => k === 'fields')[1].status).toEqual({
       inline: false,
@@ -69,13 +71,38 @@ describe('publishAll', () => {
     expect(client.operations).toEqual(['Publish every entry in "Sena"']);
   });
 
+  it('keeps every field and tagset the server holds now, not what was cached', async () => {
+    // The catalog is loaded once at app start, and setConfig replaces a
+    // namespace key wholesale. Writing from the snapshot deleted whatever
+    // plaid-igt had added in the other tab since.
+    const client = fakeClient();
+    client.layer = {
+      id: 'v',
+      config: {
+        igt: {
+          fields: { gloss: { inline: true }, etymology: { inline: false } },
+          tagsets: { Register: { mode: 'closed', values: [{ value: 'formal' }] } },
+        },
+      },
+    };
+    await publishAll(client, [entry('a')], { vocabularyId: 'v' });
+    const fields = client.configs.find(([k]) => k === 'fields')[1];
+    const tagsets = client.configs.find(([k]) => k === 'tagsets')[1];
+    expect(Object.keys(fields).sort()).toEqual(['etymology', 'gloss', 'status']);
+    expect(Object.keys(tagsets).sort()).toEqual(['Register', 'Status']);
+    // Verbatim, so a tagset key this app does not know survives the write.
+    expect(tagsets.Register).toEqual({ mode: 'closed', values: [{ value: 'formal' }] });
+  });
+
   it('leaves the schema alone when Status is already declared', async () => {
     const client = fakeClient();
-    const vocabulary = {
+    client.layer = {
       id: 'v',
-      config: { igt: { fields: { status: { inline: false, tagset: 'Status' } } } },
+      config: {
+        igt: { fields: { status: { inline: false, tagset: 'Status' } }, tagsets: { Status: {} } },
+      },
     };
-    await publishAll(client, [entry('a')], { vocabulary });
+    await publishAll(client, [entry('a')], { vocabularyId: 'v' });
     expect(client.configs).toEqual([]);
   });
 

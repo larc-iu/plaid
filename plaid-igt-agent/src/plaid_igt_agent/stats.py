@@ -506,7 +506,9 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
         # links the entry the analyst picked, which is often the headword.
         loose = [it for it in items.values()
                  if is_sense(it['id']) and uses[it['id']] == 0 and tree_uses(view_of(it['id']).tree.root_of[it['id']])]
-        if loose:
+        # Stated at zero like every other count in this report, but only for a
+        # lexicon that HAS senses: on a word list the line is about nothing.
+        if any(is_sense(it['id']) for it in items.values()):
             lines.append(f'{len(loose)} senses not linked from a text themselves, '
                          'though their entry is attested.')
     def stands_over_senses(iid: str) -> bool:

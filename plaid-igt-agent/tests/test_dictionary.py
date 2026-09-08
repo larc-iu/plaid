@@ -419,9 +419,16 @@ def test_senses_of_an_attested_entry_are_reported_apart():
     # boil, its subsense simmer, and ferment: every sense under the headword.
     assert '3 senses not linked from a text themselves' in out
 
-    # With nothing attested there are no such senses, and no line about them.
+    # With nothing attested there are no such senses, and the count says zero
+    # rather than going quiet, like every other line in the report.
     bare = call_tool(dict_ws(), 'check_lexicon', {'section': 'unused'})
-    assert 'senses not linked from a text themselves' not in bare
+    assert '0 senses not linked from a text themselves' in bare
+
+    # A lexicon with no senses at all gets no line: it would be about nothing.
+    flat = [{'id': 'w1', 'form': 'zi', 'metadata': {'gloss': 'one'}},
+            {'id': 'w2', 'form': 'ka', 'metadata': {'gloss': 'two'}}]
+    out = call_tool(dict_ws(items=flat), 'check_lexicon', {'section': 'unused'})
+    assert 'senses not linked from a text themselves' not in out
 
 
 def test_a_structural_change_on_a_doomed_entry_is_refused():

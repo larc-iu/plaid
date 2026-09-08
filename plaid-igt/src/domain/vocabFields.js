@@ -49,6 +49,7 @@ const IMMUTABLE_NAMES = new Set(CORE_VOCAB_FIELDS.filter((f) => f.immutable).map
 /** Human-friendly labels for known fields (overrides the generic humanizer). */
 const FIELD_LABELS = {
   morphType: 'Morph Type',
+  status: 'Status',
   pos: 'POS',
   gloss: 'Gloss',
   definition: 'Definition',
@@ -85,6 +86,7 @@ const FIELD_DESCRIPTIONS = {
   pos: 'Part of speech.',
   definition: 'A fuller definition, shown in the entry detail rather than the interlinear line.',
   lexemeForm: 'The underlying form of the lexeme, when it differs from the form as written.',
+  status: 'How far along the entry is: draft, reviewed, or published.',
 };
 
 export const fieldDescription = (name) =>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -75,6 +75,9 @@ const FIELD_CLEAR_CHUNK = 100;
 export const VocabularyDetail = () => {
   const { vocabularyId } = useParams();
   const navigate = useNavigate();
+  // The layer a failed creation already made, so pressing Create again
+  // finishes it instead of leaving an unreachable second one behind.
+  const createdRef = useRef(null);
   const confirm = useConfirm();
   const { user, client, logout } = useAuth();
   const isNewVocabulary = !vocabularyId;
@@ -255,24 +258,30 @@ export const VocabularyDetail = () => {
       let savedVocabulary;
 
       if (isNewVocabulary) {
-        savedVocabulary = await client.vocabLayers.create(editedName.trim());
-
-        // The field inventory (always non-empty, morphType is core) plus the
-        // Status field and its list: the same seeding every creation path
-        // does, see statusFieldSeed.
+        // The layer, its field inventory (always non-empty, morphType is core)
+        // and the Status field with its list, under ONE operation: three
+        // requests make one gesture, and the history restores it as one. The
+        // same seeding the setup wizard does, see statusFieldSeed.
         const add = statusFieldSeed({ fieldsConfig: fieldsToConfig(fields), tagsets });
-        await client.vocabLayers.setConfig(
-          savedVocabulary.id,
-          IGT_NAMESPACE,
-          'tagsets',
-          add.tagsets,
-        );
-        await client.vocabLayers.setConfig(
-          savedVocabulary.id,
-          IGT_NAMESPACE,
-          'fields',
-          add.fieldsConfig,
-        );
+        await client.withOperation(`Create vocabulary "${editedName.trim()}"`, async () => {
+          savedVocabulary =
+            createdRef.current ?? (await client.vocabLayers.create(editedName.trim()));
+          // Remembered, so a retry after a failed config write finishes THIS
+          // vocabulary rather than leaving an unreachable second one behind.
+          createdRef.current = savedVocabulary;
+          await client.vocabLayers.setConfig(
+            savedVocabulary.id,
+            IGT_NAMESPACE,
+            'tagsets',
+            add.tagsets,
+          );
+          await client.vocabLayers.setConfig(
+            savedVocabulary.id,
+            IGT_NAMESPACE,
+            'fields',
+            add.fieldsConfig,
+          );
+        });
 
         navigate(`/vocabularies/${savedVocabulary.id}`, { replace: true });
         notifySuccess('Vocabulary created successfully', 'Success');

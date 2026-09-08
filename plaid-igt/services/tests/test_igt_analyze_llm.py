@@ -68,8 +68,12 @@ def test_a_broken_parent_leaves_the_entry_in_the_model_s_reach():
     lone = [{'id': 'x', 'form': 'zi', 'metadata': {'parent': 'x'}}]
     assert [e['id'] for e in llm.vocab_entries(lone, 'L')] == ['x']
 
-    dangling = [{'id': 'y', 'form': 'zi', 'metadata': {'parent': 'gone'}}]
-    assert [e['id'] for e in llm.vocab_entries(dangling, 'L')] == ['y']
+    # A parent naming nothing: the headword is kept because no sense of it
+    # spells its form, which the old rule also got right by accident, so this
+    # pins the pair rather than the single item.
+    dangling = [{'id': 'p', 'form': 'zi', 'metadata': {}},
+                {'id': 'y', 'form': 'zi', 'metadata': {'parent': 'gone'}}]
+    assert [e['id'] for e in llm.vocab_entries(dangling, 'L')] == ['p', 'y']
 
     cycle = [{'id': 'f1', 'form': 'nya', 'metadata': {'parent': 'f2'}},
              {'id': 'f2', 'form': 'nya', 'metadata': {'parent': 'f1'}}]

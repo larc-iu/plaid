@@ -185,11 +185,19 @@ def vocab_entries(items, vocab_name) -> List[dict]:
     its own form, so dropping it would take that form out of the model's reach
     entirely.
 
-    A parent counts only where the app's own buildSenseTree counts one: it must
-    name a different item that exists, and its chain must reach a root. A
-    self-parent or a cycle makes every item on it an entry, there as here.
-    Reading the raw key instead hid such an entry from the model, and the
-    analyst saw the form come back unglossed with no reason given."""
+    A parent counts only where it names a different item that exists and its
+    chain reaches a root. Reading the raw key instead let a self-parent or a
+    cycle make an entry its own sense, which hid it from the model, and the
+    analyst saw that form come back unglossed with no reason given.
+
+    NOT byte-for-byte the app's buildSenseTree, which memoises and so cuts a
+    cycle only along the chain it first reached it by: an item hanging BELOW a
+    cycle stays a sense there if the cycle was resolved first, and is an entry
+    here whatever the order. The difference runs one way only, since a chain
+    that is acyclic from an item cannot be cut by a walk passing through it, so
+    this can only ever show the model one entry too many, never hide one. Being
+    order-independent is worth more here than matching a quirk of a state the
+    app's validator clears the next time a maintainer opens the vocabulary."""
     by_id = {it['id']: it for it in items}
 
     def parent_of(it):

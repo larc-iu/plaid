@@ -56,23 +56,13 @@ export const VocabularySettings = ({ projectId, client }) => {
       const project = await client.projects.get(projectId);
       const currentLinkedVocabIds = (project.vocabs || []).map((v) => v.id);
 
-      // Determine which vocabularies should be linked
+      // Which vocabularies should be linked. Settings only links and unlinks:
+      // a vocabulary is CREATED on the New vocabulary screen or by the setup
+      // wizard, both of which seed its fields. This screen never makes one, so
+      // handleLoadData stamps every row isCustom: false.
       const targetLinkedVocabIds = data.vocabularies
-        .filter((vocab) => vocab.enabled && !vocab.isCustom) // Only link existing, enabled vocabs
+        .filter((vocab) => vocab.enabled)
         .map((vocab) => vocab.id);
-
-      // Create new custom vocabularies first
-      const customVocabs = data.vocabularies.filter((vocab) => vocab.isCustom && vocab.enabled);
-      for (const customVocab of customVocabs) {
-        if (customVocab.id.startsWith('new-')) {
-          // Create new vocabulary
-          const newVocab = await client.vocabLayers.create(customVocab.name);
-          // Link to project
-          await client.projects.linkVocab(projectId, newVocab.id);
-          // Add the new vocab ID to the target list so it doesn't get unlinked
-          targetLinkedVocabIds.push(newVocab.id);
-        }
-      }
 
       // Link new vocabularies BEFORE unlinking removed ones: a failure midway
       // through the links leaves every previously linked vocab still in place,

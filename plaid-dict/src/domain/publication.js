@@ -6,9 +6,8 @@
 // not itself published still appears as the heading over its published senses,
 // with its own gloss hidden: the tree's spine is structure, not content.
 
-import { STATUS_FIELD, statusFieldSeed } from '@igt/domain/vocabDictionary.js';
-import { readVocabFields, IGT_NAMESPACE } from '@igt/domain/igtConfig.js';
-import { readTagsets } from '@igt/domain/tagsets.js';
+import { STATUS_FIELD, STATUS_TAGSET, statusTagset } from '@igt/domain/vocabDictionary.js';
+import { IGT_NAMESPACE } from '@igt/domain/igtConfig.js';
 
 export const PUBLISHED = 'published';
 
@@ -37,21 +36,35 @@ const BATCH_CHUNK = 200;
  * a value under a field the schema does not name is invisible in plaid-igt:
  * no control on the entry, nothing in Bulk Edit. So the field is declared here
  * first, in the same operation, on a vocabulary that lacks it.
+ *
+ * The schema is read FRESH, never from the catalog: the catalog holds what the
+ * server said when this tab opened, `setConfig` replaces a namespace key
+ * wholesale, and the two apps are meant to be open at once. Writing from the
+ * snapshot deleted whatever field or tagset plaid-igt had added since. Read
+ * raw rather than through `readTagsets`, which rebuilds each tagset and would
+ * drop anything it does not know on the way back out.
  */
-export const publishAll = async (client, items, { vocabulary, name, onProgress } = {}) => {
+export const publishAll = async (client, items, { vocabularyId, name, onProgress } = {}) => {
   const pending = (items || []).filter((it) => !isPublished(it));
   if (!pending.length) return 0;
-  const fields = readVocabFields(vocabulary?.config);
-  const undeclared = vocabulary && !(fields && STATUS_FIELD in fields);
+  const igt = vocabularyId
+    ? ((await client.vocabLayers.get(vocabularyId))?.config?.[IGT_NAMESPACE] ?? {})
+    : null;
+  const addField = igt && !(igt.fields && STATUS_FIELD in igt.fields);
+  const addTagset = igt && !igt.tagsets?.[STATUS_TAGSET];
   let done = 0;
   await client.withOperation(`Publish every entry in "${name || 'vocabulary'}"`, async () => {
-    if (undeclared) {
-      const seed = statusFieldSeed({
-        fieldsConfig: fields ?? {},
-        tagsets: readTagsets(vocabulary.config),
+    if (addTagset) {
+      await client.vocabLayers.setConfig(vocabularyId, IGT_NAMESPACE, 'tagsets', {
+        ...(igt.tagsets || {}),
+        [STATUS_TAGSET]: statusTagset(),
       });
-      await client.vocabLayers.setConfig(vocabulary.id, IGT_NAMESPACE, 'tagsets', seed.tagsets);
-      await client.vocabLayers.setConfig(vocabulary.id, IGT_NAMESPACE, 'fields', seed.fieldsConfig);
+    }
+    if (addField) {
+      await client.vocabLayers.setConfig(vocabularyId, IGT_NAMESPACE, 'fields', {
+        ...(igt.fields || {}),
+        [STATUS_FIELD]: { inline: false, tagset: STATUS_TAGSET },
+      });
     }
     for (let i = 0; i < pending.length; i += BATCH_CHUNK) {
       const part = pending.slice(i, i + BATCH_CHUNK);

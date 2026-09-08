@@ -65,6 +65,16 @@ describe('statusFieldSeed', () => {
     expect(seed.tagsets).toBe(tagsets);
   });
 
+  it('counts a user\'s own "Status" field as this one, case and all', () => {
+    // The field editor rejects a duplicate case-insensitively, so seeding
+    // `status` beside a user's `Status` makes a pair it would have refused,
+    // and the two write different metadata keys.
+    const fieldsConfig = { Status: { inline: true } };
+    const seed = statusFieldSeed({ fieldsConfig, tagsets: {} });
+    expect(seed.fieldsConfig).toBe(fieldsConfig);
+    expect(seed.tagsets).toEqual({});
+  });
+
   it('takes a missing config as an empty one', () => {
     const seed = statusFieldSeed({});
     expect(Object.keys(seed.fieldsConfig)).toEqual([STATUS_FIELD]);

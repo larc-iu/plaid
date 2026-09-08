@@ -257,7 +257,7 @@ export const Setup = () => {
     setPublishing({ done: 0, total: counts.total - counts.published });
     try {
       const n = await publishAll(client, items, {
-        vocabulary: vocab,
+        vocabularyId,
         name: draft.title || vocab.name,
         onProgress: setPublishing,
       });
