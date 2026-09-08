@@ -217,6 +217,101 @@ describe('buildFlextextDocument', () => {
   });
 });
 
+// The FLEx importer names the field for the primary analysis writing system
+// bare and suffixes the others ("Translation", "Translation (nl)"), so a
+// project imported from FLEx arrives with the writing system in the name and
+// nowhere else. See fieldNameLang.
+describe('flextext field writing systems', () => {
+  // One sentence, one word, three translations and two glosses: the shape the
+  // FLEx importer produces for a project glossed in three languages.
+  const multilingualDoc = () => ({
+    document: { id: 'd1', name: 'Multi', metadata: {} },
+    body: 'baba',
+    sortedSentences: [
+      makeSentence({
+        begin: 0,
+        end: 4,
+        annotations: {
+          Translation: { value: 'bapak' },
+          'Translation (en)': { value: 'father' },
+          'Translation (nl)': { value: 'vader' },
+        },
+        tokens: [
+          {
+            id: 'w1',
+            begin: 0,
+            end: 4,
+            content: 'baba',
+            metadata: {},
+            orthographies: {},
+            annotations: { Gloss: { value: 'bapak' }, 'Gloss (en)': { value: 'father' } },
+            vocabItem: null,
+            morphemes: [],
+          },
+        ],
+      }),
+    ],
+    alignmentTokens: [],
+    vocabularies: {},
+  });
+
+  const options = (extra = {}) => ({
+    langs: { baseline: 'oni', analysis: 'pmy', orthographies: {}, fieldOverrides: {}, ...extra },
+    fieldMap: {
+      sentence: { Translation: 'gls', 'Translation (en)': 'gls', 'Translation (nl)': 'gls' },
+      word: { Gloss: 'gls', 'Gloss (en)': 'gls' },
+      morpheme: {},
+    },
+    citationForms: false,
+  });
+
+  const langOf = (dom, sel, text) =>
+    [...dom.querySelectorAll(sel)].find((el) => el.textContent === text)?.getAttribute('lang');
+
+  it('takes each field lang from the tag in its name, falling back to the analysis tag', () => {
+    const dom = parse(buildFlextextDocument([multilingualDoc()], options()));
+    expect(langOf(dom, 'phrase > item[type="gls"]', 'bapak')).toBe('pmy');
+    expect(langOf(dom, 'phrase > item[type="gls"]', 'father')).toBe('en');
+    expect(langOf(dom, 'phrase > item[type="gls"]', 'vader')).toBe('nl');
+    expect(langOf(dom, 'word > item[type="gls"]', 'bapak')).toBe('pmy');
+    expect(langOf(dom, 'word > item[type="gls"]', 'father')).toBe('en');
+  });
+
+  it('declares every writing system the fields resolve to', () => {
+    const dom = parse(buildFlextextDocument([multilingualDoc()], options()));
+    const langs = [...dom.querySelectorAll('languages > language')].map((l) => [
+      l.getAttribute('lang'),
+      l.getAttribute('vernacular'),
+    ]);
+    expect(langs).toEqual([
+      ['oni', 'true'],
+      ['pmy', null],
+      ['en', null],
+      ['nl', null],
+    ]);
+  });
+
+  it('lets an override beat the name, and ignores a suffix that is not a tag', () => {
+    const doc = multilingualDoc();
+    doc.sortedSentences[0].annotations['Translation (free)'] = { value: 'loose' };
+    const opts = options({ fieldOverrides: { 'Translation (nl)': 'nld' } });
+    opts.fieldMap.sentence['Translation (free)'] = 'lit';
+    const dom = parse(buildFlextextDocument([doc], opts));
+    expect(langOf(dom, 'phrase > item[type="gls"]', 'vader')).toBe('nld');
+    expect(langOf(dom, 'phrase > item[type="lit"]', 'loose')).toBe('pmy');
+  });
+
+  it('does not declare a language for a field that is not exported', () => {
+    const opts = options();
+    delete opts.fieldMap.sentence['Translation (nl)'];
+    const dom = parse(buildFlextextDocument([multilingualDoc()], opts));
+    const langs = [...dom.querySelectorAll('languages > language')].map((l) =>
+      l.getAttribute('lang'),
+    );
+    expect(langs).not.toContain('nl');
+  });
+});
+
 describe('phraseTimingFor', () => {
   const sentence = { begin: 0, end: 14 };
 

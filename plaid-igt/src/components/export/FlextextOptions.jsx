@@ -1,6 +1,7 @@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { fieldNameLang } from '@/domain/fieldNames';
 import {
   Select,
   SelectTrigger,
@@ -43,7 +44,7 @@ const LangInput = ({ id, label, value, onChange, placeholder }) => (
   </div>
 );
 
-const FieldMapGroup = ({ scope, title, fields, map, onChange }) => {
+const FieldMapGroup = ({ scope, title, fields, map, overrides, analysis, onChange, onLang }) => {
   if (!fields.length) return null;
   return (
     <div className="flex flex-col gap-1.5">
@@ -51,27 +52,38 @@ const FieldMapGroup = ({ scope, title, fields, map, onChange }) => {
       {fields.map((f) => (
         <div key={f} className="flex items-center justify-between gap-2">
           <span className="truncate text-sm">{f}</span>
-          <Select
-            value={map[f] ?? OMIT}
-            onValueChange={(v) => {
-              const next = { ...map };
-              if (v === OMIT) delete next[f];
-              else next[f] = v;
-              onChange(next);
-            }}
-          >
-            <SelectTrigger className="h-8 w-56">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {ITEM_TYPES[scope].map((t) => (
-                <SelectItem key={t.id} value={t.id}>
-                  {t.label}
-                </SelectItem>
-              ))}
-              <SelectItem value={OMIT}>Don’t export</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex shrink-0 items-center gap-2">
+            <Select
+              value={map[f] ?? OMIT}
+              onValueChange={(v) => {
+                const next = { ...map };
+                if (v === OMIT) delete next[f];
+                else next[f] = v;
+                onChange(next);
+              }}
+            >
+              <SelectTrigger className="h-8 w-56">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ITEM_TYPES[scope].map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.label}
+                  </SelectItem>
+                ))}
+                <SelectItem value={OMIT}>Don’t export</SelectItem>
+              </SelectContent>
+            </Select>
+            <Input
+              aria-label={`Language tag for ${f}`}
+              value={overrides[f] ?? ''}
+              // What the field goes out as when the box is empty: the tag its
+              // own name carries, else the one for glosses and translations.
+              placeholder={fieldNameLang(f) || analysis || 'en'}
+              onChange={(e) => onLang(f, e.target.value)}
+              className="h-8 w-16 font-mono text-xs"
+            />
+          </div>
         </div>
       ))}
     </div>
@@ -84,8 +96,17 @@ const FieldMapGroup = ({ scope, title, fields, map, onChange }) => {
 export const FlextextOptions = ({ options, layers, onChange }) => {
   const langs = options.langs || {};
   const fieldMap = options.fieldMap || {};
+  const overrides = langs.fieldOverrides || {};
   const setLangs = (patch) => onChange({ ...options, langs: { ...langs, ...patch } });
   const setMap = (scope, map) => onChange({ ...options, fieldMap: { ...fieldMap, [scope]: map } });
+  // An empty box is not a tag: it drops the override and the field falls back
+  // to its name's tag or the analysis one.
+  const setFieldLang = (field, value) => {
+    const next = { ...overrides };
+    if (value.trim() === '') delete next[field];
+    else next[field] = value.trim();
+    setLangs({ fieldOverrides: next });
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -93,7 +114,9 @@ export const FlextextOptions = ({ options, layers, onChange }) => {
         <Label>Language tags</Label>
         <p className="text-xs text-muted-foreground">
           Writing-system codes FLEx will see (e.g. <code>lez</code>, <code>en</code>). Unknown tags
-          can be remapped in FLEx at import time.
+          can be remapped in FLEx at import time. A field whose name ends in a tag, like{' '}
+          <code>Gloss (nl)</code>, goes out under that tag; set any other field’s tag beside it
+          below.
         </p>
         <LangInput
           id="ft-lang-baseline"
@@ -126,21 +149,30 @@ export const FlextextOptions = ({ options, layers, onChange }) => {
         title="Sentence fields"
         fields={layers.sentFields}
         map={fieldMap.sentence || {}}
+        overrides={overrides}
+        analysis={langs.analysis}
         onChange={(m) => setMap('sentence', m)}
+        onLang={setFieldLang}
       />
       <FieldMapGroup
         scope="word"
         title="Word fields"
         fields={layers.wordFields}
         map={fieldMap.word || {}}
+        overrides={overrides}
+        analysis={langs.analysis}
         onChange={(m) => setMap('word', m)}
+        onLang={setFieldLang}
       />
       <FieldMapGroup
         scope="morpheme"
         title="Morpheme fields"
         fields={layers.morphFields}
         map={fieldMap.morpheme || {}}
+        overrides={overrides}
+        analysis={langs.analysis}
         onChange={(m) => setMap('morpheme', m)}
+        onLang={setFieldLang}
       />
 
       <div className="flex flex-col gap-3 border-t pt-3">

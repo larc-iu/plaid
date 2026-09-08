@@ -516,10 +516,10 @@ describe('importLexicon', () => {
     const cfg = client.calls.find((c) => c.kind === 'vocabLayers.setConfig');
     expect(cfg.args).toMatchObject({ vocabId: 'v1', ns: 'igt', key: 'fields' });
     expect(cfg.args.value).toEqual({
-      // gloss has a Russian sibling, so the primary says which language it is
+      // the bare key is the primary analysis writing system, and says so
       gloss: { inline: true, lang: 'en' },
       pos: { inline: true },
-      definition: { inline: false },
+      definition: { inline: false, lang: 'en' },
       morphType: { inline: false },
       lexemeForm: { inline: false },
       'gloss (ru)': { inline: false },

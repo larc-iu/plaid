@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
+  applyExportPresets,
   readExportPresets,
   writeExportPresets,
   newPreset,
@@ -104,6 +105,19 @@ describe('preset persistence', () => {
     const setConfig = vi.fn();
     await writeExportPresets({ projects: { setConfig } }, 'p1', [{ id: 'x' }]);
     expect(setConfig).toHaveBeenCalledWith('p1', 'igt', 'export', { presets: [{ id: 'x' }] });
+  });
+
+  it('applies the same write to a project in hand, keeping the rest of its config', () => {
+    const project = {
+      id: 'p1',
+      config: { igt: { languages: { object: { name: 'Onin' } } }, plaid: { role: 'baseline' } },
+    };
+    const next = [{ id: 'x', name: 'A', format: 'flextext', options: {} }];
+    const patched = applyExportPresets(project, next);
+    expect(readExportPresets(patched)).toEqual(next);
+    expect(patched.config.igt.languages).toEqual({ object: { name: 'Onin' } });
+    expect(patched.config.plaid).toEqual({ role: 'baseline' });
+    expect(readExportPresets(project)).toEqual([]); // the original is untouched
   });
 });
 

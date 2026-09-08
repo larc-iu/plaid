@@ -38,6 +38,7 @@ import { allExamples, buildSenseTree, exampleKey } from '../domain/vocabDictiona
 import { readVocabFields } from '../domain/igtConfig.js';
 import { FIELD_SCOPES, FIELD_TYPES, RESERVED_ITEM_KEYS } from '../domain/vocabFields.js';
 import { FLEX_MORPH_TYPES } from '../domain/affixMarkers.js';
+import { parseFieldName } from '../domain/fieldNames.js';
 
 export const LIFT_VERSION = '0.13';
 
@@ -57,18 +58,6 @@ const SENSE_KEYS = new Set(['pos', 'examples']);
 // suffixed for the others ("gloss", "gloss (ru)"). See fieldName() on the
 // importer's side, which these two must stay in step with.
 const SENSE_BASES = new Set(['gloss', 'definition']);
-
-/**
- * Split a vocab field name into its base and writing system: "gloss (ru)" →
- * { base: 'gloss', ws: 'ru' }, "gloss" → { base: 'gloss', ws: null }. The lazy
- * base makes the LAST parenthesized group the writing system, so a field
- * genuinely named "Note (old)" keeps "Note" as its base, which is what the
- * importer meant by it in the first place.
- */
-export function parseFieldName(name) {
-  const m = /^(.*?)(?: \(([^()]+)\))?$/.exec(String(name ?? ''));
-  return { base: m?.[1] ?? '', ws: m?.[2] ?? null };
-}
 
 const isId = (v) => typeof v === 'string' && v.trim() !== '';
 

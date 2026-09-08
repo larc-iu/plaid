@@ -44,6 +44,19 @@ export async function writeExportPresets(client, projectId, presets) {
   await client.projects.setConfig(projectId, IGT_NAMESPACE, 'export', { presets });
 }
 
+/**
+ * The same write applied to a project object in hand, so a page that holds one
+ * does not have to refetch it (or know where presets live) to stay in step with
+ * what it just saved.
+ */
+export const applyExportPresets = (project, presets) => ({
+  ...project,
+  config: {
+    ...project?.config,
+    [IGT_NAMESPACE]: { ...project?.config?.[IGT_NAMESPACE], export: { presets } },
+  },
+});
+
 // Sanitize a language tag-ish string: keep letters/digits/hyphens.
 const tagify = (name) =>
   String(name ?? '')

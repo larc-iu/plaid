@@ -9,7 +9,12 @@ import { useConfirm } from '@/components/shared/ConfirmProvider';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { discoverExportLayers } from '@/export/exportLayers';
 import { readLanguages } from '@/domain/igtConfig';
-import { readExportPresets, writeExportPresets, EXPORT_FORMATS } from '@/export/presets';
+import {
+  applyExportPresets,
+  readExportPresets,
+  writeExportPresets,
+  EXPORT_FORMATS,
+} from '@/export/presets';
 import { ExportRunner } from '@/components/export/ExportRunner.jsx';
 import { PlainTextOptions } from '@/components/export/PlainTextOptions.jsx';
 import { CldfOptions } from '@/components/export/CldfOptions.jsx';
@@ -72,8 +77,11 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
       await writeExportPresets(client, projectId, next);
       setPresets(next);
       setDraft(next.find((p) => p.id === presetId));
-      // See ExportPresetsSettings: the page's project object holds the presets
-      // and goes stale on every write.
+      // The page's own project object holds the presets too, and the runner
+      // below reads the preset it runs out of THAT. Left stale, saving and
+      // running in one sitting exported the settings from before the save.
+      setProject((p) => applyExportPresets(p, next));
+      // See ExportPresetsSettings: the containing page holds one as well.
       onProjectUpdate?.();
       notifySuccess(`Saved preset “${draft.name.trim()}”.`, 'Export presets');
     } catch (err) {

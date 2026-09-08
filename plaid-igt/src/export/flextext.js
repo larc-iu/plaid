@@ -33,6 +33,8 @@
 //
 // options (from the export preset):
 //   langs: { baseline, analysis, orthographies: {name→tag}, fieldOverrides: {field→tag} }
+//     a field with no override goes out under the tag in its own name
+//     ("Gloss (nl)"), else `analysis`
 //   fieldMap: { sentence: {field→'gls'|'lit'|'note'}, word: {field→'gls'|'pos'},
 //               morpheme: {field→'gls'|'msa'} }   (unmapped fields are omitted)
 //   citationForms: bool   — emit <item type="cf"> (and "hn") for a linked morpheme
@@ -40,6 +42,7 @@
 import { FLEX_MORPH_TYPES, decorateWithAffixMarkers } from '../domain/affixMarkers.js';
 import { morphFormOf } from '../domain/igtExport.js';
 import { lexiconView } from '../domain/vocabDictionary.js';
+import { fieldNameLang } from '../domain/fieldNames.js';
 
 // Shared with the .eaf exporter (src/export/elan.js). The two XML formats
 // escape identically, and one copy keeps them from drifting.
@@ -55,8 +58,31 @@ export const xmlEscape = (s) =>
 
 const baselineLang = (options) => options?.langs?.baseline || 'und';
 const analysisLang = (options) => options?.langs?.analysis || 'en';
+
+// A field's own writing system: the preset's override, else the tag its name
+// declares ("Translation (nl)"), else the one analysis tag. A FLEx import names
+// the field for the PRIMARY analysis writing system without a suffix, so the
+// bare fields are exactly the ones the analysis tag has to cover. Without this
+// every translation and gloss went out under one lang, and FLEx keeps one form
+// per writing system: two of three translations were silently dropped on
+// import.
 const fieldLang = (options, field) =>
-  options?.langs?.fieldOverrides?.[field] || analysisLang(options);
+  options?.langs?.fieldOverrides?.[field] || fieldNameLang(field) || analysisLang(options);
+
+// The <item type> a field may take, per annotation scope. Shared by the writers
+// and by the <languages> census so the two cannot disagree about which fields
+// are actually exported.
+export const ITEM_TYPES_BY_SCOPE = {
+  sentence: ['gls', 'lit', 'note'],
+  word: ['gls', 'pos'],
+  morpheme: ['gls', 'msa'],
+};
+
+/** The mapped fields of one scope, as [field, type] pairs. */
+const mappedFields = (options, scope) =>
+  Object.entries(options?.fieldMap?.[scope] || {}).filter(([, type]) =>
+    ITEM_TYPES_BY_SCOPE[scope].includes(type),
+  );
 
 // ---- element builders (each returns [] or [lines]) -------------------------
 
@@ -112,8 +138,7 @@ function morphXml(indent, m, options, lex) {
       lines.push(...item(`${indent}  `, 'hn', analysisLang(options), String(hn)));
     }
   }
-  for (const [field, type] of Object.entries(options?.fieldMap?.morpheme || {})) {
-    if (type !== 'gls' && type !== 'msa') continue;
+  for (const [field, type] of mappedFields(options, 'morpheme')) {
     lines.push(
       ...item(`${indent}  `, type, fieldLang(options, field), m?.annotations?.[field]?.value),
     );
@@ -131,8 +156,7 @@ function wordXml(indent, token, options, lex) {
     if (!tag) continue;
     lines.push(...item(`${indent}  `, 'txt', tag, token.orthographies?.[name]));
   }
-  for (const [field, type] of Object.entries(options?.fieldMap?.word || {})) {
-    if (type !== 'gls' && type !== 'pos') continue;
+  for (const [field, type] of mappedFields(options, 'word')) {
     lines.push(
       ...item(`${indent}  `, type, fieldLang(options, field), token.annotations?.[field]?.value),
     );
@@ -227,8 +251,7 @@ function phraseXml(
     else lines.push(...punctWordXml(`${indent}    `, piece.content, options));
   }
   lines.push(`${indent}  </words>`);
-  for (const [field, type] of Object.entries(options?.fieldMap?.sentence || {})) {
-    if (type !== 'gls' && type !== 'lit' && type !== 'note') continue;
+  for (const [field, type] of mappedFields(options, 'sentence')) {
     lines.push(
       ...item(`${indent}  `, type, fieldLang(options, field), sentence.annotations?.[field]?.value),
     );
@@ -266,7 +289,11 @@ function languagesXml(indent, options) {
   add(baselineLang(options), true);
   for (const tag of Object.values(options?.langs?.orthographies || {})) add(tag, true);
   add(analysisLang(options), false);
-  for (const tag of Object.values(options?.langs?.fieldOverrides || {})) add(tag, false);
+  // Every writing system the fields themselves resolve to, not just the ones
+  // named in the preset: a "Gloss (nl)" declares nl by its name alone.
+  for (const scope of Object.keys(ITEM_TYPES_BY_SCOPE)) {
+    for (const [field] of mappedFields(options, scope)) add(fieldLang(options, field), false);
+  }
   lines.push(`${indent}</languages>`);
   return lines;
 }

@@ -1,11 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  buildLiftLexicon,
-  collectExampleRefs,
-  groupEntries,
-  parseFieldName,
-  LIFT_VERSION,
-} from './lift.js';
+import { buildLiftLexicon, collectExampleRefs, groupEntries, LIFT_VERSION } from './lift.js';
 import { exampleKey } from '../domain/vocabDictionary.js';
 
 const parse = (xml) => {
@@ -50,15 +44,6 @@ const VOCAB = {
 
 const build = (vocabularies = [VOCAB], extra = {}) =>
   buildLiftLexicon({ vocabularies, options: OPTIONS, rangesHref: 'X.lift-ranges', ...extra });
-
-describe('parseFieldName', () => {
-  it('splits a writing-system suffix off the base', () => {
-    expect(parseFieldName('gloss')).toEqual({ base: 'gloss', ws: null });
-    expect(parseFieldName('gloss (ru)')).toEqual({ base: 'gloss', ws: 'ru' });
-    expect(parseFieldName('Note (old) (fr)')).toEqual({ base: 'Note (old)', ws: 'fr' });
-    expect(parseFieldName('')).toEqual({ base: '', ws: null });
-  });
-});
 
 describe('groupEntries', () => {
   it('makes an entry of every headword with its senses under it', () => {
