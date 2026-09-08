@@ -351,10 +351,10 @@ That is the name an entry goes by everywhere: the list, the picker, the link pop
 Any entry can be made a sense of another: open it, choose **Set parent**, and find the entry it belongs under.
 **Add headword** in the same place raises a new entry over the open one, with the same form, and makes the open one its first sense: how a word with one meaning gets a second.
 What belongs to the entry rather than to the meaning goes up with it: its number among the entries spelled alike, and any headword-only field. The morph type and lexeme form are shared, so the new headword and the sense both keep them.
-Merging entries with **Bulk Edit** points those references at the surviving entry, hands the merged entries' senses to it in their own order, and, when the survivor was a sense under one of them, makes it an entry in that one's place.
 Every item in a vocabulary is an entry: a headword, or a sense under another entry.
 A sense says where it sits on the line under its name: **Sense 1.2 of** its entry.
 Beside it, **Senses** unfolds the whole entry as a tree, numbered, each sense a link, and **Add sense** writes a new one directly under the open entry.
+A sense with no morph type of its own goes by its headword's, on the interlinear line and in auto-linking alike.
 Senses are rearranged by dragging in that tree: drop one above or below another to reorder them, onto one to make it a sense of that sense, onto **Make separate entry** to make it an entry of its own, or onto **Move to other entry** and pick where it goes.
 A whole entry can be dragged the same way, senses and all.
 **Set parent** works for any entry, dragging or not.
@@ -385,6 +385,7 @@ A sentence worth citing that is not in any text belongs in a document, where it 
 Examples brought in by a FLEx import are shown in the same panel as text.
 
 Deleting an entry frees its senses, which become entries of their own, and clears the fields that named it, and the confirmation says how many entries that touches.
+Merging entries with **Bulk Edit** points those references at the surviving entry, hands the merged entries' senses to it in their own order, and, when the survivor was a sense under one of them, makes it an entry in that one's place.
 
 A FLEx import keeps the sense structure of the lexicon: an entry with several senses becomes an entry with them under it, numbered as FLEx numbered them, and an entry with one sense is that sense.
 A CLDF import does the same with its entry and sense tables.

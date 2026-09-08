@@ -35,6 +35,7 @@
 // backed provider) can feed IgtDocument.bulkLinkVocab the same way.
 
 import { PROV_STATES } from '@larc-iu/plaid-client';
+import { lexiconView } from './vocabDictionary.js';
 
 import { trimIgnoredEdges, isTokenIgnored } from './igtConfig.js';
 import { isBoundType } from './affixMarkers.js';
@@ -73,14 +74,18 @@ export function buildItemIndex(vocabularies) {
     } else map.set(key, [id]);
   };
   for (const vocab of Object.values(vocabularies || {})) {
+    // The morph type an entry goes by is its own, else its headword's: a
+    // sense made by hand under an affix is an affix too.
+    const view = lexiconView(vocab.items || []);
     for (const it of vocab.items || []) {
       if (!it.form) continue;
       add(exact, it.form, it.id);
       add(folded, it.form.toLowerCase(), it.id);
-      if (isBoundType(it.metadata?.morphType)) bound.add(it.id);
-      if (isMweType(it.metadata?.morphType)) phrase.add(it.id);
-      const parent = it.metadata?.parent;
-      if (typeof parent === 'string' && parent) parentOf.set(it.id, parent);
+      const type = view.morphTypeOf(it.id);
+      if (isBoundType(type)) bound.add(it.id);
+      if (isMweType(type)) phrase.add(it.id);
+      const parent = view.tree.parentOf.get(it.id);
+      if (parent) parentOf.set(it.id, parent);
     }
   }
   dropCoveredHeadwords([exact, folded], parentOf);
@@ -225,15 +230,16 @@ function buildPhraseIndex(vocabularies) {
   };
   const parentOf = new Map();
   for (const vocab of Object.values(vocabularies || {})) {
+    const view = lexiconView(vocab.items || []);
     for (const it of vocab.items || []) {
-      if (!it.form || !isMweType(it.metadata?.morphType)) continue;
+      if (!it.form || !isMweType(view.morphTypeOf(it.id))) continue;
       const form = joinMweForm(it.form.split(/\s+/));
       if (wordCount(form) < 2) continue;
       add(exact, form, it.id);
       add(folded, form.toLowerCase(), it.id);
       longest = Math.max(longest, wordCount(form));
-      const parent = it.metadata?.parent;
-      if (typeof parent === 'string' && parent) parentOf.set(it.id, parent);
+      const parent = view.tree.parentOf.get(it.id);
+      if (parent) parentOf.set(it.id, parent);
     }
   }
   dropCoveredHeadwords([exact, folded], parentOf);

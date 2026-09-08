@@ -106,6 +106,37 @@ describe('buildFlextextDocument', () => {
     expect(morph.querySelector('item[type="hn"]')).toBeNull();
   });
 
+  // A token linked to a SENSE: the lexeme form and the homograph number are
+  // the headword's, the morph type the sense's own or, failing that, the
+  // headword's. A hand-made sense carries none of these.
+  it('reads cf and hn off the headword when the linked item is a sense', () => {
+    const doc = makeFixtureDoc();
+    doc.vocabularies = {
+      v1: {
+        id: 'v1',
+        items: [
+          {
+            id: 'h1',
+            form: 'perro',
+            metadata: { lexemeForm: 'perr', morphType: 'suffix', homograph: 2 },
+          },
+          { id: 's1', form: 'perro', metadata: { parent: 'h1', senseOrder: 1, gloss: 'dog' } },
+        ],
+      },
+    };
+    for (const list of [doc.sortedSentences[0].tokens[0], doc.sortedSentences[0].pieces[0]]) {
+      list.morphemes[0].vocabItem = {
+        id: 's1',
+        vocabId: 'v1',
+        form: 'perro',
+        metadata: { parent: 'h1' },
+      };
+    }
+    const morph = parse(buildFlextextDocument([doc], FLEXTEXT_OPTIONS)).querySelector('morph');
+    expect(morph.querySelector('item[type="cf"]').textContent).toBe('-perr');
+    expect(morph.querySelector('item[type="hn"]').textContent).toBe('2');
+  });
+
   it('omits cf entirely when citation forms are switched off', () => {
     const doc = linkMorpheme(makeFixtureDoc(), { lexemeForm: 'perr' });
     const xml = buildFlextextDocument([doc], { ...FLEXTEXT_OPTIONS, citationForms: false });

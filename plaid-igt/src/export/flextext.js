@@ -39,6 +39,7 @@
 
 import { FLEX_MORPH_TYPES, decorateWithAffixMarkers } from '../domain/affixMarkers.js';
 import { morphFormOf } from '../domain/igtExport.js';
+import { lexiconView } from '../domain/vocabDictionary.js';
 
 // Shared with the .eaf exporter (src/export/elan.js). The two XML formats
 // escape identically, and one copy keeps them from drifting.
@@ -66,7 +67,7 @@ const item = (indent, type, lang, value) => {
   ];
 };
 
-function morphXml(indent, m, options) {
+function morphXml(indent, m, options, lex) {
   const morphType = m?.morphType ?? m?.metadata?.morphType;
   const typeAttr = FLEX_MORPH_TYPES.includes(morphType) ? ` type="${xmlEscape(morphType)}"` : '';
   const lines = [`${indent}<morph${typeAttr}>`];
@@ -89,19 +90,24 @@ function morphXml(indent, m, options) {
     // .fwbackup importer set to the CITATION form. Across the sample corpus the
     // two differ for 29% of entries (59% in Sena), and every one of those would
     // have failed to link.
+    // The linked item may be a sense: the lexeme form and the homograph
+    // number are the headword's, and the morph type is the sense's own or,
+    // failing that, the headword's.
+    const entry = lex?.(m.vocabItem) ?? { root: m.vocabItem, morphType: null };
     const meta = m.vocabItem.metadata ?? {};
-    const lexeme = meta.lexemeForm ?? m.vocabItem.form;
+    const rootMeta = entry.root?.metadata ?? {};
+    const lexeme = meta.lexemeForm ?? rootMeta.lexemeForm ?? entry.root?.form ?? m.vocabItem.form;
     lines.push(
       ...item(
         `${indent}  `,
         'cf',
         baselineLang(options),
-        decorateWithAffixMarkers(meta.morphType, lexeme),
+        decorateWithAffixMarkers(entry.morphType ?? meta.morphType, lexeme),
       ),
     );
     // Narrows the match when entries share a lexeme form. FLEx reads a missing
     // hn as 0 and falls back to the unfiltered set, so omitting it is safe.
-    const hn = Number(meta.homograph);
+    const hn = Number(rootMeta.homograph);
     if (Number.isInteger(hn) && hn > 0) {
       lines.push(...item(`${indent}  `, 'hn', analysisLang(options), String(hn)));
     }
@@ -116,7 +122,7 @@ function morphXml(indent, m, options) {
   return lines;
 }
 
-function wordXml(indent, token, options) {
+function wordXml(indent, token, options, lex) {
   const lines = [`${indent}<word>`];
   lines.push(...item(`${indent}  `, 'txt', baselineLang(options), token.content));
   // Alternate orthographies are alternate vernacular writing systems: extra
@@ -134,7 +140,7 @@ function wordXml(indent, token, options) {
   const morphemes = token.morphemes || [];
   if (morphemes.length) {
     lines.push(`${indent}  <morphemes>`);
-    for (const m of morphemes) lines.push(...morphXml(`${indent}    `, m, options));
+    for (const m of morphemes) lines.push(...morphXml(`${indent}    `, m, options, lex));
     lines.push(`${indent}  </morphemes>`);
   }
   lines.push(`${indent}</word>`);
@@ -205,6 +211,7 @@ function phraseXml(
   timing = null,
   mediaGuid = null,
   speaker = null,
+  lex = null,
 ) {
   const timeAttrs = timing
     ? `${mediaGuid ? ` media-file="${xmlEscape(mediaGuid)}"` : ''}` +
@@ -216,7 +223,7 @@ function phraseXml(
   lines.push(`${indent}  <words>`);
   const pieces = sentence.pieces || (sentence.tokens || []).map((t) => ({ type: 'token', ...t }));
   for (const piece of pieces) {
-    if (piece.type === 'token') lines.push(...wordXml(`${indent}    `, piece, options));
+    if (piece.type === 'token') lines.push(...wordXml(`${indent}    `, piece, options, lex));
     else lines.push(...punctWordXml(`${indent}    `, piece.content, options));
   }
   lines.push(`${indent}  </words>`);
@@ -279,8 +286,29 @@ const mediaLocationOf = (docData) => {
   return base.includes('.') ? base : docData.name || base || 'media';
 };
 
+/**
+ * A resolver from a linked item to the entry it belongs to, for `cf` and
+ * `hn`: the headword (root) and the morph type the item goes by. Built once
+ * per vocabulary of the document.
+ */
+const lexiconResolver = (vocabularies) => {
+  const views = new Map();
+  for (const vocab of Object.values(vocabularies || {})) {
+    views.set(vocab.id, lexiconView(vocab.items || []));
+  }
+  return (vocabItem) => {
+    const view = views.get(vocabItem?.vocabId);
+    if (!view || !view.byId.has(vocabItem.id)) return null;
+    return {
+      root: view.byId.get(view.tree.rootOf.get(vocabItem.id)) ?? vocabItem,
+      morphType: view.morphTypeOf(vocabItem.id),
+    };
+  };
+};
+
 export function interlinearTextXml(igtDoc, options, indent = '  ') {
   const docData = igtDoc.document || {};
+  const lex = lexiconResolver(igtDoc.vocabularies);
   const lines = [`${indent}<interlinear-text>`];
   lines.push(...item(`${indent}  `, 'title', baselineLang(options), docData.name));
   // Configured document metadata rides along as source/comment items.
@@ -303,7 +331,16 @@ export function interlinearTextXml(igtDoc, options, indent = '  ') {
       if (timing) anyTimed = true;
       const speaker = phraseSpeakerFor(sentence, igtDoc.alignmentTokens || []);
       lines.push(
-        ...phraseXml(`${indent}        `, sentence, segnum, options, timing, mediaGuid, speaker),
+        ...phraseXml(
+          `${indent}        `,
+          sentence,
+          segnum,
+          options,
+          timing,
+          mediaGuid,
+          speaker,
+          lex,
+        ),
       );
     }
     lines.push(`${indent}      </phrases>`, `${indent}    </paragraph>`);

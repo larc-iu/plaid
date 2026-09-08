@@ -51,13 +51,13 @@ import {
   morphTypeOptions,
   splitChainText,
 } from '@/domain/affixMarkers';
-import { buildItemNumbers, buildSenseTree, groupRankedByHeadword } from '@/domain/vocabDictionary';
+import { groupRankedByHeadword, lexiconView, refIds } from '@/domain/vocabDictionary';
 import { FIELD_TYPES, RESERVED_ITEM_KEYS } from '@/domain/vocabFields';
 
 // The dotted number that tells an entry apart ("1.2"), drawn after its form
 // as text. Never a superscript: those mark tone.
 const numHtml = (sub, cls) => (sub ? html`<span class="${cls}__num">${sub}</span>` : nothing);
-import { rankVocabItems } from '@/domain/vocabRank';
+import { rankVocabItems, TIERS } from '@/domain/vocabRank';
 import { composeAppend, composePending } from '@/domain/compose';
 import { ZERO_MORPH } from '@/domain/zeroMorph';
 import { activeComposeTable, composePendingOn, handleComposeBeforeInput } from '@/lib/composeInput';
@@ -1269,7 +1269,9 @@ export class IgtEditor {
     const linked = !!currentItem?.vocabId;
     const vocab = linked ? this.doc.vocabularies?.[currentItem.vocabId] : null;
     const preset = this._mweTypeFor(this._mweTargetIds());
-    const current = linked ? (currentItem.metadata?.morphType ?? '') : preset;
+    const current = linked
+      ? (this._vocabMemoFor(currentItem.vocabId).morphTypeOf(currentItem.id) ?? '')
+      : preset;
     const canEditEntry = linked && !!vocab && this.canWriteVocab(vocab);
     const title = linked
       ? canEditEntry
@@ -4355,9 +4357,6 @@ export class IgtEditor {
     `;
   }
 
-  // The dotted number an entry goes by (buildItemNumbers), which tells apart
-  // both the senses under an entry and the entries spelled alike. Cached per
-  // doc.dataVersion so we regroup only when the data actually changes.
   // Browsers fire mousemove when content re-flows UNDER a stationary pointer
   // (a popover re-render, a row growing). Only a real pointer movement should
   // move the keyboard highlight, or Enter can land on a row the user never
@@ -4368,34 +4367,40 @@ export class IgtEditor {
     return !last || last.x !== e.clientX || last.y !== e.clientY;
   }
 
-  _itemNumbersFor(vocabId) {
+  // Everything the popover derives from one vocabulary, built once per
+  // doc.dataVersion: the sense tree, the dotted numbers, the id index, the
+  // morph type each entry goes by, and which fields are shown inline. The
+  // popover re-renders on every keystroke in its search box and reads these
+  // once per row of a list that can hold the whole lexicon.
+  _vocabMemoFor(vocabId) {
     const dv = this.doc?.dataVersion;
-    if (this._numbersCacheKey !== dv) {
-      this._numbersCacheKey = dv;
-      this._numbersCache = new Map();
+    if (this._vocabMemoKey !== dv) {
+      this._vocabMemoKey = dv;
+      this._vocabMemo = new Map();
     }
-    if (!this._numbersCache.has(vocabId)) {
+    if (!this._vocabMemo.has(vocabId)) {
       const vocab = (this.doc?.vocabularies || {})[vocabId];
-      this._numbersCache.set(vocabId, buildItemNumbers(vocab?.items || []));
+      const fields = readVocabFields(vocab?.config) || {};
+      const inlineNames = Object.keys(fields).filter((n) => fields[n]?.inline);
+      this._vocabMemo.set(vocabId, {
+        ...lexiconView(vocab?.items || []),
+        fields,
+        inlineNames,
+        hasRefs: inlineNames.some((n) => fields[n]?.type === FIELD_TYPES.ITEM),
+      });
     }
-    return this._numbersCache.get(vocabId);
+    return this._vocabMemo.get(vocabId);
   }
 
-  // The sense tree the popover groups its candidates by. Cached like the
-  // numbers and invalidated with the same key: the popover re-renders on every
-  // keystroke in its search box, and rebuilding this per character costs
-  // several milliseconds on a lexicon of a few thousand entries.
+  // The dotted number an entry goes by (buildItemNumbers), which tells apart
+  // both the senses under an entry and the entries spelled alike.
+  _itemNumbersFor(vocabId) {
+    return this._vocabMemoFor(vocabId).numbers;
+  }
+
+  // The sense tree the popover groups its candidates by.
   _senseTreeFor(vocabId) {
-    const dv = this.doc?.dataVersion;
-    if (this._treeCacheKey !== dv) {
-      this._treeCacheKey = dv;
-      this._treeCache = new Map();
-    }
-    if (!this._treeCache.has(vocabId)) {
-      const vocab = (this.doc?.vocabularies || {})[vocabId];
-      this._treeCache.set(vocabId, buildSenseTree(vocab?.items || []));
-    }
-    return this._treeCache.get(vocabId);
+    return this._vocabMemoFor(vocabId).tree;
   }
 
   // Precedent (domain/precedent.js) behind the popover's ranking and the
@@ -4476,22 +4481,6 @@ export class IgtEditor {
     return this._itemNumbersFor(vocabItem.vocabId).get(vocabItem.id) ?? null;
   }
 
-  // A vocabulary's entries by id, for the fields that hold references to them.
-  // Cached like the number index, and invalidated with the same key: this is
-  // read once per row of a popover that lists the whole lexicon.
-  _vocabItemIndexFor(vocabId) {
-    const dv = this.doc?.dataVersion;
-    if (this._itemIndexKey !== dv) {
-      this._itemIndexKey = dv;
-      this._itemIndexCache = new Map();
-    }
-    if (!this._itemIndexCache.has(vocabId)) {
-      const vocab = (this.doc?.vocabularies || {})[vocabId];
-      this._itemIndexCache.set(vocabId, new Map((vocab?.items || []).map((i) => [i.id, i])));
-    }
-    return this._itemIndexCache.get(vocabId);
-  }
-
   // The secondary line for a popover item row: values of the vocab's
   // inline-flagged custom fields (vocab config igt.fields {name: {inline}}),
   // falling back to the item's first non-empty metadata value when no field
@@ -4499,8 +4488,8 @@ export class IgtEditor {
   // forms are distinguishable.
   _vocabItemDetail(item, vocab) {
     const meta = item.metadata || {};
-    const fields = readVocabFields(vocab?.config) || {};
-    const inlineNames = Object.keys(fields).filter((n) => fields[n]?.inline);
+    const memo = this._vocabMemoFor(vocab?.id);
+    const { fields, inlineNames, hasRefs } = memo;
     // The fallback reads whatever the entry carries, so it has to skip the
     // reserved keys: `parent` is an id, and it is written first, so a
     // vocabulary with no inline field would show a UUID here.
@@ -4509,20 +4498,16 @@ export class IgtEditor {
       : Object.keys(meta).filter((n) => !RESERVED_ITEM_KEYS.has(n));
     // A field of type `item` holds entry ids. It reads as the entries they
     // name, numbered as everything else in the popover is.
-    const hasRefs = names.some((n) => fields[n]?.type === FIELD_TYPES.ITEM);
-    const byId = hasRefs ? this._vocabItemIndexFor(vocab?.id) : null;
-    const numbers = hasRefs ? this._itemNumbersFor(vocab?.id) : null;
     const refLabel = (id) => {
-      const target = byId.get(id);
+      const target = memo.byId.get(id);
       if (!target) return '';
-      const n = numbers?.get(id);
+      const n = memo.numbers.get(id);
       return n ? `${target.form} ${n}` : (target.form ?? '');
     };
     const valueOf = (n) => {
       if (n === 'morphType') return morphTypeLabel(meta[n]);
       if (!hasRefs || fields[n]?.type !== FIELD_TYPES.ITEM) return meta[n];
-      const v = meta[n];
-      return (Array.isArray(v) ? v : v ? [v] : []).map(refLabel).filter(Boolean).join(', ');
+      return refIds(item, { name: n }).map(refLabel).filter(Boolean).join(', ');
     };
     const vals = names
       .map(valueOf)
@@ -4570,8 +4555,11 @@ export class IgtEditor {
     // In MWE mode the phrase-typed entries come first, in their ranked order.
     // Single-word entries stay listed: a fixed spelling can be what is wanted.
     if (isMwe) {
-      const phrases = items.filter((it) => isMweType(it.metadata?.morphType));
-      const others = items.filter((it) => !isMweType(it.metadata?.morphType));
+      const typeOf = activeVocab
+        ? (it) => this._vocabMemoFor(activeVocab.id).morphTypeOf(it.id)
+        : (it) => it.metadata?.morphType;
+      const phrases = items.filter((it) => isMweType(typeOf(it)));
+      const others = items.filter((it) => !isMweType(typeOf(it)));
       items.splice(0, items.length, ...phrases, ...others);
     }
     if (currentItem) {
@@ -4597,7 +4585,9 @@ export class IgtEditor {
       _depth: r.depth,
       _context: !!r.context,
     }));
-    const truncated = grouped.length - limited.length;
+    // What the cap left out, counted in candidates: a headword drawn only
+    // as context above its senses was never one.
+    const truncated = items.length - limited.filter((r) => !r._context).length;
     // The form a new entry would get: the word/morpheme's surface with edge
     // punctuation trimmed by the project's own ignored-tokens rule
     // (`derechos.` → `derechos`; user decision 2026-08-26).
@@ -4650,12 +4640,22 @@ export class IgtEditor {
     }
     // Rows the keyboard can land on: every item, the create row, the extras.
     const total = limited.length + (canCreate ? 1 : 0) + extraRows.length;
-    // Where the keyboard lands before it is moved: the best-ranked candidate.
-    // Grouping puts a headword above its senses, so that is not row 0, and a
-    // headword listed only for context did not rank at all. Both stay
-    // selectable by arrow or click: linking to a headword is the user's call,
-    // just never the one Enter makes on its own.
-    const best = limited.findIndex((r) => !r._context && r.id === items[0]?.id);
+    // Where the keyboard lands before it is moved: the best-ranked candidate
+    // that is not a headword standing over one of its own same-form senses
+    // in the list. Such a headword ranks level with its senses (same form,
+    // same tier) and, created first by an import, would win the tie on id;
+    // the auto-linker drops it for the same reason (dropCoveredHeadwords).
+    // A headword the form was linked to before keeps its place: precedent is
+    // a person's own choice. Every row stays selectable by arrow or click:
+    // linking to a headword is the user's call, just never the one Enter
+    // makes on its own.
+    const rankedIds = new Set(items.map((it) => it.id));
+    const tree = activeVocab ? this._senseTreeFor(activeVocab.id) : null;
+    const covered = (it) =>
+      it._tier !== TIERS.PRECEDENT &&
+      (tree?.childrenOf.get(it.id) || []).some((c) => c.form === it.form && rankedIds.has(c.id));
+    const first = items.find((it) => !covered(it)) ?? items[0];
+    const best = limited.findIndex((r) => !r._context && r.id === first?.id);
     if (this._popoverActiveIndex == null) this._popoverActiveIndex = Math.max(0, best);
     const activeIdx = Math.min(this._popoverActiveIndex ?? 0, Math.max(0, total - 1));
     // The three actions, routed by mode: a word's or morpheme's own link, or
@@ -4978,8 +4978,13 @@ export class IgtEditor {
     );
     const linked = !!currentItem?.vocabId;
     const vocab = linked ? this.doc.vocabularies?.[currentItem.vocabId] : null;
-    const fromItem = currentItem?.metadata?.morphType;
-    const current = (linked && fromItem ? fromItem : morph?.metadata?.morphType) ?? '';
+    // The entry's type is its own, else its headword's. Linked, the row
+    // shows that and nothing else: the token's cached type is not the
+    // entry's, whatever the line draws from it.
+    const fromItem = linked
+      ? this._vocabMemoFor(currentItem.vocabId).morphTypeOf(currentItem.id)
+      : null;
+    const current = (linked ? fromItem : morph?.metadata?.morphType) ?? '';
     const canEditEntry = linked && !!vocab && this.canWriteVocab(vocab);
     const disabled = this.readOnly || (linked && !canEditEntry);
     const title = linked

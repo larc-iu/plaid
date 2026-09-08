@@ -9,6 +9,7 @@
 // `sentences`.
 
 import { provState, provOrigin } from '@larc-iu/plaid-client';
+import { lexiconView } from './vocabDictionary.js';
 import { itemsById, linkedItem } from './vocabLookup.js';
 import { readDocumentMetadata, readOrthographies } from './igtConfig.js';
 import { collectMweLinks, bracketPieces, assignLanes } from './mwe.js';
@@ -71,6 +72,7 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
   // NOT embedded on the document's token layers. One combined map keyed by
   // token id serves both word tokens and morphemes (a link may target either).
   const vocabLinksByToken = collectSingleTokenVocabLinks(vocabularies);
+  const entryTypes = collectEntryMorphTypes(vocabularies);
 
   const sortedTokens = (primaryTokenLayer?.tokens || [])
     .map((t) => ({
@@ -128,12 +130,15 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
         metadata: m.metadata || {},
         annotations: annotationsFor(m.id, morphSpanMaps),
         vocabItem,
-        // Effective morph type: a linked lexicon entry's type overrides the
-        // token's own metadata.morphType (the token copy is a cache for
-        // unlinked morphemes and for consumers that don't see the lexicon;
-        // reconcile-on-open keeps it in sync). Read THIS everywhere in the
-        // app — joiners, exports, the popover's Type row, the stem chip.
-        morphType: effectiveMorphType(m.metadata, vocabItem),
+        // Effective morph type: a linked lexicon entry's type (its own, else
+        // its headword's) overrides the token's own metadata.morphType (the
+        // token copy is a cache for unlinked morphemes and for consumers that
+        // don't see the lexicon; reconcile-on-open keeps it in sync while the
+        // entry has a type). Read THIS everywhere in the app — joiners,
+        // exports, the popover's Type row, the stem chip.
+        morphType: effectiveMorphType(m.metadata, vocabItem, entryTypes),
+        // The entry's side of that alone, for reconcile's cache sync.
+        entryMorphType: entryMorphType(vocabItem, entryTypes),
       };
       if (!morphemesByWord.has(parent.id)) morphemesByWord.set(parent.id, []);
       morphemesByWord.get(parent.id).push(entry);
@@ -288,11 +293,33 @@ function attachMwes(sentences, tokenPositionMaps, mweLinks) {
   });
 }
 
+/**
+ * The morph type a linked entry gives a token: the entry's own, else its
+ * headword's (`morphTypeOf`), read through `entryTypes` (item id -> type)
+ * when the caller has built that map over the lexicon. Null when the entry
+ * and everything above it are untyped.
+ */
+export const entryMorphType = (vocabItem, entryTypes = null) => {
+  const resolved = entryTypes?.get(vocabItem?.id);
+  const fromItem = resolved ?? vocabItem?.metadata?.morphType;
+  return typeof fromItem === 'string' && fromItem !== '' ? fromItem : null;
+};
+
 /** A morpheme's effective type: the linked entry's, else the token's own. */
-export const effectiveMorphType = (tokenMetadata, vocabItem) => {
-  const fromItem = vocabItem?.metadata?.morphType;
-  if (typeof fromItem === 'string' && fromItem !== '') return fromItem;
-  return tokenMetadata?.morphType ?? null;
+export const effectiveMorphType = (tokenMetadata, vocabItem, entryTypes = null) =>
+  entryMorphType(vocabItem, entryTypes) ?? tokenMetadata?.morphType ?? null;
+
+/**
+ * item id -> the morph type it goes by, over every vocabulary: its own, else
+ * its headword's. A sense made by hand carries none of its own.
+ */
+export const collectEntryMorphTypes = (vocabularies) => {
+  const out = new Map();
+  for (const vocab of Object.values(vocabularies || {})) {
+    const view = lexiconView(vocab.items || []);
+    for (const it of vocab.items || []) out.set(it.id, view.morphTypeOf(it.id));
+  }
+  return out;
 };
 
 function collectOrthographies(token, primaryTokenLayer) {

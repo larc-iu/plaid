@@ -193,6 +193,46 @@ describe('a word never auto-links to a bound form', () => {
   });
 });
 
+// A sense made by hand carries no morph type of its own: it goes by its
+// headword's, in the bound-form rule and in the phrase index alike.
+describe("a sense goes by its headword's morph type", () => {
+  it('keeps a word off a hand-made sense of an affix, and links the morpheme to it', () => {
+    const vocabs = {
+      v1: {
+        id: 'v1',
+        items: [
+          { id: 'i-head', form: 'ler', metadata: { morphType: 'suffix' } },
+          { id: 'i-sense', form: 'ler', metadata: { parent: 'i-head', senseOrder: 1 } },
+        ],
+      },
+    };
+    expect(buildItemIndex(vocabs).bound.has('i-sense')).toBe(true);
+    const proposals = computeAutoLinkProposals({
+      sentences: sentence([word('w1', 'ler'), word('w2', 'x', null, [morph('m1', 'ler')])]),
+      vocabularies: vocabs,
+      precedent: precedentOf(res([])),
+    });
+    expect(proposals.map((p) => [p.tokenId, p.vocabItemId])).toEqual([['m1', 'i-sense']]);
+  });
+
+  it('proposes the sense of a phrase headword for a run of words, never the headword', () => {
+    const vocabs = {
+      v1: {
+        id: 'v1',
+        items: [
+          { id: 'i-head', form: 'sit down', metadata: { morphType: 'phrase' } },
+          { id: 'i-sense', form: 'sit down', metadata: { parent: 'i-head', senseOrder: 1 } },
+        ],
+      },
+    };
+    const proposals = computeMweProposals({
+      sentences: sentence([word('w1', 'sit'), word('w2', 'down')]),
+      vocabularies: vocabs,
+    });
+    expect(proposals.map((p) => p.vocabItemId)).toEqual(['i-sense']);
+  });
+});
+
 describe('same-kind precedent ranks homonyms; an entry may serve both kinds', () => {
   it('a word follows what words linked, a morpheme what morphemes linked', () => {
     const precedent = precedentOf(

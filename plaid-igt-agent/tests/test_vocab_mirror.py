@@ -206,6 +206,7 @@ SURFACE_EXEMPT = {
     'declaresStatusField': 'the seeding rule, asked by the app and plaid-dict',
     'splitEntryLevel': 'Add headword',
     'groupRankedByHeadword': "the link popover's list",
+    'lexiconView': "one memo over the tree for the app's screens and exports",
     'exampleKey': 'keys a rendering cache',
     # vocabFields.js is mostly the entry FORM: labels, controls, grouping and
     # the seeding of a new vocabulary, none of which the agent draws.

@@ -281,12 +281,12 @@ export const buildSenseTree = (items) => {
  * ("a 1.2", "adidi 1.1", "adidi 1.2.1"). A lone headword with no senses has
  * no number at all. Values are strings, so the label draws them as text,
  * never as subscripts, and never as superscripts, which mark tone. `items`
- * in creation order, as the server returns them.
+ * in creation order, as the server returns them. `tree` may be passed to
+ * save building it twice.
  *
  * @returns {Map<string, string>} item id -> its number, '' for a lone entry
  */
-export const buildItemNumbers = (items) => {
-  const tree = buildSenseTree(items);
+export const buildItemNumbers = (items, tree = buildSenseTree(items)) => {
   const segOf = new Map();
   for (const group of homographGroups(items, tree).values()) {
     if (group.length > 1) group.forEach((r, i) => segOf.set(r.id, String(i + 1)));
@@ -436,6 +436,22 @@ export const morphTypeOf = (tree, id) => {
     cur = tree.parentOf.get(cur) ?? null;
   }
   return null;
+};
+
+/**
+ * Everything a screen or an export derives from one vocabulary's items, built
+ * once: the sense tree, the dotted numbers, the id index, and the morph type
+ * each item goes by. Every consumer that used to build the tree for the
+ * numbers and again for the grouping asks this instead.
+ */
+export const lexiconView = (items) => {
+  const tree = buildSenseTree(items);
+  return {
+    tree,
+    byId: tree.byId,
+    numbers: buildItemNumbers(items, tree),
+    morphTypeOf: (id) => morphTypeOf(tree, id),
+  };
 };
 
 /**

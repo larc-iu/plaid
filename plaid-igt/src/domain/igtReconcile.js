@@ -82,7 +82,9 @@ export const planMorphTypeSync = (sentences) => {
   for (const s of sentences || []) {
     for (const t of s.tokens || []) {
       for (const m of t.morphemes || []) {
-        const fromItem = m.vocabItem?.metadata?.morphType;
+        // The entry's type as derive resolved it (its own, else its
+        // headword's), so a hand-made sense syncs its headword's type.
+        const fromItem = m.entryMorphType ?? m.vocabItem?.metadata?.morphType;
         if (typeof fromItem !== 'string' || fromItem === '') continue;
         if ((m.metadata?.morphType ?? null) === fromItem) continue;
         plans.push({ morphemeId: m.id, morphType: fromItem });

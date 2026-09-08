@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { IgtDocument } from './IgtDocument.js';
 import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
-import { planMorphemeReconcile, planSpanDedup, planVocabLinkDedup } from './igtReconcile.js';
+import {
+  planMorphemeReconcile,
+  planMorphTypeSync,
+  planSpanDedup,
+  planVocabLinkDedup,
+} from './igtReconcile.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 
 const makeDoc = (raw, client) =>
@@ -72,6 +77,38 @@ describe('planMorphemeReconcile', () => {
       orphanMorphemeIds: [],
       deletedAnnotatedOrphans: 0,
     });
+  });
+});
+
+describe('planMorphTypeSync', () => {
+  // derive resolves an entry's type through its headword and hands it over
+  // as `entryMorphType`; a sense with none of its own still syncs the cache.
+  it("writes the entry's resolved type onto a morpheme whose cache differs", () => {
+    const sense = { id: 's1', form: 'ler', metadata: { parent: 'h1' } };
+    const sentences = [
+      {
+        tokens: [
+          {
+            morphemes: [
+              {
+                id: 'm1',
+                metadata: { morphType: null },
+                vocabItem: sense,
+                entryMorphType: 'suffix',
+              },
+              {
+                id: 'm2',
+                metadata: { morphType: 'suffix' },
+                vocabItem: sense,
+                entryMorphType: 'suffix',
+              },
+              { id: 'm3', metadata: { morphType: 'stem' }, vocabItem: sense, entryMorphType: null },
+            ],
+          },
+        ],
+      },
+    ];
+    expect(planMorphTypeSync(sentences)).toEqual([{ morphemeId: 'm1', morphType: 'suffix' }]);
   });
 });
 
