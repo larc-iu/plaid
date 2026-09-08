@@ -7,6 +7,8 @@
 // not yet transcribed shows its placeholder here, which is the fact its owner
 // most needs to see before importing 665 of them.
 
+import { Upload } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { formatBytes } from '@/utils/formatBytes';
 import { Panel } from '../ImportPanels.jsx';
 
@@ -23,7 +25,7 @@ const previewOf = (doc) => {
   });
 };
 
-export const ElanDocumentsPanel = ({ build }) => {
+export const ElanDocumentsPanel = ({ build, onAddRecordings = null }) => {
   const documents = build?.documents ?? [];
   if (!documents.length) return null;
   const listed = documents.slice(0, LIST_LIMIT);
@@ -37,11 +39,20 @@ export const ElanDocumentsPanel = ({ build }) => {
             sentence{doc.sentences.length === 1 ? '' : 's'}
             {doc.mediaFile
               ? ` · ${doc.mediaFile.name}${doc.mediaFile.size ? ` (${formatBytes(doc.mediaFile.size)})` : ''}`
-              : ''}
+              : // The .eaf names a recording it does not carry, and none was
+                // chosen: say so per document rather than only in a warning.
+                doc.metadata?.['Media file']
+                ? ' · no recording chosen'
+                : ''}
           </li>
         ))}
         {documents.length > listed.length && <li>and {documents.length - listed.length} more</li>}
       </ul>
+      {onAddRecordings && documents.some((doc) => !doc.mediaFile) && (
+        <Button variant="outline" size="sm" className="mt-2" onClick={onAddRecordings}>
+          <Upload className="h-4 w-4" /> Add recordings
+        </Button>
+      )}
       {preview.length > 0 && (
         <>
           <p className="mt-2 text-xs font-medium">

@@ -6,6 +6,9 @@ import { clampResize } from '../../../domain/alignmentTimes.js';
 const TIMELINE_HEIGHT = 100;
 const WAVEFORM_AVAILABLE_HEIGHT = 90;
 const MIN_BAR_HEIGHT = 2;
+// A wheel event in line mode (Firefox, some Windows mice) reports lines, not
+// pixels. Roughly one text line.
+const WHEEL_LINE_HEIGHT = 16;
 const WAVEFORM_CACHE_PREFIX = 'plaid_waveform_';
 const WAVEFORM_CACHE_VERSION = 'v2_'; // Increment when waveform generation logic changes
 
@@ -442,10 +445,21 @@ export const useTimelineOperations = (mediaOps) => {
           handlePixelsPerSecondChange(newPixelsPerSecond);
         }
       } else {
-        // Normal scroll: pan left/right
-        const scrollAmount = 50; // pixels to scroll
-        const delta = event.deltaY > 0 ? scrollAmount : -scrollAmount;
-        container.scrollLeft += delta;
+        // Pan left/right by the distance the gesture reports.
+        //
+        // A trackpad swipe carries BOTH axes and a mouse wheel only deltaY, so
+        // whichever is larger is the one the hand meant. Reading deltaY alone
+        // through `deltaY > 0 ? +50 : -50` made every horizontal swipe on a
+        // Mac, where deltaY is then 0, take the negative branch: the timeline
+        // crawled to 0:00 whichever way the fingers went.
+        const scale =
+          event.deltaMode === 1
+            ? WHEEL_LINE_HEIGHT
+            : event.deltaMode === 2
+              ? container.clientWidth
+              : 1;
+        const raw = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+        container.scrollLeft += raw * scale;
       }
     };
 

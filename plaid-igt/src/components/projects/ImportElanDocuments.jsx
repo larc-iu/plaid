@@ -49,7 +49,7 @@ import { nodeLabel } from '../../import/elan/schema';
 import { suggestFieldNames } from '../../import/elan/tierNaming';
 import { defaultFieldName } from '../../import/elan/buildDocuments';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-import { useElanBatch } from './elan/useElanBatch';
+import { partitionPicked, useElanBatch } from './elan/useElanBatch';
 import {
   ElanBuildSummary,
   ElanTierReview,
@@ -122,7 +122,9 @@ export const ImportElanDocuments = () => {
   }, [client, projectId]);
 
   const handleFiles = async (fileList) => {
-    setStage('parsing');
+    // Recordings added from the review step carry no .eaf, and re-reading is
+    // what would throw the tier mapping away.
+    if (partitionPicked(fileList).eafs.length) setStage('parsing');
     try {
       await batch.readFiles(fileList);
       setStage('review');
@@ -258,6 +260,18 @@ export const ImportElanDocuments = () => {
 
   return (
     <div className="tw mx-auto max-w-3xl px-4 py-8">
+      {/* Outside the pick step: the review step reopens it to add recordings. */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".eaf,audio/*,video/*"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          handleFiles(e.target.files);
+          e.target.value = '';
+        }}
+      />
       <div className="flex flex-col gap-6">
         <nav className="flex items-center gap-2 text-sm text-muted-foreground">
           <Link to="/projects" className="hover:text-foreground hover:underline">
@@ -302,14 +316,6 @@ export const ImportElanDocuments = () => {
               Drop your .eaf files here, or choose them below. Include the recordings to upload
               those too.
             </p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".eaf,audio/*,video/*"
-              multiple
-              className="hidden"
-              onChange={(e) => handleFiles(e.target.files)}
-            />
             <Button onClick={() => fileInputRef.current?.click()}>Choose files</Button>
           </div>
         )}
@@ -365,7 +371,10 @@ export const ImportElanDocuments = () => {
                   />
                 )}
 
-                <ElanDocumentsPanel build={batch.build} />
+                <ElanDocumentsPanel
+                  build={batch.build}
+                  onAddRecordings={editable ? () => fileInputRef.current?.click() : null}
+                />
 
                 <ElanBuildSummary batch={batch} />
 

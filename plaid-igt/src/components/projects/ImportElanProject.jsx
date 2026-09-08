@@ -32,7 +32,7 @@ import { executeProjectSetup } from './setup/executeSetup';
 import { markImportStarted, markImportFinished } from '../../domain/igtConfig';
 import { useResumeImport } from '@/hooks/useResumeImport';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-import { useElanBatch } from './elan/useElanBatch';
+import { partitionPicked, useElanBatch } from './elan/useElanBatch';
 import { ElanBuildSummary, ElanTierReview, SchemaMismatch } from './elan/ElanTierReview.jsx';
 import { ElanMediaPanel } from './elan/ElanMediaPanel.jsx';
 import { ElanDocumentsPanel } from './elan/ElanDocumentsPanel.jsx';
@@ -57,7 +57,9 @@ export const ImportElanProject = () => {
   const stopRef = useRef(false);
 
   const handleFiles = async (fileList) => {
-    setStage('parsing');
+    // Recordings added from the review step carry no .eaf, and re-reading is
+    // what would throw the tier mapping away.
+    if (partitionPicked(fileList).eafs.length) setStage('parsing');
     try {
       await batch.readFiles(fileList);
       setProjectName((name) => name || 'ELAN corpus');
@@ -146,6 +148,18 @@ export const ImportElanProject = () => {
 
   return (
     <div className="tw mx-auto max-w-3xl px-4 py-8">
+      {/* Outside the pick step: the review step reopens it to add recordings. */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".eaf,audio/*,video/*"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          handleFiles(e.target.files);
+          e.target.value = '';
+        }}
+      />
       <div className="flex flex-col gap-6">
         <nav className="flex items-center gap-2 text-sm text-muted-foreground">
           <Link to="/projects" className="hover:text-foreground hover:underline">
@@ -204,14 +218,6 @@ export const ImportElanProject = () => {
               Drop your .eaf files here, or choose them below. Include the recordings to upload
               those too.
             </p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".eaf,audio/*,video/*"
-              multiple
-              className="hidden"
-              onChange={(e) => handleFiles(e.target.files)}
-            />
             <Button onClick={() => fileInputRef.current?.click()}>Choose files</Button>
           </div>
         )}
@@ -250,7 +256,10 @@ export const ImportElanProject = () => {
 
                 <ElanTierReview batch={batch} editable={editable} />
 
-                <ElanDocumentsPanel build={batch.build} />
+                <ElanDocumentsPanel
+                  build={batch.build}
+                  onAddRecordings={editable ? () => fileInputRef.current?.click() : null}
+                />
 
                 <ElanBuildSummary batch={batch} />
 
