@@ -523,13 +523,13 @@ def _num_key(num: str):
 
 
 def _dict_hits(view: LexView, form: str, suffix: Optional[str], deep: bool = False) -> List[dict]:
-    """The items a form names in a lexicon. Senses share their entry's
-    headword, so a bare form means the ENTRY (or the
-    entries, where several share it) and never the pile of its senses; a "#"
-    suffix is the number the user sees, which tells apart both the senses under
-    an entry ("kwatha#1.2") and entries that share a form ("gam#2"). A form that
-    heads no entry falls back to any item carrying it, so a sense renamed away
-    from its headword stays reachable.
+    """The items a form names in a lexicon. Senses share their entry's headword,
+    so a bare form means the ENTRY (or the entries, where several share it) and
+    never the pile of its senses; a "#" suffix is the number the user sees,
+    which tells apart both the senses under an entry ("kwatha#1.2") and entries
+    that share a form ("gam#2"). A form that heads no entry falls back to any
+    item carrying it, so a sense renamed away from its headword stays
+    reachable.
 
     ``deep`` widens a bare form to the senses as well. It is for a caller that
     has something else to tell them apart with, such as entry_gloss: the gloss
