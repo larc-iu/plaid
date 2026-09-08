@@ -7,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { Pause, Play, Trash2 } from 'lucide-react';
+import { Pause, Play, Trash2, X } from 'lucide-react';
 import { cpSlice, provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,6 +44,8 @@ import { getStickySpeaker, setStickySpeaker } from './stickySpeaker.js';
 // whatever character the layout would have typed.
 
 const SPEAKER_LIST_ID = 'transcript-speaker-options';
+// One frozen array, so "no proposals" is a stable dependency.
+const EMPTY = [];
 const timeBeginOf = (t) => t.metadata?.timeBegin ?? 0;
 const timeEndOf = (t) => t.metadata?.timeEnd ?? timeBeginOf(t);
 const byTime = (a, b) => timeBeginOf(a) - timeBeginOf(b);
@@ -311,6 +313,131 @@ const SegmentRow = memo(function SegmentRow({
 // The row that adds a segment by ear: it runs from the end of the last
 // segment to wherever playback is when Enter is pressed. Adding a segment
 // earlier in the recording is the timeline's job (drag over the stretch).
+// A region speech detection proposed. It holds times and nothing else: no
+// token, no text, nothing on the server. Typing into it and pressing Enter
+// runs the ordinary createAlignment with these times, at which point it stops
+// being a proposal and the row becomes a segment row. Discarding it just
+// forgets it. Dashed, like the new-segment row, because neither is data yet.
+const ProposalRow = memo(function ProposalRow({
+  proposal,
+  active,
+  playing,
+  onFocusRow,
+  onAccept,
+  onAdvance,
+  onDiscard,
+  onPlayToggle,
+  registerText,
+}) {
+  const [draft, setDraft] = useState('');
+  const [speaker, setSpeaker] = useState(getStickySpeaker);
+  const [busy, setBusy] = useState(false);
+  const ref = useRef(null);
+
+  useLayoutEffect(() => autoGrow(ref.current), [draft]);
+
+  const submit = async () => {
+    if (busy || !draft.trim()) return;
+    setBusy(true);
+    try {
+      const ok = await onAccept({
+        text: draft.trim(),
+        timeBegin: proposal.timeBegin,
+        timeEnd: proposal.timeEnd,
+        speaker: speaker.trim(),
+      });
+      if (ok) {
+        setStickySpeaker(speaker);
+        // This row is about to unmount, so focus has to move before it does,
+        // exactly as it does after a segment-text commit.
+        onAdvance(proposal.timeBegin);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onKeyDown = (e) => {
+    if (isPlayChord(e)) {
+      e.preventDefault();
+      onPlayToggle(proposal);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      submit();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setDraft('');
+    }
+  };
+
+  return (
+    <div
+      data-segment-id={proposal.id}
+      data-vad-proposal-row={proposal.id}
+      className={cn(
+        'grid grid-cols-[auto_minmax(6rem,8rem)_1fr_auto] items-start gap-2 rounded-md border border-dashed px-2 py-1.5',
+        active && 'bg-muted/60',
+      )}
+      onFocus={() => onFocusRow(proposal)}
+    >
+      <div className={TIME_COLUMN}>
+        <span>{formatTime(proposal.timeBegin)}</span>
+        <span>{formatTime(proposal.timeEnd)}</span>
+      </div>
+      <Input
+        value={speaker}
+        list={SPEAKER_LIST_ID}
+        placeholder="Speaker"
+        compose
+        aria-label={`Proposed segment at ${formatTime(proposal.timeBegin)}, speaker`}
+        autoComplete="off"
+        className="h-8 text-xs"
+        onChange={(e) => setSpeaker(e.target.value)}
+        onKeyDown={onKeyDown}
+      />
+      <Textarea
+        ref={(el) => {
+          ref.current = el;
+          registerText(proposal.id, el);
+          // No autoGrow here: the layout effect below already sizes the box on
+          // mount and on every keystroke. Calling it from the ref as well cost
+          // a forced reflow per row on every render, which a long recording's
+          // worth of proposals turns into seconds.
+        }}
+        value={draft}
+        rows={1}
+        spellCheck={false}
+        placeholder="Proposed segment"
+        compose
+        aria-label={`Proposed segment at ${formatTime(proposal.timeBegin)}, text`}
+        className="min-h-8 resize-none py-1.5 text-sm"
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={onKeyDown}
+      />
+      <div className="flex gap-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          aria-label={playing ? 'Pause segment' : 'Play segment'}
+          onClick={() => onPlayToggle(proposal)}
+        >
+          {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          aria-label="Discard proposed segment"
+          onClick={() => onDiscard(proposal.id)}
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+});
+
 const NewSegmentRow = memo(function NewSegmentRow({
   prevEnd,
   currentTime,
@@ -438,18 +565,46 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
   const shownTime = useThrottledValue(currentTime, RUNNING_TIME_MS, { bypass: !isPlaying });
   const readCurrentTime = useCallback(() => opsRef.current.getCurrentTime?.() ?? null, []);
 
+  // Speech detection's proposals sit in this list among the real segments, in
+  // time order, because that is the order somebody transcribing works in. They
+  // are not offered to a reader, who could not accept one.
+  const proposals = readOnly ? EMPTY : mediaOps.vad?.proposals || EMPTY;
+
+  // One list, both kinds, by time. `index` counts real segments only, so the
+  // spoken row labels stay "Segment 1, 2, 3" whatever is proposed between them.
+  const rows = useMemo(() => {
+    let index = 0;
+    const items = segments.map((token) => ({
+      kind: 'segment',
+      key: token.id,
+      time: timeBeginOf(token),
+      token,
+      index: index++,
+    }));
+    for (const proposal of proposals) {
+      items.push({ kind: 'proposal', key: proposal.id, time: proposal.timeBegin, proposal });
+    }
+    return items.sort((a, b) => a.time - b.time);
+  }, [segments, proposals]);
+
   const activeId = useMemo(() => {
     const hit = segments.find((t) => timeBeginOf(t) <= currentTime && currentTime < timeEndOf(t));
-    return hit?.id ?? null;
-  }, [segments, currentTime]);
+    if (hit) return hit.id;
+    const proposal = proposals.find((p) => p.timeBegin <= currentTime && currentTime < p.timeEnd);
+    return proposal?.id ?? null;
+  }, [segments, proposals, currentTime]);
 
   const playingId = useMemo(() => {
     if (!isPlaying || !playingSelection) return null;
     const hit = segments.find(
       (t) => timeBeginOf(t) === playingSelection.start && timeEndOf(t) === playingSelection.end,
     );
-    return hit?.id ?? null;
-  }, [segments, isPlaying, playingSelection]);
+    if (hit) return hit.id;
+    const proposal = proposals.find(
+      (p) => p.timeBegin === playingSelection.start && p.timeEnd === playingSelection.end,
+    );
+    return proposal?.id ?? null;
+  }, [segments, proposals, isPlaying, playingSelection]);
 
   const registerText = useCallback((id, el) => {
     if (el) textRefs.current.set(id, el);
@@ -546,6 +701,10 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
     [doc],
   );
 
+  // Used by the new-segment row and by accepting a proposal: a detected region
+  // becomes a segment by exactly the path a hand-drawn one does, and the
+  // proposal then falls out of the list because a real segment now covers that
+  // stretch of time.
   const handleCreate = useCallback(
     async (args) => {
       await whenIdle(doc);
@@ -556,11 +715,49 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
 
   const handleDelete = useCallback((id) => opsRef.current.handleDeleteAlignment(id), []);
 
+  // Entering a proposal selects and (by preference) plays its stretch, the
+  // same as entering a segment row.
+  const handleFocusProposal = useCallback(
+    (proposal) => {
+      const ops = opsRef.current;
+      const range = { start: proposal.timeBegin, end: proposal.timeEnd };
+      ops.setPopoverOpened(false);
+      ops.setSelection(range);
+      if (ops.autoPlayOnFocus) ops.playRange(range);
+      revealRow(proposal.id);
+    },
+    [revealRow],
+  );
+
+  const handlePlayToggleProposal = useCallback((proposal) => {
+    const ops = opsRef.current;
+    const range = { start: proposal.timeBegin, end: proposal.timeEnd };
+    const isThis =
+      ops.playingSelection &&
+      ops.playingSelection.start === range.start &&
+      ops.playingSelection.end === range.end;
+    if (ops.isPlaying && isThis) ops.pausePlayback();
+    else ops.playRangeFromHere(range);
+  }, []);
+
+  const handleDiscardProposal = useCallback((id) => opsRef.current.vad?.dismiss(id), []);
+
   // After a commit the edited row may be gone (new token id), so the successor
-  // is found by time on the document itself, which is always current.
+  // is found by time rather than by position. Segments come from the document,
+  // which is always current; the proposals are last render's, re-filtered here
+  // against the live segments so the one just accepted is not offered back.
   const handleAdvance = useCallback(
     (timeBegin) => {
-      const next = [...doc.alignmentTokens].sort(byTime).find((t) => timeBeginOf(t) > timeBegin);
+      const tokens = doc.alignmentTokens || [];
+      const live = (opsRef.current.vad?.proposals || []).filter(
+        (p) => !tokens.some((t) => timeBeginOf(t) < p.timeEnd && timeEndOf(t) > p.timeBegin),
+      );
+      const next = [
+        ...tokens.map((t) => ({ id: t.id, time: timeBeginOf(t) })),
+        ...live.map((p) => ({ id: p.id, time: p.timeBegin })),
+      ]
+        .sort((a, b) => a.time - b.time)
+        .find((c) => c.time > timeBegin);
       const el = next ? textRefs.current.get(next.id) : newTextRef.current;
       el?.focus({ preventScroll: true }); // the row's own scroll box follows; the page does not
     },
@@ -586,14 +783,19 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
   useEffect(() => {
     if (!segmentFocusRequest) return;
     const token = doc.alignmentTokens.find((t) => t.id === segmentFocusRequest.id);
-    if (!token) return;
-    const el = textRefs.current.get(token.id);
+    // A proposal block on the timeline asks for its row the same way a segment
+    // does, so the id may name either kind.
+    const proposal = token ? null : proposals.find((p) => p.id === segmentFocusRequest.id);
+    if (!token && !proposal) return;
+    const el = textRefs.current.get(segmentFocusRequest.id);
     if (el) {
       el.focus({ preventScroll: true });
       const n = el.value.length;
       el.setSelectionRange(n, n);
-    } else {
+    } else if (token) {
       handleFocusRow(token);
+    } else {
+      handleFocusProposal(proposal);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [segmentFocusRequest]);
@@ -636,32 +838,47 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
         ref={listRef}
         className="flex max-h-[45vh] min-h-[6rem] flex-col gap-1.5 overflow-y-auto pr-1"
       >
-        {segments.length === 0 && (
+        {rows.length === 0 && (
           <p className="py-2 text-sm text-muted-foreground">
             {readOnly
               ? 'No segments.'
-              : 'No segments yet. Add one below, drag on the timeline, or run a transcription service.'}
+              : 'No segments yet. Add one below, drag on the timeline, detect speech, or run a transcription service.'}
           </p>
         )}
-        {segments.map((token, index) => (
-          <SegmentRow
-            key={token.id}
-            token={token}
-            index={index}
-            text={cpSlice(body, token.begin, token.end)}
-            active={token.id === activeId}
-            playing={token.id === playingId}
-            readOnly={readOnly}
-            duration={duration}
-            onFocusRow={handleFocusRow}
-            onCommit={handleCommit}
-            onCommitTime={handleCommitTime}
-            onAdvance={handleAdvance}
-            onDelete={handleDelete}
-            onPlayToggle={handlePlayToggle}
-            registerText={registerText}
-          />
-        ))}
+        {rows.map((row) =>
+          row.kind === 'segment' ? (
+            <SegmentRow
+              key={row.key}
+              token={row.token}
+              index={row.index}
+              text={cpSlice(body, row.token.begin, row.token.end)}
+              active={row.token.id === activeId}
+              playing={row.token.id === playingId}
+              readOnly={readOnly}
+              duration={duration}
+              onFocusRow={handleFocusRow}
+              onCommit={handleCommit}
+              onCommitTime={handleCommitTime}
+              onAdvance={handleAdvance}
+              onDelete={handleDelete}
+              onPlayToggle={handlePlayToggle}
+              registerText={registerText}
+            />
+          ) : (
+            <ProposalRow
+              key={row.key}
+              proposal={row.proposal}
+              active={row.proposal.id === activeId}
+              playing={row.proposal.id === playingId}
+              onFocusRow={handleFocusProposal}
+              onAccept={handleCreate}
+              onAdvance={handleAdvance}
+              onDiscard={handleDiscardProposal}
+              onPlayToggle={handlePlayToggleProposal}
+              registerText={registerText}
+            />
+          ),
+        )}
       </div>
       {!readOnly && (
         <div className="mt-1.5">

@@ -182,6 +182,28 @@ Speakers are labeled per segment, and the timeline colors each speaker's segment
 Two segments may overlap in time only when they carry different speaker labels, which is how cross-talk is recorded.
 A dragged edge stops at any segment it may not overlap.
 
+=== Speech detection
+
+The waveform button in the **Recording** header runs speech detection over the recording and proposes where the utterances are.
+It runs in the browser, so it needs no service and no connection once the page has loaded.
+The first run downloads the model, and the browser keeps it for later.
+
+A proposal is not a segment.
+It is a stretch of time with no text: dashed on the timeline, and a dashed row in the transcript in its place in time order.
+Type into a proposal and press Enter, and it becomes an ordinary segment with those times.
+The **×** on the row discards it.
+Nothing is written to the document until you accept one.
+
+The settings in the dialog change what is proposed without running the model again:
+
+* **Speech threshold**: how sure the model must be before a moment counts as speech. Raise it on a noisy recording.
+* **Shortest silence**: a pause shorter than this does not end a segment.
+* **Shortest segment**: a stretch of speech shorter than this is dropped.
+* **Longest segment**: a longer stretch is split at the widest pause inside it.
+* **Padding**: added to each end of a segment.
+
+Detection leaves any stretch that already has a segment alone, so you can run it again after using some of what it proposed.
+
 With a transcription service connected, a model can take the first pass.
 Its segments are marked as machine-made until you edit or confirm them (see <<_services>>).
 
@@ -794,6 +816,7 @@ Every shortcut that takes Ctrl also takes Cmd on a Mac.
 | **Shift+Space** | Play or pause the segment you are in, or the selected stretch of the timeline.
 | **Shift+←** / **Shift+→** | Move playback one second back or forward.
 | **Enter** / **Esc** (transcript row) | Save the row and move to the next, or put the row back the way it was.
+| **Enter** (proposed row) | Make a segment of the proposal, with the text you typed.
 | **Tab** (transcript row) | Move to the next field in the row.
 | **↑** / **↓** (segment time) | Step the digit box under the caret: milliseconds by 10, or 100 with Shift. **←** / **→** move between boxes.
 | **Ctrl/Cmd+Enter** / **Esc** (new-segment popover) | Save the segment, or cancel it.

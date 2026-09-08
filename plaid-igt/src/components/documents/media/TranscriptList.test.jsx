@@ -362,3 +362,86 @@ describe('TranscriptList', () => {
     await r.unmount();
   });
 });
+
+// Speech detection's proposals share this list with the real segments. What
+// matters is that they sit in time order, hold nothing until typed into, and
+// go through the same createAlignment a hand-drawn segment does.
+describe('TranscriptList proposals', () => {
+  const PROPOSALS = [
+    { id: 'vad-1', timeBegin: 0.75, timeEnd: 1.4 },
+    { id: 'vad-2', timeBegin: 3.2, timeEnd: 4.0 },
+  ];
+  const withVad = (over = {}) =>
+    makeOps({
+      vad: { proposals: PROPOSALS, dismiss: vi.fn(), ...over },
+    });
+  const proposalRows = (root) => all(root, '[data-vad-proposal-row]');
+  const proposalText = (root, id) => root.querySelector(`[data-vad-proposal-row="${id}"] textarea`);
+
+  it('places each proposal in time order among the segments', async () => {
+    const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+    const r = await renderComponent(element(doc, withVad()));
+    // Segment a [0, 1.5], proposal 1 at 0.75, segment b [1.5, 3], proposal 2 at 3.2.
+    const kinds = all(r.container, '[data-segment-id]').map((row) =>
+      row.hasAttribute('data-vad-proposal-row') ? 'proposal' : 'segment',
+    );
+    expect(kinds).toEqual(['segment', 'proposal', 'segment', 'proposal']);
+    expect(proposalRows(r.container)).toHaveLength(2);
+    // The count in the header is about real segments, not proposals.
+    expect(r.container.textContent).toContain('2 segments');
+  });
+
+  it('shows a proposal empty, and writes nothing until it is typed into', async () => {
+    const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+    const r = await renderComponent(element(doc, withVad()));
+    const box = proposalText(r.container, 'vad-1');
+    expect(box.value).toBe('');
+    press(box, 'Enter');
+    await settle();
+    expect(doc.createAlignment).not.toHaveBeenCalled();
+  });
+
+  it('creates a segment with the proposed times when one is typed into', async () => {
+    const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+    const r = await renderComponent(element(doc, withVad()));
+    const box = proposalText(r.container, 'vad-2');
+    setValue(box, '  a new utterance  ');
+    press(box, 'Enter');
+    await settle();
+    expect(doc.createAlignment).toHaveBeenCalledWith({
+      text: 'a new utterance',
+      timeBegin: 3.2,
+      timeEnd: 4.0,
+      speaker: '',
+    });
+  });
+
+  it('plays the proposed stretch on entry, like a segment row', async () => {
+    const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+    const ops = withVad();
+    const r = await renderComponent(element(doc, ops));
+    await r.step(() => proposalText(r.container, 'vad-1').focus());
+    expect(ops.setSelection).toHaveBeenCalledWith({ start: 0.75, end: 1.4 });
+    expect(ops.playRange).toHaveBeenCalledWith({ start: 0.75, end: 1.4 });
+  });
+
+  it('discards a proposal without touching the document', async () => {
+    const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+    const ops = withVad();
+    const r = await renderComponent(element(doc, ops));
+    r.container
+      .querySelector(
+        '[data-vad-proposal-row="vad-1"] button[aria-label="Discard proposed segment"]',
+      )
+      .click();
+    await settle();
+    expect(ops.vad.dismiss).toHaveBeenCalledWith('vad-1');
+    expect(doc.createAlignment).not.toHaveBeenCalled();
+  });
+
+  it('offers no proposals to a reader', async () => {
+    const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+    const r = await renderComponent(element(doc, withVad(), true));
+    expect(proposalRows(r.container)).toHaveLength(0);
+  });
+});

@@ -17,6 +17,7 @@ import {
 import { formatTime } from './formatTime.js';
 import { RUNNING_TIME_MS, useThrottledValue } from './useThrottledValue.js';
 import { MediaHelp, MediaHelpButton } from './MediaHelp.jsx';
+import { VadDetection } from './VadDetection.jsx';
 import { PLAYBACK_RATE_MIN, PLAYBACK_RATE_MAX, PLAYBACK_RATE_STEP } from './useMediaOperations.js';
 
 export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
@@ -136,6 +137,11 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
           </div>
           {mediaUrl && (
             <div className="flex items-center gap-2">
+              <VadDetection
+                vad={mediaOps.vad}
+                readOnly={readOnly}
+                disabled={mediaOps.isLoadingMedia || !mediaOps.mediaBlob}
+              />
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button

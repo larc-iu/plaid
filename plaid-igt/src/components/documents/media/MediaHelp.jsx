@@ -71,6 +71,12 @@ export function MediaHelp() {
         <Kbd>Enter</Kbd> saves, <Kbd>Esc</Kbd> cancels · <Kbd>Ctrl</Kbd>/<Kbd>Cmd</Kbd>+wheel zooms,
         wheel pans
       </Row>
+      <Row label="Detection">
+        the waveform button in the Recording header proposes where the utterances are, in the
+        browser · a proposal is dashed on the timeline and dashed in the transcript, and holds no
+        text yet · type into it and <Kbd>Enter</Kbd> makes it a segment · <Kbd>×</Kbd> discards it ·
+        the dialog's settings re-propose without running the model again
+      </Row>
       <Row label="Speakers">
         a label per segment · the timeline colors each speaker alike · a new segment keeps the last
         speaker · two segments may overlap in time only when their speakers differ (cross-talk)

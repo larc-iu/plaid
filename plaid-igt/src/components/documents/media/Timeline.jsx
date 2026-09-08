@@ -59,6 +59,35 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
     [doc.alignmentTokens],
   );
 
+  const proposals = mediaOps.vad?.proposals;
+  const requestSegmentFocus = mediaOps.requestSegmentFocus;
+  const proposalBlocks = React.useMemo(
+    () =>
+      (proposals || []).map((p) => (
+        <div
+          key={p.id}
+          data-vad-proposal={p.id}
+          style={{
+            position: 'absolute',
+            left: `${p.timeBegin * pixelsPerSecond}px`,
+            width: `${Math.max(1, (p.timeEnd - p.timeBegin) * pixelsPerSecond)}px`,
+            top: 0,
+            bottom: 0,
+            backgroundColor: 'hsl(var(--primary) / 0.06)',
+            border: '1px dashed hsl(var(--primary) / 0.7)',
+            cursor: 'pointer',
+            zIndex: 2,
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            requestSegmentFocus(p.id);
+          }}
+          title={`Proposed segment (${formatTime(p.timeBegin)} - ${formatTime(p.timeEnd)})`}
+        />
+      )),
+    [proposals, pixelsPerSecond, requestSegmentFocus],
+  );
+
   // Use timeline operations hook directly
   const timelineOps = useTimelineOperations(mediaOps);
   const {
@@ -317,6 +346,14 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                   zIndex: 10,
                 }}
               />
+
+              {/* Proposed segments from speech detection. Not data: they hold
+                  no text, nothing has been written, and one becomes a real
+                  segment only when it is typed into. Drawn behind the real
+                  ones, outlined rather than filled, so the difference is
+                  visible at a glance. Memoized so the playhead moving does not
+                  re-render a long recording's worth of them. */}
+              {proposalBlocks}
 
               {/* Alignment tokens */}
               {getVisibleTokens().map((token, index) => {

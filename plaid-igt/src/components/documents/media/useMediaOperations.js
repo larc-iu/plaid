@@ -7,6 +7,7 @@ import { useServiceRequest } from '../../documents/hooks/useServiceRequest.js';
 import { useServiceParams } from '../../documents/hooks/useServiceParams.js';
 import { whenIdle } from '../../../domain/whenIdle.js';
 import { useConfirm } from '@/components/shared/ConfirmProvider';
+import { useVadProposals } from './useVadProposals.js';
 import {
   encodeServiceSelection,
   readSpotDefault,
@@ -205,6 +206,14 @@ export const useMediaOperations = () => {
   // Get alignment token layer and tokens
   const alignmentTokenLayer = doc.layerInfo.alignmentTokenLayer;
   const alignmentTokens = doc.alignmentTokens || [];
+
+  // Speech detection. Proposals live in the tab, never on the server, until
+  // someone types into one. See useVadProposals.js for why.
+  const vad = useVadProposals({
+    mediaBlob,
+    mediaKey: mediaSrcUrl,
+    alignmentTokens,
+  });
 
   // Media playback operations
   const setMediaElement = useCallback((element) => {
@@ -837,6 +846,9 @@ export const useMediaOperations = () => {
 
     // Segment operations
     handleDeleteAlignment,
+
+    // Speech detection (proposals, not data)
+    vad,
 
     // ASR operations
     handleAsrDropdownInteraction,

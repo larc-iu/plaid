@@ -37,6 +37,7 @@
     "lit-html": "^3.3.3",
     "lucide-react": "^1.17.0",
     "marked": "^18.0.11",
+    "onnxruntime-web": "^1.29.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.6.2",
