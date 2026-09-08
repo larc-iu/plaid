@@ -23,6 +23,9 @@ export function parseFieldName(name) {
 // parentheses ("Translation (free)", "Gloss (broad)").
 const LANG_TAG = /^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$/;
 
+/** Whether a string is shaped like a language tag on its own ("nl", "oni"). */
+export const isLangTag = (s) => LANG_TAG.test(String(s ?? ''));
+
 /**
  * The writing system a field name declares, or null. Unlike parseFieldName this
  * one judges the suffix: only a language-tag-shaped one counts, because a wrong
@@ -30,5 +33,5 @@ const LANG_TAG = /^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$/;
  */
 export const fieldNameLang = (name) => {
   const { ws } = parseFieldName(name);
-  return ws && LANG_TAG.test(ws) ? ws : null;
+  return ws && isLangTag(ws) ? ws : null;
 };

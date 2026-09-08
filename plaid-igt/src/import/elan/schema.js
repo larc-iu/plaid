@@ -382,7 +382,7 @@ export function validateRoles(nodes, roles) {
   const problems = [];
   const of = (role) => nodes.filter((n) => roles[n.key] === role);
   if (of(ROLES.UTTERANCE).length === 0) {
-    problems.push('Choose which tier holds the utterances. Every import needs at least one.');
+    problems.push('Choose which tier holds the sentences. Every import needs one.');
   }
   if (of(ROLES.MORPHEME).length && !of(ROLES.WORD).length) {
     problems.push('A morpheme tier needs a word tier above it.');
@@ -394,7 +394,7 @@ export function validateRoles(nodes, roles) {
     node.parentKey ? roles[byKey.get(node.parentKey)?.key] : undefined;
   for (const node of of(ROLES.WORD)) {
     if (roleOfParent(node) !== ROLES.UTTERANCE) {
-      problems.push(`"${nodeLabel(node)}" is words, so its parent tier must be utterances.`);
+      problems.push(`"${nodeLabel(node)}" is words, so its parent tier must be sentences.`);
     }
   }
   for (const node of of(ROLES.MORPHEME)) {

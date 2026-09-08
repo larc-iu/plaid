@@ -46,6 +46,7 @@ import {
   similarField,
 } from '../../import/elan/fieldTargets';
 import { nodeLabel } from '../../import/elan/schema';
+import { suggestFieldNames } from '../../import/elan/tierNaming';
 import { defaultFieldName } from '../../import/elan/buildDocuments';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useElanBatch } from './elan/useElanBatch';
@@ -76,12 +77,25 @@ export const ImportElanDocuments = () => {
 
   const batch = useElanBatch({
     skipEmptyTiers: true,
-    // Pre-map a tier onto the project's own field when the two names read
-    // alike; otherwise the tier keeps its name and the picker is left to say
-    // where it goes.
-    nameFor: (node, role) => {
-      const scope = SCOPE_OF_ROLE[role];
-      return scope ? similarField(fields, scope, defaultFieldName(node)) : null;
+    // Place every tier we can on the project's own fields: first by the
+    // FieldWorks tier-naming convention (Translation-gls-nl → "Translation
+    // (nl)"), then by a name that simply reads alike. What is left keeps the
+    // tier's name and waits for the picker.
+    namesFor: (nodes, roles) => {
+      const entries = nodes
+        .map((node) => ({
+          key: node.key,
+          name: defaultFieldName(node),
+          scope: SCOPE_OF_ROLE[roles[node.key]],
+        }))
+        .filter((e) => e.scope);
+      const placed = suggestFieldNames(entries, fields);
+      for (const e of entries) {
+        if (placed[e.key]) continue;
+        const alike = similarField(fields, e.scope, e.name);
+        if (alike) placed[e.key] = alike;
+      }
+      return placed;
     },
   });
 

@@ -187,7 +187,7 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
   const warnings = [];
 
   const utteranceNodes = byRole.get(ROLES.UTTERANCE) || [];
-  if (!utteranceNodes.length) throw new Error('No tier is mapped to the utterances.');
+  if (!utteranceNodes.length) throw new Error('No tier is mapped to the sentences.');
   const alignmentNodes = byRole.get(ROLES.ALIGNMENT) || [];
   const wordNodes = byRole.get(ROLES.WORD) || [];
   const morphNodes = byRole.get(ROLES.MORPHEME) || [];
@@ -564,7 +564,10 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
   const unsupplied = files.filter((f) => f.media.length && !mediaByFile?.get(f.fileName));
   if (unsupplied.length) {
     warnings.push(
-      `${unsupplied.length} of ${files.length} file${files.length === 1 ? '' : 's'} name a recording that was not chosen. Those documents are imported without media, which can be attached on the Media tab afterwards.`,
+      (files.length === 1
+        ? 'This file names a recording that was not chosen. The document is imported without media'
+        : `${unsupplied.length} of ${files.length} files name a recording that was not chosen. Those documents are imported without media`) +
+        ', which can be attached on the Media tab afterwards.',
     );
   }
 

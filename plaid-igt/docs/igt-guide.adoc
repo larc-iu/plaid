@@ -644,6 +644,16 @@ A tier with no annotations is left out.
 Recordings are uploaded with the documents when you choose them alongside the `.eaf` files: each one is matched to the file that names it, and a document whose recording you did not choose is imported without it.
 The rest of the project is untouched, and nothing is locked while the import runs.
 
+Either way, the import asks what each tier becomes:
+
+* **Sentences**: the transcription. Each annotation becomes one sentence, and their text, joined in time order, becomes the document's text. Every import needs one such tier, since an `.eaf` holds no running text of its own.
+* **Words** and **Morphemes**: tiers below it, dividing each sentence and then each word. Without them the document arrives untokenized, ready for the Tokenize tab.
+* **Time alignment**: the segments on the Media tab. A tier of its own is only needed to cut finer than one segment per sentence, since the sentence tier's own times are used when you leave this out.
+* **Orthography**: an alternate spelling of each word, beside the baseline.
+* **Sentence field**, **Word field**, **Morpheme field**: one value per sentence, word or morpheme, in an annotation field. Importing into an existing project writes into that project's own fields.
+
+Tier names of the form `Translation-gls-nl`, which is how a corpus prepared for FieldWorks names them, are read: `gls` is the kind of annotation and `nl` the language, so such a tier is offered the matching field without your having to say so.
+
 An import that stops before it finishes, whether you cancel it, it fails, or the tab is closed, leaves a project that is only part filled.
 Opening such a project takes you back to the import instead: choose the same file and it carries on, keeping the documents and entries already there and finishing the ones it never reached.
 A document is recognised by the file's own identifier for it, not by its name, so two texts called the same thing are kept apart, and a document you made by hand is never taken for one of the import's.

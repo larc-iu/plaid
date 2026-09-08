@@ -348,7 +348,7 @@ describe('tier schema', () => {
     const nodes = tierSchema(readEaf(ANA, 'a.eaf'));
     const roles = suggestRoles(nodes);
     const none = Object.fromEntries(Object.keys(roles).map((k) => [k, ROLES.OFF]));
-    expect(validateRoles(nodes, none)[0]).toMatch(/which tier holds the utterances/);
+    expect(validateRoles(nodes, none)[0]).toMatch(/which tier holds the sentences/);
 
     const wdKey = nodes.find((n) => n.baseName === 'wd').key;
     const orphanMorphemes = { ...roles, [wdKey]: ROLES.OFF };

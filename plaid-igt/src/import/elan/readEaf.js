@@ -44,6 +44,13 @@ export const isAlignableStereotype = (s) =>
 /**
  * A tier's name with its participant normalized out. Exported for the schema
  * comparison and for the mapping UI's labels.
+ *
+ * ELAN's own convention is the `name@participant` suffix, but corpora built for
+ * FieldWorks put the speaker in FRONT (`A_Translation-gls-nl`, PARTICIPANT="A"),
+ * which left one tier tree per speaker where there is one structure. A prefix
+ * only comes off when it IS the tier's declared participant followed by a
+ * separator, so this reads ELAN's own record of who is speaking rather than
+ * guessing at a naming style.
  */
 export function baseTierName(id, participant) {
   const tierId = String(id ?? '');
@@ -51,6 +58,11 @@ export function baseTierName(id, participant) {
   if (who) {
     if (tierId === who) return '';
     if (tierId.endsWith(`@${who}`)) return tierId.slice(0, -(who.length + 1));
+    const prefix = tierId.slice(0, who.length);
+    const separator = tierId.charAt(who.length);
+    if (prefix === who && (separator === '_' || separator === '-')) {
+      return tierId.slice(who.length + 1);
+    }
   }
   const at = tierId.lastIndexOf('@');
   return at > 0 ? tierId.slice(0, at) : tierId;

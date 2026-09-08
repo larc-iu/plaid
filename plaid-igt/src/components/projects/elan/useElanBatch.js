@@ -27,11 +27,13 @@ export const partitionPicked = (fileList) => {
  * @param options.skipEmptyTiers  give a tier with no annotations no role. A
  *   corpus template carries tiers nobody has filled in yet, and in a project
  *   that already has its fields those would only add empty ones.
- * @param options.nameFor  (node, role) => the field name a node starts with,
- *   or null for the tier's own name. A caller with a project in hand uses it to
- *   pre-map tiers onto the fields that project already has.
+ * @param options.namesFor  (nodes, roles) => {nodeKey: fieldName} for the tiers
+ *   it can place. A caller with a project in hand uses it to pre-map tiers onto
+ *   the fields that project already has; anything it leaves out falls back to
+ *   the tier's own name. It decides for the whole batch at once because some
+ *   pairings only follow from the set (see suggestFieldNames).
  */
-export function useElanBatch({ skipEmptyTiers = false, nameFor = null } = {}) {
+export function useElanBatch({ skipEmptyTiers = false, namesFor = null } = {}) {
   const [files, setFiles] = useState(null); // parsed .eaf objects
   const [mediaFiles, setMediaFiles] = useState([]);
   const [comparison, setComparison] = useState(null);
@@ -67,20 +69,21 @@ export function useElanBatch({ skipEmptyTiers = false, nameFor = null } = {}) {
   const applySchema = (parsed, result) => {
     setComparison(result);
     const suggested = result.consistent ? suggestRoles(result.nodes) : {};
+    const roleOf = { ...suggested };
+    if (skipEmptyTiers) {
+      for (const n of result.nodes) if (!n.annotationCount) roleOf[n.key] = ROLES.OFF;
+    }
     setRoles((prev) => {
-      const next = { ...suggested };
-      if (skipEmptyTiers) {
-        for (const n of result.nodes) if (!n.annotationCount) next[n.key] = ROLES.OFF;
-      }
+      const next = { ...roleOf };
       for (const n of result.nodes) if (prev[n.key] !== undefined) next[n.key] = prev[n.key];
       return next;
     });
+    // Named from the SUGGESTED roles, not the ones an empty tier is forced to:
+    // switching one on later should find its field already chosen.
+    const placed = namesFor?.(result.nodes, suggested) ?? {};
     setFieldNames((prev) =>
       Object.fromEntries(
-        result.nodes.map((n) => [
-          n.key,
-          prev[n.key] ?? nameFor?.(n, suggested[n.key]) ?? defaultFieldName(n),
-        ]),
+        result.nodes.map((n) => [n.key, prev[n.key] ?? placed[n.key] ?? defaultFieldName(n)]),
       ),
     );
   };

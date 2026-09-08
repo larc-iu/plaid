@@ -5,6 +5,7 @@
 // when the fields are about to be created, a picker over the project's own
 // fields when they already exist.
 
+import { useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,21 +14,36 @@ import {
   SelectTrigger,
   SelectValue,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
 } from '@/components/ui/select';
 import { nodeLabel, ROLES } from '@/import/elan/schema';
 import { Panel } from '../ImportPanels.jsx';
 
-const ROLE_LABELS = [
-  [ROLES.UTTERANCE, 'Utterances'],
-  [ROLES.ALIGNMENT, 'Time alignment'],
-  [ROLES.WORD, 'Words'],
-  [ROLES.MORPHEME, 'Morphemes'],
-  [ROLES.SENTENCE_FIELD, 'Sentence field'],
-  [ROLES.WORD_FIELD, 'Word field'],
-  [ROLES.MORPH_FIELD, 'Morpheme field'],
-  [ROLES.ORTHOGRAPHY, 'Orthography'],
-  [ROLES.OFF, 'Don’t import'],
+// What a tier can become, grouped the way the document is built: first the
+// text and the pieces it divides into, then the values that hang off those
+// pieces. The names are the project's own (a sentence, a word, a morpheme, an
+// annotation field), not ELAN's.
+const ROLE_GROUPS = [
+  [
+    'Text',
+    [
+      [ROLES.UTTERANCE, 'Sentences'],
+      [ROLES.WORD, 'Words'],
+      [ROLES.MORPHEME, 'Morphemes'],
+      [ROLES.ALIGNMENT, 'Time alignment'],
+      [ROLES.ORTHOGRAPHY, 'Orthography'],
+    ],
+  ],
+  [
+    'Annotation fields',
+    [
+      [ROLES.SENTENCE_FIELD, 'Sentence field'],
+      [ROLES.WORD_FIELD, 'Word field'],
+      [ROLES.MORPH_FIELD, 'Morpheme field'],
+    ],
+  ],
 ];
 
 export const NAMED_ROLES = new Set([
@@ -134,6 +150,13 @@ const NearMisses = ({ groups, choices, undecided, editable, onChoose }) => (
  */
 export const ElanTierReview = ({ batch, editable, renderFieldControl = null }) => {
   const { files, nodes, roles, fieldNames, build, problems } = batch;
+  const [showEmpty, setShowEmpty] = useState(false);
+  // A corpus template carries tiers nobody has filled in, and a row with
+  // nothing in it and nothing to decide is what makes the rest hard to read.
+  // One that has been given a role stays in view whatever it holds.
+  const isEmpty = (node) => !node.annotationCount && (roles[node.key] ?? ROLES.OFF) === ROLES.OFF;
+  const emptyCount = nodes.filter(isEmpty).length;
+  const shown = showEmpty ? nodes : nodes.filter((n) => !isEmpty(n));
   return (
     <>
       {batch.nearMissGroups.length > 0 && (
@@ -152,7 +175,7 @@ export const ElanTierReview = ({ batch, editable, renderFieldControl = null }) =
           <p className="text-sm text-muted-foreground">
             {files.length === 1 ? (
               <>
-                One file, {nodes.length} tier{nodes.length === 1 ? '' : 's'}.
+                One file, {nodes.length} tier{nodes.length === 1 ? '' : 's'}.{' '}
               </>
             ) : (
               <>
@@ -162,23 +185,31 @@ export const ElanTierReview = ({ batch, editable, renderFieldControl = null }) =
               </>
             )}
           </p>
+          <p className="text-sm text-muted-foreground">
+            The tier mapped to <span className="font-medium">Sentences</span> carries the
+            transcription: each of its annotations becomes one sentence, and their text becomes the
+            document&rsquo;s text. Words and morphemes divide that text further, time alignment
+            gives the Media tab its segments, and a field holds one value per sentence, word or
+            morpheme.
+          </p>
         </div>
         <div className="flex flex-col gap-2">
-          {nodes.map((node) => (
+          {shown.map((node) => (
             <div key={node.key} className="flex flex-col gap-1">
               <div className="flex items-center gap-2">
                 <div
                   className="min-w-0 flex-1 truncate text-sm"
                   style={{ paddingLeft: `${node.depth * 16}px` }}
-                  title={`type ${node.typeRef}${node.stereotype ? `, ${node.stereotype}` : ''}`}
+                  title={[
+                    node.tierIds.join(', '),
+                    `type ${node.typeRef}`,
+                    node.stereotype ?? 'top level',
+                  ].join(' · ')}
                 >
                   <span className="font-medium">{nodeLabel(node)}</span>
                   <span className="ml-2 text-xs text-muted-foreground">
-                    {node.stereotype ?? 'top level'} · {node.annotationCount}
+                    {node.annotationCount} annotation{node.annotationCount === 1 ? '' : 's'}
                     {node.participants.length > 1 ? ` · ${node.participants.length} speakers` : ''}
-                    {' · '}
-                    <span className="font-mono">{node.tierIds.slice(0, 3).join(' ')}</span>
-                    {node.tierIds.length > 3 ? ` +${node.tierIds.length - 3}` : ''}
                   </span>
                 </div>
                 {NAMED_ROLES.has(roles[node.key]) &&
@@ -202,16 +233,32 @@ export const ElanTierReview = ({ batch, editable, renderFieldControl = null }) =
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {ROLE_LABELS.map(([value, label]) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
-                      </SelectItem>
+                    <SelectItem value={ROLES.OFF}>Don’t import</SelectItem>
+                    {ROLE_GROUPS.map(([group, options]) => (
+                      <SelectGroup key={group}>
+                        <SelectLabel>{group}</SelectLabel>
+                        {options.map(([value, label]) => (
+                          <SelectItem key={value} value={value}>
+                            {label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
             </div>
           ))}
+          {emptyCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowEmpty((v) => !v)}
+              className="self-start text-xs text-muted-foreground hover:text-foreground hover:underline"
+            >
+              {showEmpty ? 'Hide' : 'Show'} {emptyCount} tier{emptyCount === 1 ? '' : 's'} with no
+              annotations
+            </button>
+          )}
         </div>
       </div>
 
@@ -247,7 +294,11 @@ export const ElanTierReview = ({ batch, editable, renderFieldControl = null }) =
         <Panel
           tone="warn"
           icon={AlertTriangle}
-          title={`Not imported: ${build.stats.skipped.reduce((n, s) => n + s.values, 0)} annotations on ${build.stats.skipped.length} tier${build.stats.skipped.length === 1 ? '' : 's'}`}
+          title={(() => {
+            const values = build.stats.skipped.reduce((n, s) => n + s.values, 0);
+            const tiers = build.stats.skipped.length;
+            return `Not imported: ${values} annotation${values === 1 ? '' : 's'} on ${tiers} tier${tiers === 1 ? '' : 's'}`;
+          })()}
         >
           <p className="mt-1 text-xs">
             These tiers are set to “Don’t import” above. Give one a role to keep it.
