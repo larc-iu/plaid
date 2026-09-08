@@ -914,6 +914,16 @@ describe('matchMediaFiles', () => {
     expect(missing).toEqual([]);
   });
 
+  it('still pairs a recording that was converted to another format', () => {
+    const audio = { name: 'oni-lifestory-ah-c.mp3' };
+    const { byFile, missing } = matchMediaFiles(
+      [eaf('oni-lifestory-ah.eaf', 'oni-lifestory-ah-c.mp4')],
+      [audio],
+    );
+    expect(byFile.get('oni-lifestory-ah.eaf')).toBe(audio);
+    expect(missing).toEqual([]);
+  });
+
   it('falls back to a file whose stem matches the .eaf', () => {
     const audio = file('story.wav');
     const { byFile } = matchMediaFiles([eaf('story.eaf', 'recorded-2019.wav')], [audio]);

@@ -21,6 +21,25 @@ import { decodeTo16kMono, TARGET_RATE } from '../vad/decodeTo16kMono.js';
 /** Mono speech at 16 kHz. Enough for transcription, small enough to send. */
 export const MP3_BITRATE_KBPS = 32;
 
+/**
+ * Big enough that sending audio alone is worth offering even when the server
+ * would accept the file as it is. A judgement about the user's time and
+ * connection, not about what the server allows.
+ */
+export const OFFER_CONVERSION_OVER = 50 * 1000 * 1000;
+
+/**
+ * What to do about a recording of `bytes`, given the server's limit (null when
+ * it has not said):
+ *   'required' — it would be refused, so converting is the only way through
+ *   'offer'    — it would be accepted, but is large enough to ask about
+ *   null       — send it
+ */
+export const conversionNeed = (bytes, maxBytes) => {
+  if (maxBytes != null && bytes > maxBytes) return 'required';
+  return bytes > OFFER_CONVERSION_OVER ? 'offer' : null;
+};
+
 /** What `file` would become, so a caller can say so before starting. */
 export const mp3NameFor = (name) => {
   const stem = String(name || '').replace(/\.[^./\\]*$/, '');

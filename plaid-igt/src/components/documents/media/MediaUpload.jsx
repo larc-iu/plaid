@@ -3,13 +3,7 @@ import { AudioLines, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { formatBytes } from '@/utils/formatBytes';
-import { MP3_BITRATE_KBPS } from '@/domain/media/transcodeToMp3';
-
-// Big enough that a smaller upload is worth a question even when the server
-// would accept the file. Over the server's own limit (`maxBytes`, which it
-// reports at /api/v1/info) there is no question to ask: converting is the only
-// way through, and sending it as it is would fail after the whole upload.
-const OFFER_CONVERSION_OVER = 50 * 1000 * 1000;
+import { conversionNeed, MP3_BITRATE_KBPS } from '@/domain/media/transcodeToMp3';
 
 const HOUR_MB = Math.round((3600 * MP3_BITRATE_KBPS * 1000) / 8 / 1e6);
 
@@ -36,13 +30,13 @@ export const MediaUpload = ({
   const pct = total > 0 ? (sent / total) * 100 : 0;
   const processing = !!progress && total > 0 && sent >= total;
 
-  const overLimit = !!pending && maxBytes != null && pending.size > maxBytes;
+  // Over the server's limit there is no question to ask: sending it as it is
+  // would fail after the whole upload.
+  const overLimit = !!pending && conversionNeed(pending.size, maxBytes) === 'required';
 
   const choose = (file) => {
     if (!file) return;
-    const threshold =
-      maxBytes == null ? OFFER_CONVERSION_OVER : Math.min(OFFER_CONVERSION_OVER, maxBytes);
-    if (file.size > threshold) setPending(file);
+    if (conversionNeed(file.size, maxBytes)) setPending(file);
     else onUpload(file);
   };
 

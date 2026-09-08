@@ -58,6 +58,8 @@ import {
 } from './elan/ElanTierReview.jsx';
 import { ElanMediaPanel } from './elan/ElanMediaPanel.jsx';
 import { ElanDocumentsPanel } from './elan/ElanDocumentsPanel.jsx';
+import { useRecordingConversion } from './elan/useRecordingConversion';
+import { useServerLimits } from '@/hooks/useServerLimits';
 
 const NEW_FIELD = '__new__';
 
@@ -104,6 +106,9 @@ export const ImportElanDocuments = () => {
       return placed;
     },
   });
+
+  const limits = useServerLimits();
+  const conversion = useRecordingConversion(batch.setMediaFiles);
 
   useEffect(() => {
     let cancelled = false;
@@ -373,7 +378,10 @@ export const ImportElanDocuments = () => {
 
                 <ElanDocumentsPanel
                   build={batch.build}
+                  maxBytes={limits?.mediaFileBytes ?? null}
+                  converting={conversion.converting}
                   onAddRecordings={editable ? () => fileInputRef.current?.click() : null}
+                  onConvertRecordings={editable ? conversion.convertRecordings : null}
                 />
 
                 <ElanBuildSummary batch={batch} />

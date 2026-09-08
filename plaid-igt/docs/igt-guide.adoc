@@ -647,6 +647,7 @@ An ELAN import also runs into a project you already have: **New Document → Imp
 Each tier is written into a field the project already has, chosen from a list, and a tier can be given a field of its own instead.
 A tier with no annotations is left out.
 Recordings are uploaded with the documents when you choose them alongside the `.eaf` files, or with **Add recordings** on the review screen: each one is matched to the file that names it, and a document whose recording you did not choose is imported without it.
+A recording too large for the server is named on that screen before the run, and **Convert to audio** converts it in the browser first (see <<_media>>), so the import does not finish without it.
 The rest of the project is untouched, and nothing is locked while the import runs.
 
 Either way, the import asks what each tier becomes:

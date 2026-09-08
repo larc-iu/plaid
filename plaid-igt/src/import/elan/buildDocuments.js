@@ -111,8 +111,12 @@ const stem = (name) =>
  *
  * The .eaf names its recording in MEDIA_DESCRIPTOR, so that name is the key: a
  * file called `oni-lifestory-ah-c.mp4` belongs to `oni-lifestory-ah.eaf`
- * because the .eaf says so, not because the names look alike. Failing that, a
- * media file whose stem matches the .eaf's own is taken as its recording,
+ * because the .eaf says so, not because the names look alike.
+ *
+ * The extension is not part of that: `oni-lifestory-ah-c.mp3` is still the
+ * recording the .eaf names, whether it was converted here (a video too large
+ * to upload becomes audio) or outside Plaid before it arrived. Failing both, a
+ * media file whose stem matches the .eaf's OWN name is taken as its recording,
  * which is the other convention corpora follow.
  *
  * @returns {{byFile: Map<string, File>, unmatched: File[], missing: string[]}}
@@ -128,6 +132,7 @@ export function matchMediaFiles(eafs, mediaFiles) {
     const referenced = mediaBasename(eaf);
     const pick =
       (referenced && claim((f) => f.name.toLowerCase() === referenced.toLowerCase())) ||
+      (referenced && claim((f) => stem(f.name) === stem(referenced))) ||
       claim((f) => stem(f.name) === stem(eaf.fileName));
     if (pick) {
       taken.add(pool.indexOf(pick));

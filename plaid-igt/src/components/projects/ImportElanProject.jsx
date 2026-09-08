@@ -36,6 +36,8 @@ import { partitionPicked, useElanBatch } from './elan/useElanBatch';
 import { ElanBuildSummary, ElanTierReview, SchemaMismatch } from './elan/ElanTierReview.jsx';
 import { ElanMediaPanel } from './elan/ElanMediaPanel.jsx';
 import { ElanDocumentsPanel } from './elan/ElanDocumentsPanel.jsx';
+import { useRecordingConversion } from './elan/useRecordingConversion';
+import { useServerLimits } from '@/hooks/useServerLimits';
 
 export const ImportElanProject = () => {
   useDocumentTitle('Import ELAN');
@@ -51,6 +53,8 @@ export const ImportElanProject = () => {
   const [results, setResults] = useState(null);
 
   const batch = useElanBatch();
+  const limits = useServerLimits();
+  const conversion = useRecordingConversion(batch.setMediaFiles);
   const { resumeId, resumeName, finishAsIs } = useResumeImport(client);
   const projectIdRef = useRef(resumeId || null);
   const setupDoneRef = useRef(false);
@@ -258,7 +262,10 @@ export const ImportElanProject = () => {
 
                 <ElanDocumentsPanel
                   build={batch.build}
+                  maxBytes={limits?.mediaFileBytes ?? null}
+                  converting={conversion.converting}
                   onAddRecordings={editable ? () => fileInputRef.current?.click() : null}
+                  onConvertRecordings={editable ? conversion.convertRecordings : null}
                 />
 
                 <ElanBuildSummary batch={batch} />
