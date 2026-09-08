@@ -707,6 +707,9 @@ export const VocabularyItems = ({
     () => (selectedItem ? planDeleteRefs(items, fields, [selectedItem.id]) : []),
     [items, fields, selectedItem],
   );
+  // Only say the senses are freed when there are some: the count above covers
+  // both them and the fields that name the entry.
+  const deleteFreesSenses = !!tree.childrenOf.get(selectedItem?.id)?.length;
   const handleConfirmDelete = async () => {
     if (!selectedItem) return;
     try {
@@ -1756,8 +1759,11 @@ export const VocabularyItems = ({
                           {deleteRefPatches.length} entr
                           {deleteRefPatches.length === 1 ? 'y' : 'ies'}
                         </strong>{' '}
-                        {deleteRefPatches.length === 1 ? 'refers' : 'refer'} to it. Its senses
-                        become entries of their own, and those references are removed.{' '}
+                        {deleteRefPatches.length === 1 ? 'refers' : 'refer'} to it.{' '}
+                        {deleteFreesSenses
+                          ? 'Its senses become entries of their own, and those '
+                          : 'Those '}
+                        references are removed.{' '}
                       </>
                     )}
                     This action cannot be undone.
