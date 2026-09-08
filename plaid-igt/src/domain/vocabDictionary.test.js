@@ -385,6 +385,10 @@ describe('references', () => {
   it('shows entry-scope fields on an entry only', () => {
     const list = items();
     const names = (it) => fieldsForItem(fields, it).map((f) => f.name);
+    // A sense that already carries a headword-only value shows it: nothing an
+    // entry holds is ever out of reach.
+    expect(names(item('x', 'x', { parent: 'kat', etymology: 'old' }))).toContain('etymology');
+    expect(names(item('y', 'y', { parent: 'kat', etymology: '' }))).not.toContain('etymology');
     expect(names(list[0])).toContain('etymology');
     expect(names(list[1])).not.toContain('etymology');
   });

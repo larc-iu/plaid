@@ -196,6 +196,7 @@ export async function importLexicon({
   lexiconFields = [],
   customFieldWs = {},
   variants = false,
+  resume = false,
   onProgress,
   shouldStop,
 }) {
@@ -319,6 +320,10 @@ export async function importLexicon({
   // N creates re-dispatches the whole REST stack N times and writes N
   // operation rows — all inside the same held write lock. `ids` come back in
   // input order.
+  // The items this run made. A RESUME heals everything an earlier run left
+  // unplaced; a fresh import into a lexicon someone already has arranges only
+  // what it adds, so a sense they made a separate entry stays one.
+  const created = new Set();
   let done = 0;
   for (let i = 0; i < pending.length; i += BULK_CHUNK) {
     if (shouldStop?.()) throw new ImportCancelled();
@@ -327,15 +332,19 @@ export async function importLexicon({
       chunk.map((p) => ({ vocabLayerId: vocabId, form: p.form, metadata: p.metadata })),
     );
     chunk.forEach((p, j) => {
-      if (ids[j]) senseToItem.set(p.senseGuid, ids[j]);
+      if (ids[j]) {
+        senseToItem.set(p.senseGuid, ids[j]);
+        created.add(ids[j]);
+      }
     });
     done += chunk.length;
     onProgress?.({ phase: 'lexicon', done, total: pending.length });
   }
 
-  await placeSenses({ client, lexicon, senseToItem, existing, shouldStop });
+  const only = resume ? null : created;
+  await placeSenses({ client, lexicon, senseToItem, existing, only, shouldStop });
   if (variants)
-    await placeVariants({ client, vocabId, lexicon, senseToItem, existing, shouldStop });
+    await placeVariants({ client, vocabId, lexicon, senseToItem, existing, only, shouldStop });
   return senseToItem;
 }
 
@@ -344,7 +353,7 @@ export async function importLexicon({
 // subsense is a sense of the sense that owned it.
 // Written after creation, since a parent is an item id; only items made in
 // this run are placed, so an entry already in the lexicon is left as it is.
-async function placeSenses({ client, lexicon, senseToItem, existing, shouldStop }) {
+async function placeSenses({ client, lexicon, senseToItem, existing, only = null, shouldStop }) {
   const patches = [];
   for (const entry of lexicon) {
     if (entry.senses.length < 2) continue;
@@ -361,12 +370,13 @@ async function placeSenses({ client, lexicon, senseToItem, existing, shouldStop 
   // An entry created by a run that was cancelled or lost part way through has
   // none either, and asking "did this run make it" left such an entry flat
   // forever: the resume neither recreates it nor places it. A sense someone
-  // has since moved under another entry keeps that place; one they made a
-  // separate entry has no parent and is filed under its FLEx entry again.
+  // has since moved under another entry keeps that place. `only` (a fresh
+  // import into a lexicon already arranged by hand) narrows it further to the
+  // items this run made, so one they made a separate entry stays one.
   const placedAlready = new Set(
     (existing.items || []).filter((it) => it.metadata?.parent).map((it) => it.id),
   );
-  const fresh = patches.filter((p) => !placedAlready.has(p.id));
+  const fresh = patches.filter((p) => !placedAlready.has(p.id) && (!only || only.has(p.id)));
   for (let i = 0; i < fresh.length; i += BULK_CHUNK) {
     if (shouldStop?.()) throw new ImportCancelled();
     const chunk = fresh.slice(i, i + BULK_CHUNK);
@@ -395,7 +405,15 @@ const VARIANT_FIELDS = {
  * given references, so an entry already in the lexicon keeps what it has.
  * The fields are declared only if something landed in them.
  */
-async function placeVariants({ client, vocabId, lexicon, senseToItem, existing, shouldStop }) {
+async function placeVariants({
+  client,
+  vocabId,
+  lexicon,
+  senseToItem,
+  existing,
+  only = null,
+  shouldStop,
+}) {
   // The item that IS an entry: the container of a multi-sense entry, or a
   // senseless entry's own item, else the item its first sense became.
   const headOf = (entry) =>
@@ -417,7 +435,7 @@ async function placeVariants({ client, vocabId, lexicon, senseToItem, existing, 
   for (const entry of lexicon) {
     if (!entry.entryRefs?.length) continue;
     const id = headOf(entry);
-    if (!id) continue;
+    if (!id || (only && !only.has(id))) continue;
     const patch = patches.get(id) ?? {};
     for (const ref of entry.entryRefs) {
       const targets = ref.components.map(itemFor).filter((t) => t && t !== id);
@@ -717,6 +735,7 @@ async function runImportImpl({
     analysisWss: config.analysisWss ?? null,
     lexiconFields: config.lexiconFields ?? [],
     variants: config.variants === true,
+    resume: config.resume === true,
     onProgress,
     shouldStop,
   });

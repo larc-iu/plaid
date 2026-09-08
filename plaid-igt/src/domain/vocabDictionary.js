@@ -102,9 +102,20 @@ const isId = (v) => typeof v === 'string' && v.trim() !== '';
 /** The fields that hold references to other entries. */
 export const itemRefFields = (fields) => (fields || []).filter((f) => f.type === FIELD_TYPES.ITEM);
 
-/** The fields shown on an item: entry-scope fields only on an entry (a root). */
+/**
+ * The fields shown on an item: a headword-only field is offered on an entry
+ * (a root), and on a sense only when the sense already holds a value in it,
+ * so nothing an entry carries is ever out of sight or out of reach. Whether a
+ * sense should carry such a value is the user's; the field's scope says where
+ * the form OFFERS it, never what it hides.
+ */
 export const fieldsForItem = (fields, item) =>
-  (fields || []).filter((f) => f.scope !== FIELD_SCOPES.ENTRY || !parentOf(item));
+  (fields || []).filter(
+    (f) =>
+      f.scope !== FIELD_SCOPES.ENTRY ||
+      !parentOf(item) ||
+      (item?.metadata?.[f.name] != null && item.metadata[f.name] !== ''),
+  );
 
 /** The id this item is a sense of, or null. */
 export const parentOf = (item) => {

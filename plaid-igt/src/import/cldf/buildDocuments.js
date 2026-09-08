@@ -707,7 +707,11 @@ export function buildCldfDocuments(dataset, options = {}) {
       if (isReservedFieldName(key)) continue;
       metadata[key] = v;
     }
-    lexicon.push({ id, form, metadata, senses: entrySenses });
+    // Our own export names the vocabulary each entry came from, so a dataset
+    // with several lexicons comes back as several.
+    const vocabulary =
+      typeof row.Vocabulary === 'string' && row.Vocabulary.trim() ? row.Vocabulary.trim() : null;
+    lexicon.push({ id, form, metadata, senses: entrySenses, vocabulary });
   }
 
   // --- schema for the setup wizard ---

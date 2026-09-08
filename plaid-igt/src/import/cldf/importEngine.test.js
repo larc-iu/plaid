@@ -137,6 +137,23 @@ describe('deriveSetupData', () => {
     ]);
   });
 
+  it('asks for one vocabulary per name the dataset gives its entries', () => {
+    const build = fixtureBuild();
+    build.lexicon = [
+      { id: 'e1', form: 'a', metadata: {}, senses: [], vocabulary: 'Nouns' },
+      { id: 'e2', form: 'b', metadata: {}, senses: [], vocabulary: null },
+      { id: 'e3', form: 'c', metadata: {}, senses: [], vocabulary: 'Nouns' },
+      { id: 'e4', form: 'd', metadata: {}, senses: [], vocabulary: 'Verbs' },
+    ];
+    const vocabs = deriveSetupData(build, 'X').vocabulary.vocabularies;
+    expect(vocabs.map((v) => v.name)).toEqual(['Nouns', 'Lexicon', 'Verbs']);
+    expect(vocabs.map((v) => v.id)).toEqual([
+      'new-cldf-lexicon',
+      'new-cldf-lexicon-2',
+      'new-cldf-lexicon-3',
+    ]);
+  });
+
   it('asks for no vocabulary when the dataset has no lexicon', () => {
     const build = fixtureBuild();
     build.lexicon = [];

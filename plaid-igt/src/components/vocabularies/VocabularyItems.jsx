@@ -1075,15 +1075,12 @@ export const VocabularyItems = ({
   const formGroups = useMemo(
     () =>
       groupFieldsForForm(
-        // The draft carries no structure, so the entry's own place (or the
+        // The draft carries no structure, so the entry as stored (or the
         // parent a new sense is being written under) says which fields show.
-        fieldsForItem(fields, {
-          metadata: isNew
-            ? liveNewParent
-              ? { parent: liveNewParent }
-              : {}
-            : reservedMetadata(selectedItem?.metadata),
-        }),
+        fieldsForItem(
+          fields,
+          isNew ? { metadata: liveNewParent ? { parent: liveNewParent } : {} } : selectedItem,
+        ),
         { statusField: statusKey },
       ),
     [fields, isNew, liveNewParent, selectedItem, statusKey],

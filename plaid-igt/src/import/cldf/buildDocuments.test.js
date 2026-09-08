@@ -329,6 +329,8 @@ describe('buildCldfDocuments — languages and lexicon', () => {
           { id: 's1', description: 'dog', metadata: {} },
           { id: 's2', description: 'hound', metadata: {} },
         ],
+        // No Vocabulary column: the entry goes under the default lexicon.
+        vocabulary: null,
       },
     ]);
   });

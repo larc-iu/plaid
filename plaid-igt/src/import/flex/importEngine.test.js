@@ -434,6 +434,7 @@ describe('importLexicon', () => {
       vocabId: 'v1',
       lexicon,
       baselineWs: BASE_WS,
+      resume: true,
     });
     // Nothing to create: every sense is already there.
     expect(createdItems(client)).toHaveLength(0);
@@ -444,6 +445,24 @@ describe('importLexicon', () => {
       ['old-s2', { parent: 'old-e2', senseOrder: 1 }],
       ['old-s3', { parent: 'old-e2', senseOrder: 2 }],
     ]);
+  });
+
+  // The same backup imported again into a lexicon someone has arranged: a
+  // sense they made a separate entry stays one. Only a RESUME heals what an
+  // earlier run left unplaced.
+  it('leaves a freed sense alone on a fresh import into a settled lexicon', async () => {
+    const client = makeFakeClient({
+      existingItems: [
+        { id: 'old-e2', form: 'махъ', metadata: { flexSense: 'e2', flexEntry: 'e2' } },
+        { id: 'old-s2', form: 'махъ', metadata: { flexSense: 's2', gloss: 'tale' } },
+        { id: 'old-s3', form: 'махъ', metadata: { flexSense: 's3', gloss: 'story' } },
+        { id: 'old-s3a', form: 'махъ', metadata: { flexSense: 's3a', gloss: 'short story' } },
+        { id: 'old-s1', form: 'за', metadata: { flexSense: 's1' } },
+      ],
+    });
+    await importLexicon({ client, vocabId: 'v1', lexicon, baselineWs: BASE_WS });
+    expect(createdItems(client)).toHaveLength(0);
+    expect(client.calls.filter((c) => c.kind === 'vocabItems.patchMetadata')).toHaveLength(0);
   });
 
   it('creates one item per sense with flex guids and skips existing', async () => {

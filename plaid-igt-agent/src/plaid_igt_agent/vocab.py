@@ -152,8 +152,12 @@ def item_ref_fields(fields: List[dict]) -> List[dict]:
 
 
 def fields_for_item(fields: List[dict], item: dict) -> List[dict]:
-    """The fields that belong on an item: entry-scope fields only on an entry."""
-    return [f for f in fields or [] if f.get('scope') != SCOPE_ENTRY or not parent_of(item)]
+    """The fields shown on an item: a headword-only field on an entry, and on a
+    sense only when the sense already holds a value in it. Mirrors fieldsForItem."""
+    meta = (item or {}).get('metadata') or {}
+    return [f for f in fields or []
+            if f.get('scope') != SCOPE_ENTRY or not parent_of(item)
+            or meta.get(f['name']) not in (None, '')]
 
 
 # ---- reserved keys on an item ------------------------------------------------

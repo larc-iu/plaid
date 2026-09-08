@@ -374,7 +374,8 @@ Each chosen entry is shown as a link to it, and the entry it points at lists it 
 References stay within one vocabulary.
 Whether a variant is its own entry pointing at the main one, or simply another entry, is up to you.
 
-A field can also be set to **Headword only**, so it is shown on a headword and not on its senses: an etymology or a pronunciation belongs to the entry, a gloss to each sense.
+A field can also be set to **Headword only**, so it is offered on a headword and not on its senses: an etymology or a pronunciation belongs to the entry, a gloss to each sense.
+A sense that holds a value in such a field shows it all the same.
 
 Examples are chosen from the text, never typed in.
 Beside each row of an entry's **Concordance** is **Use as example**.
@@ -388,7 +389,7 @@ Deleting an entry frees its senses, which become entries of their own, and clear
 Merging entries with **Bulk Edit** points those references at the surviving entry, hands the merged entries' senses to it in their own order, and, when the survivor was a sense under one of them, makes it an entry in that one's place.
 
 A FLEx import keeps the sense structure of the lexicon: an entry with several senses becomes an entry with them under it, numbered as FLEx numbered them, and an entry with one sense is that sense.
-A CLDF import does the same with its entry and sense tables.
+A CLDF import does the same with its entry and sense tables, and recreates each vocabulary the dataset names.
 FLEx's variants and complex forms come in when you tick **Variants and complex forms** on the review screen: a variant gets a *variantOf* field naming what it varies, a complex form a *components* field naming what it is built from, and each keeps FLEx's name for the relation (*Spelling Variant*, *Compound*) beside it.
 
 Exports follow the same structure.
@@ -618,7 +619,8 @@ Four formats are supported:
 An import that stops before it finishes, whether you cancel it, it fails, or the tab is closed, leaves a project that is only part filled.
 Opening such a project takes you back to the import instead: choose the same file and it carries on, keeping the documents and entries already there and finishing the ones it never reached.
 A document is recognised by the file's own identifier for it, not by its name, so two texts called the same thing are kept apart, and a document you made by hand is never taken for one of the import's.
-A FLEx import writes into the lexicon it started with.
+A FLEx import writes into the lexicon it started with, and finishes placing every sense an earlier run left flat.
+Importing the same backup afresh into a lexicon you have since arranged places only the entries it adds.
 If what arrived is enough, **Use the project as it is** on that screen puts the project back in your hands.
 
 == Exporting

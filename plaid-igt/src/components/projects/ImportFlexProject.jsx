@@ -146,6 +146,9 @@ export const ImportFlexProject = () => {
       deriveImportConfig(parsed.ir, filteredBuild, {
         analysisWss: [...selectedWss],
         lexiconFields: [...selectedLexFields],
+        // A resume heals what an earlier run left unplaced; a fresh import
+        // into a lexicon already arranged leaves that arrangement alone.
+        resume: !!resumeId,
       }),
     [parsed, filteredBuild, selectedWss, selectedLexFields],
   );

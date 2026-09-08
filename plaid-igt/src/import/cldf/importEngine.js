@@ -44,6 +44,20 @@ async function bulkInChunks(items, check, send) {
 }
 
 /** The setup-wizard input derived from a build. */
+/**
+ * The vocabularies a lexicon names, in first-seen order; an entry that names
+ * none goes under the default. Empty when there is no lexicon at all.
+ */
+export const lexiconNames = (lexicon, fallback = 'Lexicon') => {
+  if (!lexicon?.length) return [];
+  const names = [];
+  for (const e of lexicon) {
+    const name = e.vocabulary || fallback;
+    if (!names.includes(name)) names.push(name);
+  }
+  return names;
+};
+
 export function deriveSetupData(build, projectName, { vocabularyName = 'Lexicon' } = {}) {
   return {
     basicInfo: { projectName },
@@ -57,16 +71,14 @@ export function deriveSetupData(build, projectName, { vocabularyName = 'Lexicon'
       fields: build.schema.fields.map((f) => ({ name: f.name, scope: f.scope, isCustom: true })),
     },
     vocabulary: {
-      vocabularies: build.lexicon.length
-        ? [
-            {
-              id: 'new-cldf-lexicon',
-              name: vocabularyName,
-              enabled: true,
-              isCustom: true,
-            },
-          ]
-        : [],
+      // One vocabulary per name the dataset gives its entries (our own export
+      // writes a Vocabulary column), else one under the default name.
+      vocabularies: lexiconNames(build.lexicon, vocabularyName).map((name, i) => ({
+        id: i === 0 ? 'new-cldf-lexicon' : `new-cldf-lexicon-${i + 1}`,
+        name,
+        enabled: true,
+        isCustom: true,
+      })),
     },
     documentMetadata: {
       enabledFields: build.schema.documentMetadata.map((m) => ({
@@ -450,17 +462,27 @@ async function runCldfImportImpl({ client, projectId, build, onProgress, shouldS
   }
 
   if (build.lexicon.length) {
-    const vocab = (project.vocabs || [])[0];
-    if (vocab) {
+    // Each vocabulary the dataset names, into the project vocabulary of that
+    // name; with one lexicon and one vocabulary, whatever that vocabulary is
+    // called (a resume may have renamed it).
+    const vocabs = project.vocabs || [];
+    const names = lexiconNames(build.lexicon);
+    for (const name of names) {
+      const vocab =
+        names.length === 1 && vocabs.length === 1 ? vocabs[0] : vocabs.find((v) => v.name === name);
+      if (!vocab) {
+        warnings.push(
+          `No project vocabulary named "${name}" was created, so its entries were skipped.`,
+        );
+        continue;
+      }
       await importLexicon({
         client,
         vocabId: vocab.id,
-        lexicon: build.lexicon,
+        lexicon: build.lexicon.filter((e) => (e.vocabulary || 'Lexicon') === name),
         onProgress,
         shouldStop,
       });
-    } else {
-      warnings.push('No project vocabulary was created, so the lexicon was skipped.');
     }
   }
 

@@ -142,9 +142,13 @@ describe('entryRefs', () => {
     expect(entryRefs(item({ seeAlso: ['gone'] }), scoped, resolve)).toEqual([]);
   });
 
-  it('leaves a headword-scope reference off a sense', () => {
-    const sense = item({ parent: 'head', variantOf: 'head', seeAlso: ['one'] });
-    expect(entryRefs(sense, scoped, resolve).map((r) => r.name)).toEqual(['seeAlso']);
+  // A headword-scope field is OFFERED on headwords; a sense that carries one
+  // anyway (the user's call) still shows it, and one that does not has none.
+  it('shows a headword-scope reference on a sense only when the sense holds one', () => {
+    const holds = item({ parent: 'head', variantOf: 'head', seeAlso: ['one'] });
+    expect(entryRefs(holds, scoped, resolve).map((r) => r.name)).toEqual(['variantOf', 'seeAlso']);
+    const bare = item({ parent: 'head', seeAlso: ['one'] });
+    expect(entryRefs(bare, scoped, resolve).map((r) => r.name)).toEqual(['seeAlso']);
   });
 });
 
