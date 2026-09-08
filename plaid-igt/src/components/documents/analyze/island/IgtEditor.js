@@ -470,7 +470,14 @@ export class IgtEditor {
   // Comment state lives in the CommentStore, not here — this owns only which
   // comment is being edited and what is typed, exactly as the tab does.
 
-  _commentBadge(entityType, entityId, label) {
+  /**
+   * @param inline  place the badge in the flow instead of tangent to the right
+   *   edge of its positioned ancestor. A sentence field's row has no such
+   *   ancestor around the VALUE — the row itself is the containing block — so
+   *   an absolute badge there flew to the far end of a full-width row, nowhere
+   *   near the field it belongs to.
+   */
+  _commentBadge(entityType, entityId, label, { inline = false } = {}) {
     const store = this.comments;
     if (!store || !entityId) return nothing;
     const n = store.countFor(entityId);
@@ -482,7 +489,9 @@ export class IgtEditor {
     return html`
       <button
         type="button"
-        class=${`igt-cmt-badge${n ? '' : ' igt-cmt-badge--add'}${open ? ' is-open' : ''}`}
+        class=${`igt-cmt-badge${n ? '' : ' igt-cmt-badge--add'}${open ? ' is-open' : ''}${
+          inline ? ' igt-cmt-badge--inline' : ''
+        }`}
         data-pop-opener=${`comment:${entityId}`}
         title=${title}
         aria-label=${title}
@@ -4257,6 +4266,7 @@ export class IgtEditor {
                           'span',
                           sentence.annotations[name].id,
                           `${name} of sentence ${index + 1}`,
+                          { inline: true },
                         )
                       : nothing}
                     ${this._field({

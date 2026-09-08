@@ -1616,6 +1616,15 @@
     color 0.12s;
 }
 
+/* In the flow, beside the label it belongs to. A sentence field's row is
+   full-width and is its own containing block, so the absolute badge above
+   would sit at the end of the row rather than against the field. */
+.igt-cmt-badge--inline {
+  position: static;
+  flex: 0 0 auto;
+  margin-left: -4px;
+}
+
 .igt-cmt-badge:hover,
 .igt-cmt-badge:focus-visible,
 .igt-cmt-badge.is-open {
