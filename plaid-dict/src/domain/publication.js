@@ -1,4 +1,4 @@
-// Publication status. plaid-igt gives a Lexicography Mode vocabulary a `status`
+// Publication status. plaid-igt gives a new vocabulary a `status`
 // field held to a closed list (draft / reviewed / published) and never enforces
 // it; the dictionary is where it decides anything.
 //

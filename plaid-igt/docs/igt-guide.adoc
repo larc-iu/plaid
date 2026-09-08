@@ -336,14 +336,11 @@ A closed tagset becomes a dropdown on the entry form and refuses a value outside
 It also marks the entries already outside it: the table counts them, and a click shows only those.
 A lexicon imported before the tagset existed can thus be brought into line one entry at a time, or by adding the value to the list.
 
-== Lexicography Mode
+== Headwords and senses
 
-A vocabulary can also be a dictionary.
-The switch is on its **Settings** tab, under **Lexicography Mode**, and it is off for a new vocabulary.
-With it off, the vocabulary is the flat list of entries described above and nothing in this section appears.
-Turning it on adds a **Status** field held to a closed list (draft, reviewed, published), and turning it off again leaves every field and every entry as it is.
-
-With the switch on, an entry is a headword, and it can have senses under it, each of which can have senses of its own.
+Every vocabulary is a dictionary.
+An entry is a headword, and it can have senses under it, each of which can have senses of its own.
+A new vocabulary also gets a **Status** field held to a closed list (draft, reviewed, published).
 Numbers say what is what: a headword with senses is *adidi 1*, its senses *adidi 1.1* and *adidi 1.2*, and a sense of the second *adidi 1.2.1*.
 Entries that share a form are told apart by that first number, so two entries spelled *a* are *a 1* and *a 2*, and the senses of the second are *a 2.1*, *a 2.2*.
 One number is always a headword and two are always a sense. A headword that is alone and has no senses has no number at all.
@@ -371,7 +368,7 @@ A value the new type cannot hold at all, such as text under **Entry** or a refer
 A sense is an entry too, so a reference can point at one.
 On the entry form such a field is a picker: type part of a form or gloss and choose.
 Each chosen entry is shown as a link to it, and the entry it points at lists it under **Referenced by**.
-References stay within one vocabulary, and work whether or not the vocabulary is in Lexicography Mode.
+References stay within one vocabulary.
 Whether a variant is its own entry pointing at the main one, or simply another entry, is up to you.
 
 A field can also be set to **Headword only**, so it is shown on a headword and not on its senses: an etymology or a pronunciation belongs to the entry, a gloss to each sense.
@@ -387,10 +384,7 @@ Examples brought in by a FLEx import are shown in the same panel as text.
 Deleting an entry frees its senses, which become entries of their own, and clears the fields that named it, and the confirmation says how many entries that touches.
 Merging entries with **Bulk Edit** points those references at the surviving entry.
 
-A vocabulary added while setting up a new project can start as a dictionary: tick **Lexicography Mode** under the name.
-An imported lexicon is always one, since a FLEx or CLDF lexicon is entries with senses and there is no honest way to keep that flat.
-Adding entries to a lexicon you already maintain leaves it in whatever mode it is in, since a vocabulary is shared and the mode is shared with it.
-A FLEx import also keeps the sense structure of the lexicon: an entry with several senses becomes an entry with them under it, numbered as FLEx numbered them, and an entry with one sense is that sense.
+A FLEx import keeps the sense structure of the lexicon: an entry with several senses becomes an entry with them under it, numbered as FLEx numbered them, and an entry with one sense is that sense.
 A CLDF import does the same with its entry and sense tables.
 FLEx's variants and complex forms come in when you tick **Variants and complex forms** on the review screen: a variant gets a *variantOf* field naming what it varies, a complex form a *components* field naming what it is built from, and each keeps FLEx's name for the relation (*Spelling Variant*, *Compound*) beside it.
 

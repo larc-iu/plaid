@@ -132,7 +132,7 @@ receives them, rendered over the test fixture project; regenerate it with
 - `vocab.py`: the vocabulary domain, ported from the app's own
   `vocabFields.js` and `vocabDictionary.js`: the field schema (a field's type,
   `many`, and scope, with the core inventory guaranteed on every vocabulary)
-  and, for a lexicon in Lexicography Mode, the sense tree, the dotted number
+  and a lexicon's sense tree, the dotted number
   each item is shown with (its headword's place among the headwords spelled
   the same, then its own path down the sense hierarchy, so one segment is a
   headword and two or more a sense: "2.1.3"), references between entries, and
@@ -167,7 +167,7 @@ receives them, rendered over the test fixture project; regenerate it with
   and `unlink_phrase` (a multi-word expression: one lexicon link shared by
   two or more words, which a member's own link never displaces),
   `create_entry`, `set_entry_field`, `set_document_metadata`,
-  `create_document`, `add_comment`, the Lexicography Mode tools `add_sense`,
+  `create_document`, `add_comment`, the lexicon-structure tools `add_sense`,
   `move_sense`, `make_sense_of`, `free_sense`, `order_homographs`,
   `promote_example` and `remove_example` (the sense tree, the order of entries
   spelled the same, entry references and usage examples, which are structure on

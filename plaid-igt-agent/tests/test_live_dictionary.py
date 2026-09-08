@@ -23,7 +23,7 @@ FIELDS = {
 
 @pytest.fixture(scope='module')
 def lex(live_client):
-    """A real IGT project carrying a second vocabulary in Lexicography Mode:
+    """A real IGT project carrying a second vocabulary with senses:
     kwatha with two senses (one of them with a subsense), and two entries that
     refer to it."""
     s = seed(live_client, project_raw(), {'d1': document_raw()}, {VOCAB: lexicon_raw()},
@@ -32,7 +32,6 @@ def lex(live_client):
     v = c.vocab_layers.create('LiveLex')
     c.projects.link_vocab(s.project_id, v['id'])
     c.vocab_layers.set_config(v['id'], 'igt', 'fields', FIELDS)
-    c.vocab_layers.set_config(v['id'], 'igt', 'dictionary', True)
 
     def mk(form, meta):
         return c.vocab_items.create(v['id'], form, meta)['id']

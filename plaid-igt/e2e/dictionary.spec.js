@@ -24,7 +24,6 @@ test.beforeAll(async () => {
   projectId = project.id;
   stamp = Date.now();
   vocab = await client.vocabLayers.create(`dictionary ${stamp}`);
-  await client.vocabLayers.setConfig(vocab.id, 'igt', 'dictionary', true);
   await client.vocabLayers.setConfig(vocab.id, 'igt', 'fields', {
     morphType: { inline: false },
     gloss: { inline: true },
@@ -197,31 +196,16 @@ test('deleting an entry frees its senses and clears references to it', async ({ 
   await expect(page.getByText('cat')).toHaveCount(0);
 });
 
-test('the Settings switch turns a plain vocabulary into a dictionary, with a Status field', async ({
+test('a plain vocabulary shows the headword-or-sense controls, with no mode to turn on', async ({
   page,
 }) => {
   const plain = await client.vocabLayers.create(`plain ${stamp}`);
   try {
     await seedAuth(page);
     await page.goto(`/#/vocabularies/${plain.id}?tab=settings`);
-    const sw = page.getByRole('switch', { name: 'Lexicography Mode' });
-    await expect(sw).toBeVisible();
-    await expect(page.getByText('Every sense')).toHaveCount(0);
-    await sw.click();
-    await expect
-      .poll(async () => (await client.vocabLayers.get(plain.id)).config?.igt?.dictionary)
-      .toBe(true);
-    const config = (await client.vocabLayers.get(plain.id)).config.igt;
-    expect(config.fields.status).toEqual({ inline: false, tagset: 'Status' });
-    expect(config.tagsets.Status.mode).toBe('closed');
-    // Type and scope controls appear on the fields that can take them.
+    await expect(page.getByRole('columnheader', { name: 'Shown on' })).toBeVisible();
     await expect(page.getByText('Every sense').first()).toBeVisible();
-    await sw.click();
-    await expect
-      .poll(async () => (await client.vocabLayers.get(plain.id)).config?.igt?.dictionary)
-      .toBe(false);
-    // The field stays: turning the switch off changes nothing else.
-    expect((await client.vocabLayers.get(plain.id)).config.igt.fields.status).toBeTruthy();
+    await expect(page.getByRole('switch', { name: 'Lexicography Mode' })).toHaveCount(0);
   } finally {
     await client.vocabLayers.delete(plain.id).catch(() => {});
   }

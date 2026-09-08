@@ -122,7 +122,7 @@ describe('buildLiftLexicon', () => {
   });
 
   it('gives every entry its own id, even when they came from one FLEx entry', () => {
-    // Imported without Lexicography Mode, each FLEx sense is its own entry and
+    // Where the senses were never placed, each FLEx sense is its own entry and
     // they all carry the same guid. Sharing an id would make the file invalid.
     const { lift } = build([
       {

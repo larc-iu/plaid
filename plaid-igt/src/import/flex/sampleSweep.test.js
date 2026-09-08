@@ -27,7 +27,7 @@ function lexiconCapture() {
     batched: async (fn) => fn(),
     vocabLayers: {
       // The first read (before creation) sees nothing; later ones (the
-      // Lexicography Mode enablement) see what was made.
+      // the Status-field seeding) see what was made.
       get: async () => ({ id: 'v1', items: [...items], config }),
       // Kept, because the field schema is where the importer records which
       // writing system a single-writing-system field is in, and the LIFT
@@ -102,7 +102,7 @@ describe.skipIf(samples.length === 0)('fwbackup sample sweep', () => {
       // ---- and straight back out as LIFT (see src/export/lift.js) ----
       // Real lexicons are where the export's edge cases live: multi-sense
       // entries, non-Latin scripts, a non-English analysis language, FLEx
-      // custom fields (Sena has three). Imported with Lexicography Mode on, so
+      // custom fields (Sena has three). Senses are placed under their entry, so
       // a multi-sense entry is a headword with senses under it: the export
       // builds entries from that tree and from nothing FLEx-specific.
       const config = deriveImportConfig(ir, build, { lexiconFields: ir.lexiconFields ?? [] });

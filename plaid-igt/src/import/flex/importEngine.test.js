@@ -383,7 +383,7 @@ describe('importLexicon', () => {
     expect(patches.get(map.get('s1'))).toBeUndefined();
   });
 
-  it('leaves variants alone unless asked, even in Lexicography Mode', async () => {
+  it('leaves variants alone unless asked', async () => {
     const client = makeFakeClient();
     const withRefs = [
       ...lexicon,
