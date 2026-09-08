@@ -156,6 +156,7 @@ Every segment is a row you can edit:
 
 * Moving into a row plays its segment. Turn off **Play segment on entry** to play by hand instead.
 * **Enter** saves the row and moves to the next. **Tab** moves to the next field within a row.
+* **↑** and **↓** move to the row above or below, from the start or end of the text. In the middle of a line they move the caret, as they would anywhere else.
 * **Esc** puts a row back the way it was.
 * **Shift+Space** pauses and resumes the segment you are in without leaving the row. If playback is somewhere else, the segment starts over.
 * **Shift+←** and **Shift+→** move playback one second, in a row or out of one.
@@ -195,9 +196,9 @@ The first run downloads the model, and the browser keeps it for later.
 
 A proposal is not a segment.
 It is a stretch of time with no text: dashed on the timeline, and a dashed row in the transcript in its place in time order.
-Type into a proposal and press Enter, and it becomes an ordinary segment with those times.
+Type into a proposal and it becomes an ordinary segment with those times, saved by Enter or by moving on to another row.
 The **×** on the row discards it.
-Nothing is written to the document until you accept one.
+Nothing is written to the document until you type into one, and a proposal nobody typed into is gone when you leave the tab.
 
 The settings in the dialog change what is proposed without running the model again:
 
@@ -841,7 +842,8 @@ Every shortcut that takes Ctrl also takes Cmd on a Mac.
 | **Shift+Space** | Play or pause the segment you are in, or the selected stretch of the timeline.
 | **Shift+←** / **Shift+→** | Move playback one second back or forward.
 | **Enter** / **Esc** (transcript row) | Save the row and move to the next, or put the row back the way it was.
-| **Enter** (proposed row) | Make a segment of the proposal, with the text you typed.
+| **↑** / **↓** (transcript row) | Move to the row above or below, from the start or end of the text.
+| **Enter** (proposed row) | Make a segment of the proposal, with the text you typed. Moving on saves it too.
 | **Tab** (transcript row) | Move to the next field in the row.
 | **↑** / **↓** (segment time) | Step the digit box under the caret: milliseconds by 10, or 100 with Shift. **←** / **→** move between boxes.
 | **Ctrl/Cmd+Enter** / **Esc** (new-segment popover) | Save the segment, or cancel it.

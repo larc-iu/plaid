@@ -17,8 +17,8 @@ import { Panel } from '../ImportPanels.jsx';
 const HOUR_MB = Math.round((3600 * MP3_BITRATE_KBPS * 1000) / 8 / 1e6);
 
 /** What a recording will become, once its duration is known. */
-const convertedSize = (seconds) =>
-  Number.isFinite(seconds) && seconds > 0 ? formatBytes(estimateMp3Bytes(seconds)) : null;
+const convertedBytes = (seconds) =>
+  Number.isFinite(seconds) && seconds > 0 ? estimateMp3Bytes(seconds) : null;
 
 const Row = ({ icon: Icon, name, detail, status, tone, onRemove }) => (
   <li className="flex items-baseline gap-2 py-0.5">
@@ -83,6 +83,11 @@ export const ElanStagedFiles = ({
   const needOf = (file) => conversionNeed(file.size, maxBytes);
   const toConvert = (mediaFiles || []).filter((f) => eafOf.has(f) && needOf(f));
   const required = toConvert.filter((f) => needOf(f) === 'required');
+  const anyVideo = toConvert.some((f) => f.type?.startsWith('video/'));
+  // A total only means anything once every duration is known.
+  const sizes = toConvert.map((f) => convertedBytes(durations.get(f)));
+  const totalConverted =
+    sizes.length && sizes.every(Boolean) ? sizes.reduce((a, b) => a + b, 0) : null;
 
   return (
     <Panel title={`${(files?.length ?? 0) + (mediaFiles?.length ?? 0)} files`}>
@@ -105,11 +110,13 @@ export const ElanStagedFiles = ({
         {(mediaFiles || []).map((file) => {
           const eafFile = eafOf.get(file);
           const need = eafFile ? needOf(file) : null;
-          const smaller = convertedSize(durations.get(file));
+          const smaller = convertedBytes(durations.get(file));
+          // "audio" says nothing about a .wav, which is audio already. The
+          // size is the point, so the size is what the row says.
           const status = !eafFile
             ? 'no .eaf names this file'
             : need
-              ? `converts to ${smaller ? `about ${smaller}` : 'audio'}`
+              ? `becomes ${smaller ? `a ${formatBytes(smaller)} MP3` : 'an MP3'}`
               : `for ${eafFile}`;
           return (
             <Row
@@ -145,8 +152,10 @@ export const ElanStagedFiles = ({
                 </span>
               ) : null}
               <span className="text-muted-foreground">
-                Converting sends the sound alone, as mono MP3 at 16 kHz: about {HOUR_MB} MB an hour,
-                with the same timing. The picture and the fidelity for phonetic work are lost.
+                Mono at 16 kHz, timed exactly as the original: clear enough to transcribe from, too
+                coarse for phonetic measurement
+                {anyVideo ? ', and without the picture' : ''}.
+                {totalConverted ? '' : ` An MP3 is about ${HOUR_MB} MB an hour.`}
               </span>
             </p>
           )}
@@ -162,8 +171,12 @@ export const ElanStagedFiles = ({
                 size="sm"
                 onClick={() => onConvert(toConvert)}
               >
-                <AudioLines className="h-4 w-4" /> Convert{' '}
-                {toConvert.length === 1 ? 'to audio' : `${toConvert.length} to audio`}
+                <AudioLines className="h-4 w-4" />{' '}
+                {toConvert.length === 1
+                  ? `Convert to ${totalConverted ? `a ${formatBytes(totalConverted)} ` : ''}MP3`
+                  : `Convert ${toConvert.length} to MP3${
+                      totalConverted ? `, about ${formatBytes(totalConverted)}` : ''
+                    }`}
               </Button>
             )}
           </div>

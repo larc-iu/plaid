@@ -1,9 +1,10 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AudioLines, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { formatBytes } from '@/utils/formatBytes';
-import { conversionNeed, MP3_BITRATE_KBPS } from '@/domain/media/transcodeToMp3';
+import { conversionNeed, estimateMp3Bytes, MP3_BITRATE_KBPS } from '@/domain/media/transcodeToMp3';
+import { readDuration } from '@/domain/media/mediaDuration';
 
 const HOUR_MB = Math.round((3600 * MP3_BITRATE_KBPS * 1000) / 8 / 1e6);
 
@@ -24,6 +25,21 @@ export const MediaUpload = ({
   // A large file waits here for the choice between sending it and converting
   // it. A small one is uploaded on sight, as it always was.
   const [pending, setPending] = useState(null);
+  // Its length, read from the header, so the choice can name the size it would
+  // produce rather than a rate to do arithmetic on.
+  const [seconds, setSeconds] = useState(null);
+
+  useEffect(() => {
+    if (!pending) return undefined;
+    let alive = true;
+    setSeconds(null);
+    readDuration(pending).then((value) => {
+      if (alive) setSeconds(value);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [pending]);
 
   const total = progress?.total ?? 0;
   const sent = Math.min(progress?.loaded ?? 0, total);
@@ -33,6 +49,7 @@ export const MediaUpload = ({
   // Over the server's limit there is no question to ask: sending it as it is
   // would fail after the whole upload.
   const overLimit = !!pending && conversionNeed(pending.size, maxBytes) === 'required';
+  const smaller = Number.isFinite(seconds) && seconds > 0 ? estimateMp3Bytes(seconds) : null;
 
   const choose = (file) => {
     if (!file) return;
@@ -107,12 +124,15 @@ export const MediaUpload = ({
                 </p>
               )}
               <p className="text-xs text-muted-foreground">
-                Converting sends the sound alone, as mono MP3 at 16 kHz: about {HOUR_MB} MB an hour,
-                with the same timing. The picture and the fidelity for phonetic work are lost.
+                Mono at 16 kHz, timed exactly as the original: clear enough to transcribe from, too
+                coarse for phonetic measurement
+                {pending.type?.startsWith('video/') ? ', and without the picture' : ''}.
+                {smaller ? '' : ` An MP3 is about ${HOUR_MB} MB an hour.`}
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <Button onClick={() => send(true)}>
-                  <AudioLines className="h-4 w-4" /> Convert to audio
+                  <AudioLines className="h-4 w-4" /> Convert to{' '}
+                  {smaller ? `a ${formatBytes(smaller)} MP3` : 'MP3'}
                 </Button>
                 <Button variant="outline" disabled={overLimit} onClick={() => send(false)}>
                   Upload as it is

@@ -8,8 +8,13 @@
 // `moov` at the END by default, and a <video preload="metadata"> handed such a
 // file simply never fires loadedmetadata — the case that sent this looking.
 //
-// Everything else (WAV, MP3, WebM, Ogg) goes to a media element, which reads
-// the header and stops. Anything that fails both is unknown, and a caller has
+// A WAV says so in its `fmt ` and `data` chunks, which is worth reading for the
+// same reason: an hour of uncompressed audio is hundreds of megabytes, exactly
+// the file that needs converting, and Chrome will not report metadata for one
+// of those either.
+//
+// Everything else (MP3, WebM, Ogg) goes to a media element, which reads the
+// header and stops. Anything that fails all three is unknown, and a caller has
 // to manage without: this only decides whether a size can be promised before a
 // conversion, never whether one can happen.
 
@@ -72,6 +77,38 @@ async function mp4Duration(file) {
   return duration / timescale;
 }
 
+/**
+ * RIFF/WAVE: walk the chunks to `fmt ` for the byte rate and `data` for the
+ * length in bytes. Null when the file is not this shape.
+ */
+async function wavDuration(file) {
+  const head = await readSlice(file, 0, 12);
+  if (head.byteLength < 12) return null;
+  if (typeAt(head, 0) !== 'RIFF' || typeAt(head, 8) !== 'WAVE') return null;
+
+  let at = 12;
+  let byteRate = 0;
+  while (at + 8 <= file.size) {
+    const chunk = await readSlice(file, at, at + 8);
+    if (chunk.byteLength < 8) return null;
+    const id = typeAt(chunk, 0);
+    const size = chunk.getUint32(4, true); // RIFF is little-endian
+    const body = at + 8;
+    if (id === 'fmt ' && size >= 16) {
+      const fmt = await readSlice(file, body, body + 16);
+      byteRate = fmt.getUint32(8, true);
+    } else if (id === 'data') {
+      if (!byteRate) return null;
+      // A streamed WAV can declare size 0 and run to the end of the file.
+      const bytes = size > 0 ? size : file.size - body;
+      return bytes / byteRate;
+    }
+    // Chunks are padded to an even length.
+    at = body + size + (size % 2);
+  }
+  return null;
+}
+
 /** Ask the browser's own media pipeline, which reads the header and stops. */
 function elementDuration(file) {
   return new Promise((resolve) => {
@@ -90,8 +127,9 @@ function elementDuration(file) {
     };
     try {
       url = URL.createObjectURL(file);
-      // A <video> reads audio-only files too, so one element covers both.
-      el = document.createElement('video');
+      // An <audio> for audio: a <video> handed a large audio-only file reports
+      // no metadata at all, which is how the WAV reader above came to exist.
+      el = document.createElement(file.type?.startsWith('video/') ? 'video' : 'audio');
       el.preload = 'metadata';
       el.muted = true;
       el.addEventListener('loadedmetadata', () =>
@@ -108,13 +146,15 @@ function elementDuration(file) {
 
 /** Duration in seconds, or null when neither way can say. */
 export async function readDuration(file) {
-  try {
-    const fromBoxes = await mp4Duration(file);
-    if (fromBoxes) return fromBoxes;
-  } catch {
-    // A truncated or unusual file: fall through to the media element.
+  for (const read of [mp4Duration, wavDuration]) {
+    try {
+      const seconds = await read(file);
+      if (seconds) return seconds;
+    } catch {
+      // A truncated or unusual file: try the next way of asking.
+    }
   }
   return elementDuration(file);
 }
 
-export const __test = { mp4Duration };
+export const __test = { mp4Duration, wavDuration };

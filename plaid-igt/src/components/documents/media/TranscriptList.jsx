@@ -49,6 +49,19 @@ const EMPTY = [];
 const timeBeginOf = (t) => t.metadata?.timeBegin ?? 0;
 const timeEndOf = (t) => t.metadata?.timeEnd ?? timeBeginOf(t);
 const byTime = (a, b) => timeBeginOf(a) - timeBeginOf(b);
+
+// Up and Down move between rows, but only from an edge of the text: in the
+// middle of a wrapped line they are the caret keys the box is entitled to, and
+// a held modifier belongs to the seek chords the tab defines. -1 up, 1 down,
+// 0 to leave the key alone.
+const leavingBy = (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return 0;
+  const el = e.target;
+  const collapsed = el.selectionStart === el.selectionEnd;
+  if (e.key === 'ArrowUp' && collapsed && el.selectionStart === 0) return -1;
+  if (e.key === 'ArrowDown' && collapsed && el.selectionEnd === el.value.length) return 1;
+  return 0;
+};
 // The shortest segment a keyboard edit may leave behind.
 const MIN_SEGMENT = 0.01;
 
@@ -81,6 +94,7 @@ const SegmentRow = memo(function SegmentRow({
   onCommit,
   onCommitTime,
   onAdvance,
+  onStep,
   onDelete,
   onPlayToggle,
   registerText,
@@ -159,6 +173,7 @@ const SegmentRow = memo(function SegmentRow({
   const playToggle = () => onPlayToggle(token);
 
   const onTextKeyDown = async (e) => {
+    const step = leavingBy(e);
     if (isPlayChord(e)) {
       e.preventDefault();
       playToggle();
@@ -166,6 +181,12 @@ const SegmentRow = memo(function SegmentRow({
       e.preventDefault();
       const timeBegin = timeBeginOf(token);
       if (await commit()) onAdvance(timeBegin);
+    } else if (step) {
+      // Committed first, like Enter: editing the text recreates the token, and
+      // this row unmounts, so the move must not race the blur that follows it.
+      e.preventDefault();
+      const timeBegin = timeBeginOf(token);
+      if (await commit()) onStep(timeBegin, step);
     } else if (e.key === 'Escape') {
       e.preventDefault();
       revert();
@@ -325,45 +346,78 @@ const ProposalRow = memo(function ProposalRow({
   onFocusRow,
   onAccept,
   onAdvance,
+  onStep,
   onDiscard,
   onPlayToggle,
   registerText,
 }) {
-  const [draft, setDraft] = useState('');
-  const [speaker, setSpeaker] = useState(getStickySpeaker);
-  const [busy, setBusy] = useState(false);
+  const [draft, setDraftState] = useState('');
+  const [speaker, setSpeakerState] = useState(getStickySpeaker);
   const ref = useRef(null);
+  // Mirrored into refs for the same reason the segment row does it: the blur
+  // that follows a keystroke runs before React re-renders, so a guard read
+  // from a closure would still see the old draft.
+  const draftRef = useRef('');
+  const speakerRef = useRef(speaker);
+  const inFlight = useRef(null);
+  // Set once the proposal has become a segment. This row is unmounting by
+  // then, and the blur it fires on the way out must not create a second one.
+  const acceptedRef = useRef(false);
+
+  const setDraft = (value) => {
+    draftRef.current = value;
+    setDraftState(value);
+  };
+  const setSpeaker = (value) => {
+    speakerRef.current = value;
+    setSpeakerState(value);
+  };
 
   useLayoutEffect(() => autoGrow(ref.current), [draft]);
 
-  const submit = async () => {
-    if (busy || !draft.trim()) return;
-    setBusy(true);
-    try {
+  // Typing into a proposal is what makes it a segment. It used to take Enter,
+  // and anything typed without one was thrown away the moment focus moved or
+  // the tab was left — silently, since a proposal is not data and nothing was
+  // there to warn about. Now it saves the way every other row does.
+  const commit = () => {
+    if (inFlight.current) return inFlight.current;
+    if (acceptedRef.current) return Promise.resolve(true);
+    const run = async () => {
+      const text = draftRef.current.trim();
+      // Nothing typed: still a proposal, and a segment cannot exist without
+      // text anyway. A speaker on its own has nothing to attach to.
+      if (!text) return false;
       const ok = await onAccept({
-        text: draft.trim(),
+        text,
         timeBegin: proposal.timeBegin,
         timeEnd: proposal.timeEnd,
-        speaker: speaker.trim(),
+        speaker: speakerRef.current.trim(),
       });
       if (ok) {
-        setStickySpeaker(speaker);
-        // This row is about to unmount, so focus has to move before it does,
-        // exactly as it does after a segment-text commit.
-        onAdvance(proposal.timeBegin);
+        acceptedRef.current = true;
+        setStickySpeaker(speakerRef.current);
       }
-    } finally {
-      setBusy(false);
-    }
+      return ok;
+    };
+    inFlight.current = run().finally(() => {
+      inFlight.current = null;
+    });
+    return inFlight.current;
   };
 
   const onKeyDown = (e) => {
+    const step = leavingBy(e);
     if (isPlayChord(e)) {
       e.preventDefault();
       onPlayToggle(proposal);
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      submit();
+      // This row is about to unmount, so focus has to move before it does,
+      // exactly as it does after a segment-text commit.
+      commit().then((ok) => ok && onAdvance(proposal.timeBegin));
+    } else if (step && onStep) {
+      e.preventDefault();
+      onStep(proposal.timeBegin, step);
     } else if (e.key === 'Escape') {
       e.preventDefault();
       setDraft('');
@@ -394,6 +448,7 @@ const ProposalRow = memo(function ProposalRow({
         className="h-8 text-xs"
         onChange={(e) => setSpeaker(e.target.value)}
         onKeyDown={onKeyDown}
+        onBlur={commit}
       />
       <Textarea
         ref={(el) => {
@@ -413,6 +468,7 @@ const ProposalRow = memo(function ProposalRow({
         className="min-h-8 resize-none py-1.5 text-sm"
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={onKeyDown}
+        onBlur={commit}
       />
       <div className="flex gap-1">
         <Button
@@ -444,6 +500,7 @@ const NewSegmentRow = memo(function NewSegmentRow({
   readCurrentTime,
   onCreate,
   onToggle,
+  onStep,
   textRef,
 }) {
   const [draft, setDraft] = useState('');
@@ -485,6 +542,19 @@ const NewSegmentRow = memo(function NewSegmentRow({
     } else if (e.key === 'Enter') {
       e.preventDefault();
       submit();
+    } else if (
+      e.key === 'ArrowUp' &&
+      onStep &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey &&
+      !e.shiftKey &&
+      e.target.selectionStart === 0 &&
+      e.target.selectionEnd === 0
+    ) {
+      // This row is after every segment, so up from its start is the last one.
+      e.preventDefault();
+      onStep(Infinity, -1);
     } else if (e.key === 'Escape') {
       e.preventDefault();
       setDraft('');
@@ -746,23 +816,35 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
   // is found by time rather than by position. Segments come from the document,
   // which is always current; the proposals are last render's, re-filtered here
   // against the live segments so the one just accepted is not offered back.
-  const handleAdvance = useCallback(
-    (timeBegin) => {
+  // Move focus to the row before or after a time. Proposals are rows too, so
+  // they are in the order; the row after the last one is the new-segment row,
+  // and there is nothing before the first.
+  const handleStep = useCallback(
+    (fromTime, direction) => {
       const tokens = doc.alignmentTokens || [];
       const live = (opsRef.current.vad?.proposals || []).filter(
         (p) => !tokens.some((t) => timeBeginOf(t) < p.timeEnd && timeEndOf(t) > p.timeBegin),
       );
-      const next = [
+      const rows = [
         ...tokens.map((t) => ({ id: t.id, time: timeBeginOf(t) })),
         ...live.map((p) => ({ id: p.id, time: p.timeBegin })),
-      ]
-        .sort((a, b) => a.time - b.time)
-        .find((c) => c.time > timeBegin);
-      const el = next ? textRefs.current.get(next.id) : newTextRef.current;
-      el?.focus({ preventScroll: true }); // the row's own scroll box follows; the page does not
+      ].sort((a, b) => a.time - b.time);
+      const target =
+        direction < 0
+          ? [...rows].reverse().find((c) => c.time < fromTime)
+          : rows.find((c) => c.time > fromTime);
+      if (!target) {
+        // Past the end is the new-segment row; before the start is nowhere.
+        if (direction > 0) newTextRef.current?.focus({ preventScroll: true });
+        return;
+      }
+      // The row's own scroll box follows; the page does not.
+      textRefs.current.get(target.id)?.focus({ preventScroll: true });
     },
     [doc],
   );
+
+  const handleAdvance = useCallback((timeBegin) => handleStep(timeBegin, 1), [handleStep]);
 
   const handleToggleFree = useCallback(() => opsRef.current.togglePlayback(), []);
 
@@ -860,6 +942,7 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
               onCommit={handleCommit}
               onCommitTime={handleCommitTime}
               onAdvance={handleAdvance}
+              onStep={handleStep}
               onDelete={handleDelete}
               onPlayToggle={handlePlayToggle}
               registerText={registerText}
@@ -873,6 +956,7 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
               onFocusRow={handleFocusProposal}
               onAccept={handleCreate}
               onAdvance={handleAdvance}
+              onStep={handleStep}
               onDiscard={handleDiscardProposal}
               onPlayToggle={handlePlayToggleProposal}
               registerText={registerText}
@@ -888,6 +972,7 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
             readCurrentTime={readCurrentTime}
             onCreate={handleCreate}
             onToggle={handleToggleFree}
+            onStep={handleStep}
             textRef={newTextRef}
           />
         </div>

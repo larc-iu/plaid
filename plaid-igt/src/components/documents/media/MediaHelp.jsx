@@ -53,10 +53,11 @@ export function MediaHelp() {
       </Row>
       <Row label="Transcript">
         one row per segment, in time order · moving into a row plays it (switch it off above the
-        rows) · <Kbd>Enter</Kbd> save the row and move to the next · <Kbd>Esc</Kbd> put the row back
-        · <Kbd>Tab</Kbd> next field · the last row adds a segment from the end of the previous one
-        to playback at <Kbd>Enter</Kbd> · the bin removes a segment and leaves its text in the
-        baseline unless you tick the box
+        rows) · <Kbd>Enter</Kbd> save the row and move to the next · <Kbd>↑</Kbd> <Kbd>↓</Kbd> the
+        row above or below, from the start or end of the text · <Kbd>Esc</Kbd> put the row back ·{' '}
+        <Kbd>Tab</Kbd> next field · the last row adds a segment from the end of the previous one to
+        playback at <Kbd>Enter</Kbd> · the bin removes a segment and leaves its text in the baseline
+        unless you tick the box
       </Row>
       <Row label="Times">
         a segment's start and end are boxes of digits · type into the box under the caret ·{' '}
@@ -74,8 +75,8 @@ export function MediaHelp() {
       <Row label="Detection">
         the waveform button in the Recording header proposes where the utterances are, in the
         browser · a proposal is dashed on the timeline and dashed in the transcript, and holds no
-        text yet · type into it and <Kbd>Enter</Kbd> makes it a segment · <Kbd>×</Kbd> discards it ·
-        the dialog's settings re-propose without running the model again
+        text yet · typing into one makes it a segment, saved by <Kbd>Enter</Kbd> or by moving on ·{' '}
+        <Kbd>×</Kbd> discards it · the dialog's settings re-propose without running the model again
       </Row>
       <Row label="Speakers">
         a label per segment · the timeline colors each speaker alike · a new segment keeps the last

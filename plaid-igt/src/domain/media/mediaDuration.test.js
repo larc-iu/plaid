@@ -35,6 +35,41 @@ const concat = (...parts) => {
 /** A Blob-alike with the slice/arrayBuffer/size a walk needs. */
 const fileOf = (bytes) => new Blob([bytes]);
 
+// A WAV header: RIFF/WAVE, a `fmt ` chunk carrying the byte rate, then `data`.
+const wav = ({ byteRate = 32000, dataBytes = 320000, dataSize = null } = {}) => {
+  const fmt = new Uint8Array(16);
+  new DataView(fmt.buffer).setUint32(8, byteRate, true);
+  const chunk = (id, body) => {
+    const out = new Uint8Array(8 + body.length);
+    for (let i = 0; i < 4; i++) out[i] = id.charCodeAt(i);
+    new DataView(out.buffer).setUint32(4, body.length, true);
+    out.set(body, 8);
+    return out;
+  };
+  const data = chunk('data', new Uint8Array(dataBytes));
+  if (dataSize !== null) new DataView(data.buffer).setUint32(4, dataSize, true);
+  const riff = new Uint8Array(12);
+  for (let i = 0; i < 4; i++) riff[i] = 'RIFF'.charCodeAt(i);
+  for (let i = 0; i < 4; i++) riff[8 + i] = 'WAVE'.charCodeAt(i);
+  return concat(riff, chunk('fmt ', fmt), data);
+};
+
+describe('wavDuration', () => {
+  it('divides the data by the byte rate', async () => {
+    // 320,000 bytes at 32,000 bytes a second is ten seconds.
+    expect(await __test.wavDuration(fileOf(wav()))).toBe(10);
+  });
+
+  it('reads to the end of the file when the data chunk declares no size', async () => {
+    expect(await __test.wavDuration(fileOf(wav({ dataSize: 0 })))).toBe(10);
+  });
+
+  it('is null without a byte rate, and for anything that is not RIFF/WAVE', async () => {
+    expect(await __test.wavDuration(fileOf(wav({ byteRate: 0 })))).toBeNull();
+    expect(await __test.wavDuration(fileOf(new Uint8Array(64)))).toBeNull();
+  });
+});
+
 describe('mp4Duration', () => {
   it('reads the duration from an mvhd after a large mdat', async () => {
     const mdat = box('mdat');

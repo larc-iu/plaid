@@ -65,6 +65,9 @@ const press = (el, key, init = {}) => {
   return ev;
 };
 const settle = () => new Promise((r) => setTimeout(r, 0));
+// React's onBlur listens for `focusout` at the root, not the non-bubbling
+// `blur`, so this is what moving focus away looks like to a component.
+const blur = (el) => el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
 
 const element = (doc, ops, readOnly = false) => (
   <DocumentProvider value={{ doc, readOnly }}>
@@ -170,6 +173,80 @@ describe('TranscriptList', () => {
     });
     expect(doc.editAlignment).not.toHaveBeenCalled(); // nothing changed, nothing written
     expect(document.activeElement).toBe(newTextarea(r.container));
+    await r.unmount();
+  });
+
+  it('Down moves to the next row and Up to the previous, from the ends of the text', async () => {
+    const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+    const r = await renderComponent(element(doc, makeOps()));
+    const [first, second] = rowTextareas(r.container);
+    await r.step(() => {
+      first.focus();
+      first.setSelectionRange(first.value.length, first.value.length);
+    });
+    await r.step(async () => {
+      press(first, 'ArrowDown');
+      await settle();
+    });
+    expect(document.activeElement).toBe(second);
+
+    await r.step(() => second.setSelectionRange(0, 0));
+    await r.step(async () => {
+      press(second, 'ArrowUp');
+      await settle();
+    });
+    expect(document.activeElement).toBe(first);
+    // Navigating changed nothing, so nothing was written.
+    expect(doc.editAlignment).not.toHaveBeenCalled();
+    await r.unmount();
+  });
+
+  it('leaves the arrows to the caret when it is not at the edge it would leave by', async () => {
+    const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+    const r = await renderComponent(element(doc, makeOps()));
+    const [first, second] = rowTextareas(r.container);
+    await r.step(() => {
+      first.focus();
+      first.setSelectionRange(1, 1); // mid-text: Down belongs to the box
+    });
+    await r.step(async () => {
+      press(first, 'ArrowDown');
+      await settle();
+    });
+    expect(document.activeElement).toBe(first);
+
+    // A held modifier is a seek chord, not a step.
+    await r.step(() => first.setSelectionRange(first.value.length, first.value.length));
+    await r.step(async () => {
+      press(first, 'ArrowDown', { shiftKey: true });
+      await settle();
+    });
+    expect(document.activeElement).toBe(first);
+    expect(second).toBeTruthy();
+    await r.unmount();
+  });
+
+  it('Down from the last row reaches the new-segment row, and Up comes back', async () => {
+    const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+    const r = await renderComponent(element(doc, makeOps()));
+    const last = rowTextareas(r.container)[1];
+    await r.step(() => {
+      last.focus();
+      last.setSelectionRange(last.value.length, last.value.length);
+    });
+    await r.step(async () => {
+      press(last, 'ArrowDown');
+      await settle();
+    });
+    const fresh = newTextarea(r.container);
+    expect(document.activeElement).toBe(fresh);
+
+    await r.step(() => fresh.setSelectionRange(0, 0));
+    await r.step(async () => {
+      press(fresh, 'ArrowUp');
+      await settle();
+    });
+    expect(document.activeElement).toBe(rowTextareas(r.container)[1]);
     await r.unmount();
   });
 
@@ -414,6 +491,45 @@ describe('TranscriptList proposals', () => {
       timeEnd: 4.0,
       speaker: '',
     });
+  });
+
+  it('saves what was typed into a proposal when focus leaves it', async () => {
+    // The bug this guards: a proposal took Enter and nothing else, so text
+    // typed into one and then navigated away from went silently: the row is
+    // not data, so nothing was there to warn about losing.
+    const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+    const r = await renderComponent(element(doc, withVad()));
+    const box = proposalText(r.container, 'vad-1');
+    setValue(box, 'heard this much');
+    await r.step(() => blur(box));
+    await settle();
+    expect(doc.createAlignment).toHaveBeenCalledWith({
+      text: 'heard this much',
+      timeBegin: 0.75,
+      timeEnd: 1.4,
+      speaker: '',
+    });
+  });
+
+  it('does not create anything from a proposal nobody typed into', async () => {
+    const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+    const r = await renderComponent(element(doc, withVad()));
+    const box = proposalText(r.container, 'vad-1');
+    await r.step(() => blur(box));
+    await settle();
+    expect(doc.createAlignment).not.toHaveBeenCalled();
+  });
+
+  it('saves a proposal once, though Enter is followed by the blur it causes', async () => {
+    const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+    const r = await renderComponent(element(doc, withVad()));
+    const box = proposalText(r.container, 'vad-2');
+    setValue(box, 'said once');
+    press(box, 'Enter');
+    await settle();
+    await r.step(() => blur(box));
+    await settle();
+    expect(doc.createAlignment).toHaveBeenCalledTimes(1);
   });
 
   it('plays the proposed stretch on entry, like a segment row', async () => {
