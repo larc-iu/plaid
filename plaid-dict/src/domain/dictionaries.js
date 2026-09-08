@@ -1,7 +1,6 @@
 // Which of the vocabularies a user can see are dictionaries, and which ones
 // they could turn into dictionaries.
 
-import { readDictionaryEnabled } from '@igt/domain/vocabDictionary.js';
 import { isDictionary, readDictRecord, dictTitle } from './dictConfig.js';
 
 /** Whether a user may write a vocabulary's publication record. */
@@ -10,15 +9,15 @@ export const canManage = (vocab, user) =>
 
 /**
  * The vocabulary list split for the landing screen: the dictionaries anyone
- * here can read, and the Lexicography Mode vocabularies this user maintains
- * that have no publication record yet. Both sorted by the name shown.
+ * here can read, and the vocabularies this user maintains that have no
+ * publication record yet. Both sorted by the name shown.
  */
 export const classifyVocabularies = (vocabs, user) => {
   const dictionaries = [];
   const unpublished = [];
   for (const v of vocabs || []) {
     if (isDictionary(v)) dictionaries.push(v);
-    else if (readDictionaryEnabled(v.config) && canManage(v, user)) unpublished.push(v);
+    else if (canManage(v, user)) unpublished.push(v);
   }
   const byName = (a, b) => dictTitle(a).localeCompare(dictTitle(b));
   return { dictionaries: dictionaries.sort(byName), unpublished: unpublished.sort(byName) };

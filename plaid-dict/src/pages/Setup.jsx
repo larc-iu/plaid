@@ -22,7 +22,6 @@ import {
   suggestAlphabet,
 } from '@/domain/collation';
 import { parentOf } from '@igt/domain/vocabDictionary.js';
-import { readDictionaryEnabled } from '@igt/domain/vocabDictionary.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -224,7 +223,7 @@ export const Setup = () => {
     );
   }
 
-  if (!vocab || !readDictionaryEnabled(vocab.config) || !canManage(vocab, user)) {
+  if (!vocab || !canManage(vocab, user)) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-10">
         <p className="text-sm">This vocabulary cannot be set up as a dictionary.</p>

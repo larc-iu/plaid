@@ -1,14 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { canManage, classifyVocabularies, findBySlug, takenSlugs } from './dictionaries.js';
 
-const vocab = (id, { name = id, dict = null, lexicography = false, maintainers = [] } = {}) => ({
+const vocab = (id, { name = id, dict = null, maintainers = [] } = {}) => ({
   id,
   name,
   maintainers,
-  config: {
-    ...(lexicography ? { igt: { dictionary: true } } : {}),
-    ...(dict ? { dict } : {}),
-  },
+  config: { ...(dict ? { dict } : {}) },
 });
 
 const luke = { id: 'luke@example.org', isAdmin: false };
@@ -27,9 +24,8 @@ describe('classifyVocabularies', () => {
   const vocabs = [
     vocab('published', { name: 'Zulu', dict: { slug: 'zulu', title: 'Zulu Dictionary' } }),
     vocab('other', { name: 'Aja', dict: { slug: 'aja' } }),
-    vocab('mine', { name: 'Sena', lexicography: true, maintainers: [luke.id] }),
-    vocab('theirs', { name: 'Bemba', lexicography: true }),
-    vocab('plain', { name: 'A tagset', maintainers: [luke.id] }),
+    vocab('mine', { name: 'Sena', maintainers: [luke.id] }),
+    vocab('theirs', { name: 'Bemba' }),
   ];
 
   it('lists every readable dictionary, whoever maintains it', () => {
@@ -37,7 +33,7 @@ describe('classifyVocabularies', () => {
     expect(dictionaries.map((v) => v.id)).toEqual(['other', 'published']);
   });
 
-  it('offers setup only for Lexicography Mode vocabularies this user maintains', () => {
+  it('offers setup only for the vocabularies this user maintains', () => {
     expect(classifyVocabularies(vocabs, luke).unpublished.map((v) => v.id)).toEqual(['mine']);
     expect(classifyVocabularies(vocabs, admin).unpublished.map((v) => v.id)).toEqual([
       'theirs',
