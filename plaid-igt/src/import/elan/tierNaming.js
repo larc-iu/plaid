@@ -10,12 +10,15 @@
 // writing system takes the bare name.
 //
 // The two conventions carry the same fact in different shapes, so the mapping
-// can be worked out instead of typed. What cannot be read off either side is
-// WHICH writing system the bare field is in: Plaid records no language on an
-// annotation field. It is deduced instead. When a project has "Translation",
-// "Translation (en)" and "Translation (nl)", and the corpus has tiers in en, nl
-// and pmy, then en and nl pair by their tags and the one tier and one field left
-// over must be each other.
+// can be worked out instead of typed.
+//
+// A field that RECORDS its writing system (config.igt.lang, which the FLEx
+// importer writes) is matched on that and nothing else. Failing that, the tag
+// in its name is the next best thing, and a field with neither is deduced:
+// when a project has "Translation", "Translation (en)" and "Translation (nl)",
+// and the corpus has tiers in en, nl and pmy, then en and nl pair by their
+// tags and the one tier and one field left over must be each other. That last
+// step is a guess, and it is only reached for fields nobody labelled.
 
 import { isLangTag, parseFieldName } from '../../domain/fieldNames.js';
 
@@ -51,9 +54,10 @@ const fold = (name) =>
  *
  * @param entries  [{key, name, scope}] — one per tier in a field role
  * @param existing {scope: [{name, id}]} — the project's own fields
+ * @param fieldLangs {"<scope>:<name>" → tag} — what those fields record
  * @returns {Object<string, string>} node key → field name
  */
-export function suggestFieldNames(entries, existing) {
+export function suggestFieldNames(entries, existing, fieldLangs = {}) {
   const out = {};
   // Grouped by what they are: one group decides its members together, because
   // the leftover pairing is only sound within a group.
@@ -73,20 +77,22 @@ export function suggestFieldNames(entries, existing) {
     );
     const claimed = new Set();
     const unmatched = [];
+    // What a field says about itself outranks what its name looks like.
+    const langOf = (f) =>
+      fieldLangs?.[`${group.scope}:${f.name}`] ?? parseFieldName(f.name).ws ?? null;
     for (const tier of group.tiers) {
-      const byTag = fields.find(
-        (f) => !claimed.has(f.name) && parseFieldName(f.name).ws === tier.ws,
-      );
-      if (byTag) {
-        claimed.add(byTag.name);
-        out[tier.key] = byTag.name;
+      const match = fields.find((f) => !claimed.has(f.name) && langOf(f) === tier.ws);
+      if (match) {
+        claimed.add(match.name);
+        out[tier.key] = match.name;
       } else {
         unmatched.push(tier);
       }
     }
-    // The bare field is the primary writing system, and nothing records which
-    // one that is. One tier left and one bare field left is that pairing.
-    const bare = fields.filter((f) => !claimed.has(f.name) && parseFieldName(f.name).ws === null);
+    // A field with no recorded language and no tag in its name: the primary
+    // writing system, with nothing to say so. One tier left and one such field
+    // left is that pairing, and it is the only guess this makes.
+    const bare = fields.filter((f) => !claimed.has(f.name) && langOf(f) === null);
     if (unmatched.length === 1 && bare.length === 1) out[unmatched[0].key] = bare[0].name;
   }
   return out;

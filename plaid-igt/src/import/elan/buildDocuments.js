@@ -30,6 +30,7 @@ import { makeCpIndexer, matchesAt, alignWords } from '../align.js';
 // lives with the CLDF importer that first needed it; it belongs in align.js
 // beside its siblings and should move there when that file next settles.
 import { ROLES, nodeLabel } from './schema.js';
+import { parseFlexTierName } from './tierNaming.js';
 import { chainOrder } from './readEaf.js';
 
 /** EAF milliseconds → Plaid seconds. */
@@ -576,7 +577,16 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
     );
   }
 
-  const fieldsOf = (list, scope) => list.map((node) => ({ name: nameOf(node), scope }));
+  // `lang` is the writing system the tier's name declares, when it declares
+  // one: a corpus prepared for FieldWorks says so (`Translation-gls-nl`), and
+  // a field created from that tier can record it instead of being read back
+  // out of its name later.
+  const fieldsOf = (list, scope) =>
+    list.map((node) => ({
+      name: nameOf(node),
+      scope,
+      lang: parseFlexTierName(nodeLabel(node))?.ws ?? null,
+    }));
   // Two nodes may deliberately carry the same field name (one tier per speaker),
   // and the project needs that span layer once, not twice.
   const dedupeFields = (list) => {

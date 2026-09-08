@@ -58,7 +58,12 @@ export function deriveSetupData(build, projectName) {
       ],
     },
     fields: {
-      fields: build.schema.fields.map((f) => ({ name: f.name, scope: f.scope, isCustom: true })),
+      fields: build.schema.fields.map((f) => ({
+        name: f.name,
+        scope: f.scope,
+        lang: f.lang ?? null,
+        isCustom: true,
+      })),
     },
     vocabulary: { vocabularies: [] },
     documentMetadata: {

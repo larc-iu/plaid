@@ -188,7 +188,15 @@ export const ImportFlexProject = () => {
             ],
           },
           fields: {
-            fields: config.fields.map((f) => ({ name: f.name, scope: f.scope, isCustom: true })),
+            // `ws` is the writing system this field's values are in. It is
+            // recorded on the layer, so the FLEx exporters can tag each field
+            // exactly instead of reading it back out of the field's name.
+            fields: config.fields.map((f) => ({
+              name: f.name,
+              scope: f.scope,
+              lang: f.ws ?? null,
+              isCustom: true,
+            })),
             ignoredTokens: {
               mode: 'unicode-punctuation',
               unicodePunctuationExceptions: [],

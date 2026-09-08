@@ -45,7 +45,13 @@ function serializeDoc(igtDoc, preset, layers, context = {}) {
   // One <interlinear-text> block, not a whole file: the FLEx branch joins the
   // scope's blocks into a single .flextext at assembly time.
   if (preset.format === 'flextext') {
-    return interlinearTextXml(igtDoc, preset.options || {});
+    // What each field records about its own language comes from the PROJECT at
+    // run time, not from the preset: it is a fact about the data, and a preset
+    // saved before a field was labelled should still export it correctly.
+    return interlinearTextXml(igtDoc, {
+      ...(preset.options || {}),
+      fieldLangs: layers.fieldLangs,
+    });
   }
   if (preset.format === 'elan') {
     return buildEafDocument(igtDoc, intersectSelection(preset.options || {}, layers), context);

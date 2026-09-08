@@ -75,12 +75,12 @@ export function missingFields(project, fields) {
   const existing = existingFields(project);
   const seen = new Set();
   const out = [];
-  for (const { name, scope } of fields || []) {
+  for (const { name, scope, lang } of fields || []) {
     const key = `${scope}:${name}`;
     if (seen.has(key)) continue;
     seen.add(key);
     if ((existing[scope] || []).some((f) => f.name === name)) continue;
-    out.push({ name, scope, similarTo: similarField(existing, scope, name) });
+    out.push({ name, scope, lang: lang ?? null, similarTo: similarField(existing, scope, name) });
   }
   return out;
 }
@@ -111,6 +111,11 @@ export async function createFields(client, project, fields, onProgress = null) {
     onProgress?.(`Adding field ${field.name} (${field.scope})`);
     const layer = await client.spanLayers.create(parentLayerId, field.name);
     await client.spanLayers.setConfig(layer.id, IGT_NAMESPACE, 'scope', field.scope);
+    // A tier name says what language it is in; record it rather than leave the
+    // next reader to parse the name again (see readFieldLang).
+    if (field.lang) {
+      await client.spanLayers.setConfig(layer.id, IGT_NAMESPACE, 'lang', field.lang);
+    }
     created.push({ ...field, id: layer.id ?? layer });
   }
   return created;

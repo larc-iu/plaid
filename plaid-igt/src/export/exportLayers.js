@@ -12,13 +12,17 @@ import {
   findWordTokenLayer,
   findSentenceTokenLayer,
   findMorphemeTokenLayer,
+  readFieldLang,
   readScope,
   readOrthographies,
 } from '../domain/igtConfig.js';
 
 /**
  * @returns {{ orthographies: string[], wordFields: string[],
- *             morphFields: string[], sentFields: string[], hasMorphemes: boolean }}
+ *             morphFields: string[], sentFields: string[], hasMorphemes: boolean,
+ *             fieldLangs: Object<string, string> }}
+ *   fieldLangs is keyed "<scope>:<name>", since one name can be a field at
+ *   more than one scope ("Gloss" on words and on morphemes).
  */
 export function discoverExportLayers(project) {
   const textLayer = findBaselineTextLayer(project?.textLayers || []);
@@ -32,7 +36,19 @@ export function discoverExportLayers(project) {
       .filter((sl) => scopes.includes(readScope(sl.config)))
       .map((sl) => sl.name);
 
+  // The writing system each field records, for the exporters that have to tag
+  // their output with one. Absent for a field nobody told.
+  const fieldLangs = {};
+  for (const tl of textLayer?.tokenLayers || []) {
+    for (const sl of tl.spanLayers || []) {
+      const scope = readScope(sl.config);
+      const lang = readFieldLang(sl.config);
+      if (scope && lang) fieldLangs[`${scope === 'Token' ? 'Word' : scope}:${sl.name}`] = lang;
+    }
+  }
+
   return {
+    fieldLangs,
     orthographies: (readOrthographies(wordLayer?.config) || [])
       .map((o) => o?.name)
       .filter((n) => typeof n === 'string' && n !== ''),

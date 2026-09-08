@@ -683,10 +683,12 @@ Five formats are supported:
 * **Plaid IGT JSON** (`.zip`): a lossless archive you can import again later.
 
 A FLEx preset also carries the writing-system tags FieldWorks will see: one for the baseline text, one for each alternate orthography, and one for glosses and translations.
-A field whose name ends in a tag, such as `Gloss (nl)`, goes out under that tag.
-Any other field goes out under the tag for glosses and translations, unless you set a tag of its own beside it.
 Use the codes your FieldWorks project already uses, or FLEx will offer to add a new writing system when you import.
-A FLEx import names the field for its primary analysis language without a tag, so that is the field the tag for glosses and translations covers.
+
+Each field goes out under its own language where that is known.
+A field imported from FLEx knows it, whatever it is called: an import records the writing system each field's values are in, so a project glossed in three languages exports all three correctly without anything being set here.
+Failing that, a field whose name ends in a tag, such as `Gloss (nl)`, goes out under that tag, and a field with neither goes out under the tag for glosses and translations.
+The box beside each field overrides all of it.
 
 To grab a single sentence instead, use **Copy as IGT** in the Analyze tab.
 

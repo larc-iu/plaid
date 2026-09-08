@@ -44,7 +44,20 @@ const LangInput = ({ id, label, value, onChange, placeholder }) => (
   </div>
 );
 
-const FieldMapGroup = ({ scope, title, fields, map, overrides, analysis, onChange, onLang }) => {
+// The scope a span layer records, from the key this UI groups by.
+const SCOPE_NAMES = { sentence: 'Sentence', word: 'Word', morpheme: 'Morpheme' };
+
+const FieldMapGroup = ({
+  scope,
+  title,
+  fields,
+  map,
+  overrides,
+  fieldLangs,
+  analysis,
+  onChange,
+  onLang,
+}) => {
   if (!fields.length) return null;
   return (
     <div className="flex flex-col gap-1.5">
@@ -77,9 +90,12 @@ const FieldMapGroup = ({ scope, title, fields, map, overrides, analysis, onChang
             <Input
               aria-label={`Language tag for ${f}`}
               value={overrides[f] ?? ''}
-              // What the field goes out as when the box is empty: the tag its
-              // own name carries, else the one for glosses and translations.
-              placeholder={fieldNameLang(f) || analysis || 'en'}
+              // What the field goes out as when the box is empty: what the
+              // field itself records, else the tag its own name carries, else
+              // the one for glosses and translations.
+              placeholder={
+                fieldLangs?.[`${SCOPE_NAMES[scope]}:${f}`] || fieldNameLang(f) || analysis || 'en'
+              }
               onChange={(e) => onLang(f, e.target.value)}
               className="h-8 w-16 font-mono text-xs"
             />
@@ -150,6 +166,7 @@ export const FlextextOptions = ({ options, layers, onChange }) => {
         fields={layers.sentFields}
         map={fieldMap.sentence || {}}
         overrides={overrides}
+        fieldLangs={layers.fieldLangs}
         analysis={langs.analysis}
         onChange={(m) => setMap('sentence', m)}
         onLang={setFieldLang}
@@ -160,6 +177,7 @@ export const FlextextOptions = ({ options, layers, onChange }) => {
         fields={layers.wordFields}
         map={fieldMap.word || {}}
         overrides={overrides}
+        fieldLangs={layers.fieldLangs}
         analysis={langs.analysis}
         onChange={(m) => setMap('word', m)}
         onLang={setFieldLang}
@@ -170,6 +188,7 @@ export const FlextextOptions = ({ options, layers, onChange }) => {
         fields={layers.morphFields}
         map={fieldMap.morpheme || {}}
         overrides={overrides}
+        fieldLangs={layers.fieldLangs}
         analysis={langs.analysis}
         onChange={(m) => setMap('morpheme', m)}
         onLang={setFieldLang}

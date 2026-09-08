@@ -4,7 +4,10 @@ import { discoverExportLayers, intersectSelection } from './exportLayers.js';
 // Mirrors the substrate conventions: roles under config.plaid.role, scope
 // under config.igt.scope, orthographies under config.igt.orthographies.
 const role = (r) => ({ plaid: { role: r } });
-const scoped = (name, scope) => ({ name, config: { igt: { scope } } });
+const scoped = (name, scope, lang) => ({
+  name,
+  config: { igt: { scope, ...(lang ? { lang } : {}) } },
+});
 
 const PROJECT = {
   textLayers: [
@@ -22,7 +25,10 @@ const PROJECT = {
             scoped('Stray', 'Morpheme'),
           ],
         },
-        { config: role('sentence'), spanLayers: [scoped('Translation', 'Sentence')] },
+        {
+          config: role('sentence'),
+          spanLayers: [scoped('Translation', 'Sentence', 'pmy')],
+        },
         {
           config: role('morpheme'),
           spanLayers: [scoped('Gloss', 'Morpheme'), scoped('NoScope', null)],
@@ -40,6 +46,8 @@ describe('discoverExportLayers', () => {
       morphFields: ['Gloss'],
       sentFields: ['Translation'],
       hasMorphemes: true,
+      // Only the field that records one, keyed by scope and name.
+      fieldLangs: { 'Sentence:Translation': 'pmy' },
     });
   });
 
@@ -50,6 +58,7 @@ describe('discoverExportLayers', () => {
       morphFields: [],
       sentFields: [],
       hasMorphemes: false,
+      fieldLangs: {},
     });
   });
 });

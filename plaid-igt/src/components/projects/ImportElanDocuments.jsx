@@ -45,6 +45,7 @@ import {
   missingOrthographies,
   similarField,
 } from '../../import/elan/fieldTargets';
+import { discoverExportLayers } from '../../export/exportLayers';
 import { nodeLabel } from '../../import/elan/schema';
 import { suggestFieldNames } from '../../import/elan/tierNaming';
 import { defaultFieldName } from '../../import/elan/buildDocuments';
@@ -82,6 +83,8 @@ export const ImportElanDocuments = () => {
   const stopRef = useRef(false);
 
   const fields = project ? existingFields(project) : { Sentence: [], Word: [], Morpheme: [] };
+  // What those fields record about their own language, keyed "<scope>:<name>".
+  const fieldLangs = project ? discoverExportLayers(project).fieldLangs : {};
 
   const batch = useElanBatch({
     skipEmptyTiers: true,
@@ -97,7 +100,7 @@ export const ImportElanDocuments = () => {
           scope: SCOPE_OF_ROLE[roles[node.key]],
         }))
         .filter((e) => e.scope);
-      const placed = suggestFieldNames(entries, fields);
+      const placed = suggestFieldNames(entries, fields, fieldLangs);
       for (const e of entries) {
         if (placed[e.key]) continue;
         const alike = similarField(fields, e.scope, e.name);

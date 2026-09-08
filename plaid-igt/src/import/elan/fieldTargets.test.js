@@ -95,9 +95,9 @@ describe('missingFields', () => {
         { name: 'Speaker', scope: 'Sentence' },
       ]),
     ).toEqual([
-      { name: 'Translation (pmy)', scope: 'Sentence', similarTo: 'Translation' },
-      { name: 'Gloss', scope: 'Morpheme', similarTo: null },
-      { name: 'Speaker', scope: 'Sentence', similarTo: null },
+      { name: 'Translation (pmy)', scope: 'Sentence', lang: null, similarTo: 'Translation' },
+      { name: 'Gloss', scope: 'Morpheme', lang: null, similarTo: null },
+      { name: 'Speaker', scope: 'Sentence', lang: null, similarTo: null },
     ]);
   });
 

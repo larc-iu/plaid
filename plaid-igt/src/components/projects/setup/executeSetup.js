@@ -240,6 +240,12 @@ async function executeProjectSetupImpl({
           const spanLayer = existing ?? (await client.spanLayers.create(parentLayerId, field.name));
 
           await client.spanLayers.setConfig(spanLayer.id, IGT_NAMESPACE, 'scope', field.scope);
+          // What language its values are in, when the caller knows. An importer
+          // reading a format that says so (FLEx writing systems, ELAN tier
+          // names) is the only one that does.
+          if (field.lang) {
+            await client.spanLayers.setConfig(spanLayer.id, IGT_NAMESPACE, 'lang', field.lang);
+          }
           createdSpanLayers.push(spanLayer);
         } catch (fieldError) {
           console.warn(`Failed to create span layer for field ${field.name}:`, fieldError);

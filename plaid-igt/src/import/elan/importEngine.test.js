@@ -116,9 +116,9 @@ describe('deriveSetupData', () => {
       { name: 'IPA' },
     ]);
     expect(setup.fields.fields).toEqual([
-      { name: 'Translation', scope: 'Sentence', isCustom: true },
-      { name: 'POS', scope: 'Word', isCustom: true },
-      { name: 'Gloss', scope: 'Morpheme', isCustom: true },
+      { name: 'Translation', scope: 'Sentence', lang: null, isCustom: true },
+      { name: 'POS', scope: 'Word', lang: null, isCustom: true },
+      { name: 'Gloss', scope: 'Morpheme', lang: null, isCustom: true },
     ]);
     // ELAN carries no lexicon, so no vocabulary is proposed.
     expect(setup.vocabulary.vocabularies).toEqual([]);

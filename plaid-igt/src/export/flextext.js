@@ -33,8 +33,10 @@
 //
 // options (from the export preset):
 //   langs: { baseline, analysis, orthographies: {name→tag}, fieldOverrides: {field→tag} }
-//     a field with no override goes out under the tag in its own name
-//     ("Gloss (nl)"), else `analysis`
+//   fieldLangs: {"<scope>:<field>"→tag} — what each field RECORDS, read from
+//     the project at run time rather than frozen into the preset. A field with
+//     neither an override nor a recorded language goes out under the tag in its
+//     own name ("Gloss (nl)"), else `analysis`.
 //   fieldMap: { sentence: {field→'gls'|'lit'|'note'}, word: {field→'gls'|'pos'},
 //               morpheme: {field→'gls'|'msa'} }   (unmapped fields are omitted)
 //   citationForms: bool   — emit <item type="cf"> (and "hn") for a linked morpheme
@@ -59,15 +61,22 @@ export const xmlEscape = (s) =>
 const baselineLang = (options) => options?.langs?.baseline || 'und';
 const analysisLang = (options) => options?.langs?.analysis || 'en';
 
-// A field's own writing system: the preset's override, else the tag its name
-// declares ("Translation (nl)"), else the one analysis tag. A FLEx import names
-// the field for the PRIMARY analysis writing system without a suffix, so the
-// bare fields are exactly the ones the analysis tag has to cover. Without this
-// every translation and gloss went out under one lang, and FLEx keeps one form
-// per writing system: two of three translations were silently dropped on
-// import.
-const fieldLang = (options, field) =>
-  options?.langs?.fieldOverrides?.[field] || fieldNameLang(field) || analysisLang(options);
+// A field's own writing system, most trustworthy first: the preset's override,
+// then what the FIELD ITSELF records (config.igt.lang, which an importer that
+// knew writes), then the tag its name declares ("Translation (nl)"), then the
+// one analysis tag.
+//
+// The name is a guess and the recorded language is not, which matters for the
+// field a FLEx import names WITHOUT a suffix: that one is the primary analysis
+// writing system, and before it was recorded there was nothing to read but the
+// analysis tag. Without any of this every translation and gloss went out under
+// one lang, and FLEx keeps one form per writing system, so two of three
+// translations were silently dropped on import.
+const fieldLang = (options, scope, field) =>
+  options?.langs?.fieldOverrides?.[field] ||
+  options?.fieldLangs?.[`${scope}:${field}`] ||
+  fieldNameLang(field) ||
+  analysisLang(options);
 
 // The <item type> a field may take, per annotation scope. Shared by the writers
 // and by the <languages> census so the two cannot disagree about which fields
@@ -140,7 +149,12 @@ function morphXml(indent, m, options, lex) {
   }
   for (const [field, type] of mappedFields(options, 'morpheme')) {
     lines.push(
-      ...item(`${indent}  `, type, fieldLang(options, field), m?.annotations?.[field]?.value),
+      ...item(
+        `${indent}  `,
+        type,
+        fieldLang(options, 'Morpheme', field),
+        m?.annotations?.[field]?.value,
+      ),
     );
   }
   lines.push(`${indent}</morph>`);
@@ -158,7 +172,12 @@ function wordXml(indent, token, options, lex) {
   }
   for (const [field, type] of mappedFields(options, 'word')) {
     lines.push(
-      ...item(`${indent}  `, type, fieldLang(options, field), token.annotations?.[field]?.value),
+      ...item(
+        `${indent}  `,
+        type,
+        fieldLang(options, 'Word', field),
+        token.annotations?.[field]?.value,
+      ),
     );
   }
   const morphemes = token.morphemes || [];
@@ -253,7 +272,12 @@ function phraseXml(
   lines.push(`${indent}  </words>`);
   for (const [field, type] of mappedFields(options, 'sentence')) {
     lines.push(
-      ...item(`${indent}  `, type, fieldLang(options, field), sentence.annotations?.[field]?.value),
+      ...item(
+        `${indent}  `,
+        type,
+        fieldLang(options, 'Sentence', field),
+        sentence.annotations?.[field]?.value,
+      ),
     );
   }
   lines.push(`${indent}</phrase>`);
@@ -292,7 +316,10 @@ function languagesXml(indent, options) {
   // Every writing system the fields themselves resolve to, not just the ones
   // named in the preset: a "Gloss (nl)" declares nl by its name alone.
   for (const scope of Object.keys(ITEM_TYPES_BY_SCOPE)) {
-    for (const [field] of mappedFields(options, scope)) add(fieldLang(options, field), false);
+    const named = { sentence: 'Sentence', word: 'Word', morpheme: 'Morpheme' }[scope];
+    for (const [field] of mappedFields(options, scope)) {
+      add(fieldLang(options, named, field), false);
+    }
   }
   lines.push(`${indent}</languages>`);
   return lines;

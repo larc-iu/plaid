@@ -60,6 +60,32 @@ describe('suggestFieldNames', () => {
     });
   });
 
+  it('matches on what a field records, ahead of what its name looks like', () => {
+    // The project was told: "Translation" is pmy. No elimination needed, and it
+    // holds even where the names alone would have made a different pairing.
+    const recorded = { 'Sentence:Translation': 'pmy', 'Sentence:Translation (en)': 'en' };
+    expect(
+      suggestFieldNames(
+        [entry('k1', 'Translation-gls-pmy'), entry('k2', 'Translation-gls-en')],
+        existing,
+        recorded,
+      ),
+    ).toEqual({ k1: 'Translation', k2: 'Translation (en)' });
+  });
+
+  it('pairs an unlabelled tier even where another field is labelled', () => {
+    // "Translation" says it is pmy, so the id tier cannot take it, and the two
+    // that remain are matched by their tags.
+    const recorded = { 'Sentence:Translation': 'pmy' };
+    expect(
+      suggestFieldNames(
+        [entry('k1', 'Translation-gls-id'), entry('k2', 'Translation-gls-nl')],
+        existing,
+        recorded,
+      ),
+    ).toEqual({ k2: 'Translation (nl)' });
+  });
+
   it('leaves the bare field alone when more than one tier could claim it', () => {
     const out = suggestFieldNames(
       [entry('k1', 'Translation-gls-pmy'), entry('k2', 'Translation-gls-id')],

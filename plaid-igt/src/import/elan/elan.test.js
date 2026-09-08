@@ -502,8 +502,9 @@ describe('buildElanDocuments', () => {
       fieldNames: { [geKey]: 'Gloss', [ftKey]: 'Translation' },
     });
     expect(build.schema.fields).toEqual([
-      { name: 'Translation', scope: 'Sentence' },
-      { name: 'Gloss', scope: 'Morpheme' },
+      // `lang` is what the TIER's name declares, and 'ft'/'ge' declare nothing.
+      { name: 'Translation', scope: 'Sentence', lang: null },
+      { name: 'Gloss', scope: 'Morpheme', lang: null },
     ]);
     expect(build.documents[0].sentences[0].fields).toEqual({ Translation: 'the dogs run' });
     expect(build.documents[0].words[1].morphemes[0].fields).toEqual({ Gloss: 'dog' });
@@ -717,7 +718,7 @@ describe('several tier trees in one file', () => {
       nodes.filter((n) => n.baseName.endsWith('-ft')).map((n) => [n.key, 'Translation']),
     );
     const build = buildElanDocuments(parsed, nodes, roles, { fieldNames: names });
-    expect(build.schema.fields).toEqual([{ name: 'Translation', scope: 'Sentence' }]);
+    expect(build.schema.fields).toEqual([{ name: 'Translation', scope: 'Sentence', lang: null }]);
     expect(build.documents[0].sentences.map((s) => s.fields.Translation)).toEqual([
       'first',
       'second',

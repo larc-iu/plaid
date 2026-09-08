@@ -36,6 +36,18 @@ const readIgt = (config, key) => config?.[IGT_NAMESPACE]?.[key];
 /** A span layer's annotation scope: "Word" | "Morpheme" | "Sentence", or null. */
 export const readScope = (config) => readIgt(config, 'scope') ?? null;
 
+/**
+ * The writing system a span layer's values are in ("pmy"), or null.
+ *
+ * Plaid's substrate has no notion of what language anything is in, and for a
+ * long time an annotation field had nowhere to say. The FLEx importer knew (a
+ * project glossed in three languages gets three fields) and dropped it, so
+ * both FLEx exporters had to guess from the field's NAME: the suffix in
+ * "Gloss (nl)", and for the unsuffixed field, elimination. Written down, there
+ * is nothing to guess. Parallel to a vocabulary's `config.igt.fields.<name>.lang`.
+ */
+export const readFieldLang = (config) => readIgt(config, 'lang') ?? null;
+
 /** A word token layer's non-baseline orthographies: [{name}], or null. */
 export const readOrthographies = (config) => readIgt(config, 'orthographies') ?? null;
 
