@@ -177,7 +177,6 @@ def test_tagsets_reach_the_overview_and_the_prompt():
     # field editor; a field carries its whole spec, not just its name.
     assert [f['name'] for f in p.vocabs[0]['fields']] == ['morphType', 'gloss', 'pos']
     assert [f['name'] for f in p.vocabs[0]['fields'] if f['declared']] == ['gloss', 'pos']
-    assert p.vocabs[0]['dictionary'] is False
     assert [v['value'] for v in p.vocabs[0]['tagsets']['pos']['values']] == ['adj']  # the lexicon's own POS
     out = render_overview(p, [])
     assert '  "Leipzig" on Gloss, Morph Gloss. A grammatical tag, written in capitals or digits' in out

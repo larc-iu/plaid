@@ -1,6 +1,6 @@
 """The vocabulary domain as the agent reads it: the field schema, and the
-dictionary side of a vocabulary with Lexicography Mode on (the sense tree,
-references from one entry to another, promoted examples).
+dictionary side of a vocabulary (the sense tree, references from one entry to
+another, promoted examples). Every vocabulary is a dictionary.
 
 A port of plaid-igt/src/domain/vocabFields.js and vocabDictionary.js, which is
 where the app writes all of this. The two must stay in step: these shapes are
@@ -14,15 +14,12 @@ divergence waiting to happen, not dead weight.
 
 Five of vocabDictionary.js's exports have no counterpart here on purpose,
 because each belongs to a gesture the app has and the agent does not:
-``dictionaryEnablement`` and ``statusTagset`` seed a vocabulary when the switch
-goes on, ``splitEntryLevel`` is Add headword, ``groupRankedByHeadword`` is the
-link popover's list, and ``exampleKey`` keys a rendering cache. Most of
+``statusFieldSeed`` and ``statusTagset`` seed a vocabulary as it is created,
+``splitEntryLevel`` is Add headword, ``groupRankedByHeadword`` is the link
+popover's list, and ``exampleKey`` keys a rendering cache. Most of
 vocabFields.js is the entry FORM (labels, controls, grouping) and is absent for
 the same reason. ``test_every_app_function_is_ported_or_exempted`` holds the
 full list both ways, and anything missing from it is a bug.
-
-Nothing on the dictionary side applies to a vocabulary whose Lexicography Mode
-switch (``config.igt.dictionary``) is off: it is the flat list it always was.
 
 Reserved item keys, which are never fields:
   parent      the id of the entry this one is a sense of. An item with no
@@ -51,9 +48,8 @@ SENSE_ORDER_KEY = 'senseOrder'
 # writes FLEx's homograph number here; reordering in the app rewrites it 1..n.
 HOMOGRAPH_KEY = 'homograph'
 EXAMPLES_KEY = 'examples'
-DICTIONARY_KEY = 'dictionary'
 
-# The editorial status field a dictionary vocabulary is seeded with.
+# The editorial status field a new vocabulary is seeded with.
 STATUS_FIELD = 'status'
 STATUS_TAGSET = 'Status'
 STATUS_VALUES = ('draft', 'reviewed', 'published')
@@ -156,16 +152,9 @@ def item_ref_fields(fields: List[dict]) -> List[dict]:
     return [f for f in fields or [] if f.get('type') == FIELD_ITEM]
 
 
-def fields_for_item(fields: List[dict], item: dict, dictionary: bool) -> List[dict]:
+def fields_for_item(fields: List[dict], item: dict) -> List[dict]:
     """The fields that belong on an item: entry-scope fields only on an entry."""
-    if not dictionary:
-        return list(fields or [])
     return [f for f in fields or [] if f.get('scope') != SCOPE_ENTRY or not parent_of(item)]
-
-
-def dictionary_enabled(config: Optional[dict]) -> bool:
-    """Whether a vocabulary's Lexicography Mode switch is on."""
-    return ((config or {}).get(IGT_NAMESPACE) or {}).get(DICTIONARY_KEY) is True
 
 
 # ---- reserved keys on an item ------------------------------------------------
@@ -666,13 +655,13 @@ def validate_vocab_refs(items: List[dict], fields: List[dict]) -> Tuple[List[dic
 
 # ---- rendering ---------------------------------------------------------------
 
-def field_note(field: dict, dictionary: bool) -> str:
+def field_note(field: dict) -> str:
     """What a field holds, when it is not plain text on every item: the marker
     shown beside its name so the model knows a reference from a text field."""
     bits = []
     if field.get('type') == FIELD_ITEM:
         bits.append('an entry of this lexicon' if not field.get('many') else 'entries of this lexicon')
-    if dictionary and field.get('scope') == SCOPE_ENTRY:
+    if field.get('scope') == SCOPE_ENTRY:
         bits.append('headwords only, not senses')
     return ', '.join(bits)
 
@@ -680,33 +669,14 @@ def field_note(field: dict, dictionary: bool) -> str:
 def vocab_field_summary(vocab: dict) -> List[str]:
     """A lexicon's entry fields for the overview, each marked when it holds a
     reference or belongs to an entry rather than every sense."""
-    dictionary = bool(vocab.get('dictionary'))
     out = []
     for f in vocab.get('fields') or []:
-        note = field_note(f, dictionary)
+        note = field_note(f)
         out.append(f'{f["name"]} ({note})' if note else f['name'])
     return out
 
 
 # ---- the number an item goes by ---------------------------------------------
-
-def build_homonym_index(items: Optional[List[dict]]) -> Dict[str, Optional[int]]:
-    """Items sharing a form numbered 1..n in creation order, None for a form
-    only one item carries. Mirrors buildHomonymIndex in vocabHomonyms.js: the
-    number a vocabulary WITHOUT Lexicography Mode shows beside a headword."""
-    by_form: Dict[str, List[dict]] = {}
-    for it in items or []:
-        by_form.setdefault(it.get('form') or '', []).append(it)
-    index: Dict[str, Optional[int]] = {}
-    for group in by_form.values():
-        if len(group) < 2:
-            if len(group) == 1:
-                index[group[0]['id']] = None
-            continue
-        for i, it in enumerate(group):
-            index[it['id']] = i + 1
-    return index
-
 
 def homograph_of(item: Optional[dict]):
     """An entry's stored homograph number, or None when unnumbered or zero."""
@@ -764,8 +734,8 @@ def plan_homograph_order(group: List[dict], ordered_ids) -> List[dict]:
 
 
 def build_item_numbers(items: Optional[List[dict]]) -> Dict[str, str]:
-    """One dotted number per item, the name it goes by everywhere in a
-    dictionary vocabulary. The first segment is the HEADWORD's: its place among
+    """One dotted number per item, the name it goes by everywhere. The first
+    segment is the HEADWORD's: its place among
     the entries spelled the same ("1", "2"), or "1" when it is alone but has
     senses. A sense carries its headword's segment and then its own path
     ("1.2", "2.1.3"). A lone headword with no senses has no number at all, so

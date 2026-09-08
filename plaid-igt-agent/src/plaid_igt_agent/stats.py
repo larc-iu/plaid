@@ -439,11 +439,10 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
         """Links to an entry and to everything under it: a sense is attested
         through its entry, since the corpus links whichever the analyst chose."""
         vw = view_of(iid)
-        if vw is None or not vw.dictionary:
+        if vw is None:
             return uses[iid]
         return uses[iid] + sum(uses[d['id']] for d in descendants_of(vw.tree, iid))
 
-    any_dictionary = any(vw.dictionary for vw in views.values())
     docs = ws.all_docs() if ws.prefer_scan else []
     n_docs = len(docs) if ws.prefer_scan else len(ws.documents())
     gm, gw = project.gloss_field('Morpheme'), project.gloss_field('Word')
@@ -503,18 +502,17 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
         listing('entries never linked from a text',
                 (it.get('form') or '' for it in items.values()
                  if not is_sense(it['id']) and tree_uses(it['id']) == 0))
-        if any_dictionary:
-            # A sense of an attested entry is normal, not a defect: the corpus
-            # links the entry the analyst picked, which is often the headword.
-            loose = [it for it in items.values()
-                     if is_sense(it['id']) and uses[it['id']] == 0 and tree_uses(view_of(it['id']).tree.root_of[it['id']])]
-            lines.append(f'{len(loose)} senses not linked from a text themselves, though their entry is attested.')
+        # A sense of an attested entry is normal, not a defect: the corpus
+        # links the entry the analyst picked, which is often the headword.
+        loose = [it for it in items.values()
+                 if is_sense(it['id']) and uses[it['id']] == 0 and tree_uses(view_of(it['id']).tree.root_of[it['id']])]
+        lines.append(f'{len(loose)} senses not linked from a text themselves, though their entry is attested.')
     def stands_over_senses(iid: str) -> bool:
         """A headword whose meanings are its senses. It is not missing a gloss:
         the senses under it carry them, and a FLEx import makes such a headword
         for every entry it read with more than one sense."""
         vw = view_of(iid)
-        return bool(vw and vw.dictionary and vw.tree.children_of.get(iid))
+        return bool(vw and vw.tree.children_of.get(iid))
 
     if want('fields'):
         for role, table in (('gloss', lex_gloss), ('pos', lex_pos)):
@@ -544,9 +542,8 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
                 return len(gl) - len(set(gl))
             ranked = sorted(homographs.items(), key=lambda kv: (-same_gloss(kv[1]), -len(kv[1])))
             dup = sum(1 for _, its in ranked if same_gloss(its))
-            tail = ('; the rest are separate entries sharing a form' if any_dictionary
-                    else '; the rest look like senses')
-            lines.append(f'{len(homographs)} homograph groups ({dup} with a repeated gloss, likely duplicates{tail}):')
+            lines.append(f'{len(homographs)} homograph groups ({dup} with a repeated gloss, likely '
+                         'duplicates; the rest are separate entries sharing a form):')
             for k, its in ranked[:cap]:
                 lines.append('  ' + ' | '.join(
                     f'{entry_line(it, view_of(it["id"]))} ({tree_uses(it["id"])} links)' for it in its))
@@ -573,14 +570,12 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
     if want('near'):
         listing('pairs of forms one character apart (possible variants or duplicates)', near, 'pairs')
 
-    if want('refs') and any_dictionary:
+    if want('refs'):
         # A reference that resolves to nothing: an entry deleted through the
         # API or by another app. The app clears these when a maintainer opens
         # the vocabulary, so this only reports them.
         dangling = []
         for v in vocabs:
-            if not views[v['id']].dictionary:
-                continue
             for f in validate_vocab_refs(ws.lexicon(v), v['fields'])[1]:
                 dangling.append(f'  {f.get("form")}: ' + '; '.join(f['reasons']))
         if dangling:

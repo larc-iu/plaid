@@ -48,9 +48,8 @@ ones (another service's output; trailing ~ in reads; worklist kind="unverified")
 (trailing ^; worklist kind="contributed", user= for one person), and with no document it covers the whole \
 project; discard_analysis deletes a word's unverified machine analysis (never a person's); a multi-word \
 expression (mwe= in reads) is one lexicon link shared by several words: link_phrase makes one, unlink_phrase \
-removes one, and a word's own link (link_entry / unlink_entry) is separate from it; a lexicon in Lexicography \
-Mode groups a lexicon's entries into a tree (a HEADWORD is an entry with nothing above it, a SENSE one under \
-another). An entry_form takes the number shown beside it, where one segment is a headword and two or more a \
+removes one, and a word's own link (link_entry / unlink_entry) is separate from it; a lexicon's entries form \
+a tree (a HEADWORD is an entry with nothing above it, a SENSE one under another). An entry_form takes the number shown beside it, where one segment is a headword and two or more a \
 sense: "kwatha" or "kwatha#1" the headword, "kwatha#1.2" a sense of it, "gam#2" the second headword spelled \
 that way, "gam#2.1.3" a subsense of that one. Fields can refer to other entries, and usage examples are \
 marked: add_sense, move_sense, order_homographs, \

@@ -48,7 +48,7 @@ def test_frequency_list_reports_field_values_with_empties():
 
 def test_read_lexicon():
     out = call_tool(ws(), 'read_lexicon', {'pattern': 'gam'})
-    assert 'Lexicon "Lexicon": 4 entries, 2 matching' in out
+    assert 'Lexicon "Lexicon": 4 headwords, 0 senses, 2 matching' in out
 
 
 def test_set_field_plans_create_update_clear_and_respects_scope():

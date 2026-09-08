@@ -358,10 +358,8 @@ def _ref_repair_ops(ws: Workspace, view, planner, *args) -> List[Dict[str, Any]]
     this in the same operation (planDeleteRefs / planMergeRefs), and without it
     the vocabulary is left holding ids that no longer resolve until a
     maintainer next opens it and the load-time repair throws the structure away.
-
-    Nothing to do for a lexicon without Lexicography Mode: it has neither.
     """
-    if view is None or not view.dictionary:
+    if view is None:
         return []
     ops = []
     for patch in planner(view.items, view.fields, *args):

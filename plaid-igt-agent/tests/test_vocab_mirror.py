@@ -37,7 +37,7 @@ import pytest
 
 from plaid_igt_agent import vocab as vocab_module
 from plaid_igt_agent.vocab import (
-    build_sense_tree, build_item_numbers, build_homonym_index, plan_delete_refs,
+    build_sense_tree, build_item_numbers, plan_delete_refs,
     plan_merge_refs, plan_sense_drop, next_sense_order, descendants_of, references_to,
     validate_vocab_refs, homograph_group, plan_homograph_order, homograph_of,
     arrange_as_tree, normalize_vocab_fields)
@@ -154,7 +154,6 @@ def _python_side(c: dict) -> dict:
         'roots': [x['id'] for x in t.roots],
         'childrenOf': {k: [x['id'] for x in v] for k, v in t.children_of.items()},
         'itemNumbers': build_item_numbers(c['items']),
-        'homonyms': build_homonym_index(c['items']),
         'homographOf': {it['id']: homograph_of(it) for it in c['items']},
         'homographGroup': [r['id'] for r in homograph_group(c['items'], c['moveId'])],
         'planHomographOrder': plan_homograph_order(
@@ -198,7 +197,7 @@ def compared():
 # name showing up unexplained is the drift this check exists to catch: the value
 # comparison below can only ever run what both sides already have.
 SURFACE_EXEMPT = {
-    'dictionaryEnablement': 'seeds a vocabulary when the switch goes on',
+    'statusFieldSeed': 'seeds a vocabulary as it is created',
     'statusTagset': 'the same seeding',
     'splitEntryLevel': 'Add headword',
     'groupRankedByHeadword': "the link popover's list",
@@ -221,7 +220,7 @@ SURFACE_EXEMPT = {
     'vocabTagsetByField': 'the Settings field table',
 }
 # Where the port did not keep the app's name.
-SURFACE_ALIAS = {'readDictionaryEnabled': 'dictionary_enabled'}
+SURFACE_ALIAS = {}
 # Public in the port with nothing of the name in the app, on purpose.
 PORT_ONLY = {
     'plan_sense_set_number': 'a place-among-siblings gesture, since the agent cannot drag',
@@ -230,7 +229,6 @@ PORT_ONLY = {
     'field_by_name': 'a lookup the app does inline',
     'vocab_field_summary': 'the field schema in prose, for a tool result',
     'with_parent': 'module-private in the app, public here for with_parent_set',
-    'build_homonym_index': 'lives in vocabHomonyms.js in the app',
 }
 
 
@@ -288,7 +286,7 @@ def test_the_two_runners_cover_the_same_functions(compared):
 
 @pytest.mark.parametrize('key', [
     'numberOf', 'parentOf', 'depthOf', 'rootOf', 'roots', 'childrenOf',
-    'itemNumbers', 'homonyms', 'homographOf', 'homographGroup', 'planHomographOrder',
+    'itemNumbers', 'homographOf', 'homographGroup', 'planHomographOrder',
     'planSenseDrop', 'nextSenseOrder', 'descendantsOf', 'referencesTo',
     'planDeleteRefs', 'planMergeRefs', 'validateVocabRefs', 'validateVocabRefsFindings',
     'arrangeAsTree',

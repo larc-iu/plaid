@@ -171,33 +171,26 @@ def _field(meta, *names):
     return None
 
 
-def vocab_entries(items, vocab_name, dictionary: bool = False) -> List[dict]:
+def vocab_entries(items, vocab_name) -> List[dict]:
     """One vocabulary's entries as the prompt shows them.
 
-    A lexicon in Lexicography Mode groups entries into senses, and a headword
-    that leaves its own gloss empty says nothing the senses under it do not say
-    better. Listing it would spend the lexicon budget on "form: ?" and offer
-    the model an entry nothing is meant to link to, so it is left out. Its
-    senses carry its form and are in this list already.
+    A headword that leaves its own gloss empty says nothing the senses under it
+    do not say better. Listing it would spend the lexicon budget on "form: ?"
+    and offer the model an entry nothing is meant to link to, so it is left
+    out. Its senses carry its form and are in this list already.
 
-    Only with the mode on. Turning it off leaves the parent keys where they
-    are, and the app then shows every item as an ordinary entry a word can be
-    linked to, so skipping one here would hide it from the model alone.
-
-    And only when a sense really does carry the headword's form. Nothing
-    enforces that: a sense can be added under another form, or renamed away
-    from its headword. Where that has happened the headword is the only thing
-    carrying its own form, so dropping it would take that form out of the
-    model's reach entirely."""
-    covered = set()
-    if dictionary:
-        sense_forms = {}
-        for it in items:
-            parent = (it.get('metadata') or {}).get('parent')
-            if parent:
-                sense_forms.setdefault(parent, set()).add((it.get('form') or '').casefold())
-        covered = {it['id'] for it in items
-                   if (it.get('form') or '').casefold() in sense_forms.get(it.get('id'), ())}
+    Only when a sense really does carry the headword's form. Nothing enforces
+    that: a sense can be added under another form, or renamed away from its
+    headword. Where that has happened the headword is the only thing carrying
+    its own form, so dropping it would take that form out of the model's reach
+    entirely."""
+    sense_forms = {}
+    for it in items:
+        parent = (it.get('metadata') or {}).get('parent')
+        if parent:
+            sense_forms.setdefault(parent, set()).add((it.get('form') or '').casefold())
+    covered = {it['id'] for it in items
+               if (it.get('form') or '').casefold() in sense_forms.get(it.get('id'), ())}
     entries = []
     for it in items:
         meta = it.get('metadata') or {}
@@ -218,9 +211,7 @@ def load_lexicon(client, project) -> List[dict]:
     entries = []
     for v in project.get('vocabs') or []:
         vl = client.vocab_layers.get(v['id'], include_items=True)
-        cfg = (vl.get('config') or {}).get('igt') or {}
-        entries.extend(vocab_entries(vl.get('items') or [], vl.get('name') or v.get('name'),
-                                     cfg.get('dictionary') is True))
+        entries.extend(vocab_entries(vl.get('items') or [], vl.get('name') or v.get('name')))
         try:
             res = client.query({
                 'where': [['vocab', '?v', {'layer': v['id']}], ['vocab-link', '?t', '?v']],

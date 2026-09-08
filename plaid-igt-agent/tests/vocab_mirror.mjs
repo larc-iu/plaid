@@ -17,7 +17,6 @@ const {
   nextSenseOrder, descendantsOf, referencesTo, validateVocabRefs,
   homographGroup, planHomographOrder, homographOf, arrangeAsTree,
 } = dictMod;
-const { buildHomonymIndex } = await import(`${DOMAIN}/vocabHomonyms.js`);
 const { normalizeVocabFields } = fieldsMod;
 
 // The names the app exports, for the surface check: a function added there and
@@ -45,9 +44,8 @@ const out = cases.map((c) => {
     rootOf: Object.fromEntries(t.rootOf),
     roots: t.roots.map((x) => x.id),
     childrenOf: Object.fromEntries([...t.childrenOf].map(([k, v]) => [k, v.map((x) => x.id)])),
-    // the number a form goes by, in both kinds of vocabulary
+    // the number a form goes by
     itemNumbers: Object.fromEntries(buildItemNumbers(c.items)),
-    homonyms: Object.fromEntries(buildHomonymIndex(c.items)),
     homographOf: Object.fromEntries(c.items.map((it) => [it.id, homographOf(it)])),
     homographGroup: homographGroup(c.items, c.moveId).map((r) => r.id),
     planHomographOrder: planHomographOrder(homographGroup(c.items, c.moveId), c.losers),

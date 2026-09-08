@@ -38,7 +38,7 @@ from typing import Dict, List, Optional, Tuple
 import regex as uregex
 from plaid_client import ROLES, find_by_role
 from plaid_client.workflows.igt import read_tagsets, read_tagset_name, vocab_tagset_for, mode_rule, value_lines
-from .vocab import dictionary_enabled, normalize_vocab_fields, vocab_field_summary
+from .vocab import normalize_vocab_fields, vocab_field_summary
 
 SCOPES = ('Word', 'Morpheme', 'Sentence')
 
@@ -135,7 +135,7 @@ class IgtProject:
     fields: Dict[str, Field]
     orthographies: List[str]
     ignored_cfg: Optional[dict]
-    vocabs: List[dict]  # [{id, name, fields: [spec], tagsets: {field name: tagset}, dictionary: bool}]
+    vocabs: List[dict]  # [{id, name, fields: [spec], tagsets: {field name: tagset}}]
     document_metadata: List[str]
     # document metadata field -> tagset (dataclasses.field spelled out: the class has a field() method)
     metadata_tagsets: Dict[str, dict] = dataclasses.field(default_factory=dict)
@@ -287,16 +287,15 @@ def load_project(client, project_id: str) -> IgtProject:
 def _vocab_entry(v: dict) -> dict:
     """A lexicon as the tools see it: its entry fields as full specs (name,
     type, many, scope, and the rest, read the way the app's own editor reads
-    them), whether Lexicography Mode is on, and for each field a tagset holds,
-    the tagset (the vocabulary's own, never the project's)."""
+    them), and for each field a tagset holds, the tagset (the vocabulary's own,
+    never the project's)."""
     fields = normalize_vocab_fields(_igt(v.get('config'), 'fields'))
     tagsets = {}
     for f in fields:
         t = vocab_tagset_for(v, f['name'])
         if t:
             tagsets[f['name']] = t
-    return {'id': v['id'], 'name': v['name'], 'fields': fields, 'tagsets': tagsets,
-            'dictionary': dictionary_enabled(v.get('config'))}
+    return {'id': v['id'], 'name': v['name'], 'fields': fields, 'tagsets': tagsets}
 
 
 # --- document ---------------------------------------------------------------
@@ -747,9 +746,9 @@ def render_overview(project: IgtProject, documents: List[dict]) -> str:
         lines.append('Treated as the gloss where a tool takes no field= (' + ', '.join(defaults) + ')')
     lines.extend(tagset_lines(project))
     lines.append('Orthographies: ' + (', '.join(project.orthographies) or '(none)'))
-    lines.append('Lexicons: ' + (', '.join(v['name'] + (' [Lexicography Mode]' if v.get('dictionary') else '')
+    lines.append('Lexicons: ' + (', '.join(v['name']
                                            + (f' (entry fields: {", ".join(vocab_field_summary(v))})' if v.get('fields') else '')
-                                            for v in project.vocabs) or '(none)'))
+                                           for v in project.vocabs) or '(none)'))
     if project.document_metadata:
         lines.append('Document metadata fields: ' + ', '.join(project.document_metadata))
     lines.append(f'Documents ({len(documents)}):' + (f' first {MAX_OVERVIEW_DOCS} by name; list_documents pages and filters the rest'

@@ -1,5 +1,5 @@
-"""A lexicon in Lexicography Mode: the sense tree, references between entries,
-and promoted usage examples.
+"""A lexicon's sense tree, references between entries, and promoted usage
+examples.
 
 The point of most of these is that the agent writes what the app reads. The
 shapes live in plaid-igt/src/domain/vocabDictionary.js, and the app's load-time
@@ -33,11 +33,9 @@ ITEMS = [
 ]
 
 
-def dict_ws(dictionary=True, items=None):
+def dict_ws(items=None):
     raw = project_raw()
     raw['vocabs'][0]['config'] = {'igt': {'fields': dict(FIELDS)}}
-    if dictionary:
-        raw['vocabs'][0]['config']['igt']['dictionary'] = True
     c = FakeClient(project=raw, documents={'d1': document_raw()})
     c._lexicon = {'id': VOCAB, 'name': 'Lexicon',
                   'items': [dict(it, metadata=dict(it['metadata'])) for it in (items or ITEMS)]}
@@ -52,7 +50,7 @@ def ops_of(w, kind):
 
 def test_read_lexicon_draws_senses_under_their_entry():
     out = call_tool(dict_ws(), 'read_lexicon', {})
-    assert 'Lexicography Mode): 3 headwords, 3 senses' in out
+    assert 'Lexicon "Lexicon": 3 headwords, 3 senses' in out
     lines = [l for l in out.splitlines() if 'kwatha' in l]
     # The entry, then its senses indented and numbered as the user sees them.
     # A lone headword with senses is numbered 1, so one segment always means a
@@ -99,12 +97,6 @@ def test_two_new_senses_in_one_plan_are_numbered_apart():
     assert orders == [3, 4]  # after the two senses the entry has
 
 
-def test_a_flat_lexicon_is_unchanged():
-    out = call_tool(dict_ws(dictionary=False), 'read_lexicon', {})
-    assert 'Lexicography Mode' not in out and 'Lexicon": 6 entries' in out
-    assert 'sense' not in out
-
-
 def test_reserved_keys_never_read_as_fields():
     out = call_tool(dict_ws(), 'read_lexicon', {})
     # parent and senseOrder are structure, said in words instead of printed raw.
@@ -136,13 +128,6 @@ def test_a_bare_form_is_the_entry_and_a_suffix_is_the_sense():
     assert 'Sense 1.2' in call_tool(w, 'lexicon_entry', {'entry_form': 'kwatha#1.2'})
     out = call_tool(w, 'lexicon_entry', {'entry_form': 'kwatha#9'})
     assert 'no sense 9' in out.lower() or 'No lexicon entry' in out
-
-
-def test_the_homograph_suffix_still_works_without_the_mode():
-    w = dict_ws(dictionary=False)
-    out = call_tool(w, 'lexicon_entry', {'entry_form': 'kwatha'})
-    # Flat: the four items sharing the form are four candidates again.
-    assert 'Several entries match "kwatha"' in out
 
 
 # ---- writing fields --------------------------------------------------------
@@ -315,21 +300,6 @@ def test_every_name_a_line_prints_is_accepted_back():
         assert f'id {item_id}' in call_tool(w2, 'lexicon_entry', {'entry_form': name})
 
 
-def test_a_flat_lexicon_tells_entries_spelled_alike_apart():
-    """Turning Lexicography Mode off leaves the parent keys where they are, so
-    an item that still has one is not a tree root. Counting only roots printed
-    two entries under the same bare name, which no tool can act on."""
-    items = [
-        {'id': 'b1', 'form': 'kwatha', 'metadata': {'gloss': 'cook'}},
-        {'id': 'b2', 'form': 'kwatha', 'metadata': {'gloss': 'boil', 'parent': 'b1'}},
-    ]
-    w = dict_ws(dictionary=False, items=items)
-    names = [w.view_of_item(i).label(i).strip('"') for i in ['b1', 'b2']]
-    assert len(set(names)) == 2, names
-    for item_id, name in zip(['b1', 'b2'], names):
-        assert f'id {item_id}' in call_tool(w, 'lexicon_entry', {'entry_form': name})
-
-
 def test_a_lone_headword_answers_to_hash_one():
     """The prompt teaches "kwatha#1" for a headword, and a headword with no
     senses and no homographs is shown with no number at all."""
@@ -392,12 +362,6 @@ def test_a_duplicate_example_is_ignored_and_a_bad_index_says_the_range():
     assert 'numbered 0 to 0' in call_tool(w, 'remove_example', {'entry_form': 'phika', 'index': 4})
 
 
-def test_the_dictionary_tools_refuse_a_lexicon_without_the_mode():
-    w = dict_ws(dictionary=False)
-    out = call_tool(w, 'add_sense', {'entry_id': 'd-phika'})
-    assert 'not in Lexicography Mode' in out and 'no senses, entry references or usage examples' in out
-
-
 # ---- delete and merge carry the references ---------------------------------
 
 def test_deleting_an_entry_frees_its_senses_and_clears_what_named_it():
@@ -425,12 +389,6 @@ def test_merging_repoints_references_at_the_survivor():
     assert by_id['d-ferment'] == {'parent': 'd-phika'}
     assert by_id['d-phika'] == {'variantOf': None}       # it referred to the loser
     assert by_id['d-nyumba'] == {'seeAlso': ['d-phika']}  # deduped onto the survivor
-
-
-def test_a_flat_lexicon_carries_nothing_extra():
-    w = dict_ws(dictionary=False)
-    call_tool(w, 'delete_entry', {'entry_id': 'd-kwatha'})
-    assert not ops_of(w, 'set_entry_metadata')
 
 
 # ---- the quality report ----------------------------------------------------
@@ -474,14 +432,6 @@ def test_entries_sharing_a_form_are_told_apart_by_their_shown_number():
     # kwatha is spelled uniquely, so its own segment is just 1.
     assert 'Sense 1.1.1 of headword "kwatha" (id d-simmer' in call_tool(
         w, 'lexicon_entry', {'entry_form': 'kwatha#1.1.1'})
-
-
-def test_a_flat_lexicon_numbers_homonyms_positionally():
-    """Without the mode the app numbers items sharing a form 1..n in creation
-    order (buildHomonymIndex), and that is what the suffix means."""
-    w = dict_ws(dictionary=False)
-    assert '(id d-simmer)' in call_tool(w, 'lexicon_entry', {'entry_form': 'kwatha#3'})
-    assert '(id d-kwatha)' in call_tool(w, 'lexicon_entry', {'entry_form': 'kwatha#1'})
 
 
 def test_move_sense_takes_the_last_segment_of_a_dotted_number():
@@ -590,6 +540,3 @@ def test_check_lexicon_does_not_call_a_headword_glossless():
     out = call_tool(dict_ws(items=items), 'check_lexicon', {'section': 'fields'})
     assert 'bare' in out
     assert 'kwatha' not in out.split('entries without a gloss')[1].split('\n')[0]
-    # With the mode off there is no tree, so every glossless entry is one.
-    flat = call_tool(dict_ws(dictionary=False, items=items), 'check_lexicon', {'section': 'fields'})
-    assert 'kwatha' in flat.split('entries without a gloss')[1].split('\n')[0]
