@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import { TASKS } from '@larc-iu/plaid-client';
-import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
+import { notifySuccess, notifyError, notifyInfo, notifyWarning } from '@/utils/feedback';
 import { useServiceRequest } from '../hooks/useServiceRequest.js';
 import { useServiceSpot } from '../hooks/useServiceSpot.js';
 import { useRunProgress, useMirroredProgress, formatElapsed } from '../hooks/useRunProgress.js';
@@ -195,7 +195,19 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
       });
     const info = doc.layerInfo;
     let stillOut = false; // the request survived our giving up on it
+    // Whether anything actually landed. A run where every sentence failed still
+    // comes back `status: success` with counts of zero, and telling someone
+    // their document is "shown in violet until confirmed" when nothing was
+    // written is worse than saying plainly that nothing was.
+    let wrote = false;
     const parts = [];
+    // What a service could not do. Services report per-sentence failures in the
+    // result rather than failing the request, so this is the only place it can
+    // be said.
+    const noteFailures = (result, verb) => {
+      const failed = result?.sentencesFailed?.length ?? 0;
+      if (failed) parts.push(`could not ${verb} ${plural(failed, 'sentence')}`);
+    };
     const plural = (n, s) => `${n} ${s}${n === 1 ? '' : 's'}`;
     const identifiers = {
       documentId: doc.id,
@@ -243,7 +255,11 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
         if (stopped(result)) return;
         await reload();
         const n = result?.sentencesWritten ?? result?.sentences_written;
-        if (typeof n === 'number') parts.push(`proposed translations for ${plural(n, 'sentence')}`);
+        if (n > 0) {
+          parts.push(`proposed translations for ${plural(n, 'sentence')}`);
+          wrote = true;
+        }
+        noteFailures(result, 'translate');
       }
       if (stopRef.current) return halt();
       // 2. copy previous analyses (built-in)
@@ -268,7 +284,10 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
         });
         if (!ok) return; // the domain layer toasted the failure
         if (wasStopped) return halt();
-        if (copied) parts.push(`copied previous analyses onto ${plural(copied, 'word')}`);
+        if (copied) {
+          parts.push(`copied previous analyses onto ${plural(copied, 'word')}`);
+          wrote = true;
+        }
       }
       if (stopRef.current) return halt();
       // 3. propose segmentation + glosses (service)
@@ -294,9 +313,13 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
         if (stopped(result)) return;
         await reload();
         const n = result?.wordsWritten ?? result?.words_written;
-        if (typeof n === 'number') parts.push(`proposed analyses for ${plural(n, 'word')}`);
+        if (n > 0) {
+          parts.push(`proposed analyses for ${plural(n, 'word')}`);
+          wrote = true;
+        }
         const prot = result?.skipped?.protected ?? 0;
         if (prot) parts.push(`left ${plural(prot, 'human-analyzed word')} alone`);
+        noteFailures(result, 'analyze');
       }
       if (stopRef.current) return halt();
       // 4. link to the lexicon
@@ -315,10 +338,12 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
           });
           if (!ok) return;
           if (wasStopped) return halt();
-          if (linked)
+          if (linked) {
             parts.push(
               `linked ${linked} word${linked === 1 ? '' : 's'}/morpheme${linked === 1 ? '' : 's'}`,
             );
+            wrote = true;
+          }
         } else {
           const service = linkSpot.service;
           const result = await requestService(
@@ -342,12 +367,16 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
           if (stopped(result)) return;
           await reload();
           parts.push('ran the linking service');
+          wrote = true;
         }
       }
+      // The violet line is a promise about material on screen, so it is only
+      // made when something was written.
       const msg = parts.length
-        ? `${parts.join(', ')}. Shown in violet until confirmed.`
+        ? `${parts.join(', ')}.${wrote ? ' Shown in violet until confirmed.' : ''}`
         : 'Nothing new to apply.';
-      notifySuccess(msg.charAt(0).toUpperCase() + msg.slice(1), 'Auto-analyze');
+      const say = wrote ? notifySuccess : notifyWarning;
+      say(msg.charAt(0).toUpperCase() + msg.slice(1), 'Auto-analyze');
       onOpenChange(false);
     } catch (err) {
       // Service failures are toasted by the request hook; anything else here.
