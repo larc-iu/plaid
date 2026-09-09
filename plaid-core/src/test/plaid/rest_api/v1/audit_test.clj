@@ -272,3 +272,21 @@
     (testing "A start time drops what happened before it"
       (is (pos? (changes-of since)))
       (is (< (changes-of since) (changes-of all))))))
+
+(deftest audit-entries-omit-deleted-entities-rather-than-nulling-them
+  (testing "A deleted document leaves no null in an entry's documents array"
+    (let [proj (create-test-project admin-request "DeletedDocProj")
+          doc (create-test-document admin-request proj "Doomed")
+          _ (assert-no-content (api-call admin-request {:method :delete
+                                                        :path (str "/api/v1/documents/" doc)}))
+          entries (:entries (:body (get-project-audit admin-request proj {:limit 200})))]
+      (is (seq entries))
+      (doseq [entry entries]
+        (is (every? some? (:audit/projects entry))
+            "a project reference is either hydrated or absent")
+        (is (every? some? (:audit/documents entry))
+            "a document reference is either hydrated or absent")
+        (is (every? #(some? (:document/id %)) (:audit/documents entry))))
+      (testing "and the ops that touched it are still in the log"
+        (is (some (fn [e] (some #(= :document/delete (:op/type %)) (:audit/ops e)))
+                  entries))))))

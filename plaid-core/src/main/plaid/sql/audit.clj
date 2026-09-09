@@ -100,10 +100,20 @@
                        :audit/time head_ts
                        :audit/end-time (:ts (peek ops))
                        :audit/user (some-> (:user_id head) users select-user)
+                       ;; `keep`, not `mapv`: an op can reference a project or
+                       ;; document that has since been DELETED, and its row is
+                       ;; gone, so the hydrate misses and `select-*` gives nil.
+                       ;; A nil in the array is useless to every reader (there
+                       ;; is no name left to show) and a null every one of them
+                       ;; has to defend against, so a vanished entity is simply
+                       ;; absent. The per-op :op/project and :op/document are
+                       ;; already omitted the same way.
                        :audit/projects (->> ops (keep :project_id) distinct
-                                            (mapv #(select-proj (get projects %))))
+                                            (keep #(select-proj (get projects %)))
+                                            vec)
                        :audit/documents (->> ops (keep :document_id) distinct
-                                             (mapv #(select-doc (get documents %))))
+                                             (keep #(select-doc (get documents %)))
+                                             vec)
                        :audit/ops (mapv op-summary ops)}
                 (:group_id head) (assoc :audit/group-id unit)
                 (:message group) (assoc :audit/message (:message group))
