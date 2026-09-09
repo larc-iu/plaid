@@ -1369,6 +1369,58 @@ It is worth running this same reconciliation not only when a document is first o
 Opening the document is the baseline; reconciling on a live update is the very same idea, applied at the moment the substrate comes back into view.
 ====
 
+== Metadata Preserved Across a Split
+
+[NOTE]
+====
+This section describes a design that is not yet implemented.
+It is written here first so that the argument can be had before any code is committed, which is how the rest of this chapter was arrived at.
+====
+
+Reconciliation works because a violated invariant can be **detected**.
+A dependency relation that crosses a sentence boundary is a fact about the data, so the UD app can go looking for it and repair it whenever the document is next opened, however the violation came about.
+
+Not everything an app cares about is detectable that way.
+Consider splitting a token that carries metadata.
+The half that survives is the original row and keeps everything it had; the half that is created is a new token and is born with nothing.
+Now suppose the original carried provenance saying a parser produced it and nobody had checked it yet.
+After the split, one half still says so and the other says nothing at all, which is indistinguishable from a token a person made by hand.
+No later pass can repair this, because there is nothing left to find: an absent `prov` key is not a symptom of anything, it is simply what a person's own work looks like.
+The information is gone at the moment of the split, and reconciliation arrives too late.
+
+This is the one case where an app cannot look after itself, so it is the one case where the layer says what should happen and Plaid does it.
+A token layer may declare which metadata keys survive onto the new token:
+
+[source,json]
+----
+"config": { "plaid": { "preserveOnSplit": ["prov", "provSource", "provConfirmed", "provProb", "provDetail"] } }
+----
+
+A token created by splitting another then begins with those keys copied from it, and every other key is left off.
+This covers every way a token comes to exist from another one: an explicit split, the cascade that splits a layer's descendants along with it, and the split a shift induces on a partitioning layer.
+There is no other route, which is why the declaration names splitting and nothing else.
+Merging needs no counterpart, since the surviving token keeps its own metadata and the other token's annotations are reparented onto it rather than dropped.
+
+Plaid remains semantically mute here.
+It does not know that `prov` records provenance, only that this layer asked for those keys to be carried, in exactly the way a foreign key constraint carries a deletion without understanding what the rows mean.
+The declaration is also optional: a layer that does not make it behaves as it always has.
+
+=== What This Deliberately Does Not Cover
+
+It is tempting to extend the idea until every metadata key declares its own behavior under every operation, and that temptation should be resisted, because for most keys there is no behavior that is correct.
+
+Suppose a word token carries a phonetic transcription of the word, and someone splits it in two.
+Copying the transcription onto both halves states something false about both.
+Dropping it destroys work that a person did, and which they could otherwise have edited down rather than retyped.
+Keeping it only on the first half leaves a transcription of the whole word describing a piece of it.
+None of these is right, because the correct outcome is that a person retypes it, and no declaration can express that.
+The same is true of a morpheme's stored form, and of the times on a time-aligned token, which would need to be apportioned rather than chosen.
+
+The distinction that makes provenance different is ownership.
+Provenance is Plaid's own bookkeeping about who produced what: the user cannot maintain it, and in a shared project they usually cannot even see it, since it belongs to an app they may not be using.
+Everything else on a token is the user's own content, and when a structural change makes it stale, the person who made that change is the one who knows what it should become.
+For that material the discipline in this chapter already applies: warn before an operation that would destroy another app's work, repair what is detectable when the document is next opened, and where an operation would silently corrupt what it cannot see, do not offer the operation at all.
+
 = Querying
 
 Plaid offers a rich query system for powering searches across one or even multiple projects.
