@@ -279,6 +279,7 @@ export const AdminServer = ({ client }) => {
             },
           ]}
           rowKey={(l) => l.documentId}
+          id="admin-locks"
           defaultSort={{ key: 'user', dir: 'asc' }}
           noun="document"
           empty="Nobody is holding a document."
@@ -335,6 +336,7 @@ export const AdminServer = ({ client }) => {
             },
           ]}
           rowKey={(b) => `${b.kind}:${b.ip}:${b.userId || ''}`}
+          id="admin-rate-limits"
           defaultSort={{ key: 'failures', dir: 'desc' }}
           noun="address"
           empty="Nothing recorded in the last 15 minutes."
