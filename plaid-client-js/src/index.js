@@ -101,12 +101,7 @@ async function anonymousGet(baseUrl, path, options = {}) {
 
     const response = await fetch(url, fetchOptions);
     if (!response.ok) {
-      throw makeHttpError(
-        response,
-        await parseErrorBody(response),
-        url,
-        "GET",
-      );
+      throw makeHttpError(response, await parseErrorBody(response), url, "GET");
     }
     return transformResponse(await response.json());
   } catch (error) {
@@ -677,7 +672,9 @@ class PlaidClient {
         if (!infoPromise) {
           // bypassBatch: a read belongs to whoever asked for it, not to
           // whatever batch happens to be open on this shared client.
-          infoPromise = this._request("GET", "/api/v1/info", { bypassBatch: true }).catch((err) => {
+          infoPromise = this._request("GET", "/api/v1/info", {
+            bypassBatch: true,
+          }).catch((err) => {
             // A failure must not be cached: a client that starts before the
             // server is up would never see the limits at all.
             infoPromise = null;
@@ -886,7 +883,10 @@ class PlaidClient {
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
        * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
        */
-      auditPage: (userId, { startTime, endTime, asOf, opTypes, order, limit, cursor } = {}) =>
+      auditPage: (
+        userId,
+        { startTime, endTime, asOf, opTypes, order, limit, cursor } = {},
+      ) =>
         listPage(this, `/api/v1/users/${userId}/audit`, {
           limit,
           cursor,
@@ -1285,6 +1285,53 @@ class PlaidClient {
         this._request("GET", "/api/v1/admin/logs", {
           queryParams: { lines },
         }),
+      /**
+       * Private user-data entries across every account, each carrying its
+       * `userId`. `/users/:userId/data` has always been owner-or-admin; this
+       * is the same reach across accounts at once. Transparently follows
+       * pagination cursors and returns the full flat array. Admin only.
+       *
+       * Narrow with `prefix` (the literal head of a key) and/or `pattern`, a
+       * GLOB over the whole key (`*` any run, `?` one character) — the way to
+       * ask for a key convention identified by a segment in the middle, e.g.
+       * `igt:assistant:*:meta:*`. Values come only with `includeValues`, and
+       * are recased like any other body (see `userData.put`).
+       * Cannot be used inside a batch (auto-paginates across requests); throws if called while batching — use userDataPage() for a single page in a batch.
+       * @param {object} [opts]
+       * @param {string} [opts.prefix] - Only keys starting with this
+       * @param {string} [opts.pattern] - Only keys matching this GLOB
+       * @param {boolean} [opts.includeValues] - Also return each entry's value
+       * @returns {Promise<Array<{userId: string, key: string, updatedAt: string, value?: *}>>}
+       */
+      userData: ({ prefix, pattern, includeValues } = {}) =>
+        listAll(this, "/api/v1/admin/user-data", {
+          query: {
+            prefix,
+            pattern,
+            "include-values": includeValues,
+          },
+        }),
+      /**
+       * One page of private user-data entries across accounts, ordered by
+       * (user, key). Admin only.
+       * @param {object} [opts]
+       * @param {string} [opts.prefix] - Only keys starting with this
+       * @param {string} [opts.pattern] - Only keys matching this GLOB
+       * @param {boolean} [opts.includeValues] - Also return each entry's value
+       * @param {number} [opts.limit] - Page size (1..1000; server default 100)
+       * @param {string} [opts.cursor] - Opaque cursor from a previous page
+       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       */
+      userDataPage: ({ prefix, pattern, includeValues, limit, cursor } = {}) =>
+        listPage(this, "/api/v1/admin/user-data", {
+          limit,
+          cursor,
+          query: {
+            prefix,
+            pattern,
+            "include-values": includeValues,
+          },
+        }),
     };
 
     this.audit = {
@@ -1597,7 +1644,10 @@ class PlaidClient {
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
        * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
        */
-      auditPage: (documentId, { startTime, endTime, asOf, opTypes, order, limit, cursor } = {}) =>
+      auditPage: (
+        documentId,
+        { startTime, endTime, asOf, opTypes, order, limit, cursor } = {},
+      ) =>
         listPage(this, `/api/v1/documents/${documentId}/audit`, {
           limit,
           cursor,
@@ -1625,7 +1675,10 @@ class PlaidClient {
        */
       restore: (documentId, asOf, { dryRun } = {}, auditMessage) =>
         this._request("POST", `/api/v1/documents/${documentId}/restore`, {
-          queryParams: { "as-of": asOf, "dry-run": dryRun ? "true" : undefined },
+          queryParams: {
+            "as-of": asOf,
+            "dry-run": dryRun ? "true" : undefined,
+          },
           auditMessage,
         }),
       /**
@@ -1796,7 +1849,10 @@ class PlaidClient {
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
        * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
        */
-      auditPage: (projectId, { startTime, endTime, asOf, opTypes, order, limit, cursor } = {}) =>
+      auditPage: (
+        projectId,
+        { startTime, endTime, asOf, opTypes, order, limit, cursor } = {},
+      ) =>
         listPage(this, `/api/v1/projects/${projectId}/audit`, {
           limit,
           cursor,
@@ -2449,8 +2505,25 @@ class PlaidClient {
        * @param {Object} [opts] - {requestId, onAccepted}
        * @returns {Promise<any>} The service's result
        */
-      requestService: (projectId, serviceId, data, timeout, onProgress, signal, opts) =>
-        requestService(this, projectId, serviceId, data, timeout, onProgress, signal, opts),
+      requestService: (
+        projectId,
+        serviceId,
+        data,
+        timeout,
+        onProgress,
+        signal,
+        opts,
+      ) =>
+        requestService(
+          this,
+          projectId,
+          serviceId,
+          data,
+          timeout,
+          onProgress,
+          signal,
+          opts,
+        ),
 
       /**
        * Rejoin a service request made earlier and await its result: the
@@ -2466,8 +2539,21 @@ class PlaidClient {
        * @param {AbortSignal} [signal] - Abort to stop waiting
        * @returns {Promise<any>} The service's result
        */
-      attachServiceRequest: (projectId, requestId, timeout, onProgress, signal) =>
-        attachServiceRequest(this, projectId, requestId, timeout, onProgress, signal),
+      attachServiceRequest: (
+        projectId,
+        requestId,
+        timeout,
+        onProgress,
+        signal,
+      ) =>
+        attachServiceRequest(
+          this,
+          projectId,
+          requestId,
+          timeout,
+          onProgress,
+          signal,
+        ),
 
       /**
        * Ask the service to stop a request made earlier. The request still
@@ -2524,7 +2610,11 @@ class PlaidClient {
     // and the server ran the query against the batch's tx Connection, which
     // 500s and rolls back every write in that batch.
     this.query = (body, auditMessage) =>
-      this._request("POST", "/api/v1/query", { auditMessage, body, bypassBatch: true });
+      this._request("POST", "/api/v1/query", {
+        auditMessage,
+        body,
+        bypassBatch: true,
+      });
 
     // Logical-operation groups (audit-log grouping). There is no create: a
     // group row is made lazily by the first write carrying `?group-id=`
@@ -2619,7 +2709,10 @@ class PlaidClient {
        * @param {string} [opts.entityId] - With entityType, one entity's thread
        * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
        */
-      listPage: (projectId, { limit, cursor, documentId, entityType, entityId } = {}) =>
+      listPage: (
+        projectId,
+        { limit, cursor, documentId, entityType, entityId } = {},
+      ) =>
         listPage(this, `/api/v1/projects/${projectId}/comments`, {
           limit,
           cursor,
@@ -2640,7 +2733,10 @@ class PlaidClient {
        * @param {string} [opts.entityId] - With entityType, one entity's thread
        * @returns {AsyncGenerator<Array>}
        */
-      iterPages: (projectId, { pageSize, documentId, entityType, entityId } = {}) =>
+      iterPages: (
+        projectId,
+        { pageSize, documentId, entityType, entityId } = {},
+      ) =>
         iterPages(this, `/api/v1/projects/${projectId}/comments`, {
           pageSize,
           query: {
@@ -2707,10 +2803,14 @@ class PlaidClient {
        * @returns {Promise<Object<string, number>>}
        */
       countsInVocab: (vocabId, { entityId } = {}) =>
-        this._request("GET", `/api/v1/vocab-layers/${vocabId}/comments/counts`, {
-          queryParams: { "entity-id": entityId },
-          skipResponseTransform: true,
-        }),
+        this._request(
+          "GET",
+          `/api/v1/vocab-layers/${vocabId}/comments/counts`,
+          {
+            queryParams: { "entity-id": entityId },
+            skipResponseTransform: true,
+          },
+        ),
     };
   }
 
@@ -2866,7 +2966,9 @@ class PlaidClient {
       // must not fail on its size alone.
       const results = [];
       for (let i = 0; i < ops.length; i += MAX_BATCH_OPS) {
-        results.push(...(await this._postBatch(url, ops.slice(i, i + MAX_BATCH_OPS))));
+        results.push(
+          ...(await this._postBatch(url, ops.slice(i, i + MAX_BATCH_OPS))),
+        );
       }
       return results;
     } finally {
@@ -3037,12 +3139,7 @@ class PlaidClient {
    * @returns {Promise<{kind: string, status: string, expiresAt: string, projectName?: string, projectRole?: string, email?: string, grantAdmin: boolean}>}
    */
   static async lookupInvite(baseUrl, code, options = {}) {
-    return anonymousPost(
-      baseUrl,
-      "/api/v1/invites/lookup",
-      { code },
-      options,
-    );
+    return anonymousPost(baseUrl, "/api/v1/invites/lookup", { code }, options);
   }
 
   /**

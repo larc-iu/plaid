@@ -72,7 +72,7 @@ interface ServiceRegistration {
 }
 
 /** Connection-state transitions reported by a service registration. */
-type ServiceStatusEvent = 'registered' | 'reconnected' | 'disconnected';
+type ServiceStatusEvent = "registered" | "reconnected" | "disconnected";
 
 interface ResponseHelper {
   requestId: string;
@@ -343,12 +343,7 @@ interface CommentFilters {
 
 /** Entities that can carry a comment. */
 type CommentableType =
-  | "document"
-  | "text"
-  | "token"
-  | "span"
-  | "relation"
-  | "vocab-item";
+  "document" | "text" | "token" | "span" | "relation" | "vocab-item";
 
 interface Comment {
   id: string;
@@ -575,7 +570,22 @@ interface AdminBundle {
   logs(opts?: {
     lines?: number;
   }): Promise<{ file: string | null; lines: string[]; error?: string }>;
+  userData(opts?: AdminUserDataOptions): Promise<AdminUserDataEntry[]>;
+  userDataPage(
+    opts?: AdminUserDataOptions & { limit?: number; cursor?: string },
+  ): Promise<Page<AdminUserDataEntry>>;
 }
+
+/** Narrowings for the cross-account private-data listing. */
+interface AdminUserDataOptions {
+  /** Only keys starting with this literal head. */
+  prefix?: string;
+  /** Only keys matching this GLOB (`*` any run, `?` one character). */
+  pattern?: string;
+  includeValues?: boolean;
+}
+
+type AdminUserDataEntry = UserDataEntry & { userId: string };
 
 /** Options for a single page of any audit log. */
 interface AuditPageOptions {
@@ -750,7 +760,11 @@ interface MessagesBundle {
     serviceInfo: ServiceInfo,
     onServiceRequest: (data: any, responseHelper: ResponseHelper) => void,
     extras?: any,
-    onStatus?: (event: ServiceStatusEvent, projectId: string, detail?: string) => void,
+    onStatus?: (
+      event: ServiceStatusEvent,
+      projectId: string,
+      detail?: string,
+    ) => void,
   ): ServiceRegistration;
   /**
    * Submit work to a service; streams progress to `onProgress`, resolves with

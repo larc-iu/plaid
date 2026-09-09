@@ -2651,6 +2651,42 @@ class AdminResource(_Resource):
         return self._request('GET', '/api/v1/admin/logs',
                              query_params={'lines': lines})
 
+    def user_data(self, *, prefix: str | None = None, pattern: str | None = None,
+                  include_values: bool = False) -> Any:
+        """Private user-data entries across every account, each with its ``user_id``.
+
+        ``/users/<user_id>/data`` has always been owner-or-admin; this is the
+        same reach across accounts at once. Transparently follows server-side
+        pagination cursors and returns the full flat list, ordered by
+        (user, key).
+
+        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError if called while batching — use user_data_page() for a single page in a batch.
+
+        Args:
+            prefix: Only keys starting with this literal head
+            pattern: Only keys matching this GLOB (``*`` any run, ``?`` one
+                character) — the way to ask for a key convention identified by
+                a segment in the middle, e.g. ``igt:assistant:*:meta:*``
+            include_values: Also return each entry's value, recased like any
+                other body (see ``user_data.put``)
+        """
+        return list_all(self._client, '/api/v1/admin/user-data',
+                        query={'prefix': prefix, 'pattern': pattern,
+                               'include-values': include_values or None})
+
+    def user_data_page(self, *, prefix: str | None = None, pattern: str | None = None,
+                       include_values: bool = False, limit: int | None = None,
+                       cursor: str | None = None) -> Any:
+        """One page of private user-data entries across accounts.
+
+        Args:
+            limit: Page size (1..1000)
+            cursor: Opaque cursor from a previous page's ``next_cursor``
+        """
+        return list_page(self._client, '/api/v1/admin/user-data', limit=limit, cursor=cursor,
+                         query={'prefix': prefix, 'pattern': pattern,
+                                'include-values': include_values or None})
+
 
 class AuditResource(_Resource):
     """The audit log across every project, and the per-user aggregate.
