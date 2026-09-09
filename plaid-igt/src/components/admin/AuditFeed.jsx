@@ -1,31 +1,49 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { SearchInput, ListCount, ListPager, ListHint } from '@/components/ui/list-search';
-import { usePagedList } from '@/hooks/usePagedList';
+import { ListHint } from '@/components/ui/list-search';
+import { DataTable } from '@/components/ui/data-table';
+import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 import { notifyError } from '@/utils/feedback';
-import { AuditEntries, entryLabel } from './AuditEntries';
 
 // A paged audit feed. `fetchPage({cursor, limit})` returns the server's
 // `{entries, nextCursor}` newest-first, and this holds what has been loaded so
-// far: the pager walks it, the search box filters it, and "Load older" asks
-// the server for the next chunk.
+// far: the table sorts and filters it, and "Load older" asks the server for
+// the next chunk.
 //
 // A window's worth of history is unbounded, so it is never all pulled at once.
 // A chunk is what a reader can page through without waiting, and asking for
-// more is a decision they make.
+// more is a decision they make. Sorting and searching therefore act on what is
+// LOADED, the same scope for both, which is why the default order matches the
+// server's and older rows have to be asked for rather than appearing.
 
 const CHUNK = 200;
 
-export const AuditFeed = ({ fetchPage, showUser = false, empty = 'Nothing yet.', resetKey }) => {
+// A unit's label, best available: the operation group's own message ("Confirm
+// word analysis"), else the first operation's description, else its type.
+const entryLabel = (entry) => {
+  if (entry.message) return entry.message;
+  const head = entry.ops?.[0];
+  return head?.description || head?.type || 'Change';
+};
+
+const placeOf = (entry) => entry.documents?.[0] || entry.projects?.[0] || null;
+
+export const AuditFeed = ({
+  fetchPage,
+  showUser = false,
+  title,
+  empty = 'Nothing yet.',
+  resetKey,
+  storageKey,
+}) => {
   const [entries, setEntries] = useState([]);
   const [cursor, setCursor] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [search, setSearch] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
-    setSearch('');
     try {
       const page = await fetchPage({ limit: CHUNK });
       setEntries(page.entries || []);
@@ -61,49 +79,98 @@ export const AuditFeed = ({ fetchPage, showUser = false, empty = 'Nothing yet.',
     }
   };
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return entries;
-    return entries.filter((e) => {
-      const haystack = [
-        entryLabel(e),
-        e.user?.displayName,
-        e.user?.id,
-        ...(e.documents || []).map((d) => d.name),
-        ...(e.projects || []).map((p) => p.name),
-      ];
-      return haystack.some((v) => v && v.toLowerCase().includes(q));
-    });
-  }, [entries, search]);
-
-  const paged = usePagedList(filtered, { resetKey: `${resetKey}:${search}` });
+  const columns = [
+    {
+      key: 'time',
+      label: 'When',
+      sort: (e) => (e.time ? new Date(e.time).getTime() : null),
+      className: 'whitespace-nowrap text-muted-foreground',
+      render: (e) => <span title={fullTimestamp(e.time)}>{timeAgo(e.time)}</span>,
+    },
+    ...(showUser
+      ? [
+          {
+            key: 'user',
+            label: 'Person',
+            sort: (e) => (e.user?.displayName || e.user?.id || '').toLowerCase(),
+            render: (e) => e.user?.displayName || e.user?.id || '—',
+          },
+        ]
+      : []),
+    {
+      key: 'change',
+      label: 'Change',
+      sort: (e) => entryLabel(e).toLowerCase(),
+      render: entryLabel,
+    },
+    {
+      key: 'where',
+      label: 'Where',
+      sort: (e) => (placeOf(e)?.name || '').toLowerCase(),
+      className: 'text-muted-foreground',
+      render: (e) => {
+        const project = e.projects?.[0];
+        const document = e.documents?.[0];
+        if (document && project) {
+          return (
+            <Link
+              to={`/projects/${project.id}/documents/${document.id}`}
+              className="hover:underline"
+            >
+              {document.name}
+            </Link>
+          );
+        }
+        if (project) {
+          return (
+            <Link to={`/projects/${project.id}`} className="hover:underline">
+              {project.name}
+            </Link>
+          );
+        }
+        return '';
+      },
+    },
+    {
+      key: 'detail',
+      label: '',
+      align: 'right',
+      className: 'text-xs text-muted-foreground tabular-nums',
+      render: (e) => (
+        <>
+          {e.apiToken ? e.apiToken.name : ''}
+          {e.ops?.length > 1 ? ` ${e.ops.length} writes` : ''}
+        </>
+      ),
+    },
+  ];
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2 px-3 pt-3">
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder="Search changes…"
-          className="max-w-xs"
-        />
-        <ListCount shown={filtered.length} total={entries.length} noun="change" />
-      </div>
-      <div className="border-t">
-        <ListPager {...paged} onPage={paged.setPage} position="top" />
-        {loading ? (
-          <p className="p-3 text-sm text-muted-foreground">Loading…</p>
-        ) : (
-          <AuditEntries
-            entries={paged.pageItems}
-            showUser={showUser}
-            empty={entries.length === 0 ? empty : 'No changes match.'}
-          />
-        )}
-        <ListPager {...paged} onPage={paged.setPage} position="bottom" />
-      </div>
+      <DataTable
+        title={title}
+        rows={entries}
+        columns={columns}
+        rowKey={(e) => e.id}
+        storageKey={storageKey}
+        defaultSort={{ key: 'time', dir: 'desc' }}
+        search={{
+          placeholder: 'Search changes…',
+          match: (e, q) =>
+            [
+              entryLabel(e),
+              e.user?.displayName,
+              e.user?.id,
+              ...(e.documents || []).map((d) => d.name),
+              ...(e.projects || []).map((p) => p.name),
+            ].some((v) => v && v.toLowerCase().includes(q)),
+        }}
+        noun="change"
+        empty={empty}
+        loading={loading}
+      />
       {cursor && !loading && (
-        <div className="flex items-center gap-2 px-3 pb-3">
+        <div className="flex items-center gap-2 px-3 pb-1">
           <Button size="sm" variant="outline" onClick={loadOlder} disabled={loadingMore}>
             {loadingMore ? 'Loading…' : 'Load older'}
           </Button>

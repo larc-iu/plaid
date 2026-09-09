@@ -228,20 +228,19 @@ export const ActivityPanel = ({ client, projectId, roster }) => {
         />
       )}
 
-      <section className="rounded-md border">
-        <h3 className="border-b px-3 py-2 text-sm font-semibold">Recent changes</h3>
-        <AuditFeed
-          resetKey={`${projectId || 'all'}:${range}`}
-          showUser
-          empty="Nothing in this window."
-          fetchPage={({ limit, cursor }) => {
-            const opts = { limit, cursor, order: 'desc', startTime: startFor(range) };
-            return projectId
-              ? client.projects.auditPage(projectId, opts)
-              : client.audit.listPage(opts);
-          }}
-        />
-      </section>
+      <AuditFeed
+        title="Recent changes"
+        storageKey={listPrefKey('sort', 'activity-feed', projectId)}
+        resetKey={`${projectId || 'all'}:${range}`}
+        showUser
+        empty="Nothing in this window."
+        fetchPage={({ limit, cursor }) => {
+          const opts = { limit, cursor, order: 'desc', startTime: startFor(range) };
+          return projectId
+            ? client.projects.auditPage(projectId, opts)
+            : client.audit.listPage(opts);
+        }}
+      />
     </div>
   );
 };

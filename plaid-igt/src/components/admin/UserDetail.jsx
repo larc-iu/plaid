@@ -197,16 +197,15 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
             empty="No tokens."
           />
 
-          <section className="rounded-md border">
-            <h3 className="border-b px-3 py-2 text-sm font-semibold">Recent activity</h3>
-            <AuditFeed
-              resetKey={userId}
-              empty="Nothing recorded."
-              fetchPage={({ limit, cursor }) =>
-                client.users.auditPage(userId, { limit, cursor, order: 'desc' })
-              }
-            />
-          </section>
+          <AuditFeed
+            title="Recent activity"
+            storageKey={listPrefKey('sort', 'user-activity')}
+            resetKey={userId}
+            empty="Nothing recorded."
+            fetchPage={({ limit, cursor }) =>
+              client.users.auditPage(userId, { limit, cursor, order: 'desc' })
+            }
+          />
         </>
       )}
       {dialogs}
