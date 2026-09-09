@@ -46,7 +46,6 @@ import { buildAnchorIndex, describeAnchor, anchorCaption } from '@/domain/commen
 import { COPY_FORMATS, COPY_FORMAT_STORAGE_KEY, formatSentence } from '@/domain/igtExport';
 import {
   morphemeJoiner,
-  isStemType,
   morphTypeLabel,
   morphTypeOptions,
   splitChainText,
@@ -2625,7 +2624,7 @@ export class IgtEditor {
       : nAlts > 1
         ? `${baseTitle ? `${baseTitle}. ` : ''}Alt+↓ lists ${nAlts} values seen for this form`
         : (baseTitle ?? nothing);
-    // A suggestion out of the lexicon wears the faint teal of a stem-linked
+    // A suggestion out of the lexicon wears the faint teal of a linked
     // morpheme chip, which already means "lexically identified" here. The wash
     // says where the suggestion came from; how far to trust it is the link
     // chip's job, in the same column.
@@ -3501,6 +3500,16 @@ export class IgtEditor {
             <kbd>↵</kbd> accepts one, <kbd>Alt</kbd>+<kbd>↓</kbd> lists the rest</span
           >
         </div>
+        ${ctx.hasMorphemes
+          ? html` <div class="igt-legend__row">
+              <strong>Lexicon</strong>
+              <span
+                ><span class="igt-legend__chip igt-legend__chip--linked">linked</span> to an entry ·
+                the form under a morpheme is the entry it points at · click it to manage the
+                link</span
+              >
+            </div>`
+          : nothing}
         <div class="igt-legend__row">
           <strong>Navigate</strong>
           <span
@@ -4175,14 +4184,22 @@ export class IgtEditor {
     const filled = value !== '';
     // Chips linked to a stem/root lexicon entry keep the lavender accent —
     // a coverage cue for lexical identification; everything else stays quiet.
-    const stem = !!morph.vocabItem && isStemType(morph.morphType);
+    // Linked to a lexicon entry, whatever kind of morph it is. This used to
+    // require a stem or root as well, which made an affix that WAS linked look
+    // like one that was not, and a reporter read the difference as a status
+    // difference rather than a morph-type one. It was never a decision: the
+    // tint predates the meaning, and got handed to stems when every chip
+    // stopped being tinted.
+    const linked = !!morph.vocabItem;
     // Machine-made segmentation (copied analyses) marks the morpheme TOKEN's
     // metadata; the form cell carries the unverified/verified styling.
     const prov = provDisplay(morph.metadata);
     return html`
       <div class="igt-morph-col">
         <div
-          class="igt-morph-form ${stem ? 'igt-morph-form--stem' : ''}${this._rowCls('morphform')}"
+          class="igt-morph-form ${linked ? 'igt-morph-form--linked' : ''}${this._rowCls(
+            'morphform',
+          )}"
           data-row="morphform"
         >
           ${this._vocabFace(

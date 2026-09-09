@@ -65,19 +65,41 @@ export const readIgnoredTokens = (config) => readIgt(config, 'ignoredTokens') ??
 const PUNCT_CHAR_RE = /[\p{P}\p{S}]/u;
 const PICTOGRAPH_RE = /\p{Extended_Pictographic}/u;
 const isPunctChar = (c) => PUNCT_CHAR_RE.test(c) && !PICTOGRAPH_RE.test(c) && !isZeroMorph(c);
+
+/**
+ * Has the project declared this character LETTER-LIKE?
+ *
+ * The `unicodePunctuation` rule's exception list is a list of single
+ * CHARACTERS, and each one is meant to behave as a letter would: an ejective
+ * or glottalization mark, an apostrophe inside a word. That is one meaning,
+ * and every reader of the list honors it — the tokenizer does not break a word
+ * at one (`shouldTokenizeCharacter`), `trimIgnoredEdges` does not shave one off
+ * a form, and a token spelled with them is a word to be annotated rather than
+ * punctuation to skip.
+ *
+ * Entries longer than one character cannot be letter-like and match nothing;
+ * the settings screen refuses them, and any left in older config are inert.
+ */
+const isLetterLike = (c, cfg) =>
+  cfg?.type === 'unicodePunctuation' && (cfg.whitelist || []).includes(c);
+
+/** Punctuation for the ignore rule, minus what the project calls letter-like. */
+const isIgnorableChar = (c, cfg) => isPunctChar(c) && !isLetterLike(c, cfg);
+
 /**
  * Is a token excluded from word-level annotation under an ignored-tokens config
  * (`readIgnoredTokens` shape)? `content` is the token's surface text. Shared by
  * the editor render and reconcile so "ignored" means the same in both: ignored
  * tokens get no annotation cells and no healed morpheme.
+ *
+ * A token is excluded when EVERY character in it is punctuation the project has
+ * not called letter-like. One letter-like character is enough to make it a
+ * word: `ʼ` on its own is a word if the project spells words with it.
  */
 export const isTokenIgnored = (content, cfg) => {
   if (!cfg) return false;
   if (cfg.type === 'unicodePunctuation') {
-    if ([...(content || '')].every(isPunctChar)) {
-      return !(cfg.whitelist || []).includes(content);
-    }
-    return false;
+    return [...(content || '')].every((c) => isIgnorableChar(c, cfg));
   }
   if (cfg.type === 'blacklist') return (cfg.blacklist || []).includes(content);
   return false;
@@ -86,12 +108,11 @@ export const isTokenIgnored = (content, cfg) => {
 /**
  * Strip leading/trailing punctuation from a surface form using the SAME rule
  * the ignored-tokens config applies to whole tokens — for deriving a lexicon
- * entry's form from a word like `derechos.` or `¿Qué`. Under the
- * `unicodePunctuation` rule every edge char that rule counts as punctuation is
- * trimmed (whitelisted strings are whole-token exceptions and don't affect
- * trimming). Under `blacklist` (whole-token list) or no config nothing is
- * trimmed. Never trims a form down to empty: an all-punctuation form is
- * returned as-is.
+ * entry's form from a word like `derechos.` or `¿Qué`. A letter-like character
+ * is never trimmed, at either edge: a word that begins with a glottal mark
+ * begins with it in the lexicon too. Under `blacklist` (a whole-token list) or
+ * no config nothing is trimmed. Never trims a form down to empty: an
+ * all-punctuation form is returned as-is.
  */
 export const trimIgnoredEdges = (content, cfg) => {
   const s = content ?? '';
@@ -99,8 +120,8 @@ export const trimIgnoredEdges = (content, cfg) => {
   const chars = [...s];
   let start = 0;
   let end = chars.length;
-  while (start < end && isPunctChar(chars[start])) start++;
-  while (end > start && isPunctChar(chars[end - 1])) end--;
+  while (start < end && isIgnorableChar(chars[start], cfg)) start++;
+  while (end > start && isIgnorableChar(chars[end - 1], cfg)) end--;
   if (start >= end) return s;
   return chars.slice(start, end).join('');
 };

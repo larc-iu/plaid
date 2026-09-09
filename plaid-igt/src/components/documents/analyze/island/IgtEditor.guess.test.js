@@ -118,3 +118,74 @@ describe('IgtEditor suggestion provenance', () => {
     expect(cls('wa:w-2:POS')).not.toContain('igt-field--guess-entry');
   });
 });
+
+// The teal wash on a morpheme chip means "linked to a lexicon entry". It used
+// to mean "linked AND a stem or root", so a linked affix looked exactly like an
+// unlinked one, and a reporter read that as the affix being unconfirmed.
+describe('linked morpheme chips', () => {
+  const A = { id: 'i-a', form: 'a', metadata: { morphType: 'prefix' } };
+  const ROA = { id: 'i-roa', form: 'roa', metadata: { morphType: 'stem' } };
+
+  // "aroa": one word, a prefix and a stem, each optionally linked.
+  async function mountMorphs({ linkAffix, linkStem }) {
+    const raw = buildRawDoc({
+      body: 'aroa',
+      words: [{ id: 'w-1', begin: 0, end: 4 }],
+      morphemes: [
+        {
+          id: 'm-1',
+          begin: 0,
+          end: 4,
+          precedence: 1,
+          metadata: { form: 'a', morphType: 'prefix' },
+        },
+        {
+          id: 'm-2',
+          begin: 0,
+          end: 4,
+          precedence: 2,
+          metadata: { form: 'roa', morphType: 'stem' },
+        },
+      ],
+    });
+    const links = [];
+    if (linkAffix) links.push({ id: 'l-a', tokens: ['m-1'], vocabItem: A });
+    if (linkStem) links.push({ id: 'l-r', tokens: ['m-2'], vocabItem: ROA });
+    const client = makeFakeClient();
+    client.query = async () => ({ results: [] });
+    const doc = new IgtDocument({
+      raw,
+      project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
+      vocabularies: { v1: { id: 'v1', name: 'Lexicon', items: [A, ROA], vocabLinks: links } },
+      client,
+    });
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    editor = new IgtEditor(host, doc);
+    await editor.updateComplete?.catch?.(() => {});
+    await new Promise((r) => setTimeout(r, 0));
+    return host;
+  }
+
+  // BY POSITION, not by text: the chips read "a" and "roa", and "roa" contains
+  // "a", so a substring match made this pass whatever the code did.
+  const tinted = (root) =>
+    [...root.querySelectorAll('.igt-morph-form')].map((el) =>
+      el.classList.contains('igt-morph-form--linked'),
+    );
+
+  it('tints an affix that is linked, not only a stem', async () => {
+    const root = await mountMorphs({ linkAffix: true, linkStem: true });
+    expect(tinted(root)).toEqual([true, true]); // prefix, then stem
+  });
+
+  it('leaves an unlinked morpheme untinted, whatever its type', async () => {
+    const root = await mountMorphs({ linkAffix: false, linkStem: false });
+    expect(tinted(root)).toEqual([false, false]);
+  });
+
+  it('tints the linked affix even when the stem beside it is not linked', async () => {
+    const root = await mountMorphs({ linkAffix: true, linkStem: false });
+    expect(tinted(root)).toEqual([true, false]);
+  });
+});

@@ -290,6 +290,12 @@
   color: #9ca3af;
   font-style: italic;
 }
+/* The legend's swatch for a linked morpheme: the same teal wash the chip
+   itself wears. */
+.igt-legend__chip--linked {
+  background: #e9f4f2;
+  color: #0f766e;
+}
 .igt-legend__guess--entry {
   background: #e9f4f2;
   border-radius: 2px;
@@ -722,7 +728,7 @@
   opacity: 1;
 }
 /* Out of the linked lexicon entry rather than out of project precedent: the
-   same faint teal as a stem-linked morpheme chip (.igt-morph-form--stem),
+   same faint teal as a linked morpheme chip (.igt-morph-form--linked),
    which already carries "lexically identified" in this grid. A background, not
    a value color, so scope hue still never touches a value. Hover and focus
    both outrank it on specificity and take the cell back to their own fill.
@@ -807,9 +813,11 @@
   background: #f5f5f7;
   border-radius: 3px;
 }
-/* Linked to a stem/root lexicon entry: a teal tint, the morpheme scope's own
-   hue — reads as "lexically identified". */
-.igt-morph-form--stem {
+/* Linked to a lexicon entry: a teal tint, the morpheme scope's own hue, which
+   reads as "lexically identified". Any linked morpheme, affix or stem alike.
+   It used to require a stem or root too, so a linked affix looked exactly like
+   an unlinked one and the fill read as a status difference. */
+.igt-morph-form--linked {
   background: #e9f4f2;
 }
 /* Display-only affix joint between adjacent morphemes ("-", or "=" for
