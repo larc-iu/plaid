@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { DataTable } from '@/components/ui/data-table';
+import { listPrefKey } from '@/hooks/useStickyState';
 import {
   Select,
   SelectTrigger,
@@ -180,6 +182,58 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage }) =>
 
   if (!canManage) return null;
 
+  const columns = [
+    {
+      key: 'note',
+      label: 'Label',
+      sort: (inv) => (inv.note || '').toLowerCase(),
+      render: (inv) => inv.note || <em className="text-muted-foreground">Untitled</em>,
+    },
+    {
+      key: 'grants',
+      label: 'Grants',
+      sort: (inv) => inv.projectRole || '',
+      render: (inv) => cap(inv.projectRole),
+    },
+    {
+      key: 'uses',
+      label: 'Used',
+      sort: (inv) => inv.uses,
+      render: (inv) => `${inv.uses} / ${inv.maxUses}`,
+    },
+    {
+      key: 'expires',
+      label: 'Expires',
+      sort: (inv) => (inv.expiresAt ? new Date(inv.expiresAt).getTime() : null),
+      render: (inv) => fmtDate(inv.expiresAt),
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      sort: (inv) => inv.status,
+      render: (inv) => (
+        <Badge variant={STATUS_VARIANT[inv.status] || 'secondary'}>{inv.status}</Badge>
+      ),
+    },
+    {
+      key: 'actions',
+      label: '',
+      headerClassName: 'w-12',
+      render: (inv) =>
+        inv.status === 'active' ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            aria-label="Revoke invitation link"
+            onClick={() => setRevokeTarget(inv)}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        ) : null,
+    },
+  ];
+
   return (
     <div>
       <div className="flex items-center justify-between gap-2 pb-3">
@@ -199,55 +253,16 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage }) =>
         <div className="flex justify-center py-8 text-muted-foreground">
           <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-primary" />
         </div>
-      ) : invites.length === 0 ? (
-        <p className="py-2 text-sm text-muted-foreground">
-          No invitation links yet. Create one to onboard someone without sending a password.
-        </p>
       ) : (
-        <div className="overflow-hidden rounded-md border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-muted-foreground">
-                <th className="px-4 py-2 font-medium">Label</th>
-                <th className="px-4 py-2 font-medium">Grants</th>
-                <th className="px-4 py-2 font-medium">Used</th>
-                <th className="px-4 py-2 font-medium">Expires</th>
-                <th className="px-4 py-2 font-medium">Status</th>
-                <th className="w-12 px-4 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {invites.map((inv) => (
-                <tr key={inv.id} className="border-t">
-                  <td className="px-4 py-2">
-                    {inv.note || <em className="text-muted-foreground">Untitled</em>}
-                  </td>
-                  <td className="px-4 py-2">{cap(inv.projectRole)}</td>
-                  <td className="px-4 py-2">
-                    {inv.uses} / {inv.maxUses}
-                  </td>
-                  <td className="px-4 py-2">{fmtDate(inv.expiresAt)}</td>
-                  <td className="px-4 py-2">
-                    <Badge variant={STATUS_VARIANT[inv.status] || 'secondary'}>{inv.status}</Badge>
-                  </td>
-                  <td className="px-4 py-2">
-                    {inv.status === 'active' && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        aria-label="Revoke invitation link"
-                        onClick={() => setRevokeTarget(inv)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          rows={invites}
+          columns={columns}
+          rowKey={(inv) => inv.id}
+          storageKey={listPrefKey('sort', 'project-invites', projectId)}
+          defaultSort={{ key: 'expires', dir: 'desc' }}
+          noun="link"
+          empty="No invitation links yet. Create one to onboard someone without sending a password."
+        />
       )}
 
       {/* Create dialog */}

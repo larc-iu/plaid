@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { UserPlus, Plus, MoreVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SearchInput, ListHint } from '@/components/ui/list-search';
+import { DataTable } from '@/components/ui/data-table';
+import { listPrefKey } from '@/hooks/useStickyState';
 import {
   Select,
   SelectTrigger,
@@ -41,6 +43,9 @@ const ROLE_OPTIONS = [
 ];
 const GRANT_ROLES = ['reader', 'writer', 'maintainer'];
 const SEARCH_LIMIT = 25;
+// Most access first, so the Project role column groups the way someone
+// scanning it expects rather than alphabetically.
+const ROLE_RANK = { maintainer: 0, writer: 1, reader: 2, none: 3 };
 
 const roleOf = (project, userId) => {
   if (project?.maintainers?.includes(userId)) return 'maintainer';
@@ -216,136 +221,136 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
     }
   };
 
+  const memberColumns = [
+    {
+      key: 'user',
+      label: 'User',
+      sort: (m) => (m.displayName || '').toLowerCase(),
+      render: (m) => (
+        <div className="flex items-center gap-2">
+          <UserAvatar
+            client={client}
+            userId={m.id}
+            displayName={m.displayName}
+            avatarHash={m.avatarHash}
+            className="h-7 w-7"
+          />
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="font-medium">{m.displayName}</span>
+              {m.isAdmin && <Badge variant="secondary">Admin</Badge>}
+            </div>
+            <span className="text-xs text-muted-foreground">{m.id}</span>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'role',
+      label: 'Project role',
+      sort: (m) => ROLE_RANK[m.role] ?? ROLE_RANK.none,
+      render: (m) => (
+        <Select
+          value={m.role}
+          onValueChange={(v) => setRole(m.id, v)}
+          disabled={m.id === user.id || updatingUser === m.id}
+        >
+          <SelectTrigger className="h-8 w-40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {ROLE_OPTIONS.map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ),
+    },
+    {
+      key: 'review',
+      label: (
+        <span title="Their annotations are marked as contributed until a maintainer confirms them">
+          Review work
+        </span>
+      ),
+      // The stored mark, not the box: a toggle in flight would otherwise move
+      // the row out from under the click that made it.
+      sort: (m) => (isReviewed(project, m.id, { isAdmin: m.isAdmin }) ? 0 : 1),
+      render: (m) => (
+        <input
+          type="checkbox"
+          className="h-4 w-4"
+          aria-label={`Review ${m.displayName}'s work`}
+          checked={
+            updatingReview?.id === m.id
+              ? updatingReview.on
+              : isReviewed(project, m.id, { isAdmin: m.isAdmin })
+          }
+          disabled={updatingReview?.id === m.id || reviewedByRole(m)}
+          title={
+            reviewedByRole(m)
+              ? `Every ${projectRole(project, m.id, { isAdmin: m.isAdmin })} is reviewed in this project`
+              : undefined
+          }
+          onChange={(e) => setReviewed(m.id, e.target.checked)}
+        />
+      ),
+    },
+    ...(isAdmin
+      ? [
+          {
+            key: 'actions',
+            label: '',
+            headerClassName: 'w-12',
+            render: (m) => (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="User actions">
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => startEdit(m)}>Edit user…</DropdownMenuItem>
+                  <DropdownMenuItem disabled={resetting} onSelect={() => createResetLink(m)}>
+                    Create password reset link…
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ),
+          },
+        ]
+      : []),
+  ];
+
   return (
     <div className="tw flex flex-col gap-6 pt-4 [&>*+*]:border-t [&>*+*]:pt-6">
       {/* Members */}
       <div>
         <div className="flex items-center justify-between gap-2 pb-3">
           <h2 className="text-lg font-semibold">Members</h2>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">{members.length} with access</span>
-            {isAdmin && (
-              <Button size="sm" onClick={userAdmin.openCreate}>
-                <UserPlus className="h-4 w-4" /> Create User
-              </Button>
-            )}
-          </div>
+          {isAdmin && (
+            <Button size="sm" onClick={userAdmin.openCreate}>
+              <UserPlus className="h-4 w-4" /> Create User
+            </Button>
+          )}
         </div>
 
         {membersLoading ? (
           <div className="flex justify-center py-8 text-muted-foreground">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-primary" />
           </div>
-        ) : members.length === 0 ? (
-          <p className="py-2 text-sm text-muted-foreground">
-            No one has been granted access yet. Use “Add a user” below.
-          </p>
         ) : (
-          <div className="overflow-hidden rounded-md border">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-muted-foreground">
-                  <th className="px-4 py-2 font-medium">User</th>
-                  <th className="px-4 py-2 font-medium">Project role</th>
-                  <th
-                    className="px-4 py-2 font-medium"
-                    title="Their annotations are marked as contributed until a maintainer confirms them"
-                  >
-                    Review work
-                  </th>
-                  {isAdmin && <th className="w-12 px-4 py-2" />}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((m) => (
-                  <tr key={m.id} className="border-t">
-                    <td className="px-4 py-2">
-                      <div className="flex items-center gap-2">
-                        <UserAvatar
-                          client={client}
-                          userId={m.id}
-                          displayName={m.displayName}
-                          avatarHash={m.avatarHash}
-                          className="h-7 w-7"
-                        />
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{m.displayName}</span>
-                            {m.isAdmin && <Badge variant="secondary">Admin</Badge>}
-                          </div>
-                          <span className="text-xs text-muted-foreground">{m.id}</span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-2">
-                      <Select
-                        value={m.role}
-                        onValueChange={(v) => setRole(m.id, v)}
-                        disabled={m.id === user.id || updatingUser === m.id}
-                      >
-                        <SelectTrigger className="h-8 w-40">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {ROLE_OPTIONS.map((o) => (
-                            <SelectItem key={o.value} value={o.value}>
-                              {o.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    <td className="px-4 py-2">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4"
-                        aria-label={`Review ${m.displayName}'s work`}
-                        checked={
-                          updatingReview?.id === m.id
-                            ? updatingReview.on
-                            : isReviewed(project, m.id, { isAdmin: m.isAdmin })
-                        }
-                        disabled={updatingReview?.id === m.id || reviewedByRole(m)}
-                        title={
-                          reviewedByRole(m)
-                            ? `Every ${projectRole(project, m.id, { isAdmin: m.isAdmin })} is reviewed in this project`
-                            : undefined
-                        }
-                        onChange={(e) => setReviewed(m.id, e.target.checked)}
-                      />
-                    </td>
-                    {isAdmin && (
-                      <td className="px-4 py-2">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              aria-label="User actions"
-                            >
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onSelect={() => startEdit(m)}>
-                              Edit user…
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              disabled={resetting}
-                              onSelect={() => createResetLink(m)}
-                            >
-                              Create password reset link…
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            rows={rows}
+            columns={memberColumns}
+            rowKey={(m) => m.id}
+            storageKey={listPrefKey('sort', 'project-members', projectId)}
+            defaultSort={{ key: 'user', dir: 'asc' }}
+            noun="member"
+            empty="No one has been granted access yet. Use “Add a user” below."
+          />
         )}
       </div>
 
