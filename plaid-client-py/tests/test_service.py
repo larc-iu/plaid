@@ -828,3 +828,24 @@ def test_a_long_request_does_not_block_the_reader_thread():
     assert t3 is not None
     t3.join(5)
     assert not third.errors
+
+
+def test_a_stop_is_not_swallowed_by_a_service_catching_Exception():
+    """Every service wraps its work in `except Exception` to report a failure.
+    If the stop were an Exception, that handler would swallow it and report an
+    error — or, caught inside a per-item loop, be shrugged off so the loop ran
+    on. Same reason asyncio.CancelledError left Exception in 3.8."""
+    assert issubclass(ServiceCancelled, BaseException)
+    assert not issubclass(ServiceCancelled, Exception)
+
+    cleaned = []
+    try:
+        try:
+            raise ServiceCancelled('stop')
+        except Exception:  # noqa: BLE001 - the point of the test
+            assert False, 'a broad handler must not catch a stop'
+        finally:
+            cleaned.append('finally still runs')
+    except ServiceCancelled:
+        pass
+    assert cleaned == ['finally still runs']

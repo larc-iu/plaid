@@ -182,6 +182,10 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
       morphemeTokenLayerId: info.morphemeTokenLayer?.id,
       sentenceTokenLayerId: info.sentenceTokenLayer?.id,
     };
+    // A stopped step ends the RUN, not just the step: the person asked for it
+    // to stop, so the steps after it must not quietly go ahead. The request
+    // hook has already said so, hence no toast of our own.
+    const stopped = (result) => result?.stopped === true;
     // A reload after each service step costs seconds on a large document and
     // shows nothing while it runs, so it gets its own line rather than a pause.
     const reload = async () => {
@@ -210,6 +214,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
             timeout: ANALYZE_TIMEOUT_MS,
           },
         );
+        if (stopped(result)) return;
         await reload();
         const n = result?.sentencesWritten ?? result?.sentences_written;
         if (typeof n === 'number') parts.push(`proposed translations for ${plural(n, 'sentence')}`);
@@ -251,6 +256,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
             timeout: ANALYZE_TIMEOUT_MS,
           },
         );
+        if (stopped(result)) return;
         await reload();
         const n = result?.wordsWritten ?? result?.words_written;
         if (typeof n === 'number') parts.push(`proposed analyses for ${plural(n, 'word')}`);
@@ -273,7 +279,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
             );
         } else {
           const service = linkSpot.service;
-          await requestService(
+          const result = await requestService(
             project.id,
             doc.id,
             service.serviceId,
@@ -290,6 +296,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
               onRequestId: recordStep,
             },
           );
+          if (stopped(result)) return;
           await reload();
           parts.push('ran the linking service');
         }

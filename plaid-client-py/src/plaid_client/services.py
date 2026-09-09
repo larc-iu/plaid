@@ -481,7 +481,7 @@ class CancelScope:
             self._critical_depth -= 1
 
 
-class ServiceCancelled(Exception):
+class ServiceCancelled(BaseException):
     """Raised inside a handler when the requester has asked it to stop.
 
     Cooperative cancellation: nothing interrupts a handler, so the request ends
@@ -489,6 +489,13 @@ class ServiceCancelled(Exception):
     point, which is why a long service that already reports progress needs no
     changes at all. ``serve`` catches this and ends the request as *stopped*
     rather than *failed*.
+
+    Inherits :class:`BaseException`, NOT ``Exception``, for the same reason
+    ``asyncio.CancelledError`` does: a handler that wraps its work in
+    ``except Exception`` — which most do, to report a failure — would otherwise
+    swallow the stop and report it as an error, and a stop caught inside a
+    per-item loop would be shrugged off and the loop would carry on. A
+    ``finally`` still runs, so cleanup is unaffected.
     """
 
 

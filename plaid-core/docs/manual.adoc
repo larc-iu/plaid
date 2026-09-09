@@ -581,6 +581,11 @@ What a service cannot do is stop in the middle of one long blocking call. The bu
 
 [IMPORTANT]
 ====
+In Python, `ServiceCancelled` inherits `BaseException`, not `Exception` — the same choice `asyncio.CancelledError` made, and for the same reason. Almost every handler wraps its work in `except Exception` to report a failure; if a stop were an `Exception`, that handler would swallow it and report an error instead, and a stop caught inside a per-item loop would be shrugged off and the loop would carry on. A `finally` still runs, so cleanup is unaffected. In JavaScript, where `catch` catches everything, a handler that catches broadly must re-throw a `ServiceCancelled` itself.
+====
+
+[IMPORTANT]
+====
 A handler must not run on the channel's own reader thread, or it blocks the very channel that carries `service_cancel` for the request it is running, and the stop is not read until the work it was meant to stop has finished. `BaseService` handles this: it takes its single-flight lock and then runs the work on a thread of its own, so one request at a time is still the rule and the channel stays readable. A service written directly against `serve` must do the same.
 ====
 
