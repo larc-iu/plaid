@@ -159,6 +159,8 @@ test('C2-01: the New Document dialog needs a name, submits on Enter, and opens t
   await page.getByRole('button', { name: 'New Document' }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
+  // The dialog opens on a chooser (blank, or import from ELAN).
+  await dialog.getByRole('button', { name: /Blank document/ }).click();
   const submit = dialog.getByRole('button', { name: /^Create$/ });
   await expect(submit).toBeDisabled();
   await dialog.getByRole('textbox').first().fill('Enter-made doc');

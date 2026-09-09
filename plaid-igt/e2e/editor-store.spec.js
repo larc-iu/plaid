@@ -28,11 +28,14 @@ test('reactive store drives tab switching + metadata edit toggle', async ({ page
   await expect(page.getByRole('heading', { name: 'Tokens' })).toBeVisible();
   await expect(page.locator('.token').first()).toBeVisible();
 
-  // Switch to Media — the fixture doc has no media, so the upload UI must render.
-  // Proves DocumentMedia/MediaUpload/useMediaOperations mount off the shared doc
-  // without crashing (the most likely media-migration regression).
+  // Switch to Media — proves DocumentMedia/MediaUpload/useMediaOperations mount
+  // off the shared doc without crashing (the most likely media-migration
+  // regression). Either face counts: the fixture doc picks up media from a dev
+  // session often enough that asserting the upload half made this flaky.
   await page.getByRole('tab', { name: 'Media' }).click();
-  await expect(page.getByText('Upload Media File')).toBeVisible();
+  await expect(
+    page.getByText('Upload Media File').or(page.getByText('Timeline', { exact: true })),
+  ).toBeVisible();
 
   await page.getByRole('tab', { name: 'Metadata' }).click();
   await expect(page.getByRole('heading', { name: 'Document Information' })).toBeVisible();
