@@ -284,15 +284,31 @@ export function parseFwdata(xml) {
   // Human approval: a WfiAnalysis is human-approved when its Evaluations
   // include the "Approves" evaluation of an agent with Human=true (FLEx keeps
   // parser opinions — M3Parser/HCParser — as separate non-human agents).
+  // FLEx keeps parser opinions (M3Parser, HCParser, and the "Computer" agent)
+  // as separate non-human agents, each owning an Approves evaluation that an
+  // analysis references. Both sets are read: the human one says whether a
+  // person stands behind the analysis, the machine one says WHICH parser
+  // proposed it, which rides along in the provenance source.
   const humanApproves = new Set();
+  const machineApproves = new Map(); // evaluation guid -> agent name
   for (const agent of cls('CmAgent')) {
-    const humanVal = child(agent, 'Human')?.attrs.val;
-    if (String(humanVal).toLowerCase() !== 'true') continue;
     const ev = refGuid(agent, 'Approves');
-    if (ev) humanApproves.add(ev);
+    if (!ev) continue;
+    if (String(child(agent, 'Human')?.attrs.val).toLowerCase() === 'true') humanApproves.add(ev);
+    else machineApproves.set(ev, pickEn(multiUni(agent, 'Name')) ?? null);
   }
   const isHumanApproved = (analysis) =>
     refGuids(analysis, 'Evaluations').some((g) => humanApproves.has(g));
+  // Sorted and de-duplicated, so the same project always yields the same
+  // source string.
+  const machineAgentsOf = (analysis) =>
+    [
+      ...new Set(
+        refGuids(analysis, 'Evaluations')
+          .map((g) => machineApproves.get(g))
+          .filter(Boolean),
+      ),
+    ].sort();
 
   // Allomorphs: MoStemAllomorph + MoAffixAllomorph, owner is the LexEntry
   const allomorphs = new Map();
@@ -435,8 +451,12 @@ export function parseFwdata(xml) {
       gloss,
       pos: analysis ? posAbbrev(refGuid(analysis, 'Category')) : null,
       // human-approved analysis vs a morphological-parser guess the user
-      // never confirmed in FLEx — drives provConfirmed on imported links
+      // never confirmed in FLEx — drives provenance on everything the analysis
+      // produced (the link, the glosses, the segmentation)
       approved: analysis ? isHumanApproved(analysis) : false,
+      // Which FLEx agent proposed it, for the provenance source. Empty when a
+      // person entered the analysis by hand, since no parser evaluated it.
+      machineAgents: analysis ? machineAgentsOf(analysis) : [],
       morphemes: analysis ? refGuids(analysis, 'MorphBundles').map(bundleOf).filter(Boolean) : null,
     };
   };

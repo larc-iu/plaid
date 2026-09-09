@@ -54,8 +54,27 @@ const BULK_CHUNK = 500;
 // SEGMENT rather than an analysis and have no approval to read, so they are
 // never stamped. Neither is the lone default morpheme given to a word FLEx
 // never analyzed: there is no analysis behind it to be unapproved.
+//
+// The source names the FLEx agent that proposed it where FLEx says which
+// ("flex-import:M3Parser"), which is the app-specific id shape the provenance
+// convention already documents. Several agents join with "+", sorted, so the
+// same project always yields the same string.
+const flexSource = (word) => {
+  const agents = word?.machineAgents ?? [];
+  return agents.length ? `flex-import:${agents.join('+')}` : 'flex-import';
+};
+
+// Only where FLEx POSITIVELY says a machine produced it, which means a
+// non-human agent approved the analysis. An analysis FLEx records no opinion
+// on at all is not evidence of a machine: `inferred` means "a machine wrote
+// this", and claiming it without a parser behind it would assert more than the
+// source says. Across the sample backups every analysis attached to a text is
+// either human-approved or unevaluated, so this is rare in practice; FLEx's
+// parser proposes into the wordform inventory and a person attaches one.
 const unapprovedStamp = (word) =>
-  word && word.approved === false && word.morphemes ? stampInferred('flex-import') : null;
+  word && word.approved === false && word.morphemes && word.machineAgents?.length
+    ? stampInferred(flexSource(word))
+    : null;
 
 /**
  * Send `items` to a bulk endpoint in BULK_CHUNK-sized slices, concatenating
@@ -706,6 +725,7 @@ export async function importDocument({
           itemId,
           tokenId: morphIds[i],
           approved: doc.words[s.wordIndex]?.approved === true,
+          source: flexSource(doc.words[s.wordIndex]),
         });
       }
     });
@@ -714,7 +734,11 @@ export async function importDocument({
         part.map((l) => ({
           vocabItem: l.itemId,
           tokens: [l.tokenId],
-          metadata: l.approved ? confirmedInferred('flex-import') : stampInferred('flex-import'),
+          metadata: l.approved
+            ? // OUR linker made this link, from the sense FLEx names, and
+              // FLEx's own human approval is what confirms it.
+              confirmedInferred('flex-import')
+            : stampInferred(l.source),
         })),
       ),
     );

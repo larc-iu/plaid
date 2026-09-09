@@ -79,6 +79,7 @@ const build = {
           gloss: { en: 'tale?' },
           pos: 'n',
           approved: false,
+          machineAgents: ['M3Parser'],
           morphemes: [
             {
               forms: { [BASE_WS]: 'мах' },
@@ -691,7 +692,8 @@ describe('runImport', () => {
     // the lexicon link. An analysis only its parser proposed arrives as
     // machine work nobody has checked, so the review sweep can find it; an
     // approved one is a person's, and unmarked like anything typed by hand.
-    const stamp = { prov: 'inferred', provSource: 'flex-import' };
+    // The source names the FLEx agent that proposed it.
+    const stamp = { prov: 'inferred', provSource: 'flex-import:M3Parser' };
     expect(byLayer['sl-wg'][0].metadata).toBeUndefined(); // approved word
     expect(byLayer['sl-mg'][0].metadata).toBeUndefined(); // its morpheme
     expect(byLayer['sl-wg'][1]).toMatchObject({ value: 'tale?', metadata: stamp });
@@ -701,6 +703,27 @@ describe('runImport', () => {
     // The word FLEx never analyzed has no analysis to be unapproved, so its
     // one default morpheme stays bare.
     expect(morphemes[1].metadata).toBeUndefined();
+  });
+
+  // `inferred` means a machine wrote it. An analysis FLEx records no opinion
+  // on, human or parser, is not evidence of that, and every analysis attached
+  // to a text in the sample backups is either human-approved or unevaluated.
+  it('leaves an unevaluated analysis unmarked rather than calling it machine work', async () => {
+    const bare = structuredClone(build);
+    const guessed = bare.documents[0].words[2];
+    expect(guessed.approved).toBe(false);
+    guessed.machineAgents = []; // nobody, not even a parser, vouched for it
+    const c2 = makeFakeClient();
+    await runImport({ client: c2, projectId: 'p1', build: bare, lexicon, config, vocabId: 'v1' });
+    const spans2 = c2.calls.filter((c) => c.kind === 'spans.bulkCreate').flatMap((c) => c.args);
+    expect(spans2.length).toBeGreaterThan(0);
+    for (const span of spans2) expect(span.metadata).toBeUndefined();
+    const morphs2 = c2.calls
+      .filter((c) => c.kind === 'tokens.bulkCreate')
+      .flatMap((c) => c.args)
+      .filter((t) => t.tokenLayerId === 'morph1');
+    expect(morphs2.length).toBeGreaterThan(0);
+    for (const m of morphs2) expect(m.metadata?.prov).toBeUndefined();
 
     // vocab links on analyzed morphemes; FLEx human approval drives
     // provConfirmed (parser-only guesses import as unconfirmed-inferred)
@@ -708,12 +731,15 @@ describe('runImport', () => {
       .filter((c) => c.kind === 'vocabLinks.bulkCreate')
       .flatMap((c) => c.args.body);
     expect(links).toHaveLength(2);
+    // Approved: OUR linker inferred the link from the sense FLEx names, and
+    // FLEx's human approval is what confirms it, so the source is us.
     expect(links[0].metadata).toEqual({
       prov: 'inferred',
       provSource: 'flex-import',
       provConfirmed: true,
     });
-    expect(links[1].metadata).toEqual({ prov: 'inferred', provSource: 'flex-import' });
+    // Unapproved: FLEx's own parser proposed it, and the source says which.
+    expect(links[1].metadata).toEqual({ prov: 'inferred', provSource: 'flex-import:M3Parser' });
 
     // document done-marker written last, with FLEx metadata preserved
     const last = client.calls[client.calls.length - 1];
