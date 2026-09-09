@@ -9,7 +9,7 @@ import { useRunProgress, useMirroredProgress } from '../../documents/hooks/useRu
 import { whenIdle } from '../../../domain/whenIdle.js';
 import { transcodeToMp3 } from '../../../domain/media/transcodeToMp3.js';
 import { useConfirm } from '@/components/shared/ConfirmProvider';
-import { useVadProposals } from './useVadProposals.js';
+import { useVadProposals, VAD_METADATA_KEY } from './useVadProposals.js';
 import { DETECT_SPEECH_BUILTIN } from './detectSpeechBuiltin.js';
 import { writeRunRecord, clearRunRecord } from '../../../domain/runRecord.js';
 
@@ -66,7 +66,7 @@ const parseBool = (raw) => (raw === 'true' ? true : raw === 'false' ? false : un
 // they single-flight + toast + reload-on-error). The returned object is the
 // single source the timeline + player read from.
 export const useMediaOperations = () => {
-  const { doc, acquireWriteLock } = useDocumentCtx();
+  const { doc, acquireWriteLock, canWrite } = useDocumentCtx();
   useIgtDocument(doc);
   const confirm = useConfirm();
 
@@ -224,12 +224,25 @@ export const useMediaOperations = () => {
 
   // Speech detection. Proposals live in the tab, never on the server, until
   // someone types into one. See useVadProposals.js for why.
+  // The cuts ride on the document so they outlive the tab. A reader cannot
+  // write them, and a failed write is not worth interrupting anyone over: the
+  // proposals are still on screen either way.
+  const persistCuts = useCallback(
+    (payload) => {
+      doc.mergeMetadata({ [VAD_METADATA_KEY]: payload ?? undefined }).catch((err) => {
+        console.error('Could not keep the detected cuts:', err);
+      });
+    },
+    [doc],
+  );
   const vad = useVadProposals({
     mediaBlob,
     mediaKey: mediaSrcUrl,
     alignmentTokens,
     params: detectSpot.params.coercedValues,
     methodKey: detectSpot.selection,
+    saved: doc.storedMetadata[VAD_METADATA_KEY] ?? null,
+    onPersist: canWrite ? persistCuts : null,
   });
   useMirroredProgress(detectRun, {
     percent: vad.progress > 0 ? vad.progress * 100 : null,

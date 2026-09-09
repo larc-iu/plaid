@@ -77,6 +77,7 @@ export function MediaHelp() {
         browser · a proposal is dashed on the timeline and dashed in the transcript, and holds no
         text yet · typing into one makes it a segment, saved by <Kbd>Enter</Kbd> or by moving on ·{' '}
         <Kbd>×</Kbd> discards it · the dialog's settings re-propose without running the model again
+        · proposals are kept with the document until Discard, so they outlast the tab
       </Row>
       <Row label="Speakers">
         a label per segment · the timeline colors each speaker alike · a new segment keeps the last

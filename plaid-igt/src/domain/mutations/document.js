@@ -96,6 +96,18 @@ export const documentMutations = {
     });
   },
 
+  // Merge keys into the document's metadata, leaving the rest of the map
+  // alone. The wire call replaces the whole map, so the merge happens here.
+  // A key set to undefined is removed.
+  async mergeMetadata(partial) {
+    const merged = { ...(this._raw?.metadata || {}) };
+    for (const [key, value] of Object.entries(partial || {})) {
+      if (value === undefined) delete merged[key];
+      else merged[key] = value;
+    }
+    return this.setMetadata(merged);
+  },
+
   async updateName(name) {
     return this._withSaving('Failed to update name', async () => {
       await this._client.documents.update(this.id, name);

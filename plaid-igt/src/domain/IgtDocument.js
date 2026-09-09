@@ -238,6 +238,13 @@ export class IgtDocument {
     return this._layerInfoCache;
   }
 
+  // The document's metadata as stored, including keys no metadata field is
+  // configured for: `document.metadata` carries only the configured ones, and
+  // the marks importers and the Media tab leave are not among them.
+  get storedMetadata() {
+    return this._raw?.metadata || {};
+  }
+
   get document() {
     if (this._documentDataCacheVersion !== this._dataVersion) {
       this._documentDataCache = deriveDocumentData(this._raw, this.layerInfo, this._project);

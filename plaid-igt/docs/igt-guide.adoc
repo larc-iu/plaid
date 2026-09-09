@@ -199,7 +199,10 @@ A proposal is not a segment.
 It is a stretch of time with no text: dashed on the timeline, and a dashed row in the transcript in its place in time order.
 Type into a proposal and it becomes an ordinary segment with those times, saved by Enter or by moving on to another row.
 The **×** on the row discards it.
-Nothing is written to the document until you type into one, and a proposal nobody typed into is gone when you leave the tab.
+No segment exists until you type into one, so nothing reaches the Analyze grid, an export or a validator before then.
+The proposed times themselves are kept with the document, so leaving the tab does not throw the segmentation away: reopen it another day, or hand it to somebody else to transcribe, and the proposals are where you left them.
+**Discard**, in the detection dialog, removes them.
+They are dropped on their own if the recording is replaced, since they were measured from the old one.
 
 The built-in detector's options change what is proposed without running the model again:
 
@@ -212,7 +215,7 @@ The built-in detector's options change what is proposed without running the mode
 Detection leaves any stretch that already has a segment alone, so you can run it again after using some of what it proposed.
 
 Speech detection is a service spot like the others, so a connected detection service appears in the same **Method** list beside the built-in.
-Whichever runs, what comes back is proposals, and nothing is written until you type into one.
+Whichever runs, what comes back is proposals, kept the same way, and no segment exists until you type into one.
 
 Transcription is a separate run, from the **Transcribe** button in the **Transcript** header: it writes segments and their text to the document, where detection only proposes times.
 Its segments are marked as machine-made until you edit or confirm them (see <<_services>>).
