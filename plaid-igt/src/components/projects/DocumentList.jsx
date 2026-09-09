@@ -1,13 +1,12 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AudioLines, ChevronRight, PenLine, Plus } from 'lucide-react';
-import { ListCount, ListPager, SearchInput, SortHeader } from '@/components/ui/list-search';
+import { DataTable } from '@/components/ui/data-table';
 import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { pageKey, usePagedList } from '@/hooks/usePagedList';
-import { listPrefKey, useStickySort } from '@/hooks/useStickyState';
+import { listPrefKey } from '@/hooks/useStickyState';
 import {
   Dialog,
   DialogContent,
@@ -20,10 +19,6 @@ import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/comp
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { findBaselineTextLayer } from '@/domain/igtConfig';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
-
-// The columns this list sorts by, named once so a remembered sort on a column
-// that is no longer here is rejected rather than reaching the comparator.
-const DOCUMENT_COLUMNS = ['name', 'words', 'updated', 'mine'];
 
 export const DocumentList = ({
   documents,
@@ -51,12 +46,6 @@ export const DocumentList = ({
   // rather than a spinner once the read has landed.
   const [myLastEdits, setMyLastEdits] = useState({});
   const [mineLoading, setMineLoading] = useState(true);
-  const [sort, onSort] = useStickySort(
-    listPrefKey('sort', 'documents', projectId),
-    { key: 'updated', dir: 'desc' },
-    DOCUMENT_COLUMNS,
-  );
-  const [filter, setFilter] = useState('');
 
   // Per-document word counts: one aggregate query over the project's primary
   // (word) token-layer tokens, grouped by document. Morphemes are sub-word units
@@ -164,34 +153,6 @@ export const DocumentList = ({
     }
   };
 
-  const sortedDocuments = useMemo(() => {
-    const q = filter.trim().toLowerCase();
-    const matched = q
-      ? documents.filter((d) => (d.name || '').toLowerCase().includes(q))
-      : documents;
-    const extract = {
-      name: (d) => d.name?.toLowerCase() ?? '',
-      words: (d) => (hasWordLayer ? (wordCounts[d.id] ?? 0) : -1),
-      updated: (d) => (d.timeModified ? new Date(d.timeModified).getTime() : 0),
-      // Never touched sorts as the oldest, so descending puts the documents
-      // this reader has actually worked on at the top.
-      mine: (d) => (myLastEdits[d.id] ? new Date(myLastEdits[d.id]).getTime() : 0),
-    }[sort.key];
-    const dir = sort.dir === 'asc' ? 1 : -1;
-    return [...matched].sort((a, b) => {
-      const av = extract(a);
-      const bv = extract(b);
-      if (av < bv) return -1 * dir;
-      if (av > bv) return 1 * dir;
-      return 0;
-    });
-  }, [documents, wordCounts, hasWordLayer, myLastEdits, sort, filter]);
-
-  const paged = usePagedList(sortedDocuments, {
-    resetKey: `${filter}|${sort.key}|${sort.dir}`,
-    storageKey: pageKey('documents', projectId),
-  });
-
   const renderWords = (documentId) => {
     if (wordsLoading) {
       return (
@@ -220,157 +181,123 @@ export const DocumentList = ({
     );
   };
 
+  // Each cell wraps its content in a real <a> (rather than a row onClick) so
+  // the row behaves as a true link: middle-click and right-click "open in new
+  // tab" work natively. Tailwind preflight (scoped to .tw) resets anchor
+  // colour and underline. The cell keeps no padding of its own, so the link
+  // fills it.
+  const linked = (d, className, children) => (
+    <a href={`#/projects/${projectId}/documents/${d.id}`} className={className}>
+      {children}
+    </a>
+  );
+
+  const columns = [
+    {
+      key: 'name',
+      label: 'Document',
+      sort: (d) => d.name?.toLowerCase() ?? '',
+      className: 'p-0',
+      render: (d) =>
+        linked(
+          d,
+          'block px-4 py-3',
+          <div className="min-w-0">
+            {/* Wrap rather than truncate: a long title is the only thing
+                distinguishing two recordings, so hiding its tail is worse
+                than a taller row. break-words so a single very long token
+                still cannot force the column wider. */}
+            <div className="break-words font-medium">{d.name}</div>
+            <div className="truncate text-xs text-muted-foreground">ID: {d.id}</div>
+          </div>,
+        ),
+    },
+    {
+      key: 'words',
+      label: 'Words',
+      sort: (d) => (hasWordLayer ? (wordCounts[d.id] ?? 0) : null),
+      align: 'right',
+      className: 'p-0',
+      headerClassName: 'w-[88px]',
+      render: (d) =>
+        linked(
+          d,
+          'block px-4 py-3 text-right tabular-nums text-muted-foreground',
+          renderWords(d.id),
+        ),
+    },
+    {
+      key: 'updated',
+      label: 'Updated',
+      sort: (d) => (d.timeModified ? new Date(d.timeModified).getTime() : null),
+      align: 'right',
+      className: 'p-0',
+      headerClassName: 'w-[160px]',
+      render: (d) =>
+        linked(
+          d,
+          'block whitespace-nowrap px-4 py-3 text-right text-muted-foreground',
+          d.timeModified ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>{timeAgo(d.timeModified) || '—'}</span>
+              </TooltipTrigger>
+              <TooltipContent>{fullTimestamp(d.timeModified)}</TooltipContent>
+            </Tooltip>
+          ) : (
+            '—'
+          ),
+        ),
+    },
+    {
+      key: 'mine',
+      label: 'Your last edit',
+      // Never touched is null, which orders as the smallest, so descending
+      // puts the documents this reader has actually worked on at the top.
+      sort: (d) => (myLastEdits[d.id] ? new Date(myLastEdits[d.id]).getTime() : null),
+      align: 'right',
+      className: 'p-0',
+      headerClassName: 'w-[150px]',
+      render: (d) =>
+        linked(
+          d,
+          'block whitespace-nowrap px-4 py-3 text-right text-muted-foreground',
+          renderMine(d.id),
+        ),
+    },
+  ];
+
   return (
     <div className="tw mt-2">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-xl font-semibold">Documents</h2>
-        <div className="flex items-center gap-2">
-          {documents.length > 0 && (
-            <ListCount shown={sortedDocuments.length} total={documents.length} noun="document" />
-          )}
-          <SearchInput
-            className="w-56"
-            placeholder="Search documents…"
-            value={filter}
-            onChange={setFilter}
-          />
-          {canWrite && (
-            <Button
-              onClick={() => {
-                setChoosing(canManage);
-                setOpen(true);
-              }}
-            >
-              <Plus className="h-4 w-4" /> New Document
-            </Button>
-          )}
-        </div>
+        {canWrite && (
+          <Button
+            onClick={() => {
+              setChoosing(canManage);
+              setOpen(true);
+            }}
+          >
+            <Plus className="h-4 w-4" /> New Document
+          </Button>
+        )}
       </div>
 
-      {documents.length === 0 ? (
-        <div className="rounded-md border py-12 text-center text-muted-foreground">
-          <p className="text-base">No documents yet.</p>
-        </div>
-      ) : sortedDocuments.length === 0 ? (
-        <div className="rounded-md border py-12 text-center text-muted-foreground">
-          <p className="text-base">No documents match “{filter.trim()}”.</p>
-        </div>
-      ) : (
-        <TooltipProvider>
-          <div className="overflow-hidden rounded-md border">
-            <ListPager {...paged} onPage={paged.setPage} position="top" />
-            {/* table-fixed + colgroup: with `auto` layout the name column's
-                intrinsic width is the full untruncated title, so one long name
-                pushed the table past its wrapper and `overflow-hidden` clipped
-                Words and Updated out of view. Fixed layout hands the two narrow
-                columns their width first and lets the name wrap into whatever
-                is left. */}
-            <table className="w-full table-fixed text-sm">
-              <colgroup>
-                <col />
-                <col className="w-[88px]" />
-                <col className="w-[160px]" />
-                <col className="w-[150px]" />
-              </colgroup>
-              <thead className="border-b bg-muted/40">
-                <tr>
-                  <th className="px-4 py-2 text-left">
-                    <SortHeader field="name" label="Document" sort={sort} onSort={onSort} />
-                  </th>
-                  <th className="px-4 py-2 text-right">
-                    <SortHeader
-                      field="words"
-                      label="Words"
-                      sort={sort}
-                      onSort={onSort}
-                      className="justify-end"
-                    />
-                  </th>
-                  <th className="px-4 py-2 text-right">
-                    <SortHeader
-                      field="updated"
-                      label="Updated"
-                      sort={sort}
-                      onSort={onSort}
-                      className="justify-end"
-                    />
-                  </th>
-                  <th className="px-4 py-2 text-right">
-                    <SortHeader
-                      field="mine"
-                      label="Your last edit"
-                      sort={sort}
-                      onSort={onSort}
-                      className="justify-end"
-                    />
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {paged.pageItems.map((d) => {
-                  // Each cell wraps its content in a real <a> (rather than a row
-                  // onClick) so the row behaves as a true link: middle-click and
-                  // right-click → "open in new tab" work natively. Tailwind
-                  // preflight (scoped to .tw) resets anchor color/underline.
-                  const href = `#/projects/${projectId}/documents/${d.id}`;
-                  return (
-                    <tr key={d.id} className="border-b last:border-0 hover:bg-accent/40">
-                      <td className="p-0">
-                        <a href={href} className="block px-4 py-3">
-                          <div className="min-w-0">
-                            {/* Wrap rather than truncate: a long title is the
-                                only thing distinguishing two recordings, so
-                                hiding its tail is worse than a taller row.
-                                break-words so a single very long token still
-                                cannot force the column wider. */}
-                            <div className="break-words font-medium">{d.name}</div>
-                            <div className="truncate text-xs text-muted-foreground">ID: {d.id}</div>
-                          </div>
-                        </a>
-                      </td>
-                      <td className="p-0">
-                        <a
-                          href={href}
-                          className="block px-4 py-3 text-right tabular-nums text-muted-foreground"
-                        >
-                          {renderWords(d.id)}
-                        </a>
-                      </td>
-                      <td className="p-0">
-                        <a
-                          href={href}
-                          className="block whitespace-nowrap px-4 py-3 text-right text-muted-foreground"
-                        >
-                          {d.timeModified ? (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span>{timeAgo(d.timeModified) || '—'}</span>
-                              </TooltipTrigger>
-                              <TooltipContent>{fullTimestamp(d.timeModified)}</TooltipContent>
-                            </Tooltip>
-                          ) : (
-                            '—'
-                          )}
-                        </a>
-                      </td>
-                      <td className="p-0">
-                        <a
-                          href={href}
-                          className="block whitespace-nowrap px-4 py-3 text-right text-muted-foreground"
-                        >
-                          {renderMine(d.id)}
-                        </a>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-
-            <ListPager {...paged} onPage={paged.setPage} />
-          </div>
-        </TooltipProvider>
-      )}
+      <TooltipProvider>
+        <DataTable
+          rows={documents}
+          columns={columns}
+          rowKey={(d) => d.id}
+          storageKey={listPrefKey('sort', 'documents', projectId)}
+          defaultSort={{ key: 'updated', dir: 'desc' }}
+          search={{
+            placeholder: 'Search documents…',
+            match: (d, q) => (d.name || '').toLowerCase().includes(q),
+          }}
+          noun="document"
+          empty="No documents yet."
+        />
+      </TooltipProvider>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md">
