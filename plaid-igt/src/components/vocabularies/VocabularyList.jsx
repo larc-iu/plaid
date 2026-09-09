@@ -200,6 +200,10 @@ export const VocabularyList = () => {
             rowKey={(v) => v.id}
             id="vocabularies"
             defaultSort={{ key: 'name', dir: 'asc' }}
+            search={{
+              placeholder: 'Search vocabularies…',
+              match: (v, q) => (v.name || '').toLowerCase().includes(q),
+            }}
             noun="vocabulary"
           />
         </TooltipProvider>

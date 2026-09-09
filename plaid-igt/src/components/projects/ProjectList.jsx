@@ -219,6 +219,10 @@ export const ProjectList = () => {
             rowKey={(p) => p.id}
             id="projects"
             defaultSort={{ key: 'updated', dir: 'desc' }}
+            search={{
+              placeholder: 'Search projects…',
+              match: (p, q) => (p.name || '').toLowerCase().includes(q),
+            }}
             noun="project"
           />
         </TooltipProvider>
