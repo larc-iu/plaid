@@ -1890,13 +1890,17 @@ export class IgtEditor {
   // fast run of the gesture pulses each target in turn instead of falling
   // behind.
   //
-  // The class goes on a node whose class attribute lit does NOT bind, since a
-  // confirmation re-renders the grid and lit rewrites a bound class attribute
-  // wholesale, taking a hand-added class with it. `.igt-token-col`,
-  // `.igt-cell`/`.igt-morph-cell` and `.igt-vocab` are all such wrappers; the
-  // input and the chip inside them are not, which is why the wrappers are what
-  // the callers below reach for. They are transparent, so the wash reads as
-  // the cell's or the link's own.
+  // The class goes on a wrapper, never on the input or the chip itself. lit
+  // rewrites a bound class attribute WHOLESALE, taking a hand-added class with
+  // it, and a confirmation re-renders the grid. An input's class carries its
+  // filled/empty and provenance state, so it is rewritten by the very
+  // mutation being announced. The wrappers survive: `.igt-token-col` and
+  // `.igt-vocab` are static, and `.igt-cell`/`.igt-morph-cell`/
+  // `.igt-sentence-anno` interpolate only _rowCls, which says whether the row
+  // is COLLAPSED and so cannot change while a confirmation is landing. (If
+  // _rowCls ever grows a second input, these pulses get cut short and the
+  // wrappers need a static class of their own.) All of them are transparent,
+  // so the wash reads as the cell's or the link's own.
   _pulse(el) {
     if (!el) return;
     el.classList.remove(PULSE_CLASS);
@@ -2869,8 +2873,20 @@ export class IgtEditor {
         );
         return;
       }
-      if (unchanged) this._run(() => this.doc.confirmSentenceSpan(sid, field));
-      if (!this._navMove(el, 'next')) el.blur();
+      if (!unchanged) {
+        // An edited value commits on the way out, which verifies it. That is
+        // an edit, not an accept, and it wears the value it typed.
+        if (!this._navMove(el, 'next')) el.blur();
+        return;
+      }
+      this._run(() => this.doc.confirmSentenceSpan(sid, field));
+      // Same beat as the word gesture, and for a stronger reason: the hop is
+      // to the NEXT SENTENCE, so without it the pulse plays on a row already
+      // scrolled past.
+      this._pulse(el.closest('.igt-sentence-anno'));
+      this._afterABeat(() => {
+        if (!this._navMove(el, 'next')) el.blur();
+      });
       return;
     }
     if (e.key === 'Enter' && !e.shiftKey) {

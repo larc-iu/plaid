@@ -306,6 +306,45 @@ describe('as a verifier over contributed work', () => {
       }
     });
 
+    // The sentence gesture is the word gesture's counterpart and had neither
+    // half: it confirmed and jumped to the NEXT SENTENCE in one frame.
+    it('pulses a confirmed sentence field and holds focus before the next sentence', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const { doc } = mount();
+        await doc.updateSentenceSpan('s-1', 'Translation', 'the dog', MACHINE);
+        await settle();
+        const t = cell('sa:s-1:Translation');
+        focus(t);
+        key(t, 'Enter', { ctrlKey: true });
+        await settle();
+
+        expect(t.closest('.igt-sentence-anno').classList.contains('igt-confirmed')).toBe(true);
+        expect(document.activeElement).toBe(t);
+
+        vi.advanceTimersByTime(250);
+        await settle();
+        expect(document.activeElement).not.toBe(t);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    // An edited value is an edit, not an accept: it commits on the way out and
+    // must not be held back or washed.
+    it('does not pulse or wait when the sentence value was edited instead', async () => {
+      const { doc } = mount();
+      await doc.updateSentenceSpan('s-1', 'Translation', 'the dog', MACHINE);
+      await settle();
+      const t = cell('sa:s-1:Translation');
+      focus(t);
+      type(t, 'the cat');
+      key(t, 'Enter', { ctrlKey: true });
+      expect(t.closest('.igt-sentence-anno').classList.contains('igt-confirmed')).toBe(false);
+      expect(document.activeElement).not.toBe(t);
+      await settle();
+    });
+
     it('flushes the beat the moment anything else is typed', async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
       try {
