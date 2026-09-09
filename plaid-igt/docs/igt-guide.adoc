@@ -502,6 +502,18 @@ Runs of words whose joined form matches a multi-word expression entry, or a mult
 
 TIP: Confirm links as you go. An entry a form has been linked to becomes the precedent for every later occurrence of that form.
 
+= Activity
+
+A project's **Activity** tab, for maintainers, answers who has been working and on what.
+
+The upper table counts each person's **changes** over a window you choose.
+A change is one action, however many rows it took: importing a corpus counts once, not once per sentence.
+Beside each count is a fortnight of daily bars, so steady work looks different from a single burst, and the documents they touched and when they were last seen.
+Below it, the members who have made no changes in that window are named, which is the half a count of activity cannot show you.
+
+The lower table is the project's history as a feed, newest first, each row naming the person, what they did, and the document it happened to.
+For one document's history, and for putting a document back the way it was, see <<_history>>.
+
 = Project Settings
 
 A maintainer opens a project's **Settings** tab.
@@ -749,6 +761,30 @@ An **administrator** can also create accounts directly from the same Access sect
 Scripts and services should not borrow your login.
 Mint a named **API token** on your profile page instead.
 It can be revoked on its own, and its name appears in the history, so machine-made changes are told apart from yours.
+
+= Administration
+
+An administrator sees an **Admin** link in the top bar, covering the whole server rather than one project.
+
+**Users** is the account directory: create, edit, deactivate and reactivate accounts, and mint a password-reset link.
+Deactivating signs the person out, takes away their project roles and API tokens, and refuses them at login.
+Their annotations and their name on them are untouched, and reactivating restores the login.
+Opening an account shows the projects it can reach, the API tokens it holds, and its recent work.
+
+**Invites** is every invitation link on the server, whoever minted it, with what it grants and whether it has been used.
+It also mints a numbered set of links in one step, one use each, so a link can be matched to whoever was handed it.
+
+**Activity** is the same view described under <<_activity>>, across every project.
+
+**Projects** lists every project on the server, whether or not you are a member, with its people, documents and last change, and a way in for an administrator who was never added.
+
+**Vocabularies** shows which projects use each vocabulary, and which vocabularies no project uses.
+
+**Services** asks every project's registry at once, so whether a service is running is one page rather than one project at a time.
+A service that has gone for good can be forgotten here.
+
+**Server** reports the version, how long it has been up, the size of the database and what is in it, the backups on disk, the media directory, which documents are open for editing, and which addresses are being refused at login.
+Three things can be done from it, and each only ever unblocks something: take a backup now, release a document someone left open, and clear a login block for someone who mistyped their password too many times.
 
 = Typing Special Characters
 
