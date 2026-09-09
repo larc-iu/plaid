@@ -74,6 +74,7 @@ TIP: The Tokenize, Analyze, and Media tabs each have a **?** button that opens a
 A **project** holds a collection of documents along with everything they share: the annotation fields, the orthographies, the tagsets, the vocabularies it draws on, and its members.
 Create a project from the Projects screen, either blank (a short wizard asks for those settings) or from imported data (see <<_import_and_export>>).
 Click a project to open its documents.
+The list of projects can be searched and sorted by any column, as every list in the app can, and the order you choose is remembered for next time.
 
 Because so much is configured per project, two projects can present very different fields and orthographies on the same underlying editor.
 A project for a field methods course might have a single Gloss field and a free translation, while a documentation project adds a part of speech, a phonetic orthography, and a lexicon.
@@ -106,7 +107,7 @@ The **Documents** tab lists a project's texts with their word counts, when each 
 Click a column heading to sort by it, and again to reverse it.
 Sorting by **Your last edit** is the quickest way back to what you were working on. A document you have never edited shows a dash.
 Once there are many, the list can be searched and paged.
-How a list is sorted, and which page of it you were on, are remembered per project for the next time you open it.
+How a list is sorted is remembered for next time, and for the document list so is the page you were on, both per project.
 **New Document** creates an empty document and opens it on its Baseline tab.
 A document is renamed and deleted from its own Metadata tab.
 
@@ -328,6 +329,7 @@ Which vocabularies a project draws on is part of the project's settings (see <<_
 == Managing entries
 
 The **Vocabularies** area lists every vocabulary you can see.
+The list of vocabularies can be searched and sorted like any other.
 A vocabulary's entries are shown on its **Entries** tab as a table you can search, and sort by clicking a column heading.
 The search box reads every column, or one field chosen beside it: pick **Gloss** and type `go` to see the entries glossed with it.
 With a field chosen, a count of the entries that have nothing in that field appears under the box, and clicking it shows just those, which is how a lexicon's gaps are filled.
