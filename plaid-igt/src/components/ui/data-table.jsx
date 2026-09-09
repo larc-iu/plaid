@@ -3,8 +3,8 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { SearchInput, ListCount, ListPager, SortHeader } from '@/components/ui/list-search';
-import { usePagedList } from '@/hooks/usePagedList';
-import { useStickySort } from '@/hooks/useStickyState';
+import { pageKey, usePagedList } from '@/hooks/usePagedList';
+import { listPrefKey, useStickySort } from '@/hooks/useStickyState';
 
 // One browsable table, so that a list of accounts, of invites and of services
 // are told apart by their rows and by nothing else.
@@ -48,7 +48,9 @@ export const DataTable = ({
   rows,
   columns,
   rowKey,
-  storageKey,
+  id,
+  scope,
+  rememberPage = false,
   defaultSort,
   search,
   noun = 'row',
@@ -58,14 +60,19 @@ export const DataTable = ({
   noMatch,
   loading = false,
   expand,
-  pageStorageKey,
   className,
 }) => {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(() => new Set());
+
+  if (import.meta.env?.DEV && !id) {
+    // Without a name there is nowhere to keep the reader's choice, and two
+    // unnamed tables would otherwise share one key and each other's order.
+    console.error('DataTable needs an `id` to remember its sort.');
+  }
   const sortable = useMemo(() => columns.filter((c) => c.sort).map((c) => c.key), [columns]);
   const [sort, onSort] = useStickySort(
-    storageKey ?? null,
+    id ? listPrefKey('sort', id, scope) : null,
     defaultSort ?? { key: sortable[0], dir: 'asc' },
     sortable,
   );
@@ -90,9 +97,7 @@ export const DataTable = ({
 
   const paged = usePagedList(sorted, {
     resetKey: `${query}:${sort.key}:${sort.dir}`,
-    // A list that remembers which page the reader was on across visits says
-    // so. Most do not, and paging is then per-mount.
-    storageKey: pageStorageKey,
+    storageKey: rememberPage && id ? pageKey(id, scope) : undefined,
   });
 
   const toggle = (key) =>

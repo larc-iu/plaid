@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { DataTable } from '@/components/ui/data-table';
-import { listPrefKey } from '@/hooks/useStickyState';
 import { notifyError } from '@/utils/feedback';
 
 // Vocabularies are shared across projects, so which projects use one is
@@ -93,7 +92,7 @@ export const AdminVocabularies = ({ client }) => {
       rows={rows}
       columns={columns}
       rowKey={(v) => v.id}
-      storageKey={listPrefKey('sort', 'admin-vocabularies')}
+      id="admin-vocabularies"
       defaultSort={{ key: 'name', dir: 'asc' }}
       search={{
         placeholder: 'Search vocabularies…',

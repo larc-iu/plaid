@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Plus } from 'lucide-react';
 import { DataTable } from '@/components/ui/data-table';
-import { listPrefKey } from '@/hooks/useStickyState';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -199,7 +198,7 @@ export const VocabularyList = () => {
             rows={vocabularies}
             columns={columns}
             rowKey={(v) => v.id}
-            storageKey={listPrefKey('sort', 'vocabularies')}
+            id="vocabularies"
             defaultSort={{ key: 'name', dir: 'asc' }}
             noun="vocabulary"
           />

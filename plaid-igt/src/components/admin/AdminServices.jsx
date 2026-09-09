@@ -4,7 +4,6 @@ import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { DataTable } from '@/components/ui/data-table';
-import { listPrefKey } from '@/hooks/useStickyState';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useConfirm } from '@/components/shared/ConfirmProvider';
@@ -189,7 +188,7 @@ export const AdminServices = ({ client }) => {
       rows={rows}
       columns={columns}
       rowKey={(r) => r.serviceId}
-      storageKey={listPrefKey('sort', 'admin-services')}
+      id="admin-services"
       defaultSort={{ key: 'lastSeen', dir: 'desc' }}
       search={{
         placeholder: 'Search services…',

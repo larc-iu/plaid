@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { renderComponent, all } from '@/test/renderComponent';
 import { DataTable } from './data-table';
 
@@ -19,7 +19,14 @@ const COLUMNS = [
 
 const table = (props = {}) =>
   renderComponent(
-    <DataTable rows={ROWS} columns={COLUMNS} rowKey={(r) => r.id} noun="person" {...props} />,
+    <DataTable
+      rows={ROWS}
+      columns={COLUMNS}
+      rowKey={(r) => r.id}
+      id="test-people"
+      noun="person"
+      {...props}
+    />,
   );
 
 const names = (container) =>
@@ -29,6 +36,10 @@ const header = (container, label) =>
   all(container, 'thead button').find((b) => b.textContent.startsWith(label));
 
 describe('DataTable', () => {
+  // The sort is remembered per `id`, so it survives an unmount. Each test gets
+  // a clean slate or it would inherit whatever the previous one clicked.
+  beforeEach(() => localStorage.clear());
+
   it('sorts by the first sortable column, case-insensitively', async () => {
     const { container, unmount } = await table();
     expect(names(container)).toEqual(['alice', 'Bob', 'Carol']);
@@ -126,6 +137,27 @@ describe('DataTable', () => {
     });
     expect(container.textContent).toContain('No people match “zzz”.');
     await unmount();
+  });
+
+  it('remembers the chosen sort under its id, without the caller asking', async () => {
+    const first = await table();
+    await first.step(() => header(first.container, 'Changes').click());
+    await first.unmount();
+
+    // A second mount of the same list opens the way it was left.
+    const second = await table();
+    expect(names(second.container)).toEqual(['Bob', 'Carol', 'alice']);
+    await second.unmount();
+  });
+
+  it('keeps one list’s order out of another’s, via scope', async () => {
+    const a = await table({ scope: 'project-a' });
+    await a.step(() => header(a.container, 'Changes').click());
+    await a.unmount();
+
+    const b = await table({ scope: 'project-b' });
+    expect(names(b.container)).toEqual(['alice', 'Bob', 'Carol']);
+    await b.unmount();
   });
 
   it('says when a search matched nothing, distinctly from an empty list', async () => {

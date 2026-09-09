@@ -4,7 +4,6 @@ import { FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SearchInput, ListHint } from '@/components/ui/list-search';
 import { DataTable } from '@/components/ui/data-table';
-import { listPrefKey } from '@/hooks/useStickyState';
 import {
   Select,
   SelectTrigger,
@@ -245,7 +244,7 @@ export const ProjectSearch = ({ project, projectId, client }) => {
               rows={result.rows}
               columns={freqColumns}
               rowKey={(r) => r[0]}
-              storageKey={listPrefKey('sort', 'search-freq')}
+              id="search-freq"
               defaultSort={{ key: 'count', dir: 'desc' }}
               noun="value"
             />

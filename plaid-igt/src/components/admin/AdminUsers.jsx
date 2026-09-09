@@ -10,7 +10,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
-import { listPrefKey } from '@/hooks/useStickyState';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 import { notifyError } from '@/utils/feedback';
 import { useUserAdmin, UserAdminDialogs } from './userAdmin';
@@ -146,7 +145,7 @@ export const AdminUsers = ({ client, currentUser }) => {
         rows={users}
         columns={columns}
         rowKey={(u) => u.id}
-        storageKey={listPrefKey('sort', 'admin-users')}
+        id="admin-users"
         defaultSort={{ key: 'name', dir: 'asc' }}
         search={{
           placeholder: 'Search accounts…',

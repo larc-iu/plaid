@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
 import { UserAvatar } from '@/components/shared/UserAvatar';
-import { listPrefKey } from '@/hooks/useStickyState';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 import { notifyError } from '@/utils/feedback';
 import { AuditFeed } from './AuditFeed';
@@ -201,7 +200,8 @@ export const ActivityPanel = ({ client, projectId, roster }) => {
         rows={tally}
         columns={tallyColumns}
         rowKey={(row) => row.user?.id || 'system'}
-        storageKey={listPrefKey('sort', 'activity-tally', projectId)}
+        id="activity-tally"
+        scope={projectId}
         defaultSort={{ key: 'changes', dir: 'desc' }}
         search={{
           placeholder: 'Search people…',
@@ -218,7 +218,8 @@ export const ActivityPanel = ({ client, projectId, roster }) => {
           rows={quiet}
           columns={quietColumns}
           rowKey={(m) => m.id}
-          storageKey={listPrefKey('sort', 'activity-quiet', projectId)}
+          id="activity-quiet"
+          scope={projectId}
           defaultSort={{ key: 'person', dir: 'asc' }}
           search={{
             placeholder: 'Search people…',
@@ -230,7 +231,8 @@ export const ActivityPanel = ({ client, projectId, roster }) => {
 
       <AuditFeed
         title="Recent changes"
-        storageKey={listPrefKey('sort', 'activity-feed', projectId)}
+        id="activity-feed"
+        scope={projectId}
         resetKey={`${projectId || 'all'}:${range}`}
         showUser
         empty="Nothing in this window."

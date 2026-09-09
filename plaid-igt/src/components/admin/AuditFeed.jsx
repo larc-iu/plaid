@@ -35,7 +35,8 @@ export const AuditFeed = ({
   title,
   empty = 'Nothing yet.',
   resetKey,
-  storageKey,
+  id,
+  scope,
 }) => {
   const [entries, setEntries] = useState([]);
   const [cursor, setCursor] = useState(null);
@@ -152,7 +153,8 @@ export const AuditFeed = ({
         rows={entries}
         columns={columns}
         rowKey={(e) => e.id}
-        storageKey={storageKey}
+        id={id}
+        scope={scope}
         defaultSort={{ key: 'time', dir: 'desc' }}
         search={{
           placeholder: 'Search changes…',

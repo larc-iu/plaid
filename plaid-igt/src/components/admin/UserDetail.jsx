@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { UserAvatar } from '@/components/shared/UserAvatar';
 import { DataTable } from '@/components/ui/data-table';
-import { listPrefKey } from '@/hooks/useStickyState';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useConfirm } from '@/components/shared/ConfirmProvider';
@@ -149,7 +148,7 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
               },
             ]}
             rowKey={(p) => p.id}
-            storageKey={listPrefKey('sort', 'user-projects')}
+            id="user-projects"
             defaultSort={{ key: 'name', dir: 'asc' }}
             search={{
               placeholder: 'Search projects…',
@@ -191,7 +190,7 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
               },
             ]}
             rowKey={(t) => t.id}
-            storageKey={listPrefKey('sort', 'user-tokens')}
+            id="user-tokens"
             defaultSort={{ key: 'created', dir: 'desc' }}
             noun="token"
             empty="No tokens."
@@ -199,7 +198,7 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
 
           <AuditFeed
             title="Recent activity"
-            storageKey={listPrefKey('sort', 'user-activity')}
+            id="user-activity"
             resetKey={userId}
             empty="Nothing recorded."
             fetchPage={({ limit, cursor }) =>

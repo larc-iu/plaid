@@ -6,7 +6,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { DataTable } from '@/components/ui/data-table';
-import { listPrefKey } from '@/hooks/useStickyState';
 import {
   Select,
   SelectTrigger,
@@ -258,7 +257,8 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage }) =>
           rows={invites}
           columns={columns}
           rowKey={(inv) => inv.id}
-          storageKey={listPrefKey('sort', 'project-invites', projectId)}
+          id="project-invites"
+          scope={projectId}
           defaultSort={{ key: 'expires', dir: 'desc' }}
           noun="link"
           empty="No invitation links yet. Create one to onboard someone without sending a password."

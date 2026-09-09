@@ -21,7 +21,6 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { DataTable } from '@/components/ui/data-table';
-import { listPrefKey } from '@/hooks/useStickyState';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useConfirm } from '@/components/shared/ConfirmProvider';
@@ -263,7 +262,7 @@ export const AdminInvites = ({ client }) => {
         rows={rows}
         columns={columns}
         rowKey={(i) => i.id}
-        storageKey={listPrefKey('sort', 'admin-invites')}
+        id="admin-invites"
         defaultSort={{ key: 'expires', dir: 'desc' }}
         search={{
           placeholder: 'Search invites\u2026',

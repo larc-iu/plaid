@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Plus } from 'lucide-react';
 import { DataTable } from '@/components/ui/data-table';
-import { listPrefKey } from '@/hooks/useStickyState';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
@@ -218,7 +217,7 @@ export const ProjectList = () => {
             rows={projects}
             columns={columns}
             rowKey={(p) => p.id}
-            storageKey={listPrefKey('sort', 'projects')}
+            id="projects"
             defaultSort={{ key: 'updated', dir: 'desc' }}
             noun="project"
           />

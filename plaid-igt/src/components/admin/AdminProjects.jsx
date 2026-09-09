@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { DataTable } from '@/components/ui/data-table';
-import { listPrefKey } from '@/hooks/useStickyState';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { findBaselineTextLayer, readInitialized } from '../../domain/igtConfig';
@@ -129,7 +128,7 @@ export const AdminProjects = ({ client, currentUser }) => {
       rows={projects}
       columns={columns}
       rowKey={(p) => p.id}
-      storageKey={listPrefKey('sort', 'admin-projects')}
+      id="admin-projects"
       defaultSort={{ key: 'updated', dir: 'desc' }}
       search={{
         placeholder: 'Search projects…',

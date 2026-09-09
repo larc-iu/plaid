@@ -3,7 +3,6 @@ import { UserPlus, Plus, MoreVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SearchInput, ListHint } from '@/components/ui/list-search';
 import { DataTable } from '@/components/ui/data-table';
-import { listPrefKey } from '@/hooks/useStickyState';
 import {
   Select,
   SelectTrigger,
@@ -346,7 +345,8 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
             rows={rows}
             columns={memberColumns}
             rowKey={(m) => m.id}
-            storageKey={listPrefKey('sort', 'project-members', projectId)}
+            id="project-members"
+            scope={projectId}
             defaultSort={{ key: 'user', dir: 'asc' }}
             noun="member"
             empty="No one has been granted access yet. Use “Add a user” below."
