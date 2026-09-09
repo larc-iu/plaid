@@ -1,8 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { UserPlus, Plus, MoreVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { SearchInput, ListHint } from '@/components/ui/list-search';
 import {
   Select,
@@ -11,16 +9,8 @@ import {
   SelectContent,
   SelectItem,
 } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { UserAvatar } from '@/components/shared/UserAvatar';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -28,19 +18,9 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogFooter,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogAction,
-  AlertDialogCancel,
-} from '@/components/ui/alert-dialog';
 import { notifySuccess, notifyError } from '@/utils/feedback';
-import { isEmail, EMAIL_INVALID_MESSAGE } from '@/utils/email';
-import { ProjectInvites, MintedLinkDialog } from './ProjectInvites';
+import { ProjectInvites } from './ProjectInvites';
+import { useUserAdmin, UserAdminDialogs } from '../admin/userAdmin';
 import {
   PLAID_NAMESPACE,
   REVIEW_KEY,
@@ -61,7 +41,6 @@ const ROLE_OPTIONS = [
 ];
 const GRANT_ROLES = ['reader', 'writer', 'maintainer'];
 const SEARCH_LIMIT = 25;
-const EMPTY_USER = { email: '', displayName: '', password: '', isAdmin: false };
 
 const roleOf = (project, userId) => {
   if (project?.maintainers?.includes(userId)) return 'maintainer';
@@ -88,19 +67,10 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
   const [searchCapped, setSearchCapped] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
 
-  // Admin user CRUD.
-  const [createOpen, setCreateOpen] = useState(false);
-  const [newUser, setNewUser] = useState(EMPTY_USER);
-  const [creating, setCreating] = useState(false);
-  const [editingUser, setEditingUser] = useState(null);
-  const [editForm, setEditForm] = useState(EMPTY_USER);
-  const [savingEdit, setSavingEdit] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState(null);
-  const [deleting, setDeleting] = useState(false);
-
-  // Admin-issued password reset link, shown once after minting.
-  const [resetCode, setResetCode] = useState(null);
-  const [resetting, setResetting] = useState(false);
+  // Account administration (create, edit, deactivate, reset link) is shared
+  // with the admin panel's Users tab.
+  const userAdmin = useUserAdmin({ client, currentUser: user, onChanged: onDataUpdate });
+  const { startEdit, createResetLink, resetting } = userAdmin;
 
   // Whether this user can hand out project invites. Maintainers can, which is
   // the point: onboarding a class should not queue behind an admin.
@@ -246,98 +216,6 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
     }
   };
 
-  const handleCreateUser = async () => {
-    if (!newUser.email || !newUser.password) {
-      notifyError('Please provide both an email address and a password', 'Missing information');
-      return;
-    }
-    if (!isEmail(newUser.email)) {
-      notifyError(EMAIL_INVALID_MESSAGE, 'Check the email address');
-      return;
-    }
-    try {
-      setCreating(true);
-      // The email becomes the account's id and login, permanently. A blank
-      // display name lets the server default it to the email's local part.
-      await client.users.create(
-        newUser.email,
-        newUser.password,
-        newUser.isAdmin,
-        newUser.displayName.trim() || undefined,
-      );
-      notifySuccess(`User "${newUser.email}" created`, 'User created');
-      setNewUser(EMPTY_USER);
-      setCreateOpen(false);
-    } catch (err) {
-      console.error('Error creating user:', err);
-      const exists = err.status === 409 || (err.message && err.message.includes('409'));
-      notifyError(
-        exists ? `An account already exists for ${newUser.email}.` : 'Failed to create user.',
-        'Error',
-      );
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  const startEdit = (u) => {
-    setEditForm({ displayName: u.displayName, password: '', isAdmin: u.isAdmin || false });
-    setEditingUser(u);
-  };
-
-  const handleUpdateUser = async () => {
-    try {
-      setSavingEdit(true);
-      const newDisplayName =
-        editForm.displayName !== editingUser.displayName ? editForm.displayName : undefined;
-      const newPassword = editForm.password || undefined;
-      const newIsAdmin =
-        editForm.isAdmin !== (editingUser.isAdmin || false) ? editForm.isAdmin : undefined;
-      await client.users.update(editingUser.id, newPassword, newDisplayName, newIsAdmin);
-      notifySuccess('User updated', 'Success');
-      setEditingUser(null);
-      await onDataUpdate();
-    } catch (err) {
-      console.error('Error updating user:', err);
-      notifyError('Failed to update user: ' + (err.message || 'Unknown error'), 'Error');
-    } finally {
-      setSavingEdit(false);
-    }
-  };
-
-  // Mint a one-time link that lets someone set their own password, instead of
-  // the admin inventing a temporary one and sending it over some side channel
-  // that then has to be trusted to be cleaned up.
-  const handleResetLink = async (target) => {
-    try {
-      setResetting(true);
-      const inv = await client.invites.create({ targetUserId: target.id });
-      setResetCode(inv.code);
-    } catch (err) {
-      console.error('Error creating reset link:', err);
-      notifyError(err.message || 'Failed to create a password reset link', 'Error');
-    } finally {
-      setResetting(false);
-    }
-  };
-
-  const handleDeleteUser = async () => {
-    if (!deleteTarget) return;
-    try {
-      setDeleting(true);
-      await client.users.delete(deleteTarget.id);
-      notifySuccess(`User "${deleteTarget.displayName}" deleted`, 'User deleted');
-      setDeleteTarget(null);
-      setEditingUser(null);
-      await onDataUpdate();
-    } catch (err) {
-      console.error('Error deleting user:', err);
-      notifyError('Failed to delete user: ' + (err.message || 'Unknown error'), 'Error');
-    } finally {
-      setDeleting(false);
-    }
-  };
-
   return (
     <div className="tw flex flex-col gap-6 pt-4 [&>*+*]:border-t [&>*+*]:pt-6">
       {/* Members */}
@@ -347,13 +225,7 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">{members.length} with access</span>
             {isAdmin && (
-              <Button
-                size="sm"
-                onClick={() => {
-                  setNewUser(EMPTY_USER);
-                  setCreateOpen(true);
-                }}
-              >
+              <Button size="sm" onClick={userAdmin.openCreate}>
                 <UserPlus className="h-4 w-4" /> Create User
               </Button>
             )}
@@ -461,7 +333,7 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               disabled={resetting}
-                              onSelect={() => handleResetLink(m)}
+                              onSelect={() => createResetLink(m)}
                             >
                               Create password reset link…
                             </DropdownMenuItem>
@@ -557,171 +429,7 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
       </div>
 
       {/* Create User dialog */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Create New User</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5">
-              <Label>Email address</Label>
-              <Input
-                type="email"
-                placeholder="you@example.com"
-                value={newUser.email}
-                onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                autoFocus
-              />
-              <p className="text-xs text-muted-foreground">
-                What they sign in with. It cannot be changed later.
-              </p>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>Display name (optional)</Label>
-              <Input
-                placeholder="How they appear to everyone else"
-                value={newUser.displayName}
-                onChange={(e) => setNewUser({ ...newUser, displayName: e.target.value })}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>Password</Label>
-              <Input
-                type="password"
-                value={newUser.password}
-                onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-              />
-            </div>
-            <div className="flex items-start gap-2">
-              <Switch
-                id="new-admin"
-                checked={newUser.isAdmin}
-                onCheckedChange={(c) => setNewUser({ ...newUser, isAdmin: c })}
-              />
-              <div>
-                <Label htmlFor="new-admin">Admin user</Label>
-                <p className="text-xs text-muted-foreground">Grant this user admin privileges</p>
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={creating}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreateUser} disabled={creating}>
-              {creating ? 'Creating…' : 'Create User'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit User dialog */}
-      <Dialog
-        open={!!editingUser}
-        onOpenChange={(o) => {
-          if (!o) setEditingUser(null);
-        }}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{editingUser ? `Edit User: ${editingUser.displayName}` : ''}</DialogTitle>
-          </DialogHeader>
-          {editingUser && (
-            <>
-              <div className="flex flex-col gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <Label>Email address</Label>
-                  <Input value={editingUser.id} disabled readOnly />
-                  <p className="text-xs text-muted-foreground">
-                    Fixed for the life of the account — it is what they sign in with.
-                  </p>
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label>Display name</Label>
-                  <Input
-                    value={editForm.displayName}
-                    onChange={(e) => setEditForm({ ...editForm, displayName: e.target.value })}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label>New password (leave blank to keep current)</Label>
-                  <Input
-                    type="password"
-                    value={editForm.password}
-                    onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
-                  />
-                </div>
-                <div className="flex items-start gap-2">
-                  <Switch
-                    id="edit-admin"
-                    checked={editForm.isAdmin}
-                    onCheckedChange={(c) => setEditForm({ ...editForm, isAdmin: c })}
-                  />
-                  <Label htmlFor="edit-admin">Admin user</Label>
-                </div>
-              </div>
-              <DialogFooter className="sm:justify-between">
-                <Button
-                  variant="destructive"
-                  onClick={() => setDeleteTarget(editingUser)}
-                  disabled={editingUser.id === user.id || savingEdit}
-                >
-                  Delete User
-                </Button>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => setEditingUser(null)}
-                    disabled={savingEdit}
-                  >
-                    Cancel
-                  </Button>
-                  <Button onClick={handleUpdateUser} disabled={savingEdit}>
-                    {savingEdit ? 'Saving…' : 'Update User'}
-                  </Button>
-                </div>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      <MintedLinkDialog
-        code={resetCode}
-        onClose={() => setResetCode(null)}
-        title="Password reset link created"
-      />
-
-      {/* Delete confirm */}
-      <AlertDialog
-        open={!!deleteTarget}
-        onOpenChange={(o) => {
-          if (!o) setDeleteTarget(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete user?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Permanently delete <strong>{deleteTarget?.displayName}</strong> ({deleteTarget?.id}).
-              This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault();
-                handleDeleteUser();
-              }}
-              disabled={deleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {deleting ? 'Deleting…' : 'Delete User'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <UserAdminDialogs controller={userAdmin} />
     </div>
   );
 };
