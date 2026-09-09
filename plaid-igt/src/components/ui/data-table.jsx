@@ -54,6 +54,7 @@ export const DataTable = ({
   defaultSort,
   search,
   noun = 'row',
+  showCount = true,
   title,
   actions,
   empty = 'Nothing here.',
@@ -108,7 +109,10 @@ export const DataTable = ({
       return next;
     });
 
-  const showToolbar = title || search || actions || rows.length > 0;
+  // An empty bar is worse than none, so the toolbar appears only when it has
+  // something in it. `showCount` is off where the caller already states a
+  // richer count of its own, as the frequency table does.
+  const showToolbar = title || search || actions || showCount;
   const span = columns.length + (expand ? 1 : 0);
 
   return (
@@ -124,7 +128,7 @@ export const DataTable = ({
               className={cn('max-w-[16rem]', title && 'ml-auto')}
             />
           )}
-          <ListCount shown={matched.length} total={rows.length} noun={noun} />
+          {showCount && <ListCount shown={matched.length} total={rows.length} noun={noun} />}
           {actions && <div className="ml-auto flex items-center gap-2">{actions}</div>}
         </div>
       )}

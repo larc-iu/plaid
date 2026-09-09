@@ -160,6 +160,13 @@ describe('DataTable', () => {
     await b.unmount();
   });
 
+  it('drops the count, and the whole bar with it, when the caller says its own', async () => {
+    const { container, unmount } = await table({ showCount: false });
+    expect(container.textContent).not.toContain('people');
+    expect(container.querySelector('thead')).not.toBeNull();
+    await unmount();
+  });
+
   it('says when a search matched nothing, distinctly from an empty list', async () => {
     const { container, unmount } = await table({ rows: [], empty: 'No accounts yet.' });
     expect(container.textContent).toContain('No accounts yet.');

@@ -247,6 +247,9 @@ export const ProjectSearch = ({ project, projectId, client }) => {
               id="search-freq"
               defaultSort={{ key: 'count', dir: 'desc' }}
               noun="value"
+              // The line above already says how many distinct values there
+              // are, how many occurrences, and that the list is capped.
+              showCount={false}
             />
           )}
         </div>
