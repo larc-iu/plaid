@@ -392,7 +392,9 @@ Numbers say what is what: a headword with senses is *adidi 1*, its senses *adidi
 Entries that share a form are told apart by that first number, so two entries spelled *a* are *a 1* and *a 2*, and the senses of the second are *a 2.1*, *a 2.2*.
 One number is always a headword and two are always a sense. A headword that is alone and has no senses has no number at all.
 Whether a headword's own gloss is a meaning that words link to, or the headword only stands over its senses, is up to you: a word with one meaning is simply an entry with a gloss, and a headword that leaves its gloss empty is one nothing needs to link to.
+The number is written as a subscript after the form, as FieldWorks writes a homograph number.
 That is the name an entry goes by everywhere: the list, the picker, the link popover in the interlinear view.
+It is written out in full, with the number after a space, wherever an entry is named in plain text rather than on screen: an export, a machine-readable file, a change in the history.
 Any entry can be made a sense of another: open it, choose **Set parent**, and find the entry it belongs under.
 **Add headword** in the same place raises a new entry over the open one, with the same form, and makes the open one its first sense: how a word with one meaning gets a second.
 What belongs to the entry rather than to the meaning goes up with it: its number among the entries spelled alike, and any headword-only field. The morph type and lexeme form are shared, so the new headword and the sense both keep them.

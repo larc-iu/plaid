@@ -994,10 +994,11 @@
 }
 
 /* The dotted number that tells an entry apart ("1.2"), a subscript after the
-   form on the linked chip and in the lexicon popover list. `<sub>` already
-   lowers and shrinks it, so this only spaces and tones it. The island sits
-   outside `.tw`, so it gets the browser's own sub metrics rather than
-   Tailwind preflight's, which is why no size is set here. */
+   form on the linked chip and in the lexicon popover list. No size or offset
+   here: Tailwind's preflight is global (see tailwind.config.js) and its
+   `sub` rule — 75%, line-height 0, bottom -0.25em — reaches the island too,
+   so the chip and the React FormLabel lower the number identically. The
+   line-height matters in the grid: a subscript must not grow the row. */
 .igt-vocab__num,
 .igt-vocab-pop__num {
   margin-left: 0.15em;
