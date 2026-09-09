@@ -794,23 +794,32 @@
      left-packed chains read as misaligned. */
   justify-content: center;
 }
-/* A word that just took a Ctrl+Enter: a brief wash in the word scope's own
-   blue, fading out. It is the only thing that says the confirmation landed,
-   since the cells go from violet to plain, which is a subtraction and easy to
-   miss. Focus moves on after ADVANCE_BEAT_MS, so this is what fills the beat. */
+/* Something just took a confirmation: a brief wash in its scope's own color,
+   fading out. It is the only thing that says the gesture landed, since what
+   changes is violet going plain, which is a subtraction and easy to miss.
+   Worn by whatever the gesture's unit is -- the whole word column under
+   Ctrl+Enter, one cell under Enter, one link under Enter on its chip -- so the
+   wash also says how much was just accepted. Only the word column waits for
+   ADVANCE_BEAT_MS before focus moves; on the single-unit gestures the pulse
+   plays while the caret is already gone. */
 @keyframes igt-confirmed {
   from {
-    background: rgba(37, 99, 235, 0.14); /* --igt-blue at low alpha */
+    background: var(--igt-pulse);
   }
   to {
     background: transparent;
   }
 }
-.igt-token-col--confirmed {
+.igt-confirmed {
+  --igt-pulse: rgba(37, 99, 235, 0.14); /* --igt-blue at low alpha */
   animation: igt-confirmed 400ms ease-out;
 }
+/* Morpheme scope keeps its own hue here as it does everywhere else. */
+.igt-morph-col .igt-confirmed {
+  --igt-pulse: rgba(15, 118, 110, 0.14); /* --igt-teal at low alpha */
+}
 @media (prefers-reduced-motion: reduce) {
-  .igt-token-col--confirmed {
+  .igt-confirmed {
     animation: none;
   }
 }

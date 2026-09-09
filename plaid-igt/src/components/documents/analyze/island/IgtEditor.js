@@ -150,6 +150,7 @@ const provClass = (base, state) => (state ? `${base}--${state}` : '');
 // waits, long enough to register what changed.
 const ADVANCE_BEAT_MS = 200;
 const PULSE_MS = 400;
+const PULSE_CLASS = 'igt-confirmed';
 
 // What a marked value's tooltip says of its state. `origin` (provOrigin of
 // the entity) tells a verified value's two origins apart; `contributor`
@@ -847,6 +848,7 @@ export class IgtEditor {
 
   _confirmLink(tokenId, returnFocus = false) {
     this._closePopover(returnFocus);
+    this._pulseLink(tokenId);
     this._runThenFocus({ vocabOpener: tokenId }, () => this.doc.confirmVocabLink(tokenId));
   }
 
@@ -1122,6 +1124,7 @@ export class IgtEditor {
   _confirmMwe(linkId, returnFocus = false) {
     const first = this._mweByLink(linkId)?.memberTokenIds[0];
     this._closePopover(returnFocus);
+    this._pulseLink(`mwe:${linkId}`);
     this._runThenFocus({ mweOf: first }, () => this.doc.confirmMweLink(linkId));
   }
 
@@ -1850,6 +1853,10 @@ export class IgtEditor {
       el.value = el.dataset.guessValue;
       el.dataset.guessConfirmed = '1';
       this._syncInput(el);
+      // One cell, so the pulse is on the cell. No beat: the caret is one step
+      // away, not a word away, and this is the gesture a person makes hundreds
+      // of times an hour -- 200ms of held-back caret would be felt as lag.
+      this._pulse(el.closest('.igt-cell, .igt-morph-cell'));
     }
   }
 
@@ -1879,15 +1886,35 @@ export class IgtEditor {
     beat.run();
   }
 
-  // A word says it took the confirmation. Restarted rather than queued, so a
-  // fast run of Ctrl+Enter pulses each word in turn instead of falling behind.
+  // Something says it took the confirmation. Restarted rather than queued, so a
+  // fast run of the gesture pulses each target in turn instead of falling
+  // behind.
+  //
+  // The class goes on a node whose class attribute lit does NOT bind, since a
+  // confirmation re-renders the grid and lit rewrites a bound class attribute
+  // wholesale, taking a hand-added class with it. `.igt-token-col`,
+  // `.igt-cell`/`.igt-morph-cell` and `.igt-vocab` are all such wrappers; the
+  // input and the chip inside them are not, which is why the wrappers are what
+  // the callers below reach for. They are transparent, so the wash reads as
+  // the cell's or the link's own.
+  _pulse(el) {
+    if (!el) return;
+    el.classList.remove(PULSE_CLASS);
+    void el.offsetWidth; // restart the animation rather than ignore a re-add
+    el.classList.add(PULSE_CLASS);
+    setTimeout(() => el.classList.remove(PULSE_CLASS), PULSE_MS);
+  }
+
   _pulseWord(wordId) {
-    const col = this.container.querySelector(`[data-word-col="${wordId}"]`);
-    if (!col) return;
-    col.classList.remove('igt-token-col--confirmed');
-    void col.offsetWidth; // restart the animation rather than ignore a re-add
-    col.classList.add('igt-token-col--confirmed');
-    setTimeout(() => col.classList.remove('igt-token-col--confirmed'), PULSE_MS);
+    this._pulse(this.container.querySelector(`[data-word-col="${wordId}"]`));
+  }
+
+  // The wash for a link: the chip's whole stack, so the form above it is lit
+  // too. That is the unit a link is about, and the chip alone is a few pixels
+  // tall.
+  _pulseLink(openerId) {
+    const opener = this.container.querySelector(`[data-vocab-opener="${openerId}"]`);
+    this._pulse(opener?.closest('.igt-vocab') ?? opener);
   }
 
   // Ctrl/Cmd+Enter on any cell of a word column: accept EVERYTHING proposed on
@@ -2260,6 +2287,10 @@ export class IgtEditor {
     }
     if (e.key === 'Enter') {
       e.preventDefault();
+      // One link, so the pulse is on that link, and focus hops to the next
+      // chip as before. Backspace below removes rather than confirms, and a
+      // removal is its own announcement: the chip is simply gone.
+      this._pulseLink(tokenId);
       this._reviewLink(() =>
         mweLinkId ? this.doc.confirmMweLink(mweLinkId) : this.doc.confirmVocabLink(tokenId),
       );

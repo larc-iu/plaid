@@ -295,7 +295,7 @@ describe('as a verifier over contributed work', () => {
 
         // The word says it took it, and the caret has NOT moved yet.
         const col = host.querySelector('[data-word-col="w-1"]');
-        expect(col.classList.contains('igt-token-col--confirmed')).toBe(true);
+        expect(col.classList.contains('igt-confirmed')).toBe(true);
         expect(document.activeElement).toBe(c);
 
         vi.advanceTimersByTime(250);

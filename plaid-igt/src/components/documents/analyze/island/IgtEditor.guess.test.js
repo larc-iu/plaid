@@ -223,3 +223,49 @@ describe('link chip provenance at rest', () => {
     expect(confirmed).toEqual(byHand);
   });
 });
+
+// A confirmation is only ever visible as a subtraction -- violet going plain --
+// so every gesture that confirms answers with a wash on WHAT it confirmed.
+// Ctrl+Enter's word column is covered in IgtEditor.editing.test.js; these are
+// the two single-unit gestures, which pulse but never hold the caret back.
+describe('the pulse on a single accept', () => {
+  const key = (el, k, init = {}) =>
+    el.dispatchEvent(
+      new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...init }),
+    );
+  const settle = async (n = 6) => {
+    for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 0));
+  };
+
+  it('washes the one cell that adopted a guess, and does not hold focus', async () => {
+    mount();
+    const c = cell('wa:w-2:POS');
+    c.focus();
+    key(c, 'Enter');
+    expect(c.closest('.igt-cell').classList.contains('igt-confirmed')).toBe(true);
+    // No beat here: the caret has already moved on, unlike Ctrl+Enter's hop.
+    expect(document.activeElement).not.toBe(c);
+    await settle();
+  });
+
+  it('leaves a cell alone when Enter had no guess to adopt', async () => {
+    const doc = mount();
+    await doc.updateTokenSpan('w-2', 'POS', 'V', {});
+    await settle();
+    const c = cell('wa:w-2:POS');
+    c.focus();
+    key(c, 'Enter');
+    expect(c.closest('.igt-cell').classList.contains('igt-confirmed')).toBe(false);
+    await settle();
+  });
+
+  it('washes the one link confirmed from its chip', async () => {
+    mount({ linkProv: { prov: 'inferred', provSource: 'service:x' } });
+    await settle();
+    const chip = host.querySelector('.igt-vocab__hint');
+    chip.focus();
+    key(chip, 'Enter');
+    expect(chip.closest('.igt-vocab').classList.contains('igt-confirmed')).toBe(true);
+    await settle();
+  });
+});
