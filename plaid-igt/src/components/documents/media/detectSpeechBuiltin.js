@@ -18,6 +18,8 @@ export const DETECT_SPEECH_BUILTIN = {
     {
       key: 'threshold',
       label: 'Speech threshold',
+      description:
+        'How sure the model has to be that a stretch is speech. Lower catches quiet talk, and also breaths and background noise.',
       type: 'number',
       slider: true,
       min: 0.1,
@@ -28,6 +30,7 @@ export const DETECT_SPEECH_BUILTIN = {
     {
       key: 'minSilenceDurationMs',
       label: 'Shortest silence (ms)',
+      description: 'A pause shorter than this does not end a segment.',
       type: 'number',
       min: 0,
       max: 5000,
@@ -37,6 +40,7 @@ export const DETECT_SPEECH_BUILTIN = {
     {
       key: 'minSpeechDurationMs',
       label: 'Shortest segment (ms)',
+      description: 'Anything shorter is left out.',
       type: 'number',
       min: 0,
       max: 5000,
@@ -46,6 +50,7 @@ export const DETECT_SPEECH_BUILTIN = {
     {
       key: 'maxSpeechDurationS',
       label: 'Longest segment (s)',
+      description: 'A longer stretch is cut at the widest silence inside it.',
       type: 'number',
       min: 1,
       max: 600,
@@ -55,6 +60,7 @@ export const DETECT_SPEECH_BUILTIN = {
     {
       key: 'speechPadMs',
       label: 'Padding (ms)',
+      description: 'Added to each end of every segment.',
       type: 'number',
       min: 0,
       max: 1000,

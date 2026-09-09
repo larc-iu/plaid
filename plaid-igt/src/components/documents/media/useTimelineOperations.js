@@ -10,7 +10,16 @@ const MIN_BAR_HEIGHT = 2;
 // pixels. Roughly one text line.
 const WHEEL_LINE_HEIGHT = 16;
 const WAVEFORM_CACHE_PREFIX = 'plaid_waveform_';
-const WAVEFORM_CACHE_VERSION = 'v2_'; // Increment when waveform generation logic changes
+const WAVEFORM_CACHE_VERSION = 'v3_'; // Increment when waveform generation logic changes
+
+// Buckets the decoded audio is reduced to, once, so zooming redraws from these
+// instead of decoding again. 500 a second is 2 ms per bucket, finer than the
+// timeline is ever zoomed, and the cap keeps a long recording to 4 MB.
+const PEAK_BUCKETS_PER_SECOND = 500;
+const MAX_PEAK_BUCKETS = 1_000_000;
+// Bars are scaled against this percentile of the peaks rather than the single
+// loudest sample, so one door slam does not flatten an hour of speech.
+const PEAK_NORMALIZE_PERCENTILE = 0.99;
 
 // A theme colour for the canvas, which cannot read CSS variables itself. The
 // shadcn variables hold bare HSL components ("221.2 83.2% 53.3%").
@@ -20,23 +29,36 @@ const themeColor = (name, alpha) => {
   return h && s && l ? `hsla(${h}, ${s}, ${l}, ${alpha})` : `rgba(144, 202, 249, ${alpha})`;
 };
 
-// Utility functions for waveform caching
-const generateAudioHash = async (arrayBuffer) => {
-  // Create a simple hash from audio data
-  const uint8Array = new Uint8Array(arrayBuffer);
-  let hash = 0;
-
-  // Sample every nth byte to create a reasonable hash without processing entire file
-  const step = Math.max(1, Math.floor(uint8Array.length / 10000));
-  for (let i = 0; i < uint8Array.length; i += step) {
-    hash = ((hash << 5) - hash + uint8Array[i]) & 0xffffffff;
+/**
+ * The decoded audio reduced to one loudest-sample-per-bucket envelope, plus
+ * the level the bars are drawn against. Computed once per recording; every
+ * zoom level is drawn from it.
+ */
+export const peaksOf = (channelData, duration) => {
+  const buckets = Math.max(
+    1,
+    Math.min(MAX_PEAK_BUCKETS, Math.ceil((duration || 1) * PEAK_BUCKETS_PER_SECOND)),
+  );
+  const peaks = new Float32Array(buckets);
+  const per = channelData.length / buckets;
+  for (let i = 0; i < buckets; i += 1) {
+    const start = Math.floor(i * per);
+    const end = Math.min(channelData.length, Math.max(start + 1, Math.floor((i + 1) * per)));
+    let peak = 0;
+    for (let j = start; j < end; j += 1) {
+      const v = channelData[j] < 0 ? -channelData[j] : channelData[j];
+      if (v > peak) peak = v;
+    }
+    peaks[i] = peak;
   }
-
-  return hash.toString(36);
+  const sorted = Float32Array.from(peaks).sort();
+  const level =
+    sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * PEAK_NORMALIZE_PERCENTILE))];
+  return { peaks, level: level > 0 ? level : 1 };
 };
 
-const getCacheKey = (audioHash, timelineWidth, duration) => {
-  return `${WAVEFORM_CACHE_PREFIX}${WAVEFORM_CACHE_VERSION}${audioHash}_${timelineWidth}_${Math.round(duration)}`;
+const getCacheKey = (audioId, timelineWidth, duration) => {
+  return `${WAVEFORM_CACHE_PREFIX}${WAVEFORM_CACHE_VERSION}${audioId}_${timelineWidth}_${Math.round(duration)}`;
 };
 
 const getCachedWaveform = (cacheKey) => {
@@ -114,6 +136,12 @@ export const useTimelineOperations = (mediaOps) => {
   const [tempSelection, setTempSelection] = useState(null);
   const [waveformImage, setWaveformImage] = useState(null);
   const [isLoadingWaveform, setIsLoadingWaveform] = useState(false);
+  // The recording reduced to an amplitude envelope, and what the image on
+  // screen was drawn from. Between them, a zoom redraws without decoding
+  // again, and a different recording is never left showing the last one's.
+  const peaksRef = useRef({ blob: null, peaks: null, level: 1 });
+  const drawnRef = useRef({ blob: null, width: 0 });
+  const decodeRef = useRef(null);
 
   // Resize state management
   const [isResizing, setIsResizing] = useState(false);
@@ -553,38 +581,62 @@ export const useTimelineOperations = (mediaOps) => {
   // Generate canvas-based waveform image
   useEffect(() => {
     const generateWaveformImage = async () => {
-      if (!mediaOps.mediaBlob || !mediaOps.duration || waveformImage || timelineWidth < 100) return;
+      if (!mediaOps.mediaBlob || !mediaOps.duration || timelineWidth < 100) return;
+      // Zooming changes the width, and the image is stretched to fill it
+      // (backgroundSize 100% 100%). Drawn once and stretched, the bars smear
+      // into blocks that no longer read as speech, which is exactly the view
+      // somebody is in when they drag a segment boundary. So: redraw per
+      // width, off peaks decoded once.
+      const drawn = drawnRef.current;
+      if (drawn.blob === mediaOps.mediaBlob && drawn.width === timelineWidth) return;
+      const first = drawn.blob !== mediaOps.mediaBlob;
 
       setIsLoadingWaveform(true);
 
-      let audioHash = null;
-      let cacheKey = null;
+      // Identity of the recording, from what is already known about it. It
+      // used to be a hash over the bytes, which meant copying the whole file
+      // to look in the cache; exact byte length and duration separate two
+      // recordings just as well and cost nothing.
+      const cacheKey = getCacheKey(`${mediaOps.mediaBlob.size}`, timelineWidth, mediaOps.duration);
+      const mark = () => {
+        drawnRef.current = { blob: mediaOps.mediaBlob, width: timelineWidth };
+      };
 
       try {
-        // The bytes are already in memory as the blob behind the player's
-        // <video> src, so there is nothing to fetch. `blob.arrayBuffer()` hands
-        // back a fresh copy per call, which matters because `decodeAudioData`
-        // below detaches the buffer it is given.
-        const arrayBuffer = await mediaOps.mediaBlob.arrayBuffer();
-
-        // Generate hash from audio data for caching
-        audioHash = await generateAudioHash(arrayBuffer);
-        cacheKey = getCacheKey(audioHash, timelineWidth, mediaOps.duration);
-
-        // Check cache first
         const cachedWaveform = getCachedWaveform(cacheKey);
         if (cachedWaveform) {
           // Cached waveform is a data URL, use it directly
+          mark();
           setWaveformImage(cachedWaveform);
           setIsLoadingWaveform(false);
           return;
         }
 
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-
-        // Get channel data (use first channel)
-        const channelData = audioBuffer.getChannelData(0);
+        // Decoding is the slow part and does not depend on the zoom, so it
+        // happens once per recording and every later width redraws from the
+        // envelope it produced. `blob.arrayBuffer()` copies the whole
+        // recording, so it stays inside this branch too. Zooming again while
+        // it is still running joins the one in flight: a second decode of an
+        // hour-long recording is hundreds of megabytes of PCM for nothing.
+        if (peaksRef.current.blob !== mediaOps.mediaBlob) {
+          const blob = mediaOps.mediaBlob;
+          if (decodeRef.current?.blob !== blob) {
+            decodeRef.current = {
+              blob,
+              promise: (async () => {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                // The bytes are already in memory as the blob behind the
+                // player's <video> src, so there is nothing to fetch.
+                // decodeAudioData detaches the buffer it is given, hence the
+                // fresh copy.
+                const audioBuffer = await audioContext.decodeAudioData(await blob.arrayBuffer());
+                return { blob, ...peaksOf(audioBuffer.getChannelData(0), mediaOps.duration) };
+              })(),
+            };
+          }
+          peaksRef.current = await decodeRef.current.promise;
+        }
+        const { peaks, level } = peaksRef.current;
 
         // Create high-resolution canvas for waveform
         const pixelRatio = window.devicePixelRatio || 1;
@@ -612,53 +664,33 @@ export const useTimelineOperations = (mediaOps) => {
         ctx.fillStyle = themeColor('--primary', 0.35);
         ctx.globalAlpha = 1;
 
-        // Use much higher sampling rate for better resolution
-        const samples = Math.max(effectiveTimelineWidth * 2, 8000);
-        const blockSize = Math.floor(channelData.length / samples);
-
-        // First pass: calculate all amplitudes and find the maximum
-        const amplitudes = [];
-        let maxAmplitude = 0;
-
+        // Two bars per pixel of the canvas we can actually draw, never more
+        // than the envelope holds.
+        const samples = Math.min(peaks.length, Math.ceil(effectiveTimelineWidth * 2));
+        const per = peaks.length / samples;
+        const barWidth = Math.max(0.5, effectiveTimelineWidth / samples);
         for (let i = 0; i < samples; i++) {
-          let sum = 0;
-          const start = i * blockSize;
-          const end = Math.min(start + blockSize, channelData.length);
-
-          for (let j = start; j < end; j++) {
-            sum += Math.abs(channelData[j] || 0);
-          }
-
-          const amplitude = sum / (end - start);
-          amplitudes.push(amplitude);
-          maxAmplitude = Math.max(maxAmplitude, amplitude);
-        }
-
-        // Second pass: draw bars scaled to fill available height
-        for (let i = 0; i < samples; i++) {
-          const amplitude = amplitudes[i];
-          // Scale amplitude to use full height, with minimum bar height
-          const normalizedAmplitude = maxAmplitude > 0 ? amplitude / maxAmplitude : 0;
+          const start = Math.floor(i * per);
+          const end = Math.min(peaks.length, Math.max(start + 1, Math.floor((i + 1) * per)));
+          let peak = 0;
+          for (let j = start; j < end; j++) if (peaks[j] > peak) peak = peaks[j];
           const barHeight = Math.max(
             MIN_BAR_HEIGHT,
-            normalizedAmplitude * WAVEFORM_AVAILABLE_HEIGHT,
+            Math.min(1, peak / level) * WAVEFORM_AVAILABLE_HEIGHT,
           );
           const y = TIMELINE_HEIGHT / 2 - barHeight / 2;
-
-          const x = (i / samples) * effectiveTimelineWidth;
-          const barWidth = effectiveTimelineWidth / samples;
-          ctx.fillRect(x, y, Math.max(0.5, barWidth), barHeight);
+          ctx.fillRect((i / samples) * effectiveTimelineWidth, y, barWidth, barHeight);
         }
 
         // Convert canvas to data URL for caching and blob for immediate use
+        mark();
         canvas.toBlob(async (blob) => {
           if (blob) {
-            const imageUrl = URL.createObjectURL(blob);
-            setWaveformImage(imageUrl);
+            setWaveformImage(URL.createObjectURL(blob));
 
-            // Cache the data URL version for persistence
-            const dataUrl = canvas.toDataURL('image/png', 0.8);
-            setCachedWaveform(cacheKey, dataUrl);
+            // Only the width a document opens at is worth keeping: a PNG per
+            // zoom level would push every other one out of storage.
+            if (first) setCachedWaveform(cacheKey, canvas.toDataURL('image/png', 0.8));
           }
         });
       } catch (error) {
@@ -691,6 +723,7 @@ export const useTimelineOperations = (mediaOps) => {
           centerlineHeight,
         );
 
+        mark();
         canvas.toBlob((blob) => {
           if (blob) {
             setWaveformImage(URL.createObjectURL(blob));
@@ -704,7 +737,7 @@ export const useTimelineOperations = (mediaOps) => {
     if (mediaOps.duration > 0 && timelineWidth > 0) {
       generateWaveformImage();
     }
-  }, [mediaOps.mediaBlob, mediaOps.duration, timelineWidth, waveformImage]);
+  }, [mediaOps.mediaBlob, mediaOps.duration, timelineWidth]);
 
   return {
     // State
