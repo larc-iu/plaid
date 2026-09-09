@@ -82,7 +82,7 @@ export function ServiceRunDialog({
             </Button>
             {running && onCancel ? (
               <Button variant="outline" onClick={onCancel}>
-                Cancel
+                Stop
               </Button>
             ) : (
               <Button onClick={onRun} disabled={running || runDisabled}>

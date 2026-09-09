@@ -154,7 +154,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
       return;
     }
     // Held for the whole run: four steps of writes with a reload after each.
-    const lock = acquireWriteLock('Auto-analyze');
+    const lock = acquireWriteLock('Auto-analyze', { onCancel: cancelRequest });
     if (!lock) return;
     setBusy(true);
     progress.start(plan.map((p) => p.label));

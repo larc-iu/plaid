@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { notifySuccess, notifyWarning } from '@/utils/feedback';
+import { notifySuccess, notifyWarning, notifyInfo } from '@/utils/feedback';
 import { clearRunRecord, readRunRecord } from '@/domain/runRecord';
 import { useServiceRequest } from './useServiceRequest.js';
 
@@ -14,7 +14,7 @@ import { useServiceRequest } from './useServiceRequest.js';
 // Runs once per opened document. A record that names a request the server no
 // longer knows (404: expired, or finished and collected) is simply forgotten.
 export function useResumedRun(doc, acquireWriteLock) {
-  const { attachToRequest, progressPercent, progressMessage } = useServiceRequest();
+  const { attachToRequest, cancelRequest, progressPercent, progressMessage } = useServiceRequest();
   const documentId = doc?.id ?? null;
   // One attempt per document, even under StrictMode's double-invoke.
   const triedFor = useRef(null);
@@ -29,17 +29,21 @@ export function useResumedRun(doc, acquireWriteLock) {
     const record = readRunRecord(documentId);
     if (!record) return;
 
-    const lock = acquireWriteLock(record.label || 'A service');
+    const lock = acquireWriteLock(record.label || 'A service', { onCancel: cancelRequest });
     if (!lock) return; // something already holds it; this page did not reload
     lockRef.current = lock;
     lock.setStatus('Rejoining…');
 
     (async () => {
       try {
-        await attachToRequest(record.projectId, record.requestId);
+        const result = await attachToRequest(record.projectId, record.requestId);
         lock.setStatus('Loading results…');
         await doc._reload();
-        if (record.multiStep) {
+        if (result?.stopped === true) {
+          // Someone stopped it — from this page's banner, or another of their
+          // tabs. Not a finish, and not a failure.
+          notifyInfo('Stopped. What it had already written stays.', record.label);
+        } else if (record.multiStep) {
           // Auto-analyze's steps are ordered here, in the browser, so the page
           // that went away took the rest of the run with it. Say so rather
           // than implying the whole thing finished.

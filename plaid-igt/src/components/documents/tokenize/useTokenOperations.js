@@ -199,7 +199,7 @@ export const useTokenOperations = () => {
   const runServiceTokenize = async (serviceId, { overwrite = false } = {}) => {
     // Held for the whole run: it rewrites the token layers and ends in a
     // reload, so nothing may be edited underneath it.
-    const lock = acquireWriteLock('Tokenize');
+    const lock = acquireWriteLock('Tokenize', { onCancel: cancelRequest });
     if (!lock) return;
     lockRef.current = lock;
     setIsTokenizing(true);

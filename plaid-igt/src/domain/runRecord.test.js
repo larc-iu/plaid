@@ -79,4 +79,17 @@ describe('runRecord', () => {
     clearRunRecord('doc-1');
     expect(readRunRecord('doc-1')?.requestId).toBe('req-1');
   });
+
+  it('clears again on a page that came back from the bfcache', () => {
+    // `pagehide` fires on the way into the back/forward cache too, and that
+    // page can come back; the flag must not stick for the rest of its life.
+    writeRunRecord('doc-1', { requestId: 'req-1', projectId: 'p', label: 'Tokenize' });
+    window.dispatchEvent(new Event('pagehide'));
+    clearRunRecord('doc-1');
+    expect(readRunRecord('doc-1')).not.toBe(null);
+
+    window.dispatchEvent(new Event('pageshow'));
+    clearRunRecord('doc-1');
+    expect(readRunRecord('doc-1')).toBe(null);
+  });
 });

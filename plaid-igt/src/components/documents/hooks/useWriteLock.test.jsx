@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { renderComponent } from '@/test/renderComponent.jsx';
 import { useWriteLock } from './useWriteLock.js';
 
@@ -97,5 +97,28 @@ describe('useWriteLock', () => {
     expect(lock().held).toMatchObject({ label: 'Auto-analyze' });
     await step(() => second.release());
     expect(lock().held).toBe(null);
+  });
+
+  it("carries the holder's way to stop the run", async () => {
+    // A rejoined run lives in its own hook, so no dialog on the page has a
+    // handle on it; the lock is what makes it stoppable from anywhere.
+    const { lock, step } = await mount();
+    const onCancel = vi.fn();
+    let handle;
+    await step(() => {
+      handle = lock().acquire('Transcribe', { onCancel });
+    });
+    expect(lock().held.cancel).toBe(onCancel);
+    lock().held.cancel();
+    expect(onCancel).toHaveBeenCalled();
+
+    await step(() => handle.release());
+    expect(lock().held).toBe(null);
+  });
+
+  it('has no stop for a run that cannot be stopped', async () => {
+    const { lock, step } = await mount();
+    await step(() => lock().acquire('Tokenize'));
+    expect(lock().held.cancel).toBe(null);
   });
 });

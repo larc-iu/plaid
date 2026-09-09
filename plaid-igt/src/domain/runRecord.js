@@ -31,6 +31,12 @@ if (typeof window !== 'undefined') {
   };
   window.addEventListener('pagehide', going);
   window.addEventListener('beforeunload', going);
+  // `pagehide` also fires when a page goes into the back/forward cache, and
+  // such a page comes back alive. Without this the flag would stay set for the
+  // rest of its life and no record would ever be cleared again.
+  window.addEventListener('pageshow', () => {
+    unloading = false;
+  });
 }
 
 // Test seam: the flag is set by real navigation, and nothing resets it, since

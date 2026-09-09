@@ -18,6 +18,11 @@ import { useCallback, useRef, useState } from 'react';
 // tab that does not mount the run's own button, or the page was reloaded and
 // the run was rejoined with no dialog open at all.
 //
+// The holder also supplies `onCancel`, so the run can be stopped from wherever
+// the lock is visible. That matters most for a run this page did not start: a
+// rejoined run lives in its own hook, so the tab's own dialog has no handle on
+// it and could otherwise only sit there saying it was busy.
+//
 // `acquire` returns `{release, setStatus}`, or null when the lock is already
 // held — which is also what stops a second run from starting on top of the
 // first. (Each spot has its own useServiceRequest, so its `isProcessing` only
@@ -28,10 +33,10 @@ export function useWriteLock() {
   // what actually arbitrates.
   const heldRef = useRef(false);
 
-  const acquire = useCallback((label) => {
+  const acquire = useCallback((label, { onCancel = null } = {}) => {
     if (heldRef.current) return null;
     heldRef.current = true;
-    setHeld({ label, startedAt: Date.now(), status: '' });
+    setHeld({ label, startedAt: Date.now(), status: '', cancel: onCancel });
     let released = false;
     return {
       release: () => {
