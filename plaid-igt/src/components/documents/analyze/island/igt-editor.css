@@ -794,6 +794,27 @@
      left-packed chains read as misaligned. */
   justify-content: center;
 }
+/* A word that just took a Ctrl+Enter: a brief wash in the word scope's own
+   blue, fading out. It is the only thing that says the confirmation landed,
+   since the cells go from violet to plain, which is a subtraction and easy to
+   miss. Focus moves on after ADVANCE_BEAT_MS, so this is what fills the beat. */
+@keyframes igt-confirmed {
+  from {
+    background: rgba(37, 99, 235, 0.14); /* --igt-blue at low alpha */
+  }
+  to {
+    background: transparent;
+  }
+}
+.igt-token-col--confirmed {
+  animation: igt-confirmed 400ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .igt-token-col--confirmed {
+    animation: none;
+  }
+}
+
 .igt-morph-col {
   display: flex;
   flex-direction: column;

@@ -145,6 +145,12 @@ const provDisplay = (metadata) => {
 };
 const provClass = (base, state) => (state ? `${base}--${state}` : '');
 
+// How long the confirmed word is left alone before focus moves on, and how
+// long its pulse runs. Short enough that a reviewer working at speed never
+// waits, long enough to register what changed.
+const ADVANCE_BEAT_MS = 200;
+const PULSE_MS = 400;
+
 // What a marked value's tooltip says of its state. `origin` (provOrigin of
 // the entity) tells a verified value's two origins apart; `contributor`
 // is whether the person looking is one, whose Ctrl+Enter takes machine
@@ -322,6 +328,13 @@ export class IgtEditor {
     // inferred vocab-link chips; Enter/Backspace confirm/remove the focused one
     // (see _predictionKeydown). Container-level so it works from any cell or chip.
     this.container.addEventListener('keydown', this._predictionKeydown);
+    // Anything typed while a confirmation's beat is still running flushes it
+    // FIRST, in the capture phase, so focus has already moved by the time the
+    // key is handled and the character lands where the reader is looking. This
+    // is also what stops a held-down Ctrl+Enter from stacking beats.
+    this._flushBeatOnInput = () => this._flushBeat();
+    this.container.addEventListener('keydown', this._flushBeatOnInput, true);
+    this.container.addEventListener('pointerdown', this._flushBeatOnInput, true);
     // Backslash codes (`\sw` -> ə, `\0/` -> ∅) in every text field of the grid.
     // Delegated: `beforeinput` bubbles, and every text field here holds language
     // data, so there is nothing in the island to opt out. See lib/composeInput.js
@@ -464,6 +477,12 @@ export class IgtEditor {
     window.removeEventListener('beforeunload', this._onBeforeUnload);
     document.removeEventListener('visibilitychange', this._onVisibility);
     this.container.removeEventListener('keydown', this._predictionKeydown);
+    this.container.removeEventListener('keydown', this._flushBeatOnInput, true);
+    this.container.removeEventListener('pointerdown', this._flushBeatOnInput, true);
+    // A beat left running past teardown would move focus in a grid that is
+    // gone; drop it rather than let it fire.
+    if (this._beat) clearTimeout(this._beat.timer);
+    this._beat = null;
     this.container.removeEventListener('beforeinput', this._onBeforeInput);
     this.container.removeEventListener('mouseover', this._onMweHover);
     this.container.removeEventListener('mouseout', this._onMweHover);
@@ -1834,6 +1853,43 @@ export class IgtEditor {
     }
   }
 
+  // Confirming and hopping used to happen in the same frame, so you saw
+  // neither: the word went from violet to plain exactly as the browser jumped
+  // the view to reveal the next cell. A beat between them is enough to see
+  // what you just did.
+  //
+  // The beat is on the FOCUS MOVE, not on a scroll of our own. Moving focus is
+  // what makes the browser reveal the next cell, and revealing focus is its
+  // job, not ours -- past that the scroll position is the reader's to control.
+  //
+  // Anything the reader does DURING the beat flushes it immediately: a second
+  // Ctrl+Enter, or any keystroke at all. Without that, holding the key down
+  // would stack delays, and a character typed in the window would land in the
+  // cell being left rather than the one being moved to.
+  _afterABeat(run) {
+    this._flushBeat();
+    this._beat = { run, timer: setTimeout(() => this._flushBeat(), ADVANCE_BEAT_MS) };
+  }
+
+  _flushBeat() {
+    const beat = this._beat;
+    if (!beat) return;
+    this._beat = null;
+    clearTimeout(beat.timer);
+    beat.run();
+  }
+
+  // A word says it took the confirmation. Restarted rather than queued, so a
+  // fast run of Ctrl+Enter pulses each word in turn instead of falling behind.
+  _pulseWord(wordId) {
+    const col = this.container.querySelector(`[data-word-col="${wordId}"]`);
+    if (!col) return;
+    col.classList.remove('igt-token-col--confirmed');
+    void col.offsetWidth; // restart the animation rather than ignore a re-add
+    col.classList.add('igt-token-col--confirmed');
+    setTimeout(() => col.classList.remove('igt-token-col--confirmed'), PULSE_MS);
+  }
+
   // Ctrl/Cmd+Enter on any cell of a word column: accept EVERYTHING proposed on
   // that word in one gesture, then hop to the same-tier cell of the NEXT word —
   // the review flow is "glance, Ctrl+Enter, glance, Ctrl+Enter" across a
@@ -1863,20 +1919,24 @@ export class IgtEditor {
       return true;
     }
     this._run(() => this.doc.confirmWordAnalysis(wordId, adoptions));
-    if (!this._advanceToNextWord(e.target, wordId)) {
-      // Last word on the page: commit (blur) but keep the caret here rather
-      // than dropping focus to <body> (E2). Re-affirmed after the re-render.
-      const key = e.target.dataset.cellKey;
-      e.target.blur();
-      this._pendingFocus = { cellKey: key };
-      const same = key ? this.container.querySelector(`[data-cell-key="${key}"]`) : null;
-      if (same) same.focus();
-    } else if (adoptions.length) {
-      // Adopting reloads the document (new spans), which re-renders the grid
-      // out from under the hop target: re-affirm it the way discard does.
-      const key = document.activeElement?.dataset?.cellKey;
-      if (key) this._pendingFocus = { cellKey: key };
-    }
+    this._pulseWord(wordId);
+    const from = e.target;
+    this._afterABeat(() => {
+      if (!this._advanceToNextWord(from, wordId)) {
+        // Last word on the page: commit (blur) but keep the caret here rather
+        // than dropping focus to <body> (E2). Re-affirmed after the re-render.
+        const key = from.dataset.cellKey;
+        from.blur();
+        this._pendingFocus = { cellKey: key };
+        const same = key ? this.container.querySelector(`[data-cell-key="${key}"]`) : null;
+        if (same) same.focus();
+      } else if (adoptions.length) {
+        // Adopting reloads the document (new spans), which re-renders the grid
+        // out from under the hop target: re-affirm it the way discard does.
+        const key = document.activeElement?.dataset?.cellKey;
+        if (key) this._pendingFocus = { cellKey: key };
+      }
+    });
     return true;
   }
 

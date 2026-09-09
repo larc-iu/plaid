@@ -275,6 +275,60 @@ describe('as a verifier over contributed work', () => {
     expect(glossOf(doc).metadata).toEqual({ ...CONTRIBUTED, provConfirmed: true });
   });
 
+  // Confirming and hopping used to land in the same frame, so a reviewer saw
+  // neither: the word went plain exactly as the browser jumped the view to the
+  // next cell. Nothing covered the hop at all, so nothing would have caught
+  // this changing either way.
+  describe('the beat between confirming and moving on', () => {
+    const wordCell = (k) => cell(k);
+
+    it('pulses the confirmed word and holds focus for a beat before hopping', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const { doc } = mount();
+        await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', CONTRIBUTED);
+        await settle();
+        const c = wordCell('ma:m-1:Gloss');
+        focus(c);
+        key(c, 'Enter', { ctrlKey: true });
+        await settle();
+
+        // The word says it took it, and the caret has NOT moved yet.
+        const col = host.querySelector('[data-word-col="w-1"]');
+        expect(col.classList.contains('igt-token-col--confirmed')).toBe(true);
+        expect(document.activeElement).toBe(c);
+
+        vi.advanceTimersByTime(250);
+        await settle();
+        expect(document.activeElement).not.toBe(c);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('flushes the beat the moment anything else is typed', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const { doc } = mount();
+        await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', CONTRIBUTED);
+        await settle();
+        const c = wordCell('ma:m-1:Gloss');
+        focus(c);
+        key(c, 'Enter', { ctrlKey: true });
+        await settle();
+        expect(document.activeElement).toBe(c);
+
+        // Without waiting out the beat: the next keystroke moves focus first,
+        // so the character lands where the reader is looking.
+        key(c, 'x');
+        await settle();
+        expect(document.activeElement).not.toBe(c);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
   it('Ctrl+Backspace discards it', async () => {
     // The gesture reaches the domain (which the document tests cover: a
     // verifier's discard takes contributed work); the fake client's reload
