@@ -1,7 +1,8 @@
+import { AlertTriangle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { fieldNameLang } from '@/domain/fieldNames';
+import { resolveFieldLang } from '@/domain/fieldNames';
 import {
   Select,
   SelectTrigger,
@@ -47,6 +48,27 @@ const LangInput = ({ id, label, value, onChange, placeholder }) => (
 // The scope a span layer records, from the key this UI groups by.
 const SCOPE_NAMES = { sentence: 'Sentence', word: 'Word', morpheme: 'Morpheme' };
 
+// Fields in one scope that go out as the same item type in the same writing
+// system. FLEx keeps one value per (type, writing system), so the second one
+// imported replaces the first: a real loss, and a silent one.
+const clashes = (fields, map, langs, scope) => {
+  const byTag = new Map();
+  for (const f of fields) {
+    const type = map[f];
+    if (!type) continue; // not exported
+    const key = `${type}|${resolveFieldLang(langs, SCOPE_NAMES[scope], f)}`;
+    if (!byTag.has(key)) byTag.set(key, []);
+    byTag.get(key).push(f);
+  }
+  return [...byTag.entries()]
+    .filter(([, fs]) => fs.length > 1)
+    .map(([key, fs]) => ({
+      fields: fs,
+      lang: key.split('|')[1],
+      label: ITEM_TYPES[scope].find((t) => t.id === key.split('|')[0])?.label ?? key.split('|')[0],
+    }));
+};
+
 const FieldMapGroup = ({
   scope,
   title,
@@ -59,6 +81,7 @@ const FieldMapGroup = ({
   onLang,
 }) => {
   if (!fields.length) return null;
+  const langs = { overrides, fieldLangs, analysis };
   return (
     <div className="flex flex-col gap-1.5">
       <Label>{title}</Label>
@@ -93,13 +116,23 @@ const FieldMapGroup = ({
               // What the field goes out as when the box is empty: what the
               // field itself records, else the tag its own name carries, else
               // the one for glosses and translations.
-              placeholder={
-                fieldLangs?.[`${SCOPE_NAMES[scope]}:${f}`] || fieldNameLang(f) || analysis || 'en'
-              }
+              placeholder={resolveFieldLang(langs, SCOPE_NAMES[scope], f)}
               onChange={(e) => onLang(f, e.target.value)}
               className="h-8 w-16 font-mono text-xs"
             />
           </div>
+        </div>
+      ))}
+      {clashes(fields, map, langs, scope).map((c) => (
+        <div
+          key={`${c.label}-${c.lang}`}
+          className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs"
+        >
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+          <span>
+            {c.fields.join(' and ')} both go out as {c.label} in <code>{c.lang}</code>. FLEx keeps
+            one value per writing system. Give one of them its own tag.
+          </span>
         </div>
       ))}
     </div>

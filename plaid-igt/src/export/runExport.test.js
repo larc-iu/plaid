@@ -182,6 +182,57 @@ describe('runExport', () => {
     expect(readme).toContain('Flex.flextext: 1 interlinear text');
   });
 
+  // The cf and hn of a morph are read off the lexicon ENTRY, which is only in
+  // the project's vocabularies: the item embedded in the document GET is a
+  // bare {id, form} with no metadata. When the export handed each document an
+  // empty vocabularies map, cf silently fell back to the undecorated citation
+  // form, and FLEx matched no bound morph in the file.
+  it('reads cf and hn off the project lexicon, not the embedded link item', async () => {
+    const doc = rawDoc('d1', 'Flex', 'perro');
+    doc.textLayers[0].tokenLayers.push({
+      config: role('morpheme'),
+      tokens: [{ id: 'm1', begin: 0, end: 5, metadata: { form: 'perro', morphType: 'suffix' } }],
+      spanLayers: [],
+      vocabs: [
+        {
+          id: 'v1',
+          name: 'Lexicon',
+          // What the server embeds: the item, stripped of its metadata.
+          vocabLinks: [{ id: 'l1', tokens: ['m1'], vocabItem: { id: 'i1', form: 'perro' } }],
+        },
+      ],
+    });
+    const vocab = {
+      ...VOCAB,
+      items: [
+        {
+          id: 'i1',
+          form: 'perro',
+          metadata: { gloss: 'dog', lexemeForm: 'perr', morphType: 'suffix', homograph: 2 },
+        },
+      ],
+    };
+    // This project has a morpheme layer under its word layer; the shared one
+    // stops at words, and there is no morph to carry a cf without it.
+    const project = JSON.parse(JSON.stringify(PROJECT));
+    project.textLayers[0].tokenLayers.push({ config: role('morpheme'), spanLayers: [] });
+    const client = stubClient({ docs: [doc], vocab });
+    const preset = newPreset('flextext', discoverExportLayers(project), 'f');
+    const result = await runExport({
+      client,
+      project,
+      preset,
+      scope: { type: 'document', id: 'd1' },
+    });
+    const files = await unzipBlob(result.blob);
+    const xml = new TextDecoder().decode(files['Flex.flextext']);
+    const dom = new DOMParser().parseFromString(xml, 'text/xml');
+    const morph = dom.querySelector('morph');
+    // The lexeme form, decorated as the suffix it is — not the citation form.
+    expect(morph.querySelector('item[type="cf"]').textContent).toBe('-perr');
+    expect(morph.querySelector('item[type="hn"]').textContent).toBe('2');
+  });
+
   it('reads a promoted example out of a document the scope does not cover', async () => {
     const docs = [rawDoc('d1', 'Flex', 'hi yo'), rawDoc('d2', 'Other', 'ba do')];
     const vocab = {
@@ -275,6 +326,19 @@ describe('runExport', () => {
     const dom = new DOMParser().parseFromString(await result.blob.text(), 'text/xml');
     expect(dom.querySelector('parsererror')).toBeNull();
     expect(dom.querySelectorAll('word').length).toBe(2);
+    // The lexicon is still READ: the cf on every morph comes off the entry.
+    expect(client.calls.filter(([m]) => m === 'vocabLayers.get')).toEqual([
+      ['vocabLayers.get', 'v1'],
+    ]);
+  });
+
+  it('reads no vocabulary at all when neither the lexicon nor cf is wanted', async () => {
+    const docs = [rawDoc('d1', 'Flex', 'hi yo')];
+    const client = stubClient({ docs });
+    const preset = newPreset('flextext', discoverExportLayers(PROJECT), 'f');
+    preset.options.lexicon = false;
+    preset.options.citationForms = false;
+    await runExport({ client, project: PROJECT, preset, scope: { type: 'document', id: 'd1' } });
     expect(client.calls.filter(([m]) => m === 'vocabLayers.get')).toEqual([]);
   });
 

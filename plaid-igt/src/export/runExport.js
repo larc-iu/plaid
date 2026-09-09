@@ -13,7 +13,7 @@
 // UI-free and stub-client-testable. Per-document failures become entries in
 // `warnings`, not an aborted run; cancellation throws ExportCancelled.
 
-import { IgtDocument, loadProjectVocabularies } from '../domain/IgtDocument.js';
+import { IgtDocument, loadProjectVocabularies, rebaseVocabLinks } from '../domain/IgtDocument.js';
 import { readVocabFields, readLanguages } from '../domain/igtConfig.js';
 import { discoverExportLayers, intersectSelection } from './exportLayers.js';
 import { serializeDocumentPlain } from './plainTextDoc.js';
@@ -270,8 +270,14 @@ export async function runExport({
   // CLDF turns the vocabularies into EntryTable/SenseTable, so it needs them
   // loaded whenever its dictionary option is on.
   const wantCldfDictionary = isCldf && preset.options?.dictionary !== false;
+  // A FLEx export reads the cf and hn of every morph off the lexicon ENTRY it
+  // links to, so it needs the items loaded even when it is not writing the
+  // .lift. Without them the document GET's embedded items stand in, and those
+  // carry no metadata at all: cf fell back to the citation form, undecorated,
+  // which is exactly the match FLEx cannot make.
+  const wantEntries = isFlex && preset.options?.citationForms !== false;
   let vocabs = [];
-  if (wantVocabTsvs || isNative || wantCldfDictionary || wantLexicon) {
+  if (wantVocabTsvs || isNative || wantCldfDictionary || wantLexicon || wantEntries) {
     const loaded = await loadProjectVocabularies(client, project, asOf);
     vocabs = Object.values(loaded.vocabularies);
     if (loaded.failedCount) {
@@ -280,6 +286,7 @@ export async function runExport({
       );
     }
   }
+  const vocabsById = Object.fromEntries(vocabs.map((v) => [v.id, v]));
   checkStop();
 
   // The lexicon's promoted examples are references into documents, so the
@@ -314,10 +321,19 @@ export async function runExport({
     let igtDoc;
     try {
       const raw = await client.documents.get(docIds[i], true, asOf || undefined);
-      // Vocab links — including the vocabItem each carries (flextext citation
-      // forms) — ride embedded in the document GET; the constructor folds them
-      // into the (fresh, per-document) vocabularies map.
-      igtDoc = new IgtDocument({ raw, project, vocabularies: {}, client, projectId: project.id });
+      // Vocab links ride embedded in the document GET, and the constructor
+      // folds them into the vocabularies map it is handed. The items in that
+      // map are the project's own, rebased so each document starts with only
+      // its own links: the embedded item is a bare {id, form} and an exporter
+      // that reads an entry's metadata (a lexeme form, a morph type, a
+      // homograph number) finds nothing on it.
+      igtDoc = new IgtDocument({
+        raw,
+        project,
+        vocabularies: rebaseVocabLinks(vocabsById),
+        client,
+        projectId: project.id,
+      });
     } catch (err) {
       warnings.push(`Document ${docIds[i]} failed to load: ${err?.message ?? err}`);
       continue;

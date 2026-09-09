@@ -35,3 +35,25 @@ export const fieldNameLang = (name) => {
   const { ws } = parseFieldName(name);
   return ws && isLangTag(ws) ? ws : null;
 };
+
+/**
+ * The writing system a field's values go out under, most trustworthy first:
+ * an explicit override from the export preset, then what the FIELD ITSELF
+ * records (config.igt.lang, which an importer that knew writes), then the tag
+ * its own name carries, then the one tag for glosses and translations.
+ *
+ * The FLEx exporter and the screen that configures it both resolve through
+ * here, so the tag shown beside a field is the tag it goes out under. They
+ * disagreed once, and a preview that lies about the export is worse than no
+ * preview: FLEx keeps one value per writing system, so two fields landing on
+ * the same tag lose one of them without a word.
+ *
+ * @param {{overrides?: object, fieldLangs?: object, analysis?: string}} langs
+ * @param {'Sentence'|'Word'|'Morpheme'} scope
+ */
+export const resolveFieldLang = (langs, scope, field) =>
+  langs?.overrides?.[field] ||
+  langs?.fieldLangs?.[`${scope}:${field}`] ||
+  fieldNameLang(field) ||
+  langs?.analysis ||
+  'en';

@@ -44,7 +44,7 @@
 import { FLEX_MORPH_TYPES, decorateWithAffixMarkers } from '../domain/affixMarkers.js';
 import { morphFormOf } from '../domain/igtExport.js';
 import { lexiconView } from '../domain/vocabDictionary.js';
-import { fieldNameLang } from '../domain/fieldNames.js';
+import { resolveFieldLang } from '../domain/fieldNames.js';
 
 // Shared with the .eaf exporter (src/export/elan.js). The two XML formats
 // escape identically, and one copy keeps them from drifting.
@@ -73,10 +73,15 @@ const analysisLang = (options) => options?.langs?.analysis || 'en';
 // one lang, and FLEx keeps one form per writing system, so two of three
 // translations were silently dropped on import.
 const fieldLang = (options, scope, field) =>
-  options?.langs?.fieldOverrides?.[field] ||
-  options?.fieldLangs?.[`${scope}:${field}`] ||
-  fieldNameLang(field) ||
-  analysisLang(options);
+  resolveFieldLang(
+    {
+      overrides: options?.langs?.fieldOverrides,
+      fieldLangs: options?.fieldLangs,
+      analysis: options?.langs?.analysis,
+    },
+    scope,
+    field,
+  );
 
 // The <item type> a field may take, per annotation scope. Shared by the writers
 // and by the <languages> census so the two cannot disagree about which fields
@@ -127,7 +132,9 @@ function morphXml(indent, m, options, lex) {
     // have failed to link.
     // The linked item may be a sense: the lexeme form and the homograph
     // number are the headword's, and the morph type is the sense's own or,
-    // failing that, the headword's.
+    // failing that, the headword's. Failing THAT, the morpheme's own type,
+    // so `cf` and `txt` can never disagree about what kind of morph this is:
+    // an undecorated cf beside a decorated txt matches nothing in FLEx.
     const entry = lex?.(m.vocabItem) ?? { root: m.vocabItem, morphType: null };
     const meta = m.vocabItem.metadata ?? {};
     const rootMeta = entry.root?.metadata ?? {};
@@ -137,7 +144,7 @@ function morphXml(indent, m, options, lex) {
         `${indent}  `,
         'cf',
         baselineLang(options),
-        decorateWithAffixMarkers(entry.morphType ?? meta.morphType, lexeme),
+        decorateWithAffixMarkers(entry.morphType ?? meta.morphType ?? morphType, lexeme),
       ),
     );
     // Narrows the match when entries share a lexeme form. FLEx reads a missing
