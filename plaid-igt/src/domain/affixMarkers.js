@@ -77,8 +77,19 @@ export const morphemeJoiner = (prevMorphType, morphType) =>
 
 // --- Per-type markers, for talking to FLEx ---------------------------------
 // The Prefix/Postfix of each MoMorphType, read off the factory objects in real
-// .fwbackup files (identical in Lezgi, Sena and Arabic, so they are constants
-// and not per-project settings). The joiner rule above is what Plaid renders
+// .fwbackup files: identical in Lezgi, Sena, Arabic, Onim and Lamkang, so we
+// treat them as constants rather than per-project settings.
+//
+// The 12 below are every type with a non-empty marker. The other seven (stem,
+// root, circumfix, clitic, particle, phrase, discontiguous phrase) have an
+// EMPTY Prefix and Postfix in the data, so falling through to "decorate
+// nothing" is right for them and not an omission. Verified 2026-09-09 across
+// all 19 types; circumfix and clitic being unmarked is the surprising part.
+//
+// They ARE editable objects in a FieldWorks project rather than global
+// constants, so a project that customised them would round-trip wrong here and
+// we would have no way to notice. Five projects agree exactly, which is why
+// this is a table and not a per-import read. The joiner rule above is what Plaid renders
 // for a chain of morphemes. THIS is different: it is how FLEx spells one
 // morpheme's form on its own, and FLEx compares decorated forms when it
 // matches an imported morph against the lexicon, so an exporter that leaves
