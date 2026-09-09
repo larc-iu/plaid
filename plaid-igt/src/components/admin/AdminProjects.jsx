@@ -41,10 +41,10 @@ export const AdminProjects = ({ client, currentUser }) => {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      // documentCount and lastModified come back on the project itself, so the
-      // whole table is one request. An admin's project list is every project.
-      const page = await client.projects.listPage({ limit: 1000 });
-      setProjects(page.entries || []);
+      // documentCount and lastModified come back on the project itself, so
+      // nothing else has to be asked per row. An admin's project list is every
+      // project on the server.
+      setProjects((await client.projects.list()) || []);
     } catch (err) {
       console.error('Error loading projects:', err);
       notifyError(err.message || 'Failed to load projects', 'Error');

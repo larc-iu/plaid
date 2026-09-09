@@ -20,8 +20,6 @@ import { UserDetail } from './UserDetail';
 // members; this browses everyone, and opens onto what one person has been
 // doing, what they can reach, and what tokens they hold.
 
-const PAGE_LIMIT = 1000;
-
 export const AdminUsers = ({ client, currentUser }) => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -31,11 +29,11 @@ export const AdminUsers = ({ client, currentUser }) => {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      // One page of the directory, then filtered here: an instance where this
-      // overflows has other problems, and a local filter keeps the roster
-      // sortable and countable without a round trip per keystroke.
-      const page = await client.users.listPage({ limit: PAGE_LIMIT });
-      setUsers(page.entries || []);
+      // The whole directory, then filtered and paged here: a local filter
+      // keeps the roster sortable and countable without a round trip per
+      // keystroke, and list() follows every cursor so nothing is dropped
+      // silently at some page boundary.
+      setUsers((await client.users.list()) || []);
     } catch (err) {
       console.error('Error loading users:', err);
       notifyError(err.message || 'Failed to load users', 'Error');

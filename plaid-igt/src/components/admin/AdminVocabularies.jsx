@@ -18,12 +18,12 @@ export const AdminVocabularies = ({ client }) => {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [vocabList, projectPage] = await Promise.all([
+      const [vocabList, projectList] = await Promise.all([
         client.vocabLayers.list(),
-        client.projects.listPage({ limit: 1000 }),
+        client.projects.list(),
       ]);
       setVocabs(vocabList || []);
-      setProjects(projectPage.entries || []);
+      setProjects(projectList || []);
     } catch (err) {
       console.error('Error loading vocabularies:', err);
       notifyError(err.message || 'Failed to load vocabularies', 'Error');

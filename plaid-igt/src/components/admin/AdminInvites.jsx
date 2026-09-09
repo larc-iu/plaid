@@ -99,12 +99,12 @@ export const AdminInvites = ({ client }) => {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [rows, projectPage] = await Promise.all([
+      const [rows, projectList] = await Promise.all([
         client.invites.list({ all: true }),
-        client.projects.listPage({ limit: 1000 }),
+        client.projects.list(),
       ]);
       setInvites(rows || []);
-      setProjects(projectPage.entries || []);
+      setProjects(projectList || []);
     } catch (err) {
       console.error('Error loading invites:', err);
       notifyError(err.message || 'Failed to load invites', 'Error');

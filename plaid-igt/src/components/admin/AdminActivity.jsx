@@ -10,9 +10,9 @@ export const AdminActivity = ({ client }) => {
   useEffect(() => {
     let alive = true;
     client.users
-      .listPage({ limit: 1000 })
-      .then((page) => {
-        if (alive) setRoster((page.entries || []).filter((u) => !u.deactivatedAt));
+      .list()
+      .then((all) => {
+        if (alive) setRoster((all || []).filter((u) => !u.deactivatedAt));
       })
       .catch(() => {});
     return () => {

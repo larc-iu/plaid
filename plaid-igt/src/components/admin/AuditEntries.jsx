@@ -7,7 +7,7 @@ import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 
 // A unit's label, best available: the operation group's own message ("Confirm
 // word analysis"), else the first operation's description, else its type.
-const label = (entry) => {
+export const entryLabel = (entry) => {
   if (entry.message) return entry.message;
   const head = entry.ops?.[0];
   return head?.description || head?.type || 'Change';
@@ -34,7 +34,7 @@ export const AuditEntries = ({ entries, empty = 'Nothing yet.', showUser = false
               {showUser && (
                 <td className="px-3 py-1.5">{entry.user?.displayName || entry.user?.id || '—'}</td>
               )}
-              <td className="px-3 py-1.5">{label(entry)}</td>
+              <td className="px-3 py-1.5">{entryLabel(entry)}</td>
               <td className="px-3 py-1.5 text-muted-foreground">
                 {document && project ? (
                   <Link

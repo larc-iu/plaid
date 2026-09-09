@@ -25,12 +25,10 @@ export const ProjectActivity = ({ client, project, projectId }) => {
     // One directory read rather than a lookup per member. This tab is
     // maintainer-only, which is exactly who the directory is open to.
     client.users
-      .listPage({ limit: 1000 })
-      .then((page) => {
+      .list()
+      .then((all) => {
         if (!alive) return;
-        setNames(
-          Object.fromEntries((page.entries || []).map((u) => [u.id, u.displayName || u.id])),
-        );
+        setNames(Object.fromEntries((all || []).map((u) => [u.id, u.displayName || u.id])));
       })
       .catch(() => {});
     return () => {

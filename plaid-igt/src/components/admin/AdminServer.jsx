@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { ListPager } from '@/components/ui/list-search';
+import { usePagedList } from '@/hooks/usePagedList';
 import { formatBytes } from '@/utils/formatBytes';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 import { notifySuccess, notifyError } from '@/utils/feedback';
@@ -122,16 +124,23 @@ export const AdminServer = ({ client }) => {
     }
   };
 
+  const buckets = useMemo(
+    () => [
+      ...(rateLimits?.logins || []).map((b) => ({ ...b, kind: 'Login' })),
+      ...(rateLimits?.ips || []).map((b) => ({ ...b, kind: 'Address' })),
+      ...(rateLimits?.invites || []).map((b) => ({ ...b, kind: 'Invite' })),
+    ],
+    [rateLimits],
+  );
+  // Both of these are small in ordinary use and unbounded in principle: a
+  // class all editing at once, a spray across many addresses.
+  const pagedLocks = usePagedList(locks);
+  const pagedBuckets = usePagedList(buckets);
+
   if (loading && !report) return <p className="py-8 text-sm text-muted-foreground">Loading…</p>;
   if (!report) return null;
 
   const { jvm, database, media, backup, settings } = report;
-  const buckets = [
-    ...(rateLimits?.logins || []).map((b) => ({ ...b, kind: 'Login' })),
-    ...(rateLimits?.ips || []).map((b) => ({ ...b, kind: 'Address' })),
-    ...(rateLimits?.invites || []).map((b) => ({ ...b, kind: 'Invite' })),
-  ];
-
   return (
     <div className="flex flex-col gap-4">
       <div className="flex justify-end">
@@ -247,12 +256,13 @@ export const AdminServer = ({ client }) => {
         </Section>
 
         <Section title="Open documents">
+          <ListPager {...pagedLocks} onPage={pagedLocks.setPage} position="top" />
           {locks.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nobody is holding a document.</p>
           ) : (
             <table className="w-full text-sm">
               <tbody>
-                {locks.map((l) => (
+                {pagedLocks.pageItems.map((l) => (
                   <tr key={l.documentId} className="border-t">
                     <td className="py-1 font-mono text-xs">{l.documentId}</td>
                     <td className="py-1 pl-3">{l.userId}</td>
@@ -266,6 +276,7 @@ export const AdminServer = ({ client }) => {
               </tbody>
             </table>
           )}
+          <ListPager {...pagedLocks} onPage={pagedLocks.setPage} position="bottom" />
         </Section>
 
         <Section
@@ -285,7 +296,7 @@ export const AdminServer = ({ client }) => {
           ) : (
             <table className="w-full text-sm">
               <tbody>
-                {buckets.map((b, i) => (
+                {pagedBuckets.pageItems.map((b, i) => (
                   <tr key={`${b.kind}-${b.ip}-${b.userId || ''}-${i}`} className="border-t">
                     <td className="py-1 text-muted-foreground">{b.kind}</td>
                     <td className="py-1 pl-3 font-mono text-xs">{b.ip}</td>
@@ -306,6 +317,7 @@ export const AdminServer = ({ client }) => {
               </tbody>
             </table>
           )}
+          <ListPager {...pagedBuckets} onPage={pagedBuckets.setPage} position="bottom" />
         </Section>
       </div>
 

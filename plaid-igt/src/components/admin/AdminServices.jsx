@@ -21,8 +21,7 @@ export const AdminServices = ({ client }) => {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const page = await client.projects.listPage({ limit: 1000 });
-      const projects = page.entries || [];
+      const projects = (await client.projects.list()) || [];
       const found = await Promise.all(
         projects.map((p) =>
           client.messages

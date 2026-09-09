@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { SearchInput, ListCount, ListPager } from '@/components/ui/list-search';
 import { UserAvatar } from '@/components/shared/UserAvatar';
+import { usePagedList } from '@/hooks/usePagedList';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 import { notifyError } from '@/utils/feedback';
-import { AuditEntries } from './AuditEntries';
+import { AuditFeed } from './AuditFeed';
 
 // Who has been working, and on what. Two reads: a tally of people, and the
 // feed of what happened. `projectId` scopes both to one project, which is what
@@ -53,21 +55,16 @@ const Sparkline = ({ byDay, days = 14 }) => {
 export const ActivityPanel = ({ client, projectId, roster }) => {
   const [range, setRange] = useState('30');
   const [tally, setTally] = useState([]);
-  const [feed, setFeed] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [quietSearch, setQuietSearch] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
-    const startTime = startFor(range);
     try {
-      const [rows, page] = await Promise.all([
-        client.audit.tally({ projectId, startTime, daily: true }),
-        projectId
-          ? client.projects.auditPage(projectId, { limit: 50, startTime, order: 'desc' })
-          : client.audit.listPage({ limit: 50, startTime, order: 'desc' }),
-      ]);
-      setTally(rows || []);
-      setFeed(page.entries || []);
+      setTally(
+        (await client.audit.tally({ projectId, startTime: startFor(range), daily: true })) || [],
+      );
     } catch (err) {
       console.error('Error loading activity:', err);
       notifyError(err.message || 'Failed to load activity', 'Error');
@@ -90,7 +87,25 @@ export const ActivityPanel = ({ client, projectId, roster }) => {
 
   const quiet = useMemo(() => (roster || []).filter((m) => !byUser.has(m.id)), [roster, byUser]);
 
-  const peak = Math.max(1, ...tally.map((r) => r.changes));
+  const named = (row) => row.user?.displayName || row.user?.id || '';
+  const matching = (text, q) => text.toLowerCase().includes(q);
+
+  const shownTally = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return q ? tally.filter((row) => matching(named(row), q)) : tally;
+  }, [tally, search]);
+
+  const shownQuiet = useMemo(() => {
+    const q = quietSearch.trim().toLowerCase();
+    return q ? quiet.filter((m) => matching(m.displayName || m.id, q)) : quiet;
+  }, [quiet, quietSearch]);
+
+  const pagedTally = usePagedList(shownTally, { resetKey: `${range}:${search}` });
+  const pagedQuiet = usePagedList(shownQuiet, { resetKey: `${range}:${quietSearch}` });
+
+  // Scaled to the busiest person shown, not the busiest loaded, so a filtered
+  // table still fills its bars.
+  const peak = Math.max(1, ...shownTally.map((r) => r.changes));
 
   return (
     <div className="flex flex-col gap-4">
@@ -108,11 +123,23 @@ export const ActivityPanel = ({ client, projectId, roster }) => {
       </div>
 
       <section className="rounded-md border">
-        <h3 className="border-b px-3 py-2 text-sm font-semibold">Who has been working</h3>
+        <div className="flex items-center gap-2 border-b px-3 py-2">
+          <h3 className="text-sm font-semibold">Who has been working</h3>
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Search people…"
+            className="ml-auto max-w-[14rem]"
+          />
+          <ListCount shown={shownTally.length} total={tally.length} noun="person" />
+        </div>
+        <ListPager {...pagedTally} onPage={pagedTally.setPage} position="top" />
         {loading && tally.length === 0 ? (
           <p className="p-3 text-sm text-muted-foreground">Loading…</p>
-        ) : tally.length === 0 ? (
-          <p className="p-3 text-sm text-muted-foreground">Nothing in this window.</p>
+        ) : shownTally.length === 0 ? (
+          <p className="p-3 text-sm text-muted-foreground">
+            {tally.length === 0 ? 'Nothing in this window.' : 'Nobody matches.'}
+          </p>
         ) : (
           <table className="w-full text-sm">
             <thead>
@@ -125,7 +152,7 @@ export const ActivityPanel = ({ client, projectId, roster }) => {
               </tr>
             </thead>
             <tbody>
-              {tally.map((row) => (
+              {pagedTally.pageItems.map((row) => (
                 <tr key={row.user?.id || 'system'} className="border-b last:border-0">
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-2">
@@ -169,20 +196,63 @@ export const ActivityPanel = ({ client, projectId, roster }) => {
             </tbody>
           </table>
         )}
+        <ListPager {...pagedTally} onPage={pagedTally.setPage} position="bottom" />
       </section>
 
       {quiet.length > 0 && (
         <section className="rounded-md border">
-          <h3 className="border-b px-3 py-2 text-sm font-semibold">
-            No changes in this window ({quiet.length})
-          </h3>
-          <p className="p-3 text-sm">{quiet.map((m) => m.displayName || m.id).join(', ')}</p>
+          <div className="flex items-center gap-2 border-b px-3 py-2">
+            <h3 className="text-sm font-semibold">No changes in this window</h3>
+            <SearchInput
+              value={quietSearch}
+              onChange={setQuietSearch}
+              placeholder="Search people…"
+              className="ml-auto max-w-[14rem]"
+            />
+            <ListCount shown={shownQuiet.length} total={quiet.length} noun="person" />
+          </div>
+          <ListPager {...pagedQuiet} onPage={pagedQuiet.setPage} position="top" />
+          {shownQuiet.length === 0 ? (
+            <p className="p-3 text-sm text-muted-foreground">Nobody matches.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <tbody>
+                {pagedQuiet.pageItems.map((m) => (
+                  <tr key={m.id} className="border-b last:border-0">
+                    <td className="px-3 py-1.5">
+                      <div className="flex items-center gap-2">
+                        <UserAvatar
+                          client={client}
+                          userId={m.id}
+                          displayName={m.displayName}
+                          className="h-6 w-6"
+                        />
+                        <span>{m.displayName || m.id}</span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-1.5 text-right text-muted-foreground">{m.id}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <ListPager {...pagedQuiet} onPage={pagedQuiet.setPage} position="bottom" />
         </section>
       )}
 
       <section className="rounded-md border">
         <h3 className="border-b px-3 py-2 text-sm font-semibold">Recent changes</h3>
-        <AuditEntries entries={feed} showUser empty="Nothing in this window." />
+        <AuditFeed
+          resetKey={`${projectId || 'all'}:${range}`}
+          showUser
+          empty="Nothing in this window."
+          fetchPage={({ limit, cursor }) => {
+            const opts = { limit, cursor, order: 'desc', startTime: startFor(range) };
+            return projectId
+              ? client.projects.auditPage(projectId, opts)
+              : client.audit.listPage(opts);
+          }}
+        />
       </section>
     </div>
   );

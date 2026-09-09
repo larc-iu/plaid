@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { UserAvatar } from '@/components/shared/UserAvatar';
+import { SearchInput, ListCount, ListPager } from '@/components/ui/list-search';
+import { usePagedList } from '@/hooks/usePagedList';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useConfirm } from '@/components/shared/ConfirmProvider';
-import { AuditEntries } from './AuditEntries';
+import { AuditFeed } from './AuditFeed';
 
 // One account: what they can reach, what they have been doing, and what is
 // holding a session open in their name.
@@ -17,23 +19,22 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
   const [user, setUser] = useState(null);
   const [projects, setProjects] = useState([]);
   const [tokens, setTokens] = useState([]);
-  const [audit, setAudit] = useState([]);
   const [tally, setTally] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [projectSearch, setProjectSearch] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [u, projectPage, tokenList, auditPage, tallyRows] = await Promise.all([
+      const [u, projectList, tokenList, tallyRows] = await Promise.all([
         client.users.get(userId),
-        client.projects.listPage({ limit: 1000 }),
+        client.projects.list(),
         client.apiTokens.list(userId).catch(() => []),
-        client.audit.listPage({ limit: 50 }).catch(() => ({ entries: [] })),
         client.audit.tally().catch(() => []),
       ]);
       setUser(u);
       setProjects(
-        (projectPage.entries || [])
+        (projectList || [])
           .map((p) => ({
             id: p.id,
             name: p.name,
@@ -48,10 +49,6 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
           .filter((p) => p.role),
       );
       setTokens(tokenList || []);
-      // The instance feed filtered here rather than asked for per user: the
-      // per-user endpoint returns their whole history, and this panel wants
-      // the recent end of it.
-      setAudit((auditPage.entries || []).filter((e) => e.user?.id === userId).slice(0, 25));
       setTally((tallyRows || []).find((r) => r.user?.id === userId) || null);
     } catch (err) {
       console.error('Error loading user:', err);
@@ -64,6 +61,14 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
   useEffect(() => {
     load();
   }, [load]);
+
+  const shownProjects = useMemo(() => {
+    const q = projectSearch.trim().toLowerCase();
+    return q ? projects.filter((p) => p.name.toLowerCase().includes(q)) : projects;
+  }, [projects, projectSearch]);
+
+  const pagedProjects = usePagedList(shownProjects, { resetKey: projectSearch });
+  const pagedTokens = usePagedList(tokens, { resetKey: userId });
 
   const revokeToken = async (token) => {
     const ok = await confirm({
@@ -130,13 +135,25 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
           )}
 
           <section className="rounded-md border">
-            <h3 className="border-b px-3 py-2 text-sm font-semibold">Projects</h3>
-            {projects.length === 0 ? (
-              <p className="p-3 text-sm text-muted-foreground">No project roles.</p>
+            <div className="flex items-center gap-2 border-b px-3 py-2">
+              <h3 className="text-sm font-semibold">Projects</h3>
+              <SearchInput
+                value={projectSearch}
+                onChange={setProjectSearch}
+                placeholder="Search projects…"
+                className="ml-auto max-w-[14rem]"
+              />
+              <ListCount shown={shownProjects.length} total={projects.length} noun="project" />
+            </div>
+            <ListPager {...pagedProjects} onPage={pagedProjects.setPage} position="top" />
+            {shownProjects.length === 0 ? (
+              <p className="p-3 text-sm text-muted-foreground">
+                {projects.length === 0 ? 'No project roles.' : 'No projects match.'}
+              </p>
             ) : (
               <table className="w-full text-sm">
                 <tbody>
-                  {projects.map((p) => (
+                  {pagedProjects.pageItems.map((p) => (
                     <tr key={p.id} className="border-b last:border-0">
                       <td className="px-3 py-2">
                         <Link to={`/projects/${p.id}`} className="hover:underline">
@@ -149,16 +166,18 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
                 </tbody>
               </table>
             )}
+            <ListPager {...pagedProjects} onPage={pagedProjects.setPage} position="bottom" />
           </section>
 
           <section className="rounded-md border">
             <h3 className="border-b px-3 py-2 text-sm font-semibold">API tokens</h3>
+            <ListPager {...pagedTokens} onPage={pagedTokens.setPage} position="top" />
             {tokens.length === 0 ? (
               <p className="p-3 text-sm text-muted-foreground">No tokens.</p>
             ) : (
               <table className="w-full text-sm">
                 <tbody>
-                  {tokens.map((t) => (
+                  {pagedTokens.pageItems.map((t) => (
                     <tr key={t.id} className="border-b last:border-0">
                       <td className="px-3 py-2">{t.name}</td>
                       <td
@@ -177,11 +196,18 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
                 </tbody>
               </table>
             )}
+            <ListPager {...pagedTokens} onPage={pagedTokens.setPage} position="bottom" />
           </section>
 
           <section className="rounded-md border">
             <h3 className="border-b px-3 py-2 text-sm font-semibold">Recent activity</h3>
-            <AuditEntries entries={audit} empty="Nothing recent." />
+            <AuditFeed
+              resetKey={userId}
+              empty="Nothing recorded."
+              fetchPage={({ limit, cursor }) =>
+                client.users.auditPage(userId, { limit, cursor, order: 'desc' })
+              }
+            />
           </section>
         </>
       )}
