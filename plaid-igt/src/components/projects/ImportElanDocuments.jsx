@@ -37,6 +37,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { notifyError, notifySuccess, notifyWarning } from '@/utils/feedback';
 import { runElanImport } from '../../import/elan/importEngine';
+import { priorImports } from '../../import/resume';
 import {
   addOrthographies,
   createFields,
@@ -81,6 +82,12 @@ export const ImportElanDocuments = () => {
   // that happens to be new is not the same as asking for a new field: without
   // this, clearing the box would silently become "create a field called ''".
   const [creating, setCreating] = useState({});
+  // What earlier runs already imported, by .eaf file name, and whether this run
+  // is to replace what it finds. Without the first the run silently skipped a
+  // file it had seen before, reported "1 already there" once it was too late to
+  // act on, and left the person looking for a document that was never made.
+  const [prior, setPrior] = useState(null);
+  const [replaceExisting, setReplaceExisting] = useState(false);
   const stopRef = useRef(false);
 
   const fields = project ? existingFields(project) : { Sentence: [], Word: [], Morpheme: [] };
@@ -147,6 +154,26 @@ export const ImportElanDocuments = () => {
     }
   };
 
+  // The same listing the run itself needs, read once here so the screen can
+  // name what is already imported and hand it over rather than pay twice.
+  useEffect(() => {
+    if (!project) return undefined;
+    let cancelled = false;
+    priorImports(client, projectId)
+      .then((p) => !cancelled && setPrior(p))
+      .catch((err) => console.error('Could not read what is already imported:', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [client, projectId, project]);
+
+  // Files an earlier run finished. A file only half imported is redone without
+  // asking, which is what resume has always meant.
+  const alreadyImported = (batch.build?.documents ?? []).flatMap((doc) => {
+    const existing = prior?.find(doc.id);
+    return existing && prior.done(existing) ? [{ doc, existing }] : [];
+  });
+
   // What the run would add to the project, as opposed to write into it.
   const newFields = batch.build ? missingFields(project, batch.build.schema.fields) : [];
   const newOrthographies = batch.build
@@ -171,6 +198,8 @@ export const ImportElanDocuments = () => {
         client,
         projectId,
         build: batch.build,
+        prior,
+        replaceExisting,
         shouldStop: () => stopRef.current,
         onWarning: (text, { document }) => setLog((l) => [...l, { text, document }]),
         onProgress: (p) => {
@@ -382,6 +411,42 @@ export const ImportElanDocuments = () => {
                     icon={Plus}
                     title={`${newOrthographies.length} new orthograph${newOrthographies.length === 1 ? 'y' : 'ies'}: ${newOrthographies.join(', ')}`}
                   />
+                )}
+
+                {alreadyImported.length > 0 && (
+                  <Panel
+                    tone="warn"
+                    icon={AlertTriangle}
+                    title={`${alreadyImported.length} of these ${alreadyImported.length === 1 ? 'file was' : 'files were'} imported before`}
+                  >
+                    <ul className="mt-1 flex flex-col gap-0.5 text-xs">
+                      {alreadyImported.map(({ doc, existing }) => (
+                        <li key={doc.id}>
+                          <span className="font-medium">{doc.id}</span> is in this project as{' '}
+                          <Link
+                            to={`/projects/${projectId}/documents/${existing.id}`}
+                            className="underline underline-offset-2"
+                          >
+                            {existing.name}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                    <label className="mt-2 flex cursor-pointer items-start gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={replaceExisting}
+                        onChange={(e) => setReplaceExisting(e.target.checked)}
+                      />
+                      <span>
+                        Import them again
+                        <span className="block text-muted-foreground">
+                          Deletes each document above and everything added to it since.
+                        </span>
+                      </span>
+                    </label>
+                  </Panel>
                 )}
 
                 <ElanStagedFiles

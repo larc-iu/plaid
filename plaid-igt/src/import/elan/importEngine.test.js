@@ -315,6 +315,20 @@ describe('runElanImport', () => {
     expect(partial.calls[0]).toEqual(['documents.delete', 'old']);
   });
 
+  // The screen names what an earlier run already imported and offers to import
+  // it again; without this the skip was invisible until the tally, and there
+  // was no way to ask for the document to be made afresh.
+  it('replaces a document already marked done when the run asks it to', async () => {
+    const client = stubClient({
+      documents: [{ id: 'old', name: 'Story' }],
+      docMetadata: { old: { importSource: 'a.eaf', importDone: true } },
+    });
+    expect(
+      await runElanImport({ client, projectId: 'p1', build: BUILD, replaceExisting: true }),
+    ).toMatchObject({ imported: 1, skipped: 0, redone: 1 });
+    expect(client.calls[0]).toEqual(['documents.delete', 'old']);
+  });
+
   it('stops when asked', async () => {
     const client = stubClient();
     await expect(

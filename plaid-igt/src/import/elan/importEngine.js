@@ -306,7 +306,16 @@ export async function runElanImport(args) {
   return args.client.withOperation('Import ELAN corpus', () => runElanImportImpl(args));
 }
 
-async function runElanImportImpl({ client, projectId, build, onProgress, onWarning, shouldStop }) {
+async function runElanImportImpl({
+  client,
+  projectId,
+  build,
+  onProgress,
+  onWarning,
+  shouldStop,
+  prior: priorGiven = null,
+  replaceExisting = false,
+}) {
   const project = await client.projects.get(projectId);
   const targets = resolveTargets(project, build);
   // Warnings are reported as they happen, not only in the tally at the end: a
@@ -319,8 +328,10 @@ async function runElanImportImpl({ client, projectId, build, onProgress, onWarni
   };
   for (const w of build.warnings) note(w);
 
-  // Resume bookkeeping: what an earlier run made, by .eaf file name.
-  const prior = await priorImports(client, projectId);
+  // Resume bookkeeping: what an earlier run made, by .eaf file name. The
+  // screen reads this too, to say which files are already in the project, and
+  // hands over what it read rather than paying for the listing twice.
+  const prior = priorGiven ?? (await priorImports(client, projectId));
 
   const results = { imported: 0, skipped: 0, redone: 0 };
   for (let i = 0; i < build.documents.length; i += 1) {
@@ -333,7 +344,8 @@ async function runElanImportImpl({ client, projectId, build, onProgress, onWarni
       total: build.documents.length,
       step: 'Starting',
     });
-    if (!(await settlePrior(client, prior, doc.id, results))) continue;
+    if (!(await settlePrior(client, prior, doc.id, results, { replace: replaceExisting })))
+      continue;
     await importDocument({
       client,
       projectId,

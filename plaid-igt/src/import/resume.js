@@ -54,16 +54,18 @@ export async function priorImports(client, projectId) {
 /**
  * Whether a document the source names has to be imported: it is skipped when
  * an earlier run finished it, and redone (deleted first) when one only began
- * it. Counts into `results`.
+ * it. `replace` redoes a finished one too, which is what a screen asks for
+ * when the person has been shown what is already there and said to import it
+ * again anyway. Counts into `results`.
  */
-export async function settlePrior(client, prior, sourceId, results) {
+export async function settlePrior(client, prior, sourceId, results, { replace = false } = {}) {
   const existing = prior.find(sourceId);
   if (!existing) return true;
-  if (prior.done(existing)) {
+  if (prior.done(existing) && !replace) {
     results.skipped += 1;
     return false;
   }
-  await client.documents.delete(existing.id); // half-imported: redo cleanly
+  await client.documents.delete(existing.id); // half-imported, or being redone
   results.redone += 1;
   return true;
 }
