@@ -1,19 +1,15 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Plus } from 'lucide-react';
-import { SortHeader } from '@/components/ui/list-search';
-import { listPrefKey, useStickySort } from '@/hooks/useStickyState';
+import { DataTable } from '@/components/ui/data-table';
+import { listPrefKey } from '@/hooks/useStickyState';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 import { notifyWarning, isPermissionError } from '@/utils/feedback';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-
-// The columns this list sorts by, named once so a remembered sort on a column
-// that is no longer here is rejected rather than reaching the comparator.
-const VOCABULARY_COLUMNS = ['name', 'items', 'updated'];
 
 export const VocabularyList = () => {
   useDocumentTitle('Vocabularies');
@@ -23,11 +19,6 @@ export const VocabularyList = () => {
   // vocabLayerId -> item count (number), or undefined while still loading.
   const [itemCounts, setItemCounts] = useState({});
   const [countsLoading, setCountsLoading] = useState(true);
-  const [sort, onSort] = useStickySort(
-    listPrefKey('sort', 'vocabularies'),
-    { key: 'name', dir: 'asc' },
-    VOCABULARY_COLUMNS,
-  );
   const { client, logout } = useAuth();
 
   const fetchVocabularies = async () => {
@@ -94,22 +85,6 @@ export const VocabularyList = () => {
     };
   }, [vocabularies, client]);
 
-  const sortedVocabularies = useMemo(() => {
-    const extract = {
-      name: (v) => v.name?.toLowerCase() ?? '',
-      items: (v) => (itemCounts[v.id] == null ? -1 : itemCounts[v.id]),
-      updated: (v) => (v.timeModified ? new Date(v.timeModified).getTime() : 0),
-    }[sort.key];
-    const dir = sort.dir === 'asc' ? 1 : -1;
-    return [...vocabularies].sort((a, b) => {
-      const av = extract(a);
-      const bv = extract(b);
-      if (av < bv) return -1 * dir;
-      if (av > bv) return 1 * dir;
-      return 0;
-    });
-  }, [vocabularies, itemCounts, sort]);
-
   const renderItems = (vocabId) => {
     if (countsLoading && itemCounts[vocabId] === undefined) {
       return (
@@ -127,6 +102,71 @@ export const VocabularyList = () => {
       </div>
     );
   }
+
+  // Cells wrap their content in a real link so the row behaves like one
+  // (middle-click, "open in new tab"), same as the project and document
+  // tables. The cell keeps no padding of its own, so the link fills it.
+  const linked = (vocabulary, className, children) => (
+    <Link to={`/vocabularies/${vocabulary.id}`} className={className}>
+      {children}
+    </Link>
+  );
+
+  const columns = [
+    {
+      key: 'name',
+      label: 'Vocabulary',
+      sort: (v) => v.name?.toLowerCase() ?? '',
+      className: 'p-0',
+      render: (v) =>
+        linked(
+          v,
+          'block px-4 py-3',
+          <div className="min-w-0">
+            <div className="truncate font-medium">{v.name}</div>
+          </div>,
+        ),
+    },
+    {
+      key: 'items',
+      label: 'Entries',
+      // A vocabulary whose count could not be read counts as the smallest,
+      // the way it did when the comparator gave it -1.
+      sort: (v) => itemCounts[v.id] ?? null,
+      align: 'right',
+      className: 'p-0',
+      render: (v) =>
+        linked(
+          v,
+          'block px-4 py-3 text-right tabular-nums text-muted-foreground',
+          renderItems(v.id),
+        ),
+    },
+    {
+      key: 'updated',
+      label: 'Updated',
+      sort: (v) => (v.timeModified ? new Date(v.timeModified).getTime() : null),
+      align: 'right',
+      className: 'p-0',
+      render: (v) =>
+        linked(
+          v,
+          'block whitespace-nowrap px-4 py-3 text-right text-muted-foreground',
+          // Null for vocabularies created before the layer carried
+          // timestamps: they read as unknown until their next edit.
+          v.timeModified ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>{timeAgo(v.timeModified) || '—'}</span>
+              </TooltipTrigger>
+              <TooltipContent>{fullTimestamp(v.timeModified)}</TooltipContent>
+            </Tooltip>
+          ) : (
+            '—'
+          ),
+        ),
+    },
+  ];
 
   return (
     <div className="tw mx-auto max-w-5xl px-4 py-8">
@@ -155,83 +195,14 @@ export const VocabularyList = () => {
         </Card>
       ) : (
         <TooltipProvider>
-          <div className="overflow-hidden rounded-md border">
-            <table className="w-full text-sm">
-              <thead className="border-b bg-muted/40">
-                <tr>
-                  <th className="px-4 py-2 text-left">
-                    <SortHeader field="name" label="Vocabulary" sort={sort} onSort={onSort} />
-                  </th>
-                  <th className="px-4 py-2 text-right">
-                    <SortHeader
-                      field="items"
-                      label="Entries"
-                      sort={sort}
-                      onSort={onSort}
-                      className="justify-end"
-                    />
-                  </th>
-                  <th className="px-4 py-2 text-right">
-                    <SortHeader
-                      field="updated"
-                      label="Updated"
-                      sort={sort}
-                      onSort={onSort}
-                      className="justify-end"
-                    />
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedVocabularies.map((vocabulary) => {
-                  // Cells wrap their content in a real link so the row behaves
-                  // like one (middle-click, "open in new tab"), same as the
-                  // project and document tables.
-                  const to = `/vocabularies/${vocabulary.id}`;
-                  return (
-                    <tr key={vocabulary.id} className="border-b last:border-0 hover:bg-accent/40">
-                      <td className="p-0">
-                        <Link to={to} className="block px-4 py-3">
-                          <div className="min-w-0">
-                            <div className="truncate font-medium">{vocabulary.name}</div>
-                          </div>
-                        </Link>
-                      </td>
-                      <td className="p-0">
-                        <Link
-                          to={to}
-                          className="block px-4 py-3 text-right tabular-nums text-muted-foreground"
-                        >
-                          {renderItems(vocabulary.id)}
-                        </Link>
-                      </td>
-                      <td className="p-0">
-                        <Link
-                          to={to}
-                          className="block whitespace-nowrap px-4 py-3 text-right text-muted-foreground"
-                        >
-                          {/* Null for vocabularies created before the layer carried
-                            timestamps: they read as unknown until their next edit. */}
-                          {vocabulary.timeModified ? (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span>{timeAgo(vocabulary.timeModified) || '—'}</span>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                {fullTimestamp(vocabulary.timeModified)}
-                              </TooltipContent>
-                            </Tooltip>
-                          ) : (
-                            '—'
-                          )}
-                        </Link>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            rows={vocabularies}
+            columns={columns}
+            rowKey={(v) => v.id}
+            storageKey={listPrefKey('sort', 'vocabularies')}
+            defaultSort={{ key: 'name', dir: 'asc' }}
+            noun="vocabulary"
+          />
         </TooltipProvider>
       )}
     </div>

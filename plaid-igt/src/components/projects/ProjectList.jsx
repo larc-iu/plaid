@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Plus } from 'lucide-react';
-import { SortHeader } from '@/components/ui/list-search';
-import { listPrefKey, useStickySort } from '@/hooks/useStickyState';
+import { DataTable } from '@/components/ui/data-table';
+import { listPrefKey } from '@/hooks/useStickyState';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
@@ -11,10 +11,6 @@ import { notifyWarning } from '@/utils/feedback';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-
-// The columns this list sorts by, named once so a remembered sort on a column
-// that is no longer here is rejected rather than reaching the comparator.
-const PROJECT_COLUMNS = ['name', 'documents', 'words', 'updated'];
 
 export const ProjectList = () => {
   useDocumentTitle('Projects');
@@ -26,11 +22,6 @@ export const ProjectList = () => {
   // word-token layer. `undefined` (missing key) means "still loading".
   const [wordCounts, setWordCounts] = useState({});
   const [wordsLoading, setWordsLoading] = useState(true);
-  const [sort, onSort] = useStickySort(
-    listPrefKey('sort', 'projects'),
-    { key: 'updated', dir: 'desc' },
-    PROJECT_COLUMNS,
-  );
 
   const fetchProjects = async () => {
     try {
@@ -98,23 +89,6 @@ export const ProjectList = () => {
     };
   }, [projects, client]);
 
-  const sortedProjects = useMemo(() => {
-    const extract = {
-      name: (p) => p.name?.toLowerCase() ?? '',
-      documents: (p) => p.documentCount ?? 0,
-      words: (p) => (wordCounts[p.id] == null ? -1 : wordCounts[p.id]),
-      updated: (p) => (p.lastModified ? new Date(p.lastModified).getTime() : 0),
-    }[sort.key];
-    const dir = sort.dir === 'asc' ? 1 : -1;
-    return [...projects].sort((a, b) => {
-      const av = extract(a);
-      const bv = extract(b);
-      if (av < bv) return -1 * dir;
-      if (av > bv) return 1 * dir;
-      return 0;
-    });
-  }, [projects, wordCounts, sort]);
-
   const renderWords = (projectId) => {
     if (wordsLoading && wordCounts[projectId] === undefined) {
       return (
@@ -132,6 +106,84 @@ export const ProjectList = () => {
       </div>
     );
   }
+
+  // Every cell wraps its content in a real link (rather than a row onClick) so
+  // the row behaves like one: middle-click and right-click "open in new tab"
+  // work natively. Same shape as the document table. The cell keeps no padding
+  // of its own, so the link fills it.
+  const linked = (project, className, children) => (
+    <Link to={`/projects/${project.id}`} className={className}>
+      {children}
+    </Link>
+  );
+
+  const columns = [
+    {
+      key: 'name',
+      label: 'Project',
+      sort: (p) => p.name?.toLowerCase() ?? '',
+      className: 'p-0',
+      render: (p) =>
+        linked(
+          p,
+          'block px-4 py-3',
+          <div className="min-w-0">
+            <div className="truncate font-medium">{p.name}</div>
+            <div className="truncate text-xs text-muted-foreground">ID: {p.id}</div>
+          </div>,
+        ),
+    },
+    {
+      key: 'documents',
+      label: 'Docs',
+      sort: (p) => p.documentCount ?? 0,
+      align: 'right',
+      className: 'p-0',
+      render: (p) =>
+        linked(
+          p,
+          'block px-4 py-3 text-right tabular-nums text-muted-foreground',
+          p.documentCount ?? 0,
+        ),
+    },
+    {
+      key: 'words',
+      label: 'Words',
+      // A project with no word layer counts as the smallest, the way it did
+      // when the comparator gave it -1.
+      sort: (p) => wordCounts[p.id] ?? null,
+      align: 'right',
+      className: 'p-0',
+      render: (p) =>
+        linked(
+          p,
+          'block px-4 py-3 text-right tabular-nums text-muted-foreground',
+          renderWords(p.id),
+        ),
+    },
+    {
+      key: 'updated',
+      label: 'Updated',
+      sort: (p) => (p.lastModified ? new Date(p.lastModified).getTime() : null),
+      align: 'right',
+      className: 'p-0',
+      render: (p) =>
+        linked(
+          p,
+          'block px-4 py-3 text-right text-muted-foreground',
+          p.lastModified ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>{timeAgo(p.lastModified) || '—'}</span>
+              </TooltipTrigger>
+              <TooltipContent>{fullTimestamp(p.lastModified)}</TooltipContent>
+            </Tooltip>
+          ) : (
+            '—'
+          ),
+        ),
+    },
+  ];
 
   return (
     <div className="tw mx-auto max-w-5xl px-4 py-8">
@@ -162,97 +214,14 @@ export const ProjectList = () => {
         </Card>
       ) : (
         <TooltipProvider>
-          <div className="overflow-hidden rounded-md border">
-            <table className="w-full text-sm">
-              <thead className="border-b bg-muted/40">
-                <tr>
-                  <th className="px-4 py-2 text-left">
-                    <SortHeader field="name" label="Project" sort={sort} onSort={onSort} />
-                  </th>
-                  <th className="px-4 py-2 text-right">
-                    <SortHeader
-                      field="documents"
-                      label="Docs"
-                      sort={sort}
-                      onSort={onSort}
-                      className="justify-end"
-                    />
-                  </th>
-                  <th className="px-4 py-2 text-right">
-                    <SortHeader
-                      field="words"
-                      label="Words"
-                      sort={sort}
-                      onSort={onSort}
-                      className="justify-end"
-                    />
-                  </th>
-                  <th className="px-4 py-2 text-right">
-                    <SortHeader
-                      field="updated"
-                      label="Updated"
-                      sort={sort}
-                      onSort={onSort}
-                      className="justify-end"
-                    />
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedProjects.map((project) => {
-                  // Every cell wraps its content in a real link (rather than a
-                  // row onClick) so the row behaves like one: middle-click and
-                  // right-click "open in new tab" work natively. Same shape as
-                  // the document table.
-                  const to = `/projects/${project.id}`;
-                  return (
-                    <tr key={project.id} className="border-b last:border-0 hover:bg-accent/40">
-                      <td className="p-0">
-                        <Link to={to} className="block px-4 py-3">
-                          <div className="min-w-0">
-                            <div className="truncate font-medium">{project.name}</div>
-                            <div className="truncate text-xs text-muted-foreground">
-                              ID: {project.id}
-                            </div>
-                          </div>
-                        </Link>
-                      </td>
-                      <td className="p-0">
-                        <Link
-                          to={to}
-                          className="block px-4 py-3 text-right tabular-nums text-muted-foreground"
-                        >
-                          {project.documentCount ?? 0}
-                        </Link>
-                      </td>
-                      <td className="p-0">
-                        <Link
-                          to={to}
-                          className="block px-4 py-3 text-right tabular-nums text-muted-foreground"
-                        >
-                          {renderWords(project.id)}
-                        </Link>
-                      </td>
-                      <td className="p-0">
-                        <Link to={to} className="block px-4 py-3 text-right text-muted-foreground">
-                          {project.lastModified ? (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span>{timeAgo(project.lastModified) || '—'}</span>
-                              </TooltipTrigger>
-                              <TooltipContent>{fullTimestamp(project.lastModified)}</TooltipContent>
-                            </Tooltip>
-                          ) : (
-                            '—'
-                          )}
-                        </Link>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            rows={projects}
+            columns={columns}
+            rowKey={(p) => p.id}
+            storageKey={listPrefKey('sort', 'projects')}
+            defaultSort={{ key: 'updated', dir: 'desc' }}
+            noun="project"
+          />
         </TooltipProvider>
       )}
     </div>
