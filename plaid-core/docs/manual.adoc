@@ -565,7 +565,14 @@ The handler barely has to look, though, because **`progress()` is that point**. 
 Two things a handler may still want:
 
 `helper.raise_if_cancelled()`:: An explicit checkpoint, for a long loop that reports no progress.
-`helper.critical()`:: A stretch that must finish once begun — almost always the writes. Checkpoints inside it do not raise, so a document is never left half-written; the stop takes effect at the first checkpoint after the block. In Python it is a context manager (`with helper.critical():`), in JavaScript it takes the function to run (`await helper.critical(async () => { … })`).
+`helper.critical()`:: A stretch that must finish once begun, almost always the writes. Checkpoints inside it do not raise, so a document is never left half-written, and the stop takes effect at the first checkpoint after the block. In Python it is a context manager (`with helper.critical():`), in JavaScript it takes the function to run (`await helper.critical(async () => { … })`).
+
+[IMPORTANT]
+====
+**Report the result inside the critical block, with the work it describes.** A checkpoint placed after the last write has nothing left to prevent, so all it can do is throw away a result the service has already earned: the document is fully written, and the request still comes back `stopped: true` with no payload. A caller then understates what happened, and a multi-step caller abandons the steps after a step that actually succeeded.
+
+All five bundled services had `helper.progress(100, 'Done')` sitting between the writes and `complete()`. Measured against the Punkt tokenizer, every stop that arrived during the write phase hit it: six for six wrote the document in full and reported themselves stopped. A stop that arrives once everything is done is meant to be ignored.
+====
 
 [,python]
 ----
@@ -575,10 +582,10 @@ def handle(self, data, helper):
         helper.progress(10 + int(70 * i / len(sentences)), f'Glossing {i + 1}/{len(sentences)}...')
         results.append(self.model.gloss(sentence))
 
-    with helper.critical():           # too late to stop: finish the writes
+    with helper.critical():           # too late to stop: finish, and say so
         with self.client.operation('Glossing'):
             self.write(results)
-    helper.complete({'glossed': len(results)})
+        helper.complete({'glossed': len(results)})
 ----
 
 What a service cannot do is stop in the middle of one long blocking call. The bundled Whisper transcriber is the example: the transcription is a single call into the model with nothing to poll inside it, so a stop asked for during it takes effect when that call returns — before anything is written, which is the part that matters.

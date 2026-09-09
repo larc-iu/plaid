@@ -179,20 +179,24 @@ class NLTKTokenizerService(BaseService):
             # refuses to destroy protected annotations unless `overwrite`.
             # Group every write into ONE labeled audit-log entry (the processor acquires the
             # document lock and does the batched token writes inside this scope).
-            with response_helper.critical(), self.client.operation(f"NLTK Punkt tokenization ({language})"):
-                results = self.token_processor.process_tokens(
-                    self.client, document_id, sentences, words,
-                    primary_token_layer_id, sentence_layer_id, response_helper,
-                    prov_source=service_source(self.service_id),
-                    overwrite=overwrite,
-                )
-            
-            response_helper.progress(100, "Tokenization completed successfully")
-            response_helper.complete({
-                "document_id": document_id,
-                "status": "success",
-                **results  # tokens_created, tokens_deleted, sentences_created
-            })
+            # The report of the work is inside `critical()` with the work
+            # itself: a stop that arrives once the writing is done has nothing
+            # left to prevent, and a checkpoint out here would throw the result
+            # away and call a finished run stopped.
+            with response_helper.critical():
+                with self.client.operation(f"NLTK Punkt tokenization ({language})"):
+                    results = self.token_processor.process_tokens(
+                        self.client, document_id, sentences, words,
+                        primary_token_layer_id, sentence_layer_id, response_helper,
+                        prov_source=service_source(self.service_id),
+                        overwrite=overwrite,
+                    )
+                response_helper.progress(100, "Tokenization completed successfully")
+                response_helper.complete({
+                    "document_id": document_id,
+                    "status": "success",
+                    **results  # tokens_created, tokens_deleted, sentences_created
+                })
             
         except Exception as e:
             import traceback

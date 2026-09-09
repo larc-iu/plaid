@@ -339,25 +339,30 @@ class LLMTranslateService(BaseService):
 
         response_helper.progress(88, 'Writing translations...')
         replaced = 0
-        with response_helper.critical(), self.client.operation(f'LLM translation ({len(plans)} sentences)'):
-            with self.client.documents.locked(document_id):
-                for start in range(0, len(plans), WRITE_CHUNK // 2):
-                    with self.client.batched():
-                        for s, span, text in plans[start:start + WRITE_CHUNK // 2]:
-                            stamp = stamp_inferred(source, detail={**base_detail, 'value': text})
-                            if span:
-                                self.client.spans.update(span['id'], text)
-                                self.client.spans.set_metadata(span['id'], stamp)
-                                replaced += 1
-                            else:
-                                self.client.spans.create(tr_layer_id, [s['id']], text, stamp)
+        # The report of the work is inside `critical()` with the work itself: a
+        # stop that arrives once the writing is done has nothing left to prevent,
+        # and a checkpoint out here would throw the result away and call a
+        # finished run stopped.
+        with response_helper.critical():
+            with self.client.operation(f'LLM translation ({len(plans)} sentences)'):
+                with self.client.documents.locked(document_id):
+                    for start in range(0, len(plans), WRITE_CHUNK // 2):
+                        with self.client.batched():
+                            for s, span, text in plans[start:start + WRITE_CHUNK // 2]:
+                                stamp = stamp_inferred(source, detail={**base_detail, 'value': text})
+                                if span:
+                                    self.client.spans.update(span['id'], text)
+                                    self.client.spans.set_metadata(span['id'], stamp)
+                                    replaced += 1
+                                else:
+                                    self.client.spans.create(tr_layer_id, [s['id']], text, stamp)
 
-        response_helper.progress(100, 'Done')
-        response_helper.complete({
-            'document_id': document_id, 'status': 'success', 'sentences': len(sentences),
-            'sentences_written': len(plans), 'sentences_replaced': replaced,
-            'skipped': skipped, 'sentences_failed': failed,
-        })
+            response_helper.progress(100, 'Done')
+            response_helper.complete({
+                'document_id': document_id, 'status': 'success', 'sentences': len(sentences),
+                'sentences_written': len(plans), 'sentences_replaced': replaced,
+                'skipped': skipped, 'sentences_failed': failed,
+            })
 
 
 def main():

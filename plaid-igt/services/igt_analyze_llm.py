@@ -525,19 +525,24 @@ class LLMAnalyzeService(BaseService):
 
         response_helper.progress(88, 'Writing analyses...')
         source = service_source(self.service_id)
-        with response_helper.critical(), self.client.operation(f'LLM glossing ({len(plans)} words)'):
-            with self.client.documents.locked(document_id):
-                written = write_analyses(self.client, plans, gloss_layer_id, morph_layer_id, source, stamp_detail)
+        # The report of the work is inside `critical()` with the work itself: a
+        # stop that arrives once the writing is done has nothing left to prevent,
+        # and a checkpoint out here would throw the result away and call a
+        # finished run stopped.
+        with response_helper.critical():
+            with self.client.operation(f'LLM glossing ({len(plans)} words)'):
+                with self.client.documents.locked(document_id):
+                    written = write_analyses(self.client, plans, gloss_layer_id, morph_layer_id, source, stamp_detail)
 
-        response_helper.progress(100, 'Done')
-        response_helper.complete({
-            'document_id': document_id, 'status': 'success',
-            'sentences': len(sentences), 'sentences_sent': total,
-            'words_written': written, 'words_replaced': replaced,
-            'skipped': skipped, 'sentences_failed': failed,
-            'lexicon_entries': len(lexicon), 'example_sentences': len(pool),
-            'tagset': tagset['name'] if tagset else None,
-        })
+            response_helper.progress(100, 'Done')
+            response_helper.complete({
+                'document_id': document_id, 'status': 'success',
+                'sentences': len(sentences), 'sentences_sent': total,
+                'words_written': written, 'words_replaced': replaced,
+                'skipped': skipped, 'sentences_failed': failed,
+                'lexicon_entries': len(lexicon), 'example_sentences': len(pool),
+                'tagset': tagset['name'] if tagset else None,
+            })
 
 
 def main():

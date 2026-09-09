@@ -255,21 +255,25 @@ class WhisperASRService(BaseService):
             # rebuilding it: stopping part-way would leave the document worse
             # than either finishing or never starting.
             audit_msg = f"Whisper ASR transcription ({language})" if language else "Whisper ASR transcription"
-            with response_helper.critical(), self.client.operation(audit_msg):
-                tokens_created = self.alignment_processor.process_alignments(
-                    self.client, document_id, alignments, text_layer_id,
-                    alignment_token_layer_id, sentence_token_layer_id, response_helper,
-                    prov_source=service_source(self.service_id),
-                    overwrite=overwrite,
-                )
-            
-            response_helper.progress(100, "ASR processing completed successfully")
-            response_helper.complete({
-                "document_id": document_id,
-                "status": "success",
-                "tokens_created": tokens_created,
-                "segments_transcribed": len(alignments)
-            })
+            # The report of the work is inside `critical()` with the work itself:
+            # a stop that arrives once the writing is done has nothing left to
+            # prevent, and a checkpoint out here would throw the result away and
+            # call a finished run stopped.
+            with response_helper.critical():
+                with self.client.operation(audit_msg):
+                    tokens_created = self.alignment_processor.process_alignments(
+                        self.client, document_id, alignments, text_layer_id,
+                        alignment_token_layer_id, sentence_token_layer_id, response_helper,
+                        prov_source=service_source(self.service_id),
+                        overwrite=overwrite,
+                    )
+                response_helper.progress(100, "ASR processing completed successfully")
+                response_helper.complete({
+                    "document_id": document_id,
+                    "status": "success",
+                    "tokens_created": tokens_created,
+                    "segments_transcribed": len(alignments)
+                })
             
         except Exception as e:
             import traceback

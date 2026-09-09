@@ -28,6 +28,10 @@ const BODY = Array.from(
 
 const roleOf = (l) => l?.config?.plaid?.role;
 
+/** Same reported fields as the control run (ids and counts may differ). */
+const sameKeys = (a, b) =>
+  a && b && JSON.stringify(Object.keys(a).sort()) === JSON.stringify(Object.keys(b).sort());
+
 /** The countable shape of a document: body length and tokens per layer. */
 async function shape(documentId) {
   const raw = await client.documents.get(documentId, true);
@@ -99,13 +103,28 @@ for (let i = 0; i < RUNS; i++) {
   }
   const after = await shape(doc.documentId);
   const where = after === pristine ? 'pristine' : after === finished ? 'finished' : 'HALF-WRITTEN';
+  const stopped = result?.stopped === true;
   if (where === 'HALF-WRITTEN') {
     failures.push(`run ${i} (cancel @${delay}ms) left ${after}, neither pristine nor finished`);
   } else {
     seen[where] += 1;
   }
+  // Luke's ruling: a stop that arrives once everything is already done is
+  // silently ignored. A run that wrote the whole document finished, whatever
+  // was asked of it afterwards, so it must say so and must still carry its
+  // counts. Reporting it stopped both understates what happened and ends an
+  // Auto-analyze run whose step actually succeeded.
+  if (where === 'finished' && stopped) {
+    failures.push(`run ${i} (cancel @${delay}ms) wrote the whole document but reported stopped`);
+  }
+  if (where === 'finished' && !sameKeys(result, controlResult)) {
+    failures.push(
+      `run ${i} (cancel @${delay}ms) finished but lost its result: ${JSON.stringify(result)}`,
+    );
+  }
   console.log(
-    `  cancel @${String(delay).padStart(4)}ms -> stopped=${result?.stopped === true} ${where}`,
+    `  cancel @${String(delay).padStart(4)}ms -> stopped=${stopped} ${where}` +
+      (where === 'finished' ? ` result=${JSON.stringify(result)}` : ''),
   );
   await cleanupDoc(client, doc.documentId);
 }
