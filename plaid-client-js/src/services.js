@@ -412,11 +412,10 @@ function streamServiceRequest(client, { url, method, body, onStatus, what }, tim
 
     // `timeout` is IDLE time, meaning how long the service may say nothing. It
     // is not a deadline on the run: every event from the server restarts it,
-    // because a
-    // service that is reporting its progress is not hung. As a deadline on the
-    // whole run it killed working transcriptions at the five-minute default
-    // and left their writes to land on a document the page had already handed
-    // back to the user as editable.
+    // because a service that is reporting its progress is not hung. As a
+    // deadline on the whole run it killed working transcriptions at the
+    // five-minute default and left their writes to land on a document the page
+    // had already handed back to the user as editable.
     let timer;
     const waitAgain = () => {
       clearTimeout(timer);
