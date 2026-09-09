@@ -952,7 +952,9 @@
    human underline; dropping the purple italic text is what reads as "settled,
    no longer needs attention". */
 .igt-vocab__hint--verified {
-  text-decoration-color: #c4b5fd;
+  /* The same soft violet a confirmed cell underlines with
+     (.igt-field--verified), so the two cannot drift apart. */
+  text-decoration-color: var(--igt-violet-soft);
 }
 /* Unlinked: hidden at rest — a "+ link" under every unlinked form is too
    noisy (user call, 2026-06-10; a fuller vocab-linking rethink is a planned
