@@ -75,10 +75,37 @@ interface ServiceRegistration {
 type ServiceStatusEvent = 'registered' | 'reconnected' | 'disconnected';
 
 interface ResponseHelper {
-  progress(percent: number, message: string): void;
+  requestId: string;
+  requesterId: string | null;
+  /** True once the requester has asked this request to stop. */
+  readonly cancelled: boolean;
+  /**
+   * Report progress — and a cancellation CHECKPOINT: throws
+   * `ServiceCancelled` once a stop has been asked for, which is what makes a
+   * service that already reports progress cancellable for free.
+   */
+  progress(percent: number, message: string, extra?: Record<string, any>): void;
+  /** Stop here if the requester has asked the request to stop. */
+  raiseIfCancelled(): void;
+  /** Run `fn` as a stretch that must finish once begun, usually the writes. */
+  critical<T>(fn: () => T | Promise<T>): Promise<T>;
   complete(data: any): void;
+  /** End the request because it was asked to stop; result carries `stopped: true`. */
+  stopped(data?: any): void;
   error(error: string | Error): void;
 }
+
+/** Thrown inside a handler when the requester has asked it to stop. */
+export class ServiceCancelled extends Error {
+  constructor(message?: string);
+}
+
+/** The cancellation half of a responseHelper, on its own. */
+export function createCancelScope(isCancelled: () => boolean): {
+  readonly cancelled: boolean;
+  raiseIfCancelled(): void;
+  critical<T>(fn: () => T | Promise<T>): Promise<T>;
+};
 
 interface SSEConnection {
   close(): void;

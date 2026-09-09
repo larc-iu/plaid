@@ -10,6 +10,7 @@ import {
   attachServiceRequest,
   cancelServiceRequest,
   serve,
+  ServiceCancelled,
 } from '../src/services.js';
 
 /** An SSE body that emits `events`, then blocks until `hold` resolves. */
@@ -123,17 +124,32 @@ test('a served request sees who asked and whether a stop was requested', async (
     assert.equal(helper.requestId, 'r1');
     assert.equal(helper.requesterId, 'u@x.com');
     assert.equal(helper.cancelled, false);
-    onEvent('service_cancel', { requestId: 'r1' });
-    assert.equal(helper.cancelled, true);
-    onEvent('service_cancel', { requestId: 'other' }); // unknown ids are ignored
     await helper.progress(10, 'Writing…', { text: 'Hel' });
-    await helper.complete({ done: true });
     assert.equal(reported[0].path, '/api/v1/projects/p1/service-requests/r1/events');
     assert.deepEqual(reported[0].body, {
       status: 'progress',
       progress: { percent: 10, message: 'Writing…', text: 'Hel' },
     });
-    assert.deepEqual(reported[1].body, { status: 'completed', data: { done: true } });
+
+    onEvent('service_cancel', { requestId: 'r1' });
+    assert.equal(helper.cancelled, true);
+    onEvent('service_cancel', { requestId: 'other' }); // unknown ids are ignored
+
+    // progress() is the cancellation checkpoint: once stopped, it throws
+    // rather than reporting, which is what makes a service that already
+    // reports progress cancellable without any change to the service.
+    assert.throws(() => helper.progress(20, 'More…'), ServiceCancelled);
+    // …except inside critical(), so a write under way still finishes.
+    await helper.critical(async () => {
+      await helper.progress(30, 'Committing…');
+    });
+    assert.deepEqual(reported[1].body, {
+      status: 'progress',
+      progress: { percent: 30, message: 'Committing…' },
+    });
+
+    await helper.complete({ done: true });
+    assert.deepEqual(reported[2].body, { status: 'completed', data: { done: true } });
   } finally {
     registration.stop();
   }

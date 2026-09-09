@@ -213,9 +213,11 @@ def test_base_service_joins_the_requesters_operation():
         def complete(self, *a): pass
         def error(self, *a): seen['error'] = a
 
+    # The work runs on its own thread now, so the SSE reader stays free to
+    # deliver a `service_cancel` for this very request.
     svc.handle_service_request(
         {'document_id': 'D', 'operation_group': {'id': 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', 'message': 'Re-transcribe'}},
-        _Helper())
+        _Helper()).join(5)
     assert 'error' not in seen
     assert seen['request_data'] == {'document_id': 'D'}, 'operation_group is popped before process_request'
     assert seen['group']['id'] == 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
@@ -226,6 +228,6 @@ def test_base_service_joins_the_requesters_operation():
 
     # without a propagated group the service runs unjoined
     seen.clear()
-    svc.handle_service_request({'document_id': 'D'}, _Helper())
+    svc.handle_service_request({'document_id': 'D'}, _Helper()).join(5)
     assert seen['group'] is None
     assert seen['inner_msg'] == 'inner label'

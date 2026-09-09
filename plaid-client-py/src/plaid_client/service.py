@@ -27,7 +27,7 @@ from typing import Any, Dict, List, Optional
 from plaid_client.client import PlaidClient
 from plaid_client.http import PlaidAPIError, short_error
 from plaid_client.service_schema import build_extras
-from plaid_client.services import ServiceRegistrationError
+from plaid_client.services import ServiceRegistrationError, ServiceCancelled
 
 
 class BaseService(ABC):
@@ -167,21 +167,37 @@ class BaseService(ABC):
         so for slow models. The work is CPU/GPU-bound anyway — one at a time is
         the right model. (:attr:`CONCURRENT` services skip the lock and handle
         each request on a thread of its own.)
+
+        Either way the work runs on a thread of its own, because this is called
+        ON the SSE reader thread: running a long request inline blocks the very
+        channel that carries ``service_cancel`` for it, so the stop is not read
+        until the work it was meant to stop has finished. Single-flight is kept
+        by taking the lock here and releasing it when the work ends.
+
+        Returns the thread the work is running on, or ``None`` when the request
+        was rejected. ``serve`` ignores it; a test joins it.
         """
         if self.CONCURRENT:
-            threading.Thread(target=self._handle_request,
-                             args=(request_data, response_helper), daemon=True).start()
-            return
+            thread = threading.Thread(target=self._handle_request,
+                                      args=(request_data, response_helper), daemon=True)
+            thread.start()
+            return thread
         if not self._processing_lock.acquire(blocking=False):
             response_helper.error(
                 f"{self.service_name} is currently processing another request. "
                 f"Please try again later."
             )
-            return
-        try:
-            self._handle_request(request_data, response_helper)
-        finally:
-            self._processing_lock.release()
+            return None
+
+        def run():
+            try:
+                self._handle_request(request_data, response_helper)
+            finally:
+                self._processing_lock.release()
+
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
+        return thread
 
     def _handle_request(self, request_data: Dict[str, Any], response_helper) -> None:
         """One request: delegation, operation-group adoption, process, report."""
@@ -212,6 +228,11 @@ class BaseService(ABC):
             op_client.begin_operation(group.get('message'), group_id=group['id'])
         try:
             self.process_request(request_data, response_helper)
+        except ServiceCancelled:
+            # Asked to stop, and it did. Not a failure: the requester already
+            # knows, and whatever was written before the checkpoint stands.
+            print(f"{self.service_name}: request stopped by the requester")
+            response_helper.stopped()
         except Exception as e:
             import traceback
             print(f"Error during {self.service_name} processing: {str(e)}")

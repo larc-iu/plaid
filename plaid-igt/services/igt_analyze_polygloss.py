@@ -290,7 +290,7 @@ class PolyGlossService(BaseService):
                 if w['state'] != 'unanalyzed':
                     replaced += 1
 
-        with self.client.operation(f'PolyGloss analysis ({len(plans)} words)'):
+        with response_helper.critical(), self.client.operation(f'PolyGloss analysis ({len(plans)} words)'):
             with self.client.documents.locked(document_id):
                 written = write_analyses(self.client, plans, gloss_layer_id, morph_layer_id,
                                          source, stamp_detail)

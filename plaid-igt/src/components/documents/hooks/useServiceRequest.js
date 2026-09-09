@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { notifySuccess, notifyError } from '@/utils/feedback';
+import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 import { useStrictClient } from '../contexts/StrictModeContext.jsx';
 
 export const useServiceRequest = () => {
@@ -57,11 +57,16 @@ export const useServiceRequest = () => {
     setProgressMessage('Starting the service…');
   }, []);
 
-  const succeed = useCallback((successMessage, successTitle) => {
-    setProcessStatus('success');
-    setProgressPercent(100);
-    setProgressMessage('Finished.');
-    notifySuccess(successMessage, successTitle);
+  // A stopped request comes back as a normal result carrying `stopped: true`
+  // (the service was asked and agreed), so it is neither a success to
+  // celebrate nor an error to report.
+  const succeed = useCallback((result, successMessage, successTitle) => {
+    const stopped = result?.stopped === true;
+    setProcessStatus(stopped ? 'stopped' : 'success');
+    setProgressPercent(stopped ? null : 100);
+    setProgressMessage(stopped ? 'Stopped.' : 'Finished.');
+    if (stopped) notifyInfo('Stopped. What it had already written stays.', successTitle);
+    else notifySuccess(successMessage, successTitle);
   }, []);
 
   const fail = useCallback((error, errorMessage, errorTitle) => {
@@ -107,7 +112,7 @@ export const useServiceRequest = () => {
           undefined,
           { requestId },
         );
-        succeed(successMessage, successTitle);
+        succeed(result, successMessage, successTitle);
         return result;
       } catch (error) {
         console.error('Failed to request service:', error);

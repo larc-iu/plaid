@@ -552,6 +552,38 @@ Most tasks are *write* tasks: the service edits the project directly and the cli
 
 Helpers in both clients save you from re-implementing this shape. On the **service-authoring** side (Python), `Param.*` build the parameter descriptors and `build_extras` assembles the whole object (a `BaseService` subclass does this for you). On the **selecting/UI** side (JavaScript), `filterServicesByTask` picks the services for a slot and `getServiceSummary`/`getParamSchema` read a service's summary and parameter schema. The value logic—turning a schema into initial form values and validated request values—exists in both: `buildDefaultValues`/`coerceParamValues` in JavaScript, `default_values`/`coerce` in Python.
 
+=== Stopping a request
+
+A requester can ask a service to stop work already under way (`DELETE /projects/{id}/service-requests/{request-id}`; `cancelServiceRequest` / `cancel_service_request`). Nothing is interrupted: cancellation is **cooperative**, and the request ends at the next point the handler looks.
+
+The handler barely has to look, though, because **`progress()` is that point**. Reporting progress raises `ServiceCancelled` (Python) / throws `ServiceCancelled` (JavaScript) once a stop has been asked for, so a service that already reports progress through its work is cancellable without a line of change. `serve` catches it and ends the request as *stopped* rather than *failed*: the result carries `stopped: true`, so a client can tell "you stopped it" from "it broke".
+
+Two things a handler may still want:
+
+`helper.raise_if_cancelled()`:: An explicit checkpoint, for a long loop that reports no progress.
+`helper.critical()`:: A stretch that must finish once begun — almost always the writes. Checkpoints inside it do not raise, so a document is never left half-written; the stop takes effect at the first checkpoint after the block. In Python it is a context manager (`with helper.critical():`), in JavaScript it takes the function to run (`await helper.critical(async () => { … })`).
+
+[,python]
+----
+def handle(self, data, helper):
+    for i, sentence in enumerate(sentences):
+        # Already a checkpoint: a stop here ends the request cleanly.
+        helper.progress(10 + int(70 * i / len(sentences)), f'Glossing {i + 1}/{len(sentences)}...')
+        results.append(self.model.gloss(sentence))
+
+    with helper.critical():           # too late to stop: finish the writes
+        with self.client.operation('Glossing'):
+            self.write(results)
+    helper.complete({'glossed': len(results)})
+----
+
+What a service cannot do is stop in the middle of one long blocking call. The bundled Whisper transcriber is the example: the transcription is a single call into the model with nothing to poll inside it, so a stop asked for during it takes effect when that call returns — before anything is written, which is the part that matters.
+
+[IMPORTANT]
+====
+A handler must not run on the channel's own reader thread, or it blocks the very channel that carries `service_cancel` for the request it is running, and the stop is not read until the work it was meant to stop has finished. `BaseService` handles this: it takes its single-flight lock and then runs the work on a thread of its own, so one request at a time is still the rule and the channel stays readable. A service written directly against `serve` must do the same.
+====
+
 === Presence and persistence
 
 A service can take work **only while connected**. There is no request queue: a request to a service that is absent (or that disconnects mid-request) fails immediately rather than waiting for the service to come back.

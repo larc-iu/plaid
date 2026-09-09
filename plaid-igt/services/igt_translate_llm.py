@@ -339,7 +339,7 @@ class LLMTranslateService(BaseService):
 
         response_helper.progress(88, 'Writing translations...')
         replaced = 0
-        with self.client.operation(f'LLM translation ({len(plans)} sentences)'):
+        with response_helper.critical(), self.client.operation(f'LLM translation ({len(plans)} sentences)'):
             with self.client.documents.locked(document_id):
                 for start in range(0, len(plans), WRITE_CHUNK // 2):
                     with self.client.batched():

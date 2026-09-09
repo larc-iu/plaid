@@ -525,7 +525,7 @@ class LLMAnalyzeService(BaseService):
 
         response_helper.progress(88, 'Writing analyses...')
         source = service_source(self.service_id)
-        with self.client.operation(f'LLM glossing ({len(plans)} words)'):
+        with response_helper.critical(), self.client.operation(f'LLM glossing ({len(plans)} words)'):
             with self.client.documents.locked(document_id):
                 written = write_analyses(self.client, plans, gloss_layer_id, morph_layer_id, source, stamp_detail)
 

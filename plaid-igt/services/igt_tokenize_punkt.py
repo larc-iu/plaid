@@ -179,7 +179,7 @@ class NLTKTokenizerService(BaseService):
             # refuses to destroy protected annotations unless `overwrite`.
             # Group every write into ONE labeled audit-log entry (the processor acquires the
             # document lock and does the batched token writes inside this scope).
-            with self.client.operation(f"NLTK Punkt tokenization ({language})"):
+            with response_helper.critical(), self.client.operation(f"NLTK Punkt tokenization ({language})"):
                 results = self.token_processor.process_tokens(
                     self.client, document_id, sentences, words,
                     primary_token_layer_id, sentence_layer_id, response_helper,

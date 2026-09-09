@@ -241,15 +241,21 @@ class WhisperASRService(BaseService):
             if not alignments:
                 raise ValueError("No transcription results generated")
             
+            # The last point a stop costs nothing: the transcription itself is
+            # one blocking call with nothing to poll inside it, so a request
+            # stopped mid-transcription lands here, and stops before writing.
             response_helper.progress(70, f"Generated {len(alignments)} segment alignments...")
-            
+
             # Process alignments using the alignment processor. Created tokens
             # are stamped machine-made (provenance convention); the processor
             # refuses to destroy protected annotations unless `overwrite`.
             # Group every write into ONE labeled audit-log entry (the processor acquires the
             # document lock and does the batched alignment writes inside this scope).
+            # `critical` because the writes reset the sentence partition before
+            # rebuilding it: stopping part-way would leave the document worse
+            # than either finishing or never starting.
             audit_msg = f"Whisper ASR transcription ({language})" if language else "Whisper ASR transcription"
-            with self.client.operation(audit_msg):
+            with response_helper.critical(), self.client.operation(audit_msg):
                 tokens_created = self.alignment_processor.process_alignments(
                     self.client, document_id, alignments, text_layer_id,
                     alignment_token_layer_id, sentence_token_layer_id, response_helper,

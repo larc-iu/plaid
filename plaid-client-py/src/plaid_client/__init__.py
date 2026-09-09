@@ -1,7 +1,7 @@
 from plaid_client.client import PlaidClient
 from plaid_client.http import PlaidAPIError
 from plaid_client.service import BaseService
-from plaid_client.services import ServiceRegistrationError
+from plaid_client.services import ServiceRegistrationError, ServiceCancelled, CancelScope
 from plaid_client.service_schema import (
     TASKS,
     Param,
@@ -48,6 +48,8 @@ __all__ = [
     "PlaidAPIError",
     "BaseService",
     "ServiceRegistrationError",
+    "ServiceCancelled",
+    "CancelScope",
     "TASKS",
     "Param",
     "build_extras",

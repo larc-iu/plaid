@@ -3154,6 +3154,11 @@ export {
   buildDefaultValues,
   coerceParamValues,
 } from "./serviceSchema.js";
+// Cooperative cancellation for a service AUTHORED in JS: `progress()` is a
+// checkpoint that throws ServiceCancelled once the requester stops the
+// request, and `critical()` holds that off around writes. See ./services.js
+// and the manual, "Stopping a request".
+export { ServiceCancelled, createCancelScope } from "./services.js";
 // Provenance: the cross-app convention for who made an annotation (flat
 // prov/provSource/provConfirmed metadata; absence = a verifier; 'inferred' =
 // a machine; 'contributed' = a person whose work is reviewed), plus the

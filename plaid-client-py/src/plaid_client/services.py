@@ -7,6 +7,7 @@ synchronous GET. Work requests are addressed: a service receives them on its
 channel and reports back via plain POSTs that the server relays to the one
 waiting requester.
 """
+import contextlib
 import json
 import logging
 import threading
@@ -335,9 +336,11 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
             request_id = req_id
             requester_id = requester
 
-            @property
-            def cancelled(self):
-                return cancel_flag.is_set()
+            _scope = CancelScope(cancel_flag.is_set)
+
+            cancelled = property(lambda self: self._scope.cancelled)
+            raise_if_cancelled = lambda self: self._scope.raise_if_cancelled()  # noqa: E731
+            critical = lambda self: self._scope.critical()  # noqa: E731
 
             def _finished(self):
                 with cancels_lock:
@@ -346,7 +349,15 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
             def progress(self, percent, msg='', **extra):
                 """Send a progress update for the in-flight request. Extra
                 keyword fields ride in the progress payload (a chat service
-                sends the reply text so far as ``text=``)."""
+                sends the reply text so far as ``text=``).
+
+                **This is a cancellation checkpoint**: it raises
+                :class:`ServiceCancelled` if the requester has stopped the
+                request, so a service that reports progress through its work
+                is cancellable without doing anything else. Wrap writes in
+                ``critical()`` to hold it off.
+                """
+                self.raise_if_cancelled()
                 try:
                     _report_event(client, project_id, req_id,
                                   {'status': 'progress',
@@ -363,6 +374,20 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
                 except Exception:
                     logger.warning('Failed to send completion message')
 
+            def stopped(self, data=None):
+                """End the request because it was asked to stop.
+
+                Reported as a normal result carrying ``stopped: True``, so a
+                client can tell "you stopped it" from "it broke".
+                """
+                self._finished()
+                try:
+                    _report_event(client, project_id, req_id,
+                                  {'status': 'completed',
+                                   'data': {**(data or {}), 'stopped': True}})
+                except Exception:
+                    logger.warning('Failed to send stop message')
+
             def error(self, error):
                 """Send an error response for the request."""
                 self._finished()
@@ -375,6 +400,10 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
         helper = ResponseHelper()
         try:
             on_service_request(req_data, helper)
+        except ServiceCancelled:
+            # Asked to stop, and it did. Not a failure: the requester already
+            # knows, and whatever was written before the checkpoint stands.
+            helper.stopped()
         except Exception as e:
             helper.error(str(e))
 
@@ -406,6 +435,61 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
 
     registration._start_supervisor()
     return registration
+
+
+class CancelScope:
+    """The cancellation half of a :class:`ResponseHelper`.
+
+    Split out from the transport so it can be reasoned about (and tested) on
+    its own: it is just a flag, a depth counter, and one rule about when a
+    checkpoint is allowed to raise.
+    """
+
+    def __init__(self, is_cancelled):
+        self._is_cancelled = is_cancelled
+        # Depth of nested `critical()` blocks; while non-zero, a checkpoint
+        # will not raise.
+        self._critical_depth = 0
+
+    @property
+    def cancelled(self):
+        """True once the requester has asked the request to stop."""
+        return bool(self._is_cancelled())
+
+    def raise_if_cancelled(self):
+        """Stop here if the requester has asked the request to stop.
+
+        Raises :class:`ServiceCancelled`. A no-op inside ``critical()``. Call
+        it in a long loop that reports no progress; a loop that does report
+        progress is already checked.
+        """
+        if self.cancelled and self._critical_depth == 0:
+            raise ServiceCancelled('The requester stopped this request')
+
+    @contextlib.contextmanager
+    def critical(self):
+        """A stretch that must finish once begun, usually the writes.
+
+        Checkpoints inside it do not raise, so a half-written document is
+        never left behind. Cancellation still takes effect at the first
+        checkpoint after the block.
+        """
+        self._critical_depth += 1
+        try:
+            yield
+        finally:
+            self._critical_depth -= 1
+
+
+class ServiceCancelled(Exception):
+    """Raised inside a handler when the requester has asked it to stop.
+
+    Cooperative cancellation: nothing interrupts a handler, so the request ends
+    at the next point the handler looks. ``ResponseHelper.progress`` is that
+    point, which is why a long service that already reports progress needs no
+    changes at all. ``serve`` catches this and ends the request as *stopped*
+    rather than *failed*.
+    """
 
 
 def request_service(client, project_id, service_id, data, timeout=10.0, on_progress=None,

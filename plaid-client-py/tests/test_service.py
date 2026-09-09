@@ -19,7 +19,9 @@ from plaid_client.service_schema import (  # noqa: E402
 )
 from plaid_client.service import BaseService  # noqa: E402
 from plaid_client.http import PlaidAPIError  # noqa: E402
-from plaid_client.services import ServiceRegistration, ServiceRegistrationError  # noqa: E402
+from plaid_client.services import (  # noqa: E402
+    ServiceRegistration, ServiceRegistrationError, CancelScope, ServiceCancelled,
+)
 
 
 def test_param_builders_and_options_normalize():
@@ -311,7 +313,7 @@ def test_delegating_service_builds_requester_client_and_adopts_group_on_it():
     helper = _Helper()
     svc.handle_service_request(
         {'q': 1, 'delegated_token': 'tok-123',
-         'operation_group': {'id': 'g1', 'message': 'from requester'}}, helper)
+         'operation_group': {'id': 'g1', 'message': 'from requester'}}, helper).join(5)
     assert helper.done == ['ok'] and not helper.errors
     assert 'delegated_token' not in seen and 'operation_group' not in seen
     rc = seen['requester_client']
@@ -331,7 +333,7 @@ def test_delegating_service_refuses_request_without_token():
         base_url = 'http://plaid.test'
     svc.client = OwnClient()
     helper = _Helper()
-    svc.handle_service_request({'q': 1}, helper)
+    svc.handle_service_request({'q': 1}, helper).join(5)
     assert helper.errors and 'delegated token' in helper.errors[0]
     assert not svc._processing_lock.locked()
 
@@ -348,7 +350,7 @@ def test_non_delegating_service_ignores_delegation_and_stays_single_flight():
     assert 'delegation' not in svc.extras
     svc.client = object()
     helper = _Helper()
-    svc.handle_service_request({'a': 1}, helper)
+    svc.handle_service_request({'a': 1}, helper).join(5)
     assert calls == [{'a': 1}] and not helper.errors
 
 
@@ -723,3 +725,106 @@ def test_detect_speech_task_and_slider_param():
     assert errors == {}
     # A number without `slider` does not gain the key.
     assert 'slider' not in Param.number('n', 'N', min=0, max=10)
+
+
+# --- cooperative cancellation -------------------------------------------------
+# Nothing interrupts a handler; the request ends at the next point the handler
+# looks. `progress()` is that point, which is what makes an existing service
+# cancellable for free.
+
+def _scope(flag):
+    return CancelScope(lambda: flag['cancelled'])
+
+
+def test_cancel_scope_is_quiet_until_the_requester_stops_it():
+    flag = {'cancelled': False}
+    sc = _scope(flag)
+    assert sc.cancelled is False
+    sc.raise_if_cancelled()  # no-op
+
+    flag['cancelled'] = True
+    assert sc.cancelled is True
+    try:
+        sc.raise_if_cancelled()
+        assert False, 'should have raised'
+    except ServiceCancelled:
+        pass
+
+
+def test_critical_holds_cancellation_off_until_the_block_ends():
+    """A write under way must finish, or the document is left half-written."""
+    flag = {'cancelled': True}
+    sc = _scope(flag)
+
+    with sc.critical():
+        sc.raise_if_cancelled()      # suppressed
+        assert sc.cancelled is True  # but still visible to a handler that asks
+
+    try:
+        sc.raise_if_cancelled()
+        assert False, 'should raise once the block is over'
+    except ServiceCancelled:
+        pass
+
+
+def test_critical_nests_and_unwinds_on_an_exception():
+    flag = {'cancelled': True}
+    sc = _scope(flag)
+
+    with sc.critical():
+        with sc.critical():
+            sc.raise_if_cancelled()
+        sc.raise_if_cancelled()  # still inside the outer block
+
+    # An exception inside a block must not leave cancellation wedged off.
+    try:
+        with sc.critical():
+            raise ValueError('boom')
+    except ValueError:
+        pass
+    try:
+        sc.raise_if_cancelled()
+        assert False, 'should raise'
+    except ServiceCancelled:
+        pass
+
+
+def test_a_long_request_does_not_block_the_reader_thread():
+    """The SSE reader calls the handler, and that channel is what carries
+    `service_cancel` for the request being handled. Running the work inline
+    meant a stop was not read until the work it was meant to stop had already
+    finished — so cancellation could never work for any Python service."""
+    import threading as _t
+
+    started = _t.Event()
+    release = _t.Event()
+
+    class _Svc(BaseService):
+        def process_request(self, request_data, response_helper):
+            started.set()
+            release.wait(5)
+
+    svc = _Svc('svc', 'Svc', 'test')
+    caller = _t.current_thread()
+    thread = svc.handle_service_request({}, _Helper())
+
+    # handle_service_request returned while the work is still going, and the
+    # work is NOT on the calling (reader) thread.
+    assert started.wait(5)
+    assert thread is not None and thread.is_alive()
+    assert thread is not caller
+
+    # Single-flight still holds: a second request is rejected, not queued.
+    second = _Helper()
+    assert svc.handle_service_request({}, second) is None
+    assert second.errors and 'another request' in second.errors[0]
+
+    release.set()
+    thread.join(5)
+
+    # …and the lock is free again once the work ends.
+    third = _Helper()
+    t3 = svc.handle_service_request({}, third)
+    assert t3 is not None
+    t3.join(5)
+    assert not third.errors

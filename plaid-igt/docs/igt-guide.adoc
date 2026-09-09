@@ -478,7 +478,7 @@ Steps that report no percentage of their own, such as a model pass, still show t
 You can close the dialog and watch the document instead: the run carries on, and the **Auto-analyze** button on the toolbar shows the elapsed time until it finishes.
 Editing is paused for as long as the run writes, and the document says so at the top; it comes back when the run ends.
 Reloading the page does not stop it, but it does end the run early: the step that was in flight is picked up and finishes, and the steps after it do not run.
-**Cancel** asks the step in flight to stop, with the same caveat.
+**Cancel** asks the step in flight to stop; the steps after it do not run.
 When the run finishes, a message says what was done: how many translations were proposed, how many words received a copied analysis, and so on.
 Then review the result with the gestures under <<_analyze>>: **Ctrl/Cmd+Enter** confirms a whole word, **Ctrl/Cmd+Backspace** discards its proposal, and **Ctrl/Cmd+Shift+↑/↓** jumps between the words that still have unconfirmed material.
 
@@ -656,9 +656,9 @@ A run outlives the page that started it.
 Close the tab or reload it and the service carries on; reopen the document and the run is picked up where it got to, editing still paused, and its result lands as usual.
 A run that has been finished and collected, or that is more than fifteen minutes past, is gone, and the document simply opens with whatever it wrote.
 **Cancel**, in the dialog, asks a running service to stop.
-Whether it does is up to the service: the request ends with whatever the service reports next, and one that does not watch for the request runs to completion.
-None of the bundled services watch for it yet.
-Whatever a run has already written stays.
+It stops at the next point it reports progress, so how promptly depends on how finely it reports: a service working sentence by sentence stops within a sentence, while one whose model runs in a single pass (transcription, for instance) stops when that pass ends, before it writes anything.
+A run part-way through writing always finishes writing, so a stop never leaves half a document.
+Whatever it wrote stays.
 
 There are six integration points:
 

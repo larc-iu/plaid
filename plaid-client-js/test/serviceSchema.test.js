@@ -18,6 +18,7 @@ import {
   coerceParamValues,
 } from '../src/serviceSchema.js';
 import { transformRequest, transformResponse } from '../src/transforms.js';
+import { createCancelScope, ServiceCancelled } from '../src/services.js';
 
 const tokService = {
   serviceId: 'tok:nltk-punkt-tokenizer',
@@ -178,4 +179,45 @@ test("detect-speech is a task like any other, and a slider is a number", () => {
   const clamped = coerceParamValues(schema, { threshold: "5" });
   assert.deepEqual(clamped.values, { threshold: 0.9 });
   assert.deepEqual(clamped.errors, {});
+});
+
+// --- cooperative cancellation (parity with the Python client's CancelScope) ---
+// Nothing interrupts a handler; the request ends at the next point the handler
+// looks. `progress()` is that point, which is what makes an existing service
+// cancellable for free.
+
+test("a cancel scope is quiet until the requester stops the request", () => {
+  const flag = { cancelled: false };
+  const scope = createCancelScope(() => flag.cancelled);
+  assert.equal(scope.cancelled, false);
+  scope.raiseIfCancelled(); // no-op
+
+  flag.cancelled = true;
+  assert.equal(scope.cancelled, true);
+  assert.throws(() => scope.raiseIfCancelled(), ServiceCancelled);
+});
+
+test("critical() holds cancellation off until the block ends, and unwinds on a throw", async () => {
+  // A write under way must finish, or the document is left half-written.
+  const flag = { cancelled: true };
+  const scope = createCancelScope(() => flag.cancelled);
+
+  await scope.critical(async () => {
+    scope.raiseIfCancelled(); // suppressed
+    assert.equal(scope.cancelled, true); // still visible to a handler that asks
+  });
+  assert.throws(() => scope.raiseIfCancelled(), ServiceCancelled);
+
+  // Nesting, and an exception inside must not leave cancellation wedged off.
+  await scope.critical(async () => {
+    await scope.critical(async () => scope.raiseIfCancelled());
+    scope.raiseIfCancelled();
+  });
+  await assert.rejects(
+    scope.critical(async () => {
+      throw new Error("boom");
+    }),
+    /boom/,
+  );
+  assert.throws(() => scope.raiseIfCancelled(), ServiceCancelled);
 });

@@ -147,20 +147,42 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
         ? { ...payload.data, requesterId }
         : payload.data;
 
+    const scope = createCancelScope(() => cancelled.get(requestId) === true);
     const responseHelper = {
       requestId,
       requesterId,
       // True once the requester asked for the request to stop.
       get cancelled() {
-        return cancelled.get(requestId) === true;
+        return scope.cancelled;
       },
+      raiseIfCancelled: () => scope.raiseIfCancelled(),
+      critical: (fn) => scope.critical(fn),
       // Extra fields ride in the progress payload (a chat service sends the
       // reply text so far as `text`).
-      progress: (percent, msg, extra) =>
-        reportEvent(requestId, { status: 'progress', progress: { percent, message: msg, ...extra } }),
+      //
+      // This is a CANCELLATION CHECKPOINT: it throws ServiceCancelled if the
+      // requester has stopped the request, so a service that reports progress
+      // through its work is cancellable without doing anything else. Use
+      // `critical()` around writes to hold it off.
+      progress: (percent, msg, extra) => {
+        scope.raiseIfCancelled();
+        return reportEvent(requestId, {
+          status: 'progress',
+          progress: { percent, message: msg, ...extra },
+        });
+      },
       complete: (data) => {
         finished();
         return reportEvent(requestId, { status: 'completed', data });
+      },
+      // Asked to stop, and it did. Reported as a result carrying
+      // `stopped: true`, so a client can tell "you stopped it" from "it broke".
+      stopped: (data) => {
+        finished();
+        return reportEvent(requestId, {
+          status: 'completed',
+          data: { ...(data || {}), stopped: true },
+        });
       },
       error: (error) => {
         finished();
@@ -168,10 +190,20 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
       },
     };
 
+    // A handler may be async, so a rejected promise has to be caught too, or a
+    // cancelled async service would report a failure instead of a stop.
+    const settle = (error) => {
+      if (error instanceof ServiceCancelled || error?.name === 'ServiceCancelled') {
+        responseHelper.stopped();
+      } else {
+        responseHelper.error(error?.message || error);
+      }
+    };
     try {
-      onServiceRequest(data, responseHelper);
+      const maybe = onServiceRequest(data, responseHelper);
+      if (maybe && typeof maybe.catch === 'function') maybe.catch(settle);
     } catch (error) {
-      responseHelper.error(error?.message || error);
+      settle(error);
     }
   };
   const openChannel = () => client.messages.listen(projectId, onChannelEvent, channelPath);
@@ -293,6 +325,55 @@ export function attachServiceRequest(client, projectId, requestId, timeout = 100
  * @param {string} requestId - The request id
  * @returns {Promise<void>}
  */
+/**
+ * Thrown inside a handler when the requester has asked it to stop.
+ *
+ * Cooperative cancellation: nothing interrupts a handler, so the request ends
+ * at the next point the handler looks. `responseHelper.progress` is that
+ * point, which is why a long service that already reports progress needs no
+ * changes at all. `serve` catches this and ends the request as STOPPED rather
+ * than failed.
+ */
+export class ServiceCancelled extends Error {
+  constructor(message = 'The requester stopped this request') {
+    super(message);
+    this.name = 'ServiceCancelled';
+  }
+}
+
+/**
+ * The cancellation half of a responseHelper: a flag, a depth counter, and one
+ * rule about when a checkpoint may raise. Split from the transport so it can
+ * be reasoned about on its own. Mirrors `CancelScope` in the Python client.
+ */
+export function createCancelScope(isCancelled) {
+  // Depth of nested `critical()` blocks; while non-zero, a checkpoint will
+  // not throw.
+  let criticalDepth = 0;
+  return {
+    get cancelled() {
+      return !!isCancelled();
+    },
+    /** Stop here if the requester has asked the request to stop. */
+    raiseIfCancelled() {
+      if (isCancelled() && criticalDepth === 0) throw new ServiceCancelled();
+    },
+    /**
+     * Run `fn` as a stretch that must finish once begun, usually the writes.
+     * Checkpoints inside do not throw, so a half-written document is never
+     * left behind; cancellation takes effect at the first checkpoint after.
+     */
+    async critical(fn) {
+      criticalDepth++;
+      try {
+        return await fn();
+      } finally {
+        criticalDepth--;
+      }
+    },
+  };
+}
+
 export function cancelServiceRequest(client, projectId, requestId) {
   return client._request('DELETE', `/api/v1/projects/${projectId}/service-requests/${encodeURIComponent(requestId)}`);
 }
