@@ -11,6 +11,7 @@ import contextlib
 import json
 import logging
 import threading
+import time
 import urllib.parse
 
 import requests
@@ -504,9 +505,11 @@ def request_service(client, project_id, service_id, data, timeout=10.0, on_progr
     """Submit work to a service and await its result.
 
     Streams the service's progress + result back over a single server-mediated
-    response (no broadcast). ``timeout`` is in seconds. Raises ``RuntimeError``
-    if no service is currently connected (503), if the service reports an error,
-    or if the stream ends without a result; ``TimeoutError`` on timeout.
+    response (no broadcast). ``timeout`` is in seconds and measures SILENCE:
+    how long the service may say nothing. Every event it sends starts the clock
+    again, so this does not cap a long run. Raises ``RuntimeError`` if no
+    service is currently connected (503), if the service reports an error, or
+    if the stream ends without a result; ``TimeoutError`` on timeout.
     ``on_progress``, if given, is called with each progress payload
     (``{'percent', 'message'}``).
 
@@ -516,7 +519,8 @@ def request_service(client, project_id, service_id, data, timeout=10.0, on_progr
     ``on_accepted`` receives as soon as the server has taken the request.
     Pass ``request_id`` (a UUID you mint) to know the id before submitting;
     submitting an id that names a request you already made rejoins it
-    instead of starting another.
+    instead of starting another. Errors that leave the request alive carry
+    ``pending = True``; an error without it is the end of the request.
     """
     url = f'{client.base_url}/api/v1/projects/{project_id}/services/{service_id}/requests'
     if request_id:
@@ -531,7 +535,9 @@ def request_service(client, project_id, service_id, data, timeout=10.0, on_progr
     try:
         resp = requests.post(url, headers=_stream_headers(client), json=body, stream=True, timeout=(10, None))
     except Exception as e:
-        raise RuntimeError(f'Failed to submit service request: {e}')
+        # The POST may or may not have reached the server. Treat it as alive:
+        # rejoining a request that was never made simply 404s.
+        raise _still_running(RuntimeError(f'Failed to submit service request: {e}'))
 
     if resp.status_code == 503:
         resp.close()
@@ -549,7 +555,10 @@ def attach_service_request(client, project_id, request_id, timeout=10.0, on_prog
     request already finished. Raises :class:`PlaidAPIError` with status 404
     when the request is unknown or expired (the server keeps a finished
     request's result for a while, not forever), ``RuntimeError`` if the
-    service reported an error, ``TimeoutError`` on timeout."""
+    service reported an error, ``TimeoutError`` on timeout. As with
+    :func:`request_service`, ``timeout`` is how long the service may be silent,
+    and an error carrying ``pending = True`` means the request is still there
+    to rejoin again."""
     url = f'{client.base_url}/api/v1/projects/{project_id}/service-requests/{request_id}'
     try:
         resp = requests.get(url, headers=_stream_headers(client), stream=True, timeout=(10, None))
@@ -587,12 +596,26 @@ def _response_text(resp):
         return ''
 
 
+def _still_running(exc):
+    """Mark an error as one that leaves the request ALIVE on the server: a
+    timeout, a dropped connection. The service goes on working and its result
+    still waits under the request id, so a caller holding that id can rejoin it
+    with :func:`attach_service_request`, and must not forget the id the way it
+    forgets a request that really ended. An error without ``pending`` is the
+    end of the request."""
+    exc.pending = True
+    return exc
+
+
 def _await_stream(resp, timeout, on_progress, on_accepted):
     """Read a request stream to its terminal event (shared by submit and
     attach): the `accepted` event names the request, `progress` events are
     handed to ``on_progress``, and `result` / `error` end it."""
-    result = {'value': None, 'error': None, 'resolved': False}
+    result = {'value': None, 'error': None, 'resolved': False, 'pending': False}
     done = threading.Event()
+    # When the service last said anything. The deadline below is measured from
+    # here, not from the start of the run.
+    last_word = {'at': time.monotonic()}
 
     def reader():
         event_type = ''
@@ -609,6 +632,7 @@ def _await_stream(resp, timeout, on_progress, on_accepted):
                     data_buf = line[6:]
                 elif line == '' and event_type and data_buf:
                     payload = transform_response(json.loads(data_buf))
+                    last_word['at'] = time.monotonic()  # it spoke, so it is not hung
                     if event_type == 'accepted':
                         if on_accepted:
                             try:
@@ -635,16 +659,29 @@ def _await_stream(resp, timeout, on_progress, on_accepted):
                     data_buf = ''
             if not result['resolved']:
                 result['error'] = 'Service closed the connection without a result'
+                result['pending'] = True
                 done.set()
         except Exception as e:
             if not result['resolved']:
                 result['error'] = f'Service request stream error: {e}'
+                result['pending'] = True
                 done.set()
 
     thread = threading.Thread(target=reader, daemon=True)
     thread.start()
 
-    finished = done.wait(timeout=timeout)
+    # `timeout` is IDLE time, meaning how long the service may say nothing. It
+    # is not a deadline on the run: a service that is reporting its progress is
+    # not hung. As a cap on the whole run this killed working transcriptions and
+    # handed the document back as editable while the service went on writing.
+    finished = False
+    while True:
+        remaining = timeout - (time.monotonic() - last_word['at'])
+        if remaining <= 0:
+            break
+        if done.wait(timeout=remaining):
+            finished = True
+            break
     # Tear down the stream (unblocks the reader's iter_lines immediately).
     abort_response(resp)
     try:
@@ -653,7 +690,8 @@ def _await_stream(resp, timeout, on_progress, on_accepted):
         pass
 
     if not finished:
-        raise TimeoutError(f'Service request timed out after {timeout}s')
+        raise _still_running(TimeoutError(f'Service request timed out after {timeout}s of silence'))
     if result['error']:
-        raise RuntimeError(result['error'])
+        err = RuntimeError(result['error'])
+        raise _still_running(err) if result['pending'] else err
     return result['value']

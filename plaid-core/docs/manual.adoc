@@ -511,7 +511,11 @@ const result = await client.messages.requestService(
 console.log("Service returned:", result);
 ----
 
-If the service reports an error, or the timeout elapses, the request fails with that error rather than returning a result.
+If the service reports an error, the request fails with that error rather than returning a result.
+
+The timeout measures **silence**, not the length of the run: every event the service sends starts it again, so a service that reports its progress can work for as long as it needs to and only a service that has genuinely gone quiet is given up on. Set it to how long you are willing to hear nothing.
+
+Giving up does not end the request. The service goes on working, and its result waits on the server under the request id (see <<Presence and persistence>>). Errors of that kind are marked, so a caller can tell the difference without matching on messages: `err.pending === true` in JavaScript, `exc.pending` in Python, on a timeout, an abort, or a dropped connection. An error without it is the end of the request. A caller that recorded the request id should keep it when the error is `pending` and forget it otherwise.
 
 === Describing a service: tasks, summary, and parameters
 

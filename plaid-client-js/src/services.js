@@ -236,7 +236,7 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
  *
  * Streams the service's progress + result back over a single server-mediated
  * response (no broadcast). Rejects if no service is connected (503), if the
- * service reports an error, or on timeout.
+ * service reports an error, or after `timeout` of SILENCE.
  *
  * The request outlives this call: after a timeout, an abort, or a dropped
  * connection the service goes on, and `attachServiceRequest` collects the
@@ -245,11 +245,15 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
  * to know the id before submitting; submitting an id that names a request
  * you already made rejoins it instead of starting another.
  *
+ * Errors that leave the request alive carry `pending: true`: a timeout, a
+ * stop, a dropped connection. An error without it is the end of the request.
+ *
  * @param {Object} client - PlaidClient instance
  * @param {string} projectId - Project UUID
  * @param {string} serviceId - Service ID to request
  * @param {any} data - Request payload
- * @param {number} [timeout=10000] - Timeout in ms
+ * @param {number} [timeout=10000] - How long the service may say NOTHING, in ms.
+ *   Every event it sends starts the clock again, so this does not cap a long run
  * @param {function} [onProgress] - Called with each progress payload {percent, message}
  * @param {AbortSignal} [signal] - Abort to stop waiting; rejects with an AbortError
  * @param {Object} [opts]
@@ -291,12 +295,14 @@ export function requestService(client, projectId, serviceId, data, timeout = 100
  * the latest progress is replayed, then the result comes, or at once if the
  * request already finished. Rejects with an error whose `status` is 404 when
  * the request is unknown or expired (the server keeps a finished request's
- * result for a while, not forever).
+ * result for a while, not forever). As with `requestService`, `timeout` is
+ * how long the service may be silent, and an error carrying `pending: true`
+ * means the request is still there to rejoin again.
  *
  * @param {Object} client - PlaidClient instance
  * @param {string} projectId - Project UUID
  * @param {string} requestId - The request id (from `onAccepted` or your own)
- * @param {number} [timeout=10000] - Timeout in ms
+ * @param {number} [timeout=10000] - How long the service may say NOTHING, in ms
  * @param {function} [onProgress] - Called with each progress payload {percent, message}
  * @param {AbortSignal} [signal] - Abort to stop waiting; rejects with an AbortError
  * @returns {Promise<any>} The service's result
@@ -379,6 +385,15 @@ export function cancelServiceRequest(client, projectId, requestId) {
 }
 
 /**
+ * Mark an error as one that leaves the request ALIVE on the server: a timeout,
+ * a stop, a dropped connection. The service goes on working and its result
+ * still waits under the request id, so a caller holding that id can rejoin it
+ * with `attachServiceRequest`, and must not forget the id the way it forgets
+ * a request that really ended. An error without `pending` is terminal.
+ */
+const stillRunning = (err) => Object.assign(err, { pending: true });
+
+/**
  * Open a request stream (submit or attach) and read it to its terminal
  * event: `accepted` names the request, `progress` events go to `onProgress`,
  * and `result` / `error` settle the promise.
@@ -394,10 +409,24 @@ function streamServiceRequest(client, { url, method, body, onStatus, what }, tim
       abortController.abort();
       fn(arg);
     };
-    const timer = setTimeout(
-      () => finish(reject, new Error(`${what} timed out after ${timeout}ms`)),
-      timeout,
-    );
+
+    // `timeout` is IDLE time, meaning how long the service may say nothing. It
+    // is not a deadline on the run: every event from the server restarts it,
+    // because a
+    // service that is reporting its progress is not hung. As a deadline on the
+    // whole run it killed working transcriptions at the five-minute default
+    // and left their writes to land on a document the page had already handed
+    // back to the user as editable.
+    let timer;
+    const waitAgain = () => {
+      clearTimeout(timer);
+      timer = setTimeout(
+        () =>
+          finish(reject, stillRunning(new Error(`${what} timed out after ${timeout}ms of silence`))),
+        timeout,
+      );
+    };
+    waitAgain();
 
     // An external signal stops waiting on a long request (a UI's Stop button).
     // Reject with an AbortError so a caller can tell a deliberate stop from a
@@ -406,7 +435,7 @@ function streamServiceRequest(client, { url, method, body, onStatus, what }, tim
     const stop = () => {
       const err = new Error('The service request was stopped');
       err.name = 'AbortError';
-      finish(reject, err);
+      finish(reject, stillRunning(err));
     };
     if (signal) {
       if (signal.aborted) {
@@ -430,7 +459,9 @@ function streamServiceRequest(client, { url, method, body, onStatus, what }, tim
           signal: abortController.signal,
         });
       } catch (error) {
-        if (error.name !== 'AbortError') finish(reject, new Error(`${what} could not be sent: ${error.message}`));
+        // The POST may or may not have reached the server. Treat it as alive:
+        // rejoining a request that was never made simply 404s.
+        if (error.name !== 'AbortError') finish(reject, stillRunning(new Error(`${what} could not be sent: ${error.message}`)));
         return;
       }
 
@@ -467,6 +498,7 @@ function streamServiceRequest(client, { url, method, body, onStatus, what }, tim
               dataLine = line.slice(6);
             } else if (line === '' && eventType && dataLine) {
               const payload = transformResponse(JSON.parse(dataLine));
+              waitAgain(); // it spoke, so it is not hung
               if (eventType === 'accepted') {
                 if (onAccepted) { try { onAccepted(payload.requestId); } catch (_) { /* ignore */ } }
               } else if (eventType === 'progress') {
@@ -483,9 +515,9 @@ function streamServiceRequest(client, { url, method, body, onStatus, what }, tim
             }
           }
         }
-        finish(reject, new Error('Service closed the connection without a result'));
+        finish(reject, stillRunning(new Error('Service closed the connection without a result')));
       } catch (error) {
-        if (error.name !== 'AbortError') finish(reject, new Error(`${what} stream error: ${error.message}`));
+        if (error.name !== 'AbortError') finish(reject, stillRunning(new Error(`${what} stream error: ${error.message}`)));
       }
     })();
   });

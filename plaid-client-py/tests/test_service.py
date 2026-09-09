@@ -12,6 +12,8 @@ or with no dependencies::
 import os
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from plaid_client.service_schema import (  # noqa: E402
@@ -849,3 +851,83 @@ def test_a_stop_is_not_swallowed_by_a_service_catching_Exception():
     except ServiceCancelled:
         pass
     assert cleaned == ['finally still runs']
+
+
+# --- The request deadline is idle time, not a cap on the run -----------------
+#
+# A service that reports its progress is not hung, so every event it sends
+# starts the clock again. As a deadline on the whole run, the default killed
+# working transcriptions and handed the document back to the user as editable
+# while the service went on writing to it.
+
+def _stream_client(monkeypatch, beats):
+    """A response that yields each of `beats`, a (delay_s, line) pair, in order."""
+    import time as _time
+    from plaid_client import services as svc_mod
+
+    class FakeResponse:
+        status_code = 200
+        ok = True
+        raw = None
+
+        def iter_lines(self, decode_unicode=True):
+            for delay, line in beats:
+                _time.sleep(delay)
+                yield line
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(svc_mod.requests, 'post', lambda url, **kw: FakeResponse())
+    monkeypatch.setattr(svc_mod, 'abort_response', lambda resp: None)
+
+    class Client:
+        base_url = 'http://plaid.test'
+        token = 't'
+
+    return svc_mod, Client()
+
+
+def test_progress_restarts_the_clock_so_a_long_run_still_finishes(monkeypatch):
+    # Four 0.1s gaps under a 0.4s timeout: 0.4s of work, none of it silent.
+    beats = []
+    for pct in (25, 50, 75):
+        beats += [(0.1, 'event: progress'),
+                  (0.0, 'data: {"progress":{"percent":%d}}' % pct),
+                  (0.0, '')]
+    beats += [(0.1, 'event: result'), (0.0, 'data: {"data":{"ok":true}}'), (0.0, '')]
+    svc_mod, client = _stream_client(monkeypatch, beats)
+    assert svc_mod.request_service(client, 'p1', 's1', {}, timeout=0.4) == {'ok': True}
+
+
+def test_silence_gives_up_and_says_the_request_is_still_there(monkeypatch):
+    beats = [(0.01, 'event: progress'),
+             (0.0, 'data: {"progress":{"percent":10}}'),
+             (0.0, ''),
+             (5.0, 'event: result'),
+             (0.0, 'data: {"data":{"ok":true}}'),
+             (0.0, '')]
+    svc_mod, client = _stream_client(monkeypatch, beats)
+    with pytest.raises(TimeoutError) as caught:
+        svc_mod.request_service(client, 'p1', 's1', {}, timeout=0.15)
+    assert 'of silence' in str(caught.value)
+    assert getattr(caught.value, 'pending', False) is True
+
+
+def test_an_error_the_service_reported_is_the_end_of_it(monkeypatch):
+    beats = [(0.0, 'event: error'), (0.0, 'data: {"error":"model refused"}'), (0.0, '')]
+    svc_mod, client = _stream_client(monkeypatch, beats)
+    with pytest.raises(RuntimeError) as caught:
+        svc_mod.request_service(client, 'p1', 's1', {}, timeout=5)
+    assert str(caught.value) == 'model refused'
+    assert getattr(caught.value, 'pending', False) is False
+
+
+def test_a_stream_that_ends_without_a_result_leaves_the_request_alive(monkeypatch):
+    svc_mod, client = _stream_client(monkeypatch, [(0.0, 'event: progress'),
+                                                   (0.0, 'data: {"progress":{"percent":1}}'),
+                                                   (0.0, '')])
+    with pytest.raises(RuntimeError) as caught:
+        svc_mod.request_service(client, 'p1', 's1', {}, timeout=5)
+    assert 'without a result' in str(caught.value)
+    assert getattr(caught.value, 'pending', False) is True
