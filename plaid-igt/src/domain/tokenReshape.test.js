@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { writerPolicy } from '@larc-iu/plaid-client';
 import {
-  clearOrthographies,
   newHalfMetadata,
   provenanceOf,
   survivingProvenance,
@@ -21,16 +20,6 @@ describe('provenanceOf', () => {
   });
 });
 
-describe('clearOrthographies', () => {
-  it('nulls every orthography key, which is how a patch deletes', () => {
-    expect(clearOrthographies({ 'orthog:IPA': 'ab', 'orthog:X': '', form: 'ab' })).toEqual({
-      'orthog:IPA': null,
-      'orthog:X': null,
-    });
-    expect(clearOrthographies({ form: 'ab' })).toEqual({});
-  });
-});
-
 describe('survivingProvenance', () => {
   it('prefers the input that still needs review', () => {
     expect(survivingProvenance([{}, confirmed, machine])).toEqual(machine);
@@ -44,10 +33,11 @@ describe('survivingProvenance', () => {
 });
 
 describe('survivorPatch', () => {
-  it("confirms a verifier's reshape of machine material and drops the orthographies", () => {
+  it("confirms a verifier's reshape of machine material, touching nothing else", () => {
+    // The orthography is the user's, and stays: they can edit it down, and we
+    // could not write the new value for them anyway.
     expect(survivorPatch({ ...machine, 'orthog:IPA': 'ab' }, {}, verifier.editStamp)).toEqual({
       provConfirmed: true,
-      'orthog:IPA': null,
     });
   });
 
@@ -67,7 +57,7 @@ describe('survivorPatch', () => {
     });
   });
 
-  it('is null for a hand-made token with nothing to clear, so nothing is written', () => {
+  it('is null for a hand-made token, so nothing is written', () => {
     expect(survivorPatch({}, {}, verifier.editStamp)).toBeNull();
     expect(survivorPatch({ form: 'ab' }, {}, verifier.editStamp)).toBeNull();
   });
@@ -79,6 +69,7 @@ describe('survivorPatch', () => {
 
 describe('newHalfMetadata', () => {
   it('gives the new half the origin and the confirmation, and nothing else', () => {
+    // No form and no orthography: they describe text this half does not cover.
     expect(
       newHalfMetadata({ ...machine, form: 'abc', 'orthog:IPA': 'abc' }, verifier.editStamp),
     ).toEqual({ ...machine, provConfirmed: true });

@@ -18,32 +18,22 @@
 // most needs review wins, because the whole point of the mark is that
 // unreviewed machine work gets seen rather than absorbed into a neighbour.
 //
-// Orthographies do NOT follow. An `orthog:*` value transcribes the token's
-// text, and after a reshape it transcribes text that no longer exists: the
-// left half of a split would keep a transcription of the whole original word.
-// A wrong transcription reads as real, so they are cleared rather than
-// apportioned or copied.
+// Nothing else is touched. Orthographies, forms and every other key are the
+// USER'S content: after a reshape one of them may describe text that no longer
+// exists, but the person who reshaped the token knows that, and a stale value
+// they can edit down beats a deleted one they must retype. We cannot write
+// the new value for them, so we leave theirs alone. (This was briefly the other
+// way round, clearing `orthog:*`; the user's call, and the right one.)
 
 import { PROV, mergeMetadata, needsReview } from '@larc-iu/plaid-client';
 
 const PROV_KEYS = [PROV.key, PROV.sourceKey, PROV.confirmedKey, PROV.probKey, PROV.detailKey];
-
-const ORTHOG_PREFIX = 'orthog:';
 
 /** Just the provenance keys of a metadata map. */
 export const provenanceOf = (metadata) => {
   const out = {};
   for (const key of PROV_KEYS) {
     if (metadata && metadata[key] !== undefined) out[key] = metadata[key];
-  }
-  return out;
-};
-
-/** A patch that removes every orthography key the token has (null deletes). */
-export const clearOrthographies = (metadata) => {
-  const out = {};
-  for (const key of Object.keys(metadata || {})) {
-    if (key.startsWith(ORTHOG_PREFIX)) out[key] = null;
   }
   return out;
 };
@@ -60,8 +50,8 @@ export const survivingProvenance = (metadatas) => {
 /**
  * The metadata patch for a token that SURVIVES a reshape (the left half of a
  * split, the survivor of a merge). It keeps what it has, so only the changes
- * are returned: the edit stamp, the provenance it is inheriting, and the
- * orthographies to drop. Null when there is nothing to write.
+ * are returned: the edit stamp and the provenance it is inheriting. Null when
+ * there is nothing to write.
  *
  * @param {Object} own        the surviving token's metadata
  * @param {Object} inherited  the provenance the reshape settles on
@@ -72,7 +62,6 @@ export const survivorPatch = (own, inherited, editStamp) => {
   const patch = {
     ...provenance,
     ...(editStamp(mergeMetadata(own, provenance)) || {}),
-    ...clearOrthographies(own),
   };
   // Only the keys that actually change anything.
   for (const [key, value] of Object.entries(patch)) {
@@ -83,9 +72,9 @@ export const survivorPatch = (own, inherited, editStamp) => {
 
 /**
  * The whole metadata map for a token BORN of a reshape (the right half of a
- * split). It starts empty, so it gets the provenance and nothing else: no
- * orthographies, and no `form` — the text under it is not the text that value
- * described. Null when the original carried no provenance.
+ * split). It starts empty, so it gets the provenance and nothing else: an
+ * orthography or a `form` copied onto it would describe text it does not
+ * cover. Null when the original carried no provenance.
  */
 export const newHalfMetadata = (original, editStamp) => {
   const provenance = provenanceOf(original);

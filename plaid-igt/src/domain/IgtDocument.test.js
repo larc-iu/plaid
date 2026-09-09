@@ -543,9 +543,8 @@ describe('word-token structural ops', () => {
   });
 
   // The server gives the new half no metadata and leaves the old half's alone,
-  // which would render one word as two different kinds of thing and leave a
-  // transcription of the whole word standing on a piece of it.
-  it('splitToken gives both halves the same mark and drops the stale orthography', async () => {
+  // which would render one word as two different kinds of thing.
+  it("splitToken gives both halves the same mark, leaving the user's own keys alone", async () => {
     const raw = buildRawDoc({
       words: [
         {
@@ -562,8 +561,9 @@ describe('word-token structural ops', () => {
     await doc.splitToken('w-1', 2);
     const patches = doc._client.calls.filter((c) => c.kind === 'tokens.patchMetadata');
     expect(patches).toHaveLength(2);
-    // The surviving half: confirmed by the edit, and its orthography removed.
-    expect(patches[0].args[1]).toEqual({ provConfirmed: true, 'orthog:IPA': null });
+    // The surviving half: confirmed by the edit. Its orthography is the user's
+    // and is left for them to correct.
+    expect(patches[0].args[1]).toEqual({ provConfirmed: true });
     // The new half: the origin and the confirmation, and nothing else.
     expect(patches[1].args[1]).toEqual({
       prov: 'inferred',
