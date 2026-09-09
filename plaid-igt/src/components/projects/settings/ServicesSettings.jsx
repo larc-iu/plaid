@@ -17,6 +17,7 @@ import { IGT_NAMESPACE, resolveAutoAnalysis } from '@/domain/igtConfig';
 import {
   BUILTIN_TOKENIZE_RULE_BASED,
   BUILTIN_LINK_PRECEDENT,
+  BUILTIN_DETECT_SPEECH_SILERO,
   encodeServiceSelection,
   encodeBuiltinSelection,
   decodeSelection,
@@ -33,13 +34,19 @@ const SPOTS = [
     key: TASKS.TOKENIZE,
     label: 'Tokenization',
     description: 'Splits the baseline text into sentences and words (the Tokenize tab).',
-    builtins: [{ name: BUILTIN_TOKENIZE_RULE_BASED, label: 'Rule-based Punctuation' }],
+    builtins: [{ name: BUILTIN_TOKENIZE_RULE_BASED, label: 'Rule-based punctuation' }],
   },
   {
     key: TASKS.TRANSCRIBE,
     label: 'Transcription (ASR)',
     description: 'Transcribes and time-aligns audio on the Media tab.',
     builtins: [],
+  },
+  {
+    key: TASKS.DETECT_SPEECH,
+    label: 'Speech detection',
+    description: 'Proposes segments from the speech in a recording (the Media tab).',
+    builtins: [{ name: BUILTIN_DETECT_SPEECH_SILERO, label: 'Silero, in the browser' }],
   },
   {
     key: TASKS.TRANSLATE,

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { IgtEditor } from './island/IgtEditor.js';
 import { AutoAnalyzeDialog } from './AutoAnalyzeDialog.jsx';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
@@ -25,6 +25,13 @@ export const AnalyzeIsland = () => {
     window.addEventListener('igt:auto-analyze-open', onOpen);
     return () => window.removeEventListener('igt:auto-analyze-open', onOpen);
   }, []);
+
+  // An Auto-analyze run keeps going when the dialog is closed, so its status
+  // goes onto the toolbar button that opened it.
+  const handleRunStatus = useCallback(
+    (status) => editorRef.current?.setAutoAnalyzeStatus(status),
+    [],
+  );
 
   // Vocab-entry creation needs vocab-maintainer rights (linking needs less);
   // the island hides its "+ Create" row for vocabs this user can't add to.
@@ -70,7 +77,12 @@ export const AnalyzeIsland = () => {
       {!doc && <div style={{ padding: 24, color: '#6b7280' }}>Loading interlinear editor…</div>}
       <div ref={hostRef} className="igt-island" style={{ display: doc ? 'block' : 'none' }} />
       {doc && (
-        <AutoAnalyzeDialog open={autoAnalyzeOpen} onOpenChange={setAutoAnalyzeOpen} doc={doc} />
+        <AutoAnalyzeDialog
+          open={autoAnalyzeOpen}
+          onOpenChange={setAutoAnalyzeOpen}
+          doc={doc}
+          onRunStatus={handleRunStatus}
+        />
       )}
     </div>
   );

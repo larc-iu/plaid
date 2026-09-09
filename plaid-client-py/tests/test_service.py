@@ -704,3 +704,22 @@ def test_attach_to_an_unknown_request_raises_404(monkeypatch):
         assert e.status == 404
     else:
         raise AssertionError('expected a 404')
+
+
+def test_detect_speech_task_and_slider_param():
+    """The detect-speech task exists in both clients, and `slider` is a
+    rendering hint on a number rather than a type of its own."""
+    assert TASKS.DETECT_SPEECH == 'detect-speech'
+    param = Param.number('threshold', 'Speech threshold', slider=True,
+                         min=0.1, max=0.9, step=0.05, default=0.5)
+    assert param['type'] == 'number'
+    assert param['slider'] is True
+    extras = build_extras(tasks=[TASKS.DETECT_SPEECH], parameters=[param])
+    assert extras['tasks'] == ['detect-speech']
+    assert default_values(extras['parameters']) == {'threshold': 0.5}
+    # Value logic is a plain number's: clamped to the declared range.
+    values, errors = coerce(extras['parameters'], {'threshold': '5'})
+    assert values == {'threshold': 0.9}
+    assert errors == {}
+    # A number without `slider` does not gain the key.
+    assert 'slider' not in Param.number('n', 'N', min=0, max=10)

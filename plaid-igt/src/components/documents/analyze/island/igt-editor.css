@@ -144,6 +144,14 @@
   outline: 2px solid var(--igt-blue);
   outline-offset: 1px;
 }
+/* A run outlives its dialog; the button carries the clock until it is done. */
+.igt-toolbar__btn[data-running] {
+  border-style: dashed;
+}
+.igt-toolbar__elapsed {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
 .igt-help-btn {
   font: inherit;
   font-weight: 700;

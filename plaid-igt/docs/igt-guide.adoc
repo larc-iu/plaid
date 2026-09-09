@@ -200,7 +200,7 @@ Type into a proposal and it becomes an ordinary segment with those times, saved 
 The **×** on the row discards it.
 Nothing is written to the document until you type into one, and a proposal nobody typed into is gone when you leave the tab.
 
-The settings in the dialog change what is proposed without running the model again:
+The built-in detector's options change what is proposed without running the model again:
 
 * **Speech threshold**: how sure the model must be before a moment counts as speech. Raise it on a noisy recording.
 * **Shortest silence**: a pause shorter than this does not end a segment.
@@ -210,8 +210,12 @@ The settings in the dialog change what is proposed without running the model aga
 
 Detection leaves any stretch that already has a segment alone, so you can run it again after using some of what it proposed.
 
-With a transcription service connected, a model can take the first pass.
+Speech detection is a service spot like the others, so a connected detection service appears in the same **Method** list beside the built-in.
+Whichever runs, what comes back is proposals, and nothing is written until you type into one.
+
+Transcription is a separate run, from the **Transcribe** button in the **Transcript** header: it writes segments and their text to the document, where detection only proposes times.
 Its segments are marked as machine-made until you edit or confirm them (see <<_services>>).
+**Clear segments** removes every segment and leaves the text in the baseline.
 
 == Tokenize
 
@@ -227,10 +231,10 @@ You can tokenize by hand:
 * **Ctrl/Cmd+click** a word to start a new sentence at it.
 * The **↑** button on a sentence merges it with the previous one.
 
-Or run a tokenizer over the whole document with **Tokenize**.
-The built-in **Rule-based Punctuation** splitter finds words and leaves sentence breaks as they are.
+Or run a tokenizer over the whole document with **Tokenize**, in the **Tokens** header.
+The built-in **Rule-based punctuation** splitter finds words and leaves sentence breaks as they are.
 A tokenization service can replace it with smarter segmentation of both sentences and words (see <<_services>>).
-**Clear Tokens** and **Reset Sentences** start over.
+**Clear tokens** and **Reset sentences**, beside it, start over.
 
 A project can mark certain tokens as **ignored**, usually punctuation.
 Ignored tokens carry no word-level annotation and host no morphemes, so they stay out of your way in the grid (see <<_annotation>>).
@@ -465,6 +469,11 @@ Everything it produces is marked as machine-made and shows in violet until you c
 4. **Link to the lexicon.** Words and morphemes that have no link yet are linked to lexicon entries, by the built-in rule described below or by a service. This runs last so that it can link the stems step 3 just produced. Needs the project to have a vocabulary.
 
 Each step remembers whether you left it on, and a service step is unavailable when no service for it is online.
+
+A run over a long document takes minutes.
+While it goes, the dialog lists the steps it will take and ticks them off, and shows the step it is on, how far that step has got, and how long the run has been going.
+Steps that report no percentage of their own, such as a model pass, still show their name and the clock.
+You can close the dialog and keep working: the run carries on, and the **Auto-analyze** button on the toolbar shows the elapsed time until it finishes.
 When the run finishes, a message says what was done: how many translations were proposed, how many words received a copied analysis, and so on.
 Then review the result with the gestures under <<_analyze>>: **Ctrl/Cmd+Enter** confirms a whole word, **Ctrl/Cmd+Backspace** discards its proposal, and **Ctrl/Cmd+Shift+↑/↓** jumps between the words that still have unconfirmed material.
 
@@ -556,7 +565,7 @@ The mark is shared with every Plaid app on the project.
 [[_settings_services]]
 == Services
 
-Which service, or built-in method, each task uses by default: tokenization, transcription, translation, analysis, and auto-linking (see <<_services>>).
+Which service, or built-in method, each task uses by default: tokenization, transcription, speech detection, translation, analysis, and auto-linking (see <<_services>>).
 A default can carry default options too, and people can still switch per use.
 This is also where you say what Auto-analyze's copy step copies from a word's previous analyses: its segmentation, its links, its field values, or any combination (see <<_copying_previous_analyses>>).
 
@@ -630,10 +639,15 @@ The AI assistance described in the introduction is connected this way.
 Once connected, it appears wherever its task is offered, and a maintainer can make it the default for that task under **Settings → Services**.
 Some tasks ship with a built-in method that needs no service at all.
 
-There are five integration points:
+Every one of them works the same way.
+A button names the run, in the header of the panel its results land in; it opens a dialog with the **Method** to use, that method's options, and the button that starts the run.
+A run keeps going if you close the dialog, and the button that opened it shows how long it has been going and how far it has got.
+
+There are six integration points:
 
 * **Tokenization**: splits the baseline into words, on the **Tokenize** tab. The built-in rule-based splitter is always available and leaves sentence breaks as they are. A service can replace it with smarter segmentation of sentences and words (the bundled example uses Punkt).
 * **Transcription (ASR)**: transcribes and time-aligns a recording, on the **Media** tab. There is no built-in, so this needs a connected service (the bundled example uses Whisper).
+* **Speech detection**: proposes where the utterances are in a recording, on the **Media** tab. The built-in runs in your browser and needs no service. Unlike the others, a detection service returns its regions rather than writing them, and they stay proposals until you type into one (see <<_speech_detection>>).
 * **Translation**: proposes a free translation for each sentence, as step 1 of **Auto-analyze** (see <<_auto_analyze>>), so the analyzers that follow can read it. The bundled example uses a language model.
 * **Analysis**: proposes a morpheme segmentation and glosses for every word, as step 3 of Auto-analyze. There is no built-in, so this needs a connected service. Two examples are bundled: PolyGloss, a multilingual glossing model, and a language model given the project's own analyses as examples. Words a person has analyzed are left alone.
 * **Auto-link vocabulary**: proposes vocabulary links for unlinked words and morphemes, as step 4 of Auto-analyze. The built-in rule follows your project's own precedent and unique matches, and a service can propose links its own way.

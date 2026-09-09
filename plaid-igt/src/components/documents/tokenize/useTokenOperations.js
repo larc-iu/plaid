@@ -1,33 +1,32 @@
 import { useState, useEffect, useRef } from 'react';
-import { cpLength, cpSlice, filterServicesByTask, TASKS } from '@larc-iu/plaid-client';
+import { cpLength, cpSlice, TASKS } from '@larc-iu/plaid-client';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import { useServiceRequest } from '../hooks/useServiceRequest.js';
-import { useServiceParams } from '../hooks/useServiceParams.js';
+import { useServiceSpot } from '../hooks/useServiceSpot.js';
+import { useRunProgress, useMirroredProgress } from '../hooks/useRunProgress.js';
 import {
   countAnnotationLossForWord,
   countSubWordAnnotationLoss,
   countReTokenizeLoss,
 } from '../../../domain/annotationLoss.js';
-import {
-  BUILTIN_TOKENIZE_RULE_BASED,
-  encodeServiceSelection,
-  encodeBuiltinSelection,
-  decodeSelection,
-  readSpotDefault,
-  resolveInitialSelection,
-} from '../../../domain/serviceDefaults.js';
+import { BUILTIN_TOKENIZE_RULE_BASED } from '../../../domain/serviceDefaults.js';
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 
-const SERVICE_KEY = 'plaid_igt_tokenize_service';
-const PARAMS_PREFIX = 'plaid_igt_tokenize_params_';
-const BUILTIN_VALUE = encodeBuiltinSelection(BUILTIN_TOKENIZE_RULE_BASED);
+// The rule-based tokenizer is always available and declares no options.
+const TOKENIZE_BUILTINS = [
+  {
+    name: BUILTIN_TOKENIZE_RULE_BASED,
+    label: 'Built-in (rule-based punctuation)',
+    description: 'finds words only; sentence boundaries stay as they are',
+  },
+];
 
 // Tokenize tab operations, backed by the shared IgtDocument. Structural edits
 // (split/merge/delete/create token + sentence split/merge) delegate straight to
 // the domain methods, which do the optimistic patch + morpheme cleanup +
 // reload-on-error; doc.sentences re-derives the token/gap `pieces` after each.
-// Only the NLP-service glue, algorithm selection, and progress UI are local.
+// Only the service glue, method selection, and progress are local.
 export const useTokenOperations = () => {
   const { doc } = useDocumentCtx();
   useIgtDocument(doc);
@@ -44,85 +43,26 @@ export const useTokenOperations = () => {
     progressMessage,
   } = useServiceRequest();
 
-  const [algorithm, setAlgorithmState] = useState(BUILTIN_VALUE);
-  const [algorithmOptions, setAlgorithmOptions] = useState([
-    { value: BUILTIN_VALUE, label: 'Rule-based Punctuation' },
-  ]);
   const [isTokenizing, setIsTokenizing] = useState(false);
-  const [tokenizationProgress, setTokenizationProgress] = useState(0);
-  const [currentOperation, setCurrentOperation] = useState('');
-  const [hasRestoredCache, setHasRestoredCache] = useState(false);
 
   // Discover services on mount.
   useEffect(() => {
     if (project?.id) discoverServices(project.id);
   }, [project?.id, discoverServices]);
 
-  // Populate options when services change; resolve the initial selection once.
-  // Services are matched by their declared `tasks`; only ONLINE ones are
-  // offered (discovery also returns previously-seen offline services).
-  useEffect(() => {
-    const onlineServices = filterServicesByTask(availableServices, TASKS.TOKENIZE).filter(
-      (s) => s.online !== false,
-    );
-    const options = [{ value: BUILTIN_VALUE, label: 'Rule-based Punctuation' }];
-    onlineServices.forEach((service) => {
-      options.push({
-        value: encodeServiceSelection(service.serviceId),
-        label: service.serviceName,
-      });
-    });
-    setAlgorithmOptions(options);
-    const has = (val) => options.some((opt) => opt.value === val);
-
-    // One-time: resolve cached choice -> project default -> built-in once
-    // services have been discovered.
-    if (options.length > 1 && !hasRestoredCache) {
-      const selection = resolveInitialSelection({
-        services: onlineServices,
-        builtins: [BUILTIN_TOKENIZE_RULE_BASED],
-        cached: localStorage.getItem(SERVICE_KEY),
-        projectDefault: readSpotDefault(project, TASKS.TOKENIZE),
-      });
-      if (selection) setAlgorithmState(selection);
-      setHasRestoredCache(true);
-      return;
-    }
-    // Every (re)discovery: if the selected service has vanished, fall back to the
-    // built-in (mirrors the media tab; a no-op when the selection is still valid).
-    setAlgorithmState((cur) => (cur.startsWith('service:') && !has(cur) ? BUILTIN_VALUE : cur));
-  }, [availableServices, hasRestoredCache, project]);
-
-  const setAlgorithm = (value) => {
-    setAlgorithmState(value);
-    if (value) localStorage.setItem(SERVICE_KEY, value);
-    else localStorage.removeItem(SERVICE_KEY);
-  };
-
-  // The selected NLP service (null for the built-in rule-based option) and its
-  // user-controllable arguments.
-  const selectedServiceId =
-    decodeSelection(algorithm)?.kind === 'service' ? decodeSelection(algorithm).id : null;
-  const selectedService = selectedServiceId
-    ? availableServices.find((s) => s.serviceId === selectedServiceId) || null
-    : null;
-  const tokenizeDefault = readSpotDefault(project, TASKS.TOKENIZE);
-  const {
-    schema: paramSchema,
-    values: paramValues,
-    setParam: setParamValue,
-    coerced: coerceParams,
-    errors: paramErrors,
-  } = useServiceParams(
-    selectedService,
-    PARAMS_PREFIX,
-    tokenizeDefault?.service?.serviceId === selectedServiceId ? tokenizeDefault?.params : null,
-  );
-
-  const updateProgress = (percent, operation) => {
-    setTokenizationProgress(percent);
-    setCurrentOperation(operation);
-  };
+  const spot = useServiceSpot({
+    task: TASKS.TOKENIZE,
+    project,
+    services: availableServices,
+    builtins: TOKENIZE_BUILTINS,
+    storageId: 'tokenize',
+  });
+  const tokenizeRun = useRunProgress();
+  useMirroredProgress(tokenizeRun, {
+    percent: progressPercent,
+    message: progressMessage,
+    active: tokenizeRun.running && !!spot.service,
+  });
 
   // --- Structural ops (delegate to the domain model) ---
   // splitToken / mergeTokens are defined below — both gated by an annotation-loss
@@ -251,10 +191,9 @@ export const useTokenOperations = () => {
   // confirms a destructive re-tokenize (see handleTokenize / pendingTokenize).
   const runServiceTokenize = async (serviceId, { overwrite = false } = {}) => {
     setIsTokenizing(true);
-    setTokenizationProgress(0);
+    tokenizeRun.start(['Tokenize']);
     try {
       const layers = doc.layerInfo;
-      updateProgress(10, 'Requesting tokenization from NLP service...');
       await requestService(
         project.id,
         doc.document.id,
@@ -262,7 +201,7 @@ export const useTokenOperations = () => {
         {
           // User-controlled arguments declared by the service, spread FIRST so
           // the fixed layer/doc params below always win over any same-named arg.
-          ...coerceParams(),
+          ...spot.params.coerced(),
           // Granted by the user's confirm — lets the run discard the existing
           // annotations the sentence-partition reset cascade-deletes.
           ...(overwrite ? { overwrite: true } : {}),
@@ -278,7 +217,9 @@ export const useTokenOperations = () => {
           errorMessage: 'An error occurred during tokenization',
         },
       );
-      updateProgress(100, 'Tokenization complete!');
+      // Re-reading the document after a service run is seconds of work on a
+      // large one, so it is named rather than left as dead air.
+      tokenizeRun.report({ percent: null, message: 'Loading the tokens…' });
       await doc._reload();
     } catch (error) {
       // useServiceRequest already shows an error toast (errorTitle/errorMessage);
@@ -286,8 +227,7 @@ export const useTokenOperations = () => {
       console.error('Tokenization failed:', error);
     } finally {
       setIsTokenizing(false);
-      setTokenizationProgress(0);
-      setCurrentOperation('');
+      tokenizeRun.finish();
     }
   };
 
@@ -297,14 +237,14 @@ export const useTokenOperations = () => {
   // we re-run granting overwrite. null = nothing destructive / not pending.
   const [pendingTokenize, setPendingTokenize] = useState(null); // {serviceId, annotations, links}
   const handleTokenize = async () => {
-    if (algorithm.startsWith('service:')) {
+    if (spot.service) {
       // Block on unmet required service arguments before doing any work.
-      const missing = Object.values(paramErrors);
+      const missing = Object.values(spot.params.errors);
       if (missing.length) {
         notifyError(missing[0], 'Missing required option');
         return;
       }
-      const serviceId = algorithm.substring(8);
+      const serviceId = spot.service.serviceId;
       const loss = countReTokenizeLoss(doc.layerInfo, doc.vocabularies);
       if (loss.annotations + loss.links > 0) {
         setPendingTokenize({ serviceId, ...loss });
@@ -315,11 +255,9 @@ export const useTokenOperations = () => {
 
     // Built-in rule-based tokenizer fills untokenized ranges only — non-destructive.
     setIsTokenizing(true);
-    setTokenizationProgress(0);
+    tokenizeRun.start(['Tokenize']);
     try {
-      updateProgress(50, 'Tokenizing…');
       const created = await doc.tokenize(); // built-in rule-based; reloads internally
-      updateProgress(100, 'Tokenization complete!');
       // null = failure (already toasted by the domain via doc.onError); 0 = nothing
       // to do; N = created.
       if (created === null) return;
@@ -330,8 +268,7 @@ export const useTokenOperations = () => {
       notifyError(error.message || 'An error occurred during tokenization', 'Tokenization Failed');
     } finally {
       setIsTokenizing(false);
-      setTokenizationProgress(0);
-      setCurrentOperation('');
+      tokenizeRun.finish();
     }
   };
   const confirmPendingTokenize = async () => {
@@ -344,24 +281,16 @@ export const useTokenOperations = () => {
 
   const handleClearTokens = async () => {
     setIsTokenizing(true);
-    updateProgress(25, 'Deleting tokens...');
     const ok = await doc.clearTokens();
-    updateProgress(100, 'Tokens cleared!');
     if (ok) notifySuccess('Tokens cleared', 'Success');
     setIsTokenizing(false);
-    setTokenizationProgress(0);
-    setCurrentOperation('');
   };
 
   const handleClearSentences = async () => {
     setIsTokenizing(true);
-    updateProgress(25, 'Resetting sentences...');
     const ok = await doc.clearSentences();
-    updateProgress(100, 'Sentence tokens reset!');
     if (ok) notifySuccess('Reset to single sentence', 'Success');
     setIsTokenizing(false);
-    setTokenizationProgress(0);
-    setCurrentOperation('');
   };
 
   return {
@@ -385,25 +314,14 @@ export const useTokenOperations = () => {
     handleTokenize,
     handleClearTokens,
     handleClearSentences,
-    // algorithm + progress UI state
-    algorithm,
-    setAlgorithm,
-    algorithmOptions,
-    // selected-service args + summary
-    selectedService,
-    paramSchema,
-    paramValues,
-    setParamValue,
-    paramErrors,
+    // method + run clock
+    spot,
+    tokenizeRun,
     isTokenizing,
-    tokenizationProgress,
-    currentOperation,
     // service discovery
     isDiscovering,
     discoverServices,
     isProcessing,
     hasServices,
-    progressPercent,
-    progressMessage,
   };
 };

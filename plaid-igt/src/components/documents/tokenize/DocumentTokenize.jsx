@@ -1,21 +1,12 @@
 import { useEffect, useState, useRef } from 'react';
-import { Info, Play, ChevronUp, Scissors, HelpCircle } from 'lucide-react';
+import { Info, ChevronUp, Scissors, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { useTokenOperations } from './useTokenOperations.js';
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
-import { ServiceSummary } from '../services/ServiceSummary.jsx';
-import { ServiceParamForm } from '../services/ServiceParamForm.jsx';
+import { TokenizeDialog } from './TokenizeDialog.jsx';
 import Lazy from '../../lazy';
 import './DocumentTokenize.css';
 
@@ -27,7 +18,6 @@ export function DocumentTokenize() {
   const sentences = doc.sentences;
   const layers = doc.layerInfo;
   const text = doc.document.text;
-  const project = doc.project;
   const existingTokens = sentences?.flatMap((s) => s.tokens || []) || [];
   const existingSentenceTokens = sentences || [];
   // Word layer is :non-overlapping nested under sentence — every word token must be contained
@@ -37,6 +27,17 @@ export function DocumentTokenize() {
   const [helpOpen, setHelpOpen] = useState(false);
   // Which bulk clear is awaiting confirmation: 'tokens' | 'sentences' | null.
   const [confirmClear, setConfirmClear] = useState(null);
+
+  const busy = ops.isTokenizing || ops.isProcessing;
+  // Why Tokenize cannot run, stated in the dialog rather than left to a
+  // disabled button with no explanation. Null means it can.
+  const tokenizeBlockedHint = !layers?.primaryTokenLayer
+    ? 'This project has no word layer.'
+    : !text?.body
+      ? 'This document has no text yet.'
+      : !hasSentencePartition
+        ? 'The text has no sentences yet. Save it again on the Baseline tab.'
+        : null;
 
   // Drag-to-merge selection state. Mirrored into a ref so synchronous DOM event
   // handlers (mousedown→mouseup→click) read the latest value without waiting for
@@ -67,11 +68,6 @@ export function DocumentTokenize() {
     return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
   }, [readOnly]);
 
-  const handleAlgorithmDropdownClick = async () => {
-    if (!project?.id || ops.isDiscovering) return;
-    await ops.discoverServices(project.id);
-  };
-
   return (
     <TooltipProvider>
       <div className="tw flex flex-col gap-6 mt-4" style={{ height: 'calc(100vh - 200px)' }}>
@@ -81,21 +77,46 @@ export function DocumentTokenize() {
           style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
         >
           <div className="border-b p-4">
-            <div className="flex items-center gap-2">
-              <h3 className="text-base font-semibold">Tokens</h3>
-              <Tooltip>
-                <TooltipTrigger asChild>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-semibold">Tokens</h3>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground"
+                      onClick={() => setHelpOpen((v) => !v)}
+                    >
+                      <HelpCircle className="h-5 w-5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{helpOpen ? 'Hide help' : 'Show help'}</TooltipContent>
+                </Tooltip>
+              </div>
+
+              {/* The run, and the two bulk edits that empty this panel. */}
+              {!readOnly && (
+                <div className="flex items-center gap-2">
+                  <TokenizeDialog ops={ops} blockedHint={tokenizeBlockedHint} />
                   <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-muted-foreground"
-                    onClick={() => setHelpOpen((v) => !v)}
+                    variant="outline"
+                    onClick={() => setConfirmClear('tokens')}
+                    disabled={busy || !existingTokens.length}
                   >
-                    <HelpCircle className="h-5 w-5" />
+                    Clear tokens
                   </Button>
-                </TooltipTrigger>
-                <TooltipContent>{helpOpen ? 'Hide help' : 'Show help'}</TooltipContent>
-              </Tooltip>
+                  <Button
+                    variant="outline"
+                    onClick={() => setConfirmClear('sentences')}
+                    disabled={
+                      busy || !existingSentenceTokens.length || existingSentenceTokens.length === 1
+                    }
+                  >
+                    Reset sentences
+                  </Button>
+                </div>
+              )}
             </div>
 
             {helpOpen && (
@@ -168,129 +189,17 @@ export function DocumentTokenize() {
           </div>
         </div>
 
-        {/* NLP Controls Panel */}
-        <div
-          className="rounded-lg border bg-card p-4"
-          style={{ flexShrink: 0 }}
-          onMouseEnter={() => ops.discoverServices(project?.id)}
-        >
-          <div className="flex items-end justify-between flex-wrap gap-2 mb-4">
-            <div className="flex items-end gap-3">
-              <div className="flex flex-col gap-1.5" onMouseEnter={handleAlgorithmDropdownClick}>
-                <div className="flex items-center gap-1.5">
-                  <Label>Tokenization Algorithm</Label>
-                  <ServiceSummary service={ops.selectedService} />
-                  {!ops.selectedService && (
-                    <span className="text-xs text-muted-foreground">
-                      finds words only; sentence boundaries stay as they are
-                    </span>
-                  )}
-                </div>
-                <Select value={ops.algorithm} onValueChange={ops.setAlgorithm} disabled={readOnly}>
-                  <SelectTrigger style={{ width: 280 }}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ops.algorithmOptions.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <Button
-                onClick={ops.handleTokenize}
-                disabled={
-                  ops.isTokenizing ||
-                  ops.isProcessing ||
-                  !text?.body ||
-                  !layers?.primaryTokenLayer ||
-                  !hasSentencePartition ||
-                  readOnly ||
-                  Object.keys(ops.paramErrors || {}).length > 0
-                }
-              >
-                <Play className="h-4 w-4" />
-                {ops.isTokenizing || ops.isProcessing ? 'Tokenizing...' : 'Tokenize'}
-              </Button>
-            </div>
-
-            <div className="flex items-end gap-3">
-              <Button
-                variant="secondary"
-                onClick={() => setConfirmClear('tokens')}
-                disabled={
-                  ops.isTokenizing || ops.isProcessing || !existingTokens.length || readOnly
-                }
-              >
-                Clear Tokens
-              </Button>
-
-              <Button
-                variant="secondary"
-                onClick={() => setConfirmClear('sentences')}
-                disabled={
-                  ops.isTokenizing ||
-                  ops.isProcessing ||
-                  !existingSentenceTokens.length ||
-                  existingSentenceTokens.length === 1 ||
-                  readOnly
-                }
-              >
-                Reset Sentences
-              </Button>
+        {!layers?.primaryTokenLayer && (
+          <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
+            <div className="flex items-start gap-2">
+              <Info className="h-4 w-4 mt-0.5 shrink-0 text-destructive" />
+              <p className="text-sm text-destructive">
+                Missing primary token layer. Please ensure your project has a primary token layer
+                configured.
+              </p>
             </div>
           </div>
-
-          {/* Service arguments (only when a service with parameters is selected) */}
-          {ops.paramSchema?.length > 0 && (
-            <div className="mb-4">
-              <ServiceParamForm
-                schema={ops.paramSchema}
-                values={ops.paramValues}
-                errors={ops.paramErrors}
-                onChange={ops.setParamValue}
-                disabled={readOnly || ops.isTokenizing || ops.isProcessing}
-              />
-            </div>
-          )}
-
-          {/* Progress, only while something runs: an empty reserved box is dead space. */}
-          {(ops.isTokenizing || ops.isProcessing) && (
-            <div className="rounded-lg border bg-card p-4">
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <Play className="h-4 w-4" />
-                  <p className="font-medium">{ops.progressMessage || 'Processing...'}</p>
-                </div>
-                <div className="h-2 w-full rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-primary"
-                    style={{ width: `${ops.progressPercent || ops.tokenizationProgress}%` }}
-                  />
-                </div>
-                <p className="text-sm text-muted-foreground">{ops.currentOperation}</p>
-              </div>
-            </div>
-          )}
-
-          {!layers?.primaryTokenLayer && (
-            <>
-              <div className="border-t mt-4" />
-              <div className="mt-4 rounded-md border border-destructive/50 bg-destructive/5 p-3">
-                <div className="flex items-start gap-2">
-                  <Info className="h-4 w-4 mt-0.5 shrink-0 text-destructive" />
-                  <p className="text-sm text-destructive">
-                    Missing primary token layer. Please ensure your project has a primary token
-                    layer configured.
-                  </p>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
+        )}
       </div>
 
       {/* Bulk-clear confirmations. Counts come straight from the loaded doc. */}

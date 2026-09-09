@@ -74,7 +74,9 @@ test('C3 first save creates the sentence partition; C4-01 the built-in tokenizer
   await page.waitForLoadState('networkidle');
   await expect.poll(async () => (await layerOf(ROLES.SENTENCE)).tokens.length).toBe(1);
   await openTab(page, 'tokenize');
+  // The Tokens header opens the run dialog; the run itself is its Tokenize button.
   await page.getByRole('button', { name: 'Tokenize' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Tokenize' }).click();
   await expect
     .poll(async () => (await wordContents()).length, { timeout: 15_000 })
     .toBeGreaterThan(3);
@@ -97,12 +99,15 @@ test('B15-01/02/03: the Auto-analyze dialog cancels cleanly and links on Run', a
   };
   let dialog = await openDialog();
   // Four step toggles (translations, copy previous analyses, propose
-  // segmentation and glosses, link to the lexicon); the linking method select
-  // shows for the last one. The fixture project has a lexicon and no
-  // translation or analysis service online, so those steps are disabled.
+  // segmentation and glosses, link to the lexicon); the linking method shows
+  // for the last one. The fixture project has a lexicon and no translation or
+  // analysis service online, so those steps are disabled. With only the
+  // built-in linker available the method is stated rather than offered as a
+  // one-item dropdown.
   await expect(dialog.getByRole('checkbox')).toHaveCount(4);
-  await expect(dialog.getByRole('combobox')).toBeVisible();
-  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(dialog).toContainText('Built-in (precedent & unique matches)');
+  // The footer dismiss; the corner X carries the same accessible name.
+  await dialog.getByRole('button', { name: 'Close' }).first().click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   dialog = await openDialog();
   await page.keyboard.press('Escape');

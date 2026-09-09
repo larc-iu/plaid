@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { getParamSchema, buildDefaultValues, coerceParamValues } from '@larc-iu/plaid-client';
+import { buildDefaultValues, coerceParamValues } from '@larc-iu/plaid-client';
 
 // Destructive per-run opt-ins that must NOT persist across dialog opens/sessions:
 // they reset to their (safe, default-OFF) schema value every (re)init and are
@@ -9,75 +9,97 @@ import { getParamSchema, buildDefaultValues, coerceParamValues } from '@larc-iu/
 // default (config.serviceDefaults) is still honored — that's an explicit choice.
 const NON_PERSISTENT_PARAMS = new Set(['overwrite']);
 
-// Per-integration-point hook for a selected service's user-controllable
-// arguments. Seeds form values from the service's declared parameter schema
-// (defaults, overlaid with the project's default params for this service if
-// any, overlaid with any cached values), persists edits per service in
-// localStorage, exposes live validation `errors`, and a `coerced()` to merge
-// into the request payload.
+// Form state for one declared parameter schema. Seeds from the schema's
+// defaults, overlaid with the project's default params for this method,
+// overlaid with any cached values; persists edits in localStorage; exposes live
+// validation `errors`, a `coerced()` to merge into the request payload, and a
+// `reset()` back to the seeded state.
 //
-//   selectedService: the chosen DiscoveredService (or null for built-in/none)
-//   storagePrefix:   localStorage key prefix; the serviceId is appended
-//   defaultParams:   project-level default values (config.<ns>.serviceDefaults
-//                    [task].params) — only applied when they belong to THIS
-//                    service; the caller passes null otherwise
-export function useServiceParams(selectedService, storagePrefix, defaultParams = null) {
-  const serviceId = selectedService?.serviceId || null;
-  const schema = useMemo(() => getParamSchema(selectedService), [selectedService]);
+// The schema is whatever the selected METHOD declares — a service's
+// `extras.parameters` or an app built-in's own schema — so a built-in with
+// options (speech detection) runs through the same path as a service.
+// `useServiceSpot` is the normal caller.
+//
+//   schema:        the parameter descriptors (see plaid-client serviceSchema)
+//   storageKey:    full localStorage key, or null to keep values in memory
+//   defaultParams: project-level defaults for THIS method, else null
+export function useServiceParams({ schema, storageKey, defaultParams = null }) {
   const [values, setValues] = useState({});
 
   // Latest values, so setParam can persist without recreating on every change.
   const valuesRef = useRef(values);
   valuesRef.current = values;
 
-  // (Re)initialize when the selected service changes: schema defaults,
-  // overlaid with project default params, overlaid with cached values — for
-  // keys still in the schema. Keyed on serviceId only — a service's schema is
-  // stable within a session, so we don't re-seed on every re-discovery (which
-  // replaces the service object identity but not its schema).
-  useEffect(() => {
-    if (!serviceId) {
-      setValues({});
-      return;
-    }
-    const defaults = buildDefaultValues(schema);
-    const projectParams = defaultParams || {};
-    let cached = {};
-    try {
-      const raw = localStorage.getItem(`${storagePrefix}${serviceId}`);
-      if (raw) cached = JSON.parse(raw) || {};
-    } catch {
-      /* ignore malformed cache */
-    }
-    const merged = { ...defaults };
-    for (const k of Object.keys(defaults)) {
-      if (projectParams[k] !== undefined) merged[k] = projectParams[k];
-      // Destructive opt-ins are never re-seeded from the cache — they reset to
-      // the schema/project default on each open (see NON_PERSISTENT_PARAMS).
-      if (cached[k] !== undefined && !NON_PERSISTENT_PARAMS.has(k)) merged[k] = cached[k];
-    }
-    setValues(merged);
+  // A schema is stable for the life of a method, so seeding is keyed on the
+  // storage key rather than on schema identity (re-discovery replaces a
+  // service object without changing what it declares).
+  const seed = useCallback(
+    ({ useCache = true } = {}) => {
+      const defaults = buildDefaultValues(schema);
+      const projectParams = defaultParams || {};
+      let cached = {};
+      if (useCache && storageKey) {
+        try {
+          const raw = localStorage.getItem(storageKey);
+          if (raw) cached = JSON.parse(raw) || {};
+        } catch {
+          /* ignore malformed cache */
+        }
+      }
+      const merged = { ...defaults };
+      for (const k of Object.keys(defaults)) {
+        if (projectParams[k] !== undefined) merged[k] = projectParams[k];
+        // Destructive opt-ins are never re-seeded from the cache — they reset
+        // to the schema/project default on each open (NON_PERSISTENT_PARAMS).
+        if (cached[k] !== undefined && !NON_PERSISTENT_PARAMS.has(k)) merged[k] = cached[k];
+      }
+      return merged;
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serviceId, storagePrefix]);
+    [storageKey],
+  );
+
+  useEffect(() => {
+    setValues(schema.length ? seed() : {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seed]);
+
+  const persist = useCallback(
+    (next) => {
+      if (!storageKey) return;
+      try {
+        // Persist everything EXCEPT destructive opt-ins, so they can't re-arm
+        // on the next open. They still toggle live within the open dialog.
+        const toPersist = { ...next };
+        for (const k of NON_PERSISTENT_PARAMS) delete toPersist[k];
+        localStorage.setItem(storageKey, JSON.stringify(toPersist));
+      } catch {
+        /* ignore quota / serialization errors */
+      }
+    },
+    [storageKey],
+  );
 
   const setParam = useCallback(
     (key, value) => {
       const next = { ...valuesRef.current, [key]: value };
-      if (serviceId) {
-        try {
-          // Persist everything EXCEPT destructive opt-ins, so they can't re-arm
-          // on the next open. They still toggle live within the open dialog.
-          const toPersist = { ...next };
-          for (const k of NON_PERSISTENT_PARAMS) delete toPersist[k];
-          localStorage.setItem(`${storagePrefix}${serviceId}`, JSON.stringify(toPersist));
-        } catch {
-          /* ignore quota / serialization errors */
-        }
-      }
+      persist(next);
       setValues(next);
     },
-    [serviceId, storagePrefix],
+    [persist],
   );
+
+  // Back to the schema and project defaults, forgetting this user's cache.
+  const reset = useCallback(() => {
+    if (storageKey) {
+      try {
+        localStorage.removeItem(storageKey);
+      } catch {
+        /* nothing to undo */
+      }
+    }
+    setValues(seed({ useCache: false }));
+  }, [seed, storageKey]);
 
   // Live coercion: cleaned values + validation errors keyed by param key.
   const { values: coercedValues, errors } = useMemo(
@@ -85,8 +107,18 @@ export function useServiceParams(selectedService, storagePrefix, defaultParams =
     [schema, values],
   );
 
+  // True once the form differs from what a fresh seed would produce, which is
+  // what decides whether a Reset control is worth showing.
+  const isDirty = useMemo(() => {
+    if (!schema.length) return false;
+    const fresh = seed({ useCache: false });
+    return Object.keys(fresh).some((k) => JSON.stringify(fresh[k]) !== JSON.stringify(values[k]));
+  }, [schema, seed, values]);
+
   // Cleaned values ready to merge into a request payload.
   const coerced = useCallback(() => coercedValues, [coercedValues]);
 
-  return { schema, values, setParam, coerced, errors };
+  // `values` stays RAW: the form binds to it, and coercing mid-keystroke would
+  // clamp a half-typed number under the cursor. `coerced()` is the payload.
+  return { schema, values, setParam, reset, isDirty, coerced, coercedValues, errors };
 }

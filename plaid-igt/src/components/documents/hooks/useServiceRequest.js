@@ -8,7 +8,9 @@ export const useServiceRequest = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processStatus, setProcessStatus] = useState(null);
   const [processError, setProcessError] = useState(null);
-  const [progressPercent, setProgressPercent] = useState(0);
+  // null until the service says otherwise: "we don't know yet" is not 0%, and
+  // a determinate bar pinned at 0 reads as a hang.
+  const [progressPercent, setProgressPercent] = useState(null);
   const [progressMessage, setProgressMessage] = useState('');
 
   const client = useStrictClient();
@@ -56,16 +58,18 @@ export const useServiceRequest = () => {
         setProcessStatus('started');
         setProcessError(null);
         setIsProcessing(true);
-        setProgressPercent(0);
-        setProgressMessage('Starting service...');
+        setProgressPercent(null);
+        setProgressMessage('Starting the service…');
 
         // Set up progress listener before making the request
         progressConnection = client.messages.listen(projectId, (eventType, eventData) => {
           if (eventType === 'message' && eventData.data?.type === 'service_response') {
             const message = eventData.data;
             if (message.status === 'progress') {
-              setProgressPercent(message.progress?.percent || 0);
-              setProgressMessage(message.progress?.message || '');
+              const percent = message.progress?.percent;
+              setProgressPercent(Number.isFinite(percent) ? percent : null);
+              // Keep the last real message rather than blanking the line.
+              if (message.progress?.message) setProgressMessage(message.progress.message);
             }
           }
         });
@@ -80,7 +84,7 @@ export const useServiceRequest = () => {
 
         setProcessStatus('success');
         setProgressPercent(100);
-        setProgressMessage('Completed successfully');
+        setProgressMessage('Finished.');
 
         notifySuccess(successMessage, successTitle);
 
@@ -114,7 +118,7 @@ export const useServiceRequest = () => {
   const clearProcessStatus = useCallback(() => {
     setProcessStatus(null);
     setProcessError(null);
-    setProgressPercent(0);
+    setProgressPercent(null);
     setProgressMessage('');
   }, []);
 

@@ -606,7 +606,7 @@ const NewSegmentRow = memo(function NewSegmentRow({
   );
 });
 
-export function TranscriptList({ mediaOps, readOnly = false }) {
+export function TranscriptList({ mediaOps, readOnly = false, headerActions = null }) {
   const { doc } = useDocumentCtx();
   useIgtDocument(doc);
 
@@ -902,6 +902,14 @@ export function TranscriptList({ mediaOps, readOnly = false }) {
           <Label htmlFor="transcript-play-on-focus" className="text-xs font-normal">
             Play segment on entry
           </Label>
+          {/* Transcribe and Clear segments, passed in by the tab: they belong
+              beside what they change, but this list stays presentational. */}
+          {headerActions && (
+            <>
+              <span className="mx-1 h-5 w-px bg-border" />
+              {headerActions}
+            </>
+          )}
         </div>
       </div>
 

@@ -1,6 +1,7 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { speechProbabilities } from '../../../domain/vad/speechProbabilities.js';
-import { speechTimestamps, toSeconds, VAD_DEFAULTS } from '../../../domain/vad/speechTimestamps.js';
+import { speechTimestamps, toSeconds } from '../../../domain/vad/speechTimestamps.js';
+import { detectorParams } from './detectSpeechBuiltin.js';
 
 // Speech detection as PROPOSALS, not as data.
 //
@@ -12,33 +13,13 @@ import { speechTimestamps, toSeconds, VAD_DEFAULTS } from '../../../domain/vad/s
 // the Analyze grid, the validators) ever sees a segment without text. Nothing
 // is written to the server by detection itself.
 //
-// The model runs ONCE per recording. Its per-frame probabilities do not depend
-// on any parameter below, so moving a slider re-derives the proposals from the
-// cached probabilities in well under a frame. Detect is slow, tuning is free.
-
-const PARAMS_KEY = 'plaid_igt_vad_params';
-
-// Upstream leaves the maximum unbounded. A segment here is an utterance
-// somebody has to type into, so an unbroken five-minute block would be a
-// proposal nobody can use. The model splits an over-long stretch at the widest
-// silence inside it, which is the cut a person would have made anyway.
-export const VAD_UI_DEFAULTS = { ...VAD_DEFAULTS, maxSpeechDurationS: 20 };
-
-const readParams = () => {
-  try {
-    const raw = localStorage.getItem(PARAMS_KEY);
-    if (!raw) return VAD_UI_DEFAULTS;
-    const stored = JSON.parse(raw);
-    // Only known keys, only numbers: a hand-edited store cannot inject options.
-    const clean = {};
-    for (const key of Object.keys(VAD_UI_DEFAULTS)) {
-      if (typeof stored[key] === 'number' && Number.isFinite(stored[key])) clean[key] = stored[key];
-    }
-    return { ...VAD_UI_DEFAULTS, ...clean };
-  } catch {
-    return VAD_UI_DEFAULTS;
-  }
-};
+// That is also why `detect-speech` is the one task whose services RETURN their
+// regions instead of writing them: a service's proposals land here, in the same
+// place and under the same rules as the built-in's.
+//
+// The built-in model runs ONCE per recording. Its per-frame probabilities do
+// not depend on any parameter, so moving a slider re-derives the proposals from
+// the cached probabilities in well under a frame. Detect is slow, tuning is free.
 
 const timeBeginOf = (t) => t.metadata?.timeBegin ?? 0;
 const timeEndOf = (t) => t.metadata?.timeEnd ?? timeBeginOf(t);
@@ -47,26 +28,33 @@ const timeEndOf = (t) => t.metadata?.timeEnd ?? timeBeginOf(t);
  * @param {Blob|null} mediaBlob     the recording, already fetched for playback
  * @param {string|null} mediaKey    changes when the recording does, to drop the analysis
  * @param {Array} alignmentTokens   existing segments, which proposals never overlap
+ * @param {Object} params           the built-in detector's coerced options
+ * @param {string} methodKey        the chosen method, so a switch drops what
+ *                                  the previous one proposed
  */
-export function useVadProposals({ mediaBlob, mediaKey, alignmentTokens }) {
-  const [params, setParams] = useState(readParams);
-  const [analysis, setAnalysis] = useState(null); // { probs, lengthSamples }
+export function useVadProposals({ mediaBlob, mediaKey, alignmentTokens, params, methodKey }) {
+  const [analysis, setAnalysis] = useState(null); // { probs, lengthSamples }, built-in only
+  const [serviceRegions, setServiceRegions] = useState(null); // [{timeBegin,timeEnd,speaker?}]
   const [status, setStatus] = useState('idle'); // idle | running | ready | error
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState(null);
   const [dismissed, setDismissed] = useState(() => new Set());
   const abortRef = useRef(null);
 
-  // A replaced recording invalidates everything measured from the old one.
+  // A replaced recording invalidates everything measured from the old one, and
+  // so does a change of method: a proposal belongs to whatever produced it, and
+  // leaving the last method's cuts under this one's controls would be a lie.
   useEffect(() => {
     setAnalysis(null);
+    setServiceRegions(null);
     setStatus('idle');
     setError(null);
     setDismissed(new Set());
-  }, [mediaKey]);
+  }, [mediaKey, methodKey]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
+  // The built-in: decode, run the model, keep the probabilities.
   const detect = useCallback(async () => {
     if (!mediaBlob) return;
     abortRef.current?.abort();
@@ -76,6 +64,7 @@ export function useVadProposals({ mediaBlob, mediaKey, alignmentTokens }) {
     setProgress(0);
     setError(null);
     setDismissed(new Set());
+    setServiceRegions(null);
     try {
       const result = await speechProbabilities(mediaBlob, {
         onProgress: setProgress,
@@ -96,35 +85,46 @@ export function useVadProposals({ mediaBlob, mediaKey, alignmentTokens }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mediaBlob]);
 
+  // A `detect-speech` service's regions, taken as proposals like the model's.
+  // Times are seconds; a region without a usable pair is dropped rather than
+  // becoming a zero-length proposal nobody can type into.
+  const acceptServiceRegions = useCallback((segments) => {
+    const regions = (segments || [])
+      .map((s) => ({
+        timeBegin: Number(s.timeBegin ?? s.time_begin),
+        timeEnd: Number(s.timeEnd ?? s.time_end),
+        speaker: s.speaker ?? undefined,
+      }))
+      .filter((r) => Number.isFinite(r.timeBegin) && Number.isFinite(r.timeEnd))
+      .filter((r) => r.timeEnd > r.timeBegin)
+      .sort((a, b) => a.timeBegin - b.timeBegin);
+    setAnalysis(null);
+    setDismissed(new Set());
+    setServiceRegions(regions);
+    setStatus('ready');
+    setError(null);
+  }, []);
+
+  const beginServiceRun = useCallback(() => {
+    setStatus('running');
+    setError(null);
+    setProgress(0);
+  }, []);
+
+  const failRun = useCallback((message) => {
+    setError(message);
+    setStatus('error');
+  }, []);
+
   const cancel = useCallback(() => abortRef.current?.abort(), []);
 
   const clear = useCallback(() => {
     abortRef.current?.abort();
     setAnalysis(null);
+    setServiceRegions(null);
     setStatus('idle');
     setError(null);
     setDismissed(new Set());
-  }, []);
-
-  const setParam = useCallback((name, value) => {
-    setParams((prev) => {
-      const next = { ...prev, [name]: value };
-      try {
-        localStorage.setItem(PARAMS_KEY, JSON.stringify(next));
-      } catch {
-        // A full or blocked store only loses the settings for next time.
-      }
-      return next;
-    });
-  }, []);
-
-  const resetParams = useCallback(() => {
-    setParams(VAD_UI_DEFAULTS);
-    try {
-      localStorage.removeItem(PARAMS_KEY);
-    } catch {
-      // Nothing to undo.
-    }
   }, []);
 
   const dismiss = useCallback((id) => {
@@ -142,10 +142,14 @@ export function useVadProposals({ mediaBlob, mediaKey, alignmentTokens }) {
   const derivedFrom = useDeferredValue(params);
 
   const { proposals, foundCount } = useMemo(() => {
-    if (!analysis) return { proposals: [], foundCount: 0 };
-    const regions = toSeconds(
-      speechTimestamps(analysis.probs, analysis.lengthSamples, derivedFrom),
-    );
+    const regions =
+      serviceRegions ??
+      (analysis
+        ? toSeconds(
+            speechTimestamps(analysis.probs, analysis.lengthSamples, detectorParams(derivedFrom)),
+          )
+        : null);
+    if (!regions) return { proposals: [], foundCount: 0 };
     const tokens = alignmentTokens || [];
     return {
       foundCount: regions.length,
@@ -156,21 +160,21 @@ export function useVadProposals({ mediaBlob, mediaKey, alignmentTokens }) {
           (p) => !tokens.some((t) => timeBeginOf(t) < p.timeEnd && timeEndOf(t) > p.timeBegin),
         ),
     };
-  }, [analysis, derivedFrom, dismissed, alignmentTokens]);
+  }, [analysis, serviceRegions, derivedFrom, dismissed, alignmentTokens]);
 
   return {
-    params,
-    setParam,
-    resetParams,
     proposals,
     // What detection found before anything was accepted or discarded, so the
-    // card can tell an empty recording from one whose proposals are all used up.
+    // dialog can tell an empty recording from one whose proposals are all used up.
     foundCount,
-    hasAnalysis: !!analysis,
+    hasAnalysis: !!analysis || !!serviceRegions,
     status,
     progress,
     error,
     detect,
+    acceptServiceRegions,
+    beginServiceRun,
+    failRun,
     cancel,
     clear,
     dismiss,

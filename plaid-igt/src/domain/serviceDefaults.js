@@ -21,6 +21,7 @@ import { IGT_NAMESPACE } from './igtConfig';
 // Built-in implementation names (the <name> in 'builtin:<name>').
 export const BUILTIN_TOKENIZE_RULE_BASED = 'rule-based-punctuation';
 export const BUILTIN_LINK_PRECEDENT = 'precedent';
+export const BUILTIN_DETECT_SPEECH_SILERO = 'silero';
 
 export const encodeServiceSelection = (serviceId) => `service:${serviceId}`;
 export const encodeBuiltinSelection = (name) => `builtin:${name}`;

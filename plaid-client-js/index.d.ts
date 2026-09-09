@@ -25,6 +25,8 @@ interface ServiceParam {
   min?: number;
   max?: number;
   step?: number;
+  /** `number` only: render as a slider to drag rather than a box to type in. */
+  slider?: boolean;
   /** `string` only. */
   placeholder?: string;
   multiline?: boolean;
@@ -1077,6 +1079,9 @@ export const TASKS: {
   readonly TRANSCRIBE: "transcribe";
   readonly LINK_VOCAB: "link-vocab";
   readonly ANALYZE: "analyze";
+  readonly TRANSLATE: "translate";
+  readonly ASSIST: "assist";
+  readonly DETECT_SPEECH: "detect-speech";
 };
 /** Whether a service serves a task (declared `extras.tasks`, legacy id-prefix fallback). */
 export function servesTask(service: DiscoveredService, task: string): boolean;

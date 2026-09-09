@@ -42,23 +42,28 @@ const MAX_SOURCE_DOCS = 25;
 //   link         — run the auto-linker (default true)
 //   copy         — run the analysis-copy phase (default false)
 //   copyContents — { segmentation, links, fields } for the copy phase
+//   onProgress   — ({percent, message}) as the phases advance
 // Returns { copied, linked, ok }. Copy runs first so the linker doesn't
 // re-handle words a copy just analyzed; a phase that fails (the mutation
 // returns false, having already surfaced the error) short-circuits the rest
 // and sets ok=false.
+//
+// Reporting matters here rather than being a nicety: gathering precedent means
+// fetching other documents one at a time, which on a big project is the longest
+// silence in the whole Auto-analyze run.
 export async function runBuiltinAnalysis(
   doc,
-  { link = true, copy = false, copyContents = {} } = {},
+  { link = true, copy = false, copyContents = {}, onProgress = () => {} } = {},
 ) {
   let copied = 0;
   let linked = 0;
   if (copy) {
-    const n = await runCopyPhase(doc, copyContents);
+    const n = await runCopyPhase(doc, copyContents, onProgress);
     if (n === false) return { copied, linked, ok: false };
     copied = n;
   }
   if (link) {
-    const n = await runLinkPhase(doc);
+    const n = await runLinkPhase(doc, onProgress);
     if (n === false) return { copied, linked, ok: false };
     linked = n;
   }
@@ -66,7 +71,7 @@ export async function runBuiltinAnalysis(
 }
 
 // Number of words copied, or false on mutation failure.
-async function runCopyPhase(doc, copyContents) {
+async function runCopyPhase(doc, copyContents, onProgress) {
   const info = doc.layerInfo;
   const wordLayerId = info.primaryTokenLayer?.id;
   if (!wordLayerId || !info.morphemeTokenLayer) return 0;
@@ -81,7 +86,7 @@ async function runCopyPhase(doc, copyContents) {
   if (!forms.size) return 0;
 
   const localTally = tallyAnalyses(new Map(), doc.sentences, ignoredCfg);
-  const remoteTallies = await remoteTalliesFor(doc, wordLayerId, forms);
+  const remoteTallies = await remoteTalliesFor(doc, wordLayerId, forms, onProgress);
 
   const table = buildAnalysisTable(mergeTallies(localTally, ...remoteTallies));
   const proposals = computeAnalysisCopyProposals({
@@ -91,13 +96,15 @@ async function runCopyPhase(doc, copyContents) {
     copy: copyContents,
   });
   if (!proposals.length) return 0;
+  onProgress({ percent: null, message: `Copying onto ${proposals.length} words…` });
   return doc.bulkApplyAnalyses(proposals, ANALYSIS_COPY_SOURCE);
 }
 
 // Tallies of identical whole-word analyses from the project's other documents:
 // ask which documents hold the target forms, fetch the busiest few, harvest
 // locally. Read-failures of a single source are skipped, not fatal.
-async function remoteTalliesFor(doc, wordLayerId, forms) {
+async function remoteTalliesFor(doc, wordLayerId, forms, onProgress = () => {}) {
+  onProgress({ percent: null, message: 'Looking for previous analyses…' });
   const index = await doc.client.query(wordFormDocIndexQuery(wordLayerId));
   const { docIds, truncated } = rankSourceDocs(index, forms, {
     excludeDocId: doc.id,
@@ -109,7 +116,12 @@ async function remoteTalliesFor(doc, wordLayerId, forms) {
     );
   }
   const tallies = [];
-  for (const docId of docIds) {
+  for (const [i, docId] of docIds.entries()) {
+    // Named one by one: this loop is seconds per document on a large corpus.
+    onProgress({
+      percent: (i / docIds.length) * 100,
+      message: `Reading document ${i + 1} of ${docIds.length}…`,
+    });
     try {
       const raw = await doc.client.documents.get(docId, true);
       const source = new IgtDocument({ raw, vocabularies: {}, client: doc.client });
@@ -123,9 +135,10 @@ async function remoteTalliesFor(doc, wordLayerId, forms) {
 }
 
 // Number of links written, or false on mutation failure.
-async function runLinkPhase(doc) {
+async function runLinkPhase(doc, onProgress = () => {}) {
   const vocabIds = Object.keys(doc.vocabularies || {});
   if (!vocabIds.length) return 0;
+  onProgress({ percent: null, message: 'Reading the lexicon…' });
   const results = await Promise.all(linkPrecedentQueries(vocabIds).map((q) => doc.client.query(q)));
   const ignoredCfg = readIgnoredTokens(doc.layerInfo.primaryTokenLayer?.config);
   // The query covers the open document too, so nothing is folded from it.
@@ -138,6 +151,7 @@ async function runLinkPhase(doc) {
   });
   let linked = 0;
   if (proposals.length) {
+    onProgress({ percent: null, message: `Linking ${proposals.length} words…` });
     const n = await doc.bulkLinkVocab(proposals, AUTO_LINK_SOURCE);
     if (n === false) return false;
     linked += n;
@@ -150,6 +164,7 @@ async function runLinkPhase(doc) {
     ignoredCfg,
   });
   if (mweProposals.length) {
+    onProgress({ percent: null, message: 'Linking multi-word expressions…' });
     const n = await doc.bulkLinkMwes(mweProposals, MWE_LINK_SOURCE);
     if (n === false) return false;
     linked += n;

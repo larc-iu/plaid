@@ -34,6 +34,13 @@ class TASKS:
     ANALYZE = 'analyze'
     # Propose a free translation for each sentence.
     TRANSLATE = 'translate'
+    # Propose time-aligned speech regions for a recording. The odd one out: a
+    # detect-speech service RETURNS its regions and writes nothing, because a
+    # time-aligned segment is a stretch of the baseline and cannot exist
+    # without text. The response carries
+    # ``{'segments': [{'time_begin', 'time_end', 'speaker'?}]}`` (seconds), and
+    # the app holds them as proposals until a person types into one.
+    DETECT_SPEECH = 'detect-speech'
     # A conversational assistant over a project (chat turns; see plaid-igt-agent).
     ASSIST = 'assist'
 
@@ -71,11 +78,15 @@ class Param:
 
     @staticmethod
     def number(key, label, *, description=None, default=None, required=False,
-               min=None, max=None, step=None):
+               min=None, max=None, step=None, slider=False):
+        """A numeric argument. Set ``slider=True`` (with ``min``/``max``) to ask
+        the UI for a slider to drag rather than a box to type in."""
         if default is None:
             default = min if min is not None else 0
         p = {'key': key, 'label': label, 'type': 'number',
              'default': default, 'required': required}
+        if slider:
+            p['slider'] = True
         if description is not None:
             p['description'] = description
         if min is not None:

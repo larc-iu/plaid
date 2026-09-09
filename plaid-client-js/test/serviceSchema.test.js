@@ -147,3 +147,35 @@ test('required: numeric 0 and boolean false satisfy; empty string / multiselect 
   assert.ok(errors.m);   // empty array is empty
   assert.ok(errors.t);   // empty string is empty
 });
+
+test("detect-speech is a task like any other, and a slider is a number", () => {
+  const detector = {
+    serviceId: "vad-service",
+    serviceName: "My VAD",
+    extras: {
+      tasks: [TASKS.DETECT_SPEECH],
+      parameters: [
+        {
+          key: "threshold",
+          label: "Speech threshold",
+          type: "number",
+          slider: true,
+          min: 0.1,
+          max: 0.9,
+          step: 0.05,
+          default: 0.5,
+        },
+      ],
+    },
+  };
+  assert.equal(servesTask(detector, TASKS.DETECT_SPEECH), true);
+  assert.equal(servesTask(detector, TASKS.TRANSCRIBE), false);
+  assert.deepEqual(filterServicesByTask([detector, tokService], TASKS.DETECT_SPEECH), [detector]);
+
+  // `slider` is a rendering hint only: the value logic is a number's.
+  const schema = getParamSchema(detector);
+  assert.deepEqual(buildDefaultValues(schema), { threshold: 0.5 });
+  const clamped = coerceParamValues(schema, { threshold: "5" });
+  assert.deepEqual(clamped.values, { threshold: 0.9 });
+  assert.deepEqual(clamped.errors, {});
+});

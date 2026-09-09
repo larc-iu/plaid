@@ -1,25 +1,21 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
-import { filterServicesByTask, TASKS } from '@larc-iu/plaid-client';
+import { TASKS } from '@larc-iu/plaid-client';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useServiceRequest } from '../../documents/hooks/useServiceRequest.js';
-import { useServiceParams } from '../../documents/hooks/useServiceParams.js';
+import { useServiceSpot } from '../../documents/hooks/useServiceSpot.js';
+import { useRunProgress, useMirroredProgress } from '../../documents/hooks/useRunProgress.js';
 import { whenIdle } from '../../../domain/whenIdle.js';
 import { transcodeToMp3 } from '../../../domain/media/transcodeToMp3.js';
 import { useConfirm } from '@/components/shared/ConfirmProvider';
 import { useVadProposals } from './useVadProposals.js';
-import {
-  encodeServiceSelection,
-  readSpotDefault,
-  resolveInitialSelection,
-} from '../../../domain/serviceDefaults.js';
+import { DETECT_SPEECH_BUILTIN } from './detectSpeechBuiltin.js';
 
 // Matches the old Mantine useHotkeys default: ignore key events from form fields.
 const TAGS_TO_IGNORE = ['INPUT', 'TEXTAREA', 'SELECT'];
 
-const SERVICE_KEY = 'plaid_igt_transcribe_service';
-const PARAMS_PREFIX = 'plaid_igt_transcribe_params_';
+const DETECT_BUILTINS = [DETECT_SPEECH_BUILTIN];
 
 // Per-user listening preferences. They shape how the recording is heard, not
 // what is stored, so they live in the browser like the copy-as-IGT favorite.
@@ -99,10 +95,6 @@ export const useMediaOperations = () => {
     [],
   );
   const [pixelsPerSecond, setPixelsPerSecond] = useState(25);
-  const [asrAlgorithm, setAsrAlgorithm] = useState('');
-  const [asrAlgorithmOptions, setAsrAlgorithmOptions] = useState([]);
-  const [transcriptionProgress, setTranscriptionProgress] = useState(0);
-  const [currentOperation, setCurrentOperation] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   // `{ name, loaded, total }` while a file is going up, else null. `total`
   // is the request body (the file plus a few bytes of multipart framing).
@@ -131,24 +123,37 @@ export const useMediaOperations = () => {
     progressMessage,
   } = useServiceRequest();
 
-  // The selected ASR service (null for none) and its user-controllable
-  // arguments. Defined before handleTranscribe so it can merge the args.
-  const selectedServiceId = asrAlgorithm.startsWith('service:') ? asrAlgorithm.slice(8) : null;
-  const selectedService = selectedServiceId
-    ? availableServices.find((s) => s.serviceId === selectedServiceId) || null
-    : null;
-  const transcribeDefault = readSpotDefault(project, TASKS.TRANSCRIBE);
-  const {
-    schema: paramSchema,
-    values: paramValues,
-    setParam: setParamValue,
-    coerced: coerceParams,
-    errors: paramErrors,
-  } = useServiceParams(
-    selectedService,
-    PARAMS_PREFIX,
-    transcribeDefault?.service?.serviceId === selectedServiceId ? transcribeDefault?.params : null,
-  );
+  // The two integration spots on this tab. Both offer whatever services are
+  // online for their task; speech detection also offers the in-browser model.
+  const transcribeSpot = useServiceSpot({
+    task: TASKS.TRANSCRIBE,
+    project,
+    services: availableServices,
+    storageId: 'transcribe',
+  });
+  const detectSpot = useServiceSpot({
+    task: TASKS.DETECT_SPEECH,
+    project,
+    services: availableServices,
+    builtins: DETECT_BUILTINS,
+    storageId: 'detect_speech',
+  });
+
+  // One run clock per spot, so a closed dialog's button can still show it.
+  const transcribeRun = useRunProgress();
+  const detectRun = useRunProgress();
+  useMirroredProgress(transcribeRun, {
+    percent: progressPercent,
+    message: progressMessage,
+    active: transcribeRun.running,
+  });
+  // A detect-speech SERVICE reports over the same channel; the built-in model
+  // reports its own fraction, mirrored just below where `vad` is built.
+  useMirroredProgress(detectRun, {
+    percent: progressPercent,
+    message: progressMessage,
+    active: detectRun.running && !!detectSpot.service,
+  });
 
   // The media endpoint needs auth, and a <video src> can't carry an
   // Authorization header. We used to work around that with `?token=<jwt>` on
@@ -216,6 +221,13 @@ export const useMediaOperations = () => {
     mediaBlob,
     mediaKey: mediaSrcUrl,
     alignmentTokens,
+    params: detectSpot.params.coercedValues,
+    methodKey: detectSpot.selection,
+  });
+  useMirroredProgress(detectRun, {
+    percent: vad.progress > 0 ? vad.progress * 100 : null,
+    message: 'Detecting speech…',
+    active: detectRun.running && !detectSpot.service,
   });
 
   // Media playback operations
@@ -453,20 +465,11 @@ export const useMediaOperations = () => {
   }, [doc, confirm]);
 
   // ASR operations
-  const handleAsrDropdownInteraction = useCallback(async () => {
-    if (!project.id || isDiscovering) return;
-    await discoverServices(project.id);
-  }, [project.id, discoverServices, isDiscovering]);
-
-  const updateProgress = useCallback((percent, operation) => {
-    setTranscriptionProgress(percent);
-    setCurrentOperation(operation);
-  }, []);
-
   const handleTranscribe = useCallback(async () => {
-    if (!asrAlgorithm.startsWith('service:')) return;
+    const service = transcribeSpot.service;
+    if (!service) return;
 
-    const serviceId = asrAlgorithm.substring(8); // Remove 'service:' prefix
+    const serviceId = service.serviceId;
     const documentId = doc.document.id;
 
     if (!documentId) {
@@ -475,7 +478,7 @@ export const useMediaOperations = () => {
     }
 
     // Block on unmet required service arguments before doing any work.
-    const missing = Object.values(paramErrors);
+    const missing = Object.values(transcribeSpot.params.errors);
     if (missing.length) {
       notifyError(missing[0], 'Missing required option');
       return;
@@ -510,16 +513,17 @@ export const useMediaOperations = () => {
       // The whole re-transcribe (our wipe of the previous transcript + every
       // write the ASR service makes) is ONE logical operation in the audit
       // log: the open operation propagates to the service via the request.
-      const label = `Transcribe audio (${selectedService?.serviceName || serviceId})`;
+      const label = `Transcribe audio (${service.serviceName || serviceId})`;
+      transcribeRun.start(['Transcribe']);
       await doc.client.withOperation(label, async () => {
         // Start from a clean slate: setting the body to '' cascade-deletes its
         // tokens, sentences, alignments, and every annotation on them, so ASR
         // builds a fresh document instead of appending a second transcript.
         if (hasExistingTranscript) {
-          updateProgress(5, 'Clearing the previous transcript...');
+          transcribeRun.report({ message: 'Clearing the previous transcript…' });
           await doc.saveBaselineText('');
         }
-        updateProgress(10, 'Starting transcription...');
+        transcribeRun.report({ message: 'Starting the service…' });
 
         await requestService(
           project.id,
@@ -528,7 +532,7 @@ export const useMediaOperations = () => {
           {
             // User-controlled arguments declared by the service, spread FIRST so
             // the fixed layer/doc params below always win over any same-named arg.
-            ...coerceParams(),
+            ...transcribeSpot.params.coerced(),
             documentId: documentId,
             textLayerId: primaryTextLayer.id,
             alignmentTokenLayerId: alignmentTokenLayer.id,
@@ -543,26 +547,65 @@ export const useMediaOperations = () => {
         );
       });
 
-      updateProgress(100, 'Transcription complete!');
-
-      // Note: For ASR transcription, we reload since it creates many alignment
-      // tokens and the service response doesn't include the created token data.
+      // A full reload of a freshly transcribed document is seconds of work
+      // with nothing else on screen to show for it, so it is named like any
+      // other step rather than left as dead air.
+      transcribeRun.report({ percent: null, message: 'Loading the transcript…' });
       await doc._reload();
     } catch (error) {
       console.error('Transcription failed:', error);
-      updateProgress(0, '');
+    } finally {
+      transcribeRun.finish();
     }
-  }, [
-    asrAlgorithm,
-    doc,
-    project,
-    requestService,
-    selectedService,
-    updateProgress,
-    coerceParams,
-    paramErrors,
-    confirm,
-  ]);
+  }, [doc, project, requestService, transcribeSpot, transcribeRun, confirm]);
+
+  // Speech detection: the built-in runs in this tab, a service returns regions
+  // that land in the same proposal list. Either way nothing is written until
+  // somebody types into a proposal.
+  const handleDetectSpeech = useCallback(async () => {
+    const service = detectSpot.service;
+    if (!service) {
+      detectRun.start(['Detect speech']);
+      try {
+        await vad.detect();
+      } finally {
+        detectRun.finish();
+      }
+      return;
+    }
+    const missing = Object.values(detectSpot.params.errors);
+    if (missing.length) {
+      notifyError(missing[0], 'Missing required option');
+      return;
+    }
+    detectRun.start(['Detect speech']);
+    vad.beginServiceRun();
+    try {
+      const result = await requestService(
+        project.id,
+        doc.document.id,
+        service.serviceId,
+        {
+          ...detectSpot.params.coerced(),
+          documentId: doc.document.id,
+          projectId: project.id,
+        },
+        {
+          successTitle: 'Speech detection complete',
+          successMessage: `${service.serviceName} finished.`,
+          errorTitle: 'Speech detection failed',
+          errorMessage: `${service.serviceName} reported an error.`,
+        },
+      );
+      // A detect-speech service RETURNS its regions and writes nothing: a
+      // segment is a stretch of the baseline and cannot exist without text.
+      vad.acceptServiceRegions(result?.segments ?? result?.proposals ?? []);
+    } catch (error) {
+      vad.failRun(error?.message ?? String(error));
+    } finally {
+      detectRun.finish();
+    }
+  }, [detectSpot, detectRun, vad, requestService, project, doc]);
 
   const handleClearAlignments = useCallback(async () => {
     if (!alignmentTokens.length) return;
@@ -580,16 +623,12 @@ export const useMediaOperations = () => {
       return;
     }
 
-    updateProgress(25, 'Clearing segments…');
     const count = alignmentTokens.length;
     const ok = await doc.clearAlignments();
-    updateProgress(100, 'Segments cleared');
     if (ok) {
       notifySuccess(`Cleared ${count} segments`, 'Success');
     }
-    setTranscriptionProgress(0);
-    setCurrentOperation('');
-  }, [alignmentTokens, doc, updateProgress, confirm]);
+  }, [alignmentTokens, doc, confirm]);
 
   // Deleting a segment takes its times and speaker; its text stays in the
   // baseline unless the dialog's box is ticked, which deletes the text and
@@ -614,16 +653,6 @@ export const useMediaOperations = () => {
     },
     [doc, confirm],
   );
-
-  const handleAlgorithmChange = useCallback((value) => {
-    setAsrAlgorithm(value);
-    // Cache the selection
-    if (value) {
-      localStorage.setItem(SERVICE_KEY, value);
-    } else {
-      localStorage.removeItem(SERVICE_KEY);
-    }
-  }, []);
 
   // Keep the DOM media element's volume in sync with `volume`. Covers the
   // initial 0.8, any volume set before the element mounted, and element swaps.
@@ -751,43 +780,6 @@ export const useMediaOperations = () => {
     }
   }, [project.id, discoverServices]);
 
-  // Populate ASR options when available services change. Services are matched
-  // by their declared `tasks`; only ONLINE ones are offered (discovery also
-  // returns previously-seen offline services).
-  useEffect(() => {
-    const options = filterServicesByTask(availableServices, TASKS.TRANSCRIBE)
-      .filter((s) => s.online !== false)
-      .map((service) => ({
-        value: encodeServiceSelection(service.serviceId),
-        label: service.serviceName,
-      }));
-    setAsrAlgorithmOptions(options);
-  }, [availableServices]);
-
-  // Resolve the initial selection when options are available: cached choice ->
-  // project default (config.igt.serviceDefaults.transcribe) -> first online.
-  useEffect(() => {
-    if (asrAlgorithmOptions.length === 0) {
-      return;
-    }
-    const onlineServices = filterServicesByTask(availableServices, TASKS.TRANSCRIBE).filter(
-      (s) => s.online !== false,
-    );
-    setAsrAlgorithm((cur) => {
-      if (cur && asrAlgorithmOptions.some((opt) => opt.value === cur)) return cur;
-      return (
-        resolveInitialSelection({
-          services: onlineServices,
-          cached: localStorage.getItem(SERVICE_KEY),
-          projectDefault: readSpotDefault(project, TASKS.TRANSCRIBE),
-        }) || ''
-      );
-    });
-  }, [asrAlgorithmOptions, availableServices, project]);
-
-  // Check if using ASR service
-  const isUsingAsrService = asrAlgorithm && asrAlgorithm.startsWith('service:');
-
   return {
     // Shared model
     doc,
@@ -819,21 +811,12 @@ export const useMediaOperations = () => {
     pixelsPerSecond,
     setPixelsPerSecond,
 
-    // ASR state
-    asrAlgorithm,
-    asrAlgorithmOptions,
-    transcriptionProgress,
-    currentOperation,
-    isUsingAsrService,
+    // Service spots (method + options) and their run clocks
+    transcribeSpot,
+    transcribeRun,
+    detectSpot,
+    detectRun,
     isProcessing,
-    progressPercent,
-    progressMessage,
-    // selected-service args + summary
-    selectedService,
-    paramSchema,
-    paramValues,
-    setParamValue,
-    paramErrors,
 
     // Upload state
     isUploading,
@@ -877,11 +860,10 @@ export const useMediaOperations = () => {
     // Speech detection (proposals, not data)
     vad,
 
-    // ASR operations
-    handleAsrDropdownInteraction,
+    // ASR + speech detection
     handleTranscribe,
+    handleDetectSpeech,
     handleClearAlignments,
-    handleAlgorithmChange,
 
     // Service discovery
     discoverServices,

@@ -2,6 +2,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { Slider } from '@/components/ui/slider';
 import {
   Select,
   SelectTrigger,
@@ -36,10 +37,18 @@ function ParamField({ param, value, error, onChange, disabled }) {
   const id = `svc-param-${param.key}`;
   const control = renderControl(id, param, value, onChange, disabled);
   return (
-    <div className="flex flex-col gap-1.5" style={{ minWidth: 180 }}>
-      <Label htmlFor={id} className="text-xs">
-        {param.label}
-        {param.required ? ' *' : ''}
+    <div
+      className="flex flex-col gap-1.5"
+      style={{ minWidth: param.type === 'number' && param.slider ? 260 : 180 }}
+    >
+      <Label htmlFor={id} className="flex items-baseline justify-between gap-3 text-xs">
+        <span>
+          {param.label}
+          {param.required ? ' *' : ''}
+        </span>
+        {param.type === 'number' && param.slider && (
+          <span className="tabular-nums text-muted-foreground">{value ?? param.default}</span>
+        )}
       </Label>
       {control}
       {error ? (
@@ -55,11 +64,36 @@ function ParamField({ param, value, error, onChange, disabled }) {
   );
 }
 
+// Snap a dragged value onto the declared step, so 0.15000000000000002 never
+// reaches a service or a localStorage cache.
+function round(value, step) {
+  const decimals = (String(step).split('.')[1] || '').length;
+  return Number(value.toFixed(decimals));
+}
+
 function renderControl(id, param, value, onChange, disabled) {
   switch (param.type) {
     case 'boolean':
       return <Switch id={id} checked={!!value} onCheckedChange={onChange} disabled={disabled} />;
     case 'number':
+      // A number with a range and `slider` is dragged, not typed: the value
+      // reads out beside the label so the control still states where it sits.
+      if (param.slider && Number.isFinite(param.min) && Number.isFinite(param.max)) {
+        const step = param.step || 1;
+        const current = Number.isFinite(value) ? value : (param.default ?? param.min);
+        return (
+          <Slider
+            id={id}
+            aria-label={param.label}
+            value={[current]}
+            min={param.min}
+            max={param.max}
+            step={step}
+            disabled={disabled}
+            onValueChange={([v]) => onChange(round(v, step))}
+          />
+        );
+      }
       return (
         <Input
           id={id}

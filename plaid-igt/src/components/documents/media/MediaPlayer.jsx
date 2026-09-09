@@ -138,7 +138,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
           {mediaUrl && (
             <div className="flex items-center gap-2">
               <VadDetection
-                vad={mediaOps.vad}
+                mediaOps={mediaOps}
                 readOnly={readOnly}
                 disabled={mediaOps.isLoadingMedia || !mediaOps.mediaBlob}
               />

@@ -1,47 +1,23 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Sparkles } from 'lucide-react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
-import { TASKS, filterServicesByTask } from '@larc-iu/plaid-client';
+import { TASKS } from '@larc-iu/plaid-client';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useServiceRequest } from '../hooks/useServiceRequest.js';
-import { useServiceParams } from '../hooks/useServiceParams.js';
-import { ServiceSummary } from '../services/ServiceSummary.jsx';
-import { ServiceParamForm } from '../services/ServiceParamForm.jsx';
+import { useServiceSpot } from '../hooks/useServiceSpot.js';
+import { useRunProgress, useMirroredProgress, formatElapsed } from '../hooks/useRunProgress.js';
+import { ServiceRunDialog } from '../services/ServiceRunDialog.jsx';
+import { ServiceMethodRow } from '../services/ServiceMethodRow.jsx';
 import { runBuiltinAnalysis } from '@/domain/autoPass';
-import {
-  BUILTIN_LINK_PRECEDENT,
-  encodeServiceSelection,
-  encodeBuiltinSelection,
-  readSpotDefault,
-  resolveInitialSelection,
-} from '@/domain/serviceDefaults';
+import { BUILTIN_LINK_PRECEDENT } from '@/domain/serviceDefaults';
 import { resolveAutoAnalysis } from '@/domain/igtConfig';
 
-const BUILTIN_LINK = encodeBuiltinSelection(BUILTIN_LINK_PRECEDENT);
-const LINK_STORAGE_KEY = 'plaid_igt_link_vocab_service';
-const LINK_PARAMS_PREFIX = 'plaid_igt_link_vocab_params_';
-const ANALYZE_STORAGE_KEY = 'plaid_igt_analyze_service';
-const ANALYZE_PARAMS_PREFIX = 'plaid_igt_analyze_params_';
-const TRANSLATE_STORAGE_KEY = 'plaid_igt_translate_service';
-const TRANSLATE_PARAMS_PREFIX = 'plaid_igt_translate_params_';
 const STEPS_STORAGE_KEY = 'plaid_igt_auto_analyze_steps';
 // A whole-document model pass can take a few minutes on a large document.
 const ANALYZE_TIMEOUT_MS = 20 * 60 * 1000;
+
+const LINK_BUILTINS = [
+  { name: BUILTIN_LINK_PRECEDENT, label: 'Built-in (precedent & unique matches)' },
+];
 
 // Auto-analyze: one dialog, four ordered steps, each toggleable, one Run.
 //   1. translate — a service advertising the `translate` task fills the
@@ -55,11 +31,14 @@ const ANALYZE_TIMEOUT_MS = 20 * 60 * 1000;
 //   4. link to the lexicon — the built-in precedent-or-unique rule or a
 //      `link-vocab` service, last so it can resolve the model's stems.
 // Every step writes provenance-stamped material that renders violet until a
-// person confirms it. Service steps use the same selection idiom as the
-// Media/Tokenize tabs (discovery, summary, declared parameter form, progress;
-// initial choice resolves localStorage → project default → built-in/first
-// online). Opened by the island's toolbar button via the
-// igt:auto-analyze-open window event.
+// person confirms it.
+//
+// This is the one composite in the app: four runs under one Run button. It
+// wears the same shell as the single-spot dialogs (ServiceRunDialog), and each
+// step's method is the same ServiceMethodRow the others use. What it adds is a
+// step list in the status area, because a four-step run that reports one
+// percentage cannot say which minute of the wait you are in.
+// Opened by the island's toolbar button via the igt:auto-analyze-open event.
 const readSteps = () => {
   try {
     return JSON.parse(localStorage.getItem(STEPS_STORAGE_KEY) || '{}') || {};
@@ -68,7 +47,7 @@ const readSteps = () => {
   }
 };
 
-export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
+export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
   const project = doc?.project;
   const {
     availableServices,
@@ -80,21 +59,38 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
     progressMessage,
   } = useServiceRequest();
   const [busy, setBusy] = useState(false);
-  const [phase, setPhase] = useState(null); // 'translate' | 'copy' | 'analyze' | 'link' while running
-  const [linkChoice, setLinkChoice] = useState(null);
-  const [analyzeChoice, setAnalyzeChoice] = useState(null);
-  const [translateChoice, setTranslateChoice] = useState(null);
 
   const autoCfg = resolveAutoAnalysis(project?.config);
   const hasVocabs = Object.keys(doc?.vocabularies || {}).length > 0;
 
-  // Only ONLINE services can take work (discovery also returns
-  // previously-seen offline services).
-  const online = (task) =>
-    filterServicesByTask(availableServices, task).filter((s) => s.online !== false);
-  const translateServices = online(TASKS.TRANSLATE);
-  const analyzeServices = online(TASKS.ANALYZE);
-  const linkServices = online(TASKS.LINK_VOCAB);
+  const translateSpot = useServiceSpot({
+    task: TASKS.TRANSLATE,
+    project,
+    services: availableServices,
+    storageId: 'translate',
+  });
+  const analyzeSpot = useServiceSpot({
+    task: TASKS.ANALYZE,
+    project,
+    services: availableServices,
+    storageId: 'analyze',
+  });
+  const linkSpot = useServiceSpot({
+    task: TASKS.LINK_VOCAB,
+    project,
+    services: availableServices,
+    builtins: LINK_BUILTINS,
+    storageId: 'link_vocab',
+  });
+
+  const progress = useRunProgress();
+  // Whatever service is running reports over the one channel; the step list
+  // says which step that is.
+  useMirroredProgress(progress, {
+    percent: progressPercent,
+    message: progressMessage,
+    active: progress.running && isProcessing,
+  });
 
   // Step toggles: remembered per user; the copy step's default comes from the
   // project's built-in-analysis settings, the model step defaults on whenever
@@ -122,117 +118,30 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
     }
   };
 
-  // --- step 1: translation service ---
-  const translateOptions = translateServices.map((s) => ({
-    value: encodeServiceSelection(s.serviceId),
-    label: s.serviceName,
-    service: s,
-  }));
-  const translateResolved = resolveInitialSelection({
-    services: translateServices,
-    builtins: [],
-    cached: localStorage.getItem(TRANSLATE_STORAGE_KEY),
-    projectDefault: readSpotDefault(project, TASKS.TRANSLATE),
-  });
-  const translateSel = translateChoice ?? translateResolved;
-  const translateEffective = translateOptions.some((o) => o.value === translateSel)
-    ? translateSel
-    : (translateOptions[0]?.value ?? null);
-  const translateService =
-    translateOptions.find((o) => o.value === translateEffective)?.service ?? null;
-  const translateDefault = readSpotDefault(project, TASKS.TRANSLATE);
-  const translateParams = useServiceParams(
-    translateService,
-    TRANSLATE_PARAMS_PREFIX,
-    translateDefault?.service?.serviceId === translateService?.serviceId
-      ? translateDefault?.params
-      : null,
-  );
-  const chooseTranslate = (v) => {
-    setTranslateChoice(v);
-    localStorage.setItem(TRANSLATE_STORAGE_KEY, v);
-  };
-
-  // --- step 3: analysis service ---
-  const analyzeOptions = analyzeServices.map((s) => ({
-    value: encodeServiceSelection(s.serviceId),
-    label: s.serviceName,
-    service: s,
-  }));
-  const analyzeResolved = resolveInitialSelection({
-    services: analyzeServices,
-    builtins: [],
-    cached: localStorage.getItem(ANALYZE_STORAGE_KEY),
-    projectDefault: readSpotDefault(project, TASKS.ANALYZE),
-  });
-  const analyzeSel = analyzeChoice ?? analyzeResolved;
-  const analyzeEffective = analyzeOptions.some((o) => o.value === analyzeSel)
-    ? analyzeSel
-    : (analyzeOptions[0]?.value ?? null);
-  const analyzeService = analyzeOptions.find((o) => o.value === analyzeEffective)?.service ?? null;
-  const analyzeDefault = readSpotDefault(project, TASKS.ANALYZE);
-  const analyzeParams = useServiceParams(
-    analyzeService,
-    ANALYZE_PARAMS_PREFIX,
-    analyzeDefault?.service?.serviceId === analyzeService?.serviceId
-      ? analyzeDefault?.params
-      : null,
-  );
-  const chooseAnalyze = (v) => {
-    setAnalyzeChoice(v);
-    localStorage.setItem(ANALYZE_STORAGE_KEY, v);
-  };
-
-  // --- step 4: linking method ---
-  const linkOptions = [
-    { value: BUILTIN_LINK, label: 'Built-in (precedent & unique matches)' },
-    ...linkServices.map((s) => ({
-      value: encodeServiceSelection(s.serviceId),
-      label: s.serviceName,
-      service: s,
-    })),
-  ];
-  const linkResolved =
-    resolveInitialSelection({
-      services: linkServices,
-      builtins: [BUILTIN_LINK_PRECEDENT],
-      cached: localStorage.getItem(LINK_STORAGE_KEY),
-      projectDefault: readSpotDefault(project, TASKS.LINK_VOCAB),
-    }) || BUILTIN_LINK;
-  const linkSel = linkChoice ?? linkResolved;
-  const linkEffective = linkOptions.some((o) => o.value === linkSel) ? linkSel : BUILTIN_LINK;
-  const linkService = linkOptions.find((o) => o.value === linkEffective)?.service ?? null;
-  const linkDefault = readSpotDefault(project, TASKS.LINK_VOCAB);
-  const linkParams = useServiceParams(
-    linkService,
-    LINK_PARAMS_PREFIX,
-    linkDefault?.service?.serviceId === linkService?.serviceId ? linkDefault?.params : null,
-  );
-  const chooseLink = (v) => {
-    setLinkChoice(v);
-    localStorage.setItem(LINK_STORAGE_KEY, v);
-  };
-
   const running = busy || isProcessing;
-  const translateOn = steps.translate && !!translateService;
-  const analyzeOn = steps.analyze && !!analyzeService;
+  const translateOn = steps.translate && !!translateSpot.service;
+  const analyzeOn = steps.analyze && !!analyzeSpot.service;
   const linkOn = steps.link && hasVocabs;
   const nothingToRun = !translateOn && !steps.copy && !analyzeOn && !linkOn;
+
+  // The steps this Run will actually take, in order — the same list the status
+  // area ticks through, so what is promised and what is reported cannot drift.
+  const plan = useMemo(() => {
+    const out = [];
+    if (translateOn) out.push({ key: 'translate', label: 'Propose translations' });
+    if (steps.copy) out.push({ key: 'copy', label: 'Copy previous analyses' });
+    if (analyzeOn) out.push({ key: 'analyze', label: 'Propose segmentation and glosses' });
+    if (linkOn) out.push({ key: 'link', label: 'Link to the lexicon' });
+    return out;
+  }, [translateOn, steps.copy, analyzeOn, linkOn]);
+
   const blockingErrors = useMemo(() => {
     const out = [];
-    if (translateOn) out.push(...Object.values(translateParams.errors || {}));
-    if (analyzeOn) out.push(...Object.values(analyzeParams.errors || {}));
-    if (linkOn && linkService) out.push(...Object.values(linkParams.errors || {}));
+    if (translateOn) out.push(...Object.values(translateSpot.params.errors));
+    if (analyzeOn) out.push(...Object.values(analyzeSpot.params.errors));
+    if (linkOn && linkSpot.service) out.push(...Object.values(linkSpot.params.errors));
     return out;
-  }, [
-    translateOn,
-    translateParams.errors,
-    analyzeOn,
-    analyzeParams.errors,
-    linkOn,
-    linkService,
-    linkParams.errors,
-  ]);
+  }, [translateOn, translateSpot, analyzeOn, analyzeSpot, linkOn, linkSpot]);
 
   const run = async () => {
     if (running || !doc || nothingToRun) return;
@@ -241,40 +150,49 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
       return;
     }
     setBusy(true);
+    progress.start(plan.map((p) => p.label));
+    const at = (key) => progress.step(plan.findIndex((p) => p.key === key));
     const info = doc.layerInfo;
     const parts = [];
     const plural = (n, s) => `${n} ${s}${n === 1 ? '' : 's'}`;
+    const identifiers = {
+      documentId: doc.id,
+      projectId: project.id,
+      wordTokenLayerId: info.primaryTokenLayer?.id,
+      morphemeTokenLayerId: info.morphemeTokenLayer?.id,
+      sentenceTokenLayerId: info.sentenceTokenLayer?.id,
+    };
+    // A reload after each service step costs seconds on a large document and
+    // shows nothing while it runs, so it gets its own line rather than a pause.
+    const reload = async () => {
+      progress.report({ percent: null, message: 'Loading results…' });
+      await doc._reload();
+    };
     try {
       // 1. translate (service)
       if (translateOn) {
-        setPhase('translate');
+        at('translate');
+        const service = translateSpot.service;
         const result = await requestService(
           project.id,
           doc.id,
-          translateService.serviceId,
-          {
-            ...translateParams.coerced(),
-            documentId: doc.id,
-            projectId: project.id,
-            wordTokenLayerId: info.primaryTokenLayer?.id,
-            morphemeTokenLayerId: info.morphemeTokenLayer?.id,
-            sentenceTokenLayerId: info.sentenceTokenLayer?.id,
-          },
+          service.serviceId,
+          { ...translateSpot.params.coerced(), ...identifiers },
           {
             successTitle: 'Translation complete',
-            successMessage: `${translateService.serviceName} finished.`,
+            successMessage: `${service.serviceName} finished.`,
             errorTitle: 'Translation failed',
-            errorMessage: `${translateService.serviceName} reported an error.`,
+            errorMessage: `${service.serviceName} reported an error.`,
             timeout: ANALYZE_TIMEOUT_MS,
           },
         );
-        await doc._reload();
+        await reload();
         const n = result?.sentencesWritten ?? result?.sentences_written;
         if (typeof n === 'number') parts.push(`proposed translations for ${plural(n, 'sentence')}`);
       }
       // 2. copy previous analyses (built-in)
       if (steps.copy) {
-        setPhase('copy');
+        at('copy');
         const { copied, ok } = await runBuiltinAnalysis(doc, {
           link: false,
           copy: true,
@@ -283,72 +201,70 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
             links: autoCfg.copyLinks,
             fields: autoCfg.copyFields,
           },
+          // Reading precedent means fetching other documents one at a time —
+          // the slowest built-in step, and the one that used to look stalled.
+          onProgress: progress.report,
         });
         if (!ok) return; // the domain layer toasted the failure
         if (copied) parts.push(`copied previous analyses onto ${plural(copied, 'word')}`);
       }
       // 3. propose segmentation + glosses (service)
       if (analyzeOn) {
-        setPhase('analyze');
+        at('analyze');
+        const service = analyzeSpot.service;
         const result = await requestService(
           project.id,
           doc.id,
-          analyzeService.serviceId,
-          {
-            // User-controlled args first; the fixed identifiers below win.
-            ...analyzeParams.coerced(),
-            documentId: doc.id,
-            projectId: project.id,
-            wordTokenLayerId: info.primaryTokenLayer?.id,
-            morphemeTokenLayerId: info.morphemeTokenLayer?.id,
-            sentenceTokenLayerId: info.sentenceTokenLayer?.id,
-          },
+          service.serviceId,
+          // User-controlled args first; the fixed identifiers win.
+          { ...analyzeSpot.params.coerced(), ...identifiers },
           {
             successTitle: 'Analysis complete',
-            successMessage: `${analyzeService.serviceName} finished.`,
+            successMessage: `${service.serviceName} finished.`,
             errorTitle: 'Analysis failed',
-            errorMessage: `${analyzeService.serviceName} reported an error.`,
+            errorMessage: `${service.serviceName} reported an error.`,
             timeout: ANALYZE_TIMEOUT_MS,
           },
         );
-        await doc._reload();
+        await reload();
         const n = result?.wordsWritten ?? result?.words_written;
         if (typeof n === 'number') parts.push(`proposed analyses for ${plural(n, 'word')}`);
-        const skipped = result?.skipped || {};
-        const prot = skipped.protected ?? 0;
+        const prot = result?.skipped?.protected ?? 0;
         if (prot) parts.push(`left ${plural(prot, 'human-analyzed word')} alone`);
       }
       // 4. link to the lexicon
       if (linkOn) {
-        setPhase('link');
-        if (linkEffective === BUILTIN_LINK) {
-          const { linked, ok } = await runBuiltinAnalysis(doc, { link: true, copy: false });
+        at('link');
+        if (linkSpot.isBuiltin) {
+          const { linked, ok } = await runBuiltinAnalysis(doc, {
+            link: true,
+            copy: false,
+            onProgress: progress.report,
+          });
           if (!ok) return;
           if (linked)
             parts.push(
               `linked ${linked} word${linked === 1 ? '' : 's'}/morpheme${linked === 1 ? '' : 's'}`,
             );
         } else {
+          const service = linkSpot.service;
           await requestService(
             project.id,
             doc.id,
-            linkService.serviceId,
+            service.serviceId,
             {
-              ...linkParams.coerced(),
-              documentId: doc.id,
-              projectId: project.id,
+              ...linkSpot.params.coerced(),
+              ...identifiers,
               vocabIds: Object.keys(doc.vocabularies || {}),
-              wordTokenLayerId: info.primaryTokenLayer?.id,
-              morphemeTokenLayerId: info.morphemeTokenLayer?.id,
             },
             {
               successTitle: 'Linking complete',
-              successMessage: `${linkService.serviceName} finished.`,
+              successMessage: `${service.serviceName} finished.`,
               errorTitle: 'Linking failed',
-              errorMessage: `${linkService.serviceName} reported an error.`,
+              errorMessage: `${service.serviceName} reported an error.`,
             },
           );
-          await doc._reload();
+          await reload();
           parts.push('ran the linking service');
         }
       }
@@ -362,19 +278,118 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
       console.error('Auto-analyze failed:', err);
       if (!isProcessing) notifyError('Auto-analyze failed. Try again.', 'Auto-analyze');
     } finally {
-      setPhase(null);
+      progress.finish();
       setBusy(false);
     }
   };
 
-  const StepHeader = ({ n, stepKey, label, on, disabled, hint }) => (
+  // The island's toolbar button is the opener here, so it is where the run
+  // shows once the dialog is shut. Same contract as ServiceRunButton.
+  useEffect(() => {
+    if (!onRunStatus) return;
+    onRunStatus(
+      progress.running
+        ? {
+            running: true,
+            label: `${formatElapsed(progress.elapsedMs)}${
+              Number.isFinite(progress.percent) ? `, ${Math.round(progress.percent)}%` : ''
+            }`,
+          }
+        : null,
+    );
+  }, [onRunStatus, progress.running, progress.elapsedMs, progress.percent]);
+
+  const serviceHint = (spot, absent) =>
+    spot.service ? null : isDiscovering ? 'Discovering services…' : absent;
+
+  return (
+    <ServiceRunDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Auto-analyze"
+      icon={Sparkles}
+      progress={progress}
+      runLabel="Run"
+      onRun={run}
+      runDisabled={nothingToRun || blockingErrors.length > 0}
+    >
+      <Step
+        n={1}
+        stepKey="translate"
+        label="Propose translations"
+        on={steps.translate}
+        disabled={!translateSpot.service}
+        running={running}
+        onToggle={toggleStep}
+        hint={
+          serviceHint(translateSpot, 'No translation service is online.') ??
+          'A model drafts a free translation for every sentence, from the words and any glosses. Translations a person wrote are left alone; earlier machine drafts are refreshed.'
+        }
+      >
+        {steps.translate && translateSpot.service && (
+          <ServiceMethodRow spot={translateSpot} disabled={running} />
+        )}
+      </Step>
+
+      <Step
+        n={2}
+        stepKey="copy"
+        label="Copy previous analyses"
+        on={steps.copy}
+        running={running}
+        onToggle={toggleStep}
+        hint="Words with an uncontested analysis elsewhere in the project get it copied: segmentation, links, and field values. Only words with no analysis at all are touched."
+      />
+
+      <Step
+        n={3}
+        stepKey="analyze"
+        label="Propose segmentation and glosses"
+        on={steps.analyze}
+        disabled={!analyzeSpot.service}
+        running={running}
+        onToggle={toggleStep}
+        hint={
+          serviceHint(analyzeSpot, 'No analysis service is online.') ??
+          'A model analyzes every sentence. Words a person analyzed are left alone; earlier machine proposals are refreshed.'
+        }
+      >
+        {steps.analyze && analyzeSpot.service && (
+          <ServiceMethodRow spot={analyzeSpot} disabled={running} />
+        )}
+      </Step>
+
+      <Step
+        n={4}
+        stepKey="link"
+        label="Link to the lexicon"
+        on={steps.link}
+        disabled={!hasVocabs}
+        running={running}
+        onToggle={toggleStep}
+        hint={
+          hasVocabs
+            ? 'Links words and morphemes to lexicon entries. Human-made and confirmed links are left alone.'
+            : 'This project has no lexicon.'
+        }
+      >
+        {steps.link && hasVocabs && <ServiceMethodRow spot={linkSpot} disabled={running} />}
+      </Step>
+    </ServiceRunDialog>
+  );
+};
+
+// One numbered, toggleable step: the checkbox and its hint, with the step's
+// method indented underneath when it has one.
+const Step = ({ n, stepKey, label, on, disabled, running, onToggle, hint, children }) => (
+  <section className="flex flex-col gap-2">
     <label className="flex items-start gap-2">
       <input
         type="checkbox"
         className="mt-0.5 h-4 w-4 accent-primary"
         checked={on}
         disabled={disabled || running}
-        onChange={(e) => toggleStep(stepKey, e.target.checked)}
+        onChange={(e) => onToggle(stepKey, e.target.checked)}
         aria-label={label}
       />
       <span className="flex flex-col">
@@ -384,211 +399,6 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc }) => {
         {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
       </span>
     </label>
-  );
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(o) => {
-        if (!running) onOpenChange(o);
-      }}
-    >
-      {/* Three grid rows — header, scrolling body, footer — so Run/Cancel stay
-          on screen no matter how many parameters the chosen service declares.
-          `max-w-2xl` (rather than the default lg) is what lets ServiceParamForm
-          lay its fields out two-up instead of stacking them into a column
-          taller than most laptop screens. */}
-      <DialogContent className="max-w-2xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-y-hidden">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4" /> Auto-analyze
-          </DialogTitle>
-        </DialogHeader>
-
-        {/* -mx-1/px-1 keeps focus rings from being clipped by the scroll box. */}
-        <div className="-mx-1 flex flex-col gap-5 overflow-y-auto px-1">
-          {/* 1. translate */}
-          <section className="flex flex-col gap-2">
-            <StepHeader
-              n={1}
-              stepKey="translate"
-              label="Propose translations"
-              on={steps.translate}
-              disabled={!translateService}
-              hint={
-                translateService
-                  ? 'A model drafts a free translation for every sentence, from the words and any glosses. Translations a person wrote are left alone; earlier machine drafts are refreshed.'
-                  : isDiscovering
-                    ? 'Discovering services…'
-                    : 'No translation service is online.'
-              }
-            />
-            {steps.translate && translateService && (
-              <div className="ml-6 flex flex-col gap-2">
-                <div className="flex items-center gap-1.5">
-                  <Label className="text-xs">Service</Label>
-                  <ServiceSummary service={translateService} />
-                </div>
-                <Select
-                  value={translateEffective}
-                  onValueChange={chooseTranslate}
-                  disabled={running}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {translateOptions.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {translateParams.schema?.length > 0 && (
-                  <ServiceParamForm
-                    schema={translateParams.schema}
-                    values={translateParams.values}
-                    errors={translateParams.errors}
-                    onChange={translateParams.setParam}
-                    disabled={running}
-                  />
-                )}
-              </div>
-            )}
-          </section>
-
-          {/* 2. copy */}
-          <section className="flex flex-col gap-1.5">
-            <StepHeader
-              n={2}
-              stepKey="copy"
-              label="Copy previous analyses"
-              on={steps.copy}
-              hint="Words with an uncontested analysis elsewhere in the project get it copied: segmentation, links, and field values. Only words with no analysis at all are touched."
-            />
-          </section>
-
-          {/* 3. analyze */}
-          <section className="flex flex-col gap-2">
-            <StepHeader
-              n={3}
-              stepKey="analyze"
-              label="Propose segmentation and glosses"
-              on={steps.analyze}
-              disabled={!analyzeService}
-              hint={
-                analyzeService
-                  ? 'A model analyzes every sentence. Words a person analyzed are left alone; earlier machine proposals are refreshed.'
-                  : isDiscovering
-                    ? 'Discovering services…'
-                    : 'No analysis service is online.'
-              }
-            />
-            {steps.analyze && analyzeService && (
-              <div className="ml-6 flex flex-col gap-2">
-                <div className="flex items-center gap-1.5">
-                  <Label className="text-xs">Service</Label>
-                  <ServiceSummary service={analyzeService} />
-                </div>
-                <Select value={analyzeEffective} onValueChange={chooseAnalyze} disabled={running}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {analyzeOptions.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {analyzeParams.schema?.length > 0 && (
-                  <ServiceParamForm
-                    schema={analyzeParams.schema}
-                    values={analyzeParams.values}
-                    errors={analyzeParams.errors}
-                    onChange={analyzeParams.setParam}
-                    disabled={running}
-                  />
-                )}
-              </div>
-            )}
-          </section>
-
-          {/* 4. link */}
-          <section className="flex flex-col gap-2">
-            <StepHeader
-              n={4}
-              stepKey="link"
-              label="Link to the lexicon"
-              on={steps.link}
-              disabled={!hasVocabs}
-              hint={
-                hasVocabs
-                  ? 'Links words and morphemes to lexicon entries. Human-made and confirmed links are left alone.'
-                  : 'This project has no lexicon.'
-              }
-            />
-            {steps.link && hasVocabs && (
-              <div className="ml-6 flex flex-col gap-2">
-                <div className="flex items-center gap-1.5">
-                  <Label className="text-xs">Method</Label>
-                  {linkService && <ServiceSummary service={linkService} />}
-                </div>
-                <Select value={linkEffective} onValueChange={chooseLink} disabled={running}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {linkOptions.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {linkService && linkParams.schema?.length > 0 && (
-                  <ServiceParamForm
-                    schema={linkParams.schema}
-                    values={linkParams.values}
-                    errors={linkParams.errors}
-                    onChange={linkParams.setParam}
-                    disabled={running}
-                  />
-                )}
-              </div>
-            )}
-          </section>
-
-          {running && (
-            <div className="flex flex-col gap-2">
-              {isProcessing && (
-                <div className="h-2 w-full rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-primary transition-all"
-                    style={{ width: `${progressPercent || 0}%` }}
-                  />
-                </div>
-              )}
-              <span className="text-sm text-muted-foreground" role="status">
-                {phase === 'copy' && 'Copying previous analyses…'}
-                {phase === 'analyze' && (progressMessage || 'Analyzing…')}
-                {phase === 'link' && (isProcessing ? progressMessage || 'Linking…' : 'Linking…')}
-              </span>
-            </div>
-          )}
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={running}>
-            Cancel
-          </Button>
-          <Button onClick={run} disabled={running || nothingToRun || blockingErrors.length > 0}>
-            {running ? 'Running…' : 'Run'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-};
+    {children && <div className="ml-6">{children}</div>}
+  </section>
+);

@@ -411,6 +411,17 @@ export class IgtEditor {
     this._render(true);
   }
 
+  // The Auto-analyze run's live status, pushed in by the React shell: a run
+  // outlives its dialog, so the button that opened it is where a linguist who
+  // closed the box still sees the work moving.
+  setAutoAnalyzeStatus(status) {
+    const next = status || null;
+    const before = this._autoAnalyzeStatus;
+    if (before?.running === next?.running && before?.label === next?.label) return;
+    this._autoAnalyzeStatus = next;
+    this._render(true);
+  }
+
   setReadOnly(ro) {
     if (ro === this.readOnly) return;
     // Flush a focused field's pending blur-commit BEFORE flipping the flag — the
@@ -3362,13 +3373,20 @@ export class IgtEditor {
             ? html`<button
                 type="button"
                 class="igt-toolbar__btn"
-                title="Analyze the document automatically: copy previous analyses, have a service propose segmentation and glosses, and link to the lexicon. Proposals show in violet until you confirm them."
+                data-running=${this._autoAnalyzeStatus?.running ? 'true' : nothing}
+                title=${this._autoAnalyzeStatus?.running
+                  ? `Auto-analyze, ${this._autoAnalyzeStatus.label}`
+                  : 'Analyze the document automatically: copy previous analyses, have a service propose segmentation and glosses, and link to the lexicon. Proposals show in violet until you confirm them.'}
                 @click=${(e) => {
                   e.stopPropagation();
                   this._openAutoAnalyze();
                 }}
               >
-                Auto-analyze…
+                Auto-analyze${this._autoAnalyzeStatus?.running
+                  ? html` <span class="igt-toolbar__elapsed"
+                      >${this._autoAnalyzeStatus.label}</span
+                    >`
+                  : nothing}
               </button>`
             : nothing}
         </div>

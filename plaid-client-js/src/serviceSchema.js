@@ -21,7 +21,7 @@
  *     parameters: [                     // ordered; rendered into a form
  *       { key, label, type, description?, default?, required?,
  *         options?: [{value, label}],   // enum / multiselect
- *         min?, max?, step?,            // number
+ *         min?, max?, step?, slider?,   // number (slider: drag, don't type)
  *         placeholder?, multiline? }    // string
  *     ]
  *   }
@@ -52,6 +52,16 @@ export const TASKS = Object.freeze({
   ANALYZE: "analyze",
   /** Propose a free translation for each sentence. */
   TRANSLATE: "translate",
+  /**
+   * Propose time-aligned speech regions for a recording.
+   *
+   * The odd one out: a detect-speech service RETURNS its regions and writes
+   * nothing, because a time-aligned segment is a stretch of the baseline and
+   * cannot exist without text. The response carries
+   * `{segments: [{timeBegin, timeEnd, speaker?}]}` (seconds), and the app
+   * holds them as proposals until a person types into one.
+   */
+  DETECT_SPEECH: "detect-speech",
   /** A conversational assistant over a project (chat turns; see plaid-igt-agent). */
   ASSIST: "assist",
 });
