@@ -133,6 +133,41 @@
           (when (and (.exists temporary) (not (.delete temporary)))
             (log/warn "Could not remove temporary backup file:" (.getName temporary))))))))
 
+(defn status
+  "What the backup facility is configured to do and what it has actually
+   produced: the `[backup]` settings plus every zip in the directory, newest
+   first, with its size and modification time.
+
+   Reads the directory rather than remembering what the scheduler did, so it
+   is still right after a restart, and still right about backups taken by
+   hand or copied in."
+  []
+  (let [{:keys [enabled? directory retention time]} (backup-config)
+        dir  (io/file directory)
+        zips (when (.isDirectory dir)
+               (->> (.listFiles dir)
+                    (filter backup-zip?)
+                    (sort-by #(.getName ^File %))
+                    reverse
+                    (mapv (fn [^File f]
+                            {:name     (.getName f)
+                             :bytes    (.length f)
+                             :modified (str (java.time.Instant/ofEpochMilli (.lastModified f)))}))))]
+    {:enabled   (boolean enabled?)
+     :directory (.getAbsolutePath dir)
+     :retention retention
+     :time      time
+     :backups   (or zips [])}))
+
+(defn run-now!
+  "Take a backup immediately, outside the schedule. Returns the same
+   `status` map, so a caller sees the new file in the listing rather than
+   having to ask again. `:ok` reports whether the snapshot succeeded."
+  [ds]
+  (let [{:keys [directory retention]} (backup-config)
+        zip (backup-once! ds directory retention)]
+    (assoc (status) :ok (some? zip))))
+
 (defn- parse-time ^LocalTime [s]
   (try
     (LocalTime/parse s)                  ; accepts "HH:mm" and "HH:mm:ss"

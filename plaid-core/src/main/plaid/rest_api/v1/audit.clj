@@ -77,6 +77,24 @@
        query
        (fn [opts] (fetch (assoc opts :op-types parsed) start-time end-time))))))
 
+(def ^:private tally-query
+  [:map
+   [:start-time {:optional true} inst?]
+   [:end-time {:optional true} inst?]
+   [:daily {:optional true} boolean?]])
+
+(def ^:private tally-doc
+  (str "Per-user activity counts. <code>changes</code> is the number of "
+       "logical actions, folded the same way the audit feed folds them, so a "
+       "single \"Confirm word analysis\" counts once however many rows it "
+       "wrote; <code>operations</code> is the unfolded row count. "
+       "<code>documents</code> counts distinct documents touched. Only users "
+       "who did something appear — subtract from the roster you already hold "
+       "to find the ones who did not. Pass <code>?daily=true</code> to add "
+       "<code>by-day</code>, an ISO-date to change-count map, at the cost of "
+       "a second grouped scan. Not paginated: the row count is the number of "
+       "people, not the number of operations."))
+
 (def audit-routes
   [["/projects/:project-id/audit"
     {:parameters {:path [:map [:project-id :uuid]]}
@@ -117,4 +135,35 @@
                   :handler    (fn [{{{:keys [user-id]} :path query :query} :parameters db :db}]
                                 (audit-response
                                  query
-                                 (fn [opts start end] (audit/get-user-audit-log db user-id start end opts))))}}]])
+                                 (fn [opts start end] (audit/get-user-audit-log db user-id start end opts))))}}]
+
+   ["/projects/:project-id/audit/tally"
+    {:parameters {:path [:map [:project-id :uuid]]}
+     :get {:summary    (str "Per-user activity in a project. " tally-doc)
+           :middleware [[pra/wrap-maintainer-required get-project-id-from-audit-path]]
+           :parameters {:query tally-query}
+           :handler    (fn [{{{:keys [project-id]} :path {:keys [start-time end-time daily]} :query} :parameters db :db}]
+                         {:status 200
+                          :body   {:entries (audit/activity-tally db {:project-id  project-id
+                                                                      :start-time  start-time
+                                                                      :end-time    end-time
+                                                                      :daily?      daily})}})}}]
+
+   ["/audit"
+    {:get {:summary    (str "Get the audit log across every project. Admin only. " op-types-doc)
+           :middleware [[pra/wrap-admin-required]]
+           :parameters {:query pagination-query}
+           :handler    (fn [{{query :query} :parameters db :db}]
+                         (audit-response
+                          query
+                          (fn [opts start end] (audit/get-audit-log db start end opts))))}}]
+
+   ["/audit/tally"
+    {:get {:summary    (str "Per-user activity across every project. Admin only. " tally-doc)
+           :middleware [[pra/wrap-admin-required]]
+           :parameters {:query tally-query}
+           :handler    (fn [{{{:keys [start-time end-time daily]} :query} :parameters db :db}]
+                         {:status 200
+                          :body   {:entries (audit/activity-tally db {:start-time start-time
+                                                                      :end-time   end-time
+                                                                      :daily?     daily})}})}}]])

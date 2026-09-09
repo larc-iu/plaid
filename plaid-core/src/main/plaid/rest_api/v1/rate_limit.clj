@@ -238,6 +238,64 @@
   (reset! (invite-buckets-atom) {})
   (reset! last-global-prune-at nil))
 
+(defn- live-entries
+  "`[key live-count]` pairs for the buckets in `m` that still hold at least
+  one in-window failure."
+  [m now]
+  (keep (fn [[k v]]
+          (let [n (bucket-count-live now v)]
+            (when (pos? n) [k n])))
+        m))
+
+(defn snapshot
+  "Every live rate-limit bucket, with its in-window failure count, the limit
+  it is measured against, and whether it is currently blocking. Expired
+  timestamps are ignored rather than swept, so this read never mutates.
+
+  Exists for one case: somebody legitimate is locked out and wants to know
+  why. Given the threat model here (trusted logged-in users), a blocked
+  bucket is far more often a student who mistyped a password six times than
+  an attacker."
+  ([] (snapshot (System/currentTimeMillis)))
+  ([now]
+   {:window-ms window-ms
+    :logins  (mapv (fn [[[ip username] n]]
+                     {:ip ip :user-id username :failures n
+                      :limit max-failures :blocked (>= n max-failures)})
+                   (live-entries @(buckets-atom) now))
+    :ips     (mapv (fn [[ip n]]
+                     {:ip ip :failures n
+                      :limit max-ip-failures :blocked (>= n max-ip-failures)})
+                   (live-entries @(ip-buckets-atom) now))
+    :invites (mapv (fn [[ip n]]
+                     {:ip ip :failures n
+                      :limit max-invite-failures :blocked (>= n max-invite-failures)})
+                   (live-entries @(invite-buckets-atom) now))}))
+
+(defn clear-buckets!
+  "Forget recorded failures. With no `ip`, clears everything. With an `ip`,
+  clears that address's per-IP and invite buckets plus its per-(ip, username)
+  buckets — narrowed to one account when `user-id` is given.
+
+  Clearing only ever unblocks. The buckets hold failures, so the worst case
+  is that whoever was being throttled gets their full budget back."
+  [{:keys [ip user-id]}]
+  (if (nil? ip)
+    (reset-all!)
+    (do
+      (swap! (ip-buckets-atom) dissoc ip)
+      (swap! (invite-buckets-atom) dissoc ip)
+      (swap! (buckets-atom)
+             (fn [m]
+               (reduce-kv (fn [acc [bucket-ip bucket-user :as k] v]
+                            (if (and (= bucket-ip ip)
+                                     (or (nil? user-id) (= bucket-user user-id)))
+                              acc
+                              (assoc acc k v)))
+                          {}
+                          m)))))
+  :cleared)
+
 (defn wrap-login-rate-limit
   "Reitit middleware: short-circuit with 429 once EITHER the per-(IP,
   username) bucket OR the per-IP bucket (#111) is full. Body parsing

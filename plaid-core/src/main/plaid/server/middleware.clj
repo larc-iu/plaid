@@ -7,9 +7,9 @@
             [plaid.server.config :refer [config]]
             [plaid.server.sql :refer [datasource]]
             [plaid.sql.common :as psc]
+            [plaid.server.version :as version]
             [plaid.rest-api.v1.core :refer [rest-handler]]
             [clojure.data.json :as json]
-            [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]
             [taoensso.timbre :as log])
@@ -81,17 +81,10 @@
   :start (System/currentTimeMillis))
 
 (def ^:private health-version
-  "Version string surfaced by /health. Read from `version.edn` on the
-  classpath, which the release workflow (.github/workflows/release.yml)
-  writes into the jar from the git tag at build time. Absent in local /
-  unreleased runs, where we report \"dev\"."
-  (or (try
-        (some-> (io/resource "version.edn")
-                slurp
-                (edn/read-string)
-                :version)
-        (catch Exception _ nil))
-      "dev"))
+  "Version string surfaced by /health. Lives in `plaid.server.version` so
+  the admin endpoints can report the same value without requiring this
+  namespace, which already requires the REST router."
+  version/version)
 
 (def ^:private bytes-per-mb
   "Binary MB (1024*1024). Reported as `store_size_mb` in /health."

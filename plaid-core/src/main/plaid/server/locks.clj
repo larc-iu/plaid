@@ -143,6 +143,38 @@
     (when (get-lock-info doc-id)
       (acquire-lock! doc-id user-id))))
 
+(defn list-locks
+  "Every live lock, as `{:document-id :user-id :expires-at}` maps. Expired
+  entries are swept first, so what comes back is what is actually holding a
+  document right now.
+
+  Read-only view for the admin panel. A document that will not accept a write
+  because someone else has it open is otherwise invisible: the writer sees a
+  409 naming a user id and nothing else can see it at all."
+  []
+  (cleanup-expired-locks!)
+  (mapv (fn [[document-id {:keys [user-id expires-at]}]]
+          {:document-id document-id
+           :user-id     user-id
+           :expires-at  expires-at})
+        @locks))
+
+(defn force-release!
+  "Drop the lock on `document-id` whoever holds it. Returns :released or
+  :not-held.
+
+  `release-lock!` refuses unless the caller is the holder, which is right for
+  the lock protocol and useless for the case this exists for: a client that
+  went away without releasing, leaving a document unwritable for the rest of
+  the expiration window. The lock is advisory and expires on its own within
+  a minute by default, so this only ever shortens a wait."
+  [document-id]
+  (let [[before _] (swap-vals! locks #(dissoc % document-id))]
+    (if (contains? before document-id)
+      (do (log/info "Force-released lock for document" document-id)
+          :released)
+      :not-held)))
+
 (defn reset-state!
   "Test-helper: wipe the entire in-memory lock table. Task #113.
 

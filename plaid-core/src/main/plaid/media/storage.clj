@@ -306,6 +306,30 @@
         (catch IllegalArgumentException _
           nil)))))
 
+(defn stats
+  "What the media directory holds: file count, total bytes, and how many of
+   those files no longer have a documents row behind them.
+
+   Orphans are swept at startup and shutdown (`plaid.server.media-maintenance`),
+   so a non-zero count here means files that went stale during this run and
+   will be collected at the next boundary. It is reported rather than acted on
+   for exactly that reason."
+  [db]
+  (let [dir (io/file (get-media-dir))
+        files (if (.isDirectory dir)
+                (filterv #(.isFile ^File %) (or (seq (.listFiles dir)) []))
+                [])
+        live-docs (into #{} (map :id) (psc/q db {:select [:id] :from :documents}))
+        orphans (filterv (fn [^File file]
+                           (when-let [doc-id (filename-document-id file)]
+                             (not (contains? live-docs doc-id))))
+                         files)]
+    {:directory    (.getAbsolutePath dir)
+     :files        (count files)
+     :bytes        (reduce + 0 (map #(.length ^File %) files))
+     :orphans      (count orphans)
+     :orphan-bytes (reduce + 0 (map #(.length ^File %) orphans))}))
+
 (defn sweep-orphaned-media!
   "Delete media-directory files whose UUID filename prefix has no documents
   row. Intended for quiet lifecycle boundaries (startup and shutdown), not a

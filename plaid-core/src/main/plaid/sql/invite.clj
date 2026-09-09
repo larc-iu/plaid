@@ -199,6 +199,22 @@
                              :cursor-vals cursor-vals
                              :row->entity #(row->invite % now)})))
 
+(defn list-all
+  "Every invite on the server, oldest-first, keyset-paginated. Admin-only at
+  the route: the per-creator and per-project reads answer \"what did I hand
+  out\" and \"what does this project have out\", and neither answers \"who on
+  this server minted an admin grant\".
+
+  Includes revoked, expired and spent invites, for the same reason
+  `list-for-creator` does: the ledger is the point."
+  [db {:keys [limit cursor-vals]}]
+  (let [now (psc/now-iso)]
+    (pagination/paginate db {:from :invites
+                             :order-by [:created_at :id]
+                             :limit limit
+                             :cursor-vals cursor-vals
+                             :row->entity #(row->invite % now)})))
+
 ;; ============================================================
 ;; Authority
 ;; ============================================================

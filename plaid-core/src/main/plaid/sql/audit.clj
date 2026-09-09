@@ -292,3 +292,82 @@
                               [:= :user_id user-id]
                               [:not= :document_id nil]]
                    :group-by [:document_id]})))
+
+(defn get-audit-log
+  "Every operation on the server, unscoped. Same fold, window and `:op-types`
+  filter as the per-project read — only the entity scope is dropped, so the
+  page is `eff-limit` units drawn from `operations` in head order.
+
+  No index narrows this one: `query-units` groups over the whole table. That
+  is the honest cost of an unscoped feed and the reason the route is
+  admin-only. In practice a page is bounded by `limit` and the `[start end]`
+  window, and a dashboard asks for the newest few hundred units of the last
+  week, not the whole log."
+  ([db] (get-audit-log db nil nil nil))
+  ([db start-time end-time] (get-audit-log db start-time end-time nil))
+  ([db start-time end-time opts]
+   (audit-page db [:operations] nil [start-time end-time] opts)))
+
+(defn- tally-scope
+  "WHERE for the aggregate reads: an optional project scope plus the window."
+  [project-id start-time end-time]
+  (conj-where (cond-> (ts-where start-time end-time)
+                project-id (conj [:= :project_id project-id]))))
+
+(defn- tally-daily
+  "`{user-id {day changes}}` where `day` is the ISO date of `ts`. `ts` is
+  stored as an ISO-8601 string, so the date is its first ten characters and
+  the bucket needs no date parsing."
+  [db where]
+  (->> (psc/q db (cond-> {:select   [:user_id
+                                     [[:substr :ts 1 10] :day]
+                                     [[:count [:distinct unit-key]] :changes]]
+                          :from     [:operations]
+                          :group-by [:user_id [:substr :ts 1 10]]}
+                   where (assoc :where where)))
+       (reduce (fn [acc {:keys [user_id day changes]}]
+                 (assoc-in acc [user_id day] changes))
+               {})))
+
+(defn activity-tally
+  "Per-user activity over an optional project scope and time window: how many
+  raw operations, how many logical CHANGES (units, the same group/batch fold
+  the feed shows, so one \"Confirm word analysis\" counts once however many
+  rows it wrote), how many distinct documents were touched, and the first and
+  last timestamps.
+
+  One grouped scan, served by `idx_operations_project_ts` when a project is
+  given. No post-images are read: this counts operations, it does not
+  reconstruct anything, which is why it costs nothing like an as-of read.
+
+  Only users who did something appear. Whoever wants \"and these members did
+  nothing\" holds the roster already (a project's ACL, or the user directory)
+  and subtracts.
+
+  `:daily?` adds `:by-day`, an ISO-date → changes map per user, for a
+  sparkline. It is a second grouped scan, so it is opt-in."
+  [db {:keys [project-id start-time end-time daily?]}]
+  (let [where (tally-scope project-id start-time end-time)
+        rows (psc/q db (cond-> {:select   [:user_id
+                                           [[:count :*] :operations]
+                                           [[:count [:distinct unit-key]] :changes]
+                                           [[:count [:distinct :document_id]] :documents]
+                                           [[:min :ts] :first_ts]
+                                           [[:max :ts] :last_ts]]
+                                :from     [:operations]
+                                :group-by [:user_id]}
+                         where (assoc :where where)))
+        users (batch-fetch-by-ids db :users (map :user_id rows))
+        by-day (when daily? (tally-daily db where))]
+    (->> rows
+         (mapv (fn [{:keys [user_id operations changes documents first_ts last_ts]}]
+                 (cond-> {:user       (or (select-user (get users user_id))
+                                          {:user/id user_id})
+                          :operations operations
+                          :changes    changes
+                          :documents  documents
+                          :first-ts   first_ts
+                          :last-ts    last_ts}
+                   daily? (assoc :by-day (get by-day user_id {})))))
+         (sort-by :changes >)
+         vec)))

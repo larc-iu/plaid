@@ -134,13 +134,34 @@
      :get {:summary (str "List invites you minted, oldest first, keyset-paginated. "
                          "With <body>project-id</body>, lists that project's invites instead "
                          "(including ones minted by co-maintainers) — requires maintainer or "
-                         "admin on that project. Never includes invite codes.")
-           :parameters {:query (into [:map [:project-id {:optional true} string?]]
+                         "admin on that project. With <body>all=true</body>, lists every "
+                         "invite on the server — admin only, and mutually exclusive with "
+                         "<body>project-id</body>. Never includes invite codes.")
+           :parameters {:query (into [:map
+                                      [:project-id {:optional true} string?]
+                                      [:all {:optional true} boolean?]]
                                      pagination/query-params)}
            :handler (fn [{db :db {query :query} :parameters :as request}]
                       (let [user-id (pra/->user-id request)
-                            project-id (:project-id query)]
-                        (if project-id
+                            project-id (:project-id query)
+                            all? (:all query)]
+                        (cond
+                          (and all? project-id)
+                          {:status 400
+                           :body {:error "Pass project-id or all=true, not both."}}
+
+                          all?
+                          (if (user/admin? (user/get-internal db user-id))
+                            (pagination/list-response
+                             query
+                             (fn [opts] (let [{:keys [entries next-cursor]}
+                                              (invite/list-all db opts)]
+                                          {:entries (map ->wire entries)
+                                           :next-cursor next-cursor})))
+                            {:status 403
+                             :body {:error "Listing every invite requires admin privileges."}})
+
+                          project-id
                           (if (may-see-project-invites? db user-id project-id)
                             (pagination/list-response
                              query
@@ -151,6 +172,8 @@
                             {:status 403
                              :body {:error (str "User " user-id " lacks maintainer privileges "
                                                 "for project " project-id)}})
+
+                          :else
                           (pagination/list-response
                            query
                            (fn [opts] (let [{:keys [entries next-cursor]}

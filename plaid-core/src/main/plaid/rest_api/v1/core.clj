@@ -29,6 +29,7 @@
             [plaid.rest-api.v1.span-layer :refer [span-layer-routes]]
             [plaid.rest-api.v1.relation-layer :refer [relation-layer-routes]]
             [plaid.rest-api.v1.relation :refer [relation-routes]]
+            [plaid.rest-api.v1.admin :refer [admin-routes]]
             [plaid.rest-api.v1.audit :refer [audit-routes]]
             [plaid.rest-api.v1.operation-group :refer [operation-group-routes]]
             [plaid.rest-api.v1.batch :refer [batch-routes]]
@@ -114,6 +115,7 @@
              relation-routes
              relation-layer-routes
              audit-routes
+             admin-routes
              operation-group-routes
              batch-routes
              vocab-layer-routes
