@@ -73,6 +73,7 @@ A user with no picture is shown their initials instead.
 Each user also has a small private **key/value store** (`/users/{id}/data/{key}`), meant for application state that should follow a person across devices and sessions but belongs to nobody else: assistant conversations, drafts, interface preferences.
 A key is any string the client chooses (apps namespace theirs, e.g. `igt:assistant:<project>:...`), the value is any JSON document up to 1 MB, and the store can be listed by key prefix, optionally with values.
 Only the owning user and admins can read or write it; nothing in it is audited or time-travelable, and it is deleted with the user.
+An admin can also list entries across every account at once (`/admin/user-data`), narrowing by key prefix or by a glob over the whole key — which is how an app browses one feature's records without dragging every other key's value along.
 It is not a place for annotation data, which belongs in layers where it is shared, audited, and queryable, nor for media, which has its own endpoints.
 
 == Clients

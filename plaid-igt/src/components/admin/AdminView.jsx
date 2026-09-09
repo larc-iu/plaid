@@ -9,12 +9,22 @@ import { AdminActivity } from './AdminActivity';
 import { AdminProjects } from './AdminProjects';
 import { AdminVocabularies } from './AdminVocabularies';
 import { AdminServices } from './AdminServices';
+import { AdminAssistant } from './AdminAssistant';
 import { AdminServer } from './AdminServer';
 
 // The whole-server view, for whoever runs this instance. Everything a project
 // maintainer needs lives on the project; what is here is the part that spans
 // projects or sits below them.
-const TABS = ['users', 'invites', 'activity', 'projects', 'vocabularies', 'services', 'server'];
+const TABS = [
+  'users',
+  'invites',
+  'activity',
+  'projects',
+  'vocabularies',
+  'services',
+  'assistant',
+  'server',
+];
 
 export const AdminView = () => {
   const { user, client } = useAuth();
@@ -50,6 +60,9 @@ export const AdminView = () => {
           <TabsTrigger value="services" to={tabTo('/admin', 'services', 'users')}>
             Services
           </TabsTrigger>
+          <TabsTrigger value="assistant" to={tabTo('/admin', 'assistant', 'users')}>
+            Assistant
+          </TabsTrigger>
           <TabsTrigger value="server" to={tabTo('/admin', 'server', 'users')}>
             Server
           </TabsTrigger>
@@ -72,6 +85,9 @@ export const AdminView = () => {
         </TabsContent>
         <TabsContent value="services">
           <AdminServices client={client} />
+        </TabsContent>
+        <TabsContent value="assistant">
+          <AdminAssistant client={client} />
         </TabsContent>
         <TabsContent value="server">
           <AdminServer client={client} />

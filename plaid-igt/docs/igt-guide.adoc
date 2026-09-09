@@ -634,6 +634,7 @@ A reply is written into the conversation as it arrives, and it lands whether or 
 A conversation that is still being answered says so in the list, and opening it picks the answer up as it comes.
 **Stop** ends a turn early.
 Conversations are private to you, kept per project, and can be downloaded or copied as Markdown.
+Your server's administrator can read them.
 The tab opens on a new conversation; the list on the left holds the earlier ones, and each has its own link.
 
 The assistant is a service that your server's operator runs and picks the model for (`plaid-igt-agent`, installed from PyPI).
@@ -820,6 +821,10 @@ It also mints a numbered set of links in one step, one use each, so a link can b
 
 **Services** asks every project's registry at once, so whether a service is running is one page rather than one project at a time.
 A service that has gone for good can be forgotten here.
+
+**Assistant** is every conversation anyone has had with the assistant, on any project, with who had it and how many turns it ran.
+Opening one shows the whole conversation: what was asked, what was answered, the examples it cited, and any plan it proposed with what became of it.
+Conversations are otherwise private to the person who had them, and they are read-only here.
 
 **Server** reports the version, how long it has been up, the size of the database and what is in it, the backups on disk, the media directory, which documents are open for editing, and which addresses are being refused at login.
 Three things can be done from it, and each only ever unblocks something: take a backup now, release a document someone left open, and clear a login block for someone who mistyped their password too many times.

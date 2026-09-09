@@ -21,7 +21,16 @@ test.beforeEach(async ({ page }) => {
   await seedAuth(page);
 });
 
-const TABS = ['users', 'invites', 'activity', 'projects', 'vocabularies', 'services', 'server'];
+const TABS = [
+  'users',
+  'invites',
+  'activity',
+  'projects',
+  'vocabularies',
+  'services',
+  'assistant',
+  'server',
+];
 
 const openTab = async (page, tab) => {
   await page.goto(`/#/admin?tab=${tab}`);
@@ -139,6 +148,32 @@ test('services collapse to one row per service, with its projects underneath', a
   await expanders.first().click();
   await expect(page.locator('tbody td[colspan]').first()).toBeVisible();
   expect(await rows.count()).toBeGreaterThan(before);
+});
+
+test('an assistant conversation opens whoever had it', async ({ page }) => {
+  // Conversations live in their owner's private store, so this screen is the
+  // only place one can be read by anyone else. Opening one has to produce the
+  // transcript, not just the row it came from.
+  await openTab(page, 'assistant');
+  const rows = page.locator('tbody tr');
+  await expect(page.getByPlaceholder('Search conversations…')).toBeVisible({ timeout: 20000 });
+
+  const count = await rows.count();
+  test.skip(count === 0, 'no assistant conversations in this database');
+
+  const title = (await rows.first().locator('td').first().innerText()).trim();
+  await rows.first().locator('button').first().click();
+
+  await expect(page.getByRole('button', { name: 'All conversations' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: title, level: 2 })).toBeVisible();
+  // Rendered as the conversation, not as the record: both sides are named.
+  // `exact`, because getByRole matches the accessible name by SUBSTRING, and
+  // the title heading right above happened to contain the word "you" — so
+  // without it this passed against a transcript that rendered nothing at all.
+  const speaker = (name) =>
+    page.locator('.prose').getByRole('heading', { name, exact: true, level: 2 });
+  await expect(speaker('You').first()).toBeVisible({ timeout: 15000 });
+  await expect(speaker('Assistant').first()).toBeVisible();
 });
 
 test('the activity feed reads newest first and can be searched', async ({ page }) => {
