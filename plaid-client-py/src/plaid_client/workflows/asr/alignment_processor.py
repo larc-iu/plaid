@@ -107,10 +107,17 @@ class AlignmentProcessor:
             Exception: If download fails
         """
         try:
-            # Add authentication token to the URL
-            auth_url = f"{media_url}?token={client.token}"
-            
-            response = requests.get(auth_url, stream=True)
+            # The token goes in the header, not the query string. A media URL
+            # already carries a `?v=` cache-buster, so appending `?token=` made
+            # a second `?`: the token was swallowed into the `v` parameter and
+            # the request arrived unauthenticated (401). A header also keeps the
+            # token out of access logs, which is why the browser client stopped
+            # putting it in the URL.
+            response = requests.get(
+                media_url,
+                stream=True,
+                headers={'Authorization': f'Bearer {client.token}'},
+            )
             response.raise_for_status()
             
             # Save to temporary file
