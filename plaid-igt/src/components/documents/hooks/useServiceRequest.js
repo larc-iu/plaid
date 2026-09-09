@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
+import { notifySuccess, notifyError, notifyInfo, notifyWarning } from '@/utils/feedback';
 import { useStrictClient } from '../contexts/StrictModeContext.jsx';
 
 export const useServiceRequest = () => {
@@ -59,21 +59,36 @@ export const useServiceRequest = () => {
 
   // A stopped request comes back as a normal result carrying `stopped: true`
   // (the service was asked and agreed), so it is neither a success to
-  // celebrate nor an error to report.
-  const succeed = useCallback((result, successMessage, successTitle) => {
+  // celebrate nor an error to report. It needs its own title as well as its
+  // own words: telling someone who has just pressed Stop that "Tokenization
+  // Complete. Stopped." reads as a contradiction. `stoppedTitle` is the run's
+  // plain name, the way the banner and the run record already name it.
+  const succeed = useCallback((result, copy) => {
     const stopped = result?.stopped === true;
     setProcessStatus(stopped ? 'stopped' : 'success');
     setProgressPercent(stopped ? null : 100);
     setProgressMessage(stopped ? 'Stopped.' : 'Finished.');
-    if (stopped) notifyInfo('Stopped. What it had already written stays.', successTitle);
-    else notifySuccess(successMessage, successTitle);
+    if (stopped) notifyInfo(copy.stoppedMessage, copy.stoppedTitle || copy.successTitle);
+    else notifySuccess(copy.successMessage, copy.successTitle);
   }, []);
 
-  const fail = useCallback((error, errorMessage, errorTitle) => {
-    setProcessError(error.message || errorMessage);
+  // An error carrying `pending` means the client gave up waiting but the
+  // REQUEST is still out there: the service goes on working and goes on
+  // writing. Saying "it failed" would be false, and the caller must keep the
+  // run record so a reload can rejoin it. A caller that keeps NO record (speech
+  // detection) says so instead of promising a reload that finds nothing.
+  const fail = useCallback((error, copy) => {
+    if (error?.pending) {
+      setProcessError('Lost contact with the service.');
+      setProcessStatus('lost');
+      setProgressMessage('Lost contact with the service.');
+      notifyWarning(copy.lostMessage, copy.stoppedTitle || copy.errorTitle);
+      return;
+    }
+    setProcessError(error.message || copy.errorMessage);
     setProcessStatus('error');
-    setProgressMessage(`Error: ${error.message || errorMessage}`);
-    notifyError(error.message || errorMessage, errorTitle);
+    setProgressMessage(`Error: ${error.message || copy.errorMessage}`);
+    notifyError(error.message || copy.errorMessage, copy.errorTitle);
   }, []);
 
   // Generic service request with progress tracking.
@@ -93,6 +108,14 @@ export const useServiceRequest = () => {
         successMessage = 'Service request completed successfully',
         errorTitle = 'Service Failed',
         errorMessage = 'An error occurred during service request',
+        // The run's plain name, for the one message that is neither a success
+        // nor a failure. Whatever a stopped run had already written is kept, so
+        // a run that writes nothing (speech detection) says something else.
+        stoppedTitle,
+        stoppedMessage = 'Stopped. What it had already written stays.',
+        // Said when the client gives up but the request has not: only true for
+        // a run this page wrote down, which is what a reload looks for.
+        lostMessage = 'Lost contact with the service. It is still running. Reload to pick it back up.',
         timeout = 300000,
         onRequestId,
       } = options;
@@ -112,11 +135,13 @@ export const useServiceRequest = () => {
           undefined,
           { requestId },
         );
-        succeed(result, successMessage, successTitle);
+        succeed(result, { successMessage, successTitle, stoppedTitle, stoppedMessage });
         return result;
       } catch (error) {
         console.error('Failed to request service:', error);
-        fail(error, errorMessage, errorTitle);
+        fail(error, { errorMessage, errorTitle, stoppedTitle, lostMessage });
+        // Said out loud already, so a caller's own catch does not say it again.
+        if (error && typeof error === 'object') error.reported = true;
         throw error;
       } finally {
         inFlight.current = null;

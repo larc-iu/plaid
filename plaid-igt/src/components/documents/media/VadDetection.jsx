@@ -14,10 +14,13 @@ import { ServiceRunButton } from '../services/ServiceRunButton.jsx';
 // Only Detect runs the model, and it keeps running with the dialog shut.
 export function VadDetection({ mediaOps, readOnly = false, disabled = false }) {
   const [open, setOpen] = useState(false);
-  const { vad, detectSpot, detectRun, handleDetectSpeech } = mediaOps;
+  const { vad, detectSpot, detectRun, handleDetectSpeech, cancelRequest } = mediaOps;
   const { proposals, foundCount, status, error, hasAnalysis } = vad;
   const running = detectRun.running || status === 'running';
   const count = proposals.length;
+  // Both methods stop from the one button: the built-in model aborts its
+  // worker, a service is asked to stop. A service run used to offer neither.
+  const stopDetection = detectSpot.service ? cancelRequest : vad.cancel;
 
   const summary =
     count > 0
@@ -52,7 +55,7 @@ export function VadDetection({ mediaOps, readOnly = false, disabled = false }) {
         runLabel="Detect"
         onRun={handleDetectSpeech}
         runDisabled={readOnly || disabled}
-        onCancel={detectSpot.service ? undefined : vad.cancel}
+        onCancel={stopDetection}
         secondary={hasAnalysis && !running ? { label: 'Discard', onClick: vad.clear } : undefined}
       >
         <ServiceMethodRow spot={detectSpot} disabled={running} />

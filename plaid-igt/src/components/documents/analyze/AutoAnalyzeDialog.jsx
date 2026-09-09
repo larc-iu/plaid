@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import { TASKS } from '@larc-iu/plaid-client';
-import { notifySuccess, notifyError } from '@/utils/feedback';
+import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 import { useServiceRequest } from '../hooks/useServiceRequest.js';
 import { useServiceSpot } from '../hooks/useServiceSpot.js';
 import { useRunProgress, useMirroredProgress, formatElapsed } from '../hooks/useRunProgress.js';
@@ -63,6 +63,11 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
     progressMessage,
   } = useServiceRequest();
   const [busy, setBusy] = useState(false);
+  // Set by Stop, read at every step boundary and by the built-in phases'
+  // checkpoints. Cleared when a run starts.
+  const stopRef = useRef(false);
+  // The run's lock handle, so Stop can say so on the banner from outside `run`.
+  const lockRef = useRef(null);
 
   const autoCfg = resolveAutoAnalysis(project?.config);
   const hasVocabs = Object.keys(doc?.vocabularies || {}).length > 0;
@@ -95,6 +100,20 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
     message: progressMessage,
     active: progress.running && isProcessing,
   });
+
+  // One Stop for the whole run, whichever kind of step is in flight. Two of the
+  // four steps are built-in and have no request to cancel, so a Stop wired only
+  // to the service was a dead button for the slowest part of the run, and the
+  // banner, which cannot see which step it is, showed it throughout.
+  // Saying "Stopping…" here is the point: a checkpoint may be a document read
+  // away, and nothing else would acknowledge the press.
+  const report = progress.report;
+  const stopRun = useCallback(async () => {
+    stopRef.current = true;
+    report({ percent: null, message: 'Stopping…' });
+    lockRef.current?.setStatus('Stopping…');
+    await cancelRequest();
+  }, [cancelRequest, report]);
 
   // Step toggles: remembered per user; the copy step's default comes from the
   // project's built-in-analysis settings, the model step defaults on whenever
@@ -153,9 +172,11 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
       notifyError(blockingErrors[0], 'Missing required option');
       return;
     }
+    stopRef.current = false;
     // Held for the whole run: four steps of writes with a reload after each.
-    const lock = acquireWriteLock('Auto-analyze', { onCancel: cancelRequest });
+    const lock = acquireWriteLock('Auto-analyze', { onCancel: stopRun });
     if (!lock) return;
+    lockRef.current = lock;
     setBusy(true);
     progress.start(plan.map((p) => p.label));
     const at = (key) => {
@@ -173,6 +194,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
         multiStep: true,
       });
     const info = doc.layerInfo;
+    let stillOut = false; // the request survived our giving up on it
     const parts = [];
     const plural = (n, s) => `${n} ${s}${n === 1 ? '' : 's'}`;
     const identifiers = {
@@ -186,6 +208,9 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
     // to stop, so the steps after it must not quietly go ahead. The request
     // hook has already said so, hence no toast of our own.
     const stopped = (result) => result?.stopped === true;
+    // A stop noticed anywhere else has nobody else to report it: a built-in
+    // step's checkpoint, or between steps while a reload was in flight.
+    const halt = () => notifyInfo('Stopped. What it had already written stays.', 'Auto-analyze');
     // A reload after each service step costs seconds on a large document and
     // shows nothing while it runs, so it gets its own line rather than a pause.
     const reload = async () => {
@@ -210,6 +235,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
             successMessage: `${service.serviceName} finished.`,
             errorTitle: 'Translation failed',
             errorMessage: `${service.serviceName} reported an error.`,
+            stoppedTitle: 'Auto-analyze',
             onRequestId: recordStep,
             timeout: ANALYZE_TIMEOUT_MS,
           },
@@ -219,10 +245,15 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
         const n = result?.sentencesWritten ?? result?.sentences_written;
         if (typeof n === 'number') parts.push(`proposed translations for ${plural(n, 'sentence')}`);
       }
+      if (stopRef.current) return halt();
       // 2. copy previous analyses (built-in)
       if (steps.copy) {
         at('copy');
-        const { copied, ok } = await runBuiltinAnalysis(doc, {
+        const {
+          copied,
+          ok,
+          stopped: wasStopped,
+        } = await runBuiltinAnalysis(doc, {
           link: false,
           copy: true,
           copyContents: {
@@ -233,10 +264,13 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
           // Reading precedent means fetching other documents one at a time —
           // the slowest built-in step, and the one that used to look stalled.
           onProgress: progress.report,
+          shouldStop: () => stopRef.current,
         });
         if (!ok) return; // the domain layer toasted the failure
+        if (wasStopped) return halt();
         if (copied) parts.push(`copied previous analyses onto ${plural(copied, 'word')}`);
       }
+      if (stopRef.current) return halt();
       // 3. propose segmentation + glosses (service)
       if (analyzeOn) {
         at('analyze');
@@ -252,6 +286,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
             successMessage: `${service.serviceName} finished.`,
             errorTitle: 'Analysis failed',
             errorMessage: `${service.serviceName} reported an error.`,
+            stoppedTitle: 'Auto-analyze',
             onRequestId: recordStep,
             timeout: ANALYZE_TIMEOUT_MS,
           },
@@ -263,16 +298,23 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
         const prot = result?.skipped?.protected ?? 0;
         if (prot) parts.push(`left ${plural(prot, 'human-analyzed word')} alone`);
       }
+      if (stopRef.current) return halt();
       // 4. link to the lexicon
       if (linkOn) {
         at('link');
         if (linkSpot.isBuiltin) {
-          const { linked, ok } = await runBuiltinAnalysis(doc, {
+          const {
+            linked,
+            ok,
+            stopped: wasStopped,
+          } = await runBuiltinAnalysis(doc, {
             link: true,
             copy: false,
             onProgress: progress.report,
+            shouldStop: () => stopRef.current,
           });
           if (!ok) return;
+          if (wasStopped) return halt();
           if (linked)
             parts.push(
               `linked ${linked} word${linked === 1 ? '' : 's'}/morpheme${linked === 1 ? '' : 's'}`,
@@ -293,6 +335,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
               successMessage: `${service.serviceName} finished.`,
               errorTitle: 'Linking failed',
               errorMessage: `${service.serviceName} reported an error.`,
+              stoppedTitle: 'Auto-analyze',
               onRequestId: recordStep,
             },
           );
@@ -309,12 +352,21 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
     } catch (err) {
       // Service failures are toasted by the request hook; anything else here.
       console.error('Auto-analyze failed:', err);
-      if (!isProcessing) notifyError('Auto-analyze failed. Try again.', 'Auto-analyze');
+      // `pending` means the request is still out there. The client stopped
+      // waiting, the service did not stop working, so keep the record and let a
+      // reload rejoin it instead of losing the run.
+      stillOut = err?.pending === true;
+      // Only what the request hook has NOT already reported. This used to read
+      // `isProcessing`, which the closure fixes at false for the whole run, so
+      // every service failure was toasted twice: once by its own name, and
+      // again as "Auto-analyze failed".
+      if (!err?.reported) notifyError('Auto-analyze failed. Try again.', 'Auto-analyze');
     } finally {
-      clearRunRecord(doc.id);
+      if (!stillOut) clearRunRecord(doc.id);
       progress.finish();
       setBusy(false);
       lock.release();
+      lockRef.current = null;
     }
   };
 
@@ -347,7 +399,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
       runLabel="Run"
       onRun={run}
       // Stops the step in flight; the steps after it do not run.
-      onCancel={isProcessing ? cancelRequest : undefined}
+      onCancel={stopRun}
       runDisabled={nothingToRun || blockingErrors.length > 0 || (!!writeLock && !running)}
     >
       <Step

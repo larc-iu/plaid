@@ -122,3 +122,79 @@ describe('useVadProposals persistence', () => {
     expect(VAD_METADATA_KEY).toBe('speechDetection');
   });
 });
+
+// A service run that returns nothing is not a run that found no speech. The
+// difference is the whole of `abandonServiceRun`: it is what a stopped run
+// takes, and taking the other one instead threw the kept cuts away.
+describe('useVadProposals: a service run that produced nothing', () => {
+  afterEach(() => vi.useRealTimers());
+
+  const keptForService = (regions) => ({
+    mediaBytes: BLOB.size,
+    method: 'svc:detect',
+    regions,
+    dismissed: [],
+  });
+
+  it('leaves the cuts alone and stops looking busy', async () => {
+    let api = null;
+    const r = await renderComponent(
+      <Probe saved={keptForService(REGIONS)} method="svc:detect" onReady={(v) => (api = v)} />,
+    );
+    expect(shown(r)).toBe('vad-0.420-3.100 vad-3.800-7.550');
+    await r.step(() => api.beginServiceRun());
+    expect(api.status).toBe('running');
+    await r.step(() => api.abandonServiceRun());
+    expect(api.status).toBe('ready');
+    expect(api.error).toBe(null);
+    expect(shown(r)).toBe('vad-0.420-3.100 vad-3.800-7.550');
+    await r.unmount();
+  });
+
+  it('writes nothing back, so a stop cannot erase what the document kept', async () => {
+    vi.useFakeTimers();
+    const onPersist = vi.fn();
+    let api = null;
+    const r = await renderComponent(
+      <Probe
+        saved={keptForService(REGIONS)}
+        method="svc:detect"
+        onPersist={onPersist}
+        onReady={(v) => (api = v)}
+      />,
+    );
+    await r.step(() => api.beginServiceRun());
+    await r.step(() => api.abandonServiceRun());
+    await r.step(() => vi.advanceTimersByTime(5000));
+    expect(onPersist).not.toHaveBeenCalled();
+    await r.unmount();
+  });
+
+  it('goes idle rather than ready when there was nothing there to keep', async () => {
+    let api = null;
+    const r = await renderComponent(<Probe method="svc:detect" onReady={(v) => (api = v)} />);
+    await r.step(() => api.beginServiceRun());
+    await r.step(() => api.abandonServiceRun());
+    expect(api.status).toBe('idle');
+    await r.unmount();
+  });
+
+  it('is not what an empty result does, which really does clear them', async () => {
+    vi.useFakeTimers();
+    const onPersist = vi.fn();
+    let api = null;
+    const r = await renderComponent(
+      <Probe
+        saved={keptForService(REGIONS)}
+        method="svc:detect"
+        onPersist={onPersist}
+        onReady={(v) => (api = v)}
+      />,
+    );
+    await r.step(() => api.acceptServiceRegions([]));
+    expect(shown(r)).toBe('');
+    await r.step(() => vi.advanceTimersByTime(5000));
+    expect(onPersist).toHaveBeenCalledWith(null);
+    await r.unmount();
+  });
+});

@@ -18,6 +18,16 @@ const TAGS_TO_IGNORE = ['INPUT', 'TEXTAREA', 'SELECT'];
 
 const DETECT_BUILTINS = [DETECT_SPEECH_BUILTIN];
 
+// How long an ASR service may say NOTHING before the page gives up waiting.
+// Not a cap on the run: the client's clock restarts on every progress event.
+// It needs to be this long because a transcriber's model pass is one blocking
+// call. Whisper reports "Transcribing audio…" and then says nothing until it
+// has the whole transcript, which on a long recording is tens of minutes. The
+// five-minute default was shorter than the work, so a working transcription
+// was reported as failed and its writes landed on a document the page had
+// already handed back as editable, with its baseline wiped ready for them.
+const TRANSCRIBE_TIMEOUT_MS = 60 * 60 * 1000;
+
 // Per-user listening preferences. They shape how the recording is heard, not
 // what is stored, so they live in the browser like the copy-as-IGT favorite.
 const RATE_KEY = 'plaid_igt_playback_rate';
@@ -534,6 +544,7 @@ export const useMediaOperations = () => {
     const lock = acquireWriteLock('Transcribe', { onCancel: cancelRequest });
     if (!lock) return;
     lockRef.current = lock;
+    let stillOut = false; // the request survived our giving up on it
     try {
       // The whole re-transcribe (our wipe of the previous transcript + every
       // write the ASR service makes) is ONE logical operation in the audit
@@ -568,6 +579,7 @@ export const useMediaOperations = () => {
             successMessage: 'Audio has been transcribed successfully',
             errorTitle: 'Transcription Failed',
             errorMessage: 'An error occurred during transcription',
+            stoppedTitle: 'Transcribe',
             // Written down before submitting, so a reload can still find it.
             onRequestId: (requestId) =>
               writeRunRecord(documentId, {
@@ -575,6 +587,7 @@ export const useMediaOperations = () => {
                 projectId: project.id,
                 label: 'Transcribe',
               }),
+            timeout: TRANSCRIBE_TIMEOUT_MS,
           },
         );
       });
@@ -587,8 +600,12 @@ export const useMediaOperations = () => {
       await doc._reload();
     } catch (error) {
       console.error('Transcription failed:', error);
+      // `pending` means the request is still out there. The client stopped
+      // waiting, the service did not stop working, and the baseline was already
+      // wiped to make room for it, so keep the record for a reload to rejoin.
+      stillOut = error?.pending === true;
     } finally {
-      clearRunRecord(documentId);
+      if (!stillOut) clearRunRecord(documentId);
       transcribeRun.finish();
       lock.release();
       lockRef.current = null;
@@ -633,13 +650,30 @@ export const useMediaOperations = () => {
           successMessage: `${service.serviceName} finished.`,
           errorTitle: 'Speech detection failed',
           errorMessage: `${service.serviceName} reported an error.`,
+          stoppedTitle: 'Speech detection',
+          // Detection writes nothing: a segment is a stretch of the baseline
+          // and cannot exist without text, so there is nothing to have kept.
+          stoppedMessage: 'Stopped. The proposals already on the document stay.',
+          // And it writes down no run, so a reload would find nothing to rejoin.
+          lostMessage: 'Lost contact with the service.',
         },
       );
+      // A stopped run carries no regions, and a refused one is not a result at
+      // all. Either taken as an empty list would read as "no speech found" and
+      // wipe the proposals the document already had.
+      if (!result || result.stopped === true) {
+        vad.abandonServiceRun();
+        return;
+      }
       // A detect-speech service RETURNS its regions and writes nothing: a
       // segment is a stretch of the baseline and cannot exist without text.
-      vad.acceptServiceRegions(result?.segments ?? result?.proposals ?? []);
+      vad.acceptServiceRegions(result.segments ?? result.proposals ?? []);
     } catch (error) {
-      vad.failRun(error?.message ?? String(error));
+      // A lost connection is not a failed detection: the run may still be out
+      // there, and the proposals already on the document are untouched either
+      // way. The request hook has said so, so leave the dialog as it was.
+      if (error?.pending) vad.abandonServiceRun();
+      else vad.failRun(error?.message ?? String(error));
     } finally {
       detectRun.finish();
     }

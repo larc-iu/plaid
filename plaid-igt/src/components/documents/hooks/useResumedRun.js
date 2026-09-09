@@ -34,6 +34,7 @@ export function useResumedRun(doc, acquireWriteLock) {
     lockRef.current = lock;
     lock.setStatus('Rejoining…');
 
+    let stillOut = false; // the request survived our giving up on it
     (async () => {
       try {
         const result = await attachToRequest(record.projectId, record.requestId);
@@ -59,12 +60,21 @@ export function useResumedRun(doc, acquireWriteLock) {
           // Gone: it expired, or it finished and its result was collected by
           // the page that made it. Reload so anything it wrote is on screen.
           await doc._reload();
+        } else if (error?.pending) {
+          // Still out there: we stopped waiting, it did not stop working. Keep
+          // the record so the next reload rejoins it again. (attachToRequest
+          // does not toast, unlike a submitted request, so this says it.)
+          stillOut = true;
+          notifyWarning(
+            'Lost contact with the service. It is still running. Reload to pick it back up.',
+            record.label,
+          );
         } else {
           console.error('Could not rejoin the service request:', error);
           notifyWarning(`${record.label} could not be rejoined.`, record.label);
         }
       } finally {
-        clearRunRecord(documentId);
+        if (!stillOut) clearRunRecord(documentId);
         lock.release();
         lockRef.current = null;
       }

@@ -15,6 +15,13 @@
 // project the full analysis structure, so — like the concordance — we ask which
 // documents contain the needed forms, fetch the busiest few, and harvest
 // locally) and only for the duration of this one run.
+//
+// A built-in phase stops on request the same way a service does: `shouldStop`
+// is read at checkpoints between units of work, and the writes sit between
+// checkpoints so a phase that has begun writing always finishes. Without this a
+// built-in step was the one part of Auto-analyze that could not be interrupted,
+// and it is the slowest: precedent means fetching up to MAX_SOURCE_DOCS other
+// documents one at a time.
 
 import { IgtDocument } from './IgtDocument.js';
 import { readIgnoredTokens } from './igtConfig.js';
@@ -38,40 +45,67 @@ import { linkPrecedentQueries, createTally, foldLinkRows } from './precedent.js'
 
 const MAX_SOURCE_DOCS = 25;
 
+// The stop, thrown at a checkpoint and caught once, in runBuiltinAnalysis. This
+// is the services' contract in miniature: every long loop already reports
+// progress, so the place it reports is the place it can be stopped.
+class Stopped extends Error {}
+const checkpoint = (shouldStop) => {
+  if (shouldStop()) throw new Stopped();
+};
+
 // Run the built-in analysis helpers once over `doc`. Options:
 //   link         — run the auto-linker (default true)
 //   copy         — run the analysis-copy phase (default false)
 //   copyContents — { segmentation, links, fields } for the copy phase
 //   onProgress   — ({percent, message}) as the phases advance
-// Returns { copied, linked, ok }. Copy runs first so the linker doesn't
+//   shouldStop   — read at each checkpoint, true ends the run there
+// Returns { copied, linked, ok, stopped }. Copy runs first so the linker doesn't
 // re-handle words a copy just analyzed; a phase that fails (the mutation
 // returns false, having already surfaced the error) short-circuits the rest
 // and sets ok=false.
+//
+// A stop is not a failure: ok stays true and whatever a completed phase wrote
+// stays written. The counts are what the completed phases reported, so a phase
+// stopped after one of its two writes reports nothing rather than a partial
+// figure. No caller shows a count for a run that was stopped.
 //
 // Reporting matters here rather than being a nicety: gathering precedent means
 // fetching other documents one at a time, which on a big project is the longest
 // silence in the whole Auto-analyze run.
 export async function runBuiltinAnalysis(
   doc,
-  { link = true, copy = false, copyContents = {}, onProgress = () => {} } = {},
+  {
+    link = true,
+    copy = false,
+    copyContents = {},
+    onProgress = () => {},
+    shouldStop = () => false,
+  } = {},
 ) {
   let copied = 0;
   let linked = 0;
-  if (copy) {
-    const n = await runCopyPhase(doc, copyContents, onProgress);
-    if (n === false) return { copied, linked, ok: false };
-    copied = n;
+  try {
+    if (copy) {
+      const n = await runCopyPhase(doc, copyContents, onProgress, shouldStop);
+      if (n === false) return { copied, linked, ok: false, stopped: false };
+      copied = n;
+    }
+    checkpoint(shouldStop);
+    if (link) {
+      const n = await runLinkPhase(doc, onProgress, shouldStop);
+      if (n === false) return { copied, linked, ok: false, stopped: false };
+      linked = n;
+    }
+  } catch (err) {
+    if (!(err instanceof Stopped)) throw err;
+    return { copied, linked, ok: true, stopped: true };
   }
-  if (link) {
-    const n = await runLinkPhase(doc, onProgress);
-    if (n === false) return { copied, linked, ok: false };
-    linked = n;
-  }
-  return { copied, linked, ok: true };
+  return { copied, linked, ok: true, stopped: false };
 }
 
-// Number of words copied, or false on mutation failure.
-async function runCopyPhase(doc, copyContents, onProgress) {
+// Number of words copied, or false on mutation failure. Throws Stopped if the
+// run is stopped at a checkpoint, which is always before a write.
+async function runCopyPhase(doc, copyContents, onProgress, shouldStop = () => false) {
   const info = doc.layerInfo;
   const wordLayerId = info.primaryTokenLayer?.id;
   if (!wordLayerId || !info.morphemeTokenLayer) return 0;
@@ -86,7 +120,7 @@ async function runCopyPhase(doc, copyContents, onProgress) {
   if (!forms.size) return 0;
 
   const localTally = tallyAnalyses(new Map(), doc.sentences, ignoredCfg);
-  const remoteTallies = await remoteTalliesFor(doc, wordLayerId, forms, onProgress);
+  const remoteTallies = await remoteTalliesFor(doc, wordLayerId, forms, onProgress, shouldStop);
 
   const table = buildAnalysisTable(mergeTallies(localTally, ...remoteTallies));
   const proposals = computeAnalysisCopyProposals({
@@ -96,6 +130,8 @@ async function runCopyPhase(doc, copyContents, onProgress) {
     copy: copyContents,
   });
   if (!proposals.length) return 0;
+  // Last chance: the write below is one operation and is not interrupted.
+  checkpoint(shouldStop);
   onProgress({ percent: null, message: `Copying onto ${proposals.length} words…` });
   return doc.bulkApplyAnalyses(proposals, ANALYSIS_COPY_SOURCE);
 }
@@ -103,7 +139,13 @@ async function runCopyPhase(doc, copyContents, onProgress) {
 // Tallies of identical whole-word analyses from the project's other documents:
 // ask which documents hold the target forms, fetch the busiest few, harvest
 // locally. Read-failures of a single source are skipped, not fatal.
-async function remoteTalliesFor(doc, wordLayerId, forms, onProgress = () => {}) {
+async function remoteTalliesFor(
+  doc,
+  wordLayerId,
+  forms,
+  onProgress = () => {},
+  shouldStop = () => false,
+) {
   onProgress({ percent: null, message: 'Looking for previous analyses…' });
   const index = await doc.client.query(wordFormDocIndexQuery(wordLayerId));
   const { docIds, truncated } = rankSourceDocs(index, forms, {
@@ -117,7 +159,9 @@ async function remoteTalliesFor(doc, wordLayerId, forms, onProgress = () => {}) 
   }
   const tallies = [];
   for (const [i, docId] of docIds.entries()) {
-    // Named one by one: this loop is seconds per document on a large corpus.
+    // Named one by one: this loop is seconds per document on a large corpus,
+    // which also makes it the one place a stop most needs to be noticed.
+    checkpoint(shouldStop);
     onProgress({
       percent: (i / docIds.length) * 100,
       message: `Reading document ${i + 1} of ${docIds.length}…`,
@@ -134,8 +178,10 @@ async function remoteTalliesFor(doc, wordLayerId, forms, onProgress = () => {}) 
   return tallies;
 }
 
-// Number of links written, or false on mutation failure.
-async function runLinkPhase(doc, onProgress = () => {}) {
+// Number of links written, or false on mutation failure. Throws Stopped as the
+// copy phase does. The two writes below are each preceded by a checkpoint, so a
+// stop lands between them rather than inside one.
+async function runLinkPhase(doc, onProgress = () => {}, shouldStop = () => false) {
   const vocabIds = Object.keys(doc.vocabularies || {});
   if (!vocabIds.length) return 0;
   onProgress({ percent: null, message: 'Reading the lexicon…' });
@@ -151,6 +197,7 @@ async function runLinkPhase(doc, onProgress = () => {}) {
   });
   let linked = 0;
   if (proposals.length) {
+    checkpoint(shouldStop);
     onProgress({ percent: null, message: `Linking ${proposals.length} words…` });
     const n = await doc.bulkLinkVocab(proposals, AUTO_LINK_SOURCE);
     if (n === false) return false;
@@ -164,6 +211,7 @@ async function runLinkPhase(doc, onProgress = () => {}) {
     ignoredCfg,
   });
   if (mweProposals.length) {
+    checkpoint(shouldStop);
     onProgress({ percent: null, message: 'Linking multi-word expressions…' });
     const n = await doc.bulkLinkMwes(mweProposals, MWE_LINK_SOURCE);
     if (n === false) return false;

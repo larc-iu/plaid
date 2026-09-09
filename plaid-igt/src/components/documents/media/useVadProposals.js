@@ -182,6 +182,18 @@ export function useVadProposals({
     setStatus('error');
   }, []);
 
+  // A service run that produced nothing to take: it was stopped, or it never
+  // started. NOT the same as finding no speech: `acceptServiceRegions([])`
+  // would replace the proposals already on the document with an empty list and
+  // then say "No speech found". The run just ends and everything stays put.
+  const abandonServiceRun = useCallback(() => {
+    setError(null);
+    setServiceRegions((regions) => {
+      setStatus(regions ? 'ready' : 'idle');
+      return regions;
+    });
+  }, []);
+
   const cancel = useCallback(() => abortRef.current?.abort(), []);
 
   const clear = useCallback(() => {
@@ -264,6 +276,7 @@ export function useVadProposals({
     detect,
     acceptServiceRegions,
     beginServiceRun,
+    abandonServiceRun,
     failRun,
     cancel,
     clear,

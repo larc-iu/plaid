@@ -204,6 +204,7 @@ export const useTokenOperations = () => {
     lockRef.current = lock;
     setIsTokenizing(true);
     tokenizeRun.start(['Tokenize']);
+    let stillOut = false; // the request survived our giving up on it
     try {
       const layers = doc.layerInfo;
       await requestService(
@@ -227,6 +228,7 @@ export const useTokenOperations = () => {
           successMessage: 'Document has been tokenized successfully',
           errorTitle: 'Tokenization Failed',
           errorMessage: 'An error occurred during tokenization',
+          stoppedTitle: 'Tokenize',
           // Written down before the request is submitted, so a reload in that
           // window can still find the run.
           onRequestId: (requestId) =>
@@ -242,8 +244,12 @@ export const useTokenOperations = () => {
       // useServiceRequest already shows an error toast (errorTitle/errorMessage);
       // just log here so a failed run doesn't double-toast.
       console.error('Tokenization failed:', error);
+      // `pending` means the request is still out there. The client stopped
+      // waiting, the service did not stop working, so keep the record and let a
+      // reload rejoin it instead of losing the run.
+      stillOut = error?.pending === true;
     } finally {
-      clearRunRecord(doc.id);
+      if (!stillOut) clearRunRecord(doc.id);
       setIsTokenizing(false);
       tokenizeRun.finish();
       lock.release();
