@@ -211,3 +211,28 @@ export const multiHeadTargets = (layerInfo) => {
     .filter(([, n]) => n > 1)
     .map(([target, count]) => ({ target, count }));
 };
+
+/**
+ * Token layers that have not yet declared which metadata keys survive a split.
+ *
+ * A token born of a split is otherwise born bare, and provenance lost that way
+ * leaves nothing for a later pass to find, so the declaration has to be in
+ * place BEFORE the split rather than repaired after it. This is the back-fill
+ * step of the reconcile contract: projects made before the declaration existed
+ * pick it up the next time a maintainer opens a document.
+ */
+export const planPreserveOnSplit = (layerInfo, namespace, key, wanted) => {
+  const layers = [
+    layerInfo?.sentenceTokenLayer,
+    layerInfo?.wordTokenLayer,
+    layerInfo?.morphemeTokenLayer,
+  ];
+  const out = [];
+  for (const layer of layers) {
+    if (!layer?.id) continue;
+    const declared = layer.config?.[namespace]?.[key];
+    const has = Array.isArray(declared) && wanted.every((k) => declared.includes(k));
+    if (!has) out.push(layer.id);
+  }
+  return out;
+};

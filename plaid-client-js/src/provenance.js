@@ -99,6 +99,25 @@ export const PROV = Object.freeze({
   CONTRIBUTED: 'contributed',
 });
 
+/**
+ * Every provenance key, for a caller that has to name them as a set rather
+ * than read one: what a token layer declares under
+ * `config.plaid.preserveOnSplit` so a token born of a split inherits the
+ * origin of the token it came from, and what a reshape carries by hand.
+ *
+ * Provenance is the one metadata family Plaid itself owns. The user cannot
+ * maintain it, and in a shared project usually cannot even see it, since it
+ * may belong to an app they are not using. Everything else on an entity is
+ * the user's own content and no structural operation should touch it.
+ */
+export const PROVENANCE_KEYS = Object.freeze([
+  PROV.key,
+  PROV.sourceKey,
+  PROV.confirmedKey,
+  PROV.probKey,
+  PROV.detailKey,
+]);
+
 /** The four provenance states returned by provState. */
 export const PROV_STATES = Object.freeze({
   HUMAN: 'human',

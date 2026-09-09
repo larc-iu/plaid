@@ -4,8 +4,12 @@ import {
   utf16ToCp,
   isReviewed,
   mergeMetadata,
+  PLAID_NAMESPACE,
+  PRESERVE_ON_SPLIT_KEY,
+  PROVENANCE_KEYS,
   writerPolicy,
 } from '@larc-iu/plaid-client';
+import { canManageProject } from '../utils/permissions.js';
 import { isProvKey } from '../utils/provenanceUi.js';
 import { getUdLayerInfo, containsToken, missingUdLayerLabels } from '../utils/udLayerUtils.js';
 import {
@@ -13,6 +17,7 @@ import {
   wordsNeedingSyntacticWord,
   orphanSyntacticWords,
   planSpanDedup,
+  planPreserveOnSplit,
 } from '../utils/udReconcile.js';
 import { validateConlluDocument } from './validate.js';
 import { parseCoNLLU, buildConlluHierarchy } from '../utils/conlluParser.js';
@@ -922,6 +927,23 @@ export class ConlluDocument {
     );
   }
 
+  // Maintainers only, since it is layer config; a failure is not worth
+  // interrupting anyone over, because nothing is worse than it was.
+  async _backfillPreserveOnSplit(info) {
+    if (!canManageProject(this._project, this._user)) return;
+    const ids = planPreserveOnSplit(info, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY, PROVENANCE_KEYS);
+    for (const id of ids) {
+      try {
+        await this._client.tokenLayers.setConfig(id, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY, [
+          ...PROVENANCE_KEYS,
+        ]);
+      } catch (err) {
+        console.error('Could not declare preserveOnSplit on a layer:', err);
+        return;
+      }
+    }
+  }
+
   async _reconcileOnOpenImpl() {
     const ZERO = {
       deletedRelations: 0,
@@ -935,6 +957,10 @@ export class ConlluDocument {
     this._reconciling = true;
     try {
       const info = this.layerInfo;
+      // Back-fill, the reconcile contract's second step. Provenance lost in a
+      // split leaves nothing for a later pass to find, so the declaration has
+      // to be in place before the split, not repaired after it.
+      await this._backfillPreserveOnSplit(info);
       const relIds = interSententialRelationIds(info);
       const { morphemeTokenLayer, textLayer } = info;
       const textId = textLayer?.text?.id;

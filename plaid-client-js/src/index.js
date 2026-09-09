@@ -3138,6 +3138,7 @@ export {
 export {
   PLAID_NAMESPACE,
   ROLE_KEY,
+  PRESERVE_ON_SPLIT_KEY,
   ROLES,
   readRole,
   findByRole,
@@ -3167,6 +3168,7 @@ export {
   PROV,
   PROV_STATES,
   PROV_CONFIRMED,
+  PROVENANCE_KEYS,
   stampInferred,
   confirmedInferred,
   stampContributed,

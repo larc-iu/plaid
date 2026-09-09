@@ -25,6 +25,13 @@ PLAID_NAMESPACE = 'plaid'
 #: The config key, under ``plaid``, holding a layer's role.
 ROLE_KEY = 'role'
 
+#: Layer config key naming the metadata keys a token born of a SPLIT inherits
+#: from the token it came from. Plaid honors it without knowing what the keys
+#: mean; see the manual's "Metadata Preserved Across a Split". An app declares
+#: it so that a split in ANY app, including one that has never heard of these
+#: keys, does not silently drop them.
+PRESERVE_ON_SPLIT_KEY = 'preserveOnSplit'
+
 
 class ROLES:
     """The fixed role inventory (attribute access mirrors JS ``ROLES.BASELINE``)."""

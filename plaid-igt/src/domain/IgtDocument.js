@@ -1,4 +1,12 @@
-import { isReviewed, mergeMetadata, writerPolicy } from '@larc-iu/plaid-client';
+import {
+  isReviewed,
+  mergeMetadata,
+  PLAID_NAMESPACE,
+  PRESERVE_ON_SPLIT_KEY,
+  PROVENANCE_KEYS,
+  writerPolicy,
+} from '@larc-iu/plaid-client';
+import { canManageProject } from '../utils/permissions.js';
 import { newHalfMetadata, survivorPatch } from './tokenReshape.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 import { readSpeakers, IGT_NAMESPACE } from './igtConfig.js';
@@ -8,6 +16,7 @@ import {
   planVocabLinkDedup,
   applyVocabLinkDedup,
   planMorphTypeSync,
+  planPreserveOnSplit,
 } from './igtReconcile.js';
 import { validateIgtDocument } from './validate.js';
 import { deriveDocumentData, deriveSentences, deriveAlignmentTokens } from './derive.js';
@@ -494,6 +503,25 @@ export class IgtDocument {
     return this._reconcilePromise;
   }
 
+  // Declared on the layer so a split in ANY app preserves it, including one
+  // that has never heard of these keys. Maintainers only, since it is layer
+  // config; a failure is not worth interrupting anyone over, because nothing
+  // is worse than it was.
+  async _backfillPreserveOnSplit(info) {
+    if (!canManageProject(this._project, this._user)) return;
+    const ids = planPreserveOnSplit(info, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY, PROVENANCE_KEYS);
+    for (const id of ids) {
+      try {
+        await this._client.tokenLayers.setConfig(id, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY, [
+          ...PROVENANCE_KEYS,
+        ]);
+      } catch (err) {
+        console.error('Could not declare preserveOnSplit on a layer:', err);
+        return;
+      }
+    }
+  }
+
   async _reconcileOnOpenImpl() {
     const ZERO = {
       created: 0,
@@ -510,6 +538,11 @@ export class IgtDocument {
     this._reconciling = true;
     try {
       const info = this.layerInfo;
+      // Back-fill, the reconcile contract's second step: a project made before
+      // `preserveOnSplit` existed picks it up the next time a maintainer opens
+      // a document. It has to be in place BEFORE a split, since provenance lost
+      // that way leaves nothing for a later pass to find.
+      await this._backfillPreserveOnSplit(info);
       const { wordsNeedingMorpheme, orphanMorphemeIds, deletedAnnotatedOrphans } =
         planMorphemeReconcile(info);
       const dedupPlans = planSpanDedup(info);

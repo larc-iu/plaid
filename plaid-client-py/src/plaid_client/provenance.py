@@ -93,6 +93,23 @@ PROV_SOURCE_KEY = 'provSource'
 PROV_CONFIRMED_KEY = 'provConfirmed'
 PROV_PROB_KEY = 'provProb'
 PROV_DETAIL_KEY = 'provDetail'
+
+#: Every provenance key, for a caller that has to name them as a set rather
+#: than read one: what a token layer declares under
+#: ``config.plaid.preserveOnSplit`` so a token born of a split inherits the
+#: origin of the token it came from.
+#:
+#: Provenance is the one metadata family Plaid itself owns. The user cannot
+#: maintain it, and in a shared project usually cannot even see it, since it
+#: may belong to an app they are not using. Everything else on an entity is the
+#: user's own content and no structural operation should touch it.
+PROVENANCE_KEYS = (
+    PROV_KEY,
+    PROV_SOURCE_KEY,
+    PROV_CONFIRMED_KEY,
+    PROV_PROB_KEY,
+    PROV_DETAIL_KEY,
+)
 INFERRED = 'inferred'
 CONTRIBUTED = 'contributed'
 

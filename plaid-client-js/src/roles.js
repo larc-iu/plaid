@@ -25,6 +25,15 @@ export const PLAID_NAMESPACE = 'plaid';
 export const ROLE_KEY = 'role';
 
 /** The fixed role inventory. */
+/**
+ * Layer config key naming the metadata keys a token born of a SPLIT inherits
+ * from the token it came from. Plaid honors it without knowing what the keys
+ * mean; see the manual's `Metadata Preserved Across a Split`. An app declares
+ * it so that a split in ANY app, including one that has never heard of these
+ * keys, does not silently drop them.
+ */
+export const PRESERVE_ON_SPLIT_KEY = 'preserveOnSplit';
+
 export const ROLES = Object.freeze({
   BASELINE: 'baseline',
   SENTENCE: 'sentence',

@@ -22,7 +22,23 @@
  * to UD under the `ud` namespace.
  */
 
-import { PLAID_NAMESPACE, ROLE_KEY, ROLES } from '@larc-iu/plaid-client';
+import {
+  PLAID_NAMESPACE,
+  PRESERVE_ON_SPLIT_KEY,
+  PROVENANCE_KEYS,
+  ROLE_KEY,
+  ROLES,
+} from '@larc-iu/plaid-client';
+
+// Provenance survives a split, including one made by another app sharing this
+// substrate that has never heard of these keys. Declared on the layer because
+// a token born of a split is otherwise born bare, and what is lost that way
+// leaves nothing for a later reconcile to find. See the manual's "Metadata
+// Preserved Across a Split".
+const declarePreserveOnSplit = (client, layerId) =>
+  client.tokenLayers.setConfig(layerId, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY, [
+    ...PROVENANCE_KEYS,
+  ]);
 import {
   UD_NAMESPACE,
   UD_SPAN_CONFIG_KEYS,
@@ -69,6 +85,7 @@ const bootstrap = async (client, projectName) => {
     // B4: sentenceLayer.setConfig + wordLayer.create
     const b4 = await client.batched(async () => {
       client.tokenLayers.setConfig(sentenceLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.SENTENCE);
+      declarePreserveOnSplit(client, sentenceLayerId);
       client.tokenLayers.create(textLayerId, 'Tokens', 'non-overlapping', sentenceLayerId);
     });
     const wordLayerId = b4[1].body.id;
@@ -76,6 +93,7 @@ const bootstrap = async (client, projectName) => {
     // B5: wordLayer.setConfig + morphemeLayer.create
     const b5 = await client.batched(async () => {
       client.tokenLayers.setConfig(wordLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.WORD);
+      declarePreserveOnSplit(client, wordLayerId);
       client.tokenLayers.create(textLayerId, 'Words', 'any', wordLayerId);
     });
     const morphemeLayerId = b5[1].body.id;
@@ -92,6 +110,7 @@ const bootstrap = async (client, projectName) => {
         ROLE_KEY,
         ROLES.SYNTACTIC_WORD,
       );
+      declarePreserveOnSplit(client, morphemeLayerId);
       for (const [name] of SPAN_LAYER_SPECS) {
         client.spanLayers.create(morphemeLayerId, name);
       }

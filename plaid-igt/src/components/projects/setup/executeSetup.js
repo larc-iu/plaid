@@ -12,7 +12,13 @@
 //
 // Returns { projectId, resources, failures, alreadyInitialized }.
 
-import { PLAID_NAMESPACE, ROLE_KEY, ROLES } from '@larc-iu/plaid-client';
+import {
+  PLAID_NAMESPACE,
+  PRESERVE_ON_SPLIT_KEY,
+  PROVENANCE_KEYS,
+  ROLE_KEY,
+  ROLES,
+} from '@larc-iu/plaid-client';
 // Relative (not @/) import keeps this module loadable from plain-node e2e
 // scripts, which drive the real setup against the live core.
 import {
@@ -147,6 +153,13 @@ async function executeProjectSetupImpl({
       const layer = await client.tokenLayers.create(textLayerId, name, overlapMode, parentId);
       resources[resourceKey] = layer;
       await client.tokenLayers.setConfig(layer.id, PLAID_NAMESPACE, ROLE_KEY, role);
+      // Provenance survives a split, including one made by another app that
+      // has never heard of these keys. See the manual's "Metadata Preserved
+      // Across a Split" for why the layer has to say so rather than each app
+      // remembering at each call site.
+      await client.tokenLayers.setConfig(layer.id, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY, [
+        ...PROVENANCE_KEYS,
+      ]);
       return layer.id;
     };
 

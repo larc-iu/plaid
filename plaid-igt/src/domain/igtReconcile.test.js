@@ -6,6 +6,7 @@ import {
   planMorphTypeSync,
   planSpanDedup,
   planVocabLinkDedup,
+  planPreserveOnSplit,
 } from './igtReconcile.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 
@@ -376,5 +377,50 @@ describe('reconcileOnOpen vocab-link dedup', () => {
     expect(dels.map((c) => c.args[0])).toEqual(['lk-2']);
     expect(doc.vocabularies.v1.vocabLinks.map((l) => l.id)).toEqual(['lk-1']);
     expect(doc.sentences[0].tokens[0].vocabItem?.form).toBe('one');
+  });
+});
+
+describe('planPreserveOnSplit', () => {
+  const NS = 'plaid';
+  const KEY = 'preserveOnSplit';
+  const WANT = ['prov', 'provSource'];
+  const layer = (id, declared) => ({
+    id,
+    ...(declared ? { config: { [NS]: { [KEY]: declared } } } : {}),
+  });
+
+  it('names every substrate layer that has not declared it yet', () => {
+    const info = {
+      sentenceTokenLayer: layer('s'),
+      primaryTokenLayer: layer('w'),
+      morphemeTokenLayer: layer('m'),
+      alignmentTokenLayer: layer('a'),
+    };
+    expect(planPreserveOnSplit(info, NS, KEY, WANT)).toEqual(['s', 'w', 'm', 'a']);
+  });
+
+  it('is empty once they all declare it, so a second open writes nothing', () => {
+    const info = {
+      sentenceTokenLayer: layer('s', WANT),
+      primaryTokenLayer: layer('w', WANT),
+      morphemeTokenLayer: layer('m', WANT),
+      alignmentTokenLayer: layer('a', WANT),
+    };
+    expect(planPreserveOnSplit(info, NS, KEY, WANT)).toEqual([]);
+  });
+
+  it('names a layer whose declaration is short of what is wanted', () => {
+    const info = { primaryTokenLayer: layer('w', ['prov']) };
+    expect(planPreserveOnSplit(info, NS, KEY, WANT)).toEqual(['w']);
+  });
+
+  it('names a layer whose declaration is the wrong shape entirely', () => {
+    const info = { primaryTokenLayer: layer('w', 'prov') };
+    expect(planPreserveOnSplit(info, NS, KEY, WANT)).toEqual(['w']);
+  });
+
+  it('skips a layer the project does not have', () => {
+    expect(planPreserveOnSplit({ primaryTokenLayer: layer('w', WANT) }, NS, KEY, WANT)).toEqual([]);
+    expect(planPreserveOnSplit({}, NS, KEY, WANT)).toEqual([]);
   });
 });
