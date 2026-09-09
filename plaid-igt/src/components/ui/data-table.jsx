@@ -55,8 +55,10 @@ export const DataTable = ({
   title,
   actions,
   empty = 'Nothing here.',
+  noMatch,
   loading = false,
   expand,
+  pageStorageKey,
   className,
 }) => {
   const [query, setQuery] = useState('');
@@ -88,6 +90,9 @@ export const DataTable = ({
 
   const paged = usePagedList(sorted, {
     resetKey: `${query}:${sort.key}:${sort.dir}`,
+    // A list that remembers which page the reader was on across visits says
+    // so. Most do not, and paging is then per-mount.
+    storageKey: pageStorageKey,
   });
 
   const toggle = (key) =>
@@ -125,7 +130,11 @@ export const DataTable = ({
         <p className="p-4 text-sm text-muted-foreground">Loading…</p>
       ) : paged.pageItems.length === 0 ? (
         <p className="p-4 text-sm text-muted-foreground">
-          {rows.length === 0 ? empty : `No ${noun}s match.`}
+          {rows.length === 0
+            ? empty
+            : typeof noMatch === 'function'
+              ? noMatch(query.trim())
+              : noMatch || `No ${noun}s match.`}
         </p>
       ) : (
         <div className="overflow-x-auto">

@@ -110,6 +110,24 @@ describe('DataTable', () => {
     await unmount();
   });
 
+  it('lets a caller quote the query in its no-match line', async () => {
+    const { container, step, unmount } = await table({
+      search: { match: (r, q) => r.name.toLowerCase().includes(q) },
+      noMatch: (q) => `No people match “${q}”.`,
+    });
+    const box = container.querySelector('input');
+    const setValue = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      'value',
+    ).set;
+    await step(() => {
+      setValue.call(box, 'zzz');
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(container.textContent).toContain('No people match “zzz”.');
+    await unmount();
+  });
+
   it('says when a search matched nothing, distinctly from an empty list', async () => {
     const { container, unmount } = await table({ rows: [], empty: 'No accounts yet.' });
     expect(container.textContent).toContain('No accounts yet.');

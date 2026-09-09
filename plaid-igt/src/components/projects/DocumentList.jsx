@@ -6,6 +6,7 @@ import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/util
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { pageKey } from '@/hooks/usePagedList';
 import { listPrefKey } from '@/hooks/useStickyState';
 import {
   Dialog,
@@ -289,6 +290,7 @@ export const DocumentList = ({
           columns={columns}
           rowKey={(d) => d.id}
           storageKey={listPrefKey('sort', 'documents', projectId)}
+          pageStorageKey={pageKey('documents', projectId)}
           defaultSort={{ key: 'updated', dir: 'desc' }}
           search={{
             placeholder: 'Search documents…',
@@ -296,6 +298,7 @@ export const DocumentList = ({
           }}
           noun="document"
           empty="No documents yet."
+          noMatch={(q) => `No documents match “${q}”.`}
         />
       </TooltipProvider>
 
