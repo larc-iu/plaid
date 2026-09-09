@@ -1,10 +1,18 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { writeRunRecord, readRunRecord, clearRunRecord } from './runRecord.js';
+import {
+  writeRunRecord,
+  readRunRecord,
+  clearRunRecord,
+  __resetUnloadingForTests,
+} from './runRecord.js';
 
 // The pointer a reloaded page follows back to a run that is still going.
 
 describe('runRecord', () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    __resetUnloadingForTests();
+  });
 
   it('has nothing to say about a document with no run', () => {
     expect(readRunRecord('doc-1')).toBe(null);
@@ -57,5 +65,18 @@ describe('runRecord', () => {
     // An id with no project cannot be attached to.
     localStorage.setItem('plaid_igt_run_doc-2', JSON.stringify({ requestId: 'req-1' }));
     expect(readRunRecord('doc-2')).toBe(null);
+  });
+
+  it('keeps the record when the PAGE is going away, not the run', () => {
+    // Tearing the page down kills the request's stream, and the client settles
+    // the promise as though the run had ended, so the run's own cleanup fires
+    // on the way out. If that were allowed through, the reloaded page would
+    // find nothing and the run would vanish from the UI while the service
+    // carried on writing — which is exactly what happened before this guard.
+    writeRunRecord('doc-1', { requestId: 'req-1', projectId: 'p', label: 'Transcribe' });
+    window.dispatchEvent(new Event('pagehide'));
+
+    clearRunRecord('doc-1');
+    expect(readRunRecord('doc-1')?.requestId).toBe('req-1');
   });
 });

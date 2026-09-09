@@ -14,6 +14,31 @@
 
 const key = (documentId) => `plaid_igt_run_${documentId}`;
 
+// A page that is going away must NOT delete the pointer to a run that is still
+// going: the next page finding it is the entire point.
+//
+// This is not hypothetical. Tearing the page down kills the request's stream,
+// and the client settles the promise when that happens ("Service closed the
+// connection without a result") — indistinguishable, from the caller's side,
+// from the run itself ending. The run's `finally` then cleared the record on
+// its way out, so the reloaded page found nothing and the run vanished from
+// the UI while the service carried on writing. This flag is what tells "the
+// run ended" apart from "this page ended".
+let unloading = false;
+if (typeof window !== 'undefined') {
+  const going = () => {
+    unloading = true;
+  };
+  window.addEventListener('pagehide', going);
+  window.addEventListener('beforeunload', going);
+}
+
+// Test seam: the flag is set by real navigation, and nothing resets it, since
+// a page that has begun unloading never comes back.
+export function __resetUnloadingForTests() {
+  unloading = false;
+}
+
 // `multiStep` marks a run the browser was orchestrating (Auto-analyze), where
 // rejoining reaches the step that was in flight and NOT the steps after it.
 export function writeRunRecord(documentId, { requestId, projectId, label, multiStep = false }) {
@@ -42,7 +67,7 @@ export function readRunRecord(documentId) {
 }
 
 export function clearRunRecord(documentId) {
-  if (!documentId) return;
+  if (!documentId || unloading) return;
   try {
     localStorage.removeItem(key(documentId));
   } catch {
