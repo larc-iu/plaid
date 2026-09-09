@@ -144,7 +144,7 @@ export function DocumentTokenize() {
                     <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Ctrl</kbd>/
                     <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Cmd</kbd> +{' '}
                     <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Left Click</kbd>{' '}
-                    on token: New Sentence
+                    on token: Split sentence here
                   </div>
                   <div>
                     <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">

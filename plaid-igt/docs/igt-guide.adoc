@@ -229,7 +229,7 @@ You can tokenize by hand:
 * **Drag** across plain text to make a word of it, or across several words to merge them.
 * **Click** a word to split it at a character.
 * **Right-click** a word to delete it.
-* **Ctrl/Cmd+click** a word to start a new sentence at it.
+* **Ctrl/Cmd+click** a word to split its sentence there, making that word the first of a new one. This is how a merge is undone.
 * The **↑** button on a sentence merges it with the previous one.
 
 Or run a tokenizer over the whole document with **Tokenize**, in the **Tokens** header.
@@ -895,7 +895,7 @@ Every shortcut that takes Ctrl also takes Cmd on a Mac.
 | **Drag** | Make a word of plain text, or merge the words dragged across.
 | **Click** a word | Split it at a character.
 | **Right-click** a word | Delete it.
-| **Ctrl/Cmd+click** a word | Start a new sentence at it.
+| **Ctrl/Cmd+click** a word | Split its sentence there, undoing a merge.
 | **↑** on a sentence | Merge it with the previous sentence.
 |===
 
