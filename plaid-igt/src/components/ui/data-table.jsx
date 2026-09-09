@@ -27,11 +27,19 @@ import { useStickySort } from '@/hooks/useStickyState';
 // row summarises a set that is too long to inline, the way one service
 // summarises the projects it is registered on.
 
-const missing = (v) => v === null || v === undefined;
-
-/** Order two present values. Callers handle the absent ones. */
+/**
+ * Order two values, with a missing one counting as the smallest.
+ *
+ * A blank participates in the ordering rather than being pinned to one end,
+ * so it flips with the column like every other value. That is what the data
+ * usually means: a project with no last change is the least recently changed
+ * one, so ascending "Last change" puts it first and descending puts it last.
+ */
 const compare = (a, b) => {
   if (a === b) return 0;
+  const aMissing = a === null || a === undefined;
+  const bMissing = b === null || b === undefined;
+  if (aMissing || bMissing) return aMissing ? -1 : 1;
   if (typeof a === 'string' && typeof b === 'string') return a.localeCompare(b);
   return a < b ? -1 : 1;
 };
@@ -72,21 +80,9 @@ export const DataTable = ({
     const dir = sort.dir === 'asc' ? 1 : -1;
     // Sorted on a COPY, and the key is the tiebreak so equal values keep a
     // stable order instead of shuffling between renders.
-    //
-    // A missing value sorts last in BOTH directions, outside `dir`. "Unknown"
-    // is not the smallest value, and flipping a column should not march every
-    // blank to the top: a reader reversing "Last change" wants the oldest
-    // first, not the projects that have never been touched.
     return [...matched].sort((a, b) => {
-      const av = column.sort(a);
-      const bv = column.sort(b);
-      const tiebreak = () => compare(rowKey(a), rowKey(b));
-      if (missing(av) || missing(bv)) {
-        if (missing(av) && missing(bv)) return tiebreak();
-        return missing(av) ? 1 : -1;
-      }
-      const primary = compare(av, bv);
-      return primary !== 0 ? primary * dir : tiebreak();
+      const primary = compare(column.sort(a), column.sort(b));
+      return primary !== 0 ? primary * dir : compare(rowKey(a), rowKey(b));
     });
   }, [matched, columns, sort, rowKey]);
 

@@ -43,16 +43,20 @@ describe('DataTable', () => {
   });
 
   it('sorts a numeric column numerically, not as text', async () => {
+    // 5 before 30. As text it would be the other way round.
     const { container, step, unmount } = await table();
     await step(() => header(container, 'Changes').click());
-    expect(names(container).slice(0, 2)).toEqual(['Carol', 'alice']);
+    expect(names(container)).toEqual(['Bob', 'Carol', 'alice']);
     await unmount();
   });
 
-  it('puts unknown values last whichever way the column points', async () => {
+  it('treats a missing value as the smallest, so it flips with the column', async () => {
+    // Bob has no `changes`. Ascending it sorts first, descending it sorts
+    // last, exactly as a zero would: "never" is the oldest, not a special case
+    // pinned to one end.
     const { container, step, unmount } = await table();
     await step(() => header(container, 'Changes').click());
-    expect(names(container).at(-1)).toBe('Bob');
+    expect(names(container)[0]).toBe('Bob');
     await step(() => header(container, 'Changes').click());
     expect(names(container).at(-1)).toBe('Bob');
     await unmount();
