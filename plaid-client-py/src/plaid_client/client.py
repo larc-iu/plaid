@@ -853,6 +853,26 @@ class UsersResource(_Resource):
                         query={'start-time': start_time, 'end-time': end_time,
                                'as-of': as_of, 'op-types': _op_types_param(op_types)})
 
+    def audit_page(self, user_id: str, *, start_time: str | None = None,
+                   end_time: str | None = None, as_of: str | None = None,
+                   op_types: Any = None, order: str | None = None,
+                   limit: int | None = None, cursor: str | None = None) -> Any:
+        """One page of the same log, newest-first with ``order='desc'``.
+
+        Use this rather than audit() wherever the caller wants the recent end
+        of a log that may be long: audit() walks every page before it returns.
+
+        Args:
+            order: ``'desc'`` pages newest-first; a cursor belongs to the
+                direction that produced it
+            limit: Page size (1..1000)
+            cursor: Opaque cursor from a previous page's ``next_cursor``
+        """
+        return list_page(self._client, f'/api/v1/users/{user_id}/audit', limit=limit, cursor=cursor,
+                         query={'start-time': start_time, 'end-time': end_time,
+                                'as-of': as_of, 'op-types': _op_types_param(op_types),
+                                'order': order})
+
     def get_avatar(self, id: str) -> bytes:
         """Get a user's profile picture as raw bytes.
 
@@ -1612,6 +1632,26 @@ class DocumentsResource(_Resource):
                         query={'start-time': start_time, 'end-time': end_time,
                                'as-of': as_of, 'op-types': _op_types_param(op_types)})
 
+    def audit_page(self, document_id: str, *, start_time: str | None = None,
+                   end_time: str | None = None, as_of: str | None = None,
+                   op_types: Any = None, order: str | None = None,
+                   limit: int | None = None, cursor: str | None = None) -> Any:
+        """One page of the same log, newest-first with ``order='desc'``.
+
+        Use this rather than audit() wherever the caller wants the recent end
+        of a log that may be long: audit() walks every page before it returns.
+
+        Args:
+            order: ``'desc'`` pages newest-first; a cursor belongs to the
+                direction that produced it
+            limit: Page size (1..1000)
+            cursor: Opaque cursor from a previous page's ``next_cursor``
+        """
+        return list_page(self._client, f'/api/v1/documents/{document_id}/audit', limit=limit, cursor=cursor,
+                         query={'start-time': start_time, 'end-time': end_time,
+                                'as-of': as_of, 'op-types': _op_types_param(op_types),
+                                'order': order})
+
     def restore(self, document_id: str, as_of: str, *, dry_run: bool = False,
                 audit_message: str | None = None) -> Any:
         """Restore a document to its state at an earlier time, as one operation.
@@ -2028,6 +2068,26 @@ class ProjectsResource(_Resource):
         return list_all(self._client, f'/api/v1/projects/{project_id}/audit',
                         query={'start-time': start_time, 'end-time': end_time,
                                'as-of': as_of, 'op-types': _op_types_param(op_types)})
+
+    def audit_page(self, project_id: str, *, start_time: str | None = None,
+                   end_time: str | None = None, as_of: str | None = None,
+                   op_types: Any = None, order: str | None = None,
+                   limit: int | None = None, cursor: str | None = None) -> Any:
+        """One page of the same log, newest-first with ``order='desc'``.
+
+        Use this rather than audit() wherever the caller wants the recent end
+        of a log that may be long: audit() walks every page before it returns.
+
+        Args:
+            order: ``'desc'`` pages newest-first; a cursor belongs to the
+                direction that produced it
+            limit: Page size (1..1000)
+            cursor: Opaque cursor from a previous page's ``next_cursor``
+        """
+        return list_page(self._client, f'/api/v1/projects/{project_id}/audit', limit=limit, cursor=cursor,
+                         query={'start-time': start_time, 'end-time': end_time,
+                                'as-of': as_of, 'op-types': _op_types_param(op_types),
+                                'order': order})
 
     def my_last_edits(self, project_id: str) -> Any:
         """When you last wrote to each document in a project, as a
@@ -2623,17 +2683,20 @@ class AuditResource(_Resource):
                                'op-types': _op_types_param(op_types)})
 
     def list_page(self, *, start_time: str | None = None, end_time: str | None = None,
-                  op_types: Any = None, limit: int | None = None,
-                  cursor: str | None = None) -> Any:
+                  op_types: Any = None, order: str | None = None,
+                  limit: int | None = None, cursor: str | None = None) -> Any:
         """One page of the instance-wide audit log. Admin only.
 
         Args:
+            order: ``'desc'`` pages newest-first, which is what a feed wants;
+                a cursor belongs to the direction that produced it
             limit: Page size (1..1000)
             cursor: Opaque cursor from a previous page's ``next_cursor``
         """
         return list_page(self._client, '/api/v1/audit', limit=limit, cursor=cursor,
                          query={'start-time': start_time, 'end-time': end_time,
-                                'op-types': _op_types_param(op_types)})
+                                'op-types': _op_types_param(op_types),
+                                'order': order})
 
     def iter_pages(self, *, start_time: str | None = None, end_time: str | None = None,
                    op_types: Any = None, page_size: int = 1000):
@@ -2662,8 +2725,8 @@ class AuditResource(_Resource):
             project_id: Scope to one project
             start_time: Only count at or after this instant
             end_time: Only count at or before this instant
-            daily: Also return ``by_day``, an ISO-date to change-count map per
-                user, at the cost of a second grouped scan
+            daily: Also return ``by_day``, a list of ``{date, changes}`` per
+                user, oldest first, at the cost of a second grouped scan
         """
         path = (f'/api/v1/projects/{project_id}/audit/tally' if project_id
                 else '/api/v1/audit/tally')

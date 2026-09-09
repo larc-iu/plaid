@@ -87,7 +87,8 @@
 (defn keyset-where
   "Lexicographic 'strictly after' seek predicate for ORDER BY `order-cols`
   ASC. `cursor-vals` is the previous page's last-row key vector. Returns a
-  HoneySQL predicate, or nil when there is no cursor (first page).
+  HoneySQL predicate, or nil when there is no cursor (first page). Pass
+  `:desc` to seek the other way, for a read that pages newest-first.
   Generalizes the hand-written (ts,id) audit predicate to N columns:
 
     [c0]       -> [:> c0 v0]
@@ -95,18 +96,20 @@
     [c0 c1 c2] -> [:or [:> c0 v0]
                        [:and [:= c0 v0] [:> c1 v1]]
                        [:and [:= c0 v0] [:= c1 v1] [:> c2 v2]]]"
-  [order-cols cursor-vals]
-  (when (seq cursor-vals)
-    (let [pairs (mapv vector order-cols cursor-vals)
-          terms (for [i (range (count pairs))]
-                  (let [[col v] (nth pairs i)
-                        eqs (for [j (range i)
-                                  :let [[c2 v2] (nth pairs j)]]
-                              [:= c2 v2])]
-                    (if (seq eqs)
-                      (into [:and] (conj (vec eqs) [:> col v]))
-                      [:> col v])))]
-      (into [:or] (vec terms)))))
+  ([order-cols cursor-vals] (keyset-where order-cols cursor-vals :asc))
+  ([order-cols cursor-vals direction]
+   (when (seq cursor-vals)
+     (let [op (if (= direction :desc) :< :>)
+           pairs (mapv vector order-cols cursor-vals)
+           terms (for [i (range (count pairs))]
+                   (let [[col v] (nth pairs i)
+                         eqs (for [j (range i)
+                                   :let [[c2 v2] (nth pairs j)]]
+                               [:= c2 v2])]
+                     (if (seq eqs)
+                       (into [:and] (conj (vec eqs) [op col v]))
+                       [op col v])))]
+       (into [:or] (vec terms))))))
 
 ;; -- paginators -------------------------------------------------------------
 

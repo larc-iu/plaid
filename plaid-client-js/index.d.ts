@@ -267,6 +267,7 @@ interface UsersBundle {
     endTime?: string,
     asOf?: string,
   ): Promise<any[]>;
+  auditPage(userId: string, opts?: AuditPageOptions): Promise<Page>;
   get(id: string, asOf?: string): Promise<any>;
   delete(id: string, auditMessage?: string): Promise<any>;
   activate(id: string, auditMessage?: string): Promise<any>;
@@ -547,6 +548,18 @@ interface AdminBundle {
   }): Promise<{ file: string | null; lines: string[]; error?: string }>;
 }
 
+/** Options for a single page of any audit log. */
+interface AuditPageOptions {
+  startTime?: string;
+  endTime?: string;
+  asOf?: string;
+  opTypes?: string[] | string;
+  /** "desc" pages newest-first; a cursor belongs to the direction that made it. */
+  order?: "asc" | "desc";
+  limit?: number;
+  cursor?: string;
+}
+
 /** One user's activity over a scope and window. */
 interface ActivityTallyRow {
   user: { id: string; displayName?: string };
@@ -555,7 +568,7 @@ interface ActivityTallyRow {
   documents: number;
   firstTs: string;
   lastTs: string;
-  byDay?: Record<string, number>;
+  byDay?: Array<{ date: string; changes: number }>;
 }
 
 /** Instance-wide audit reads and the per-user aggregate. */
@@ -567,13 +580,7 @@ interface AuditBundle {
     opTypes?: string[] | string;
   }): Promise<any[]>;
   /** Admin only. */
-  listPage(opts?: {
-    startTime?: string;
-    endTime?: string;
-    opTypes?: string[] | string;
-    limit?: number;
-    cursor?: string;
-  }): Promise<Page>;
+  listPage(opts?: AuditPageOptions): Promise<Page>;
   /** Admin only. */
   iterPages(opts?: {
     startTime?: string;
@@ -678,6 +685,7 @@ interface DocumentsBundle {
     endTime?: string,
     asOf?: string,
   ): Promise<any[]>;
+  auditPage(documentId: string, opts?: AuditPageOptions): Promise<Page>;
   get(documentId: string, includeBody?: boolean, asOf?: string): Promise<any>;
   delete(documentId: string, auditMessage?: string): Promise<any>;
   update(documentId: string, name: string, auditMessage?: string): Promise<any>;
@@ -764,6 +772,7 @@ interface ProjectsBundle {
     endTime?: string,
     asOf?: string,
   ): Promise<any[]>;
+  auditPage(projectId: string, opts?: AuditPageOptions): Promise<Page>;
   linkVocab(id: string, vocabId: string, auditMessage?: string): Promise<any>;
   unlinkVocab(id: string, vocabId: string, auditMessage?: string): Promise<any>;
   get(id: string, asOf?: string): Promise<any>;

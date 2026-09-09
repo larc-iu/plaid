@@ -333,12 +333,13 @@
                              :path (str "/api/v1/documents/" document-id "/lock")}))
 
 ;; Audit helpers
-(defn- audit-query-string [{:keys [start-time end-time limit cursor op-types]}]
+(defn- audit-query-string [{:keys [start-time end-time limit cursor op-types order]}]
   (let [params (cond-> []
                  start-time (conj (str "start-time=" start-time))
                  end-time   (conj (str "end-time=" end-time))
                  limit      (conj (str "limit=" limit))
                  cursor     (conj (str "cursor=" cursor))
+                 order      (conj (str "order=" (name order)))
                  op-types   (conj (str "op-types="
                                        (java.net.URLEncoder/encode
                                         (if (string? op-types)
@@ -357,6 +358,30 @@
              {:method :get
               :path (str "/api/v1/projects/" project-id "/audit"
                          (audit-query-string query-params))})))
+
+(defn get-audit
+  "The instance-wide audit feed (admin only)."
+  ([user-request-fn] (get-audit user-request-fn {}))
+  ([user-request-fn query-params]
+   (api-call user-request-fn
+             {:method :get
+              :path (str "/api/v1/audit" (audit-query-string query-params))})))
+
+(defn get-audit-tally
+  "Per-user activity counts. With `project-id`, the project-scoped read."
+  ([user-request-fn] (get-audit-tally user-request-fn nil {}))
+  ([user-request-fn project-id] (get-audit-tally user-request-fn project-id {}))
+  ([user-request-fn project-id {:keys [start-time end-time daily]}]
+   (let [params (cond-> []
+                  start-time (conj (str "start-time=" start-time))
+                  end-time   (conj (str "end-time=" end-time))
+                  daily      (conj "daily=true"))]
+     (api-call user-request-fn
+               {:method :get
+                :path (str (if project-id
+                             (str "/api/v1/projects/" project-id "/audit/tally")
+                             "/api/v1/audit/tally")
+                           (when (seq params) (str "?" (clojure.string/join "&" params))))}))))
 
 (defn get-document-audit
   ([user-request-fn document-id]

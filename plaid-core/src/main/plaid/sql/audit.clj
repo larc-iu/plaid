@@ -161,8 +161,11 @@
                     some member matches, carrying only its matching members.
   - `eff-limit`   — already-clamped page size (in units).
   - `cursor-vals` — `[head_ts unit]` of the LAST unit on the previous page
-                    (or nil for the first page)."
-  [db from-spec scope-where time-range op-types eff-limit cursor-vals]
+                    (or nil for the first page).
+  - `order`       — `:desc` to page newest-first, anything else oldest-first.
+                    The seek flips with it, so a cursor is only ever valid
+                    for the direction that produced it."
+  [db from-spec scope-where time-range op-types eff-limit cursor-vals order]
   (let [scope (conj-where (cond-> (ts-where (first time-range) (second time-range))
                             scope-where (conj scope-where)
                             (seq op-types) (conj (op-type-where op-types))))
@@ -170,10 +173,13 @@
                        :from from-spec
                        :group-by [unit-key]}
                 scope (assoc :where scope))
-        seek (pagination/keyset-where [:head_ts :unit] cursor-vals)]
+        desc? (= order :desc)
+        seek (pagination/keyset-where [:head_ts :unit] cursor-vals (if desc? :desc :asc))]
     (psc/q db (cond-> {:select [:unit :head_ts]
                        :from [[inner :u]]
-                       :order-by [:head_ts :unit]
+                       :order-by (if desc?
+                                   [[:head_ts :desc] [:unit :desc]]
+                                   [:head_ts :unit])
                        :limit eff-limit}
                 seek (assoc :where seek))
            {:uuid-cols [:unit]})))
@@ -195,11 +201,11 @@
 (defn- audit-page
   "Fetch + enrich one keyset page of units into the uniform envelope
   `{:entries [...] :next-cursor [head_ts unit]-or-nil}`. `opts` carries
-  `{:limit n :cursor-vals [head_ts unit] :op-types [...]}`; the audit log is
-  always paginated (default page 100 units, max 1000)."
-  [db from-spec scope-where time-range {:keys [limit cursor-vals op-types]}]
+  `{:limit n :cursor-vals [head_ts unit] :op-types [...] :order :asc|:desc}`;
+  the audit log is always paginated (default page 100 units, max 1000)."
+  [db from-spec scope-where time-range {:keys [limit cursor-vals op-types order]}]
   (let [eff (pagination/clamp-limit limit)
-        units (query-units db from-spec scope-where time-range op-types eff cursor-vals)
+        units (query-units db from-spec scope-where time-range op-types eff cursor-vals order)
         members (query-members db from-spec scope-where time-range op-types (mapv :unit units))
         next-cursor (when (= (count units) eff)
                       (let [u (peek (vec units))] [(:head_ts u) (str (:unit u))]))]
@@ -315,9 +321,14 @@
                 project-id (conj [:= :project_id project-id]))))
 
 (defn- tally-daily
-  "`{user-id {day changes}}` where `day` is the ISO date of `ts`. `ts` is
+  "`{user-id [{:date \"2026-09-08\" :changes n} ...]}`, oldest first. `ts` is
   stored as an ISO-8601 string, so the date is its first ten characters and
-  the bucket needs no date parsing."
+  the bucket needs no date parsing.
+
+  A LIST of dated counts rather than a map keyed by date, deliberately. Both
+  clients rewrite map keys into their language's casing on the way in, which
+  turns \"2026-09-08\" into \"20260908\" and silently destroys the key. A
+  date belongs in a value, never in a key."
   [db where]
   (->> (psc/q db (cond-> {:select   [:user_id
                                      [[:substr :ts 1 10] :day]
@@ -326,8 +337,13 @@
                           :group-by [:user_id [:substr :ts 1 10]]}
                    where (assoc :where where)))
        (reduce (fn [acc {:keys [user_id day changes]}]
-                 (assoc-in acc [user_id day] changes))
-               {})))
+                 (update acc user_id (fnil conj []) {:date day :changes changes}))
+               {})
+       ;; Ordered here rather than in SQL: a GROUP BY expression is awkward to
+       ;; name again in ORDER BY, and the result is users x days, not rows.
+       (reduce-kv (fn [acc user-id days]
+                    (assoc acc user-id (vec (sort-by :date days))))
+                  {})))
 
 (defn activity-tally
   "Per-user activity over an optional project scope and time window: how many
@@ -344,8 +360,8 @@
   nothing\" holds the roster already (a project's ACL, or the user directory)
   and subtracts.
 
-  `:daily?` adds `:by-day`, an ISO-date → changes map per user, for a
-  sparkline. It is a second grouped scan, so it is opt-in."
+  `:daily?` adds `:by-day`, a list of `{:date :changes}` per user, oldest
+  first, for a sparkline. It is a second grouped scan, so it is opt-in."
   [db {:keys [project-id start-time end-time daily?]}]
   (let [where (tally-scope project-id start-time end-time)
         rows (psc/q db (cond-> {:select   [:user_id
@@ -368,6 +384,6 @@
                           :documents  documents
                           :first-ts   first_ts
                           :last-ts    last_ts}
-                   daily? (assoc :by-day (get by-day user_id {})))))
+                   daily? (assoc :by-day (get by-day user_id [])))))
          (sort-by :changes >)
          vec)))

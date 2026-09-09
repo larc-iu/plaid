@@ -60,13 +60,19 @@
   (into [:map
          [:start-time {:optional true} inst?]
          [:end-time {:optional true} inst?]
-         [:op-types {:optional true} string?]]
+         [:op-types {:optional true} string?]
+         [:order {:optional true} [:enum "asc" "desc"]]]
         pagination/query-params))
+
+(def ^:private order-doc
+  (str " Pass ?order=desc to page newest-first, which is what a feed wants; the "
+       "default is oldest-first. A cursor belongs to the direction that "
+       "produced it and must not be replayed against the other one."))
 
 (defn- audit-response
   "Shared handler body: parse `?op-types=`, then page. A malformed op type is
   a 400 — silently returning nothing would look like 'no such activity'."
-  [{:keys [start-time end-time op-types] :as query} fetch]
+  [{:keys [start-time end-time op-types order] :as query} fetch]
   (let [{:keys [invalid] parsed :op-types} (parse-op-types op-types)]
     (if invalid
       {:status 400
@@ -75,7 +81,10 @@
                           " — exactly as they appear in an entry's op/type.")}}
       (pagination/list-response
        query
-       (fn [opts] (fetch (assoc opts :op-types parsed) start-time end-time))))))
+       (fn [opts] (fetch (assoc opts
+                                :op-types parsed
+                                :order (if (= order "desc") :desc :asc))
+                         start-time end-time))))))
 
 (def ^:private tally-query
   [:map
@@ -91,14 +100,14 @@
        "<code>documents</code> counts distinct documents touched. Only users "
        "who did something appear — subtract from the roster you already hold "
        "to find the ones who did not. Pass <code>?daily=true</code> to add "
-       "<code>by-day</code>, an ISO-date to change-count map, at the cost of "
-       "a second grouped scan. Not paginated: the row count is the number of "
+       "<code>by-day</code>, a list of <code>{date, changes}</code> oldest "
+       "first, at the cost of a second grouped scan. Not paginated: the row count is the number of "
        "people, not the number of operations."))
 
 (def audit-routes
   [["/projects/:project-id/audit"
     {:parameters {:path [:map [:project-id :uuid]]}
-     :get {:summary    (str "Get audit log for a project. " op-types-doc)
+     :get {:summary    (str "Get audit log for a project. " op-types-doc order-doc)
            :middleware [[pra/wrap-reader-required get-project-id-from-audit-path]]
            :parameters {:query pagination-query}
            :handler    (fn [{{{:keys [project-id]} :path query :query} :parameters db :db}]
@@ -119,7 +128,7 @@
 
    ["/documents/:document-id/audit"
     {:parameters {:path [:map [:document-id :uuid]]}
-     :get {:summary    (str "Get audit log for a document. " op-types-doc)
+     :get {:summary    (str "Get audit log for a document. " op-types-doc order-doc)
            :middleware [[pra/wrap-reader-required get-project-id-from-document]]
            :parameters {:query pagination-query}
            :handler    (fn [{{{:keys [document-id]} :path query :query} :parameters db :db}]
@@ -129,7 +138,7 @@
 
    ["/users/:user-id/audit"
     {:parameters {:path [:map [:user-id string?]]}
-     :get        {:summary    (str "Get audit log for a user's actions. " op-types-doc)
+     :get        {:summary    (str "Get audit log for a user's actions. " op-types-doc order-doc)
                   :middleware [[pra/wrap-admin-required]]  ; Only admins can view other users' audit logs
                   :parameters {:query pagination-query}
                   :handler    (fn [{{{:keys [user-id]} :path query :query} :parameters db :db}]
@@ -150,7 +159,7 @@
                                                                       :daily?      daily})}})}}]
 
    ["/audit"
-    {:get {:summary    (str "Get the audit log across every project. Admin only. " op-types-doc)
+    {:get {:summary    (str "Get the audit log across every project. Admin only. " op-types-doc order-doc)
            :middleware [[pra/wrap-admin-required]]
            :parameters {:query pagination-query}
            :handler    (fn [{{query :query} :parameters db :db}]

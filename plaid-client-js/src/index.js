@@ -877,6 +877,28 @@ class PlaidClient {
           },
         }),
       /**
+       * One page of the same log, newest-first with `order: "desc"`. Use this
+       * rather than audit() wherever the caller wants the recent end of a log
+       * that may be long: audit() walks every page before it resolves.
+       * @param {object} [opts]
+       * @param {"asc"|"desc"} [opts.order] - "desc" pages newest-first
+       * @param {number} [opts.limit] - Page size (1..1000; server default 100)
+       * @param {string} [opts.cursor] - Opaque cursor from a previous page
+       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       */
+      auditPage: (userId, { startTime, endTime, asOf, opTypes, order, limit, cursor } = {}) =>
+        listPage(this, `/api/v1/users/${userId}/audit`, {
+          limit,
+          cursor,
+          query: {
+            "start-time": startTime,
+            "end-time": endTime,
+            "as-of": asOf,
+            "op-types": opTypesParam(opTypes),
+            order,
+          },
+        }),
+      /**
        * Get a user by ID
        * @param {string} id - The resource ID
        * @param {string} [asOf] - Temporal query timestamp
@@ -1290,11 +1312,13 @@ class PlaidClient {
       /**
        * Fetch a single page of the instance-wide audit log. Admin only.
        * @param {object} [opts]
+       * @param {"asc"|"desc"} [opts.order] - "desc" pages newest-first, which
+       *   is what a feed wants. A cursor belongs to the direction that made it.
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
        * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
        */
-      listPage: ({ startTime, endTime, opTypes, limit, cursor } = {}) =>
+      listPage: ({ startTime, endTime, opTypes, order, limit, cursor } = {}) =>
         listPage(this, "/api/v1/audit", {
           limit,
           cursor,
@@ -1302,6 +1326,7 @@ class PlaidClient {
             "start-time": startTime,
             "end-time": endTime,
             "op-types": opTypesParam(opTypes),
+            order,
           },
         }),
       /**
@@ -1331,8 +1356,9 @@ class PlaidClient {
        * @param {string} [opts.projectId] - Scope to one project
        * @param {string} [opts.startTime] - Only count at or after this instant
        * @param {string} [opts.endTime] - Only count at or before this instant
-       * @param {boolean} [opts.daily] - Also return `byDay`, an ISO-date to
-       *   change-count map per user, at the cost of a second grouped scan
+       * @param {boolean} [opts.daily] - Also return `byDay`, a list of
+       *   `{date, changes}` per user, oldest first, at the cost of a second
+       *   grouped scan
        * @returns {Promise<Array<{user: object, operations: number, changes: number, documents: number, firstTs: string, lastTs: string, byDay?: object}>>}
        */
       tally: async ({ projectId, startTime, endTime, daily } = {}) => {
@@ -1562,6 +1588,28 @@ class PlaidClient {
           },
         }),
       /**
+       * One page of the same log, newest-first with `order: "desc"`. Use this
+       * rather than audit() wherever the caller wants the recent end of a log
+       * that may be long: audit() walks every page before it resolves.
+       * @param {object} [opts]
+       * @param {"asc"|"desc"} [opts.order] - "desc" pages newest-first
+       * @param {number} [opts.limit] - Page size (1..1000; server default 100)
+       * @param {string} [opts.cursor] - Opaque cursor from a previous page
+       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       */
+      auditPage: (documentId, { startTime, endTime, asOf, opTypes, order, limit, cursor } = {}) =>
+        listPage(this, `/api/v1/documents/${documentId}/audit`, {
+          limit,
+          cursor,
+          query: {
+            "start-time": startTime,
+            "end-time": endTime,
+            "as-of": asOf,
+            "op-types": opTypesParam(opTypes),
+            order,
+          },
+        }),
+      /**
        * Restore a document to its state at an earlier time, as one
        * operation: what was deleted since then comes back under its original
        * id, what was added since is removed, and what changed is set back,
@@ -1736,6 +1784,28 @@ class PlaidClient {
             "end-time": endTime,
             "as-of": asOf,
             "op-types": opTypesParam(opTypes),
+          },
+        }),
+      /**
+       * One page of the same log, newest-first with `order: "desc"`. Use this
+       * rather than audit() wherever the caller wants the recent end of a log
+       * that may be long: audit() walks every page before it resolves.
+       * @param {object} [opts]
+       * @param {"asc"|"desc"} [opts.order] - "desc" pages newest-first
+       * @param {number} [opts.limit] - Page size (1..1000; server default 100)
+       * @param {string} [opts.cursor] - Opaque cursor from a previous page
+       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       */
+      auditPage: (projectId, { startTime, endTime, asOf, opTypes, order, limit, cursor } = {}) =>
+        listPage(this, `/api/v1/projects/${projectId}/audit`, {
+          limit,
+          cursor,
+          query: {
+            "start-time": startTime,
+            "end-time": endTime,
+            "as-of": asOf,
+            "op-types": opTypesParam(opTypes),
+            order,
           },
         }),
       /**
