@@ -94,6 +94,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
     isDragging,
     tempSelection,
     waveformImage,
+    waveformBox,
     isLoadingWaveform,
     isResizing,
     resizingToken,
@@ -211,13 +212,17 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
               onMouseLeave={handleMouseUp} // End drag if mouse leaves timeline
             >
               {/* Waveform Background */}
-              {waveformImage && (
+              {waveformImage && waveformBox.width > 0 && (
                 <div
                   style={{
                     position: 'absolute',
                     top: 0,
-                    left: 0,
-                    width: `${timelineWidth}px`,
+                    // The image covers the stretch of timeline it was drawn
+                    // for, not the whole of it: only what is on screen (plus a
+                    // screen either side) is rendered, so it stays sharp at
+                    // every zoom on a recording of any length.
+                    left: `${waveformBox.left}px`,
+                    width: `${waveformBox.width}px`,
                     height: `${TIMELINE_HEIGHT}px`,
                     backgroundImage: `url(${waveformImage})`,
                     backgroundRepeat: 'no-repeat',

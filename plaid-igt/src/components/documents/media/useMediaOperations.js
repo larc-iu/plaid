@@ -531,7 +531,7 @@ export const useMediaOperations = () => {
 
     // Held for the whole run: this wipes the baseline and rebuilds the
     // document from what the service returns.
-    const lock = acquireWriteLock('Transcribe');
+    const lock = acquireWriteLock('Transcribe', { onCancel: cancelRequest });
     if (!lock) return;
     lockRef.current = lock;
     try {
