@@ -36,6 +36,27 @@ import { pickEn } from './fwdataParser.js';
 // document's token count is set by the data, not by us.
 const BULK_CHUNK = 500;
 
+// Everything a word carries comes out of ONE WfiAnalysis: its gloss, its
+// category, and the morph bundles the segmentation is built from. FLEx records
+// whether a person approved that analysis or whether only its parser proposed
+// it (agent evaluations, see isHumanApproved in fwdataParser). An unapproved
+// one is machine work nobody has checked, and imports as exactly that: violet
+// in the grid, reachable by the review sweep, settled by editing or confirming
+// it. An approved one is a person's work and carries no stamp, like anything
+// typed by hand.
+//
+// Span-level stamping was left out of the 2026-06-11 import round because the
+// island had no confirm-on-touch for spans and a stamp would have gone stale on
+// the first human edit. `mutations/spans.js` merges `doc.editStamp` into every
+// span edit now, so that reason is gone.
+//
+// Sentence-scope values (free and literal translations, notes) hang off the
+// SEGMENT rather than an analysis and have no approval to read, so they are
+// never stamped. Neither is the lone default morpheme given to a word FLEx
+// never analyzed: there is no analysis behind it to be unapproved.
+const unapprovedStamp = (word) =>
+  word && word.approved === false && word.morphemes ? stampInferred('flex-import') : null;
+
 /**
  * Send `items` to a bulk endpoint in BULK_CHUNK-sized slices, concatenating
  * the ids each call returns so the caller still gets one id per input, in
@@ -601,7 +622,7 @@ export async function importDocument({
     doc.words.forEach((w, wi) => {
       const ms = w.morphemes?.length ? w.morphemes : [null];
       ms.forEach((m, mi) => {
-        const metadata = {};
+        const metadata = { ...unapprovedStamp(w) };
         const form = m && (m.forms?.[config.baselineWs] ?? pickEn(m.forms));
         if (form != null) metadata.form = form;
         if (m?.morphType != null) metadata.morphType = m.morphType;
@@ -629,10 +650,16 @@ export async function importDocument({
     check();
     progress('Creating annotations');
     const spanSpecs = [];
-    const addSpan = (field, tokenId, value) => {
+    const addSpan = (field, tokenId, value, word = null) => {
       if (value == null || tokenId == null) return;
       const layerId = targets.fieldLayers.get(field);
-      spanSpecs.push({ spanLayerId: layerId, tokens: [tokenId], value });
+      const metadata = word ? unapprovedStamp(word) : null;
+      spanSpecs.push({
+        spanLayerId: layerId,
+        tokens: [tokenId],
+        value,
+        ...(metadata ? { metadata } : {}),
+      });
     };
     const fieldsBy = (kind) => config.fields.filter((f) => f.kind === kind);
     doc.sentences.forEach((s, si) => {
@@ -646,13 +673,15 @@ export async function importDocument({
       }
     });
     doc.words.forEach((w, wi) => {
-      for (const f of fieldsBy('wordGloss')) addSpan(f, wordIds[wi], w.gloss?.[f.ws]);
-      for (const f of fieldsBy('wordPos')) addSpan(f, wordIds[wi], w.pos);
+      for (const f of fieldsBy('wordGloss')) addSpan(f, wordIds[wi], w.gloss?.[f.ws], w);
+      for (const f of fieldsBy('wordPos')) addSpan(f, wordIds[wi], w.pos, w);
     });
     morphSpecs.forEach((s, i) => {
       if (!s.morpheme) return;
-      for (const f of fieldsBy('morphGloss')) addSpan(f, morphIds[i], s.morpheme.gloss?.[f.ws]);
-      for (const f of fieldsBy('morphPos')) addSpan(f, morphIds[i], s.morpheme.pos);
+      const word = doc.words[s.wordIndex];
+      for (const f of fieldsBy('morphGloss'))
+        addSpan(f, morphIds[i], s.morpheme.gloss?.[f.ws], word);
+      for (const f of fieldsBy('morphPos')) addSpan(f, morphIds[i], s.morpheme.pos, word);
     });
     // The bulk endpoint requires all spans in one call to share a layer.
     const byLayer = new Map();

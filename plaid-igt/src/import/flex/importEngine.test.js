@@ -76,13 +76,13 @@ const build = {
           begin: 7,
           end: 10,
           forms: { [BASE_WS]: 'мах' },
-          gloss: null,
-          pos: null,
+          gloss: { en: 'tale?' },
+          pos: 'n',
           approved: false,
           morphemes: [
             {
               forms: { [BASE_WS]: 'мах' },
-              gloss: null,
+              gloss: { en: 'tale?' },
               pos: null,
               morphType: 'root',
               senseGuid: 's2',
@@ -686,6 +686,21 @@ describe('runImport', () => {
     expect(byLayer['sl-tr'][0].value).toBe('I, a tale.');
     expect(byLayer['sl-note'][0].value).toBe('a note');
     expect(byLayer['sl-mg-ru']).toBeUndefined();
+
+    // FLEx's approval carries onto everything the analysis produced, not just
+    // the lexicon link. An analysis only its parser proposed arrives as
+    // machine work nobody has checked, so the review sweep can find it; an
+    // approved one is a person's, and unmarked like anything typed by hand.
+    const stamp = { prov: 'inferred', provSource: 'flex-import' };
+    expect(byLayer['sl-wg'][0].metadata).toBeUndefined(); // approved word
+    expect(byLayer['sl-mg'][0].metadata).toBeUndefined(); // its morpheme
+    expect(byLayer['sl-wg'][1]).toMatchObject({ value: 'tale?', metadata: stamp });
+    expect(byLayer['sl-wp'][1]).toMatchObject({ value: 'n', metadata: stamp });
+    expect(byLayer['sl-mg'][1]).toMatchObject({ value: 'tale?', metadata: stamp });
+    expect(morphemes[2].metadata).toMatchObject(stamp);
+    // The word FLEx never analyzed has no analysis to be unapproved, so its
+    // one default morpheme stays bare.
+    expect(morphemes[1].metadata).toBeUndefined();
 
     // vocab links on analyzed morphemes; FLEx human approval drives
     // provConfirmed (parser-only guesses import as unconfirmed-inferred)
