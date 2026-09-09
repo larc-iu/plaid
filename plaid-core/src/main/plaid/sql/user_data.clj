@@ -8,7 +8,8 @@
   this is per-user application state, not annotation data, and it churns
   (every chat turn). Rows cascade away with their user."
   (:require [clojure.data.json :as json]
-            [plaid.sql.common :as psc])
+            [plaid.sql.common :as psc]
+            [plaid.sql.pagination :as psp])
   (:refer-clojure :exclude [get list]))
 
 (def max-value-bytes
@@ -64,3 +65,37 @@
   [db user-id key]
   (psc/execute! db {:delete-from :user_data
                     :where [:and [:= :user_id user-id] [:= :key key]]}))
+
+(defn list-all
+  "Every user's entries, for an admin-side read across accounts. Keyset
+  paginated by (user-id, key) — both are TEXT NOT NULL and together the
+  primary key, so the page order is total and walking it is index-backed.
+
+  Two independent narrowings, ANDed when both are given:
+    :prefix   the literal head of a key, as on the per-user list
+    :pattern  a GLOB over the whole key (`*` any run, `?` one character)
+
+  `pattern` is what a key convention of `<app>:<feature>:<scope>:<kind>:<id>`
+  actually needs: the part worth listing is often identified by a segment in
+  the MIDDLE (`igt:assistant:*:meta:*` is every assistant conversation's
+  small sidebar entry, and not one transcript), which no prefix can express.
+  Neither narrowing can use an index: `prefix` compares a substr of the key,
+  so it scans the same as the glob does. That is affordable because the table
+  holds per-user app state, not annotation data."
+  [db {:keys [prefix pattern include-values? limit cursor-vals]}]
+  (let [clauses (cond-> []
+                  (seq prefix) (conj [:= [:substr :key 1 (count prefix)] prefix])
+                  ;; glob(X, Y) is SQLite's function spelling of `Y GLOB X`,
+                  ;; so the pattern is the first argument.
+                  (seq pattern) (conj [:glob pattern :key]))]
+    (psp/paginate db {:select (if include-values?
+                                [:user_id :key :value :updated_at]
+                                [:user_id :key :updated_at])
+                      :from :user_data
+                      :base-where (when (seq clauses) (into [:and] clauses))
+                      :order-by [:user_id :key]
+                      :limit limit
+                      :cursor-vals cursor-vals
+                      :row->entity (fn [row]
+                                     (assoc (row->entry row include-values?)
+                                            :user-id (:user_id row)))})))

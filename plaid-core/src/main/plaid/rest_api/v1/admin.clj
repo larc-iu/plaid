@@ -16,12 +16,14 @@
             [clojure.string :as str]
             [plaid.media.storage :as media]
             [plaid.rest-api.v1.auth :as pra]
+            [plaid.rest-api.v1.pagination :as pagination]
             [plaid.rest-api.v1.rate-limit :as rl]
             [plaid.server.backup :as backup]
             [plaid.server.config :refer [config]]
             [plaid.server.locks :as locks]
             [plaid.server.version :as version]
-            [plaid.sql.common :as psc])
+            [plaid.sql.common :as psc]
+            [plaid.sql.user-data :as user-data])
   (:import [java.io File RandomAccessFile]
            [java.lang.management ManagementFactory]))
 
@@ -237,6 +239,33 @@
                          (rl/clear-buckets! {:ip ip :user-id user-id})
                          {:status 200
                           :body {:result "cleared"}})}}]
+
+   ["/user-data"
+    {:get {:summary (str "Private user-data entries across every account, for an operator who "
+                         "has to see what an app has stored on people's behalf. Narrow with "
+                         "<query>prefix</query> (the literal head of a key) and/or "
+                         "<query>pattern</query>, a GLOB over the whole key where <code>*</code> "
+                         "matches any run and <code>?</code> one character — a key convention "
+                         "like <code>igt:assistant:&lt;project&gt;:meta:&lt;id&gt;</code> is "
+                         "identified by a segment in the middle, which no prefix can express. "
+                         "Values come only with <query>include-values</query>, so an "
+                         "unnarrowed listing stays a listing of keys. Entries carry "
+                         "<code>user-id</code>; one entry's value is read at "
+                         "<code>/users/:user-id/data/:key</code>, which an admin may already "
+                         "do. Ordered by (user, key).")
+           :parameters {:query (into [:map
+                                      [:prefix {:optional true} string?]
+                                      [:pattern {:optional true} string?]
+                                      [:include-values {:optional true} boolean?]]
+                                     pagination/query-params)}
+           :handler (fn [{{{:keys [prefix pattern include-values] :as query} :query} :parameters db :db}]
+                      (pagination/list-response
+                       query
+                       (fn [opts]
+                         (user-data/list-all db (assoc opts
+                                                       :prefix prefix
+                                                       :pattern pattern
+                                                       :include-values? (true? include-values))))))}}]
 
    ["/logs"
     {:get {:summary (str "The tail of the configured log file. Returns an <code>error</code> "
