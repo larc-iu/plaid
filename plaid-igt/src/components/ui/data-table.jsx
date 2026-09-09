@@ -110,9 +110,11 @@ export const DataTable = ({
     });
 
   // An empty bar is worse than none, so the toolbar appears only when it has
-  // something in it. `showCount` is off where the caller already states a
-  // richer count of its own, as the frequency table does.
-  const showToolbar = title || search || actions || showCount;
+  // something in it. A count alone is not something: "0 links" above "No
+  // invitation links yet." says nothing the empty state has not already said.
+  // `showCount` is off where the caller states a richer count of its own, as
+  // the frequency table does.
+  const showToolbar = title || search || actions || (showCount && rows.length > 0);
   const span = columns.length + (expand ? 1 : 0);
 
   return (

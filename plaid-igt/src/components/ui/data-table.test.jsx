@@ -167,6 +167,20 @@ describe('DataTable', () => {
     await unmount();
   });
 
+  it('shows no toolbar at all for an empty list with nothing else in it', async () => {
+    // "0 people" above "No people yet." is the empty state said twice.
+    const { container, unmount } = await table({ rows: [], empty: 'No people yet.' });
+    expect(container.textContent).toContain('No people yet.');
+    expect(container.textContent).not.toContain('0 people');
+    await unmount();
+  });
+
+  it('still shows the toolbar for an empty list that has a title', async () => {
+    const { container, unmount } = await table({ rows: [], title: 'People' });
+    expect(container.textContent).toContain('People');
+    await unmount();
+  });
+
   it('says when a search matched nothing, distinctly from an empty list', async () => {
     const { container, unmount } = await table({ rows: [], empty: 'No accounts yet.' });
     expect(container.textContent).toContain('No accounts yet.');
