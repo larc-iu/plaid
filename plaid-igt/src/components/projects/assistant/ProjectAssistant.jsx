@@ -44,7 +44,7 @@ import {
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
-import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
+import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
 import { SafeMarkdown } from '@/components/ui/markdown';
 import { conversationToMarkdown, markdownFilename } from './exportMarkdown.js';
 import {
@@ -101,6 +101,12 @@ import {
 // A stream, not a deadline: the service keeps its own budget per turn.
 const REQUEST_TIMEOUT_MS = 12 * 60 * 60 * 1000;
 const TITLE_MAX = 60;
+
+// Said when the page gives up waiting on a request the service is still
+// running. The conversation record is where the answer lands, so it is there
+// to be picked up.
+const LOST_CONTACT =
+  'Lost contact with the assistant. It is still working. Reload to pick it back up.';
 
 const metaKey = (projectId, id) => `igt:assistant:${projectId}:meta:${id}`;
 const convKey = (projectId, id) => `igt:assistant:${projectId}:conv:${id}`;
@@ -267,6 +273,11 @@ const watch = async (j, run) => {
 // it before finishing. Read it back; if it still says this request is under
 // way, the service never got to write (it or the server went away, or the
 // request expired unseen), so settle it here.
+//
+// Unless the error says the request is STILL OUT THERE (a dropped connection,
+// a timeout). Then the service is working and will write the record itself,
+// and settling it as failed would both lose the answer when it lands and stop
+// the next page from rejoining. Leave it pending and say so.
 const finishJob = async (j, client, userId, projectId, service) => {
   let conv;
   let meta;
@@ -277,7 +288,9 @@ const finishJob = async (j, client, userId, projectId, service) => {
     conv = j.conv;
     meta = buildMeta(j.prevMeta, conv, service);
   }
-  if (meta?.pending?.requestId === j.requestId) {
+  const stillOut = j.error?.pending === true;
+  if (stillOut && j.kind === 'turn') notifyWarning(LOST_CONTACT, 'Assistant');
+  if (!stillOut && meta?.pending?.requestId === j.requestId) {
     if (j.kind === 'turn') {
       if (j.stopped) {
         conv = {
@@ -372,7 +385,11 @@ const startTurn = ({ client, userId, projectId, service, conv, prevMeta }) => {
 };
 
 const applyToasts = (j, summary) => {
-  if (j.error && j.error.status !== 404) {
+  // We stopped waiting, the service did not stop working. Nothing has failed
+  // and nothing needs approving again, so say what actually happened.
+  if (j.error?.pending) {
+    notifyWarning(LOST_CONTACT, 'Assistant');
+  } else if (j.error && j.error.status !== 404) {
     notifyError(
       humanizeError(j.error, 'The changes could not be applied.') +
         ' Approving again is safe: a plan that was already applied is not written twice.',
