@@ -888,16 +888,47 @@
 ;; Split
 ;; ============================================================
 
+(defn preserved-on-split
+  "The metadata keys a token born of a split inherits from the token it
+  came from, as declared by its layer's `config.plaid.preserveOnSplit`.
+  Empty when the layer declares nothing, which is the default.
+
+  Splitting is the only way a token comes to exist from another one, and
+  the new row is otherwise born bare, so anything not named here is lost
+  at the moment of the split with no trace for a later pass to find. That
+  is why this is declared on the layer and honored here rather than left
+  to each app: an app cannot repair what it cannot detect, and it cannot
+  detect the absence of a key it never wrote. See the manual's
+  `Metadata Preserved Across a Split`.
+
+  Plaid stays semantically mute. It does not know what any of these keys
+  MEAN, only that the layer asked for them to survive, the way a foreign
+  key carries a deletion without understanding the rows."
+  [db layer-id]
+  (let [declared (some-> (psc/q1 db {:select [:config]
+                                     :from [:token_layers]
+                                     :where [:= :id layer-id]})
+                         :config
+                         psc/parse-config
+                         (get-in ["plaid" "preserveOnSplit"]))]
+    (when (sequential? declared)
+      (into [] (comp (filter string?) (distinct)) declared))))
+
 (defn- split-one!
   "Split the token row `t` at `position`. Updates t's end_ to
   position and inserts a new right-half token with begin = position.
-  Returns the new (right-half) token id."
+  The left half is the original row and keeps everything it had; the
+  right half is new and inherits only what the layer declared under
+  `config.plaid.preserveOnSplit`. Returns the new (right-half) token id."
   [tx t position]
   (let [{:keys [id text_id token_layer_id document_id begin end_]} t]
     (when-not (and (int? position) (> position begin) (< position end_))
       (throw (ex-info "Split position must be strictly between token begin and end"
                       {:code 400 :position position :begin begin :end end_})))
-    (let [new-id (psc/new-uuid)]
+    (let [new-id (psc/new-uuid)
+          keep-keys (preserved-on-split tx token_layer_id)
+          inherited (when (seq keep-keys)
+                      (select-keys (metadata/get-metadata tx "token" id) keep-keys))]
       (psc/update-by-id! tx :tokens id {:end_ position})
       (psc/insert! tx :tokens
                    {:id new-id
@@ -906,6 +937,8 @@
                     :document_id document_id
                     :begin position
                     :end_ end_})
+      (when (seq inherited)
+        (metadata/insert-metadata! tx "token" new-id inherited {:skip-parent-audit? true}))
       new-id)))
 
 (defn- split-straddlers!
