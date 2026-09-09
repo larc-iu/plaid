@@ -53,9 +53,11 @@ import {
 import { groupRankedByHeadword, itemLabel, lexiconView, refIds } from '@/domain/vocabDictionary';
 import { FIELD_TYPES, RESERVED_ITEM_KEYS } from '@/domain/vocabFields';
 
-// The dotted number that tells an entry apart ("1.2"), drawn after its form
-// as text. Never a superscript: those mark tone.
-const numHtml = (sub, cls) => (sub ? html`<span class="${cls}__num">${sub}</span>` : nothing);
+// The dotted number that tells an entry apart ("1.2"), drawn after its form as
+// a SUBSCRIPT — kai₁, as FieldWorks writes a homograph number. Never a
+// superscript: those mark tone. The React counterpart is FormLabel, which
+// carries the rest of the story.
+const numHtml = (sub, cls) => (sub ? html`<sub class="${cls}__num">${sub}</sub>` : nothing);
 import { rankVocabItems, TIERS } from '@/domain/vocabRank';
 import { composeAppend, composePending } from '@/domain/compose';
 import { ZERO_MORPH } from '@/domain/zeroMorph';
@@ -4373,11 +4375,25 @@ export class IgtEditor {
     };
     let opener = nothing;
     if (vocabItem) {
-      // Four-way provenance: human links plain, machine-unverified violet,
-      // contributed amber, verified quietly marked. derive.js always sets
-      // vocabItem.prov (and provOrigin).
+      // Machine-unverified violet, contributed amber, and everything settled
+      // renders plain. derive.js always sets vocabItem.prov (and provOrigin).
+      //
+      // CONFIRMED links look exactly like hand-made ones on purpose. They used
+      // to carry a violet dotted underline saying "a machine made this and a
+      // person confirmed it", which was imperceptible at 10px without zooming
+      // in, and marking it harder would have been worse: across the corpora
+      // there are 216,318 confirmed links against 68 made by hand, so the mark
+      // was on 97% of everything and distinguished nothing. What is left
+      // violet at rest is only what still wants review, which is what violet
+      // is for and is legible precisely because it is rare. The origin is
+      // still in the data, in queries, and in this button's own tooltip.
+      //
+      // Cells are the OPPOSITE and keep their mark (.igt-field--verified):
+      // 476 confirmed against 1,897,067 typed by hand, so there it is the
+      // exception it looks like.
       const state = vocabItem.prov;
-      const stateClass = provClass('igt-vocab__hint', state === PROV_STATES.HUMAN ? null : state);
+      const settled = state === PROV_STATES.HUMAN || state === PROV_STATES.VERIFIED;
+      const stateClass = provClass('igt-vocab__hint', settled ? null : state);
       const title = this._linkStateText(state, vocabItem.provOrigin, vocabItem.form, canLink, true);
       const sub = this._itemNumber(vocabItem);
       opener = html`<button

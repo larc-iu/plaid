@@ -189,3 +189,34 @@ describe('linked morpheme chips', () => {
     expect(tinted(root)).toEqual([true, false]);
   });
 });
+
+// A confirmed auto-made link renders like a hand-made one. The mark it used to
+// carry was on 216,318 links against 68 made by hand, so it distinguished
+// nothing and was imperceptible at 10px besides. Cells keep theirs, where the
+// ratio is the other way round.
+describe('link chip provenance at rest', () => {
+  const chipClasses = async (linkProv) => {
+    mount({ linkProv });
+    await new Promise((r) => setTimeout(r, 0));
+    const chip = host.querySelector('.igt-vocab__hint');
+    return [...chip.classList];
+  };
+
+  it('marks a link nobody has checked', async () => {
+    expect(await chipClasses({ prov: 'inferred', provSource: 'rule:x' })).toContain(
+      'igt-vocab__hint--machine',
+    );
+  });
+
+  it('leaves a confirmed one plain, like a link a person made', async () => {
+    const confirmed = await chipClasses({
+      prov: 'inferred',
+      provSource: 'rule:x',
+      provConfirmed: true,
+    });
+    const byHand = await chipClasses(null);
+    expect(confirmed).not.toContain('igt-vocab__hint--verified');
+    expect(confirmed).not.toContain('igt-vocab__hint--machine');
+    expect(confirmed).toEqual(byHand);
+  });
+});

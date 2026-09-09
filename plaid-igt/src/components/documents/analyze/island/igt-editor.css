@@ -954,16 +954,9 @@
   background: var(--igt-amber-fill);
   border-radius: 3px;
 }
-/* Auto-made links a person has confirmed: quiet — normal gray text, same light
-   dotted purple underline as the unconfirmed state (inherited from the base).
-   The purple-tinted underline keeps machine origin visible vs the gray-dotted
-   human underline; dropping the purple italic text is what reads as "settled,
-   no longer needs attention". */
-.igt-vocab__hint--verified {
-  /* The same soft violet a confirmed cell underlines with
-     (.igt-field--verified), so the two cannot drift apart. */
-  text-decoration-color: var(--igt-violet-soft);
-}
+/* A confirmed auto-made link renders exactly like a hand-made one. It used to
+   carry a soft-violet dotted underline; see the note in IgtEditor._vocabFace
+   for why that mark was removed rather than made more visible. */
 /* Unlinked: hidden at rest — a "+ link" under every unlinked form is too
    noisy (user call, 2026-06-10; a fuller vocab-linking rethink is a planned
    P1 task). Revealed on hover anywhere in the word/morpheme column or via
@@ -1000,12 +993,14 @@
   cursor: default;
 }
 
-/* The dotted number that tells an entry apart ("1.2"), shown as small text on
-   the linked chip and in the lexicon popover list. */
+/* The dotted number that tells an entry apart ("1.2"), a subscript after the
+   form on the linked chip and in the lexicon popover list. `<sub>` already
+   lowers and shrinks it, so this only spaces and tones it. The island sits
+   outside `.tw`, so it gets the browser's own sub metrics rather than
+   Tailwind preflight's, which is why no size is set here. */
 .igt-vocab__num,
 .igt-vocab-pop__num {
-  margin-left: 0.3em;
-  font-size: 0.85em;
+  margin-left: 0.15em;
   font-variant-numeric: tabular-nums;
   opacity: 0.75;
   text-decoration: none;
