@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SearchInput, ListHint } from '@/components/ui/list-search';
+import { DataTable } from '@/components/ui/data-table';
+import { listPrefKey } from '@/hooks/useStickyState';
 import {
   Select,
   SelectTrigger,
@@ -33,6 +35,21 @@ export const ProjectSearch = ({ project, projectId, client }) => {
   const [mode, setMode] = useState('hits'); // 'hits' | 'freq'
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
+
+  // A frequency row is [value, count]. Value orders by the locale rather than
+  // case-folded, since these are forms in the language being documented.
+  const freqColumns = [
+    { key: 'value', label: 'Value', sort: (r) => r[0], render: (r) => r[0] },
+    {
+      key: 'count',
+      label: 'Count',
+      sort: (r) => r[1],
+      align: 'right',
+      className: 'tabular-nums text-muted-foreground',
+      headerClassName: 'w-28',
+      render: (r) => r[1].toLocaleString(),
+    },
+  ];
 
   const domain = domains.find((d) => d.id === domainId) ?? domains[0];
 
@@ -224,26 +241,14 @@ export const ProjectSearch = ({ project, projectId, client }) => {
           {result.rows.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">No matches.</p>
           ) : (
-            <div className="overflow-hidden rounded-md border">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr>
-                    <th className="px-3 py-2 text-left font-medium">Value</th>
-                    <th className="w-28 px-3 py-2 text-right font-medium">Count</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.rows.map(([value, n]) => (
-                    <tr key={value} className="border-t hover:bg-muted/50">
-                      <td className="px-3 py-1.5">{value}</td>
-                      <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">
-                        {n.toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              rows={result.rows}
+              columns={freqColumns}
+              rowKey={(r) => r[0]}
+              storageKey={listPrefKey('sort', 'search-freq')}
+              defaultSort={{ key: 'count', dir: 'desc' }}
+              noun="value"
+            />
           )}
         </div>
       )}
