@@ -898,12 +898,24 @@
   at the moment of the split with no trace for a later pass to find. That
   is why this is declared on the layer and honored here rather than left
   to each app: an app cannot repair what it cannot detect, and it cannot
-  detect the absence of a key it never wrote. See the manual's
-  `Metadata Preserved Across a Split`.
+  detect the absence of a key it never wrote. Reconcile-on-open, which
+  handles everything else an app can break for another app, works only
+  because a violated invariant is DETECTABLE; this one is not.
 
   Plaid stays semantically mute. It does not know what any of these keys
   MEAN, only that the layer asked for them to survive, the way a foreign
-  key carries a deletion without understanding the rows."
+  key carries a deletion without understanding the rows.
+
+  The apps declare it for provenance and nothing else, which is
+  deliberate: provenance is the one metadata family Plaid itself owns,
+  and the user can neither maintain it nor, in a shared project, usually
+  even see it. Everything else on a token is the user's own content, and
+  a structural change that makes it stale is for the person who made the
+  change to fix. Do NOT grow this into a per-key behavior table: for most
+  keys there is no correct behavior. A phonetic transcription copied onto
+  both halves of a split states something false about both, dropped
+  destroys work, and kept on one half describes a piece of the word it
+  was written for."
   [db layer-id]
   (let [declared (some-> (psc/q1 db {:select [:config]
                                      :from [:token_layers]
