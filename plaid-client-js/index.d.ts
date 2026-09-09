@@ -446,15 +446,161 @@ interface CreateInviteOptions {
   note?: string;
 }
 
+/** Server limits, as reported by /api/v1/info. An unset limit is absent. */
+interface ServerLimits {
+  mediaFileBytes?: number;
+  jsonBodyBytes?: number;
+  batchOperations?: number;
+  metadataDepth?: number;
+  metadataKeyCount?: number;
+  metadataStringLength?: number;
+  metadataTotalBytes?: number;
+  userDataValueBytes?: number;
+}
+
+interface ServerHealth {
+  ok: boolean;
+  version: string;
+  uptimeMs: number;
+  audit: { dbSizeMb?: number; auditRows?: number; error?: string };
+}
+
+interface DocumentLock {
+  documentId: string;
+  userId: string;
+  expiresAt: number;
+}
+
+interface RateLimitBucket {
+  ip: string;
+  userId?: string;
+  failures: number;
+  limit: number;
+  blocked: boolean;
+}
+
+interface RateLimitSnapshot {
+  windowMs: number;
+  logins: RateLimitBucket[];
+  ips: RateLimitBucket[];
+  invites: RateLimitBucket[];
+}
+
+interface BackupStatus {
+  enabled: boolean;
+  directory: string;
+  retention: number;
+  time: string;
+  backups: Array<{ name: string; bytes: number; modified: string }>;
+  ok?: boolean;
+}
+
+interface ServerReport {
+  version: string;
+  jvm: {
+    uptimeMs: number;
+    startedAt: string;
+    java: string;
+    heapUsed: number;
+    heapMax: number;
+  };
+  database: {
+    path: string | null;
+    bytes: number | null;
+    walBytes: number | null;
+    slowQueryThresholdMs?: number;
+    journalMode?: string;
+    maxPoolSize?: number;
+    tables: Record<string, number | null>;
+  };
+  media: {
+    directory: string;
+    files: number;
+    bytes: number;
+    orphans: number;
+    orphanBytes: number;
+  };
+  backup: BackupStatus;
+  settings: Record<string, any>;
+}
+
+/** Server-level facts. `info` is fetched at most once per client. */
+interface ServerBundle {
+  info(): Promise<{ limits: ServerLimits }>;
+  limits(): Promise<ServerLimits>;
+  health(): Promise<ServerHealth>;
+}
+
+/** Instance-wide operations. Every method requires a global admin. */
+interface AdminBundle {
+  server(): Promise<ServerReport>;
+  backup(): Promise<BackupStatus>;
+  locks(): Promise<{ entries: DocumentLock[] }>;
+  releaseLock(documentId: string): Promise<{ result: string }>;
+  rateLimits(): Promise<RateLimitSnapshot>;
+  clearRateLimits(opts?: {
+    ip?: string;
+    userId?: string;
+  }): Promise<{ result: string }>;
+  logs(opts?: {
+    lines?: number;
+  }): Promise<{ file: string | null; lines: string[]; error?: string }>;
+}
+
+/** One user's activity over a scope and window. */
+interface ActivityTallyRow {
+  user: { id: string; displayName?: string };
+  operations: number;
+  changes: number;
+  documents: number;
+  firstTs: string;
+  lastTs: string;
+  byDay?: Record<string, number>;
+}
+
+/** Instance-wide audit reads and the per-user aggregate. */
+interface AuditBundle {
+  /** Admin only. */
+  list(opts?: {
+    startTime?: string;
+    endTime?: string;
+    opTypes?: string[] | string;
+  }): Promise<any[]>;
+  /** Admin only. */
+  listPage(opts?: {
+    startTime?: string;
+    endTime?: string;
+    opTypes?: string[] | string;
+    limit?: number;
+    cursor?: string;
+  }): Promise<Page>;
+  /** Admin only. */
+  iterPages(opts?: {
+    startTime?: string;
+    endTime?: string;
+    opTypes?: string[] | string;
+    pageSize?: number;
+  }): AsyncGenerator<any[]>;
+  /** With projectId, open to that project's maintainers; without one, admin only. */
+  tally(opts?: {
+    projectId?: string;
+    startTime?: string;
+    endTime?: string;
+    daily?: boolean;
+  }): Promise<ActivityTallyRow[]>;
+}
+
 interface InvitesBundle {
-  list(opts?: { projectId?: string }): Promise<Invite[]>;
+  list(opts?: { projectId?: string; all?: boolean }): Promise<Invite[]>;
   listPage(opts?: {
     projectId?: string;
+    all?: boolean;
     limit?: number;
     cursor?: string;
   }): Promise<Page>;
   iterPages(opts?: {
     projectId?: string;
+    all?: boolean;
     pageSize?: number;
   }): AsyncGenerator<Invite[]>;
   /** The `code` is returned ONCE and is not recoverable afterward. */
@@ -852,6 +998,9 @@ export declare class PlaidClient {
   apiTokens: ApiTokensBundle;
   userData: UserDataBundle;
   invites: InvitesBundle;
+  server: ServerBundle;
+  admin: AdminBundle;
+  audit: AuditBundle;
   comments: CommentsBundle;
   tokenLayers: TokenLayersBundle;
   documents: DocumentsBundle;

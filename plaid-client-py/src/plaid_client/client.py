@@ -1184,12 +1184,13 @@ class InvitesResource(_Resource):
     :meth:`PlaidClient.lookup_invite` and :meth:`PlaidClient.redeem_invite`.
     """
 
-    def list(self, *, project_id: str | None = None) -> Any:
+    def list(self, *, project_id: str | None = None, all: bool | None = None) -> Any:
         """List invites you minted, oldest first.
 
         With ``project_id``, lists that project's invites instead (including
         ones minted by co-maintainers), which requires maintainer or admin on
-        that project. Never includes invite codes — a code is returned once,
+        that project. With ``all``, lists every invite on the server, which
+        requires admin. Never includes invite codes — a code is returned once,
         by create(), and is not recoverable afterward. Transparently follows
         server-side pagination cursors and returns the full flat list.
 
@@ -1197,33 +1198,37 @@ class InvitesResource(_Resource):
 
         Args:
             project_id: List this project's invites rather than your own
+            all: List every invite on the server (admin only)
         """
         return list_all(self._client, '/api/v1/invites',
-                        query={'project-id': project_id})
+                        query={'project-id': project_id, 'all': all})
 
-    def list_page(self, *, project_id: str | None = None,
+    def list_page(self, *, project_id: str | None = None, all: bool | None = None,
                   limit: int | None = None, cursor: str | None = None) -> Any:
         """List one page of invites.
 
         Args:
             project_id: List this project's invites rather than your own
+            all: List every invite on the server (admin only)
             limit: Page size (1..1000)
             cursor: Opaque cursor from a previous page's ``next_cursor``
         """
         return list_page(self._client, '/api/v1/invites', limit=limit, cursor=cursor,
-                         query={'project-id': project_id})
+                         query={'project-id': project_id, 'all': all})
 
-    def iter_pages(self, *, project_id: str | None = None, page_size: int = 1000):
+    def iter_pages(self, *, project_id: str | None = None, all: bool | None = None,
+                   page_size: int = 1000):
         """Iterate over pages of invites, yielding each page's entries.
 
         Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError on first iteration if called while batching — use list_page() for a single page in a batch.
 
         Args:
             project_id: List this project's invites rather than your own
+            all: List every invite on the server (admin only)
             page_size: Page size (1..1000)
         """
         return iter_pages(self._client, '/api/v1/invites', page_size=page_size,
-                          query={'project-id': project_id})
+                          query={'project-id': project_id, 'all': all})
 
     def create(self, *, project_id: Any = _UNSET, project_role: Any = _UNSET,
                grant_admin: Any = _UNSET, target_user_id: Any = _UNSET,
@@ -2500,6 +2505,173 @@ class ServerResource(_Resource):
         """Just the limits, which is what a caller almost always wants."""
         return self.info()['limits']
 
+    def health(self) -> Any:
+        """Liveness, version and database size.
+
+        Unauthenticated, and served outside the REST router at ``/health``, so
+        it answers even when the API is refusing requests. Never cached — the
+        point is that it is current.
+        """
+        return self._request('GET', '/health', bypass_batch=True)
+
+
+class AdminResource(_Resource):
+    """Instance-wide operations, for whoever runs the server. Admin only.
+
+    These endpoints report freely and write almost never. The three writes —
+    ``backup``, ``clear_rate_limits`` and ``release_lock`` — can only unblock
+    something: take an extra snapshot, forget recorded failures, drop an
+    advisory lock that expires on its own within a minute anyway. Nothing here
+    edits configuration or deletes data.
+    """
+
+    def server(self) -> Any:
+        """Everything about the server in one read.
+
+        Version and JVM uptime, database size and per-table row counts, media
+        directory usage, backup configuration and the backups on disk, and the
+        settings an operator gets asked to confirm. Carries no secrets. Runs a
+        count per table and walks the media directory, so call it when someone
+        asks, not on a timer.
+        """
+        return self._request('GET', '/api/v1/admin/server')
+
+    def backup(self) -> Any:
+        """Take a database backup right now, outside the nightly schedule.
+
+        Returns the backup block, with ``ok`` reporting whether the snapshot
+        succeeded. Uses VACUUM INTO, which only reads, so it is safe while
+        people are working.
+        """
+        return self._request('POST', '/api/v1/admin/backup')
+
+    def locks(self) -> Any:
+        """Documents currently held by an editing lock, with who holds each
+        and when it expires on its own."""
+        return self._request('GET', '/api/v1/admin/locks')
+
+    def release_lock(self, document_id: str) -> Any:
+        """Drop the lock on a document whoever holds it. Idempotent.
+
+        For a client that went away without releasing one, which otherwise
+        leaves the document unwritable until the lock expires.
+
+        Args:
+            document_id: The document to unlock
+        """
+        return self._request('DELETE', f'/api/v1/admin/locks/{document_id}')
+
+    def rate_limits(self) -> Any:
+        """Live login and invite rate-limit buckets: the address, the account
+        where there is one, failures inside the window, the limit, and whether
+        it is currently blocking."""
+        return self._request('GET', '/api/v1/admin/rate-limits')
+
+    def clear_rate_limits(self, *, ip: str | None = None,
+                          user_id: str | None = None) -> Any:
+        """Forget recorded rate-limit failures. Only ever unblocks.
+
+        Args:
+            ip: Clear only this address; omit to clear every bucket
+            user_id: Narrow to one account on that address
+        """
+        return self._request('DELETE', '/api/v1/admin/rate-limits',
+                             query_params={'ip': ip, 'user-id': user_id})
+
+    def logs(self, *, lines: int | None = None) -> Any:
+        """The tail of the configured log file.
+
+        Returns an ``error`` string instead of lines when no log file is
+        configured or it does not exist yet — the server also logs to stdout,
+        where a file is not required.
+
+        Args:
+            lines: How many lines (default 200, max 2000)
+        """
+        return self._request('GET', '/api/v1/admin/logs',
+                             query_params={'lines': lines})
+
+
+class AuditResource(_Resource):
+    """The audit log across every project, and the per-user aggregate.
+
+    Per-project, per-document and per-user reads live on their own resources
+    (``projects.audit``, ``documents.audit``, ``users.audit``). What is here is
+    the unscoped feed and the tally, which are the two shapes a dashboard
+    wants.
+    """
+
+    def list(self, *, start_time: str | None = None, end_time: str | None = None,
+             op_types: Any = None) -> Any:
+        """The audit log across every project, oldest first. Admin only.
+
+        Same fold, window and op-type filter as the per-project read, with the
+        entity scope dropped. Transparently follows server-side pagination
+        cursors and returns the full flat list.
+
+        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError if called while batching — use list_page() for a single page in a batch.
+
+        Args:
+            start_time: Only operations at or after this instant
+            end_time: Only operations at or before this instant
+            op_types: Only these op types, as a list or comma-separated string
+                (e.g. ``['span-layer/create']``). An entry appears when one of
+                its operations matches, carrying only the ones that did.
+        """
+        return list_all(self._client, '/api/v1/audit',
+                        query={'start-time': start_time, 'end-time': end_time,
+                               'op-types': _op_types_param(op_types)})
+
+    def list_page(self, *, start_time: str | None = None, end_time: str | None = None,
+                  op_types: Any = None, limit: int | None = None,
+                  cursor: str | None = None) -> Any:
+        """One page of the instance-wide audit log. Admin only.
+
+        Args:
+            limit: Page size (1..1000)
+            cursor: Opaque cursor from a previous page's ``next_cursor``
+        """
+        return list_page(self._client, '/api/v1/audit', limit=limit, cursor=cursor,
+                         query={'start-time': start_time, 'end-time': end_time,
+                                'op-types': _op_types_param(op_types)})
+
+    def iter_pages(self, *, start_time: str | None = None, end_time: str | None = None,
+                   op_types: Any = None, page_size: int = 1000):
+        """Iterate the instance-wide audit log page by page. Admin only.
+
+        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError on first iteration if called while batching — use list_page() for a single page in a batch.
+        """
+        return iter_pages(self._client, '/api/v1/audit', page_size=page_size,
+                          query={'start-time': start_time, 'end-time': end_time,
+                                 'op-types': _op_types_param(op_types)})
+
+    def tally(self, *, project_id: str | None = None, start_time: str | None = None,
+              end_time: str | None = None, daily: bool | None = None) -> Any:
+        """Per-user activity counts.
+
+        ``changes`` is the number of logical actions, folded the way the audit
+        feed folds them, so one "Confirm word analysis" counts once however
+        many rows it wrote; ``operations`` is the unfolded row count. Only
+        users who did something appear — subtract from the roster you already
+        hold to find the ones who did not.
+
+        With ``project_id``, scoped to that project and open to its
+        maintainers. Without one, instance-wide and admin only.
+
+        Args:
+            project_id: Scope to one project
+            start_time: Only count at or after this instant
+            end_time: Only count at or before this instant
+            daily: Also return ``by_day``, an ISO-date to change-count map per
+                user, at the cost of a second grouped scan
+        """
+        path = (f'/api/v1/projects/{project_id}/audit/tally' if project_id
+                else '/api/v1/audit/tally')
+        result = self._request('GET', path,
+                               query_params={'start-time': start_time, 'end-time': end_time,
+                                             'daily': daily})
+        return result['entries']
+
 
 class BatchResource(_Resource):
     def submit(self, body: list, audit_message=None) -> Any:
@@ -2593,6 +2765,8 @@ class PlaidClient:
         self.relation_layers = RelationLayersResource(self)
         self.tokens = TokensResource(self)
         self.server = ServerResource(self)
+        self.admin = AdminResource(self)
+        self.audit = AuditResource(self)
         self.batch = BatchResource(self)
         self.operation_groups = OperationGroupsResource(self)
 
