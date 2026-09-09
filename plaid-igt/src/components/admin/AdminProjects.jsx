@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { SearchInput, ListCount, ListPager, SortHeader } from '@/components/ui/list-search';
-import { usePagedList } from '@/hooks/usePagedList';
-import { useStickySort, listPrefKey } from '@/hooks/useStickyState';
+import { DataTable } from '@/components/ui/data-table';
+import { listPrefKey } from '@/hooks/useStickyState';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { findBaselineTextLayer, readInitialized } from '../../domain/igtConfig';
@@ -13,8 +12,6 @@ import { findBaselineTextLayer, readInitialized } from '../../domain/igtConfig';
 // An admin's project list already returns all of them; what is missing
 // everywhere else is who is on each, which app owns it, and whether anyone has
 // touched it lately.
-
-const COLUMNS = ['name', 'app', 'members', 'documents', 'updated'];
 
 // Whether this app set the project up, which is the only thing it can say for
 // certain. A project carrying the shared layer roles that IGT did NOT set up
@@ -31,12 +28,6 @@ const memberCount = (p) =>
 export const AdminProjects = ({ client, currentUser }) => {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [sort, onSort] = useStickySort(
-    listPrefKey('sort', 'admin-projects'),
-    { key: 'updated', dir: 'desc' },
-    COLUMNS,
-  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,111 +58,86 @@ export const AdminProjects = ({ client, currentUser }) => {
     }
   };
 
-  const rows = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const list = projects
-      .filter((p) => (q ? p.name.toLowerCase().includes(q) : true))
-      .map((p) => ({
-        ...p,
-        app: shapeOf(p),
-        members: memberCount(p),
-        documents: p.documentCount ?? null,
-        updated: p.lastModified ?? null,
-      }));
-    const dir = sort.dir === 'asc' ? 1 : -1;
-    return list.sort((a, b) => {
-      const av = a[sort.key];
-      const bv = b[sort.key];
-      if (av === bv) return a.name.localeCompare(b.name);
-      if (av === null || av === undefined) return 1;
-      if (bv === null || bv === undefined) return -1;
-      return (typeof av === 'string' ? av.localeCompare(bv) : av - bv) * dir;
-    });
-  }, [projects, search, sort]);
+  const isMember = (p) =>
+    p.maintainers?.includes(currentUser?.id) ||
+    p.writers?.includes(currentUser?.id) ||
+    p.readers?.includes(currentUser?.id);
 
-  const paged = usePagedList(rows, { resetKey: `${search}:${sort.key}:${sort.dir}` });
+  const columns = [
+    {
+      key: 'name',
+      label: 'Name',
+      sort: (p) => p.name.toLowerCase(),
+      render: (p) => (
+        <Link to={`/projects/${p.id}`} className="font-medium hover:underline">
+          {p.name}
+        </Link>
+      ),
+    },
+    {
+      key: 'shape',
+      label: 'Shape',
+      sort: (p) => shapeOf(p),
+      render: (p) => {
+        const shape = shapeOf(p);
+        return <Badge variant={shape === 'IGT' ? 'secondary' : 'outline'}>{shape}</Badge>;
+      },
+    },
+    {
+      key: 'members',
+      label: 'People',
+      sort: memberCount,
+      align: 'right',
+      className: 'tabular-nums',
+      render: memberCount,
+    },
+    {
+      key: 'documents',
+      label: 'Documents',
+      sort: (p) => p.documentCount ?? null,
+      align: 'right',
+      className: 'tabular-nums',
+      render: (p) => (p.documentCount == null ? '' : p.documentCount.toLocaleString()),
+    },
+    {
+      key: 'updated',
+      label: 'Last change',
+      sort: (p) => (p.lastModified ? new Date(p.lastModified).getTime() : null),
+      className: 'text-muted-foreground',
+      render: (p) => (
+        <span title={fullTimestamp(p.lastModified)}>
+          {p.lastModified ? timeAgo(p.lastModified) : 'Never'}
+        </span>
+      ),
+    },
+    {
+      key: 'actions',
+      label: '',
+      headerClassName: 'w-24',
+      align: 'right',
+      render: (p) =>
+        isMember(p) ? null : (
+          <Button size="sm" variant="ghost" onClick={() => joinAsMaintainer(p)}>
+            Join
+          </Button>
+        ),
+    },
+  ];
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-2">
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder="Search projects…"
-          className="max-w-xs"
-        />
-        <ListCount shown={rows.length} total={projects.length} noun="project" />
-      </div>
-
-      <div className="rounded-md border">
-        <ListPager {...paged} onPage={paged.setPage} position="top" />
-        {loading && projects.length === 0 ? (
-          <p className="p-4 text-sm text-muted-foreground">Loading…</p>
-        ) : rows.length === 0 ? (
-          <p className="p-4 text-sm text-muted-foreground">No projects match.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-left text-xs text-muted-foreground">
-                <th className="px-3 py-2">
-                  <SortHeader field="name" label="Name" sort={sort} onSort={onSort} />
-                </th>
-                <th className="px-3 py-2">
-                  <SortHeader field="app" label="Shape" sort={sort} onSort={onSort} />
-                </th>
-                <th className="px-3 py-2">
-                  <SortHeader field="members" label="People" sort={sort} onSort={onSort} />
-                </th>
-                <th className="px-3 py-2">
-                  <SortHeader field="documents" label="Documents" sort={sort} onSort={onSort} />
-                </th>
-                <th className="px-3 py-2">
-                  <SortHeader field="updated" label="Last change" sort={sort} onSort={onSort} />
-                </th>
-                <th className="w-24 px-3 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {paged.pageItems.map((p) => {
-                const mine =
-                  p.maintainers?.includes(currentUser?.id) ||
-                  p.writers?.includes(currentUser?.id) ||
-                  p.readers?.includes(currentUser?.id);
-                return (
-                  <tr key={p.id} className="border-b last:border-0 hover:bg-accent/40">
-                    <td className="px-3 py-2">
-                      <Link to={`/projects/${p.id}`} className="font-medium hover:underline">
-                        {p.name}
-                      </Link>
-                    </td>
-                    <td className="px-3 py-2">
-                      <Badge variant={p.app === 'IGT' ? 'secondary' : 'outline'}>{p.app}</Badge>
-                    </td>
-                    <td className="px-3 py-2 tabular-nums">{p.members}</td>
-                    <td className="px-3 py-2 tabular-nums">
-                      {p.documents === null ? '' : p.documents.toLocaleString()}
-                    </td>
-                    <td
-                      className="px-3 py-2 text-muted-foreground"
-                      title={fullTimestamp(p.updated)}
-                    >
-                      {p.updated ? timeAgo(p.updated) : 'Never'}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      {!mine && (
-                        <Button size="sm" variant="ghost" onClick={() => joinAsMaintainer(p)}>
-                          Join
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-        <ListPager {...paged} onPage={paged.setPage} position="bottom" />
-      </div>
-    </div>
+    <DataTable
+      rows={projects}
+      columns={columns}
+      rowKey={(p) => p.id}
+      storageKey={listPrefKey('sort', 'admin-projects')}
+      defaultSort={{ key: 'updated', dir: 'desc' }}
+      search={{
+        placeholder: 'Search projects…',
+        match: (p, q) => p.name.toLowerCase().includes(q),
+      }}
+      noun="project"
+      empty="No projects."
+      loading={loading}
+    />
   );
 };

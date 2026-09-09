@@ -20,8 +20,8 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { SearchInput, ListCount, ListPager } from '@/components/ui/list-search';
-import { usePagedList } from '@/hooks/usePagedList';
+import { DataTable } from '@/components/ui/data-table';
+import { listPrefKey } from '@/hooks/useStickyState';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useConfirm } from '@/components/shared/ConfirmProvider';
@@ -89,7 +89,6 @@ export const AdminInvites = ({ client }) => {
   const [invites, setInvites] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
   const [batchOpen, setBatchOpen] = useState(false);
   const [batch, setBatch] = useState(EMPTY_BATCH);
@@ -122,22 +121,12 @@ export const AdminInvites = ({ client }) => {
     [projects],
   );
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return invites
-      .filter((i) => (status === 'all' ? true : i.status === status))
-      .filter((i) =>
-        q
-          ? (i.note || '').toLowerCase().includes(q) ||
-            (i.createdBy || '').toLowerCase().includes(q) ||
-            projectName(i.projectId).toLowerCase().includes(q)
-          : true,
-      )
-      .slice()
-      .reverse();
-  }, [invites, search, status, projectName]);
-
-  const paged = usePagedList(filtered, { resetKey: `${search}:${status}` });
+  // Only the status filter lives here. The text search and the ordering are
+  // the table's, like every other list.
+  const rows = useMemo(
+    () => (status === 'all' ? invites : invites.filter((i) => i.status === status)),
+    [invites, status],
+  );
 
   const mintBatch = async () => {
     const count = Number(batch.count);
@@ -197,107 +186,115 @@ export const AdminInvites = ({ client }) => {
     }
   };
 
+  const columns = [
+    {
+      key: 'note',
+      label: 'Note',
+      sort: (i) => (i.note || '').toLowerCase(),
+      render: (i) => i.note || <span className="text-muted-foreground">Untitled</span>,
+    },
+    {
+      key: 'grants',
+      label: 'Grants',
+      sort: (i) => (i.grantAdmin ? 'admin' : projectName(i.projectId).toLowerCase()),
+      render: (i) =>
+        i.kind === 'password-reset' ? (
+          <span className="text-muted-foreground">Password reset for {i.targetUserId}</span>
+        ) : (
+          <span className="flex flex-wrap items-center gap-1">
+            {i.grantAdmin && <Badge variant="destructive">Admin</Badge>}
+            {i.projectId && (
+              <Link to={`/projects/${i.projectId}`} className="hover:underline">
+                {projectName(i.projectId)}
+              </Link>
+            )}
+            {i.projectRole && <span className="text-muted-foreground">{i.projectRole}</span>}
+            {!i.grantAdmin && !i.projectId && (
+              <span className="text-muted-foreground">Account only</span>
+            )}
+          </span>
+        ),
+    },
+    {
+      key: 'createdBy',
+      label: 'Created by',
+      sort: (i) => (i.createdBy || '').toLowerCase(),
+      className: 'text-muted-foreground',
+      render: (i) => i.createdBy,
+    },
+    {
+      key: 'uses',
+      label: 'Uses',
+      sort: (i) => i.uses,
+      align: 'right',
+      className: 'tabular-nums',
+      render: (i) => `${i.uses} / ${i.maxUses}`,
+    },
+    {
+      key: 'expires',
+      label: 'Expires',
+      sort: (i) => (i.expiresAt ? new Date(i.expiresAt).getTime() : null),
+      className: 'text-muted-foreground',
+      render: (i) => <span title={fullTimestamp(i.expiresAt)}>{timeAgo(i.expiresAt)}</span>,
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      sort: (i) => i.status,
+      render: (i) => <Badge variant={STATUS_VARIANT[i.status] || 'secondary'}>{i.status}</Badge>,
+    },
+    {
+      key: 'actions',
+      label: '',
+      headerClassName: 'w-20',
+      align: 'right',
+      render: (i) =>
+        i.status === 'active' ? (
+          <Button size="sm" variant="ghost" onClick={() => revoke(i)}>
+            Revoke
+          </Button>
+        ) : null,
+    },
+  ];
+
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder="Search invites…"
-          className="max-w-xs"
-        />
-        <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger className="w-36">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Any status</SelectItem>
-            <SelectItem value="active">Active</SelectItem>
-            <SelectItem value="used">Used</SelectItem>
-            <SelectItem value="expired">Expired</SelectItem>
-            <SelectItem value="revoked">Revoked</SelectItem>
-          </SelectContent>
-        </Select>
-        <ListCount shown={filtered.length} total={invites.length} noun="invite" />
-        <Button size="sm" className="ml-auto" onClick={() => setBatchOpen(true)}>
-          <Link2 className="h-4 w-4" /> Create links
-        </Button>
-      </div>
-
-      <div className="rounded-md border">
-        <ListPager {...paged} onPage={paged.setPage} position="top" />
-        {loading ? (
-          <p className="p-4 text-sm text-muted-foreground">Loading…</p>
-        ) : filtered.length === 0 ? (
-          <p className="p-4 text-sm text-muted-foreground">No invites match.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-left text-xs text-muted-foreground">
-                <th className="px-3 py-2 font-medium">Note</th>
-                <th className="px-3 py-2 font-medium">Grants</th>
-                <th className="px-3 py-2 font-medium">Created by</th>
-                <th className="px-3 py-2 font-medium">Uses</th>
-                <th className="px-3 py-2 font-medium">Expires</th>
-                <th className="px-3 py-2 font-medium">Status</th>
-                <th className="w-20 px-3 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {paged.pageItems.map((i) => (
-                <tr key={i.id} className="border-b last:border-0">
-                  <td className="px-3 py-2">
-                    {i.note || <span className="text-muted-foreground">Untitled</span>}
-                  </td>
-                  <td className="px-3 py-2">
-                    {i.kind === 'password-reset' ? (
-                      <span className="text-muted-foreground">
-                        Password reset for {i.targetUserId}
-                      </span>
-                    ) : (
-                      <span className="flex flex-wrap items-center gap-1">
-                        {i.grantAdmin && <Badge variant="destructive">Admin</Badge>}
-                        {i.projectId && (
-                          <Link to={`/projects/${i.projectId}`} className="hover:underline">
-                            {projectName(i.projectId)}
-                          </Link>
-                        )}
-                        {i.projectRole && (
-                          <span className="text-muted-foreground">{i.projectRole}</span>
-                        )}
-                        {!i.grantAdmin && !i.projectId && (
-                          <span className="text-muted-foreground">Account only</span>
-                        )}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-muted-foreground">{i.createdBy}</td>
-                  <td className="px-3 py-2 tabular-nums">
-                    {i.uses} / {i.maxUses}
-                  </td>
-                  <td
-                    className="px-3 py-2 text-muted-foreground"
-                    title={fullTimestamp(i.expiresAt)}
-                  >
-                    {timeAgo(i.expiresAt)}
-                  </td>
-                  <td className="px-3 py-2">
-                    <Badge variant={STATUS_VARIANT[i.status] || 'secondary'}>{i.status}</Badge>
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    {i.status === 'active' && (
-                      <Button size="sm" variant="ghost" onClick={() => revoke(i)}>
-                        Revoke
-                      </Button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        <ListPager {...paged} onPage={paged.setPage} position="bottom" />
-      </div>
+      <DataTable
+        rows={rows}
+        columns={columns}
+        rowKey={(i) => i.id}
+        storageKey={listPrefKey('sort', 'admin-invites')}
+        defaultSort={{ key: 'expires', dir: 'desc' }}
+        search={{
+          placeholder: 'Search invites\u2026',
+          match: (i, q) =>
+            (i.note || '').toLowerCase().includes(q) ||
+            (i.createdBy || '').toLowerCase().includes(q) ||
+            projectName(i.projectId).toLowerCase().includes(q),
+        }}
+        noun="invite"
+        empty="No invites."
+        loading={loading}
+        actions={
+          <>
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger className="w-36">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Any status</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="used">Used</SelectItem>
+                <SelectItem value="expired">Expired</SelectItem>
+                <SelectItem value="revoked">Revoked</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button size="sm" onClick={() => setBatchOpen(true)}>
+              <Link2 className="h-4 w-4" /> Create links
+            </Button>
+          </>
+        }
+      />
 
       <Dialog open={batchOpen} onOpenChange={setBatchOpen}>
         <DialogContent className="max-w-md">

@@ -2,8 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ListPager } from '@/components/ui/list-search';
-import { usePagedList } from '@/hooks/usePagedList';
+import { DataTable } from '@/components/ui/data-table';
 import { formatBytes } from '@/utils/formatBytes';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 import { notifySuccess, notifyError } from '@/utils/feedback';
@@ -132,11 +131,6 @@ export const AdminServer = ({ client }) => {
     ],
     [rateLimits],
   );
-  // Both of these are small in ordinary use and unbounded in principle: a
-  // class all editing at once, a spray across many addresses.
-  const pagedLocks = usePagedList(locks);
-  const pagedBuckets = usePagedList(buckets);
-
   if (loading && !report) return <p className="py-8 text-sm text-muted-foreground">Loading…</p>;
   if (!report) return null;
 
@@ -255,70 +249,103 @@ export const AdminServer = ({ client }) => {
           />
         </Section>
 
-        <Section title="Open documents">
-          <ListPager {...pagedLocks} onPage={pagedLocks.setPage} position="top" />
-          {locks.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nobody is holding a document.</p>
-          ) : (
-            <table className="w-full text-sm">
-              <tbody>
-                {pagedLocks.pageItems.map((l) => (
-                  <tr key={l.documentId} className="border-t">
-                    <td className="py-1 font-mono text-xs">{l.documentId}</td>
-                    <td className="py-1 pl-3">{l.userId}</td>
-                    <td className="py-1 pl-3 text-right">
-                      <Button size="sm" variant="ghost" onClick={() => breakLock(l)}>
-                        Release
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          <ListPager {...pagedLocks} onPage={pagedLocks.setPage} position="bottom" />
-        </Section>
+        <DataTable
+          title="Open documents"
+          rows={locks}
+          columns={[
+            {
+              key: 'document',
+              label: 'Document',
+              sort: (l) => l.documentId,
+              className: 'font-mono text-xs',
+              render: (l) => l.documentId,
+            },
+            {
+              key: 'user',
+              label: 'Held by',
+              sort: (l) => l.userId,
+              render: (l) => l.userId,
+            },
+            {
+              key: 'actions',
+              label: '',
+              headerClassName: 'w-24',
+              align: 'right',
+              render: (l) => (
+                <Button size="sm" variant="ghost" onClick={() => breakLock(l)}>
+                  Release
+                </Button>
+              ),
+            },
+          ]}
+          rowKey={(l) => l.documentId}
+          defaultSort={{ key: 'user', dir: 'asc' }}
+          noun="document"
+          empty="Nobody is holding a document."
+        />
 
-        <Section
+        <DataTable
           title="Failed attempts"
-          action={
+          rows={buckets}
+          columns={[
+            {
+              key: 'kind',
+              label: 'Kind',
+              sort: (b) => b.kind,
+              className: 'text-muted-foreground',
+              render: (b) => b.kind,
+            },
+            {
+              key: 'ip',
+              label: 'Address',
+              sort: (b) => b.ip,
+              className: 'font-mono text-xs',
+              render: (b) => b.ip,
+            },
+            {
+              key: 'user',
+              label: 'Account',
+              sort: (b) => b.userId || '',
+              render: (b) => b.userId || '',
+            },
+            {
+              key: 'failures',
+              label: 'Failures',
+              sort: (b) => b.failures,
+              align: 'right',
+              className: 'tabular-nums',
+              render: (b) => `${b.failures} of ${b.limit}`,
+            },
+            {
+              key: 'blocked',
+              label: 'Blocked',
+              sort: (b) => (b.blocked ? 0 : 1),
+              render: (b) => (b.blocked ? <Badge variant="destructive">Blocked</Badge> : null),
+            },
+            {
+              key: 'actions',
+              label: '',
+              headerClassName: 'w-20',
+              align: 'right',
+              render: (b) => (
+                <Button size="sm" variant="ghost" onClick={() => clearBucket(b.ip, b.userId)}>
+                  Clear
+                </Button>
+              ),
+            },
+          ]}
+          rowKey={(b) => `${b.kind}:${b.ip}:${b.userId || ''}`}
+          defaultSort={{ key: 'failures', dir: 'desc' }}
+          noun="address"
+          empty="Nothing recorded in the last 15 minutes."
+          actions={
             buckets.length > 0 && (
               <Button size="sm" variant="ghost" onClick={() => clearBucket(undefined, undefined)}>
                 Clear all
               </Button>
             )
           }
-        >
-          {buckets.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Nothing recorded in the last 15 minutes.
-            </p>
-          ) : (
-            <table className="w-full text-sm">
-              <tbody>
-                {pagedBuckets.pageItems.map((b, i) => (
-                  <tr key={`${b.kind}-${b.ip}-${b.userId || ''}-${i}`} className="border-t">
-                    <td className="py-1 text-muted-foreground">{b.kind}</td>
-                    <td className="py-1 pl-3 font-mono text-xs">{b.ip}</td>
-                    <td className="py-1 pl-3">{b.userId || ''}</td>
-                    <td className="py-1 pl-3 tabular-nums">
-                      {b.failures} of {b.limit}
-                    </td>
-                    <td className="py-1 pl-3">
-                      {b.blocked && <Badge variant="destructive">Blocked</Badge>}
-                    </td>
-                    <td className="py-1 pl-3 text-right">
-                      <Button size="sm" variant="ghost" onClick={() => clearBucket(b.ip, b.userId)}>
-                        Clear
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          <ListPager {...pagedBuckets} onPage={pagedBuckets.setPage} position="bottom" />
-        </Section>
+        />
       </div>
 
       <Section title="Log">

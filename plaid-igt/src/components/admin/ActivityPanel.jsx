@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { SearchInput, ListCount, ListPager } from '@/components/ui/list-search';
+import { DataTable } from '@/components/ui/data-table';
 import { UserAvatar } from '@/components/shared/UserAvatar';
-import { usePagedList } from '@/hooks/usePagedList';
+import { listPrefKey } from '@/hooks/useStickyState';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 import { notifyError } from '@/utils/feedback';
 import { AuditFeed } from './AuditFeed';
@@ -56,8 +56,6 @@ export const ActivityPanel = ({ client, projectId, roster }) => {
   const [range, setRange] = useState('30');
   const [tally, setTally] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [quietSearch, setQuietSearch] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -87,25 +85,101 @@ export const ActivityPanel = ({ client, projectId, roster }) => {
 
   const quiet = useMemo(() => (roster || []).filter((m) => !byUser.has(m.id)), [roster, byUser]);
 
-  const named = (row) => row.user?.displayName || row.user?.id || '';
-  const matching = (text, q) => text.toLowerCase().includes(q);
+  const nameOf = (row) => row.user?.displayName || row.user?.id || '';
 
-  const shownTally = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return q ? tally.filter((row) => matching(named(row), q)) : tally;
-  }, [tally, search]);
+  // The busiest person in the window, so the share bars are comparable down
+  // the column rather than each filling its own cell.
+  const peak = Math.max(1, ...tally.map((r) => r.changes));
 
-  const shownQuiet = useMemo(() => {
-    const q = quietSearch.trim().toLowerCase();
-    return q ? quiet.filter((m) => matching(m.displayName || m.id, q)) : quiet;
-  }, [quiet, quietSearch]);
+  const tallyColumns = [
+    {
+      key: 'person',
+      label: 'Person',
+      sort: (row) => nameOf(row).toLowerCase(),
+      render: (row) =>
+        row.user?.id ? (
+          <div className="flex items-center gap-2">
+            <UserAvatar
+              client={client}
+              userId={row.user.id}
+              displayName={row.user.displayName}
+              className="h-6 w-6"
+            />
+            <span>{nameOf(row)}</span>
+          </div>
+        ) : (
+          <span className="text-muted-foreground">Before accounts were recorded</span>
+        ),
+    },
+    {
+      key: 'changes',
+      label: 'Changes',
+      sort: (row) => row.changes,
+      align: 'right',
+      className: 'tabular-nums',
+      render: (row) => row.changes.toLocaleString(),
+    },
+    {
+      key: 'share',
+      label: '',
+      headerClassName: 'w-40',
+      render: (row) => (
+        <div className="h-1.5 w-full rounded-full bg-muted">
+          <div
+            className="h-1.5 rounded-full bg-primary"
+            style={{ width: `${(row.changes / peak) * 100}%` }}
+          />
+        </div>
+      ),
+    },
+    {
+      key: 'documents',
+      label: 'Documents',
+      sort: (row) => row.documents,
+      align: 'right',
+      className: 'tabular-nums',
+      render: (row) => row.documents.toLocaleString(),
+    },
+    {
+      key: 'lastSeen',
+      label: 'Last seen',
+      sort: (row) => (row.lastTs ? new Date(row.lastTs).getTime() : null),
+      className: 'text-muted-foreground',
+      render: (row) => (
+        <div className="flex items-center gap-2" title={fullTimestamp(row.lastTs)}>
+          <Sparkline byDay={row.byDay} />
+          <span className="whitespace-nowrap">{timeAgo(row.lastTs)}</span>
+        </div>
+      ),
+    },
+  ];
 
-  const pagedTally = usePagedList(shownTally, { resetKey: `${range}:${search}` });
-  const pagedQuiet = usePagedList(shownQuiet, { resetKey: `${range}:${quietSearch}` });
-
-  // Scaled to the busiest person shown, not the busiest loaded, so a filtered
-  // table still fills its bars.
-  const peak = Math.max(1, ...shownTally.map((r) => r.changes));
+  const quietColumns = [
+    {
+      key: 'person',
+      label: 'Person',
+      sort: (m) => (m.displayName || m.id).toLowerCase(),
+      render: (m) => (
+        <div className="flex items-center gap-2">
+          <UserAvatar
+            client={client}
+            userId={m.id}
+            displayName={m.displayName}
+            className="h-6 w-6"
+          />
+          <span>{m.displayName || m.id}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'email',
+      label: 'Email',
+      sort: (m) => m.id.toLowerCase(),
+      align: 'right',
+      className: 'text-muted-foreground',
+      render: (m) => m.id,
+    },
+  ];
 
   return (
     <div className="flex flex-col gap-4">
@@ -122,122 +196,36 @@ export const ActivityPanel = ({ client, projectId, roster }) => {
         ))}
       </div>
 
-      <section className="rounded-md border">
-        <div className="flex items-center gap-2 border-b px-3 py-2">
-          <h3 className="text-sm font-semibold">Who has been working</h3>
-          <SearchInput
-            value={search}
-            onChange={setSearch}
-            placeholder="Search people…"
-            className="ml-auto max-w-[14rem]"
-          />
-          <ListCount shown={shownTally.length} total={tally.length} noun="person" />
-        </div>
-        <ListPager {...pagedTally} onPage={pagedTally.setPage} position="top" />
-        {loading && tally.length === 0 ? (
-          <p className="p-3 text-sm text-muted-foreground">Loading…</p>
-        ) : shownTally.length === 0 ? (
-          <p className="p-3 text-sm text-muted-foreground">
-            {tally.length === 0 ? 'Nothing in this window.' : 'Nobody matches.'}
-          </p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-left text-xs text-muted-foreground">
-                <th className="px-3 py-2 font-medium">Person</th>
-                <th className="px-3 py-2 text-right font-medium">Changes</th>
-                <th className="px-3 py-2 font-medium" />
-                <th className="px-3 py-2 text-right font-medium">Documents</th>
-                <th className="px-3 py-2 font-medium">Last seen</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pagedTally.pageItems.map((row) => (
-                <tr key={row.user?.id || 'system'} className="border-b last:border-0">
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      {row.user?.id ? (
-                        <>
-                          <UserAvatar
-                            client={client}
-                            userId={row.user.id}
-                            displayName={row.user.displayName}
-                            className="h-6 w-6"
-                          />
-                          <span>{row.user.displayName || row.user.id}</span>
-                        </>
-                      ) : (
-                        <span className="text-muted-foreground">Before accounts were recorded</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {row.changes.toLocaleString()}
-                  </td>
-                  <td className="w-40 px-3 py-2">
-                    <div className="h-1.5 w-full rounded-full bg-muted">
-                      <div
-                        className="h-1.5 rounded-full bg-primary"
-                        style={{ width: `${(row.changes / peak) * 100}%` }}
-                      />
-                    </div>
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {row.documents.toLocaleString()}
-                  </td>
-                  <td className="px-3 py-2 text-muted-foreground" title={fullTimestamp(row.lastTs)}>
-                    <div className="flex items-center gap-2">
-                      <Sparkline byDay={row.byDay} />
-                      <span className="whitespace-nowrap">{timeAgo(row.lastTs)}</span>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        <ListPager {...pagedTally} onPage={pagedTally.setPage} position="bottom" />
-      </section>
+      <DataTable
+        title="Who has been working"
+        rows={tally}
+        columns={tallyColumns}
+        rowKey={(row) => row.user?.id || 'system'}
+        storageKey={listPrefKey('sort', 'activity-tally', projectId)}
+        defaultSort={{ key: 'changes', dir: 'desc' }}
+        search={{
+          placeholder: 'Search people…',
+          match: (row, q) => nameOf(row).toLowerCase().includes(q),
+        }}
+        noun="person"
+        empty="Nothing in this window."
+        loading={loading}
+      />
 
       {quiet.length > 0 && (
-        <section className="rounded-md border">
-          <div className="flex items-center gap-2 border-b px-3 py-2">
-            <h3 className="text-sm font-semibold">No changes in this window</h3>
-            <SearchInput
-              value={quietSearch}
-              onChange={setQuietSearch}
-              placeholder="Search people…"
-              className="ml-auto max-w-[14rem]"
-            />
-            <ListCount shown={shownQuiet.length} total={quiet.length} noun="person" />
-          </div>
-          <ListPager {...pagedQuiet} onPage={pagedQuiet.setPage} position="top" />
-          {shownQuiet.length === 0 ? (
-            <p className="p-3 text-sm text-muted-foreground">Nobody matches.</p>
-          ) : (
-            <table className="w-full text-sm">
-              <tbody>
-                {pagedQuiet.pageItems.map((m) => (
-                  <tr key={m.id} className="border-b last:border-0">
-                    <td className="px-3 py-1.5">
-                      <div className="flex items-center gap-2">
-                        <UserAvatar
-                          client={client}
-                          userId={m.id}
-                          displayName={m.displayName}
-                          className="h-6 w-6"
-                        />
-                        <span>{m.displayName || m.id}</span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-1.5 text-right text-muted-foreground">{m.id}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          <ListPager {...pagedQuiet} onPage={pagedQuiet.setPage} position="bottom" />
-        </section>
+        <DataTable
+          title="No changes in this window"
+          rows={quiet}
+          columns={quietColumns}
+          rowKey={(m) => m.id}
+          storageKey={listPrefKey('sort', 'activity-quiet', projectId)}
+          defaultSort={{ key: 'person', dir: 'asc' }}
+          search={{
+            placeholder: 'Search people…',
+            match: (m, q) => (m.displayName || m.id).toLowerCase().includes(q),
+          }}
+          noun="person"
+        />
       )}
 
       <section className="rounded-md border">

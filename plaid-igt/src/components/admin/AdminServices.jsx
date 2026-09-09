@@ -3,20 +3,54 @@ import { Link } from 'react-router-dom';
 import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { SearchInput, ListCount, ListPager } from '@/components/ui/list-search';
-import { usePagedList } from '@/hooks/usePagedList';
+import { DataTable } from '@/components/ui/data-table';
+import { listPrefKey } from '@/hooks/useStickyState';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useConfirm } from '@/components/shared/ConfirmProvider';
 
 // Services register per project, so "is the analyze service up" can only be
 // answered one project at a time. This asks every project at once.
+//
+// A registration is identified by (project, service id), so a service used on
+// forty projects is forty rows in the registry. One row per SERVICE here, with
+// its projects underneath: the identity a person has in mind is the service,
+// and the project count is a property of it rather than a reason to repeat it.
+
+const groupByService = (registrations) => {
+  const byId = new Map();
+  registrations.forEach((r) => {
+    if (!byId.has(r.serviceId)) byId.set(r.serviceId, []);
+    byId.get(r.serviceId).push(r);
+  });
+  return [...byId.entries()].map(([serviceId, entries]) => {
+    const online = entries.filter((e) => e.online);
+    // The name and description are stored per registration. They agree in
+    // practice, so the freshest one speaks for the service.
+    const freshest = [...entries].sort((a, b) =>
+      String(b.lastSeenAt || '').localeCompare(String(a.lastSeenAt || '')),
+    )[0];
+    return {
+      serviceId,
+      serviceName: freshest?.serviceName || serviceId,
+      description: freshest?.description || '',
+      tasks: [...new Set(entries.flatMap((e) => e.extras?.tasks || []))],
+      entries: [...entries].sort((a, b) => a.project.name.localeCompare(b.project.name)),
+      projects: entries.length,
+      online: online.length,
+      lastSeenAt: entries
+        .map((e) => e.lastSeenAt)
+        .filter(Boolean)
+        .sort()
+        .pop(),
+    };
+  });
+};
 
 export const AdminServices = ({ client }) => {
   const confirm = useConfirm();
-  const [rows, setRows] = useState([]);
+  const [registrations, setRegistrations] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -30,16 +64,7 @@ export const AdminServices = ({ client }) => {
             .catch(() => []),
         ),
       );
-      setRows(
-        found
-          .flat()
-          .sort(
-            (a, b) =>
-              Number(b.online) - Number(a.online) ||
-              a.project.name.localeCompare(b.project.name) ||
-              (a.serviceName || '').localeCompare(b.serviceName || ''),
-          ),
-      );
+      setRegistrations(found.flat());
     } catch (err) {
       console.error('Error loading services:', err);
       notifyError(err.message || 'Failed to load services', 'Error');
@@ -52,117 +77,171 @@ export const AdminServices = ({ client }) => {
     load();
   }, [load]);
 
-  const discard = async (row) => {
+  const rows = useMemo(() => groupByService(registrations), [registrations]);
+
+  const discardOne = async (entry) => {
     const ok = await confirm({
-      title: 'Forget this service?',
-      description: `${row.serviceName} is removed from ${row.project.name}. It reappears if it connects again.`,
+      title: 'Forget this registration?',
+      description: `${entry.serviceName} is removed from ${entry.project.name}. It reappears if it connects again.`,
       confirmLabel: 'Forget',
       destructive: true,
     });
     if (!ok) return;
     try {
-      await client.messages.discardService(row.project.id, row.serviceId);
-      notifySuccess('Service forgotten', 'Removed');
+      await client.messages.discardService(entry.project.id, entry.serviceId);
+      notifySuccess('Registration forgotten', 'Removed');
       await load();
     } catch (err) {
-      notifyError(err.message || 'Failed to forget the service', 'Error');
+      notifyError(err.message || 'Failed to forget the registration', 'Error');
     }
   };
 
-  const online = rows.filter((r) => r.online).length;
+  const discardEverywhere = async (row) => {
+    const offline = row.entries.filter((e) => !e.online);
+    const ok = await confirm({
+      title: `Forget ${row.serviceName} everywhere?`,
+      description: `Removes ${offline.length} registrations, on every project where it is offline. Each reappears if it connects again.`,
+      confirmLabel: `Forget ${offline.length}`,
+      destructive: true,
+    });
+    if (!ok) return;
+    const failed = [];
+    for (const entry of offline) {
+      try {
+        await client.messages.discardService(entry.project.id, entry.serviceId);
+      } catch {
+        failed.push(entry.project.name);
+      }
+    }
+    if (failed.length) {
+      notifyError(`${failed.length} could not be removed: ${failed.join(', ')}`, 'Partly done');
+    } else {
+      notifySuccess(`${offline.length} registrations forgotten`, 'Removed');
+    }
+    await load();
+  };
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
-      (r) =>
-        (r.serviceName || '').toLowerCase().includes(q) ||
-        r.project.name.toLowerCase().includes(q) ||
-        (r.extras?.tasks || []).join(' ').toLowerCase().includes(q),
-    );
-  }, [rows, search]);
+  const columns = [
+    {
+      key: 'name',
+      label: 'Service',
+      sort: (r) => r.serviceName.toLowerCase(),
+      render: (r) => (
+        <div>
+          <div className="flex items-center gap-2">
+            <Badge variant={r.online > 0 ? 'default' : 'outline'}>
+              {r.online > 0 ? 'Online' : 'Offline'}
+            </Badge>
+            <span className="font-medium">{r.serviceName}</span>
+          </div>
+          <p className="pt-0.5 font-mono text-xs text-muted-foreground">{r.serviceId}</p>
+        </div>
+      ),
+    },
+    {
+      key: 'tasks',
+      label: 'Tasks',
+      sort: (r) => r.tasks.join(', '),
+      className: 'text-muted-foreground',
+      render: (r) => r.tasks.join(', '),
+    },
+    {
+      key: 'projects',
+      label: 'Projects',
+      sort: (r) => r.projects,
+      align: 'right',
+      className: 'tabular-nums',
+      render: (r) => (r.online > 0 ? `${r.online} of ${r.projects}` : r.projects),
+    },
+    {
+      key: 'lastSeen',
+      label: 'Last seen',
+      sort: (r) =>
+        r.online > 0 ? Infinity : r.lastSeenAt ? new Date(r.lastSeenAt).getTime() : null,
+      className: 'text-muted-foreground',
+      render: (r) =>
+        r.online > 0 ? (
+          'Now'
+        ) : (
+          <span title={fullTimestamp(r.lastSeenAt)}>
+            {r.lastSeenAt ? timeAgo(r.lastSeenAt) : ''}
+          </span>
+        ),
+    },
+    {
+      key: 'actions',
+      label: '',
+      headerClassName: 'w-32',
+      align: 'right',
+      render: (r) =>
+        r.entries.some((e) => !e.online) ? (
+          <Button size="sm" variant="ghost" onClick={() => discardEverywhere(r)}>
+            Forget offline
+          </Button>
+        ) : null,
+    },
+  ];
 
-  const paged = usePagedList(filtered, { resetKey: search });
+  const online = rows.filter((r) => r.online > 0).length;
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder="Search services…"
-          className="max-w-xs"
-        />
-        <ListCount shown={filtered.length} total={rows.length} noun="service" />
-        <span className="text-sm text-muted-foreground">
-          {online} online, {rows.length - online} offline
-        </span>
-        <Button variant="outline" size="sm" className="ml-auto" onClick={load} disabled={loading}>
-          <RefreshCw className="h-4 w-4" /> Refresh
-        </Button>
-      </div>
-
-      <div className="rounded-md border">
-        <ListPager {...paged} onPage={paged.setPage} position="top" />
-        {loading && rows.length === 0 ? (
-          <p className="p-4 text-sm text-muted-foreground">Loading…</p>
-        ) : filtered.length === 0 ? (
-          <p className="p-4 text-sm text-muted-foreground">
-            {rows.length === 0 ? 'No project has seen a service.' : 'No services match.'}
-          </p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-left text-xs text-muted-foreground">
-                <th className="px-3 py-2 font-medium">Service</th>
-                <th className="px-3 py-2 font-medium">Project</th>
-                <th className="px-3 py-2 font-medium">Tasks</th>
-                <th className="px-3 py-2 font-medium">Last seen</th>
-                <th className="w-24 px-3 py-2" />
+    <DataTable
+      rows={rows}
+      columns={columns}
+      rowKey={(r) => r.serviceId}
+      storageKey={listPrefKey('sort', 'admin-services')}
+      defaultSort={{ key: 'lastSeen', dir: 'desc' }}
+      search={{
+        placeholder: 'Search services…',
+        match: (r, q) =>
+          r.serviceName.toLowerCase().includes(q) ||
+          r.serviceId.toLowerCase().includes(q) ||
+          r.tasks.join(' ').toLowerCase().includes(q) ||
+          r.entries.some((e) => e.project.name.toLowerCase().includes(q)),
+      }}
+      noun="service"
+      empty="No project has seen a service."
+      loading={loading}
+      actions={
+        <>
+          <span className="text-sm text-muted-foreground">
+            {online} online, {registrations.length} registrations
+          </span>
+          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+            <RefreshCw className="h-4 w-4" /> Refresh
+          </Button>
+        </>
+      }
+      expand={(r) => (
+        <table className="w-full text-sm">
+          <tbody>
+            {r.entries.map((e) => (
+              <tr key={e.project.id} className="border-b last:border-0">
+                <td className="py-1 pr-3">
+                  <Badge variant={e.online ? 'default' : 'outline'}>
+                    {e.online ? 'Online' : 'Offline'}
+                  </Badge>
+                </td>
+                <td className="py-1 pr-3">
+                  <Link to={`/projects/${e.project.id}`} className="hover:underline">
+                    {e.project.name}
+                  </Link>
+                </td>
+                <td className="py-1 pr-3 text-muted-foreground" title={fullTimestamp(e.lastSeenAt)}>
+                  {e.online ? 'Now' : e.lastSeenAt ? timeAgo(e.lastSeenAt) : ''}
+                </td>
+                <td className="py-1 text-right">
+                  {!e.online && (
+                    <Button size="sm" variant="ghost" onClick={() => discardOne(e)}>
+                      Forget
+                    </Button>
+                  )}
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {paged.pageItems.map((r) => (
-                <tr key={`${r.project.id}:${r.serviceId}`} className="border-b last:border-0">
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <Badge variant={r.online ? 'default' : 'outline'}>
-                        {r.online ? 'Online' : 'Offline'}
-                      </Badge>
-                      <span className="font-medium">{r.serviceName}</span>
-                    </div>
-                    {r.description && (
-                      <p className="pl-1 pt-0.5 text-xs text-muted-foreground">{r.description}</p>
-                    )}
-                  </td>
-                  <td className="px-3 py-2">
-                    <Link to={`/projects/${r.project.id}`} className="hover:underline">
-                      {r.project.name}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-2 text-muted-foreground">
-                    {(r.extras?.tasks || []).join(', ')}
-                  </td>
-                  <td
-                    className="px-3 py-2 text-muted-foreground"
-                    title={fullTimestamp(r.lastSeenAt)}
-                  >
-                    {r.online ? 'Now' : r.lastSeenAt ? timeAgo(r.lastSeenAt) : ''}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    {!r.online && (
-                      <Button size="sm" variant="ghost" onClick={() => discard(r)}>
-                        Forget
-                      </Button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        <ListPager {...paged} onPage={paged.setPage} position="bottom" />
-      </div>
-    </div>
+            ))}
+          </tbody>
+        </table>
+      )}
+    />
   );
 };

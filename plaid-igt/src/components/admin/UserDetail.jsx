@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { UserAvatar } from '@/components/shared/UserAvatar';
-import { SearchInput, ListCount, ListPager } from '@/components/ui/list-search';
-import { usePagedList } from '@/hooks/usePagedList';
+import { DataTable } from '@/components/ui/data-table';
+import { listPrefKey } from '@/hooks/useStickyState';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useConfirm } from '@/components/shared/ConfirmProvider';
@@ -21,7 +21,6 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
   const [tokens, setTokens] = useState([]);
   const [tally, setTally] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [projectSearch, setProjectSearch] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -61,14 +60,6 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
   useEffect(() => {
     load();
   }, [load]);
-
-  const shownProjects = useMemo(() => {
-    const q = projectSearch.trim().toLowerCase();
-    return q ? projects.filter((p) => p.name.toLowerCase().includes(q)) : projects;
-  }, [projects, projectSearch]);
-
-  const pagedProjects = usePagedList(shownProjects, { resetKey: projectSearch });
-  const pagedTokens = usePagedList(tokens, { resetKey: userId });
 
   const revokeToken = async (token) => {
     const ok = await confirm({
@@ -134,70 +125,77 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
             </div>
           )}
 
-          <section className="rounded-md border">
-            <div className="flex items-center gap-2 border-b px-3 py-2">
-              <h3 className="text-sm font-semibold">Projects</h3>
-              <SearchInput
-                value={projectSearch}
-                onChange={setProjectSearch}
-                placeholder="Search projects…"
-                className="ml-auto max-w-[14rem]"
-              />
-              <ListCount shown={shownProjects.length} total={projects.length} noun="project" />
-            </div>
-            <ListPager {...pagedProjects} onPage={pagedProjects.setPage} position="top" />
-            {shownProjects.length === 0 ? (
-              <p className="p-3 text-sm text-muted-foreground">
-                {projects.length === 0 ? 'No project roles.' : 'No projects match.'}
-              </p>
-            ) : (
-              <table className="w-full text-sm">
-                <tbody>
-                  {pagedProjects.pageItems.map((p) => (
-                    <tr key={p.id} className="border-b last:border-0">
-                      <td className="px-3 py-2">
-                        <Link to={`/projects/${p.id}`} className="hover:underline">
-                          {p.name}
-                        </Link>
-                      </td>
-                      <td className="px-3 py-2 text-right text-muted-foreground">{p.role}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-            <ListPager {...pagedProjects} onPage={pagedProjects.setPage} position="bottom" />
-          </section>
+          <DataTable
+            title="Projects"
+            rows={projects}
+            columns={[
+              {
+                key: 'name',
+                label: 'Project',
+                sort: (p) => p.name.toLowerCase(),
+                render: (p) => (
+                  <Link to={`/projects/${p.id}`} className="hover:underline">
+                    {p.name}
+                  </Link>
+                ),
+              },
+              {
+                key: 'role',
+                label: 'Role',
+                sort: (p) => p.role,
+                align: 'right',
+                className: 'text-muted-foreground',
+                render: (p) => p.role,
+              },
+            ]}
+            rowKey={(p) => p.id}
+            storageKey={listPrefKey('sort', 'user-projects')}
+            defaultSort={{ key: 'name', dir: 'asc' }}
+            search={{
+              placeholder: 'Search projects…',
+              match: (p, q) => p.name.toLowerCase().includes(q),
+            }}
+            noun="project"
+            empty="No project roles."
+          />
 
-          <section className="rounded-md border">
-            <h3 className="border-b px-3 py-2 text-sm font-semibold">API tokens</h3>
-            <ListPager {...pagedTokens} onPage={pagedTokens.setPage} position="top" />
-            {tokens.length === 0 ? (
-              <p className="p-3 text-sm text-muted-foreground">No tokens.</p>
-            ) : (
-              <table className="w-full text-sm">
-                <tbody>
-                  {pagedTokens.pageItems.map((t) => (
-                    <tr key={t.id} className="border-b last:border-0">
-                      <td className="px-3 py-2">{t.name}</td>
-                      <td
-                        className="px-3 py-2 text-muted-foreground"
-                        title={fullTimestamp(t.createdAt)}
-                      >
-                        Created {timeAgo(t.createdAt)}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <Button size="sm" variant="ghost" onClick={() => revokeToken(t)}>
-                          Revoke
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-            <ListPager {...pagedTokens} onPage={pagedTokens.setPage} position="bottom" />
-          </section>
+          <DataTable
+            title="API tokens"
+            rows={tokens}
+            columns={[
+              {
+                key: 'name',
+                label: 'Name',
+                sort: (t) => (t.name || '').toLowerCase(),
+                render: (t) => t.name,
+              },
+              {
+                key: 'created',
+                label: 'Created',
+                sort: (t) => (t.createdAt ? new Date(t.createdAt).getTime() : null),
+                className: 'text-muted-foreground',
+                render: (t) => (
+                  <span title={fullTimestamp(t.createdAt)}>{timeAgo(t.createdAt)}</span>
+                ),
+              },
+              {
+                key: 'actions',
+                label: '',
+                headerClassName: 'w-24',
+                align: 'right',
+                render: (t) => (
+                  <Button size="sm" variant="ghost" onClick={() => revokeToken(t)}>
+                    Revoke
+                  </Button>
+                ),
+              },
+            ]}
+            rowKey={(t) => t.id}
+            storageKey={listPrefKey('sort', 'user-tokens')}
+            defaultSort={{ key: 'created', dir: 'desc' }}
+            noun="token"
+            empty="No tokens."
+          />
 
           <section className="rounded-md border">
             <h3 className="border-b px-3 py-2 text-sm font-semibold">Recent activity</h3>
