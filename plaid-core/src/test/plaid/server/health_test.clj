@@ -44,8 +44,8 @@
       (is (true? (:ok body)))
       (let [audit (:audit body)]
         (is (map? audit))
-        (is (number? (:db_size_mb audit)))
-        (is (number? (:audit_rows audit)))
+        (is (number? (:db-size-mb audit)))
+        (is (number? (:audit-rows audit)))
         (is (not (contains? audit :error)))))))
 
 (deftest health-audit-block-degrades-on-probe-failure

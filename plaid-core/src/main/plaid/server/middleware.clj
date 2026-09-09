@@ -101,8 +101,12 @@
     (let [size-bytes (:bytes (psc/q1 ds ["SELECT page_count*page_size AS bytes
                                           FROM pragma_page_count(), pragma_page_size()"]))
           audit-rows (:n (psc/q1 ds ["SELECT count(*) AS n FROM audit_writes"]))]
-      {:db_size_mb (long (Math/round (double (/ size-bytes bytes-per-mb))))
-       :audit_rows audit-rows})
+      ;; kebab-case like every other key on the wire, so both clients case it
+      ;; the way they case everything else. This block is hand-serialized
+      ;; rather than going through the REST response path, which is how it
+      ;; came to be the one place spelling keys with underscores.
+      {:db-size-mb (long (Math/round (double (/ size-bytes bytes-per-mb))))
+       :audit-rows audit-rows})
     (catch Throwable t
       (log/warn t "audit /health probe failed")
       {:error (or (.getMessage t) (.. t getClass getSimpleName))})))
