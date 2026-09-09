@@ -20,7 +20,7 @@ import { MediaHelp, MediaHelpButton } from './MediaHelp.jsx';
 import { VadDetection } from './VadDetection.jsx';
 import { PLAYBACK_RATE_MIN, PLAYBACK_RATE_MAX, PLAYBACK_RATE_STEP } from './useMediaOperations.js';
 
-export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
+export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) => {
   // Destructure what we need from mediaOps
   const {
     authenticatedMediaUrl: mediaUrl,
@@ -137,9 +137,11 @@ export const MediaPlayer = ({ mediaOps, readOnly = false }) => {
           </div>
           {mediaUrl && (
             <div className="flex items-center gap-2">
+              {/* Detection writes nothing, so it stays available even while
+                  another run holds the document's write lock. */}
               <VadDetection
                 mediaOps={mediaOps}
-                readOnly={readOnly}
+                readOnly={!canWrite}
                 disabled={mediaOps.isLoadingMedia || !mediaOps.mediaBlob}
               />
               <Tooltip>

@@ -10,6 +10,7 @@ import { ServiceMethodRow } from '../services/ServiceMethodRow.jsx';
 import { runBuiltinAnalysis } from '@/domain/autoPass';
 import { BUILTIN_LINK_PRECEDENT } from '@/domain/serviceDefaults';
 import { resolveAutoAnalysis } from '@/domain/igtConfig';
+import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 
 const STEPS_STORAGE_KEY = 'plaid_igt_auto_analyze_steps';
 // A whole-document model pass can take a few minutes on a large document.
@@ -49,6 +50,7 @@ const readSteps = () => {
 
 export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
   const project = doc?.project;
+  const { writeLock, acquireWriteLock } = useDocumentCtx();
   const {
     availableServices,
     isDiscovering,
@@ -149,6 +151,9 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
       notifyError(blockingErrors[0], 'Missing required option');
       return;
     }
+    // Held for the whole run: four steps of writes with a reload after each.
+    const release = acquireWriteLock('Auto-analyze');
+    if (!release) return;
     setBusy(true);
     progress.start(plan.map((p) => p.label));
     const at = (key) => progress.step(plan.findIndex((p) => p.key === key));
@@ -280,6 +285,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
     } finally {
       progress.finish();
       setBusy(false);
+      release();
     }
   };
 
@@ -311,7 +317,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
       progress={progress}
       runLabel="Run"
       onRun={run}
-      runDisabled={nothingToRun || blockingErrors.length > 0}
+      runDisabled={nothingToRun || blockingErrors.length > 0 || (!!writeLock && !running)}
     >
       <Step
         n={1}

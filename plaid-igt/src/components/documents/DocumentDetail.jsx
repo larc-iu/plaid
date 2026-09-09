@@ -22,6 +22,7 @@ import { CommentsTab } from './comments/CommentsTab.jsx';
 import { CommentStore } from '@/domain/CommentStore';
 import { useCommentStore } from '@/domain/useCommentStore';
 import { useDocumentPermissions } from './hooks/useDocumentPermissions.js';
+import { useWriteLock } from './hooks/useWriteLock.js';
 import { useDocumentHistory } from './hooks/useDocumentHistory.js';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useTabParam, tabTo } from '@/hooks/useTabParam';
@@ -147,6 +148,7 @@ const DocumentEditor = () => {
   const docPath = `/projects/${projectId}/documents/${documentId}`;
 
   const permissions = useDocumentPermissions(doc?.project);
+  const writeLock = useWriteLock();
   // A code bound under Settings applies in the grid and every other field here.
   useComposeProject(doc?.project);
   const history = useDocumentHistory(documentId, client);
@@ -498,10 +500,15 @@ const DocumentEditor = () => {
   }
 
   const isViewingHistorical = asOf != null;
-  const readOnly = permissions.isReadOnly || isViewingHistorical;
+  // A service run writing to this document takes the editor read-only for as
+  // long as it writes: the run outlives its dialog, and it ends in a reload
+  // that would discard anything typed underneath it. See useWriteLock.
+  const readOnly = permissions.isReadOnly || isViewingHistorical || !!writeLock.held;
 
   return (
     <>
+      {/* canRestore also waits on a run in flight: a restore rewrites the
+          whole document, which is exactly what a running service is doing. */}
       <HistoryDrawer
         isOpen={history.open}
         onClose={handleCloseHistory}
@@ -510,7 +517,7 @@ const DocumentEditor = () => {
         error={history.error}
         onSelectEntry={handleSelectHistoryEntry}
         selectedEntry={history.selectedEntry}
-        canRestore={permissions.canManage}
+        canRestore={permissions.canManage && !writeLock.held}
         onRestore={setRestoreEntry}
       />
       <RestoreDialog
@@ -586,6 +593,15 @@ const DocumentEditor = () => {
                 </p>
               </div>
             )}
+
+            {/* A run the linguist may well have closed the dialog on. Without
+                this the document just stops accepting edits. */}
+            {writeLock.held && (
+              <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                <p className="font-medium">Editing paused</p>
+                <p className="text-xs">{writeLock.held.label} is running.</p>
+              </div>
+            )}
           </div>
 
           <DocumentProvider
@@ -595,8 +611,13 @@ const DocumentEditor = () => {
               readOnly,
               asOf,
               comments,
+              // Whether this user may edit at all, ignoring any run in flight.
+              // What gates a run's own controls, so the button carrying its
+              // progress does not vanish the moment the run starts.
               canWrite: permissions.canWrite && !isViewingHistorical,
               canManage: permissions.canManage,
+              writeLock: writeLock.held,
+              acquireWriteLock: writeLock.acquire,
             }}
           >
             {/* The initial repair takes the tab strip's place rather than

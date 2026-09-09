@@ -11,7 +11,7 @@ import Lazy from '../../lazy';
 import './DocumentTokenize.css';
 
 export function DocumentTokenize() {
-  const { doc, readOnly } = useDocumentCtx();
+  const { doc, readOnly, canWrite, writeLock } = useDocumentCtx();
   useIgtDocument(doc);
   const ops = useTokenOperations();
 
@@ -28,7 +28,7 @@ export function DocumentTokenize() {
   // Which bulk clear is awaiting confirmation: 'tokens' | 'sentences' | null.
   const [confirmClear, setConfirmClear] = useState(null);
 
-  const busy = ops.isTokenizing || ops.isProcessing;
+  const busy = ops.isTokenizing || ops.isProcessing || !!writeLock;
   // Why Tokenize cannot run, stated in the dialog rather than left to a
   // disabled button with no explanation. Null means it can.
   const tokenizeBlockedHint = !layers?.primaryTokenLayer
@@ -95,8 +95,10 @@ export function DocumentTokenize() {
                 </Tooltip>
               </div>
 
-              {/* The run, and the two bulk edits that empty this panel. */}
-              {!readOnly && (
+              {/* On canWrite, not readOnly: a run of its own takes the
+                  document read-only, and the button carrying that run's
+                  progress must not vanish with it. */}
+              {canWrite && (
                 <div className="flex items-center gap-2">
                   <TokenizeDialog ops={ops} blockedHint={tokenizeBlockedHint} />
                   <Button

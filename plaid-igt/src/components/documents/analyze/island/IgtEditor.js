@@ -177,6 +177,7 @@ export class IgtEditor {
     doc,
     {
       readOnly = false,
+      canAutoAnalyze = false,
       canWriteVocab = null,
       comments = null,
       canComment = false,
@@ -208,6 +209,7 @@ export class IgtEditor {
     document.body.appendChild(this._altsRoot);
     this.doc = doc;
     this.readOnly = readOnly;
+    this.canAutoAnalyze = canAutoAnalyze;
     this._lastDataVersion = -1;
     this._pendingFocus = null;
     // All doc mutations are funneled through this promise chain so they run
@@ -408,6 +410,14 @@ export class IgtEditor {
   setCommentPermissions({ canComment, canDeleteAnyComment }) {
     this.canComment = canComment;
     this.canDeleteAnyComment = canDeleteAnyComment;
+    this._render(true);
+  }
+
+  // Whether this user may run Auto-analyze at all, which is NOT `!readOnly`:
+  // the run itself takes the document read-only while it writes.
+  setCanAutoAnalyze(can) {
+    if (this.canAutoAnalyze === can) return;
+    this.canAutoAnalyze = can;
     this._render(true);
   }
 
@@ -3369,26 +3379,32 @@ export class IgtEditor {
             : html`<span class="igt-toolbar__count"
                 >${nSent} sentence${nSent === 1 ? '' : 's'}</span
               >`}
-          ${!this.readOnly
-            ? html`<button
-                type="button"
-                class="igt-toolbar__btn"
-                data-running=${this._autoAnalyzeStatus?.running ? 'true' : nothing}
-                title=${this._autoAnalyzeStatus?.running
-                  ? `Auto-analyze, ${this._autoAnalyzeStatus.label}`
-                  : 'Analyze the document automatically: copy previous analyses, have a service propose segmentation and glosses, and link to the lexicon. Proposals show in violet until you confirm them.'}
-                @click=${(e) => {
-                  e.stopPropagation();
-                  this._openAutoAnalyze();
-                }}
-              >
-                Auto-analyze${this._autoAnalyzeStatus?.running
-                  ? html` <span class="igt-toolbar__elapsed"
-                      >${this._autoAnalyzeStatus.label}</span
-                    >`
-                  : nothing}
-              </button>`
-            : nothing}
+          ${
+            /* Gated on canAutoAnalyze rather than readOnly: an Auto-analyze run
+                takes the document read-only, and this button is where that
+                run's progress shows and how the dialog is reopened, so it must
+                outlive the lock it caused. */
+            this.canAutoAnalyze
+              ? html`<button
+                  type="button"
+                  class="igt-toolbar__btn"
+                  data-running=${this._autoAnalyzeStatus?.running ? 'true' : nothing}
+                  title=${this._autoAnalyzeStatus?.running
+                    ? `Auto-analyze, ${this._autoAnalyzeStatus.label}`
+                    : 'Analyze the document automatically: copy previous analyses, have a service propose segmentation and glosses, and link to the lexicon. Proposals show in violet until you confirm them.'}
+                  @click=${(e) => {
+                    e.stopPropagation();
+                    this._openAutoAnalyze();
+                  }}
+                >
+                  Auto-analyze${this._autoAnalyzeStatus?.running
+                    ? html` <span class="igt-toolbar__elapsed"
+                        >${this._autoAnalyzeStatus.label}</span
+                      >`
+                    : nothing}
+                </button>`
+              : nothing
+          }
         </div>
         <div class="igt-toolbar__right">
           <span

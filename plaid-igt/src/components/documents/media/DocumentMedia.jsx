@@ -11,7 +11,7 @@ import { TranscribeDialog } from './TranscribeDialog.jsx';
 import { Button } from '@/components/ui/button';
 
 export function DocumentMedia() {
-  const { doc, readOnly } = useDocumentCtx();
+  const { doc, readOnly, canWrite, writeLock } = useDocumentCtx();
   useIgtDocument(doc);
 
   // Use media operations hook
@@ -40,7 +40,7 @@ export function DocumentMedia() {
     <div className="tw flex flex-col gap-6 pb-24">
       {/* Media Player. Speech detection sits in its header: it acts on the
           recording, and its proposals surface on the timeline and transcript. */}
-      <MediaPlayer mediaOps={mediaOps} readOnly={readOnly} />
+      <MediaPlayer mediaOps={mediaOps} readOnly={readOnly} canWrite={canWrite} />
 
       {/* Timeline */}
       <div className="relative">
@@ -53,14 +53,18 @@ export function DocumentMedia() {
         mediaOps={mediaOps}
         readOnly={readOnly}
         headerActions={
-          readOnly ? null : (
+          // canWrite, not readOnly: Transcribe carries its own run's progress.
+          !canWrite ? null : (
             <>
               <TranscribeDialog mediaOps={mediaOps} readOnly={readOnly} />
               <Button
                 variant="outline"
                 onClick={mediaOps.handleClearAlignments}
                 disabled={
-                  mediaOps.isProcessing || mediaOps.isUploading || !mediaOps.alignmentTokens.length
+                  mediaOps.isProcessing ||
+                  mediaOps.isUploading ||
+                  !!writeLock ||
+                  !mediaOps.alignmentTokens.length
                 }
               >
                 Clear segments

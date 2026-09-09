@@ -43,6 +43,9 @@ export const AnalyzeIsland = () => {
     if (!doc || !hostRef.current) return undefined;
     editorRef.current = new IgtEditor(hostRef.current, doc, {
       readOnly,
+      // Not `!readOnly`: an Auto-analyze run takes the document read-only for
+      // as long as it writes, and its button carries the run's progress.
+      canAutoAnalyze: canWrite,
       canWriteVocab,
       // The SAME store the Comments tab renders from, so a comment posted on a
       // word is already there when you switch tabs.
@@ -64,6 +67,10 @@ export const AnalyzeIsland = () => {
   useEffect(() => {
     if (editorRef.current) editorRef.current.setReadOnly(readOnly);
   }, [readOnly]);
+
+  useEffect(() => {
+    editorRef.current?.setCanAutoAnalyze(canWrite);
+  }, [canWrite]);
 
   useEffect(() => {
     editorRef.current?.setCommentPermissions({

@@ -28,7 +28,7 @@ const TOKENIZE_BUILTINS = [
 // reload-on-error; doc.sentences re-derives the token/gap `pieces` after each.
 // Only the service glue, method selection, and progress are local.
 export const useTokenOperations = () => {
-  const { doc } = useDocumentCtx();
+  const { doc, acquireWriteLock } = useDocumentCtx();
   useIgtDocument(doc);
   const project = doc.project;
 
@@ -190,6 +190,10 @@ export const useTokenOperations = () => {
   // Run an NLP tokenization service. `overwrite` is granted only after the user
   // confirms a destructive re-tokenize (see handleTokenize / pendingTokenize).
   const runServiceTokenize = async (serviceId, { overwrite = false } = {}) => {
+    // Held for the whole run: it rewrites the token layers and ends in a
+    // reload, so nothing may be edited underneath it.
+    const release = acquireWriteLock('Tokenize');
+    if (!release) return;
     setIsTokenizing(true);
     tokenizeRun.start(['Tokenize']);
     try {
@@ -228,6 +232,7 @@ export const useTokenOperations = () => {
     } finally {
       setIsTokenizing(false);
       tokenizeRun.finish();
+      release();
     }
   };
 
@@ -254,6 +259,9 @@ export const useTokenOperations = () => {
     }
 
     // Built-in rule-based tokenizer fills untokenized ranges only — non-destructive.
+    // It still writes and reloads, so it takes the lock like the service path.
+    const release = acquireWriteLock('Tokenize');
+    if (!release) return;
     setIsTokenizing(true);
     tokenizeRun.start(['Tokenize']);
     try {
@@ -269,6 +277,7 @@ export const useTokenOperations = () => {
     } finally {
       setIsTokenizing(false);
       tokenizeRun.finish();
+      release();
     }
   };
   const confirmPendingTokenize = async () => {

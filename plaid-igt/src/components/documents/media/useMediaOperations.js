@@ -65,7 +65,7 @@ const parseBool = (raw) => (raw === 'true' ? true : raw === 'false' ? false : un
 // they single-flight + toast + reload-on-error). The returned object is the
 // single source the timeline + player read from.
 export const useMediaOperations = () => {
-  const { doc } = useDocumentCtx();
+  const { doc, acquireWriteLock } = useDocumentCtx();
   useIgtDocument(doc);
   const confirm = useConfirm();
 
@@ -509,6 +509,10 @@ export const useMediaOperations = () => {
     const alignmentTokenLayer = doc.layerInfo.alignmentTokenLayer;
     const sentenceTokenLayer = doc.layerInfo.sentenceTokenLayer;
 
+    // Held for the whole run: this wipes the baseline and rebuilds the
+    // document from what the service returns.
+    const release = acquireWriteLock('Transcribe');
+    if (!release) return;
     try {
       // The whole re-transcribe (our wipe of the previous transcript + every
       // write the ASR service makes) is ONE logical operation in the audit
@@ -556,12 +560,15 @@ export const useMediaOperations = () => {
       console.error('Transcription failed:', error);
     } finally {
       transcribeRun.finish();
+      release();
     }
-  }, [doc, project, requestService, transcribeSpot, transcribeRun, confirm]);
+  }, [doc, project, requestService, transcribeSpot, transcribeRun, confirm, acquireWriteLock]);
 
   // Speech detection: the built-in runs in this tab, a service returns regions
   // that land in the same proposal list. Either way nothing is written until
-  // somebody types into a proposal.
+  // somebody types into a proposal, so this run takes NO write lock — typing
+  // into a proposal IS how it is accepted, and locking would break the gesture
+  // the feature exists for.
   const handleDetectSpeech = useCallback(async () => {
     const service = detectSpot.service;
     if (!service) {

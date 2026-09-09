@@ -473,7 +473,8 @@ Each step remembers whether you left it on, and a service step is unavailable wh
 A run over a long document takes minutes.
 While it goes, the dialog lists the steps it will take and ticks them off, and shows the step it is on, how far that step has got, and how long the run has been going.
 Steps that report no percentage of their own, such as a model pass, still show their name and the clock.
-You can close the dialog and keep working: the run carries on, and the **Auto-analyze** button on the toolbar shows the elapsed time until it finishes.
+You can close the dialog and watch the document instead: the run carries on, and the **Auto-analyze** button on the toolbar shows the elapsed time until it finishes.
+Editing is paused for as long as the run writes, and the document says so at the top; it comes back when the run ends.
 When the run finishes, a message says what was done: how many translations were proposed, how many words received a copied analysis, and so on.
 Then review the result with the gestures under <<_analyze>>: **Ctrl/Cmd+Enter** confirms a whole word, **Ctrl/Cmd+Backspace** discards its proposal, and **Ctrl/Cmd+Shift+↑/↓** jumps between the words that still have unconfirmed material.
 
@@ -642,6 +643,10 @@ Some tasks ship with a built-in method that needs no service at all.
 Every one of them works the same way.
 A button names the run, in the header of the panel its results land in; it opens a dialog with the **Method** to use, that method's options, and the button that starts the run.
 A run keeps going if you close the dialog, and the button that opened it shows how long it has been going and how far it has got.
+
+A run that writes to the document takes it read-only until it finishes, and the document says so at the top: a run ends by re-reading the document, which would discard anything typed underneath it.
+Only one such run goes at a time.
+Speech detection is the exception, since it writes nothing: it can run while you work, which is what lets you type into its proposals as they appear.
 
 There are six integration points:
 
