@@ -8,6 +8,8 @@
 // `split` are partition- and nesting-preserving and are the only boundary
 // edits used here; `clearSentences` is a merge of everything into the first.
 
+import { mergeMetadata } from '@larc-iu/plaid-client';
+import { newHalfMetadata, survivingProvenance, survivorPatch } from '../tokenReshape.js';
 import { reparentSpans } from './reparent.js';
 
 export const sentenceMutations = {
@@ -26,12 +28,23 @@ export const sentenceMutations = {
     }
 
     return this._withSaving('Failed to merge sentence', async () => {
-      await this._client.tokens.merge(prev.id, sentenceId);
+      // See domain/tokenReshape.js: the survivor takes on the provenance of
+      // whichever side most needs review, so a machine-made sentence boundary
+      // is not absorbed into a hand-made neighbour.
+      const inherited = survivingProvenance([prev.metadata, sentence.metadata]);
+      const patch = survivorPatch(prev.metadata, inherited, (m) => this.editStamp(m));
+      await this._client.batched(async () => {
+        this._client.tokens.merge(prev.id, sentenceId);
+        if (patch) this._client.tokens.patchMetadata(prev.id, patch);
+      });
       this._applyRawPatch((next, infoNext) => {
         const tokens = infoNext.sentenceTokenLayer?.tokens;
         if (!Array.isArray(tokens)) return;
         const p = tokens.find((t) => t.id === prev.id);
-        if (p) p.end = sentence.end;
+        if (p) {
+          p.end = sentence.end;
+          if (patch) p.metadata = mergeMetadata(p.metadata || {}, patch);
+        }
         infoNext.sentenceTokenLayer.tokens = tokens.filter((t) => t.id !== sentenceId);
         // Server reparents the merged-away sentence's spans (translation, notes,
         // …) onto prev (token.clj merge-tokens); mirror so they don't vanish
@@ -58,6 +71,17 @@ export const sentenceMutations = {
       const originalEnd = containing.end;
       const result = await this._client.tokens.split(containing.id, charPos);
       const newRightId = result?.id || result;
+
+      // Both halves of a split carry the same mark: see domain/tokenReshape.js.
+      const leftPatch = survivorPatch(containing.metadata, {}, (m) => this.editStamp(m));
+      const rightMetadata = newHalfMetadata(containing.metadata, (m) => this.editStamp(m));
+      if (leftPatch || (newRightId && rightMetadata)) {
+        await this._client.batched(async () => {
+          if (leftPatch) this._client.tokens.patchMetadata(containing.id, leftPatch);
+          if (newRightId && rightMetadata)
+            this._client.tokens.patchMetadata(newRightId, rightMetadata);
+        });
+      }
 
       this._applyRawPatch((next, infoNext) => {
         const tokens = infoNext.sentenceTokenLayer?.tokens;

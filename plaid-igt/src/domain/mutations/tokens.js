@@ -8,6 +8,8 @@ import {
   getIgnoredTokensConfig,
   validateTokenization,
 } from '../../utils/tokenizationUtils.js';
+import { mergeMetadata } from '@larc-iu/plaid-client';
+import { survivingProvenance, survivorPatch } from '../tokenReshape.js';
 import { reparentSpans, reparentVocabLinks } from './reparent.js';
 import { planSpanDedup, planVocabLinkDedup, applyVocabLinkDedup } from '../igtReconcile.js';
 
@@ -52,6 +54,13 @@ export const tokenMutations = {
         ),
       );
 
+      // What the survivor carries: see domain/tokenReshape.js. The server keeps
+      // its metadata and discards the rest, so merging a hand-made word with a
+      // machine-made one would absorb the machine origin and leave a
+      // transcription of one word standing for several.
+      const inherited = survivingProvenance(toMerge.map((t) => t.metadata));
+      const patch = survivorPatch(firstToken.metadata, inherited, (m) => this.editStamp(m));
+
       await this._client.batched(async () => {
         if (coincident.length > 0) this._client.tokens.bulkDelete(coincident);
         // Sequential merges into firstToken in begin-order. The server processes
@@ -59,6 +68,7 @@ export const tokenMutations = {
         for (let i = 1; i < toMerge.length; i++) {
           this._client.tokens.merge(firstToken.id, toMerge[i].id);
         }
+        if (patch) this._client.tokens.patchMetadata(firstToken.id, patch);
       });
 
       const removedWordIds = new Set(toMerge.slice(1).map((t) => t.id));
@@ -67,7 +77,10 @@ export const tokenMutations = {
       this._applyRawPatch((next, infoNext, vocabs) => {
         if (infoNext.primaryTokenLayer?.tokens) {
           const first = infoNext.primaryTokenLayer.tokens.find((t) => t.id === firstToken.id);
-          if (first) first.end = lastToken.end;
+          if (first) {
+            first.end = lastToken.end;
+            if (patch) first.metadata = mergeMetadata(first.metadata || {}, patch);
+          }
           infoNext.primaryTokenLayer.tokens = infoNext.primaryTokenLayer.tokens.filter(
             (t) => !removedWordIds.has(t.id),
           );

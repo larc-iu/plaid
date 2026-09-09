@@ -542,6 +542,68 @@ describe('word-token structural ops', () => {
     expect(toks[1].end).toBe(7);
   });
 
+  // The server gives the new half no metadata and leaves the old half's alone,
+  // which would render one word as two different kinds of thing and leave a
+  // transcription of the whole word standing on a piece of it.
+  it('splitToken gives both halves the same mark and drops the stale orthography', async () => {
+    const raw = buildRawDoc({
+      words: [
+        {
+          id: 'w-1',
+          begin: 0,
+          end: 7,
+          metadata: { prov: 'inferred', provSource: 'service:tok', 'orthog:IPA': 'ðə kat' },
+        },
+      ],
+      morphemes: [],
+      body: 'the cat',
+    });
+    const doc = makeDoc({ raw });
+    await doc.splitToken('w-1', 2);
+    const patches = doc._client.calls.filter((c) => c.kind === 'tokens.patchMetadata');
+    expect(patches).toHaveLength(2);
+    // The surviving half: confirmed by the edit, and its orthography removed.
+    expect(patches[0].args[1]).toEqual({ provConfirmed: true, 'orthog:IPA': null });
+    // The new half: the origin and the confirmation, and nothing else.
+    expect(patches[1].args[1]).toEqual({
+      prov: 'inferred',
+      provSource: 'service:tok',
+      provConfirmed: true,
+    });
+  });
+
+  it('splitToken writes no metadata at all for a word a person made', async () => {
+    const raw = buildRawDoc({
+      words: [{ id: 'w-1', begin: 0, end: 7 }],
+      morphemes: [],
+      body: 'the cat',
+    });
+    const doc = makeDoc({ raw });
+    await doc.splitToken('w-1', 2);
+    expect(doc._client.calls.filter((c) => c.kind === 'tokens.patchMetadata')).toHaveLength(0);
+  });
+
+  it('mergeTokens carries the machine origin onto a hand-made survivor', async () => {
+    const raw = buildRawDoc({
+      words: [
+        { id: 'w-1', begin: 0, end: 3 },
+        { id: 'w-2', begin: 4, end: 7, metadata: { prov: 'inferred', provSource: 'service:tok' } },
+      ],
+      morphemes: [],
+      body: 'the cat',
+    });
+    const doc = makeDoc({ raw });
+    await doc.mergeTokens(['w-1', 'w-2']);
+    const patches = doc._client.calls.filter((c) => c.kind === 'tokens.patchMetadata');
+    expect(patches).toHaveLength(1);
+    expect(patches[0].args[0]).toBe('w-1');
+    expect(patches[0].args[1]).toEqual({
+      prov: 'inferred',
+      provSource: 'service:tok',
+      provConfirmed: true,
+    });
+  });
+
   it('splitToken deletes a coincident morpheme in the same batch', async () => {
     const raw = buildRawDoc({
       words: [{ id: 'w-1', begin: 0, end: 7 }],

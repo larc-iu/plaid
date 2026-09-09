@@ -1,4 +1,5 @@
-import { isReviewed, writerPolicy } from '@larc-iu/plaid-client';
+import { isReviewed, mergeMetadata, writerPolicy } from '@larc-iu/plaid-client';
+import { newHalfMetadata, survivorPatch } from './tokenReshape.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 import { readSpeakers, IGT_NAMESPACE } from './igtConfig.js';
 import {
@@ -699,10 +700,27 @@ export class IgtDocument {
       // `tokens.split` is the last queued op; its body is `{ id: <new right id> }`.
       const newRightTokenId = results[results.length - 1]?.body?.id;
 
+      // What the two halves carry: see domain/tokenReshape.js. The server
+      // leaves the left half's metadata alone and gives the right half none,
+      // which would render one word as two different kinds of thing and leave
+      // a transcription of the whole word on a half of it.
+      const leftPatch = survivorPatch(token.metadata, {}, (m) => this.editStamp(m));
+      const rightMetadata = newHalfMetadata(token.metadata, (m) => this.editStamp(m));
+      if (leftPatch || (newRightTokenId && rightMetadata)) {
+        await this._client.batched(async () => {
+          if (leftPatch) this._client.tokens.patchMetadata(tokenId, leftPatch);
+          if (newRightTokenId && rightMetadata)
+            this._client.tokens.patchMetadata(newRightTokenId, rightMetadata);
+        });
+      }
+
       this._applyRawPatch((next, infoNext) => {
         const t = (infoNext.primaryTokenLayer?.tokens || []).find((x) => x.id === tokenId);
         const originalEnd = token.end;
-        if (t) t.end = leftEnd;
+        if (t) {
+          t.end = leftEnd;
+          if (leftPatch) t.metadata = mergeMetadata(t.metadata || {}, leftPatch);
+        }
         if (newRightTokenId && infoNext.primaryTokenLayer) {
           if (!Array.isArray(infoNext.primaryTokenLayer.tokens))
             infoNext.primaryTokenLayer.tokens = [];
@@ -710,7 +728,7 @@ export class IgtDocument {
             id: newRightTokenId,
             begin: leftEnd,
             end: originalEnd,
-            metadata: {},
+            metadata: rightMetadata ? { ...rightMetadata } : {},
           });
         }
         if (coincident.length > 0 && infoNext.morphemeTokenLayer?.tokens) {
