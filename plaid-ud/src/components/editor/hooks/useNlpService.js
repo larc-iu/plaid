@@ -7,13 +7,16 @@ import {
   coerceParamValues,
 } from '@larc-iu/plaid-client';
 import { useAuth } from '../../../contexts/AuthContext.jsx';
-import { notifyError } from '../../../utils/feedback.jsx';
+import { notifyError, notifyWarning } from '../../../utils/feedback.jsx';
 import {
   encodeServiceSelection,
   decodeSelection,
   readSpotDefault,
   resolveInitialSelection,
 } from '../../../utils/serviceDefaults.js';
+
+// See the request call below: this is silence allowed, not run length.
+const PARSE_SILENCE_MS = 5 * 60 * 1000;
 
 const SERVICE_KEY = 'plaid_ud_parse_service';
 const PARAMS_PREFIX = 'plaid_ud_parse_params_';
@@ -169,7 +172,10 @@ export const useNlpService = (projectId, documentId, project) => {
         selectedService.serviceId,
         // User args spread first so the fixed `documentId` always wins.
         { ...values, documentId },
-        300000, // parses can be slow (model load + neural pipeline)
+        // How long the parser may say NOTHING, not a cap on the run: the
+        // client restarts this clock on every progress event. A model load
+        // plus a neural pipeline is one long quiet stretch, so it is generous.
+        PARSE_SILENCE_MS,
       );
 
       setParseSummary(summary || null);
@@ -177,7 +183,20 @@ export const useNlpService = (projectId, documentId, project) => {
       setIsParsing(false);
     } catch (error) {
       console.error('Failed to request parse:', error);
-      notifyError(error.message || 'Failed to parse document', 'Parse Error');
+      // `pending` means we stopped waiting but the request did not stop: the
+      // parser is still working and will still write to this document. Calling
+      // that a failure is false, and the raw "timed out after 300000ms of
+      // silence" is not something to put in front of a linguist. There is no
+      // rejoin here, so the honest advice is to reload and look.
+      if (error?.pending) {
+        notifyWarning(
+          'Lost contact with the parser. It is still running. Reload to see what it writes.',
+          'Still parsing',
+          { autoClose: false },
+        );
+      } else {
+        notifyError(error.message || 'Failed to parse document', 'Parse Error');
+      }
       setParseStatus('error');
       setIsParsing(false);
     }
