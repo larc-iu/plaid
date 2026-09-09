@@ -119,14 +119,14 @@ describe('IgtEditor suggestion provenance', () => {
   });
 });
 
-// The teal wash on a morpheme chip means "linked to a lexicon entry". It used
-// to mean "linked AND a stem or root", so a linked affix looked exactly like an
-// unlinked one, and a reporter read that as the affix being unconfirmed.
-describe('linked morpheme chips', () => {
+// Link state lives on the CHIP beneath a morpheme, never on the morpheme's own
+// fill. The fill used to say "linked" too, which duplicated the chip in a much
+// louder channel and washed whole rows; a link is a value and wears the value
+// channels, exactly as a gloss does.
+describe('a morpheme carries no fill of its own', () => {
   const A = { id: 'i-a', form: 'a', metadata: { morphType: 'prefix' } };
   const ROA = { id: 'i-roa', form: 'roa', metadata: { morphType: 'stem' } };
 
-  // "aroa": one word, a prefix and a stem, each optionally linked.
   async function mountMorphs({ linkAffix, linkStem }) {
     const raw = buildRawDoc({
       body: 'aroa',
@@ -162,31 +162,34 @@ describe('linked morpheme chips', () => {
     host = document.createElement('div');
     document.body.appendChild(host);
     editor = new IgtEditor(host, doc);
-    await editor.updateComplete?.catch?.(() => {});
     await new Promise((r) => setTimeout(r, 0));
     return host;
   }
 
-  // BY POSITION, not by text: the chips read "a" and "roa", and "roa" contains
-  // "a", so a substring match made this pass whatever the code did.
-  const tinted = (root) =>
-    [...root.querySelectorAll('.igt-morph-form')].map((el) =>
-      el.classList.contains('igt-morph-form--linked'),
-    );
-
-  it('tints an affix that is linked, not only a stem', async () => {
-    const root = await mountMorphs({ linkAffix: true, linkStem: true });
-    expect(tinted(root)).toEqual([true, true]); // prefix, then stem
+  it('never tints a morpheme, linked or not', async () => {
+    for (const opts of [
+      { linkAffix: true, linkStem: true },
+      { linkAffix: true, linkStem: false },
+      { linkAffix: false, linkStem: false },
+    ]) {
+      const root = await mountMorphs(opts);
+      const classes = [...root.querySelectorAll('.igt-morph-form')].flatMap((el) => [
+        ...el.classList,
+      ]);
+      expect(classes.filter((c) => c.startsWith('igt-morph-form--'))).toEqual([]);
+      root.remove();
+    }
   });
 
-  it('leaves an unlinked morpheme untinted, whatever its type', async () => {
-    const root = await mountMorphs({ linkAffix: false, linkStem: false });
-    expect(tinted(root)).toEqual([false, false]);
-  });
-
-  it('tints the linked affix even when the stem beside it is not linked', async () => {
-    const root = await mountMorphs({ linkAffix: true, linkStem: false });
-    expect(tinted(root)).toEqual([true, false]);
+  it('shows a chip for each linked morpheme and none for an unlinked one', async () => {
+    const both = await mountMorphs({ linkAffix: true, linkStem: true });
+    expect(both.querySelectorAll('.igt-vocab__hint')).toHaveLength(2);
+    both.remove();
+    const one = await mountMorphs({ linkAffix: true, linkStem: false });
+    expect(one.querySelectorAll('.igt-vocab__hint')).toHaveLength(1);
+    one.remove();
+    const none = await mountMorphs({ linkAffix: false, linkStem: false });
+    expect(none.querySelectorAll('.igt-vocab__hint')).toHaveLength(0);
   });
 });
 

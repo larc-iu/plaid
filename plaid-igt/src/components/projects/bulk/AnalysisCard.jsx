@@ -94,7 +94,6 @@ export const AnalysisCard = ({ word, analysis, rows, itemFormById, labels = true
                 {morphemes.map((m, i) => {
                   const joiner =
                     i > 0 ? morphemeJoiner(morphemes[i - 1]?.morphType, m.morphType) : null;
-                  const linked = !!m.vocabItemId;
                   return [
                     joiner ? (
                       <span key={`j${i}`} className="igt-morph-joiner" aria-hidden="true">
@@ -102,7 +101,7 @@ export const AnalysisCard = ({ word, analysis, rows, itemFormById, labels = true
                       </span>
                     ) : null,
                     <div key={`m${i}`} className="igt-morph-col">
-                      <div className={cn('igt-morph-form', linked && 'igt-morph-form--linked')}>
+                      <div className="igt-morph-form">
                         <span className="igt-vocab">
                           <Field
                             value={m.form}

@@ -290,12 +290,6 @@
   color: #9ca3af;
   font-style: italic;
 }
-/* The legend's swatch for a linked morpheme: the same teal wash the chip
-   itself wears. */
-.igt-legend__chip--linked {
-  background: #e9f4f2;
-  color: #0f766e;
-}
 .igt-legend__guess--entry {
   background: #e9f4f2;
   border-radius: 2px;
@@ -728,8 +722,11 @@
   opacity: 1;
 }
 /* Out of the linked lexicon entry rather than out of project precedent: the
-   same faint teal as a linked morpheme chip (.igt-morph-form--linked),
-   which already carries "lexically identified" in this grid. A background, not
+   a faint teal wash. This is now the ONLY semantic fill in the grid: the
+   morpheme chips used to wear the same one to say "linked", which duplicated
+   the link chip beneath them and washed whole rows, so it was removed. Here
+   the fill is not redundant, since a guess from the entry and a guess from
+   project precedent are otherwise identical grey italic. A background, not
    a value color, so scope hue still never touches a value. Hover and focus
    both outrank it on specificity and take the cell back to their own fill.
    Whether the link behind it is a person's or an unconfirmed auto-link is the
@@ -813,13 +810,6 @@
   background: #f5f5f7;
   border-radius: 3px;
 }
-/* Linked to a lexicon entry: a teal tint, the morpheme scope's own hue, which
-   reads as "lexically identified". Any linked morpheme, affix or stem alike.
-   It used to require a stem or root too, so a linked affix looked exactly like
-   an unlinked one and the fill read as a status difference. */
-.igt-morph-form--linked {
-  background: #e9f4f2;
-}
 /* Display-only affix joint between adjacent morphemes ("-", or "=" for
    clitics, from metadata.morphType) — not part of the editable form, and not
    owned by either morpheme: it's a zero-width flex item BETWEEN the two
@@ -899,13 +889,18 @@
    blue chip read as a second gloss row). Small, muted, no background; the
    dotted underline is the "this is a link" cue, brightening on hover/focus.
    Same slot and geometry as the unlinked "+ link" affordance. */
+/* The morpheme's link, and the ONLY resting sign of one: the chip used to sit
+   under a teal wash that said the same thing, and the wash is gone because it
+   duplicated this in a louder channel. So this has to be readable on its own,
+   hence 11px and the same grey the "+ link" affordance uses rather than the
+   paler one it had. */
 .igt-vocab__hint {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 400;
-  color: #8a93a3;
+  color: #6b7280;
   background: transparent;
   text-decoration: underline dotted;
-  text-decoration-color: #c9cfd8;
+  text-decoration-color: #b6bfcc;
   text-underline-offset: 2px;
   /* Cap to the column, not a fixed ch count — the form/gloss bands above set
      the column width and the 10px hint is almost always narrower, so this

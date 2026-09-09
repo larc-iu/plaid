@@ -3506,9 +3506,8 @@ export class IgtEditor {
           ? html` <div class="igt-legend__row">
               <strong>Lexicon</strong>
               <span
-                ><span class="igt-legend__chip igt-legend__chip--linked">linked</span> to an entry ·
-                the form under a morpheme is the entry it points at · click it to manage the
-                link</span
+                >the form under a morpheme is the entry it is linked to, and nothing under it means
+                no link · click it to manage the link</span
               >
             </div>`
           : nothing}
@@ -4186,24 +4185,12 @@ export class IgtEditor {
     const filled = value !== '';
     // Chips linked to a stem/root lexicon entry keep the lavender accent —
     // a coverage cue for lexical identification; everything else stays quiet.
-    // Linked to a lexicon entry, whatever kind of morph it is. This used to
-    // require a stem or root as well, which made an affix that WAS linked look
-    // like one that was not, and a reporter read the difference as a status
-    // difference rather than a morph-type one. It was never a decision: the
-    // tint predates the meaning, and got handed to stems when every chip
-    // stopped being tinted.
-    const linked = !!morph.vocabItem;
     // Machine-made segmentation (copied analyses) marks the morpheme TOKEN's
     // metadata; the form cell carries the unverified/verified styling.
     const prov = provDisplay(morph.metadata);
     return html`
       <div class="igt-morph-col">
-        <div
-          class="igt-morph-form ${linked ? 'igt-morph-form--linked' : ''}${this._rowCls(
-            'morphform',
-          )}"
-          data-row="morphform"
-        >
+        <div class="igt-morph-form ${this._rowCls('morphform')}" data-row="morphform">
           ${this._vocabFace(
             html`<input
               class="igt-field igt-morph-field ${filled

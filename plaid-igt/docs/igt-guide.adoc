@@ -279,9 +279,8 @@ Four states are distinguished in the grid:
 * A **machine-made** value, such as a gloss a service proposed or a vocabulary link Auto-analyze made, shows in **violet italic**. It is in the document, and it waits for a person to confirm or discard it.
 * A **contributed** value shows in **amber italic**. It was entered by someone whose work the project reviews (see <<_access>>), and it waits for a verifier to confirm or discard it.
 * A **guess** is a faint gray placeholder in an empty cell. It is not in the document at all until you take it with Enter.
-A morpheme on a **pale teal** background is linked to a lexicon entry, and the small form beneath it is the entry it points at.
-Any linked morpheme is tinted, affix or stem alike.
-A guess on the same **pale teal** background comes from the lexicon entry the word or morpheme is linked to.
+The small form beneath a word or morpheme is the lexicon entry it is linked to, and nothing beneath it means it has no link.
+A guess on a **pale teal** background comes from that entry rather than from elsewhere in the project.
 A guess on plain background comes from what the same form was given elsewhere in the project.
 
 Hover over an annotation to see where it came from.
