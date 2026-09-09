@@ -1,6 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
-import { FileText, Search, Replace, ShieldCheck, Bot, Download, Settings } from 'lucide-react';
+import {
+  Activity,
+  FileText,
+  Search,
+  Replace,
+  ShieldCheck,
+  Bot,
+  Download,
+  Settings,
+} from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useAuth } from '../../contexts/AuthContext';
 import { DocumentList } from './DocumentList';
@@ -8,6 +17,7 @@ import { ProjectSearch } from './search/ProjectSearch.jsx';
 import { ProjectBulkEdit } from './bulk/ProjectBulkEdit.jsx';
 import { ProjectValidation } from './validate/ProjectValidation.jsx';
 import { ProjectAssistant } from './assistant/ProjectAssistant.jsx';
+import { ProjectActivity } from './ProjectActivity.jsx';
 import { ProjectExport } from './ProjectExport.jsx';
 import { ProjectSettingsPanel } from './ProjectSettingsPanel';
 import { readInitialized, readImportState, importRouteFor } from '@/domain/igtConfig';
@@ -25,7 +35,7 @@ const SETTINGS_SECTIONS = ['general', 'text-and-vocab', 'annotation', 'access', 
 // maintainers-only; Assistant is open to everyone, since the assistant acts
 // under the user's own permissions). Settings is the last tab in the bar but
 // is path-backed (see above) because its sections are pages of their own.
-const CONTENT_TABS = ['documents', 'search', 'bulk', 'validate', 'assistant'];
+const CONTENT_TABS = ['documents', 'search', 'bulk', 'validate', 'activity', 'assistant'];
 
 // Title-bar labels for the settings sections (match ProjectSettingsPanel).
 const SECTION_TITLES = {
@@ -127,7 +137,7 @@ export const ProjectDetail = () => {
     ? 'export'
     : onSettings && canManage
       ? 'settings'
-      : (contentTab === 'bulk' || contentTab === 'validate') && !canManage
+      : ['bulk', 'validate', 'activity'].includes(contentTab) && !canManage
         ? 'documents'
         : contentTab;
 
@@ -280,6 +290,14 @@ export const ProjectDetail = () => {
               <ShieldCheck className="h-4 w-4" /> Validation
             </TabsTrigger>
           )}
+          {canManage && (
+            <TabsTrigger
+              value="activity"
+              to={tabTo(`/projects/${projectId}`, 'activity', 'documents')}
+            >
+              <Activity className="h-4 w-4" /> Activity
+            </TabsTrigger>
+          )}
           <TabsTrigger
             value="assistant"
             to={tabTo(`/projects/${projectId}`, 'assistant', 'documents')}
@@ -322,6 +340,13 @@ export const ProjectDetail = () => {
               client={client}
               onProjectUpdate={refreshProject}
             />
+          </TabsContent>
+        )}
+        {canManage && (
+          <TabsContent value="activity">
+            <div className="tw">
+              <ProjectActivity client={client} project={project} projectId={projectId} />
+            </div>
           </TabsContent>
         )}
         <TabsContent value="assistant">

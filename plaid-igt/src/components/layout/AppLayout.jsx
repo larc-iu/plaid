@@ -39,6 +39,7 @@ export function AppLayout({ children }) {
               'Vocabularies',
               location.pathname.startsWith('/vocabularies'),
             )}
+            {user?.isAdmin && navItem('/admin', 'Admin', location.pathname.startsWith('/admin'))}
             {/* The user guide is published with the docs site, not bundled here. */}
             <a
               href="https://larc-iu.github.io/plaid/igt-guide.html"

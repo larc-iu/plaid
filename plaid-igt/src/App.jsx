@@ -15,6 +15,7 @@ import { NewProjectChooser } from './components/projects/NewProjectChooser';
 import { StrictModeProvider } from './components/documents/contexts/StrictModeContext.jsx';
 import { DocumentDetail } from './components/documents/DocumentDetail';
 import { UserProfile } from './components/auth/UserProfile';
+import { AdminView } from './components/admin/AdminView';
 import { VocabularyList } from './components/vocabularies/VocabularyList';
 import { VocabularyDetail } from './components/vocabularies/VocabularyDetail';
 import { AppLayout } from './components/layout/AppLayout';
@@ -291,6 +292,17 @@ function App() {
                 <ProtectedRoute>
                   <AppLayout>
                     <VocabularyDetail />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <AdminView />
                   </AppLayout>
                 </ProtectedRoute>
               }
