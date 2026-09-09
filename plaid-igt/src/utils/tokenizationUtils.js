@@ -60,7 +60,22 @@ export function isWhitespace(char) {
 }
 
 /**
- * Determine if a character should cause tokenization based on ignored tokens config
+ * Should this character break a token, under the project's ignored-tokens
+ * config?
+ *
+ * Under `unicodePunctuation`, punctuation breaks EXCEPT the characters the
+ * project has declared letter-like (`config.whitelist`, single characters):
+ * those join the word around them, so `ab'cd` is one word where a project
+ * spells words with an apostrophe. `domain/igtConfig.js` reads the same list
+ * for the same reason, and the two must not drift — a character that joins a
+ * word must not then be shaved off its lexicon form.
+ *
+ * The one thing that does differ is WHICH characters are punctuation to begin
+ * with: this file's `isUnicodePunctuation` is the curated break class, while
+ * igtConfig's is `[\p{P}\p{S}]` minus pictographs. A character in neither list
+ * never breaks and is never trimmed, which is the behavior a letter wants
+ * anyway.
+ *
  * @param {string} char - Single character to check
  * @param {Object} config - Ignored tokens configuration
  * @returns {boolean} True if character should cause token boundary
@@ -69,8 +84,8 @@ export function shouldTokenizeCharacter(char, config) {
   if (!config) return isUnicodePunctuation(char);
 
   if (config.type === 'unicodePunctuation') {
-    // If it's punctuation, check if it's in the whitelist (exceptions)
     if (isUnicodePunctuation(char)) {
+      // Letter-like: joins the word instead of breaking it.
       return !config.whitelist?.includes(char);
     }
     return false;

@@ -121,9 +121,13 @@ test('B11-01/02/03 + B5-03/01: unicode-punctuation rule with a `?` whitelist', a
   const raw = await client.documents.get(documentId, true);
   const ml = raw.textLayers[0].tokenLayers.find((l) => roleOf(l) === ROLES.MORPHEME);
   expect(ml.tokens.length, 'one healed morpheme per annotatable word (5 of 7)').toBe(5);
-  // Create-row trimming follows the same rule: edges trimmed, whitelist is whole-token only.
+  // Create-row trimming follows the same rule, and the exceptions are LETTER-LIKE
+  // CHARACTERS: an edge is trimmed only where the project has not claimed the
+  // character. This project claims `?`, so `Qué?` keeps it — the price of
+  // declaring a character letter-like is that it is one everywhere, including
+  // where it happens to sit at the end of a sentence.
   expect(await createFormFor(page, ids.w[W.derechos])).toMatch(/Create "derechos"/);
-  expect(await createFormFor(page, ids.w[W.que])).toMatch(/Create "Qué"/);
+  expect(await createFormFor(page, ids.w[W.que])).toMatch(/Create "Qué\?"/);
   expect(await createFormFor(page, ids.w[W.q])).toMatch(/Create "\?"/);
 });
 

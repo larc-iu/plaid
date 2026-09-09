@@ -106,6 +106,32 @@ describe('ignored-tokens rule', () => {
     expect(isTokenIgnored('um', { type: 'blacklist', blacklist: ['um'] })).toBe(true);
     expect(isTokenIgnored('umm', { type: 'blacklist', blacklist: ['um'] })).toBe(false);
   });
+  it('treats a letter-like character as a letter, however many of them', () => {
+    // The list is characters, not whole tokens: a word spelled with a glottal
+    // mark is a word, and so is the mark on its own.
+    expect(isTokenIgnored("'", cfg)).toBe(true); // not listed here
+    const glottal = { type: 'unicodePunctuation', whitelist: ["'"] };
+    expect(isTokenIgnored("'", glottal)).toBe(false);
+    expect(isTokenIgnored("''", glottal)).toBe(false);
+    expect(isTokenIgnored("k'", glottal)).toBe(false);
+    // One letter-like character does not rescue the punctuation beside it.
+    expect(isTokenIgnored("'.", glottal)).toBe(false);
+    expect(isTokenIgnored('.', glottal)).toBe(true);
+  });
+  it('needs no entry for a mark Unicode already calls a letter', () => {
+    // U+02BC MODIFIER LETTER APOSTROPHE is Lm, so it is not punctuation to
+    // either rule and never had to be listed. A project that types the ASCII
+    // apostrophe does have to list it.
+    expect(isTokenIgnored('kʼ', cfg)).toBe(false);
+    expect(isTokenIgnored('ʼ', cfg)).toBe(false);
+  });
+  it('ignores an entry that is more than one character', () => {
+    // A real project had ["-ab"]. Nothing compares a whole string to a
+    // character, so it does nothing rather than quietly meaning something.
+    const multi = { type: 'unicodePunctuation', whitelist: ['-ab'] };
+    expect(isTokenIgnored('-', multi)).toBe(true);
+    expect(isTokenIgnored('--', multi)).toBe(true);
+  });
 });
 
 describe('trimIgnoredEdges', () => {
@@ -125,6 +151,20 @@ describe('trimIgnoredEdges', () => {
   it('is a no-op without a unicodePunctuation config', () => {
     expect(trimIgnoredEdges('derechos.', null)).toBe('derechos.');
     expect(trimIgnoredEdges('derechos.', { type: 'blacklist', blacklist: [] })).toBe('derechos.');
+  });
+  it('never trims a letter-like character, at either edge', () => {
+    // The character joins the word in the tokenizer, so shaving it off here
+    // would hand the lexicon a form the text does not contain. This is the
+    // half that used to disagree: `'abc` tokenized whole, then entered the
+    // lexicon as `abc`.
+    const glottal = { type: 'unicodePunctuation', whitelist: ["'"] };
+    expect(trimIgnoredEdges("'abc", glottal)).toBe("'abc");
+    expect(trimIgnoredEdges("abc'", glottal)).toBe("abc'");
+    expect(trimIgnoredEdges("'abc'", glottal)).toBe("'abc'");
+    // Still trimmed where the project has not claimed it.
+    expect(trimIgnoredEdges("'abc", cfg)).toBe('abc');
+    // And ordinary punctuation outside it still goes.
+    expect(trimIgnoredEdges("“'abc'”", glottal)).toBe("'abc'");
   });
 });
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle } from 'lucide-react';
 import { Plus, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
@@ -36,6 +36,18 @@ const DEFAULT_FIELDS = [
   { name: 'Literal Translation', scope: 'Sentence', isCustom: false },
   { name: 'Note', scope: 'Sentence', isCustom: false },
 ];
+
+// The letter-like exceptions are single CHARACTERS (see domain/igtConfig.js),
+// so these read one comma-separated field two ways: what will be saved, and
+// what was typed but cannot be a character.
+const exceptionChars = (text) => splitEntries(text).filter((e) => [...e].length === 1);
+const rejectedEntries = (text) => splitEntries(text).filter((e) => [...e].length !== 1);
+const splitEntries = (text) =>
+  String(text ?? '')
+    .split(',')
+    .map((e) => e.trim())
+    .filter((e) => e.length > 0);
+const sameChars = (a, b) => a.length === b.length && a.every((c, i) => c === b[i]);
 
 // Default ignored tokens configuration
 const DEFAULT_IGNORED_TOKENS = {
@@ -77,6 +89,18 @@ export const FieldsManager = ({
   const [isInitialized, setIsInitialized] = useState(false);
   // { name, count } — count: undefined while counting, null if unknown.
   const [pendingDelete, setPendingDelete] = useState(null);
+  // The letter-like characters as TYPED, so a two-character entry can be
+  // corrected where it stands rather than vanishing on the next keystroke.
+  // `rejectedExceptions` are the entries that were not saved. The ref lets the
+  // reload effect below see the current text without re-running on every
+  // keystroke.
+  const [exceptionsText, setExceptionsText] = useState('');
+  const [rejectedExceptions, setRejectedExceptions] = useState([]);
+  const exceptionsTextRef = useRef('');
+  const writeExceptionsText = (text) => {
+    exceptionsTextRef.current = text;
+    setExceptionsText(text);
+  };
 
   // Define scope options (morpheme layer is always present)
   const scopeOptions = [
@@ -104,14 +128,26 @@ export const FieldsManager = ({
           };
         }
 
+        const loadedIgnored = fieldsData.ignoredTokens || DEFAULT_IGNORED_TOKENS;
         setFields(fieldsData.fields);
-        setIgnoredTokens(fieldsData.ignoredTokens || DEFAULT_IGNORED_TOKENS);
+        setIgnoredTokens(loadedIgnored);
+        // This effect re-runs on every save, because the parent hands down a
+        // fresh project. Adopting the stored list unconditionally would wipe
+        // the field mid-edit: typing "-ab" saves nothing, the reload arrives,
+        // and the two characters already typed disappear before a third can
+        // be. Adopt it only when it says something the field does not already
+        // say — a change made elsewhere, or the first load.
+        const incoming = loadedIgnored.unicodePunctuationExceptions || [];
+        if (!sameChars(incoming, exceptionChars(exceptionsTextRef.current))) {
+          writeExceptionsText(incoming.join(', '));
+        }
         setIsInitialized(true);
       } catch (error) {
         console.error('Failed to load fields configuration:', error);
         // Still set as initialized even on error, so we show the default fields
         setFields(DEFAULT_FIELDS);
         setIgnoredTokens(DEFAULT_IGNORED_TOKENS);
+        writeExceptionsText('');
         setIsInitialized(true);
 
         if (onError) {
@@ -276,12 +312,18 @@ export const FieldsManager = ({
     await saveChanges(fields, updatedIgnoredTokens);
   };
 
-  const handleExceptionsChange = async (exceptions) => {
-    const updatedIgnoredTokens = {
-      ...ignoredTokens,
-      unicodePunctuationExceptions: exceptions,
-    };
-    await saveChanges(fields, updatedIgnoredTokens);
+  // The list is single CHARACTERS, each of which behaves as a letter (see
+  // domain/igtConfig.js). A longer entry cannot: nothing ever compares a whole
+  // string against a character, so it would sit in the config doing nothing —
+  // which is what "-ab" was doing in a real project. The field keeps what was
+  // typed so an entry can be corrected in place, saves the characters, and
+  // names what it would not take.
+  const handleExceptionsChange = async (text) => {
+    writeExceptionsText(text);
+    const chars = exceptionChars(text);
+    setRejectedExceptions(rejectedEntries(text));
+    if (sameChars(chars, ignoredTokens.unicodePunctuationExceptions || [])) return;
+    await saveChanges(fields, { ...ignoredTokens, unicodePunctuationExceptions: chars });
   };
 
   const handleExplicitTokensChange = async (tokens) => {
@@ -492,11 +534,11 @@ export const FieldsManager = ({
           Ignored Tokens
         </p>
         <div className="mb-6 text-sm text-muted-foreground">
-          Configure which tokens should be ignored when applying{' '}
+          Which tokens carry no{' '}
           <Badge variant="secondary" className={scopeBadgeClasses['Word']}>
             Word
           </Badge>{' '}
-          scope annotations.
+          scope annotations, and where the built-in tokenizer splits words.
         </div>
 
         <div className="flex flex-col gap-6">
@@ -519,19 +561,25 @@ export const FieldsManager = ({
 
           {ignoredTokens.mode === 'unicode-punctuation' && (
             <div className="ml-8 rounded-md border p-4">
-              <p className="mb-1 text-sm font-medium">Punctuation Exceptions</p>
+              <p className="mb-1 text-sm font-medium">Characters that behave as letters</p>
               <div className="mb-4 text-xs text-muted-foreground">
-                These punctuation marks will NOT be ignored and can receive{' '}
+                Typed between letters, these join the word instead of splitting it. They stay on the
+                word's form in the lexicon, and a token spelled with them takes{' '}
                 <Badge variant="secondary" className={scopeBadgeClasses['Word']}>
                   Word
                 </Badge>{' '}
-                scope annotations:
+                scope annotations.
               </div>
               <Input
-                placeholder={'Add punctuation to include (e.g. \', ", -)'}
-                value={(ignoredTokens.unicodePunctuationExceptions || []).join(', ')}
-                onChange={(event) => handleExceptionsChange(parseTags(event.currentTarget.value))}
+                placeholder={"Separate with commas (e.g. ʼ, ', -)"}
+                value={exceptionsText}
+                onChange={(event) => handleExceptionsChange(event.currentTarget.value)}
               />
+              {rejectedExceptions.length > 0 && (
+                <p className="mt-2 text-xs text-destructive">
+                  One character each. Not saved: {rejectedExceptions.join(', ')}
+                </p>
+              )}
             </div>
           )}
 

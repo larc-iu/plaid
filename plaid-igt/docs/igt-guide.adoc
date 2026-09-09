@@ -243,6 +243,12 @@ A tokenization service can replace it with smarter segmentation of both sentence
 A project can mark certain tokens as **ignored**, usually punctuation.
 Ignored tokens carry no word-level annotation and host no morphemes, so they stay out of your way in the grid (see <<_annotation>>).
 
+The same rule decides where the built-in splitter breaks a word: it breaks at punctuation, except the characters your project lists as **behaving as letters**.
+Many orthographies write a glottal stop or an ejective with an apostrophe or a similar mark, and unless it is listed, a word spelled with one is split in two.
+List it under **Settings → Annotation** and `k'a` stays one word, keeps that character in the lexicon, and can be annotated like any other.
+
+TIP: A word that came out split can be repaired in place by dragging across its pieces, which merges them into one word. Listing the character first stops it happening again.
+
 == Analyze
 
 The **Analyze** tab is where interlinearization happens.
@@ -560,6 +566,8 @@ Three things live here:
 The annotation **fields** at each scope, sentence, word, and morpheme.
 You can add, rename, reorder, and remove them, and removing a field first tells you how many values it holds.
 Alongside the fields sits the **ignored tokens** rule, usually punctuation, so those tokens carry no word-level annotation and host no morphemes.
+Its exceptions are the **characters that behave as letters**: one character each, and each one joins the word around it instead of splitting it, stays on the word's form in the lexicon, and can be annotated.
+An orthography that writes a glottal stop or an ejective with an apostrophe needs that character listed here.
 
 This section also holds the project's **tagsets** (see <<_tagsets>>) and the **document metadata** fields shown on every document's Metadata tab.
 

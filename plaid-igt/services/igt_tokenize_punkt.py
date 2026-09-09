@@ -27,6 +27,11 @@ splits each sentence into **words** with the Treebank word tokenizer.
 - Sentence segmentation is language-specific. Pick the closest **Language**.
 - Word tokenization uses the same Treebank rules across languages; best for
   whitespace-delimited, Latin-script text.
+- **It does not read this project's settings.** Treebank splits by its own
+  rules, so the characters the project calls letter-like are not honoured
+  here, and English contractions are split (`don't` becomes `do` + `n't`).
+  The built-in tokenizer on the Tokenize tab is the one that follows the
+  project.
 - **Overwrite human-edited annotations**: re-segmenting sentences deletes
   sentence-level annotations. Machine-made, unverified ones are always fair
   game; if any are human-made or human-verified, the run refuses unless this
@@ -61,6 +66,11 @@ class NLTKPunktTokenizer(TokenizerModel):
         return self._cache[language]
 
     def tokenize_text(self, text: str, language: str = 'english') -> Tuple[List[TokenSpan], List[TokenSpan]]:
+        # Treebank's rules only. The project's ignored-tokens config — which
+        # characters behave as letters, which punctuation is skipped — is NOT
+        # consulted, so this and the built-in tokenizer can disagree on the
+        # same text. SUMMARY says so where the method is chosen; anything that
+        # changes that here should change it there too.
         return helpers.spans_from_nltk_punkt(text, self._get_tokenizer(language))
 
     def get_model_info(self) -> Dict[str, Any]:
