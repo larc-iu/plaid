@@ -7,7 +7,7 @@ import { usePagedList } from '@/hooks/usePagedList';
 import { useStickySort, listPrefKey } from '@/hooks/useStickyState';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 import { notifySuccess, notifyError } from '@/utils/feedback';
-import { PLAID_NAMESPACE } from '@larc-iu/plaid-client';
+import { findBaselineTextLayer, readInitialized } from '../../domain/igtConfig';
 
 // Every project on the server, including the ones this admin has no role in.
 // An admin's project list already returns all of them; what is missing
@@ -16,21 +16,13 @@ import { PLAID_NAMESPACE } from '@larc-iu/plaid-client';
 
 const COLUMNS = ['name', 'app', 'members', 'documents', 'updated'];
 
-// Which app's shape a project carries, from the cross-app role vocabulary. A
-// project with no roles has been created but never set up.
-const appOf = (project) => {
-  const roles = new Set();
-  (project.textLayers || []).forEach((tl) => {
-    const role = tl.config?.[PLAID_NAMESPACE]?.role;
-    if (role) roles.add(role);
-    (tl.tokenLayers || []).forEach((tok) => {
-      const r = tok.config?.[PLAID_NAMESPACE]?.role;
-      if (r) roles.add(r);
-    });
-  });
-  if (roles.has('morpheme') || roles.has('time-alignment')) return 'IGT';
-  if (roles.size > 0) return 'Shared';
-  return 'Unconfigured';
+// Whether this app set the project up, which is the only thing it can say for
+// certain. A project carrying the shared layer roles that IGT did NOT set up
+// belongs to another app on the same substrate (plaid-ud), and guessing which
+// from the roles alone gets it wrong: UD projects carry morpheme layers too.
+const shapeOf = (project) => {
+  if (readInitialized(project.config)) return 'IGT';
+  return findBaselineTextLayer(project.textLayers || []) ? 'Other app' : 'Not set up';
 };
 
 const memberCount = (p) =>
@@ -81,7 +73,7 @@ export const AdminProjects = ({ client, currentUser }) => {
       .filter((p) => (q ? p.name.toLowerCase().includes(q) : true))
       .map((p) => ({
         ...p,
-        app: appOf(p),
+        app: shapeOf(p),
         members: memberCount(p),
         documents: p.documentCount ?? null,
         updated: p.lastModified ?? null,
@@ -153,9 +145,7 @@ export const AdminProjects = ({ client, currentUser }) => {
                       </Link>
                     </td>
                     <td className="px-3 py-2">
-                      <Badge variant={p.app === 'Unconfigured' ? 'outline' : 'secondary'}>
-                        {p.app}
-                      </Badge>
+                      <Badge variant={p.app === 'IGT' ? 'secondary' : 'outline'}>{p.app}</Badge>
                     </td>
                     <td className="px-3 py-2 tabular-nums">{p.members}</td>
                     <td className="px-3 py-2 tabular-nums">
