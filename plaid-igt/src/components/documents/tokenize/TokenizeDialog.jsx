@@ -11,7 +11,7 @@ import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 export function TokenizeDialog({ ops, blockedHint = null }) {
   const [open, setOpen] = useState(false);
   const { writeLock } = useDocumentCtx();
-  const { spot, tokenizeRun, handleTokenize, isTokenizing, isProcessing } = ops;
+  const { spot, tokenizeRun, handleTokenize, isTokenizing, isProcessing, cancelRequest } = ops;
   const running = tokenizeRun.running || isTokenizing || isProcessing;
   // Another spot's run holds the document; say so rather than letting the
   // button do nothing (acquireWriteLock would just refuse).
@@ -45,6 +45,8 @@ export function TokenizeDialog({ ops, blockedHint = null }) {
         notice={blockedHint}
         runLabel="Tokenize"
         onRun={run}
+        // Only a service run can be stopped; the built-in is local and quick.
+        onCancel={spot.service ? cancelRequest : undefined}
         runDisabled={
           !!blockedHint || running || busyElsewhere || Object.keys(spot.params.errors).length > 0
         }

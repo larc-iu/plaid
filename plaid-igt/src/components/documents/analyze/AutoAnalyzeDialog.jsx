@@ -10,6 +10,7 @@ import { ServiceMethodRow } from '../services/ServiceMethodRow.jsx';
 import { runBuiltinAnalysis } from '@/domain/autoPass';
 import { BUILTIN_LINK_PRECEDENT } from '@/domain/serviceDefaults';
 import { resolveAutoAnalysis } from '@/domain/igtConfig';
+import { writeRunRecord, clearRunRecord } from '@/domain/runRecord';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 
 const STEPS_STORAGE_KEY = 'plaid_igt_auto_analyze_steps';
@@ -57,6 +58,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
     discoverServices,
     isProcessing,
     requestService,
+    cancelRequest,
     progressPercent,
     progressMessage,
   } = useServiceRequest();
@@ -152,11 +154,24 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
       return;
     }
     // Held for the whole run: four steps of writes with a reload after each.
-    const release = acquireWriteLock('Auto-analyze');
-    if (!release) return;
+    const lock = acquireWriteLock('Auto-analyze');
+    if (!lock) return;
     setBusy(true);
     progress.start(plan.map((p) => p.label));
-    const at = (key) => progress.step(plan.findIndex((p) => p.key === key));
+    const at = (key) => {
+      const i = plan.findIndex((p) => p.key === key);
+      progress.step(i);
+      lock.setStatus(`Step ${i + 1} of ${plan.length}. ${plan[i].label}.`);
+    };
+    // Only the step in flight can be rejoined: the ordering happens here, in
+    // the browser, so `multiStep` tells the resume to say the rest did not run.
+    const recordStep = (requestId) =>
+      writeRunRecord(doc.id, {
+        requestId,
+        projectId: project.id,
+        label: 'Auto-analyze',
+        multiStep: true,
+      });
     const info = doc.layerInfo;
     const parts = [];
     const plural = (n, s) => `${n} ${s}${n === 1 ? '' : 's'}`;
@@ -171,7 +186,10 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
     // shows nothing while it runs, so it gets its own line rather than a pause.
     const reload = async () => {
       progress.report({ percent: null, message: 'Loading results…' });
+      lock.setStatus('Loading results…');
       await doc._reload();
+      // The step is done and collected; nothing left for a reload to rejoin.
+      clearRunRecord(doc.id);
     };
     try {
       // 1. translate (service)
@@ -188,6 +206,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
             successMessage: `${service.serviceName} finished.`,
             errorTitle: 'Translation failed',
             errorMessage: `${service.serviceName} reported an error.`,
+            onRequestId: recordStep,
             timeout: ANALYZE_TIMEOUT_MS,
           },
         );
@@ -228,6 +247,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
             successMessage: `${service.serviceName} finished.`,
             errorTitle: 'Analysis failed',
             errorMessage: `${service.serviceName} reported an error.`,
+            onRequestId: recordStep,
             timeout: ANALYZE_TIMEOUT_MS,
           },
         );
@@ -267,6 +287,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
               successMessage: `${service.serviceName} finished.`,
               errorTitle: 'Linking failed',
               errorMessage: `${service.serviceName} reported an error.`,
+              onRequestId: recordStep,
             },
           );
           await reload();
@@ -283,9 +304,10 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
       console.error('Auto-analyze failed:', err);
       if (!isProcessing) notifyError('Auto-analyze failed. Try again.', 'Auto-analyze');
     } finally {
+      clearRunRecord(doc.id);
       progress.finish();
       setBusy(false);
-      release();
+      lock.release();
     }
   };
 
@@ -317,6 +339,8 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
       progress={progress}
       runLabel="Run"
       onRun={run}
+      // Stops the step in flight; the steps after it do not run.
+      onCancel={isProcessing ? cancelRequest : undefined}
       runDisabled={nothingToRun || blockingErrors.length > 0 || (!!writeLock && !running)}
     >
       <Step

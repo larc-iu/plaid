@@ -12,6 +12,7 @@ import {
 } from '../../../domain/annotationLoss.js';
 import { BUILTIN_TOKENIZE_RULE_BASED } from '../../../domain/serviceDefaults.js';
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
+import { writeRunRecord, clearRunRecord } from '../../../domain/runRecord.js';
 
 // The rule-based tokenizer is always available and declares no options.
 const TOKENIZE_BUILTINS = [
@@ -38,6 +39,7 @@ export const useTokenOperations = () => {
     discoverServices,
     isProcessing,
     requestService,
+    cancelRequest,
     hasServices,
     progressPercent,
     progressMessage,
@@ -63,6 +65,11 @@ export const useTokenOperations = () => {
     message: progressMessage,
     active: tokenizeRun.running && !!spot.service,
   });
+  // The banner is the only surface once the user leaves this tab.
+  const lockRef = useRef(null);
+  useEffect(() => {
+    if (progressMessage) lockRef.current?.setStatus(progressMessage);
+  }, [progressMessage]);
 
   // --- Structural ops (delegate to the domain model) ---
   // splitToken / mergeTokens are defined below — both gated by an annotation-loss
@@ -192,8 +199,9 @@ export const useTokenOperations = () => {
   const runServiceTokenize = async (serviceId, { overwrite = false } = {}) => {
     // Held for the whole run: it rewrites the token layers and ends in a
     // reload, so nothing may be edited underneath it.
-    const release = acquireWriteLock('Tokenize');
-    if (!release) return;
+    const lock = acquireWriteLock('Tokenize');
+    if (!lock) return;
+    lockRef.current = lock;
     setIsTokenizing(true);
     tokenizeRun.start(['Tokenize']);
     try {
@@ -219,20 +227,27 @@ export const useTokenOperations = () => {
           successMessage: 'Document has been tokenized successfully',
           errorTitle: 'Tokenization Failed',
           errorMessage: 'An error occurred during tokenization',
+          // Written down before the request is submitted, so a reload in that
+          // window can still find the run.
+          onRequestId: (requestId) =>
+            writeRunRecord(doc.id, { requestId, projectId: project.id, label: 'Tokenize' }),
         },
       );
       // Re-reading the document after a service run is seconds of work on a
       // large one, so it is named rather than left as dead air.
       tokenizeRun.report({ percent: null, message: 'Loading the tokens…' });
+      lock.setStatus('Loading the tokens…');
       await doc._reload();
     } catch (error) {
       // useServiceRequest already shows an error toast (errorTitle/errorMessage);
       // just log here so a failed run doesn't double-toast.
       console.error('Tokenization failed:', error);
     } finally {
+      clearRunRecord(doc.id);
       setIsTokenizing(false);
       tokenizeRun.finish();
-      release();
+      lock.release();
+      lockRef.current = null;
     }
   };
 
@@ -260,8 +275,9 @@ export const useTokenOperations = () => {
 
     // Built-in rule-based tokenizer fills untokenized ranges only — non-destructive.
     // It still writes and reloads, so it takes the lock like the service path.
-    const release = acquireWriteLock('Tokenize');
-    if (!release) return;
+    // No record: a built-in run is this page's own work, and dies with it.
+    const lock = acquireWriteLock('Tokenize');
+    if (!lock) return;
     setIsTokenizing(true);
     tokenizeRun.start(['Tokenize']);
     try {
@@ -277,7 +293,7 @@ export const useTokenOperations = () => {
     } finally {
       setIsTokenizing(false);
       tokenizeRun.finish();
-      release();
+      lock.release();
     }
   };
   const confirmPendingTokenize = async () => {
@@ -326,6 +342,7 @@ export const useTokenOperations = () => {
     // method + run clock
     spot,
     tokenizeRun,
+    cancelRequest,
     isTokenizing,
     // service discovery
     isDiscovering,

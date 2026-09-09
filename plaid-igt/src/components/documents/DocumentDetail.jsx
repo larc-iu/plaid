@@ -23,6 +23,8 @@ import { CommentStore } from '@/domain/CommentStore';
 import { useCommentStore } from '@/domain/useCommentStore';
 import { useDocumentPermissions } from './hooks/useDocumentPermissions.js';
 import { useWriteLock } from './hooks/useWriteLock.js';
+import { useResumedRun } from './hooks/useResumedRun.js';
+import { RunBanner } from './RunBanner.jsx';
 import { useDocumentHistory } from './hooks/useDocumentHistory.js';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useTabParam, tabTo } from '@/hooks/useTabParam';
@@ -149,6 +151,8 @@ const DocumentEditor = () => {
 
   const permissions = useDocumentPermissions(doc?.project);
   const writeLock = useWriteLock();
+  // A run the previous page started and did not live to see the end of.
+  useResumedRun(doc, writeLock.acquire);
   // A code bound under Settings applies in the grid and every other field here.
   useComposeProject(doc?.project);
   const history = useDocumentHistory(documentId, client);
@@ -594,14 +598,10 @@ const DocumentEditor = () => {
               </div>
             )}
 
-            {/* A run the linguist may well have closed the dialog on. Without
-                this the document just stops accepting edits. */}
-            {writeLock.held && (
-              <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                <p className="font-medium">Editing paused</p>
-                <p className="text-xs">{writeLock.held.label} is running.</p>
-              </div>
-            )}
+            {/* A run the linguist may well have closed the dialog on, or that
+                a previous page started. Without this the document just stops
+                accepting edits. */}
+            {writeLock.held && <RunBanner {...writeLock.held} />}
           </div>
 
           <DocumentProvider

@@ -23,13 +23,29 @@ describe('useWriteLock', () => {
 
   it('names the run that holds it, and frees it on release', async () => {
     const { lock, step } = await mount();
-    let release;
+    let handle;
     await step(() => {
-      release = lock().acquire('Auto-analyze');
+      handle = lock().acquire('Auto-analyze');
     });
-    expect(lock().held).toEqual({ label: 'Auto-analyze' });
+    expect(lock().held).toMatchObject({ label: 'Auto-analyze', status: '' });
+    expect(lock().held.startedAt).toBeTypeOf('number');
 
-    await step(() => release());
+    await step(() => handle.release());
+    expect(lock().held).toBe(null);
+  });
+
+  it('carries the status the holder pushes, and ignores one pushed after release', async () => {
+    const { lock, step } = await mount();
+    let handle;
+    await step(() => {
+      handle = lock().acquire('Transcribe');
+    });
+    await step(() => handle.setStatus('Transcribing, 40%'));
+    expect(lock().held.status).toBe('Transcribing, 40%');
+
+    await step(() => handle.release());
+    // A progress event that lands after the run ended must not resurrect it.
+    await step(() => handle.setStatus('too late'));
     expect(lock().held).toBe(null);
   });
 
@@ -40,15 +56,15 @@ describe('useWriteLock', () => {
       first = lock().acquire('Tokenize');
     });
     expect(lock().acquire('Transcribe')).toBe(null);
-    expect(lock().held).toEqual({ label: 'Tokenize' });
+    expect(lock().held).toMatchObject({ label: 'Tokenize' });
 
-    await step(() => first());
+    await step(() => first.release());
     let second;
     await step(() => {
       second = lock().acquire('Transcribe');
     });
-    expect(second).toBeTypeOf('function');
-    expect(lock().held).toEqual({ label: 'Transcribe' });
+    expect(second.release).toBeTypeOf('function');
+    expect(lock().held).toMatchObject({ label: 'Transcribe' });
   });
 
   it('refuses a second holder acquired in the same tick', async () => {
@@ -59,9 +75,9 @@ describe('useWriteLock', () => {
       a = lock().acquire('Tokenize');
       b = lock().acquire('Auto-analyze');
     });
-    expect(a).toBeTypeOf('function');
+    expect(a.release).toBeTypeOf('function');
     expect(b).toBe(null);
-    expect(lock().held).toEqual({ label: 'Tokenize' });
+    expect(lock().held).toMatchObject({ label: 'Tokenize' });
   });
 
   it('ignores a release called twice, so it cannot free a later run', async () => {
@@ -70,16 +86,16 @@ describe('useWriteLock', () => {
     await step(() => {
       first = lock().acquire('Tokenize');
     });
-    await step(() => first());
+    await step(() => first.release());
 
     let second;
     await step(() => {
       second = lock().acquire('Auto-analyze');
     });
     // The stale release from the finished run must not unlock the new one.
-    await step(() => first());
-    expect(lock().held).toEqual({ label: 'Auto-analyze' });
-    await step(() => second());
+    await step(() => first.release());
+    expect(lock().held).toMatchObject({ label: 'Auto-analyze' });
+    await step(() => second.release());
     expect(lock().held).toBe(null);
   });
 });

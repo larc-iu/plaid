@@ -475,6 +475,8 @@ While it goes, the dialog lists the steps it will take and ticks them off, and s
 Steps that report no percentage of their own, such as a model pass, still show their name and the clock.
 You can close the dialog and watch the document instead: the run carries on, and the **Auto-analyze** button on the toolbar shows the elapsed time until it finishes.
 Editing is paused for as long as the run writes, and the document says so at the top; it comes back when the run ends.
+Reloading the page does not stop it, but it does end the run early: the step that was in flight is picked up and finishes, and the steps after it do not run.
+**Cancel** stops the step in flight the same way.
 When the run finishes, a message says what was done: how many translations were proposed, how many words received a copied analysis, and so on.
 Then review the result with the gestures under <<_analyze>>: **Ctrl/Cmd+Enter** confirms a whole word, **Ctrl/Cmd+Backspace** discards its proposal, and **Ctrl/Cmd+Shift+↑/↓** jumps between the words that still have unconfirmed material.
 
@@ -644,9 +646,15 @@ Every one of them works the same way.
 A button names the run, in the header of the panel its results land in; it opens a dialog with the **Method** to use, that method's options, and the button that starts the run.
 A run keeps going if you close the dialog, and the button that opened it shows how long it has been going and how far it has got.
 
-A run that writes to the document takes it read-only until it finishes, and the document says so at the top: a run ends by re-reading the document, which would discard anything typed underneath it.
+A run that writes to the document takes it read-only until it finishes, and the document says so at the top, with the clock still running: a run ends by re-reading the document, which would discard anything typed underneath it.
 Only one such run goes at a time.
 Speech detection is the exception, since it writes nothing: it can run while you work, which is what lets you type into its proposals as they appear.
+
+A run outlives the page that started it.
+Close the tab or reload it and the service carries on; reopen the document and the run is picked up where it got to, editing still paused, and its result lands as usual.
+A run that has been finished and collected, or that is more than fifteen minutes past, is gone, and the document simply opens with whatever it wrote.
+**Cancel**, in the dialog, asks a running service to stop.
+Whatever it has already written stays.
 
 There are six integration points:
 

@@ -11,6 +11,7 @@ import { transcodeToMp3 } from '../../../domain/media/transcodeToMp3.js';
 import { useConfirm } from '@/components/shared/ConfirmProvider';
 import { useVadProposals } from './useVadProposals.js';
 import { DETECT_SPEECH_BUILTIN } from './detectSpeechBuiltin.js';
+import { writeRunRecord, clearRunRecord } from '../../../domain/runRecord.js';
 
 // Matches the old Mantine useHotkeys default: ignore key events from form fields.
 const TAGS_TO_IGNORE = ['INPUT', 'TEXTAREA', 'SELECT'];
@@ -118,6 +119,7 @@ export const useMediaOperations = () => {
     discoverServices,
     isProcessing,
     requestService,
+    cancelRequest,
     hasServices,
     progressPercent,
     progressMessage,
@@ -147,6 +149,11 @@ export const useMediaOperations = () => {
     message: progressMessage,
     active: transcribeRun.running,
   });
+  // The banner is the only surface once the user leaves this tab.
+  const lockRef = useRef(null);
+  useEffect(() => {
+    if (progressMessage) lockRef.current?.setStatus(progressMessage);
+  }, [progressMessage]);
   // A detect-speech SERVICE reports over the same channel; the built-in model
   // reports its own fraction, mirrored just below where `vad` is built.
   useMirroredProgress(detectRun, {
@@ -511,8 +518,9 @@ export const useMediaOperations = () => {
 
     // Held for the whole run: this wipes the baseline and rebuilds the
     // document from what the service returns.
-    const release = acquireWriteLock('Transcribe');
-    if (!release) return;
+    const lock = acquireWriteLock('Transcribe');
+    if (!lock) return;
+    lockRef.current = lock;
     try {
       // The whole re-transcribe (our wipe of the previous transcript + every
       // write the ASR service makes) is ONE logical operation in the audit
@@ -547,6 +555,13 @@ export const useMediaOperations = () => {
             successMessage: 'Audio has been transcribed successfully',
             errorTitle: 'Transcription Failed',
             errorMessage: 'An error occurred during transcription',
+            // Written down before submitting, so a reload can still find it.
+            onRequestId: (requestId) =>
+              writeRunRecord(documentId, {
+                requestId,
+                projectId: project.id,
+                label: 'Transcribe',
+              }),
           },
         );
       });
@@ -555,12 +570,15 @@ export const useMediaOperations = () => {
       // with nothing else on screen to show for it, so it is named like any
       // other step rather than left as dead air.
       transcribeRun.report({ percent: null, message: 'Loading the transcript…' });
+      lock.setStatus('Loading the transcript…');
       await doc._reload();
     } catch (error) {
       console.error('Transcription failed:', error);
     } finally {
+      clearRunRecord(documentId);
       transcribeRun.finish();
-      release();
+      lock.release();
+      lockRef.current = null;
     }
   }, [doc, project, requestService, transcribeSpot, transcribeRun, confirm, acquireWriteLock]);
 
@@ -868,6 +886,7 @@ export const useMediaOperations = () => {
     vad,
 
     // ASR + speech detection
+    cancelRequest,
     handleTranscribe,
     handleDetectSpeech,
     handleClearAlignments,
