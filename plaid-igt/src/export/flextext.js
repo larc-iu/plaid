@@ -291,17 +291,31 @@ function phraseXml(
   return lines;
 }
 
-// Group sentences into paragraphs: a new paragraph starts wherever the
-// baseline text between two consecutive sentences contains a newline.
-// Fallback (no body available): one paragraph for everything.
+// Group sentences into paragraphs: a new paragraph starts after a sentence
+// whose text ends with a newline. Fallback (no body): one paragraph.
+//
+// This used to look for a newline BETWEEN two sentences, where there is never
+// anything to find: the sentence layer is partitioning, so sentences tile the
+// body with no gaps, and the newline that closes a paragraph belongs to the
+// last sentence in it (the FLEx importer says so in as many words, and the
+// ELAN importer joins utterances with a newline for this to read). Every
+// export was therefore one paragraph holding every phrase.
+//
+// It matters beyond tidiness. FLEx derives a paragraph's segments from its
+// text, so a paragraph holding phrases that no punctuation separates cannot
+// keep them apart; on import FLEx writes its own segment-break character, U+00A7,
+// into the baseline to preserve the division. One paragraph per unpunctuated
+// phrase is how FieldWorks itself stores this material, and it needs no marker.
 function paragraphRuns(igtDoc) {
   const sentences = igtDoc.sortedSentences || [];
   if (!sentences.length) return [];
   const chars = [...(igtDoc.body ?? '')];
   const runs = [[sentences[0]]];
   for (let i = 1; i < sentences.length; i++) {
-    const between = chars.slice(sentences[i - 1].end, sentences[i].begin).join('');
-    if (between.includes('\n')) runs.push([]);
+    // From the previous sentence's start, so a newline inside it (a paragraph
+    // FLEx never segmented) is not mistaken for the one that closes it.
+    const upToHere = chars.slice(sentences[i - 1].begin, sentences[i].begin).join('');
+    if (/\n[^\S\n]*$/.test(upToHere)) runs.push([]);
     runs[runs.length - 1].push(sentences[i]);
   }
   return runs;

@@ -191,6 +191,59 @@ describe('buildFlextextDocument', () => {
     expect(segnums).toEqual(['1', '2']);
   });
 
+  // What both importers actually produce: the sentence layer is PARTITIONING,
+  // so sentences tile the body and the newline closing a paragraph sits at the
+  // END of the last sentence in it, never in a gap between two. Read wrongly,
+  // every export was one paragraph holding every phrase, and FLEx wrote its own
+  // segment-break character into the baseline to keep them apart.
+  it('splits paragraphs when the newline closes a sentence, not a gap', () => {
+    const t = (begin, end, content) => ({
+      content,
+      begin,
+      end,
+      annotations: {},
+      morphemes: [],
+      orthographies: {},
+    });
+    const tiled = (body, cuts) => ({
+      document: { name: 'P' },
+      body,
+      sortedSentences: cuts.map(([b, e, wb, we, w]) =>
+        makeSentence({ begin: b, end: e, tokens: [t(wb, we, w)] }),
+      ),
+    });
+    const dom = parse(
+      buildFlextextDocument(
+        [
+          tiled('one\ntwo', [
+            [0, 4, 0, 3, 'one'],
+            [4, 7, 4, 7, 'two'],
+          ]),
+        ],
+        FLEXTEXT_OPTIONS,
+      ),
+    );
+    expect(dom.querySelectorAll('paragraph').length).toBe(2);
+    expect(
+      [...dom.querySelectorAll('paragraph')].map((p) => p.querySelectorAll('phrase').length),
+    ).toEqual([1, 1]);
+
+    // A newline INSIDE a sentence is a paragraph FLEx never segmented, and
+    // does not open a new one.
+    const inside = parse(
+      buildFlextextDocument(
+        [
+          tiled('one\ntwo three', [
+            [0, 8, 0, 3, 'one'],
+            [8, 13, 8, 13, 'three'],
+          ]),
+        ],
+        FLEXTEXT_OPTIONS,
+      ),
+    );
+    expect(inside.querySelectorAll('paragraph').length).toBe(1);
+  });
+
   it('wraps multiple documents as sibling interlinear-texts', () => {
     const dom = parse(
       buildFlextextDocument([makeFixtureDoc(), makeFixtureDoc()], FLEXTEXT_OPTIONS),
