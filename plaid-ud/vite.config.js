@@ -28,6 +28,9 @@ export default defineConfig(({ command }) => ({
   resolve: {
     preserveSymlinks: true,
     alias: {
+      // `@/…` for first-party modules, matching plaid-igt and plaid-dict so a
+      // component can move between the apps and the shared package unedited.
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
       // `plaid-client` is a local source package (../plaid-client-js) that we
       // edit constantly. Reaching it through the node_modules symlink makes
       // Vite treat it as a DEPENDENCY: the import URL gets the dep optimizer's

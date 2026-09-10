@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Anchor, Box, Group, Button, Loader, Text, Center, Alert, Stack } from '@mantine/core';
 import { IconHistory, IconInfoCircle } from '@tabler/icons-react';
@@ -288,7 +288,10 @@ export const AnnotationEditor = () => {
   const historicalLayerInfo = useLayerInfo(historicalDocument);
   const layerInfo = viewingHistoricalState ? historicalLayerInfo : doc?.layerInfo;
   const historicalSentences = useSentenceData(historicalDocument);
-  const processedSentences = viewingHistoricalState ? historicalSentences : doc?.sentences || [];
+  const processedSentences = useMemo(
+    () => (viewingHistoricalState ? historicalSentences : doc?.sentences || []),
+    [viewingHistoricalState, historicalSentences, doc?.sentences],
+  );
 
   // Scroll to (and flash) the sentence named by ?sent= once, after the grid
   // has rendered. Rows are virtualized but their placeholders hold the slot, so

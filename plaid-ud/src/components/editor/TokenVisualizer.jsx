@@ -61,14 +61,14 @@ export const TokenVisualizer = ({
   const panelRef = useRef(null); // the open panel's content, for focus checks
 
   const isTextDirty = Boolean(originalText) && text !== originalText;
-  const contains = containsToken;
   const sortPos = (a, b) =>
     a.begin - b.begin || a.end - b.end || (a.precedence ?? 0) - (b.precedence ?? 0);
 
   // Words per token (server positions), and which tokens begin a sentence.
   const sortedMorphemes = useMemo(() => [...morphemeTokens].sort(sortPos), [morphemeTokens]);
   const morphemesByWord = useMemo(
-    () => new Map(wordTokens.map((w) => [w.id, sortedMorphemes.filter((m) => contains(w, m))])),
+    () =>
+      new Map(wordTokens.map((w) => [w.id, sortedMorphemes.filter((m) => containsToken(w, m))])),
     [wordTokens, sortedMorphemes],
   );
   const wordById = useMemo(() => new Map(wordTokens.map((w) => [w.id, w])), [wordTokens]);

@@ -69,7 +69,6 @@ const EditableCell = React.memo(
       if (!isEditingRef.current) {
         setLocalValue(value || '');
       }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [value]);
 
     const handleChange = (e) => {
@@ -77,7 +76,7 @@ const EditableCell = React.memo(
       setPristine(false);
     };
 
-    const handleBlur = (e) => {
+    const handleBlur = () => {
       setIsEditing(false);
       const newValue = localValue.trim();
 
@@ -896,7 +895,6 @@ export const SentenceRow = React.memo(
     onRelationUpdate,
     onRelationDelete,
     onConfirmTokens,
-    sentenceIndex = 0,
     totalTokensBefore = 0,
     vocab,
     colors,

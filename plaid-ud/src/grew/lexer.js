@@ -77,7 +77,6 @@ export function lex(src) {
     throw new GrewParseError(msg, line, col, srcLine());
   };
 
-  const peek = (k = 0) => src[i + k];
   const advance = (n = 1) => {
     for (let k = 0; k < n; k++) {
       if (src[i] === '\n') {

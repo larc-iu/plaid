@@ -36,7 +36,7 @@ export const LoginForm = () => {
       } else {
         setError(result.error || 'Login failed. Please check your credentials.');
       }
-    } catch (err) {
+    } catch {
       setError('An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);

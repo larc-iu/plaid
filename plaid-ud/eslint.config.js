@@ -28,8 +28,23 @@ export default [
     rules: {
       ...js.configs.recommended.rules,
       ...reactHooks.configs.recommended.rules,
+      // The hooks plugin's React Compiler rules are deferred, matching IGT's
+      // config: they are a project of their own on a codebase this size, and
+      // adopting them app by app would leave the two lint gates disagreeing.
+      // The rules that ran before (rules-of-hooks, exhaustive-deps) still gate.
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/refs': 'off',
+      'react-hooks/immutability': 'off',
+      'react-hooks/preserve-manual-memoization': 'off',
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
       'no-unused-vars': ['warn', { varsIgnorePattern: '^[A-Z_]', argsIgnorePattern: '^_' }],
     },
+  },
+  {
+    // A context module exports its provider and its hook together, and a
+    // vendored shadcn primitive exports its variants beside the component.
+    // Everything else keeps plain functions out of .jsx.
+    files: ['src/contexts/*.jsx', 'src/**/contexts/*.jsx', 'src/components/ui/*.jsx'],
+    rules: { 'react-refresh/only-export-components': 'off' },
   },
 ];

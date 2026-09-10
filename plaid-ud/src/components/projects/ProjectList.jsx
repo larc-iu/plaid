@@ -67,8 +67,11 @@ export const ProjectList = () => {
     }
   };
 
+  // Once on mount. `fetchProjects` is redefined every render, so naming it
+  // here would refetch on every render.
   useEffect(() => {
     fetchProjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Word counts come from a single grouped aggregate query: count tokens grouped

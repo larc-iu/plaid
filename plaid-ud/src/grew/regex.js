@@ -5,7 +5,7 @@
 // stored one span per feature with value "Key=Value", which is why feature
 // constraints become anchored patterns over that "Key=Value" string.
 
-const META = /[.\\+*?(){}\[\]^$|]/g;
+const META = /[.\\+*?(){}[\]^$|]/g;
 
 // Escape a literal so it matches itself inside a Java regex.
 export const escapeRegex = (s) => String(s).replace(META, '\\$&');

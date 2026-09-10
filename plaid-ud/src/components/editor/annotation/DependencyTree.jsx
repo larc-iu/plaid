@@ -77,7 +77,7 @@ export const DependencyTree = forwardRef(
     // Use passed token positions for X coordinates, but keep original Y logic
     const adjustedTokenPositions =
       tokenPositions.length > 0
-        ? tokenPositions.map((pos, index) => ({
+        ? tokenPositions.map((pos) => ({
             ...pos,
             y: TOKEN_Y, // Use original TOKEN_Y for consistent arc drawing
           }))
@@ -280,7 +280,7 @@ export const DependencyTree = forwardRef(
     };
 
     // Handle mouse up on SVG (cancel drag)
-    const handleSvgMouseUp = (e) => {
+    const handleSvgMouseUp = () => {
       // Reset drag state if not dropped on a valid target
       setDragOrigin(null);
       setDragCurrent(null);
@@ -332,7 +332,7 @@ export const DependencyTree = forwardRef(
     };
 
     // Handle ROOT click
-    const handleRootClick = (x) => {
+    const handleRootClick = () => {
       if (isReadOnly) return;
       if (selectedSource && selectedSource.spanId !== 'ROOT') {
         const sourceId = selectedSource.spanId;
@@ -401,9 +401,12 @@ export const DependencyTree = forwardRef(
       }
     };
 
+    // `handleKeyDown` is redefined every render; the listener is rebound only
+    // when something it actually reads has changed, which is what this list is.
     useEffect(() => {
       document.addEventListener('keydown', handleKeyDown);
       return () => document.removeEventListener('keydown', handleKeyDown);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [focusedRelation, editingRelation, sortedRelations, relations]);
 
     // Selecting (not editing) a label keeps focus on its <text> so arrows/Tab can

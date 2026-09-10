@@ -1,10 +1,84 @@
-/* Global styles. The palette and fonts now live in the Mantine theme
-   (src/theme.js); Mantine ships its own CSS reset via @mantine/core/styles.css
-   (imported in main.jsx), so this file only carries app-level globals. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Global styles, plus the shadcn design tokens.
+
+   Tailwind's preflight is OFF (see tailwind.config.js) for the duration of the
+   Mantine-to-shadcn migration, so `@tailwind base` emits essentially only the
+   variables below — no global reset to fight Mantine's own, which arrives via
+   @mantine/core/styles.css in main.jsx. The palette and fonts for the Mantine
+   half still live in src/theme.js.
+
+   The token values are IGT's, so the two apps render a shared project alike. */
 
 html,
 body,
 #root {
   margin: 0;
   padding: 0;
+}
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+    --radius: 0.5rem;
+  }
+
+  /* The essential subset of Tailwind preflight, SCOPED to `.tw` subtrees.
+     Global preflight is off (it would clobber Mantine); migrated screens opt in
+     by wrapping their root in <div className="tw">. Mantine screens never match
+     these selectors, so they are untouched. The border reset is what makes
+     Tailwind's `border` utilities render at all — they set width only, and rely
+     on a solid default style.
+
+     `:where(.tw)` contributes ZERO specificity, so these behave exactly like
+     preflight (bare element selectors) and lose to Tailwind utility classes
+     like `bg-primary`. Written as `.tw button` (specificity 0,1,1) they would
+     beat `.bg-primary` (0,1,0) and swallow every button background. */
+  :where(.tw) *,
+  :where(.tw) ::before,
+  :where(.tw) ::after {
+    box-sizing: border-box;
+    border-width: 0;
+    border-style: solid;
+    border-color: hsl(var(--border));
+  }
+  :where(.tw) button,
+  :where(.tw) [type='button'],
+  :where(.tw) [type='submit'] {
+    background-color: transparent;
+    background-image: none;
+    cursor: pointer;
+  }
+  :where(.tw) button,
+  :where(.tw) input,
+  :where(.tw) textarea,
+  :where(.tw) select {
+    font: inherit;
+    color: inherit;
+    margin: 0;
+  }
+  :where(.tw) input::placeholder,
+  :where(.tw) textarea::placeholder {
+    color: hsl(var(--muted-foreground));
+  }
 }

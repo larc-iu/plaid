@@ -4,7 +4,7 @@ import { Avatar } from '@mantine/core';
 // ("Ada Lovelace" -> AL); anything else gives one. A display name that is
 // still an email address gets its domain stripped first, or every avatar in a
 // roster from the same institution would read the same.
-export const userInitials = (displayName) => {
+const userInitials = (displayName) => {
   if (!displayName) return '?';
   const local = displayName.split('@')[0];
   const words = local.split(/[\s._-]+/).filter(Boolean);

@@ -80,8 +80,11 @@ export const DocumentList = () => {
     }
   };
 
+  // Once per project. `fetchProjectAndDocuments` is redefined every render,
+  // so naming it here would refetch on every render.
   useEffect(() => {
     fetchProjectAndDocuments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   // Per-document word counts: one aggregate query over the project's word-layer

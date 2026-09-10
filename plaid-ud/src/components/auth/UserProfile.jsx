@@ -98,8 +98,11 @@ export const UserProfile = () => {
     }
   };
 
+  // The token list is fetched once per user. `loadTokens` is redefined every
+  // render, so naming it here would refetch on every render.
   useEffect(() => {
     loadTokens();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
   const handleCreateToken = async (e) => {
@@ -464,7 +467,7 @@ export const UserProfile = () => {
             </Text>
           ) : (
             <Stack gap={0}>
-              {activeTokens.map((t, i) => (
+              {activeTokens.map((t) => (
                 <Group
                   key={t.id}
                   justify="space-between"

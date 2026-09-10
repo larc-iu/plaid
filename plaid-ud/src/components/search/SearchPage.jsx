@@ -64,7 +64,7 @@ export const SearchPage = () => {
         setProject(proj);
         setDocuments(docs || []);
         setLoadError('');
-      } catch (err) {
+      } catch {
         if (!cancelled) setLoadError('Failed to load this project. You may not have access to it.');
       } finally {
         if (!cancelled) setLoading(false);

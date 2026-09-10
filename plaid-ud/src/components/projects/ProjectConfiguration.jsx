@@ -77,8 +77,11 @@ export const ProjectConfiguration = ({ embedded = false }) => {
     }
   };
 
+  // Once per project. `fetchProject` is redefined every render, so naming it
+  // here would refetch on every render.
   useEffect(() => {
     fetchProject();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   const canConfigure = canManageProject(project, user);
@@ -101,6 +104,10 @@ export const ProjectConfiguration = ({ embedded = false }) => {
       selectedTextLayerId: existingTextLayerId,
       newTextLayerName: 'Text',
     });
+    // Seeded from the project. `availableTextLayers` is derived from it, so
+    // naming it would re-seed the form (discarding the user's edits) whenever
+    // that derived array changed identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project]);
 
   const validateForm = () => {

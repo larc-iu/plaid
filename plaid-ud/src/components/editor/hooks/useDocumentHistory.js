@@ -35,7 +35,7 @@ export const useDocumentHistory = (documentId) => {
     } finally {
       setLoadingAudit(false);
     }
-  }, [documentId, getClient]);
+  }, [documentId, getClient, logout]);
 
   // Fetch historical document state
   const fetchHistoricalDocument = useCallback(
@@ -72,7 +72,7 @@ export const useDocumentHistory = (documentId) => {
         setLoadingHistorical(false);
       }
     },
-    [documentId, getClient],
+    [documentId, getClient, logout],
   );
 
   // Clear historical document (return to current state)

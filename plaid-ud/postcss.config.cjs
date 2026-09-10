@@ -1,8 +1,14 @@
-// Mantine's PostCSS preset: enables rem() conversion, light-dark(), nested
-// selectors, and the responsive `@mixin` helpers used in Mantine CSS modules.
-// postcss-simple-vars supplies the breakpoint variables those mixins reference.
+// Two presets run side by side for the duration of the Mantine-to-shadcn
+// migration: Tailwind (and autoprefixer) for the migrated screens, and
+// Mantine's preset for the ones still to come. The Mantine half goes when the
+// last Mantine screen does, at the end of Tier 0.
+//
+// Mantine's preset: rem() conversion, light-dark(), nested selectors, and the
+// responsive `@mixin` helpers used in Mantine CSS modules. postcss-simple-vars
+// supplies the breakpoint variables those mixins reference.
 module.exports = {
   plugins: {
+    tailwindcss: {},
     'postcss-preset-mantine': {},
     'postcss-simple-vars': {
       variables: {
@@ -13,5 +19,6 @@ module.exports = {
         'mantine-breakpoint-xl': '88em',
       },
     },
+    autoprefixer: {},
   },
 };

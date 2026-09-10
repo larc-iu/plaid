@@ -84,7 +84,6 @@ export const VirtualSentenceRow = ({
         onRelationUpdate={onRelationUpdate}
         onRelationDelete={onRelationDelete}
         onConfirmTokens={onConfirmTokens}
-        sentenceIndex={sentenceIndex}
         totalTokensBefore={totalTokensBefore}
         vocab={vocab}
         colors={colors}

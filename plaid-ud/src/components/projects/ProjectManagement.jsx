@@ -138,8 +138,11 @@ export const ProjectManagement = ({ embedded = false }) => {
     }
   };
 
+  // Once per project. `fetchProject` is redefined every render, so naming it
+  // here would refetch on every render.
   useEffect(() => {
     fetchProject();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   // Resolve the ACL member ids to user objects (for display names + admin flag).

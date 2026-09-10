@@ -41,7 +41,7 @@ const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
 // The server never learns the app's public URL, so the app that minted the
 // invite is the one that names it. `window.location` is authoritative here in a
 // way no server config could be: it is literally where this user is.
-export const inviteLinkFor = (code) => {
+const inviteLinkFor = (code) => {
   const { origin, pathname } = window.location;
   return PlaidClient.inviteUrl(`${origin}${pathname}`, code);
 };

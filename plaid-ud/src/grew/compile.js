@@ -17,13 +17,11 @@
 
 import { GrewUnsupportedError } from './errors.js';
 import {
-  escapeRegex,
   normalizeFlags,
   featDefinedRegex,
   featNeqRegex,
   featEqValue,
   negatedLabelRegex,
-  subtypeRegex,
   notExactlyRegex,
   featuresLabelRegex,
 } from './regex.js';
@@ -781,7 +779,7 @@ class Compiler {
 
   // --- value/label constraint builders ---
 
-  valueConstraint(v, ctx) {
+  valueConstraint(v, _ctx) {
     if (!v) return undefined;
     if (v.type === 'lexref') return this.lexiconValues(v);
     if (v.type === 'lit') return v.value;
@@ -858,7 +856,7 @@ class Compiler {
     throw new GrewUnsupportedError('value', 'Expected a literal value.');
   }
 
-  edgeValueConstraint(label, ctx) {
+  edgeValueConstraint(label, _ctx) {
     if (!label || label.type === 'any') return undefined;
     if (label.type === 'list') {
       if (label.negated) return { regex: negatedLabelRegex(label.labels) };

@@ -14,7 +14,7 @@ let client;
 
 test.beforeAll(async () => {
   client = await PlaidClient.login('http://localhost:8085', 'a@b.com', 'password');
-  let projects = [];
+  let projects;
   try {
     projects = await client.projects.list();
   } catch {
