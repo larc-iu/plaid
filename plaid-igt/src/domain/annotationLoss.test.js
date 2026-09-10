@@ -100,10 +100,13 @@ describe('countAnnotationLossForRange', () => {
     const one = countAnnotationLossForWord(layerInfo, vocabularies, word);
     expect(countAnnotationLossForRange(layerInfo, vocabularies, 0, 6)).toEqual(one);
     expect(countAnnotationLossForRange(layerInfo, vocabularies, 3, 6)).toEqual(one);
-    // Both words: w2 carries s5 and link l2 on top.
+    // Both words: w2 brings its own count (s5, the two relations grounded on
+    // it, and link l2).
+    const two = countAnnotationLossForWord(layerInfo, vocabularies, { id: 'w2', begin: 6, end: 9 });
+    expect(two).toEqual({ annotations: 3, links: 1 });
     expect(countAnnotationLossForRange(layerInfo, vocabularies, 0, 9)).toEqual({
-      annotations: one.annotations + 1,
-      links: one.links + 1,
+      annotations: one.annotations + two.annotations,
+      links: one.links + two.links,
     });
     expect(countAnnotationLossForRange(layerInfo, vocabularies, 5, 6)).toEqual({
       annotations: 0,
@@ -120,11 +123,12 @@ describe('countAnnotationLossForRange', () => {
         sentence: [{ spans: [{ id: 'tr', tokens: ['sent1'], value: 'a translation' }] }],
       },
     };
+    const plain = countAnnotationLossForRange(layerInfo, vocabularies, 0, 9);
     const whole = countAnnotationLossForRange(withSentence, vocabularies, 0, 9);
-    const part = countAnnotationLossForRange(withSentence, vocabularies, 0, 6);
-    expect(whole.annotations - part.annotations).toBe(1 + 1); // w2's span, and the translation
-    expect(countAnnotationLossForRange(withSentence, vocabularies, 0, 6).annotations).toBe(
-      countAnnotationLossForRange(layerInfo, vocabularies, 0, 6).annotations,
+    expect(whole.annotations).toBe(plain.annotations + 1); // the translation
+    // A stretch that cuts the sentence leaves the translation out of the count.
+    expect(countAnnotationLossForRange(withSentence, vocabularies, 0, 6)).toEqual(
+      countAnnotationLossForRange(layerInfo, vocabularies, 0, 6),
     );
   });
 });
