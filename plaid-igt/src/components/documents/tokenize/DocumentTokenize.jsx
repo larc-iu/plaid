@@ -145,7 +145,7 @@ export function DocumentTokenize() {
 
   return (
     <TooltipProvider>
-      <div className="tw flex flex-col gap-6 mt-4" style={{ height: 'calc(100vh - 200px)' }}>
+      <div className="tw flex flex-col gap-6 mt-4">
         {/* Text Visualization */}
         <div
           className="rounded-lg border bg-card"
@@ -547,7 +547,12 @@ function TokenComponent({
     try {
       sessionStorage.setItem(
         'igt:focus-sentence',
-        JSON.stringify({ docId: doc.id, sentenceId: sentence.id, begin: piece.begin }),
+        JSON.stringify({
+          docId: doc.id,
+          sentenceId: sentence.id,
+          begin: piece.begin,
+          level: 'word',
+        }),
       );
     } catch {
       /* noop */

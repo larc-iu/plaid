@@ -43,7 +43,6 @@
 .sentence-container {
   flex: 1;
   padding-left: 70px;
-  overflow-y: auto;
   line-height: 1.6;
   font-family: 'monospace';
   font-size: 14px;

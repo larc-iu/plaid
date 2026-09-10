@@ -397,17 +397,25 @@ export class IgtEditor {
       el.scrollIntoView({ block: 'center' });
       el.classList.add('igt-sentence--flash');
       setTimeout(() => el.classList.remove('igt-sentence--flash'), 2400);
-      // Land on the hit word itself (its morpheme form cell, else any of its
-      // cells) so a long sentence doesn't leave the user hunting for the word.
+      // Land on the hit word itself so a long sentence doesn't leave the user
+      // hunting for the word: a search hit goes to its morpheme form cell
+      // (what the text matched), a hand-off from the Tokenize tab, which says
+      // `level: 'word'`, to the word's own row, since a word is what was
+      // pressed over there. Either falls back to any cell of the word.
       if (typeof req.begin === 'number') {
         const sentence = this.doc.sentences[idx];
         const word = (sentence?.tokens || []).find(
           (t) => t.begin <= req.begin && req.begin < t.end,
         );
+        const q = (sel) => this.container.querySelector(sel);
         const cell =
           word &&
-          (this.container.querySelector(`.igt-morph-field[data-word="${word.id}"]`) ||
-            this.container.querySelector(`.igt-field[data-confirm-word="${word.id}"]`));
+          (req.level === 'word'
+            ? q(`.igt-field[data-cell-key^="wa:${word.id}:"]`) ||
+              q(`.igt-field[data-cell-key^="or:${word.id}:"]`) ||
+              q(`.igt-morph-field[data-word="${word.id}"]`)
+            : q(`.igt-morph-field[data-word="${word.id}"]`) ||
+              q(`.igt-field[data-confirm-word="${word.id}"]`));
         if (cell) {
           try {
             cell.focus({ preventScroll: true });
