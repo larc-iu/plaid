@@ -40,6 +40,42 @@ describe('buildFlextextDocument', () => {
     expect(dom.querySelector('item[type="comment"]').textContent).toBe('Genre: narrative');
   });
 
+  // The Info tab fields FLEx reads back into their own places rather than into
+  // the comment they all used to land in.
+  it('emits the metadata FLEx has a field for as that field', () => {
+    const doc = makeFixtureDoc();
+    doc.document.metadata = {
+      'Title (en)': 'Running Dogs',
+      Abbreviation: 'RD01',
+      'Abbreviation (en)': 'RD-en',
+      Source: 'Field notes',
+      Description: 'A story about dogs',
+      Researchers: 'Ana Ruiz',
+      Sources: 'Bo Vega',
+    };
+    const dom = parse(buildFlextextDocument([doc], FLEXTEXT_OPTIONS));
+    const items = [...dom.querySelectorAll('interlinear-text > item')].map((i) => [
+      i.getAttribute('type'),
+      i.getAttribute('lang'),
+      i.textContent,
+    ]);
+    expect(items).toEqual([
+      ['title', 'spa', 'Test & Doc'],
+      ['title', 'en', 'Running Dogs'],
+      // No writing system in the name: the text's own language, as the title.
+      ['title-abbreviation', 'spa', 'RD01'],
+      ['title-abbreviation', 'en', 'RD-en'],
+      ['source', 'en', 'Field notes'],
+      // FLEx calls a text's Description its comment.
+      ['comment', 'en', 'A story about dogs'],
+      // Nothing in a .flextext holds these, so they stay legible as comments.
+      // "Sources" is the notebook record's people, and must not be read as the
+      // text's own Source.
+      ['comment', 'en', 'Researchers: Ana Ruiz'],
+      ['comment', 'en', 'Sources: Bo Vega'],
+    ]);
+  });
+
   it('emits segnum, mapped phrase items, and omits empty values', () => {
     const dom = parse(buildFlextextDocument([makeFixtureDoc()], FLEXTEXT_OPTIONS));
     const phrase = dom.querySelector('phrase');
@@ -242,6 +278,57 @@ describe('buildFlextextDocument', () => {
       ),
     );
     expect(inside.querySelectorAll('paragraph').length).toBe(1);
+  });
+
+  // FLEx numbers lines by paragraph and keeps a paragraph for a blank line.
+  // The first real user's Syntax questionnaire has five, and came back with
+  // every line after the first of them numbered one lower than her own copy.
+  it('keeps a blank line as an empty paragraph, so line numbers survive the round trip', () => {
+    const t = (begin, end, content) => ({
+      content,
+      begin,
+      end,
+      annotations: {},
+      morphemes: [],
+      orthographies: {},
+    });
+    const tiled = (body, cuts) => ({
+      document: { name: 'P' },
+      body,
+      sortedSentences: cuts.map(([b, e, wb, we, w]) =>
+        makeSentence({ begin: b, end: e, tokens: [t(wb, we, w)] }),
+      ),
+    });
+    // "one", a blank line, "two": the paragraph's closing newline and the
+    // blank line's both belong to the first sentence (the layer partitions).
+    const dom = parse(
+      buildFlextextDocument(
+        [
+          tiled('one\n\ntwo', [
+            [0, 5, 0, 3, 'one'],
+            [5, 8, 5, 8, 'two'],
+          ]),
+        ],
+        FLEXTEXT_OPTIONS,
+      ),
+    );
+    const paragraphs = [...dom.querySelectorAll('paragraph')];
+    expect(paragraphs.map((p) => p.querySelectorAll('phrase').length)).toEqual([1, 0, 1]);
+    // The schema wants <phrases> even when there is nothing in it.
+    expect(paragraphs[1].querySelector('phrases')).not.toBeNull();
+    // Numbering is per phrase and unaffected.
+    expect([...dom.querySelectorAll('item[type="segnum"]')].map((s) => s.textContent)).toEqual([
+      '1',
+      '2',
+    ]);
+
+    // Blank lines before the text count too.
+    const leading = parse(
+      buildFlextextDocument([tiled('\none', [[1, 4, 1, 4, 'one']])], FLEXTEXT_OPTIONS),
+    );
+    expect(
+      [...leading.querySelectorAll('paragraph')].map((p) => p.querySelectorAll('phrase').length),
+    ).toEqual([0, 1]);
   });
 
   it('wraps multiple documents as sibling interlinear-texts', () => {

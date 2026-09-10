@@ -3,7 +3,7 @@
 //
 //   <document version="2">
 //     <interlinear-text>                          (1..n per document)
-//       <item type="title|source|comment">
+//       <item type="title|title-abbreviation|source|comment">
 //       <paragraphs><paragraph><phrases>
 //         <phrase media-file? begin-time-offset? end-time-offset? speaker?>
 //           <item type="segnum">
@@ -44,7 +44,7 @@
 import { FLEX_MORPH_TYPES, decorateWithAffixMarkers } from '../domain/affixMarkers.js';
 import { morphFormOf } from '../domain/igtExport.js';
 import { lexiconView } from '../domain/vocabDictionary.js';
-import { resolveFieldLang } from '../domain/fieldNames.js';
+import { resolveFieldLang, parseFieldName, isLangTag } from '../domain/fieldNames.js';
 
 // Shared with the .eaf exporter (src/export/elan.js). The two XML formats
 // escape identically, and one copy keeps them from drifting.
@@ -97,6 +97,43 @@ const mappedFields = (options, scope) =>
   Object.entries(options?.fieldMap?.[scope] || {}).filter(([, type]) =>
     ITEM_TYPES_BY_SCOPE[scope].includes(type),
   );
+
+// A document metadata field FLEx has a text field for, and the item type that
+// lands it there on import: Abbreviation and Source are the Info tab's own,
+// and "comment" is what FLEx calls a text's Description. Verified against
+// FieldWorks' InterlinearObjects.cs, which maps the two directions with this
+// same table. A field named for a writing system ("Title (nl)") goes out under
+// that one; everything else FLEx cannot place becomes a comment naming the
+// field it came from, which is the only place a .flextext has to put it.
+const TEXT_ITEM_TYPES = {
+  title: 'title',
+  abbreviation: 'title-abbreviation',
+  source: 'source',
+  description: 'comment',
+};
+// Which language a mapped field goes out under when its name does not say. A
+// title and an abbreviation are the text's own, a source and a comment are
+// written about it — the same split the FLEx importer makes.
+const VERNACULAR_ITEMS = new Set(['title', 'title-abbreviation']);
+
+/** A document's metadata as <interlinear-text> items. */
+const metadataItems = (indent, metadata, options) => {
+  const lines = [];
+  for (const [key, value] of Object.entries(metadata || {})) {
+    if (value == null || value === '') continue;
+    const { base, ws } = parseFieldName(key);
+    const type = TEXT_ITEM_TYPES[base.trim().toLowerCase()];
+    if (!type) {
+      lines.push(...item(indent, 'comment', analysisLang(options), `${key}: ${value}`));
+      continue;
+    }
+    const lang =
+      (ws && isLangTag(ws) && ws) ||
+      (VERNACULAR_ITEMS.has(type) ? baselineLang(options) : analysisLang(options));
+    lines.push(...item(indent, type, lang, value));
+  }
+  return lines;
+};
 
 // ---- element builders (each returns [] or [lines]) -------------------------
 
@@ -306,16 +343,28 @@ function phraseXml(
 // keep them apart; on import FLEx writes its own segment-break character, U+00A7,
 // into the baseline to preserve the division. One paragraph per unpunctuated
 // phrase is how FieldWorks itself stores this material, and it needs no marker.
+// A blank line is a paragraph too: FLEx keeps an empty paragraph for it, its
+// own export writes one, and its line numbers count paragraphs, so a text
+// with five blank lines that came back without them had every line after the
+// first of them numbered one lower than the linguist's own copy. Each newline
+// in the whitespace closing a paragraph beyond the first is one empty run.
 function paragraphRuns(igtDoc) {
   const sentences = igtDoc.sortedSentences || [];
   if (!sentences.length) return [];
   const chars = [...(igtDoc.body ?? '')];
-  const runs = [[sentences[0]]];
+  const newlinesClosing = (stretch) => (/\s*$/.exec(stretch)[0].match(/\n/g) || []).length;
+  const runs = [];
+  // Blank lines before the first sentence.
+  for (let k = 0; k < newlinesClosing(chars.slice(0, sentences[0].begin).join('')); k++) {
+    runs.push([]);
+  }
+  runs.push([sentences[0]]);
   for (let i = 1; i < sentences.length; i++) {
     // From the previous sentence's start, so a newline inside it (a paragraph
     // FLEx never segmented) is not mistaken for the one that closes it.
     const upToHere = chars.slice(sentences[i - 1].begin, sentences[i].begin).join('');
-    if (/\n[^\S\n]*$/.test(upToHere)) runs.push([]);
+    const breaks = newlinesClosing(upToHere);
+    for (let k = 0; k < breaks; k++) runs.push([]);
     runs[runs.length - 1].push(sentences[i]);
   }
   return runs;
@@ -386,13 +435,7 @@ export function interlinearTextXml(igtDoc, options, indent = '  ') {
   const lex = lexiconResolver(igtDoc.vocabularies);
   const lines = [`${indent}<interlinear-text>`];
   lines.push(...item(`${indent}  `, 'title', baselineLang(options), docData.name));
-  // Configured document metadata rides along as source/comment items.
-  for (const [key, value] of Object.entries(docData.metadata || {})) {
-    if (value == null || value === '') continue;
-    if (/source/i.test(key))
-      lines.push(...item(`${indent}  `, 'source', analysisLang(options), value));
-    else lines.push(...item(`${indent}  `, 'comment', analysisLang(options), `${key}: ${value}`));
-  }
+  lines.push(...metadataItems(`${indent}  `, docData.metadata, options));
   const validAlignment = (igtDoc.alignmentTokens || []).filter(hasValidTimes);
   const mediaGuid = docData.mediaUrl ? docData.id : null;
   let anyTimed = false;
