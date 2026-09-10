@@ -1,5 +1,5 @@
 import { test, expect, seedAuth, collectClientErrors } from './fixtures.js';
-import { getFixture } from './fixture.js';
+import { getFixture } from './fixtureProject.js';
 
 // Exercises the morpheme structural keyboard ops in the island as a clean
 // round-trip: split a morpheme with '-' (caret mid-string) then merge it back

@@ -1,5 +1,5 @@
 import { test, expect, seedAuth, collectClientErrors } from './fixtures.js';
-import { getFixture } from './fixture.js';
+import { getFixture } from './fixtureProject.js';
 
 // Vocab-link popover round-trip: link a lexicon item to the first word, confirm
 // it persists across reload, then unlink it. Net-neutral on the fixture.

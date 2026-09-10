@@ -13,7 +13,7 @@ let projectId;
 test.beforeAll(async () => {
   const client = new PlaidClient(CORE, readToken().token);
   const fixture = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
-  if (!fixture) throw new Error('run node e2e/fixture.js first');
+  if (!fixture) throw new Error('run node e2e/fixtureProject.js first');
   projectId = fixture.id;
 });
 

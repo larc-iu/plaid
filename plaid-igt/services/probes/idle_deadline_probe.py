@@ -17,7 +17,7 @@ the service goes on working and its result can be rejoined by id. Callers use
 that to decide whether to forget the run or keep it for the next reload.
 
 ``--serve-only <id>`` registers and stays up instead of testing, so
-``e2e/idle-deadline-live.mjs`` can put the JS client through the same two runs.
+``e2e/live/idle-deadline.mjs`` can put the JS client through the same two runs.
 """
 import argparse
 import os
@@ -31,7 +31,7 @@ parser.add_argument('--url', default='http://localhost:8085')
 parser.add_argument('--token', default=None)
 parser.add_argument('--serve-only', metavar='SERVICE_ID',
                     help='register under this id and stay up, for the JS half '
-                         '(e2e/idle-deadline-live.mjs) to request against')
+                         '(e2e/live/idle-deadline.mjs) to request against')
 args = parser.parse_args()
 
 token = args.token or open(os.path.join(os.path.dirname(__file__), '..', '.token')).read().strip()

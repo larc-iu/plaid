@@ -19,7 +19,7 @@ let items = {};
 test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
   const project = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
-  if (!project) throw new Error('run node e2e/fixture.js first');
+  if (!project) throw new Error('run node e2e/fixtureProject.js first');
   projectId = project.id;
   const stamp = Date.now();
   vocab = await client.vocabLayers.create(`vocab-view ${stamp}`);

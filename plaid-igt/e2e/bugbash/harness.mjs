@@ -41,7 +41,7 @@ export function makeRng(seed) {
 export const pick = (rng, arr) => arr[Math.floor(rng() * arr.length)];
 export const randInt = (rng, lo, hi) => lo + Math.floor(rng() * (hi - lo + 1));
 
-// ---- layer resolution (mirrors fixture.js resolveLayers + alignment) ----
+// ---- layer resolution (mirrors fixtureProject.js resolveLayers + alignment) ----
 export function resolveLayers(project) {
   const tl =
     (project.textLayers || []).find((l) => l.config?.plaid?.primary) ||
@@ -61,7 +61,7 @@ export async function getFixtureProjectId(client) {
   const p = projects.find((x) => x.name === FIXTURE_PROJECT_NAME);
   if (!p)
     throw new Error(
-      `Fixture project "${FIXTURE_PROJECT_NAME}" not found — run: node e2e/fixture.js`,
+      `Fixture project "${FIXTURE_PROJECT_NAME}" not found — run: node e2e/fixtureProject.js`,
     );
   return p.id;
 }

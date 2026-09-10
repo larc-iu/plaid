@@ -1,5 +1,5 @@
 import { test, expect, seedAuth, collectClientErrors } from './fixtures.js';
-import { getFixture } from './fixture.js';
+import { getFixture } from './fixtureProject.js';
 
 // The composer in a real browser. vitest runs against happy-dom, which has no
 // execCommand and so only ever exercises the fallback insert; this is the path

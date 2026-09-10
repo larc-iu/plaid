@@ -1,6 +1,6 @@
 import PlaidClient, { ROLES } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
-import { getFixture } from './fixture.js';
+import { getFixture } from './fixtureProject.js';
 
 // TEST_PLAN C12-03: an un-healable integrity finding (inverted alignment
 // timing) surfaces as ONE sticky toast with a "Copy details" action on the

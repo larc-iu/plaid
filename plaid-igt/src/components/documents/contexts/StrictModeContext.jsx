@@ -22,7 +22,7 @@ const StrictModeContext = createContext(null);
  * version the 1st op had already bumped). That's fixed: the client stamps only
  * the FIRST write of a batch (http.js) and the server dedupes version params
  * across the batch (task #109), giving whole-batch OCC. Verified against live
- * core (e2e/alpha/occ-probe.mjs): bulkDelete+bulkCreate and update+create
+ * core with a throwaway probe: bulkDelete+bulkCreate and update+create
  * batches succeed under strict mode, while a genuine stale single write 409s.
  *
  * The hook name (`useStrictClient`) is kept to avoid churn across consumers.

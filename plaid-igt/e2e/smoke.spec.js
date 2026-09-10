@@ -1,5 +1,5 @@
 import { test, expect, seedAuth, collectClientErrors } from './fixtures.js';
-import { getFixture } from './fixture.js';
+import { getFixture } from './fixtureProject.js';
 
 // Diagnostic smoke tests: drive the main surfaces against live plaid-core and
 // surface any API failures / console errors. Assertions are soft so every

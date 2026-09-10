@@ -1,5 +1,5 @@
 import { test, expect, seedAuth, collectClientErrors } from './fixtures.js';
-import { getFixture } from './fixture.js';
+import { getFixture } from './fixtureProject.js';
 
 // Exercises the vanilla interlinear island end-to-end against live plaid-core:
 // renders the grid, edits a morpheme gloss, and verifies the edit round-trips

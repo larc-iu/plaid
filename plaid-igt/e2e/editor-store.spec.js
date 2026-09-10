@@ -1,5 +1,5 @@
 import { test, expect, seedAuth, collectClientErrors } from './fixtures.js';
-import { getFixture } from './fixture.js';
+import { getFixture } from './fixtureProject.js';
 
 // Exercises the document editor shell after the IgtDocument unification: tab
 // switching is React-local state, and each tab + the metadata Edit toggle read/

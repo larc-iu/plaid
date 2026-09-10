@@ -1,6 +1,6 @@
 import PlaidClient, { ROLES } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
-import { getFixture } from './fixture.js';
+import { getFixture } from './fixtureProject.js';
 
 // Reconcile-on-open WRITES (it seeds morphemes and deletes orphans), so the
 // document must not be open and editable while it runs. Seed an orphan

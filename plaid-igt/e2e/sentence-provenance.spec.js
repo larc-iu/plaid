@@ -19,7 +19,7 @@ let spanId;
 test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
   const project = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
-  if (!project) throw new Error('run node e2e/fixture.js first');
+  if (!project) throw new Error('run node e2e/fixtureProject.js first');
   projectId = project.id;
   const full = await client.projects.get(projectId);
   const textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);

@@ -5,7 +5,7 @@ import { test, expect, seedAuth, readToken } from './fixtures.js';
 // Analyze island (cell classes, one-batch edits, Enter/Backspace review keys on
 // chips, Ctrl+Enter confirming a word and moving on, the popover's confirm
 // affordance). The data-level contract behind these lives in
-// e2e/provenance-structural-live.mjs. Uses a throwaway document + throwaway
+// e2e/live/provenance-structural.mjs. Uses a throwaway document + throwaway
 // vocab entries in the "E2E IGT Fixture" project; both are deleted afterwards.
 
 const CORE = 'http://localhost:8085';
@@ -21,7 +21,7 @@ let items = {};
 test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
   const project = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
-  if (!project) throw new Error('run node e2e/fixture.js first');
+  if (!project) throw new Error('run node e2e/fixtureProject.js first');
   projectId = project.id;
   const full = await client.projects.get(projectId);
   const textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);

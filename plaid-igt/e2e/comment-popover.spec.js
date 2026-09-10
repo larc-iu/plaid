@@ -1,5 +1,5 @@
 import { test, expect, seedAuth } from './fixtures.js';
-import { getFixture } from './fixture.js';
+import { getFixture } from './fixtureProject.js';
 
 // Escape closes the comment popover. It is not enough for the popover to carry
 // its own Escape handler: unlike the vocab popover, the comment one has no
