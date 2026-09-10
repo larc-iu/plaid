@@ -277,7 +277,7 @@ export const VocabularyManager = ({
                         {nameCounts.get(record.name) > 1 && record.id && (
                           <span
                             className="ml-1.5 font-mono text-xs text-muted-foreground"
-                            title="Two vocabularies share this name; this is the end of its id"
+                            title="Two vocabularies share this name. This is the end of its id"
                           >
                             · {String(record.id).slice(-6)}
                           </span>

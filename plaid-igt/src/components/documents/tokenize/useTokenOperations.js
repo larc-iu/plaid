@@ -19,7 +19,7 @@ const TOKENIZE_BUILTINS = [
   {
     name: BUILTIN_TOKENIZE_RULE_BASED,
     label: 'Built-in (rule-based punctuation)',
-    description: 'finds words only; sentence boundaries stay as they are',
+    description: 'tokenize words by punctuation, no sentence splitting',
   },
 ];
 
