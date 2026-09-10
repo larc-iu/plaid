@@ -1,65 +1,74 @@
-import { Link, useLocation } from 'react-router-dom';
-import { Tabs, Breadcrumbs, Anchor, Text, Group } from '@mantine/core';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { EntityAvatar } from '../common/EntityAvatar.jsx';
-
-// A tab is a link, or — while the editor is busy — an inert button. See the
-// note on `Tabs.List` below for why the two can't be the same element.
-const tabTarget = (to, disabled) => (disabled ? { disabled: true } : { component: Link, to });
+import { Tabs, TabsList, TabsTrigger } from '@ui/components/ui/tabs';
 
 export const DocumentTabs = ({ projectId, documentId, project, document, disabled = false }) => {
   const location = useLocation();
+  const navigate = useNavigate();
   const currentPath = location.pathname;
   const active = currentPath.includes('/annotate')
     ? 'annotate'
     : currentPath.includes('/export')
       ? 'export'
-      : 'edit';
+      : currentPath.includes('/details')
+        ? 'details'
+        : 'edit';
   const base = `/projects/${projectId}/documents/${documentId}`;
 
+  const routes = {
+    edit: `${base}/edit`,
+    annotate: `${base}/annotate`,
+    export: `${base}/export`,
+    details: `${base}/details`,
+  };
+
+  // A tab is a real anchor, so middle-click and cmd-click open it in a new
+  // browser tab. While the body is busy (reconcile-on-open is repairing the
+  // document) it becomes a plain disabled button instead: an anchor cannot be
+  // stopped from navigating, and a tab switch mid-repair would drop the user
+  // into the Text Editor to re-tokenize a document whose heal writes are still
+  // in flight, which is the thing the spinner exists to prevent. Dropping `to`
+  // gives a real disabled trigger, so click, cmd-click and keyboard activation
+  // are all inert.
+  const target = (value) => (disabled ? { disabled: true } : { to: routes[value] });
+
   return (
-    <>
-      <Breadcrumbs mb="md">
-        <Anchor component={Link} to="/projects" size="sm">
+    <div className="tw mb-6">
+      <nav aria-label="Breadcrumb" className="mb-4 flex items-center gap-2 text-sm">
+        <Link to="/projects" className="text-muted-foreground hover:text-foreground">
           Projects
-        </Anchor>
-        <Anchor component={Link} to={`/projects/${projectId}/documents`} size="sm">
-          <Group gap={6} wrap="nowrap">
-            <EntityAvatar id={projectId} size={16} />
-            {project?.name || 'Loading...'}
-          </Group>
-        </Anchor>
-        <Group gap={6} wrap="nowrap">
+        </Link>
+        <span className="text-muted-foreground">/</span>
+        <Link
+          to={`/projects/${projectId}/documents`}
+          className="flex min-w-0 items-center gap-1.5 text-muted-foreground hover:text-foreground"
+        >
+          <EntityAvatar id={projectId} size={16} />
+          <span className="truncate">{project?.name || 'Loading…'}</span>
+        </Link>
+        <span className="text-muted-foreground">/</span>
+        <span className="flex min-w-0 items-center gap-1.5">
           <EntityAvatar id={documentId} size={16} />
-          <Text size="sm" c="dimmed">
-            {document?.name || 'Loading...'}
-          </Text>
-        </Group>
-      </Breadcrumbs>
+          <span className="truncate text-muted-foreground">{document?.name || 'Loading…'}</span>
+        </span>
+      </nav>
 
-      {/* Real links rather than an `onChange`, so middle-click and cmd-click
-          open the tab in a new browser tab. Same shape as `ProjectTabs`.
-
-          While the body is busy (reconcile-on-open is repairing the document),
-          the tabs become plain disabled buttons instead. Mantine's `disabled`
-          only greys out an anchor — it can't stop it navigating — and a tab
-          switch mid-repair would drop the user into the Text Editor to
-          re-tokenize a document whose heal writes are still in flight, which is
-          the thing the spinner exists to prevent. Dropping `component`/`to`
-          gives real <button disabled>, so click, cmd-click and keyboard
-          activation are all inert. */}
-      <Tabs value={active} mb="lg">
-        <Tabs.List>
-          <Tabs.Tab value="edit" {...tabTarget(`${base}/edit`, disabled)}>
+      <Tabs value={active} onValueChange={(v) => !disabled && navigate(routes[v])}>
+        <TabsList>
+          <TabsTrigger value="edit" {...target('edit')}>
             Text Editor
-          </Tabs.Tab>
-          <Tabs.Tab value="annotate" {...tabTarget(`${base}/annotate`, disabled)}>
+          </TabsTrigger>
+          <TabsTrigger value="annotate" {...target('annotate')}>
             Annotate
-          </Tabs.Tab>
-          <Tabs.Tab value="export" {...tabTarget(`${base}/export`, disabled)}>
+          </TabsTrigger>
+          <TabsTrigger value="export" {...target('export')}>
             Export
-          </Tabs.Tab>
-        </Tabs.List>
+          </TabsTrigger>
+          <TabsTrigger value="details" {...target('details')}>
+            Details
+          </TabsTrigger>
+        </TabsList>
       </Tabs>
-    </>
+    </div>
   );
 };

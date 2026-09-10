@@ -1,33 +1,21 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import {
-  Title,
-  Button,
-  Alert,
-  Paper,
-  Stack,
-  Group,
-  Text,
-  Box,
-  Center,
-  Loader,
-  Tooltip,
-} from '@mantine/core';
-import { IconPlus } from '@tabler/icons-react';
+import { Plus } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { ProjectForm } from './ProjectForm';
 import { EntityAvatar } from '../common/EntityAvatar.jsx';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { timeAgo, fullTimestamp } from '../../utils/formatTime.js';
-import { SortButton } from '../common/SortHeader.jsx';
-import { nextSort, sortBy } from '../../utils/sorting.js';
-import classes from '../common/listRow.module.css';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
-
-// Fixed metric-column widths, shared by the header and every row so they align.
-const W_DOCS = 64;
-const W_WORDS = 84;
-const W_UPDATED = 124;
+import { Button } from '@ui/components/ui/button';
+import { Card } from '@ui/components/ui/card';
+import { DataTable } from '@ui/components/ui/data-table';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@ui/components/ui/tooltip';
 
 export const ProjectList = () => {
   useDocumentTitle('Projects');
@@ -39,7 +27,6 @@ export const ProjectList = () => {
   // layer. `undefined` (missing key) means "still loading".
   const [wordCounts, setWordCounts] = useState({});
   const [wordsLoading, setWordsLoading] = useState(true);
-  const [sort, setSort] = useState({ key: 'updated', dir: 'desc' });
   const { getClient, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -124,49 +111,108 @@ export const ProjectList = () => {
     }
   };
 
-  const onSort = (key) => setSort(nextSort(key));
-
-  const sortedProjects = useMemo(() => {
-    const extract = {
-      name: (p) => p.name?.toLowerCase() ?? '',
-      documents: (p) => p.documentCount ?? 0,
-      words: (p) => (wordCounts[p.id] == null ? null : wordCounts[p.id]),
-      updated: (p) => p.lastModified ?? null,
-    }[sort.key];
-    return sortBy(projects, extract, sort.dir);
-  }, [projects, wordCounts, sort]);
-
-  if (loading) {
-    return (
-      <Center py={48}>
-        <Loader />
-      </Center>
-    );
-  }
-
   const renderWords = (projectId) => {
-    if (wordsLoading && wordCounts[projectId] === undefined) return <Loader size={12} />;
+    if (wordsLoading && wordCounts[projectId] === undefined) return '…';
     const v = wordCounts[projectId];
     return v == null ? '—' : v.toLocaleString();
   };
 
+  // A row is a link to the project, so each cell holds the anchor rather than
+  // the row holding an onClick: middle-click and cmd-click then work the way
+  // they do on any link, and the whole row is still a target.
+  const linked = (project, className, children) => (
+    <Link to={`/projects/${project.id}/documents`} className={className}>
+      {children}
+    </Link>
+  );
+
+  const columns = [
+    {
+      key: 'name',
+      label: 'Project',
+      sort: (p) => p.name?.toLowerCase() ?? '',
+      className: 'p-0',
+      render: (p) =>
+        linked(
+          p,
+          'flex items-center gap-3 px-4 py-3',
+          <>
+            <EntityAvatar id={p.id} size={36} />
+            <div className="min-w-0">
+              <div className="truncate font-medium">{p.name}</div>
+              <div className="truncate text-xs text-muted-foreground">ID: {p.id}</div>
+            </div>
+          </>,
+        ),
+    },
+    {
+      key: 'documents',
+      label: 'Docs',
+      sort: (p) => p.documentCount ?? 0,
+      align: 'right',
+      className: 'p-0',
+      render: (p) =>
+        linked(
+          p,
+          'block px-4 py-3 text-right tabular-nums text-muted-foreground',
+          p.documentCount ?? 0,
+        ),
+    },
+    {
+      key: 'words',
+      label: 'Words',
+      // A project with no word layer counts as the smallest, which is what a
+      // blank means here.
+      sort: (p) => wordCounts[p.id] ?? null,
+      align: 'right',
+      className: 'p-0',
+      render: (p) =>
+        linked(
+          p,
+          'block px-4 py-3 text-right tabular-nums text-muted-foreground',
+          renderWords(p.id),
+        ),
+    },
+    {
+      key: 'updated',
+      label: 'Updated',
+      sort: (p) => (p.lastModified ? new Date(p.lastModified).getTime() : null),
+      align: 'right',
+      className: 'p-0',
+      render: (p) =>
+        linked(
+          p,
+          'block px-4 py-3 text-right text-muted-foreground',
+          p.lastModified ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>{timeAgo(p.lastModified) || '—'}</span>
+              </TooltipTrigger>
+              <TooltipContent>{fullTimestamp(p.lastModified)}</TooltipContent>
+            </Tooltip>
+          ) : (
+            '—'
+          ),
+        ),
+    },
+  ];
+
   return (
-    <>
-      <Group justify="space-between" mb="lg">
-        <Title order={2}>Projects</Title>
-        <Button
-          color="dark"
-          leftSection={<IconPlus size={16} />}
-          onClick={() => setShowCreateForm(true)}
-        >
-          New UD Project
+    <div className="tw">
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-3xl font-bold tracking-tight">Projects</h1>
+        <Button onClick={() => setShowCreateForm(true)}>
+          <Plus className="h-4 w-4" /> New UD project
         </Button>
-      </Group>
+      </div>
 
       {error && (
-        <Alert color="red" mb="md">
+        <div
+          role="alert"
+          className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
           {error}
-        </Alert>
+        </div>
       )}
 
       <ProjectForm
@@ -175,79 +221,32 @@ export const ProjectList = () => {
         onSuccess={handleProjectCreated}
       />
 
-      {projects.length === 0 ? (
-        <Center py={48}>
-          <Text c="dimmed">No projects yet. Create your first UD project to get started!</Text>
-        </Center>
+      {loading ? (
+        <p className="p-4 text-sm text-muted-foreground">Loading…</p>
+      ) : projects.length === 0 ? (
+        <Card className="p-10 text-center text-muted-foreground">
+          <p className="text-lg">No projects yet</p>
+          <p className="mt-1 text-sm">
+            Create one with New UD project, or ask a project&apos;s maintainer for an invitation
+            link.
+          </p>
+        </Card>
       ) : (
-        <Paper withBorder radius="md">
-          {/* Sortable column header */}
-          <Group
-            gap="sm"
-            wrap="nowrap"
-            px="md"
-            py="xs"
-            style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}
-          >
-            <SortButton field="name" sort={sort} onSort={onSort} align="left">
-              Project
-            </SortButton>
-            <SortButton field="documents" sort={sort} onSort={onSort} width={W_DOCS}>
-              Docs
-            </SortButton>
-            <SortButton field="words" sort={sort} onSort={onSort} width={W_WORDS}>
-              Words
-            </SortButton>
-            <SortButton field="updated" sort={sort} onSort={onSort} width={W_UPDATED}>
-              Updated
-            </SortButton>
-          </Group>
-
-          <Stack gap={0}>
-            {sortedProjects.map((project) => (
-              <Box
-                key={project.id}
-                component={Link}
-                to={`/projects/${project.id}/documents`}
-                className={classes.row}
-                p="md"
-              >
-                <Group gap="sm" wrap="nowrap">
-                  <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
-                    <EntityAvatar id={project.id} size={36} />
-                    <div style={{ minWidth: 0 }}>
-                      <Text fw={500} size="lg" truncate>
-                        {project.name}
-                      </Text>
-                      <Text size="xs" c="dimmed" truncate>
-                        ID: {project.id}
-                      </Text>
-                    </div>
-                  </Group>
-
-                  <Text size="sm" c="dimmed" ta="right" w={W_DOCS}>
-                    {project.documentCount ?? 0}
-                  </Text>
-                  <Box ta="right" w={W_WORDS}>
-                    <Text size="sm" c="dimmed" component="span">
-                      {renderWords(project.id)}
-                    </Text>
-                  </Box>
-                  <Tooltip
-                    label={fullTimestamp(project.lastModified)}
-                    disabled={!project.lastModified}
-                    withinPortal
-                  >
-                    <Text size="sm" c="dimmed" ta="right" w={W_UPDATED}>
-                      {timeAgo(project.lastModified) || '—'}
-                    </Text>
-                  </Tooltip>
-                </Group>
-              </Box>
-            ))}
-          </Stack>
-        </Paper>
+        <TooltipProvider>
+          <DataTable
+            rows={projects}
+            columns={columns}
+            rowKey={(p) => p.id}
+            id="projects"
+            defaultSort={{ key: 'updated', dir: 'desc' }}
+            search={{
+              placeholder: 'Search projects…',
+              match: (p, q) => (p.name || '').toLowerCase().includes(q),
+            }}
+            noun="project"
+          />
+        </TooltipProvider>
       )}
-    </>
+    </div>
   );
 };

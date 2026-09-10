@@ -672,6 +672,38 @@ export class ConlluDocument {
   }
 
   // ============================================================
+  // Document-level operations
+  // ============================================================
+
+  // Rename the document. Optimistic like every other update: the new name is
+  // in the raw document before the round trip, so the breadcrumb and the tab
+  // strip follow immediately rather than after it.
+  async rename(name) {
+    const next = name.trim();
+    if (!next || next === this.name) return false;
+    return this._withSaving('Failed to rename document', async () => {
+      this._applyRawPatch((raw) => {
+        raw.name = next;
+      });
+      await this._client.documents.update(this.id, next);
+    });
+  }
+
+  // Copy the document into the same project. NOT optimistic and not a patch of
+  // this document: the copy is a different document with a server-minted id,
+  // and the caller navigates to it. Returns the new document, or null.
+  //
+  // Same project only, and comments do not travel — that is the server's
+  // ruling, not this method's choice.
+  async copyTo(name) {
+    let created = null;
+    const ok = await this._withSaving('Failed to copy document', async () => {
+      created = await this._client.documents.copy(this.id, name.trim() || `${this.name} (copy)`);
+    });
+    return ok ? created : null;
+  }
+
+  // ============================================================
   // Text-layer operations
   // ============================================================
 

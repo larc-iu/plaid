@@ -1,18 +1,19 @@
-import { Link, useLocation } from 'react-router-dom';
-import { Tabs, Breadcrumbs, Anchor, Text, Group } from '@mantine/core';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { canManageProject } from '../../utils/permissions.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { EntityAvatar } from '../common/EntityAvatar.jsx';
+import { Tabs, TabsList, TabsTrigger } from '@ui/components/ui/tabs';
 
 // Shared top tab bar for the four project-level views (Documents / Search /
 // Project Settings / Import & Export), mirroring the per-document `DocumentTabs`.
-// Each tab is route-backed; only a `<Tabs.List>` is rendered (no panels) — each
-// route renders its own body. `project` is the full object every page already
-// fetches (carries layer config for `getUdLayerInfo`); it may be null mid-load,
-// which all the gating below tolerates.
+// Each tab is route-backed; no panels are rendered — each route renders its own
+// body. `project` is the full object every page already fetches (carries layer
+// config for `getUdLayerInfo`); it may be null mid-load, which all the gating
+// below tolerates.
 export const ProjectTabs = ({ projectId, project }) => {
   const location = useLocation();
+  const navigate = useNavigate();
   const { user } = useAuth();
 
   const canManage = canManageProject(project, user);
@@ -32,45 +33,48 @@ export const ProjectTabs = ({ projectId, project }) => {
         ? 'settings'
         : 'documents';
 
-  return (
-    <>
-      <Breadcrumbs mb="md">
-        <Anchor component={Link} to="/projects" size="sm">
-          Projects
-        </Anchor>
-        <Group gap={6} wrap="nowrap">
-          <EntityAvatar id={projectId} size={16} />
-          <Text size="sm" c="dimmed">
-            {project?.name || 'Loading...'}
-          </Text>
-        </Group>
-      </Breadcrumbs>
+  const routes = {
+    documents: `/projects/${projectId}/documents`,
+    search: `/projects/${projectId}/search`,
+    settings: settingsTo,
+    'import-export': `/projects/${projectId}/import-export`,
+  };
 
-      {/* Each tab is a real link (no `onChange`): the anchor does the
-          navigating, so middle-click and cmd-click open a tab in a new browser
-          tab, and Mantine's arrow-key handler clicks the focused one for us. */}
-      <Tabs value={active} mb="lg">
-        <Tabs.List>
-          <Tabs.Tab value="documents" component={Link} to={`/projects/${projectId}/documents`}>
+  return (
+    <div className="tw mb-6">
+      <nav aria-label="Breadcrumb" className="mb-4 flex items-center gap-2 text-sm">
+        <Link to="/projects" className="text-muted-foreground hover:text-foreground">
+          Projects
+        </Link>
+        <span className="text-muted-foreground">/</span>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <EntityAvatar id={projectId} size={16} />
+          <span className="truncate text-muted-foreground">{project?.name || 'Loading…'}</span>
+        </span>
+      </nav>
+
+      {/* Every tab is a real anchor (`to`), so middle-click and cmd-click open
+          it in a new browser tab; a plain click is Radix's, and this navigates
+          on its behalf. The shared trigger already swallows Radix's double
+          fire. */}
+      <Tabs value={active} onValueChange={(v) => navigate(routes[v])}>
+        <TabsList>
+          <TabsTrigger value="documents" to={routes.documents}>
             Documents
-          </Tabs.Tab>
-          <Tabs.Tab value="search" component={Link} to={`/projects/${projectId}/search`}>
+          </TabsTrigger>
+          <TabsTrigger value="search" to={routes.search}>
             Search
-          </Tabs.Tab>
+          </TabsTrigger>
           {canManage && (
-            <Tabs.Tab value="settings" component={Link} to={settingsTo}>
+            <TabsTrigger value="settings" to={routes.settings}>
               Project Settings
-            </Tabs.Tab>
+            </TabsTrigger>
           )}
-          <Tabs.Tab
-            value="import-export"
-            component={Link}
-            to={`/projects/${projectId}/import-export`}
-          >
+          <TabsTrigger value="import-export" to={routes['import-export']}>
             Import &amp; Export
-          </Tabs.Tab>
-        </Tabs.List>
+          </TabsTrigger>
+        </TabsList>
       </Tabs>
-    </>
+    </div>
   );
 };

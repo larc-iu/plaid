@@ -1,12 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useLocation, Outlet } from 'react-router-dom';
-import { Box, Center, Loader, Alert } from '@mantine/core';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { useConlluDocument } from '../../domain/useConlluDocument.js';
 import { DocumentTabs } from './DocumentTabs.jsx';
 
-// Parent route of the three document-editor tabs (/edit, /annotate, /export).
+// Parent route of the four document tabs (/edit, /annotate, /export, /details).
 // It owns the project + ConlluDocument load and renders the breadcrumbs and the
 // tab strip, so a tab switch swaps ONLY the body: the shell's route params don't
 // change, so React Router keeps it mounted.
@@ -15,11 +14,11 @@ import { DocumentTabs } from './DocumentTabs.jsx';
 // `DocumentTabs` *behind its own loading gate*, so every switch unmounted the
 // chrome, flashed a bare spinner where the whole page had been, and
 // re-downloaded the entire document. Keep the chrome here, above the loading
-// gate, and keep the three tabs children of this route — that is the whole
-// point of the shell.
+// gate, and keep the tabs children of this route — that is the whole point of
+// the shell.
 
-// The annotation editor is full-bleed and supplies its own padding; the other
-// two sit in `Layout`'s centered container, which already pads them.
+// The annotation editor is full-bleed and supplies its own padding; the others
+// sit in `Layout`'s centered container, which already pads them.
 const isWideRoute = (pathname) => pathname.includes('/annotate');
 
 export const DocumentEditorShell = () => {
@@ -129,37 +128,33 @@ export const DocumentEditorShell = () => {
   const wide = isWideRoute(pathname);
 
   return (
-    <Box style={{ width: '100%' }}>
+    <div className="w-full">
       {/* Chrome: rendered unconditionally, including while the document loads.
           That is what stops the tab switch from blanking the page. */}
-      <Box style={{ marginLeft: chromeOffset, transition: 'margin-left 300ms ease' }}>
-        <Box px={wide ? 'lg' : undefined} pt={wide ? 'md' : undefined}>
-          <DocumentTabs
-            projectId={projectId}
-            documentId={documentId}
-            project={project}
-            document={doc?.raw}
-            disabled={chromeBusy}
-          />
-        </Box>
-      </Box>
+      <div
+        style={{ marginLeft: chromeOffset, transition: 'margin-left 300ms ease' }}
+        className={wide ? 'px-6 pt-4' : undefined}
+      >
+        <DocumentTabs
+          projectId={projectId}
+          documentId={documentId}
+          project={project}
+          document={doc?.raw}
+          disabled={chromeBusy}
+        />
+      </div>
 
-      {loading && (
-        <Center py={48}>
-          <Loader />
-        </Center>
-      )}
+      {loading && <p className="tw p-4 text-sm text-muted-foreground">Loading…</p>}
 
-      {!loading && loadError && (
-        <Box px={wide ? 'lg' : undefined}>
-          <Alert color="red">{loadError}</Alert>
-        </Box>
-      )}
-
-      {!loading && !loadError && (!doc || !project) && (
-        <Box px={wide ? 'lg' : undefined}>
-          <Alert color="red">Document or project not found</Alert>
-        </Box>
+      {!loading && (loadError || !doc || !project) && (
+        <div className={wide ? 'px-6' : undefined}>
+          <div
+            role="alert"
+            className="tw rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            {loadError || 'Document or project not found'}
+          </div>
+        </div>
       )}
 
       {!loading && !loadError && doc && project && (
@@ -175,6 +170,6 @@ export const DocumentEditorShell = () => {
           }}
         />
       )}
-    </Box>
+    </div>
   );
 };

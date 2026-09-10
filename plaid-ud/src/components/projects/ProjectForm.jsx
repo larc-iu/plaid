@@ -1,7 +1,16 @@
 import { useState } from 'react';
-import { Modal, TextInput, Button, Group, Stack, Alert, Paper, Text, List } from '@mantine/core';
 import { useAuth } from '../../contexts/AuthContext';
 import { createUdProject } from '../../domain/udProjectSetup.js';
+import { Button } from '@ui/components/ui/button';
+import { Input } from '@ui/components/ui/input';
+import { Label } from '@ui/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@ui/components/ui/dialog';
 
 export const ProjectForm = ({ isOpen, onClose, onSuccess }) => {
   const [projectName, setProjectName] = useState('');
@@ -13,7 +22,7 @@ export const ProjectForm = ({ isOpen, onClose, onSuccess }) => {
     e.preventDefault();
 
     if (!projectName.trim()) {
-      setError('Project name is required');
+      setError('Name the project.');
       return;
     }
 
@@ -32,45 +41,52 @@ export const ProjectForm = ({ isOpen, onClose, onSuccess }) => {
   };
 
   return (
-    <Modal opened={isOpen} onClose={onClose} title="Create New UD Project" size="sm" centered>
-      <form onSubmit={handleSubmit}>
-        <Stack gap="md">
-          {error && <Alert color="red">{error}</Alert>}
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>New UD project</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          {error && (
+            <div
+              role="alert"
+              className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            >
+              {error}
+            </div>
+          )}
 
-          <TextInput
-            label="Project Name"
-            name="projectName"
-            value={projectName}
-            onChange={(e) => setProjectName(e.target.value)}
-            placeholder="Enter project name"
-            required
-            disabled={loading}
-            data-autofocus
-          />
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="project-name">Project name</Label>
+            <Input
+              id="project-name"
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              disabled={loading}
+              autoFocus
+            />
+          </div>
 
-          <Paper bg="gray.0" p="md" radius="md">
-            <Text size="sm" c="dimmed">
-              This will create a new project with all necessary layers for Universal Dependencies
-              annotation:
-            </Text>
-            <List size="sm" spacing={4} mt="xs" c="dimmed">
-              <List.Item>Text layer</List.Item>
-              <List.Item>Token hierarchy: Sentences &rarr; Tokens &rarr; Words</List.Item>
-              <List.Item>Span layers for: Form, Lemma, UPOS, XPOS, Features</List.Item>
-              <List.Item>Relation layer for dependency parsing</List.Item>
-            </List>
-          </Paper>
+          <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
+            <p>The project is created with every layer UD annotation needs:</p>
+            <ul className="mt-2 list-disc pl-5">
+              <li>Text layer</li>
+              <li>Token hierarchy: Sentences &rarr; Tokens &rarr; Words</li>
+              <li>Span layers for Form, Lemma, UPOS, XPOS and Features</li>
+              <li>Relation layer for dependencies</li>
+            </ul>
+          </div>
 
-          <Group justify="flex-end" gap="sm">
-            <Button type="button" variant="default" onClick={onClose} disabled={loading}>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
               Cancel
             </Button>
-            <Button type="submit" color="dark" loading={loading}>
-              Create Project
+            <Button type="submit" disabled={loading}>
+              {loading ? 'Creating…' : 'Create project'}
             </Button>
-          </Group>
-        </Stack>
-      </form>
-    </Modal>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 };

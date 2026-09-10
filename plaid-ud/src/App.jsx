@@ -12,6 +12,7 @@ import { DocumentList } from './components/documents/DocumentList';
 import { TextEditor } from './components/editor/TextEditor.jsx';
 import { AnnotationEditor } from './components/editor/AnnotationEditor.jsx';
 import { DocumentEditorShell } from './components/editor/DocumentEditorShell.jsx';
+import { DocumentDetails } from './components/documents/DocumentDetails.jsx';
 import './App.css';
 
 // Screens a session opens rarely, if at all: they download when first opened
@@ -167,6 +168,7 @@ function App() {
             >
               <Route path="edit" element={<TextEditor />} />
               <Route path="annotate" element={<AnnotationEditor />} />
+              <Route path="details" element={<DocumentDetails />} />
               <Route
                 path="export"
                 element={

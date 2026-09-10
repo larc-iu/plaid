@@ -1,36 +1,27 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import {
-  Title,
-  Button,
-  Alert,
-  Paper,
-  Stack,
-  Group,
-  Text,
-  Box,
-  Center,
-  Loader,
-  Tooltip,
-} from '@mantine/core';
-import { IconPlus, IconInfoCircle } from '@tabler/icons-react';
+import { Info, Plus } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { DocumentForm } from './DocumentForm';
 import { ProjectTabs } from '../projects/ProjectTabs.jsx';
 import { canEditProject, canManageProject } from '../../utils/permissions.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { timeAgo, fullTimestamp } from '../../utils/formatTime.js';
-import { SortButton } from '../common/SortHeader.jsx';
-import { nextSort, sortBy } from '../../utils/sorting.js';
-import classes from '../common/listRow.module.css';
+import { notifyWarning } from '../../utils/feedback.jsx';
 import { EntityAvatar } from '../common/EntityAvatar.jsx';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
-import { usePagedList } from '../../hooks/usePagedList.js';
-import { ListCount, ListPager, SearchInput } from '../common/ListChrome.jsx';
+import { Button } from '@ui/components/ui/button';
+import { DataTable } from '@ui/components/ui/data-table';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@ui/components/ui/tooltip';
 
-// Fixed metric-column widths, shared by the header and every row so they align.
-const W_WORDS = 84;
-const W_UPDATED = 124;
+const Spinner = () => (
+  <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-muted border-t-primary align-middle" />
+);
 
 export const DocumentList = () => {
   const { projectId } = useParams();
@@ -46,8 +37,8 @@ export const DocumentList = () => {
   const [wordCounts, setWordCounts] = useState({});
   const [hasWordLayer, setHasWordLayer] = useState(true);
   const [wordsLoading, setWordsLoading] = useState(true);
-  const [sort, setSort] = useState({ key: 'name', dir: 'asc' });
-  const [filter, setFilter] = useState('');
+  const [myLastEdits, setMyLastEdits] = useState({});
+  const [mineLoading, setMineLoading] = useState(true);
   const { user, getClient, logout } = useAuth();
 
   const fetchProjectAndDocuments = async () => {
@@ -134,6 +125,37 @@ export const DocumentList = () => {
     };
   }, [project, getClient]);
 
+  // When this reader last touched each document, from the audit log in one
+  // request. A failure here costs a column, not the list, so it warns and
+  // leaves every cell empty. The response is a UUID-keyed map, which the
+  // client already fetches with `skipResponseTransform` so the keys survive.
+  useEffect(() => {
+    const client = getClient();
+    if (!client || !projectId) return;
+    let cancelled = false;
+    (async () => {
+      setMineLoading(true);
+      try {
+        const edits = await client.projects.myLastEdits(projectId);
+        if (!cancelled) setMyLastEdits(edits || {});
+      } catch (err) {
+        console.error('Last-edited query failed:', err);
+        if (!cancelled) {
+          setMyLastEdits({});
+          notifyWarning(
+            'Your last edit could not be loaded for the document list.',
+            'Column unavailable',
+          );
+        }
+      } finally {
+        if (!cancelled) setMineLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, getClient]);
+
   // A row links to the Annotate tab by default; but a document with no tokens
   // yet has nothing to annotate (the tab would just say "tokenize first"), so
   // point it at the Text Editor. Only divert once word counts have loaded and
@@ -144,25 +166,6 @@ export const DocumentList = () => {
     const knownEmpty = hasWordLayer && !wordsLoading && (wordCounts[documentId] ?? 0) === 0;
     return `/projects/${projectId}/documents/${documentId}/${knownEmpty ? 'edit' : 'annotate'}`;
   };
-
-  const onSort = (key) => setSort(nextSort(key));
-  const onFilter = (value) => setFilter(value);
-
-  const sortedDocuments = useMemo(() => {
-    const q = filter.trim().toLowerCase();
-    const matched = q
-      ? documents.filter((d) => (d.name || '').toLowerCase().includes(q))
-      : documents;
-    const extract = {
-      name: (d) => d.name?.toLowerCase() ?? '',
-      words: (d) => (hasWordLayer ? (wordCounts[d.id] ?? 0) : null),
-      updated: (d) => d.timeModified ?? null,
-    }[sort.key];
-    return sortBy(matched, extract, sort.dir);
-  }, [documents, wordCounts, hasWordLayer, sort, filter]);
-
-  // A new search or sort is a different list, so it starts at page 1.
-  const paged = usePagedList(sortedDocuments, { resetKey: `${filter}|${sort.key}|${sort.dir}` });
 
   // Setting the project up for UD belongs HERE, at the door: a project is
   // either set up or it isn't, and finding that out is what clicking into it
@@ -177,15 +180,18 @@ export const DocumentList = () => {
   }, [project, configured, canManage, projectId, navigate]);
 
   if (loading) {
-    return (
-      <Center py={48}>
-        <Loader />
-      </Center>
-    );
+    return <p className="tw p-4 text-sm text-muted-foreground">Loading…</p>;
   }
 
   if (!project) {
-    return <Alert color="red">Project not found</Alert>;
+    return (
+      <div
+        role="alert"
+        className="tw rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+      >
+        Project not found
+      </div>
+    );
   }
 
   // A maintainer is on their way to the setup page (the effect above). Everyone
@@ -195,17 +201,17 @@ export const DocumentList = () => {
     return (
       <>
         <ProjectTabs projectId={projectId} project={project} />
-        <Center py={64}>
-          <Alert
-            color="yellow"
-            title="Not set up for UD"
-            maw={520}
-            icon={<IconInfoCircle size={18} />}
-          >
-            This project hasn’t been set up for Universal Dependencies yet. Ask a project maintainer
-            to add UD support.
-          </Alert>
-        </Center>
+        <div className="tw flex justify-center py-16">
+          <div className="flex max-w-lg gap-3 rounded-md border border-amber-500/50 bg-amber-500/10 p-4">
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            <div className="text-sm">
+              <p className="font-medium">Not set up for UD</p>
+              <p className="mt-1 text-muted-foreground">
+                Ask a project maintainer to add UD support.
+              </p>
+            </div>
+          </div>
+        </div>
       </>
     );
   }
@@ -215,117 +221,154 @@ export const DocumentList = () => {
   const canEdit = canEditProject(project, user);
 
   const renderWords = (documentId) => {
-    if (wordsLoading) return <Loader size={12} />;
+    if (wordsLoading) return <Spinner />;
     if (!hasWordLayer) return '—';
     return (wordCounts[documentId] ?? 0).toLocaleString();
   };
+
+  const renderMine = (documentId) => {
+    if (mineLoading) return <Spinner />;
+    const at = myLastEdits[documentId];
+    if (!at) return '—';
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span>{timeAgo(at) || '—'}</span>
+        </TooltipTrigger>
+        <TooltipContent>{fullTimestamp(at)}</TooltipContent>
+      </Tooltip>
+    );
+  };
+
+  // Each cell holds a real anchor rather than the row holding an onClick, so
+  // middle-click and cmd-click open the document the way they do on any link.
+  const linked = (document, className, children) => (
+    <Link to={rowHref(document.id)} className={className}>
+      {children}
+    </Link>
+  );
+
+  const columns = [
+    {
+      key: 'name',
+      label: 'Document',
+      sort: (d) => d.name?.toLowerCase() ?? '',
+      className: 'p-0',
+      render: (d) =>
+        linked(
+          d,
+          'flex items-center gap-3 px-4 py-3',
+          <>
+            <EntityAvatar id={d.id} size={36} />
+            <div className="min-w-0">
+              <div className="truncate font-medium">{d.name}</div>
+              <div className="truncate text-xs text-muted-foreground">ID: {d.id}</div>
+            </div>
+          </>,
+        ),
+    },
+    {
+      key: 'words',
+      label: 'Words',
+      sort: (d) => (hasWordLayer ? (wordCounts[d.id] ?? 0) : null),
+      align: 'right',
+      className: 'p-0',
+      render: (d) =>
+        linked(
+          d,
+          'block px-4 py-3 text-right tabular-nums text-muted-foreground',
+          renderWords(d.id),
+        ),
+    },
+    {
+      key: 'updated',
+      label: 'Updated',
+      sort: (d) => (d.timeModified ? new Date(d.timeModified).getTime() : null),
+      align: 'right',
+      className: 'p-0',
+      headerClassName: 'w-[130px]',
+      render: (d) =>
+        linked(
+          d,
+          'block whitespace-nowrap px-4 py-3 text-right text-muted-foreground',
+          d.timeModified ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>{timeAgo(d.timeModified) || '—'}</span>
+              </TooltipTrigger>
+              <TooltipContent>{fullTimestamp(d.timeModified)}</TooltipContent>
+            </Tooltip>
+          ) : (
+            '—'
+          ),
+        ),
+    },
+    {
+      key: 'mine',
+      label: 'Your last edit',
+      // Never touched is null, which orders as the smallest, so descending
+      // puts the documents this reader has actually worked on at the top.
+      sort: (d) => (myLastEdits[d.id] ? new Date(myLastEdits[d.id]).getTime() : null),
+      align: 'right',
+      className: 'p-0',
+      headerClassName: 'w-[150px]',
+      render: (d) =>
+        linked(
+          d,
+          'block whitespace-nowrap px-4 py-3 text-right text-muted-foreground',
+          renderMine(d.id),
+        ),
+    },
+  ];
 
   return (
     <>
       <ProjectTabs projectId={projectId} project={project} />
 
-      <Group justify="space-between" mb="lg">
-        <Title order={2}>Documents in {project.name}</Title>
-        <Group gap="sm">
-          <SearchInput placeholder="Search documents…" value={filter} onChange={onFilter} />
-          <ListCount shown={sortedDocuments.length} total={documents.length} noun="document" />
+      <div className="tw">
+        <div className="mb-6 flex items-center justify-between">
+          <h1 className="text-2xl font-semibold tracking-tight">Documents in {project.name}</h1>
           {canEdit && (
-            <Button
-              color="dark"
-              leftSection={<IconPlus size={16} />}
-              onClick={() => setShowCreateForm(true)}
-            >
-              New Document
+            <Button onClick={() => setShowCreateForm(true)}>
+              <Plus className="h-4 w-4" /> New document
             </Button>
           )}
-        </Group>
-      </Group>
+        </div>
 
-      {error && (
-        <Alert color="red" mb="md">
-          {error}
-        </Alert>
-      )}
-
-      <DocumentForm
-        projectId={projectId}
-        isOpen={showCreateForm}
-        onClose={() => setShowCreateForm(false)}
-      />
-
-      {documents.length === 0 ? (
-        <Center py={48}>
-          <Text c="dimmed">No documents yet. Create your first document to start annotating!</Text>
-        </Center>
-      ) : sortedDocuments.length === 0 ? (
-        <Center py={48}>
-          <Text c="dimmed">No documents match “{filter.trim()}”.</Text>
-        </Center>
-      ) : (
-        <Paper withBorder radius="md">
-          <ListPager {...paged} onPage={paged.setPage} position="top" />
-          {/* Sortable column header */}
-          <Group
-            gap="sm"
-            wrap="nowrap"
-            px="md"
-            py="xs"
-            style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}
+        {error && (
+          <div
+            role="alert"
+            className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
           >
-            <SortButton field="name" sort={sort} onSort={onSort} align="left">
-              Document
-            </SortButton>
-            <SortButton field="words" sort={sort} onSort={onSort} width={W_WORDS}>
-              Words
-            </SortButton>
-            <SortButton field="updated" sort={sort} onSort={onSort} width={W_UPDATED}>
-              Updated
-            </SortButton>
-          </Group>
+            {error}
+          </div>
+        )}
 
-          <Stack gap={0}>
-            {paged.pageItems.map((document) => (
-              <Box
-                key={document.id}
-                component={Link}
-                to={rowHref(document.id)}
-                className={classes.row}
-                p="md"
-              >
-                <Group gap="sm" wrap="nowrap">
-                  <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
-                    <EntityAvatar id={document.id} size={36} />
-                    <div style={{ minWidth: 0 }}>
-                      <Text fw={500} size="lg" truncate>
-                        {document.name}
-                      </Text>
-                      <Text size="xs" c="dimmed" truncate>
-                        ID: {document.id}
-                      </Text>
-                    </div>
-                  </Group>
+        <DocumentForm
+          projectId={projectId}
+          isOpen={showCreateForm}
+          onClose={() => setShowCreateForm(false)}
+        />
 
-                  <Box ta="right" w={W_WORDS}>
-                    <Text size="sm" c="dimmed" component="span">
-                      {renderWords(document.id)}
-                    </Text>
-                  </Box>
-                  <Tooltip
-                    label={fullTimestamp(document.timeModified)}
-                    disabled={!document.timeModified}
-                    withinPortal
-                  >
-                    <Text size="sm" c="dimmed" ta="right" w={W_UPDATED}>
-                      {timeAgo(document.timeModified) || '—'}
-                    </Text>
-                  </Tooltip>
-                </Group>
-              </Box>
-            ))}
-          </Stack>
-          <ListPager {...paged} onPage={paged.setPage} />
-        </Paper>
-      )}
+        <TooltipProvider>
+          <DataTable
+            rows={documents}
+            columns={columns}
+            rowKey={(d) => d.id}
+            id="documents"
+            scope={projectId}
+            rememberPage
+            defaultSort={{ key: 'name', dir: 'asc' }}
+            search={{
+              placeholder: 'Search documents…',
+              match: (d, q) => (d.name || '').toLowerCase().includes(q),
+            }}
+            noun="document"
+            empty="No documents yet."
+            noMatch={(q) => `No documents match “${q}”.`}
+          />
+        </TooltipProvider>
+      </div>
     </>
   );
 };

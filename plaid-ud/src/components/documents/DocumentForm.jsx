@@ -1,7 +1,16 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Modal, TextInput, Button, Group, Stack, Alert } from '@mantine/core';
 import { useAuth } from '../../contexts/AuthContext';
+import { Button } from '@ui/components/ui/button';
+import { Input } from '@ui/components/ui/input';
+import { Label } from '@ui/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@ui/components/ui/dialog';
 
 export const DocumentForm = ({ projectId, isOpen, onClose }) => {
   const [documentName, setDocumentName] = useState('');
@@ -15,7 +24,7 @@ export const DocumentForm = ({ projectId, isOpen, onClose }) => {
 
     const name = documentName.trim();
     if (!name) {
-      setError('Document name is required');
+      setError('Name the document.');
       return;
     }
 
@@ -27,7 +36,7 @@ export const DocumentForm = ({ projectId, isOpen, onClose }) => {
       const created = await client.documents.create(projectId, name);
       // A new document has no tokens yet, so the Annotate tab would just say
       // "tokenize first" — open it directly in the Text Editor instead. We stay
-      // in the loading state through navigation: this list route (and the modal
+      // in the loading state through navigation: this list route (and the dialog
       // with it) unmounts, so there's no need to reset it.
       navigate(`/projects/${projectId}/documents/${created.id}/edit`);
     } catch (err) {
@@ -38,32 +47,42 @@ export const DocumentForm = ({ projectId, isOpen, onClose }) => {
   };
 
   return (
-    <Modal opened={isOpen} onClose={onClose} title="Create New Document" size="sm" centered>
-      <form onSubmit={handleSubmit}>
-        <Stack gap="md">
-          {error && <Alert color="red">{error}</Alert>}
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>New document</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          {error && (
+            <div
+              role="alert"
+              className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            >
+              {error}
+            </div>
+          )}
 
-          <TextInput
-            label="Document Name"
-            name="documentName"
-            value={documentName}
-            onChange={(e) => setDocumentName(e.target.value)}
-            placeholder="Enter document name"
-            required
-            disabled={loading}
-            data-autofocus
-          />
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="document-name">Document name</Label>
+            <Input
+              id="document-name"
+              value={documentName}
+              onChange={(e) => setDocumentName(e.target.value)}
+              disabled={loading}
+              autoFocus
+            />
+          </div>
 
-          <Group justify="flex-end" gap="sm">
-            <Button type="button" variant="default" onClick={onClose} disabled={loading}>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
               Cancel
             </Button>
-            <Button type="submit" color="dark" loading={loading}>
-              Create Document
+            <Button type="submit" disabled={loading}>
+              {loading ? 'Creating…' : 'Create document'}
             </Button>
-          </Group>
-        </Stack>
-      </form>
-    </Modal>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 };

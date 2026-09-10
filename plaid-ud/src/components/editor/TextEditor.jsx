@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   SimpleGrid,
   Stack,
@@ -11,7 +10,6 @@ import {
   Alert,
   Paper,
 } from '@mantine/core';
-import { IconTrash } from '@tabler/icons-react';
 import { cpSlice } from '@larc-iu/plaid-client';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import {
@@ -19,7 +17,6 @@ import {
   hasForeignSubstrateParticipants,
   foreignAnnotationLossForWord,
 } from '../../utils/udLayerUtils.js';
-import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { canEditProject } from '../../utils/permissions.js';
 import { TokenVisualizer } from './TokenVisualizer.jsx';
@@ -28,7 +25,6 @@ import { NlpServiceControls } from './NlpServiceControls.jsx';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 export const TextEditor = () => {
-  const navigate = useNavigate();
   // Project, document, the breadcrumbs/tab strip and the version-counter
   // subscription all come from DocumentEditorShell, which guarantees both the
   // project and the document are loaded before this renders.
@@ -155,28 +151,6 @@ export const TextEditor = () => {
   };
   const handleSentenceBoundaryToggle = (charPos) => doc?.toggleSentenceBoundary(charPos);
   const handleSetWordMorphemes = (word, forms) => doc?.setWordMorphemes(word, forms);
-
-  // Delete the whole document. Lives here (rather than as a per-row action in the
-  // document list) so it's an explicit, inside-the-document action; returns to
-  // the list afterwards.
-  const handleDeleteDocument = async () => {
-    const name = doc?.name || 'this document';
-    const ok = await confirm({
-      title: `Delete “${name}”`,
-      description: 'This cannot be undone.',
-      confirmLabel: 'Delete',
-      destructive: true,
-    });
-    if (!ok) return;
-    try {
-      await getClient().documents.delete(documentId);
-      notifySuccess(`Deleted "${name}"`);
-      navigate(`/projects/${projectId}/documents`);
-    } catch (err) {
-      notifyError(err.message || 'Unknown error', 'Failed to delete document');
-      console.error('Error deleting document:', err);
-    }
-  };
 
   const layerInfo = doc.layerInfo;
   const sentenceTokens = layerInfo.sentenceTokenLayer?.tokens || [];
@@ -352,24 +326,6 @@ This is a second sentence for testing.`}
           />
         </Paper>
       </SimpleGrid>
-
-      {!readOnly && (
-        <Group
-          justify="flex-end"
-          mt="xl"
-          pt="md"
-          style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}
-        >
-          <Button
-            color="red"
-            variant="light"
-            leftSection={<IconTrash size={16} />}
-            onClick={handleDeleteDocument}
-          >
-            Delete Document
-          </Button>
-        </Group>
-      )}
     </>
   );
 };
