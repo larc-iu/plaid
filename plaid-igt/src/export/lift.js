@@ -150,6 +150,69 @@ function partitionMetadata(metadata, analysisLang, refFields = new Set(), fieldL
   };
 }
 
+// FLEx's own LIFT spelling for the note and field properties built into
+// LexEntry and LexSense, read off LiftExporter.cs (what FLEx writes) and
+// LiftMerger.cs (what it reads back into the same property). The .fwbackup
+// importer brings these across under their FLEx property names plus a
+// writing-system suffix, so a lexicon that came from FLEx carries
+// `Source (en)` and `Comment (en)` as ordinary fields. Written back as
+// <field type="Source"> and declared in the header, FLEx tried to CREATE a
+// custom field with a built-in's name and refused the whole file: "Field
+// already exists: Source" (the first real user's lexicon, 450 senses with a
+// Source). These go out exactly as FLEx writes them, and are never declared.
+//
+// Bibliography, Restrictions and ImportResidue exist on both classes. The
+// importer flattened entry and sense into one item, so the name alone cannot
+// say which it was; the sense is where FLEx keeps most of them.
+const FLEX_BUILTIN_FIELDS = {
+  // LexEntry
+  Comment: { level: 'entry', el: 'note', type: null },
+  LiteralMeaning: { level: 'entry', el: 'field', type: 'literal-meaning' },
+  SummaryDefinition: { level: 'entry', el: 'field', type: 'summary-definition' },
+  // LexSense
+  Source: { level: 'sense', el: 'note', type: 'source' },
+  AnthroNote: { level: 'sense', el: 'note', type: 'anthropology' },
+  Bibliography: { level: 'sense', el: 'note', type: 'bibliography' },
+  DiscourseNote: { level: 'sense', el: 'note', type: 'discourse' },
+  EncyclopedicInfo: { level: 'sense', el: 'note', type: 'encyclopedic' },
+  GeneralNote: { level: 'sense', el: 'note', type: null },
+  GrammarNote: { level: 'sense', el: 'note', type: 'grammar' },
+  PhonologyNote: { level: 'sense', el: 'note', type: 'phonology' },
+  Restrictions: { level: 'sense', el: 'note', type: 'restrictions' },
+  SemanticsNote: { level: 'sense', el: 'note', type: 'semantics' },
+  SocioLinguisticsNote: { level: 'sense', el: 'note', type: 'sociolinguistics' },
+  ScientificName: { level: 'sense', el: 'field', type: 'scientific-name' },
+  Exemplar: { level: 'sense', el: 'field', type: 'exemplar' },
+  ImportResidue: { level: 'sense', el: 'field', type: 'import-residue' },
+};
+
+/**
+ * The built-ins of one level among `grouped`, as the <note>/<field> lines
+ * FLEx expects, plus the custom remainder for the caller to write and
+ * declare. A built-in of the OTHER level is left out here: the importer put
+ * an entry's Comment on every one of its senses, and the entry writer takes
+ * it from the head item once.
+ */
+function builtinsXml(indent, grouped, level) {
+  const lines = [];
+  const custom = new Map();
+  for (const [base, values] of grouped) {
+    const spec = FLEX_BUILTIN_FIELDS[base];
+    if (!spec) {
+      custom.set(base, values);
+      continue;
+    }
+    if (spec.level !== level) continue;
+    const attr = spec.type ? ` type="${xmlEscape(spec.type)}"` : '';
+    lines.push(
+      `${indent}<${spec.el}${attr}>`,
+      ...multitext(`${indent}  `, values),
+      `${indent}</${spec.el}>`,
+    );
+  }
+  return { lines, custom };
+}
+
 /**
  * Custom fields grouped by base name, so "Comment" and "Comment (ru)" become
  * ONE <field type="Comment"> holding a form per writing system rather than two
@@ -233,8 +296,12 @@ function senseXml(indent, item, ctx, index, tag = 'sense', children = []) {
     ctx.refFields,
     ctx.fieldLangs,
   );
-  const grouped = groupFields(fields, ctx.fieldLangs, ctx.analysisLang);
-  for (const base of grouped.keys()) ctx.customNames.add(base);
+  const { lines: builtins, custom } = builtinsXml(
+    `${indent}  `,
+    groupFields(fields, ctx.fieldLangs, ctx.analysisLang),
+    'sense',
+  );
+  for (const base of custom.keys()) ctx.customNames.add(base);
 
   const id = senseIdOf(item, ctx.entryId, index);
   const pos = scalar(meta.pos);
@@ -263,7 +330,8 @@ function senseXml(indent, item, ctx, index, tag = 'sense', children = []) {
     ),
   );
   inner.push(...examplesXml(`${indent}  `, item, ctx));
-  for (const [base, values] of grouped) {
+  inner.push(...builtins);
+  for (const [base, values] of custom) {
     inner.push(
       `${indent}  <field type="${xmlEscape(base)}">`,
       ...multitext(`${indent}    `, values),
@@ -378,6 +446,10 @@ function entryXml(indent, group, ctx) {
   // every real one, and re-importing that adds a spurious sense every round.
   // Its own fields are the entry's, and go after the senses.
   const headParts = partitionMetadata(meta, ctx.analysisLang, ctx.refFields, ctx.fieldLangs);
+  // The entry's own note and fields (Comment, LiteralMeaning, ...), where FLEx
+  // writes them: on the entry, before its senses.
+  const headGrouped = groupFields(headParts.fields, ctx.fieldLangs, ctx.analysisLang);
+  inner.push(...builtinsXml(`${indent}  `, headGrouped, 'entry').lines);
   // What the head's examples RENDER to, which is what decides whether the head
   // says anything a sense says. Asking the raw list instead would turn a
   // headword whose only example is unreadable into a gloss-less first sense,
@@ -399,8 +471,7 @@ function entryXml(indent, group, ctx) {
   if (headIsASense) ctx.unresolved.count = unresolvedBefore;
   const trailing = [];
   if (!headIsASense) {
-    const grouped = groupFields(headParts.fields, ctx.fieldLangs, ctx.analysisLang);
-    for (const [base, values] of grouped) {
+    for (const [base, values] of builtinsXml('', headGrouped, 'entry').custom) {
       ctx.customNames.add(base);
       trailing.push(
         `${indent}  <field type="${xmlEscape(base)}">`,

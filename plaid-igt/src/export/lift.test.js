@@ -197,18 +197,65 @@ describe('buildLiftLexicon', () => {
     expect(dom.querySelector('header fields field').getAttribute('tag')).toBe('Source Note');
   });
 
+  // A lexicon that came from FLEx carries FLEx's own built-in notes and fields
+  // as ordinary metadata (Source, Comment, ScientificName...). Declared in the
+  // header as custom fields, FLEx refused the whole LIFT: "Field already
+  // exists: Source". They go out the way FLEx writes them, and undeclared.
+  describe("FLEx's built-in notes and fields", () => {
+    const lexicon = (metadata) =>
+      parse(build([{ id: 'v1', items: [item('i1', 'a', metadata)] }]).lift);
+
+    it('writes a sense Source as <note type="source">, nowhere near the header', () => {
+      const dom = lexicon({ gloss: 'g', 'Source (en)': '1182' });
+      const note = dom.querySelector('sense note[type="source"]');
+      expect(note.querySelector('form').getAttribute('lang')).toBe('en');
+      expect(note.querySelector('text').textContent).toBe('1182');
+      expect(dom.querySelector('sense field')).toBeNull();
+      expect(dom.querySelector('header fields')).toBeNull();
+    });
+
+    it("writes an entry Comment as the entry's untyped <note>, once, not on the sense", () => {
+      const dom = lexicon({ gloss: 'g', 'Comment (en)': 'checked' });
+      const notes = [...dom.querySelectorAll('note')];
+      expect(notes.length).toBe(1);
+      expect(notes[0].parentElement.tagName).toBe('entry');
+      expect(notes[0].hasAttribute('type')).toBe(false);
+      expect(notes[0].querySelector('text').textContent).toBe('checked');
+      expect(dom.querySelector('header fields')).toBeNull();
+    });
+
+    it('uses the kebab-case field types FLEx reads, and keeps declaring real custom fields', () => {
+      const dom = lexicon({
+        gloss: 'g',
+        ScientificName: 'Musa',
+        LiteralMeaning: 'lit.',
+        GeneralNote: 'note',
+        Plural: 'plurals',
+      });
+      expect(dom.querySelector('sense field[type="scientific-name"]')).not.toBeNull();
+      expect(dom.querySelector('entry > field[type="literal-meaning"]')).not.toBeNull();
+      const general = dom.querySelector('sense note');
+      expect(general.hasAttribute('type')).toBe(false);
+      expect(dom.querySelector('sense field[type="Plural"]')).not.toBeNull();
+      const declared = [...dom.querySelectorAll('header fields field')].map((f) =>
+        f.getAttribute('tag'),
+      );
+      expect(declared).toEqual(['Plural']);
+    });
+  });
+
   it('groups a field written in several writing systems into one <field>', () => {
     const dom = parse(
       build([
         {
           id: 'v1',
-          items: [item('i1', 'a', { Comment: 'checked', 'Comment (ru)': 'проверено' })],
+          items: [item('i1', 'a', { Usage: 'checked', 'Usage (ru)': 'проверено' })],
         },
       ]).lift,
     );
     const fields = [...dom.querySelectorAll('sense field')];
     expect(fields.length).toBe(1);
-    expect(fields[0].getAttribute('type')).toBe('Comment');
+    expect(fields[0].getAttribute('type')).toBe('Usage');
     expect([...fields[0].querySelectorAll('form')].map((f) => f.getAttribute('lang'))).toEqual([
       'en',
       'ru',
