@@ -43,6 +43,23 @@ export const selectionToConfig = (selection) => {
   return decoded.kind === 'service' ? { serviceId: decoded.id } : { builtin: decoded.id };
 };
 
+// The project's language, as a seed for a service argument literally named
+// `language` (the parse spot's, today). A service declares its own argument
+// list, so the tag is only offered when the service HAS that argument and the
+// tag is a value it accepts: a project annotating a language the parser ships
+// no model for keeps the service's own default. Returns {} or {language: tag}.
+export const languageParamSeed = (schema, language) => {
+  const tag = typeof language === 'string' ? language.trim() : '';
+  if (!tag) return {};
+  const param = (schema || []).find((p) => p?.key === 'language');
+  if (!param) return {};
+  if (param.type === 'enum' || param.type === 'multiselect') {
+    const legal = (param.options || []).some((o) => o?.value === tag);
+    if (!legal) return {};
+  }
+  return { language: tag };
+};
+
 // The project's default entry for a spot: {service, params} or null.
 export const readSpotDefault = (project, task, namespace = UD_NAMESPACE) =>
   project?.config?.[namespace]?.serviceDefaults?.[task] || null;

@@ -11,7 +11,12 @@ import {
 } from '@larc-iu/plaid-client';
 import { canManageProject } from '../utils/permissions.js';
 import { isProvKey } from '../utils/provenanceUi.js';
-import { getUdLayerInfo, containsToken, missingUdLayerLabels } from '../utils/udLayerUtils.js';
+import {
+  getUdLayerInfo,
+  containsToken,
+  missingUdLayerLabels,
+  readProjectLanguage,
+} from '../utils/udLayerUtils.js';
 import {
   interSententialRelationIds,
   wordsNeedingSyntacticWord,
@@ -741,9 +746,13 @@ export class ConlluDocument {
       // hyphenated forms, abbreviations, decimal numbers); edge or standalone
       // punctuation becomes its own one-character token.
       // Locale drives Intl.Segmenter's script-specific word segmentation
-      // (esp. ja/zh/th dictionary lookup). Configured per-project on the text
-      // layer; defaults to 'und'.
-      const tokenizerLocale = this.layerInfo.textLayer?.config?.ud?.tokenizerLocale || 'und';
+      // (esp. ja/zh/th dictionary lookup). The text layer's own locale wins,
+      // since it can carry a script subtag the project language does not
+      // (zh-Hans); otherwise the project's language stands in, and 'und' last.
+      const tokenizerLocale =
+        this.layerInfo.textLayer?.config?.ud?.tokenizerLocale ||
+        readProjectLanguage(this._project) ||
+        'und';
       const wordRanges = basicTokenize(body, tokenizerLocale);
 
       let morphemeResultIndex = -1;

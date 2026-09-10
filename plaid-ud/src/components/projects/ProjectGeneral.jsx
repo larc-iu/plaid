@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { UD_NAMESPACE, getUdLayerInfo } from '../../utils/udLayerUtils.js';
+import { UD_NAMESPACE, getUdLayerInfo, readProjectLanguage } from '../../utils/udLayerUtils.js';
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { useManagedProject } from './useManagedProject.js';
 import {
@@ -20,28 +20,52 @@ import {
 } from '@mantine/core';
 
 // "General" tab: project-wide settings that aren't vocab/colors. Currently the
-// tokenizer locale (used by the segmenter) and the destructive project-delete
-// action, deliberately tucked behind a type-the-name confirmation since it's
-// rarely needed.
+// project's language, the tokenizer locale (used by the segmenter) and the
+// destructive project-delete action, deliberately tucked behind a
+// type-the-name confirmation since it's rarely needed.
 export const ProjectGeneral = ({ embedded = false }) => {
   const { projectId, project, loading, fetchProject, canConfigure } = useManagedProject();
   const navigate = useNavigate();
   const { getClient } = useAuth();
 
+  const [savingLanguage, setSavingLanguage] = useState(false);
+  const [language, setLanguage] = useState(''); // BCP-47, '' = not stated
   const [savingLocale, setSavingLocale] = useState(false);
-  const [tokenizerLocale, setTokenizerLocale] = useState(''); // BCP-47, '' = 'und'
+  const [tokenizerLocale, setTokenizerLocale] = useState(''); // BCP-47, '' = the language
 
   // Delete (danger zone) — type-the-name-to-confirm.
   const [deleteModalOpened, setDeleteModalOpened] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Seed the locale editor from the project's text-layer config.
+  // Seed both editors from the server's copy, and re-seed whenever the project
+  // reloads, so the form shows what is actually stored.
   useEffect(() => {
     if (!project) return;
     const info = getUdLayerInfo(project);
+    setLanguage(readProjectLanguage(project));
     setTokenizerLocale(info.textLayer?.config?.[UD_NAMESPACE]?.tokenizerLocale || '');
   }, [project]);
+
+  // The language lives on the PROJECT, not a layer: it is a fact about the
+  // project, and the parse spot reads it without loading layer config.
+  const handleSaveLanguage = async () => {
+    setSavingLanguage(true);
+    try {
+      const client = getClient();
+      if (!client) throw new Error('Not authenticated');
+      const tag = language.trim();
+      if (tag) await client.projects.setConfig(projectId, UD_NAMESPACE, 'language', tag);
+      else await client.projects.deleteConfig(projectId, UD_NAMESPACE, 'language');
+      await fetchProject();
+      notifySuccess('Language saved.');
+    } catch (err) {
+      console.error('Failed to save project language:', err);
+      notifyError(err.message || 'Failed to save the language.');
+    } finally {
+      setSavingLanguage(false);
+    }
+  };
 
   const handleSaveLocale = async () => {
     setSavingLocale(true);
@@ -106,6 +130,29 @@ export const ProjectGeneral = ({ embedded = false }) => {
     <Stack gap="xl">
       <Paper withBorder p="lg" radius="md">
         <Title order={2} size="h4" mb="xs">
+          Language
+        </Title>
+        <Text size="sm" c="dimmed" mb="md">
+          The language this project annotates, as a BCP-47 tag (<code>en</code>, <code>de</code>,{' '}
+          <code>zh-Hans</code>). The parser starts on it, and tokenization uses it unless the locale
+          below is set.
+        </Text>
+        <Group align="flex-end" gap="sm">
+          <TextInput
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+            placeholder="en"
+            w={220}
+            spellCheck={false}
+          />
+          <Button color="dark" loading={savingLanguage} onClick={handleSaveLanguage}>
+            Save
+          </Button>
+        </Group>
+      </Paper>
+
+      <Paper withBorder p="lg" radius="md">
+        <Title order={2} size="h4" mb="xs">
           Tokenizer locale
         </Title>
         <Text size="sm" c="dimmed" mb="md">
@@ -113,8 +160,8 @@ export const ProjectGeneral = ({ embedded = false }) => {
             Language tag used for whitespace/word tokenization (<code>Intl.Segmenter</code>). Drives
             script-specific segmentation — especially <code>ja</code>, <code>zh</code>,{' '}
             <code>th</code>, which are segmented by dictionary lookup when given the locale. A
-            BCP-47 tag (e.g. <code>en</code>,<code> ja</code>, <code>zh-Hans</code>); leave empty
-            for generic (<code>und</code>).
+            BCP-47 tag (e.g. <code>en</code>,<code> ja</code>, <code>zh-Hans</code>). Leave it empty
+            to use the project language.
           </p>
           <p>
             See{' '}
@@ -129,8 +176,9 @@ export const ProjectGeneral = ({ embedded = false }) => {
             <TextInput
               value={tokenizerLocale}
               onChange={(e) => setTokenizerLocale(e.target.value)}
-              placeholder="und"
+              placeholder={language.trim() || 'und'}
               w={220}
+              spellCheck={false}
             />
             <Button color="dark" loading={savingLocale} onClick={handleSaveLocale}>
               Save

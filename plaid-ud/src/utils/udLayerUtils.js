@@ -273,4 +273,13 @@ export const missingUdLayerLabels = (missingKeys) => {
   return missingKeys.map((key) => UD_LAYER_LABELS[key] || key);
 };
 
+// The one language a UD project annotates, as a BCP-47 tag, from the PROJECT's
+// own config (`config.ud.language`) — not a layer's. It is the fallback for the
+// tokenizer locale and the seed for a parse service's `language` argument.
+// '' when unset.
+export const readProjectLanguage = (project) => {
+  const tag = project?.config?.[UD_NAMESPACE]?.language;
+  return typeof tag === 'string' ? tag.trim() : '';
+};
+
 export { UD_NAMESPACE };

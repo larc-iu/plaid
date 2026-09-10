@@ -11,9 +11,11 @@ import { notifyError, notifyWarning } from '../../../utils/feedback.jsx';
 import {
   encodeServiceSelection,
   decodeSelection,
+  languageParamSeed,
   readSpotDefault,
   resolveInitialSelection,
 } from '../../../utils/serviceDefaults.js';
+import { readProjectLanguage } from '../../../utils/udLayerUtils.js';
 
 // See the request call below: this is silence allowed, not run length.
 const PARSE_SILENCE_MS = 5 * 60 * 1000;
@@ -25,9 +27,9 @@ const PARAMS_PREFIX = 'plaid_ud_parse_params_';
 // user pick one and fill in its declared arguments, then run it. The initial
 // choice resolves: valid localStorage -> project default
 // (config.ud.serviceDefaults.parse, set on the Services settings tab) -> first
-// online service. Argument values layer schema defaults under the project
-// default's params under the user's cached values. The fixed goal here is UD
-// parsing (TASKS.PARSE).
+// online service. Argument values layer schema defaults under the project's
+// language under the project default's params under the user's cached values.
+// The fixed goal here is UD parsing (TASKS.PARSE).
 export const useNlpService = (projectId, documentId, project) => {
   const [availableServices, setAvailableServices] = useState([]);
   const [isDiscovering, setIsDiscovering] = useState(false);
@@ -51,6 +53,7 @@ export const useNlpService = (projectId, documentId, project) => {
     [availableServices],
   );
   const projectDefault = useMemo(() => readSpotDefault(project, TASKS.PARSE), [project]);
+  const projectLanguage = useMemo(() => readProjectLanguage(project), [project]);
   const selectedService = useMemo(
     () => parseServices.find((s) => s.serviceId === selectedServiceId) || null,
     [parseServices, selectedServiceId],
@@ -106,15 +109,19 @@ export const useNlpService = (projectId, documentId, project) => {
   }, []);
 
   // Seed argument values when the selected service (hence schema) changes:
-  // schema defaults, overlaid with the project default's params (when this IS
-  // the project's default service), overlaid with any cached values — for
-  // keys still present in the schema.
+  // schema defaults, overlaid with the project's language (General settings),
+  // overlaid with the project default's params (when this IS the project's
+  // default service), overlaid with any cached values — for keys still present
+  // in the schema. The language sits lowest of the three because it is the
+  // broadest statement: an argument a maintainer set for this spot, or one the
+  // user last ran with, is the more specific answer.
   useEffect(() => {
     if (!selectedServiceId) {
       setParamValues({});
       return;
     }
     const defaults = buildDefaultValues(paramSchema);
+    const languageSeed = languageParamSeed(paramSchema, projectLanguage);
     const projectParams =
       (projectDefault?.service?.serviceId === selectedServiceId && projectDefault?.params) || {};
     let cached = {};
@@ -126,11 +133,12 @@ export const useNlpService = (projectId, documentId, project) => {
     }
     const merged = { ...defaults };
     for (const k of Object.keys(defaults)) {
+      if (languageSeed[k] !== undefined) merged[k] = languageSeed[k];
       if (projectParams[k] !== undefined) merged[k] = projectParams[k];
       if (cached[k] !== undefined) merged[k] = cached[k];
     }
     setParamValues(merged);
-  }, [selectedServiceId, paramSchema, projectDefault]);
+  }, [selectedServiceId, paramSchema, projectDefault, projectLanguage]);
 
   const setParam = useCallback(
     (key, value) => {
