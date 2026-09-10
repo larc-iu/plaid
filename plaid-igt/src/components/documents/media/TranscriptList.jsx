@@ -10,6 +10,8 @@ import React, {
 import { Pause, Play, Trash2, X } from 'lucide-react';
 import { cpSlice, provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { Button } from '@/components/ui/button';
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
+import { countAnnotationLossForRange } from '@/domain/annotationLoss.js';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -82,6 +84,16 @@ const autoGrow = (el) => {
   el.style.height = `${el.scrollHeight}px`;
 };
 
+// "3 annotations and 1 link on this text."
+const lossSentence = (loss) => {
+  if (!loss) return '';
+  const parts = [];
+  if (loss.annotations)
+    parts.push(`${loss.annotations} annotation${loss.annotations === 1 ? '' : 's'}`);
+  if (loss.links) parts.push(`${loss.links} link${loss.links === 1 ? '' : 's'}`);
+  return `${parts.join(' and ')} on this text.`;
+};
+
 const SegmentRow = memo(function SegmentRow({
   token,
   index,
@@ -96,10 +108,16 @@ const SegmentRow = memo(function SegmentRow({
   onAdvance,
   onStep,
   onDelete,
+  lossFor,
   onPlayToggle,
   registerText,
 }) {
   const storedSpeaker = token.metadata?.speaker || '';
+  // What deleting this segment's text would take, while the row is asking.
+  // Null when it is not: an unannotated segment goes straight through, with
+  // its text, since a segment is its utterance. An annotated one asks whether
+  // the text goes too, the same gate a word gets on the Tokenize tab.
+  const [askText, setAskText] = useState(null);
   // The edit state lives in refs mirrored into state: the keydown that commits
   // and the blur that follows it (focus moves on Enter) run before React has
   // re-rendered, so a guard read from a closure would still see the old edit
@@ -316,15 +334,53 @@ const SegmentRow = memo(function SegmentRow({
           {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
         </Button>
         {!readOnly && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 hover:text-destructive"
-            aria-label="Delete segment"
-            onClick={() => onDelete(token.id)}
+          <Popover
+            open={!!askText}
+            onOpenChange={(o) => {
+              if (!o) setAskText(null);
+            }}
           >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+            <PopoverAnchor asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 hover:text-destructive"
+                aria-label="Delete segment"
+                onClick={() => {
+                  const loss = lossFor(token);
+                  if (loss.annotations + loss.links === 0) onDelete(token.id, { deleteText: true });
+                  else setAskText(loss);
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </PopoverAnchor>
+            <PopoverContent align="end" className="w-72 text-sm">
+              <p>{lossSentence(askText)}</p>
+              <div className="mt-2 flex justify-end gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setAskText(null);
+                    onDelete(token.id, { deleteText: false });
+                  }}
+                >
+                  Keep text
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => {
+                    setAskText(null);
+                    onDelete(token.id, { deleteText: true });
+                  }}
+                >
+                  Delete text
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
         )}
       </div>
     </div>
@@ -783,7 +839,14 @@ export function TranscriptList({ mediaOps, readOnly = false, headerActions = nul
     [doc],
   );
 
-  const handleDelete = useCallback((id) => opsRef.current.handleDeleteAlignment(id), []);
+  const handleDelete = useCallback(
+    (id, opts) => opsRef.current.handleDeleteAlignment(id, opts),
+    [],
+  );
+  const lossFor = useCallback(
+    (t) => countAnnotationLossForRange(doc.layerInfo, doc.vocabularies, t.begin, t.end),
+    [doc],
+  );
 
   // Entering a proposal selects and (by preference) plays its stretch, the
   // same as entering a segment row.
@@ -952,6 +1015,7 @@ export function TranscriptList({ mediaOps, readOnly = false, headerActions = nul
               onAdvance={handleAdvance}
               onStep={handleStep}
               onDelete={handleDelete}
+              lossFor={lossFor}
               onPlayToggle={handlePlayToggle}
               registerText={registerText}
             />

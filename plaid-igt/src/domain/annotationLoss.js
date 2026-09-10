@@ -86,6 +86,42 @@ export const countAnnotationLossForWord = (layerInfo, vocabularies, word) => {
 };
 
 /**
+ * Count what deleting a stretch of the baseline would take: every word
+ * overlapping it (and, through countAnnotationLossForWord, all that cascades
+ * from those words), plus the spans of every sentence lying wholly inside it,
+ * which the server deletes with the sentence. A segment on the Media tab is
+ * such a stretch, and its trash goes straight through when this is zero.
+ *
+ * @returns {{annotations: number, links: number}}
+ */
+export const countAnnotationLossForRange = (layerInfo, vocabularies, begin, end) => {
+  const result = { annotations: 0, links: 0 };
+  if (!layerInfo || !(end > begin)) return result;
+  for (const word of layerInfo.primaryTokenLayer?.tokens || []) {
+    if (word.begin < end && word.end > begin) {
+      const loss = countAnnotationLossForWord(layerInfo, vocabularies, word);
+      result.annotations += loss.annotations;
+      result.links += loss.links;
+    }
+  }
+  const dyingSentences = new Set(
+    (layerInfo.sentenceTokenLayer?.tokens || [])
+      .filter((s) => s.begin >= begin && s.end <= end)
+      .map((s) => s.id),
+  );
+  if (dyingSentences.size) {
+    for (const sl of layerInfo.spanLayers?.sentence || []) {
+      for (const sp of sl.spans || []) {
+        if (Array.isArray(sp.tokens) && sp.tokens.some((t) => dyingSentences.has(t))) {
+          result.annotations += 1;
+        }
+      }
+    }
+  }
+  return result;
+};
+
+/**
  * Count annotations a destructive *service* re-tokenize would discard. A
  * tokenizer service resets the sentence partition ONLY when a single sentence
  * covers the whole text; that cascade-deletes every word + morpheme token and

@@ -678,27 +678,17 @@ export const useMediaOperations = () => {
     }
   }, [detectSpot, detectRun, vad, requestService, project, doc]);
 
-  // Deleting a segment takes its times and speaker; its text stays in the
-  // baseline unless the dialog's box is ticked, which deletes the text and
-  // everything annotated on it as well.
+  // Deleting a segment takes its text with it by default: a segment IS its
+  // utterance, and the row asks first only when annotations are built on that
+  // text (see SegmentRow). Keeping the text is the row's other answer.
   const handleDeleteAlignment = useCallback(
-    async (alignmentId) => {
-      const answer = await confirm({
-        title: 'Delete segment?',
-        description: 'The segment is removed. Its text stays in the baseline.',
-        checkbox: {
-          label: 'Also delete its text from the baseline',
-          description: 'The words, glosses, and annotations on that text go with it.',
-          confirmLabel: 'Delete segment and text',
-        },
-        confirmLabel: 'Delete segment',
-        destructive: true,
-      });
-      if (!answer) return false;
+    async (alignmentId, { deleteText = true } = {}) => {
       await whenIdle(doc);
-      return doc.deleteAlignment(alignmentId, { deleteText: answer.checked });
+      const ok = await doc.deleteAlignment(alignmentId, { deleteText });
+      if (ok && deleteText) notifySuccess('Segment and its text deleted', 'Deleted');
+      return ok;
     },
-    [doc, confirm],
+    [doc],
   );
 
   // Keep the DOM media element's volume in sync with `volume`. Covers the

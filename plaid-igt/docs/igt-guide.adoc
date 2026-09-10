@@ -224,7 +224,7 @@ Transcription is a separate run, from the **Transcribe** button in the **Transcr
 Its segments are marked as machine-made until you edit or confirm them (see <<_services>>).
 **Delete segments**, beside it, removes segments in bulk: every segment, the segments with no text, or the segments whose text is a value you give.
 The count is shown before you confirm, and the text stays in the baseline whichever you choose.
-Deleting one segment from its row can also take its text with it, when you tick the box.
+The trash on a row deletes that segment and its text. When annotations are built on the text, it asks first whether the text goes too or stays in the baseline.
 
 == Tokenize
 

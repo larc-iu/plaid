@@ -429,6 +429,54 @@ describe('TranscriptList', () => {
     await r.unmount();
   });
 
+  // The trash takes the segment AND its text, unless annotations are built on
+  // that text, in which case it asks in place. The old confirm dialog asked
+  // every time, and its default kept the text, which left the segment's
+  // utterance behind in the baseline whenever the box went unticked.
+  describe('deleting a segment from its row', () => {
+    const click = (el) => el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const trashOf = (container, id) =>
+      container.querySelector(`[data-segment-id="${id}"] button[aria-label="Delete segment"]`);
+
+    it('goes straight through, text included, when nothing is annotated', async () => {
+      const ops = makeOps();
+      const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+      const r = await renderComponent(element(doc, ops));
+      click(trashOf(r.container, 'a'));
+      await settle();
+      expect(ops.handleDeleteAlignment).toHaveBeenCalledWith('a', { deleteText: true });
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
+      await r.unmount();
+    });
+
+    it('asks in place when the text carries annotations, and can keep the text', async () => {
+      const ops = makeOps();
+      const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+      // A word over "the" with one annotation on it, in the shape layerInfo has.
+      doc.layerInfo = {
+        primaryTextLayer: { tokenLayers: [] },
+        primaryTokenLayer: {
+          id: 'wl',
+          tokens: [{ id: 'w1', begin: 0, end: 3 }],
+          spanLayers: [{ spans: [{ id: 's1', tokens: ['w1'], value: 'DET' }] }],
+        },
+        sentenceTokenLayer: { tokens: [] },
+        spanLayers: { sentence: [] },
+      };
+      doc.vocabularies = {};
+      const r = await renderComponent(element(doc, ops));
+      click(trashOf(r.container, 'a'));
+      await settle();
+      expect(ops.handleDeleteAlignment).not.toHaveBeenCalled();
+      const pop = document.querySelector('[role="dialog"]');
+      expect(pop.textContent).toContain('1 annotation on this text.');
+      click([...pop.querySelectorAll('button')].find((b) => b.textContent === 'Keep text'));
+      await settle();
+      expect(ops.handleDeleteAlignment).toHaveBeenCalledWith('a', { deleteText: false });
+      await r.unmount();
+    });
+  });
+
   it('a machine-made segment says so', async () => {
     const tokens = [
       { id: 'm', begin: 0, end: 3, metadata: { timeBegin: 0, timeEnd: 1, prov: 'inferred' } },

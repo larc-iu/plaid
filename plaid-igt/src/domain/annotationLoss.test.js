@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { countAnnotationLossForWord } from './annotationLoss.js';
+import { countAnnotationLossForRange, countAnnotationLossForWord } from './annotationLoss.js';
 
 // A shared IGT+UD-shaped layerInfo: the word carries an IGT gloss, its IGT
 // morpheme a gloss, and UD's syntactic-word layer (nested under words too)
@@ -89,5 +89,42 @@ describe('countAnnotationLossForWord', () => {
     expect(
       countAnnotationLossForWord({ primaryTokenLayer: { id: 't', tokens: [] } }, null, null),
     ).toEqual({ annotations: 0, links: 0 });
+  });
+});
+
+// A segment's trash on the Media tab deletes its text when this is zero, and
+// asks first when it is not.
+describe('countAnnotationLossForRange', () => {
+  it('is the sum over every word the stretch touches, even partly', () => {
+    const { layerInfo, vocabularies, word } = make();
+    const one = countAnnotationLossForWord(layerInfo, vocabularies, word);
+    expect(countAnnotationLossForRange(layerInfo, vocabularies, 0, 6)).toEqual(one);
+    expect(countAnnotationLossForRange(layerInfo, vocabularies, 3, 6)).toEqual(one);
+    // Both words: w2 carries s5 and link l2 on top.
+    expect(countAnnotationLossForRange(layerInfo, vocabularies, 0, 9)).toEqual({
+      annotations: one.annotations + 1,
+      links: one.links + 1,
+    });
+    expect(countAnnotationLossForRange(layerInfo, vocabularies, 5, 6)).toEqual({
+      annotations: 0,
+      links: 0,
+    });
+  });
+
+  it('adds the spans of a sentence lying wholly inside the stretch, not one it cuts', () => {
+    const { layerInfo, vocabularies } = make();
+    const withSentence = {
+      ...layerInfo,
+      sentenceTokenLayer: { tokens: [{ id: 'sent1', begin: 0, end: 9 }] },
+      spanLayers: {
+        sentence: [{ spans: [{ id: 'tr', tokens: ['sent1'], value: 'a translation' }] }],
+      },
+    };
+    const whole = countAnnotationLossForRange(withSentence, vocabularies, 0, 9);
+    const part = countAnnotationLossForRange(withSentence, vocabularies, 0, 6);
+    expect(whole.annotations - part.annotations).toBe(1 + 1); // w2's span, and the translation
+    expect(countAnnotationLossForRange(withSentence, vocabularies, 0, 6).annotations).toBe(
+      countAnnotationLossForRange(layerInfo, vocabularies, 0, 6).annotations,
+    );
   });
 });
