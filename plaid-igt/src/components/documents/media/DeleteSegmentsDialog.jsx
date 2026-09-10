@@ -55,7 +55,7 @@ export function DeleteSegmentsDialog({ open, onOpenChange, doc, alignmentTokens 
               checked={scope === key}
               onChange={() => setScope(key)}
             />
-            <span>{label}</span>
+            <span className="shrink-0">{label}</span>
             {key === 'text' && (
               <Input
                 aria-label="Segment text"
