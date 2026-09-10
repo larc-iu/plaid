@@ -177,7 +177,7 @@ Below the grid, each sentence's dependency tree is drawn as arcs between words.
 * **Draw an arc**: press and drag from one word to another. The word you start on becomes the **head**, and the word you release on becomes its **dependent**.
 * **Mark the root**: drag from the **ROOT** bar to a word.
 * **Rename a relation**: click an arc's label to edit its dependency relation (`nsubj`, `obj`, …), again with autocomplete.
-* **Keyboard**: from the grid, **Ctrl+D** jumps focus into the tree's labels. **Arrow Left/Right** or **Tab** move between labels. **Enter** opens the label for editing, and **Arrow Down** drops back into the grid. While editing a label, **Shift+Delete** removes the relation.
+* **Keyboard**: from the grid, **Ctrl/Cmd+D** jumps focus into the tree's labels. **Arrow Left/Right** or **Tab** move between labels. **Enter** opens the label for editing, and **Arrow Down** drops back into the grid. While editing a label, **Shift+Delete** removes the relation.
 
 == Machine vs. Human Annotations
 
@@ -275,7 +275,7 @@ For writing your own scripts against a project, see the link:api-py.html[Python 
 | **Enter** | Commit the current cell.
 | **Escape** | Discard a cell edit, or close a panel / popover.
 | **Ctrl/Cmd+Enter** | Accept the predicted annotations for the current word.
-| **Ctrl+D** | Jump focus from the grid into the dependency tree.
+| **Ctrl/Cmd+D** | Jump focus from the grid into the dependency tree.
 | **Arrow keys** | Move between grid cells, and into / out of the dependency tree.
 | **Shift+Delete** | Delete the dependency relation whose label you are editing.
 | **Ctrl/Cmd+Enter** | Run the query on the Search screen.

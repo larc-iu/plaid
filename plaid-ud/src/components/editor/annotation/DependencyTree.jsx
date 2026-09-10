@@ -386,7 +386,7 @@ export const DependencyTree = forwardRef(
     // focused <text> below, so it doesn't fight this listener or fire once per
     // mounted sentence.
     const handleKeyDown = (e) => {
-      if (e.key === 'd' && e.ctrlKey && !focusedRelation && !editingRelation) {
+      if (e.key === 'd' && (e.ctrlKey || e.metaKey) && !focusedRelation && !editingRelation) {
         e.preventDefault();
         focusFirstRelation();
         return;

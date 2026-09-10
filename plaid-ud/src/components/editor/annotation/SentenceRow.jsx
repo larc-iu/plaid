@@ -696,7 +696,7 @@ const TokenColumn = React.memo(
       >
         {showCheck && (
           <Tooltip
-            label="Accept this word's predictions (Ctrl+Enter)"
+            label="Accept this word's predictions (Ctrl/Cmd+Enter)"
             withArrow
             position="top"
             openDelay={250}
@@ -1186,7 +1186,7 @@ export const SentenceRow = React.memo(
               color="violet"
               leftSection={<IconCheck size={12} />}
               onClick={handleConfirmSentence}
-              title="Mark every machine prediction in this sentence as reviewed (hover a word for a per-word ✓ / Ctrl+Enter)."
+              title="Mark every machine prediction in this sentence as reviewed (hover a word for a per-word ✓ / Ctrl/Cmd+Enter)."
             >
               Accept predictions
             </Button>

@@ -531,7 +531,7 @@ export const AnnotationEditor = () => {
                 <Text size="xs" c="dimmed" mt="sm">
                   Tip: drag from one token to another to create a dependency relation; click a
                   relation's label to rename it, and click a cell to edit an annotation. Accept a
-                  machine prediction without editing with Ctrl+Enter (the word's ✓), or “Accept
+                  machine prediction without editing with Ctrl/Cmd+Enter (the word's ✓), or “Accept
                   predictions” for the whole sentence.
                 </Text>
               )}
