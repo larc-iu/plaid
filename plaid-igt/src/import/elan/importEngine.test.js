@@ -63,7 +63,8 @@ const BUILD = {
   ],
 };
 
-function stubClient({ documents = [], docMetadata = {} } = {}) {
+// `docMedia` names the documents that already have a recording.
+function stubClient({ documents = [], docMetadata = {}, docMedia = [] } = {}) {
   const calls = [];
   let seq = 0;
   const next = (prefix) => `${prefix}${++seq}`;
@@ -79,9 +80,14 @@ function stubClient({ documents = [], docMetadata = {} } = {}) {
         calls.push(['documents.create', name, metadata]);
         return { id: 'doc1' };
       },
-      get: async (id) => ({ id, metadata: docMetadata[id] ?? {} }),
+      get: async (id) => ({
+        id,
+        metadata: docMetadata[id] ?? {},
+        ...(docMedia.includes(id) ? { mediaUrl: `/media/${id}` } : {}),
+      }),
       delete: async (id) => calls.push(['documents.delete', id]),
       setMetadata: async (id, metadata) => calls.push(['documents.setMetadata', id, metadata]),
+      uploadMedia: async (id, file) => calls.push(['documents.uploadMedia', id, file.name]),
     },
     texts: {
       create: async (layerId, docId, body) => {
@@ -324,9 +330,84 @@ describe('runElanImport', () => {
       docMetadata: { old: { importSource: 'a.eaf', importDone: true } },
     });
     expect(
-      await runElanImport({ client, projectId: 'p1', build: BUILD, replaceExisting: true }),
+      await runElanImport({ client, projectId: 'p1', build: BUILD, priorMode: 'replace' }),
     ).toMatchObject({ imported: 1, skipped: 0, redone: 1 });
     expect(client.calls[0]).toEqual(['documents.delete', 'old']);
+  });
+
+  // The first real user wanted a second copy of a document to play with, and
+  // the screen offered only to keep the first or delete it.
+  describe('a copy beside a document already there', () => {
+    const prior = {
+      documents: [
+        { id: 'old', name: 'Story' },
+        { id: 'other', name: 'Story (2)' },
+      ],
+      docMetadata: { old: { importSource: 'a.eaf', importDone: true } },
+    };
+
+    it('is a new document with the next free name, and the original is untouched', async () => {
+      const client = stubClient(prior);
+      const res = await runElanImport({ client, projectId: 'p1', build: BUILD, priorMode: 'copy' });
+      expect(res).toMatchObject({ imported: 0, skipped: 0, redone: 0, copied: 1 });
+      expect(client.calls.some(([m]) => m === 'documents.delete')).toBe(false);
+      const create = client.calls.find(([m]) => m === 'documents.create');
+      expect(create[1]).toBe('Story (3)');
+    });
+
+    it('carries no resume stamp, so a later run never takes it for the original', async () => {
+      const client = stubClient(prior);
+      await runElanImport({ client, projectId: 'p1', build: BUILD, priorMode: 'copy' });
+      const create = client.calls.find(([m]) => m === 'documents.create');
+      expect(create[2]).toEqual({ Source: 'notes' });
+      expect(client.calls.some(([m]) => m === 'documents.setMetadata')).toBe(false);
+    });
+
+    it('still redoes a document an earlier run left half done', async () => {
+      const client = stubClient({
+        documents: [{ id: 'old', name: 'Story' }],
+        docMetadata: { old: { importSource: 'a.eaf' } },
+      });
+      const res = await runElanImport({ client, projectId: 'p1', build: BUILD, priorMode: 'copy' });
+      expect(res).toMatchObject({ imported: 1, redone: 1, copied: 0 });
+      expect(client.calls[0]).toEqual(['documents.delete', 'old']);
+    });
+  });
+
+  // A recording is uploaded as part of creating a document, so one chosen
+  // beside a skipped file went nowhere, and nothing said so.
+  describe('the recording of a skipped file', () => {
+    const wav = { name: 'a.wav' };
+    const withWav = { ...BUILD, documents: [{ ...BUILD.documents[0], mediaFile: wav }] };
+    const prior = {
+      documents: [{ id: 'old', name: 'Story' }],
+      docMetadata: { old: { importSource: 'a.eaf', importDone: true } },
+    };
+
+    it('is added to the existing document when it has none', async () => {
+      const client = stubClient(prior);
+      const res = await runElanImport({ client, projectId: 'p1', build: withWav });
+      expect(res).toMatchObject({ skipped: 1, recordingsAdded: 1, recordingsUnused: 0 });
+      expect(client.calls).toContainEqual(['documents.uploadMedia', 'old', 'a.wav']);
+      expect(client.calls.some(([m]) => m === 'documents.create')).toBe(false);
+    });
+
+    it('is left unused when the existing document already has one, and counted', async () => {
+      const client = stubClient({ ...prior, docMedia: ['old'] });
+      const res = await runElanImport({ client, projectId: 'p1', build: withWav });
+      expect(res).toMatchObject({ skipped: 1, recordingsAdded: 0, recordingsUnused: 1 });
+      expect(client.calls.some(([m]) => m === 'documents.uploadMedia')).toBe(false);
+    });
+
+    it('is a warning, not a failure, when the upload breaks', async () => {
+      const client = stubClient(prior);
+      client.documents.uploadMedia = async () => {
+        throw new Error('disk full');
+      };
+      const res = await runElanImport({ client, projectId: 'p1', build: withWav });
+      expect(res).toMatchObject({ skipped: 1, recordingsAdded: 0 });
+      expect(res.warnings.join(' ')).toMatch(/could not be added.*disk full/);
+    });
   });
 
   it('stops when asked', async () => {

@@ -45,10 +45,25 @@ export async function priorImports(client, projectId) {
     const source = d?.metadata?.[SOURCE_KEY];
     if (typeof source === 'string' && source) bySource.set(source, d);
   }
+  const names = new Set(listed.map((d) => d.name));
   return {
     find: (sourceId) => bySource.get(String(sourceId)) ?? null,
     done: (doc) => doc?.metadata?.[DONE_KEY] === true,
+    /** Every document name in the project, for naming a copy beside one. */
+    names,
   };
+}
+
+/**
+ * A name not yet in `taken`, made from `base` the way a file manager does it:
+ * "Story (2)", then "Story (3)". Adds the result to `taken`, so a run that
+ * makes several copies never hands out one name twice.
+ */
+export function unusedName(base, taken) {
+  let name = base;
+  for (let n = 2; taken.has(name); n += 1) name = `${base} (${n})`;
+  taken.add(name);
+  return name;
 }
 
 /**

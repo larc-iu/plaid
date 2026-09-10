@@ -15,7 +15,10 @@
 // until the import is over, which is right for a project that is nothing but
 // the import and wrong for one with a year of work in it. Resume here rests on
 // the per-document stamps instead: a document an earlier run left unfinished is
-// named on this screen and replaced when the same files are imported again.
+// named on this screen and redone when the same files are imported again. One
+// it finished is named too, with the choice of keeping it, replacing it, or
+// adding a copy beside it (a sandbox to try things in was the first request),
+// and a recording chosen beside a kept one is added to it when it has none.
 //
 // EMPTY TIERS ARE OFF. A corpus template carries tiers nobody has filled in
 // yet, and in a project that already has its fields those would only add empty
@@ -87,7 +90,8 @@ export const ImportElanDocuments = () => {
   // file it had seen before, reported "1 already there" once it was too late to
   // act on, and left the person looking for a document that was never made.
   const [prior, setPrior] = useState(null);
-  const [replaceExisting, setReplaceExisting] = useState(false);
+  // What happens to a file an earlier run finished: 'skip', 'replace' or 'copy'.
+  const [priorMode, setPriorMode] = useState('skip');
   const stopRef = useRef(false);
 
   const fields = project ? existingFields(project) : { Sentence: [], Word: [], Morpheme: [] };
@@ -199,7 +203,7 @@ export const ImportElanDocuments = () => {
         projectId,
         build: batch.build,
         prior,
-        replaceExisting,
+        priorMode,
         shouldStop: () => stopRef.current,
         onWarning: (text, { document }) => setLog((l) => [...l, { text, document }]),
         onProgress: (p) => {
@@ -429,23 +433,42 @@ export const ImportElanDocuments = () => {
                           >
                             {existing.name}
                           </Link>
+                          {priorMode === 'skip' && doc.mediaFile && (
+                            <span className="text-muted-foreground">
+                              {existing.mediaUrl
+                                ? `. It already has a recording, so ${doc.mediaFile.name} is not used.`
+                                : `. ${doc.mediaFile.name} will be added to it.`}
+                            </span>
+                          )}
                         </li>
                       ))}
                     </ul>
-                    <label className="mt-2 flex cursor-pointer items-start gap-2 text-xs">
-                      <input
-                        type="checkbox"
-                        className="mt-0.5"
-                        checked={replaceExisting}
-                        onChange={(e) => setReplaceExisting(e.target.checked)}
-                      />
-                      <span>
-                        Import them again
-                        <span className="block text-muted-foreground">
-                          Deletes each document above and everything added to it since.
-                        </span>
-                      </span>
-                    </label>
+                    <div role="radiogroup" className="mt-2 flex flex-col gap-1 text-xs">
+                      {[
+                        ['skip', 'Keep them', null],
+                        [
+                          'replace',
+                          'Replace them',
+                          'Deletes each document above and everything added to it since.',
+                        ],
+                        ['copy', 'Add copies', 'A new document beside each, named with a number.'],
+                      ].map(([mode, label, hint]) => (
+                        <label key={mode} className="flex cursor-pointer items-start gap-2">
+                          <input
+                            type="radio"
+                            name="prior-mode"
+                            className="mt-0.5"
+                            value={mode}
+                            checked={priorMode === mode}
+                            onChange={() => setPriorMode(mode)}
+                          />
+                          <span>
+                            {label}
+                            {hint && <span className="block text-muted-foreground">{hint}</span>}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
                   </Panel>
                 )}
 
@@ -520,8 +543,18 @@ export const ImportElanDocuments = () => {
             <Panel icon={Check} title="Import complete">
               <p className="mt-1 text-xs">
                 {results.imported} added
+                {results.copied
+                  ? `, ${results.copied} added as ${results.copied === 1 ? 'a copy' : 'copies'}`
+                  : ''}
                 {results.skipped ? `, ${results.skipped} already there` : ''}
-                {results.redone ? `, ${results.redone} replaced` : ''}.
+                {results.redone ? `, ${results.redone} replaced` : ''}
+                {results.recordingsAdded
+                  ? `, ${results.recordingsAdded === 1 ? 'a recording' : `${results.recordingsAdded} recordings`} added to ${results.recordingsAdded === 1 ? 'an existing document' : 'existing documents'}`
+                  : ''}
+                {results.recordingsUnused
+                  ? `, ${results.recordingsUnused === 1 ? 'a recording' : `${results.recordingsUnused} recordings`} not used`
+                  : ''}
+                .
               </p>
             </Panel>
             {log.length > 0 ? (

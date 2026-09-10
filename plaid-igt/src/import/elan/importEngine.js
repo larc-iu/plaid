@@ -20,7 +20,7 @@
 // seconds, which is the whole reason an ELAN corpus is worth importing as such
 // rather than as plain text.
 
-import { ImportCancelled, importStamp, priorImports, settlePrior } from '../resume.js';
+import { ImportCancelled, importStamp, priorImports, settlePrior, unusedName } from '../resume.js';
 import {
   findBaselineTextLayer,
   findSentenceTokenLayer,
@@ -112,7 +112,14 @@ export function resolveTargets(project, build) {
   };
 }
 
-/** Import one document: text, sentences, alignment, words, morphemes, spans. */
+/**
+ * Import one document: text, sentences, alignment, words, morphemes, spans.
+ *
+ * `copyName` makes it a COPY beside a document the file already produced: it
+ * takes that name and carries no resume stamp, so it is the person's own
+ * document from then on and a later run of the same import neither skips,
+ * replaces nor resumes it.
+ */
 export async function importDocument({
   client,
   projectId,
@@ -121,6 +128,7 @@ export async function importDocument({
   onProgress,
   shouldStop,
   warnings,
+  copyName = null,
 }) {
   const progress = (step) => onProgress?.({ phase: 'document', doc: doc.name, step });
   const check = () => {
@@ -131,8 +139,8 @@ export async function importDocument({
   progress('Creating document');
   const created = await client.documents.create(
     projectId,
-    doc.name,
-    importStamp(doc.metadata, doc.id),
+    copyName ?? doc.name,
+    copyName ? doc.metadata : importStamp(doc.metadata, doc.id),
   );
   const docId = created.id ?? created;
 
@@ -291,11 +299,34 @@ export async function importDocument({
   }
 
   // Marked LAST: resume treats an unmarked document as partial and redoes it,
-  // which is also how a failed media upload gets another chance.
-  if (!mediaFailed) {
+  // which is also how a failed media upload gets another chance. A copy is
+  // never resumed, so it is never marked.
+  if (!mediaFailed && !copyName) {
     await client.documents.setMetadata(docId, importStamp(doc.metadata, doc.id, true));
   }
   return docId;
+}
+
+// The recording chosen for a file whose document is being kept. It is
+// uploaded as part of creating a document, so a skipped file used to take its
+// recording nowhere, and nothing said so: the file was listed as coming along
+// and the tally said "already there". It goes to the existing document when
+// that has none, and is left alone when it has one.
+async function addRecordingToExisting({ client, existing, doc, results, onProgress, warn }) {
+  if (!doc.mediaFile) return;
+  if (existing.mediaUrl) {
+    results.recordingsUnused += 1;
+    return;
+  }
+  try {
+    await client.documents.uploadMedia(existing.id, doc.mediaFile, `Import media for ${doc.name}`, {
+      onProgress: (bytes) =>
+        onProgress?.({ phase: 'document', doc: doc.name, step: 'Uploading media', bytes }),
+    });
+    results.recordingsAdded += 1;
+  } catch (err) {
+    warn(`"${doc.name}": the recording could not be added to it: ${err?.message ?? err}`);
+  }
 }
 
 /**
@@ -314,7 +345,9 @@ async function runElanImportImpl({
   onWarning,
   shouldStop,
   prior: priorGiven = null,
-  replaceExisting = false,
+  // What to do with a file an earlier run finished: keep its document, replace
+  // it, or make a copy beside it.
+  priorMode = 'skip',
 }) {
   const project = await client.projects.get(projectId);
   const targets = resolveTargets(project, build);
@@ -333,7 +366,14 @@ async function runElanImportImpl({
   // hands over what it read rather than paying for the listing twice.
   const prior = priorGiven ?? (await priorImports(client, projectId));
 
-  const results = { imported: 0, skipped: 0, redone: 0 };
+  const results = {
+    imported: 0,
+    skipped: 0,
+    redone: 0,
+    copied: 0,
+    recordingsAdded: 0,
+    recordingsUnused: 0,
+  };
   for (let i = 0; i < build.documents.length; i += 1) {
     if (shouldStop?.()) throw new ImportCancelled();
     const doc = build.documents[i];
@@ -344,8 +384,23 @@ async function runElanImportImpl({
       total: build.documents.length,
       step: 'Starting',
     });
-    if (!(await settlePrior(client, prior, doc.id, results, { replace: replaceExisting })))
-      continue;
+    const warn = (text) => note(text, doc.name);
+    const existing = prior.find(doc.id);
+    // A copy is only a copy of a document that is finished. One left half
+    // done is redone, which is what resume has always meant.
+    const copyName =
+      priorMode === 'copy' && existing && prior.done(existing)
+        ? unusedName(doc.name, prior.names)
+        : null;
+    if (!copyName) {
+      const proceed = await settlePrior(client, prior, doc.id, results, {
+        replace: priorMode === 'replace',
+      });
+      if (!proceed) {
+        await addRecordingToExisting({ client, existing, doc, results, onProgress, warn });
+        continue;
+      }
+    }
     await importDocument({
       client,
       projectId,
@@ -353,12 +408,14 @@ async function runElanImportImpl({
       doc,
       onProgress,
       shouldStop,
+      copyName,
       // A push-alike, so a warning raised while writing is logged the moment it
       // happens like any other.
-      warnings: { push: (...w) => w.forEach((one) => note(one, doc.name)) },
+      warnings: { push: (...w) => w.forEach(warn) },
     });
-    for (const w of doc.warnings) note(w, doc.name);
-    results.imported += 1;
+    for (const w of doc.warnings) warn(w);
+    if (copyName) results.copied += 1;
+    else results.imported += 1;
   }
   onProgress?.({ phase: 'done', ...results });
   return { ...results, warnings };

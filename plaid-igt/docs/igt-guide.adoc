@@ -712,6 +712,8 @@ A tier with no annotations is left out.
 Recordings are chosen in the same step as the `.eaf` files, and everything chosen is listed together with what will happen to it: which `.eaf` each recording belongs to, and which of them matches none.
 A recording is matched to the `.eaf` that names it, and a document whose recording you did not choose is imported without it.
 One too large for the server says so and says what converting would produce, and **Convert to audio** converts it in the browser before the run (see <<_media>>), so the import does not finish without it.
+A file imported into this project before is named before the run, with a link to its document and a choice: keep that document, replace it (which deletes it and everything added to it since), or add a copy beside it, named with a number.
+A recording chosen beside a kept file is added to its document when that document has no recording yet.
 The rest of the project is untouched, and nothing is locked while the import runs.
 
 Either way, the import asks what each tier becomes:
