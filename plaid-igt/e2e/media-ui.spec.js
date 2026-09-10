@@ -196,7 +196,7 @@ test('Shift+Space in a row pauses and plays on from there; only a finished segme
   expect.soft(realFailures, 'no unexpected API failures during playback').toEqual([]);
 });
 
-test('deleting a segment keeps its text, and existing text is aligned by selecting it', async ({
+test('deleting a segment takes its text, and existing text is aligned by selecting it', async ({
   page,
 }) => {
   const diag = collectClientErrors(page);
@@ -212,18 +212,14 @@ test('deleting a segment keeps its text, and existing text is aligned by selecti
   const bodyBefore = await bodyNow();
   expect(bodyBefore).toContain('hello there friend');
 
-  // Delete with the box left alone: the row goes at once, the text stays.
-  await page.getByRole('button', { name: 'Delete segment' }).click();
-  const dialog = page.getByRole('alertdialog');
-  await expect(dialog.getByRole('checkbox')).not.toBeChecked();
-  await dialog.getByRole('button', { name: 'Delete segment', exact: true }).click();
+  // A segment is its utterance: with nothing annotated on it, the trash takes
+  // the row and its text at once, with no dialog. (An annotated one asks in
+  // place; TranscriptList.test.jsx covers that.)
+  await page.getByRole('button', { name: 'Delete segment', exact: true }).click();
   await expect(page.getByLabel('Segment 1 text')).toHaveCount(0);
   await expect(page.getByText(/No segments yet\. Add one/)).toBeVisible();
-  await expect.poll(bodyNow).toBe(bodyBefore);
-  // The row left before the dialog finished closing (the delete is applied
-  // locally first); its overlay must be gone before the mouse goes near the
-  // timeline, or the drag lands on the overlay.
-  await expect(dialog).toHaveCount(0);
+  const bodyAfter = bodyBefore.replace(/\s*hello there friend\s*/, '');
+  await expect.poll(bodyNow).toBe(bodyAfter);
 
   // Drag a stretch from 1 s to 2 s on the timeline, then choose the words
   // the segment covers from the baseline instead of typing them.
@@ -243,10 +239,10 @@ test('deleting a segment keeps its text, and existing text is aligned by selecti
   await expect(page.getByText('New segment', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Existing text' }).click();
   const existing = page.getByLabel('Baseline text');
-  await expect(existing).toHaveValue(bodyBefore);
+  await expect(existing).toHaveValue(bodyAfter);
   await expect(existing).toHaveAttribute('aria-readonly', 'true');
   await existing.press('x'); // nothing can be typed into it
-  await expect(existing).toHaveValue(bodyBefore);
+  await expect(existing).toHaveValue(bodyAfter);
   const save = page.getByRole('button', { name: 'Save' });
   await expect(save).toBeDisabled();
 
@@ -266,15 +262,12 @@ test('deleting a segment keeps its text, and existing text is aligned by selecti
   });
   const start = page.getByRole('group', { name: 'Segment 1 start' });
   await expect(start).toHaveAttribute('data-value', /^0:0[01]\./);
-  await expect.poll(bodyNow).toBe(bodyBefore);
+  await expect.poll(bodyNow).toBe(bodyAfter);
 
-  // The opt-in: delete this one WITH its text.
-  await page.getByRole('button', { name: 'Delete segment' }).click();
-  const again = page.getByRole('alertdialog');
-  await again.getByRole('checkbox').check();
-  await again.getByRole('button', { name: 'Delete segment and text' }).click();
+  // Deleting it takes those words out of the baseline too.
+  await page.getByRole('button', { name: 'Delete segment', exact: true }).click();
   await expect(page.getByLabel('Segment 1 text')).toHaveCount(0);
-  await expect.poll(bodyNow).toBe(bodyBefore.replace('the quick brown ', ''));
+  await expect.poll(bodyNow).toBe(bodyAfter.replace('the quick brown ', ''));
 
   const realFailures = diag.failures.filter((f) => !/\/media(\?|$)/.test(f.url || ''));
   expect.soft(realFailures, 'no unexpected API failures during delete and align').toEqual([]);

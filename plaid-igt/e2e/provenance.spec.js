@@ -155,7 +155,8 @@ test('A4-05/06: Enter confirms the focused machine chip and Delete unlinks, focu
   );
   await chip(ids.m[1]).focus();
   await page.keyboard.press('Enter');
-  await expect(chip(ids.m[1])).toHaveClass(/igt-vocab__hint--verified/);
+  // A confirmed link renders like a hand-made one: no state class, only the title says where it came from.
+  await expect(chip(ids.m[1])).not.toHaveClass(/igt-vocab__hint--machine/);
   await expect(chip(ids.m[1])).toHaveAttribute('title', /auto-linked, confirmed/);
   // Focus moved on to the next machine chip (gamma).
   await expect(chip(ids.m[2])).toBeFocused();
@@ -194,7 +195,8 @@ test('A2-08: Ctrl+Enter confirms the whole word in one batch and moves to the ne
   await form.click();
   await page.keyboard.press('Control+Enter');
   await expect(posCell).toHaveClass(/igt-field--verified/);
-  await expect(chip).toHaveClass(/igt-vocab__hint--verified/);
+  await expect(chip).not.toHaveClass(/igt-vocab__hint--machine/);
+  await expect(chip).toHaveAttribute('title', /auto-linked, confirmed/);
   await page.waitForLoadState('networkidle');
   expect(seen).toEqual(['POST /api/v1/batch']);
   // Same tier (morpheme form) of the next word is focused.

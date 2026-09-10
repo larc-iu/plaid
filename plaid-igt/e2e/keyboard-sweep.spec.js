@@ -111,9 +111,10 @@ test('K-01: Ctrl+Enter writes every guess on the word, born verified, then hops'
   await expect(g1).toHaveValue('sun');
   await expect(p1).toHaveValue('N');
   await expect(g1).toHaveClass(/igt-field--verified/);
+  // The hop lands on the same tier of the next word, after the beat that lets
+  // the confirmation show first.
+  await expect.poll(() => focusedKey(page)).toBe(`ma:${ids.m[2]}:Gloss`);
   await page.waitForLoadState('networkidle');
-  // The hop lands on the same tier of the next word.
-  expect(await focusedKey(page)).toBe(`ma:${ids.m[2]}:Gloss`);
   const gs = (await spansOf(ids.gloss)).find((s) => s.tokens.includes(ids.m[1]));
   expect(gs.value).toBe('sun');
   expect(gs.metadata.provConfirmed).toBe(true);
