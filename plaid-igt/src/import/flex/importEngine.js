@@ -343,7 +343,18 @@ export async function importLexicon({
   // glossed in one non-English language goes out mislabelled.
   const BARE_PRIMARY = new Set(['gloss', 'definition']);
   for (const n of fieldKeys) {
-    if (n in fieldsConfig) continue;
+    if (n in fieldsConfig) {
+      // The wizard seeds every new vocabulary with gloss and definition before
+      // the import runs, so for a FLEx import "already declared" is the usual
+      // case, not the exception, and the language went unrecorded on every
+      // lexicon a wizard made. A field that carries no language yet takes the
+      // one this import knows. One that has a language keeps it: a lexicon
+      // someone declared by hand is not this import's to relabel.
+      if (BARE_PRIMARY.has(n) && !fieldsConfig[n].lang) {
+        fieldsConfig[n] = { ...fieldsConfig[n], lang: primaryAnalysisWs };
+      }
+      continue;
+    }
     // `lang` records the writing system for the fields that have exactly one
     // (FLEx's custom fields, and the primary language of gloss/definition).
     fieldsConfig[n] = {

@@ -503,6 +503,42 @@ describe('importLexicon', () => {
     expect(max.metadata.lexemeForm).toBe('мах');
   });
 
+  // The wizard seeds gloss and definition before the import runs, so for a
+  // FLEx import "already declared" is the usual case. The language went
+  // unrecorded on every lexicon a wizard made, and their LIFT exports labelled
+  // Papuan Malay glosses as English.
+  it('records the primary language on a seeded gloss and definition, and keeps one set by hand', async () => {
+    const seeded = {
+      gloss: { inline: true },
+      definition: { inline: false },
+      pos: { inline: true },
+      status: { inline: false, tagset: 'Status' },
+    };
+    let client = makeFakeClient({ existingFields: seeded });
+    await importLexicon({
+      client,
+      vocabId: 'v1',
+      lexicon,
+      baselineWs: BASE_WS,
+      primaryAnalysisWs: 'ru',
+    });
+    let schema = client.calls.find((c) => c.kind === 'vocabLayers.setConfig').args.value;
+    expect(schema.gloss).toEqual({ inline: true, lang: 'ru' });
+    expect(schema.definition).toEqual({ inline: false, lang: 'ru' });
+    expect(schema.status).toEqual({ inline: false, tagset: 'Status' });
+
+    client = makeFakeClient({ existingFields: { ...seeded, gloss: { inline: true, lang: 'fr' } } });
+    await importLexicon({
+      client,
+      vocabId: 'v1',
+      lexicon,
+      baselineWs: BASE_WS,
+      primaryAnalysisWs: 'ru',
+    });
+    schema = client.calls.find((c) => c.kind === 'vocabLayers.setConfig').args.value;
+    expect(schema.gloss).toEqual({ inline: true, lang: 'fr' });
+  });
+
   it('imports definitions and example sentences as item metadata', async () => {
     const client = makeFakeClient();
     await importLexicon({ client, vocabId: 'v1', lexicon, baselineWs: BASE_WS });
@@ -540,7 +576,8 @@ describe('importLexicon', () => {
     await importLexicon({ client, vocabId: 'v1', lexicon, baselineWs: BASE_WS });
     const cfg = client.calls.find((c) => c.kind === 'vocabLayers.setConfig').args.value;
     expect(Object.keys(cfg).slice(0, 3)).toEqual(['gloss', 'Dialect', 'morphType']);
-    expect(cfg.gloss).toEqual({ inline: false }); // the vocab's own choice survives
+    // The vocab's own choice survives, and the language it never had is filled in.
+    expect(cfg.gloss).toEqual({ inline: false, lang: 'en' });
     expect(cfg.Dialect).toEqual({ inline: true });
     expect(cfg.pos).toEqual({ inline: true });
     expect(cfg).toHaveProperty('gloss (ru)');
