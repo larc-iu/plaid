@@ -1733,6 +1733,25 @@ class PlaidClient {
           auditMessage,
           body: bodyOf({ "project-id": projectId, name, metadata }),
         }),
+      /**
+       * Copy a document and everything in it into a new document of the same
+       * project, as one operation. The copy shares the source's layers and
+       * the vocabulary entries its links name, and holds the source's texts,
+       * tokens, spans, relations and vocab links under fresh ids, with their
+       * metadata. Comments do not travel. The media file does, unless
+       * `includeMedia` is false. Resolves to `{ id }`, plus `mediaError` when
+       * the source had media the copy could not take with it.
+       * @param {string} documentId - The document to copy
+       * @param {string} name - The new document's name
+       * @param {object} [options] - `{ includeMedia }`: false leaves the media
+       *   file behind
+       * @param {string} [auditMessage] - Custom audit message for this operation
+       */
+      copy: (documentId, name, { includeMedia } = {}, auditMessage) =>
+        this._request("POST", `/api/v1/documents/${documentId}/copy`, {
+          auditMessage,
+          body: bodyOf({ name, "include-media": includeMedia }),
+        }),
     };
 
     this.projects = {

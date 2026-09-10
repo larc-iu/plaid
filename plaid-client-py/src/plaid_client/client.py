@@ -1675,6 +1675,28 @@ class DocumentsResource(_Resource):
                                            'dry-run': 'true' if dry_run else None},
                              audit_message=audit_message)
 
+    def copy(self, document_id: str, name: str, *, include_media: Any = _UNSET,
+             audit_message: str | None = None) -> Any:
+        """Copy a document and everything in it, as one operation.
+
+        The copy lands in the same project, sharing the source's layers and
+        the vocabulary entries its links name, and holds the source's texts,
+        tokens, spans, relations and vocab links under fresh ids, with their
+        metadata. Comments do not travel. Returns ``{'id': ...}``, plus
+        ``media_error`` when the source had media the copy could not take
+        with it. Writers only.
+
+        Args:
+            document_id: The document to copy
+            name: The new document's name
+            include_media: Omit to take the media file along; False leaves it
+                behind
+            audit_message: Custom audit message for this operation
+        """
+        return self._request('POST', f'/api/v1/documents/{document_id}/copy',
+                             body=_body_of(name=name, include_media=include_media),
+                             audit_message=audit_message)
+
 
 class MessagesResource(_Resource):
     def listen(self, project_id: str, on_event, path: str | None = None) -> SSEConnection:

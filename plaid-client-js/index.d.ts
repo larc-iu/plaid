@@ -734,6 +734,19 @@ interface DocumentsBundle {
     metadata?: any,
     auditMessage?: string,
   ): Promise<any>;
+  /** Copy a document and everything in it into a new document of the same project. */
+  copy(
+    documentId: string,
+    name: string,
+    options?: { includeMedia?: boolean },
+    auditMessage?: string,
+  ): Promise<{ id: string; mediaError?: string }>;
+  restore(
+    documentId: string,
+    asOf: string,
+    options?: { dryRun?: boolean },
+    auditMessage?: string,
+  ): Promise<any>;
 }
 
 interface MessagesBundle {

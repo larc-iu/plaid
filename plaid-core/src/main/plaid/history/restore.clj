@@ -31,82 +31,13 @@
 
   A dry run builds the same plan from a plain read and reports what
   would change without opening an operation."
-  (:require [clojure.data.json :as json]
-            [plaid.history.read :as hread]
+  (:require [plaid.history.read :as hread]
             [plaid.sql.common :as psc]
             [plaid.sql.constraints.token :as tc]
+            [plaid.sql.document-rows :as drows]
             [plaid.sql.metadata :as metadata]
             [plaid.sql.operation :refer [submit-operation!]])
   (:import (clojure.lang ExceptionInfo)))
-
-(def ^:private chunk-size 4000)
-
-;; ============================================================
-;; Reads
-;; ============================================================
-
-(defn- q-in
-  "SELECT * FROM table WHERE col IN ids, chunked under SQLite's parameter
-  ceiling. Empty ids reads nothing."
-  [db table col ids]
-  (into []
-        (mapcat (fn [chunk]
-                  (psc/q db {:select [:*]
-                             :from [table]
-                             :where [:in col (vec chunk)]})))
-        (partition-all chunk-size (distinct (seq ids)))))
-
-(defn- token-lists
-  "`{parent-id [token-id ...]}` in order_idx order, from a junction table."
-  [db table parent-col parent-ids]
-  (->> (q-in db table parent-col parent-ids)
-       (group-by parent-col)
-       (reduce-kv (fn [m k rows]
-                    (assoc m k (mapv :token_id (sort-by :order_idx rows))))
-                  {})))
-
-(defn- decode-metadata-value [s]
-  (try (json/read-str s) (catch Exception _ s)))
-
-(defn- metadata-index
-  "`{entity-id {key value}}` for the entities of one type."
-  [db entity-type ids]
-  (reduce (fn [m r]
-            (update m (:entity_id r) (fnil assoc {}) (:key r) (decode-metadata-value (:value r))))
-          {}
-          (into []
-                (mapcat (fn [chunk]
-                          (psc/q db {:select [:entity_id :key :value]
-                                     :from [:entity_metadata]
-                                     :where [:and
-                                             [:= :entity_type entity-type]
-                                             [:in :entity_id (vec chunk)]]})))
-                (partition-all chunk-size (distinct (seq ids))))))
-
-(defn- with-metadata [db entity-type rows]
-  (let [idx (metadata-index db entity-type (map :id rows))]
-    (mapv (fn [r]
-            (let [m (get idx (:id r))]
-              (cond-> r (seq m) (assoc :metadata m))))
-          rows)))
-
-(defn- current-rows
-  "The document's rows as they stand, in the same shape as
-  `hread/document-rows-at`."
-  [db doc-id]
-  (let [doc (psc/fetch-by-id db :documents doc-id)
-        by-doc (fn [table] (psc/q db {:select [:*] :from [table] :where [:= :document_id doc-id]}))
-        spans (by-doc :spans)
-        links (by-doc :vocab_links)
-        span-tokens (token-lists db :span_tokens :span_id (map :id spans))
-        link-tokens (token-lists db :vocab_link_tokens :vocab_link_id (map :id links))]
-    {:document (first (with-metadata db "document" [doc]))
-     :texts (with-metadata db "text" (by-doc :texts))
-     :tokens (with-metadata db "token" (by-doc :tokens))
-     :spans (with-metadata db "span" (mapv #(assoc % :tokens (get span-tokens (:id %) [])) spans))
-     :relations (with-metadata db "relation" (by-doc :relations))
-     :vocab-links (with-metadata db "vocab-link"
-                    (mapv #(assoc % :tokens (get link-tokens (:id %) [])) links))}))
 
 ;; ============================================================
 ;; What can come back
@@ -119,14 +50,14 @@
   (let [prj (:project_id (:document tgt))
         ids-of (fn [rows] (set (map :id rows)))
         text-layer-ids (ids-of (psc/q db {:select [:id] :from [:text_layers] :where [:= :project_id prj]}))
-        token-layer-ids (ids-of (q-in db :token_layers :text_layer_id text-layer-ids))
-        span-layer-ids (ids-of (q-in db :span_layers :token_layer_id token-layer-ids))
-        relation-layer-ids (ids-of (q-in db :relation_layers :span_layer_id span-layer-ids))
+        token-layer-ids (ids-of (drows/q-in db :token_layers :text_layer_id text-layer-ids))
+        span-layer-ids (ids-of (drows/q-in db :span_layers :token_layer_id token-layer-ids))
+        relation-layer-ids (ids-of (drows/q-in db :relation_layers :span_layer_id span-layer-ids))
         project-vocab-ids (set (map :vocab_layer_id
                                     (psc/q db {:select [:vocab_layer_id]
                                                :from [:project_vocabs]
                                                :where [:= :project_id prj]})))
-        live-item-ids (->> (q-in db :vocab_items :id (map :vocab_item_id (:vocab-links tgt)))
+        live-item-ids (->> (drows/q-in db :vocab_items :id (map :vocab_item_id (:vocab-links tgt)))
                            (filter #(contains? project-vocab-ids (:vocab_layer_id %)))
                            ids-of)
         texts (filterv #(contains? text-layer-ids (:text_layer_id %)) (:texts tgt))
@@ -165,27 +96,10 @@
 ;; The diff
 ;; ============================================================
 
-(def ^:private columns
-  "The columns a restore sets, per table. Ids and the document are the
-  identity; everything else a row carries is here."
-  {:texts [:body :document_id :text_layer_id]
-   :tokens [:text_id :token_layer_id :document_id :begin :end_ :precedence]
-   :spans [:span_layer_id :document_id :value]
-   :relations [:relation_layer_id :document_id :source_span_id :target_span_id :value]
-   :vocab_links [:vocab_item_id :document_id]})
-
-(def ^:private junction
-  {:spans [:span_tokens :span_id]
-   :vocab_links [:vocab_link_tokens :vocab_link_id]})
-
-(def ^:private entity-type
-  {:texts "text" :tokens "token" :spans "span" :relations "relation" :vocab_links "vocab-link"})
-
 (def ^:private layer-column
   {:tokens :token_layer_id :spans :span_layer_id :relations :relation_layer_id})
 
 (defn- meta-of [row] (or (:metadata row) {}))
-(defn- tokens-of [row] (vec (or (:tokens row) [])))
 
 (defn- diff-table
   "Rows to delete (current rows), insert (target rows), and update
@@ -193,15 +107,15 @@
   [table cur tgt]
   (let [cur-by-id (into {} (map (juxt :id identity)) cur)
         tgt-by-id (into {} (map (juxt :id identity)) tgt)
-        cols (get columns table)
-        junction? (contains? junction table)]
+        cols (get drows/columns table)
+        junction? (contains? drows/junction table)]
     {:delete (vec (remove #(contains? tgt-by-id (:id %)) cur))
      :insert (vec (remove #(contains? cur-by-id (:id %)) tgt))
      :update (vec (for [t tgt
                         :let [c (get cur-by-id (:id t))]
                         :when c
                         :let [attrs? (boolean (some #(not= (get t %) (get c %)) cols))
-                              tokens? (and junction? (not= (tokens-of t) (tokens-of c)))
+                              tokens? (and junction? (not= (drows/tokens-of t) (drows/tokens-of c)))
                               meta? (not= (meta-of t) (meta-of c))]
                         :when (or attrs? tokens? meta?)]
                     {:id (:id t) :row t :attrs? attrs? :tokens? tokens? :meta? meta?}))}))
@@ -244,7 +158,7 @@
   "The counts a person confirms, from a plan. `:total` is zero only when
   nothing at all would change."
   [p skipped]
-  (let [per-table (into {} (map (fn [t] [t (counts t (get p t))])) (keys columns))
+  (let [per-table (into {} (map (fn [t] [t (counts t (get p t))])) (keys drows/columns))
         n (fn [t] (let [c (get per-table t)] (+ (:inserted c) (:updated c) (:deleted c))))]
     {:name (some? (:name p))
      :document-metadata (boolean (:document-metadata? p))
@@ -256,7 +170,7 @@
      :skipped skipped
      :total (+ (if (:name p) 1 0)
                (if (:document-metadata? p) 1 0)
-               (reduce + (map n (keys columns))))}))
+               (reduce + (map n (keys drows/columns))))}))
 
 ;; ============================================================
 ;; Applying it
@@ -265,44 +179,9 @@
 (defn- delete-rows! [tx table rows]
   (when (seq rows)
     (let [ids (mapv :id rows)]
-      (doseq [chunk (partition-all chunk-size ids)]
+      (doseq [chunk (partition-all drows/chunk-size ids)]
         (psc/delete-where! tx table [:in :id (vec chunk)])
-        (metadata/sweep-metadata! tx (get entity-type table) (vec chunk))))))
-
-(defn- plain-row [table r]
-  (into {:id (:id r)} (map (fn [k] [k (get r k)])) (get columns table)))
-
-(defn- insert-junction! [tx [jtable jcol] rows]
-  (let [jrows (for [r rows
-                    [i tid] (map-indexed vector (tokens-of r))]
-                {jcol (:id r) :token_id tid :order_idx i})]
-    (doseq [chunk (partition-all chunk-size jrows)]
-      (psc/execute! tx {:insert-into jtable :values (vec chunk)}))))
-
-(defn- insert-rows!
-  "Insert target rows under their old ids, with junction and metadata,
-  and one :insert audit row each whose post-image folds both in, as the
-  entity create paths do."
-  [tx table rows]
-  (when (seq rows)
-    (let [etype (get entity-type table)
-          j (get junction table)]
-      (doseq [chunk (partition-all chunk-size rows)]
-        (let [posts (psc/execute-returning! tx {:insert-into table
-                                                :values (mapv #(plain-row table %) chunk)
-                                                :returning [:*]})
-              post-by-id (into {} (map (juxt :id identity)) posts)]
-          (when j (insert-junction! tx j chunk))
-          (metadata/insert-metadata-rows!
-           tx etype (into {} (keep (fn [r] (when (seq (:metadata r)) [(:id r) (:metadata r)]))) chunk))
-          (psc/record-audit-writes!
-           tx table :insert
-           (mapv (fn [r]
-                   (let [post (get post-by-id (:id r))]
-                     [(:id r) nil (cond-> post
-                                    j (assoc :tokens (tokens-of r))
-                                    (seq (:metadata r)) (assoc :metadata (:metadata r)))]))
-                 chunk)))))))
+        (metadata/sweep-metadata! tx (get drows/entity-type table) (vec chunk))))))
 
 (defn- fetch-junction-tokens [tx [jtable jcol] id]
   (mapv :token_id (psc/q tx {:select [:token_id] :from [jtable]
@@ -310,9 +189,9 @@
 
 (defn- update-rows! [tx table updates]
   (when (seq updates)
-    (let [etype (get entity-type table)
-          j (get junction table)
-          cols (get columns table)]
+    (let [etype (get drows/entity-type table)
+          j (get drows/junction table)
+          cols (get drows/columns table)]
       (doseq [chunk (partition-all 1000 (for [u updates :when (:attrs? u)]
                                           [(:id u) (select-keys (:row u) cols)]))]
         (psc/bulk-update-by-id! tx table (vec chunk)))
@@ -322,10 +201,10 @@
         (let [row (psc/fetch-by-id tx table (:id u))
               pre (fetch-junction-tokens tx j (:id u))]
           (psc/execute! tx {:delete-from (first j) :where [:= (second j) (:id u)]})
-          (insert-junction! tx j [(:row u)])
+          (drows/insert-junction! tx j [(:row u)])
           (psc/record-audit-write! tx table (:id u) :update
                                    (assoc row :tokens pre)
-                                   (assoc row :tokens (tokens-of (:row u))))))
+                                   (assoc row :tokens (drows/tokens-of (:row u))))))
       (doseq [u updates :when (:meta? u)]
         (metadata/replace-metadata! tx etype (:id u) (meta-of (:row u)))))))
 
@@ -343,7 +222,7 @@
     (metadata/replace-metadata! tx "document" doc-id (:document-metadata p)))
   ;; Inserts top-down, then the in-place changes.
   (doseq [table [:texts :tokens :spans :relations :vocab_links]]
-    (insert-rows! tx table (get-in p [table :insert])))
+    (drows/insert-rows! tx table (get-in p [table :insert])))
   (doseq [table [:texts :tokens :spans :relations :vocab_links]]
     (update-rows! tx table (get-in p [table :update]))))
 
@@ -369,7 +248,7 @@
         length-of (into {} (map (fn [t] [(:id t) (code-points (:body t))])) texts)
         tokens (psc/q tx {:select [:*] :from [:tokens] :where [:= :document_id doc-id]})
         layers (into {} (map (juxt :id identity))
-                     (q-in tx :token_layers :id (map :token_layer_id tokens)))
+                     (drows/q-in tx :token_layers :id (map :token_layer_id tokens)))
         by-layer-text (group-by (juxt :token_layer_id :text_id) tokens)]
     (doseq [[[lid tid] toks] by-layer-text]
       (let [layer (get layers lid)
@@ -417,7 +296,7 @@
   "Target (pruned), current, plan and skips, from one connection."
   [db doc-id ts]
   (let [[tgt skipped] (prune-target db (target-rows! db doc-id ts))
-        cur (current-rows db doc-id)
+        cur (drows/read-rows db doc-id)
         p (assoc (plan tgt cur) :document-metadata (meta-of (:document tgt)))]
     {:plan p :skipped skipped :summary (summarize p skipped)}))
 

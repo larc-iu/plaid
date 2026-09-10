@@ -138,6 +138,18 @@ export const documentMutations = {
     });
   },
 
+  // Copy the document into a new one of the same project. Returns the new
+  // document's id, or false when the copy failed (the toast has said so).
+  // Nothing local changes: the copy is a different document.
+  async copyDocument(name) {
+    let newId = false;
+    const ok = await this._withSaving('Failed to copy document', async () => {
+      const result = await this._client.documents.copy(this.id, name);
+      newId = result?.id;
+    });
+    return ok ? newId : false;
+  },
+
   async deleteDocument() {
     return this._withSaving('Failed to delete document', async () => {
       await this._client.documents.delete(this.id);

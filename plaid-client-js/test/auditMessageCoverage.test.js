@@ -14,6 +14,7 @@ const WRITE = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 // probe would otherwise put its sentinel in `asOf` and report a false failure.
 const ARGS_BEFORE_AUDIT_MESSAGE = {
   'documents.restore': 3,
+  'documents.copy': 3,
 };
 // CRUD bundles whose writes hit document state. `messages`/services are
 // real-time/registry (not audit-logged) and use streaming transports.

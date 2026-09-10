@@ -10,6 +10,7 @@
             [taoensso.timbre :as log]
             [plaid.sql.common :as psc]
             [plaid.sql.operation :as op :refer [submit-operation!]]
+            [plaid.sql.document-rows :as drows]
             [plaid.sql.metadata :as metadata]
             [plaid.sql.token-layer :as token-layer]
             [plaid.media.storage :as media])
@@ -642,6 +643,106 @@
                                      (assoc :name (:document/name m)))]
                          (psc/update-by-id! tx :documents eid attrs)
                          eid))))
+
+(defn copy
+  "Copy `src-id` and everything in it into a new document of the same
+  project, named `new-name`, as one operation.
+
+  Same project, so every layer the source points at and every
+  vocabulary entry its links name are still the right ones: the copy is
+  the same rows under fresh ids, and it satisfies the token-layer
+  constraints for exactly the reason the source does. Texts, tokens,
+  spans, relations and vocab links come across with their ordered token
+  lists and their metadata, as does the document's own metadata, each
+  under one :insert audit row carrying a full post-image, so the copy
+  reads back through history like any other document.
+
+  What does not come across: comments (the copy's entities are new, so
+  an old thread has nothing to be about) and, unless `include-media?`,
+  the media file. The media copy happens after the transaction commits
+  and is best effort, the way `delete` treats the same file.
+
+  Returns `{:success true :extra {:id <new-id>}}`, with `:media-error`
+  alongside the id when the source had media the copy could not take."
+  ([db src-id new-name user-id]
+   (copy db src-id new-name user-id nil))
+  ([db src-id new-name user-id {:keys [include-media?] :or {include-media? true}}]
+   (let [new-id (psc/new-uuid)
+         now (psc/now-iso)
+         result
+         (submit-operation! [tx db {:type :document/copy
+                                    :project (project-id db src-id)
+                                    :document new-id
+                                    :description (str "Copy document " src-id
+                                                      " as \"" new-name "\"")
+                                    :user user-id
+                                    ;; The body INSERTs at version=1, as
+                                    ;; `create` does; skip the post-body bump so
+                                    ;; the copy starts where a new document does.
+                                    :skip-doc-version-bump? true}]
+                            (psc/valid-name? new-name)
+                            (let [src (psc/fetch-by-id tx :documents src-id)]
+                              (when (nil? src)
+                                (throw (ex-info (psc/err-msg-not-found "Document" src-id)
+                                                {:code 404 :id src-id})))
+                              (let [rows (drows/read-rows tx src-id)
+                                    ;; One fresh id per source row, minted up
+                                    ;; front: everything that points at a row
+                                    ;; (a token at its text, a span at its
+                                    ;; tokens, a relation at its spans) is
+                                    ;; rewritten through these maps.
+                                    fresh (fn [rs] (into {} (map (fn [r] [(:id r) (psc/new-uuid)])) rs))
+                                    text-ids (fresh (:texts rows))
+                                    token-ids (fresh (:tokens rows))
+                                    span-ids (fresh (:spans rows))]
+                                (psc/insert! tx :documents
+                                             {:id new-id
+                                              :name new-name
+                                              :project_id (:project_id src)
+                                              :version 1
+                                              :created_at now
+                                              :modified_at now})
+                                (when (seq (:metadata (:document rows)))
+                                  (metadata/insert-metadata! tx "document" new-id
+                                                             (:metadata (:document rows))))
+                                (drows/insert-rows!
+                                 tx :texts
+                                 (mapv (fn [r] (assoc r :id (text-ids (:id r))
+                                                      :document_id new-id))
+                                       (:texts rows)))
+                                (drows/insert-rows!
+                                 tx :tokens
+                                 (mapv (fn [r] (assoc r :id (token-ids (:id r))
+                                                      :document_id new-id
+                                                      :text_id (text-ids (:text_id r))))
+                                       (:tokens rows)))
+                                (drows/insert-rows!
+                                 tx :spans
+                                 (mapv (fn [r] (assoc r :id (span-ids (:id r))
+                                                      :document_id new-id
+                                                      :tokens (mapv token-ids (drows/tokens-of r))))
+                                       (:spans rows)))
+                                (drows/insert-rows!
+                                 tx :relations
+                                 (mapv (fn [r] (assoc r :id (psc/new-uuid)
+                                                      :document_id new-id
+                                                      :source_span_id (span-ids (:source_span_id r))
+                                                      :target_span_id (span-ids (:target_span_id r))))
+                                       (:relations rows)))
+                                (drows/insert-rows!
+                                 tx :vocab_links
+                                 (mapv (fn [r] (assoc r :id (psc/new-uuid)
+                                                      :document_id new-id
+                                                      :tokens (mapv token-ids (drows/tokens-of r))))
+                                       (:vocab-links rows)))
+                                {:id new-id})))]
+     (if (and (:success result) include-media? (media/media-exists? src-id))
+       (let [{:keys [success error]} (media/copy-media-file! src-id new-id)]
+         (if success
+           result
+           (do (log/warn "Failed to copy media file for" src-id "to" new-id ":" error)
+               (assoc-in result [:extra :media-error] error))))
+       result))))
 
 (defn cascade-delete!
   "Tx-level cascade for a document. Walks texts/tokens (via

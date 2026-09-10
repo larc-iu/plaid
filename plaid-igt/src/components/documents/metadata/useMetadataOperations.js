@@ -26,6 +26,9 @@ export const useMetadataOperations = () => {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [copyModalOpen, setCopyModalOpen] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [copyName, setCopyName] = useState('');
   const [editedName, setEditedName] = useState('');
   const [editedMetadata, setEditedMetadata] = useState({});
 
@@ -52,6 +55,24 @@ export const useMetadataOperations = () => {
     const ok = await doc.saveNameAndMetadata(editedName, editedMetadata);
     setSaving(false);
     if (ok) setIsEditing(false);
+  };
+
+  const handleCopyClick = () => {
+    setCopyName(`${document.name || ''} (copy)`);
+    setCopyModalOpen(true);
+  };
+  const handleCloseCopyModal = () => setCopyModalOpen(false);
+
+  const handleCopy = async () => {
+    setCopying(true);
+    const name = copyName.trim();
+    const newId = await doc.copyDocument(name);
+    setCopying(false);
+    if (newId) {
+      setCopyModalOpen(false);
+      notifySuccess(`"${name}" is ready.`, 'Document copied');
+      navigate(`/projects/${doc.projectId}/documents/${newId}`);
+    }
   };
 
   const handleDeleteClick = () => setDeleteModalOpen(true);
@@ -91,6 +112,9 @@ export const useMetadataOperations = () => {
     saving,
     deleting,
     deleteModalOpen,
+    copying,
+    copyModalOpen,
+    copyName,
     editedName,
     editedMetadata,
 
@@ -101,6 +125,10 @@ export const useMetadataOperations = () => {
     handleDeleteClick,
     handleCloseDeleteModal,
     handleDelete,
+    handleCopyClick,
+    handleCloseCopyModal,
+    handleCopy,
+    updateCopyName: setCopyName,
     updateEditedName,
     updateEditedMetadata,
   };

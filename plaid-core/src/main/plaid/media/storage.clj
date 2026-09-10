@@ -267,6 +267,50 @@
               (catch Exception cleanup-error
                 (log/warn cleanup-error "Failed to remove staged media upload" path)))))))))
 
+(defn copy-media-file!
+  "Copy one document's media file to another document, keeping the
+  extension. Staged through a temp file in the media dir and moved into
+  place, as `store-media-file!` does, so a crash mid-copy cannot leave a
+  truncated file under the target's name. Refuses to overwrite media the
+  target already has. Returns {:success true} or {:success false :error msg}."
+  [src-doc-id dst-doc-id]
+  (locking (upload-lock-for dst-doc-id)
+    (let [staged-path (volatile! nil)]
+      (try
+        (cond
+          (media-exists? dst-doc-id)
+          {:success false :error "Media file already exists. Delete existing file first."}
+
+          :else
+          (if-let [[src-path extension] (find-existing-media-file src-doc-id)]
+            (let [media-dir (ensure-media-dir!)
+                  final-path (.toPath (io/file (get-media-file-path dst-doc-id extension)))
+                  temp-path (Files/createTempFile
+                             (.toPath (io/file media-dir))
+                             (str dst-doc-id ".")
+                             ".copy"
+                             (make-array java.nio.file.attribute.FileAttribute 0))]
+              (vreset! staged-path temp-path)
+              (Files/copy (.toPath (io/file src-path))
+                          temp-path
+                          (into-array StandardCopyOption [StandardCopyOption/REPLACE_EXISTING]))
+              ;; No REPLACE_EXISTING, as in store-media-file!: this copy
+              ;; must never overwrite a file that appeared under the name.
+              (Files/move temp-path final-path (make-array StandardCopyOption 0))
+              (vreset! staged-path nil)
+              (log/info "Copied media file for" src-doc-id "to" dst-doc-id)
+              {:success true :extension extension})
+            {:success false :error "No media file found"}))
+        (catch Exception e
+          (log/error e "Failed to copy media file from" src-doc-id "to" dst-doc-id)
+          {:success false :error (.getMessage e)})
+        (finally
+          (when-let [path @staged-path]
+            (try
+              (Files/deleteIfExists path)
+              (catch Exception cleanup-error
+                (log/warn cleanup-error "Failed to remove staged media copy" path)))))))))
+
 (defn delete-media-file!
   "Delete a media file for a document. Returns {:success true} or {:success false :error msg}"
   [doc-id]

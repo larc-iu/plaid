@@ -237,6 +237,33 @@
                                 {:status (or code 500)
                                  :body {:error (or error "Internal server error")}})))))}}]
 
+    ["/copy"
+     {:post {:summary (str "Copy the document and everything in it into a new document of the same "
+                           "project, named <body>name</body>, as one operation. Every layer and every "
+                           "vocabulary entry the source points at is shared with the copy, whose texts, "
+                           "tokens, spans, relations and vocab links are the source's under fresh ids, "
+                           "with their metadata. Comments do not travel. The media file does, unless "
+                           "<body>include-media</body> is false; if it cannot be copied the response "
+                           "carries <body>media-error</body> and the copy is otherwise complete. "
+                           "Requires writer privileges.")
+             :middleware [[pra/wrap-writer-required get-project-id]]
+             :parameters {:body [:map
+                                 [:name :string]
+                                 [:include-media {:optional true} boolean?]]}
+             :handler (fn [{{{:keys [document-id]} :path
+                             {:keys [name include-media]} :body} :parameters
+                            db :db
+                            user-id :user/id}]
+                        (let [{:keys [success extra code error]}
+                              (doc/copy db document-id name user-id
+                                        {:include-media? (if (some? include-media) include-media true)})]
+                          (if success
+                            (prm/assoc-document-version-in-header
+                             {:status 201 :body extra}
+                             db (:id extra))
+                            {:status (or code 500)
+                             :body {:error (or error "Internal server error")}})))}}]
+
     ["/lock"
      {:get {:summary "Get information about a document lock"
             :middleware [[pra/wrap-reader-required get-project-id]]

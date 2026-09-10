@@ -264,6 +264,7 @@ export function makeFakeClient(opts = {}) {
     documents: {
       get: async () => opts.reloadDoc ?? buildRawDoc(),
       update: op('documents.update', () => ({})),
+      copy: op('documents.copy', () => ({ id: nextId('doc') })),
       setMetadata: op('documents.setMetadata', () => ({})),
       acquireLock: op('documents.acquireLock', () => ({})),
       releaseLock: op('documents.releaseLock', () => ({})),

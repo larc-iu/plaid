@@ -1,4 +1,4 @@
-import { Info, Pencil, Save, X, Trash2, AlertTriangle } from 'lucide-react';
+import { Info, Pencil, Save, X, Trash2, Copy, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -24,9 +24,14 @@ export function DocumentMetadata() {
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold">Document Information</h2>
             {!ops.isEditing && !readOnly && (
-              <Button variant="outline" size="sm" onClick={ops.handleEdit}>
-                <Pencil className="h-4 w-4" /> Edit
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={ops.handleCopyClick}>
+                  <Copy className="h-4 w-4" /> Copy
+                </Button>
+                <Button variant="outline" size="sm" onClick={ops.handleEdit}>
+                  <Pencil className="h-4 w-4" /> Edit
+                </Button>
+              </div>
             )}
           </div>
 
@@ -127,6 +132,50 @@ export function DocumentMetadata() {
           )}
         </div>
       </div>
+
+      <Dialog
+        open={ops.copyModalOpen}
+        onOpenChange={(open) => {
+          if (!open) ops.handleCloseCopyModal();
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Copy Document</DialogTitle>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label>
+                Document Name <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                value={ops.copyName}
+                onChange={(e) => ops.updateCopyName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && ops.copyName.trim() && !ops.copying) ops.handleCopy();
+                }}
+                placeholder="Enter document name"
+                autoFocus
+              />
+            </div>
+
+            <p className="text-sm text-muted-foreground">
+              The copy holds the same text, annotations, vocabulary links, and media. Comments are
+              not copied.
+            </p>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={ops.handleCloseCopyModal} disabled={ops.copying}>
+                Cancel
+              </Button>
+              <Button onClick={ops.handleCopy} disabled={ops.copying || !ops.copyName.trim()}>
+                <Copy className="h-4 w-4" /> {ops.copying ? 'Copying...' : 'Copy'}
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={ops.deleteModalOpen}

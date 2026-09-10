@@ -2011,3 +2011,22 @@ describe('multi-word expressions', () => {
     expect(await doc.confirmMweLink('lk-2')).toBe(false);
   });
 });
+
+describe('copyDocument', () => {
+  it('copies under the given name and hands back the new id', async () => {
+    const doc = makeDoc();
+    const newId = await doc.copyDocument('Doc, copy');
+    expect(newId).toBe('doc-1');
+    const call = doc._client.calls.find((c) => c.kind === 'documents.copy');
+    expect(call.args).toEqual([doc.id, 'Doc, copy']);
+  });
+
+  it('reports the failure rather than a new id', async () => {
+    const client = makeFakeClient();
+    client.documents.copy = () => {
+      throw new Error('nope');
+    };
+    const doc = makeDoc({ client });
+    expect(await doc.copyDocument('Doc, copy')).toBe(false);
+  });
+});
