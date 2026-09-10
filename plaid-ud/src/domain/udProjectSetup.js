@@ -69,18 +69,24 @@ const bootstrap = async (client, projectName) => {
   const projectId = project.id;
 
   try {
+    // Each batch ends with the ONE create whose id the next batch needs, and
+    // that result is read as the last of the batch rather than by position.
+    // Position broke once already: `declarePreserveOnSplit` was added to B4 and
+    // B5 in 9d9608ef, which pushed each create from index 1 to index 2, and
+    // creating a UD project failed on `null.id` from then on. Adding a config
+    // op must not be able to do that again.
     // B2: textLayer (alone; setConfig + sentence create both need its id)
     const b2 = await client.batched(async () => {
       client.textLayers.create(projectId, 'Text');
     });
-    const textLayerId = b2[0].body.id;
+    const textLayerId = b2.at(-1).body.id;
 
     // B3: textLayer.setConfig + sentenceLayer.create
     const b3 = await client.batched(async () => {
       client.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
       client.tokenLayers.create(textLayerId, 'Sentences', 'partitioning');
     });
-    const sentenceLayerId = b3[1].body.id;
+    const sentenceLayerId = b3.at(-1).body.id;
 
     // B4: sentenceLayer.setConfig + wordLayer.create
     const b4 = await client.batched(async () => {
@@ -88,7 +94,7 @@ const bootstrap = async (client, projectName) => {
       declarePreserveOnSplit(client, sentenceLayerId);
       client.tokenLayers.create(textLayerId, 'Tokens', 'non-overlapping', sentenceLayerId);
     });
-    const wordLayerId = b4[1].body.id;
+    const wordLayerId = b4.at(-1).body.id;
 
     // B5: wordLayer.setConfig + morphemeLayer.create
     const b5 = await client.batched(async () => {
@@ -96,7 +102,7 @@ const bootstrap = async (client, projectName) => {
       declarePreserveOnSplit(client, wordLayerId);
       client.tokenLayers.create(textLayerId, 'Words', 'any', wordLayerId);
     });
-    const morphemeLayerId = b5[1].body.id;
+    const morphemeLayerId = b5.at(-1).body.id;
 
     // B6: morphemeLayer.setConfig + all 5 span layer creates
     const b6 = await client.batched(async () => {
@@ -115,8 +121,9 @@ const bootstrap = async (client, projectName) => {
         client.spanLayers.create(morphemeLayerId, name);
       }
     });
-    // b6: [setConfig, span0, span1, span2, span3, span4]
-    const spanLayerIds = SPAN_LAYER_SPECS.map((_, i) => b6[1 + i].body.id);
+    // The five span creates are the LAST five results, whatever config ops run
+    // before them (see the note on B2 above).
+    const spanLayerIds = b6.slice(-SPAN_LAYER_SPECS.length).map((r) => r.body.id);
     const lemmaIdx = SPAN_LAYER_SPECS.findIndex(([, key]) => key === UD_SPAN_CONFIG_KEYS.lemma);
     const lemmaLayerId = spanLayerIds[lemmaIdx];
 
@@ -127,7 +134,7 @@ const bootstrap = async (client, projectName) => {
       });
       client.relationLayers.create(lemmaLayerId, 'Dependency Relations');
     });
-    const relationLayerId = b7[b7.length - 1].body.id;
+    const relationLayerId = b7.at(-1).body.id;
 
     // B8: relationLayer.setConfig
     await client.batched(async () => {
