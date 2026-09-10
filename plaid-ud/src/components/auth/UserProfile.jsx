@@ -1,29 +1,20 @@
 import { useState, useEffect, useRef } from 'react';
-import {
-  Stack,
-  Paper,
-  Title,
-  Text,
-  Button,
-  Group,
-  Alert,
-  TextInput,
-  PasswordInput,
-  Divider,
-  Code,
-  CopyButton,
-  Loader,
-  Box,
-} from '@mantine/core';
+import { Check, Copy, ImagePlus } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { UserAvatar } from '../common/UserAvatar';
-import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
+import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
+import { UserAvatar } from '@ui/components/shared/UserAvatar';
+import { useConfirm } from '@ui/components/shared/ConfirmProvider';
+import { Button } from '@ui/components/ui/button';
+import { Input } from '@ui/components/ui/input';
+import { Label } from '@ui/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle } from '@ui/components/ui/card';
 import { timeAgo } from '../../utils/formatTime.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 export const UserProfile = () => {
   useDocumentTitle('Profile');
   const { user, getClient, updateUser } = useAuth();
+  const confirm = useConfirm();
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
     displayName: user?.displayName || '',
@@ -81,6 +72,13 @@ export const UserProfile = () => {
   // The freshly-minted token, shown exactly once (the server never returns
   // the signed string again). Cleared when the user dismisses it.
   const [mintedToken, setMintedToken] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyMinted = () => {
+    navigator.clipboard?.writeText(mintedToken.token).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const loadTokens = async () => {
     if (!user?.id) return;
@@ -109,7 +107,7 @@ export const UserProfile = () => {
     e.preventDefault();
     const name = newTokenName.trim();
     if (!name) {
-      setTokensError('Please enter a name for the token');
+      setTokensError('Name the token.');
       return;
     }
     try {
@@ -128,27 +126,26 @@ export const UserProfile = () => {
     }
   };
 
-  const handleRevokeToken = (tokenId) => {
-    confirmDelete({
+  const handleRevokeToken = async (tokenId) => {
+    const ok = await confirm({
       title: 'Revoke API token',
-      message:
-        'Revoke this API token? Any service using it will immediately lose access. This cannot be undone.',
+      description: 'Any service using it loses access immediately. This cannot be undone.',
       confirmLabel: 'Revoke',
-      onConfirm: async () => {
-        try {
-          setTokensError('');
-          const client = getClient();
-          await client.apiTokens.revoke(user.id, tokenId);
-          // If we just revoked the token we're still showing, hide it.
-          if (mintedToken && mintedToken.id === tokenId) setMintedToken(null);
-          notifySuccess('API token revoked');
-          await loadTokens();
-        } catch (err) {
-          console.error('Error revoking API token:', err);
-          setTokensError('Failed to revoke API token: ' + (err.message || 'Unknown error'));
-        }
-      },
+      destructive: true,
     });
+    if (!ok) return;
+    try {
+      setTokensError('');
+      const client = getClient();
+      await client.apiTokens.revoke(user.id, tokenId);
+      // If we just revoked the token we're still showing, hide it.
+      if (mintedToken && mintedToken.id === tokenId) setMintedToken(null);
+      notifySuccess('API token revoked');
+      await loadTokens();
+    } catch (err) {
+      console.error('Error revoking API token:', err);
+      setTokensError('Failed to revoke API token: ' + (err.message || 'Unknown error'));
+    }
   };
 
   const handleInputChange = (e) => {
@@ -228,7 +225,7 @@ export const UserProfile = () => {
       // Fetch updated user data from server to get complete profile including isAdmin
       const updatedUserData = await client.users.get(user.id);
 
-      notifySuccess('Profile updated successfully!');
+      notifySuccess('Profile updated');
       setIsEditing(false);
 
       // Clear password fields
@@ -276,227 +273,251 @@ export const UserProfile = () => {
   const activeTokens = tokens.filter((t) => !t.revokedAt);
 
   return (
-    <Stack maw={672} mx="auto" gap="lg">
-      <Paper withBorder radius="md" p="lg">
-        <Title order={3} mb="lg">
-          User Profile
-        </Title>
-
-        <Group gap="md" mb="lg" align="center">
-          <UserAvatar
-            client={getClient()}
-            userId={user?.id}
-            displayName={user?.displayName}
-            avatarHash={user?.avatarHash}
-            size={80}
-          />
-          <Stack gap={6}>
-            <Group gap="xs">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/gif"
-                style={{ display: 'none' }}
-                onChange={handleAvatarPick}
-              />
-              <Button
-                size="xs"
-                variant="default"
-                loading={avatarBusy}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {user?.avatarHash ? 'Change picture' : 'Upload picture'}
-              </Button>
-              {user?.avatarHash && (
+    <div className="tw mx-auto flex max-w-2xl flex-col gap-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-xl">User Profile</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="mb-6 flex items-center gap-4">
+            <UserAvatar
+              client={getClient()}
+              userId={user?.id}
+              displayName={user?.displayName}
+              avatarHash={user?.avatarHash}
+              className="h-20 w-20"
+              fallbackClassName="text-2xl"
+            />
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  className="hidden"
+                  onChange={handleAvatarPick}
+                />
                 <Button
-                  size="xs"
-                  variant="subtle"
-                  color="gray"
+                  variant="outline"
+                  size="sm"
                   disabled={avatarBusy}
-                  onClick={handleAvatarRemove}
+                  onClick={() => fileInputRef.current?.click()}
                 >
-                  Remove
+                  <ImagePlus className="h-4 w-4" />
+                  {user?.avatarHash ? 'Change picture' : 'Upload picture'}
                 </Button>
-              )}
-            </Group>
-            <Text size="xs" c="dimmed">
-              PNG, JPEG, WebP, or GIF. Cropped to a square and resized for you.
-            </Text>
-          </Stack>
-        </Group>
-
-        {!isEditing ? (
-          <Stack gap="md" align="flex-start">
-            <div>
-              <Text size="sm" fw={500} c="dimmed">
-                Display name
-              </Text>
-              <Text>{user?.displayName}</Text>
-            </div>
-            <div>
-              <Text size="sm" fw={500} c="dimmed">
-                Email address
-              </Text>
-              <Text>{user?.id}</Text>
-            </div>
-            <Button onClick={() => setIsEditing(true)}>Edit Profile</Button>
-          </Stack>
-        ) : (
-          <form onSubmit={handleSubmit}>
-            <Stack gap="md">
-              {error && <Alert color="red">{error}</Alert>}
-
-              <TextInput
-                label="Display name"
-                description="How you appear to your collaborators."
-                name="displayName"
-                value={formData.displayName}
-                onChange={handleInputChange}
-                required
-              />
-
-              <TextInput
-                label="Email address"
-                description="What you sign in with. It cannot be changed — ask an administrator if you need a different one."
-                value={user?.id ?? ''}
-                disabled
-              />
-
-              <Divider label="Change Password (Optional)" labelPosition="left" />
-
-              <PasswordInput
-                label="Current Password"
-                name="currentPassword"
-                value={formData.currentPassword}
-                onChange={handleInputChange}
-              />
-              <PasswordInput
-                label="New Password"
-                name="newPassword"
-                value={formData.newPassword}
-                onChange={handleInputChange}
-              />
-              <PasswordInput
-                label="Confirm New Password"
-                name="confirmPassword"
-                value={formData.confirmPassword}
-                onChange={handleInputChange}
-              />
-
-              <Group justify="flex-end" gap="sm">
-                <Button type="button" variant="default" onClick={handleCancel}>
-                  Cancel
-                </Button>
-                <Button type="submit" loading={loading}>
-                  Save Changes
-                </Button>
-              </Group>
-            </Stack>
-          </form>
-        )}
-      </Paper>
-
-      {/* API Tokens — named, revocable credentials for scripts & services.
-          Actions performed with one are attributed by name in the audit log,
-          unlike the session token. They carry the same permissions as you. */}
-      <Paper withBorder radius="md" p="lg">
-        <Title order={3}>API Tokens</Title>
-        <Text size="sm" c="dimmed" mt={4}>
-          Create named tokens to access the API from external services (parsers, scripts, the Python{' '}
-          <Code>PlaidClient</Code>). Each token carries your permissions, never expires, and
-          survives password changes — revoke one to cut off access. Actions taken with a token are
-          labelled by its name in the audit history.
-        </Text>
-
-        {tokensError && (
-          <Alert color="red" mt="md">
-            {tokensError}
-          </Alert>
-        )}
-
-        {/* One-time reveal of a freshly minted token */}
-        {mintedToken && (
-          <Alert color="yellow" mt="md" title={`Token "${mintedToken.name}" created`}>
-            <Text size="sm" mb="xs">
-              Copy it now — you won’t be able to see it again.
-            </Text>
-            <Group gap="xs" wrap="nowrap" align="center">
-              <Code style={{ flex: 1, wordBreak: 'break-all' }}>{mintedToken.token}</Code>
-              <CopyButton value={mintedToken.token} timeout={2000}>
-                {({ copied, copy }) => (
-                  <Button size="xs" color={copied ? 'teal' : 'yellow'} onClick={copy}>
-                    {copied ? '✓ Copied!' : 'Copy'}
+                {user?.avatarHash && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={avatarBusy}
+                    onClick={handleAvatarRemove}
+                  >
+                    Remove
                   </Button>
                 )}
-              </CopyButton>
-              <Button size="xs" variant="default" onClick={() => setMintedToken(null)}>
-                Done
+              </div>
+              <p className="text-xs text-muted-foreground">
+                PNG, JPEG, WebP or GIF. Cropped to a square and resized for you.
+              </p>
+            </div>
+          </div>
+
+          {!isEditing ? (
+            <div className="flex flex-col gap-4">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Display name</p>
+                <p className="text-lg">{user?.displayName}</p>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Email address</p>
+                <p className="text-lg">{user?.id}</p>
+              </div>
+              <Button className="self-start" onClick={() => setIsEditing(true)}>
+                Edit profile
               </Button>
-            </Group>
-          </Alert>
-        )}
-
-        {/* Create form */}
-        <form onSubmit={handleCreateToken}>
-          <Group align="flex-end" gap="sm" mt="md">
-            <TextInput
-              style={{ flex: 1 }}
-              label="New token name"
-              value={newTokenName}
-              onChange={(e) => setNewTokenName(e.target.value)}
-              placeholder="e.g. Stanza Parser"
-            />
-            <Button type="submit" loading={creatingToken}>
-              Create Token
-            </Button>
-          </Group>
-        </form>
-
-        {/* Token list */}
-        <Box mt="lg">
-          {tokensLoading ? (
-            <Group gap="xs">
-              <Loader size="sm" />
-              <Text size="sm" c="dimmed">
-                Loading tokens…
-              </Text>
-            </Group>
-          ) : activeTokens.length === 0 ? (
-            <Text size="sm" c="dimmed">
-              You have no active API tokens.
-            </Text>
+            </div>
           ) : (
-            <Stack gap={0}>
-              {activeTokens.map((t) => (
-                <Group
-                  key={t.id}
-                  justify="space-between"
-                  wrap="nowrap"
-                  py="sm"
-                  style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+              {error && (
+                <div
+                  role="alert"
+                  className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
                 >
-                  <div style={{ minWidth: 0 }}>
-                    <Text size="sm" fw={500} truncate>
-                      {t.name}
-                    </Text>
-                    <Text size="xs" c="dimmed">
-                      Created {timeAgo(t.createdAt) || 'unknown'}
-                    </Text>
-                  </div>
-                  <Button
-                    variant="subtle"
-                    color="red"
-                    size="compact-sm"
-                    onClick={() => handleRevokeToken(t.id)}
-                  >
-                    Revoke
-                  </Button>
-                </Group>
-              ))}
-            </Stack>
+                  {error}
+                </div>
+              )}
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="displayName">Display name</Label>
+                <Input
+                  id="displayName"
+                  name="displayName"
+                  value={formData.displayName}
+                  onChange={handleInputChange}
+                  placeholder="How you appear to your collaborators"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="email">Email address</Label>
+                <Input id="email" value={user?.id ?? ''} disabled readOnly />
+                <p className="text-xs text-muted-foreground">
+                  What you sign in with. Ask an administrator to change it.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <div className="h-px flex-1 bg-border" /> Change password (optional){' '}
+                <div className="h-px flex-1 bg-border" />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="currentPassword">Current password</Label>
+                <Input
+                  id="currentPassword"
+                  type="password"
+                  name="currentPassword"
+                  value={formData.currentPassword}
+                  onChange={handleInputChange}
+                  autoComplete="current-password"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="newPassword">New password</Label>
+                <Input
+                  id="newPassword"
+                  type="password"
+                  name="newPassword"
+                  value={formData.newPassword}
+                  onChange={handleInputChange}
+                  autoComplete="new-password"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="confirmPassword">Confirm new password</Label>
+                <Input
+                  id="confirmPassword"
+                  type="password"
+                  name="confirmPassword"
+                  value={formData.confirmPassword}
+                  onChange={handleInputChange}
+                  autoComplete="new-password"
+                />
+              </div>
+
+              <div className="mt-2 flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={handleCancel} disabled={loading}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={loading}>
+                  {loading ? 'Saving…' : 'Save changes'}
+                </Button>
+              </div>
+            </form>
           )}
-        </Box>
-      </Paper>
-    </Stack>
+        </CardContent>
+      </Card>
+
+      {/* API Tokens — named, revocable credentials for scripts and services.
+          Actions performed with one are attributed by name in the audit log,
+          unlike the session token. They carry the same permissions as you. */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-xl">API Tokens</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <p className="text-sm text-muted-foreground">
+            Create named tokens to access the API from external services (parsers, scripts, the
+            Python <code>PlaidClient</code>). Each token carries your permissions, never expires,
+            and survives password changes. Revoke one to cut off access. Actions taken with a token
+            are labelled by its name in the audit history.
+          </p>
+
+          {tokensError && (
+            <div
+              role="alert"
+              className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            >
+              {tokensError}
+            </div>
+          )}
+
+          {/* One-time reveal of a freshly minted token */}
+          {mintedToken && (
+            <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3">
+              <p className="text-sm font-medium">Token &ldquo;{mintedToken.name}&rdquo; created</p>
+              <p className="mb-2 mt-0.5 text-xs text-muted-foreground">
+                Copy it now. You will not be able to see it again.
+              </p>
+              <div className="flex items-center gap-2">
+                <code className="min-w-0 flex-1 break-all rounded bg-background px-2 py-1 text-xs">
+                  {mintedToken.token}
+                </code>
+                <Button size="sm" variant="outline" onClick={handleCopyMinted}>
+                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  {copied ? 'Copied' : 'Copy'}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setMintedToken(null)}>
+                  Done
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Create form */}
+          <form onSubmit={handleCreateToken} className="flex items-end gap-2">
+            <div className="flex flex-1 flex-col gap-1.5">
+              <Label htmlFor="token-name">New token name</Label>
+              <Input
+                id="token-name"
+                value={newTokenName}
+                onChange={(e) => setNewTokenName(e.target.value)}
+                placeholder="e.g. Stanza Parser"
+              />
+            </div>
+            <Button type="submit" disabled={creatingToken}>
+              {creatingToken ? 'Creating…' : 'Create token'}
+            </Button>
+          </form>
+
+          {/* Token list */}
+          <div>
+            {tokensLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-muted border-t-primary" />
+                Loading tokens…
+              </div>
+            ) : activeTokens.length === 0 ? (
+              <p className="text-sm text-muted-foreground">You have no active API tokens.</p>
+            ) : (
+              <div className="flex flex-col">
+                {activeTokens.map((t) => (
+                  <div
+                    key={t.id}
+                    className="flex items-center justify-between gap-2 border-t py-2 first:border-t-0"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{t.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Created {timeAgo(t.createdAt) || 'unknown'}
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => handleRevokeToken(t.id)}
+                    >
+                      Revoke
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 };

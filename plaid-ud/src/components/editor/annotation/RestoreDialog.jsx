@@ -117,9 +117,9 @@ export const RestoreDialog = ({ opened, onClose, client, documentId, raw, entry,
         ? skippedLines(res.skipped).join(' ')
         : `Restored to ${fullTimestamp(asOf)}.`;
       const title = res?.skipped?.length ? 'Restored, with gaps' : 'Restored';
-      const color = res?.skipped?.length ? 'yellow' : 'green';
+      const kind = res?.skipped?.length ? 'warning' : 'success';
       if (before) {
-        notifyWithAction(message, title, { label: 'Undo', onClick: () => undo(before), color });
+        notifyWithAction(message, title, { label: 'Undo', onClick: () => undo(before), kind });
       } else if (res?.skipped?.length) {
         notifyWarning(message, title);
       } else {

@@ -35,7 +35,8 @@ import {
 import { ProjectInvites, MintedLinkModal } from './ProjectInvites';
 import { useAuth } from '../../contexts/AuthContext';
 import { UserAvatar } from '../common/UserAvatar';
-import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
+import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
+import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { canManageProject } from '../../utils/permissions.js';
 import { isEmail, EMAIL_INVALID_MESSAGE } from '../../utils/email';
 import { ListHint, SearchInput } from '../common/ListChrome.jsx';
@@ -68,6 +69,7 @@ const roleOf = (project, userId) => {
 export const ProjectManagement = ({ embedded = false }) => {
   const { projectId } = useParams();
   const { user, getClient } = useAuth();
+  const confirm = useConfirm();
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -387,23 +389,24 @@ export const ProjectManagement = ({ embedded = false }) => {
     }
   };
 
-  const handleDeleteUser = () => {
+  const handleDeleteUser = async () => {
     const target = editingUser;
-    confirmDelete({
-      title: 'Delete user',
-      message: `Are you sure you want to delete user "${target.displayName}"? This action cannot be undone.`,
-      onConfirm: async () => {
-        try {
-          await getClient().users.delete(target.id);
-          notifySuccess('User deleted successfully');
-          setEditingUser(null);
-          await fetchProject();
-        } catch (err) {
-          console.error('Error deleting user:', err);
-          notifyError('Failed to delete user: ' + (err.message || 'Unknown error'));
-        }
-      },
+    const ok = await confirm({
+      title: `Delete ${target.displayName}`,
+      description: 'This cannot be undone.',
+      confirmLabel: 'Delete',
+      destructive: true,
     });
+    if (!ok) return;
+    try {
+      await getClient().users.delete(target.id);
+      notifySuccess('User deleted successfully');
+      setEditingUser(null);
+      await fetchProject();
+    } catch (err) {
+      console.error('Error deleting user:', err);
+      notifyError('Failed to delete user: ' + (err.message || 'Unknown error'));
+    }
   };
 
   if (loading) {

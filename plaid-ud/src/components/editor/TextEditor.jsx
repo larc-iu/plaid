@@ -19,7 +19,8 @@ import {
   hasForeignSubstrateParticipants,
   foreignAnnotationLossForWord,
 } from '../../utils/udLayerUtils.js';
-import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
+import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
+import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { canEditProject } from '../../utils/permissions.js';
 import { TokenVisualizer } from './TokenVisualizer.jsx';
 import { useDocumentEditor } from './useDocumentEditor.js';
@@ -36,6 +37,7 @@ export const TextEditor = () => {
   const [originalTokenizedText, setOriginalTokenizedText] = useState('');
   const [lastSaved, setLastSaved] = useState(null);
   const { getClient, user } = useAuth();
+  const confirm = useConfirm();
 
   useDocumentTitle('Text Editor', doc?.name, project?.name);
 
@@ -90,24 +92,23 @@ export const TextEditor = () => {
     if (ok) setOriginalTokenizedText(textContent);
   };
 
-  const handleClearTokens = () => {
+  const handleClearTokens = async () => {
     if (!doc) return;
     // Tokens may belong to a substrate shared with another app (e.g. IGT). The
     // clear cascades into that app's tokens/annotations, so warn explicitly.
     const shared = hasForeignSubstrateParticipants(doc.layerInfo);
-    confirmDelete({
+    const ok = await confirm({
       title: 'Clear all tokens',
-      message: shared
-        ? 'These tokens are shared with another app on this project (e.g. interlinear ' +
-          "glossing). Clearing them here will also delete that app's annotations on this " +
-          'document. This cannot be undone — are you sure?'
-        : 'Are you sure you want to clear all tokens? This action cannot be undone.',
+      description: shared
+        ? 'These tokens are shared with another app on this project, such as interlinear ' +
+          "glossing. Clearing them here also deletes that app's annotations on this " +
+          'document. This cannot be undone.'
+        : 'This cannot be undone.',
       confirmLabel: 'Clear',
-      onConfirm: async () => {
-        const ok = await doc.clearTokens();
-        if (ok) setOriginalTokenizedText('');
-      },
+      destructive: true,
     });
+    if (!ok) return;
+    if (await doc.clearTokens()) setOriginalTokenizedText('');
   };
 
   const handleWordCreate = async (begin, end) => {
@@ -128,7 +129,7 @@ export const TextEditor = () => {
   // outright — a resize keeps token identity while changing what it means, so
   // annotations silently drift onto different text; boundary fixes are now
   // delete + re-create, which routes through this warning.)
-  const handleWordDelete = (wordId) => {
+  const handleWordDelete = async (wordId) => {
     if (!doc) return;
     const info = doc.layerInfo;
     const word = info.wordTokenLayer?.tokens?.find((t) => t.id === wordId);
@@ -141,15 +142,16 @@ export const TextEditor = () => {
     ]
       .filter(Boolean)
       .join(' and ');
-    confirmDelete({
+    const ok = await confirm({
       title: 'Delete token',
-      message:
-        `Deleting “${surface}” will also delete ${losses} from another app on this ` +
-        'project (e.g. interlinear glossing) that are not visible in this editor. ' +
-        'This cannot be undone — are you sure?',
+      description:
+        `Deleting “${surface}” also deletes ${losses} from another app on this ` +
+        'project, such as interlinear glossing, which are not visible in this editor. ' +
+        'This cannot be undone.',
       confirmLabel: 'Delete',
-      onConfirm: () => doc.deleteWord(wordId),
+      destructive: true,
     });
+    if (ok) doc.deleteWord(wordId);
   };
   const handleSentenceBoundaryToggle = (charPos) => doc?.toggleSentenceBoundary(charPos);
   const handleSetWordMorphemes = (word, forms) => doc?.setWordMorphemes(word, forms);
@@ -157,23 +159,23 @@ export const TextEditor = () => {
   // Delete the whole document. Lives here (rather than as a per-row action in the
   // document list) so it's an explicit, inside-the-document action; returns to
   // the list afterwards.
-  const handleDeleteDocument = () => {
+  const handleDeleteDocument = async () => {
     const name = doc?.name || 'this document';
-    confirmDelete({
-      title: 'Delete document',
-      message: `Are you sure you want to delete "${name}"? This action cannot be undone.`,
+    const ok = await confirm({
+      title: `Delete “${name}”`,
+      description: 'This cannot be undone.',
       confirmLabel: 'Delete',
-      onConfirm: async () => {
-        try {
-          await getClient().documents.delete(documentId);
-          notifySuccess(`Deleted "${name}"`);
-          navigate(`/projects/${projectId}/documents`);
-        } catch (err) {
-          notifyError(err.message || 'Unknown error', 'Failed to delete document');
-          console.error('Error deleting document:', err);
-        }
-      },
+      destructive: true,
     });
+    if (!ok) return;
+    try {
+      await getClient().documents.delete(documentId);
+      notifySuccess(`Deleted "${name}"`);
+      navigate(`/projects/${projectId}/documents`);
+    } catch (err) {
+      notifyError(err.message || 'Unknown error', 'Failed to delete document');
+      console.error('Error deleting document:', err);
+    }
   };
 
   const layerInfo = doc.layerInfo;

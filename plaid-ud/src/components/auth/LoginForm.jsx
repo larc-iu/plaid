@@ -1,19 +1,14 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Center,
-  Stack,
-  Paper,
-  Title,
-  Text,
-  TextInput,
-  PasswordInput,
-  Button,
-  Alert,
-} from '@mantine/core';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { Button } from '@ui/components/ui/button';
+import { Input } from '@ui/components/ui/input';
+import { Label } from '@ui/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@ui/components/ui/card';
 
+// This screen renders outside the Layout shell, so it carries its own `.tw`
+// root for the scoped preflight subset (see src/index.css).
 export const LoginForm = () => {
   useDocumentTitle('Sign In');
   const [email, setEmail] = useState('');
@@ -34,58 +29,64 @@ export const LoginForm = () => {
       if (result.success) {
         navigate('/projects');
       } else {
-        setError(result.error || 'Login failed. Please check your credentials.');
+        setError(result.error || 'Email or password is incorrect.');
       }
     } catch {
-      setError('An unexpected error occurred. Please try again.');
+      setError('Something went wrong. Try again.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Center mih="100vh" bg="gray.0" p="md">
-      <Stack w="100%" maw={400} gap="xl">
-        <div>
-          <Title order={1} ta="center">
-            Plaid UD Login
-          </Title>
-          <Text c="dimmed" ta="center" size="sm" mt="xs">
-            Universal Dependencies Tree Editor
-          </Text>
-        </div>
-
-        <Paper withBorder shadow="sm" p="xl" radius="md">
-          <form onSubmit={handleSubmit}>
-            <Stack gap="md">
-              {error && <Alert color="red">{error}</Alert>}
-
-              <TextInput
-                label="Email address"
+    <div className="tw flex min-h-screen items-center justify-center bg-muted/40 p-4">
+      <Card className="w-full max-w-sm">
+        <CardHeader className="items-center text-center">
+          <CardTitle className="text-2xl">Plaid UD Login</CardTitle>
+          <CardDescription>Universal Dependencies Tree Editor</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            {error && (
+              <div
+                role="alert"
+                className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              >
+                {error}
+              </div>
+            )}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="email">Email address</Label>
+              <Input
+                id="email"
                 type="email"
                 placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 disabled={loading}
-                data-autofocus
+                autoComplete="username"
+                autoFocus
               />
-
-              <PasswordInput
-                label="Password"
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 disabled={loading}
+                autoComplete="current-password"
               />
-
-              <Button type="submit" color="dark" fullWidth loading={loading}>
-                Login
-              </Button>
-            </Stack>
+            </div>
+            <Button type="submit" disabled={loading} className="mt-2 w-full">
+              {loading ? 'Signing in…' : 'Login'}
+            </Button>
           </form>
-        </Paper>
-      </Stack>
-    </Center>
+        </CardContent>
+      </Card>
+    </div>
   );
 };

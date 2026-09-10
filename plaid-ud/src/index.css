@@ -53,7 +53,12 @@ body,
      `:where(.tw)` contributes ZERO specificity, so these behave exactly like
      preflight (bare element selectors) and lose to Tailwind utility classes
      like `bg-primary`. Written as `.tw button` (specificity 0,1,1) they would
-     beat `.bg-primary` (0,1,0) and swallow every button background. */
+     beat `.bg-primary` (0,1,0) and swallow every button background.
+
+     The root itself is in the reset, not just its descendants. A portaled
+     shadcn surface (dialog, popover, toast) IS the `.tw` element, and its own
+     `border` utility renders nothing without the border-style default. */
+  :where(.tw),
   :where(.tw) *,
   :where(.tw) ::before,
   :where(.tw) ::after {
@@ -80,5 +85,89 @@ body,
   :where(.tw) input::placeholder,
   :where(.tw) textarea::placeholder {
     color: hsl(var(--muted-foreground));
+  }
+
+  /* The rest of preflight that shadcn's components are written against. IGT's
+     version of this block had only the rules above, because the one screen it
+     migrated first was a login form with no links, no headings and no bare
+     paragraphs. UD's shell has all three, and without these the header renders
+     as underlined blue anchors and every <p> carries the browser's 1em margin.
+     Anything below that a screen turns out to need belongs here too, not in the
+     screen. */
+  :where(.tw) a {
+    color: inherit;
+    text-decoration: inherit;
+  }
+  :where(.tw) h1,
+  :where(.tw) h2,
+  :where(.tw) h3,
+  :where(.tw) h4,
+  :where(.tw) h5,
+  :where(.tw) h6 {
+    font-size: inherit;
+    font-weight: inherit;
+  }
+  :where(.tw) blockquote,
+  :where(.tw) dl,
+  :where(.tw) dd,
+  :where(.tw) h1,
+  :where(.tw) h2,
+  :where(.tw) h3,
+  :where(.tw) h4,
+  :where(.tw) h5,
+  :where(.tw) h6,
+  :where(.tw) hr,
+  :where(.tw) figure,
+  :where(.tw) p,
+  :where(.tw) pre {
+    margin: 0;
+  }
+  :where(.tw) ol,
+  :where(.tw) ul,
+  :where(.tw) menu {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  /* The one every shared DataTable depends on. */
+  :where(.tw) table {
+    text-indent: 0;
+    border-color: inherit;
+    border-collapse: collapse;
+  }
+  :where(.tw) hr {
+    height: 0;
+    color: inherit;
+    border-top-width: 1px;
+  }
+  :where(.tw) img,
+  :where(.tw) svg,
+  :where(.tw) video,
+  :where(.tw) canvas {
+    display: block;
+    vertical-align: middle;
+  }
+  :where(.tw) img,
+  :where(.tw) video {
+    max-width: 100%;
+    height: auto;
+  }
+  :where(.tw) code,
+  :where(.tw) kbd,
+  :where(.tw) samp,
+  :where(.tw) pre {
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 1em;
+  }
+  :where(.tw) textarea {
+    resize: vertical;
+  }
+  :where(.tw) :disabled {
+    cursor: default;
+  }
+  :where(.tw) [role='button'] {
+    cursor: pointer;
   }
 }

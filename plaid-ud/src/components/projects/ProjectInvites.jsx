@@ -20,7 +20,8 @@ import {
 } from '@mantine/core';
 import { IconLink, IconCopy, IconCheck, IconTrash } from '@tabler/icons-react';
 import PlaidClient from '@larc-iu/plaid-client';
-import { notifySuccess, notifyError, confirmDelete } from '../../utils/feedback.jsx';
+import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
+import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 
 const GRANT_ROLES = [
   { value: 'reader', label: 'Reader' },
@@ -90,6 +91,7 @@ export const MintedLinkModal = ({ code, onClose, title = 'Invitation link create
 };
 
 export const ProjectInvites = ({ projectId, projectName, client, canManage }) => {
+  const confirm = useConfirm();
   const [invites, setInvites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
@@ -139,23 +141,23 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage }) =>
     }
   };
 
-  const handleRevoke = (inv) => {
-    confirmDelete({
-      title: 'Revoke this invitation link?',
-      message:
+  const handleRevoke = async (inv) => {
+    const ok = await confirm({
+      title: 'Revoke this invitation link',
+      description:
         'The link stops working immediately. Anyone who already used it keeps their account and access.',
       confirmLabel: 'Revoke link',
-      onConfirm: async () => {
-        try {
-          await client.invites.revoke(inv.id);
-          notifySuccess('Invitation link revoked');
-          await load();
-        } catch (err) {
-          console.error('Error revoking invite:', err);
-          notifyError('Failed to revoke invitation link');
-        }
-      },
+      destructive: true,
     });
+    if (!ok) return;
+    try {
+      await client.invites.revoke(inv.id);
+      notifySuccess('Invitation link revoked');
+      await load();
+    } catch (err) {
+      console.error('Error revoking invite:', err);
+      notifyError('Failed to revoke invitation link');
+    }
   };
 
   if (!canManage) return null;

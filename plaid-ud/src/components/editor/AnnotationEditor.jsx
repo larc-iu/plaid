@@ -11,9 +11,8 @@ import { useDocumentEditor } from './useDocumentEditor.js';
 import { HistoryDrawer } from './annotation/HistoryDrawer.jsx';
 import { RestoreDialog } from './annotation/RestoreDialog.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { notifications } from '@mantine/notifications';
 import { formatFindingsForClipboard } from '../../domain/validate.js';
-import { notifyError } from '../../utils/feedback.jsx';
+import { notifyError, notifyWithAction } from '../../utils/feedback.jsx';
 import { canEditProject, canManageProject } from '../../utils/permissions.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
@@ -76,23 +75,11 @@ const reportIntegrityFindings = (findings, documentId) => {
       ? headline[0].message
       : `${headline.length} issues found — see the browser console for details.`;
   const detail = formatFindingsForClipboard(findings, { documentId });
-  notifications.show({
-    title: 'Data integrity issue detected',
-    color: errors.length ? 'red' : 'yellow',
-    autoClose: false,
-    message: (
-      <Stack gap="xs">
-        <Text size="sm">{reason}</Text>
-        <Button
-          size="xs"
-          variant="light"
-          w="fit-content"
-          onClick={() => navigator.clipboard?.writeText(detail).catch(() => {})}
-        >
-          Copy details
-        </Button>
-      </Stack>
-    ),
+  notifyWithAction(reason, 'Data integrity issue detected', {
+    label: 'Copy details',
+    onClick: () => navigator.clipboard?.writeText(detail).catch(() => {}),
+    kind: errors.length ? 'error' : 'warning',
+    duration: Infinity,
   });
 };
 

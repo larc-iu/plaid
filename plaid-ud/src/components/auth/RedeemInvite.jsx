@@ -1,21 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import {
-  Center,
-  Stack,
-  Paper,
-  Title,
-  Text,
-  TextInput,
-  PasswordInput,
-  Button,
-  Alert,
-  Loader,
-} from '@mantine/core';
 import { useAuth } from '../../contexts/AuthContext';
 import { authService } from '../../services/auth';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { isEmail, EMAIL_REQUIRED_MESSAGE, EMAIL_INVALID_MESSAGE } from '../../utils/email';
+import { Button } from '@ui/components/ui/button';
+import { Input } from '@ui/components/ui/input';
+import { Label } from '@ui/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@ui/components/ui/card';
 
 // Matches the server's minimum. Stated up front rather than only on rejection:
 // this is the one password the user will have to remember, and finding out the
@@ -114,109 +106,137 @@ export const RedeemInvite = () => {
         ? `You have been invited to join ${preview.projectName} as a ${preview.projectRole}.`
         : 'Choose an email address and password to get started.';
 
+  // Renders outside the Layout shell, so it carries its own `.tw` root for the
+  // scoped preflight subset (see src/index.css).
   return (
-    <Center mih="100vh" bg="gray.0" p="md">
-      <Stack w="100%" maw={400} gap="xl">
-        <div>
-          <Title order={1} ta="center">
+    <div className="tw flex min-h-screen items-center justify-center bg-muted/40 p-4">
+      <Card className="w-full max-w-sm">
+        <CardHeader className="items-center text-center">
+          <CardTitle className="text-2xl">
             {isReset ? 'Set a New Password' : 'Accept Your Invitation'}
-          </Title>
-          <Text c="dimmed" ta="center" size="sm" mt="xs">
-            {subtitle}
-          </Text>
-        </div>
-
-        <Paper withBorder shadow="sm" p="xl" radius="md">
+          </CardTitle>
+          <CardDescription>{subtitle}</CardDescription>
+        </CardHeader>
+        <CardContent>
           {loading ? (
-            <Center py="md">
-              <Loader size="sm" />
-            </Center>
+            <div className="flex justify-center py-6">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-primary" />
+            </div>
           ) : lookupError || deadMessage ? (
-            <Stack gap="md">
-              <Alert color="red">{lookupError || deadMessage}</Alert>
-              <Button component={Link} to="/login" variant="default" fullWidth>
-                Go to sign in
+            <div className="flex flex-col gap-4">
+              <div
+                role="alert"
+                className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              >
+                {lookupError || deadMessage}
+              </div>
+              <Button asChild variant="outline" className="w-full">
+                <Link to="/login">Go to sign in</Link>
               </Button>
-            </Stack>
+            </div>
           ) : (
-            <form onSubmit={handleSubmit}>
-              <Stack gap="md">
-                {error && <Alert color="red">{error}</Alert>}
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+              {error && (
+                <div
+                  role="alert"
+                  className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                >
+                  {error}
+                </div>
+              )}
 
-                {/* A maintainer testing their own link would otherwise be
-                    silently swapped into a brand-new account, having spent one
-                    of the invite's uses without noticing. Say so rather than
-                    blocking it — testing the link is a legitimate reason to be
-                    here signed in. */}
-                {user && (
-                  <Alert color="yellow" variant="light">
-                    You are signed in as <strong>{user.displayName}</strong>.{' '}
-                    {isReset
-                      ? 'Setting this password will sign you out of that account.'
-                      : 'Accepting this invitation creates a separate account and signs you out of that one.'}
-                  </Alert>
-                )}
+              {/* A maintainer testing their own link would otherwise be
+                  silently swapped into a brand-new account, having spent one
+                  of the invite's uses without noticing. Say so rather than
+                  blocking it — testing the link is a legitimate reason to be
+                  here signed in. */}
+              {user && (
+                <p className="rounded-md border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                  You are signed in as <strong>{user.displayName}</strong>.{' '}
+                  {isReset
+                    ? 'Setting this password will sign you out of that account.'
+                    : 'Accepting this invitation creates a separate account and signs you out of that one.'}
+                </p>
+              )}
 
-                {preview?.grantAdmin && (
-                  <Alert color="blue" variant="light">
-                    This invitation grants administrator privileges.
-                  </Alert>
-                )}
+              {preview?.grantAdmin && (
+                <p className="rounded-md border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                  This invitation grants administrator privileges.
+                </p>
+              )}
 
-                {!isReset && (
-                  <>
-                    <TextInput
-                      label="Your email address"
-                      description="This is how you will sign in. It cannot be changed later."
+              {!isReset && (
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="invite-email">Your email address</Label>
+                    <Input
+                      id="invite-email"
                       type="email"
                       placeholder="e.g. jsmith@example.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       disabled={submitting}
                       autoComplete="email"
-                      data-autofocus
-                      required
+                      autoFocus
                     />
+                    <p className="text-xs text-muted-foreground">
+                      This is how you will sign in. It cannot be changed later.
+                    </p>
+                  </div>
 
-                    <TextInput
-                      label="Your name (optional)"
-                      description="How you appear to your collaborators."
-                      placeholder="e.g. Jane Smith"
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="invite-display-name">Your name (optional)</Label>
+                    <Input
+                      id="invite-display-name"
+                      placeholder="How you appear to your collaborators"
                       value={displayName}
                       onChange={(e) => setDisplayName(e.target.value)}
                       disabled={submitting}
                       autoComplete="name"
                     />
-                  </>
-                )}
+                  </div>
+                </>
+              )}
 
-                <PasswordInput
-                  label={isReset ? 'New password' : 'Choose a password'}
-                  description={`At least ${MIN_PASSWORD} characters.`}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="invite-password">
+                  {isReset ? 'New password' : 'Choose a password'}
+                </Label>
+                <Input
+                  id="invite-password"
+                  type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={submitting}
                   autoComplete="new-password"
-                  required
+                  autoFocus={isReset}
                 />
+                <p className="text-xs text-muted-foreground">At least {MIN_PASSWORD} characters.</p>
+              </div>
 
-                <PasswordInput
-                  label="Confirm password"
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="invite-confirm">Confirm password</Label>
+                <Input
+                  id="invite-confirm"
+                  type="password"
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}
                   disabled={submitting}
                   autoComplete="new-password"
-                  required
                 />
+              </div>
 
-                <Button type="submit" loading={submitting} fullWidth>
-                  {isReset ? 'Set password and sign in' : 'Create account'}
-                </Button>
-              </Stack>
+              <Button type="submit" disabled={submitting} className="mt-2 w-full">
+                {submitting
+                  ? 'Setting up…'
+                  : isReset
+                    ? 'Set password and sign in'
+                    : 'Create account'}
+              </Button>
             </form>
           )}
-        </Paper>
-      </Stack>
-    </Center>
+        </CardContent>
+      </Card>
+    </div>
   );
 };

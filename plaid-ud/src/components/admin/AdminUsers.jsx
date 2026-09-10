@@ -20,7 +20,8 @@ import { useDebouncedValue } from '@mantine/hooks';
 import { IconPlus, IconLink } from '@tabler/icons-react';
 import { MintedLinkModal } from '../projects/ProjectInvites';
 import { useAuth } from '../../contexts/AuthContext';
-import { confirmDelete, notifySuccess, notifyError } from '../../utils/feedback.jsx';
+import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
+import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { UserAvatar } from '../common/UserAvatar';
 import classes from '../common/listRow.module.css';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
@@ -44,6 +45,7 @@ const EMPTY_USER_FORM = {
 export const AdminUsers = () => {
   useDocumentTitle('User Administration');
   const { user, getClient } = useAuth();
+  const confirm = useConfirm();
   const isAdmin = user?.isAdmin || false;
 
   const [users, setUsers] = useState([]);
@@ -229,23 +231,25 @@ export const AdminUsers = () => {
     }
   };
 
-  const handleDeactivate = (target) => {
-    confirmDelete({
-      title: 'Deactivate user',
-      message: `Deactivate "${target.displayName}"? They will be unable to log in, and their project memberships, vocab maintainerships, and API tokens will be revoked. This is reversible by reactivating, but those grants are not restored automatically.`,
+  const handleDeactivate = async (target) => {
+    const ok = await confirm({
+      title: `Deactivate ${target.displayName}`,
+      description:
+        'They cannot log in, and their project memberships, vocab maintainerships and API ' +
+        'tokens are revoked. Reactivating restores the account, not the grants.',
       confirmLabel: 'Deactivate',
-      onConfirm: async () => {
-        try {
-          await getClient().users.delete(target.id);
-          notifySuccess('User deactivated');
-          setEditingUser(null);
-          await reload();
-        } catch (err) {
-          console.error('Error deactivating user:', err);
-          notifyError('Failed to deactivate user: ' + (err.message || 'Unknown error'));
-        }
-      },
+      destructive: true,
     });
+    if (!ok) return;
+    try {
+      await getClient().users.delete(target.id);
+      notifySuccess('User deactivated');
+      setEditingUser(null);
+      await reload();
+    } catch (err) {
+      console.error('Error deactivating user:', err);
+      notifyError('Failed to deactivate user: ' + (err.message || 'Unknown error'));
+    }
   };
 
   // Mint a one-time link that lets the user set their own password. The point

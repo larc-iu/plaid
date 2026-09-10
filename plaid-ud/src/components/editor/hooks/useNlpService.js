@@ -226,7 +226,7 @@ export const useNlpService = (projectId, documentId, project) => {
         notifyWarning(
           'Lost contact with the parser. It is still running. Reload to see what it writes.',
           'Still parsing',
-          { autoClose: false },
+          { duration: Infinity },
         );
       } else {
         notifyError(error.message || 'Failed to parse document', 'Parse Error');
