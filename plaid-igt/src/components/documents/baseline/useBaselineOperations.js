@@ -43,7 +43,7 @@ export const useBaselineOperations = () => {
         description:
           'This document is already tokenized. Editing the baseline text here can ' +
           'delete or mis-align existing tokens and the annotations on them in the changed or ' +
-          'removed regions. This cannot be undone.',
+          'removed regions.',
         confirmLabel: 'Save anyway',
         destructive: true,
       }))

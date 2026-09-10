@@ -525,8 +525,7 @@ export const useMediaOperations = () => {
         title: 'Replace existing transcript?',
         description:
           'This document already has a transcript. Transcribing again will REPLACE it, ' +
-          'discarding the existing text, tokens, segments, and any annotations on them. ' +
-          'This cannot be undone.',
+          'discarding the existing text, tokens, segments, and any annotations on them.',
         confirmLabel: 'Replace',
         destructive: true,
       }))
@@ -679,29 +678,6 @@ export const useMediaOperations = () => {
     }
   }, [detectSpot, detectRun, vad, requestService, project, doc]);
 
-  const handleClearAlignments = useCallback(async () => {
-    if (!alignmentTokens.length) return;
-
-    if (
-      !(await confirm({
-        title: 'Clear all segments?',
-        description:
-          'This removes every segment from this document. The text stays in the baseline. ' +
-          'This cannot be undone.',
-        confirmLabel: 'Clear segments',
-        destructive: true,
-      }))
-    ) {
-      return;
-    }
-
-    const count = alignmentTokens.length;
-    const ok = await doc.clearAlignments();
-    if (ok) {
-      notifySuccess(`Cleared ${count} segments`, 'Success');
-    }
-  }, [alignmentTokens, doc, confirm]);
-
   // Deleting a segment takes its times and speaker; its text stays in the
   // baseline unless the dialog's box is ticked, which deletes the text and
   // everything annotated on it as well.
@@ -712,8 +688,7 @@ export const useMediaOperations = () => {
         description: 'The segment is removed. Its text stays in the baseline.',
         checkbox: {
           label: 'Also delete its text from the baseline',
-          description:
-            'The words, glosses, and annotations on that text go with it. This cannot be undone.',
+          description: 'The words, glosses, and annotations on that text go with it.',
           confirmLabel: 'Delete segment and text',
         },
         confirmLabel: 'Delete segment',
@@ -936,7 +911,6 @@ export const useMediaOperations = () => {
     cancelRequest,
     handleTranscribe,
     handleDetectSpeech,
-    handleClearAlignments,
 
     // Service discovery
     discoverServices,

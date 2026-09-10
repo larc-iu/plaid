@@ -261,7 +261,7 @@ export function DocumentTokenize() {
             {existingTokens.length === 1 ? '' : 's'}
           </strong>{' '}
           in this document, along with their morphemes and every annotation and vocabulary link on
-          them. This cannot be undone.
+          them.
         </p>
         <p className="mt-1 text-muted-foreground">
           Sentence boundaries and sentence-level annotations are kept.
@@ -285,7 +285,7 @@ export function DocumentTokenize() {
           This replaces all{' '}
           <strong>{existingSentenceTokens.length.toLocaleString()} sentences</strong> with a single
           sentence spanning the whole text. Sentence-level annotations (e.g. translations) are
-          deleted with their sentences. This cannot be undone.
+          deleted with their sentences.
         </p>
         <p className="mt-1 text-muted-foreground">
           Words, morphemes, and their annotations are kept.
@@ -314,7 +314,7 @@ export function DocumentTokenize() {
               : ''}
           </strong>{' '}
           on it, including any from other apps on this project (e.g. UD annotations) that are not
-          visible here. This cannot be undone.
+          visible here.
         </p>
       </ConfirmDeleteDialog>
 
@@ -342,7 +342,7 @@ export function DocumentTokenize() {
               : ''}
           </strong>{' '}
           at the morpheme level, including any from other apps on this project that aren’t visible
-          here. Word-level annotations are kept. This cannot be undone.
+          here. Word-level annotations are kept.
         </p>
       </ConfirmDeleteDialog>
 
@@ -369,7 +369,7 @@ export function DocumentTokenize() {
               : ''}
           </strong>{' '}
           (word, morpheme, and sentence level), including any from other apps on this project that
-          aren’t visible here. This cannot be undone.
+          aren’t visible here.
         </p>
       </ConfirmDeleteDialog>
     </TooltipProvider>
