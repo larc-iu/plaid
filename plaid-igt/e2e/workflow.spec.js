@@ -109,7 +109,7 @@ test('B15-01/02/03: the Auto-analyze dialog cancels cleanly and links on Run', a
   // The footer dismiss; the corner X carries the same accessible name.
   await dialog.getByRole('button', { name: 'Close' }).first().click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  dialog = await openDialog();
+  await openDialog();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(await page.locator('button.igt-vocab__hint').count()).toBe(0);

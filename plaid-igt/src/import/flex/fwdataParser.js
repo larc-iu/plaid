@@ -434,7 +434,7 @@ export function parseFwdata(xml) {
     if (kind === 'PunctuationForm') return { kind: 'punct', form: str(n, 'Form') ?? '' };
     let gloss = null;
     let analysis = null;
-    let wordform = null;
+    let wordform;
     if (kind === 'WfiGloss') {
       gloss = multiUni(n, 'Form');
       analysis = get(n.attrs.ownerguid, 'WfiAnalysis');

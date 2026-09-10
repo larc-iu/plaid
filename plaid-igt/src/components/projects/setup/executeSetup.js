@@ -74,7 +74,9 @@ async function executeProjectSetupImpl({
       // Substrate adoption and retry dedup both read existingProject —
       // proceeding without it could duplicate role-tagged layers (which
       // breaks findPrimaryLayers) or re-create vocabs. Fail the attempt.
-      throw new Error(`Could not load the project to set up: ${checkError.message}`);
+      throw new Error(`Could not load the project to set up: ${checkError.message}`, {
+        cause: checkError,
+      });
     }
   }
 

@@ -28,6 +28,16 @@ export default [
     rules: {
       ...js.configs.recommended.rules,
       ...reactHooks.configs.recommended.rules,
+      // The hooks plugin's React Compiler rules are deferred: on 2026-09-10 they
+      // reported 52 set-state-in-effect, 47 refs, 8 immutability, and 2
+      // preserve-manual-memoization sites across fifty files, most of them the
+      // deliberate ref-mirroring the islands and media hooks rely on. Adopting
+      // them is a project of its own; until then the rules that ran before
+      // (rules-of-hooks, exhaustive-deps) are the ones that gate.
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/refs': 'off',
+      'react-hooks/immutability': 'off',
+      'react-hooks/preserve-manual-memoization': 'off',
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
       'no-unused-vars': ['warn', { varsIgnorePattern: '^[A-Z_]', argsIgnorePattern: '^_' }],
     },

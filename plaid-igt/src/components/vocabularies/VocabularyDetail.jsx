@@ -521,7 +521,7 @@ export const VocabularyDetail = () => {
     // and so do the entry references a Text field cannot hold.
     const touchesRefs = choice.type === FIELD_TYPES.ITEM || before?.type === FIELD_TYPES.ITEM;
     if (touchesRefs && !isNewVocabulary) {
-      let cost = { cleared: 0, trimmed: 0 };
+      let cost;
       try {
         cost = await countTypeChangeLoss(fieldName, next);
       } catch (err) {
