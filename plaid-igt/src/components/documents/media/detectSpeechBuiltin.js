@@ -12,14 +12,14 @@ import { VAD_DEFAULTS } from '@/domain/vad/speechTimestamps.js';
 // widest silence inside it, which is the cut a person would have made anyway.
 export const DETECT_SPEECH_BUILTIN = {
   name: BUILTIN_DETECT_SPEECH_SILERO,
-  label: 'Built-in (Silero, in the browser)',
-  description: 'runs on this computer, with no service needed',
+  label: 'Default',
+  description: 'Silero',
   schema: [
     {
       key: 'threshold',
       label: 'Speech threshold',
       description:
-        'How sure the model has to be that a stretch is speech. Lower catches quiet talk, and also breaths and background noise.',
+        'Model confidence. Lower catches quiet talk, and also breaths and background noise.',
       type: 'number',
       slider: true,
       min: 0.1,
@@ -50,7 +50,7 @@ export const DETECT_SPEECH_BUILTIN = {
     {
       key: 'maxSpeechDurationS',
       label: 'Longest segment (s)',
-      description: 'A longer stretch is cut at the widest silence inside it.',
+      description: 'A segment longer than this is cut at the widest silence inside it.',
       type: 'number',
       min: 1,
       max: 600,
