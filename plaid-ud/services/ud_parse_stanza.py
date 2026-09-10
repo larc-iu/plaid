@@ -1,3 +1,4 @@
+import contextlib
 import stanza
 import traceback
 from plaid_client import (BaseService, TASKS, Param, ROLES, find_by_role,
@@ -294,7 +295,51 @@ def protected_sentence_indexes(morpheme_layer, lemma_layer, morph_to_sent):
     return protected
 
 
-def parse_document(pipeline_provider, client, document_id, language='en', overwrite=False):
+class ParseProgress:
+    """Progress reporting and cancellation for one parse.
+
+    `parse_document` is also callable from a script, where there is no request
+    to report to, so the whole facility folds into a no-op rather than making
+    every call site check for a helper. Percentages are a fixed budget over the
+    phases below, so the bar moves for the same reason on every document:
+
+        2      acquiring the document lock (the caller reports this one)
+        2-10   fetching the document and resolving its layers
+        10-20  loading the language's models (a one-time download, first time)
+        20-60  parsing
+        60-100 writing
+
+    `report` is a CANCELLATION CHECKPOINT (ResponseHelper.progress raises), so
+    every call inside the write phase must sit inside `critical()`.
+    """
+
+    FETCH, LOAD, PARSE, WRITE = (2, 10), (10, 20), (20, 60), (60, 100)
+
+    def __init__(self, helper=None):
+        self._helper = helper
+
+    def report(self, phase, fraction, message):
+        """Report `message` at `fraction` (0..1) through `phase`."""
+        if not self._helper:
+            return
+        low, high = phase
+        percent = int(low + (high - low) * min(max(fraction, 0.0), 1.0))
+        self._helper.progress(percent, message)
+
+    def critical(self):
+        """The writes: a stretch that must finish once begun."""
+        return self._helper.critical() if self._helper else contextlib.nullcontext()
+
+
+# How many sentences to hand Stanza at once when re-parsing an already
+# tokenized document. Small enough that a long document reports often and can
+# be stopped between groups, large enough that the per-call overhead stays lost
+# in the parse itself.
+SENTENCE_GROUP = 25
+
+
+def parse_document(pipeline_provider, client, document_id, language='en', overwrite=False,
+                   helper=None):
     """Parse a document with Stanza and write UD annotations into Plaid.
 
     Two modes, chosen by what already exists:
@@ -320,6 +365,7 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
     outright if such annotations would be lost (unless `overwrite`). Returns a
     summary dict {mode, parsed_sentences, skipped_sentences}."""
     frag = prov_fragment(language)
+    progress = ParseProgress(helper)
 
     def log(msg):
         # Force-flush so the next-line-after-hang shows whatever the last
@@ -331,6 +377,7 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
 
         # Resolve layers FIRST — the parse mode depends on what exists.
         log("Fetching document with layers…")
+        progress.report(ParseProgress.FETCH, 0.0, "Reading the document…")
         full_document = client.documents.get(document_id, include_body=True)
         log("  …document fetched")
         # Resolve the substrate by its cross-app role tag (config.plaid.role),
@@ -370,6 +417,7 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
         existing_morphemes = morpheme_layer.get("tokens", []) or []
         log(f"Existing tokens: {len(existing_sentences)} sentences, "
             f"{len(existing_words)} words, {len(existing_morphemes)} syntactic words")
+        progress.report(ParseProgress.FETCH, 1.0, "Reading the document…")
 
         preserve = bool(existing_sentences and existing_words)
 
@@ -413,18 +461,34 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
                         "skipped_sentences": len(skipped_idxs)}
 
             log("Preserving existing tokenization; parsing pretokenized…")
+            # The first parse in a language downloads its models, which is the
+            # longest silent stretch this service has. Name it before it starts.
+            progress.report(ParseProgress.LOAD, 0.0, f"Loading the {language} models…")
             pipeline = pipeline_provider.get(language, pretokenized=True)
-            stanza_doc = pipeline([[body[w["begin"]:w["end"]] for w in ws] for _, _, ws in reparse])
-            sentences_data = stanza_doc.to_dict()
 
-            # Delete syntactic-word tokens of the RE-PARSED sentences only
-            # (cascades their UD spans/relations); skipped sentences keep theirs.
+            # Parse in groups rather than handing Stanza every sentence at
+            # once: the bar then moves through a long document, and `report`
+            # is a cancellation checkpoint, so a stop lands between groups —
+            # before any write, leaving the document untouched.
+            sentences_data = []
+            total = len(reparse)
+            for start in range(0, total, SENTENCE_GROUP):
+                group = reparse[start:start + SENTENCE_GROUP]
+                progress.report(ParseProgress.PARSE, start / total,
+                                f"Parsing sentence {start + 1} of {total}…")
+                stanza_doc = pipeline([[body[w["begin"]:w["end"]] for w in ws]
+                                       for _, _, ws in group])
+                sentences_data.extend(stanza_doc.to_dict())
+
+            # The syntactic-word tokens of the RE-PARSED sentences go (which
+            # cascades their UD spans/relations); skipped sentences keep
+            # theirs. PLANNED here and carried out in the write phase below, so
+            # a stop during the parse leaves the document exactly as it was.
             morphs_to_delete = [m for m in existing_morphemes
                                 if morph_to_sent.get(m["id"]) in reparse_idxs]
-            if morphs_to_delete:
-                log(f"  Deleting {len(morphs_to_delete)} syntactic-word token(s) in re-parsed "
-                    f"sentences (cascades UD spans/relations only)…")
-                client.tokens.bulk_delete([m["id"] for m in morphs_to_delete])
+            deletions = ([m["id"] for m in morphs_to_delete],
+                         f"{len(morphs_to_delete)} syntactic-word token(s) in re-parsed "
+                         f"sentences (cascades UD spans/relations only)")
 
             sentence_ops, word_ops = [], []  # substrate preserved
             morpheme_ops = []
@@ -461,32 +525,44 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
                 log(f"Overwrite enabled: replacing {protected} protected annotation(s)")
 
             log("Tokenizing + parsing from scratch…")
+            progress.report(ParseProgress.LOAD, 0.0, f"Loading the {language} models…")
             pipeline = pipeline_provider.get(language)
+            # Stanza decides the sentence boundaries here, so the body cannot
+            # be split into groups without changing where the sentences fall.
+            # This is one call and one quiet stretch; the requester's elapsed
+            # clock is what carries it, so say what is happening first.
+            progress.report(ParseProgress.PARSE, 0.0,
+                            f"Parsing {len(body)} characters…")
             stanza_doc = pipeline(body)
             sentences_data = stanza_doc.to_dict()
             log(f"Parsed {len(sentences_data)} sentences")
+            progress.report(ParseProgress.PARSE, 1.0,
+                            f"Parsed {len(sentences_data)} sentences…")
             parse_summary = {"mode": "full", "parsed_sentences": len(sentences_data),
                              "skipped_sentences": 0}
 
-            # Reset: delete pre-existing tokens, leaning on server-side cascade
-            # for the normal case. Deleting sentences cascades to their words +
-            # morphemes server-side in one shot. The lower elif branches only
-            # kick in for half-parsed states (sentences absent but lower layers
-            # left over from a botched mid-flight parse). Doing this top-down
-            # rather than bottom-up matters a lot for perf: an explicit
-            # bottom-up cycle for a 285-word doc ran ~30s server-side (each
-            # word delete runs constraint queries individually), while a
-            # single-sentence cascade collapses that into one server-side
-            # transaction. (preserve=False means at most one branch fires.)
+            # Reset: plan the delete of pre-existing tokens, leaning on
+            # server-side cascade for the normal case. Deleting sentences
+            # cascades to their words + morphemes server-side in one shot. The
+            # lower elif branches only kick in for half-parsed states (sentences
+            # absent but lower layers left over from a botched mid-flight
+            # parse). Doing this top-down rather than bottom-up matters a lot
+            # for perf: an explicit bottom-up cycle for a 285-word doc ran ~30s
+            # server-side (each word delete runs constraint queries
+            # individually), while a single-sentence cascade collapses that into
+            # one server-side transaction. (preserve=False means at most one
+            # branch fires.) Carried out in the write phase below.
             if existing_sentences:
-                log(f"  Deleting {len(existing_sentences)} sentences (cascades to words + morphemes)…")
-                client.tokens.bulk_delete([t["id"] for t in existing_sentences])
+                deletions = ([t["id"] for t in existing_sentences],
+                             f"{len(existing_sentences)} sentences (cascades to words + morphemes)")
             elif existing_words:
-                log(f"  Deleting {len(existing_words)} orphan words (no sentences to cascade from)…")
-                client.tokens.bulk_delete([t["id"] for t in existing_words])
+                deletions = ([t["id"] for t in existing_words],
+                             f"{len(existing_words)} orphan words (no sentences to cascade from)")
             elif existing_morphemes:
-                log(f"  Deleting {len(existing_morphemes)} orphan morphemes…")
-                client.tokens.bulk_delete([t["id"] for t in existing_morphemes])
+                deletions = ([t["id"] for t in existing_morphemes],
+                             f"{len(existing_morphemes)} orphan morphemes")
+            else:
+                deletions = ([], "")
 
             # 1. Sentence tokens: a gap-free partition of [0, len(body)). Sentence i
             #    runs from its first token to the start of sentence i+1, so inter-
@@ -551,160 +627,181 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
                         morpheme_meta.append({"sent_idx": sent_idx, "row": td, "word_substring": body[wb:we]})
                         i += 1
 
-        # Combine the creations into a single atomic batch (server runs them
-        # sequentially, so child layers see the parents from earlier ops in
-        # the same batch — those creates don't reference the *ids* produced
-        # earlier in the batch, only the pre-existing layer ids). Order is
-        # top-down (sentences → words → morphemes) — a child without its
-        # parent on the server is a 400. In substrate-preserving mode the
-        # sentence/word op lists are empty and only syntactic words land.
-        log(f"Building token ops: {len(sentence_ops)} sentences, "
-            f"{len(word_ops)} words, {len(morpheme_ops)} morphemes")
-        order = []  # which kind sits at each index in the batch results
-        with client.batched() as token_batch:
-            if sentence_ops:
-                client.tokens.bulk_create(sentence_ops)
-                order.append("sentences")
-            if word_ops:
-                client.tokens.bulk_create(word_ops)
-                order.append("words")
-            if morpheme_ops:
-                client.tokens.bulk_create(morpheme_ops)
-                order.append("morphemes")
-            log(f"  Submitting token batch ({len(order)} ops)…")
-        token_results = token_batch.results
-        log("  …token batch returned")
-        morpheme_ids = []
-        if "sentences" in order:
-            log(f"Created {len(sentence_ops)} sentence tokens")
-        if "words" in order:
-            log(f"Created {len(word_ops)} word tokens")
-        if "morphemes" in order:
-            idx = order.index("morphemes")
-            morpheme_ids = token_results[idx]["body"]["ids"]
-            log(f"Created {len(morpheme_ids)} morpheme tokens")
+        # ----- the writes ---------------------------------------------------
+        # One stretch that must finish once begun. A stop asked for while the
+        # document was being read or parsed has already landed, before anything
+        # was touched; one that arrives from here on is held off until the
+        # document is whole again. The caller's final report belongs inside a
+        # critical block too — a checkpoint after the last write would throw a
+        # finished parse away and call it stopped.
+        with progress.critical():
+            del_ids, del_label = deletions
+            if del_ids:
+                log(f"  Deleting {del_label}…")
+                progress.report(ParseProgress.WRITE, 0.0, "Clearing the previous annotations…")
+                client.tokens.bulk_delete(del_ids)
+            # Combine the creations into a single atomic batch (server runs them
+            # sequentially, so child layers see the parents from earlier ops in
+            # the same batch — those creates don't reference the *ids* produced
+            # earlier in the batch, only the pre-existing layer ids). Order is
+            # top-down (sentences → words → morphemes) — a child without its
+            # parent on the server is a 400. In substrate-preserving mode the
+            # sentence/word op lists are empty and only syntactic words land.
+            log(f"Building token ops: {len(sentence_ops)} sentences, "
+                f"{len(word_ops)} words, {len(morpheme_ops)} morphemes")
+            progress.report(ParseProgress.WRITE, 0.15,
+                            f"Writing {len(sentence_ops) + len(word_ops) + len(morpheme_ops)} "
+                            f"tokens…")
+            order = []  # which kind sits at each index in the batch results
+            with client.batched() as token_batch:
+                if sentence_ops:
+                    client.tokens.bulk_create(sentence_ops)
+                    order.append("sentences")
+                if word_ops:
+                    client.tokens.bulk_create(word_ops)
+                    order.append("words")
+                if morpheme_ops:
+                    client.tokens.bulk_create(morpheme_ops)
+                    order.append("morphemes")
+                log(f"  Submitting token batch ({len(order)} ops)…")
+            token_results = token_batch.results
+            log("  …token batch returned")
+            morpheme_ids = []
+            if "sentences" in order:
+                log(f"Created {len(sentence_ops)} sentence tokens")
+            if "words" in order:
+                log(f"Created {len(word_ops)} word tokens")
+            if "morphemes" in order:
+                idx = order.index("morphemes")
+                morpheme_ids = token_results[idx]["body"]["ids"]
+                log(f"Created {len(morpheme_ids)} morpheme tokens")
 
-        # 4. Annotation spans on morphemes.
-        lemma_span_ids = []
-        for sentence_data in sentences_data:
-            row_count = sum(1 for td in sentence_data if not isinstance(td["id"], tuple))
-            lemma_span_ids.append([None] * row_count)
+            # 4. Annotation spans on morphemes.
+            lemma_span_ids = []
+            for sentence_data in sentences_data:
+                row_count = sum(1 for td in sentence_data if not isinstance(td["id"], tuple))
+                lemma_span_ids.append([None] * row_count)
 
-        form_spans, lemma_spans, lemma_targets = [], [], []
-        upos_spans, xpos_spans, feature_spans = [], [], []
-        for i, meta in enumerate(morpheme_meta):
-            mid = morpheme_ids[i] if i < len(morpheme_ids) else None
-            if not mid:
-                continue
-            row = meta["row"]
-            sent_idx = meta["sent_idx"]
-            row_index = row["id"] - 1
+            form_spans, lemma_spans, lemma_targets = [], [], []
+            upos_spans, xpos_spans, feature_spans = [], [], []
+            for i, meta in enumerate(morpheme_meta):
+                mid = morpheme_ids[i] if i < len(morpheme_ids) else None
+                if not mid:
+                    continue
+                row = meta["row"]
+                sent_idx = meta["sent_idx"]
+                row_index = row["id"] - 1
 
-            form = row.get("text")
-            # A Form span is only needed when the surface form differs from the
-            # morpheme's substring (i.e. real MWT components).
-            if form_layer and form and form != meta["word_substring"]:
-                form_spans.append(make_span_token(form_layer["id"], [mid], form, frag))
-            lemma = row.get("lemma")
-            if lemma_layer and lemma:
-                lemma_spans.append(make_span_token(lemma_layer["id"], [mid], lemma, frag))
-                lemma_targets.append((sent_idx, row_index))
-            upos = row.get("upos")
-            if upos_layer and upos:
-                upos_spans.append(make_span_token(upos_layer["id"], [mid], upos, frag))
-            xpos = row.get("xpos")
-            if xpos_layer and xpos:
-                xpos_spans.append(make_span_token(xpos_layer["id"], [mid], xpos, frag))
-            feats = row.get("feats")
-            if features_layer and feats:
-                for value in feats.split("|"):
-                    if value:
-                        feature_spans.append(make_span_token(features_layer["id"], [mid], value, frag))
+                form = row.get("text")
+                # A Form span is only needed when the surface form differs from the
+                # morpheme's substring (i.e. real MWT components).
+                if form_layer and form and form != meta["word_substring"]:
+                    form_spans.append(make_span_token(form_layer["id"], [mid], form, frag))
+                lemma = row.get("lemma")
+                if lemma_layer and lemma:
+                    lemma_spans.append(make_span_token(lemma_layer["id"], [mid], lemma, frag))
+                    lemma_targets.append((sent_idx, row_index))
+                upos = row.get("upos")
+                if upos_layer and upos:
+                    upos_spans.append(make_span_token(upos_layer["id"], [mid], upos, frag))
+                xpos = row.get("xpos")
+                if xpos_layer and xpos:
+                    xpos_spans.append(make_span_token(xpos_layer["id"], [mid], xpos, frag))
+                feats = row.get("feats")
+                if features_layer and feats:
+                    for value in feats.split("|"):
+                        if value:
+                            feature_spans.append(make_span_token(features_layer["id"], [mid], value, frag))
 
-        # Bundle all five span bulk_creates into ONE atomic batch so a partial
-        # failure rolls the spans back together. Track the batch index of
-        # lemma so we can recover the new span ids for the follow-up relation
-        # batch.
-        #
-        # Note: unlike the JS importer (which creates a new document and
-        # deletes it on any failure), the parser operates on an EXISTING user
-        # document. We don't delete on failure — the user re-runs the parse;
-        # the cascade-delete at the top of `parse_document` clears any
-        # partial-state tokens before re-creating.
-        log(f"Building span ops: form={len(form_spans)}, lemma={len(lemma_spans)}, "
-            f"upos={len(upos_spans)}, xpos={len(xpos_spans)}, features={len(feature_spans)}")
-        span_order = []
-        with client.batched() as span_batch:
-            if form_spans:
-                client.spans.bulk_create(form_spans)
-                span_order.append("form")
-            if lemma_spans:
-                client.spans.bulk_create(lemma_spans)
-                span_order.append("lemma")
-            if upos_spans:
-                client.spans.bulk_create(upos_spans)
-                span_order.append("upos")
-            if xpos_spans:
-                client.spans.bulk_create(xpos_spans)
-                span_order.append("xpos")
-            if feature_spans:
-                client.spans.bulk_create(feature_spans)
-                span_order.append("features")
-            log(f"  Submitting span batch ({len(span_order)} ops)…")
-        span_results = span_batch.results
-        log("  …span batch returned")
-        if "lemma" in span_order:
-            lemma_idx = span_order.index("lemma")
-            created = span_results[lemma_idx]["body"]["ids"]
-            for k, (sent_idx, row_index) in enumerate(lemma_targets):
-                lemma_span_ids[sent_idx][row_index] = created[k]
-        for kind in span_order:
-            count = {"form": len(form_spans), "lemma": len(lemma_spans),
-                     "upos": len(upos_spans), "xpos": len(xpos_spans),
-                     "features": len(feature_spans)}[kind]
-            label = {"form": "form", "lemma": "lemma", "upos": "UPOS",
-                     "xpos": "XPOS", "features": "feature"}[kind]
-            log(f"Created {count} {label} spans")
+            # Bundle all five span bulk_creates into ONE atomic batch so a partial
+            # failure rolls the spans back together. Track the batch index of
+            # lemma so we can recover the new span ids for the follow-up relation
+            # batch.
+            #
+            # Note: unlike the JS importer (which creates a new document and
+            # deletes it on any failure), the parser operates on an EXISTING user
+            # document. We don't delete on failure — the user re-runs the parse;
+            # the cascade-delete at the top of `parse_document` clears any
+            # partial-state tokens before re-creating.
+            log(f"Building span ops: form={len(form_spans)}, lemma={len(lemma_spans)}, "
+                f"upos={len(upos_spans)}, xpos={len(xpos_spans)}, features={len(feature_spans)}")
+            progress.report(ParseProgress.WRITE, 0.5,
+                            f"Writing {len(form_spans) + len(lemma_spans) + len(upos_spans) + len(xpos_spans) + len(feature_spans)} "
+                            f"annotations…")
+            span_order = []
+            with client.batched() as span_batch:
+                if form_spans:
+                    client.spans.bulk_create(form_spans)
+                    span_order.append("form")
+                if lemma_spans:
+                    client.spans.bulk_create(lemma_spans)
+                    span_order.append("lemma")
+                if upos_spans:
+                    client.spans.bulk_create(upos_spans)
+                    span_order.append("upos")
+                if xpos_spans:
+                    client.spans.bulk_create(xpos_spans)
+                    span_order.append("xpos")
+                if feature_spans:
+                    client.spans.bulk_create(feature_spans)
+                    span_order.append("features")
+                log(f"  Submitting span batch ({len(span_order)} ops)…")
+            span_results = span_batch.results
+            log("  …span batch returned")
+            if "lemma" in span_order:
+                lemma_idx = span_order.index("lemma")
+                created = span_results[lemma_idx]["body"]["ids"]
+                for k, (sent_idx, row_index) in enumerate(lemma_targets):
+                    lemma_span_ids[sent_idx][row_index] = created[k]
+            for kind in span_order:
+                count = {"form": len(form_spans), "lemma": len(lemma_spans),
+                         "upos": len(upos_spans), "xpos": len(xpos_spans),
+                         "features": len(feature_spans)}[kind]
+                label = {"form": "form", "lemma": "lemma", "upos": "UPOS",
+                         "xpos": "XPOS", "features": "feature"}[kind]
+                log(f"Created {count} {label} spans")
 
-        # 5. Dependency relations on lemma spans.
-        relation_layer = relation_layer_by_ud_config(lemma_layer, "dependency")
-        if relation_layer and lemma_layer:
-            relation_ops = []
-            for sent_idx, sentence_data in enumerate(sentences_data):
-                sentence_lemma_ids = lemma_span_ids[sent_idx]
-                for td in sentence_data:
-                    if isinstance(td["id"], tuple):
-                        continue
-                    row_index = td["id"] - 1
-                    target = sentence_lemma_ids[row_index]
-                    deprel = td.get("deprel")
-                    head = td.get("head")
-                    if not deprel or target is None:
-                        continue
-                    if head == 0:
-                        relation_ops.append({
-                            "relation_layer_id": relation_layer["id"],
-                            "source": target,
-                            "target": target,
-                            "value": deprel,
-                            "metadata": dict(frag),
-                        })
-                    elif head and head > 0 and head - 1 < len(sentence_lemma_ids):
-                        source = sentence_lemma_ids[head - 1]
-                        if source is not None:
+            # 5. Dependency relations on lemma spans.
+            relation_layer = relation_layer_by_ud_config(lemma_layer, "dependency")
+            if relation_layer and lemma_layer:
+                relation_ops = []
+                for sent_idx, sentence_data in enumerate(sentences_data):
+                    sentence_lemma_ids = lemma_span_ids[sent_idx]
+                    for td in sentence_data:
+                        if isinstance(td["id"], tuple):
+                            continue
+                        row_index = td["id"] - 1
+                        target = sentence_lemma_ids[row_index]
+                        deprel = td.get("deprel")
+                        head = td.get("head")
+                        if not deprel or target is None:
+                            continue
+                        if head == 0:
                             relation_ops.append({
                                 "relation_layer_id": relation_layer["id"],
-                                "source": source,
+                                "source": target,
                                 "target": target,
                                 "value": deprel,
                                 "metadata": dict(frag),
                             })
-            if relation_ops:
-                log(f"  Creating {len(relation_ops)} dependency relations…")
-                client.relations.bulk_create(relation_ops)
-                log("  …relations created")
+                        elif head and head > 0 and head - 1 < len(sentence_lemma_ids):
+                            source = sentence_lemma_ids[head - 1]
+                            if source is not None:
+                                relation_ops.append({
+                                    "relation_layer_id": relation_layer["id"],
+                                    "source": source,
+                                    "target": target,
+                                    "value": deprel,
+                                    "metadata": dict(frag),
+                                })
+                if relation_ops:
+                    log(f"  Creating {len(relation_ops)} dependency relations…")
+                    progress.report(ParseProgress.WRITE, 0.8,
+                                    f"Writing {len(relation_ops)} dependency relations…")
+                    client.relations.bulk_create(relation_ops)
+                    log("  …relations created")
 
-        log(f"Successfully parsed document {document_id}")
+            log(f"Successfully parsed document {document_id}")
         return parse_summary
 
     except Exception as e:
@@ -764,33 +861,40 @@ class StanzaParserService(BaseService):
         language = request_data.get('language', 'en')
         overwrite = bool(request_data.get('overwrite', False))
 
-        response_helper.progress(10, f"Starting document parsing ({language})...")
         # The parse deletes + recreates tokens / spans / relations, so a human
         # editing the same document — or another service — would race the
         # rewrite. Hold plaid-core's server-enforced document lock for the
         # duration: writes by another user are rejected with 423 while we hold
         # it, and if someone else already holds it `locked` raises and we refuse
         # rather than clobber their work.
-        response_helper.progress(15, "Acquiring document lock...")
+        response_helper.progress(2, "Acquiring the document lock…")
         # Group every write this parse makes into ONE labeled audit-log entry (each
         # op keeps its own description underneath).
+        # `parse_document` reports the rest of the way and is a cancellation
+        # checkpoint at every group of sentences, so a stop lands before the
+        # writes begin and leaves the document untouched.
         with self.client.operation(f"Stanza UD parse ({language})"):
             with self.client.documents.locked(document_id):
                 summary = parse_document(self.pipeline_provider, self.client, document_id,
-                                         language=language, overwrite=overwrite)
+                                         language=language, overwrite=overwrite,
+                                         helper=response_helper)
 
         # parse_document returns a summary dict; author the user-facing notice
         # here (the service owns ALL the wording — the editor only maps `level`
         # to a colour) and report what it actually did.
         notice = build_parse_notice(summary.get("parsed_sentences", 0),
                                     summary.get("skipped_sentences", 0))
-        response_helper.progress(100, notice["title"])
-        # Outbound keys are snake_case (already so in `summary`): the client's
-        # snake→kebab transform on send + the JS client's kebab→camel on receive
-        # deliver them to the UI as camelCase. `notice` rides along so the editor
-        # shows the service's wording verbatim.
-        response_helper.complete({"document_id": document_id, "status": "success",
-                                  "notice": notice, **summary})
+        # Everything is written by now, so a stop has nothing left to prevent:
+        # reporting it outside a critical block would raise here and hand back
+        # `stopped: true` over a fully parsed document.
+        with response_helper.critical():
+            response_helper.progress(100, notice["title"])
+            # Outbound keys are snake_case (already so in `summary`): the client's
+            # snake→kebab transform on send + the JS client's kebab→camel on receive
+            # deliver them to the UI as camelCase. `notice` rides along so the editor
+            # shows the service's wording verbatim.
+            response_helper.complete({"document_id": document_id, "status": "success",
+                                      "notice": notice, **summary})
 
 
 if __name__ == '__main__':

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   filterServicesByTask,
   TASKS,
@@ -43,6 +43,14 @@ export const useNlpService = (projectId, documentId, project) => {
   const [parseSummary, setParseSummary] = useState(null);
   const [selectedServiceId, setSelectedServiceIdState] = useState(null);
   const [paramValues, setParamValues] = useState({});
+  // The service's own last progress line, and how far along it says it is.
+  // `null` percent means unknown: a determinate bar pinned at zero for minutes
+  // reads as broken, so the caller shows an indeterminate one until a number
+  // arrives.
+  const [parseProgress, setParseProgress] = useState(null); // {percent, message}
+  // The id of the request in flight, minted before it is submitted so a stop
+  // has something to name from the first moment.
+  const requestIdRef = useRef(null);
 
   const { getClient } = useAuth();
 
@@ -171,8 +179,12 @@ export const useNlpService = (projectId, documentId, project) => {
     const client = getClient();
     if (!client) return;
 
+    const requestId = crypto.randomUUID();
+    requestIdRef.current = requestId;
+
     try {
       setParseStatus('started');
+      setParseProgress(null);
       setIsParsing(true);
 
       const summary = await client.messages.requestService(
@@ -184,10 +196,24 @@ export const useNlpService = (projectId, documentId, project) => {
         // client restarts this clock on every progress event. A model load
         // plus a neural pipeline is one long quiet stretch, so it is generous.
         PARSE_SILENCE_MS,
+        // The service names each stretch of its work. An update carrying only
+        // a percent keeps the last real message rather than blanking the line.
+        (payload) =>
+          setParseProgress((prev) => ({
+            percent:
+              typeof payload?.percent === 'number' ? payload.percent : (prev?.percent ?? null),
+            message: payload?.message || prev?.message || '',
+          })),
+        undefined,
+        { requestId },
       );
 
       setParseSummary(summary || null);
-      setParseStatus('success');
+      // `stopped: true` is a RESULT, and a result is easy to mistake for a
+      // success. This parser reports it only from before its write phase (the
+      // writes are one critical block), so a stopped run left the document
+      // exactly as it was — neither a success to celebrate nor a failure.
+      setParseStatus(summary?.stopped ? 'stopped' : 'success');
       setIsParsing(false);
     } catch (error) {
       console.error('Failed to request parse:', error);
@@ -207,12 +233,32 @@ export const useNlpService = (projectId, documentId, project) => {
       }
       setParseStatus('error');
       setIsParsing(false);
+    } finally {
+      requestIdRef.current = null;
     }
   }, [projectId, documentId, isParsing, selectedService, getClient, paramSchema, paramValues]);
+
+  // Ask the parser to stop. Cooperative: the service ends at its next
+  // checkpoint, and its write phase has none, so it either stops before
+  // writing anything or finishes what it started. Either way the answer comes
+  // back through the same request, so there is nothing to unwind here.
+  const cancelParse = useCallback(async () => {
+    const requestId = requestIdRef.current;
+    if (!projectId || !requestId) return;
+    const client = getClient();
+    if (!client) return;
+    try {
+      await client.messages.cancelServiceRequest(projectId, requestId);
+    } catch (error) {
+      console.error('Failed to stop the parse:', error);
+      notifyError(error.message || 'Failed to stop the parse', 'Parse');
+    }
+  }, [projectId, getClient]);
 
   // Clear parse status
   const clearParseStatus = useCallback(() => {
     setParseStatus(null);
+    setParseProgress(null);
   }, []);
 
   // Discover services when component mounts or projectId changes
@@ -229,10 +275,12 @@ export const useNlpService = (projectId, documentId, project) => {
     isParsing,
     parseStatus,
     parseSummary,
+    parseProgress,
 
     // Actions
     discoverServices,
     requestParse,
+    cancelParse,
     clearParseStatus,
 
     // Service selection + arguments

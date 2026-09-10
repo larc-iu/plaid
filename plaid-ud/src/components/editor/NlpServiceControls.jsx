@@ -19,8 +19,10 @@ export const NlpServiceControls = ({ projectId, documentId, project, enabled, on
     hasServices,
     parseStatus,
     parseSummary,
+    parseProgress,
     discoverServices,
     requestParse,
+    cancelParse,
     clearParseStatus,
     canParse,
     parseServices,
@@ -64,6 +66,17 @@ export const NlpServiceControls = ({ projectId, documentId, project, enabled, on
       notifyWarning('The parser reported no changes to this document.', 'Nothing to parse');
     }
 
+    const timer = setTimeout(() => clearParseStatus(), 3000);
+    return () => clearTimeout(timer);
+  }, [parseStatus, clearParseStatus]);
+
+  // A stop is neither a success nor a failure, so it gets neither toast. The
+  // parser's write phase takes no checkpoints, so a run it reports as stopped
+  // stopped before it wrote anything: say so, and don't refresh a document
+  // that did not change.
+  useEffect(() => {
+    if (parseStatus !== 'stopped') return;
+    notifyWarning('Nothing was written.', 'Parse stopped');
     const timer = setTimeout(() => clearParseStatus(), 3000);
     return () => clearTimeout(timer);
   }, [parseStatus, clearParseStatus]);
@@ -140,6 +153,22 @@ export const NlpServiceControls = ({ projectId, documentId, project, enabled, on
       >
         Auto Parse
       </Button>
+
+      {isParsing && (
+        <>
+          <Button size="sm" variant="default" onClick={cancelParse}>
+            Stop
+          </Button>
+          {/* The parser names each stretch of its work, and this is the only
+              moving part while it is quiet. */}
+          {parseProgress?.message && (
+            <Text size="sm" c="dimmed">
+              {parseProgress.percent != null && `${parseProgress.percent}% · `}
+              {parseProgress.message}
+            </Text>
+          )}
+        </>
+      )}
     </Group>
   );
 };
