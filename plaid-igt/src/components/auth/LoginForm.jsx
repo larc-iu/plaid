@@ -8,8 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 
-// First screen migrated from Mantine to shadcn/Tailwind. The `.tw` wrapper opts
-// this subtree into the scoped preflight subset (see src/index.css).
+// The `.tw` wrapper opts this subtree into the scoped preflight subset (see
+// src/index.css).
 export const LoginForm = () => {
   useDocumentTitle('Sign In');
   const [email, setEmail] = useState('');

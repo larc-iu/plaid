@@ -4,7 +4,7 @@ Stands up a throwaway ``BaseService`` that talks steadily for longer than the
 deadline, and a second that goes quiet for longer than the deadline, and asks
 for both under the same short deadline.
 
-    python services/idle_deadline_probe.py --url http://localhost:8085
+    python services/probes/idle_deadline_probe.py --url http://localhost:8085
 
 A service that is reporting its progress is not hung, so every event it sends
 starts the clock again. As a deadline on the whole run, the five-minute default

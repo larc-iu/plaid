@@ -5,7 +5,7 @@ take — that reports progress in a loop, asks it to stop mid-run, and asserts
 the request comes back STOPPED rather than failed, and that a ``critical``
 stretch still finishes.
 
-    python services/cancel_probe.py --url http://localhost:8085
+    python services/probes/cancel_probe.py --url http://localhost:8085
 
 This exercises two things that have to hold together: the handler runs off the
 SSE reader thread (or the channel could not deliver the stop for the request it

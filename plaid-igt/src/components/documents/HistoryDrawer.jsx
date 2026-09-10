@@ -21,8 +21,7 @@ const actor = (user, apiToken) =>
   user ? ` · by ${user.displayName}${apiToken ? ` (via ${apiToken.name})` : ''}` : '';
 
 // Non-modal left slide-in panel (no overlay, no focus trap) so the editor stays
-// interactive while browsing history — preserves the old Mantine Drawer's
-// withOverlay={false} behavior. A radix Dialog/Sheet would wrongly trap focus.
+// interactive while browsing history. A Radix Dialog or Sheet would trap focus.
 export const HistoryDrawer = ({
   isOpen,
   onClose,

@@ -81,7 +81,11 @@ export const AnalyzeIsland = () => {
 
   return (
     <div className="igt-analyze-mount" style={{ paddingTop: 16 }}>
-      {!doc && <div style={{ padding: 24, color: '#6b7280' }}>Loading interlinear editor…</div>}
+      {!doc && (
+        <div style={{ padding: 24, color: 'hsl(var(--muted-foreground))' }}>
+          Loading interlinear editor…
+        </div>
+      )}
       <div ref={hostRef} className="igt-island" style={{ display: doc ? 'block' : 'none' }} />
       {doc && (
         <AutoAnalyzeDialog

@@ -116,8 +116,8 @@ export function DocumentTokenize() {
 
   // Drag-to-merge selection state. Mirrored into a ref so synchronous DOM event
   // handlers (mousedown→mouseup→click) read the latest value without waiting for
-  // a React re-render — preserving the old valtio synchronous semantics (esp. so
-  // the trailing `click` after a plain press sees the drag already cleared).
+  // a React re-render, so the trailing `click` after a plain press sees the
+  // drag already cleared.
   const [drag, setDragState] = useState(null); // { sentenceId, startToken:{id,begin,end}, selectedTokenIds:Set } | null
   const dragRef = useRef(null);
   const setDrag = (next) => {

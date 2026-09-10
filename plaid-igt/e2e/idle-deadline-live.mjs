@@ -1,8 +1,8 @@
 // Live check that a request deadline is IDLE time, not a cap on the run. This
-// is the JS half of services/idle_deadline_probe.py, which stands up the
+// is the JS half of services/probes/idle_deadline_probe.py, which stands up the
 // service:
 //
-//   python services/idle_deadline_probe.py --serve-only probe:idle-js &
+//   python services/probes/idle_deadline_probe.py --serve-only probe:idle-js &
 //   node e2e/idle-deadline-live.mjs probe:idle-js
 //
 // A service that is reporting its progress is not hung, so every event it

@@ -14,8 +14,8 @@ export function DocumentBaseline() {
   const [localText, setLocalText] = useState('');
   const textareaRef = useRef(null);
 
-  // Auto-grow the textarea with its content (replaces Mantine Textarea autosize),
-  // capped so it doesn't run off-screen on huge documents.
+  // Auto-grow the textarea with its content, capped so it doesn't run
+  // off-screen on huge documents.
   const autoGrow = () => {
     const el = textareaRef.current;
     if (!el) return;

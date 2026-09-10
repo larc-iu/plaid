@@ -13,7 +13,7 @@ import { useVadProposals, VAD_METADATA_KEY } from './useVadProposals.js';
 import { DETECT_SPEECH_BUILTIN } from './detectSpeechBuiltin.js';
 import { writeRunRecord, clearRunRecord } from '../../../domain/runRecord.js';
 
-// Matches the old Mantine useHotkeys default: ignore key events from form fields.
+// Hotkeys ignore key events from form fields.
 const TAGS_TO_IGNORE = ['INPUT', 'TEXTAREA', 'SELECT'];
 
 const DETECT_BUILTINS = [DETECT_SPEECH_BUILTIN];
@@ -87,7 +87,7 @@ export const useMediaOperations = () => {
   const mediaElementRef = useRef(null);
   const autoScrollToTimeRef = useRef(null);
 
-  // Local media UI state (formerly ui.media.* on the valtio proxy)
+  // Local media UI state.
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -712,7 +712,7 @@ export const useMediaOperations = () => {
     if (mediaElementRef.current) mediaElementRef.current.playbackRate = playbackRate;
   }, [playbackRate]);
 
-  // Setup hotkeys (replaces Mantine useHotkeys; ignores events from form fields).
+  // Hotkeys, ignoring events from form fields.
   useEffect(() => {
     const onKeyDown = (e) => {
       // Shift+Left / Shift+Right seek one second, in a text box or out of one,
