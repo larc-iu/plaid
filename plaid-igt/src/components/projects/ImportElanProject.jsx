@@ -103,7 +103,7 @@ export const ImportElanProject = () => {
     editable && !!batch.build && !!projectName.trim() && batch.undecidedNearMisses.length === 0;
 
   return (
-    <div className="tw mx-auto max-w-3xl px-4 py-8">
+    <div className="mx-auto max-w-3xl px-4 py-8">
       {/* Outside the pick step: the review step reopens it to add recordings. */}
       <input
         ref={fileInputRef}

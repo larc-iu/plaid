@@ -88,7 +88,7 @@ export const VocabularyMaintainers = ({ vocabulary, user, vocabularyId, client, 
 
   if (!canManageVocabulary()) {
     return (
-      <div className="tw rounded-md border border-border bg-muted p-3">
+      <div className="rounded-md border border-border bg-muted p-3">
         <div className="flex items-start gap-2">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
           <div className="text-sm">
@@ -103,7 +103,7 @@ export const VocabularyMaintainers = ({ vocabulary, user, vocabularyId, client, 
   }
 
   return (
-    <div className="tw flex flex-col gap-6">
+    <div className="flex flex-col gap-6">
       {/* Current maintainers */}
       <div className="rounded-lg border bg-card">
         <div className="flex items-center justify-between gap-2 border-b px-4 py-3">

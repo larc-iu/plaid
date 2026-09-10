@@ -1,8 +1,8 @@
 /* Comment thread styling.
  *
  * Follows the Analyze island's own idiom rather than the shadcn primitives:
- * plain class names, literal colors, no Tailwind. Tailwind's preflight is off
- * globally and only re-added under `.tw`, so island CSS has to stand alone.
+ * plain class names, literal colors, no Tailwind utilities, so island CSS
+ * stands alone under the global preflight.
  * Shared by the in-grid popover and the Comments tab.
  */
 

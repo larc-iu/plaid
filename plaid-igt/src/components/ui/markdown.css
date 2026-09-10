@@ -2,8 +2,8 @@
  *
  * Replaces the per-element inline styles that react-markdown's `components`
  * map used to apply. Everything is declared explicitly rather than inherited,
- * because Tailwind's preflight is off outside `.tw` and a service-supplied
- * summary must look the same wherever it is shown.
+ * because a service-supplied summary must look the same wherever it is
+ * shown, including outside the app's own screens.
  *
  * The assistant adds Tailwind Typography's `prose` alongside this, which wins
  * on the properties it sets and leaves the rest here.

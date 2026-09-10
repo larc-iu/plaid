@@ -86,7 +86,7 @@ export const LayerSelectionStep = ({ data, onDataChange, projectId, client }) =>
 
   if (loading) {
     return (
-      <div className="tw flex flex-col items-center gap-6">
+      <div className="flex flex-col items-center gap-6">
         <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-foreground" />
         <p className="text-sm">Loading project layers...</p>
       </div>
@@ -95,7 +95,7 @@ export const LayerSelectionStep = ({ data, onDataChange, projectId, client }) =>
 
   if (error) {
     return (
-      <div className="tw rounded-md border border-destructive/50 bg-destructive/5 p-4">
+      <div className="rounded-md border border-destructive/50 bg-destructive/5 p-4">
         <div className="flex items-start gap-2">
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
           <div className="text-sm">
@@ -111,7 +111,7 @@ export const LayerSelectionStep = ({ data, onDataChange, projectId, client }) =>
   // another Plaid app). Nothing to choose — reassure and move on.
   if (adoptedBaseline) {
     return (
-      <div className="tw flex flex-col gap-6">
+      <div className="flex flex-col gap-6">
         <div className="rounded-md border border-border bg-muted p-4">
           <div className="flex items-start gap-2">
             <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
@@ -132,7 +132,7 @@ export const LayerSelectionStep = ({ data, onDataChange, projectId, client }) =>
   const selectableTextLayers = textLayers.filter((layer) => layer.id);
 
   return (
-    <div className="tw flex flex-col gap-8">
+    <div className="flex flex-col gap-8">
       {/* Explanatory header */}
       <div>
         <p className="text-sm">

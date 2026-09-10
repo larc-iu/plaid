@@ -470,7 +470,7 @@ export const ProjectAssistant = ({
   const applyingPlanId = busy === 'apply' ? jobFor(active?.id)?.planId || null : null;
 
   return (
-    <div className="tw flex h-[calc(100vh-15rem)] min-h-[32rem] gap-4">
+    <div className="flex h-[calc(100vh-15rem)] min-h-[32rem] gap-4">
       {/* --- sidebar --------------------------------------------------- */}
       <aside className="flex w-64 shrink-0 flex-col rounded-lg border bg-card">
         <div className="flex items-center justify-between border-b px-3 py-2">

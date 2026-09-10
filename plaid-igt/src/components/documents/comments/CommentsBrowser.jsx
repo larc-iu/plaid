@@ -89,7 +89,7 @@ export const CommentsBrowser = ({
   if (!store) return null;
 
   return (
-    <div className="tw mt-2">
+    <div className="mt-2">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <ListCount shown={shown.length} total={total} noun="thread" />
         <SearchInput

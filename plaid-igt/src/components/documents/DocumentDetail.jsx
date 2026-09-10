@@ -44,7 +44,7 @@ const Spinner = ({ label, className = 'py-24' }) => (
   <div
     role="status"
     aria-live="polite"
-    className={`tw flex flex-col items-center justify-center gap-3 ${className} text-muted-foreground`}
+    className={`flex flex-col items-center justify-center gap-3 ${className} text-muted-foreground`}
   >
     <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
     {label && <p className="text-sm">{label}</p>}
@@ -461,7 +461,7 @@ const DocumentEditor = () => {
 
   if (loadError) {
     return (
-      <div className="tw mx-auto max-w-5xl px-4 py-8">
+      <div className="mx-auto max-w-5xl px-4 py-8">
         <div
           role="alert"
           className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
@@ -483,7 +483,7 @@ const DocumentEditor = () => {
   if (unfinishedImport) {
     const to = importRouteFor(unfinishedImport.kind);
     return (
-      <div className="tw mx-auto max-w-5xl px-4 py-8">
+      <div className="mx-auto max-w-5xl px-4 py-8">
         <div role="status" className="rounded-md border bg-muted px-4 py-3 text-sm">
           The {unfinishedImport.kind} import
           {unfinishedImport.source ? ` of “${unfinishedImport.source}”` : ''} did not finish.{' '}
@@ -506,7 +506,7 @@ const DocumentEditor = () => {
   // whose fields and orthographies were never configured.
   if (!readInitialized(doc.project?.config)) {
     return (
-      <div className="tw mx-auto max-w-5xl px-4 py-8">
+      <div className="mx-auto max-w-5xl px-4 py-8">
         <div role="status" className="rounded-md border bg-muted px-4 py-3 text-sm">
           {permissions.canManage ? (
             <>
@@ -578,7 +578,7 @@ const DocumentEditor = () => {
           type="button"
           onClick={handleOpenHistory}
           aria-label="Open history"
-          className="tw group fixed left-0 top-1/2 z-[1000] flex h-28 w-1.5 -translate-y-1/2 items-center justify-center rounded-r-md bg-neutral-400 transition-all hover:w-10 hover:bg-neutral-600"
+          className="group fixed left-0 top-1/2 z-[1000] flex h-28 w-1.5 -translate-y-1/2 items-center justify-center rounded-r-md bg-neutral-400 transition-all hover:w-10 hover:bg-neutral-600"
         >
           <History className="h-4 w-4 text-white opacity-0 transition-opacity group-hover:opacity-100" />
         </button>
@@ -591,7 +591,7 @@ const DocumentEditor = () => {
         <div
           className={`mx-auto px-4 py-8 ${WIDE_TABS.has(activeTab) ? 'max-w-[1700px]' : 'max-w-5xl'}`}
         >
-          <div className="tw">
+          <div>
             <h1 className="text-3xl font-bold tracking-tight">{doc.document.name}</h1>
             {reconciling && crumbs}
 
@@ -648,7 +648,7 @@ const DocumentEditor = () => {
                 <div className="sticky top-[57px] z-30 -mx-4 mb-4 border-b bg-background/95 px-4 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
                   <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
                     {crumbs}
-                    <TabsList className="tw">
+                    <TabsList>
                       <TabsTrigger value="metadata" to={tabTo(docPath, 'metadata', DEFAULT_TAB)}>
                         <FileText className="h-4 w-4" /> Metadata
                       </TabsTrigger>
@@ -720,7 +720,7 @@ const DocumentEditor = () => {
                 <TabsContent value="comments">
                   <Panel active={activeTab === 'comments'}>
                     {isViewingHistorical ? (
-                      <p className="tw pt-6 text-sm text-muted-foreground">
+                      <p className="pt-6 text-sm text-muted-foreground">
                         Comments are not part of the annotation history, so they are not shown at a
                         past state. Return to the current version to read or add them.
                       </p>
@@ -733,7 +733,7 @@ const DocumentEditor = () => {
                 </TabsContent>
                 <TabsContent value="export">
                   <Panel active={activeTab === 'export'}>
-                    <div className="tw flex flex-col gap-6 pt-4">
+                    <div className="flex flex-col gap-6 pt-4">
                       <div className="rounded-lg border bg-card p-4">
                         <ExportRunner
                           client={client}

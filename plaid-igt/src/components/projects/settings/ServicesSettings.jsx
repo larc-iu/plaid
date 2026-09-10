@@ -384,14 +384,14 @@ export const ServicesSettings = ({ projectId, client }) => {
 
   if (loading && !project) {
     return (
-      <div className="tw flex items-center justify-center py-12 text-muted-foreground">
+      <div className="flex items-center justify-center py-12 text-muted-foreground">
         <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-primary" />
       </div>
     );
   }
 
   return (
-    <div className="tw space-y-4">
+    <div className="space-y-4">
       <div className="flex items-start justify-between gap-4">
         <p className="max-w-xl text-sm text-muted-foreground">
           Services that have connected to this project are remembered here, online or not. Set a

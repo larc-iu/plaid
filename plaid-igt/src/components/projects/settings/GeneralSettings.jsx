@@ -94,7 +94,7 @@ export const GeneralSettings = ({ project, projectId, client, onProjectUpdate })
   const isConfirmationValid = confirmationText.toLowerCase() === project.name.toLowerCase();
 
   return (
-    <div className="tw flex flex-col gap-8 pt-4 [&>*+*]:border-t [&>*+*]:pt-8">
+    <div className="flex flex-col gap-8 pt-4 [&>*+*]:border-t [&>*+*]:pt-8">
       {/* Project name */}
       <div>
         <h2 className="text-lg font-semibold">Project Name</h2>

@@ -128,7 +128,7 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
   };
 
   return (
-    <div className="tw">
+    <div>
       <h2 className="text-lg font-semibold">Special characters</h2>
       <p className="mb-4 mt-1 max-w-3xl text-sm text-muted-foreground">
         Type a backslash and a two-letter code in any field to enter a character your keyboard does

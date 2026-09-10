@@ -217,7 +217,7 @@ export const UserProfile = () => {
   };
 
   return (
-    <div className="tw mx-auto max-w-xl px-4 py-8">
+    <div className="mx-auto max-w-xl px-4 py-8">
       <Button variant="ghost" size="sm" className="mb-4" onClick={() => navigate(-1)}>
         <ArrowLeft className="h-4 w-4" /> Back
       </Button>

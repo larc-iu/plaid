@@ -138,7 +138,7 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
 
   if (hasError) {
     return (
-      <div className="tw pt-4">
+      <div className="pt-4">
         <div className="flex items-center gap-2 rounded-md border border-destructive/40 p-4 text-sm text-destructive">
           <AlertTriangle className="h-4 w-4" /> Could not load the export presets.
           <Button variant="outline" size="sm" onClick={load}>
@@ -153,7 +153,7 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
   const deleting = presets.find((p) => p.id === deletingId);
 
   return (
-    <div className="tw flex flex-col gap-4 pt-4">
+    <div className="flex flex-col gap-4 pt-4">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold">Export Presets</h2>

@@ -5,7 +5,7 @@ import { Suspense } from 'react';
 export const Suspended = ({ children }) => (
   <Suspense
     fallback={
-      <div className="tw flex justify-center py-12 text-muted-foreground">
+      <div className="flex justify-center py-12 text-muted-foreground">
         <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-primary" />
       </div>
     }

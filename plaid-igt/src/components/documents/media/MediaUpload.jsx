@@ -62,7 +62,7 @@ export const MediaUpload = ({
   };
 
   return (
-    <div className="tw rounded-lg border bg-card p-4">
+    <div className="rounded-lg border bg-card p-4">
       <div className="flex items-center justify-center">
         <div className="flex w-full flex-col items-center gap-6">
           <Upload className="h-12 w-12 text-muted-foreground" />

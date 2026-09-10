@@ -172,7 +172,7 @@ export const OrthographiesSettings = ({ projectId, client }) => {
 
   if (hasError) {
     return (
-      <div className="tw rounded-lg border border-destructive/50 bg-destructive/5 p-4">
+      <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-4">
         <div className="flex items-start gap-2">
           <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />
           <div>
@@ -188,7 +188,7 @@ export const OrthographiesSettings = ({ projectId, client }) => {
   }
 
   return (
-    <div className="tw">
+    <div>
       <h2 className="text-lg font-semibold">Orthographies</h2>
       <p className="mb-4 mt-1 text-sm text-muted-foreground">
         Configure orthographic representations for your project. The Baseline orthography represents

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 // attributed by name in the audit log, unlike the raw session token.
 export const ProjectAccessTokens = () => {
   return (
-    <div className="tw flex flex-col gap-6 pt-4">
+    <div className="flex flex-col gap-6 pt-4">
       <div>
         <h2 className="mb-2 text-lg font-semibold">API Access</h2>
         <p className="mb-4 text-sm text-muted-foreground">

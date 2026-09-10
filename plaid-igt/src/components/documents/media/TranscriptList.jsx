@@ -947,7 +947,7 @@ export function TranscriptList({ mediaOps, readOnly = false, headerActions = nul
   const prevEnd = segments.length ? Math.max(...segments.map(timeEndOf)) : 0;
 
   return (
-    <div className="tw rounded-lg border bg-card p-4" ref={containerRef}>
+    <div className="rounded-lg border bg-card p-4" ref={containerRef}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-baseline gap-2">
           <span className="text-sm font-medium">Transcript</span>

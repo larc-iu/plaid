@@ -137,7 +137,7 @@ export const HistoryDrawer = ({
   if (!isOpen) return null;
 
   return (
-    <div className="tw fixed left-0 top-0 z-40 flex h-screen w-[400px] flex-col border-r bg-background shadow-lg">
+    <div className="fixed left-0 top-0 z-40 flex h-screen w-[400px] flex-col border-r bg-background shadow-lg">
       {/* Header */}
       <div className="flex items-center justify-between border-b p-4">
         <div className="flex items-center gap-2">

@@ -125,7 +125,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
 
   return (
     <TooltipProvider>
-      <div className="tw rounded-lg border bg-card p-4">
+      <div className="rounded-lg border bg-card p-4">
         <div className="flex flex-col gap-4">
           {/* Timeline Controls */}
           <div className="flex items-center justify-between">

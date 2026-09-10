@@ -1171,7 +1171,7 @@ export const VocabularyItems = ({
 
   if (loading) {
     return (
-      <div className="tw flex flex-col items-center gap-6 py-6">
+      <div className="flex flex-col items-center gap-6 py-6">
         <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-foreground" />
         <p className="text-sm">Loading entries…</p>
       </div>
@@ -1180,7 +1180,7 @@ export const VocabularyItems = ({
 
   if (error) {
     return (
-      <div className="tw rounded-md border border-destructive/50 bg-destructive/5 p-3">
+      <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
         <div className="flex items-start gap-2">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
           <div className="text-sm">
@@ -1194,7 +1194,7 @@ export const VocabularyItems = ({
 
   return (
     <NavGuardProvider value={navGuard}>
-      <div ref={paneWrapRef} className="tw flex items-start gap-4">
+      <div ref={paneWrapRef} className="flex items-start gap-4">
         {/* ---- left pane: item list ---- */}
         <div
           className="sticky top-4 flex max-h-[calc(100vh-14rem)] w-96 shrink-0 flex-col rounded-lg border bg-card"
@@ -1430,7 +1430,7 @@ export const VocabularyItems = ({
             entryEditor
           ) : (
             <Tabs value={pane} onValueChange={setPane}>
-              <TabsList className="tw mb-3">
+              <TabsList className="mb-3">
                 <TabsTrigger value="entry" to={paneTo('entry')}>
                   Entry
                 </TabsTrigger>

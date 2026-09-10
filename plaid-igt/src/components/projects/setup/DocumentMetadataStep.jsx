@@ -7,7 +7,7 @@ export const DocumentMetadataStep = ({ data, onDataChange }) => {
   };
 
   return (
-    <div className="tw flex flex-col gap-8">
+    <div className="flex flex-col gap-8">
       {/* Explanatory header */}
       <div>
         <p className="text-sm">

@@ -85,7 +85,7 @@ export const AnnotationSettings = ({ project, projectId, client, onProjectUpdate
   }, [client, projectId, rulesKey]);
 
   return (
-    <div className="tw flex flex-col gap-8 pt-4 [&>*+*]:border-t [&>*+*]:pt-8">
+    <div className="flex flex-col gap-8 pt-4 [&>*+*]:border-t [&>*+*]:pt-8">
       {/* Tagsets: the value lists the fields below can point at. Above
           Annotation Fields because a field can only reference one that
           already exists. */}

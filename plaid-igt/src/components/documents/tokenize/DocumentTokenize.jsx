@@ -145,7 +145,7 @@ export function DocumentTokenize() {
 
   return (
     <TooltipProvider>
-      <div className="tw flex flex-col gap-6 mt-4">
+      <div className="flex flex-col gap-6 mt-4">
         {/* Text Visualization */}
         <div
           className="rounded-lg border bg-card"

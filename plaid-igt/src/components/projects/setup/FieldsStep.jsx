@@ -38,7 +38,7 @@ export const FieldsStep = ({ data, onDataChange }) => {
   };
 
   return (
-    <div className="tw flex flex-col gap-8">
+    <div className="flex flex-col gap-8">
       {/* Explanatory header. A <div> (not <p>) because Badge renders a <div>,
           which is invalid DOM nesting inside a <p>. */}
       <div>

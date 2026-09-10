@@ -6,7 +6,7 @@ import { ComposeSettings } from './ComposeSettings.jsx';
 // spellings of a form, the characters used to type them, and the lexicon
 // entries behind them.
 export const OrthographyVocabSettings = ({ project, projectId, client, onProjectUpdate }) => (
-  <div className="tw flex flex-col gap-8 pt-4 [&>*+*]:border-t [&>*+*]:pt-8">
+  <div className="flex flex-col gap-8 pt-4 [&>*+*]:border-t [&>*+*]:pt-8">
     <OrthographiesSettings projectId={projectId} client={client} />
     <VocabularySettings projectId={projectId} client={client} />
     <ComposeSettings

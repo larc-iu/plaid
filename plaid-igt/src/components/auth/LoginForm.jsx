@@ -58,7 +58,7 @@ export const LoginForm = () => {
   };
 
   return (
-    <div className="tw flex min-h-screen items-center justify-center bg-background p-4">
+    <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center">
           <CardTitle className="text-2xl">Plaid IGT Login</CardTitle>

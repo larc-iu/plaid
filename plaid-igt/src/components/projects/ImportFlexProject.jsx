@@ -279,7 +279,7 @@ export const ImportFlexProject = () => {
   const locked = stage !== 'review' || setupDoneRef.current || !!resumeId;
 
   return (
-    <div className="tw mx-auto max-w-3xl px-4 py-8">
+    <div className="mx-auto max-w-3xl px-4 py-8">
       <div className="flex flex-col gap-6">
         <nav className="flex items-center gap-2 text-sm text-muted-foreground">
           <Link to="/projects" className="hover:text-foreground hover:underline">

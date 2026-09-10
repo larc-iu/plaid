@@ -41,7 +41,7 @@ export const ProjectBulkEdit = ({ project, projectId, client }) => {
 
   if (!layerInfo.primaryTokenLayer) {
     return (
-      <p className="tw py-10 text-center text-sm text-muted-foreground">
+      <p className="py-10 text-center text-sm text-muted-foreground">
         This project has no word layer to edit.
       </p>
     );
@@ -53,7 +53,7 @@ export const ProjectBulkEdit = ({ project, projectId, client }) => {
       orientation="vertical"
       value={op}
       onValueChange={setOp}
-      className="tw flex flex-col gap-6 sm:flex-row sm:items-start"
+      className="flex flex-col gap-6 sm:flex-row sm:items-start"
     >
       <TabsList className="h-auto w-full shrink-0 flex-col items-stretch justify-start gap-0.5 border-b-0 bg-transparent p-0 sm:w-52 sm:border-r sm:pr-3">
         {OPERATIONS.map((o) => {

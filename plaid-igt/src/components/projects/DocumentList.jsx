@@ -267,7 +267,7 @@ export const DocumentList = ({
   ];
 
   return (
-    <div className="tw mt-2">
+    <div className="mt-2">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-xl font-semibold">Documents</h2>
         {canWrite && (

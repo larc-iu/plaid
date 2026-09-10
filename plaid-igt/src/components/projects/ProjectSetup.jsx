@@ -137,7 +137,7 @@ export const ProjectSetup = () => {
   };
 
   return (
-    <div className="tw mx-auto max-w-7xl px-4 py-8">
+    <div className="mx-auto max-w-7xl px-4 py-8">
       <div className="flex flex-col gap-8">
         <nav className="flex items-center gap-2 text-sm text-muted-foreground">
           <Link to="/projects" className="hover:text-foreground hover:underline">

@@ -292,7 +292,7 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
 
   if (isComplete) {
     return (
-      <div className="tw flex flex-col gap-6">
+      <div className="flex flex-col gap-6">
         <div className="rounded-md border border-border bg-muted p-4">
           <div className="flex items-start gap-2">
             <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
@@ -351,7 +351,7 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
   }
 
   return (
-    <div className="tw flex flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <p>Please review your choices below.</p>
 
       <div className="flex flex-col gap-4">

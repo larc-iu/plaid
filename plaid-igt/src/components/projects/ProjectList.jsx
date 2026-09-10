@@ -100,7 +100,7 @@ export const ProjectList = () => {
 
   if (loading) {
     return (
-      <div className="tw flex items-center justify-center py-24 text-muted-foreground">
+      <div className="flex items-center justify-center py-24 text-muted-foreground">
         <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-primary" />
       </div>
     );
@@ -185,7 +185,7 @@ export const ProjectList = () => {
   ];
 
   return (
-    <div className="tw mx-auto max-w-5xl px-4 py-8">
+    <div className="mx-auto max-w-5xl px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">Projects</h1>
         <Button asChild>

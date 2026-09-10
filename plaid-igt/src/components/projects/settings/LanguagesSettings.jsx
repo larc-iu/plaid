@@ -129,7 +129,7 @@ export const LanguagesSettings = ({ project, projectId, client, onProjectUpdate 
   };
 
   return (
-    <div className="tw">
+    <div>
       <h2 className="text-lg font-semibold">Languages</h2>
       <p className="mb-4 mt-1 text-sm text-muted-foreground">
         Which language this project documents, and which one it is glossed in. Exports use this to

@@ -293,14 +293,14 @@ export const ImportElanDocuments = () => {
 
   if (loadError) {
     return (
-      <div className="tw mx-auto max-w-3xl px-4 py-8">
+      <div className="mx-auto max-w-3xl px-4 py-8">
         <Panel tone="error" icon={AlertTriangle} title={loadError} />
       </div>
     );
   }
 
   return (
-    <div className="tw mx-auto max-w-3xl px-4 py-8">
+    <div className="mx-auto max-w-3xl px-4 py-8">
       {/* Outside the pick step: the review step reopens it to add recordings. */}
       <input
         ref={fileInputRef}

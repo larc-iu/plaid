@@ -95,7 +95,7 @@ export const ProjectSearch = ({ project, projectId, client }) => {
   }, [domains]);
 
   return (
-    <div className="tw flex flex-col gap-4">
+    <div className="flex flex-col gap-4">
       {/* Controls */}
       <div className="rounded-lg border bg-card p-4">
         <div className="flex flex-wrap items-end gap-2">

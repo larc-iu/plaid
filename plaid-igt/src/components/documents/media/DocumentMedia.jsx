@@ -23,7 +23,7 @@ export function DocumentMedia() {
   // If no media, show upload interface
   if (!doc.document.mediaUrl) {
     return (
-      <div className="tw flex flex-col gap-6">
+      <div className="flex flex-col gap-6">
         <MediaUpload
           onUpload={mediaOps.handleMediaUpload}
           isUploading={mediaOps.isUploading}
@@ -39,7 +39,7 @@ export function DocumentMedia() {
   return (
     // pb-24: room under the transcript for a popover anchored near the bottom
     // of the timeline, which would otherwise have nowhere to open into.
-    <div className="tw flex flex-col gap-6 pb-24">
+    <div className="flex flex-col gap-6 pb-24">
       {/* Media Player. Speech detection sits in its header: it acts on the
           recording, and its proposals surface on the timeline and transcript. */}
       <MediaPlayer mediaOps={mediaOps} readOnly={readOnly} canWrite={canWrite} />

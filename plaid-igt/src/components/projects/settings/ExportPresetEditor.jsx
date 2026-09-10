@@ -115,7 +115,7 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
 
   if (error) {
     return (
-      <div className="tw flex flex-col gap-4 pt-4">
+      <div className="flex flex-col gap-4 pt-4">
         <div>{backButton}</div>
         <div
           role="alert"
@@ -131,7 +131,7 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
   const hasVocabularies = (project.vocabs?.length ?? 0) > 0;
 
   return (
-    <div className="tw flex flex-col gap-6 pt-4">
+    <div className="flex flex-col gap-6 pt-4">
       <div className="flex flex-col gap-3">
         <div>{backButton}</div>
         <div className="flex items-start justify-between gap-4">

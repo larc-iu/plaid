@@ -193,7 +193,7 @@ export const ProjectDetail = () => {
 
   if (loading) {
     return (
-      <div className="tw flex items-center justify-center py-24 text-muted-foreground">
+      <div className="flex items-center justify-center py-24 text-muted-foreground">
         <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-primary" />
       </div>
     );
@@ -201,7 +201,7 @@ export const ProjectDetail = () => {
 
   if (error || !project) {
     return (
-      <div className="tw mx-auto max-w-5xl px-4 py-8">
+      <div className="mx-auto max-w-5xl px-4 py-8">
         <div
           role="alert"
           className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
@@ -214,7 +214,7 @@ export const ProjectDetail = () => {
 
   if (unfinishedImport && !(canManage && importResumeTo)) {
     return (
-      <div className="tw mx-auto max-w-5xl px-4 py-8">
+      <div className="mx-auto max-w-5xl px-4 py-8">
         <h1 className="text-2xl font-bold tracking-tight">{project.name}</h1>
         <div
           role="status"
@@ -230,7 +230,7 @@ export const ProjectDetail = () => {
 
   if (needsSetupNotice) {
     return (
-      <div className="tw mx-auto max-w-5xl px-4 py-8">
+      <div className="mx-auto max-w-5xl px-4 py-8">
         <h1 className="text-2xl font-bold tracking-tight">{project.name}</h1>
         <div
           role="status"
@@ -250,7 +250,7 @@ export const ProjectDetail = () => {
         activeTab === 'assistant' ? 'max-w-7xl' : 'max-w-5xl',
       )}
     >
-      <div className="tw">
+      <div>
         <nav className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground">
           <Link to="/projects" className="hover:text-foreground">
             Projects
@@ -281,7 +281,7 @@ export const ProjectDetail = () => {
           }
         }}
       >
-        <TabsList className="tw mb-2">
+        <TabsList className="mb-2">
           <TabsTrigger
             value="documents"
             to={tabTo(`/projects/${projectId}`, 'documents', 'documents')}
@@ -362,7 +362,7 @@ export const ProjectDetail = () => {
         )}
         {canManage && (
           <TabsContent value="activity">
-            <div className="tw">
+            <div>
               <Suspended>
                 <ProjectActivity client={client} project={project} projectId={projectId} />
               </Suspended>
