@@ -58,3 +58,8 @@ export const fieldNameLang = (name) => {
  */
 export const resolveFieldLang = (langs, scope, field) =>
   langs?.overrides?.[field] || langs?.fieldLangs?.[`${scope}:${field}`] || langs?.analysis || '';
+
+// A field's identity on a layer: the same name can exist at two scopes (a
+// FieldWorks import gives "Gloss" and "POS" at both Word and Morpheme scope),
+// so nothing may key on the name alone.
+export const fieldKey = (f) => `${f.scope}:${f.name}`;

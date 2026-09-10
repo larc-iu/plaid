@@ -5,7 +5,7 @@ import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import { notifySuccess } from '@/utils/feedback';
 import { readDocumentMetadata } from '@/domain/igtConfig';
 import { readTagsets } from '@/domain/tagsets';
-import { changedValuesAllowed } from '@/components/shared/TagsetField.jsx';
+import { changedValuesAllowed } from '@/domain/tagsets';
 
 // Metadata tab operations, backed by the shared IgtDocument. All transient
 // editing state (isEditing / drafts / modal / spinners) is component-local;

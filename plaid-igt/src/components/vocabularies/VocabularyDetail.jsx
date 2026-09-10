@@ -261,6 +261,8 @@ export const VocabularyDetail = () => {
 
   useEffect(() => {
     fetchVocabulary();
+    // Runs once per id; the loader reads the client fresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vocabularyId]);
 
   const handleSave = async () => {

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link2, Copy, Check, Trash2 } from 'lucide-react';
-import PlaidClient from '@larc-iu/plaid-client';
+import { inviteLinkFor } from '@/utils/inviteLink';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -53,11 +53,6 @@ const fmtDate = (iso) => {
 // The server never learns the app's public URL, so the app that minted the
 // invite is the one that names it. `window.location` is authoritative here in a
 // way no server config could be: it is literally where this user is.
-const inviteLinkFor = (code) => {
-  const { origin, pathname } = window.location;
-  return PlaidClient.inviteUrl(`${origin}${pathname}`, code);
-};
-
 // Shown once, immediately after minting. The code is not stored anywhere and
 // the server cannot produce it again, so this dialog is the only chance to
 // capture it — hence the copy button and the explicit warning.
@@ -369,4 +364,4 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage }) =>
   );
 };
 
-export { inviteLinkFor, MintedLinkDialog };
+export { MintedLinkDialog };

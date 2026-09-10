@@ -1,14 +1,6 @@
 import { VocabularyManager } from '../settings/VocabularyManager.jsx';
 
-export const VocabularyStep = ({
-  data,
-  onDataChange,
-  setupData,
-  isNewProject,
-  projectId,
-  user,
-  client,
-}) => {
+export const VocabularyStep = ({ data, onDataChange, client }) => {
   // Load vocabularies from API on mount
   const handleLoadData = async () => {
     try {
@@ -59,7 +51,7 @@ export const VocabularyStep = ({
 };
 
 // Validation function for this step
-VocabularyStep.isValid = (data) => {
+VocabularyStep.isValid = () => {
   // Step is always valid - vocabularies are optional
   // Users can proceed without any vocabularies if they don't need this feature
   return true;

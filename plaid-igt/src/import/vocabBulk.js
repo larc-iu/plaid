@@ -416,7 +416,6 @@ export const planVocabImport = ({
     if (!index && OVERRIDE_VALUES[kind]?.includes(policy)) return { policy, index: null };
     return { policy: policies[kind], index: null };
   };
-  const policyFor = (kind, line) => answerFor(kind, line).policy;
 
   // Candidate pool, keyed by form. Entries created by earlier rows of this same
   // import join the pool, so a repeated row lands as `identical` instead of

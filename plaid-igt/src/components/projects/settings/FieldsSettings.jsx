@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
-import { FieldsManager, fieldKey } from './FieldsManager';
+import { FieldsManager } from './FieldsManager';
+import { fieldKey } from '@/domain/fieldNames';
 import { notifyError } from '@/utils/feedback';
 import {
   findBaselineTextLayer,

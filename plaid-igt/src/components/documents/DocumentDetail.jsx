@@ -253,6 +253,9 @@ const DocumentEditor = () => {
     return () => {
       cancelled = true;
     };
+    // Keyed on the document and the snapshot only; history and logout are
+    // read fresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc, asOf]);
 
   // Reconcile: heal IGT invariants in the shared substrate — every word token

@@ -15,7 +15,6 @@ export const useTimelineOperations = (mediaOps) => {
   // Local timeline state
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState(null);
-  const [dragEnd, setDragEnd] = useState(null);
   const [tempSelection, setTempSelection] = useState(null);
 
   // Resize state management
@@ -185,7 +184,6 @@ export const useTimelineOperations = (mediaOps) => {
 
       setIsDragging(true);
       setDragStart(time);
-      setDragEnd(time);
       setTempSelection(null);
     },
     [isResizing, getTimeFromPosition, mediaOps],
@@ -235,29 +233,26 @@ export const useTimelineOperations = (mediaOps) => {
     [isResizing, resizingToken, resizingHandle, getTimeFromPosition, mediaOps.duration, doc],
   );
 
-  const handleResizeEnd = useCallback(
-    async (event) => {
-      if (!isResizing || !resizingToken || !tempTokenBounds) return;
+  const handleResizeEnd = useCallback(async () => {
+    if (!isResizing || !resizingToken || !tempTokenBounds) return;
 
-      try {
-        // The domain method does the optimistic patch + reload-on-error.
-        await doc.updateAlignmentBounds(resizingToken.id, {
-          timeBegin: tempTokenBounds.start,
-          timeEnd: tempTokenBounds.end,
-        });
+    try {
+      // The domain method does the optimistic patch + reload-on-error.
+      await doc.updateAlignmentBounds(resizingToken.id, {
+        timeBegin: tempTokenBounds.start,
+        timeEnd: tempTokenBounds.end,
+      });
 
-        // Clear selection state
-        handleAlignmentCreated();
-      } finally {
-        // Reset resize state
-        setIsResizing(false);
-        setResizingToken(null);
-        setResizingHandle(null);
-        setTempTokenBounds(null);
-      }
-    },
-    [isResizing, resizingToken, tempTokenBounds, doc, handleAlignmentCreated],
-  );
+      // Clear selection state
+      handleAlignmentCreated();
+    } finally {
+      // Reset resize state
+      setIsResizing(false);
+      setResizingToken(null);
+      setResizingHandle(null);
+      setTempTokenBounds(null);
+    }
+  }, [isResizing, resizingToken, tempTokenBounds, doc, handleAlignmentCreated]);
 
   const handleMouseMove = useCallback(
     (event) => {
@@ -269,7 +264,6 @@ export const useTimelineOperations = (mediaOps) => {
       if (!isDragging) return;
 
       const time = getTimeFromPosition(event.clientX);
-      setDragEnd(time);
 
       // Create temporary selection for visual feedback
       const start = Math.min(dragStart, time);
@@ -304,7 +298,6 @@ export const useTimelineOperations = (mediaOps) => {
       }
 
       setDragStart(null);
-      setDragEnd(null);
     },
     [
       isResizing,
@@ -313,7 +306,6 @@ export const useTimelineOperations = (mediaOps) => {
       dragStart,
       handleTimelineClick,
       handleSelectionCreate,
-      handleResizeEnd,
     ],
   );
 
@@ -325,8 +317,8 @@ export const useTimelineOperations = (mediaOps) => {
       handleResizeMove(event);
     };
 
-    const handleGlobalMouseUp = (event) => {
-      handleResizeEnd(event);
+    const handleGlobalMouseUp = () => {
+      handleResizeEnd();
     };
 
     // Add global listeners

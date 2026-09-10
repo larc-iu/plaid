@@ -23,7 +23,7 @@ export default function Lazy({ children, className, style, rootMargin, contentPr
     }
 
     return () => observer.disconnect();
-  }, []);
+  }, [rootMargin]);
 
   let mergedStyle = { minHeight: '30px' };
   Object.assign(mergedStyle, style);

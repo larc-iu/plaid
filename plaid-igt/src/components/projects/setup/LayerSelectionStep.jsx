@@ -16,15 +16,7 @@ import { findBaselineTextLayer } from '@/domain/igtConfig';
 // auto-named; they are purely internal (the app never surfaces their names to
 // the user, unlike span layers), so we never prompt for a name. See the
 // interoperability model in plaid-core/docs/manual.adoc.
-export const LayerSelectionStep = ({
-  data,
-  onDataChange,
-  setupData,
-  isNewProject,
-  projectId,
-  user,
-  client,
-}) => {
+export const LayerSelectionStep = ({ data, onDataChange, projectId, client }) => {
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

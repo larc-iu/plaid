@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderComponent, all } from '@/test/renderComponent.jsx';
-import { TagsetField, changedValuesAllowed } from './TagsetField.jsx';
+import { TagsetField } from './TagsetField.jsx';
+import { changedValuesAllowed } from '@/domain/tagsets';
 
 // The form-side control (metadata, lexicon entries) picks its widget from what the tagset
 // allows, which is the branch worth pinning: a fixed list gets a Select, and

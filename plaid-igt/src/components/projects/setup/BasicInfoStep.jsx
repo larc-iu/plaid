@@ -1,15 +1,7 @@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-export const BasicInfoStep = ({
-  data,
-  onDataChange,
-  setupData,
-  isNewProject,
-  projectId,
-  user,
-  client,
-}) => {
+export const BasicInfoStep = ({ data, onDataChange }) => {
   const handleProjectNameChange = (event) => {
     onDataChange({
       ...data,

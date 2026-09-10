@@ -55,12 +55,8 @@ import { suggestFieldNames } from '../../import/elan/tierNaming';
 import { defaultFieldName } from '../../import/elan/buildDocuments';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { partitionPicked, useElanBatch } from './elan/useElanBatch';
-import {
-  ElanBuildSummary,
-  ElanTierReview,
-  SchemaMismatch,
-  SCOPE_OF_ROLE,
-} from './elan/ElanTierReview.jsx';
+import { ElanBuildSummary, ElanTierReview, SchemaMismatch } from './elan/ElanTierReview.jsx';
+import { SCOPE_OF_ROLE } from '@/import/elan/schema';
 import { ElanDocumentsPanel } from './elan/ElanDocumentsPanel.jsx';
 import { ElanStagedFiles } from './elan/ElanStagedFiles.jsx';
 import { useMediaDurations } from './elan/useMediaDurations';

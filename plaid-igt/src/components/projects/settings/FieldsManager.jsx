@@ -1,3 +1,4 @@
+import { fieldKey } from '@/domain/fieldNames';
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle } from 'lucide-react';
@@ -20,7 +21,6 @@ import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog';
 // two scopes (a FieldWorks import gives "Gloss" and "POS" at both Word and
 // Morpheme scope, and so do the defaults below), so nothing here may key on
 // the name alone.
-export const fieldKey = (f) => `${f.scope}:${f.name}`;
 
 // Radix Select has no empty-string item value, so "no tagset" needs a sentinel.
 const NO_TAGSET = '__none__';
@@ -88,7 +88,6 @@ export const FieldsManager = ({
   const [ignoredTokens, setIgnoredTokens] = useState(DEFAULT_IGNORED_TOKENS);
   const [newFieldName, setNewFieldName] = useState('');
   const [newFieldScope, setNewFieldScope] = useState('Word');
-  const [hoveredField, setHoveredField] = useState(null);
   const [isInitialized, setIsInitialized] = useState(false);
   // { name, count } — count: undefined while counting, null if unknown.
   const [pendingDelete, setPendingDelete] = useState(null);
@@ -162,6 +161,9 @@ export const FieldsManager = ({
     };
 
     initializeData();
+    // Runs once per initialData; the callbacks are read fresh and must not
+    // start another load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialData]);
 
   const saveChanges = async (newFields, newIgnoredTokens) => {
@@ -421,13 +423,8 @@ export const FieldsManager = ({
               </tr>
             </thead>
             <tbody>
-              {tableData.map((record, index) => (
-                <tr
-                  key={record.id}
-                  className="group hover:bg-muted/50"
-                  onMouseEnter={() => setHoveredField(record.key)}
-                  onMouseLeave={() => setHoveredField(null)}
-                >
+              {tableData.map((record) => (
+                <tr key={record.id} className="group hover:bg-muted/50">
                   <td className="border-t px-3 py-2 align-middle">
                     <Badge variant="secondary" className={scopeBadgeClasses[record.scope]}>
                       {record.scope}

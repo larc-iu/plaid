@@ -2,15 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { FieldsManager } from '../settings/FieldsManager.jsx';
 
-export const FieldsStep = ({
-  data,
-  onDataChange,
-  setupData,
-  isNewProject,
-  projectId,
-  user,
-  client,
-}) => {
+export const FieldsStep = ({ data, onDataChange }) => {
   // Seed defaults once, in an effect (NOT during render — calling the parent's
   // onDataChange mid-render warns "Cannot update a component while rendering a
   // different component"). Ref-guarded so it fires at most once.

@@ -1,14 +1,6 @@
 import { OrthographiesManager } from '../settings/OrthographiesManager.jsx';
 
-export const OrthographiesStep = ({
-  data,
-  onDataChange,
-  setupData,
-  isNewProject,
-  projectId,
-  user,
-  client,
-}) => {
+export const OrthographiesStep = ({ data, onDataChange }) => {
   // Handle saving changes - interface with parent's onDataChange
   const handleSaveChanges = async (newData) => {
     onDataChange(newData);
@@ -36,7 +28,7 @@ export const OrthographiesStep = ({
 };
 
 // Validation function for this step
-OrthographiesStep.isValid = (data) => {
+OrthographiesStep.isValid = () => {
   // Step is always valid - baseline orthography is always present
   // Having additional orthographies is optional
   return true;

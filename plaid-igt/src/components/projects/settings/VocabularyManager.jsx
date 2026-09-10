@@ -78,6 +78,9 @@ export const VocabularyManager = ({
     };
 
     initializeData();
+    // Runs once per initialData; the callbacks are read fresh and must not
+    // start another load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialData]);
 
   const saveChanges = async (newVocabularies) => {

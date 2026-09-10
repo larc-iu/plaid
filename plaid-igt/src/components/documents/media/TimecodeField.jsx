@@ -69,7 +69,6 @@ export const TimecodeField = memo(function TimecodeField({
 
   useEffect(() => {
     if (!dirtyRef.current) setParts(split(value, withHours));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, withHours]);
 
   const currentSeconds = () => join(partsRef.current, withHours);

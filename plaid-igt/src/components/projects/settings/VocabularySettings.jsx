@@ -4,13 +4,11 @@ import { VocabularyManager } from './VocabularyManager';
 import { notifyError } from '@/utils/feedback';
 
 export const VocabularySettings = ({ projectId, client }) => {
-  const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
 
   // Load current project vocabularies
   const handleLoadData = async () => {
     try {
-      setIsLoading(true);
       setHasError(false);
 
       if (!client) {
@@ -37,15 +35,12 @@ export const VocabularySettings = ({ projectId, client }) => {
       console.error('Failed to load vocabularies configuration:', error);
       setHasError(true);
       throw error;
-    } finally {
-      setIsLoading(false);
     }
   };
 
   // Save changes to the API
   const handleSaveChanges = async (data) => {
     try {
-      setIsLoading(true);
       setHasError(false);
 
       if (!client) {
@@ -84,13 +79,11 @@ export const VocabularySettings = ({ projectId, client }) => {
       console.error('Failed to save vocabularies configuration:', error);
       setHasError(true);
       throw error;
-    } finally {
-      setIsLoading(false);
     }
   };
 
   // Handle errors
-  const handleError = (error) => {
+  const handleError = () => {
     setHasError(true);
     notifyError('Failed to update vocabularies configuration', 'Configuration Error');
   };

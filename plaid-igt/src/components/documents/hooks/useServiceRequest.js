@@ -14,20 +14,20 @@ export const useServiceRequest = () => {
   const [progressMessage, setProgressMessage] = useState('');
   // The request in flight, so it can be cancelled or found again after a reload.
   const inFlight = useRef(null); // { projectId, requestId }
+  // Re-entrancy guard for discovery, read at call time rather than captured.
+  const discovering = useRef(false);
 
   const client = useStrictClient();
 
   // Discover available services
   const discoverServices = useCallback(
     async (projectId) => {
-      if (!projectId || isDiscovering) return;
-
-      console.log(`[ServiceDiscovery] Starting service discovery for project ${projectId}`);
+      if (!projectId || discovering.current) return;
+      discovering.current = true;
       setIsDiscovering(true);
 
       try {
         const services = await client.messages.discoverServices(projectId);
-        console.log(`[ServiceDiscovery] Found ${services.length} services:`, services);
         setAvailableServices(services);
         return services;
       } catch (error) {
@@ -35,8 +35,8 @@ export const useServiceRequest = () => {
         setAvailableServices([]);
         return [];
       } finally {
+        discovering.current = false;
         setIsDiscovering(false);
-        console.log(`[ServiceDiscovery] Discovery complete`);
       }
     },
     [client],

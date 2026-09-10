@@ -1,14 +1,6 @@
 import { DocumentMetadataManager } from '../settings/DocumentMetadataManager.jsx';
 
-export const DocumentMetadataStep = ({
-  data,
-  onDataChange,
-  setupData,
-  isNewProject,
-  projectId,
-  user,
-  client,
-}) => {
+export const DocumentMetadataStep = ({ data, onDataChange }) => {
   // Handle saving changes - interface with parent's onDataChange
   const handleSaveChanges = async (newData) => {
     onDataChange(newData);
@@ -35,7 +27,7 @@ export const DocumentMetadataStep = ({
 };
 
 // Validation function for this step
-DocumentMetadataStep.isValid = (data) => {
+DocumentMetadataStep.isValid = () => {
   // Step is always valid - having no metadata fields is acceptable
   // This allows projects that don't need document metadata to proceed
   return true;

@@ -16,7 +16,7 @@
 // at creation — it doubles as provenance back to the source archive).
 
 import { documentProgress } from '../progress.js';
-import { ImportCancelled, importStamp, priorImports, settlePrior } from '../resume.js';
+import { ImportCancelled, importStamp, priorImports } from '../resume.js';
 import { attributedBody } from './commentAttribution.js';
 import {
   IGT_NAMESPACE,

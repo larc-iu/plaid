@@ -609,7 +609,16 @@ export const useMediaOperations = () => {
       lock.release();
       lockRef.current = null;
     }
-  }, [doc, project, requestService, transcribeSpot, transcribeRun, confirm, acquireWriteLock]);
+  }, [
+    doc,
+    project,
+    requestService,
+    transcribeSpot,
+    transcribeRun,
+    confirm,
+    acquireWriteLock,
+    cancelRequest,
+  ]);
 
   // Speech detection: the built-in runs in this tab, a service returns regions
   // that land in the same proposal list. Either way nothing is written until

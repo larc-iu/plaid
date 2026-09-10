@@ -5,7 +5,7 @@ import { getFixture } from './fixture.js';
 // surface any API failures / console errors. Assertions are soft so every
 // surface's diagnostics print even when one fails.
 
-function report(label, { apiCalls, failures, errors }) {
+function report(label, { failures, errors }) {
   console.log(`\n===== ${label} =====`);
   console.log('--- failed requests ---');
   for (const f of failures) console.log(JSON.stringify(f));

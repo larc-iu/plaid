@@ -42,7 +42,7 @@ export function useElanBatch({ skipEmptyTiers = false, namesFor = null } = {}) {
   const [roles, setRoles] = useState({});
   const [fieldNames, setFieldNames] = useState({});
 
-  const nodes = comparison?.nodes ?? [];
+  const nodes = useMemo(() => comparison?.nodes ?? [], [comparison]);
   const problems = useMemo(
     () => (comparison?.consistent ? validateRoles(nodes, roles) : []),
     [comparison, nodes, roles],

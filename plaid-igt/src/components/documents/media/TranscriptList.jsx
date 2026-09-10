@@ -150,7 +150,6 @@ const SegmentRow = memo(function SegmentRow({
       setDraft(text);
       setSpeaker(storedSpeaker);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, storedSpeaker, dirty]);
 
   useLayoutEffect(() => autoGrow(textRef.current), [draft]);

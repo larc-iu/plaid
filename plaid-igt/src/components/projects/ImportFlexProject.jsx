@@ -150,7 +150,7 @@ export const ImportFlexProject = () => {
         // into a lexicon already arranged leaves that arrangement alone.
         resume: !!resumeId,
       }),
-    [parsed, filteredBuild, selectedWss, selectedLexFields],
+    [parsed, filteredBuild, selectedWss, selectedLexFields, resumeId],
   );
 
   // Entries FLEx marks as a variant of, or a complex form built from, others.

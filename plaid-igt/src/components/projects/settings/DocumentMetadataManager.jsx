@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { PREDEFINED_FIELDS } from '@/domain/igtConfig';
 import { Link } from 'react-router-dom';
 import {
   Plus,
@@ -24,17 +25,6 @@ import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 // Radix Select has no empty-string item value, so "no tagset" needs a sentinel.
 const NO_TAGSET = '__none__';
 
-// Predefined metadata fields common in linguistic annotation: name -> enabled
-// by default. Exported so the settings wrapper can show the switched-off ones.
-export const PREDEFINED_FIELDS = {
-  Date: true,
-  Speakers: true,
-  Location: true,
-  Genre: false,
-  'Recording Quality': false,
-  Transcriber: false,
-};
-
 export const DocumentMetadataManager = ({
   initialData,
   onLoadData,
@@ -45,7 +35,6 @@ export const DocumentMetadataManager = ({
   violations = {},
   projectId,
   onError,
-  isLoading = false,
   showTitle = true,
   autoSaveDefaults = false, // Only auto-save defaults in setup mode
 }) => {
@@ -108,6 +97,9 @@ export const DocumentMetadataManager = ({
     };
 
     initializeData();
+    // Runs once per initialData; the callbacks are read fresh and must not
+    // start another load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialData]);
 
   const saveChanges = async (newFields) => {
@@ -208,7 +200,7 @@ export const DocumentMetadataManager = ({
     await saveChanges(newFields);
   };
 
-  // Don't render until initialized (but don't block on external isLoading)
+  // Don't render until initialized
   if (!isInitialized) {
     return (
       <div className="rounded-lg border p-4 text-sm text-muted-foreground">

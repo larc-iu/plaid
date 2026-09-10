@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Info, Layers, FileText, Languages, List, BookOpen, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -18,8 +18,7 @@ import { ConfirmationStep } from './setup/ConfirmationStep';
 export const ProjectSetup = () => {
   useDocumentTitle('Project Setup');
   const { projectId } = useParams();
-  const navigate = useNavigate();
-  const { user, client } = useAuth();
+  const { client } = useAuth();
 
   const [currentStep, setCurrentStep] = useState(0);
   const [setupData, setSetupData] = useState({
@@ -226,7 +225,6 @@ export const ProjectSetup = () => {
                   setupData={setupData}
                   isNewProject={isNewProject}
                   projectId={projectId}
-                  user={user}
                   client={client}
                 />
 

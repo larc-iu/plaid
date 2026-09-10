@@ -32,4 +32,16 @@ export default [
       'no-unused-vars': ['warn', { varsIgnorePattern: '^[A-Z_]', argsIgnorePattern: '^_' }],
     },
   },
+  {
+    // A context module exports its provider and its hook together, and a
+    // vendored shadcn primitive exports its variants beside the component.
+    // Everything else keeps plain functions out of .jsx.
+    files: [
+      'src/contexts/*.jsx',
+      'src/**/contexts/*.jsx',
+      'src/components/shared/ConfirmProvider.jsx',
+      'src/components/ui/*.jsx',
+    ],
+    rules: { 'react-refresh/only-export-components': 'off' },
+  },
 ];

@@ -18,39 +18,44 @@ import { Panel } from '../ImportPanels.jsx';
 const convertedBytes = (seconds) =>
   Number.isFinite(seconds) && seconds > 0 ? estimateMp3Bytes(seconds) : null;
 
-const Row = ({ icon: Icon, name, detail, status, tone, onRemove }) => (
-  <li className="flex items-baseline gap-2 py-0.5">
-    <Icon className="h-3.5 w-3.5 shrink-0 self-center text-muted-foreground" />
-    <span className="min-w-0 flex-1 truncate font-mono text-xs">{name}</span>
-    <span className="shrink-0 text-xs text-muted-foreground">{detail}</span>
-    {status && (
-      <span
-        className={`shrink-0 text-xs ${
-          tone === 'warn'
-            ? 'text-amber-700 dark:text-amber-500'
-            : tone === 'error'
-              ? 'text-destructive'
-              : 'text-muted-foreground'
-        }`}
-      >
-        {status}
-      </span>
-    )}
-    {onRemove ? (
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-5 w-5 shrink-0"
-        aria-label={`Remove ${name}`}
-        onClick={onRemove}
-      >
-        <X className="h-3 w-3" />
-      </Button>
-    ) : (
-      <span className="h-5 w-5 shrink-0" />
-    )}
-  </li>
-);
+// `icon` is a component; the alias is a statement rather than a destructuring
+// rename because ESLint 9 misses a renamed parameter used only in JSX.
+const Row = ({ icon, name, detail, status, tone, onRemove }) => {
+  const Icon = icon;
+  return (
+    <li className="flex items-baseline gap-2 py-0.5">
+      <Icon className="h-3.5 w-3.5 shrink-0 self-center text-muted-foreground" />
+      <span className="min-w-0 flex-1 truncate font-mono text-xs">{name}</span>
+      <span className="shrink-0 text-xs text-muted-foreground">{detail}</span>
+      {status && (
+        <span
+          className={`shrink-0 text-xs ${
+            tone === 'warn'
+              ? 'text-amber-700 dark:text-amber-500'
+              : tone === 'error'
+                ? 'text-destructive'
+                : 'text-muted-foreground'
+          }`}
+        >
+          {status}
+        </span>
+      )}
+      {onRemove ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-5 w-5 shrink-0"
+          aria-label={`Remove ${name}`}
+          onClick={onRemove}
+        >
+          <X className="h-3 w-3" />
+        </Button>
+      ) : (
+        <span className="h-5 w-5 shrink-0" />
+      )}
+    </li>
+  );
+};
 
 /**
  * @param files       parsed .eaf objects (readEaf output)

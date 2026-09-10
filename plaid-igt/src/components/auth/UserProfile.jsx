@@ -108,6 +108,8 @@ export const UserProfile = () => {
 
   useEffect(() => {
     loadTokens();
+    // Runs once per id; the loader reads the client fresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
   const handleCreateToken = async (e) => {

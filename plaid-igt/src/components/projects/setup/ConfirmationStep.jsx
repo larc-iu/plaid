@@ -6,15 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { executeProjectSetup } from './executeSetup';
 
-export const ConfirmationStep = ({
-  data,
-  onDataChange,
-  setupData,
-  isNewProject,
-  projectId,
-  user,
-  client,
-}) => {
+export const ConfirmationStep = ({ setupData, isNewProject, projectId, client }) => {
   const navigate = useNavigate();
   const [isExecuting, setIsExecuting] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
@@ -435,7 +427,7 @@ export const ConfirmationStep = ({
 };
 
 // Validation function for this step
-ConfirmationStep.isValid = (data) => {
+ConfirmationStep.isValid = () => {
   // The confirmation step is always valid - it's just for review and execution
   return true;
 };

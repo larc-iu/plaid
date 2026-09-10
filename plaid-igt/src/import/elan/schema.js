@@ -22,7 +22,7 @@
 // is routinely shared by several tiers that mean different things (our own
 // exporter gives every Symbolic_Association tier the same type).
 
-import { baseTierName, stereotypeOf, isAlignableStereotype } from './readEaf.js';
+import { stereotypeOf, isAlignableStereotype } from './readEaf.js';
 
 /** Roles a schema node can be mapped onto in an IGT project. */
 export const ROLES = Object.freeze({
@@ -36,6 +36,20 @@ export const ROLES = Object.freeze({
   MORPH_FIELD: 'morphField',
   ORTHOGRAPHY: 'orthography',
 });
+
+export const NAMED_ROLES = new Set([
+  ROLES.SENTENCE_FIELD,
+  ROLES.WORD_FIELD,
+  ROLES.MORPH_FIELD,
+  ROLES.ORTHOGRAPHY,
+]);
+
+/** The scope a field role writes to, for looking a name up among the project's. */
+export const SCOPE_OF_ROLE = {
+  [ROLES.SENTENCE_FIELD]: 'Sentence',
+  [ROLES.WORD_FIELD]: 'Word',
+  [ROLES.MORPH_FIELD]: 'Morpheme',
+};
 
 const nodeKey = (parentKey, baseName, typeRef) =>
   `${parentKey ? `${parentKey}/` : ''}${baseName}:${typeRef}`;

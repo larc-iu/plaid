@@ -79,7 +79,8 @@ import {
   ContextRow,
 } from './DictionaryPanels';
 import { validateValue } from '@/domain/tagsets';
-import { TagsetField, changedValuesAllowed } from '@/components/shared/TagsetField.jsx';
+import { TagsetField } from '@/components/shared/TagsetField.jsx';
+import { changedValuesAllowed } from '@/domain/tagsets';
 import { FormLabel } from './FormLabel';
 import { planItemConcordance, loadConcordanceGroups, sentenceTo } from './vocabConcordance';
 import { serializeVocabTsv } from '@/export/vocabTsv';

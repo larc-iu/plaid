@@ -4,7 +4,7 @@
  :paths ["bb"]
  :tasks
  {test
-  {:doc "Run every test suite — the same gate release.yml runs before building: plaid-core (Clojure), the plaid-ud / plaid-igt / plaid-dict SPAs (npm test, with an npm install first), and the Python assistant and bundled services (pytest, live suites excluded). Prereqs: Node >= 20 active (e.g. `nvm use 24.1.0`) and `mamba activate plaid-agent` (base lacks the assistant itself)."
+  {:doc "Run every test suite — the same gate release.yml runs before building: plaid-core (Clojure), the plaid-ud / plaid-igt / plaid-dict SPAs (npm test and npm run lint, with an npm install first), and the Python assistant and bundled services (pytest, live suites excluded). Prereqs: Node >= 20 active (e.g. `nvm use 24.1.0`) and `mamba activate plaid-agent` (base lacks the assistant itself)."
    :requires ([pipeline :as pl])
    :task (pl/run-tests!)}
 

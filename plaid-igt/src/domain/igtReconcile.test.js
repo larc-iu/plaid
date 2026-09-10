@@ -1,11 +1,4 @@
-import {
-  planFieldLangBackfill,
-  planVocabFieldLangBackfill,
-  describe,
-  it,
-  expect,
-  beforeEach,
-} from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { IgtDocument } from './IgtDocument.js';
 import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
 import {

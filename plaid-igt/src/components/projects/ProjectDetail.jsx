@@ -103,6 +103,8 @@ export const ProjectDetail = () => {
 
   useEffect(() => {
     fetchData(true);
+    // Runs once per id; the loader reads the client fresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   const canManage = !!user && !!project && (user.isAdmin || project.maintainers?.includes(user.id));

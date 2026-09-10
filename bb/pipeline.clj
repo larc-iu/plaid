@@ -81,9 +81,12 @@
   ;; this runs on tags and nightly only, never per-commit.
   (ensure-node!)
   (doseq [app js-suites]
-    (step (str "Run the JavaScript test suite (" app ")"))
+    (step (str "Run the JavaScript test suite and lint (" app ")"))
     (p/shell {:dir app} "npm" "install")
-    (p/shell {:dir app} "npm" "test"))
+    (p/shell {:dir app} "npm" "test")
+    ;; Lint is part of the gate too: plaid-igt fails on any warning, so the
+    ;; tree cannot drift the way it did when nothing ran it.
+    (p/shell {:dir app} "npm" "run" "lint"))
   ;; After the JS step, deliberately: the assistant's mirror test runs the
   ;; app's own domain modules through node and SKIPS ITSELF when plaid-igt's
   ;; node_modules are missing, which would make it pass by not running.

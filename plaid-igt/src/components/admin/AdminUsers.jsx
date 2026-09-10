@@ -12,7 +12,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 import { notifyError } from '@/utils/feedback';
-import { useUserAdmin, UserAdminDialogs } from './userAdmin';
+import { useUserAdmin } from './useUserAdmin';
+import { UserAdminDialogs } from './userAdmin';
 import { UserDetail } from './UserDetail';
 
 // The whole account directory. The project Access tab resolves one project's

@@ -21,7 +21,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { ProjectInvites } from './ProjectInvites';
-import { useUserAdmin, UserAdminDialogs } from '../admin/userAdmin';
+import { useUserAdmin } from '../admin/useUserAdmin';
+import { UserAdminDialogs } from '../admin/userAdmin';
 import {
   PLAID_NAMESPACE,
   REVIEW_KEY,

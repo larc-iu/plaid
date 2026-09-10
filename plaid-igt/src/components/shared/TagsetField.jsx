@@ -8,13 +8,7 @@ import {
   SelectItem,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import {
-  MODES,
-  isValueAllowed,
-  sortedValues,
-  tagsetEnforces,
-  validateValue,
-} from '@/domain/tagsets';
+import { MODES, sortedValues, validateValue } from '@/domain/tagsets';
 
 // One form input governed by a tagset, if its field has one: a document
 // metadata field on the Metadata tab, an entry field in the vocabulary editor.
@@ -126,21 +120,3 @@ export const TagsetField = ({ field, value, tagset, onChange, ...inputProps }) =
     </>
   );
 };
-
-/**
- * May this edit be saved? Only fields the user actually CHANGED are judged.
- *
- * The grid refuses a value on the way in and leaves what is already stored
- * alone (`next !== orig` in IgtEditor._commitField). A form has to match, or
- * one off-tagset value an import left behind would lock the whole document
- * (or lexicon entry) out of saving — you could not even rename it — and the
- * deliberately preserved "(not in tagset)" option would be visible but
- * unsavable.
- */
-export const changedValuesAllowed = (fields, values, tagsetFor, original = {}) =>
-  fields.every((f) => {
-    const next = values[f.name] ?? '';
-    if (next === (original[f.name] ?? '')) return true;
-    const t = tagsetFor(f);
-    return !tagsetEnforces(t) || isValueAllowed(next, t);
-  });

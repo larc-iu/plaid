@@ -18,7 +18,7 @@ import {
   SelectItem,
   SelectLabel,
 } from '@/components/ui/select';
-import { nodeLabel, ROLES } from '@/import/elan/schema';
+import { NAMED_ROLES, nodeLabel, ROLES } from '@/import/elan/schema';
 import { Panel } from '../ImportPanels.jsx';
 
 // What a tier can become, grouped the way the document is built: first the
@@ -45,20 +45,6 @@ const ROLE_GROUPS = [
     ],
   ],
 ];
-
-export const NAMED_ROLES = new Set([
-  ROLES.SENTENCE_FIELD,
-  ROLES.WORD_FIELD,
-  ROLES.MORPH_FIELD,
-  ROLES.ORTHOGRAPHY,
-]);
-
-/** The scope a field role writes to, for looking a name up among the project's. */
-export const SCOPE_OF_ROLE = {
-  [ROLES.SENTENCE_FIELD]: 'Sentence',
-  [ROLES.WORD_FIELD]: 'Word',
-  [ROLES.MORPH_FIELD]: 'Morpheme',
-};
 
 export const SchemaMismatch = ({ comparison, onReset }) => (
   <Panel tone="error" icon={AlertTriangle} title="These files do not share one tier structure">
@@ -149,7 +135,7 @@ const NearMisses = ({ groups, choices, undecided, editable, onChoose }) => (
  * @param renderFieldControl  (node) => ReactNode for a tier in a named role
  */
 export const ElanTierReview = ({ batch, editable, renderFieldControl = null }) => {
-  const { files, nodes, roles, fieldNames, build, problems } = batch;
+  const { files, nodes, roles, fieldNames } = batch;
   const [showEmpty, setShowEmpty] = useState(false);
   // A corpus template carries tiers nobody has filled in, and a row with
   // nothing in it and nothing to decide is what makes the rest hard to read.

@@ -127,6 +127,17 @@ export const trimIgnoredEdges = (content, cfg) => {
 };
 
 /** A project's enabled document-metadata fields: [{name}], or null. */
+// Predefined metadata fields common in linguistic annotation: name -> enabled
+// by default. The settings screen shows the switched-off ones.
+export const PREDEFINED_FIELDS = {
+  Date: true,
+  Speakers: true,
+  Location: true,
+  Genre: false,
+  'Recording Quality': false,
+  Transcriber: false,
+};
+
 export const readDocumentMetadata = (config) => readIgt(config, 'documentMetadata') ?? null;
 
 /**

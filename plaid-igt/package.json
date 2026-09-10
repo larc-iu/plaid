@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings 0",
     "format": "prettier --write \"**/*.{js,jsx,css}\"",
     "format:check": "prettier --check \"**/*.{js,jsx,css}\"",
     "preview": "vite preview",

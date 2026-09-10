@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
-import { DocumentMetadataManager, PREDEFINED_FIELDS } from './DocumentMetadataManager.jsx';
+import { DocumentMetadataManager } from './DocumentMetadataManager.jsx';
 import { notifyError } from '@/utils/feedback';
-import { readDocumentMetadata, IGT_NAMESPACE } from '@/domain/igtConfig';
+import { PREDEFINED_FIELDS, readDocumentMetadata, IGT_NAMESPACE } from '@/domain/igtConfig';
 
 // What DocumentMetadataManager shows, read off a project's config. Null means
 // "use the defaults".
@@ -36,7 +36,6 @@ export const DocumentMetadataSettings = ({
   violations = {},
   onProjectUpdate,
 }) => {
-  const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
 
   // Read off the LIVE project rather than fetched once on mount, so the table
@@ -48,7 +47,6 @@ export const DocumentMetadataSettings = ({
   // Save changes to the API
   const handleSaveChanges = async (data) => {
     try {
-      setIsLoading(true);
       setHasError(false);
 
       if (!client) {
@@ -72,8 +70,6 @@ export const DocumentMetadataSettings = ({
       console.error('Failed to save document metadata configuration:', error);
       setHasError(true);
       throw error;
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -112,7 +108,6 @@ export const DocumentMetadataSettings = ({
         initialData={initialData}
         onSaveChanges={handleSaveChanges}
         onError={handleError}
-        isLoading={isLoading}
         tagsetNames={tagsetNames}
         violations={violations}
         projectId={projectId}

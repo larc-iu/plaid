@@ -24,7 +24,7 @@ import { DataTable } from '@/components/ui/data-table';
 import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useConfirm } from '@/components/shared/ConfirmProvider';
-import { inviteLinkFor } from '../projects/ProjectInvites';
+import { inviteLinkFor } from '@/utils/inviteLink';
 
 // Every invite on the server, whoever minted it. A project's own tab shows
 // that project's links; this is the one place an admin can see an admin grant
