@@ -47,7 +47,7 @@ describe('buildFlextextDocument', () => {
     doc.document.metadata = {
       'Title (en)': 'Running Dogs',
       Abbreviation: 'RD01',
-      'Abbreviation (en)': 'RD-en',
+      'Abbreviation (nl)': 'RD-nl',
       Source: 'Field notes',
       Description: 'A story about dogs',
       Researchers: 'Ana Ruiz',
@@ -65,13 +65,13 @@ describe('buildFlextextDocument', () => {
       // No writing system in the name: the one glosses and translations use,
       // which is what a FLEx import means by an unsuffixed field name.
       ['title-abbreviation', 'en', 'RD01'],
-      ['title-abbreviation', 'en', 'RD-en'],
+      ['title-abbreviation', 'nl', 'RD-nl'],
       ['source', 'en', 'Field notes'],
       // FLEx calls a text's Description its comment, and everything a
-      // .flextext cannot place joins it a line at a time rather than
-      // replacing it. "Sources" is the notebook record's people, and must not
-      // be read as the text's own Source.
-      ['comment', 'en', 'A story about dogs\nResearchers: Ana Ruiz\nSources: Bo Vega'],
+      // .flextext cannot place joins it rather than replacing it. "Sources" is
+      // the notebook record's people, and must not be read as the text's own
+      // Source.
+      ['comment', 'en', 'A story about dogs | Researchers: Ana Ruiz | Sources: Bo Vega'],
     ]);
   });
 
@@ -85,7 +85,7 @@ describe('buildFlextextDocument', () => {
     const dom = parse(buildFlextextDocument([doc], FLEXTEXT_OPTIONS));
     const comments = [...dom.querySelectorAll('interlinear-text > item[type="comment"]')];
     expect(comments.map((c) => [c.getAttribute('lang'), c.textContent])).toEqual([
-      ['en', 'In English\nGenre: narrative'],
+      ['en', 'In English | Genre: narrative'],
       ['nl', 'In het Nederlands'],
     ]);
   });

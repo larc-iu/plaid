@@ -105,6 +105,11 @@ const mappedFields = (options, scope) =>
 // same table. A field named for a writing system ("Title (nl)") goes out under
 // that one; everything else FLEx cannot place becomes a comment naming the
 // field it came from, which is the only place a .flextext has to put it.
+// What separates the fields sharing one comment. A newline is what it wants to
+// be, and FLEx does store one, but its Info tab draws a comment on a single
+// line and everything past the newline is invisible there. Wide enough to read
+// against a participant list, which uses "," and ";" of its own.
+const COMMENT_SEP = ' | ';
 const TEXT_ITEM_TYPES = {
   title: 'title',
   abbreviation: 'title-abbreviation',
@@ -119,11 +124,11 @@ const TEXT_ITEM_TYPES = {
 /**
  * A document's metadata as <interlinear-text> items.
  *
- * Every comment for one writing system is written as ONE item, a field to a
- * line. FLEx keeps a single comment per writing system and sets it from each
- * item in turn, so a second comment item does not join the first, it replaces
- * it: a text with a genre and three notebook fields would arrive in FLEx
- * carrying only the last of them.
+ * Every comment for one writing system is written as ONE item, the fields it
+ * holds separated by COMMENT_SEP. FLEx keeps a single comment per writing
+ * system and sets it from each item in turn, so a second comment item does not
+ * join the first, it replaces it: a text with a genre and three notebook
+ * fields would arrive in FLEx carrying only the last of them.
  */
 const metadataItems = (indent, metadata, options) => {
   const lines = [];
@@ -141,7 +146,7 @@ const metadataItems = (indent, metadata, options) => {
     else lines.push(...item(indent, type, lang, value));
   }
   for (const [lang, texts] of comments)
-    lines.push(...item(indent, 'comment', lang, texts.join('\n')));
+    lines.push(...item(indent, 'comment', lang, texts.join(COMMENT_SEP)));
   return lines;
 };
 

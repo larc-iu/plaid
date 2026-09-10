@@ -761,7 +761,7 @@ Use the codes your FieldWorks project already uses, or FLEx will offer to add a 
 Document metadata goes out with the texts.
 A field FieldWorks keeps in a place of its own lands there: **Title**, **Abbreviation**, **Source**, and **Description**, which FieldWorks shows as the text's comment.
 A field named for a writing system, such as `Title (en)`, goes out under that one.
-Everything else, the researchers and participants among them, goes out as a comment naming the field it came from, since a `.flextext` has nowhere else to keep it.
+Everything else, the researchers and participants among them, joins one comment naming each field it came from, since a `.flextext` has nowhere else to keep it.
 
 Each field goes out under its own language where that is known.
 A field imported from FLEx knows it, whatever it is called: an import records the writing system each field's values are in, so a project glossed in three languages exports all three correctly without anything being set here.
