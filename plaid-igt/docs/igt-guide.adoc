@@ -246,6 +246,7 @@ You can tokenize by hand:
 The two tabs hand over to each other: Analyze opens on the last word you clicked here, and this tab opens on the sentence you were in on Analyze, with the word flashed, whether you switch by Alt+click or by the tab itself.
 
 Or run a tokenizer over the whole document with **Tokenize**, in the **Tokens** header.
+Words already there are kept, so text added after a first run can be tokenized by running it again.
 The built-in **Rule-based punctuation** splitter finds words and leaves sentence breaks as they are.
 A tokenization service can replace it with smarter segmentation of both sentences and words (see <<_services>>).
 **Clear tokens** and **Reset sentences**, beside it, start over.
@@ -272,7 +273,7 @@ What you do here:
 * **Segment morphemes**. Break each word into morphemes and edit their forms. Type `-` in a morpheme to split it at the cursor, or `=` to split at a clitic boundary. Backspace at the start of a morpheme merges it into the previous one. A morpheme with a grammatical job and no sound is written ∅, which **Alt+0** types (see <<_typing_special_characters>>).
 * **Gloss and annotate**. Fill the gloss and any other word- or morpheme-scope fields your project defines. The editor offers faint **guesses**, for example a gloss it has seen before for the same form, which you accept with Enter or type over.
 * **Pick from what the project already uses**. On a cell, **Alt+↓** lists every value the project has given that form, with counts. When a field is held to a tagset, the list opens on its own as you enter the cell and narrows as you type, one part at a time for a composite gloss like `1SG.NOM`.
-* **Link vocabulary**. Connect a word or morpheme to an entry in a shared lexicon, by hand or in bulk (see <<_vocabularies>>).
+* **Link vocabulary**. Connect a word or morpheme to an entry in a shared lexicon, by hand or in bulk (see <<_vocabularies>>). Once one is linked, its popover offers to link every other unlinked occurrence of the same form in the text to the same entry, in one step and only when you ask.
 * **Auto-analyze**. Let the machine make a first pass over the whole document: translations, analyses copied onto words you have analyzed before, a model's segmentation and glosses, and lexicon links. Everything it produces shows in violet until you confirm it, and words you analyzed yourself are never touched (see <<_auto_analyze>>).
 * **Review machine work**. **Ctrl/Cmd+Enter** accepts everything proposed on a word and moves to the next. **Ctrl/Cmd+Backspace** discards a word's (or a translation's) unverified proposal. **Ctrl/Cmd+Shift+↑/↓** jumps between the words and translations that still have one.
 * **Fill sentence fields**. Record the free translation, the speaker, and other sentence-scope values on each sentence's row.
@@ -280,6 +281,7 @@ What you do here:
 * **Copy as IGT**. Copy one sentence to the clipboard for a paper or a message, as aligned plain text, tab-separated text for a spreadsheet, LaTeX (gb4e or ExPex), or leipzig.js HTML. The LaTeX formats carry characters like ə and ∅ as they are, so typeset them with XeLaTeX or LuaLaTeX and a font that has the glyphs. This keeps the characters searchable and copyable in the finished PDF, which a `tipa` transcription does not.
 
 Move around the grid with **Enter** or **Tab** (next cell, Shift for the previous one), **↑** and **↓** (rows), and **←** and **→** from the ends of a value.
+**Alt+click** a word to open it on the Tokenize tab.
 The full set of gestures is collected under <<_keyboard_shortcuts>>.
 
 === Provenance

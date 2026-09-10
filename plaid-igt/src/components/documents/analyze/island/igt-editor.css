@@ -1186,6 +1186,23 @@
   font: inherit;
   cursor: pointer;
 }
+/* Link every other unlinked "roa" in this text to the entry just linked. */
+.igt-vocab-pop__all {
+  width: 100%;
+  margin-top: 4px;
+  padding: 4px 6px;
+  background: transparent;
+  border: 1px dashed #cbd5e1;
+  border-radius: 4px;
+  color: #374151;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.igt-vocab-pop__all:hover {
+  background: #f8fafc;
+  border-color: #93c5fd;
+}
 .igt-vocab-pop__create.is-active {
   background: #dbeafe;
   border-style: solid;

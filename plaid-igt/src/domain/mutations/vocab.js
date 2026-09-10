@@ -174,6 +174,45 @@ export const vocabMutations = {
     });
   },
 
+  // Link several tokens to one entry in one operation: "every other ‹roa›
+  // in this text", from the popover. Only tokens with no link of their own
+  // are taken, so nothing anyone linked is relinked. Never automatic: FLEx
+  // does this on every link, which the first real user called mightily
+  // annoying, so it is a row you choose.
+  async linkVocabMany(tokenIds, vocabItemId) {
+    const { vocab: targetVocab, item: vocabItem } = findVocabForItem(
+      this._vocabularies,
+      vocabItemId,
+    );
+    if (!targetVocab || !vocabItem) {
+      this.setError(`Vocab item ${vocabItemId} not found`);
+      return false;
+    }
+    const ids = [...new Set(tokenIds)].filter((id) => !findPriorLink(this._vocabularies, id).link);
+    if (!ids.length) return false;
+    const stamp = this.createStamp || undefined;
+    return this._withSaving('Failed to link entries', async () => {
+      const results = await this._client.batched(async () => {
+        for (const id of ids) this._client.vocabLinks.create(vocabItemId, [id], stamp);
+      });
+      const newIds = results.map((r) => r?.body?.id ?? r?.id ?? null);
+      const itemSnapshot = { id: vocabItem.id, layer: targetVocab.id, form: vocabItem.form };
+      this._applyRawPatch((next, info, vocabs) => {
+        const tv = vocabs[targetVocab.id];
+        if (!tv) return;
+        if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
+        ids.forEach((tokenId, i) => {
+          tv.vocabLinks.push({
+            id: newIds[i],
+            tokens: [tokenId],
+            vocabItem: itemSnapshot,
+            ...(stamp ? { metadata: stamp } : {}),
+          });
+        });
+      });
+    });
+  },
+
   // Remove the single-token vocab link for `tokenId`, if any.
   async unlinkVocab(tokenId) {
     const { link: priorLink, vocabId: priorVocabId } = findPriorLink(this._vocabularies, tokenId);

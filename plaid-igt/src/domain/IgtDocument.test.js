@@ -812,6 +812,25 @@ describe('vocab links (read path must reflect optimistic write)', () => {
     expect(doc.sentences[0].tokens[1].vocabItem?.form).toBe('CAT');
   });
 
+  // "Link every ‹cat› in this text": one operation, one request per token,
+  // and a token that already has a link is left as it is.
+  it('linkVocabMany links every given unlinked token in one batch', async () => {
+    const vocabs = vocabularies();
+    vocabs.v1.vocabLinks = [
+      { id: 'lk-1', tokens: ['w-1'], vocabItem: { id: 'vi-1', form: 'CAT', metadata: {} } },
+    ];
+    const doc = makeDoc({
+      project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
+      vocabularies: vocabs,
+    });
+    expect(await doc.linkVocabMany(['w-1', 'w-2', 'w-2'], 'vi-1')).toBe(true);
+    const creates = doc.client.calls.filter((c) => c.kind === 'vocabLinks.create');
+    expect(creates.map((c) => c.args[1])).toEqual([['w-2']]);
+    expect(doc.sentences[0].tokens.map((t) => t.vocabItem?.form)).toEqual(['CAT', 'CAT']);
+    // Nothing left to link is not an operation.
+    expect(await doc.linkVocabMany(['w-1'], 'vi-1')).toBe(false);
+  });
+
   it('unlinkVocab removes the vocab item from the token', async () => {
     const vocabs = vocabularies();
     vocabs.v1.vocabLinks = [

@@ -75,6 +75,7 @@ import {
   precedentForm,
 } from '@/domain/precedent';
 import { humanizeError, notifyError, notifyInfo } from '@/utils/feedback';
+import { sameFormUnlinked } from '@/domain/linkEverywhere.js';
 
 // Stable empty precedent results, so the tally memo does not rebuild on every
 // render while the project queries are still in flight.
@@ -851,6 +852,26 @@ export class IgtEditor {
     return this._run(fn).then((result) => {
       if (this._pendingFocus === target) this._pendingFocus = null;
       return result;
+    });
+  }
+
+  // "Link every ‹roa› in this text": the popover's row for the other unlinked
+  // tokens reading the same as the one just linked. A row, never a default:
+  // FLEx links them all on every link, which the first real user called
+  // mightily annoying. Only tokens with no link of their own are taken.
+  _linkEverywhere(tokenId, kind, formText, currentItem, returnFocus = false) {
+    const ids = sameFormUnlinked(this.doc.sentences, kind, formText, tokenId);
+    if (!ids.length || !currentItem) return;
+    this._closePopover(returnFocus);
+    this._runThenFocus({ vocabOpener: tokenId }, () =>
+      this.doc.linkVocabMany(ids, currentItem.id),
+    ).then((ok) => {
+      if (ok) {
+        notifyInfo(
+          `Linked ${ids.length} more “${formText}” to ${currentItem.form}`,
+          'Linked in this text',
+        );
+      }
     });
   }
 
@@ -5132,6 +5153,24 @@ export class IgtEditor {
               : r.label}
           </button>`;
         })}
+        ${(() => {
+          // Offered once the token is linked and there is anything to link.
+          if (!currentItem || isMwe) return nothing;
+          const others = sameFormUnlinked(this.doc.sentences, kind, formText, tokenId);
+          if (!others.length) return nothing;
+          return html`<button
+            type="button"
+            class="igt-vocab-pop__all"
+            title=${`Link the ${others.length} other unlinked “${formText}” in this text to ${currentItem.form}`}
+            @click=${(e) => {
+              e.stopPropagation();
+              this._linkEverywhere(tokenId, kind, formText, currentItem, true);
+            }}
+          >
+            Link every “${formText}” in this text
+            <span class="igt-vocab-pop__prec">×${others.length}</span>
+          </button>`;
+        })()}
         ${kind === 'morpheme'
           ? this._morphTypeRow(tokenId, currentItem)
           : isMwe
