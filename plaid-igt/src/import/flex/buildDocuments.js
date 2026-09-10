@@ -70,6 +70,7 @@ function alignSegment(body, begin, end, analyses, baselineWs) {
  */
 export function buildDocuments(ir, opts = {}) {
   const baselineWs = opts.baselineWs ?? ir.writingSystems.vernacular[0];
+  const primaryAnalysisWs = ir.writingSystems.analysis[0];
   const orthographyWss = ir.writingSystems.vernacular.filter(
     (ws) => ws !== baselineWs && ir.wsUsage.wordForms.includes(ws),
   );
@@ -129,9 +130,12 @@ export function buildDocuments(ir, opts = {}) {
       guid: text.guid,
       name: text.names?.[baselineWs] ?? pickEn(text.names) ?? 'Untitled',
       names: text.names ?? {},
-      // The abbreviation the same way as the title: one of them stands alone
-      // and any other writing system rides beside it.
-      abbreviation: text.abbreviations?.[baselineWs] ?? pickEn(text.abbreviations) ?? null,
+      // The abbreviation follows the convention every imported field follows:
+      // the primary analysis writing system stands alone under the bare name
+      // and any other rides beside it under its own (fieldName() in
+      // importEngine.js). Which one it was has to survive, because it is the
+      // writing system the abbreviation goes back to FLEx in.
+      abbreviation: text.abbreviations?.[primaryAnalysisWs] ?? null,
       abbreviations: text.abbreviations ?? {},
       source: text.source,
       description: text.description,

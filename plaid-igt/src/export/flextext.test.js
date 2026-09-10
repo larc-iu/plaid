@@ -62,8 +62,9 @@ describe('buildFlextextDocument', () => {
     expect(items).toEqual([
       ['title', 'spa', 'Test & Doc'],
       ['title', 'en', 'Running Dogs'],
-      // No writing system in the name: the text's own language, as the title.
-      ['title-abbreviation', 'spa', 'RD01'],
+      // No writing system in the name: the one glosses and translations use,
+      // which is what a FLEx import means by an unsuffixed field name.
+      ['title-abbreviation', 'en', 'RD01'],
       ['title-abbreviation', 'en', 'RD-en'],
       ['source', 'en', 'Field notes'],
       // FLEx calls a text's Description its comment, and everything a

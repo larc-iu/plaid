@@ -111,10 +111,10 @@ const TEXT_ITEM_TYPES = {
   source: 'source',
   description: 'comment',
 };
-// Which language a mapped field goes out under when its name does not say. A
-// title and an abbreviation are the text's own, a source and a comment are
-// written about it — the same split the FLEx importer makes.
-const VERNACULAR_ITEMS = new Set(['title', 'title-abbreviation']);
+// Which language a mapped field goes out under when its name does not say.
+// Only the title is the text's own: a bare "Abbreviation" is the one in the
+// primary analysis writing system, the same as every other field a FLEx
+// import names without a tag, and it has to go back to FLEx in that one.
 
 /**
  * A document's metadata as <interlinear-text> items.
@@ -135,7 +135,7 @@ const metadataItems = (indent, metadata, options) => {
     const type = TEXT_ITEM_TYPES[base.trim().toLowerCase()];
     const lang =
       (ws && isLangTag(ws) && ws) ||
-      (VERNACULAR_ITEMS.has(type) ? baselineLang(options) : analysisLang(options));
+      (type === 'title' ? baselineLang(options) : analysisLang(options));
     if (!type) comment(analysisLang(options), `${key}: ${value}`);
     else if (type === 'comment') comment(lang, String(value));
     else lines.push(...item(indent, type, lang, value));

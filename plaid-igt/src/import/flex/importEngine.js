@@ -167,13 +167,14 @@ export function deriveImportConfig(ir, build, opts = {}) {
       if (d.abbreviations[ws] !== d.abbreviation) abbrWss.add(ws);
     }
   }
-  // A text carries the first four itself, so they are offered whether or not
-  // this import fills them. The notebook fields exist only for a text given a
-  // notebook record, and are declared only where one was.
+  // Every text carries these three itself, so they are offered whether or not
+  // this import fills them. Everything else is declared only where a text has
+  // it: an empty "Abbreviation" beside a filled "Abbreviation (en)" reads as a
+  // mistake, and the notebook fields exist only for a text given a record.
   const filled = new Set(build.documents.flatMap((d) => Object.keys(documentMetadataOf(d))));
   const documentMetadata = [
     ...[...titleWss].map((ws) => ({ name: `Title (${ws})` })),
-    { name: 'Abbreviation' },
+    ...(filled.has('Abbreviation') ? [{ name: 'Abbreviation' }] : []),
     ...[...abbrWss].map((ws) => ({ name: `Abbreviation (${ws})` })),
     { name: 'Source' },
     { name: 'Description' },
