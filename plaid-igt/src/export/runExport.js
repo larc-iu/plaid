@@ -434,12 +434,19 @@ export async function runExport({
     );
   }
 
+  // What the export is named after: the document when the run covers exactly
+  // one, the project otherwise. Which radio the scope came from does not
+  // matter — one document checked under "Selected documents" is the same run
+  // as "This document", and was landing under the project's name.
+  const stem = sanitizeFilename(
+    scope.type !== 'project' && docFiles.length === 1
+      ? docFiles[0].docName
+      : project.name || 'project',
+  );
+
   // FLEx: the whole scope becomes ONE .flextext (one import action in FLEx,
   // not one per document), and the lexicon rides along as LIFT beside it.
   if (isFlex) {
-    const stem = sanitizeFilename(
-      scope.type === 'document' ? docFiles[0].docName : project.name || 'project',
-    );
     const flextext = flextextEnvelope(docFiles.map((f) => f.data));
     const lexicon = wantLexicon
       ? buildLiftLexicon({
@@ -507,9 +514,8 @@ export async function runExport({
     });
     warnings.push(...cldfWarnings);
     checkStop();
-    const stem = scope.type === 'document' ? docFiles[0].docName : project.name || 'project';
     return {
-      filename: `${sanitizeFilename(stem)}-cldf.zip`,
+      filename: `${stem}-cldf.zip`,
       blob: await assembleZip([...files, ...mediaEntries]),
       warnings,
     };
@@ -591,9 +597,8 @@ export async function runExport({
     });
   }
   checkStop();
-  const zipStem = scope.type === 'document' ? docFiles[0].docName : project.name || 'project';
   return {
-    filename: `${sanitizeFilename(zipStem)}-export.zip`,
+    filename: `${stem}-export.zip`,
     blob: await assembleZip(entries),
     warnings,
   };

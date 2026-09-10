@@ -159,6 +159,42 @@ describe('runExport', () => {
     expect(client.calls).toEqual([['documents.get', 'd1']]);
   });
 
+  it('names a one-document selection after that document at every format', async () => {
+    const docs = [rawDoc('d1', 'Alpha', 'hi'), rawDoc('d2', 'Beta', 'ba')];
+    const result = await runExport({
+      client: stubClient({ docs }),
+      project: PROJECT,
+      preset: plainPreset(),
+      scope: { type: 'documents', ids: ['d2'] },
+    });
+    // Still a zip: that scope can carry the project's vocabularies too.
+    expect(result.filename).toBe('Beta-export.zip');
+    expect(Object.keys(await unzipBlob(result.blob))).toEqual(['documents/Beta.txt']);
+  });
+
+  // Two documents chosen, or the whole project of a one-document project: the
+  // project names the file.
+  it('names a multi-document selection after the project', async () => {
+    const docs = [rawDoc('d1', 'Alpha', 'hi'), rawDoc('d2', 'Beta', 'ba')];
+    const result = await runExport({
+      client: stubClient({ docs }),
+      project: PROJECT,
+      preset: plainPreset(),
+      scope: { type: 'documents', ids: ['d1', 'd2'] },
+    });
+    expect(result.filename).toBe('My Project Test-export.zip');
+  });
+
+  it('names a whole-project export after the project even with one document', async () => {
+    const result = await runExport({
+      client: stubClient({ docs: [rawDoc('d1', 'Alpha', 'hi')] }),
+      project: PROJECT,
+      preset: plainPreset(),
+      scope: { type: 'project' },
+    });
+    expect(result.filename).toBe('My Project Test-export.zip');
+  });
+
   it('pairs the flextext with the lexicon as LIFT', async () => {
     const docs = [rawDoc('d1', 'Flex', 'hi yo')];
     const client = stubClient({ docs });
@@ -340,6 +376,29 @@ describe('runExport', () => {
     preset.options.citationForms = false;
     await runExport({ client, project: PROJECT, preset, scope: { type: 'document', id: 'd1' } });
     expect(client.calls.filter(([m]) => m === 'vocabLayers.get')).toEqual([]);
+  });
+
+  // Reported by a user: changing a preset, then exporting one document from
+  // that same window, downloaded a file under the PROJECT's name. That window
+  // has no "This document" radio, so a single document is chosen by checking
+  // one under "Selected documents" — the same run, and it must be named the
+  // same way.
+  it('names a one-document selection after that document, not the project', async () => {
+    const docs = [rawDoc('d1', 'Alpha', 'hi yo'), rawDoc('d2', 'Beta', 'ba')];
+    const client = stubClient({ docs });
+    const preset = newPreset('flextext', discoverExportLayers(PROJECT), 'f');
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset,
+      scope: { type: 'documents', ids: ['d2'] },
+    });
+    expect(result.filename).toBe('Beta-flex.zip');
+    expect(Object.keys(await unzipBlob(result.blob)).sort()).toEqual([
+      'Beta.flextext',
+      'Beta.lift',
+      'README.txt',
+    ]);
   });
 
   it('folds every document of a project into ONE flextext', async () => {
