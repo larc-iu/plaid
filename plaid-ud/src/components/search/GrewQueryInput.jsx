@@ -1,11 +1,11 @@
-import Editor from 'react-simple-code-editor';
 import { Stack, Box, Group, Button, Alert, Code } from '@mantine/core';
 import { IconSearch, IconAlertTriangle } from '@tabler/icons-react';
 import { highlightGrew } from './grewSyntax.js';
+import { CodeEditor } from './CodeEditor.jsx';
 
-// The query editor: a syntax-highlighted code box (react-simple-code-editor +
-// our tolerant Grew highlighter) + Run, plus an inline error panel. Parse/
-// compile errors render here with a caret; server errors render as a message.
+// The query editor: a syntax-highlighted code box (CodeEditor + our tolerant
+// Grew highlighter) + Run, plus an inline error panel. Parse/compile errors
+// render here with a caret; server errors render as a message.
 export const GrewQueryInput = ({ value, onChange, onRun, running, error, action = 'Search' }) => {
   const onKeyDown = (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
@@ -25,14 +25,13 @@ export const GrewQueryInput = ({ value, onChange, onRun, running, error, action 
           maxHeight: 280,
         }}
       >
-        <Editor
+        <CodeEditor
           value={value}
           onValueChange={onChange}
           highlight={highlightGrew}
           onKeyDown={onKeyDown}
           padding={10}
           textareaId="grew-query"
-          insertSpaces={false}
           placeholder={'pattern { X [upos=VERB]; Y [upos=NOUN]; X -[nsubj]-> Y }'}
           spellCheck={false}
           style={{
