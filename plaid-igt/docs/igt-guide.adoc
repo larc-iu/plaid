@@ -109,7 +109,7 @@ Sorting by **Your last edit** is the quickest way back to what you were working 
 Once there are many, the list can be searched and paged.
 How a list is sorted is remembered for next time, and for the document list so is the page you were on, both per project.
 **New Document** creates an empty document and opens it on its Baseline tab.
-A document is renamed and deleted from its own Metadata tab.
+A document is renamed, copied, and deleted from its own Metadata tab.
 
 Each document is built up through a handful of activities, one per tab.
 The rest of this chapter walks through them in the order you would normally use them.
@@ -119,6 +119,9 @@ The rest of this chapter walks through them in the order you would normally use 
 The **Metadata** tab holds document-level fields such as the title, speaker, date, and notes.
 Which fields appear is configured per project (see <<_annotation>>), so a project records exactly the information its corpus needs.
 A metadata field can be held to a tagset, for example so that a genre is always one of a fixed set (see <<_tagsets>>).
+
+**Copy** makes a second document in the same project under a name you give it, holding the same text, annotations, vocabulary links, and recording.
+Comments are not copied.
 
 == Baseline
 
