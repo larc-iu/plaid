@@ -58,6 +58,8 @@ export const lexiconNames = (lexicon, fallback = 'Lexicon') => {
   return names;
 };
 
+const META_LANGUAGE_FIELDS = new Set(['Gloss', 'Translation', 'Note']);
+
 export function deriveSetupData(build, projectName, { vocabularyName = 'Lexicon' } = {}) {
   return {
     basicInfo: { projectName },
@@ -68,7 +70,17 @@ export function deriveSetupData(build, projectName, { vocabularyName = 'Lexicon'
       ],
     },
     fields: {
-      fields: build.schema.fields.map((f) => ({ name: f.name, scope: f.scope, isCustom: true })),
+      // The gloss, translation and comment fields are in the dataset's meta
+      // language by the format's own definition, and the unmarked one of
+      // several translations is the project's meta language (the others are
+      // named after theirs). Recorded, so the FLEx export tags them without
+      // anyone typing the code. A custom column's language is not known.
+      fields: build.schema.fields.map((f) => ({
+        name: f.name,
+        scope: f.scope,
+        lang: META_LANGUAGE_FIELDS.has(f.name) ? build.languages?.meta?.iso639P3 || null : null,
+        isCustom: true,
+      })),
     },
     vocabulary: {
       // One vocabulary per name the dataset gives its entries (our own export

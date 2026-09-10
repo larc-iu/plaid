@@ -38,18 +38,16 @@ const ITEM_SOURCE_KEY = 'nativeImportId';
 /** The setup-wizard input derived from an archive manifest. */
 export function deriveSetupData(manifest, projectName) {
   const schema = manifest.schema || {};
+  const field = (scope) => (f) => ({
+    name: f.name,
+    scope,
+    lang: f.lang ?? null,
+    isCustom: true,
+  });
   const fields = [
-    ...(schema.fields?.sentence || []).map((f) => ({
-      name: f.name,
-      scope: 'Sentence',
-      isCustom: true,
-    })),
-    ...(schema.fields?.word || []).map((f) => ({ name: f.name, scope: 'Word', isCustom: true })),
-    ...(schema.fields?.morpheme || []).map((f) => ({
-      name: f.name,
-      scope: 'Morpheme',
-      isCustom: true,
-    })),
+    ...(schema.fields?.sentence || []).map(field('Sentence')),
+    ...(schema.fields?.word || []).map(field('Word')),
+    ...(schema.fields?.morpheme || []).map(field('Morpheme')),
   ];
   const ignored = schema.ignoredTokens;
   return {

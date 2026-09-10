@@ -206,12 +206,26 @@ describe('deriveSetupData', () => {
     ]);
     expect(setup.fields.fields).toEqual(
       expect.arrayContaining([
-        { name: 'Translation', scope: 'Sentence', isCustom: true },
-        { name: 'POS', scope: 'Word', isCustom: true },
-        { name: 'Phrase', scope: 'Word', isCustom: true },
-        { name: 'Gloss', scope: 'Morpheme', isCustom: true },
+        { name: 'Translation', scope: 'Sentence', lang: null, isCustom: true },
+        { name: 'POS', scope: 'Word', lang: null, isCustom: true },
+        { name: 'Phrase', scope: 'Word', lang: null, isCustom: true },
+        { name: 'Gloss', scope: 'Morpheme', lang: null, isCustom: true },
       ]),
     );
+    // A field's recorded language comes back with it, for setup to stamp.
+    const labelled = {
+      ...manifest,
+      schema: {
+        ...manifest.schema,
+        fields: { ...manifest.schema.fields, sentence: [{ name: 'Translation', lang: 'pmy' }] },
+      },
+    };
+    expect(deriveSetupData(labelled, 'x').fields.fields).toContainEqual({
+      name: 'Translation',
+      scope: 'Sentence',
+      lang: 'pmy',
+      isCustom: true,
+    });
     expect(setup.fields.ignoredTokens).toBeUndefined(); // archive has null
     expect(setup.vocabulary.vocabularies).toEqual([
       { id: 'new-vocab1', name: 'Lex', enabled: true, isCustom: true },

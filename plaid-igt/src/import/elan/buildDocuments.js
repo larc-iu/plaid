@@ -601,6 +601,9 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
   return {
     documents,
     schema: {
+      // The writing system the transcription tier's name declares, when it
+      // does (`Transcription-txt-oni`): the language documented.
+      baselineLang: parseFlexTierName(nodeLabel(utteranceNodes[0]))?.ws ?? null,
       fields: dedupeFields([
         ...fieldsOf(sentFieldNodes, 'Sentence'),
         ...fieldsOf(wordFieldNodes, 'Word'),

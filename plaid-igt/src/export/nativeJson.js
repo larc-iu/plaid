@@ -29,6 +29,7 @@ import {
   readDocumentMetadata,
   IGT_NAMESPACE,
   readVocabFields,
+  readFieldLang,
 } from '../domain/igtConfig.js';
 import { readTagsetName } from '../domain/tagsets.js';
 import { normalizeVocabFields } from '../domain/vocabFields.js';
@@ -77,9 +78,17 @@ export function buildProjectFile({ project, documents, vocabularies, asOf = null
   const tagsetOf = new Map(
     allSpanLayers.map((sl) => [`${readScope(sl.config)}:${sl.name}`, readTagsetName(sl.config)]),
   );
+  // The language a field records (config.igt.lang) travels with it: a FLEx or
+  // ELAN import wrote it there, the FLEx and LIFT exports tag each field by
+  // it, and an archive that dropped it brought a project back mislabelling
+  // its glosses.
+  const langOf = new Map(
+    allSpanLayers.map((sl) => [`${readScope(sl.config)}:${sl.name}`, readFieldLang(sl.config)]),
+  );
   const fieldRow = (scope) => (name) => {
     const tagset = tagsetOf.get(`${scope}:${name}`);
-    return tagset ? { name, tagset } : { name };
+    const lang = langOf.get(`${scope}:${name}`);
+    return { name, ...(tagset ? { tagset } : {}), ...(lang ? { lang } : {}) };
   };
   // Project config this app owns, stored verbatim: defaults are the app's
   // business, not the archive's, so unset stays null.

@@ -23,9 +23,8 @@ import {
   findMorphemeTokenLayer,
   readScope,
   readVocabFields,
-  readLanguages,
-  hasLanguageIdentity,
 } from '../../domain/igtConfig.js';
+import { recordProjectLanguages } from '../projectLanguages.js';
 import { FIELD_SCOPES, FIELD_TYPES } from '../../domain/vocabFields.js';
 import { pickEn } from './fwdataParser.js';
 
@@ -827,27 +826,6 @@ export async function runImport(args) {
   return args.client.withOperation('Import FLEx project', () => runImportImpl(args));
 }
 
-// The project's two languages, from the backup's writing systems: the
-// vernacular is the language documented, the primary analysis one is what
-// glosses and translations are in. The FLEx export reads its defaults from
-// here, and without them offered `und` for the baseline and `en` for
-// analysis until the user typed the codes in (the first real user did, and
-// asked why Plaid could not see that the unmarked fields were Papuan Malay).
-// The writing-system tag goes in as the code verbatim, since that tag is what
-// FLEx wants back. A project that already names a language keeps it.
-async function recordLanguages(client, project, config) {
-  const current = readLanguages(project.config);
-  if (hasLanguageIdentity(current.object) || hasLanguageIdentity(current.meta)) return;
-  const object = config.baselineWs;
-  const meta = config.primaryAnalysisWs;
-  if (!object && !meta) return;
-  const empty = { name: '', glottocode: '', iso639P3: '', latitude: null, longitude: null };
-  await client.projects.setConfig(project.id, IGT_NAMESPACE, 'languages', {
-    object: { ...empty, ...(object ? { iso639P3: object } : {}) },
-    meta: { ...empty, ...(meta ? { iso639P3: meta } : {}) },
-  });
-}
-
 async function runImportImpl({
   client,
   projectId,
@@ -860,7 +838,10 @@ async function runImportImpl({
 }) {
   const project = await client.projects.get(projectId);
   const targets = resolveTargets(project, config);
-  await recordLanguages(client, project, config);
+  await recordProjectLanguages(client, project, {
+    object: config.baselineWs,
+    meta: config.primaryAnalysisWs,
+  });
   const orthographyNames = Object.fromEntries(
     (config.orthographies ?? []).map((o) => [o.ws ?? o.name, o.name]),
   );

@@ -62,7 +62,7 @@ the upload's media type is validated from its filename.
 | `asOf` | ISO timestamp when this is a historical (time-travel) export, else `null` |
 | `project` | `{id, name}` of the source project |
 | `schema.orthographies` | `[{name}]` — non-baseline orthographies on the word layer |
-| `schema.fields` | `{sentence, word, morpheme}` → `[{name, tagset?}]` annotation fields by scope. `tagset` names the tagset governing the field, and is absent when none does |
+| `schema.fields` | `{sentence, word, morpheme}` → `[{name, tagset?, lang?}]` annotation fields by scope. `tagset` names the tagset governing the field, and is absent when none does; `lang` is the writing system the field records its values are in (`config.igt.lang`), absent when it records none |
 | `schema.ignoredTokens` | the word layer's ignored-token config (`{type: 'unicodePunctuation', whitelist?}` or `{type: 'blacklist', blacklist}`), or `null` |
 | `schema.documentMetadata` | `[{name, tagset?}]` enabled document metadata fields, or `[]` |
 | `schema.autoAnalysis` | the project's stored auto-analysis config, `null` when unset |

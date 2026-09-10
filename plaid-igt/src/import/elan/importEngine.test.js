@@ -74,6 +74,8 @@ function stubClient({ documents = [], docMetadata = {}, docMedia = [] } = {}) {
     projects: {
       get: async () => PROJECT,
       listDocuments: async () => documents,
+      setConfig: async (projectId, ns, key, value) =>
+        calls.push(['projects.setConfig', projectId, ns, key, value]),
     },
     documents: {
       create: async (projectId, name, metadata) => {
@@ -408,6 +410,35 @@ describe('runElanImport', () => {
       expect(res).toMatchObject({ skipped: 1, recordingsAdded: 0 });
       expect(res.warnings.join(' ')).toMatch(/could not be added.*disk full/);
     });
+  });
+
+  // A corpus prepared for FieldWorks names its tiers `Transcription-txt-oni`
+  // and `Translation-gls-nl`, so the import knows both languages and the
+  // export screen should not start at `und` and `en`.
+  it("records the project's languages from what the tier names declare", async () => {
+    const client = stubClient();
+    const build = {
+      ...BUILD,
+      schema: {
+        ...BUILD.schema,
+        baselineLang: 'oni',
+        fields: [
+          { name: 'Translation', scope: 'Sentence', lang: 'pmy' },
+          { name: 'Gloss', scope: 'Morpheme', lang: 'pmy' },
+        ],
+      },
+    };
+    await runElanImport({ client, projectId: 'p1', build });
+    const call = client.calls.find(([m]) => m === 'projects.setConfig');
+    expect(call.slice(1, 4)).toEqual(['p1', 'igt', 'languages']);
+    expect(call[4].object.iso639P3).toBe('oni');
+    expect(call[4].meta.iso639P3).toBe('pmy');
+  });
+
+  it('records nothing when the tier names declare nothing', async () => {
+    const client = stubClient();
+    await runElanImport({ client, projectId: 'p1', build: BUILD });
+    expect(client.calls.some(([m]) => m === 'projects.setConfig')).toBe(false);
   });
 
   it('stops when asked', async () => {

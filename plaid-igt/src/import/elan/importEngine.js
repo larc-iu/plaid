@@ -21,6 +21,7 @@
 // rather than as plain text.
 
 import { ImportCancelled, importStamp, priorImports, settlePrior, unusedName } from '../resume.js';
+import { recordProjectLanguages } from '../projectLanguages.js';
 import {
   findBaselineTextLayer,
   findSentenceTokenLayer,
@@ -351,6 +352,15 @@ async function runElanImportImpl({
 }) {
   const project = await client.projects.get(projectId);
   const targets = resolveTargets(project, build);
+  // What the tier names declare: the transcription tier's writing system and,
+  // for glosses and translations, the unmarked Translation field's (the
+  // primary analysis language on our side), else the first sentence field
+  // that declares one.
+  const sentFields = build.schema.fields.filter((f) => f.scope === 'Sentence' && f.lang);
+  await recordProjectLanguages(client, project, {
+    object: build.schema.baselineLang ?? null,
+    meta: (sentFields.find((f) => f.name === 'Translation') ?? sentFields[0])?.lang ?? null,
+  });
   // Warnings are reported as they happen, not only in the tally at the end: a
   // long import is exactly when the user wants to see a problem while there is
   // still time to stop.

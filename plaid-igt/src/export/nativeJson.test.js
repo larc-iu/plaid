@@ -471,6 +471,20 @@ describe('buildProjectFile', () => {
     expect(out.schema.fields.sentence).toEqual([{ name: 'Translation' }]);
   });
 
+  it("carries each field's recorded language, on the field", () => {
+    // A FLEx or ELAN import records the writing system a field's values are
+    // in, and the FLEx and LIFT exports tag the field by it. The archive used
+    // to drop it, so a project came back mislabelling its glosses.
+    const project = buildProject();
+    const translation = project.textLayers
+      .flatMap((tl) => tl.tokenLayers || [])
+      .flatMap((tl) => tl.spanLayers || [])
+      .find((sl) => sl.name === 'Translation');
+    translation.config.igt.lang = 'pmy';
+    const out = buildProjectFile({ project, documents: [], vocabularies: [], exportedAt: 'x' });
+    expect(out.schema.fields.sentence).toEqual([{ name: 'Translation', lang: 'pmy' }]);
+  });
+
   it('passes through null autoAnalysis without baking defaults', () => {
     const project = buildProject();
     delete project.config.igt.autoAnalysis;

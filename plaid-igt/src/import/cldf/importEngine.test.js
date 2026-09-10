@@ -116,6 +116,21 @@ const callsOf = (client, kind) => client.calls.filter((c) => c.kind === kind);
 const tokenCalls = (client) => callsOf(client, 'tokens.bulkCreate').map((c) => c.args);
 
 describe('deriveSetupData', () => {
+  // The gloss and translation fields are in the dataset's meta language by
+  // definition; recorded, the FLEx export tags them without anyone typing.
+  it('records the meta language on the gloss, translation and comment fields', () => {
+    const build = { ...fixtureBuild(), languages: { object: {}, meta: { iso639P3: 'eng' } } };
+    const fields = deriveSetupData(build, 'x').fields.fields;
+    for (const f of fields) {
+      const expected = ['Gloss', 'Translation', 'Note'].includes(f.name) ? 'eng' : null;
+      expect([f.name, f.lang]).toEqual([f.name, expected]);
+    }
+    expect(fields.some((f) => f.lang === 'eng')).toBe(true);
+    // A dataset that names no meta language records none.
+    const unnamed = deriveSetupData({ ...fixtureBuild(), languages: {} }, 'x').fields.fields;
+    expect(unnamed.every((f) => f.lang === null)).toBe(true);
+  });
+
   it('turns the derived schema into setup-wizard input', () => {
     const setup = deriveSetupData(fixtureBuild(), 'My Corpus');
     expect(setup.basicInfo.projectName).toBe('My Corpus');
@@ -125,9 +140,9 @@ describe('deriveSetupData', () => {
     ]);
     expect(setup.fields.fields).toEqual(
       expect.arrayContaining([
-        { name: 'Translation', scope: 'Sentence', isCustom: true },
-        { name: 'Gloss', scope: 'Morpheme', isCustom: true },
-        { name: 'POS', scope: 'Word', isCustom: true },
+        expect.objectContaining({ name: 'Translation', scope: 'Sentence', isCustom: true }),
+        expect.objectContaining({ name: 'Gloss', scope: 'Morpheme', isCustom: true }),
+        expect.objectContaining({ name: 'POS', scope: 'Word', isCustom: true }),
       ]),
     );
     expect(setup.vocabulary.vocabularies).toHaveLength(1);
