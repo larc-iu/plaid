@@ -111,6 +111,21 @@ export const DocumentEditorShell = () => {
     }
   }, [projectId, doc, getClient, logout]);
 
+  // A save in flight lives only in this tab, so a reload or a tab close drops
+  // it silently. Warn while `_withSaving` holds the gate (the browser shows its
+  // own prompt). The handler reads the getter at fire time, so it never sees a
+  // stale flag.
+  useEffect(() => {
+    if (!doc) return;
+    const onBeforeUnload = (e) => {
+      if (!doc.isSaving) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [doc]);
+
   const wide = isWideRoute(pathname);
 
   return (
