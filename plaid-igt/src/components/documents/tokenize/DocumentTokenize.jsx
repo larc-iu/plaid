@@ -32,6 +32,52 @@ export function DocumentTokenize() {
   const [confirmClear, setConfirmClear] = useState(null);
   const confirm = useConfirm();
 
+  // Coming from the Analyze tab: land on the sentence whose cell was focused
+  // there and flash the word, the way Analyze lands on a word from here. The
+  // row may still be a lazy placeholder, so it is scrolled to first, which
+  // makes it render, and the word is looked for a frame later.
+  useEffect(() => {
+    let req = null;
+    try {
+      req = JSON.parse(sessionStorage.getItem('igt:focus-tokenize') || 'null');
+    } catch {
+      /* noop */
+    }
+    if (!req || req.docId !== doc.id) return undefined;
+    const row = document.querySelector(`.sentence-row[data-sentence-id="${req.sentenceId}"]`);
+    // The key goes only once the landing is done (or given up on): in
+    // development React runs a mount effect, cleans it up and runs it again,
+    // and a key taken on the first run would leave the second with nothing.
+    const done = () => sessionStorage.removeItem('igt:focus-tokenize');
+    if (!row) {
+      done();
+      return undefined;
+    }
+    row.scrollIntoView({ block: 'center' });
+    row.classList.add('sentence-flash');
+    // The row renders its words once it has been scrolled into view, a frame
+    // or two later, so the word is looked for until it is there.
+    let tries = 0;
+    const timers = [];
+    const flashWord = () => {
+      const word =
+        req.begin == null ? null : row.querySelector(`.token[data-begin="${req.begin}"]`);
+      if (word) word.classList.add('token-flash');
+      if (word || req.begin == null || tries++ >= 20) done();
+      else timers.push(setTimeout(flashWord, 50));
+    };
+    flashWord();
+    timers.push(
+      setTimeout(() => {
+        row.classList.remove('sentence-flash');
+        row.querySelector('.token-flash')?.classList.remove('token-flash');
+      }, 2500),
+    );
+    return () => timers.forEach(clearTimeout);
+    // Once, on mount: a later render must not re-read a key already consumed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // One sentence per segment: the sentence breaks follow the cuts made on the
   // Media tab. Splits only, and never through a word.
   const segmentSplits = splitPointsFromSegments({
@@ -183,7 +229,7 @@ export function DocumentTokenize() {
                     on token: Split sentence here
                   </div>
                   <div>
-                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Shift</kbd> +{' '}
+                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Alt</kbd> +{' '}
                     <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Left Click</kbd>{' '}
                     on token: Open it in Analyze
                   </div>
@@ -393,7 +439,7 @@ function SentenceComponent({ sentence, ops, index, drag, setDrag, dragRef, readO
     </div>
   );
   return (
-    <Lazy className="sentence-row" contentPreview={preview}>
+    <Lazy className="sentence-row" contentPreview={preview} data-sentence-id={sentence.id}>
       <div>
         {/* Sentence number */}
         <div className="text-xs text-muted-foreground sentence-number">{index + 1}</div>
@@ -465,11 +511,12 @@ function TokenComponent({
   const isSelected = isDraggingHere && drag.selectedTokenIds.has(piece.id);
 
   const handleClick = async (e) => {
-    // Shift+click: the same word on the Analyze tab. (A double-click could not
-    // do this: the first click replaces the word with the splitter and the
-    // second lands on that.) The word was recorded on mousedown, so all that
-    // is left is to go there. Works read-only too, since it changes nothing.
-    if (e.shiftKey) {
+    // Alt+click: the same word on the Analyze tab, where Alt+click on a word
+    // comes back here. (A double-click could not do this: the first click
+    // replaces the word with the splitter and the second lands on that.) The
+    // word was recorded on mousedown, so all that is left is to go there.
+    // Works read-only too, since it changes nothing.
+    if (e.altKey) {
       e.preventDefault();
       window.dispatchEvent(new CustomEvent('igt:navigate-tab', { detail: { tab: 'analyze' } }));
       return;
@@ -544,6 +591,7 @@ function TokenComponent({
       onMouseEnter={handleMouseEnter}
       onContextMenu={handleRightClick}
       className={`token ${isSelected ? 'token-selected' : ''} ${isDraggingHere ? 'token-dragging' : ''}`}
+      data-begin={piece.begin}
       style={{ cursor: readOnly ? 'default' : isDraggingHere ? 'grabbing' : 'pointer' }}
     >
       {piece.content}

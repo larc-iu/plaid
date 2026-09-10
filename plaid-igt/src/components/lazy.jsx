@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from 'react';
 
-export default function Lazy({ children, className, style, rootMargin, contentPreview }) {
+export default function Lazy({ children, className, style, rootMargin, contentPreview, ...rest }) {
   const [isVisible, setIsVisible] = useState(false);
   const ref = useRef(null);
 
@@ -29,7 +29,7 @@ export default function Lazy({ children, className, style, rootMargin, contentPr
   Object.assign(mergedStyle, style);
 
   return (
-    <div ref={ref} className={className} style={mergedStyle}>
+    <div ref={ref} className={className} style={mergedStyle} {...rest}>
       {isVisible ? children : contentPreview}
     </div>
   );

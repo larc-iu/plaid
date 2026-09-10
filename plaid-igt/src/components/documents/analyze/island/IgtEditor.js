@@ -1179,7 +1179,41 @@ export class IgtEditor {
   }
 
   // Shift+click (or any click while gathering) on a word's form.
+  // Where the Tokenize tab opens next: the sentence of the cell or word form
+  // just focused, and the word's start. Written under a key the Tokenize tab
+  // reads when it mounts, which a tab switch does, so the hand-off works by
+  // the tab as well as by Alt+click. The mirror of what Tokenize writes for
+  // this tab under `igt:focus-sentence`.
+  _rememberForTokenize(el) {
+    const sentenceId = el?.closest?.('.igt-sentence')?.dataset?.sentenceId;
+    if (!sentenceId) return;
+    const [kind, targetId] = (el.dataset?.cellKey || '').split(':');
+    const wordId =
+      el.dataset?.word ??
+      el.closest?.('[data-word-col]')?.dataset?.wordCol ??
+      (kind === 'wa' || kind === 'or' ? targetId : null);
+    const sentence = (this.doc.sentences || []).find((s) => s.id === sentenceId);
+    const begin = sentence?.tokens?.find((t) => t.id === wordId)?.begin ?? null;
+    try {
+      sessionStorage.setItem(
+        'igt:focus-tokenize',
+        JSON.stringify({ docId: this.doc.id, sentenceId, begin }),
+      );
+    } catch {
+      /* noop */
+    }
+  }
+
   _onWordFormClick(e, sentence, token) {
+    // Alt+click: this word on the Tokenize tab. (Shift+click gathers a
+    // multi-word expression, so it could not be the same key as over there.)
+    if (e.altKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      this._rememberForTokenize(e.currentTarget);
+      window.dispatchEvent(new CustomEvent('igt:navigate-tab', { detail: { tab: 'tokenize' } }));
+      return;
+    }
     if (!this._canLinkMwe()) return;
     const gathering = !!this._mweSel || !!this._openMwe();
     if (!e.shiftKey && !gathering) return;
@@ -1511,6 +1545,7 @@ export class IgtEditor {
 
   // ---- field event helpers ----
   _onFieldFocus = (e) => {
+    this._rememberForTokenize(e.target);
     e.target.dataset.orig = e.target.value;
     e.target.igtPick = null; // a pick belongs to the edit it was made in
     try {
@@ -3623,7 +3658,8 @@ export class IgtEditor {
           <span
             ><kbd>Enter</kbd>/<kbd>Tab</kbd> next cell in the same row · <kbd>⇧</kbd>+ previous ·
             <kbd>↑</kbd><kbd>↓</kbd> move rows · <kbd>←</kbd><kbd>→</kbd> move along the row from
-            the ends of a value · <kbd>Esc</kbd> cancel edit</span
+            the ends of a value · <kbd>Esc</kbd> cancel edit · <kbd>Alt</kbd>+click a word to open
+            it in Tokenize</span
           >
         </div>
         <div class="igt-legend__row">
@@ -4147,8 +4183,10 @@ export class IgtEditor {
             : ''} ${gathering ? 'igt-token-form--selectable' : ''}"
           title=${wpTitle}
           @mousedown=${(e) => {
-            // Shift+click gathers words; keep the browser from selecting text.
-            if (e.shiftKey) e.preventDefault();
+            // Shift+click gathers words and Alt+click leaves for Tokenize; keep
+            // the browser from selecting text under either.
+            if (e.shiftKey || e.altKey) e.preventDefault();
+            this._rememberForTokenize(e.currentTarget);
           }}
           @click=${(e) => this._onWordFormClick(e, sctx.sentence, token)}
         >
