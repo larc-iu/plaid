@@ -82,7 +82,8 @@ import { validateValue } from '@/domain/tagsets';
 import { TagsetField } from '@/components/shared/TagsetField.jsx';
 import { changedValuesAllowed } from '@/domain/tagsets';
 import { FormLabel } from './FormLabel';
-import { planItemConcordance, loadConcordanceGroups, sentenceTo } from './vocabConcordance';
+import { sentenceTo } from './vocabConcordance';
+import { useItemConcordance } from './useItemConcordance';
 import { serializeVocabTsv } from '@/export/vocabTsv';
 import { BulkAddDialog } from './BulkAddDialog';
 import { ReplaceDialog } from './ReplaceDialog';
@@ -229,19 +230,18 @@ export const VocabularyItems = ({
   const [replaceOpen, setReplaceOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  // Concordance for the selected item: a cheap plan (queries) + lazily-loaded,
-  // batched document groups that infinite-scroll.
-  const CONC_BATCH = 8;
-  const [concPlan, setConcPlan] = useState(null);
-  const [concGroups, setConcGroups] = useState([]);
-  const [concLoaded, setConcLoaded] = useState(0); // # of docs loaded so far
-  const [concLoading, setConcLoading] = useState(false); // plan + first batch
-  const [concLoadingMore, setConcLoadingMore] = useState(false);
-  const [concError, setConcError] = useState('');
-  const concReq = useRef(0);
-  const loadingMoreRef = useRef(false);
-  const sentinelRef = useRef(null);
-  const loadMoreRef = useRef(() => {});
+  // The open entry's concordance, loaded a batch at a time.
+  const {
+    concPlan,
+    concGroups,
+    concLoaded,
+    concLoading,
+    concLoadingMore,
+    concError,
+    concHasMore,
+    loadMore,
+    sentinelRef,
+  } = useItemConcordance({ client, vocabularyId, selectedId, skipId: NEW_ID });
 
   const fieldNames = useMemo(() => fields.map((f) => f.name), [fields]);
   const hasGloss = useMemo(() => fields.some((f) => f.name === 'gloss'), [fields]);
@@ -484,80 +484,6 @@ export const VocabularyItems = ({
     setEditForm(item.form);
     setEditFields(editableMetadata(item.metadata));
   }, [selectedId, newParent, items, tree]);
-
-  // Plan the concordance + load the first batch whenever a real item is selected.
-  useEffect(() => {
-    if (!selectedId || selectedId === NEW_ID) {
-      setConcPlan(null);
-      setConcGroups([]);
-      setConcLoaded(0);
-      setConcError('');
-      return;
-    }
-    const my = ++concReq.current;
-    loadingMoreRef.current = false;
-    setConcPlan(null);
-    setConcGroups([]);
-    setConcLoaded(0);
-    setConcError('');
-    setConcLoading(true);
-    planItemConcordance(client, vocabularyId, selectedId)
-      .then(async (plan) => {
-        if (concReq.current !== my) return;
-        setConcPlan(plan);
-        const first = plan.docs.slice(0, CONC_BATCH);
-        const groups = await loadConcordanceGroups(client, plan.hitIds, first);
-        if (concReq.current !== my) return;
-        setConcGroups(groups);
-        setConcLoaded(first.length);
-        setConcLoading(false);
-      })
-      .catch((err) => {
-        if (concReq.current !== my) return;
-        console.error('Concordance failed:', err);
-        setConcError('Could not load usage examples.');
-        setConcLoading(false);
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, vocabularyId]);
-
-  // Load the next batch of documents (called by the infinite-scroll sentinel or
-  // its Load-more button). A synchronous ref guards against double-firing.
-  const concHasMore = !!concPlan && concLoaded < concPlan.docs.length;
-  const loadMore = async () => {
-    if (!concPlan || loadingMoreRef.current || concLoaded >= concPlan.docs.length) return;
-    const my = concReq.current;
-    loadingMoreRef.current = true;
-    setConcLoadingMore(true);
-    try {
-      const next = concPlan.docs.slice(concLoaded, concLoaded + CONC_BATCH);
-      const groups = await loadConcordanceGroups(client, concPlan.hitIds, next);
-      if (concReq.current !== my) return;
-      setConcGroups((prev) => [...prev, ...groups]);
-      setConcLoaded((prev) => prev + next.length);
-    } catch (err) {
-      console.error('Load more concordance failed:', err);
-    } finally {
-      loadingMoreRef.current = false;
-      if (concReq.current === my) setConcLoadingMore(false);
-    }
-  };
-  loadMoreRef.current = loadMore;
-
-  // Auto-load more when the sentinel scrolls into view.
-  useEffect(() => {
-    if (!concHasMore) return undefined;
-    const el = sentinelRef.current;
-    if (!el) return undefined;
-    const obs = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) loadMoreRef.current();
-      },
-      { rootMargin: '300px' },
-    );
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, [concHasMore, concLoaded]);
 
   // Measure the pane's top (the two-pane row is normal-flow, so this is the
   // sticky pane's natural top) and cap the pane to reach the viewport bottom.
@@ -1641,7 +1567,7 @@ export const VocabularyItems = ({
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => loadMoreRef.current()}
+                              onClick={loadMore}
                               disabled={concLoadingMore}
                             >
                               {concLoadingMore
