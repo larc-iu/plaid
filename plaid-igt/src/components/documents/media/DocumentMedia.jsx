@@ -9,10 +9,12 @@ import { useServerLimits } from '@/hooks/useServerLimits';
 import { MediaUpload } from './MediaUpload.jsx';
 import { TranscribeDialog } from './TranscribeDialog.jsx';
 import { Button } from '@/components/ui/button';
+import { DeleteSegmentsDialog } from './DeleteSegmentsDialog.jsx';
 
 export function DocumentMedia() {
   const { doc, readOnly, canWrite, writeLock } = useDocumentCtx();
   useIgtDocument(doc);
+  const [deleteOpen, setDeleteOpen] = React.useState(false);
 
   // Use media operations hook
   const mediaOps = useMediaOperations();
@@ -59,7 +61,7 @@ export function DocumentMedia() {
               <TranscribeDialog mediaOps={mediaOps} readOnly={readOnly} />
               <Button
                 variant="outline"
-                onClick={mediaOps.handleClearAlignments}
+                onClick={() => setDeleteOpen(true)}
                 disabled={
                   mediaOps.isProcessing ||
                   mediaOps.isUploading ||
@@ -67,11 +69,17 @@ export function DocumentMedia() {
                   !mediaOps.alignmentTokens.length
                 }
               >
-                Clear segments
+                Delete segments
               </Button>
             </>
           )
         }
+      />
+      <DeleteSegmentsDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        doc={doc}
+        alignmentTokens={mediaOps.alignmentTokens}
       />
     </div>
   );

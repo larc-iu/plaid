@@ -55,47 +55,71 @@ export const sentenceMutations = {
   },
 
   async splitSentence(charPos) {
-    const info = this.layerInfo;
-    const sentenceTokens = info.sentenceTokenLayer?.tokens || [];
+    const containing = this._sentenceToSplitAt(charPos);
+    if (!containing) return false;
+    return this._withSaving('Failed to split sentence', () =>
+      this._splitSentenceOnce(containing, charPos),
+    );
+  },
+
+  // Split sentences at several positions in ONE operation, each split seen
+  // by the next: a later position inside a sentence an earlier one already
+  // split lands in the new right half, which the local patch has by then.
+  // Positions are taken in order and a position that no longer splits
+  // anything (a sentence already begins there) is passed over.
+  async splitSentencesAt(positions) {
+    const sorted = [...new Set(positions)].sort((a, b) => a - b);
+    if (!sorted.length) return false;
+    return this._withSaving('Failed to split sentences', async () => {
+      for (const charPos of sorted) {
+        const containing = this._sentenceToSplitAt(charPos, { quiet: true });
+        if (containing) await this._splitSentenceOnce(containing, charPos);
+      }
+    });
+  },
+
+  _sentenceToSplitAt(charPos, { quiet = false } = {}) {
+    const sentenceTokens = this.layerInfo.sentenceTokenLayer?.tokens || [];
     const containing = sentenceTokens.find((s) => s.begin <= charPos && charPos < s.end);
     if (!containing) {
-      this.setError('No sentence contains the split position');
-      return false;
+      if (!quiet) this.setError('No sentence contains the split position');
+      return null;
     }
     if (charPos === containing.begin) {
-      this.setError('Cannot split at the first character of a sentence');
-      return false;
+      if (!quiet) this.setError('Cannot split at the first character of a sentence');
+      return null;
+    }
+    return containing;
+  },
+
+  async _splitSentenceOnce(containing, charPos) {
+    const originalEnd = containing.end;
+    const result = await this._client.tokens.split(containing.id, charPos);
+    const newRightId = result?.id || result;
+
+    // Both halves of a split carry the same mark: see domain/tokenReshape.js.
+    const leftPatch = survivorPatch(containing.metadata, {}, (m) => this.editStamp(m));
+    const rightMetadata = newHalfMetadata(containing.metadata, (m) => this.editStamp(m));
+    if (leftPatch || (newRightId && rightMetadata)) {
+      await this._client.batched(async () => {
+        if (leftPatch) this._client.tokens.patchMetadata(containing.id, leftPatch);
+        if (newRightId && rightMetadata)
+          this._client.tokens.patchMetadata(newRightId, rightMetadata);
+      });
     }
 
-    return this._withSaving('Failed to split sentence', async () => {
-      const originalEnd = containing.end;
-      const result = await this._client.tokens.split(containing.id, charPos);
-      const newRightId = result?.id || result;
-
-      // Both halves of a split carry the same mark: see domain/tokenReshape.js.
-      const leftPatch = survivorPatch(containing.metadata, {}, (m) => this.editStamp(m));
-      const rightMetadata = newHalfMetadata(containing.metadata, (m) => this.editStamp(m));
-      if (leftPatch || (newRightId && rightMetadata)) {
-        await this._client.batched(async () => {
-          if (leftPatch) this._client.tokens.patchMetadata(containing.id, leftPatch);
-          if (newRightId && rightMetadata)
-            this._client.tokens.patchMetadata(newRightId, rightMetadata);
+    this._applyRawPatch((next, infoNext) => {
+      const tokens = infoNext.sentenceTokenLayer?.tokens;
+      if (!Array.isArray(tokens)) return;
+      const s = tokens.find((t) => t.id === containing.id);
+      if (s) s.end = charPos;
+      if (newRightId) {
+        tokens.push({
+          id: newRightId,
+          begin: charPos,
+          end: originalEnd,
         });
       }
-
-      this._applyRawPatch((next, infoNext) => {
-        const tokens = infoNext.sentenceTokenLayer?.tokens;
-        if (!Array.isArray(tokens)) return;
-        const s = tokens.find((t) => t.id === containing.id);
-        if (s) s.end = charPos;
-        if (newRightId) {
-          tokens.push({
-            id: newRightId,
-            begin: charPos,
-            end: originalEnd,
-          });
-        }
-      });
     });
   },
 

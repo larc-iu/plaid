@@ -745,6 +745,25 @@ describe('sentence boundary ops', () => {
     expect(ss[1].begin).toBe(4);
   });
 
+  // One sentence per segment asks for several splits at once. They are one
+  // operation, and each is made against the sentences the earlier ones left:
+  // the second cut here lands in the right half the first one created.
+  it('splitSentencesAt splits at every position in order, in one operation', async () => {
+    const doc = makeDoc({ raw: buildRawDoc({ body: 'the cat saw the dog' }) });
+    const before = doc.sentences[0].id;
+    expect(await doc.splitSentencesAt([12, 8, 8, 0])).toBe(true);
+    const splits = doc.client.calls.filter((c) => c.kind === 'tokens.split');
+    expect(splits.map((c) => c.args[1])).toEqual([8, 12]);
+    expect(splits[0].args[0]).toBe(before);
+    expect(splits[1].args[0]).not.toBe(before); // the new right half
+    expect(doc.sentences.map((s) => [s.begin, s.end])).toEqual([
+      [0, 8],
+      [8, 12],
+      [12, 19],
+    ]);
+    expect(await doc.splitSentencesAt([])).toBe(false);
+  });
+
   it('mergeSentence reparents the merged-away sentence spans onto prev', async () => {
     // Two sentences; a Translation annotation lives on the SECOND one. After
     // merging it into the first, the server reparents that span onto the
@@ -1185,6 +1204,40 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
     expect(ok).toBe(true);
     expect(kinds(doc.client)).toContain('texts.update'); // delete op on the body
     expect(doc.body).toBe('cat');
+  });
+
+  // A segment with no text has nothing for the text edit to delete, so the
+  // cascade the deletion used to rely on never ran and the segment stayed.
+  it('deleteAlignment with deleteText still deletes a segment that has no text', async () => {
+    const raw = buildRawDoc({
+      alignmentTokens: [
+        { id: 'a-1', text: 'text-1', begin: 3, end: 3, metadata: { timeBegin: 0, timeEnd: 1 } },
+      ],
+    });
+    const doc = makeDoc({ raw });
+    const ok = await doc.deleteAlignment('a-1', { deleteText: true });
+    expect(ok).toBe(true);
+    expect(kinds(doc.client)).toContain('tokens.delete');
+    expect(kinds(doc.client)).not.toContain('texts.update');
+    expect(doc.alignmentTokens).toEqual([]);
+    expect(doc.body).toBe('the cat');
+  });
+
+  it('deleteAlignments removes several segments in one request and leaves the text', async () => {
+    const raw = buildRawDoc({
+      alignmentTokens: [
+        { id: 'a-1', text: 'text-1', begin: 0, end: 3, metadata: { timeBegin: 0, timeEnd: 1 } },
+        { id: 'a-2', text: 'text-1', begin: 4, end: 4, metadata: { timeBegin: 1, timeEnd: 2 } },
+        { id: 'a-3', text: 'text-1', begin: 4, end: 7, metadata: { timeBegin: 2, timeEnd: 3 } },
+      ],
+    });
+    const doc = makeDoc({ raw });
+    expect(await doc.deleteAlignments(['a-2', 'a-3', 'nope'])).toBe(true);
+    const call = doc.client.calls.find((c) => c.kind === 'tokens.bulkDelete');
+    expect(call.args[0]).toEqual(['a-2', 'a-3']);
+    expect(doc.alignmentTokens.map((t) => t.id)).toEqual(['a-1']);
+    expect(doc.body).toBe('the cat');
+    expect(await doc.deleteAlignments(['nope'])).toBe(false);
   });
 
   it('deleteAlignment refuses an unknown segment', async () => {

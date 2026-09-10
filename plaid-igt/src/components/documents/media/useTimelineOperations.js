@@ -47,6 +47,29 @@ export const useTimelineOperations = (mediaOps) => {
     [mediaOps],
   );
 
+  // The zoom buttons, anchored the way ctrl+wheel is anchored on the pointer:
+  // on the playhead when it is on screen, since clicking a segment moves
+  // playback to it and that is the segment the person is looking at, else on
+  // the middle of the view. Without an anchor the scroll offset stayed put in
+  // pixels and the segment being worked on slid off the screen.
+  const zoomTo = useCallback(
+    (newPixelsPerSecond) => {
+      const container = timelineContainerRef.current;
+      const old = mediaOps.pixelsPerSecond;
+      if (container && old > 0) {
+        const width = container.clientWidth;
+        const needleX = (mediaOps.currentTime ?? 0) * old - container.scrollLeft;
+        const anchorX = needleX >= 0 && needleX <= width ? needleX : width / 2;
+        zoomAnchorRef.current = {
+          timeAtPointer: (container.scrollLeft + anchorX) / old,
+          pointerX: anchorX,
+        };
+      }
+      handlePixelsPerSecondChange(newPixelsPerSecond);
+    },
+    [mediaOps.pixelsPerSecond, mediaOps.currentTime, handlePixelsPerSecondChange],
+  );
+
   // Calculate visible tokens for virtualization
   const getVisibleTokens = useCallback(() => {
     if (!timelineContainerRef.current || !mediaOps.duration || mediaOps.pixelsPerSecond <= 0) {
@@ -477,6 +500,7 @@ export const useTimelineOperations = (mediaOps) => {
     handleMouseUp,
     handleResizeStart,
     handlePixelsPerSecondChange,
+    zoomTo,
     handleTimelineClick,
     handleSelectionCreate,
     handleAlignmentCreated,

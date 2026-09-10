@@ -157,6 +157,7 @@ export const useTokenOperations = () => {
   const cancelPendingStructural = () => setPendingStructural(null);
   const mergeSentence = (sentenceId) => run(() => doc.mergeSentence(sentenceId));
   const splitSentence = (charPos) => run(() => doc.splitSentence(charPos));
+  const splitSentencesAt = (positions) => run(() => doc.splitSentencesAt(positions));
 
   // Create a token from a DOM text selection inside an untokenized `piece`.
   // The Range math (mapping the selection to char offsets) must stay here since
@@ -340,6 +341,7 @@ export const useTokenOperations = () => {
     cancelPendingTokenize,
     mergeSentence,
     splitSentence,
+    splitSentencesAt,
     createTokenFromSelection,
     // tokenization
     handleTokenize,

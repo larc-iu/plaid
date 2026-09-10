@@ -507,13 +507,37 @@ export const alignmentMutations = {
     const keepSeparator = beforeText && afterText ? 1 : 0;
     const index = cpLength(beforeText) + keepSeparator;
     const numDeleted = cpLength(currentText) - cpLength(afterText) - index;
-    const textOps = [{ type: 'delete', index, value: numDeleted }];
+    const textOps = numDeleted > 0 ? [{ type: 'delete', index, value: numDeleted }] : [];
 
+    // The segment is deleted in its own right, then its text. It used to go
+    // through the text edit alone, on the strength of the server's cascade
+    // (a token inside a deleted stretch goes with it), which holds for a
+    // segment with text and fails for one with none: nothing to delete, no
+    // cascade, and the segment the person had just confirmed deleting was
+    // still there. The first real user found it on her empty segments.
     return this._withSaving('Failed to delete segment', async () => {
       this._applyRawPatch((next, infoNext, vocabs) => {
-        applyTextEditsLocally(next, textId, textOps, vocabs);
+        removeTokensLocally(next, textId, [alignmentId], vocabs);
+        if (textOps.length) applyTextEditsLocally(next, textId, textOps, vocabs);
       });
-      await this._client.texts.update(textId, textOps);
+      await this._client.tokens.delete(alignmentId);
+      if (textOps.length) await this._client.texts.update(textId, textOps);
+    });
+  },
+
+  // Delete several segments at once, times and speakers only: their text stays
+  // in the baseline. One operation, mirrored locally rather than reloaded.
+  async deleteAlignments(ids) {
+    const info = this.layerInfo;
+    const textId = info.primaryTextLayer?.text?.id;
+    const have = new Set((info.alignmentTokenLayer?.tokens || []).map((t) => t.id));
+    const wanted = [...new Set(ids)].filter((id) => have.has(id));
+    if (!textId || !wanted.length) return false;
+    return this._withSaving('Failed to delete segments', async () => {
+      this._applyRawPatch((next, infoNext, vocabs) => {
+        removeTokensLocally(next, textId, wanted, vocabs);
+      });
+      await this._client.tokens.bulkDelete(wanted);
     });
   },
 

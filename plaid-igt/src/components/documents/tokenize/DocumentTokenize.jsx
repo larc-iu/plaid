@@ -4,6 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { useTokenOperations } from './useTokenOperations.js';
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog';
+import { useConfirm } from '@/components/shared/ConfirmProvider';
+import { notifySuccess } from '@/utils/feedback';
+import { splitPointsFromSegments } from '@/domain/segments.js';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import { TokenizeDialog } from './TokenizeDialog.jsx';
@@ -27,6 +30,32 @@ export function DocumentTokenize() {
   const [helpOpen, setHelpOpen] = useState(false);
   // Which bulk clear is awaiting confirmation: 'tokens' | 'sentences' | null.
   const [confirmClear, setConfirmClear] = useState(null);
+  const confirm = useConfirm();
+
+  // One sentence per segment: the sentence breaks follow the cuts made on the
+  // Media tab. Splits only, and never through a word.
+  const segmentSplits = splitPointsFromSegments({
+    sentences: sentences || [],
+    words: (sentences || []).flatMap((s) => s.tokens || []),
+    alignments: doc.alignmentTokens || [],
+  });
+  const splitAtSegments = async () => {
+    const { positions, insideWord } = segmentSplits;
+    const n = positions.length;
+    const ok = await confirm({
+      title: 'Split sentences at segments?',
+      description:
+        `${n} sentence break${n === 1 ? '' : 's'} will be added where segments start.` +
+        (insideWord
+          ? ` ${insideWord} segment${insideWord === 1 ? ' starts' : 's start'} inside a word and ${insideWord === 1 ? 'is' : 'are'} left alone.`
+          : ''),
+      confirmLabel: 'Split sentences',
+    });
+    if (!ok) return;
+    if (await ops.splitSentencesAt(positions)) {
+      notifySuccess(`Added ${n} sentence break${n === 1 ? '' : 's'}`, 'Sentences split');
+    }
+  };
 
   const busy = ops.isTokenizing || ops.isProcessing || !!writeLock;
   // Why Tokenize cannot run, stated in the dialog rather than left to a
@@ -116,6 +145,13 @@ export function DocumentTokenize() {
                     }
                   >
                     Reset sentences
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={splitAtSegments}
+                    disabled={busy || !segmentSplits.positions.length}
+                  >
+                    Split at segments
                   </Button>
                 </div>
               )}

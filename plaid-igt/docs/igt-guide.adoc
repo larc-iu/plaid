@@ -222,7 +222,9 @@ Whichever runs, what comes back is proposals, kept the same way, and no segment 
 
 Transcription is a separate run, from the **Transcribe** button in the **Transcript** header: it writes segments and their text to the document, where detection only proposes times.
 Its segments are marked as machine-made until you edit or confirm them (see <<_services>>).
-**Clear segments** removes every segment and leaves the text in the baseline.
+**Delete segments**, beside it, removes segments in bulk: every segment, the segments with no text, or the segments whose text is a value you give.
+The count is shown before you confirm, and the text stays in the baseline whichever you choose.
+Deleting one segment from its row can also take its text with it, when you tick the box.
 
 == Tokenize
 
@@ -242,6 +244,8 @@ Or run a tokenizer over the whole document with **Tokenize**, in the **Tokens** 
 The built-in **Rule-based punctuation** splitter finds words and leaves sentence breaks as they are.
 A tokenization service can replace it with smarter segmentation of both sentences and words (see <<_services>>).
 **Clear tokens** and **Reset sentences**, beside it, start over.
+**Split at segments** adds a sentence break wherever a segment from the Media tab starts, so a recording cut into utterances becomes one sentence per utterance.
+It only adds breaks, never removes one, and a segment that starts inside a word is left alone.
 
 A project can mark certain tokens as **ignored**, usually punctuation.
 Ignored tokens carry no word-level annotation and host no morphemes, so they stay out of your way in the grid (see <<_annotation>>).

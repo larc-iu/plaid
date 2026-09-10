@@ -108,7 +108,6 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
     handleResizeStart,
     handleSelectionCreate,
     handleAlignmentCreated,
-    handlePixelsPerSecondChange,
     timelineRef,
     needleRef,
     timelineContainerRef,
@@ -117,7 +116,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
     TIMELINE_HEIGHT,
   } = timelineOps;
 
-  const onPixelsPerSecondChange = handlePixelsPerSecondChange;
+  const onPixelsPerSecondChange = timelineOps.zoomTo;
 
   // Register autoScrollToTime with mediaOps
   React.useEffect(() => {
