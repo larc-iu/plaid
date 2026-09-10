@@ -7,12 +7,24 @@
  */
 
 .igt-cmt {
+  /* The thread's palette, named once (Tailwind's names for Tailwind's
+     values). Defined here rather than on the Analyze island because a thread
+     also renders on the Comments tab, outside it. */
+  --cmt-gray-100: #f3f4f6;
+  --cmt-gray-200: #e5e7eb;
+  --cmt-gray-300: #d1d5db;
+  --cmt-gray-500: #6b7280;
+  --cmt-gray-600: #4b5563;
+  --cmt-gray-900: #111827;
+  --cmt-blue-700: #1d4ed8;
+  --cmt-red-50: #fef2f2;
+  --cmt-red-700: #b91c1c;
   display: flex;
   flex-direction: column;
   gap: 10px;
   font-size: 13px;
   line-height: 1.5;
-  color: #111827;
+  color: var(--cmt-gray-900);
   /* The in-grid popover renders inside a word's form band, which is italic,
      coloured for provenance, and `white-space: nowrap` so a word form never
      wraps. A comment is prose ABOUT the data, not part of it, so reset rather
@@ -68,8 +80,8 @@
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #e5e7eb;
-  color: #4b5563;
+  background: var(--cmt-gray-200);
+  color: var(--cmt-gray-600);
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -88,14 +100,14 @@
 
 .igt-cmt__you {
   font-weight: 400;
-  color: #6b7280;
+  color: var(--cmt-gray-500);
 }
 
 .igt-cmt__time,
 .igt-cmt__edited {
   flex: none;
   font-size: 11px;
-  color: #6b7280;
+  color: var(--cmt-gray-500);
 }
 
 .igt-cmt__edited {
@@ -121,14 +133,14 @@
 .igt-cmt__body code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.92em;
-  background: #f3f4f6;
+  background: var(--cmt-gray-100);
   padding: 0.1em 0.3em;
   border-radius: 3px;
 }
 .igt-cmt__body pre {
   margin: 0 0 6px;
   padding: 6px 8px;
-  background: #f3f4f6;
+  background: var(--cmt-gray-100);
   border-radius: 4px;
   overflow-x: auto;
 }
@@ -156,16 +168,16 @@
 .igt-cmt__body blockquote {
   margin: 0 0 6px;
   padding-left: 8px;
-  border-left: 2px solid #d1d5db;
-  color: #4b5563;
+  border-left: 2px solid var(--cmt-gray-300);
+  color: var(--cmt-gray-600);
 }
 .igt-cmt__body a {
-  color: #1d4ed8;
+  color: var(--cmt-blue-700);
 }
 
 .igt-cmt__empty {
   margin: 0;
-  color: #6b7280;
+  color: var(--cmt-gray-500);
   font-size: 12px;
 }
 
@@ -175,7 +187,7 @@
   display: flex;
   flex-direction: column;
   gap: 5px;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--cmt-gray-200);
   padding-top: 9px;
 }
 
@@ -185,7 +197,7 @@
   font: inherit;
   color: inherit;
   padding: 6px 8px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--cmt-gray-300);
   border-radius: 4px;
   background: #fff;
   resize: vertical;
@@ -244,20 +256,20 @@
   border: 0;
   border-radius: 4px;
   background: none;
-  color: #6b7280;
+  color: var(--cmt-gray-500);
   cursor: pointer;
 }
 .igt-cmt__icon:hover {
-  background: #f3f4f6;
-  color: #111827;
+  background: var(--cmt-gray-100);
+  color: var(--cmt-gray-900);
 }
 .igt-cmt__icon:focus-visible {
   outline: 2px solid var(--igt-blue, #2563eb);
   outline-offset: 1px;
 }
 .igt-cmt__icon--danger:hover {
-  background: #fef2f2;
-  color: #b91c1c;
+  background: var(--cmt-red-50);
+  color: var(--cmt-red-700);
 }
 
 .igt-cmt__btn {
@@ -266,7 +278,7 @@
   line-height: 1.4;
   padding: 3px 9px;
   border-radius: 4px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--cmt-gray-300);
   background: #fff;
   color: #374151;
   cursor: pointer;
@@ -292,12 +304,12 @@
   color: #fff;
 }
 .igt-cmt__btn--primary:hover:not(:disabled) {
-  background: #1d4ed8;
+  background: var(--cmt-blue-700);
 }
 
 .igt-cmt__btn--danger {
-  color: #b91c1c;
+  color: var(--cmt-red-700);
 }
 .igt-cmt__btn--danger:hover:not(:disabled) {
-  background: #fef2f2;
+  background: var(--cmt-red-50);
 }
