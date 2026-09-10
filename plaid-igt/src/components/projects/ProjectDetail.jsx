@@ -14,12 +14,24 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useAuth } from '../../contexts/AuthContext';
 import { DocumentList } from './DocumentList';
 import { ProjectSearch } from './search/ProjectSearch.jsx';
-import { ProjectBulkEdit } from './bulk/ProjectBulkEdit.jsx';
-import { ProjectValidation } from './validate/ProjectValidation.jsx';
-import { ProjectAssistant } from './assistant/ProjectAssistant.jsx';
-import { ProjectActivity } from './ProjectActivity.jsx';
-import { ProjectExport } from './ProjectExport.jsx';
 import { ProjectSettingsPanel } from './ProjectSettingsPanel';
+import { Suspended } from '@/components/shared/Suspended';
+import { lazyNamed } from '@/lib/lazyNamed';
+
+// The tabs a visit rarely opens ride in their own chunks: Bulk Edit,
+// Validation, Activity, the Assistant (and its markdown), and Export (and the
+// format writers). Documents, Search, and Settings load with the page.
+const ProjectBulkEdit = lazyNamed(() => import('./bulk/ProjectBulkEdit.jsx'), 'ProjectBulkEdit');
+const ProjectValidation = lazyNamed(
+  () => import('./validate/ProjectValidation.jsx'),
+  'ProjectValidation',
+);
+const ProjectAssistant = lazyNamed(
+  () => import('./assistant/ProjectAssistant.jsx'),
+  'ProjectAssistant',
+);
+const ProjectActivity = lazyNamed(() => import('./ProjectActivity.jsx'), 'ProjectActivity');
+const ProjectExport = lazyNamed(() => import('./ProjectExport.jsx'), 'ProjectExport');
 import { readInitialized, readImportState, importRouteFor } from '@/domain/igtConfig';
 import { isReviewed } from '@larc-iu/plaid-client';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
@@ -331,48 +343,58 @@ export const ProjectDetail = () => {
         </TabsContent>
         {canManage && (
           <TabsContent value="bulk">
-            <ProjectBulkEdit project={project} projectId={projectId} client={client} />
+            <Suspended>
+              <ProjectBulkEdit project={project} projectId={projectId} client={client} />
+            </Suspended>
           </TabsContent>
         )}
         {canManage && (
           <TabsContent value="validate">
-            <ProjectValidation
-              project={project}
-              projectId={projectId}
-              client={client}
-              onProjectUpdate={refreshProject}
-            />
+            <Suspended>
+              <ProjectValidation
+                project={project}
+                projectId={projectId}
+                client={client}
+                onProjectUpdate={refreshProject}
+              />
+            </Suspended>
           </TabsContent>
         )}
         {canManage && (
           <TabsContent value="activity">
             <div className="tw">
-              <ProjectActivity client={client} project={project} projectId={projectId} />
+              <Suspended>
+                <ProjectActivity client={client} project={project} projectId={projectId} />
+              </Suspended>
             </div>
           </TabsContent>
         )}
         <TabsContent value="assistant">
-          <ProjectAssistant
-            projectId={projectId}
-            projectName={project?.name}
-            client={client}
-            userId={user?.id}
-            canWrite={canWrite}
-            contributor={
-              !!project && !!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin })
-            }
-          />
+          <Suspended>
+            <ProjectAssistant
+              projectId={projectId}
+              projectName={project?.name}
+              client={client}
+              userId={user?.id}
+              canWrite={canWrite}
+              contributor={
+                !!project && !!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin })
+              }
+            />
+          </Suspended>
         </TabsContent>
         <TabsContent value="export">
-          <ProjectExport
-            project={project}
-            projectId={projectId}
-            client={client}
-            documents={documents}
-            canManage={canManage}
-            presetId={presetId}
-            onProjectUpdate={refreshProject}
-          />
+          <Suspended>
+            <ProjectExport
+              project={project}
+              projectId={projectId}
+              client={client}
+              documents={documents}
+              canManage={canManage}
+              presetId={presetId}
+              onProjectUpdate={refreshProject}
+            />
+          </Suspended>
         </TabsContent>
         {canManage && (
           <TabsContent value="settings">

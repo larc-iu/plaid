@@ -16,9 +16,14 @@ import { HistoryDrawer } from './HistoryDrawer.jsx';
 import { RestoreDialog } from './RestoreDialog.jsx';
 import { DocumentMetadata } from './metadata/DocumentMetadata.jsx';
 import { DocumentBaseline } from './baseline/DocumentBaseline.jsx';
-import { DocumentMedia } from './media/DocumentMedia.jsx';
 import { AnalyzeIsland } from './analyze/AnalyzeIsland.jsx';
-import { CommentsTab } from './comments/CommentsTab.jsx';
+import { Suspended } from '@/components/shared/Suspended';
+import { lazyNamed } from '@/lib/lazyNamed';
+
+// The Media tab (the timeline, waveform, speech detection, and recording
+// conversion) and the Comments tab ride in their own chunks.
+const DocumentMedia = lazyNamed(() => import('./media/DocumentMedia.jsx'), 'DocumentMedia');
+const CommentsTab = lazyNamed(() => import('./comments/CommentsTab.jsx'), 'CommentsTab');
 import { CommentStore } from '@/domain/CommentStore';
 import { useCommentStore } from '@/domain/useCommentStore';
 import { useDocumentPermissions } from './hooks/useDocumentPermissions.js';
@@ -686,7 +691,9 @@ const DocumentEditor = () => {
                 </TabsContent>
                 <TabsContent value="media">
                   <Panel active={activeTab === 'media'}>
-                    <DocumentMedia />
+                    <Suspended>
+                      <DocumentMedia />
+                    </Suspended>
                   </Panel>
                 </TabsContent>
                 <TabsContent value="tokenize">
@@ -718,7 +725,9 @@ const DocumentEditor = () => {
                         past state. Return to the current version to read or add them.
                       </p>
                     ) : (
-                      <CommentsTab />
+                      <Suspended>
+                        <CommentsTab />
+                      </Suspended>
                     )}
                   </Panel>
                 </TabsContent>
