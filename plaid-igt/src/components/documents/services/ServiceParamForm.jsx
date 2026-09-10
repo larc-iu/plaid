@@ -1,15 +1,15 @@
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Switch } from '@/components/ui/switch';
-import { Textarea } from '@/components/ui/textarea';
-import { Slider } from '@/components/ui/slider';
+import { Label } from '@ui/components/ui/label';
+import { Input } from '@ui/components/ui/input';
+import { Switch } from '@ui/components/ui/switch';
+import { Textarea } from '@ui/components/ui/textarea';
+import { Slider } from '@ui/components/ui/slider';
 import {
   Select,
   SelectTrigger,
   SelectValue,
   SelectContent,
   SelectItem,
-} from '@/components/ui/select';
+} from '@ui/components/ui/select';
 
 // Renders a service's declared parameter schema as a form. Each field reports
 // edits via onChange(key, value); the parent holds the values + validation

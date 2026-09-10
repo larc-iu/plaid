@@ -31,6 +31,16 @@ export default defineConfig(({ command }) => ({
       // `@/…` for first-party modules, matching plaid-igt and plaid-dict so a
       // component can move between the apps and the shared package unedited.
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      // The shared UI package, reached THROUGH the node_modules symlink npm
+      // makes for `file:../plaid-ui` rather than at ../plaid-ui/src. Its own
+      // bare imports (react, lucide-react, the Radix primitives) resolve by
+      // walking up from the importing file; ../plaid-ui has only lint tooling
+      // of its own, so with `preserveSymlinks` on the walk carries on into THIS
+      // app's node_modules and the package is compiled against the versions
+      // this app ships. The alias is what keeps it first-party: a bare
+      // `@larc-iu/plaid-ui` specifier would go through the dep optimizer and
+      // pick up the immutable `?v=` cache described below.
+      '@ui': fileURLToPath(new URL('./node_modules/@larc-iu/plaid-ui/src', import.meta.url)),
       // `plaid-client` is a local source package (../plaid-client-js) that we
       // edit constantly. Reaching it through the node_modules symlink makes
       // Vite treat it as a DEPENDENCY: the import URL gets the dep optimizer's
@@ -56,7 +66,7 @@ export default defineConfig(({ command }) => ({
   // is what actually fixes the stale-module problem (see the comment there);
   // exclusion alone was tried first and was NOT sufficient.
   optimizeDeps: {
-    exclude: ['@larc-iu/plaid-client'],
+    exclude: ['@larc-iu/plaid-client', '@larc-iu/plaid-ui'],
   },
   server: {
     port: 5173,
@@ -68,7 +78,10 @@ export default defineConfig(({ command }) => ({
     // symlinked local source package we actively edit during the SQL port.
     // Un-ignore it so saves there trigger HMR like first-party files.
     watch: {
-      ignored: ['!**/node_modules/@larc-iu/plaid-client/**'],
+      ignored: [
+        '!**/node_modules/@larc-iu/plaid-client/**',
+        '!**/node_modules/@larc-iu/plaid-ui/**',
+      ],
     },
     proxy: {
       '/api': {

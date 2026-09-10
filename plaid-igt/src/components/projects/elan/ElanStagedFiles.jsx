@@ -8,8 +8,8 @@
 // where anything that needs saying gets said.
 
 import { AudioLines, FileText, Film, Plus, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
+import { Button } from '@ui/components/ui/button';
+import { Progress } from '@ui/components/ui/progress';
 import { formatBytes } from '@/utils/formatBytes';
 import { conversionNeed, conversionNote, estimateMp3Bytes } from '@/domain/media/transcodeToMp3';
 import { Panel } from '../ImportPanels.jsx';

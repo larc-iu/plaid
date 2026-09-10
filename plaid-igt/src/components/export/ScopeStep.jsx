@@ -1,5 +1,5 @@
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
+import { Label } from '@ui/components/ui/label';
+import { Switch } from '@ui/components/ui/switch';
 
 // Step 3: what to export. Scope is a run-time choice, never part of the
 // preset; includeVocabularies IS preset state (it shapes the archive).

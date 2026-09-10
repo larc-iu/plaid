@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { ListHint } from '@/components/ui/list-search';
-import { DataTable } from '@/components/ui/data-table';
-import { timeAgo, fullTimestamp } from '@/utils/formatTime';
+import { Button } from '@ui/components/ui/button';
+import { ListHint } from '@ui/components/ui/list-search';
+import { DataTable } from '@ui/components/ui/data-table';
+import { timeAgo, fullTimestamp } from '@ui/utils/formatTime';
 import { notifyError } from '@/utils/feedback';
 
 // A paged audit feed. `fetchPage({cursor, limit})` returns the server's

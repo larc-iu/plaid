@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import React from 'react';
-import { renderComponent } from '../../../test/renderComponent.jsx';
+import { renderComponent } from '@ui/test/renderComponent.jsx';
 import { useThrottledValue } from './useThrottledValue.js';
 
 function Clock({ value, bypass }) {

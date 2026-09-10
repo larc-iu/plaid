@@ -15,6 +15,7 @@ export default defineConfig({
     preserveSymlinks: true,
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      '@ui': fileURLToPath(new URL('./node_modules/@larc-iu/plaid-ui/src', import.meta.url)),
       // Straight to the source, matching vite.config.js — see the long note
       // there about the dep optimizer's immutable `?v=` cache.
       '@larc-iu/plaid-client': fileURLToPath(
@@ -25,7 +26,23 @@ export default defineConfig({
   test: {
     environment: 'happy-dom',
     globals: true,
-    include: ['src/**/*.{test,spec}.{js,jsx}'],
-    exclude: ['node_modules', 'dist', 'e2e'],
+    // The shared package's tests run here, not under every app: they need a
+    // React and a happy-dom, and three runs would learn the same thing three
+    // times. See ../plaid-ui/README.md.
+    include: [
+      'src/**/*.{test,spec}.{js,jsx}',
+      // Through the symlink, not ../plaid-ui/src: a test file collected at its
+      // real path resolves its own bare imports from ../plaid-ui, which has no
+      // node_modules.
+      'node_modules/@larc-iu/plaid-ui/src/**/*.{test,spec}.{js,jsx}',
+    ],
+    exclude: ['dist', 'e2e', 'node_modules/.*', 'node_modules/[^@]*', 'node_modules/@[^l]*'],
+    server: {
+      // A path under node_modules is externalized by default and handed to
+      // node's own loader, which resolves the symlink back to ../plaid-ui and
+      // then cannot find `marked`. Inlined, Vite transforms it and resolves its
+      // imports with `preserveSymlinks`, which keeps the walk inside this app.
+      deps: { inline: [/@larc-iu\/plaid-ui/] },
+    },
   },
 });

@@ -1,5 +1,5 @@
 import React from 'react';
-import { cn } from '@/lib/utils';
+import { cn } from '@ui/lib/utils';
 
 // The Media tab's "?" legend, the counterpart of the Analyze grid's: every
 // gesture the tab answers to, in one place, so nobody has to open the guide to

@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react';
 import { X, History, ChevronRight } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
+import { Button } from '@ui/components/ui/button';
+import { Badge } from '@ui/components/ui/badge';
+import { cn } from '@ui/lib/utils';
 
 // The audit log arrives already folded into logical units by the server: a
 // labeled operation ("Merge morphemes"), else an atomic batch, else a lone

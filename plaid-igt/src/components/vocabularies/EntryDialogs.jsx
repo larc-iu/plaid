@@ -7,7 +7,7 @@ import {
   AlertDialogTitle,
   AlertDialogAction,
   AlertDialogCancel,
-} from '@/components/ui/alert-dialog';
+} from '@ui/components/ui/alert-dialog';
 
 // The two confirmations the screen asks: deleting the open entry, and leaving
 // a draft with unsaved edits. Which one is open is the reducer's `dialog`;

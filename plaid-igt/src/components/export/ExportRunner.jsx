@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Download, Settings } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
+import { Button } from '@ui/components/ui/button';
+import { Label } from '@ui/components/ui/label';
 import { notifySuccess, notifyError, notifyWarning } from '@/utils/feedback';
 import { readExportPresets, EXPORT_FORMATS } from '@/export/presets';
 import { runExport, ExportCancelled } from '@/export/runExport';

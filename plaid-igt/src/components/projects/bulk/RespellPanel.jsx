@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { Button } from '@ui/components/ui/button';
+import { cn } from '@ui/lib/utils';
 import { notifySuccess } from '@/utils/feedback';
 import { buildReplacer, chainText } from './bulkPlan.js';
 import { planRespell, applyRespell } from './bulkRunner.js';

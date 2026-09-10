@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog';
-import { Input } from '@/components/ui/input';
+import { ConfirmDeleteDialog } from '@ui/components/shared/ConfirmDeleteDialog';
+import { Input } from '@ui/components/ui/input';
 import { notifySuccess } from '@/utils/feedback';
 import { segmentsWithText } from '@/domain/segments.js';
 

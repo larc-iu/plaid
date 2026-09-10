@@ -5,24 +5,24 @@
 import { useEffect, useMemo, useState } from 'react';
 import { FormLabel } from './FormLabel';
 import { ArrowRight } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Button } from '@ui/components/ui/button';
+import { Input } from '@ui/components/ui/input';
+import { Label } from '@ui/components/ui/label';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from '@/components/ui/dialog';
+} from '@ui/components/ui/dialog';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { cn } from '@/lib/utils';
+} from '@ui/components/ui/select';
+import { cn } from '@ui/lib/utils';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { humanizeFieldName, FIELD_TYPES } from '@/domain/vocabFields';
 import { buildReplacer, MATCH_EMPTY } from '@/domain/replacer';

@@ -1,13 +1,13 @@
 import { useId } from 'react';
-import { Input } from '@/components/ui/input';
+import { Input } from '@ui/components/ui/input';
 import {
   Select,
   SelectTrigger,
   SelectValue,
   SelectContent,
   SelectItem,
-} from '@/components/ui/select';
-import { cn } from '@/lib/utils';
+} from '@ui/components/ui/select';
+import { cn } from '@ui/lib/utils';
 import { MODES, sortedValues, validateValue } from '@/domain/tagsets';
 
 // One form input governed by a tagset, if its field has one: a document

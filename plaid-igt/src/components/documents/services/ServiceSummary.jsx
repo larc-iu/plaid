@@ -1,7 +1,7 @@
 import { Info } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
-import { SafeMarkdown } from '@/components/ui/markdown';
+import { Button } from '@ui/components/ui/button';
+import { Popover, PopoverTrigger, PopoverContent } from '@ui/components/ui/popover';
+import { SafeMarkdown } from '@ui/components/ui/markdown';
 import { getServiceSummary } from '@larc-iu/plaid-client';
 
 // Info popover showing a service's self-provided summary (markdown via

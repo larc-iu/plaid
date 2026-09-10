@@ -7,8 +7,8 @@
 
 import { useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Button } from '@ui/components/ui/button';
+import { Input } from '@ui/components/ui/input';
 import {
   Select,
   SelectTrigger,
@@ -17,7 +17,7 @@ import {
   SelectGroup,
   SelectItem,
   SelectLabel,
-} from '@/components/ui/select';
+} from '@ui/components/ui/select';
 import { NAMED_ROLES, nodeLabel, ROLES } from '@/import/elan/schema';
 import { Panel } from '../ImportPanels.jsx';
 

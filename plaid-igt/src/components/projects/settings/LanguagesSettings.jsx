@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Button } from '@ui/components/ui/button';
+import { Input } from '@ui/components/ui/input';
+import { Label } from '@ui/components/ui/label';
 import { notifyError } from '@/utils/feedback';
 import { readLanguages, IGT_NAMESPACE } from '@/domain/igtConfig';
 import { isLangTag } from '@/domain/fieldNames';

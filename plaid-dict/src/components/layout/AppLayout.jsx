@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { LogOut } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { Button } from '@/components/ui/button';
+import { Button } from '@ui/components/ui/button';
 
 // The chrome around every screen. The dictionary pages themselves set their own
 // wider or narrower measure inside `children`.

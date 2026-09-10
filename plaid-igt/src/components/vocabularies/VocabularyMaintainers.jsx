@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Trash2, AlertTriangle, Plus } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { SearchInput, ListHint } from '@/components/ui/list-search';
-import { UserAvatar } from '@/components/shared/UserAvatar';
+import { Button } from '@ui/components/ui/button';
+import { Badge } from '@ui/components/ui/badge';
+import { SearchInput, ListHint } from '@ui/components/ui/list-search';
+import { UserAvatar } from '@ui/components/shared/UserAvatar';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useUserSearch } from '@/hooks/useUserSearch';
 import { UserSearch } from '@/components/shared/UserSearch';

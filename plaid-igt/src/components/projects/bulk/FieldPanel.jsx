@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Replace } from 'lucide-react';
-import { Label } from '@/components/ui/label';
-import { Button } from '@/components/ui/button';
+import { Label } from '@ui/components/ui/label';
+import { Button } from '@ui/components/ui/button';
 import {
   Select,
   SelectTrigger,
@@ -10,7 +10,7 @@ import {
   SelectItem,
   SelectGroup,
   SelectLabel,
-} from '@/components/ui/select';
+} from '@ui/components/ui/select';
 import { notifySuccess } from '@/utils/feedback';
 import { isValueAllowed, readTagsetName, resolveTagset, tagsetEnforces } from '@/domain/tagsets';
 import { searchDomains } from '../search/searchQueries.js';

@@ -6,7 +6,8 @@
 // Screens get their own tests as they migrate in 0.3 to 0.5.
 import { describe, it, expect } from 'vitest';
 import { MantineProvider } from '@mantine/core';
-import { renderComponent, texts } from '@/test/renderComponent.jsx';
+import { renderComponent, texts } from '@ui/test/renderComponent.jsx';
+import { Button } from '@ui/components/ui/button.jsx';
 import { EntityAvatar } from '@/components/common/EntityAvatar.jsx';
 import { PROVENANCE_KEYS } from '@larc-iu/plaid-client';
 
@@ -49,5 +50,18 @@ describe('the component-test harness', () => {
 
   it('resolves the plaid-client alias', () => {
     expect(PROVENANCE_KEYS).toBeTruthy();
+  });
+
+  // The shared package resolves through a node_modules symlink, and its own
+  // bare imports (react, class-variance-authority) have to land in THIS app's
+  // node_modules. A wrong alias fails to resolve rather than failing an
+  // assertion, which is why this renders one of its components rather than
+  // importing a constant.
+  it('renders a component from plaid-ui', async () => {
+    const view = await renderComponent(<Button variant="secondary">Save</Button>);
+    const button = view.container.querySelector('button');
+    expect(button.textContent).toBe('Save');
+    expect(button.className).toContain('bg-secondary');
+    await view.unmount();
   });
 });

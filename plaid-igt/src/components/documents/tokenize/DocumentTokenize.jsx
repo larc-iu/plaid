@@ -1,10 +1,15 @@
 import { useEffect, useState, useRef } from 'react';
 import { Info, ChevronUp, Scissors, HelpCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
+import { Button } from '@ui/components/ui/button';
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from '@ui/components/ui/tooltip';
 import { useTokenOperations } from './useTokenOperations.js';
-import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog';
-import { useConfirm } from '@/components/shared/ConfirmProvider';
+import { ConfirmDeleteDialog } from '@ui/components/shared/ConfirmDeleteDialog';
+import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { notifySuccess } from '@/utils/feedback';
 import { splitPointsFromSegments } from '@/domain/segments.js';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';

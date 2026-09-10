@@ -6,7 +6,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from '@ui/components/ui/select';
 import { findBaselineTextLayer } from '@/domain/igtConfig';
 
 // When initializing an EXISTING project, the only thing a user might need to

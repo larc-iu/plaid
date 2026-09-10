@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, X, RefreshCw, Play } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { Button } from '@ui/components/ui/button';
+import { Badge } from '@ui/components/ui/badge';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { executeProjectSetup } from './executeSetup';
 

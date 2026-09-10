@@ -1,8 +1,13 @@
 import React from 'react';
 import { cpSlice } from '@larc-iu/plaid-client';
 import { ZoomIn, ZoomOut, Play } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
+import { Button } from '@ui/components/ui/button';
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from '@ui/components/ui/tooltip';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useTimelineOperations } from './useTimelineOperations.js';
 import { TimeAlignmentPopover } from './TimeAlignmentPopover.jsx';

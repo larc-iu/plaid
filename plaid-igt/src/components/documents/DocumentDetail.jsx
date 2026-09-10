@@ -8,8 +8,8 @@ import { formatFindingsForClipboard } from '../../domain/validate.js';
 import { readInitialized, readImportState, importRouteFor } from '@/domain/igtConfig';
 import { notifyError, toast, humanizeError } from '@/utils/feedback';
 import { History, FileText, Type, Mic, Play, Table, Download, MessageSquare } from 'lucide-react';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Button } from '@/components/ui/button';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@ui/components/ui/tabs';
+import { Button } from '@ui/components/ui/button';
 import { ExportRunner } from '@/components/export/ExportRunner.jsx';
 import { DocumentTokenize } from './tokenize/DocumentTokenize.jsx';
 import { HistoryDrawer } from './HistoryDrawer.jsx';
@@ -17,8 +17,8 @@ import { RestoreDialog } from './RestoreDialog.jsx';
 import { DocumentMetadata } from './metadata/DocumentMetadata.jsx';
 import { DocumentBaseline } from './baseline/DocumentBaseline.jsx';
 import { AnalyzeIsland } from './analyze/AnalyzeIsland.jsx';
-import { Suspended } from '@/components/shared/Suspended';
-import { lazyNamed } from '@/lib/lazyNamed';
+import { Suspended } from '@ui/components/shared/Suspended';
+import { lazyNamed } from '@ui/lib/lazyNamed';
 
 // The Media tab (the timeline, waveform, speech detection, and recording
 // conversion) and the Comments tab ride in their own chunks.

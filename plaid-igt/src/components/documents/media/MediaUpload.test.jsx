@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
-import { renderComponent, all } from '../../../test/renderComponent.jsx';
+import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 import { MediaUpload } from './MediaUpload.jsx';
 
 // The upload card shows the upload: the bytes as a bar with a count while

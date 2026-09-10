@@ -1,8 +1,8 @@
 import { Fragment, useMemo, useState } from 'react';
 import { RotateCcw, Check, X, Loader2, ChevronDown } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
+import { Button } from '@ui/components/ui/button';
+import { Badge } from '@ui/components/ui/badge';
+import { cn } from '@ui/lib/utils';
 import {
   ROWS_COLLAPSED,
   changeHref,

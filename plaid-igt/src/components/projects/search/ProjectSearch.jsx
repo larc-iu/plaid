@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FileText } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { SearchInput, ListHint } from '@/components/ui/list-search';
-import { DataTable } from '@/components/ui/data-table';
+import { Button } from '@ui/components/ui/button';
+import { SearchInput, ListHint } from '@ui/components/ui/list-search';
+import { DataTable } from '@ui/components/ui/data-table';
 import {
   Select,
   SelectTrigger,
@@ -12,8 +12,8 @@ import {
   SelectItem,
   SelectGroup,
   SelectLabel,
-} from '@/components/ui/select';
-import { cn } from '@/lib/utils';
+} from '@ui/components/ui/select';
+import { cn } from '@ui/lib/utils';
 import { notifyError, humanizeError } from '@/utils/feedback';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { MATCH_TYPES, searchDomains } from './searchQueries.js';

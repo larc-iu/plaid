@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { DataTable } from '@/components/ui/data-table';
-import { UserAvatar } from '@/components/shared/UserAvatar';
-import { timeAgo, fullTimestamp } from '@/utils/formatTime';
+import { Button } from '@ui/components/ui/button';
+import { DataTable } from '@ui/components/ui/data-table';
+import { UserAvatar } from '@ui/components/shared/UserAvatar';
+import { timeAgo, fullTimestamp } from '@ui/utils/formatTime';
 import { notifyError } from '@/utils/feedback';
 import { AuditFeed } from './AuditFeed';
 

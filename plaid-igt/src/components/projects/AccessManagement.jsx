@@ -1,24 +1,24 @@
 import { useState, useEffect, useRef } from 'react';
 import { UserPlus, Plus, MoreVertical } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { SearchInput, ListHint } from '@/components/ui/list-search';
-import { DataTable } from '@/components/ui/data-table';
+import { Button } from '@ui/components/ui/button';
+import { SearchInput, ListHint } from '@ui/components/ui/list-search';
+import { DataTable } from '@ui/components/ui/data-table';
 import {
   Select,
   SelectTrigger,
   SelectValue,
   SelectContent,
   SelectItem,
-} from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import { UserAvatar } from '@/components/shared/UserAvatar';
+} from '@ui/components/ui/select';
+import { Badge } from '@ui/components/ui/badge';
+import { UserAvatar } from '@ui/components/shared/UserAvatar';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-} from '@/components/ui/dropdown-menu';
+} from '@ui/components/ui/dropdown-menu';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { ProjectInvites } from './ProjectInvites';
 import { useUserAdmin } from '../admin/useUserAdmin';

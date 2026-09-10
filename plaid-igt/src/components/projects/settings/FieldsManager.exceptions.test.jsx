@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { renderComponent, all } from '@/test/renderComponent';
+import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 import { FieldsManager } from './FieldsManager';
 
 // The exceptions list is what makes a character behave as a letter: it is read

@@ -71,6 +71,12 @@
 ;; Apps whose own `npm test` is part of the gate, in the order they fail fastest.
 (def ^:private js-suites ["plaid-ud" "plaid-igt" "plaid-dict"])
 
+;; The shared UI package. Source-only: the apps compile it, so it has no build
+;; and no test run of its own — its component tests run under plaid-igt's
+;; vitest, which has the React and the happy-dom (see plaid-ui/README.md). What
+;; it does own is a lint gate, and its install has to happen FIRST: every app
+;; depends on it as `file:../plaid-ui`.
+
 (defn run-tests! []
   (ensure-repo-root!)
   (step "Run the Clojure test suite (plaid-core)")
@@ -80,6 +86,9 @@
   ;; suite says nothing about either SPA or about the assistant. Slower, but
   ;; this runs on tags and nightly only, never per-commit.
   (ensure-node!)
+  (step "Lint the shared UI package (plaid-ui)")
+  (p/shell {:dir "plaid-ui"} "npm" "ci")
+  (p/shell {:dir "plaid-ui"} "npm" "run" "lint")
   (doseq [app js-suites]
     (step (str "Run the JavaScript test suite and lint (" app ")"))
     (p/shell {:dir app} "npm" "ci")
@@ -194,6 +203,8 @@
       ;; --- Build the SPAs and bundle into the jar's resources -------------
       ;; `npm ci`: every app commits its package-lock.json, so a build of a tag
       ;; installs exactly what the tag says, never what is newest that day.
+      ;; plaid-ui needs no step of its own: it is source-only, and each app's
+      ;; `file:../plaid-ui` dependency links it in and compiles it from source.
       (step "Build plaid-ud SPA")
       (p/shell {:dir "plaid-ud"} "npm" "ci")
       (p/shell {:dir "plaid-ud"} "npm" "run" "build")

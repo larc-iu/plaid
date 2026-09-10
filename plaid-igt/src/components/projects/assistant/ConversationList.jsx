@@ -1,20 +1,20 @@
-import { timeAgo } from '@/utils/formatTime';
+import { timeAgo } from '@ui/utils/formatTime';
 import { MessageSquare, Download, Copy, FileDown } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button } from '@ui/components/ui/button';
 import {
   Select,
   SelectTrigger,
   SelectValue,
   SelectContent,
   SelectItem,
-} from '@/components/ui/select';
+} from '@ui/components/ui/select';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-} from '@/components/ui/dropdown-menu';
-import { cn } from '@/lib/utils';
+} from '@ui/components/ui/dropdown-menu';
+import { cn } from '@ui/lib/utils';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { conversationToMarkdown, markdownFilename } from './exportMarkdown.js';
 import { jobFor } from './jobs.js';

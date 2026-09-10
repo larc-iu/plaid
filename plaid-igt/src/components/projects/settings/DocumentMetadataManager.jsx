@@ -11,15 +11,15 @@ import {
   ChevronDown,
   AlertTriangle,
 } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
+import { Input } from '@ui/components/ui/input';
+import { Button } from '@ui/components/ui/button';
 import {
   Select,
   SelectTrigger,
   SelectValue,
   SelectContent,
   SelectItem,
-} from '@/components/ui/select';
+} from '@ui/components/ui/select';
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 
 // Radix Select has no empty-string item value, so "no tagset" needs a sentinel.

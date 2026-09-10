@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Replace, ReplaceAll, Wand2, Merge } from 'lucide-react';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@ui/components/ui/tabs';
 import { useTabParam } from '@/hooks/useTabParam';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { OPERATIONS } from './bulkPlan.js';

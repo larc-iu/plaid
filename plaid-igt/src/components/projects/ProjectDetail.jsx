@@ -10,13 +10,13 @@ import {
   Download,
   Settings,
 } from 'lucide-react';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@ui/components/ui/tabs';
 import { useAuth } from '../../contexts/AuthContext';
 import { DocumentList } from './DocumentList';
 import { ProjectSearch } from './search/ProjectSearch.jsx';
 import { ProjectSettingsPanel } from './ProjectSettingsPanel';
-import { Suspended } from '@/components/shared/Suspended';
-import { lazyNamed } from '@/lib/lazyNamed';
+import { Suspended } from '@ui/components/shared/Suspended';
+import { lazyNamed } from '@ui/lib/lazyNamed';
 
 // The tabs a visit rarely opens ride in their own chunks: Bulk Edit,
 // Validation, Activity, the Assistant (and its markdown), and Export (and the
@@ -36,7 +36,7 @@ import { readInitialized, readImportState, importRouteFor } from '@/domain/igtCo
 import { isReviewed } from '@larc-iu/plaid-client';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useTabParam, tabTo } from '@/hooks/useTabParam';
-import { cn } from '@/lib/utils';
+import { cn } from '@ui/lib/utils';
 import { useComposeProject } from '@/hooks/useCompose';
 
 // The settings sections live behind these path suffixes; keeping them in the

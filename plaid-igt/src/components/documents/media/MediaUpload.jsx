@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AudioLines, Upload } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
+import { Button } from '@ui/components/ui/button';
+import { Progress } from '@ui/components/ui/progress';
 import { formatBytes } from '@/utils/formatBytes';
 import { conversionNeed, conversionNote, estimateMp3Bytes } from '@/domain/media/transcodeToMp3';
 import { readDuration } from '@/domain/media/mediaDuration';

@@ -9,16 +9,16 @@ import {
   List,
   ListTree,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { SearchInput, ListCount, ListPager, SortHeader } from '@/components/ui/list-search';
+import { Button } from '@ui/components/ui/button';
+import { SearchInput, ListCount, ListPager, SortHeader } from '@ui/components/ui/list-search';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { cn } from '@/lib/utils';
+} from '@ui/components/ui/select';
+import { cn } from '@ui/lib/utils';
 import { humanizeFieldName } from '@/domain/vocabFields';
 import { ANY_FIELD } from '@/domain/vocabItemFilter';
 import { FormLabel } from './FormLabel';

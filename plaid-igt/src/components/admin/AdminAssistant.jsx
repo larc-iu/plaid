@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { DataTable } from '@/components/ui/data-table';
-import { UserAvatar } from '@/components/shared/UserAvatar';
-import { timeAgo, fullTimestamp } from '@/utils/formatTime';
+import { Button } from '@ui/components/ui/button';
+import { Badge } from '@ui/components/ui/badge';
+import { DataTable } from '@ui/components/ui/data-table';
+import { UserAvatar } from '@ui/components/shared/UserAvatar';
+import { timeAgo, fullTimestamp } from '@ui/utils/formatTime';
 import { notifyError, humanizeError } from '@/utils/feedback';
 import { AssistantMarkdown } from '../projects/assistant/AssistantMarkdown.jsx';
 import { conversationToMarkdown } from '../projects/assistant/exportMarkdown.js';

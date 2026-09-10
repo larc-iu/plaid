@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { cpLength } from '@larc-iu/plaid-client';
-import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
-import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { cn } from '@/lib/utils';
+import { Popover, PopoverAnchor, PopoverContent } from '@ui/components/ui/popover';
+import { Textarea } from '@ui/components/ui/textarea';
+import { Input } from '@ui/components/ui/input';
+import { Button } from '@ui/components/ui/button';
+import { Label } from '@ui/components/ui/label';
+import { cn } from '@ui/lib/utils';
 import { notifySuccess } from '@/utils/feedback';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useAlignmentEditor } from './useAlignmentEditor.js';

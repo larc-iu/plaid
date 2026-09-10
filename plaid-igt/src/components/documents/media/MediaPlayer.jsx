@@ -1,8 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Slider } from '@/components/ui/slider';
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
-import { cn } from '@/lib/utils';
+import { Button } from '@ui/components/ui/button';
+import { Slider } from '@ui/components/ui/slider';
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from '@ui/components/ui/tooltip';
+import { cn } from '@ui/lib/utils';
 import {
   Play,
   Pause,

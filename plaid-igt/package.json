@@ -17,6 +17,7 @@
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
     "@larc-iu/plaid-client": "file:../plaid-client-js",
+    "@larc-iu/plaid-ui": "file:../plaid-ui",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-avatar": "^1.1.11",
     "@radix-ui/react-dialog": "^1.1.15",

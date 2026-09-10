@@ -1,14 +1,14 @@
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
+import { Button } from '@ui/components/ui/button';
+import { Input } from '@ui/components/ui/input';
+import { Label } from '@ui/components/ui/label';
+import { Switch } from '@ui/components/ui/switch';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogFooter,
   DialogTitle,
-} from '@/components/ui/dialog';
+} from '@ui/components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -18,7 +18,7 @@ import {
   AlertDialogDescription,
   AlertDialogAction,
   AlertDialogCancel,
-} from '@/components/ui/alert-dialog';
+} from '@ui/components/ui/alert-dialog';
 import { MintedLinkDialog } from '../projects/ProjectInvites';
 
 // The dialogs behind useUserAdmin (its own module): one copy of the create,

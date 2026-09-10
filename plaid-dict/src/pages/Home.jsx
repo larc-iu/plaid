@@ -6,7 +6,7 @@ import { useCatalog } from '@/contexts/CatalogContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { classifyVocabularies, canManage } from '@/domain/dictionaries';
 import { readDictRecord, dictTitle } from '@/domain/dictConfig';
-import { Button } from '@/components/ui/button';
+import { Button } from '@ui/components/ui/button';
 
 // Several vocabularies routinely share a name, so every row carries its entry
 // count: often the only thing that tells two of them apart.

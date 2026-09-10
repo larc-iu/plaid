@@ -8,7 +8,7 @@ import { TranscriptList } from './TranscriptList.jsx';
 import { useServerLimits } from '@/hooks/useServerLimits';
 import { MediaUpload } from './MediaUpload.jsx';
 import { TranscribeDialog } from './TranscribeDialog.jsx';
-import { Button } from '@/components/ui/button';
+import { Button } from '@ui/components/ui/button';
 import { DeleteSegmentsDialog } from './DeleteSegmentsDialog.jsx';
 
 export function DocumentMedia() {

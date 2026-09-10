@@ -1,15 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { timeAgo, fullTimestamp } from '@/utils/formatTime';
+import { timeAgo, fullTimestamp } from '@ui/utils/formatTime';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { ArrowLeft, Copy, Check, ImagePlus } from 'lucide-react';
 import { notifySuccess, notifyError, notifyWarning } from '@/utils/feedback';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { UserAvatar } from '@/components/shared/UserAvatar';
+import { Button } from '@ui/components/ui/button';
+import { Input } from '@ui/components/ui/input';
+import { Label } from '@ui/components/ui/label';
+import { Card, CardHeader, CardTitle, CardContent } from '@ui/components/ui/card';
+import { UserAvatar } from '@ui/components/shared/UserAvatar';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -19,7 +19,7 @@ import {
   AlertDialogDescription,
   AlertDialogAction,
   AlertDialogCancel,
-} from '@/components/ui/alert-dialog';
+} from '@ui/components/ui/alert-dialog';
 
 const EMPTY = (displayName = '') => ({
   displayName,

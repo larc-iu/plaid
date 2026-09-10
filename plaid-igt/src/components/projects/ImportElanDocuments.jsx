@@ -28,15 +28,15 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Upload, Check, RefreshCw, Square, AlertTriangle, Plus } from 'lucide-react';
 import { Panel, WarningLog } from './ImportPanels.jsx';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Button } from '@ui/components/ui/button';
+import { Input } from '@ui/components/ui/input';
 import {
   Select,
   SelectTrigger,
   SelectValue,
   SelectContent,
   SelectItem,
-} from '@/components/ui/select';
+} from '@ui/components/ui/select';
 import { useAuth } from '../../contexts/AuthContext';
 import { notifyError, notifySuccess, notifyWarning } from '@/utils/feedback';
 import { runElanImport } from '../../import/elan/importEngine';

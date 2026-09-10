@@ -1,15 +1,15 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, ArrowRight, Circle, Minus } from 'lucide-react';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
+import { Label } from '@ui/components/ui/label';
+import { Switch } from '@ui/components/ui/switch';
 import {
   Select,
   SelectTrigger,
   SelectValue,
   SelectContent,
   SelectItem,
-} from '@/components/ui/select';
+} from '@ui/components/ui/select';
 import { hasLanguageIdentity } from '@/domain/igtConfig';
 import { BASELINE, cldfLossSummary, DEFAULT_CLDF_OPTIONS } from '@/export/cldf';
 

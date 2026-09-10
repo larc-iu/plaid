@@ -22,10 +22,10 @@ import {
   suggestAlphabet,
 } from '@/domain/collation';
 import { parentOf } from '@igt/domain/vocabDictionary.js';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@ui/components/ui/button';
+import { Input } from '@ui/components/ui/input';
+import { Label } from '@ui/components/ui/label';
+import { Textarea } from '@ui/components/ui/textarea';
 import { notifyError, notifySuccess } from '@/utils/feedback';
 
 // Advisory only: a wrong-looking code still saves, since a dictionary may

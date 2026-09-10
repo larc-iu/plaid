@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
-import { cn } from '@/lib/utils';
+import { cn } from '@ui/lib/utils';
 import { formatTime, parseTime } from './formatTime.js';
 
 // A duration as a row of numbers, `m:ss.mmm` (with hours once a recording is

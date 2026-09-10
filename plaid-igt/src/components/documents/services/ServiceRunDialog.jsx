@@ -6,9 +6,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
+} from '@ui/components/ui/dialog';
+import { Button } from '@ui/components/ui/button';
+import { Progress } from '@ui/components/ui/progress';
 import { formatElapsed } from '../hooks/useRunProgress.js';
 
 // The one shape every service run wears (tokenize, transcribe, detect speech,

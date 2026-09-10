@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { renderComponent, all } from '@/test/renderComponent.jsx';
+import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 import { TagsetField } from './TagsetField.jsx';
 import { changedValuesAllowed } from '@/domain/tagsets';
 

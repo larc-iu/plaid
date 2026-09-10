@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Badge } from '@/components/ui/badge';
+import { Badge } from '@ui/components/ui/badge';
 import { FieldsManager } from '../settings/FieldsManager.jsx';
 
 export const FieldsStep = ({ data, onDataChange }) => {

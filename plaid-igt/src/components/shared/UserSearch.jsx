@@ -1,6 +1,6 @@
-import { Badge } from '@/components/ui/badge';
-import { SearchInput, ListHint } from '@/components/ui/list-search';
-import { UserAvatar } from '@/components/shared/UserAvatar';
+import { Badge } from '@ui/components/ui/badge';
+import { SearchInput, ListHint } from '@ui/components/ui/list-search';
+import { UserAvatar } from '@ui/components/shared/UserAvatar';
 import { USER_SEARCH_LIMIT } from '@/hooks/useUserSearch';
 
 // The search box and its results wherever someone is picked out of the user

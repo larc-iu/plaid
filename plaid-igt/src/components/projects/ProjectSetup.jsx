@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Info, Layers, FileText, Languages, List, BookOpen, Check } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { Button } from '@ui/components/ui/button';
+import { cn } from '@ui/lib/utils';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 // Step components

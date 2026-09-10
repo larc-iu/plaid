@@ -1,5 +1,5 @@
 import { Users, Plug, Settings, Rows3, SpellCheck } from 'lucide-react';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@ui/components/ui/tabs';
 import { AccessManagement } from './AccessManagement';
 import { ProjectAccessTokens } from './ProjectAccessTokens';
 import { ServicesSettings } from './settings/ServicesSettings';

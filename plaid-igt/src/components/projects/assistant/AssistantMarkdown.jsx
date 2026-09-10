@@ -1,4 +1,4 @@
-import { SafeMarkdown } from '@/components/ui/markdown';
+import { SafeMarkdown } from '@ui/components/ui/markdown';
 
 // Standard chat markdown: GFM (tables, task lists, strikethrough) through the
 // app's one renderer, styled with Tailwind Typography over the shared

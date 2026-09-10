@@ -2,13 +2,18 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Plus } from 'lucide-react';
-import { DataTable } from '@/components/ui/data-table';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
+import { DataTable } from '@ui/components/ui/data-table';
+import { Button } from '@ui/components/ui/button';
+import { Card } from '@ui/components/ui/card';
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from '@ui/components/ui/tooltip';
 import { notifyWarning } from '@/utils/feedback';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
-import { timeAgo, fullTimestamp } from '@/utils/formatTime';
+import { timeAgo, fullTimestamp } from '@ui/utils/formatTime';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 export const ProjectList = () => {

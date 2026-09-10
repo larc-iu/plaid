@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { Input } from '@/components/ui/input';
-import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
-import { cn } from '@/lib/utils';
+import { Input } from '@ui/components/ui/input';
+import { Popover, PopoverAnchor, PopoverContent } from '@ui/components/ui/popover';
+import { cn } from '@ui/lib/utils';
 import { FormLabel } from './FormLabel';
 
 // Find one entry of a vocabulary by typing part of its form or gloss, and

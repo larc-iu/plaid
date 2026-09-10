@@ -14,7 +14,7 @@ import { html, svg, nothing } from 'lit-html';
 import { repeat } from 'lit-html/directives/repeat.js';
 import { live } from 'lit-html/directives/live.js';
 import { isPending } from '@/domain/CommentStore';
-import { timeAgo } from '@/utils/formatTime';
+import { timeAgo } from '@ui/utils/formatTime';
 import { renderCommentBody } from './renderCommentBody.js';
 import './comments.css';
 

@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Trash2, AlertTriangle } from 'lucide-react';
-import { Label } from '@/components/ui/label';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Label } from '@ui/components/ui/label';
+import { Button } from '@ui/components/ui/button';
+import { Input } from '@ui/components/ui/input';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogFooter,
   DialogTitle,
-} from '@/components/ui/dialog';
+} from '@ui/components/ui/dialog';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { LanguagesSettings } from './LanguagesSettings.jsx';
 

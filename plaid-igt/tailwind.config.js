@@ -8,7 +8,7 @@ export default {
   // shadcn/Tailwind and wants the standard base reset (incl. the sans-serif font
   // stack — without it the app falls back to the browser serif default). The old
   // `:where(.tw)` opt-in scoping is retired; `.tw` classNames are now no-ops.
-  content: ['./index.html', './src/**/*.{js,jsx}'],
+  content: ['./index.html', './src/**/*.{js,jsx}', '../plaid-ui/src/**/*.{js,jsx}'],
   theme: {
     extend: {
       colors: {

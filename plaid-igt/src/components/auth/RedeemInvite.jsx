@@ -5,10 +5,10 @@ import { authService } from '../../services/auth';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { notifySuccess } from '@/utils/feedback';
 import { isEmail, EMAIL_REQUIRED_MESSAGE, EMAIL_INVALID_MESSAGE } from '@/utils/email';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@ui/components/ui/button';
+import { Input } from '@ui/components/ui/input';
+import { Label } from '@ui/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@ui/components/ui/card';
 
 // Matches the server's minimum. Stated up front rather than only on rejection:
 // this is the one password the user will have to remember, and finding out the

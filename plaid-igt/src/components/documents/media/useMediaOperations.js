@@ -8,7 +8,7 @@ import { useServiceSpot } from '../../documents/hooks/useServiceSpot.js';
 import { useRunProgress, useMirroredProgress } from '../../documents/hooks/useRunProgress.js';
 import { whenIdle } from '../../../domain/whenIdle.js';
 import { transcodeToMp3 } from '../../../domain/media/transcodeToMp3.js';
-import { useConfirm } from '@/components/shared/ConfirmProvider';
+import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { useVadProposals, VAD_METADATA_KEY } from './useVadProposals.js';
 import { DETECT_SPEECH_BUILTIN } from './detectSpeechBuiltin.js';
 import { writeRunRecord, clearRunRecord } from '../../../domain/runRecord.js';

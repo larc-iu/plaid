@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { DataTable } from '@/components/ui/data-table';
-import { timeAgo, fullTimestamp } from '@/utils/formatTime';
+import { Button } from '@ui/components/ui/button';
+import { Badge } from '@ui/components/ui/badge';
+import { DataTable } from '@ui/components/ui/data-table';
+import { timeAgo, fullTimestamp } from '@ui/utils/formatTime';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { findBaselineTextLayer, readInitialized } from '../../domain/igtConfig';
 

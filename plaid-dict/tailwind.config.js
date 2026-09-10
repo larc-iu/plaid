@@ -6,7 +6,7 @@ export default {
   darkMode: ['class'],
   // The dictionary pages read plaid-igt's domain modules, never its components,
   // so no class names come from over there.
-  content: ['./index.html', './src/**/*.{js,jsx}'],
+  content: ['./index.html', './src/**/*.{js,jsx}', '../plaid-ui/src/**/*.{js,jsx}'],
   theme: {
     extend: {
       fontFamily: {

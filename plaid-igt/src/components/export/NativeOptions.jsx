@@ -1,4 +1,4 @@
-import { Switch } from '@/components/ui/switch';
+import { Switch } from '@ui/components/ui/switch';
 
 // Step 2 (Plaid IGT JSON): the lossless archive has exactly one knob — media.
 export const NativeOptions = ({ options, onChange }) => (

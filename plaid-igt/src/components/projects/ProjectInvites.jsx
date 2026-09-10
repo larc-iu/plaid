@@ -1,18 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link2, Copy, Check, Trash2 } from 'lucide-react';
 import { inviteLinkFor } from '@/utils/inviteLink';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { DataTable } from '@/components/ui/data-table';
+import { Button } from '@ui/components/ui/button';
+import { Input } from '@ui/components/ui/input';
+import { Label } from '@ui/components/ui/label';
+import { Badge } from '@ui/components/ui/badge';
+import { DataTable } from '@ui/components/ui/data-table';
 import {
   Select,
   SelectTrigger,
   SelectValue,
   SelectContent,
   SelectItem,
-} from '@/components/ui/select';
+} from '@ui/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -20,7 +20,7 @@ import {
   DialogFooter,
   DialogTitle,
   DialogDescription,
-} from '@/components/ui/dialog';
+} from '@ui/components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -30,7 +30,7 @@ import {
   AlertDialogDescription,
   AlertDialogAction,
   AlertDialogCancel,
-} from '@/components/ui/alert-dialog';
+} from '@ui/components/ui/alert-dialog';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 
 const GRANT_ROLES = ['reader', 'writer', 'maintainer'];

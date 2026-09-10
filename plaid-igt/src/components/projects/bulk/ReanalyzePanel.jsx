@@ -1,8 +1,8 @@
 import { Fragment, useMemo, useState } from 'react';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { Input } from '@ui/components/ui/input';
+import { Label } from '@ui/components/ui/label';
+import { Button } from '@ui/components/ui/button';
+import { cn } from '@ui/lib/utils';
 import { notifySuccess, notifyError, notifyWarning } from '@/utils/feedback';
 import { analysisViolations, governedFields } from '@/domain/tagsets';
 import { tallyCandidates, analysisLabel, cardRowsFor } from './bulkPlan.js';

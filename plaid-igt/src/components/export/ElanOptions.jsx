@@ -1,5 +1,5 @@
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
+import { Label } from '@ui/components/ui/label';
+import { Switch } from '@ui/components/ui/switch';
 import { elanLossSummary } from '@/export/elan';
 
 // One checkbox group per discovered tier bucket (rendered only when the

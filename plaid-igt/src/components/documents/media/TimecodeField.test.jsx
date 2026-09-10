@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
-import { renderComponent, all } from '../../../test/renderComponent.jsx';
+import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 import { TimecodeField } from './TimecodeField.jsx';
 
 // The segmented duration control on its own: digits, completion, movement

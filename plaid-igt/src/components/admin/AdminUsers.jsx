@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { MoreVertical, UserPlus } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { DataTable } from '@/components/ui/data-table';
-import { UserAvatar } from '@/components/shared/UserAvatar';
+import { Button } from '@ui/components/ui/button';
+import { Badge } from '@ui/components/ui/badge';
+import { DataTable } from '@ui/components/ui/data-table';
+import { UserAvatar } from '@ui/components/shared/UserAvatar';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-} from '@/components/ui/dropdown-menu';
-import { timeAgo, fullTimestamp } from '@/utils/formatTime';
+} from '@ui/components/ui/dropdown-menu';
+import { timeAgo, fullTimestamp } from '@ui/utils/formatTime';
 import { notifyError } from '@/utils/feedback';
 import { useUserAdmin } from './useUserAdmin';
 import { UserAdminDialogs } from './userAdmin';

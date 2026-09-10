@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { renderComponent } from '@/test/renderComponent';
+import { renderComponent } from '@ui/test/renderComponent.jsx';
 import { FormLabel } from './FormLabel';
 
 // An entry's number is a SUBSCRIPT after its form, as FieldWorks writes a

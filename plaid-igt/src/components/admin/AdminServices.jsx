@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { RefreshCw } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { DataTable } from '@/components/ui/data-table';
-import { timeAgo, fullTimestamp } from '@/utils/formatTime';
+import { Button } from '@ui/components/ui/button';
+import { Badge } from '@ui/components/ui/badge';
+import { DataTable } from '@ui/components/ui/data-table';
+import { timeAgo, fullTimestamp } from '@ui/utils/formatTime';
 import { notifySuccess, notifyError } from '@/utils/feedback';
-import { useConfirm } from '@/components/shared/ConfirmProvider';
+import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 
 // Services register per project, so "is the analyze service up" can only be
 // answered one project at a time. This asks every project at once.

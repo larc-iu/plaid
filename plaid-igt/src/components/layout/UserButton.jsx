@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { User, LogOut } from 'lucide-react';
-import { UserAvatar } from '@/components/shared/UserAvatar';
+import { UserAvatar } from '@ui/components/shared/UserAvatar';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -8,7 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu';
+} from '@ui/components/ui/dropdown-menu';
 
 export function UserButton({ user, client, onLogout }) {
   return (

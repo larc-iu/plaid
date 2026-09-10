@@ -4,14 +4,14 @@
 // linguist's terms, and the toast that confirms the restore offers Undo.
 
 import { useEffect, useRef, useState } from 'react';
-import { Button } from '@/components/ui/button';
+import { Button } from '@ui/components/ui/button';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from '@/components/ui/dialog';
+} from '@ui/components/ui/dialog';
 import {
   notifySuccess,
   notifyWarning,

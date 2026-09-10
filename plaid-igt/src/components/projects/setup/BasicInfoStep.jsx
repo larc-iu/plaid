@@ -1,5 +1,5 @@
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Input } from '@ui/components/ui/input';
+import { Label } from '@ui/components/ui/label';
 
 export const BasicInfoStep = ({ data, onDataChange }) => {
   const handleProjectNameChange = (event) => {

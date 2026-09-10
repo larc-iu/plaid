@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AudioLines, ChevronRight, PenLine, Plus } from 'lucide-react';
-import { DataTable } from '@/components/ui/data-table';
+import { DataTable } from '@ui/components/ui/data-table';
 import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Button } from '@ui/components/ui/button';
+import { Input } from '@ui/components/ui/input';
+import { Label } from '@ui/components/ui/label';
 import {
   Dialog,
   DialogContent,
@@ -13,11 +13,16 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from '@/components/ui/dialog';
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
+} from '@ui/components/ui/dialog';
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from '@ui/components/ui/tooltip';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { findBaselineTextLayer } from '@/domain/igtConfig';
-import { timeAgo, fullTimestamp } from '@/utils/formatTime';
+import { timeAgo, fullTimestamp } from '@ui/utils/formatTime';
 
 export const DocumentList = ({
   documents,

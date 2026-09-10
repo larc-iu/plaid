@@ -12,18 +12,18 @@ import {
   AlertTriangle,
   MessageSquare,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Button } from '@ui/components/ui/button';
+import { Input } from '@ui/components/ui/input';
+import { Label } from '@ui/components/ui/label';
+import { Switch } from '@ui/components/ui/switch';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@ui/components/ui/tabs';
 import {
   Select,
   SelectTrigger,
   SelectValue,
   SelectContent,
   SelectItem,
-} from '@/components/ui/select';
+} from '@ui/components/ui/select';
 import { readVocabFields, IGT_NAMESPACE } from '@/domain/igtConfig';
 import {
   normalizeVocabFields,
@@ -51,7 +51,7 @@ import {
   DialogHeader,
   DialogFooter,
   DialogTitle,
-} from '@/components/ui/dialog';
+} from '@ui/components/ui/dialog';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { VocabularyItems } from './VocabularyItems';
 import { VocabularyMaintainers } from './VocabularyMaintainers';
@@ -59,7 +59,7 @@ import { VocabularyCommentsTab } from './VocabularyCommentsTab';
 import { CommentStore } from '@/domain/CommentStore';
 import { useCommentStore } from '@/domain/useCommentStore';
 import { canEditProject } from '@/utils/permissions';
-import { useConfirm } from '@/components/shared/ConfirmProvider';
+import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useTabParam, tabTo } from '@/hooks/useTabParam';
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import React from 'react';
-import { renderComponent } from '../../../test/renderComponent.jsx';
+import { renderComponent } from '@ui/test/renderComponent.jsx';
 import { useVadProposals, VAD_METADATA_KEY } from './useVadProposals.js';
 
 // Detection is expensive and its cuts are a real piece of work, so they are

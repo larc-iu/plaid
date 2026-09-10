@@ -1,14 +1,14 @@
 import { Info, Pencil, Save, X, Trash2, Copy, AlertTriangle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Button } from '@ui/components/ui/button';
+import { Input } from '@ui/components/ui/input';
+import { Label } from '@ui/components/ui/label';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogFooter,
   DialogTitle,
-} from '@/components/ui/dialog';
+} from '@ui/components/ui/dialog';
 import { useMetadataOperations } from './useMetadataOperations.js';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { TagsetField } from '@/components/shared/TagsetField.jsx';

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { DataTable } from '@/components/ui/data-table';
+import { Button } from '@ui/components/ui/button';
+import { Badge } from '@ui/components/ui/badge';
+import { DataTable } from '@ui/components/ui/data-table';
 import { formatBytes } from '@/utils/formatBytes';
-import { timeAgo, fullTimestamp } from '@/utils/formatTime';
+import { timeAgo, fullTimestamp } from '@ui/utils/formatTime';
 import { notifySuccess, notifyError } from '@/utils/feedback';
-import { useConfirm } from '@/components/shared/ConfirmProvider';
+import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 
 // What the server is doing and what it is sitting on. Read-only except for
 // three buttons, each of which only ever unblocks something.

@@ -1,16 +1,16 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Merge } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Button } from '@/components/ui/button';
+import { Input } from '@ui/components/ui/input';
+import { Label } from '@ui/components/ui/label';
+import { Button } from '@ui/components/ui/button';
 import {
   Select,
   SelectTrigger,
   SelectValue,
   SelectContent,
   SelectItem,
-} from '@/components/ui/select';
-import { cn } from '@/lib/utils';
+} from '@ui/components/ui/select';
+import { cn } from '@ui/lib/utils';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { buildItemNumbers } from '@/domain/vocabDictionary';
 import { FormLabel } from '@/components/vocabularies/FormLabel';

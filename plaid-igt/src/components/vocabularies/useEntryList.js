@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { pageSlice, pageKey, useResetOnChange, LIST_PAGE_SIZE } from '@/hooks/usePagedList';
-import { listPrefKey, useStickyState, useStickySort } from '@/hooks/useStickyState';
+import { pageSlice, pageKey, useResetOnChange, LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
+import { listPrefKey, useStickyState, useStickySort } from '@ui/hooks/useStickyState';
 import { filterVocabItems, sortVocabItems } from '@/domain/vocabItemFilter';
 import { arrangeAsTree } from '@/domain/vocabDictionary';
 import { NEW_ID } from './vocabItemsState';

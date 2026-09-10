@@ -1,8 +1,8 @@
 import { useId } from 'react';
 import { Trash2 } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Button } from '@/components/ui/button';
+import { Input } from '@ui/components/ui/input';
+import { Label } from '@ui/components/ui/label';
+import { Button } from '@ui/components/ui/button';
 import { morphTypeLabel, morphTypeOptions } from '@/domain/affixMarkers';
 import { fieldLabel, FIELD_TYPES } from '@/domain/vocabFields';
 import { TagsetField } from '@/components/shared/TagsetField.jsx';

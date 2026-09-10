@@ -1,0 +1,21 @@
+/* Tokens the apps share.
+
+   The shadcn design tokens themselves stay per app (each app's own index.css),
+   since a dictionary reader and an annotation editor are allowed to look
+   different. What must NOT differ is provenance: the same violet has to mean
+   "a machine proposed this" in every app, or a project open in two of them
+   reads as two different corpora.
+
+   Values are plaid-igt's, which set the convention. Import this file once from
+   the app's own entry, above its own tokens. */
+
+:root {
+  /* Machine-made material, until a person confirms it. */
+  --plaid-machine: #6d28d9;
+  --plaid-machine-soft: #c4b5fd;
+  --plaid-machine-fill: #ede9fe;
+  /* A contributor's work, until a reviewer confirms it. */
+  --plaid-contributed: #b45309;
+  --plaid-contributed-soft: #fcd34d;
+  --plaid-contributed-fill: #fef3c7;
+}

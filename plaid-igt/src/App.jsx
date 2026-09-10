@@ -9,9 +9,9 @@ import { NewProjectChooser } from './components/projects/NewProjectChooser';
 import { StrictModeProvider } from './components/documents/contexts/StrictModeContext.jsx';
 import { DocumentDetail } from './components/documents/DocumentDetail';
 import { AppLayout } from './components/layout/AppLayout';
-import { ConfirmProvider } from './components/shared/ConfirmProvider';
-import { Suspended } from './components/shared/Suspended';
-import { lazyNamed } from './lib/lazyNamed';
+import { ConfirmProvider } from '@ui/components/shared/ConfirmProvider';
+import { Suspended } from '@ui/components/shared/Suspended';
+import { lazyNamed } from '@ui/lib/lazyNamed';
 
 // Screens most visits never open ride in their own chunks: the import wizards
 // (and the parsers behind them), the lexicon area, the admin area, the setup

@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Plus, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { Input } from '@ui/components/ui/input';
+import { Button } from '@ui/components/ui/button';
+import { Badge } from '@ui/components/ui/badge';
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
-import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog';
+import { ConfirmDeleteDialog } from '@ui/components/shared/ConfirmDeleteDialog';
 
 // Predefined orthography setup
 const DEFAULT_ORTHOGRAPHIES = [

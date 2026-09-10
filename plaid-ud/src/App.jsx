@@ -1,22 +1,40 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { lazyNamed } from '@ui/lib/lazyNamed.js';
+import { Suspended } from '@ui/components/shared/Suspended.jsx';
 import { AuthProvider } from './contexts/AuthContext';
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { LoginForm } from './components/auth/LoginForm';
 import { RedeemInvite } from './components/auth/RedeemInvite';
 import { UserProfile } from './components/auth/UserProfile';
-import { AdminUsers } from './components/admin/AdminUsers';
 import { ProjectList } from './components/projects/ProjectList';
-import { ProjectSettings } from './components/projects/ProjectSettings.jsx';
-import { ProjectConfiguration } from './components/projects/ProjectConfiguration.jsx';
 import { DocumentList } from './components/documents/DocumentList';
-import { SearchPage } from './components/search/SearchPage.jsx';
-import { ProjectImportExport } from './components/projects/ProjectImportExport.jsx';
 import { TextEditor } from './components/editor/TextEditor.jsx';
 import { AnnotationEditor } from './components/editor/AnnotationEditor.jsx';
-import { ExportEditor } from './components/editor/ExportEditor.jsx';
 import { DocumentEditorShell } from './components/editor/DocumentEditorShell.jsx';
 import './App.css';
+
+// Screens a session opens rarely, if at all: they download when first opened
+// rather than riding along with the project list. The editor and the two lists
+// stay eager, being where a session starts and spends its time.
+const AdminUsers = lazyNamed(() => import('./components/admin/AdminUsers'), 'AdminUsers');
+const SearchPage = lazyNamed(() => import('./components/search/SearchPage.jsx'), 'SearchPage');
+const ProjectImportExport = lazyNamed(
+  () => import('./components/projects/ProjectImportExport.jsx'),
+  'ProjectImportExport',
+);
+const ProjectSettings = lazyNamed(
+  () => import('./components/projects/ProjectSettings.jsx'),
+  'ProjectSettings',
+);
+const ProjectConfiguration = lazyNamed(
+  () => import('./components/projects/ProjectConfiguration.jsx'),
+  'ProjectConfiguration',
+);
+const ExportEditor = lazyNamed(
+  () => import('./components/editor/ExportEditor.jsx'),
+  'ExportEditor',
+);
 
 function App() {
   return (
@@ -48,7 +66,14 @@ function App() {
 
             {/* Instance-wide user administration (admin-only; the component
                 renders a permission notice for non-admins). */}
-            <Route path="admin/users" element={<AdminUsers />} />
+            <Route
+              path="admin/users"
+              element={
+                <Suspended>
+                  <AdminUsers />
+                </Suspended>
+              }
+            />
 
             {/* Projects page */}
             <Route path="projects" element={<ProjectList />} />
@@ -57,23 +82,79 @@ function App() {
             <Route path="projects/:projectId/documents" element={<DocumentList />} />
 
             {/* Grew-match search over the project's sentences */}
-            <Route path="projects/:projectId/search" element={<SearchPage />} />
+            <Route
+              path="projects/:projectId/search"
+              element={
+                <Suspended>
+                  <SearchPage />
+                </Suspended>
+              }
+            />
 
             {/* Bulk CoNLL-U import + project-wide ZIP export */}
-            <Route path="projects/:projectId/import-export" element={<ProjectImportExport />} />
+            <Route
+              path="projects/:projectId/import-export"
+              element={
+                <Suspended>
+                  <ProjectImportExport />
+                </Suspended>
+              }
+            />
 
             {/* Project settings (tabbed: users & permissions, UD customization,
                 services, access tokens, general). All paths render the same
                 view; the active tab follows the path. */}
-            <Route path="projects/:projectId/management" element={<ProjectSettings />} />
-            <Route path="projects/:projectId/customization" element={<ProjectSettings />} />
-            <Route path="projects/:projectId/services" element={<ProjectSettings />} />
-            <Route path="projects/:projectId/tokens" element={<ProjectSettings />} />
-            <Route path="projects/:projectId/general" element={<ProjectSettings />} />
+            <Route
+              path="projects/:projectId/management"
+              element={
+                <Suspended>
+                  <ProjectSettings />
+                </Suspended>
+              }
+            />
+            <Route
+              path="projects/:projectId/customization"
+              element={
+                <Suspended>
+                  <ProjectSettings />
+                </Suspended>
+              }
+            />
+            <Route
+              path="projects/:projectId/services"
+              element={
+                <Suspended>
+                  <ProjectSettings />
+                </Suspended>
+              }
+            />
+            <Route
+              path="projects/:projectId/tokens"
+              element={
+                <Suspended>
+                  <ProjectSettings />
+                </Suspended>
+              }
+            />
+            <Route
+              path="projects/:projectId/general"
+              element={
+                <Suspended>
+                  <ProjectSettings />
+                </Suspended>
+              }
+            />
 
             {/* Standalone UD layer setup/repair page — the destination of the
                 annotation editor's "missing layers" auto-redirect. */}
-            <Route path="projects/:projectId/configuration" element={<ProjectConfiguration />} />
+            <Route
+              path="projects/:projectId/configuration"
+              element={
+                <Suspended>
+                  <ProjectConfiguration />
+                </Suspended>
+              }
+            />
 
             {/* The three document-editor tabs are CHILDREN of one shell route,
                 not siblings. The shell's params don't change when you switch
@@ -86,7 +167,14 @@ function App() {
             >
               <Route path="edit" element={<TextEditor />} />
               <Route path="annotate" element={<AnnotationEditor />} />
-              <Route path="export" element={<ExportEditor />} />
+              <Route
+                path="export"
+                element={
+                  <Suspended>
+                    <ExportEditor />
+                  </Suspended>
+                }
+              />
             </Route>
           </Route>
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useConfirm } from '@/components/shared/ConfirmProvider';
+import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { markImportFinished } from '@/domain/igtConfig';
 import { notifyError } from '@/utils/feedback';
 

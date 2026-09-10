@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
-import { renderComponent, all, byText, texts } from '@/test/renderComponent';
+import { renderComponent, all, byText, texts } from '@ui/test/renderComponent.jsx';
 import { AdminAssistant } from './AdminAssistant';
 
 // The index is built entirely out of the STORE KEY plus a small value, and

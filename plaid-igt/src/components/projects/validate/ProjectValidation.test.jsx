@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
-import { renderComponent, all } from '@/test/renderComponent.jsx';
+import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 import { ProjectValidation } from './ProjectValidation.jsx';
 
 // The Validation tab's own logic: which fields it decides are governed, that it

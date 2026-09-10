@@ -1,14 +1,14 @@
 import { useDeferredValue, useState } from 'react';
 import { Plus, Trash2, ChevronDown, ChevronRight, Sparkles, AlertTriangle } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { SearchInput, ListCount, ListPager } from '@/components/ui/list-search';
-import { pageSlice } from '@/hooks/usePagedList';
-import { Switch } from '@/components/ui/switch';
-import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@ui/components/ui/input';
+import { Button } from '@ui/components/ui/button';
+import { Badge } from '@ui/components/ui/badge';
+import { SearchInput, ListCount, ListPager } from '@ui/components/ui/list-search';
+import { pageSlice } from '@ui/hooks/usePagedList';
+import { Switch } from '@ui/components/ui/switch';
+import { Textarea } from '@ui/components/ui/textarea';
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
-import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog';
+import { ConfirmDeleteDialog } from '@ui/components/shared/ConfirmDeleteDialog';
 import {
   MODES,
   RESERVED_VALUE_KEYS,

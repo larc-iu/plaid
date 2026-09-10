@@ -1,7 +1,7 @@
 import { AlertTriangle } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
+import { Input } from '@ui/components/ui/input';
+import { Label } from '@ui/components/ui/label';
+import { Switch } from '@ui/components/ui/switch';
 import { resolveFieldLang } from '@/domain/fieldNames';
 import {
   Select,
@@ -9,7 +9,7 @@ import {
   SelectValue,
   SelectContent,
   SelectItem,
-} from '@/components/ui/select';
+} from '@ui/components/ui/select';
 
 const OMIT = '__omit__';
 

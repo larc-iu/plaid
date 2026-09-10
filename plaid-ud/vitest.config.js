@@ -14,6 +14,7 @@ export default defineConfig({
     preserveSymlinks: true,
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      '@ui': fileURLToPath(new URL('./node_modules/@larc-iu/plaid-ui/src', import.meta.url)),
       // Straight to the source, matching vite.config.js — see the long note
       // there about the dep optimizer's immutable `?v=` cache.
       '@larc-iu/plaid-client': fileURLToPath(
@@ -22,6 +23,11 @@ export default defineConfig({
     },
   },
   test: {
+    // A path under node_modules is externalized by default and handed to node's
+    // own loader, which resolves the symlink back to ../plaid-ui and then
+    // cannot find its bare imports. Inlined, Vite transforms it and resolves
+    // them with `preserveSymlinks`, which keeps the walk inside this app.
+    server: { deps: { inline: [/@larc-iu\/plaid-ui/] } },
     environment: 'happy-dom',
     globals: true,
     include: ['src/**/*.{test,spec}.{js,jsx}'],

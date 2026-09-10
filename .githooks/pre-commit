@@ -12,7 +12,7 @@
 # installed it warns and lets the commit through rather than blocking work.
 set -euo pipefail
 
-PROJECTS=(plaid-igt plaid-ud plaid-dict)
+PROJECTS=(plaid-igt plaid-ud plaid-dict plaid-ui)
 
 repo_root="$(git rev-parse --show-toplevel)"
 

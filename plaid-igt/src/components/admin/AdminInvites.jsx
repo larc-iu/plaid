@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Link2, Copy, Check } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
+import { Button } from '@ui/components/ui/button';
+import { Input } from '@ui/components/ui/input';
+import { Label } from '@ui/components/ui/label';
+import { Badge } from '@ui/components/ui/badge';
 import {
   Select,
   SelectTrigger,
   SelectValue,
   SelectContent,
   SelectItem,
-} from '@/components/ui/select';
+} from '@ui/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -19,11 +19,11 @@ import {
   DialogFooter,
   DialogTitle,
   DialogDescription,
-} from '@/components/ui/dialog';
-import { DataTable } from '@/components/ui/data-table';
-import { timeAgo, fullTimestamp } from '@/utils/formatTime';
+} from '@ui/components/ui/dialog';
+import { DataTable } from '@ui/components/ui/data-table';
+import { timeAgo, fullTimestamp } from '@ui/utils/formatTime';
 import { notifySuccess, notifyError } from '@/utils/feedback';
-import { useConfirm } from '@/components/shared/ConfirmProvider';
+import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { inviteLinkFor } from '@/utils/inviteLink';
 
 // Every invite on the server, whoever minted it. A project's own tab shows

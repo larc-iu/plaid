@@ -11,8 +11,8 @@
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Upload, Check, RefreshCw, Square } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Button } from '@ui/components/ui/button';
+import { Input } from '@ui/components/ui/input';
 import { useAuth } from '../../contexts/AuthContext';
 import { notifyError } from '@/utils/feedback';
 import { readNativeArchive } from '../../import/native/readArchive';

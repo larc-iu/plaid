@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
-import { renderComponent, all, texts } from '@/test/renderComponent.jsx';
+import { renderComponent, all, texts } from '@ui/test/renderComponent.jsx';
 import { FieldsManager } from './FieldsManager.jsx';
 import { TagsetsManager, VALUE_PAGE_SIZE } from './TagsetsManager.jsx';
 import { byTagsetName, governedFields } from '@/domain/tagsets.js';

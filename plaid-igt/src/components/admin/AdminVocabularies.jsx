@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Badge } from '@/components/ui/badge';
-import { DataTable } from '@/components/ui/data-table';
+import { Badge } from '@ui/components/ui/badge';
+import { DataTable } from '@ui/components/ui/data-table';
 import { notifyError } from '@/utils/feedback';
 
 // Vocabularies are shared across projects, so which projects use one is

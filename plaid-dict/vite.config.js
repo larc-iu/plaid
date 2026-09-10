@@ -26,7 +26,7 @@ export default defineConfig(({ command }) => ({
     alias: aliases,
   },
   optimizeDeps: {
-    exclude: ['@larc-iu/plaid-client'],
+    exclude: ['@larc-iu/plaid-client', '@larc-iu/plaid-ui'],
   },
   server: {
     port: 5175,
@@ -35,7 +35,10 @@ export default defineConfig(({ command }) => ({
       allow: [fileURLToPath(new URL('..', import.meta.url))],
     },
     watch: {
-      ignored: ['!**/node_modules/@larc-iu/plaid-client/**'],
+      ignored: [
+        '!**/node_modules/@larc-iu/plaid-client/**',
+        '!**/node_modules/@larc-iu/plaid-ui/**',
+      ],
     },
     proxy: {
       '/api': {

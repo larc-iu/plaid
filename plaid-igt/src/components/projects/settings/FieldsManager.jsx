@@ -3,19 +3,19 @@ import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle } from 'lucide-react';
 import { Plus, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { Input } from '@ui/components/ui/input';
+import { Button } from '@ui/components/ui/button';
+import { Badge } from '@ui/components/ui/badge';
 import {
   Select,
   SelectTrigger,
   SelectValue,
   SelectContent,
   SelectItem,
-} from '@/components/ui/select';
+} from '@ui/components/ui/select';
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 import { fieldNameLang } from '@/domain/fieldNames';
-import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog';
+import { ConfirmDeleteDialog } from '@ui/components/shared/ConfirmDeleteDialog';
 
 // A field's identity is its (scope, name) pair: the same name can exist at
 // two scopes (a FieldWorks import gives "Gloss" and "POS" at both Word and

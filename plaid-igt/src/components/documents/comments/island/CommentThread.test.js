@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from 'lit-html';
 import { commentThread } from './CommentThread.js';
-import { timeAgo } from '@/utils/formatTime';
+import { timeAgo } from '@ui/utils/formatTime';
 import { CommentStore } from '@/domain/CommentStore';
 
 const ME = 'me@example.com';

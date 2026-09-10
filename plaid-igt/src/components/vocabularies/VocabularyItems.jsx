@@ -9,8 +9,8 @@ import {
 } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertTriangle } from 'lucide-react';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { useConfirm } from '@/components/shared/ConfirmProvider';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@ui/components/ui/tabs';
+import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { useTabParam } from '@/hooks/useTabParam';
 import { notifySuccess, notifyError, notifyWarning, isPermissionError } from '@/utils/feedback';
 import {

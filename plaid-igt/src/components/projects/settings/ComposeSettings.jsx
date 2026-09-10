@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, RotateCcw, Trash2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { SearchInput, ListCount, ListPager } from '@/components/ui/list-search';
-import { usePagedList } from '@/hooks/usePagedList';
+import { Button } from '@ui/components/ui/button';
+import { Input } from '@ui/components/ui/input';
+import { Label } from '@ui/components/ui/label';
+import { Badge } from '@ui/components/ui/badge';
+import { SearchInput, ListCount, ListPager } from '@ui/components/ui/list-search';
+import { usePagedList } from '@ui/hooks/usePagedList';
 import { notifyError } from '@/utils/feedback';
 import { IGT_NAMESPACE, readCompose } from '@/domain/igtConfig';
 import {

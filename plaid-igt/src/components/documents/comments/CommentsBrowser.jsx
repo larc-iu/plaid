@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { SearchInput, ListCount, ListPager } from '@/components/ui/list-search';
+import { Button } from '@ui/components/ui/button';
+import { SearchInput, ListCount, ListPager } from '@ui/components/ui/list-search';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { usePagedList } from '@/hooks/usePagedList';
+} from '@ui/components/ui/select';
+import { usePagedList } from '@ui/hooks/usePagedList';
 import { useCommentStore } from '@/domain/useCommentStore';
 import { threadList } from '@/domain/commentThreads';
 import { CommentsIsland } from './island/CommentsIsland.js';

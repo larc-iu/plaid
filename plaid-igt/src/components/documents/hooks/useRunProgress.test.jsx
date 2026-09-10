@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { renderComponent } from '@/test/renderComponent.jsx';
+import { renderComponent } from '@ui/test/renderComponent.jsx';
 import { useRunProgress, formatElapsed } from './useRunProgress.js';
 
 // These are the rules that keep a working run from reading as a hung one.

@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { UserButton } from './UserButton';
 import { useAuth } from '../../contexts/AuthContext';
-import { cn } from '@/lib/utils';
+import { cn } from '@ui/lib/utils';
 
 // shadcn shell frame. `.tw` is scoped to the header only: each route screen
 // adds its own `.tw` root, and the two islands own their CSS and must not

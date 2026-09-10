@@ -1,6 +1,11 @@
 import { Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
+import { Button } from '@ui/components/ui/button';
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from '@ui/components/ui/tooltip';
 import { formatElapsed } from '../hooks/useRunProgress.js';
 
 // The button that opens a run dialog, and the run's progress indicator once it

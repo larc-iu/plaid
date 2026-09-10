@@ -7,9 +7,9 @@ import {
   getParamSchema,
   buildDefaultValues,
 } from '@larc-iu/plaid-client';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@ui/components/ui/button';
+import { Badge } from '@ui/components/ui/badge';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@ui/components/ui/card';
 import { ServiceParamForm } from '../../documents/services/ServiceParamForm';
 import { ServiceSummary } from '../../documents/services/ServiceSummary';
 import { notifyError } from '@/utils/feedback';

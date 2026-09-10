@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Info, Pencil, Save, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@ui/components/ui/button';
+import { Label } from '@ui/components/ui/label';
+import { Textarea } from '@ui/components/ui/textarea';
 import { useBaselineOperations } from './useBaselineOperations.js';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 

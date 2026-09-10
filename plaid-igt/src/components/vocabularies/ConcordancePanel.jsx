@@ -1,6 +1,6 @@
 import { FileText, Quote } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { Button } from '@ui/components/ui/button';
+import { cn } from '@ui/lib/utils';
 import { ContextRow } from './DictionaryPanels';
 import { sentenceTo } from './vocabConcordance';
 

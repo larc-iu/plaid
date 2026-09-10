@@ -9,16 +9,16 @@ import {
   Unlink,
   AlertTriangle,
 } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
+import { Input } from '@ui/components/ui/input';
+import { Button } from '@ui/components/ui/button';
 import {
   Dialog,
   DialogContent,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { cn } from '@/lib/utils';
+} from '@ui/components/ui/dialog';
+import { cn } from '@ui/lib/utils';
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 
 export const VocabularyManager = ({

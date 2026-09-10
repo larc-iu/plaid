@@ -2,11 +2,16 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Plus } from 'lucide-react';
-import { DataTable } from '@/components/ui/data-table';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { timeAgo, fullTimestamp } from '@/utils/formatTime';
+import { DataTable } from '@ui/components/ui/data-table';
+import { Button } from '@ui/components/ui/button';
+import { Card } from '@ui/components/ui/card';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@ui/components/ui/tooltip';
+import { timeAgo, fullTimestamp } from '@ui/utils/formatTime';
 import { notifyWarning, isPermissionError } from '@/utils/feedback';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 

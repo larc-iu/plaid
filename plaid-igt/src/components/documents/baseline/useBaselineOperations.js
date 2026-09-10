@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import { notifySuccess } from '@/utils/feedback';
-import { useConfirm } from '@/components/shared/ConfirmProvider';
+import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 
 // Baseline tab operations, backed by the shared IgtDocument. The save itself
 // (texts.update with server-side token shifting, plus the create/seed paths)

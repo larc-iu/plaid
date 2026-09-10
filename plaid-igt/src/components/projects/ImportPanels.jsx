@@ -2,7 +2,7 @@
 // the grouped, copyable warning list a long run produces.
 
 import { AlertTriangle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button } from '@ui/components/ui/button';
 import { notifySuccess } from '@/utils/feedback';
 
 export const Panel = ({ tone = 'muted', icon: Icon, title, children }) => {

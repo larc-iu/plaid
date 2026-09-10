@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
+import { Button } from '@ui/components/ui/button';
 
 // "Access Tokens" tab — points at the per-user named API tokens managed on the
 // profile page (mirrors plaid-ud). Named tokens are individually revocable and

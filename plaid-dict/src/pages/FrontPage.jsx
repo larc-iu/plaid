@@ -6,7 +6,7 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { searchPages } from '@/domain/dictionaryView';
 import { firstGloss } from '@/domain/entryFields';
 import { dictTitle } from '@/domain/dictConfig';
-import { Input } from '@/components/ui/input';
+import { Input } from '@ui/components/ui/input';
 import { formPath } from '@/domain/paths';
 
 // The letter buttons scroll rather than link. The app is a HashRouter, so the

@@ -9,16 +9,16 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Upload, FileText, X, ArrowLeft, ArrowRight, Download, AlertTriangle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@ui/components/ui/button';
+import { Textarea } from '@ui/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from '@/components/ui/dialog';
-import { cn } from '@/lib/utils';
+} from '@ui/components/ui/dialog';
+import { cn } from '@ui/lib/utils';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { humanizeFieldName, fieldDescription, FIELD_TYPES } from '@/domain/vocabFields';
 import { downloadBlob, sanitizeFilename } from '@/export/files';
