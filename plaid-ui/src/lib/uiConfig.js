@@ -13,7 +13,14 @@ const DEFAULTS = {
   // machine share an origin only in the packaged build, but they would share
   // key names everywhere: a sort order remembered for IGT's document list must
   // not decide how UD's opens.
-  appPrefix: 'plaid_ui',
+  //
+  // There is deliberately NO default. An app that forgets `configureUi`, or one
+  // whose bundler has quietly given this module a second instance, would
+  // otherwise write every key under a prefix nobody chose — which is invisible
+  // until someone notices their remembered sorts are gone. `listPrefKey` throws
+  // instead. That is not hypothetical: it shipped once, when an alias through
+  // node_modules made the optimizer pre-bundle this file (../vite.js).
+  appPrefix: null,
   // Optional. Given `(element) => cleanup`, the package's Input and Textarea
   // honor their `compose` prop by handing the element to it on mount. It is
   // how plaid-igt wires its backslash composer (`\sw` -> ə) into fields this
@@ -30,8 +37,16 @@ export const configureUi = (next = {}) => {
   config = { ...DEFAULTS, ...next };
 };
 
-/** The app's localStorage prefix. */
-export const appPrefix = () => config.appPrefix;
+/** The app's localStorage prefix. Throws if the app never named one. */
+export const appPrefix = () => {
+  if (!config.appPrefix) {
+    throw new Error(
+      'plaid-ui: no appPrefix. Call configureUi({appPrefix}) from the app entry, ' +
+        'and check that this module has not been loaded twice.',
+    );
+  }
+  return config.appPrefix;
+};
 
 /** The app's compose attacher, or null. */
 export const composeAttacher = () => config.attachCompose;

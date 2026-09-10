@@ -164,9 +164,17 @@ describe('usePagedList', () => {
 
 describe('listPrefKey', () => {
   it('scopes a key to its list and, where there is one, its id', () => {
-    expect(listPrefKey('sort', 'projects')).toBe('plaid_ui_list_sort:projects');
-    expect(listPrefKey('sort', 'documents', 'p1')).toBe('plaid_ui_list_sort:documents:p1');
-    expect(pageKey('documents', 'p1')).toBe('plaid_ui_list_page:documents:p1');
+    configureUi({ appPrefix: 'plaid_igt' });
+    expect(listPrefKey('sort', 'projects')).toBe('plaid_igt_list_sort:projects');
+    expect(listPrefKey('sort', 'documents', 'p1')).toBe('plaid_igt_list_sort:documents:p1');
+    expect(pageKey('documents', 'p1')).toBe('plaid_igt_list_page:documents:p1');
+    configureUi();
+  });
+
+  // An app that never called configureUi, or a bundler that handed this module
+  // out twice, must not quietly write keys under a prefix nobody chose.
+  it('refuses to build a key for an app that named no prefix', () => {
+    expect(() => listPrefKey('sort', 'projects')).toThrow(/appPrefix/);
   });
 
   // The prefix is the app's, so two apps' document lists never read each

@@ -6,7 +6,7 @@
         "./src/*"
       ],
       "@ui/*": [
-        "./node_modules/@larc-iu/plaid-ui/src/*"
+        "../plaid-ui/src/*"
       ]
     }
   },

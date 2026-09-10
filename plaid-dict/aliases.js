@@ -3,15 +3,12 @@ import { fileURLToPath, URL } from 'node:url';
 export const DICT_SRC = fileURLToPath(new URL('./src', import.meta.url));
 export const IGT_SRC = fileURLToPath(new URL('../plaid-igt/src', import.meta.url));
 export const PLAID_CLIENT_SRC = fileURLToPath(new URL('../plaid-client-js/src', import.meta.url));
-// The shared UI package, reached THROUGH the node_modules symlink npm makes for
-// `file:../plaid-ui` rather than at ../plaid-ui/src. Its own bare imports
-// (react, lucide-react, the Radix primitives) resolve by walking up from the
-// importing file; ../plaid-ui has only lint tooling of its own, so with
-// `preserveSymlinks` on the walk carries on into THIS app's node_modules and
-// the package is compiled against the versions this app ships.
-export const PLAID_UI_SRC = fileURLToPath(
-  new URL('./node_modules/@larc-iu/plaid-ui/src', import.meta.url),
-);
+// The shared UI package, at its REAL source path so it stays first-party — one
+// module instance, watched, no immutable `?v=`. Its own bare imports are
+// resolved from this app by the plaidUiDeps plugin; see the long note in
+// ../plaid-ui/vite.js for what went wrong when this pointed through the
+// node_modules symlink instead.
+export const PLAID_UI_SRC = fileURLToPath(new URL('../plaid-ui/src', import.meta.url));
 
 /**
  * The app's module aliases, shared by the dev/build config and the test config

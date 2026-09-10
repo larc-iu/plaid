@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
+import { PLAID_UI_SRC, plaidUiDeps } from '../plaid-ui/vite.js';
 
 // Component tests, on happy-dom. The framework-agnostic half of the app
 // (ConlluDocument, the Grew engine, the pure utils) is tested by `node --test`
@@ -10,11 +11,14 @@ import { defineConfig } from 'vitest/config';
 // the app's path aliases have to be restated here, or a test fails to resolve
 // rather than failing an assertion.
 export default defineConfig({
+  plugins: [plaidUiDeps(fileURLToPath(new URL('.', import.meta.url)))],
+  // The shared package sits outside this app's root.
+  server: { fs: { allow: [fileURLToPath(new URL('..', import.meta.url))] } },
   resolve: {
     preserveSymlinks: true,
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
-      '@ui': fileURLToPath(new URL('./node_modules/@larc-iu/plaid-ui/src', import.meta.url)),
+      '@ui': PLAID_UI_SRC,
       // Straight to the source, matching vite.config.js — see the long note
       // there about the dep optimizer's immutable `?v=` cache.
       '@larc-iu/plaid-client': fileURLToPath(
@@ -23,11 +27,7 @@ export default defineConfig({
     },
   },
   test: {
-    // A path under node_modules is externalized by default and handed to node's
-    // own loader, which resolves the symlink back to ../plaid-ui and then
-    // cannot find its bare imports. Inlined, Vite transforms it and resolves
-    // them with `preserveSymlinks`, which keeps the walk inside this app.
-    server: { deps: { inline: [/@larc-iu\/plaid-ui/] } },
+    setupFiles: ['./src/test/setup.js'],
     environment: 'happy-dom',
     globals: true,
     include: ['src/**/*.{test,spec}.{js,jsx}'],

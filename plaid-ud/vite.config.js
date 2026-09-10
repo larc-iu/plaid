@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath, URL } from 'node:url';
+import { PLAID_UI_SRC, plaidUiDeps } from '../plaid-ui/vite.js';
 
 const PLAID_CLIENT_SRC = fileURLToPath(new URL('../plaid-client-js/src', import.meta.url));
 
@@ -24,23 +25,24 @@ export default defineConfig(({ command }) => ({
   // asset URLs. The dev server stays at '/'. Both apps use HashRouter, so client
   // routes live in the URL fragment and don't depend on the base path.
   base: command === 'build' ? '/ud/' : '/',
-  plugins: [react(), watchLocalPlaidClient(PLAID_CLIENT_SRC)],
+  plugins: [
+    react(),
+    plaidUiDeps(fileURLToPath(new URL('.', import.meta.url))),
+    watchLocalPlaidClient(PLAID_CLIENT_SRC),
+    watchLocalPlaidClient(PLAID_UI_SRC),
+  ],
   resolve: {
     preserveSymlinks: true,
     alias: {
       // `@/…` for first-party modules, matching plaid-igt and plaid-dict so a
       // component can move between the apps and the shared package unedited.
       '@': fileURLToPath(new URL('./src', import.meta.url)),
-      // The shared UI package, reached THROUGH the node_modules symlink npm
-      // makes for `file:../plaid-ui` rather than at ../plaid-ui/src. Its own
-      // bare imports (react, lucide-react, the Radix primitives) resolve by
-      // walking up from the importing file; ../plaid-ui has only lint tooling
-      // of its own, so with `preserveSymlinks` on the walk carries on into THIS
-      // app's node_modules and the package is compiled against the versions
-      // this app ships. The alias is what keeps it first-party: a bare
-      // `@larc-iu/plaid-ui` specifier would go through the dep optimizer and
-      // pick up the immutable `?v=` cache described below.
-      '@ui': fileURLToPath(new URL('./node_modules/@larc-iu/plaid-ui/src', import.meta.url)),
+      // The shared UI package, aliased to its REAL source path so it stays
+      // first-party — one module instance, watched, no immutable `?v=`. Its own
+      // bare imports are resolved from this app by the plaidUiDeps plugin; see
+      // the long note in ../plaid-ui/vite.js for what went wrong when this
+      // pointed through the node_modules symlink instead.
+      '@ui': PLAID_UI_SRC,
       // `plaid-client` is a local source package (../plaid-client-js) that we
       // edit constantly. Reaching it through the node_modules symlink makes
       // Vite treat it as a DEPENDENCY: the import URL gets the dep optimizer's
@@ -78,10 +80,7 @@ export default defineConfig(({ command }) => ({
     // symlinked local source package we actively edit during the SQL port.
     // Un-ignore it so saves there trigger HMR like first-party files.
     watch: {
-      ignored: [
-        '!**/node_modules/@larc-iu/plaid-client/**',
-        '!**/node_modules/@larc-iu/plaid-ui/**',
-      ],
+      ignored: ['!**/node_modules/@larc-iu/plaid-client/**'],
     },
     proxy: {
       '/api': {

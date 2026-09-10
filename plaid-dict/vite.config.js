@@ -1,7 +1,8 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath, URL } from 'node:url';
-import { aliases, IGT_SRC, PLAID_CLIENT_SRC } from './aliases.js';
+import { aliases, IGT_SRC, PLAID_CLIENT_SRC, PLAID_UI_SRC } from './aliases.js';
+import { plaidUiDeps } from '../plaid-ui/vite.js';
 
 // Both plaid-client and plaid-igt live OUTSIDE this app's root, and Vite's
 // watcher only covers the root, so edits over there reach no watcher: the dev
@@ -20,13 +21,17 @@ export default defineConfig(({ command }) => ({
   // asset URLs. The dev server stays at '/'. The app uses HashRouter, so client
   // routes live in the URL fragment and don't depend on the base path.
   base: command === 'build' ? '/dict/' : '/',
-  plugins: [react(), watchOutsideRoot(PLAID_CLIENT_SRC, IGT_SRC)],
+  plugins: [
+    react(),
+    plaidUiDeps(fileURLToPath(new URL('.', import.meta.url))),
+    watchOutsideRoot(PLAID_CLIENT_SRC, IGT_SRC, PLAID_UI_SRC),
+  ],
   resolve: {
     preserveSymlinks: true,
     alias: aliases,
   },
   optimizeDeps: {
-    exclude: ['@larc-iu/plaid-client', '@larc-iu/plaid-ui'],
+    exclude: ['@larc-iu/plaid-client'],
   },
   server: {
     port: 5175,
@@ -35,10 +40,7 @@ export default defineConfig(({ command }) => ({
       allow: [fileURLToPath(new URL('..', import.meta.url))],
     },
     watch: {
-      ignored: [
-        '!**/node_modules/@larc-iu/plaid-client/**',
-        '!**/node_modules/@larc-iu/plaid-ui/**',
-      ],
+      ignored: ['!**/node_modules/@larc-iu/plaid-client/**'],
     },
     proxy: {
       '/api': {
