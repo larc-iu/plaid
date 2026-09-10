@@ -30,34 +30,50 @@ const MAX_PEAK_BUCKETS = 1_000_000;
 // Bars are scaled against this percentile of the peaks rather than the single
 // loudest sample, so one door slam does not flatten an hour of speech.
 const PEAK_NORMALIZE_PERCENTILE = 0.99;
+// ...but never against less than this (about -46 dBFS). Scaling is what lets
+// a quiet recording fill the picture; scaled against nothing, a recording
+// with no sound in it fills the picture with its noise floor and looks like
+// wall-to-wall speech. Below this there is nothing to show, so it stays flat.
+const MIN_NORMALIZE_LEVEL = 0.005;
 
 /**
  * The decoded audio reduced to one loudest-sample-per-bucket envelope, plus
  * the level the bars are drawn against.
  *
+ * Every channel counts: a bucket's peak is the loudest sample on ANY of them.
+ * A camera with an external microphone records it on one channel and leaves
+ * the other all but silent, and a picture of the silent one, scaled up to
+ * fill the timeline, is a picture of its noise floor. (The speech detector
+ * mixes the channels down before it listens, which is why it was right about
+ * that recording while the waveform was not.)
+ *
+ * @param {Float32Array[]} channels  one array of samples per channel
  * @returns {{peaks: Float32Array, level: number}}
  */
-export const peaksOf = (channelData, duration) => {
+export const peaksOf = (channels, duration) => {
   const buckets = Math.max(
     1,
     Math.min(MAX_PEAK_BUCKETS, Math.ceil((duration || 1) * PEAK_BUCKETS_PER_SECOND)),
   );
   const peaks = new Float32Array(buckets);
-  const per = channelData.length / buckets;
+  const length = Math.max(0, ...channels.map((c) => c.length));
+  const per = length / buckets;
   for (let i = 0; i < buckets; i += 1) {
     const start = Math.floor(i * per);
-    const end = Math.min(channelData.length, Math.max(start + 1, Math.floor((i + 1) * per)));
+    const end = Math.min(length, Math.max(start + 1, Math.floor((i + 1) * per)));
     let peak = 0;
-    for (let j = start; j < end; j += 1) {
-      const v = channelData[j] < 0 ? -channelData[j] : channelData[j];
-      if (v > peak) peak = v;
+    for (const channelData of channels) {
+      for (let j = start; j < end && j < channelData.length; j += 1) {
+        const v = channelData[j] < 0 ? -channelData[j] : channelData[j];
+        if (v > peak) peak = v;
+      }
     }
     peaks[i] = peak;
   }
   const sorted = Float32Array.from(peaks).sort();
   const level =
     sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * PEAK_NORMALIZE_PERCENTILE))];
-  return { peaks, level: level > 0 ? level : 1 };
+  return { peaks, level: Math.max(level, MIN_NORMALIZE_LEVEL) };
 };
 
 /** The stretch of timeline to draw for a viewport, clamped to the timeline. */

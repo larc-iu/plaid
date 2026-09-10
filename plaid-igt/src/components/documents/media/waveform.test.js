@@ -11,7 +11,7 @@ const burst = () => {
 
 describe('peaksOf', () => {
   it('puts the loud stretch where it happened', () => {
-    const { peaks, level } = peaksOf(burst(), 3);
+    const { peaks, level } = peaksOf([burst()], 3);
     const third = Math.floor(peaks.length / 3);
     const loudest = (from, to) => Math.max(...peaks.slice(from, to));
     expect(loudest(0, third - 2)).toBeLessThan(0.01);
@@ -23,15 +23,41 @@ describe('peaksOf', () => {
   it('scales against a percentile, so one spike does not flatten the speech', () => {
     const data = burst();
     data[10] = 1; // a single sample of clipping, in the silence
-    const { peaks, level } = peaksOf(data, 3);
+    const { peaks, level } = peaksOf([data], 3);
     expect(Math.max(...peaks)).toBe(1);
     expect(0.8 / level).toBeGreaterThan(0.9);
   });
 
   it('never returns an empty envelope or a zero level', () => {
-    const { peaks, level } = peaksOf(new Float32Array(SR), 1);
+    const { peaks, level } = peaksOf([new Float32Array(SR)], 1);
     expect(peaks.length).toBeGreaterThan(0);
-    expect(level).toBe(1); // silence still divides safely
+    expect(level).toBeGreaterThan(0); // silence still divides safely
+  });
+});
+
+// A camera with an external microphone: the speech is on one channel and the
+// other holds only the camera's own noise floor. Drawn from the first channel
+// alone and scaled to fill the picture, that floor looked like an unbroken
+// wall of speech, on a recording whose speech detector was finding the real
+// utterances perfectly well.
+describe('peaksOf, across channels', () => {
+  const hiss = () => {
+    const data = new Float32Array(SR * 3);
+    for (let i = 0; i < data.length; i += 1) data[i] = ((i * 7919) % 13) * 0.0002;
+    return data;
+  };
+
+  it('hears the loud second on whichever channel carries it', () => {
+    const { peaks, level } = peaksOf([hiss(), burst()], 3);
+    const third = Math.floor(peaks.length / 3);
+    const loudest = (from, to) => Math.max(...peaks.slice(from, to));
+    expect(loudest(third + 2, third * 2 - 2)).toBeGreaterThan(0.7);
+    expect(loudest(0, third - 2) / level).toBeLessThan(0.01);
+  });
+
+  it('leaves a recording with nothing in it flat rather than scaling up its noise', () => {
+    const { peaks, level } = peaksOf([hiss(), hiss()], 3);
+    expect(Math.max(...peaks) / level).toBeLessThan(0.5);
   });
 });
 
@@ -63,7 +89,7 @@ describe('covers', () => {
 // belongs to. Get this wrong and the waveform lies about where a boundary is,
 // which is worse than the blur it replaced.
 describe('barsFor', () => {
-  const { peaks, level } = peaksOf(burst(), 3);
+  const { peaks, level } = peaksOf([burst()], 3);
   const tallest = (bars) => bars.reduce((a, b) => (b.height > a.height ? b : a));
 
   it('puts the loud second in the middle when the window is the whole timeline', () => {

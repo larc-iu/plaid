@@ -119,7 +119,10 @@ export function useWaveform({ mediaBlob, duration, timelineWidth, scrollLeft, co
                   // player's <video> src, so there is nothing to fetch.
                   // decodeAudioData detaches the buffer, hence the fresh copy.
                   const decoded = await audio.decodeAudioData(await mediaBlob.arrayBuffer());
-                  return rememberEnvelope(key, peaksOf(decoded.getChannelData(0), duration));
+                  const channels = Array.from({ length: decoded.numberOfChannels }, (_, i) =>
+                    decoded.getChannelData(i),
+                  );
+                  return rememberEnvelope(key, peaksOf(channels, duration));
                 })(),
               };
             }
