@@ -145,18 +145,30 @@ export function deriveImportConfig(ir, build, opts = {}) {
   addField('literalTranslation', 'Sentence', 'Literal Translation', ir.wsUsage.literalTranslation);
   addField('note', 'Sentence', 'Note', ir.wsUsage.note);
 
-  // Alternate text titles (e.g. the English names of vernacular-titled texts)
+  // Alternate text titles and abbreviations (e.g. the English names of
+  // vernacular-titled texts)
   const titleWss = new Set();
+  const abbrWss = new Set();
   for (const d of build.documents) {
     for (const ws of Object.keys(d.names)) {
       if (d.names[ws] !== d.name) titleWss.add(ws);
     }
+    for (const ws of Object.keys(d.abbreviations || {})) {
+      if (d.abbreviations[ws] !== d.abbreviation) abbrWss.add(ws);
+    }
   }
+  // A text carries the first four itself, so they are offered whether or not
+  // this import fills them. The notebook fields exist only for a text given a
+  // notebook record, and are declared only where one was.
+  const filled = new Set(build.documents.flatMap((d) => Object.keys(documentMetadataOf(d))));
   const documentMetadata = [
     ...[...titleWss].map((ws) => ({ name: `Title (${ws})` })),
+    { name: 'Abbreviation' },
+    ...[...abbrWss].map((ws) => ({ name: `Abbreviation (${ws})` })),
     { name: 'Source' },
     { name: 'Description' },
     { name: 'Genre' },
+    ...NOTEBOOK_FIELDS.filter((name) => filled.has(name)).map((name) => ({ name })),
   ];
 
   return {
@@ -530,15 +542,47 @@ async function placeVariants({
   }
 }
 
+// What a text's notebook record contributes, in the order FLEx's Info tab
+// shows it. Named as FLEx labels them: "Sources" is the record's own list of
+// people, beside the text's own "Source" string.
+const NOTEBOOK_FIELDS = [
+  'Researchers',
+  'Sources',
+  'Participants',
+  'Locations',
+  'Anthropology Categories',
+];
+
+/**
+ * Roled participant groups → "Ana, Bo; Narrator: Cy". FLEx groups participants
+ * by the role they played, and the group with no role is a plain list.
+ */
+const participantsText = (groups) =>
+  groups
+    .map((g) => (g.role ? `${g.role}: ${g.people.join(', ')}` : g.people.join(', ')))
+    .join('; ');
+
 /** Flatten a document's FLEx metadata onto the configured metadata fields. */
 function documentMetadataOf(doc) {
   const md = {};
   for (const [ws, title] of Object.entries(doc.names)) {
     if (title !== doc.name) md[`Title (${ws})`] = title;
   }
+  if (doc.abbreviation) md.Abbreviation = doc.abbreviation;
+  for (const [ws, abbr] of Object.entries(doc.abbreviations || {})) {
+    if (abbr !== doc.abbreviation) md[`Abbreviation (${ws})`] = abbr;
+  }
   if (doc.source) md.Source = pickEn(doc.source);
   if (doc.description) md.Description = pickEn(doc.description);
   if (doc.genres?.length) md.Genre = doc.genres.join(', ');
+  const nb = doc.notebook;
+  if (nb) {
+    if (nb.researchers.length) md.Researchers = nb.researchers.join(', ');
+    if (nb.sources.length) md.Sources = nb.sources.join(', ');
+    if (nb.participants.length) md.Participants = participantsText(nb.participants);
+    if (nb.locations.length) md.Locations = nb.locations.join(', ');
+    if (nb.anthroCodes.length) md['Anthropology Categories'] = nb.anthroCodes.join(', ');
+  }
   return md;
 }
 // The steps one document goes through, in order, so progress can report how

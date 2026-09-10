@@ -62,7 +62,8 @@ function alignSegment(body, begin, end, analyses, baselineWs) {
  * @param {object} ir — parseFwdata output
  * @param {object} [opts] — {baselineWs} override (default: first vernacular)
  * @returns {{documents, baselineWs, orthographyWss, stats}}
- *   Each document: {guid, name, names, source, description, genres, body,
+ *   Each document: {guid, name, names, abbreviation, abbreviations, source,
+ *   description, genres, notebook, body,
  *   sentences: [{begin, end, freeTranslation, literalTranslation, notes}],
  *   words: [{begin, end, forms, gloss, pos, morphemes}], warnings}
  *   All begin/end are code points in body space.
@@ -128,9 +129,14 @@ export function buildDocuments(ir, opts = {}) {
       guid: text.guid,
       name: text.names?.[baselineWs] ?? pickEn(text.names) ?? 'Untitled',
       names: text.names ?? {},
+      // The abbreviation the same way as the title: one of them stands alone
+      // and any other writing system rides beside it.
+      abbreviation: text.abbreviations?.[baselineWs] ?? pickEn(text.abbreviations) ?? null,
+      abbreviations: text.abbreviations ?? {},
       source: text.source,
       description: text.description,
       genres: text.genres,
+      notebook: text.notebook ?? null,
       body,
       sentences: sentences.map((s) => ({
         begin: toCp(s.beginU16),

@@ -44,6 +44,13 @@ const KEEP_CLASSES = new Set([
   'CmPossibility',
   'CmAgent',
   'CmAgentEvaluation',
+  // The notebook record behind a text's Info tab, and the people, places and
+  // categories its fields point at.
+  'RnGenericRec',
+  'RnRoledPartic',
+  'CmPerson',
+  'CmLocation',
+  'CmAnthroItem',
 ]);
 
 const nfc = (s) => (s == null ? s : s.normalize('NFC'));
@@ -461,6 +468,42 @@ export function parseFwdata(xml) {
     };
   };
 
+  // The lower half of a text's Info tab: a notebook record (RnGenericRec) that
+  // names the text it belongs to. FLEx shows five of its fields there —
+  // Researchers, Sources, Participants, Locations, Anthropology Categories
+  // (Configuration/Parts/Notebook.fwlayout, layout "TextInfoFields") — and a
+  // text that has never been given one simply has no record.
+  const personName = (guid) => pickEn(multiUni(get(guid, 'CmPerson'), 'Name'));
+  const possibilityName = (guid) => {
+    const p = get(guid, guid && 'possibility');
+    return p ? (pickEn(multiUni(p, 'Name')) ?? pickEn(multiUni(p, 'Abbreviation'))) : null;
+  };
+  const notebookByText = new Map();
+  for (const rec of cls('RnGenericRec')) {
+    const textGuid = refGuid(rec, 'Text');
+    if (!textGuid) continue;
+    // Participants are grouped by role: each RnRoledPartic the record owns
+    // holds the people who played one role, and the group with no role is the
+    // plain list FLEx shows when nobody has been given one.
+    const participants = refGuids(rec, 'Participants')
+      .map((g) => get(g, 'RnRoledPartic'))
+      .filter(Boolean)
+      .map((rp) => ({
+        role: possibilityName(refGuid(rp, 'Role')),
+        people: refGuids(rp, 'Participants').map(personName).filter(Boolean),
+      }))
+      .filter((rp) => rp.people.length);
+    notebookByText.set(textGuid, {
+      researchers: refGuids(rec, 'Researchers').map(personName).filter(Boolean),
+      // The record's own Sources: the people the information came from, not
+      // the text's Source string.
+      sources: refGuids(rec, 'Sources').map(personName).filter(Boolean),
+      participants,
+      locations: refGuids(rec, 'Locations').map(possibilityName).filter(Boolean),
+      anthroCodes: refGuids(rec, 'AnthroCodes').map(possibilityName).filter(Boolean),
+    });
+  }
+
   // Texts → paragraphs → segments
   const texts = [];
   for (const t of cls('Text')) {
@@ -509,11 +552,13 @@ export function parseFwdata(xml) {
     texts.push({
       guid: t.attrs.guid,
       names: multiUni(t, 'Name'),
+      abbreviations: multiUni(t, 'Abbreviation'),
       source: multiStr(t, 'Source'),
       description: multiStr(t, 'Description'),
       genres: refGuids(t, 'Genres')
         .map((g) => pickEn(multiUni(byGuid.get(g), 'Name')))
         .filter(Boolean),
+      notebook: notebookByText.get(t.attrs.guid) ?? null,
       paragraphs,
     });
   }

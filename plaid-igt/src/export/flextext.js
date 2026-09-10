@@ -116,22 +116,32 @@ const TEXT_ITEM_TYPES = {
 // written about it — the same split the FLEx importer makes.
 const VERNACULAR_ITEMS = new Set(['title', 'title-abbreviation']);
 
-/** A document's metadata as <interlinear-text> items. */
+/**
+ * A document's metadata as <interlinear-text> items.
+ *
+ * Every comment for one writing system is written as ONE item, a field to a
+ * line. FLEx keeps a single comment per writing system and sets it from each
+ * item in turn, so a second comment item does not join the first, it replaces
+ * it: a text with a genre and three notebook fields would arrive in FLEx
+ * carrying only the last of them.
+ */
 const metadataItems = (indent, metadata, options) => {
   const lines = [];
+  const comments = new Map(); // lang → [line]
+  const comment = (lang, text) => comments.set(lang, [...(comments.get(lang) ?? []), text]);
   for (const [key, value] of Object.entries(metadata || {})) {
     if (value == null || value === '') continue;
     const { base, ws } = parseFieldName(key);
     const type = TEXT_ITEM_TYPES[base.trim().toLowerCase()];
-    if (!type) {
-      lines.push(...item(indent, 'comment', analysisLang(options), `${key}: ${value}`));
-      continue;
-    }
     const lang =
       (ws && isLangTag(ws) && ws) ||
       (VERNACULAR_ITEMS.has(type) ? baselineLang(options) : analysisLang(options));
-    lines.push(...item(indent, type, lang, value));
+    if (!type) comment(analysisLang(options), `${key}: ${value}`);
+    else if (type === 'comment') comment(lang, String(value));
+    else lines.push(...item(indent, type, lang, value));
   }
+  for (const [lang, texts] of comments)
+    lines.push(...item(indent, 'comment', lang, texts.join('\n')));
   return lines;
 };
 

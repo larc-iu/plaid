@@ -66,13 +66,26 @@ describe('buildFlextextDocument', () => {
       ['title-abbreviation', 'spa', 'RD01'],
       ['title-abbreviation', 'en', 'RD-en'],
       ['source', 'en', 'Field notes'],
-      // FLEx calls a text's Description its comment.
-      ['comment', 'en', 'A story about dogs'],
-      // Nothing in a .flextext holds these, so they stay legible as comments.
-      // "Sources" is the notebook record's people, and must not be read as the
-      // text's own Source.
-      ['comment', 'en', 'Researchers: Ana Ruiz'],
-      ['comment', 'en', 'Sources: Bo Vega'],
+      // FLEx calls a text's Description its comment, and everything a
+      // .flextext cannot place joins it a line at a time rather than
+      // replacing it. "Sources" is the notebook record's people, and must not
+      // be read as the text's own Source.
+      ['comment', 'en', 'A story about dogs\nResearchers: Ana Ruiz\nSources: Bo Vega'],
+    ]);
+  });
+
+  it('keeps one comment per writing system', () => {
+    const doc = makeFixtureDoc();
+    doc.document.metadata = {
+      Description: 'In English',
+      'Description (nl)': 'In het Nederlands',
+      Genre: 'narrative',
+    };
+    const dom = parse(buildFlextextDocument([doc], FLEXTEXT_OPTIONS));
+    const comments = [...dom.querySelectorAll('interlinear-text > item[type="comment"]')];
+    expect(comments.map((c) => [c.getAttribute('lang'), c.textContent])).toEqual([
+      ['en', 'In English\nGenre: narrative'],
+      ['nl', 'In het Nederlands'],
     ]);
   });
 

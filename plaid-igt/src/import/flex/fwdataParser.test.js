@@ -232,3 +232,72 @@ describe.skipIf(!existsSync(SENA))('parseFwdata — Sena 3 sample (newer format)
     for (const w of words) expect(pickEn(w.forms) ?? Object.values(w.forms ?? {})[0]).toBeTruthy();
   });
 });
+
+// The Info tab: the text's own Abbreviation, and the notebook record that
+// holds the rest of what FLEx shows there. Hand-written rather than sample-
+// backed, because a notebook record is rare in a shipped sample project.
+const INFO_TAB_FWDATA = `<?xml version="1.0" encoding="utf-8"?>
+<languageproject version="7000072">
+<rt class="LangProject" guid="lp1">
+  <CurVernWss><Uni>tst</Uni></CurVernWss>
+  <CurAnalysisWss><Uni>en</Uni></CurAnalysisWss>
+</rt>
+<rt class="Text" guid="t1">
+  <Abbreviation><AUni ws="tst">TN01</AUni><AUni ws="en">Story 1</AUni></Abbreviation>
+  <Name><AUni ws="tst">Мах</AUni><AUni ws="en">The Story</AUni></Name>
+</rt>
+<rt class="Text" guid="t2">
+  <Name><AUni ws="en">No Record</AUni></Name>
+</rt>
+<rt class="RnGenericRec" guid="r1" ownerguid="nb1">
+  <AnthroCodes><objsur guid="ac1" t="r" /></AnthroCodes>
+  <Locations><objsur guid="loc1" t="r" /></Locations>
+  <Participants><objsur guid="rp1" t="o" /><objsur guid="rp2" t="o" /></Participants>
+  <Researchers><objsur guid="p1" t="r" /></Researchers>
+  <Sources><objsur guid="p2" t="r" /></Sources>
+  <Text><objsur guid="t1" t="r" /></Text>
+</rt>
+<rt class="RnRoledPartic" guid="rp1" ownerguid="r1">
+  <Participants><objsur guid="p2" t="r" /><objsur guid="p3" t="r" /></Participants>
+</rt>
+<rt class="RnRoledPartic" guid="rp2" ownerguid="r1">
+  <Participants><objsur guid="p1" t="r" /></Participants>
+  <Role><objsur guid="role1" t="r" /></Role>
+</rt>
+<rt class="CmPerson" guid="p1"><Name><AUni ws="en">Ana Ruiz</AUni></Name></rt>
+<rt class="CmPerson" guid="p2"><Name><AUni ws="en">Bo Vega</AUni></Name></rt>
+<rt class="CmPerson" guid="p3"><Name><AUni ws="en">Cy Nam</AUni></Name></rt>
+<rt class="CmPossibility" guid="role1"><Name><AUni ws="en">Narrator</AUni></Name></rt>
+<rt class="CmLocation" guid="loc1"><Name><AUni ws="en">Qusar</AUni></Name></rt>
+<rt class="CmAnthroItem" guid="ac1">
+  <Abbreviation><AUni ws="en">533</AUni></Abbreviation>
+  <Name><AUni ws="en">Folklore</AUni></Name>
+</rt>
+</languageproject>`;
+
+describe('parseFwdata — the Info tab', () => {
+  const ir = parseFwdata(INFO_TAB_FWDATA);
+  const [story, plain] = ir.texts;
+
+  it('reads the abbreviation in every writing system', () => {
+    expect(story.abbreviations).toEqual({ tst: 'TN01', en: 'Story 1' });
+    expect(plain.abbreviations).toBeNull();
+  });
+
+  it('reads the notebook record of the text that names it', () => {
+    expect(story.notebook).toEqual({
+      researchers: ['Ana Ruiz'],
+      // The record's own people, not the text's Source string.
+      sources: ['Bo Vega'],
+      participants: [
+        // The group nobody was given a role in comes through as a plain list.
+        { role: null, people: ['Bo Vega', 'Cy Nam'] },
+        { role: 'Narrator', people: ['Ana Ruiz'] },
+      ],
+      locations: ['Qusar'],
+      anthroCodes: ['Folklore'],
+    });
+    expect(plain.notebook).toBeNull();
+    expect(ir.warnings).toEqual([]);
+  });
+});

@@ -29,9 +29,23 @@ const build = {
       guid: 'g-doc1',
       name: '01 Мах',
       names: { [BASE_WS]: '01 Мах', en: 'The Tale' },
+      abbreviation: 'МХ',
+      abbreviations: { [BASE_WS]: 'МХ', en: 'Tale' },
       source: { en: 'Rosa' },
       description: null,
       genres: ['Folktale'],
+      // The text's notebook record, as FLEx's Info tab shows it. Sources and
+      // anthropology categories are empty here, and stay out of the project.
+      notebook: {
+        researchers: ['Ana Ruiz'],
+        sources: [],
+        participants: [
+          { role: null, people: ['Bo Vega'] },
+          { role: 'Narrator', people: ['Cy Nam'] },
+        ],
+        locations: ['Qusar'],
+        anthroCodes: [],
+      },
       body: 'За мах мах.\n',
       sentences: [
         {
@@ -270,9 +284,19 @@ describe('deriveImportConfig', () => {
     expect(names).toContain('Morpheme:POS');
     expect(config.orthographies).toEqual([{ ws: TRANS_WS, name: TRANS_WS }]);
     expect(config.baselineWs).toBe(BASE_WS);
-    expect(config.documentMetadata.map((m) => m.name)).toEqual(
-      expect.arrayContaining(['Title (en)', 'Source', 'Genre']),
-    );
+    // The Info tab, in its own order: the text's own four fields whether or
+    // not this import fills them, then only the notebook fields with data.
+    expect(config.documentMetadata.map((m) => m.name)).toEqual([
+      'Title (en)',
+      'Abbreviation',
+      'Abbreviation (en)',
+      'Source',
+      'Description',
+      'Genre',
+      'Researchers',
+      'Participants',
+      'Locations',
+    ]);
   });
 
   it('restricts fields to the selected analysis writing systems', () => {
@@ -787,7 +811,14 @@ describe('runImport', () => {
       Source: 'Rosa',
       Genre: 'Folktale',
       'Title (en)': 'The Tale',
+      Abbreviation: 'МХ',
+      'Abbreviation (en)': 'Tale',
+      Researchers: 'Ana Ruiz',
+      // Participants keep the roles FLEx grouped them under.
+      Participants: 'Bo Vega; Narrator: Cy Nam',
+      Locations: 'Qusar',
     });
+    expect(last.args.body.Sources).toBeUndefined();
   });
 
   it('skips done documents and redoes half-imported ones', async () => {
