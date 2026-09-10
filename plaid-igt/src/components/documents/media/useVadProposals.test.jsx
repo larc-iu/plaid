@@ -28,12 +28,22 @@ function Probe({ saved, onPersist, tokens = [], blob = BLOB, method = 'builtin',
 }
 
 const shown = (r) => r.container.querySelector('output').textContent;
+// The shape on the document: begin and end in turn, no objects (the server
+// counts keys through every level, and 300 cuts as objects blew its cap).
 const kept = (regions, dismissed = []) => ({
   mediaBytes: BLOB.size,
   method: 'builtin',
-  regions,
+  regions: regions.flatMap((r) => [r.timeBegin, r.timeEnd]),
   dismissed,
 });
+
+// Keys the way the server counts them: every key of every map, at any depth.
+const serverKeyCount = (v) =>
+  Array.isArray(v)
+    ? v.reduce((n, x) => n + serverKeyCount(x), 0)
+    : v && typeof v === 'object'
+      ? Object.keys(v).length + Object.values(v).reduce((n, x) => n + serverKeyCount(x), 0)
+      : 0;
 
 describe('useVadProposals persistence', () => {
   afterEach(() => vi.useRealTimers());
@@ -51,6 +61,23 @@ describe('useVadProposals persistence', () => {
     const swapped = await renderComponent(<Probe saved={kept(REGIONS)} method="some-service" />);
     expect(shown(swapped)).toBe('');
     await swapped.unmount();
+  });
+
+  it('keeps a long recording within the server key cap', async () => {
+    const many = Array.from({ length: 400 }, (_, i) => ({ timeBegin: i * 2, timeEnd: i * 2 + 1 }));
+    const onPersist = vi.fn();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let api;
+    const r = await renderComponent(
+      <Probe saved={kept(REGIONS)} onPersist={onPersist} onReady={(v) => (api = v)} />,
+    );
+    // Dismissing one changes the payload, so the whole thing is written.
+    await r.step(() => api.dismiss('vad-0.420-3.100'));
+    await r.step(() => vi.advanceTimersByTime(2000));
+    expect(onPersist).toHaveBeenCalled();
+    expect(serverKeyCount(kept(many))).toBeLessThan(500);
+    expect(serverKeyCount(onPersist.mock.calls.at(-1)[0])).toBeLessThan(10);
+    await r.unmount();
   });
 
   it('does not write back what it just restored', async () => {
@@ -132,7 +159,7 @@ describe('useVadProposals: a service run that produced nothing', () => {
   const keptForService = (regions) => ({
     mediaBytes: BLOB.size,
     method: 'svc:detect',
-    regions,
+    regions: regions.flatMap((r) => [r.timeBegin, r.timeEnd]),
     dismissed: [],
   });
 

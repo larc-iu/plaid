@@ -42,12 +42,39 @@ const PERSIST_DELAY_MS = 1500;
 // What is stored, in one shape both the writer and the restore check build, so
 // they can be compared as strings. The recording is identified by its exact
 // byte length: replacing it leaves cuts measured from something else behind.
+// The regions go into the document's metadata as one flat list of numbers,
+// begin and end in turn, with the speakers (a service may name them) in a
+// parallel list only when there are any. The server caps a metadata payload
+// at 500 keys counted through every level of nesting, and a list of
+// {timeBegin, timeEnd} objects spent two per region: a 39-minute recording's
+// 300 cuts could not be saved at all ("Metadata exceeds max key count").
+// Numbers in a list cost no keys.
+const packRegions = (regions) => {
+  const times = [];
+  const speakers = [];
+  for (const r of regions) {
+    times.push(Number(r.timeBegin.toFixed(3)), Number(r.timeEnd.toFixed(3)));
+    speakers.push(r.speaker ?? null);
+  }
+  return speakers.some((sp) => sp != null) ? { regions: times, speakers } : { regions: times };
+};
+
+const unpackRegions = (kept) => {
+  const times = Array.isArray(kept?.regions) ? kept.regions : [];
+  const out = [];
+  for (let i = 0; i + 1 < times.length; i += 2) {
+    const speaker = kept.speakers?.[i / 2] ?? undefined;
+    out.push({ timeBegin: times[i], timeEnd: times[i + 1], ...(speaker ? { speaker } : {}) });
+  }
+  return out.length ? out : null;
+};
+
 const payloadOf = (mediaBlob, methodKey, regions, dismissed) =>
   regions && regions.length
     ? {
         mediaBytes: mediaBlob?.size ?? null,
         method: methodKey ?? null,
-        regions,
+        ...packRegions(regions),
         dismissed: [...dismissed].sort(),
       }
     : null;
@@ -108,13 +135,14 @@ export function useVadProposals({
       kept && kept.mediaBytes === (mediaBlob?.size ?? null) && kept.method === (methodKey ?? null)
         ? kept
         : null;
+    const restored = mine ? unpackRegions(mine) : null;
     setAnalysis(null);
-    setServiceRegions(mine?.regions ?? null);
-    setStatus(mine ? 'ready' : 'idle');
+    setServiceRegions(restored);
+    setStatus(restored ? 'ready' : 'idle');
     setError(null);
     setDismissed(new Set(mine?.dismissed ?? []));
     writtenRef.current = JSON.stringify(
-      payloadOf(mediaBlob, methodKey, mine?.regions ?? null, new Set(mine?.dismissed ?? [])),
+      payloadOf(mediaBlob, methodKey, restored, new Set(mine?.dismissed ?? [])),
     );
   }, [mediaKey, methodKey, mediaBlob]);
 
