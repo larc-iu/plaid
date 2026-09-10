@@ -23,6 +23,8 @@ import {
   findMorphemeTokenLayer,
   readScope,
   readVocabFields,
+  readLanguages,
+  hasLanguageIdentity,
 } from '../../domain/igtConfig.js';
 import { FIELD_SCOPES, FIELD_TYPES } from '../../domain/vocabFields.js';
 import { pickEn } from './fwdataParser.js';
@@ -133,13 +135,21 @@ export function deriveImportConfig(ir, build, opts = {}) {
       fields.push({ kind, scope, ws, name: fieldName(base, ws, primaryAnalysisWs) });
     }
   };
+  // A part of speech is read as the category's English abbreviation when it
+  // has one (pickEn), else its first form, so that is the language the POS
+  // fields are in. It is recorded because it is NOT the primary analysis
+  // language in general: the first real user glosses in Papuan Malay and names
+  // her categories in English only, and FLEx matches an imported `pos` against
+  // its categories in the writing system the file claims, creating a new
+  // category when nothing matches.
+  const posWs = ir.writingSystems.analysis.includes('en') ? 'en' : primaryAnalysisWs;
   addField('wordGloss', 'Word', 'Gloss', ir.wsUsage.wordGloss);
   if (build.documents.some((d) => d.words.some((w) => w.pos))) {
-    fields.push({ kind: 'wordPos', scope: 'Word', ws: null, name: 'POS' });
+    fields.push({ kind: 'wordPos', scope: 'Word', ws: posWs, name: 'POS' });
   }
   addField('morphGloss', 'Morpheme', 'Gloss', ir.wsUsage.morphGloss);
   if (build.documents.some((d) => d.words.some((w) => w.morphemes?.some((m) => m.pos)))) {
-    fields.push({ kind: 'morphPos', scope: 'Morpheme', ws: null, name: 'POS' });
+    fields.push({ kind: 'morphPos', scope: 'Morpheme', ws: posWs, name: 'POS' });
   }
   addField('freeTranslation', 'Sentence', 'Translation', ir.wsUsage.freeTranslation);
   addField('literalTranslation', 'Sentence', 'Literal Translation', ir.wsUsage.literalTranslation);
@@ -816,6 +826,27 @@ export async function runImport(args) {
   return args.client.withOperation('Import FLEx project', () => runImportImpl(args));
 }
 
+// The project's two languages, from the backup's writing systems: the
+// vernacular is the language documented, the primary analysis one is what
+// glosses and translations are in. The FLEx export reads its defaults from
+// here, and without them offered `und` for the baseline and `en` for
+// analysis until the user typed the codes in (the first real user did, and
+// asked why Plaid could not see that the unmarked fields were Papuan Malay).
+// The writing-system tag goes in as the code verbatim, since that tag is what
+// FLEx wants back. A project that already names a language keeps it.
+async function recordLanguages(client, project, config) {
+  const current = readLanguages(project.config);
+  if (hasLanguageIdentity(current.object) || hasLanguageIdentity(current.meta)) return;
+  const object = config.baselineWs;
+  const meta = config.primaryAnalysisWs;
+  if (!object && !meta) return;
+  const empty = { name: '', glottocode: '', iso639P3: '', latitude: null, longitude: null };
+  await client.projects.setConfig(project.id, IGT_NAMESPACE, 'languages', {
+    object: { ...empty, ...(object ? { iso639P3: object } : {}) },
+    meta: { ...empty, ...(meta ? { iso639P3: meta } : {}) },
+  });
+}
+
 async function runImportImpl({
   client,
   projectId,
@@ -828,6 +859,7 @@ async function runImportImpl({
 }) {
   const project = await client.projects.get(projectId);
   const targets = resolveTargets(project, config);
+  await recordLanguages(client, project, config);
   const orthographyNames = Object.fromEntries(
     (config.orthographies ?? []).map((o) => [o.ws ?? o.name, o.name]),
   );

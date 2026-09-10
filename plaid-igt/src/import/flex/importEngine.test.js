@@ -186,7 +186,12 @@ const project = {
 
 // --- fake client ---------------------------------------------------------------
 
-function makeFakeClient({ existingDocs = [], existingItems = [], existingFields = null } = {}) {
+function makeFakeClient({
+  existingDocs = [],
+  existingItems = [],
+  existingFields = null,
+  projectConfig = null,
+} = {}) {
   const calls = [];
   let batch = null;
   let nextId = 0;
@@ -219,8 +224,10 @@ function makeFakeClient({ existingDocs = [], existingItems = [], existingFields 
       return out;
     },
     projects: {
-      get: () => Promise.resolve(project),
+      get: () => Promise.resolve(projectConfig ? { ...project, config: projectConfig } : project),
       listDocuments: () => Promise.resolve(existingDocs),
+      setConfig: (projectId, ns, key, value) =>
+        record('projects.setConfig', { projectId, ns, key, value }, {}),
     },
     documents: {
       create: (projectId, name, metadata) =>
@@ -271,6 +278,21 @@ const createdItems = (client) =>
 // --- tests ---------------------------------------------------------------------
 
 describe('deriveImportConfig', () => {
+  // The first real user glosses in Papuan Malay and names her categories in
+  // English only. FLEx matches an imported `pos` against its categories in the
+  // language the file claims, so a POS field tagged with the gloss language
+  // would have made FLEx create a second set of categories.
+  it('gives the POS fields the language their values were read in', () => {
+    const withEn = deriveImportConfig(ir, build);
+    expect(withEn.fields.find((f) => f.kind === 'wordPos').ws).toBe('en');
+    expect(withEn.fields.find((f) => f.kind === 'morphPos').ws).toBe('en');
+    const noEn = deriveImportConfig(
+      { ...ir, writingSystems: { ...ir.writingSystems, analysis: ['ru'] } },
+      build,
+    );
+    expect(noEn.fields.find((f) => f.kind === 'wordPos').ws).toBe('ru');
+  });
+
   it('creates fields per analysis ws that occurs, primary unsuffixed', () => {
     const config = deriveImportConfig(ir, build);
     const names = config.fields.map((f) => `${f.scope}:${f.name}`);
@@ -686,6 +708,28 @@ describe('runImport', () => {
   let client, config;
   beforeEach(() => {
     config = deriveImportConfig(ir, build);
+  });
+
+  // The FLEx export reads its defaults from the project's languages, and a
+  // FLEx import never wrote them, so every export of an imported project
+  // started at `und` and `en` until the user typed the codes in.
+  it("records the project's languages from the backup's writing systems", async () => {
+    client = makeFakeClient();
+    await runImport({ client, projectId: 'p1', build, lexicon, config, vocabId: 'v1' });
+    const call = client.calls.find((c) => c.kind === 'projects.setConfig');
+    expect(call.args).toMatchObject({ projectId: 'p1', ns: 'igt', key: 'languages' });
+    expect(call.args.value.object.iso639P3).toBe(BASE_WS);
+    expect(call.args.value.meta.iso639P3).toBe('en');
+  });
+
+  it('leaves the languages of a project that already names one alone', async () => {
+    client = makeFakeClient({
+      projectConfig: { igt: { languages: { object: { name: 'Lezgi' }, meta: {} } } },
+    });
+    await runImport({ client, projectId: 'p1', build, lexicon, config, vocabId: 'v1' });
+    expect(
+      client.calls.some((c) => c.kind === 'projects.setConfig' && c.args.key === 'languages'),
+    ).toBe(false);
   });
 
   it('imports a document with the right call shapes', async () => {
