@@ -1,34 +1,25 @@
 import { useState, useEffect, useCallback } from 'react';
-import {
-  Title,
-  Text,
-  Button,
-  Alert,
-  Paper,
-  Stack,
-  Group,
-  Center,
-  Loader,
-  Table,
-  Badge,
-  Modal,
-  TextInput,
-  PasswordInput,
-  Checkbox,
-} from '@mantine/core';
-import { useDebouncedValue } from '@mantine/hooks';
-import { IconPlus, IconLink } from '@tabler/icons-react';
+import { Link2, Plus } from 'lucide-react';
 import { MintedLinkModal } from '../projects/ProjectInvites';
 import { useAuth } from '../../contexts/AuthContext';
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
-import { UserAvatar } from '../common/UserAvatar';
-import classes from '../common/listRow.module.css';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { isEmail, EMAIL_INVALID_MESSAGE } from '../../utils/email';
-import { CursorPager, SearchInput } from '../common/ListChrome.jsx';
+import { UserAvatar } from '@ui/components/shared/UserAvatar';
+import { Badge } from '@ui/components/ui/badge';
+import { Button } from '@ui/components/ui/button';
+import { DataTable } from '@ui/components/ui/data-table';
+import { Input } from '@ui/components/ui/input';
+import { Label } from '@ui/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@ui/components/ui/dialog';
 
-const PAGE_SIZE = 100;
 const EMPTY_USER_FORM = {
   email: '',
   displayName: '',
@@ -37,11 +28,44 @@ const EMPTY_USER_FORM = {
   isAdmin: false,
 };
 
+const Alert = ({ children }) => (
+  <div
+    role="alert"
+    className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+  >
+    {children}
+  </div>
+);
+
+const Checkbox = ({ id, checked, onChange, disabled, label, description }) => (
+  <div className="flex flex-col gap-1">
+    <label className="flex cursor-pointer items-center gap-2 text-sm">
+      <input
+        id={id}
+        type="checkbox"
+        className="h-4 w-4 cursor-pointer accent-primary"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      {label}
+    </label>
+    {description && <p className="text-xs text-muted-foreground">{description}</p>}
+  </div>
+);
+
 // Instance-wide user administration (admin only). Unlike ProjectManagement —
-// which resolves a single project's ACL — this browses the whole directory via
-// the server-side `?q=` search and offers create / edit / deactivate /
-// reactivate. Deactivation is a soft-delete (client.users.delete); the user
-// stays in listings with a `deactivatedAt` timestamp and is reversible.
+// which resolves a single project's ACL — this browses the whole directory and
+// offers create / edit / deactivate / reactivate. Deactivation is a soft-delete
+// (client.users.delete); the user stays in listings with a `deactivatedAt`
+// timestamp and is reversible.
+//
+// The whole directory is fetched at once (`users.list()` follows every cursor)
+// and filtered, sorted and paged locally by the shared DataTable. This replaced
+// server-side keyset paging with a debounced `?q=`: a local filter costs no
+// round trip per keystroke, and it is what makes the list sortable and
+// countable, which a cursor-paged list with no total cannot be. Same shape as
+// plaid-igt's AdminUsers.
 export const AdminUsers = () => {
   useDocumentTitle('User Administration');
   const { user, getClient } = useAuth();
@@ -50,12 +74,6 @@ export const AdminUsers = () => {
 
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(0); // 0-indexed current page
-  const [cursors, setCursors] = useState([undefined]); // cursors[i] = keyset cursor that fetches page i (page 0 → none)
-  const [nextCursor, setNextCursor] = useState(null); // cursor for the page after this one, or null at the end
-
-  const [search, setSearch] = useState('');
-  const [debouncedSearch] = useDebouncedValue(search, 250);
 
   // Create-user form state
   const [showCreateUserForm, setShowCreateUserForm] = useState(false);
@@ -73,70 +91,23 @@ export const AdminUsers = () => {
   const [editUserError, setEditUserError] = useState('');
   const [editUserLoading, setEditUserLoading] = useState(false);
 
-  // Fetch one page. `cursor` is the keyset cursor for `pageIndex` (undefined for
-  // the first page); the response carries this page's rows plus the cursor for
-  // the next page (null when there are no more).
-  const fetchPage = useCallback(
-    async (pageIndex, cursor) => {
-      if (!isAdmin) return;
-      setLoading(true);
-      try {
-        const client = getClient();
-        const resp = await client.users.listPage({
-          q: debouncedSearch || undefined,
-          limit: PAGE_SIZE,
-          cursor: cursor || undefined,
-        });
-        setUsers(resp.entries || []);
-        setNextCursor(resp.nextCursor || null);
-        setPage(pageIndex);
-      } catch (err) {
-        console.error('Failed to load users:', err);
-        notifyError('Failed to load users');
-        setUsers([]);
-        setNextCursor(null);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [isAdmin, debouncedSearch, getClient],
-  );
+  const load = useCallback(async () => {
+    if (!isAdmin) return;
+    setLoading(true);
+    try {
+      setUsers((await getClient().users.list()) || []);
+    } catch (err) {
+      console.error('Failed to load users:', err);
+      notifyError('Failed to load users');
+      setUsers([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [isAdmin, getClient]);
 
-  // (Re)start at the first page on mount and whenever the search changes.
   useEffect(() => {
-    setCursors([undefined]);
-    fetchPage(0, undefined);
-  }, [fetchPage]);
-
-  const goNext = () => {
-    if (!nextCursor || loading) return;
-    setCursors((prev) => {
-      const copy = prev.slice(0, page + 1);
-      copy[page + 1] = nextCursor;
-      return copy;
-    });
-    fetchPage(page + 1, nextCursor);
-  };
-
-  const goPrev = () => {
-    if (page === 0 || loading) return;
-    fetchPage(page - 1, cursors[page - 1]);
-  };
-
-  // The directory is paged by a keyset cursor, so there is no total and no
-  // last page to jump to. One strip above the rows and one below, as
-  // everywhere else.
-  const pager = {
-    page: page + 1,
-    hasPrevious: page > 0,
-    hasNext: Boolean(nextCursor),
-    onPrevious: goPrev,
-    onNext: goNext,
-    busy: loading,
-  };
-
-  // Reload the current page in place (after a create / edit / (de)activate).
-  const reload = () => fetchPage(page, cursors[page]);
+    load();
+  }, [load]);
 
   const handleCreateUser = async (e) => {
     e.preventDefault();
@@ -151,7 +122,7 @@ export const AdminUsers = () => {
       return;
     }
     if (newUserForm.password.length < 6) {
-      setCreateUserError('Password must be at least 6 characters long');
+      setCreateUserError('Password must be at least 6 characters');
       return;
     }
 
@@ -165,14 +136,14 @@ export const AdminUsers = () => {
         newUserForm.isAdmin,
         newUserForm.displayName.trim() || undefined,
       );
-      notifySuccess('User created successfully');
+      notifySuccess('User created');
       setShowCreateUserForm(false);
       setNewUserForm(EMPTY_USER_FORM);
-      await reload();
+      await load();
     } catch (err) {
       console.error('Error creating user:', err);
       if (err.status === 409 || (err.message && err.message.includes('409'))) {
-        setCreateUserError(`An account for "${newUserForm.email}" already exists.`);
+        setCreateUserError(`An account for “${newUserForm.email}” already exists.`);
       } else {
         setCreateUserError('Failed to create user: ' + (err.message || 'Unknown error'));
       }
@@ -206,7 +177,7 @@ export const AdminUsers = () => {
       return;
     }
     if (editUserForm.password && editUserForm.password.length < 6) {
-      setEditUserError('Password must be at least 6 characters long');
+      setEditUserError('Password must be at least 6 characters');
       return;
     }
 
@@ -219,10 +190,10 @@ export const AdminUsers = () => {
         editUserForm.isAdmin !== (editingUser.isAdmin || false) ? editUserForm.isAdmin : undefined;
 
       await getClient().users.update(editingUser.id, newPassword, newDisplayName, newIsAdmin);
-      notifySuccess('User updated successfully');
+      notifySuccess('User updated');
       setEditingUser(null);
       setEditUserForm(EMPTY_USER_FORM);
-      await reload();
+      await load();
     } catch (err) {
       console.error('Error updating user:', err);
       setEditUserError('Failed to update user: ' + (err.message || 'Unknown error'));
@@ -245,7 +216,7 @@ export const AdminUsers = () => {
       await getClient().users.delete(target.id);
       notifySuccess('User deactivated');
       setEditingUser(null);
-      await reload();
+      await load();
     } catch (err) {
       console.error('Error deactivating user:', err);
       notifyError('Failed to deactivate user: ' + (err.message || 'Unknown error'));
@@ -273,7 +244,7 @@ export const AdminUsers = () => {
       await getClient().users.activate(target.id);
       notifySuccess('User reactivated');
       setEditingUser(null);
-      await reload();
+      await load();
     } catch (err) {
       console.error('Error reactivating user:', err);
       notifyError('Failed to reactivate user: ' + (err.message || 'Unknown error'));
@@ -281,261 +252,283 @@ export const AdminUsers = () => {
   };
 
   if (!isAdmin) {
-    return <Alert color="red">You don't have permission to manage users.</Alert>;
+    return (
+      <div className="tw">
+        <Alert>You do not have permission to manage users.</Alert>
+      </div>
+    );
   }
 
+  const columns = [
+    {
+      key: 'user',
+      label: 'User',
+      sort: (u) => (u.displayName || '').toLowerCase(),
+      className: 'p-0',
+      render: (u) => (
+        <button
+          type="button"
+          className="flex w-full items-center gap-2 px-3 py-2 text-left"
+          onClick={() => startEditingUser(u)}
+        >
+          <UserAvatar
+            client={getClient()}
+            userId={u.id}
+            displayName={u.displayName}
+            avatarHash={u.avatarHash}
+            className="h-7 w-7"
+            fallbackClassName="text-[10px]"
+          />
+          <span className="min-w-0">
+            <span className="flex items-center gap-2">
+              <span className="truncate text-sm font-medium">{u.displayName}</span>
+              {u.isAdmin && <Badge variant="secondary">Admin</Badge>}
+              {u.id === user.id && <Badge variant="outline">You</Badge>}
+            </span>
+            <span className="block truncate text-xs text-muted-foreground">{u.id}</span>
+          </span>
+        </button>
+      ),
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      sort: (u) => (u.deactivatedAt ? 1 : 0),
+      headerClassName: 'w-32',
+      render: (u) =>
+        u.deactivatedAt ? (
+          <Badge
+            variant="outline"
+            className="border-destructive/40 bg-destructive/10 text-destructive"
+          >
+            Deactivated
+          </Badge>
+        ) : (
+          <Badge
+            variant="outline"
+            className="border-emerald-500/40 bg-emerald-500/10 text-emerald-700"
+          >
+            Active
+          </Badge>
+        ),
+    },
+  ];
+
   return (
-    <>
-      <Group justify="space-between" align="flex-end" mb="lg">
-        <Stack gap={2}>
-          <Title order={2}>User Administration</Title>
-          <Text c="dimmed">Create, edit, and deactivate user accounts across the instance.</Text>
-        </Stack>
+    <div className="tw">
+      <div className="mb-6 flex items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">User Administration</h1>
+          <p className="text-sm text-muted-foreground">
+            Create, edit and deactivate user accounts across the instance.
+          </p>
+        </div>
         <Button
-          leftSection={<IconPlus size={16} />}
           onClick={() => {
             setNewUserForm(EMPTY_USER_FORM);
             setShowCreateUserForm(true);
             setCreateUserError('');
           }}
         >
-          Create User
+          <Plus className="h-4 w-4" /> Create user
         </Button>
-      </Group>
+      </div>
 
-      <Paper withBorder radius="md">
-        <Group px="lg" py="md" style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
-          <SearchInput
-            placeholder="Search users by name…"
-            value={search}
-            onChange={setSearch}
-            style={{ flex: 1 }}
-            w={undefined}
-          />
-        </Group>
-
-        <CursorPager {...pager} position="top" />
-
-        {loading ? (
-          <Center py="xl">
-            <Loader size="sm" />
-          </Center>
-        ) : users.length === 0 ? (
-          <Text px="lg" py="md" size="sm" c="dimmed">
-            {debouncedSearch ? 'No matching users.' : 'No users found.'}
-          </Text>
-        ) : (
-          <Table.ScrollContainer minWidth={520}>
-            <Table verticalSpacing={6} horizontalSpacing="lg">
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>User</Table.Th>
-                  <Table.Th>Status</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {users.map((u) => {
-                  const isSelf = u.id === user.id;
-                  const deactivated = !!u.deactivatedAt;
-                  return (
-                    <Table.Tr
-                      key={u.id}
-                      className={classes.row}
-                      style={deactivated ? { opacity: 0.6 } : undefined}
-                      onClick={() => startEditingUser(u)}
-                    >
-                      <Table.Td>
-                        <Group gap="xs" wrap="nowrap">
-                          <UserAvatar
-                            client={getClient()}
-                            userId={u.id}
-                            displayName={u.displayName}
-                            avatarHash={u.avatarHash}
-                            size={26}
-                          />
-                          <div>
-                            <Group gap="xs" wrap="nowrap">
-                              <Text size="sm" fw={500}>
-                                {u.displayName}
-                              </Text>
-                              {u.isAdmin && (
-                                <Badge size="xs" color="grape" variant="light">
-                                  Admin
-                                </Badge>
-                              )}
-                              {isSelf && (
-                                <Badge size="xs" color="blue" variant="light">
-                                  You
-                                </Badge>
-                              )}
-                            </Group>
-                            <Text size="xs" c="dimmed">
-                              {u.id}
-                            </Text>
-                          </div>
-                        </Group>
-                      </Table.Td>
-                      <Table.Td>
-                        {deactivated ? (
-                          <Badge size="sm" color="red" variant="light">
-                            Deactivated
-                          </Badge>
-                        ) : (
-                          <Badge size="sm" color="green" variant="light">
-                            Active
-                          </Badge>
-                        )}
-                      </Table.Td>
-                    </Table.Tr>
-                  );
-                })}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
-        )}
-
-        <CursorPager {...pager} />
-      </Paper>
-
-      {/* Create User Modal */}
-      <Modal
-        opened={showCreateUserForm}
-        onClose={() => {
-          setShowCreateUserForm(false);
-          setCreateUserError('');
+      <DataTable
+        rows={users}
+        columns={columns}
+        rowKey={(u) => u.id}
+        id="admin-users"
+        rememberPage
+        defaultSort={{ key: 'user', dir: 'asc' }}
+        search={{
+          placeholder: 'Search users by name…',
+          match: (u, q) =>
+            (u.displayName || '').toLowerCase().includes(q) ||
+            (u.id || '').toLowerCase().includes(q),
         }}
-        title="Create New User"
-        centered
+        noun="user"
+        loading={loading}
+        empty="No users found."
+      />
+
+      {/* Create user */}
+      <Dialog
+        open={showCreateUserForm}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowCreateUserForm(false);
+            setCreateUserError('');
+          }
+        }}
       >
-        <form onSubmit={handleCreateUser}>
-          <Stack gap="md">
-            {createUserError && <Alert color="red">{createUserError}</Alert>}
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>New user</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreateUser} className="flex flex-col gap-4">
+            {createUserError && <Alert>{createUserError}</Alert>}
 
-            <TextInput
-              label="Email address"
-              type="email"
-              description="What they sign in with. It cannot be changed later."
-              placeholder="e.g., john.doe@example.com"
-              value={newUserForm.email}
-              onChange={(e) => setNewUserForm((prev) => ({ ...prev, email: e.target.value }))}
-              required
-              data-autofocus
-            />
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="new-email">Email address</Label>
+              <Input
+                id="new-email"
+                type="email"
+                placeholder="e.g. john.doe@example.com"
+                value={newUserForm.email}
+                onChange={(e) => setNewUserForm((prev) => ({ ...prev, email: e.target.value }))}
+                autoFocus
+              />
+              <p className="text-xs text-muted-foreground">
+                What they sign in with. It cannot be changed later.
+              </p>
+            </div>
 
-            <TextInput
-              label="Display name"
-              description="How they appear to everyone else. Defaults to the part before the @."
-              placeholder="e.g., John Doe"
-              value={newUserForm.displayName}
-              onChange={(e) => setNewUserForm((prev) => ({ ...prev, displayName: e.target.value }))}
-            />
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="new-display-name">Display name</Label>
+              <Input
+                id="new-display-name"
+                placeholder="e.g. John Doe"
+                value={newUserForm.displayName}
+                onChange={(e) =>
+                  setNewUserForm((prev) => ({ ...prev, displayName: e.target.value }))
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                How they appear to everyone else. Defaults to the part before the @.
+              </p>
+            </div>
 
             <Checkbox
-              label="Admin User"
+              id="new-is-admin"
+              label="Admin"
               checked={newUserForm.isAdmin}
-              onChange={(e) =>
-                setNewUserForm((prev) => ({ ...prev, isAdmin: e.currentTarget.checked }))
-              }
+              onChange={(v) => setNewUserForm((prev) => ({ ...prev, isAdmin: v }))}
             />
 
-            <PasswordInput
-              label="Password"
-              value={newUserForm.password}
-              onChange={(e) => setNewUserForm((prev) => ({ ...prev, password: e.target.value }))}
-              required
-            />
-
-            <PasswordInput
-              label="Confirm Password"
-              value={newUserForm.confirmPassword}
-              onChange={(e) =>
-                setNewUserForm((prev) => ({ ...prev, confirmPassword: e.target.value }))
-              }
-              required
-            />
-
-            <Group justify="flex-end">
-              <Button type="submit" color="green" loading={createUserLoading}>
-                Create User
-              </Button>
-            </Group>
-          </Stack>
-        </form>
-      </Modal>
-
-      {/* Edit User Modal */}
-      <Modal
-        opened={!!editingUser}
-        onClose={() => setEditingUser(null)}
-        title={editingUser ? `Edit User: ${editingUser.displayName}` : ''}
-        centered
-      >
-        {editingUser && (
-          <form onSubmit={handleUpdateUser}>
-            <Stack gap="md">
-              {editUserError && <Alert color="red">{editUserError}</Alert>}
-
-              <TextInput
-                label="Email address"
-                description="Fixed for the life of the account — it is what they sign in with"
-                value={editUserForm.email}
-                disabled
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="new-password">Password</Label>
+              <Input
+                id="new-password"
+                type="password"
+                value={newUserForm.password}
+                onChange={(e) => setNewUserForm((prev) => ({ ...prev, password: e.target.value }))}
+                autoComplete="new-password"
               />
+            </div>
 
-              <TextInput
-                label="Display name"
-                value={editUserForm.displayName}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="new-password-confirm">Confirm password</Label>
+              <Input
+                id="new-password-confirm"
+                type="password"
+                value={newUserForm.confirmPassword}
                 onChange={(e) =>
-                  setEditUserForm((prev) => ({ ...prev, displayName: e.target.value }))
+                  setNewUserForm((prev) => ({ ...prev, confirmPassword: e.target.value }))
                 }
-                required
-                data-autofocus
+                autoComplete="new-password"
               />
+            </div>
+
+            <DialogFooter>
+              <Button type="submit" disabled={createUserLoading}>
+                {createUserLoading ? 'Creating…' : 'Create user'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit user */}
+      <Dialog open={!!editingUser} onOpenChange={(open) => !open && setEditingUser(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingUser ? editingUser.displayName : ''}</DialogTitle>
+          </DialogHeader>
+          {editingUser && (
+            <form onSubmit={handleUpdateUser} className="flex flex-col gap-4">
+              {editUserError && <Alert>{editUserError}</Alert>}
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-email">Email address</Label>
+                <Input id="edit-email" value={editUserForm.email} disabled readOnly />
+                <p className="text-xs text-muted-foreground">
+                  Fixed for the life of the account. It is what they sign in with.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-display-name">Display name</Label>
+                <Input
+                  id="edit-display-name"
+                  value={editUserForm.displayName}
+                  onChange={(e) =>
+                    setEditUserForm((prev) => ({ ...prev, displayName: e.target.value }))
+                  }
+                  autoFocus
+                />
+              </div>
 
               <Checkbox
-                label="Admin User"
+                id="edit-is-admin"
+                label="Admin"
                 checked={editUserForm.isAdmin}
                 disabled={editingUser.id === user.id}
                 description={
-                  editingUser.id === user.id ? 'You cannot change your own admin status' : undefined
+                  editingUser.id === user.id
+                    ? 'You cannot change your own admin status.'
+                    : undefined
                 }
-                onChange={(e) =>
-                  setEditUserForm((prev) => ({ ...prev, isAdmin: e.currentTarget.checked }))
-                }
+                onChange={(v) => setEditUserForm((prev) => ({ ...prev, isAdmin: v }))}
               />
 
-              <PasswordInput
-                label="New Password (leave blank to keep current)"
-                value={editUserForm.password}
-                onChange={(e) => setEditUserForm((prev) => ({ ...prev, password: e.target.value }))}
-              />
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-password">New password</Label>
+                <Input
+                  id="edit-password"
+                  type="password"
+                  value={editUserForm.password}
+                  onChange={(e) =>
+                    setEditUserForm((prev) => ({ ...prev, password: e.target.value }))
+                  }
+                  autoComplete="new-password"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Leave blank to keep the current one.
+                </p>
+              </div>
 
-              <PasswordInput
-                label="Confirm New Password"
-                value={editUserForm.confirmPassword}
-                onChange={(e) =>
-                  setEditUserForm((prev) => ({ ...prev, confirmPassword: e.target.value }))
-                }
-              />
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-password-confirm">Confirm new password</Label>
+                <Input
+                  id="edit-password-confirm"
+                  type="password"
+                  value={editUserForm.confirmPassword}
+                  onChange={(e) =>
+                    setEditUserForm((prev) => ({ ...prev, confirmPassword: e.target.value }))
+                  }
+                  autoComplete="new-password"
+                />
+              </div>
 
               {!editingUser.deactivatedAt && (
                 <Button
                   type="button"
-                  variant="light"
-                  leftSection={<IconLink size={16} />}
-                  loading={resetting}
+                  variant="outline"
+                  className="self-start"
+                  disabled={resetting}
                   onClick={() => handleResetLink(editingUser)}
                 >
-                  Create password reset link
+                  <Link2 className="h-4 w-4" />
+                  {resetting ? 'Creating…' : 'Create password reset link'}
                 </Button>
               )}
 
-              <Group justify="space-between" pt="xs">
+              <div className="flex items-center justify-between gap-2 pt-1">
                 {editingUser.deactivatedAt ? (
                   <Button
                     type="button"
-                    variant="subtle"
-                    color="green"
+                    variant="ghost"
                     onClick={() => handleReactivate(editingUser)}
                   >
                     Reactivate
@@ -543,33 +536,33 @@ export const AdminUsers = () => {
                 ) : (
                   <Button
                     type="button"
-                    variant="subtle"
-                    color="red"
+                    variant="ghost"
+                    className="text-destructive"
                     disabled={editingUser.id === user.id}
                     onClick={() => handleDeactivate(editingUser)}
                   >
                     Deactivate
                   </Button>
                 )}
-                <Group gap="sm">
-                  <Button type="button" variant="default" onClick={() => setEditingUser(null)}>
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" onClick={() => setEditingUser(null)}>
                     Cancel
                   </Button>
-                  <Button type="submit" loading={editUserLoading}>
-                    Update User
+                  <Button type="submit" disabled={editUserLoading}>
+                    {editUserLoading ? 'Saving…' : 'Update user'}
                   </Button>
-                </Group>
-              </Group>
-            </Stack>
-          </form>
-        )}
-      </Modal>
+                </div>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <MintedLinkModal
         code={resetCode}
         onClose={() => setResetCode(null)}
         title="Password reset link created"
       />
-    </>
+    </div>
   );
 };

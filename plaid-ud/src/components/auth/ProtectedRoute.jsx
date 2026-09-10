@@ -1,5 +1,4 @@
 import { Navigate } from 'react-router-dom';
-import { Center, Loader } from '@mantine/core';
 import { useAuth } from '../../contexts/AuthContext';
 
 export const ProtectedRoute = ({ children }) => {
@@ -7,9 +6,9 @@ export const ProtectedRoute = ({ children }) => {
 
   if (loading) {
     return (
-      <Center mih="100vh">
-        <Loader />
-      </Center>
+      <div className="tw flex min-h-screen items-center justify-center">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-primary" />
+      </div>
     );
   }
 

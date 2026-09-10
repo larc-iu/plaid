@@ -1,29 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import {
-  Title,
-  Text,
-  Button,
-  Alert,
-  Paper,
-  Stack,
-  Group,
-  Center,
-  Loader,
-  Table,
-  Badge,
-  Select,
-  Modal,
-  TextInput,
-  PasswordInput,
-  Checkbox,
-  Breadcrumbs,
-  Anchor,
-  Menu,
-  ActionIcon,
-} from '@mantine/core';
+import { useParams } from 'react-router-dom';
 import { useDebouncedValue } from '@mantine/hooks';
-import { IconPlus, IconSearch, IconDotsVertical } from '@tabler/icons-react';
+import { MoreVertical, Plus } from 'lucide-react';
 import {
   PLAID_NAMESPACE,
   REVIEW_KEY,
@@ -34,12 +12,25 @@ import {
 } from '@larc-iu/plaid-client';
 import { ProjectInvites, MintedLinkModal } from './ProjectInvites';
 import { useAuth } from '../../contexts/AuthContext';
-import { UserAvatar } from '../common/UserAvatar';
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { canManageProject } from '../../utils/permissions.js';
 import { isEmail, EMAIL_INVALID_MESSAGE } from '../../utils/email';
-import { ListHint, SearchInput } from '../common/ListChrome.jsx';
+import { UserAvatar } from '@ui/components/shared/UserAvatar';
+import { Badge } from '@ui/components/ui/badge';
+import { Button } from '@ui/components/ui/button';
+import { Input } from '@ui/components/ui/input';
+import { Label } from '@ui/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle } from '@ui/components/ui/card';
+import { SearchInput, ListHint } from '@ui/components/ui/list-search';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@ui/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '@ui/components/ui/dropdown-menu';
 
 const PERMISSION_OPTIONS = [
   { value: 'none', label: 'None' },
@@ -66,7 +57,7 @@ const roleOf = (project, userId) => {
   return 'none';
 };
 
-export const ProjectManagement = ({ embedded = false }) => {
+export const ProjectManagement = () => {
   const { projectId } = useParams();
   const { user, getClient } = useAuth();
   const confirm = useConfirm();
@@ -410,177 +401,166 @@ export const ProjectManagement = ({ embedded = false }) => {
   };
 
   if (loading) {
-    return (
-      <Center py={48}>
-        <Loader />
-      </Center>
-    );
+    return <p className="tw p-4 text-sm text-muted-foreground">Loading…</p>;
   }
 
-  if (!project) {
-    return <Alert color="red">Project not found</Alert>;
-  }
+  const denied = (message) => (
+    <div className="tw">
+      <div
+        role="alert"
+        className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+      >
+        {message}
+      </div>
+    </div>
+  );
 
-  if (!canManageProject(project, user)) {
-    return <Alert color="red">You don't have permission to manage this project</Alert>;
-  }
+  if (!project) return denied('Project not found');
+  if (!canManageProject(project, user))
+    return denied('You do not have permission to manage this project');
+
+  const userCell = (u) => (
+    <>
+      <UserAvatar
+        client={getClient()}
+        userId={u.id}
+        displayName={u.displayName}
+        avatarHash={u.avatarHash}
+        className="h-7 w-7"
+        fallbackClassName="text-[10px]"
+      />
+      <span className="min-w-0">
+        <span className="flex items-center gap-2">
+          <span className="truncate text-sm font-medium">{u.displayName}</span>
+          {u.isAdmin && <Badge variant="secondary">Admin</Badge>}
+        </span>
+        <span className="block truncate text-xs text-muted-foreground">{u.id}</span>
+      </span>
+    </>
+  );
 
   return (
-    <>
-      {!embedded && (
-        <>
-          <Breadcrumbs mb="lg">
-            <Anchor component={Link} to="/projects" size="sm">
-              Projects
-            </Anchor>
-            <Anchor component={Link} to={`/projects/${projectId}/documents`} size="sm">
-              {project.name}
-            </Anchor>
-            <Text size="sm" c="dimmed">
-              Project Management
-            </Text>
-          </Breadcrumbs>
-
-          <Stack gap={2} mb="lg">
-            <Title order={2}>Project Management</Title>
-            <Text c="dimmed">Manage users and permissions for {project.name}</Text>
-          </Stack>
-        </>
-      )}
-
+    <div className="tw flex flex-col gap-6">
       {isAdmin && (
-        <Button
-          leftSection={<IconPlus size={16} />}
-          mb="lg"
-          onClick={() => {
-            setShowCreateUserForm(true);
-            setCreateUserError('');
-          }}
-        >
-          Create User
-        </Button>
+        <div>
+          <Button
+            onClick={() => {
+              setShowCreateUserForm(true);
+              setCreateUserError('');
+            }}
+          >
+            <Plus className="h-4 w-4" /> Create user
+          </Button>
+        </div>
       )}
 
       {/* Current members */}
-      <Paper withBorder radius="md" mb="lg">
-        <Group
-          px="lg"
-          py="md"
-          justify="space-between"
-          style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}
-        >
-          <Title order={3} size="h4">
-            Members
-          </Title>
-          <Text size="sm" c="dimmed">
-            {members.length} with access
-          </Text>
-        </Group>
-
-        {membersLoading ? (
-          <Center py="xl">
-            <Loader size="sm" />
-          </Center>
-        ) : members.length === 0 ? (
-          <Text px="lg" py="md" size="sm" c="dimmed">
-            No one has been granted access yet. Use “Add a user” below.
-          </Text>
-        ) : (
-          <Table.ScrollContainer minWidth={520}>
-            <Table verticalSpacing="sm" horizontalSpacing="lg">
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>User</Table.Th>
-                  <Table.Th>Project role</Table.Th>
-                  <Table.Th title="Their annotations are marked as contributed until a verifier confirms them">
-                    Review work
-                  </Table.Th>
-                  {isAdmin && <Table.Th w={48} />}
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {rows.map((m) => (
-                  <Table.Tr key={m.id}>
-                    <Table.Td>
-                      <Group gap="xs" wrap="nowrap">
-                        <UserAvatar
-                          client={getClient()}
-                          userId={m.id}
-                          displayName={m.displayName}
-                          avatarHash={m.avatarHash}
-                          size={26}
+      <Card>
+        <CardHeader className="flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-lg">Members</CardTitle>
+          <span className="text-sm text-muted-foreground">{members.length} with access</span>
+        </CardHeader>
+        <CardContent>
+          {membersLoading ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : members.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No one has been granted access yet. Use “Add a user” below.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs text-muted-foreground">
+                    <th className="py-2 pr-3 font-medium">User</th>
+                    <th className="px-3 py-2 font-medium">Project role</th>
+                    <th
+                      className="px-3 py-2 font-medium"
+                      title="Their annotations are marked as contributed until a verifier confirms them"
+                    >
+                      Review work
+                    </th>
+                    {isAdmin && <th className="w-12 py-2" />}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((m) => (
+                    <tr key={m.id} className="border-b">
+                      <td className="py-2 pr-3">
+                        <div className="flex items-center gap-2">{userCell(m)}</div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <select
+                          className="h-8 w-36 rounded-md border border-input bg-transparent px-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                          value={m.role}
+                          aria-label={`${m.displayName} project role`}
+                          disabled={m.id === user.id}
+                          onChange={(e) => setRole(m.id, e.target.value)}
+                        >
+                          {PERMISSION_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                        {m.id === user.id && (
+                          <p className="mt-0.5 text-xs text-muted-foreground">Your own access</p>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 cursor-pointer accent-primary disabled:cursor-not-allowed"
+                          aria-label={`Review ${m.displayName}'s work`}
+                          checked={
+                            updatingReview?.id === m.id
+                              ? updatingReview.on
+                              : isReviewed(project, m.id, { isAdmin: m.isAdmin })
+                          }
+                          disabled={updatingReview?.id === m.id || reviewedByRole(m)}
+                          title={
+                            reviewedByRole(m)
+                              ? `Every ${projectRole(project, m.id, { isAdmin: m.isAdmin })} is reviewed in this project`
+                              : undefined
+                          }
+                          onChange={(e) => setReviewed(m.id, e.target.checked)}
                         />
-                        <div>
-                          <Group gap="xs" wrap="nowrap">
-                            <Text size="sm" fw={500}>
-                              {m.displayName}
-                            </Text>
-                            {m.isAdmin && (
-                              <Badge size="xs" color="grape" variant="light">
-                                Admin
-                              </Badge>
-                            )}
-                          </Group>
-                          <Text size="xs" c="dimmed">
-                            {m.id}
-                          </Text>
-                        </div>
-                      </Group>
-                    </Table.Td>
-                    <Table.Td>
-                      <Select
-                        data={PERMISSION_OPTIONS}
-                        value={m.role}
-                        onChange={(value) => setRole(m.id, value)}
-                        disabled={m.id === user.id}
-                        allowDeselect={false}
-                        w={150}
-                        size="sm"
-                        description={m.id === user.id ? 'Your own access' : undefined}
-                      />
-                    </Table.Td>
-                    <Table.Td>
-                      <Checkbox
-                        size="sm"
-                        aria-label={`Review ${m.displayName}'s work`}
-                        checked={
-                          updatingReview?.id === m.id
-                            ? updatingReview.on
-                            : isReviewed(project, m.id, { isAdmin: m.isAdmin })
-                        }
-                        disabled={updatingReview?.id === m.id || reviewedByRole(m)}
-                        title={
-                          reviewedByRole(m)
-                            ? `Every ${projectRole(project, m.id, { isAdmin: m.isAdmin })} is reviewed in this project`
-                            : undefined
-                        }
-                        onChange={(e) => setReviewed(m.id, e.currentTarget.checked)}
-                      />
-                    </Table.Td>
-                    {isAdmin && (
-                      <Table.Td>
-                        <Menu position="bottom-end" withinPortal>
-                          <Menu.Target>
-                            <ActionIcon variant="subtle" color="gray" aria-label="User actions">
-                              <IconDotsVertical size={16} />
-                            </ActionIcon>
-                          </Menu.Target>
-                          <Menu.Dropdown>
-                            <Menu.Item onClick={() => startEditingUser(m)}>Edit user…</Menu.Item>
-                            <Menu.Item disabled={resetting} onClick={() => handleResetLink(m)}>
-                              Create password reset link…
-                            </Menu.Item>
-                          </Menu.Dropdown>
-                        </Menu>
-                      </Table.Td>
-                    )}
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
-        )}
-      </Paper>
+                      </td>
+                      {isAdmin && (
+                        <td className="py-2">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                aria-label="User actions"
+                              >
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => startEditingUser(m)}>
+                                Edit user
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                disabled={resetting}
+                                onClick={() => handleResetLink(m)}
+                              >
+                                Create password reset link
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <ProjectInvites
         projectId={projectId}
@@ -596,85 +576,50 @@ export const ProjectManagement = ({ embedded = false }) => {
       />
 
       {/* Add a user (server-side search) */}
-      <Paper withBorder radius="md" mb="lg">
-        <Group px="lg" py="md" style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
-          <Title order={3} size="h4">
-            Add a user
-          </Title>
-        </Group>
-        <Stack px="lg" py="md" gap="sm">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Add a user</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
           <SearchInput
             placeholder="Search users by name…"
             value={search}
             onChange={setSearch}
             onFocus={() => setSearchActive(true)}
-            w="100%"
           />
           {searchActive &&
             (searchLoading ? (
-              <Center py="md">
-                <Loader size="sm" />
-              </Center>
+              <p className="text-sm text-muted-foreground">Loading…</p>
             ) : searchResults.length === 0 ? (
-              <Text size="sm" c="dimmed" py="xs">
+              <p className="text-sm text-muted-foreground">
                 {debouncedSearch ? 'No matching users.' : 'No other users to add.'}
-              </Text>
+              </p>
             ) : (
-              <Stack gap={0}>
+              <div className="flex flex-col">
                 {searchResults.map((u, i) => (
-                  <Group
+                  <div
                     key={u.id}
-                    justify="space-between"
-                    wrap="nowrap"
-                    py="xs"
-                    style={{ borderTop: i ? '1px solid var(--mantine-color-gray-1)' : undefined }}
+                    className={`flex items-center justify-between gap-2 py-2 ${i ? 'border-t' : ''}`}
                   >
-                    <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
-                      <UserAvatar
-                        client={getClient()}
-                        userId={u.id}
-                        displayName={u.displayName}
-                        avatarHash={u.avatarHash}
-                        size={26}
-                      />
-                      <div style={{ minWidth: 0 }}>
-                        <Group gap="xs" wrap="nowrap">
-                          <Text size="sm" fw={500} truncate>
-                            {u.displayName}
-                          </Text>
-                          {u.isAdmin && (
-                            <Badge size="xs" color="grape" variant="light">
-                              Admin
-                            </Badge>
-                          )}
-                        </Group>
-                        <Text size="xs" c="dimmed" truncate>
-                          {u.id}
-                        </Text>
-                      </div>
-                    </Group>
-                    <Menu position="bottom-end" withinPortal>
-                      <Menu.Target>
-                        <Button
-                          size="compact-sm"
-                          variant="light"
-                          leftSection={<IconPlus size={14} />}
-                        >
-                          Add
+                    <div className="flex min-w-0 items-center gap-2">{userCell(u)}</div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm">
+                          <Plus className="h-3.5 w-3.5" /> Add
                         </Button>
-                      </Menu.Target>
-                      <Menu.Dropdown>
-                        <Menu.Label>Add as…</Menu.Label>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>Add as</DropdownMenuLabel>
                         {GRANT_ROLES.map((role) => (
-                          <Menu.Item key={role} onClick={() => setRole(u.id, role)}>
+                          <DropdownMenuItem key={role} onClick={() => setRole(u.id, role)}>
                             {role.charAt(0).toUpperCase() + role.slice(1)}
-                          </Menu.Item>
+                          </DropdownMenuItem>
                         ))}
-                      </Menu.Dropdown>
-                    </Menu>
-                  </Group>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 ))}
-              </Stack>
+              </div>
             ))}
           {/* Outside the branch above: a capped search whose whole page was
               filtered out as existing members shows the empty message, and
@@ -684,151 +629,208 @@ export const ProjectManagement = ({ embedded = false }) => {
               Showing the first {SEARCH_LIMIT} matches. Narrow the search to see others.
             </ListHint>
           )}
-        </Stack>
-      </Paper>
+        </CardContent>
+      </Card>
 
-      {/* Create User Modal */}
-      <Modal
-        opened={isAdmin && showCreateUserForm}
-        onClose={() => {
-          setShowCreateUserForm(false);
-          setCreateUserError('');
+      {/* Create user */}
+      <Dialog
+        open={isAdmin && showCreateUserForm}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowCreateUserForm(false);
+            setCreateUserError('');
+          }
         }}
-        title="Create New User"
-        centered
       >
-        <form onSubmit={handleCreateUser}>
-          <Stack gap="md">
-            {createUserError && <Alert color="red">{createUserError}</Alert>}
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>New user</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreateUser} className="flex flex-col gap-4">
+            {createUserError && (
+              <div
+                role="alert"
+                className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              >
+                {createUserError}
+              </div>
+            )}
 
-            <TextInput
-              label="Email address"
-              description="What they sign in with. It cannot be changed later."
-              type="email"
-              placeholder="e.g., john.doe@example.com"
-              value={newUserForm.email}
-              onChange={(e) => setNewUserForm((prev) => ({ ...prev, email: e.target.value }))}
-              required
-              data-autofocus
-            />
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="pm-new-email">Email address</Label>
+              <Input
+                id="pm-new-email"
+                type="email"
+                placeholder="e.g. john.doe@example.com"
+                value={newUserForm.email}
+                onChange={(e) => setNewUserForm((prev) => ({ ...prev, email: e.target.value }))}
+                autoFocus
+              />
+              <p className="text-xs text-muted-foreground">
+                What they sign in with. It cannot be changed later.
+              </p>
+            </div>
 
-            <TextInput
-              label="Display name"
-              description="How they appear to everyone else. Defaults to the part before the @."
-              placeholder="e.g., John Doe"
-              value={newUserForm.displayName}
-              onChange={(e) => setNewUserForm((prev) => ({ ...prev, displayName: e.target.value }))}
-            />
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="pm-new-display-name">Display name</Label>
+              <Input
+                id="pm-new-display-name"
+                placeholder="e.g. John Doe"
+                value={newUserForm.displayName}
+                onChange={(e) =>
+                  setNewUserForm((prev) => ({ ...prev, displayName: e.target.value }))
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                How they appear to everyone else. Defaults to the part before the @.
+              </p>
+            </div>
 
-            <Checkbox
-              label="Admin User"
-              checked={newUserForm.isAdmin}
-              onChange={(e) =>
-                setNewUserForm((prev) => ({ ...prev, isAdmin: e.currentTarget.checked }))
-              }
-            />
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="h-4 w-4 cursor-pointer accent-primary"
+                checked={newUserForm.isAdmin}
+                onChange={(e) => setNewUserForm((prev) => ({ ...prev, isAdmin: e.target.checked }))}
+              />
+              Admin
+            </label>
 
-            <PasswordInput
-              label="Password"
-              value={newUserForm.password}
-              onChange={(e) => setNewUserForm((prev) => ({ ...prev, password: e.target.value }))}
-              required
-            />
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="pm-new-password">Password</Label>
+              <Input
+                id="pm-new-password"
+                type="password"
+                value={newUserForm.password}
+                onChange={(e) => setNewUserForm((prev) => ({ ...prev, password: e.target.value }))}
+                autoComplete="new-password"
+              />
+            </div>
 
-            <PasswordInput
-              label="Confirm Password"
-              value={newUserForm.confirmPassword}
-              onChange={(e) =>
-                setNewUserForm((prev) => ({ ...prev, confirmPassword: e.target.value }))
-              }
-              required
-            />
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="pm-new-password-confirm">Confirm password</Label>
+              <Input
+                id="pm-new-password-confirm"
+                type="password"
+                value={newUserForm.confirmPassword}
+                onChange={(e) =>
+                  setNewUserForm((prev) => ({ ...prev, confirmPassword: e.target.value }))
+                }
+                autoComplete="new-password"
+              />
+            </div>
 
-            <Group justify="flex-end">
-              <Button type="submit" color="green" loading={createUserLoading}>
-                Create User
+            <div className="flex justify-end">
+              <Button type="submit" disabled={createUserLoading}>
+                {createUserLoading ? 'Creating…' : 'Create user'}
               </Button>
-            </Group>
-          </Stack>
-        </form>
-      </Modal>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
-      {/* Edit User Modal */}
-      <Modal
-        opened={!!editingUser}
-        onClose={() => setEditingUser(null)}
-        title={editingUser ? `Edit User: ${editingUser.displayName}` : ''}
-        centered
-      >
-        {editingUser && (
-          <form onSubmit={handleUpdateUser}>
-            <Stack gap="md">
-              {editUserError && <Alert color="red">{editUserError}</Alert>}
+      {/* Edit user */}
+      <Dialog open={!!editingUser} onOpenChange={(open) => !open && setEditingUser(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingUser ? editingUser.displayName : ''}</DialogTitle>
+          </DialogHeader>
+          {editingUser && (
+            <form onSubmit={handleUpdateUser} className="flex flex-col gap-4">
+              {editUserError && (
+                <div
+                  role="alert"
+                  className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                >
+                  {editUserError}
+                </div>
+              )}
 
-              <TextInput
-                label="Email address"
-                description="Fixed for the life of the account — it is what they sign in with"
-                value={editUserForm.email}
-                disabled
-              />
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="pm-edit-email">Email address</Label>
+                <Input id="pm-edit-email" value={editUserForm.email} disabled readOnly />
+                <p className="text-xs text-muted-foreground">
+                  Fixed for the life of the account. It is what they sign in with.
+                </p>
+              </div>
 
-              <TextInput
-                label="Display name"
-                value={editUserForm.displayName}
-                onChange={(e) =>
-                  setEditUserForm((prev) => ({ ...prev, displayName: e.target.value }))
-                }
-                required
-                data-autofocus
-              />
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="pm-edit-display-name">Display name</Label>
+                <Input
+                  id="pm-edit-display-name"
+                  value={editUserForm.displayName}
+                  onChange={(e) =>
+                    setEditUserForm((prev) => ({ ...prev, displayName: e.target.value }))
+                  }
+                  autoFocus
+                />
+              </div>
 
-              <Checkbox
-                label="Admin User"
-                checked={editUserForm.isAdmin}
-                onChange={(e) =>
-                  setEditUserForm((prev) => ({ ...prev, isAdmin: e.currentTarget.checked }))
-                }
-              />
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 cursor-pointer accent-primary"
+                  checked={editUserForm.isAdmin}
+                  onChange={(e) =>
+                    setEditUserForm((prev) => ({ ...prev, isAdmin: e.target.checked }))
+                  }
+                />
+                Admin
+              </label>
 
-              <PasswordInput
-                label="New Password (leave blank to keep current)"
-                value={editUserForm.password}
-                onChange={(e) => setEditUserForm((prev) => ({ ...prev, password: e.target.value }))}
-              />
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="pm-edit-password">New password</Label>
+                <Input
+                  id="pm-edit-password"
+                  type="password"
+                  value={editUserForm.password}
+                  onChange={(e) =>
+                    setEditUserForm((prev) => ({ ...prev, password: e.target.value }))
+                  }
+                  autoComplete="new-password"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Leave blank to keep the current one.
+                </p>
+              </div>
 
-              <PasswordInput
-                label="Confirm New Password"
-                value={editUserForm.confirmPassword}
-                onChange={(e) =>
-                  setEditUserForm((prev) => ({ ...prev, confirmPassword: e.target.value }))
-                }
-              />
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="pm-edit-password-confirm">Confirm new password</Label>
+                <Input
+                  id="pm-edit-password-confirm"
+                  type="password"
+                  value={editUserForm.confirmPassword}
+                  onChange={(e) =>
+                    setEditUserForm((prev) => ({ ...prev, confirmPassword: e.target.value }))
+                  }
+                  autoComplete="new-password"
+                />
+              </div>
 
-              <Group justify="space-between" pt="xs">
+              <div className="flex items-center justify-between gap-2 pt-1">
                 <Button
                   type="button"
-                  color="red"
+                  variant="ghost"
+                  className="text-destructive"
                   onClick={handleDeleteUser}
                   disabled={editingUser.id === user.id}
+                  title={
+                    editingUser.id === user.id ? 'You cannot delete your own account' : undefined
+                  }
                 >
-                  Delete User
+                  Delete user
                 </Button>
-                <Group gap="sm">
-                  <Button type="button" variant="default" onClick={() => setEditingUser(null)}>
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" onClick={() => setEditingUser(null)}>
                     Cancel
                   </Button>
-                  <Button type="submit">Update User</Button>
-                </Group>
-              </Group>
-              {editingUser.id === user.id && (
-                <Text size="xs" c="dimmed">
-                  You cannot delete your own account
-                </Text>
-              )}
-            </Stack>
-          </form>
-        )}
-      </Modal>
-    </>
+                  <Button type="submit">Update user</Button>
+                </div>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 };
