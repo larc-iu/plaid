@@ -183,6 +183,11 @@ export function DocumentTokenize() {
                     on token: Split sentence here
                   </div>
                   <div>
+                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Shift</kbd> +{' '}
+                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Left Click</kbd>{' '}
+                    on token: Open it in Analyze
+                  </div>
+                  <div>
                     <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">
                       <ChevronUp className="h-3 w-3 inline" />
                     </kbd>
@@ -454,11 +459,21 @@ function TokenComponent({
   dragRef,
   readOnly = false,
 }) {
+  const { doc } = useDocumentCtx();
   const [isSplitting, setIsSplitting] = useState(false);
   const isDraggingHere = drag?.sentenceId === sentence.id;
   const isSelected = isDraggingHere && drag.selectedTokenIds.has(piece.id);
 
   const handleClick = async (e) => {
+    // Shift+click: the same word on the Analyze tab. (A double-click could not
+    // do this: the first click replaces the word with the splitter and the
+    // second lands on that.) The word was recorded on mousedown, so all that
+    // is left is to go there. Works read-only too, since it changes nothing.
+    if (e.shiftKey) {
+      e.preventDefault();
+      window.dispatchEvent(new CustomEvent('igt:navigate-tab', { detail: { tab: 'analyze' } }));
+      return;
+    }
     // Read the ref (not the closure) so a trailing click after a press sees the
     // drag already cleared by the global mouseup handler.
     if (readOnly || dragRef.current) return;
@@ -477,7 +492,20 @@ function TokenComponent({
   };
 
   const handleMouseDown = (e) => {
-    if (readOnly || e.button !== 0) return;
+    if (e.button !== 0) return;
+    // The last word pressed here is where the Analyze tab opens next, whether
+    // by Shift+click or by the tab itself: the island reads this key when it
+    // mounts, and a tab switch mounts it. The same key search click-through
+    // writes, so the landing (page, scroll, flash, caret) is the same one.
+    try {
+      sessionStorage.setItem(
+        'igt:focus-sentence',
+        JSON.stringify({ docId: doc.id, sentenceId: sentence.id, begin: piece.begin }),
+      );
+    } catch {
+      /* noop */
+    }
+    if (readOnly) return;
     e.preventDefault();
     setDrag({
       sentenceId: sentence.id,

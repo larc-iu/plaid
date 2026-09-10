@@ -420,6 +420,22 @@ const DocumentEditor = () => {
     }
   }, [doc, asOf, setActiveTab]);
 
+  // The breadcrumb: pinned beside the tabs once the document is open, on its
+  // own above the title while it is still being checked.
+  const crumbs = (
+    <nav className="flex items-center gap-1.5 text-sm text-muted-foreground">
+      <Link to="/projects" className="hover:text-foreground">
+        Projects
+      </Link>
+      <span>/</span>
+      <Link to={`/projects/${projectId}`} className="hover:text-foreground">
+        {doc?.project?.name || 'Project'}
+      </Link>
+      <span>/</span>
+      <span className="text-foreground">{doc?.document?.name || 'Document'}</span>
+    </nav>
+  );
+
   const handleOpenHistory = () => {
     history.setOpen(true);
     if (!history.hasLoadedAudit) history.fetchAuditLog();
@@ -568,19 +584,8 @@ const DocumentEditor = () => {
           className={`mx-auto px-4 py-8 ${WIDE_TABS.has(activeTab) ? 'max-w-[1700px]' : 'max-w-5xl'}`}
         >
           <div className="tw">
-            <nav className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground">
-              <Link to="/projects" className="hover:text-foreground">
-                Projects
-              </Link>
-              <span>/</span>
-              <Link to={`/projects/${projectId}`} className="hover:text-foreground">
-                {doc.project?.name || 'Project'}
-              </Link>
-              <span>/</span>
-              <span className="text-foreground">{doc.document?.name || 'Document'}</span>
-            </nav>
-
             <h1 className="text-3xl font-bold tracking-tight">{doc.document.name}</h1>
+            {reconciling && crumbs}
 
             {isViewingHistorical && (
               <div className="mb-4 rounded-md border border-blue-300 bg-blue-50 px-4 py-3 text-sm text-blue-800">
@@ -628,34 +633,43 @@ const DocumentEditor = () => {
 
             {!reconciling && (
               <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <TabsList className="tw">
-                  <TabsTrigger value="metadata" to={tabTo(docPath, 'metadata', DEFAULT_TAB)}>
-                    <FileText className="h-4 w-4" /> Metadata
-                  </TabsTrigger>
-                  <TabsTrigger value="baseline" to={tabTo(docPath, 'baseline', DEFAULT_TAB)}>
-                    <Type className="h-4 w-4" /> Baseline
-                  </TabsTrigger>
-                  <TabsTrigger value="media" to={tabTo(docPath, 'media', DEFAULT_TAB)}>
-                    <Mic className="h-4 w-4" /> Media
-                  </TabsTrigger>
-                  <TabsTrigger value="tokenize" to={tabTo(docPath, 'tokenize', DEFAULT_TAB)}>
-                    <Play className="h-4 w-4" /> Tokenize
-                  </TabsTrigger>
-                  <TabsTrigger value="analyze" to={tabTo(docPath, 'analyze', DEFAULT_TAB)}>
-                    <Table className="h-4 w-4" /> Analyze
-                  </TabsTrigger>
-                  <TabsTrigger value="comments" to={tabTo(docPath, 'comments', DEFAULT_TAB)}>
-                    <MessageSquare className="h-4 w-4" /> Comments
-                    {commentCount > 0 && (
-                      <span className="ml-1 rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
-                        {commentCount}
-                      </span>
-                    )}
-                  </TabsTrigger>
-                  <TabsTrigger value="export" to={tabTo(docPath, 'export', DEFAULT_TAB)}>
-                    <Download className="h-4 w-4" /> Export
-                  </TabsTrigger>
-                </TabsList>
+                {/* Pinned under the app header: the way back to the project
+                    and the way across the document stay in reach however far
+                    down a long text you are. Asked for by the first real user
+                    after scrolling back up for both, many times a day. */}
+                <div className="sticky top-[57px] z-30 -mx-4 mb-4 border-b bg-background/95 px-4 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+                  <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+                    {crumbs}
+                    <TabsList className="tw">
+                      <TabsTrigger value="metadata" to={tabTo(docPath, 'metadata', DEFAULT_TAB)}>
+                        <FileText className="h-4 w-4" /> Metadata
+                      </TabsTrigger>
+                      <TabsTrigger value="baseline" to={tabTo(docPath, 'baseline', DEFAULT_TAB)}>
+                        <Type className="h-4 w-4" /> Baseline
+                      </TabsTrigger>
+                      <TabsTrigger value="media" to={tabTo(docPath, 'media', DEFAULT_TAB)}>
+                        <Mic className="h-4 w-4" /> Media
+                      </TabsTrigger>
+                      <TabsTrigger value="tokenize" to={tabTo(docPath, 'tokenize', DEFAULT_TAB)}>
+                        <Play className="h-4 w-4" /> Tokenize
+                      </TabsTrigger>
+                      <TabsTrigger value="analyze" to={tabTo(docPath, 'analyze', DEFAULT_TAB)}>
+                        <Table className="h-4 w-4" /> Analyze
+                      </TabsTrigger>
+                      <TabsTrigger value="comments" to={tabTo(docPath, 'comments', DEFAULT_TAB)}>
+                        <MessageSquare className="h-4 w-4" /> Comments
+                        {commentCount > 0 && (
+                          <span className="ml-1 rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
+                            {commentCount}
+                          </span>
+                        )}
+                      </TabsTrigger>
+                      <TabsTrigger value="export" to={tabTo(docPath, 'export', DEFAULT_TAB)}>
+                        <Download className="h-4 w-4" /> Export
+                      </TabsTrigger>
+                    </TabsList>
+                  </div>
+                </div>
 
                 <TabsContent value="metadata">
                   <Panel active={activeTab === 'metadata'}>

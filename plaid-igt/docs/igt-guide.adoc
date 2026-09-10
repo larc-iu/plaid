@@ -67,6 +67,8 @@ The editor has a few levels you move between:
 The **Vocabularies** link in the header leads to the shared lexicons (see <<_vocabularies>>), and **Guide** opens this document.
 Your name in the header opens your profile, where you set a display name and a profile picture, change your password, and mint API tokens.
 
+The document's name, the way back to its project, and the tabs stay at the top of the page as you scroll.
+
 TIP: The Tokenize, Analyze, and Media tabs each have a **?** button that opens a legend of the gestures and keys that tab answers to. If you forget a shortcut, that is the quickest place to look.
 
 = Projects
@@ -238,7 +240,10 @@ You can tokenize by hand:
 * **Click** a word to split it at a character.
 * **Right-click** a word to delete it.
 * **Ctrl/Cmd+click** a word to split its sentence there, making that word the first of a new one. This is how a merge is undone.
+* **Shift+click** a word to open it on the Analyze tab.
 * The **↑** button on a sentence merges it with the previous one.
+
+The Analyze tab opens on the last word you clicked here, whether you get there by Shift+click or by the tab itself.
 
 Or run a tokenizer over the whole document with **Tokenize**, in the **Tokens** header.
 The built-in **Rule-based punctuation** splitter finds words and leaves sentence breaks as they are.
@@ -936,6 +941,7 @@ Every shortcut that takes Ctrl also takes Cmd on a Mac.
 | **Click** a word | Split it at a character.
 | **Right-click** a word | Delete it.
 | **Ctrl/Cmd+click** a word | Split its sentence there, undoing a merge.
+| **Shift+click** a word | Open it on the Analyze tab.
 | **↑** on a sentence | Merge it with the previous sentence.
 |===
 
