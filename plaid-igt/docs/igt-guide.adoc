@@ -557,7 +557,8 @@ It has five sections, listed down the left side.
 The project's name, its languages, and the option to delete the project.
 
 Two languages are recorded: the **object language**, which the baseline text is in, and the **meta language**, which glosses and translations are written in.
-Each has a name, an ISO 639-3 code, and a Glottocode, and the object language can carry coordinates.
+Each has a name, an ISO 639-3 code, a Glottocode, and a **writing system tag**, the label FLEx and ELAN files carry on their text (`oni`, `pmy`, `en`), and the object language can carry coordinates.
+An import from FLEx, ELAN, or CLDF fills these in from the file when the project has none yet.
 The language identity travels with the project into exports such as CLDF, where a dataset without a Glottocode cannot be linked to any other.
 A code that looks wrong is pointed out but still saved, since a project may document something the catalogues have no entry for.
 
@@ -573,6 +574,8 @@ Three things live here:
 
 The annotation **fields** at each scope, sentence, word, and morpheme.
 You can add, rename, reorder, and remove them, and removing a field first tells you how many values it holds.
+Each field records the **language** its values are in, as a writing system tag such as `pmy` or `nl`: a FLEx, ELAN, or CLDF import fills it in from the file, a field named with a tag in parentheses (`Gloss (nl)`) is given that tag when the project is next opened, and FLEx and ELAN exports label each field with it.
+A field with no language goes out under the project's meta language.
 Alongside the fields sits the **ignored tokens** rule, usually punctuation, so those tokens carry no word-level annotation and host no morphemes.
 Its exceptions are the **characters that behave as letters**: one character each, and each one joins the word around it instead of splitting it, stays on the word's form in the lexicon, and can be annotated.
 An orthography that writes a glottal stop or an ejective with an apostrophe needs that character listed here.

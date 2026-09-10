@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseFieldName, fieldNameLang } from './fieldNames.js';
+import { parseFieldName, fieldNameLang, resolveFieldLang } from './fieldNames.js';
 
 describe('parseFieldName', () => {
   it('splits a writing-system suffix off the base', () => {
@@ -22,5 +22,30 @@ describe('fieldNameLang', () => {
     expect(fieldNameLang('Translation (free)')).toBeNull();
     expect(fieldNameLang('Gloss (broad)')).toBeNull();
     expect(fieldNameLang('Note (1)')).toBeNull();
+  });
+});
+
+// The record is the fact and the name is how it arrived: a field named
+// "Gloss (nl)" whose record says otherwise goes out under the record, and
+// renaming a field cannot change the language its values go out under.
+describe('resolveFieldLang', () => {
+  const langs = {
+    overrides: { POS: 'en' },
+    fieldLangs: { 'Morpheme:Gloss (nl)': 'nld' },
+    analysis: 'pmy',
+  };
+
+  it('prefers the preset override, then the record, then the analysis tag', () => {
+    expect(resolveFieldLang(langs, 'Word', 'POS')).toBe('en');
+    expect(resolveFieldLang(langs, 'Morpheme', 'Gloss (nl)')).toBe('nld');
+    expect(resolveFieldLang(langs, 'Morpheme', 'Gloss')).toBe('pmy');
+  });
+
+  it('never reads the language out of the name', () => {
+    expect(resolveFieldLang({ analysis: 'pmy' }, 'Sentence', 'Translation (nl)')).toBe('pmy');
+  });
+
+  it('is blank, not English, when nothing says', () => {
+    expect(resolveFieldLang({}, 'Sentence', 'Translation')).toBe('');
   });
 });

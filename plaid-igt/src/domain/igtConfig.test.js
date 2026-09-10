@@ -189,15 +189,30 @@ describe('readLanguages', () => {
         name: 'Lezgian',
         glottocode: 'lezg1247',
         iso639P3: 'lez',
+        tag: '',
         latitude: 41.5,
         longitude: 48,
       },
-      meta: { name: 'English', glottocode: '', iso639P3: 'eng', latitude: null, longitude: null },
+      meta: {
+        name: 'English',
+        glottocode: '',
+        iso639P3: 'eng',
+        tag: '',
+        latitude: null,
+        longitude: null,
+      },
     });
   });
 
   it('returns a fully shaped pair when nothing is configured', () => {
-    const empty = { name: '', glottocode: '', iso639P3: '', latitude: null, longitude: null };
+    const empty = {
+      name: '',
+      glottocode: '',
+      iso639P3: '',
+      tag: '',
+      latitude: null,
+      longitude: null,
+    };
     expect(readLanguages({})).toEqual({ object: empty, meta: empty });
     expect(readLanguages(undefined)).toEqual({ object: empty, meta: empty });
   });

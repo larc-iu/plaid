@@ -153,11 +153,20 @@ export const readCompose = (config) => readIgt(config, 'compose') ?? null;
  *
  * Every field is optional. An unset language still exports, under a derived
  * identifier, with a warning.
+ *
+ * `tag` is the language's WRITING-SYSTEM TAG, the string FLEx and ELAN files
+ * label their text with (`oni`, `pmy`, `en`, or a private one like
+ * `qaa-x-abc`). It is a different fact from the ISO code: the code identifies
+ * the language, the tag names the writing system a file is in, and a FLEx
+ * project can use a tag no ISO code matches. The FLEx exporter's defaults
+ * come from the tag; a field's own `config.igt.lang` is the same kind of
+ * value, per field.
  */
 export const EMPTY_LANGUAGE = Object.freeze({
   name: '',
   glottocode: '',
   iso639P3: '',
+  tag: '',
   latitude: null,
   longitude: null,
 });
@@ -176,6 +185,7 @@ const normalizeLanguage = (lang) => ({
   name: str(lang?.name),
   glottocode: str(lang?.glottocode),
   iso639P3: str(lang?.iso639P3),
+  tag: str(lang?.tag),
   latitude: num(lang?.latitude),
   longitude: num(lang?.longitude),
 });
@@ -187,7 +197,8 @@ export const readLanguages = (config) => {
 };
 
 /** Has this language been filled in at all? */
-export const hasLanguageIdentity = (lang) => !!(lang?.name || lang?.glottocode || lang?.iso639P3);
+export const hasLanguageIdentity = (lang) =>
+  !!(lang?.name || lang?.glottocode || lang?.iso639P3 || lang?.tag);
 
 /**
  * A project's known speaker labels (diarization) — a de-duped suggestion cache

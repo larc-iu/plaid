@@ -372,9 +372,10 @@ describe('buildFlextextDocument', () => {
 });
 
 // The FLEx importer names the field for the primary analysis writing system
-// bare and suffixes the others ("Translation", "Translation (nl)"), so a
-// project imported from FLEx arrives with the writing system in the name and
-// nowhere else. See fieldNameLang.
+// bare and suffixes the others ("Translation", "Translation (nl)"), and
+// RECORDS each field's writing system on the field. The export reads the
+// record and never the name: a rename cannot change the language a field
+// goes out under. See resolveFieldLang.
 describe('flextext field writing systems', () => {
   // One sentence, one word, three translations and two glosses: the shape the
   // FLEx importer produces for a project glossed in three languages.
@@ -411,6 +412,12 @@ describe('flextext field writing systems', () => {
 
   const options = (extra = {}) => ({
     langs: { baseline: 'oni', analysis: 'pmy', orthographies: {}, fieldOverrides: {}, ...extra },
+    // What the fields record, as discoverExportLayers reads it off the project.
+    fieldLangs: {
+      'Sentence:Translation (en)': 'en',
+      'Sentence:Translation (nl)': 'nl',
+      'Word:Gloss (en)': 'en',
+    },
     fieldMap: {
       sentence: { Translation: 'gls', 'Translation (en)': 'gls', 'Translation (nl)': 'gls' },
       word: { Gloss: 'gls', 'Gloss (en)': 'gls' },
@@ -422,7 +429,7 @@ describe('flextext field writing systems', () => {
   const langOf = (dom, sel, text) =>
     [...dom.querySelectorAll(sel)].find((el) => el.textContent === text)?.getAttribute('lang');
 
-  it('takes each field lang from the tag in its name, falling back to the analysis tag', () => {
+  it('takes each field lang from its record, falling back to the analysis tag', () => {
     const dom = parse(buildFlextextDocument([multilingualDoc()], options()));
     expect(langOf(dom, 'phrase > item[type="gls"]', 'bapak')).toBe('pmy');
     expect(langOf(dom, 'phrase > item[type="gls"]', 'father')).toBe('en');
@@ -445,14 +452,19 @@ describe('flextext field writing systems', () => {
     ]);
   });
 
-  it('lets an override beat the name, and ignores a suffix that is not a tag', () => {
+  it('lets an override beat the record, and never reads a language out of a name', () => {
     const doc = multilingualDoc();
     doc.sortedSentences[0].annotations['Translation (free)'] = { value: 'loose' };
+    doc.sortedSentences[0].annotations['Translation (de)'] = { value: 'Vater' };
     const opts = options({ fieldOverrides: { 'Translation (nl)': 'nld' } });
     opts.fieldMap.sentence['Translation (free)'] = 'lit';
+    opts.fieldMap.sentence['Translation (de)'] = 'lit';
     const dom = parse(buildFlextextDocument([doc], opts));
     expect(langOf(dom, 'phrase > item[type="gls"]', 'vader')).toBe('nld');
     expect(langOf(dom, 'phrase > item[type="lit"]', 'loose')).toBe('pmy');
+    // "(de)" looks like a tag, and a field that records nothing still goes
+    // out under the analysis tag: the name is not the record.
+    expect(langOf(dom, 'phrase > item[type="lit"]', 'Vater')).toBe('pmy');
   });
 
   it('does not declare a language for a field that is not exported', () => {

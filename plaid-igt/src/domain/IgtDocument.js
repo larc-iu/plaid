@@ -17,6 +17,8 @@ import {
   applyVocabLinkDedup,
   planMorphTypeSync,
   planPreserveOnSplit,
+  planFieldLangBackfill,
+  planVocabFieldLangBackfill,
 } from './igtReconcile.js';
 import { validateIgtDocument } from './validate.js';
 import { deriveDocumentData, deriveSentences, deriveAlignmentTokens } from './derive.js';
@@ -522,6 +524,28 @@ export class IgtDocument {
     }
   }
 
+  // A field's language, recorded from its name once: "Gloss (nl)" was how the
+  // FLEx importer said "nl" before fields recorded a language, and the
+  // exporters read the record now, not the name. Maintainers only, and a
+  // failure is not worth interrupting anyone over.
+  async _backfillFieldLangs(info) {
+    if (!canManageProject(this._project, this._user)) return;
+    const spanLayers = Object.values(info.spanLayers || {}).flat();
+    try {
+      for (const { id, lang } of planFieldLangBackfill(spanLayers)) {
+        await this._client.spanLayers.setConfig(id, IGT_NAMESPACE, 'lang', lang);
+      }
+      for (const vocab of Object.values(this._vocabularies || {})) {
+        const fields = planVocabFieldLangBackfill(vocab);
+        if (fields) {
+          await this._client.vocabLayers.setConfig(vocab.id, IGT_NAMESPACE, 'fields', fields);
+        }
+      }
+    } catch (err) {
+      console.error('Could not record a field language:', err);
+    }
+  }
+
   async _reconcileOnOpenImpl() {
     const ZERO = {
       created: 0,
@@ -543,6 +567,7 @@ export class IgtDocument {
       // a document. It has to be in place BEFORE a split, since provenance lost
       // that way leaves nothing for a later pass to find.
       await this._backfillPreserveOnSplit(info);
+      await this._backfillFieldLangs(info);
       const { wordsNeedingMorpheme, orphanMorphemeIds, deletedAnnotatedOrphans } =
         planMorphemeReconcile(info);
       const dedupPlans = planSpanDedup(info);

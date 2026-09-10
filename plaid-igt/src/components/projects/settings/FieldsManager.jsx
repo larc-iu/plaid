@@ -13,6 +13,7 @@ import {
   SelectItem,
 } from '@/components/ui/select';
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
+import { fieldNameLang } from '@/domain/fieldNames';
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog';
 
 // A field's identity is its (scope, name) pair: the same name can exist at
@@ -74,6 +75,8 @@ export const FieldsManager = ({
   // Names of the project's tagsets, for the per-field Tagset picker. Empty in
   // setup mode (tagsets are configured in settings, after the fields exist).
   tagsetNames = [],
+  // Writing-system tags the project already names, offered beside a field's own.
+  knownLangs = [],
   // "scope:field" -> how many of the field's values its tagset refuses. The
   // count is a link into the Validation tab, which is where you can see and fix
   // them; a field with no tagset, or no violations, gets nothing.
@@ -205,6 +208,8 @@ export const FieldsManager = ({
       scope: newFieldScope,
       isCustom: true,
       tagset: null,
+      // A name like "Gloss (nl)" proposes its language; the record is what counts.
+      lang: fieldNameLang(trimmedName),
     };
 
     const updatedFields = [...fields, newField];
@@ -221,6 +226,24 @@ export const FieldsManager = ({
     await saveChanges(updatedFields, ignoredTokens);
 
     notifyInfo(`"${field?.name ?? key}" has been removed`, 'Field Removed');
+  };
+
+  // The writing system a field's values are in, as the FLEx and ELAN exports
+  // label them. Typed freely, saved when the box is left, so a tag is not
+  // written letter by letter.
+  const [langDrafts, setLangDrafts] = useState({});
+  const handleSetLang = async (key) => {
+    const draft = langDrafts[key];
+    if (draft === undefined) return;
+    setLangDrafts((d) => {
+      const { [key]: _gone, ...rest } = d;
+      return rest;
+    });
+    const lang = draft.trim() || null;
+    const field = fields.find((f) => fieldKey(f) === key);
+    if ((field?.lang ?? null) === lang) return;
+    const updated = fields.map((f) => (fieldKey(f) === key ? { ...f, lang } : f));
+    await saveChanges(updated, ignoredTokens);
   };
 
   // Point a field at a tagset (or at none). The reference is by name, so this
@@ -390,6 +413,7 @@ export const FieldsManager = ({
               <tr>
                 <th className="w-[15%] px-3 py-2 text-left font-medium">Scope</th>
                 <th className="px-3 py-2 text-left font-medium">Field Name</th>
+                <th className="w-[14%] px-3 py-2 text-left font-medium">Language</th>
                 {tagsetNames.length > 0 && (
                   <th className="w-[22%] px-3 py-2 text-left font-medium">Tagset</th>
                 )}
@@ -422,6 +446,21 @@ export const FieldsManager = ({
                         tagset
                       </Link>
                     )}
+                  </td>
+                  <td className="border-t px-3 py-2 align-middle">
+                    <Input
+                      value={langDrafts[record.key] ?? record.lang ?? ''}
+                      aria-label={`Language of ${record.name}`}
+                      list="field-language-tags"
+                      className="h-8 w-24"
+                      onChange={(e) =>
+                        setLangDrafts((d) => ({ ...d, [record.key]: e.target.value }))
+                      }
+                      onBlur={() => handleSetLang(record.key)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') e.currentTarget.blur();
+                      }}
+                    />
                   </td>
                   {tagsetNames.length > 0 && (
                     <td className="border-t px-3 py-2 align-middle">
@@ -496,6 +535,13 @@ export const FieldsManager = ({
               ))}
             </tbody>
           </table>
+          <datalist id="field-language-tags">
+            {[...new Set([...knownLangs, ...fields.map((f) => f.lang).filter(Boolean)])].map(
+              (t) => (
+                <option key={t} value={t} />
+              ),
+            )}
+          </datalist>
         </div>
 
         {/* Add Field Form */}

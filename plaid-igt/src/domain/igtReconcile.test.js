@@ -1,4 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import {
+  planFieldLangBackfill,
+  planVocabFieldLangBackfill,
+  describe,
+  it,
+  expect,
+  beforeEach,
+} from 'vitest';
 import { IgtDocument } from './IgtDocument.js';
 import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
 import {
@@ -7,6 +14,8 @@ import {
   planSpanDedup,
   planVocabLinkDedup,
   planPreserveOnSplit,
+  planFieldLangBackfill,
+  planVocabFieldLangBackfill,
 } from './igtReconcile.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 
@@ -422,5 +431,69 @@ describe('planPreserveOnSplit', () => {
   it('skips a layer the project does not have', () => {
     expect(planPreserveOnSplit({ primaryTokenLayer: layer('w', WANT) }, NS, KEY, WANT)).toEqual([]);
     expect(planPreserveOnSplit({}, NS, KEY, WANT)).toEqual([]);
+  });
+});
+
+// "Gloss (nl)" was how the FLEx importer said "nl" before a field could record
+// a language. The exporters read the record now, so the name is recorded once,
+// on open, and never read again.
+describe('planFieldLangBackfill', () => {
+  const layer = (id, name, lang = null) => ({
+    id,
+    name,
+    config: lang ? { igt: { scope: 'Word', lang } } : { igt: { scope: 'Word' } },
+  });
+
+  it('records a language-shaped suffix on a field that records none', () => {
+    const plan = planFieldLangBackfill([
+      layer('a', 'Gloss (nl)'),
+      layer('b', 'Gloss'),
+      layer('c', 'Translation (free)'),
+      layer('d', 'Note (spa-x-translit)'),
+    ]);
+    expect(plan).toEqual([
+      { id: 'a', lang: 'nl' },
+      { id: 'd', lang: 'spa-x-translit' },
+    ]);
+  });
+
+  it('leaves a field that records a language alone, whatever its name says', () => {
+    expect(planFieldLangBackfill([layer('a', 'Gloss (nl)', 'nld')])).toEqual([]);
+  });
+});
+
+describe('planVocabFieldLangBackfill', () => {
+  it('fills the suffixed fields in and returns the whole schema', () => {
+    const vocab = {
+      config: {
+        igt: {
+          fields: {
+            gloss: { inline: true },
+            'gloss (ru)': { inline: false },
+            pos: { inline: true },
+          },
+        },
+      },
+    };
+    expect(planVocabFieldLangBackfill(vocab)).toEqual({
+      gloss: { inline: true },
+      'gloss (ru)': { inline: false, lang: 'ru' },
+      pos: { inline: true },
+    });
+  });
+
+  it('is null when nothing is missing, so a second open writes nothing', () => {
+    const vocab = {
+      config: {
+        igt: {
+          fields: {
+            gloss: { inline: true, lang: 'pmy' },
+            'gloss (ru)': { inline: false, lang: 'ru' },
+          },
+        },
+      },
+    };
+    expect(planVocabFieldLangBackfill(vocab)).toBeNull();
+    expect(planVocabFieldLangBackfill({ config: {} })).toBeNull();
   });
 });

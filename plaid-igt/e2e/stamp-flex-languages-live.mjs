@@ -15,15 +15,33 @@ if (!projectId || !vernacular || !analysis)
 const client = new PlaidClient(process.env.PLAID_URL, process.env.PLAID_TOKEN);
 const project = await client.projects.get(projectId);
 
+// The same shape the importer writes: the writing-system tag as the record,
+// and the ISO 639-3 code only when the tag is shaped like one.
+const ISO = /^[a-z]{3}$/;
+const language = (tag) => ({
+  name: '',
+  glottocode: '',
+  iso639P3: ISO.test(tag) ? tag : '',
+  tag,
+  latitude: null,
+  longitude: null,
+});
 const langs = project.config?.igt?.languages;
-const named = (l) => !!(l?.name || l?.glottocode || l?.iso639P3);
+const named = (l) => !!(l?.name || l?.glottocode || l?.iso639P3 || l?.tag);
 if (!named(langs?.object) && !named(langs?.meta)) {
-  const empty = { name: '', glottocode: '', iso639P3: '', latitude: null, longitude: null };
   await client.projects.setConfig(projectId, 'igt', 'languages', {
-    object: { ...empty, iso639P3: vernacular },
-    meta: { ...empty, iso639P3: analysis },
+    object: language(vernacular),
+    meta: language(analysis),
   });
   console.log(`project languages: ${vernacular} / ${analysis}`);
+} else if (langs && !langs.object?.tag && !langs.meta?.tag) {
+  // Recorded by the earlier form of this script, or by hand: add the tags.
+  await client.projects.setConfig(projectId, 'igt', 'languages', {
+    ...langs,
+    object: { ...langs.object, tag: langs.object?.iso639P3 || vernacular },
+    meta: { ...langs.meta, tag: langs.meta?.iso639P3 || analysis },
+  });
+  console.log('project languages: tags added');
 } else console.log('project languages: already named');
 
 for (const tl of project.textLayers || [])

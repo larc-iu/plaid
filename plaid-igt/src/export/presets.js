@@ -114,8 +114,18 @@ export function newPreset(format, layers, name = 'New preset', languages = null)
       ...base,
       options: {
         langs: {
-          baseline: languages?.object?.iso639P3 || tagify(languages?.object?.name) || 'und',
-          analysis: languages?.meta?.iso639P3 || tagify(languages?.meta?.name) || 'en',
+          // The writing-system tag is the fact itself; the ISO code and the
+          // name are guesses at it, in that order.
+          baseline:
+            languages?.object?.tag ||
+            languages?.object?.iso639P3 ||
+            tagify(languages?.object?.name) ||
+            'und',
+          analysis:
+            languages?.meta?.tag ||
+            languages?.meta?.iso639P3 ||
+            tagify(languages?.meta?.name) ||
+            'en',
           orthographies: Object.fromEntries(
             layers.orthographies.map((n) => [n, tagify(n) || 'und']),
           ),

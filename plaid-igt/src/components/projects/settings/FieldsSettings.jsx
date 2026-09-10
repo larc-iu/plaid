@@ -12,6 +12,7 @@ import {
   IGT_NAMESPACE,
 } from '@/domain/igtConfig';
 import { readTagsetName } from '@/domain/tagsets';
+import { readFieldLang, readLanguages } from '@/domain/igtConfig';
 
 const PREDEFINED = ['Gloss', 'POS', 'Translation', 'Literal Translation', 'Note'];
 const isPredefinedField = (fieldName) => PREDEFINED.includes(fieldName);
@@ -50,6 +51,7 @@ const extractFields = (project) => {
     scope: readScope(spanLayer.config),
     isCustom: !isPredefinedField(spanLayer.name),
     tagset: readTagsetName(spanLayer.config),
+    lang: readFieldLang(spanLayer.config),
   }));
   if (fields.length === 0 && !ignoredTokensConfig) return null;
 
@@ -84,6 +86,13 @@ export const FieldsSettings = ({
   violations = {},
   onProjectUpdate,
 }) => {
+  // The tags the project's languages record, offered beside each field's own.
+  const knownLangs = useMemo(() => {
+    const l = readLanguages(project?.config);
+    return [
+      ...new Set([l.object.tag, l.object.iso639P3, l.meta.tag, l.meta.iso639P3].filter(Boolean)),
+    ];
+  }, [project?.config]);
   const [hasError, setHasError] = useState(false);
 
   // Read off the LIVE project rather than fetched once on mount, so the table
@@ -183,6 +192,18 @@ export const FieldsSettings = ({
         if (next) await client.spanLayers.setConfig(layerId, IGT_NAMESPACE, 'tagset', next);
         else await client.spanLayers.deleteConfig(layerId, IGT_NAMESPACE, 'tagset');
       }
+      // And each field's language, the same way: the record the exporters
+      // read, written only when it changed.
+      const storedLang = new Map(managed.map((l) => [layerKey(l), readFieldLang(l.config)]));
+      for (const field of currentFields) {
+        const key = fieldKey(field);
+        const layerId = layerIds.get(key);
+        if (!layerId) continue;
+        const next = field.lang || null;
+        if (next === (storedLang.get(key) ?? null)) continue;
+        if (next) await client.spanLayers.setConfig(layerId, IGT_NAMESPACE, 'lang', next);
+        else await client.spanLayers.deleteConfig(layerId, IGT_NAMESPACE, 'lang');
+      }
 
       // The Tagsets section above reads which fields point at which tagset off
       // the project, and that is what gates its "Add values used in this
@@ -255,6 +276,7 @@ export const FieldsSettings = ({
         onCountFieldUsage={handleCountFieldUsage}
         onMoveField={handleMoveField}
         tagsetNames={tagsetNames}
+        knownLangs={knownLangs}
         violations={violations}
         projectId={projectId}
         showTitle={false}

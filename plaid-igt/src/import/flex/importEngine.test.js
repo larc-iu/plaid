@@ -718,8 +718,10 @@ describe('runImport', () => {
     await runImport({ client, projectId: 'p1', build, lexicon, config, vocabId: 'v1' });
     const call = client.calls.find((c) => c.kind === 'projects.setConfig');
     expect(call.args).toMatchObject({ projectId: 'p1', ns: 'igt', key: 'languages' });
-    expect(call.args.value.object.iso639P3).toBe(BASE_WS);
-    expect(call.args.value.meta.iso639P3).toBe('en');
+    // The writing-system tag is the record; the ISO code only when the tag
+    // is shaped like one (`lez` is, `en` is not).
+    expect(call.args.value.object).toMatchObject({ tag: BASE_WS, iso639P3: BASE_WS });
+    expect(call.args.value.meta).toMatchObject({ tag: 'en', iso639P3: '' });
   });
 
   it('leaves the languages of a project that already names one alone', async () => {

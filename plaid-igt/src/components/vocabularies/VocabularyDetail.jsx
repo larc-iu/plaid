@@ -370,6 +370,22 @@ export const VocabularyDetail = () => {
     await saveFields(fields.map((f) => (f.name === fieldName ? { ...f, inline: !f.inline } : f)));
   };
 
+  // The writing system a field's values are in, as the LIFT export labels
+  // them. Typed freely, saved when the box is left.
+  const [langDrafts, setLangDrafts] = useState({});
+  const handleSetLang = async (fieldName) => {
+    const draft = langDrafts[fieldName];
+    if (draft === undefined) return;
+    setLangDrafts((d) => {
+      const { [fieldName]: _gone, ...rest } = d;
+      return rest;
+    });
+    const lang = draft.trim() || null;
+    const field = fields.find((f) => f.name === fieldName);
+    if ((field?.lang || null) === lang) return;
+    await saveFields(fields.map((f) => (f.name === fieldName ? { ...f, lang } : f)));
+  };
+
   // Reorder a field by swapping with its neighbor. Immutable fields (morphType)
   // stay pinned first — we never swap into or out of an immutable slot.
   const handleMoveField = async (fieldName, dir) => {
@@ -645,6 +661,7 @@ export const VocabularyDetail = () => {
                 <th className="px-3 py-2">Inline</th>
                 <th className="px-3 py-2">Type</th>
                 <th className="px-3 py-2">Shown on</th>
+                <th className="px-3 py-2">Language</th>
                 {showTagsetCol && <th className="px-3 py-2">Tagset</th>}
                 <th className="w-24 px-3 py-2" />
               </tr>
@@ -724,6 +741,25 @@ export const VocabularyDetail = () => {
                             <SelectItem value={FIELD_SCOPES.ENTRY}>Headword only</SelectItem>
                           </SelectContent>
                         </Select>
+                      )}
+                    </td>
+                    <td className="px-3 py-1.5">
+                      {/* A morph type is a fixed list and a reference field's
+                          values are entries: neither is in a language. The
+                          required gloss IS, and it is the one that matters. */}
+                      {field.name !== 'morphType' && !isRef && (
+                        <Input
+                          value={langDrafts[field.name] ?? field.lang ?? ''}
+                          aria-label={`Language of ${fieldLabel(field)}`}
+                          className="h-7 w-20 text-xs"
+                          onChange={(e) =>
+                            setLangDrafts((d) => ({ ...d, [field.name]: e.target.value }))
+                          }
+                          onBlur={() => handleSetLang(field.name)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') e.currentTarget.blur();
+                          }}
+                        />
                       )}
                     </td>
                     {showTagsetCol && (

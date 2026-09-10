@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { notifyError } from '@/utils/feedback';
 import { readLanguages, IGT_NAMESPACE } from '@/domain/igtConfig';
+import { isLangTag } from '@/domain/fieldNames';
 
 // Advisory only: a wrong-looking code still saves, since a project may be
 // documenting something Glottolog has no entry for.
@@ -43,7 +44,16 @@ const LanguageGroup = ({ prefix, title, description, lang, onChange, coordinates
         placeholder="e.g. Lezgian"
         onChange={(v) => set({ name: v })}
       />
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-3">
+        <Field
+          id={`${prefix}-tag`}
+          label="Writing system tag"
+          value={lang.tag}
+          placeholder="lez"
+          hint="A tag is letters and hyphens, like lez or qaa-x-lezgi."
+          invalid={lang.tag !== '' && !isLangTag(lang.tag)}
+          onChange={(v) => set({ tag: v.trim() })}
+        />
         <Field
           id={`${prefix}-glottocode`}
           label="Glottocode"
@@ -124,7 +134,7 @@ export const LanguagesSettings = ({ project, projectId, client, onProjectUpdate 
       <p className="mb-4 mt-1 text-sm text-muted-foreground">
         Which language this project documents, and which one it is glossed in. Exports use this to
         identify the data: a CLDF dataset without a Glottocode cannot be linked to any other
-        dataset.{' '}
+        dataset, and a FLEx or ELAN file labels its text with the writing system tag.{' '}
         <a
           href="https://glottolog.org/glottolog"
           target="_blank"

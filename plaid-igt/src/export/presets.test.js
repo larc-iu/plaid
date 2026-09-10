@@ -61,6 +61,17 @@ describe('newPreset', () => {
     expect(p.options.fieldMap.morpheme.Gloss).toBe('gls');
   });
 
+  it('seeds flextext language tags from the writing-system tag first', () => {
+    // The tag is what a FLEx file labels its text with; the ISO code only
+    // identifies the language, and the two differ (`en`, `qaa-x-abc`).
+    const p = newPreset('flextext', LAYERS, 'FLEx', {
+      object: { tag: 'qaa-x-lez', iso639P3: 'lez', name: 'Lezgian' },
+      meta: { tag: 'en', iso639P3: 'eng' },
+    });
+    expect(p.options.langs.baseline).toBe('qaa-x-lez');
+    expect(p.options.langs.analysis).toBe('en');
+  });
+
   it('seeds flextext language tags from the project language identity', () => {
     const p = newPreset('flextext', LAYERS, 'FLEx', {
       object: { iso639P3: 'lez', name: 'Lezgian' },
