@@ -19,7 +19,6 @@ pom.xml*
 pom.xml.asc
 !resources/public/index.html
 target
-package-lock.json
 .cpcache
 .shadow-cljs
 xtdb-store

@@ -82,7 +82,7 @@
   (ensure-node!)
   (doseq [app js-suites]
     (step (str "Run the JavaScript test suite and lint (" app ")"))
-    (p/shell {:dir app} "npm" "install")
+    (p/shell {:dir app} "npm" "ci")
     (p/shell {:dir app} "npm" "test")
     ;; Lint is part of the gate too: plaid-igt fails on any warning, so the
     ;; tree cannot drift the way it did when nothing ran it.
@@ -192,15 +192,16 @@
     (fs/create-dirs art)
     (try
       ;; --- Build the SPAs and bundle into the jar's resources -------------
-      ;; `npm install`, not `npm ci`: this repo gitignores package-lock.json.
+      ;; `npm ci`: every app commits its package-lock.json, so a build of a tag
+      ;; installs exactly what the tag says, never what is newest that day.
       (step "Build plaid-ud SPA")
-      (p/shell {:dir "plaid-ud"} "npm" "install")
+      (p/shell {:dir "plaid-ud"} "npm" "ci")
       (p/shell {:dir "plaid-ud"} "npm" "run" "build")
       (step "Build plaid-igt SPA")
-      (p/shell {:dir "plaid-igt"} "npm" "install")
+      (p/shell {:dir "plaid-igt"} "npm" "ci")
       (p/shell {:dir "plaid-igt"} "npm" "run" "build")
       (step "Build plaid-dict SPA")
-      (p/shell {:dir "plaid-dict"} "npm" "install")
+      (p/shell {:dir "plaid-dict"} "npm" "ci")
       (p/shell {:dir "plaid-dict"} "npm" "run" "build")
 
       (step "Bundle SPAs + version.edn into plaid-core/resources")
