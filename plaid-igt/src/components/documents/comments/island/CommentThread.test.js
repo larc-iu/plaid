@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from 'lit-html';
-import { commentThread, timeAgo } from './CommentThread.js';
+import { commentThread } from './CommentThread.js';
+import { timeAgo } from '@/utils/formatTime';
 import { CommentStore } from '@/domain/CommentStore';
 
 const ME = 'me@example.com';
@@ -72,14 +73,14 @@ describe('timeAgo', () => {
   const now = Date.parse('2026-08-31T12:00:00.000Z');
 
   it('reads as prose at each scale', () => {
-    expect(timeAgo('2026-08-31T11:59:50.000Z', now)).toBe('just now');
+    expect(timeAgo('2026-08-31T11:59:50.000Z', now)).toBe('10 seconds ago');
     expect(timeAgo('2026-08-31T11:59:00.000Z', now)).toBe('1 minute ago');
     expect(timeAgo('2026-08-31T11:30:00.000Z', now)).toBe('30 minutes ago');
     expect(timeAgo('2026-08-31T09:00:00.000Z', now)).toBe('3 hours ago');
     expect(timeAgo('2026-08-29T12:00:00.000Z', now)).toBe('2 days ago');
   });
 
-  it('falls back to a date once a week has passed, and tolerates junk', () => {
+  it('keeps counting past a week, and tolerates junk', () => {
     expect(timeAgo('2026-01-01T00:00:00.000Z', now)).toMatch(/\d/);
     expect(timeAgo('not a date', now)).toBe('');
   });

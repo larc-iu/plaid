@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { timeAgo, fullTimestamp } from '@/utils/formatTime';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { ArrowLeft, Copy, Check, ImagePlus } from 'lucide-react';
 import { notifySuccess, notifyError, notifyWarning } from '@/utils/feedback';
@@ -19,12 +20,6 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
-
-const timeAgo = (iso) => {
-  if (!iso) return '';
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString();
-};
 
 const EMPTY = (displayName = '') => ({
   displayName,
@@ -427,7 +422,10 @@ export const UserProfile = () => {
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{t.name}</p>
-                      <p className="text-xs text-muted-foreground">
+                      <p
+                        className="text-xs text-muted-foreground"
+                        title={fullTimestamp(t.createdAt)}
+                      >
                         Created {timeAgo(t.createdAt)}
                       </p>
                     </div>

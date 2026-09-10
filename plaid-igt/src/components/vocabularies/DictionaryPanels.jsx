@@ -17,6 +17,7 @@ import {
 import { loadConcordanceGroups, sentenceTo } from './vocabConcordance';
 import { ItemPicker } from './ItemPicker';
 import { FormLabel } from './FormLabel';
+import { MarkedText } from '@/components/shared/MarkedText.jsx';
 
 // The dictionary panels of an entry: where it sits in its sense tree, what
 // refers to it, and its examples.
@@ -535,27 +536,6 @@ export const ReferencedByPanel = ({ item, items, fields, numbers, itemTo }) => {
       </ul>
     </div>
   );
-};
-
-// Render sentence text with <mark>s over hit ranges (sentence-relative, sorted).
-export const MarkedText = ({ text, marks }) => {
-  if (!marks?.length) return <>{text}</>;
-  const chars = [...text];
-  const out = [];
-  let pos = 0;
-  marks.forEach((m, i) => {
-    const b = Math.max(pos, Math.min(m.begin, chars.length));
-    const e = Math.max(b, Math.min(m.end, chars.length));
-    if (b > pos) out.push(chars.slice(pos, b).join(''));
-    out.push(
-      <mark key={i} className="rounded bg-yellow-200 px-0.5">
-        {chars.slice(b, e).join('')}
-      </mark>,
-    );
-    pos = e;
-  });
-  if (pos < chars.length) out.push(chars.slice(pos).join(''));
-  return <>{out}</>;
 };
 
 /** One sentence of context, as the concordance and the examples draw it. */

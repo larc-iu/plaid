@@ -23,6 +23,8 @@ import { notifySuccess, notifyError } from '@/utils/feedback';
 import { ProjectInvites } from './ProjectInvites';
 import { useUserAdmin } from '../admin/useUserAdmin';
 import { UserAdminDialogs } from '../admin/userAdmin';
+import { useUserSearch } from '@/hooks/useUserSearch';
+import { UserSearch } from '@/components/shared/UserSearch';
 import {
   PLAID_NAMESPACE,
   REVIEW_KEY,
@@ -42,7 +44,6 @@ const ROLE_OPTIONS = [
   { value: 'maintainer', label: 'Maintainer' },
 ];
 const GRANT_ROLES = ['reader', 'writer', 'maintainer'];
-const SEARCH_LIMIT = 25;
 // Most access first, so the Project role column groups the way someone
 // scanning it expects rather than alphabetically.
 const ROLE_RANK = { maintainer: 0, writer: 1, reader: 2, none: 3 };
@@ -63,14 +64,6 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
   const [members, setMembers] = useState([]);
   const [membersLoading, setMembersLoading] = useState(true);
   const [updatingUser, setUpdatingUser] = useState(null);
-
-  // Search-to-add.
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [searchActive, setSearchActive] = useState(false);
-  const [searchResults, setSearchResults] = useState([]);
-  const [searchCapped, setSearchCapped] = useState(false);
-  const [searchLoading, setSearchLoading] = useState(false);
 
   // Account administration (create, edit, deactivate, reset link) is shared
   // with the admin panel's Users tab.
@@ -108,11 +101,6 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
       setUpdatingReview(null);
     }
   };
-
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), 250);
-    return () => clearTimeout(t);
-  }, [search]);
 
   // Resolve ACL member ids to user objects (project-sized, so per-id GETs are
   // fine). Keyed on WHO is on the ACL, not on the project object: a refetch
@@ -157,42 +145,7 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
     };
   }, [aclKey, projectLoaded, client]);
   const rows = members.map((m) => ({ ...m, role: roleOf(project, m.id) }));
-
-  // Server-side search (?q=). Runs once the box is touched; empty browses the
-  // first page. Members already on the project are dropped.
-  useEffect(() => {
-    if (!searchActive) return;
-    let cancelled = false;
-    (async () => {
-      setSearchLoading(true);
-      try {
-        const page = await client.users.listPage({
-          q: debouncedSearch || undefined,
-          limit: SEARCH_LIMIT,
-        });
-        const entries = page.entries || [];
-        const memberIds = new Set(members.map((m) => m.id));
-        const results = entries.filter((u) => !memberIds.has(u.id));
-        if (!cancelled) {
-          setSearchResults(results);
-          // Measured before members are dropped: that filter is why the rows on
-          // screen can number fewer than the page the server actually sent.
-          setSearchCapped(entries.length >= SEARCH_LIMIT);
-        }
-      } catch (err) {
-        console.error('User search failed:', err);
-        if (!cancelled) {
-          setSearchResults([]);
-          setSearchCapped(false);
-        }
-      } finally {
-        if (!cancelled) setSearchLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [debouncedSearch, searchActive, members, client]);
+  const search = useUserSearch({ client, excludeIds: members.map((m) => m.id) });
 
   const setRole = async (userId, newRole) => {
     if (userId === user.id) {
@@ -367,71 +320,27 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
         <div className="pb-3">
           <h2 className="text-lg font-semibold">Add a user</h2>
         </div>
-        <div className="flex flex-col gap-2">
-          <SearchInput
-            placeholder="Search users by name…"
-            value={search}
-            onChange={setSearch}
-            onFocus={() => setSearchActive(true)}
-          />
-
-          {searchActive &&
-            (searchLoading ? (
-              <div className="flex justify-center py-4 text-muted-foreground">
-                <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-primary" />
-              </div>
-            ) : searchResults.length === 0 ? (
-              <p className="py-1 text-sm text-muted-foreground">
-                {debouncedSearch ? 'No matching users.' : 'No other users to add.'}
-              </p>
-            ) : (
-              <div className="flex flex-col">
-                {searchResults.map((u, i) => (
-                  <div
-                    key={u.id}
-                    className={`flex items-center justify-between gap-2 py-2 ${i ? 'border-t' : ''}`}
-                  >
-                    <div className="flex min-w-0 items-center gap-2">
-                      <UserAvatar
-                        client={client}
-                        userId={u.id}
-                        displayName={u.displayName}
-                        avatarHash={u.avatarHash}
-                        className="h-7 w-7"
-                      />
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="truncate font-medium">{u.displayName}</span>
-                          {u.isAdmin && <Badge variant="secondary">Admin</Badge>}
-                        </div>
-                        <span className="block truncate text-xs text-muted-foreground">{u.id}</span>
-                      </div>
-                    </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button size="sm" variant="outline">
-                          <Plus className="h-4 w-4" /> Add
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>Add as…</DropdownMenuLabel>
-                        {GRANT_ROLES.map((role) => (
-                          <DropdownMenuItem key={role} onSelect={() => setRole(u.id, role)}>
-                            {cap(role)}
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
+        <UserSearch
+          client={client}
+          search={search}
+          renderAction={(u) => (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline">
+                  <Plus className="h-4 w-4" /> Add
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Add as…</DropdownMenuLabel>
+                {GRANT_ROLES.map((role) => (
+                  <DropdownMenuItem key={role} onSelect={() => setRole(u.id, role)}>
+                    {cap(role)}
+                  </DropdownMenuItem>
                 ))}
-                {searchCapped && (
-                  <ListHint className="pt-2">
-                    Showing the first {SEARCH_LIMIT} matches. Keep typing to narrow the list.
-                  </ListHint>
-                )}
-              </div>
-            ))}
-        </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        />
       </div>
 
       {/* Create User dialog */}

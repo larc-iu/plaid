@@ -13,6 +13,7 @@
 
 import { stampInferred, confirmedInferred } from '@larc-iu/plaid-client';
 import { ImportCancelled, importStamp, priorImports, settlePrior } from '../resume.js';
+import { CHUNK, bulkInChunks } from '../bulk.js';
 import { isReservedFieldName } from '../../domain/vocabFields.js';
 import { documentProgress } from '../progress.js';
 import {
@@ -27,15 +28,6 @@ import {
 import { recordProjectLanguages } from '../projectLanguages.js';
 import { FIELD_SCOPES, FIELD_TYPES } from '../../domain/vocabFields.js';
 import { pickEn } from './fwdataParser.js';
-
-// Rows per bulk request. Each chunk is ONE server transaction holding the
-// single SQLite write lock for its whole duration, so what this bounds is how
-// long another writer can be made to wait — not just how many round trips we
-// make. A writer that arrives mid-chunk waits, and is refused with a 503 once
-// the server's busy_timeout (5s by default) runs out, so keep a hold well
-// under a second even on a large database. Nothing here may be unbounded: a
-// document's token count is set by the data, not by us.
-const BULK_CHUNK = 500;
 
 // Everything a word carries comes out of ONE WfiAnalysis: its gloss, its
 // category, and the morph bundles the segmentation is built from. FLEx records
@@ -76,21 +68,6 @@ const unapprovedStamp = (word) =>
   word && word.approved === false && word.morphemes && word.machineAgents?.length
     ? stampInferred(flexSource(word))
     : null;
-
-/**
- * Send `items` to a bulk endpoint in BULK_CHUNK-sized slices, concatenating
- * the ids each call returns so the caller still gets one id per input, in
- * input order. `check` runs before each slice so a cancel lands promptly.
- */
-async function bulkInChunks(items, check, send) {
-  const ids = [];
-  for (let i = 0; i < items.length; i += BULK_CHUNK) {
-    check?.();
-    const res = await send(items.slice(i, i + BULK_CHUNK));
-    if (res?.ids) ids.push(...res.ids);
-  }
-  return ids;
-}
 
 /** Display name for an analysis writing system: primary ws gets the bare field name. */
 const fieldName = (base, ws, primaryWs) => (ws === primaryWs ? base : `${base} (${ws})`);
@@ -397,9 +374,9 @@ export async function importLexicon({
   // what it adds, so a sense they made a separate entry stays one.
   const created = new Set();
   let done = 0;
-  for (let i = 0; i < pending.length; i += BULK_CHUNK) {
+  for (let i = 0; i < pending.length; i += CHUNK) {
     if (shouldStop?.()) throw new ImportCancelled();
-    const chunk = pending.slice(i, i + BULK_CHUNK);
+    const chunk = pending.slice(i, i + CHUNK);
     const { ids } = await client.vocabItems.bulkCreate(
       chunk.map((p) => ({ vocabLayerId: vocabId, form: p.form, metadata: p.metadata })),
     );
@@ -449,9 +426,9 @@ async function placeSenses({ client, lexicon, senseToItem, existing, only = null
     (existing.items || []).filter((it) => it.metadata?.parent).map((it) => it.id),
   );
   const fresh = patches.filter((p) => !placedAlready.has(p.id) && (!only || only.has(p.id)));
-  for (let i = 0; i < fresh.length; i += BULK_CHUNK) {
+  for (let i = 0; i < fresh.length; i += CHUNK) {
     if (shouldStop?.()) throw new ImportCancelled();
-    const chunk = fresh.slice(i, i + BULK_CHUNK);
+    const chunk = fresh.slice(i, i + CHUNK);
     await client.batched(async () => {
       for (const p of chunk) {
         client.vocabItems.patchMetadata(p.id, { parent: p.parent, senseOrder: p.senseOrder });
@@ -543,9 +520,9 @@ async function placeVariants({
   if (added) await client.vocabLayers.setConfig(vocabId, IGT_NAMESPACE, 'fields', fieldsConfig);
 
   const entries = [...patches.entries()];
-  for (let i = 0; i < entries.length; i += BULK_CHUNK) {
+  for (let i = 0; i < entries.length; i += CHUNK) {
     if (shouldStop?.()) throw new ImportCancelled();
-    const chunk = entries.slice(i, i + BULK_CHUNK);
+    const chunk = entries.slice(i, i + CHUNK);
     await client.batched(async () => {
       for (const [id, patch] of chunk) client.vocabItems.patchMetadata(id, patch);
     });

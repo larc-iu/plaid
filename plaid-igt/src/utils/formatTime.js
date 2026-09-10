@@ -1,4 +1,4 @@
-// Small time formatters for list "last updated" columns. Ported from plaid-ud.
+// Small time formatters. Ported from plaid-ud.
 
 const DIVISIONS = [
   { amount: 60, unit: 'second' },
@@ -13,11 +13,13 @@ const DIVISIONS = [
 const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
 
 // Compact relative time, e.g. "3 hours ago" / "yesterday". '' for falsy/invalid.
-export const timeAgo = (iso) => {
+// The one relative time in the app: every list column, the assistant's
+// conversations, the comment threads, and the token list read the same way.
+export const timeAgo = (iso, now = Date.now()) => {
   if (!iso) return '';
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return '';
-  let duration = (then - Date.now()) / 1000; // seconds; negative = past
+  let duration = (then - now) / 1000; // seconds; negative = past
   for (const division of DIVISIONS) {
     if (Math.abs(duration) < division.amount) {
       return rtf.format(Math.round(duration), division.unit);

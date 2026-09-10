@@ -14,32 +14,11 @@ import { html, svg, nothing } from 'lit-html';
 import { repeat } from 'lit-html/directives/repeat.js';
 import { live } from 'lit-html/directives/live.js';
 import { isPending } from '@/domain/CommentStore';
+import { timeAgo } from '@/utils/formatTime';
 import { renderCommentBody } from './renderCommentBody.js';
 import './comments.css';
 
 const MAX_BODY = 10000; // matches plaid.sql.comment/max-body-length
-
-// Coarse relative time. A comment thread wants "how long ago", not a
-// timestamp; the exact instant is in the title attribute for anyone who cares.
-const AGO = [
-  [60, 'second', 1],
-  [3600, 'minute', 60],
-  [86400, 'hour', 3600],
-  [604800, 'day', 86400],
-];
-export function timeAgo(iso, now = Date.now()) {
-  const then = Date.parse(iso);
-  if (Number.isNaN(then)) return '';
-  const secs = Math.max(0, Math.round((now - then) / 1000));
-  if (secs < 45) return 'just now';
-  for (const [limit, unit, div] of AGO) {
-    if (secs < limit) {
-      const n = Math.round(secs / div);
-      return `${n} ${unit}${n === 1 ? '' : 's'} ago`;
-    }
-  }
-  return new Date(then).toLocaleDateString();
-}
 
 // Initials for the avatar chip. Display names here are usually a person's
 // name, but fall back to an email local-part when the lookup failed.

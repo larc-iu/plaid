@@ -16,7 +16,7 @@ import {
   searchDomains,
 } from '../search/searchQueries.js';
 import { runHitsSearch } from '../search/searchRunner.js';
-import { MarkedText } from '../search/MarkedText.jsx';
+import { MarkedText } from '@/components/shared/MarkedText.jsx';
 import { hitTo, rememberCaret } from '../search/hitLinks.js';
 
 // Values in the project that its own tagsets say are wrong.

@@ -47,7 +47,7 @@ import {
   tagsetEnforces,
 } from '@/domain/tagsets';
 import { MATCH_TYPES, searchDomains } from '../search/searchQueries.js';
-import { MarkedText } from '../search/MarkedText.jsx';
+import { MarkedText } from '@/components/shared/MarkedText.jsx';
 import { hitTo, rememberCaret } from '../search/hitLinks.js';
 import {
   OPERATIONS,

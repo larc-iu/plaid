@@ -1,6 +1,6 @@
 // Render sentence text with <mark>s over the hit ranges (code-point offsets,
-// already sentence-relative and sorted). Shared by the Search and Bulk Edit
-// tabs.
+// already sentence-relative and sorted). Shared by the Search, Bulk Edit,
+// and Validation tabs and the dictionary's concordance.
 export const MarkedText = ({ text, marks }) => {
   if (!marks?.length) return <>{text}</>;
   const chars = [...text];

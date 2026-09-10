@@ -21,6 +21,7 @@
 // rather than as plain text.
 
 import { ImportCancelled, importStamp, priorImports, settlePrior, unusedName } from '../resume.js';
+import { CHUNK, bulkInChunks } from '../bulk.js';
 import { recordProjectLanguages } from '../projectLanguages.js';
 import {
   findBaselineTextLayer,
@@ -31,22 +32,7 @@ import {
   readScope,
 } from '../../domain/igtConfig.js';
 
-// Rows per bulk request. Each chunk is ONE server transaction holding the
-// single SQLite write lock for its whole duration, so this bounds how long
-// another writer can be made to wait, not just how many round trips we make.
-const CHUNK = 500;
-
 export { ImportCancelled };
-
-async function bulkInChunks(items, check, send) {
-  const ids = [];
-  for (let i = 0; i < items.length; i += CHUNK) {
-    check?.();
-    const res = await send(items.slice(i, i + CHUNK));
-    if (res?.ids) ids.push(...res.ids);
-  }
-  return ids;
-}
 
 /** The setup-wizard input derived from a build. */
 export function deriveSetupData(build, projectName) {

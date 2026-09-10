@@ -17,6 +17,7 @@
 
 import { documentProgress } from '../progress.js';
 import { ImportCancelled, importStamp, priorImports } from '../resume.js';
+import { CHUNK } from '../bulk.js';
 import { attributedBody } from './commentAttribution.js';
 import {
   IGT_NAMESPACE,
@@ -28,11 +29,6 @@ import {
   readScope,
 } from '../../domain/igtConfig.js';
 
-// Rows per bulk request. Each chunk is ONE server transaction holding the
-// single SQLite write lock for its whole duration, so this bounds how long
-// another writer can be made to wait (and be refused with a 503 once the
-// server's busy_timeout runs out), not just how many round trips we make.
-const CHUNK = 500;
 const ITEM_SOURCE_KEY = 'nativeImportId';
 
 /** The setup-wizard input derived from an archive manifest. */

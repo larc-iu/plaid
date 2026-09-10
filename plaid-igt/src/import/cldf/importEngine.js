@@ -13,6 +13,7 @@
 
 import { documentProgress } from '../progress.js';
 import { ImportCancelled, importStamp, priorImports, settlePrior } from '../resume.js';
+import { CHUNK, bulkInChunks } from '../bulk.js';
 import { isReservedFieldName } from '../../domain/vocabFields.js';
 import {
   IGT_NAMESPACE,
@@ -24,24 +25,9 @@ import {
   readScope,
 } from '../../domain/igtConfig.js';
 
-// Rows per bulk request. Each chunk is ONE server transaction holding the
-// single SQLite write lock for its whole duration, so this bounds how long
-// another writer can be made to wait (and be refused with a 503 once the
-// server's busy_timeout runs out), not just how many round trips we make.
-const CHUNK = 500;
 const ITEM_SOURCE_KEY = 'cldfEntry';
 
 export { ImportCancelled };
-
-async function bulkInChunks(items, check, send) {
-  const ids = [];
-  for (let i = 0; i < items.length; i += CHUNK) {
-    check?.();
-    const res = await send(items.slice(i, i + CHUNK));
-    if (res?.ids) ids.push(...res.ids);
-  }
-  return ids;
-}
 
 /** The setup-wizard input derived from a build. */
 /**

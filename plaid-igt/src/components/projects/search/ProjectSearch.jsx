@@ -18,7 +18,7 @@ import { notifyError, humanizeError } from '@/utils/feedback';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { MATCH_TYPES, searchDomains } from './searchQueries.js';
 import { runHitsSearch, runFreqSearch } from './searchRunner.js';
-import { MarkedText } from './MarkedText.jsx';
+import { MarkedText } from '@/components/shared/MarkedText.jsx';
 import { hitTo, rememberCaret } from './hitLinks.js';
 
 export const ProjectSearch = ({ project, projectId, client }) => {

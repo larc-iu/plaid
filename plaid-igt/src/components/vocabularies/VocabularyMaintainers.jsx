@@ -5,14 +5,11 @@ import { Badge } from '@/components/ui/badge';
 import { SearchInput, ListHint } from '@/components/ui/list-search';
 import { UserAvatar } from '@/components/shared/UserAvatar';
 import { notifySuccess, notifyError } from '@/utils/feedback';
+import { useUserSearch } from '@/hooks/useUserSearch';
+import { UserSearch } from '@/components/shared/UserSearch';
 
-// Mirrors AccessManagement: the full user roster is never fetched (it doesn't
-// scale and `GET /users` is admin/project-maintainer-gated — a vocab-only
-// maintainer gets a 403). Current maintainers are resolved id-by-id (the
-// per-user GET is open to any logged-in caller), and new maintainers come from
-// a server-side `?q=` search that degrades gracefully when the caller can't
-// browse the directory.
-const SEARCH_LIMIT = 25;
+// Current maintainers are resolved id-by-id (the per-user GET is open to any
+// logged-in caller); new ones come from the shared directory search.
 
 export const VocabularyMaintainers = ({ vocabulary, user, vocabularyId, client, onDataUpdate }) => {
   const maintainerIds = useMemo(() => vocabulary?.maintainers ?? [], [vocabulary]);
@@ -46,55 +43,7 @@ export const VocabularyMaintainers = ({ vocabulary, user, vocabularyId, client, 
     };
   }, [maintainerIds, client]);
 
-  // Search-to-add (server-side ?q=).
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [searchActive, setSearchActive] = useState(false);
-  const [searchResults, setSearchResults] = useState([]);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [searchDenied, setSearchDenied] = useState(false); // 403: caller can't browse the directory
-  const [searchCapped, setSearchCapped] = useState(false);
-
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), 250);
-    return () => clearTimeout(t);
-  }, [search]);
-
-  useEffect(() => {
-    if (!searchActive) return;
-    let cancelled = false;
-    (async () => {
-      setSearchLoading(true);
-      try {
-        const page = await client.users.listPage({
-          q: debouncedSearch || undefined,
-          limit: SEARCH_LIMIT,
-        });
-        const entries = page.entries || [];
-        const known = new Set(maintainerIds);
-        const results = entries.filter((u) => !known.has(u.id));
-        if (!cancelled) {
-          setSearchResults(results);
-          setSearchDenied(false);
-          // Measured before current maintainers are dropped: that filter is why
-          // the rows on screen can number fewer than the server's page.
-          setSearchCapped(entries.length >= SEARCH_LIMIT);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setSearchResults([]);
-          setSearchCapped(false);
-          if (err?.status === 403) setSearchDenied(true);
-          else console.error('User search failed:', err);
-        }
-      } finally {
-        if (!cancelled) setSearchLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [debouncedSearch, searchActive, maintainerIds, client]);
+  const search = useUserSearch({ client, excludeIds: maintainerIds });
 
   const canManageVocabulary = () => {
     if (!user || !vocabulary) return false;
@@ -106,7 +55,7 @@ export const VocabularyMaintainers = ({ vocabulary, user, vocabularyId, client, 
       setUpdatingUser(userId);
       await client.vocabLayers.addMaintainer(vocabularyId, userId);
       await onDataUpdate();
-      setSearch('');
+      search.setQuery('');
       notifySuccess('User has been added as a maintainer', 'Maintainer added');
     } catch (err) {
       console.error('Error adding maintainer:', err);
@@ -219,70 +168,21 @@ export const VocabularyMaintainers = ({ vocabulary, user, vocabularyId, client, 
         <div className="border-b px-4 py-3">
           <h3 className="text-base font-semibold">Add a maintainer</h3>
         </div>
-        <div className="flex flex-col gap-2 px-4 py-3">
-          <SearchInput
-            placeholder="Search users by name…"
-            value={search}
-            onChange={setSearch}
-            onFocus={() => setSearchActive(true)}
+        <div className="px-4 py-3">
+          <UserSearch
+            client={client}
+            search={search}
+            renderAction={(u) => (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleAddMaintainer(u.id)}
+                disabled={updatingUser === u.id}
+              >
+                <Plus className="h-4 w-4" /> Add
+              </Button>
+            )}
           />
-
-          {searchDenied ? (
-            <p className="py-1 text-sm text-muted-foreground">
-              You don’t have permission to browse the user directory, so you can’t add maintainers
-              by search. Ask an administrator (or a project maintainer) to add them.
-            </p>
-          ) : (
-            searchActive &&
-            (searchLoading ? (
-              <div className="flex justify-center py-4 text-muted-foreground">
-                <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-primary" />
-              </div>
-            ) : searchResults.length === 0 ? (
-              <p className="py-1 text-sm text-muted-foreground">
-                {debouncedSearch ? 'No matching users.' : 'No other users to add.'}
-              </p>
-            ) : (
-              <div className="flex flex-col">
-                {searchResults.map((u, i) => (
-                  <div
-                    key={u.id}
-                    className={`flex items-center justify-between gap-2 py-2 ${i ? 'border-t' : ''}`}
-                  >
-                    <div className="flex min-w-0 items-center gap-2">
-                      <UserAvatar
-                        client={client}
-                        userId={u.id}
-                        displayName={u.displayName}
-                        avatarHash={u.avatarHash}
-                        className="h-7 w-7"
-                      />
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="truncate font-medium">{u.displayName}</span>
-                          {u.isAdmin && <Badge variant="secondary">Admin</Badge>}
-                        </div>
-                        <span className="block truncate text-xs text-muted-foreground">{u.id}</span>
-                      </div>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleAddMaintainer(u.id)}
-                      disabled={updatingUser === u.id}
-                    >
-                      <Plus className="h-4 w-4" /> Add
-                    </Button>
-                  </div>
-                ))}
-                {searchCapped && (
-                  <ListHint className="pt-2">
-                    Showing the first {SEARCH_LIMIT} matches. Keep typing to narrow the list.
-                  </ListHint>
-                )}
-              </div>
-            ))
-          )}
         </div>
       </div>
     </div>
