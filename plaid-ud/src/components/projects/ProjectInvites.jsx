@@ -1,27 +1,27 @@
 import { useState, useEffect, useCallback } from 'react';
-import {
-  Paper,
-  Group,
-  Title,
-  Text,
-  Button,
-  Table,
-  Badge,
-  Center,
-  Loader,
-  Modal,
-  Stack,
-  TextInput,
-  NumberInput,
-  Select,
-  ActionIcon,
-  CopyButton,
-  Tooltip,
-} from '@mantine/core';
-import { IconLink, IconCopy, IconCheck, IconTrash } from '@tabler/icons-react';
+import { Check, Copy, Link2, Trash2 } from 'lucide-react';
 import PlaidClient from '@larc-iu/plaid-client';
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
+import { Badge } from '@ui/components/ui/badge';
+import { Button } from '@ui/components/ui/button';
+import { DataTable } from '@ui/components/ui/data-table';
+import { Input } from '@ui/components/ui/input';
+import { Label } from '@ui/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@ui/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@ui/components/ui/select';
 
 const GRANT_ROLES = [
   { value: 'reader', label: 'Reader' },
@@ -29,7 +29,12 @@ const GRANT_ROLES = [
   { value: 'maintainer', label: 'Maintainer' },
 ];
 
-const STATUS_COLOR = { active: 'green', used: 'gray', expired: 'gray', revoked: 'red' };
+const STATUS_VARIANT = {
+  active: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700',
+  used: 'border-border bg-muted text-muted-foreground',
+  expired: 'border-border bg-muted text-muted-foreground',
+  revoked: 'border-destructive/40 bg-destructive/10 text-destructive',
+};
 
 const fmtDate = (iso) => {
   if (!iso) return '';
@@ -48,45 +53,45 @@ const inviteLinkFor = (code) => {
 };
 
 // Shown once, immediately after minting. The code is not stored anywhere and
-// the server cannot produce it again, so this modal is the only chance to
+// the server cannot produce it again, so this dialog is the only chance to
 // capture it — hence the copy button and the explicit warning.
 export const MintedLinkModal = ({ code, onClose, title = 'Invitation link created' }) => {
   const link = code ? inviteLinkFor(code) : '';
+  const [copied, setCopied] = useState(false);
+
+  const copy = () => {
+    navigator.clipboard?.writeText(link).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
-    <Modal opened={!!code} onClose={onClose} title={title} size="lg">
-      <Stack gap="md">
-        <Text size="sm" c="dimmed">
-          Copy this link now. It is not stored, so it cannot be shown again — if you lose it, revoke
+    <Dialog open={!!code} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          Copy this link now. It is not stored, so it cannot be shown again. If you lose it, revoke
           this invite and create another.
-        </Text>
-        <Group gap="xs" wrap="nowrap">
-          <TextInput
+        </p>
+        <div className="flex items-center gap-2">
+          <Input
             readOnly
             value={link}
-            style={{ flex: 1 }}
-            styles={{ input: { fontFamily: 'monospace', fontSize: 12 } }}
+            className="flex-1 font-mono text-xs"
             onFocus={(e) => e.target.select()}
+            aria-label="Invitation link"
           />
-          <CopyButton value={link} timeout={2000}>
-            {({ copied, copy }) => (
-              <Tooltip label={copied ? 'Copied' : 'Copy link'} withArrow>
-                <ActionIcon
-                  variant="default"
-                  size="lg"
-                  onClick={copy}
-                  aria-label="Copy invite link"
-                >
-                  {copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
-                </ActionIcon>
-              </Tooltip>
-            )}
-          </CopyButton>
-        </Group>
-        <Group justify="flex-end">
+          <Button variant="outline" onClick={copy} aria-label="Copy invite link">
+            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+          </Button>
+        </div>
+        <DialogFooter>
           <Button onClick={onClose}>Done</Button>
-        </Group>
-      </Stack>
-    </Modal>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };
 
@@ -162,128 +167,165 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage }) =>
 
   if (!canManage) return null;
 
+  const columns = [
+    {
+      key: 'note',
+      label: 'Label',
+      sort: (i) => (i.note || '').toLowerCase(),
+      render: (i) => i.note || <span className="italic text-muted-foreground">Untitled</span>,
+    },
+    {
+      key: 'role',
+      label: 'Grants',
+      sort: (i) => i.projectRole,
+      render: (i) => cap(i.projectRole),
+    },
+    {
+      key: 'uses',
+      label: 'Used',
+      sort: (i) => i.uses,
+      render: (i) => `${i.uses} / ${i.maxUses}`,
+    },
+    {
+      key: 'expires',
+      label: 'Expires',
+      sort: (i) => (i.expiresAt ? new Date(i.expiresAt).getTime() : null),
+      render: (i) => fmtDate(i.expiresAt),
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      sort: (i) => i.status,
+      render: (i) => (
+        <Badge variant="outline" className={STATUS_VARIANT[i.status] || STATUS_VARIANT.used}>
+          {i.status}
+        </Badge>
+      ),
+    },
+    {
+      key: 'actions',
+      label: '',
+      align: 'right',
+      headerClassName: 'w-12',
+      render: (i) =>
+        i.status === 'active' ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-destructive"
+            aria-label="Revoke invitation link"
+            onClick={() => handleRevoke(i)}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        ) : null,
+    },
+  ];
+
   return (
-    <Paper withBorder radius="md" mb="lg">
-      <Group
-        px="lg"
-        py="md"
-        justify="space-between"
-        style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}
-      >
+    <div className="tw mb-6 flex flex-col gap-3">
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <Title order={3} size="h4">
-            Invitation links
-          </Title>
-          <Text size="sm" c="dimmed">
+          <h3 className="text-lg font-semibold">Invitation links</h3>
+          <p className="text-sm text-muted-foreground">
             Send someone a link instead of a password. They choose their own credentials and join{' '}
             {projectName || 'this project'} automatically.
-          </Text>
+          </p>
         </div>
-        <Button size="sm" leftSection={<IconLink size={16} />} onClick={() => setCreateOpen(true)}>
-          New link
+        <Button size="sm" onClick={() => setCreateOpen(true)}>
+          <Link2 className="h-4 w-4" /> New link
         </Button>
-      </Group>
+      </div>
 
-      {loading ? (
-        <Center py="xl">
-          <Loader size="sm" />
-        </Center>
-      ) : invites.length === 0 ? (
-        <Text px="lg" py="md" size="sm" c="dimmed">
-          No invitation links yet. Create one to onboard someone without sending a password.
-        </Text>
-      ) : (
-        <Table.ScrollContainer minWidth={620}>
-          <Table verticalSpacing="sm" horizontalSpacing="lg">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Label</Table.Th>
-                <Table.Th>Grants</Table.Th>
-                <Table.Th>Used</Table.Th>
-                <Table.Th>Expires</Table.Th>
-                <Table.Th>Status</Table.Th>
-                <Table.Th w={48} />
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {invites.map((inv) => (
-                <Table.Tr key={inv.id}>
-                  <Table.Td>
-                    {inv.note || (
-                      <Text span size="sm" c="dimmed" fs="italic">
-                        Untitled
-                      </Text>
-                    )}
-                  </Table.Td>
-                  <Table.Td>{cap(inv.projectRole)}</Table.Td>
-                  <Table.Td>
-                    {inv.uses} / {inv.maxUses}
-                  </Table.Td>
-                  <Table.Td>{fmtDate(inv.expiresAt)}</Table.Td>
-                  <Table.Td>
-                    <Badge color={STATUS_COLOR[inv.status] || 'gray'} variant="light">
-                      {inv.status}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>
-                    {inv.status === 'active' && (
-                      <ActionIcon
-                        variant="subtle"
-                        color="red"
-                        aria-label="Revoke invitation link"
-                        onClick={() => handleRevoke(inv)}
-                      >
-                        <IconTrash size={16} />
-                      </ActionIcon>
-                    )}
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
-      )}
+      <DataTable
+        rows={invites}
+        columns={columns}
+        rowKey={(i) => i.id}
+        id="invites"
+        scope={projectId}
+        defaultSort={{ key: 'expires', dir: 'desc' }}
+        noun="link"
+        loading={loading}
+        empty="No invitation links yet."
+        showCount={false}
+      />
 
-      <Modal
-        opened={createOpen}
-        onClose={() => setCreateOpen(false)}
-        title="New invitation link"
-        size="md"
-      >
-        <Stack gap="md">
-          <Text size="sm" c="dimmed">
+      <Dialog open={createOpen} onOpenChange={(open) => !open && setCreateOpen(false)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>New invitation link</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
             Anyone with the link can create one account and join this project.
-          </Text>
-          <Select label="They join as" data={GRANT_ROLES} value={role} onChange={setRole} />
-          <Group grow align="flex-start">
-            <NumberInput
-              label="Number of uses"
-              description="Raise this to share one link with a whole class."
-              min={1}
-              value={maxUses}
-              onChange={setMaxUses}
+          </p>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="invite-role">They join as</Label>
+            <Select value={role} onValueChange={setRole}>
+              <SelectTrigger id="invite-role">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {GRANT_ROLES.map((r) => (
+                  <SelectItem key={r.value} value={r.value}>
+                    {r.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex gap-4">
+            <div className="flex flex-1 flex-col gap-1.5">
+              <Label htmlFor="invite-uses">Number of uses</Label>
+              <Input
+                id="invite-uses"
+                type="number"
+                min={1}
+                value={maxUses}
+                onChange={(e) => setMaxUses(Math.max(1, Number(e.target.value) || 1))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Raise this to share one link with a whole class.
+              </p>
+            </div>
+            <div className="flex flex-1 flex-col gap-1.5">
+              <Label htmlFor="invite-ttl">Expires in (days)</Label>
+              <Input
+                id="invite-ttl"
+                type="number"
+                min={1}
+                value={ttlDays}
+                onChange={(e) => setTtlDays(Math.max(1, Number(e.target.value) || 1))}
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="invite-note">Label (optional)</Label>
+            <Input
+              id="invite-note"
+              placeholder="e.g. Fall 2026 field methods"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
             />
-            <NumberInput label="Expires in (days)" min={1} value={ttlDays} onChange={setTtlDays} />
-          </Group>
-          <TextInput
-            label="Label (optional)"
-            description="Only you see this. It is how you will recognize the link later."
-            placeholder="e.g. Fall 2026 field methods"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-          />
-          <Group justify="flex-end">
-            <Button variant="default" onClick={() => setCreateOpen(false)} disabled={creating}>
+            <p className="text-xs text-muted-foreground">
+              Only you see this. It is how you will recognize the link later.
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={creating}>
               Cancel
             </Button>
-            <Button onClick={handleCreate} loading={creating}>
-              Create link
+            <Button onClick={handleCreate} disabled={creating}>
+              {creating ? 'Creating…' : 'Create link'}
             </Button>
-          </Group>
-        </Stack>
-      </Modal>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <MintedLinkModal code={mintedCode} onClose={() => setMintedCode(null)} />
-    </Paper>
+    </div>
   );
 };

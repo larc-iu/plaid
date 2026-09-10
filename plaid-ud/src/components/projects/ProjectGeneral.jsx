@@ -4,48 +4,77 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import { UD_NAMESPACE, getUdLayerInfo, readProjectLanguage } from '../../utils/udLayerUtils.js';
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { useManagedProject } from './useManagedProject.js';
+import { Button } from '@ui/components/ui/button';
+import { Input } from '@ui/components/ui/input';
+import { Label } from '@ui/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle } from '@ui/components/ui/card';
 import {
-  Container,
-  Title,
-  Text,
-  Button,
-  Group,
-  Stack,
-  Paper,
-  TextInput,
-  Modal,
-  Alert,
-  Center,
-  Loader,
-} from '@mantine/core';
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@ui/components/ui/dialog';
 
-// "General" tab: project-wide settings that aren't vocab/colors. Currently the
-// project's language, the tokenizer locale (used by the segmenter) and the
-// destructive project-delete action, deliberately tucked behind a
-// type-the-name confirmation since it's rarely needed.
-export const ProjectGeneral = ({ embedded = false }) => {
+// "General": project-wide settings that aren't vocab or colors. The project's
+// name, the language it annotates, the tokenizer locale the segmenter uses, and
+// the destructive project delete, deliberately tucked behind a type-the-name
+// confirmation since it is rarely needed.
+//
+// `onProjectUpdate` refreshes the parent's copy of the project. The name shows
+// in the breadcrumb above this screen and in the project list, so a rename that
+// only refreshed this tab would leave both stale until a reload.
+export const ProjectGeneral = ({ onProjectUpdate }) => {
   const { projectId, project, loading, fetchProject, canConfigure } = useManagedProject();
   const navigate = useNavigate();
   const { getClient } = useAuth();
 
+  const [name, setName] = useState('');
+  const [savingName, setSavingName] = useState(false);
   const [savingLanguage, setSavingLanguage] = useState(false);
   const [language, setLanguage] = useState(''); // BCP-47, '' = not stated
   const [savingLocale, setSavingLocale] = useState(false);
   const [tokenizerLocale, setTokenizerLocale] = useState(''); // BCP-47, '' = the language
 
   // Delete (danger zone) — type-the-name-to-confirm.
-  const [deleteModalOpened, setDeleteModalOpened] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Seed both editors from the server's copy, and re-seed whenever the project
+  // Seed every editor from the server's copy, and re-seed whenever the project
   // reloads, so the form shows what is actually stored.
   useEffect(() => {
     if (!project) return;
     const info = getUdLayerInfo(project);
+    setName(project.name || '');
     setLanguage(readProjectLanguage(project));
     setTokenizerLocale(info.textLayer?.config?.[UD_NAMESPACE]?.tokenizerLocale || '');
   }, [project]);
+
+  const refresh = async () => {
+    await fetchProject();
+    onProjectUpdate?.();
+  };
+
+  const nameChanged = !!project && name.trim() !== project.name && name.trim() !== '';
+
+  const handleRename = async () => {
+    if (!nameChanged) return;
+    setSavingName(true);
+    try {
+      const client = getClient();
+      if (!client) throw new Error('Not authenticated');
+      await client.projects.update(projectId, name.trim());
+      await refresh();
+      notifySuccess('Project renamed');
+    } catch (err) {
+      console.error('Error renaming project:', err);
+      notifyError(err.message || 'Failed to rename the project.');
+      setName(project?.name ?? '');
+    } finally {
+      setSavingName(false);
+    }
+  };
 
   // The language lives on the PROJECT, not a layer: it is a fact about the
   // project, and the parse spot reads it without loading layer config.
@@ -58,7 +87,7 @@ export const ProjectGeneral = ({ embedded = false }) => {
       if (tag) await client.projects.setConfig(projectId, UD_NAMESPACE, 'language', tag);
       else await client.projects.deleteConfig(projectId, UD_NAMESPACE, 'language');
       await fetchProject();
-      notifySuccess('Language saved.');
+      notifySuccess('Language saved');
     } catch (err) {
       console.error('Failed to save project language:', err);
       notifyError(err.message || 'Failed to save the language.');
@@ -79,7 +108,7 @@ export const ProjectGeneral = ({ embedded = false }) => {
         await client.textLayers.setConfig(info.textLayer.id, UD_NAMESPACE, 'tokenizerLocale', loc);
       else await client.textLayers.deleteConfig(info.textLayer.id, UD_NAMESPACE, 'tokenizerLocale');
       await fetchProject();
-      notifySuccess('Tokenizer locale saved.');
+      notifySuccess('Tokenizer locale saved');
     } catch (err) {
       console.error('Failed to save tokenizer locale:', err);
       notifyError(err.message || 'Failed to save tokenizer locale.');
@@ -92,32 +121,22 @@ export const ProjectGeneral = ({ embedded = false }) => {
     !!project && deleteConfirmText.trim().toLowerCase() === project.name.toLowerCase();
 
   const handleDeleteProject = async () => {
-    if (!isDeleteConfirmValid) {
-      notifyError(
-        'Project name does not match. Please type the exact project name.',
-        'Invalid confirmation',
-      );
-      return;
-    }
+    if (!isDeleteConfirmValid) return;
     try {
       setIsDeleting(true);
       await getClient().projects.delete(projectId);
-      notifySuccess(`Project "${project.name}" has been deleted`);
+      notifySuccess(`Deleted “${project.name}”`);
       navigate('/projects');
     } catch (err) {
       console.error('Error deleting project:', err);
       notifyError('Failed to delete project: ' + (err.message || 'Unknown error'));
       setIsDeleting(false);
-      setDeleteModalOpened(false);
+      setDeleteOpen(false);
     }
   };
 
   if (loading) {
-    return (
-      <Center py={48}>
-        <Loader />
-      </Center>
-    );
+    return <p className="p-4 text-sm text-muted-foreground">Loading…</p>;
   }
 
   if (!project || !canConfigure) {
@@ -126,155 +145,168 @@ export const ProjectGeneral = ({ embedded = false }) => {
 
   const info = getUdLayerInfo(project);
 
-  const content = (
-    <Stack gap="xl">
-      <Paper withBorder p="lg" radius="md">
-        <Title order={2} size="h4" mb="xs">
-          Language
-        </Title>
-        <Text size="sm" c="dimmed" mb="md">
-          The language this project annotates, as a BCP-47 tag (<code>en</code>, <code>de</code>,{' '}
-          <code>zh-Hans</code>). The parser starts on it, and tokenization uses it unless the locale
-          below is set.
-        </Text>
-        <Group align="flex-end" gap="sm">
-          <TextInput
-            value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-            placeholder="en"
-            w={220}
-            spellCheck={false}
-          />
-          <Button color="dark" loading={savingLanguage} onClick={handleSaveLanguage}>
-            Save
-          </Button>
-        </Group>
-      </Paper>
-
-      <Paper withBorder p="lg" radius="md">
-        <Title order={2} size="h4" mb="xs">
-          Tokenizer locale
-        </Title>
-        <Text size="sm" c="dimmed" mb="md">
-          <p>
-            Language tag used for whitespace/word tokenization (<code>Intl.Segmenter</code>). Drives
-            script-specific segmentation — especially <code>ja</code>, <code>zh</code>,{' '}
-            <code>th</code>, which are segmented by dictionary lookup when given the locale. A
-            BCP-47 tag (e.g. <code>en</code>,<code> ja</code>, <code>zh-Hans</code>). Leave it empty
-            to use the project language.
-          </p>
-          <p>
-            See{' '}
-            <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Segmenter">
-              further information about <code>Intl.Segmenter</code>
-            </a>
-            .
-          </p>
-        </Text>
-        {info.textLayer ? (
-          <Group align="flex-end" gap="sm">
-            <TextInput
-              value={tokenizerLocale}
-              onChange={(e) => setTokenizerLocale(e.target.value)}
-              placeholder={language.trim() || 'und'}
-              w={220}
-              spellCheck={false}
+  return (
+    <div className="tw flex flex-col gap-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Name</CardTitle>
+        </CardHeader>
+        <CardContent className="flex max-w-md items-end gap-2">
+          <div className="flex flex-1 flex-col gap-1.5">
+            <Label htmlFor="project-name" className="sr-only">
+              Project name
+            </Label>
+            <Input
+              id="project-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleRename()}
+              disabled={savingName}
             />
-            <Button color="dark" loading={savingLocale} onClick={handleSaveLocale}>
-              Save
-            </Button>
-          </Group>
-        ) : (
-          <Alert color="gray" variant="light">
-            Configure the project's UD layers first before setting a tokenizer locale.
-          </Alert>
-        )}
-      </Paper>
+          </div>
+          <Button onClick={handleRename} disabled={!nameChanged || savingName}>
+            {savingName ? 'Saving…' : 'Save'}
+          </Button>
+        </CardContent>
+      </Card>
 
-      <Paper withBorder radius="md" style={{ borderColor: 'var(--mantine-color-red-4)' }}>
-        <Group px="lg" py="md" style={{ borderBottom: '1px solid var(--mantine-color-red-2)' }}>
-          <Title order={3} size="h4" c="red">
-            Danger Zone
-          </Title>
-        </Group>
-        <Stack px="lg" py="md" gap="sm" align="flex-start">
-          <Text size="sm" fw={500}>
-            Delete this project
-          </Text>
-          <Text size="sm" c="dimmed">
-            Permanently delete <strong>{project.name}</strong> and all of its documents,
-            annotations, and configuration. This action cannot be undone.
-          </Text>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Language</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <p className="text-sm text-muted-foreground">
+            The language this project annotates, as a BCP-47 tag (<code>en</code>, <code>de</code>,{' '}
+            <code>zh-Hans</code>). The parser starts on it, and tokenization uses it unless the
+            locale below is set.
+          </p>
+          <div className="flex items-end gap-2">
+            <Input
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+              placeholder="en"
+              className="w-56"
+              spellCheck={false}
+              aria-label="Project language"
+            />
+            <Button onClick={handleSaveLanguage} disabled={savingLanguage}>
+              {savingLanguage ? 'Saving…' : 'Save'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Tokenizer locale</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <p className="text-sm text-muted-foreground">
+            Language tag used for word tokenization (<code>Intl.Segmenter</code>). It drives
+            script-specific segmentation, especially <code>ja</code>, <code>zh</code> and{' '}
+            <code>th</code>, which are segmented by dictionary lookup when given the locale. Leave
+            it empty to use the project language.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            <a
+              className="underline underline-offset-4"
+              href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Segmenter"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Further information about <code>Intl.Segmenter</code>
+            </a>
+          </p>
+          {info.textLayer ? (
+            <div className="flex items-end gap-2">
+              <Input
+                value={tokenizerLocale}
+                onChange={(e) => setTokenizerLocale(e.target.value)}
+                placeholder={language.trim() || 'und'}
+                className="w-56"
+                spellCheck={false}
+                aria-label="Tokenizer locale"
+              />
+              <Button onClick={handleSaveLocale} disabled={savingLocale}>
+                {savingLocale ? 'Saving…' : 'Save'}
+              </Button>
+            </div>
+          ) : (
+            <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+              Set up the project&apos;s UD layers before setting a tokenizer locale.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="border-destructive/40">
+        <CardHeader>
+          <CardTitle className="text-lg">Delete</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <p className="text-sm text-muted-foreground">
+            <strong>{project.name}</strong> and all of its documents, annotations and configuration
+            go. This cannot be undone.
+          </p>
           <Button
-            color="red"
-            variant="light"
+            variant="outline"
+            className="self-start text-destructive"
             onClick={() => {
               setDeleteConfirmText('');
-              setDeleteModalOpened(true);
+              setDeleteOpen(true);
             }}
           >
-            Delete Project
+            Delete project
           </Button>
-        </Stack>
-      </Paper>
+        </CardContent>
+      </Card>
 
-      <Modal
-        opened={deleteModalOpened}
-        onClose={() => {
-          if (!isDeleting) setDeleteModalOpened(false);
+      <Dialog
+        open={deleteOpen}
+        onOpenChange={(open) => {
+          if (!open && !isDeleting) setDeleteOpen(false);
         }}
-        title="Delete Project"
-        centered
       >
-        <Stack gap="md">
-          <Alert color="red" title="This action is irreversible">
-            You are about to permanently delete the project <strong>{project.name}</strong> and all
-            of its associated data including documents, annotations, and configuration.
-          </Alert>
-          <TextInput
-            label={
-              <>
-                To confirm, type the project name <strong>{project.name}</strong>
-              </>
-            }
-            value={deleteConfirmText}
-            onChange={(e) => setDeleteConfirmText(e.target.value)}
-            placeholder="Enter project name"
-            error={
-              deleteConfirmText && !isDeleteConfirmValid ? 'Project name does not match' : undefined
-            }
-            data-autofocus
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && isDeleteConfirmValid) handleDeleteProject();
-            }}
-          />
-          <Group justify="flex-end">
-            <Button
-              variant="default"
-              onClick={() => setDeleteModalOpened(false)}
-              disabled={isDeleting}
-            >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete project</DialogTitle>
+          </DialogHeader>
+          <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
+            <strong>{project.name}</strong> and all of its documents, annotations and configuration
+            go. This cannot be undone.
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="delete-confirm">
+              To confirm, type <strong>{project.name}</strong>
+            </Label>
+            <Input
+              id="delete-confirm"
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && isDeleteConfirmValid) handleDeleteProject();
+              }}
+              autoFocus
+              spellCheck={false}
+            />
+            {deleteConfirmText && !isDeleteConfirmValid && (
+              <p className="text-xs text-destructive">The name does not match.</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={isDeleting}>
               Cancel
             </Button>
             <Button
-              color="red"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={handleDeleteProject}
-              disabled={!isDeleteConfirmValid}
-              loading={isDeleting}
+              disabled={!isDeleteConfirmValid || isDeleting}
             >
-              Delete Project
+              {isDeleting ? 'Deleting…' : 'Delete project'}
             </Button>
-          </Group>
-        </Stack>
-      </Modal>
-    </Stack>
-  );
-
-  return embedded ? (
-    content
-  ) : (
-    <Container size="lg" py="xl">
-      {content}
-    </Container>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 };
