@@ -56,8 +56,8 @@ export const ProjectSettings = () => {
   useEffect(loadProject, [loadProject]);
 
   const body = {
-    management: <ProjectManagement embedded />,
-    customization: <ProjectCustomization embedded />,
+    management: <ProjectManagement />,
+    customization: <ProjectCustomization />,
     services: <ProjectServicesSettings />,
     tokens: <ProjectAccessTokens />,
     general: <ProjectGeneral onProjectUpdate={loadProject} />,

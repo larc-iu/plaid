@@ -10,31 +10,19 @@ import {
 } from '../../utils/udVocab.js';
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { useManagedProject } from './useManagedProject.js';
-import {
-  Container,
-  Title,
-  Text,
-  Button,
-  Group,
-  Stack,
-  Alert,
-  Paper,
-  TextInput,
-  Center,
-  Loader,
-  TagsInput,
-  ColorInput,
-  ActionIcon,
-  SimpleGrid,
-} from '@mantine/core';
-import { IconTrash, IconRestore } from '@tabler/icons-react';
+import { RotateCcw, Trash2 } from 'lucide-react';
+import { TagList } from '../common/TagList.jsx';
+import { ColorField } from '../common/ColorField.jsx';
+import { Button } from '@ui/components/ui/button';
+import { Input } from '@ui/components/ui/input';
+import { Card, CardContent, CardHeader, CardTitle } from '@ui/components/ui/card';
 
 // "UD Customization" tab: project-specific controlled vocabularies, colors, and
 // the feature inventory. Everything here is local state until you press Save —
 // nothing round-trips on a keystroke. These settings attach to the UD annotation
 // layers, so the project must be configured before they can be edited. (The
 // tokenizer locale and project deletion live on the General tab.)
-export const ProjectCustomization = ({ embedded = false }) => {
+export const ProjectCustomization = () => {
   const { project, loading, fetchProject, canConfigure } = useManagedProject();
   const { getClient } = useAuth();
 
@@ -122,7 +110,7 @@ export const ProjectCustomization = ({ embedded = false }) => {
       }
 
       await fetchProject();
-      notifySuccess('Customization saved.');
+      notifySuccess('Customization saved');
     } catch (err) {
       console.error('Failed to save customization:', err);
       notifyError(err.message || 'Failed to save customization.');
@@ -132,11 +120,7 @@ export const ProjectCustomization = ({ embedded = false }) => {
   };
 
   if (loading) {
-    return (
-      <Center py={48}>
-        <Loader />
-      </Center>
-    );
+    return <p className="tw p-4 text-sm text-muted-foreground">Loading…</p>;
   }
 
   if (!project || !canConfigure) {
@@ -145,201 +129,187 @@ export const ProjectCustomization = ({ embedded = false }) => {
 
   const info = getUdLayerInfo(project);
 
-  const content = !info.isConfigured ? (
-    <Alert color="gray" variant="light">
-      Configure the project's UD layers first — vocabulary and color settings attach to those
-      annotation layers.
-    </Alert>
-  ) : (
-    <Stack gap="xl">
-      <Paper withBorder p="lg" radius="md">
-        <Group justify="space-between" align="center" mb="xs">
-          <Title order={2} size="h4">
-            UPOS tags
-          </Title>
-          <Button
-            size="xs"
-            variant="subtle"
-            leftSection={<IconRestore size={14} />}
-            onClick={() => setUposVocab([...UPOS_TAGS])}
-          >
-            Reset to universal 17
-          </Button>
-        </Group>
-        <Text size="sm" c="dimmed" mb="md">
-          Universal part-of-speech tags suggested while annotating. Defaults to the 17 universal
-          tags; edit them for project-specific needs. Annotators may still type values outside this
-          list.
-        </Text>
-        <TagsInput
-          spellCheck={false}
-          value={uposVocab}
-          onChange={setUposVocab}
-          placeholder="Add a UPOS tag and press Enter"
-          clearable
-        />
-      </Paper>
+  if (!info.isConfigured) {
+    return (
+      <p className="tw rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+        Set up the project&apos;s UD layers first. Vocabulary and color settings attach to those
+        annotation layers.
+      </p>
+    );
+  }
 
-      <Paper withBorder p="lg" radius="md">
-        <Title order={2} size="h4" mb="xs">
-          XPOS tags
-        </Title>
-        <Text size="sm" c="dimmed" mb="md">
-          Language-specific part-of-speech tags suggested while annotating. Annotators may still
-          type values outside this list.
-        </Text>
-        <TagsInput
-          spellCheck={false}
-          value={xposVocab}
-          onChange={setXposVocab}
-          placeholder="Add an XPOS tag and press Enter"
-          clearable
-        />
-      </Paper>
+  const resetButton = (onClick, label) => (
+    <Button variant="ghost" size="sm" onClick={onClick}>
+      <RotateCcw className="h-3.5 w-3.5" /> {label}
+    </Button>
+  );
 
-      <Paper withBorder p="lg" radius="md">
-        <Group justify="space-between" align="center" mb="xs">
-          <Title order={2} size="h4">
-            Dependency relations
-          </Title>
-          <Button
-            size="xs"
-            variant="subtle"
-            leftSection={<IconRestore size={14} />}
-            onClick={() => setDeprelVocab([...UNIVERSAL_DEPRELS])}
-          >
-            Reset to universal 37
-          </Button>
-        </Group>
-        <Text size="sm" c="dimmed" mb="md">
-          Relations suggested when labeling edges. Subtypes (e.g. <code>nsubj:pass</code>) are
-          allowed.
-        </Text>
-        <TagsInput
-          spellCheck={false}
-          value={deprelVocab}
-          onChange={setDeprelVocab}
-          placeholder="Add a relation and press Enter"
-          clearable
-        />
-      </Paper>
+  return (
+    <div className="tw flex flex-col gap-6">
+      <Card>
+        <CardHeader className="flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-lg">UPOS tags</CardTitle>
+          {resetButton(() => setUposVocab([...UPOS_TAGS]), 'Reset to universal 17')}
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">
+            Universal part-of-speech tags suggested while annotating. Defaults to the 17 universal
+            tags; edit them for project-specific needs. Annotators may still type values outside
+            this list.
+          </p>
+          <TagList
+            value={uposVocab}
+            onChange={setUposVocab}
+            label="UPOS tags"
+            placeholder="Add a UPOS tag and press Enter"
+          />
+        </CardContent>
+      </Card>
 
-      <Paper withBorder p="lg" radius="md">
-        <Title order={2} size="h4" mb="xs">
-          Relation colors
-        </Title>
-        <Text size="sm" c="dimmed" mb="md">
-          Dependency edges are colored by their base relation. Each shows its current color (an
-          automatic one by default); pick a color to override, or clear the field to revert to
-          automatic.
-        </Text>
-        <SimpleGrid cols={{ base: 2, sm: 3 }} spacing="sm">
-          {[...new Set(deprelVocab.map(baseRel))].sort().map((rel) => (
-            <ColorInput
-              key={rel}
-              label={rel}
-              size="xs"
-              format="hex"
-              value={deprelColors[rel] || autoColor(rel)}
-              onChange={(v) => setColorIn(setDeprelColors)(rel, v)}
-            />
-          ))}
-        </SimpleGrid>
-      </Paper>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">XPOS tags</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">
+            Language-specific part-of-speech tags suggested while annotating. Annotators may still
+            type values outside this list.
+          </p>
+          <TagList
+            value={xposVocab}
+            onChange={setXposVocab}
+            label="XPOS tags"
+            placeholder="Add an XPOS tag and press Enter"
+          />
+        </CardContent>
+      </Card>
 
-      <Paper withBorder p="lg" radius="md">
-        <Title order={2} size="h4" mb="xs">
-          UPOS colors
-        </Title>
-        <Text size="sm" c="dimmed" mb="md">
-          The UPOS tags above, colored in the annotation grid. Each shows its current color; pick
-          one to override, or clear the field to revert to automatic.
-        </Text>
-        <SimpleGrid cols={{ base: 2, sm: 3 }} spacing="sm">
-          {[...new Set(uposVocab)].map((tag) => (
-            <ColorInput
-              key={tag}
-              label={tag}
-              size="xs"
-              format="hex"
-              value={uposColors[tag] || autoColor(tag)}
-              onChange={(v) => setColorIn(setUposColors)(tag, v)}
-            />
-          ))}
-        </SimpleGrid>
-      </Paper>
+      <Card>
+        <CardHeader className="flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-lg">Dependency relations</CardTitle>
+          {resetButton(() => setDeprelVocab([...UNIVERSAL_DEPRELS]), 'Reset to universal 37')}
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">
+            Relations suggested when labeling edges. Subtypes (e.g. <code>nsubj:pass</code>) are
+            allowed.
+          </p>
+          <TagList
+            value={deprelVocab}
+            onChange={setDeprelVocab}
+            label="Dependency relations"
+            placeholder="Add a relation and press Enter"
+          />
+        </CardContent>
+      </Card>
 
-      <Paper withBorder p="lg" radius="md">
-        <Title order={2} size="h4" mb="xs">
-          Feature inventory
-        </Title>
-        <Text size="sm" c="dimmed" mb="md">
-          Feature names and values offered in the FEATS picker. New keys/values are still allowed
-          while annotating.
-        </Text>
-        <Stack gap="xs">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Relation colors</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">
+            Dependency edges are colored by their base relation. Each shows its current color, an
+            automatic one by default. Pick a color to override, or empty the field to go back to
+            automatic.
+          </p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {[...new Set(deprelVocab.map(baseRel))].sort().map((rel) => (
+              <ColorField
+                key={rel}
+                label={rel}
+                value={deprelColors[rel] || autoColor(rel)}
+                onChange={(v) => setColorIn(setDeprelColors)(rel, v)}
+              />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">UPOS colors</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">
+            The UPOS tags above, colored in the annotation grid. Each shows its current color. Pick
+            one to override, or empty the field to go back to automatic.
+          </p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {[...new Set(uposVocab)].map((tag) => (
+              <ColorField
+                key={tag}
+                label={tag}
+                value={uposColors[tag] || autoColor(tag)}
+                onChange={(v) => setColorIn(setUposColors)(tag, v)}
+              />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Feature inventory</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">
+            Feature names and values offered in the FEATS picker. New keys and values are still
+            allowed while annotating.
+          </p>
           {featureInventory.map((entry, i) => (
-            <Group key={i} align="flex-end" wrap="nowrap" gap="xs">
-              <TextInput
+            <div key={i} className="flex items-start gap-2 rounded-md border p-3">
+              <Input
+                className="w-40 shrink-0"
                 spellCheck={false}
-                label={i === 0 ? 'Feature' : undefined}
                 value={entry.key}
-                w={150}
                 placeholder="e.g. Number"
+                aria-label="Feature name"
                 onChange={(e) =>
                   setFeatureInventory((prev) =>
                     prev.map((x, j) => (j === i ? { ...x, key: e.target.value } : x)),
                   )
                 }
               />
-              <TagsInput
-                spellCheck={false}
-                label={i === 0 ? 'Values' : undefined}
-                value={entry.values}
-                style={{ flex: 1 }}
-                placeholder="Add a value"
-                onChange={(vals) =>
-                  setFeatureInventory((prev) =>
-                    prev.map((x, j) => (j === i ? { ...x, values: vals } : x)),
-                  )
-                }
-              />
-              <ActionIcon
-                variant="subtle"
-                color="red"
-                mb={4}
+              <div className="min-w-0 flex-1">
+                <TagList
+                  value={entry.values}
+                  label={`${entry.key || 'Feature'} values`}
+                  placeholder="Add a value and press Enter"
+                  onChange={(vals) =>
+                    setFeatureInventory((prev) =>
+                      prev.map((x, j) => (j === i ? { ...x, values: vals } : x)),
+                    )
+                  }
+                />
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 shrink-0 text-destructive"
                 aria-label={`Remove ${entry.key || 'feature'}`}
                 onClick={() => setFeatureInventory((prev) => prev.filter((_, j) => j !== i))}
               >
-                <IconTrash size={16} />
-              </ActionIcon>
-            </Group>
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
           ))}
-          <Group>
-            <Button
-              variant="light"
-              size="xs"
-              onClick={() => setFeatureInventory((prev) => [...prev, { key: '', values: [] }])}
-            >
-              Add feature
-            </Button>
-          </Group>
-        </Stack>
-      </Paper>
+          <Button
+            variant="outline"
+            size="sm"
+            className="self-start"
+            onClick={() => setFeatureInventory((prev) => [...prev, { key: '', values: [] }])}
+          >
+            Add feature
+          </Button>
+        </CardContent>
+      </Card>
 
-      <Group justify="flex-end">
-        <Button color="dark" loading={saving} onClick={handleSave}>
-          Save customization
+      <div className="flex justify-end">
+        <Button onClick={handleSave} disabled={saving}>
+          {saving ? 'Saving…' : 'Save customization'}
         </Button>
-      </Group>
-    </Stack>
-  );
-
-  return embedded ? (
-    content
-  ) : (
-    <Container size="lg" py="xl">
-      {content}
-    </Container>
+      </div>
+    </div>
   );
 };

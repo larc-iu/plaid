@@ -1,21 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import {
-  Stack,
-  Group,
-  Text,
-  Title,
-  Button,
-  Badge,
-  Radio,
-  ActionIcon,
-  Paper,
-  Alert,
-  Tooltip,
-  Loader,
-} from '@mantine/core';
-import IconRefresh from '@tabler/icons-react/dist/esm/icons/IconRefresh.mjs';
-import IconTrash from '@tabler/icons-react/dist/esm/icons/IconTrash.mjs';
+import { RefreshCw, Trash2 } from 'lucide-react';
+import { Badge } from '@ui/components/ui/badge';
+import { Button } from '@ui/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@ui/components/ui/card';
 import {
   TASKS,
   filterServicesByTask,
@@ -87,104 +75,104 @@ function SpotCard({ spot, services, draftEntry, onChange, canManage, onDiscard }
     onChange({ ...(draftEntry || {}), params: { ...paramValues, [key]: value } });
   };
 
-  return (
-    <Paper withBorder p="md">
-      <Title order={4}>{spot.label}</Title>
-      <Text size="sm" c="dimmed" mb="sm">
-        {spot.description}
-      </Text>
+  const radio = (value, node) => (
+    <label className="flex cursor-pointer items-center gap-2">
+      <input
+        type="radio"
+        className="h-4 w-4 cursor-pointer accent-primary"
+        name={`spot-${spot.key}`}
+        value={value}
+        checked={selection === value}
+        onChange={() => setSelection(value)}
+        disabled={!canManage}
+      />
+      {node}
+    </label>
+  );
 
-      {spot.builtins.length === 0 && spotServices.length === 0 ? (
-        <Text size="sm" c="dimmed">
-          No service for this spot has ever connected to this project. Start one and it will appear
-          here.
-        </Text>
-      ) : (
-        <Radio.Group value={selection} onChange={setSelection}>
-          <Stack gap="xs">
-            <Radio
-              value="none"
-              label={
-                <Text size="sm" span>
-                  No default (pick per use)
-                </Text>
-              }
-              disabled={!canManage}
-            />
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">{spot.label}</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <p className="text-sm text-muted-foreground">{spot.description}</p>
+
+        {spot.builtins.length === 0 && spotServices.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No service for this spot has ever connected to this project. Start one and it will
+            appear here.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {radio('none', <span className="text-sm">No default (pick per use)</span>)}
             {spot.builtins.map((b) => (
-              <Group key={b.name} gap="xs" wrap="nowrap">
-                <Radio
-                  value={`builtin:${b.name}`}
-                  label={
-                    <Text size="sm" span>
-                      {b.label}
-                    </Text>
-                  }
-                  disabled={!canManage}
-                />
-                <Badge size="sm" variant="light" color="blue">
-                  built-in
-                </Badge>
-              </Group>
+              <div key={b.name} className="flex items-center gap-2">
+                {radio(`builtin:${b.name}`, <span className="text-sm">{b.label}</span>)}
+                <Badge variant="secondary">built-in</Badge>
+              </div>
             ))}
             {spotServices.map((svc) => (
-              <Group key={svc.serviceId} gap="xs" wrap="nowrap">
-                <Radio
-                  value={encodeServiceSelection(svc.serviceId)}
-                  label={
-                    <Text size="sm" span>
-                      {svc.serviceName || svc.serviceId}
-                    </Text>
-                  }
-                  disabled={!canManage}
-                />
-                {svc.online ? (
-                  <Badge size="sm" variant="light" color="green">
-                    online
-                  </Badge>
-                ) : (
-                  <Badge size="sm" variant="light" color="gray">
-                    offline
-                  </Badge>
+              <div key={svc.serviceId} className="flex flex-wrap items-center gap-2">
+                {radio(
+                  encodeServiceSelection(svc.serviceId),
+                  <span className="text-sm">{svc.serviceName || svc.serviceId}</span>,
                 )}
-                {!svc.online && (
-                  <Text size="xs" c="dimmed">
-                    {lastSeenText(svc)}
-                  </Text>
-                )}
+                <ServiceStatus service={svc} />
                 <ServiceSummary service={svc} />
                 {!svc.online && canManage && (
-                  <Tooltip label="Forget this service (it reappears if it reconnects)">
-                    <ActionIcon
-                      variant="subtle"
-                      color="red"
-                      aria-label={`Forget ${svc.serviceName || svc.serviceId}`}
-                      onClick={() => onDiscard(svc.serviceId)}
-                    >
-                      <IconTrash size={16} />
-                    </ActionIcon>
-                  </Tooltip>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-destructive"
+                    title="Forget this service (it reappears if it reconnects)"
+                    aria-label={`Forget ${svc.serviceName || svc.serviceId}`}
+                    onClick={() => onDiscard(svc.serviceId)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 )}
-              </Group>
+              </div>
             ))}
-          </Stack>
-        </Radio.Group>
-      )}
+          </div>
+        )}
 
-      {selectedService && paramSchema.length > 0 && (
-        <Paper withBorder p="sm" mt="md" bg="gray.0">
-          <Text size="sm" fw={600} mb="xs">
-            Default options for {selectedService.serviceName || selectedService.serviceId}
-          </Text>
-          <ServiceParamForm
-            schema={paramSchema}
-            values={paramValues}
-            onChange={setParam}
-            disabled={!canManage}
-          />
-        </Paper>
+        {selectedService && paramSchema.length > 0 && (
+          <div className="rounded-md border bg-muted/40 p-3">
+            <p className="mb-2 text-sm font-semibold">
+              Default options for {selectedService.serviceName || selectedService.serviceId}
+            </p>
+            <ServiceParamForm
+              schema={paramSchema}
+              values={paramValues}
+              onChange={setParam}
+              disabled={!canManage}
+            />
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// A service's online badge, plus when it was last seen if it is not.
+function ServiceStatus({ service }) {
+  return (
+    <>
+      <Badge
+        variant="outline"
+        className={
+          service.online
+            ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700'
+            : 'border-border bg-muted text-muted-foreground'
+        }
+      >
+        {service.online ? 'online' : 'offline'}
+      </Badge>
+      {!service.online && (
+        <span className="text-xs text-muted-foreground">{lastSeenText(service)}</span>
       )}
-    </Paper>
+    </>
   );
 }
 
@@ -282,35 +270,25 @@ export const ProjectServicesSettings = () => {
   );
 
   if (loading && !project) {
-    return (
-      <Group justify="center" py="xl">
-        <Loader size="sm" />
-      </Group>
-    );
+    return <p className="tw p-4 text-sm text-muted-foreground">Loading…</p>;
   }
 
   return (
-    <Stack gap="md">
-      <Group justify="space-between">
-        <Text size="sm" c="dimmed" maw={560}>
+    <div className="tw flex flex-col gap-4">
+      <div className="flex items-start justify-between gap-4">
+        <p className="max-w-xl text-sm text-muted-foreground">
           Services that have connected to this project are remembered here, online or not. Set a
           default (and default options) for each spot; people can still switch per use.
-        </Text>
-        <Button
-          variant="default"
-          size="xs"
-          leftSection={<IconRefresh size={14} />}
-          onClick={load}
-          loading={loading}
-        >
-          Refresh
+        </p>
+        <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+          <RefreshCw className="h-4 w-4" /> Refresh
         </Button>
-      </Group>
+      </div>
 
       {!canManage && project && (
-        <Alert color="gray" variant="light" py="xs">
-          You can view this registry, but only project maintainers can change defaults.
-        </Alert>
+        <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+          You can view this registry. Only project maintainers can change defaults.
+        </p>
       )}
 
       {SPOTS.map((spot) => (
@@ -326,53 +304,43 @@ export const ProjectServicesSettings = () => {
       ))}
 
       {unmatched.length > 0 && (
-        <Paper withBorder p="md">
-          <Title order={4}>Other services</Title>
-          <Text size="sm" c="dimmed" mb="sm">
-            Seen on this project, but not used by any spot in this app.
-          </Text>
-          <Stack gap="xs">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Other services</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2">
+            <p className="text-sm text-muted-foreground">
+              Seen on this project, but not used by any spot in this app.
+            </p>
             {unmatched.map((svc) => (
-              <Group key={svc.serviceId} gap="xs" wrap="nowrap">
-                <Text size="sm">{svc.serviceName || svc.serviceId}</Text>
-                {svc.online ? (
-                  <Badge size="sm" variant="light" color="green">
-                    online
-                  </Badge>
-                ) : (
-                  <Badge size="sm" variant="light" color="gray">
-                    offline
-                  </Badge>
-                )}
-                {!svc.online && (
-                  <Text size="xs" c="dimmed">
-                    {lastSeenText(svc)}
-                  </Text>
-                )}
+              <div key={svc.serviceId} className="flex flex-wrap items-center gap-2">
+                <span className="text-sm">{svc.serviceName || svc.serviceId}</span>
+                <ServiceStatus service={svc} />
                 <ServiceSummary service={svc} />
                 {!svc.online && canManage && (
-                  <ActionIcon
-                    variant="subtle"
-                    color="red"
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-destructive"
                     aria-label={`Forget ${svc.serviceName || svc.serviceId}`}
                     onClick={() => discard(svc.serviceId)}
                   >
-                    <IconTrash size={16} />
-                  </ActionIcon>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 )}
-              </Group>
+              </div>
             ))}
-          </Stack>
-        </Paper>
+          </CardContent>
+        </Card>
       )}
 
       {canManage && (
-        <Group>
-          <Button onClick={save} loading={saving} disabled={!dirty}>
-            Save defaults
+        <div>
+          <Button onClick={save} disabled={!dirty || saving}>
+            {saving ? 'Saving…' : 'Save defaults'}
           </Button>
-        </Group>
+        </div>
       )}
-    </Stack>
+    </div>
   );
 };
