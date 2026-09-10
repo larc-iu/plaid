@@ -26,11 +26,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '../../contexts/AuthContext';
-import { notifyError, notifySuccess, notifyWarning } from '@/utils/feedback';
+import { notifyError } from '@/utils/feedback';
 import { deriveSetupData, runElanImport } from '../../import/elan/importEngine';
-import { executeProjectSetup } from './setup/executeSetup';
-import { markImportStarted, markImportFinished } from '../../domain/igtConfig';
 import { useResumeImport } from '@/hooks/useResumeImport';
+import { useProjectImportRun } from '@/hooks/useProjectImportRun';
+
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { partitionPicked, useElanBatch } from './elan/useElanBatch';
 import { ElanBuildSummary, ElanTierReview, SchemaMismatch } from './elan/ElanTierReview.jsx';
@@ -44,23 +44,18 @@ export const ImportElanProject = () => {
   useDocumentTitle('Import ELAN');
   const { client } = useAuth();
   const fileInputRef = useRef(null);
-  const [stage, setStage] = useState('pick'); // pick | parsing | review | running | done
   const [projectName, setProjectName] = useState('');
-  const [progress, setProgress] = useState(null);
   // Every warning the run raises, in order, kept on screen while it happens
   // rather than only tallied at the end.
   const [log, setLog] = useState([]);
-  const [runError, setRunError] = useState(null);
-  const [results, setResults] = useState(null);
 
   const batch = useElanBatch();
   const limits = useServerLimits();
   const conversion = useRecordingConversion(batch.setMediaFiles);
   const durations = useMediaDurations(batch.mediaFiles);
   const { resumeId, resumeName, finishAsIs } = useResumeImport(client);
-  const projectIdRef = useRef(resumeId || null);
-  const setupDoneRef = useRef(false);
-  const stopRef = useRef(false);
+  const { stage, setStage, progress, runError, results, projectIdRef, stop, start } =
+    useProjectImportRun({ client, kind: 'ELAN', resumeId });
 
   const handleFiles = async (fileList) => {
     // Cancelling the file dialog is not an error to report at someone.
@@ -79,75 +74,28 @@ export const ImportElanProject = () => {
     }
   };
 
-  const startImport = async () => {
-    setStage('running');
-    setRunError(null);
+  const startImport = () => {
     setLog([]);
-    stopRef.current = false;
-    try {
-      if (!setupDoneRef.current) {
-        const setup = await executeProjectSetup({
+    return start({
+      setupData: () => deriveSetupData(batch.build, projectName.trim()),
+      run: ({ projectId, shouldStop, setProgress }) =>
+        runElanImport({
           client,
-          isNewProject: true,
-          resumeProjectId: projectIdRef.current,
-          setupData: deriveSetupData(batch.build, projectName.trim()),
-          onProgress: (pct, msg) => setProgress({ label: msg, pct: pct * 0.15 }),
-          // The record goes on the project the moment it exists, so a setup
-          // that fails part way leaves a project that reopens this import.
-          onProjectCreated: (id) => {
-            projectIdRef.current = id;
-            markImportStarted(client, id, 'ELAN', null);
+          projectId,
+          build: batch.build,
+          shouldStop,
+          onWarning: (text, { document }) => setLog((l) => [...l, { text, document }]),
+          onProgress: (p) => {
+            if (p.phase !== 'document') return;
+            const n = (p.index ?? 0) + 1;
+            const total = p.total ?? batch.build.documents.length;
+            setProgress({
+              label: `${p.doc}${p.step ? `: ${p.step}` : ''} (${n}/${total})`,
+              pct: 15 + (n / total) * 85,
+            });
           },
-        });
-        if (setup.failures.length > 0) throw new Error(setup.failures.join('. '));
-        projectIdRef.current = setup.projectId;
-        setupDoneRef.current = true;
-      }
-      // Removed when this run finishes, so a cancelled or lost import shows
-      // on the project rather than passing for a complete one.
-      await markImportStarted(client, projectIdRef.current, 'ELAN', null);
-
-      const res = await runElanImport({
-        client,
-        projectId: projectIdRef.current,
-        build: batch.build,
-        shouldStop: () => stopRef.current,
-        onWarning: (text, { document }) => setLog((l) => [...l, { text, document }]),
-        onProgress: (p) => {
-          if (p.phase !== 'document') return;
-          const n = (p.index ?? 0) + 1;
-          const total = p.total ?? batch.build.documents.length;
-          setProgress({
-            label: `${p.doc}${p.step ? `: ${p.step}` : ''} (${n}/${total})`,
-            pct: 15 + (n / total) * 85,
-          });
-        },
-      });
-      if (!(await markImportFinished(client, projectIdRef.current))) {
-        notifyWarning(
-          'The import record could not be cleared, so the project still opens this import.',
-          'Import Complete',
-        );
-      }
-      setResults(res);
-      setStage('done');
-      if (res.warnings.length) {
-        notifyWarning(
-          `Imported with ${res.warnings.length} warning${res.warnings.length === 1 ? '' : 's'}.`,
-          'Import finished',
-        );
-      } else {
-        notifySuccess(
-          `Imported ${res.imported} document${res.imported === 1 ? '' : 's'}.`,
-          'Import complete',
-        );
-      }
-    } catch (e) {
-      console.error('ELAN import failed:', e);
-      setRunError(e.message);
-      setStage('review');
-      if (!/cancelled/i.test(e.message)) notifyError(e.message, 'Import failed');
-    }
+        }),
+    });
   };
 
   const editable = stage === 'review';
@@ -317,7 +265,7 @@ export const ImportElanProject = () => {
                     )}
                   </Button>
                   {stage === 'running' && (
-                    <Button variant="outline" onClick={() => (stopRef.current = true)}>
+                    <Button variant="outline" onClick={stop}>
                       <Square className="h-4 w-4" /> Stop
                     </Button>
                   )}

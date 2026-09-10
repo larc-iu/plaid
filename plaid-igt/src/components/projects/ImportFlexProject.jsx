@@ -16,14 +16,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '../../contexts/AuthContext';
-import { notifyError, notifySuccess, notifyWarning } from '@/utils/feedback';
+import { notifyError } from '@/utils/feedback';
 import { readFwbackup } from '../../import/flex/fwbackup';
 import { parseFwdata } from '../../import/flex/fwdataParser';
 import { buildDocuments } from '../../import/flex/buildDocuments';
 import { deriveImportConfig, runImport } from '../../import/flex/importEngine';
-import { executeProjectSetup } from './setup/executeSetup';
-import { markImportStarted, markImportFinished, readImportState } from '../../domain/igtConfig';
+import { readImportState } from '../../domain/igtConfig';
 import { useResumeImport } from '@/hooks/useResumeImport';
+import { useProjectImportRun } from '@/hooks/useProjectImportRun';
+
 import { documentFraction, documentLabel } from '../../import/progress';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { humanizeFieldName } from '@/domain/vocabFields';
@@ -38,8 +39,6 @@ export const ImportFlexProject = () => {
   useDocumentTitle('Import FLEx Project');
   const { client, user } = useAuth();
   const fileInputRef = useRef(null);
-
-  const [stage, setStage] = useState('pick'); // pick | parsing | review | running | done
   const [parsed, setParsed] = useState(null); // {backupName, ir, build, analysisWssAvailable}
   const [projectName, setProjectName] = useState('');
   const [orthoNames, setOrthoNames] = useState({}); // ws → display name
@@ -55,21 +54,16 @@ export const ImportFlexProject = () => {
   const [lexiconName, setLexiconName] = useState(null);
   const [existingVocabs, setExistingVocabs] = useState([]);
   const [existingVocabId, setExistingVocabId] = useState('');
-  const [progress, setProgress] = useState(null); // {label, pct} | null
-  const [runError, setRunError] = useState(null);
-  const [results, setResults] = useState(null);
 
   // Survive retries within this page session (see header comment).
   const { resumeId, resumeName, resumeProject, finishAsIs } = useResumeImport(client);
+  const { stage, setStage, progress, runError, results, projectIdRef, setupDoneRef, stop, start } =
+    useProjectImportRun({ client, kind: 'FLEx', resumeId });
   // On a resume the lexicon is the one the record names: the run writes into
   // it whatever the screen would otherwise offer.
   const resumeRecord = resumeProject ? readImportState(resumeProject.config) : null;
   const resumedLexicon =
     (resumeProject?.vocabs || []).find((v) => v.id === resumeRecord?.vocabId) ?? null;
-  const projectIdRef = useRef(resumeId || null);
-  const setupDoneRef = useRef(false);
-  const vocabIdRef = useRef(null);
-  const stopRef = useRef(false);
 
   const handleFile = async (file) => {
     if (!file) return;
@@ -162,164 +156,113 @@ export const ImportFlexProject = () => {
   const lexiconChoiceValid =
     lexiconMode === 'existing' ? !!existingVocab : !!effectiveLexiconName.trim();
 
-  const startImport = async () => {
-    setStage('running');
-    setRunError(null);
-    stopRef.current = false;
+  const startImport = () => {
     const vocabName = lexiconMode === 'existing' ? existingVocab.name : effectiveLexiconName.trim();
-    try {
-      const config = {
-        ...liveConfig,
-        orthographies: liveConfig.orthographies.map((o) => ({
-          ws: o.ws,
-          name: (orthoNames[o.ws] || o.ws).trim() || o.ws,
-        })),
-        variants: importVariants,
-      };
 
-      // 1. Project + layer setup (shared with the setup wizard), once.
-      if (!setupDoneRef.current) {
-        const setupData = {
-          basicInfo: { projectName: projectName.trim() },
-          orthographies: {
-            orthographies: [
-              { name: 'Baseline', isBaseline: true },
-              ...config.orthographies.map((o) => ({ name: o.name })),
-            ],
+    const config = {
+      ...liveConfig,
+      orthographies: liveConfig.orthographies.map((o) => ({
+        ws: o.ws,
+        name: (orthoNames[o.ws] || o.ws).trim() || o.ws,
+      })),
+      variants: importVariants,
+    };
+
+    return start({
+      source: parsed.backupName,
+      setupShare: 0.1,
+      setupData: () => ({
+        basicInfo: { projectName: projectName.trim() },
+        orthographies: {
+          orthographies: [
+            { name: 'Baseline', isBaseline: true },
+            ...config.orthographies.map((o) => ({ name: o.name })),
+          ],
+        },
+        fields: {
+          // `ws` is the writing system this field's values are in. It is
+          // recorded on the layer, so the FLEx exporters can tag each field
+          // exactly instead of reading it back out of the field's name.
+          fields: config.fields.map((f) => ({
+            name: f.name,
+            scope: f.scope,
+            lang: f.ws ?? null,
+            isCustom: true,
+          })),
+          ignoredTokens: {
+            mode: 'unicode-punctuation',
+            unicodePunctuationExceptions: [],
+            explicitIgnoredTokens: [],
           },
-          fields: {
-            // `ws` is the writing system this field's values are in. It is
-            // recorded on the layer, so the FLEx exporters can tag each field
-            // exactly instead of reading it back out of the field's name.
-            fields: config.fields.map((f) => ({
-              name: f.name,
-              scope: f.scope,
-              lang: f.ws ?? null,
-              isCustom: true,
-            })),
-            ignoredTokens: {
-              mode: 'unicode-punctuation',
-              unicodePunctuationExceptions: [],
-              explicitIgnoredTokens: [],
-            },
-          },
-          vocabulary: {
-            vocabularies: [
-              lexiconMode === 'existing'
-                ? { id: existingVocab.id, name: vocabName, enabled: true, isCustom: false }
-                : { id: 'new-flex-lexicon', name: vocabName, enabled: true, isCustom: true },
-            ],
-          },
-          documentMetadata: {
-            enabledFields: config.documentMetadata.map((m) => ({
-              name: m.name,
-              enabled: true,
-              isCustom: true,
-            })),
-          },
-        };
-        const setup = await executeProjectSetup({
-          client,
-          isNewProject: true,
-          resumeProjectId: projectIdRef.current,
-          setupData,
-          onProgress: (pct, msg) => setProgress({ label: msg, pct: pct * 0.1 }),
-          // The record goes on the project the moment it exists, so a setup
-          // that fails part way leaves a project that reopens this import
-          // rather than one with no way back into it.
-          onProjectCreated: (id) => {
-            projectIdRef.current = id;
-            markImportStarted(client, id, 'FLEx', parsed.backupName);
-          },
-        });
-        if (setup.failures.length > 0) {
-          throw new Error(setup.failures.join('. '));
-        }
-        projectIdRef.current = setup.projectId;
-        // A resume writes into the lexicon its record names (read below):
-        // setup returned early for the project already set up, so a choice
-        // made on this screen would name a vocabulary the project is never
-        // linked to.
-        vocabIdRef.current = resumeId
+        },
+        vocabulary: {
+          vocabularies: [
+            lexiconMode === 'existing'
+              ? { id: existingVocab.id, name: vocabName, enabled: true, isCustom: false }
+              : { id: 'new-flex-lexicon', name: vocabName, enabled: true, isCustom: true },
+          ],
+        },
+        documentMetadata: {
+          enabledFields: config.documentMetadata.map((m) => ({
+            name: m.name,
+            enabled: true,
+            isCustom: true,
+          })),
+        },
+      }),
+      // The lexicon the record names. A resume writes into the one its record
+      // already names: setup returned early for a project already set up, so
+      // a choice made on this screen would name a vocabulary the project is
+      // never linked to. Otherwise it is the choice made here, or the one
+      // setup just created. Read before the record is written, since writing
+      // it replaces the whole value.
+      vocabId: async ({ projectId, setup }) => {
+        const chosen = resumeId
           ? null
           : lexiconMode === 'existing'
             ? existingVocab.id
-            : (setup.resources.vocabularies?.[0]?.id ?? null);
-        setupDoneRef.current = true;
-      }
-      // Resolve the lexicon vocab BEFORE the record is written, since writing
-      // it replaces the whole value: reading afterwards would only ever find
-      // the empty vocabId this run had just put there. A resume has no setup
-      // resources, and the name this screen computes comes from the backup's
-      // file name, which a run that renamed the project or the lexicon leaves
-      // nothing matching, so the record is what names it.
-      if (!vocabIdRef.current) {
-        const project = await client.projects.get(projectIdRef.current);
+            : (setup?.resources.vocabularies?.[0]?.id ?? null);
+        if (chosen) return chosen;
+        const project = await client.projects.get(projectId);
         const vocabs = project.vocabs || [];
         // The record's lexicon only if the project still carries it: one
         // deleted since would be written into forever, request after request.
+        // Failing that, the name this screen computes from the backup's file
+        // name, which a run that renamed the lexicon leaves nothing matching.
         const recorded = readImportState(project.config)?.vocabId;
-        vocabIdRef.current =
+        return (
           (vocabs.some((v) => v.id === recorded) ? recorded : null) ??
           vocabs.find((v) => v.name === vocabName)?.id ??
-          null;
-      }
-      // The project is now filling. The record is removed when this run
-      // finishes, so a cancelled or lost import is visible on the project, and
-      // it is written even when the lexicon could not be found, so a project
-      // left half set up is still flagged.
-      await markImportStarted(
-        client,
-        projectIdRef.current,
-        'FLEx',
-        parsed.backupName,
-        vocabIdRef.current,
-      );
-      if (!vocabIdRef.current)
-        throw new Error('The lexicon this import writes into is not on the project.');
-
-      // 2. Lexicon + documents via the import engine.
-      const totalDocs = filteredBuild.documents.length;
-      const res = await runImport({
-        client,
-        projectId: projectIdRef.current,
-        build: filteredBuild,
-        lexicon: parsed.ir.lexicon,
-        config,
-        vocabId: vocabIdRef.current,
-        shouldStop: () => stopRef.current,
-        onProgress: (p) => {
-          if (p.phase === 'lexicon') {
-            setProgress({
-              label: `Importing lexicon (${p.done}/${p.total})`,
-              pct: 10 + (p.total ? (p.done / p.total) * 20 : 20),
-            });
-          } else if (p.phase === 'document') {
-            setProgress({
-              label: documentLabel(p, totalDocs),
-              pct: 30 + documentFraction(p, totalDocs) * 70,
-            });
-          }
-        },
-      });
-      if (!(await markImportFinished(client, projectIdRef.current))) {
-        notifyWarning(
-          'The import record could not be cleared, so the project still opens this import.',
-          'Import Complete',
+          null
         );
-      }
-      setResults(res);
-      setStage('done');
-      notifySuccess(
-        `Imported ${res.imported} document${res.imported === 1 ? '' : 's'}.`,
-        'Import Complete',
-      );
-    } catch (e) {
-      console.error('FLEx import failed:', e);
-      setRunError(e.message);
-      setStage('review');
-      if (e.message !== 'Import cancelled') notifyError(e.message, 'Import Failed');
-    }
+      },
+      requireVocab: 'The lexicon this import writes into is not on the project.',
+      run: ({ projectId, vocabId, shouldStop, setProgress }) => {
+        const totalDocs = filteredBuild.documents.length;
+        return runImport({
+          client,
+          projectId,
+          build: filteredBuild,
+          lexicon: parsed.ir.lexicon,
+          config,
+          vocabId,
+          shouldStop,
+          onProgress: (p) => {
+            if (p.phase === 'lexicon') {
+              setProgress({
+                label: `Importing lexicon (${p.done}/${p.total})`,
+                pct: 10 + (p.total ? (p.done / p.total) * 20 : 20),
+              });
+            } else if (p.phase === 'document') {
+              setProgress({
+                label: documentLabel(p, totalDocs),
+                pct: 30 + documentFraction(p, totalDocs) * 70,
+              });
+            }
+          },
+        });
+      },
+    });
   };
 
   const totalWarnings = parsed?.build.stats.warnings ?? 0;
@@ -815,13 +758,7 @@ export const ImportFlexProject = () => {
                     <p className="text-sm text-muted-foreground">
                       {progress?.label ?? 'Starting…'}
                     </p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        stopRef.current = true;
-                      }}
-                    >
+                    <Button variant="outline" size="sm" onClick={stop}>
                       <Square className="h-3.5 w-3.5" /> Stop
                     </Button>
                   </div>

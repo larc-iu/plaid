@@ -22,7 +22,7 @@ import {
   SelectItem,
 } from '@/components/ui/select';
 import { useAuth } from '../../contexts/AuthContext';
-import { notifyError, notifySuccess, notifyWarning } from '@/utils/feedback';
+import { notifyError } from '@/utils/feedback';
 import { readCldfDataset } from '../../import/cldf/readDataset';
 import {
   buildCldfDocuments,
@@ -32,9 +32,9 @@ import {
   SINGLE_TEXT,
 } from '../../import/cldf/buildDocuments';
 import { deriveSetupData, runCldfImport } from '../../import/cldf/importEngine';
-import { markImportStarted, markImportFinished } from '../../domain/igtConfig';
 import { useResumeImport } from '@/hooks/useResumeImport';
-import { executeProjectSetup } from './setup/executeSetup';
+import { useProjectImportRun } from '@/hooks/useProjectImportRun';
+
 import { documentFraction, documentLabel } from '../../import/progress';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
@@ -45,19 +45,14 @@ export const ImportCldfProject = () => {
   useDocumentTitle('Import CLDF');
   const { client } = useAuth();
   const fileInputRef = useRef(null);
-
-  const [stage, setStage] = useState('pick'); // pick | parsing | review | running | done
   const [dataset, setDataset] = useState(null);
   const [options, setOptions] = useState(null);
   const [projectName, setProjectName] = useState('');
-  const [progress, setProgress] = useState(null);
-  const [runError, setRunError] = useState(null);
-  const [results, setResults] = useState(null);
 
   const { resumeId, resumeName, finishAsIs } = useResumeImport(client);
-  const projectIdRef = useRef(resumeId || null);
-  const setupDoneRef = useRef(false);
-  const stopRef = useRef(false);
+
+  const { stage, setStage, progress, runError, results, projectIdRef, setupDoneRef, stop, start } =
+    useProjectImportRun({ client, kind: 'CLDF', resumeId });
 
   // The build is re-derived whenever an option changes, so the review numbers
   // and warnings always describe what the import would actually do.
@@ -88,87 +83,34 @@ export const ImportCldfProject = () => {
   const setColumn = (column, mapping) =>
     setOptions((o) => ({ ...o, customColumns: { ...o.customColumns, [column]: mapping } }));
 
-  const startImport = async () => {
-    setStage('running');
-    setRunError(null);
-    stopRef.current = false;
-    try {
-      if (!setupDoneRef.current) {
-        const setup = await executeProjectSetup({
+  const startImport = () =>
+    start({
+      source: dataset?.title ?? null,
+      setupData: () => deriveSetupData(build, projectName.trim()),
+      // The lexicon setup made, so the record names it.
+      vocabId: async ({ projectId }) =>
+        ((await client.projects.get(projectId)).vocabs || [])[0]?.id ?? null,
+      run: ({ projectId, shouldStop, setProgress }) =>
+        runCldfImport({
           client,
-          isNewProject: true,
-          resumeProjectId: projectIdRef.current,
-          setupData: deriveSetupData(build, projectName.trim()),
-          onProgress: (pct, msg) => setProgress({ label: msg, pct: pct * 0.15 }),
-          // The record goes on the project the moment it exists, so a setup
-          // that fails part way leaves a project that reopens this import
-          // rather than one with no way back into it.
-          onProjectCreated: (id) => {
-            projectIdRef.current = id;
-            markImportStarted(client, id, 'CLDF', dataset?.title ?? null);
+          projectId,
+          build,
+          shouldStop,
+          onProgress: (p) => {
+            if (p.phase === 'lexicon') {
+              setProgress({
+                label: `Importing lexicon (${p.done}/${p.total})`,
+                pct: 15 + (p.total ? (p.done / p.total) * 15 : 15),
+              });
+            } else if (p.phase === 'document') {
+              setProgress({
+                label: documentLabel(p, build.documents.length),
+                pct: 30 + documentFraction(p, build.documents.length) * 70,
+              });
+            }
           },
-        });
-        if (setup.failures.length > 0) throw new Error(setup.failures.join('. '));
-        projectIdRef.current = setup.projectId;
-        setupDoneRef.current = true;
-      }
-      // Rewritten with the lexicon once setup has made it. Removed when this
-      // run finishes, so a cancelled or lost import shows on the project
-      // rather than passing for a complete one.
-      const project = await client.projects.get(projectIdRef.current);
-      await markImportStarted(
-        client,
-        projectIdRef.current,
-        'CLDF',
-        dataset?.title ?? null,
-        (project.vocabs || [])[0]?.id ?? null,
-      );
-
-      const res = await runCldfImport({
-        client,
-        projectId: projectIdRef.current,
-        build,
-        shouldStop: () => stopRef.current,
-        onProgress: (p) => {
-          if (p.phase === 'lexicon') {
-            setProgress({
-              label: `Importing lexicon (${p.done}/${p.total})`,
-              pct: 15 + (p.total ? (p.done / p.total) * 15 : 15),
-            });
-          } else if (p.phase === 'document') {
-            setProgress({
-              label: documentLabel(p, build.documents.length),
-              pct: 30 + documentFraction(p, build.documents.length) * 70,
-            });
-          }
-        },
-      });
-      if (!(await markImportFinished(client, projectIdRef.current))) {
-        notifyWarning(
-          'The import record could not be cleared, so the project still opens this import.',
-          'Import Complete',
-        );
-      }
-      setResults(res);
-      setStage('done');
-      if (res.warnings.length) {
-        notifyWarning(
-          `Imported with ${res.warnings.length} warning${res.warnings.length === 1 ? '' : 's'}.`,
-          'Import finished',
-        );
-      } else {
-        notifySuccess(
-          `Imported ${res.imported} document${res.imported === 1 ? '' : 's'}.`,
-          'Import complete',
-        );
-      }
-    } catch (e) {
-      console.error('CLDF import failed:', e);
-      setRunError(e.message);
-      setStage('review');
-      if (!/cancelled/i.test(e.message)) notifyError(e.message, 'Import failed');
-    }
-  };
+        }),
+    });
 
   const editable = stage === 'review';
 
@@ -516,12 +458,7 @@ export const ImportCldfProject = () => {
                 </Button>
               )}
               {stage === 'running' && (
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    stopRef.current = true;
-                  }}
-                >
+                <Button variant="outline" onClick={stop}>
                   <Square className="h-4 w-4" /> Stop
                 </Button>
               )}

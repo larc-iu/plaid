@@ -14,12 +14,12 @@ import { Upload, Check, RefreshCw, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '../../contexts/AuthContext';
-import { notifyError, notifySuccess, notifyWarning } from '@/utils/feedback';
+import { notifyError } from '@/utils/feedback';
 import { readNativeArchive } from '../../import/native/readArchive';
 import { deriveSetupData, runNativeImport } from '../../import/native/importEngine';
-import { executeProjectSetup } from './setup/executeSetup';
-import { markImportStarted, markImportFinished } from '../../domain/igtConfig';
 import { useResumeImport } from '@/hooks/useResumeImport';
+import { useProjectImportRun } from '@/hooks/useProjectImportRun';
+
 import { documentFraction, documentLabel } from '../../import/progress';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
@@ -27,19 +27,13 @@ export const ImportNativeProject = () => {
   useDocumentTitle('Import Archive');
   const { client } = useAuth();
   const fileInputRef = useRef(null);
-
-  const [stage, setStage] = useState('pick'); // pick | parsing | review | running | done
   const [archive, setArchive] = useState(null);
   const [projectName, setProjectName] = useState('');
-  const [progress, setProgress] = useState(null); // {label, pct} | null
-  const [runError, setRunError] = useState(null);
-  const [results, setResults] = useState(null);
 
   // Survive retries within this page session (see header comment).
   const { resumeId, resumeName, finishAsIs } = useResumeImport(client);
-  const projectIdRef = useRef(resumeId || null);
-  const setupDoneRef = useRef(false);
-  const stopRef = useRef(false);
+  const { stage, setStage, progress, runError, results, projectIdRef, setupDoneRef, stop, start } =
+    useProjectImportRun({ client, kind: 'Plaid IGT archive', resumeId });
 
   const handleFile = async (file) => {
     if (!file) return;
@@ -57,91 +51,33 @@ export const ImportNativeProject = () => {
     }
   };
 
-  const startImport = async () => {
-    setStage('running');
-    setRunError(null);
-    stopRef.current = false;
-    try {
-      // 1. Project + layer setup (shared with the setup wizard), once.
-      if (!setupDoneRef.current) {
-        const setup = await executeProjectSetup({
+  const startImport = () =>
+    start({
+      source: archive.manifest?.project?.name ?? null,
+      setupData: () => deriveSetupData(archive.manifest, projectName.trim()),
+      run: ({ projectId, shouldStop, setProgress }) => {
+        const totalDocs = archive.documents.length;
+        return runNativeImport({
           client,
-          isNewProject: true,
-          resumeProjectId: projectIdRef.current,
-          setupData: deriveSetupData(archive.manifest, projectName.trim()),
-          onProgress: (pct, msg) => setProgress({ label: msg, pct: pct * 0.15 }),
-          // The record goes on the project the moment it exists, so a setup
-          // that fails part way leaves a project that reopens this import.
-          onProjectCreated: (id) => {
-            projectIdRef.current = id;
-            markImportStarted(
-              client,
-              id,
-              'Plaid IGT archive',
-              archive.manifest?.project?.name ?? null,
-            );
+          projectId,
+          archive,
+          shouldStop,
+          onProgress: (p) => {
+            if (p.phase === 'vocabulary') {
+              setProgress({
+                label: `Importing vocabulary "${p.name}" (${p.done}/${p.total})`,
+                pct: 15 + (p.total ? (p.done / p.total) * 15 : 15),
+              });
+            } else if (p.phase === 'document') {
+              setProgress({
+                label: documentLabel(p, totalDocs),
+                pct: 30 + documentFraction(p, totalDocs) * 70,
+              });
+            }
           },
         });
-        if (setup.failures.length > 0) throw new Error(setup.failures.join('. '));
-        projectIdRef.current = setup.projectId;
-        setupDoneRef.current = true;
-      }
-      // Removed when this run finishes, so a cancelled or lost import shows
-      // on the project rather than passing for a complete one.
-      await markImportStarted(
-        client,
-        projectIdRef.current,
-        'Plaid IGT archive',
-        archive.manifest?.project?.name ?? null,
-      );
-
-      // 2. Vocabularies + documents via the import engine.
-      const totalDocs = archive.documents.length;
-      const res = await runNativeImport({
-        client,
-        projectId: projectIdRef.current,
-        archive,
-        shouldStop: () => stopRef.current,
-        onProgress: (p) => {
-          if (p.phase === 'vocabulary') {
-            setProgress({
-              label: `Importing vocabulary "${p.name}" (${p.done}/${p.total})`,
-              pct: 15 + (p.total ? (p.done / p.total) * 15 : 15),
-            });
-          } else if (p.phase === 'document') {
-            setProgress({
-              label: documentLabel(p, totalDocs),
-              pct: 30 + documentFraction(p, totalDocs) * 70,
-            });
-          }
-        },
-      });
-      if (!(await markImportFinished(client, projectIdRef.current))) {
-        notifyWarning(
-          'The import record could not be cleared, so the project still opens this import.',
-          'Import Complete',
-        );
-      }
-      setResults(res);
-      setStage('done');
-      if (res.warnings.length) {
-        notifyWarning(
-          `Imported with ${res.warnings.length} warning${res.warnings.length === 1 ? '' : 's'}.`,
-          'Import finished',
-        );
-      } else {
-        notifySuccess(
-          `Imported ${res.imported} document${res.imported === 1 ? '' : 's'}.`,
-          'Import Complete',
-        );
-      }
-    } catch (e) {
-      console.error('Archive import failed:', e);
-      setRunError(e.message);
-      setStage('review');
-      if (e.message !== 'Import cancelled') notifyError(e.message, 'Import Failed');
-    }
-  };
+      },
+    });
 
   const manifest = archive?.manifest;
   const itemCount = archive?.vocabularies.reduce((n, v) => n + (v.data.items?.length ?? 0), 0) ?? 0;
@@ -319,12 +255,7 @@ export const ImportNativeProject = () => {
                 </Button>
               )}
               {stage === 'running' && (
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    stopRef.current = true;
-                  }}
-                >
+                <Button variant="outline" onClick={stop}>
                   <Square className="h-4 w-4" /> Stop
                 </Button>
               )}
