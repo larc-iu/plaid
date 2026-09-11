@@ -429,11 +429,16 @@ def stale_documents(client, documents: list) -> list:
             out.append(f'document "{now.get("name") or d.get("name") or d["id"]}" has changed since the plan was made')
     return out
 
-# What the model is told when the user asks from inside a document. It names
-# the open document so an unqualified question is about that one, and says in
-# as many words that the rest of the project is still readable: a soft default,
-# never a fence.
+# What the model is told when the user asks from inside a document.
+#
+# The default has to be stated much more firmly than the escape from it. An
+# earlier version ended by inviting the model to read anything else in the
+# project, and that is what it did: asked which sentence "here" had the most
+# words, it listed the project, searched the whole corpus, and read a document
+# the user was not looking at. So the escape is now conditional and last, and
+# reading the open document is an instruction rather than an inference.
 def focus_note(name: str) -> str:
-    return (f'The user is looking at "{name}" right now. A question that names no document '
-            f'is about that one, and a bare reference is a place in it. Read anything else in '
-            f'the project when the question calls for it.')
+    return (f'The user has "{name}" open and is asking about what is in front of them. Unless they '
+            f'name another document, this question is about "{name}": read it first, and take a '
+            f'bare reference like s3 or s3.w2 as a place in it. Look at other documents only when '
+            f'the question is explicitly about the corpus as a whole or asks you to compare.')
