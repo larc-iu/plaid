@@ -1,6 +1,7 @@
 // IGT's half of the conversation export: a cited sentence as an interlinear
 // Markdown table. The rest of the export is shared
 // (plaid-ui/src/components/assistant/exportMarkdown.js).
+import { linkLabel } from '@ui/components/assistant/citations.js';
 import { citationHighlights, citationRows, citationTitle, sentenceHref } from './adapter.js';
 
 // A cited sentence as a Markdown table, for the conversation export: a column
@@ -32,7 +33,7 @@ export const citationToMarkdown = (c, { origin, projectId }) => {
       .reduce((acc, part, k) => (k ? acc + (w.joiners?.[k - 1] ?? '-') + part : part), '');
   };
 
-  const out = [`**[${esc(citationTitle(c))}](${sentenceHref(origin, projectId, c)})**`, ''];
+  const out = [`**[${linkLabel(citationTitle(c))}](${sentenceHref(origin, projectId, c)})**`, ''];
   if (words.length) {
     out.push(
       `| | ${surface.cells

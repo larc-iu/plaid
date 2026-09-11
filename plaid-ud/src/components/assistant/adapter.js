@@ -5,7 +5,7 @@
 //
 // This is the whole of UD's side of the tab. The generic half is
 // plaid-ui/src/components/assistant/, and plaid-igt has an adapter of its own.
-import { citationFocus } from '@ui/components/assistant/citations.js';
+import { citationFocus, linkLabel } from '@ui/components/assistant/citations.js';
 import { ExampleCard } from './ExampleCard.jsx';
 
 // Cite tags, plus the older `{{Doc sN}}` braces and bare "s3.w2" references
@@ -96,7 +96,7 @@ const esc = (s) =>
 
 export const citationToMarkdown = (c, { origin, projectId }) => {
   const columns = c.columns || [];
-  const out = [`**[${esc(citationTitle(c))}](${sentenceHref(origin, projectId, c)})**`, ''];
+  const out = [`**[${linkLabel(citationTitle(c))}](${sentenceHref(origin, projectId, c)})**`, ''];
   if (!columns.length) {
     out.push(esc(c.text));
     return out.join('\n');

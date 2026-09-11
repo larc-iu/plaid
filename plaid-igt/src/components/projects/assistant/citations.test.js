@@ -116,6 +116,19 @@ describe('citationRows', () => {
 });
 
 describe('linkifyCitations', () => {
+  it('escapes a bracket in the title so the link survives', async () => {
+    // A document is named by whoever imported it. An unbalanced bracket ended
+    // the Markdown label early and the whole citation rendered as plain text
+    // with a URL in it, in the reply, the export and the admin transcript.
+    const { linkLabel } = await import('@ui/components/assistant/citations.js');
+    const { marked } = await import('marked');
+    for (const name of ['Notes]', '[draft', 'a]b', 'Notes [draft]']) {
+      const md = `[${linkLabel(`${name}, sentence 3`)}](#/x)`;
+      const html = marked.parse(md);
+      expect(html, `${name} lost its link`).toMatch(/<a [^>]*href/);
+    }
+  });
+
   const c = {
     key: '<cite doc="Text 1" ref="s3"/>',
     documentId: 'd1',

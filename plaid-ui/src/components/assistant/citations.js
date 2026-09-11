@@ -29,6 +29,18 @@ export const citationFocus = (c) => c?.focus || [];
 export const centeredScrollLeft = (left, right, viewport, scrollWidth) =>
   Math.max(0, Math.min((left + right) / 2 - viewport / 2, scrollWidth - viewport));
 
+// A citation's title goes in the LABEL of a Markdown link, and a document is
+// named by whoever imported it. An unbalanced bracket there ends the label
+// early and the whole citation renders as plain text with a URL in it: the
+// reader loses the link, in the reply, in the export and in the admin
+// transcript alike. Newlines and pipes go too, so a title is safe in a table
+// cell as well.
+export const linkLabel = (text) =>
+  String(text ?? '')
+    .replace(/([[\]])/g, '\\$1')
+    .replace(/\|/g, '\\|')
+    .replace(/\n/g, ' ');
+
 // Text with every citation replaced: a resolved one by a Markdown link to the
 // place in the editor (`onCited` sees each, for listing the cards), an
 // unresolved one by its plain reference.
@@ -37,5 +49,5 @@ export const linkifyCitations = (adapter, text, byKey, { origin, projectId, onCi
     const c = byKey.get(m);
     if (!c) return citePlain(m);
     onCited?.(m, c);
-    return `[${adapter.citationTitle(c)}](${adapter.citationHref(origin, projectId, c)})`;
+    return `[${linkLabel(adapter.citationTitle(c))}](${adapter.citationHref(origin, projectId, c)})`;
   });
