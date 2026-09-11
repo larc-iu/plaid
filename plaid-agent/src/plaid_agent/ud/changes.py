@@ -45,6 +45,9 @@ def locate(ws, op: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     head = ref.split('.')[0]
     if head.startswith('s') and head[1:].isdigit():
         where['sentence'] = int(head[1:])
+        # The editor's deep link needs the sentence's id, not its number.
+        if doc is not None and 1 <= where['sentence'] <= len(doc.sentences):
+            where['sentence_id'] = doc.sentences[where['sentence'] - 1].id
     # The word's own text, so the row names what changed rather than only
     # where it is. A ref that no longer resolves (the plan reshapes the words
     # ahead of this op) simply leaves it out.

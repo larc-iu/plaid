@@ -1,5 +1,5 @@
 import { timeAgo } from '../../utils/formatTime.js';
-import { MessageSquare, Download, Copy, FileDown } from 'lucide-react';
+import { MessageSquare, Download, Copy, FileDown, FileText } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/select.jsx';
 import {
@@ -18,6 +18,9 @@ import { jobFor } from './jobs.js';
 // the export menu.
 // One sidebar entry: the title, when it was last written, which model, and
 // whether work was left unfinished.
+// A conversation started from a document says so: the same list holds those
+// and the ones started from the tab, and which document a thread is about is
+// the first thing that tells them apart.
 export const ConversationRow = ({ m, opening }) => (
   <>
     <div className="flex items-center gap-1.5">
@@ -31,6 +34,14 @@ export const ConversationRow = ({ m, opening }) => (
           (m.model ? ` · ${m.model.split('/').pop()}` : '') +
           (m.pending && !jobFor(m.id) ? ' · unfinished' : '')}
     </div>
+    {m.about?.documentName && (
+      <div className="flex items-center gap-1 pl-5 text-[11px] text-muted-foreground">
+        <FileText className="h-3 w-3 shrink-0" />
+        <span className="truncate" title={m.about.documentName}>
+          {m.about.documentName}
+        </span>
+      </div>
+    )}
   </>
 );
 

@@ -12,7 +12,7 @@ import { PlanCard } from './PlanCard.jsx';
 // Reply text with its citations: block cards in place, links inline, and the
 // inline-only citations' cards after the text. A citation the service could not
 // resolve is flattened to its plain reference rather than shown as markup.
-export const CitedMarkdown = ({ text, citations, projectId, adapter }) => {
+export const CitedMarkdown = ({ text, citations, projectId, adapter, onFocusHere }) => {
   const { ExampleCard } = adapter;
   const byKey = new Map((citations || []).map((c) => [c.key, c]));
   const segments = [];
@@ -41,8 +41,19 @@ export const CitedMarkdown = ({ text, citations, projectId, adapter }) => {
         if (!shown.has(m) && !inline.includes(c)) inline.push(c);
       },
     });
+  // A citation into the document beside this panel scrolls it rather than
+  // opening a second browser tab. One delegated handler catches the card's own
+  // link and every inline one, which markdown builds and we never see.
+  const onClick = (e) => {
+    if (!onFocusHere || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    const a = e.target.closest?.('a[href]');
+    if (!a) return;
+    const at = adapter.parseCitationHref?.(a.getAttribute('href'));
+    if (at && onFocusHere(at)) e.preventDefault();
+  };
+
   return (
-    <div>
+    <div onClick={onClick}>
       {segments.map((seg, i) =>
         seg.card ? (
           <ExampleCard key={i} c={seg.card} projectId={projectId} />
@@ -66,6 +77,7 @@ export const Turn = ({
   item,
   projectId,
   adapter,
+  onFocusHere,
   results,
   fromAnotherModel,
   canWrite,
@@ -119,6 +131,7 @@ export const Turn = ({
             citations={item.citations}
             projectId={projectId}
             adapter={adapter}
+            onFocusHere={onFocusHere}
           />
         ) : (
           !item.plan && (

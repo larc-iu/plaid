@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useParams, useLocation, Outlet } from 'react-router-dom';
+import { useParams, useLocation, Outlet, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { useConlluDocument } from '../../domain/useConlluDocument.js';
@@ -37,6 +37,7 @@ export const DocumentEditorShell = () => {
   const { projectId, documentId } = useParams();
   const { pathname } = useLocation();
   const { getClient, logout, user } = useAuth();
+  const [, setSearchParams] = useSearchParams();
 
   const [doc, setDoc] = useState(null);
   const [project, setProject] = useState(null);
@@ -185,6 +186,28 @@ export const DocumentEditorShell = () => {
   // whose content it can talk about.
   const onAnnotate = pathname.endsWith('/annotate');
   const assistantAvailable = useAssistantAvailable(client, projectId);
+  // A citation into THIS document scrolls the editor instead of opening a
+  // second browser tab: ?sent= is the deep link the annotation editor already
+  // watches, so setting it reuses the scroll and the flash.
+  // Bumped on every ask, so clicking the SAME citation twice scrolls again:
+  // the editor only reacts to ?sent= changing, and a repeat does not change it.
+  const [focusNonce, setFocusNonce] = useState(0);
+  const focusHere = useCallback(
+    ({ documentId: cited, focus }) => {
+      if (cited !== documentId || !focus) return false;
+      setFocusNonce((k) => k + 1);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.set('sent', focus);
+          return next;
+        },
+        { replace: true },
+      );
+      return true;
+    },
+    [documentId, setSearchParams],
+  );
   const [assistantOpen, setAssistantOpen] = useState(false);
   // What the editor pointed at, as {ref, label}. It clears when it is sent.
   const [assistantFocus, setAssistantFocus] = useState(null);
@@ -261,6 +284,7 @@ export const DocumentEditorShell = () => {
                 assistantAvailable,
                 setAssistantOpen,
                 askAssistant: setAssistantFocus,
+                focusNonce,
               }}
             />
           </div>
@@ -273,6 +297,7 @@ export const DocumentEditorShell = () => {
               focus={assistantFocus}
               onClearFocus={() => setAssistantFocus(null)}
               onApplied={reload}
+              onFocusHere={focusHere}
               projectId={projectId}
               projectName={project.name}
               client={client}

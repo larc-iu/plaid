@@ -155,9 +155,12 @@ def test_the_payload_carries_the_document_version_it_was_read_at(ws):
     run(ws, 'set_field', document='Viaje', refs=['s2.w1'], field='lemma', value='correr')
     payload = ws.plan_payload()
     assert payload['documents'] == [{'id': 'ud1', 'name': 'Viaje', 'version': 3}]
-    assert payload['changes'][0]['where'] == {'kind': 'token', 'document_id': 'ud1',
-                                              'document_name': 'Viaje', 'ref': 's2.w1',
-                                              'sentence': 2, 'surface': 'Corre', 'word': 1}
+    where = payload['changes'][0]['where']
+    assert {k: v for k, v in where.items() if k != 'sentence_id'} == {
+        'kind': 'token', 'document_id': 'ud1', 'document_name': 'Viaje', 'ref': 's2.w1',
+        'sentence': 2, 'surface': 'Corre', 'word': 1}
+    # The editor's deep link needs the sentence's id, not its number.
+    assert where['sentence_id']
     assert payload['summary'] == '1 field value'
 
 
@@ -451,3 +454,17 @@ def test_naming_a_sentence_beyond_the_document_is_not_an_error(ws):
     out = run(ws, 'read_document', document='Viaje', sentences=['s1', 's99'])
     assert 'Showing sentences 1.' in out
     assert 'None of those' in run(ws, 'read_document', document='Viaje', sentences=['s99'])
+
+
+def test_the_worklist_names_the_words_when_it_is_given_a_document(ws):
+    """Counting is the wrong answer to "which words have no lemma". Both models
+    that were asked this called worklist first, got "10 words, in this
+    document", and then had no way to find the 10: one paged the document nine
+    times, the other ran nine blind searches, and neither staged anything."""
+    out = run(ws, 'worklist', kind='missing', field='lemma', document='Viaje')
+    # A reference the plan tools accept, and the word itself so it can be read.
+    assert 's2.w1' in out or 's1.w1' in out
+    assert 'word(s) with none in "Viaje"' in out or 'none missing' in out
+
+# The corpus-wide branch of worklist goes through the query engine, which the
+# fake client does not have. tests/test_live_corpus.py covers that side.

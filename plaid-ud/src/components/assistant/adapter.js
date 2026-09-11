@@ -18,8 +18,13 @@ export const CITE_RE =
 // The sentence in the annotation editor. The route is `annotate`, and the
 // sentence rides in the URL so the link is shareable and a middle-click opens
 // it in a new tab.
+//
+// `?sent=` takes the sentence's TOKEN ID, not its number: the editor matches it
+// against the sentences it loaded. Passing the number lands on the document and
+// silently never scrolls.
 export const sentenceHref = (origin, projectId, c) =>
-  `${origin || ''}#/projects/${projectId}/documents/${c.documentId}/annotate?sent=${c.sentence}`;
+  `${origin || ''}#/projects/${projectId}/documents/${c.documentId}/annotate` +
+  (c.sentenceId ? `?sent=${encodeURIComponent(c.sentenceId)}` : '');
 
 export const citationTitle = (c) => {
   const focus = citationFocus(c);
@@ -37,7 +42,10 @@ export const citationTitle = (c) => {
 export const changeHref = (projectId, where) => {
   if (!where) return null;
   if (where.kind === 'token')
-    return `#/projects/${projectId}/documents/${where.documentId}/annotate?sent=${where.sentence}`;
+    return (
+      `#/projects/${projectId}/documents/${where.documentId}/annotate` +
+      (where.sentenceId ? `?sent=${encodeURIComponent(where.sentenceId)}` : '')
+    );
   if (where.kind === 'document')
     return `#/projects/${projectId}/documents/${where.documentId}/annotate`;
   return null;
@@ -102,6 +110,15 @@ export const citationToMarkdown = (c, { origin, projectId }) => {
   return out.join('\n');
 };
 
+// A link back into a document this app is showing: the document it names and
+// the sentence to put in view, or null when it points somewhere else.
+export const parseCitationHref = (href) => {
+  const m = /#\/projects\/[^/]+\/documents\/([^/?#]+)\/annotate(?:\?sent=([^&]+))?/.exec(
+    href || '',
+  );
+  return m ? { documentId: m[1], focus: m[2] ? decodeURIComponent(m[2]) : null } : null;
+};
+
 export const UD_ASSISTANT = {
   app: 'ud',
   command: 'plaid-ud-agent',
@@ -118,6 +135,7 @@ export const UD_ASSISTANT = {
   changeTitle,
   changePlace,
   groupOf,
+  parseCitationHref,
   examples: [
     'Which words in this project still have no lemma?',
     'Are there dependency relations that look wrong?',

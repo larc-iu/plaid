@@ -617,11 +617,16 @@ TOOLS += [
         'verdict: read the sentences before planning anything.',
         {'kind': {'type': 'string', 'enum': list(CONSISTENCY)}, 'limit': {'type': 'integer'}}, []),
     _fn('worklist',
-        'What is unfinished, counted per document so a session has somewhere to start. kind '
-        '"unverified" is machine output nobody has confirmed, "contributed" a contributor\'s '
-        'unreviewed work, "missing" words with no value in a column at all.',
+        'What is unfinished. kind "unverified" is machine output nobody has confirmed, '
+        '"contributed" a contributor\'s unreviewed work, "missing" words with no value in a '
+        'column at all. Without a document it counts per document, so a session has somewhere to '
+        'start. WITH kind "missing" AND a document it names the words themselves, by reference: '
+        'that is the list to plan from, and it saves reading or searching the document to find '
+        'them.',
         {'kind': {'type': 'string', 'enum': list(WORKLIST_KINDS)},
-         'field': _FIELD, 'document': _DOC, 'limit': {'type': 'integer'}}, []),
+         'field': _FIELD, 'document': _DOC,
+         'limit': {'type': 'integer', 'description': 'How many rows per column (default 20, '
+                                                     'max 100).'}}, []),
     _fn('recent_changes',
         'Who changed what, when, and under which operation label. Each entry prints the as_of '
         'instant a restore would use.',

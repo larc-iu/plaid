@@ -21,6 +21,24 @@ export const assistant = {
     this._render(true);
   },
 
+  // The other direction: a citation in the panel points into THIS document, so
+  // put that sentence in view rather than sending the reader to a second
+  // browser tab. The island already knows how -- it is the path a deep link
+  // takes -- so this only has to hand it the same request.
+  _onAssistantFocus(e) {
+    const { documentId, focus, begin } = e.detail || {};
+    if (!focus || !this.doc || documentId !== this.doc.id) return;
+    try {
+      sessionStorage.setItem(
+        'igt:focus-sentence',
+        JSON.stringify({ docId: this.doc.id, sentenceId: focus, begin: begin ?? null }),
+      );
+    } catch {
+      return; // no session storage, no focus: the link still works as a link
+    }
+    this._consumeFocusRequest();
+  },
+
   _askAssistant(sentence, index) {
     window.dispatchEvent(
       new CustomEvent('igt:ask-assistant', {

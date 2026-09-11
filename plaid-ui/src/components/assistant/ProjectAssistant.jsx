@@ -83,6 +83,10 @@ export const ProjectAssistant = ({
   // next message and then clears: nothing is attached that was not chosen.
   focus = null,
   onClearFocus,
+  // Told where a citation into the OPEN document points, so the editor beside
+  // the panel can scroll there. Returns true when it handled it, and the link
+  // is left alone otherwise.
+  onFocusHere,
 }) => {
   const panel = variant === 'panel';
   // Each document remembers its own thread, so opening the panel on one
@@ -702,6 +706,7 @@ export const ProjectAssistant = ({
                 item={d}
                 projectId={projectId}
                 adapter={adapter}
+                onFocusHere={onFocusHere}
                 results={results}
                 fromAnotherModel={
                   !!d.model && !!previousModel(display, i) && d.model !== previousModel(display, i)

@@ -119,6 +119,7 @@ export const AnnotationEditor = () => {
     setAssistantOpen,
     assistantAvailable,
     askAssistant,
+    focusNonce = 0,
   } = useDocumentEditor();
   // Deep link from the search page: ?sent=<sentenceTokenId> scrolls to and
   // briefly highlights that sentence once the grid is rendered.
@@ -321,9 +322,12 @@ export const AnnotationEditor = () => {
   // the wrapper is always in the DOM to scroll to.
   useEffect(() => {
     if (reconciling || !sentParam || !processedSentences.length) return;
-    if (scrolledForRef.current === sentParam) return;
+    // The nonce is what lets the assistant ask for the same sentence twice:
+    // without it a repeat click changes nothing and the guard swallows it.
+    const asked = `${sentParam}:${focusNonce}`;
+    if (scrolledForRef.current === asked) return;
     if (!processedSentences.some((s) => String(s.id) === String(sentParam))) return;
-    scrolledForRef.current = sentParam;
+    scrolledForRef.current = asked;
     const raf = requestAnimationFrame(() => {
       const el = document.querySelector(`[data-sentence-row="${CSS.escape(String(sentParam))}"]`);
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -331,7 +335,7 @@ export const AnnotationEditor = () => {
       setTimeout(() => setFlashSentId(null), 2000);
     });
     return () => cancelAnimationFrame(raf);
-  }, [reconciling, sentParam, processedSentences]);
+  }, [reconciling, sentParam, processedSentences, focusNonce]);
 
   // Bind annotation/relation handlers to the current document. When viewing
   // historical state we pass `null` so VirtualSentenceRow disables editing.

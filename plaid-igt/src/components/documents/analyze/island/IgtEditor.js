@@ -178,6 +178,8 @@ export class IgtEditor {
       e.returnValue = '';
     };
     window.addEventListener('beforeunload', this._onBeforeUnload);
+    this._onAssistantFocus = this._onAssistantFocus.bind(this);
+    window.addEventListener('igt:focus-sentence', this._onAssistantFocus);
     window.addEventListener('scroll', this._onWinChange, true);
     window.addEventListener('resize', this._onWinChange);
     // Project-wide precedent (_ensurePrecedent) is fetched once and then held
@@ -352,6 +354,7 @@ export class IgtEditor {
     window.removeEventListener('scroll', this._onWinChange, true);
     window.removeEventListener('resize', this._onWinChange);
     window.removeEventListener('beforeunload', this._onBeforeUnload);
+    window.removeEventListener('igt:focus-sentence', this._onAssistantFocus);
     document.removeEventListener('visibilitychange', this._onVisibility);
     this.container.removeEventListener('keydown', this._predictionKeydown);
     this.container.removeEventListener('keydown', this._flushBeatOnInput, true);

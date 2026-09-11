@@ -240,6 +240,25 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
     out: List[str] = []
 
     if kind == 'missing':
+        # Naming a document answers WHICH words, which is what planning needs.
+        # Without it the answer is only how many and where, and a model that
+        # then has to find them has nothing to go on: one paged a
+        # 112-sentence document nine times, another ran nine blind searches,
+        # and neither staged anything.
+        if document:
+            doc = ws.doc(document)
+            for f in fields:
+                hits = _hits_in(doc, f, lambda v: not v)
+                if not hits:
+                    out.append(f'{f}: none missing in "{doc.name}".')
+                    continue
+                out.append(f'{f}: {len(hits)} word(s) with none in "{doc.name}"')
+                for sent, w in hits[:limit]:
+                    out.append(f'  {word_ref(sent, w)}  {w.form}   {sent.text[:90]}')
+                if len(hits) > limit:
+                    out.append(f'  … and {len(hits) - limit} more (raise limit)')
+            return _truncate('\n'.join(out))
+
         for f in fields:
             where = [c.word('?t'),
                      ['not', ['span', '?s', {'layer': c.p.layer(f)}], c.on('?s')]]

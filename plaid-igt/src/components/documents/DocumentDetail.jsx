@@ -199,6 +199,20 @@ const DocumentEditor = () => {
     setDoc(next);
   }, [doc, asOf]);
 
+  // A citation into THIS document scrolls the grid instead of opening a second
+  // browser tab. The island owns the scrolling, so it is asked over the same
+  // window bridge its own "Ask" uses.
+  const focusHere = useCallback(
+    ({ documentId: cited, focus }) => {
+      if (cited !== documentId || !focus) return false;
+      window.dispatchEvent(
+        new CustomEvent('igt:focus-sentence', { detail: { documentId, focus } }),
+      );
+      return true;
+    },
+    [documentId],
+  );
+
   // Comments live in their own store, not on IgtDocument: they are social data,
   // they are unaudited, and they must never bump the document version. One per
   // (document, user) — the store stamps authorship and decides what is yours
@@ -811,6 +825,7 @@ const DocumentEditor = () => {
             focus={assistantFocus}
             onClearFocus={() => setAssistantFocus(null)}
             onApplied={reloadForAssistant}
+            onFocusHere={focusHere}
             projectId={projectId}
             projectName={project?.name}
             client={client}

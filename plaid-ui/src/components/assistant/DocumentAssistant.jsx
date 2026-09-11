@@ -62,6 +62,7 @@ export const DocumentAssistant = ({
   focus,
   onClearFocus,
   onApplied,
+  onFocusHere,
   ...assistant
 }) => {
   const [width, setWidth] = useState(readWidth);
@@ -111,6 +112,7 @@ export const DocumentAssistant = ({
             focus={focus}
             onClearFocus={onClearFocus}
             onApplied={onApplied}
+            onFocusHere={onFocusHere}
           />
         </div>
       </aside>

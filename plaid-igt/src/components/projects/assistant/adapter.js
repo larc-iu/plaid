@@ -137,6 +137,13 @@ export const changePlace = (projectId, where) => {
   return null;
 };
 
+// A link back into a document this app is showing: the document it names and
+// the sentence to put in view, or null when it points somewhere else.
+export const parseCitationHref = (href) => {
+  const m = /#\/projects\/[^/]+\/documents\/([^/?#]+)\?[^#]*focusSentence=([^&]+)/.exec(href || '');
+  return m ? { documentId: m[1], focus: decodeURIComponent(m[2]) } : null;
+};
+
 export const IGT_ASSISTANT = {
   app: 'igt',
   command: 'plaid-igt-agent',
@@ -154,6 +161,7 @@ export const IGT_ASSISTANT = {
   changeTitle,
   changePlace,
   groupOf,
+  parseCitationHref,
   examples: [
     'Which words in this project are still unglossed?',
     'Are the glosses for the most common suffix consistent?',

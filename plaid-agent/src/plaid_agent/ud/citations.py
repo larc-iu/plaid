@@ -107,7 +107,10 @@ def _card(doc: UdDoc, sentence_index: int, focus: List[int],
     # is left out. ID and FORM always stay: they are what a reference points at.
     keep = [c.lower() for c in COLUMNS]
     keep = [c for c in keep if c in ('id', 'form') or any(r[c] for r in rows)]
-    return {'sentence': s.index, 'text': s.text, 'columns': keep, 'rows': rows,
+    # The INDEX is what a reference names and what the card prints; the ID is
+    # what the editor's ?sent= deep link needs. Both, or the link lands on the
+    # document and never scrolls.
+    return {'sentence': s.index, 'sentence_id': s.id, 'text': s.text, 'columns': keep, 'rows': rows,
             'focus': focus, 'view': view or 'table',
             'fields': [f for f in (fields or []) if f in keep]}
 
