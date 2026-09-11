@@ -174,6 +174,12 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
         # multi-word token ("al" for both halves of a + el). The form is right
         # in every case the surface is, and right in the case it is not.
         lemma_at: Dict[str, Any] = {}   # word id -> span id, or an int result index
+        # What this plan is ALREADY creating, by (layer, word). A head needs a
+        # lemma span to hang off, and if the same plan sets that word's lemma
+        # there must not be two: the second create wins the read and the value
+        # the user approved becomes invisible to every tool. Keyed here in the
+        # first sub-pass and consulted in the second.
+        creating: Dict[tuple, int] = {}
         for op in ops:
             kind = op.get('kind')
             if kind == 'set_span':
@@ -184,7 +190,9 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
                     b.add(lambda sid=span_id, v=value: client.spans.update(sid, v))
                     b.add(lambda sid=span_id: client.spans.patch_metadata(sid, restamp()))
                 elif value != '':
-                    b.add(lambda o=op, v=value: client.spans.create(o['layer_id'], [o['token_id']], v, stamp()))
+                    creating[(op['layer_id'], op['token_id'])] = b.add(
+                        lambda o=op, v=value: client.spans.create(
+                            o['layer_id'], [o['token_id']], v, stamp()))
                 else:
                     continue  # nothing to clear
                 counts['field values'] += 1
@@ -194,17 +202,6 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
                 else:
                     b.add(lambda i=op['relation_id']: client.relations.patch_metadata(i, CONFIRM))
                 counts['confirmations'] += 1
-            elif kind == 'set_head':
-                for wid, form, existing in ((op['word_id'], op.get('word_form') or '', op.get('lemma_span_id')),
-                                            (op['head_id'], op.get('head_form') or '', op.get('head_lemma_span_id'))):
-                    if wid in lemma_at:
-                        continue
-                    if existing:
-                        lemma_at[wid] = existing
-                    else:
-                        lemma_at[wid] = b.add(
-                            lambda o=op, w=wid, f=form: client.spans.create(
-                                o['lemma_layer_id'], [w], f, stamp()))
             elif kind == 'set_words':
                 apply_set_words(client, op, b, stamp)
                 counts['reshaped tokens'] += 1
@@ -217,6 +214,34 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
             elif kind == 'merge_sentences':
                 apply_merge_sentences(client, op, b, stamp)
                 counts['sentence boundaries'] += 1
+
+        # Second sub-pass: the lemma spans a head is going to need, now that
+        # `creating` says which ones the plan already makes. A word with no
+        # lemma at all gets one valued with its FORM. The app does the same
+        # when a person draws an arc onto an unannotated word, except that it
+        # uses the token's surface text, which is wrong for a part of a
+        # multi-word token ("al" for both halves of a + el). The form is right
+        # in every case the surface is, and right in the case it is not.
+        for op in ops:
+            if op.get('kind') != 'set_head':
+                continue
+            for wid, form, existing in ((op['word_id'], op.get('word_form') or '', op.get('lemma_span_id')),
+                                        (op['head_id'], op.get('head_form') or '', op.get('head_lemma_span_id'))):
+                if wid in lemma_at:
+                    continue
+                if existing:
+                    lemma_at[wid] = existing
+                    continue
+                planned = creating.get((op['lemma_layer_id'], wid))
+                if planned is not None:
+                    # The user approved a lemma for this word in this very
+                    # plan. Hang the relation off THAT span rather than making
+                    # a second one seeded from the form.
+                    lemma_at[wid] = planned
+                    continue
+                lemma_at[wid] = b.add(
+                    lambda o=op, w=wid, f=form: client.spans.create(
+                        o['lemma_layer_id'], [w], f, stamp()))
 
         # The relations need those spans to exist, so the batch has to land first.
         b.flush()

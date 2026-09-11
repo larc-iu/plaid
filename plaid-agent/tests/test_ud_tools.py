@@ -476,6 +476,22 @@ def test_the_worklist_names_the_words_for_the_review_kinds_too(ws):
     assert 'in 1 document(s)' not in out
 
 
+def test_setting_a_lemma_and_a_head_together_makes_ONE_lemma_span(ws):
+    """A head hangs off a lemma span, so a word with none gets one seeded from
+    its form. If the same plan also SETS that word's lemma there must not be
+    two: spans are read last-wins, so the second create won and the value the
+    user approved became invisible to every tool, with the word reading back as
+    its own form. This is the ordinary "annotate a fresh sentence" flow."""
+    run(ws, 'set_field', document='Viaje', refs=['s2.w1'], field='lemma', value='correr')
+    run(ws, 'set_head', document='Viaje', ref='s2.w1', head=0, deprel='root')
+    execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified')
+
+    made = [e for e in ws.client.log
+            if e[0] == 'spans' and e[1] == 'create' and e[2][0] == LEMMA]
+    assert len(made) == 1, f'{len(made)} lemma spans for one word: {made}'
+    assert made[0][2][2] == 'correr', 'the approved lemma is the one that exists'
+
+
 def test_a_failed_parse_does_not_claim_that_nothing_was_written(ws, monkeypatch):
     """A plan may write to one document and parse another, so by the time the
     parser answers, earlier batches stand committed. The count was hardcoded to
