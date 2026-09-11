@@ -174,12 +174,12 @@ export const SearchPage = () => {
     [projectId],
   );
 
-  if (loading) return <p className="tw p-4 text-sm text-muted-foreground">Loading…</p>;
+  if (loading) return <p className="p-4 text-sm text-muted-foreground">Loading…</p>;
   if (loadError)
     return (
       <div
         role="alert"
-        className="tw rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
       >
         {loadError}
       </div>
@@ -189,7 +189,7 @@ export const SearchPage = () => {
     <>
       <ProjectTabs projectId={projectId} project={project} />
 
-      <div className="tw flex flex-col gap-6">
+      <div className="flex flex-col gap-6">
         <h2 className="text-2xl font-semibold tracking-tight">Search {project?.name}</h2>
 
         {!layerInfo.isConfigured ? (

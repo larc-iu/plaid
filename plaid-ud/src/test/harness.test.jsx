@@ -1,12 +1,9 @@
 // The component-test harness itself. Not a test of any screen: it exists so a
-// failure in the scaffolding (React, happy-dom, the path aliases, or the two UI
-// stacks refusing to coexist) is reported here rather than as a puzzling
-// failure inside the first real component test.
-//
-// Screens get their own tests as they migrate in 0.3 to 0.5.
+// failure in the scaffolding (React, happy-dom, or the path aliases) is
+// reported here rather than as a puzzling failure inside the first real
+// component test.
 import { describe, it, expect } from 'vitest';
-import { MantineProvider } from '@mantine/core';
-import { renderComponent, texts } from '@ui/test/renderComponent.jsx';
+import { renderComponent } from '@ui/test/renderComponent.jsx';
 import { Button } from '@ui/components/ui/button.jsx';
 import { PROVENANCE_KEYS } from '@larc-iu/plaid-client';
 
@@ -28,26 +25,6 @@ describe('the component-test harness', () => {
     const second = view.container.querySelector('[data-testid="greeting"]');
     expect(second.textContent).toBe('Hello, Grace');
     expect(second).toBe(first); // the same node, updated in place
-    await view.unmount();
-  });
-
-  // Both stacks have to render in the same test run for the length of the
-  // migration: a screen already on shadcn and one still on Mantine are siblings
-  // under one root until 0.5 removes the second.
-  it('renders a Mantine subtree and a Tailwind-classed one side by side', async () => {
-    const view = await renderComponent(
-      <MantineProvider>
-        <div>
-          <p data-testid="mantine">Mantine</p>
-          <div className="tw">
-            <p data-testid="shadcn" className="text-sm text-muted-foreground">
-              Tailwind
-            </p>
-          </div>
-        </div>
-      </MantineProvider>,
-    );
-    expect(texts(view.container, 'p')).toEqual(['Mantine', 'Tailwind']);
     await view.unmount();
   });
 

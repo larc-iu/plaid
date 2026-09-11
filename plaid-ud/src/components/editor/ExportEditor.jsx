@@ -33,7 +33,7 @@ export const ExportEditor = () => {
   };
 
   return (
-    <div className="tw flex flex-col gap-4">
+    <div className="flex flex-col gap-4">
       <h3 className="text-xl font-semibold tracking-tight">CoNLL-U</h3>
 
       <div className="flex flex-wrap gap-2">

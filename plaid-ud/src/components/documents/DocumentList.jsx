@@ -179,14 +179,14 @@ export const DocumentList = () => {
   }, [project, configured, canManage, projectId, navigate]);
 
   if (loading) {
-    return <p className="tw p-4 text-sm text-muted-foreground">Loading…</p>;
+    return <p className="p-4 text-sm text-muted-foreground">Loading…</p>;
   }
 
   if (!project) {
     return (
       <div
         role="alert"
-        className="tw rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
       >
         Project not found
       </div>
@@ -200,7 +200,7 @@ export const DocumentList = () => {
     return (
       <>
         <ProjectTabs projectId={projectId} project={project} />
-        <div className="tw flex justify-center py-16">
+        <div className="flex justify-center py-16">
           <div className="flex max-w-lg gap-3 rounded-md border border-amber-500/50 bg-amber-500/10 p-4">
             <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
             <div className="text-sm">
@@ -321,7 +321,7 @@ export const DocumentList = () => {
     <>
       <ProjectTabs projectId={projectId} project={project} />
 
-      <div className="tw">
+      <div>
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-2xl font-semibold tracking-tight">Documents in {project.name}</h1>
           {canEdit && (

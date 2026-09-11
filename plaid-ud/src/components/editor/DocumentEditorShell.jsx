@@ -144,13 +144,13 @@ export const DocumentEditorShell = () => {
         />
       </div>
 
-      {loading && <p className="tw p-4 text-sm text-muted-foreground">Loading…</p>}
+      {loading && <p className="p-4 text-sm text-muted-foreground">Loading…</p>}
 
       {!loading && (loadError || !doc || !project) && (
         <div className={wide ? 'px-6' : undefined}>
           <div
             role="alert"
-            className="tw rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
           >
             {loadError || 'Document or project not found'}
           </div>

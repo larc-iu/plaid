@@ -17,7 +17,7 @@ export function ServiceSummary({ service }) {
         <Button
           variant="ghost"
           size="icon"
-          className="tw h-7 w-7 text-muted-foreground"
+          className="h-7 w-7 text-muted-foreground"
           aria-label={`About ${service.serviceName || 'service'}`}
         >
           <Info className="h-4 w-4" />

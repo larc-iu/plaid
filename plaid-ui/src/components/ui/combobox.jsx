@@ -1,6 +1,6 @@
 import * as React from 'react';
 import * as PopoverPrimitive from '@radix-ui/react-popover';
-import { cn, PREFLIGHT_SCOPE } from '../../lib/utils.js';
+import { cn } from '../../lib/utils.js';
 
 // A text input with a list of suggestions under it, and no opinion about what
 // the keys mean.
@@ -222,7 +222,6 @@ export const Combobox = React.forwardRef(function Combobox(
             if (inputRef.current?.contains(event.target)) event.preventDefault();
           }}
           className={cn(
-            PREFLIGHT_SCOPE,
             'z-50 max-h-60 w-max overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md',
             listClassName,
           )}

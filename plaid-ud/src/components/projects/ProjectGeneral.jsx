@@ -146,7 +146,7 @@ export const ProjectGeneral = ({ onProjectUpdate }) => {
   const info = getUdLayerInfo(project);
 
   return (
-    <div className="tw flex flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Name</CardTitle>

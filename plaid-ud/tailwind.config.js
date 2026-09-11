@@ -4,13 +4,10 @@ import typography from '@tailwindcss/typography';
 /** @type {import('tailwindcss').Config} */
 export default {
   darkMode: ['class'],
-  // IMPORTANT: preflight is OFF while the migration runs. The shell is still
-  // Mantine, and a global reset would clobber Mantine's base styles. Migrated
-  // screens opt into the subset they need by wrapping their root in
-  // <div className="tw"> — see the `:where(.tw)` block in src/index.css. IGT did
-  // exactly this (commit 8c0c11f6) and turned preflight global once Mantine was
-  // gone (5b4ac1ee); this app retires the scoping at the end of 0.5.
-  corePlugins: { preflight: false },
+  // Preflight is ON (global). Mantine is gone, so the app is pure shadcn and
+  // Tailwind and wants the standard base reset, including the sans-serif font
+  // stack — without it the app falls back to the browser's serif default. The
+  // `:where(.tw)` opt-in scoping that stood in for it through Tier 0 is retired.
   content: [
     './index.html',
     './src/**/*.{js,jsx}',

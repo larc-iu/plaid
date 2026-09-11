@@ -273,7 +273,7 @@ export const UserProfile = () => {
   const activeTokens = tokens.filter((t) => !t.revokedAt);
 
   return (
-    <div className="tw mx-auto flex max-w-2xl flex-col gap-6">
+    <div className="mx-auto flex max-w-2xl flex-col gap-6">
       <Card>
         <CardHeader>
           <CardTitle className="text-xl">User Profile</CardTitle>

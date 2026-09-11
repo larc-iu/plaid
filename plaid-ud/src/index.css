@@ -4,20 +4,11 @@
 
 /* Global styles, plus the shadcn design tokens.
 
-   Tailwind's preflight is OFF (see tailwind.config.js) for the duration of the
-   Mantine-to-shadcn migration, so `@tailwind base` emits essentially only the
-   variables below — no global reset to fight Mantine's own, which arrives via
-   @mantine/core/styles.css in main.jsx. The palette and fonts for the Mantine
-   half still live in src/theme.js.
+   Preflight is ON globally (Mantine is gone), so `@tailwind base` emits the
+   standard reset, including the sans-serif font stack and the zeroed body
+   margin the app used to ask for by hand.
 
    The token values are IGT's, so the two apps render a shared project alike. */
-
-html,
-body,
-#root {
-  margin: 0;
-  padding: 0;
-}
 
 @layer base {
   :root {
@@ -55,131 +46,13 @@ body,
     --grew-comment: #6b7280;
   }
 
-  /* The essential subset of Tailwind preflight, SCOPED to `.tw` subtrees.
-     Global preflight is off (it would clobber Mantine); migrated screens opt in
-     by wrapping their root in <div className="tw">. Mantine screens never match
-     these selectors, so they are untouched. The border reset is what makes
-     Tailwind's `border` utilities render at all — they set width only, and rely
-     on a solid default style.
-
-     `:where(.tw)` contributes ZERO specificity, so these behave exactly like
-     preflight (bare element selectors) and lose to Tailwind utility classes
-     like `bg-primary`. Written as `.tw button` (specificity 0,1,1) they would
-     beat `.bg-primary` (0,1,0) and swallow every button background.
-
-     The root itself is in the reset, not just its descendants. A portaled
-     shadcn surface (dialog, popover, toast) IS the `.tw` element, and its own
-     `border` utility renders nothing without the border-style default. */
-  :where(.tw),
-  :where(.tw) *,
-  :where(.tw) ::before,
-  :where(.tw) ::after {
-    box-sizing: border-box;
-    border-width: 0;
-    border-style: solid;
-    border-color: hsl(var(--border));
+  /* Default every element's border color to the design token (preflight resets
+     border-width to 0 but leaves the color as currentColor), so a `border`
+     utility renders the expected light border. Standard shadcn base. */
+  * {
+    @apply border-border;
   }
-  :where(.tw) button,
-  :where(.tw) [type='button'],
-  :where(.tw) [type='submit'] {
-    background-color: transparent;
-    background-image: none;
-    cursor: pointer;
-  }
-  :where(.tw) button,
-  :where(.tw) input,
-  :where(.tw) textarea,
-  :where(.tw) select {
-    font: inherit;
-    color: inherit;
-    margin: 0;
-  }
-  :where(.tw) input::placeholder,
-  :where(.tw) textarea::placeholder {
-    color: hsl(var(--muted-foreground));
-  }
-
-  /* The rest of preflight that shadcn's components are written against. IGT's
-     version of this block had only the rules above, because the one screen it
-     migrated first was a login form with no links, no headings and no bare
-     paragraphs. UD's shell has all three, and without these the header renders
-     as underlined blue anchors and every <p> carries the browser's 1em margin.
-     Anything below that a screen turns out to need belongs here too, not in the
-     screen. */
-  :where(.tw) a {
-    color: inherit;
-    text-decoration: inherit;
-  }
-  :where(.tw) h1,
-  :where(.tw) h2,
-  :where(.tw) h3,
-  :where(.tw) h4,
-  :where(.tw) h5,
-  :where(.tw) h6 {
-    font-size: inherit;
-    font-weight: inherit;
-  }
-  :where(.tw) blockquote,
-  :where(.tw) dl,
-  :where(.tw) dd,
-  :where(.tw) h1,
-  :where(.tw) h2,
-  :where(.tw) h3,
-  :where(.tw) h4,
-  :where(.tw) h5,
-  :where(.tw) h6,
-  :where(.tw) hr,
-  :where(.tw) figure,
-  :where(.tw) p,
-  :where(.tw) pre {
-    margin: 0;
-  }
-  :where(.tw) ol,
-  :where(.tw) ul,
-  :where(.tw) menu {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-  /* The one every shared DataTable depends on. */
-  :where(.tw) table {
-    text-indent: 0;
-    border-color: inherit;
-    border-collapse: collapse;
-  }
-  :where(.tw) hr {
-    height: 0;
-    color: inherit;
-    border-top-width: 1px;
-  }
-  :where(.tw) img,
-  :where(.tw) svg,
-  :where(.tw) video,
-  :where(.tw) canvas {
-    display: block;
-    vertical-align: middle;
-  }
-  :where(.tw) img,
-  :where(.tw) video {
-    max-width: 100%;
-    height: auto;
-  }
-  :where(.tw) code,
-  :where(.tw) kbd,
-  :where(.tw) samp,
-  :where(.tw) pre {
-    font-family:
-      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
-      monospace;
-    font-size: 1em;
-  }
-  :where(.tw) textarea {
-    resize: vertical;
-  }
-  :where(.tw) :disabled {
-    cursor: default;
-  }
-  :where(.tw) [role='button'] {
-    cursor: pointer;
+  body {
+    @apply bg-background text-foreground;
   }
 }

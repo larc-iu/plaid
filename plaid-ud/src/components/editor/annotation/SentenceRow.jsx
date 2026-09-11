@@ -1163,7 +1163,7 @@ export const SentenceRow = React.memo(
           wrapper carries the preflight scope, and loses it with all the others
           when preflight turns global. */}
         {!isReadOnly && onConfirmTokens && hasInferred && (
-          <div className="sentence-confirm tw">
+          <div className="sentence-confirm">
             <Button
               className="accept-predictions-btn h-6 gap-1 px-2 text-xs"
               variant="outline"

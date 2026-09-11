@@ -336,12 +336,12 @@ export const ProjectImportExport = () => {
     }
   };
 
-  if (loading) return <p className="tw p-4 text-sm text-muted-foreground">Loading…</p>;
+  if (loading) return <p className="p-4 text-sm text-muted-foreground">Loading…</p>;
   if (!project)
     return (
       <div
         role="alert"
-        className="tw rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
       >
         {loadError || 'Project not found'}
       </div>
@@ -382,7 +382,7 @@ export const ProjectImportExport = () => {
 
       <ProjectTabs projectId={projectId} project={project} />
 
-      <div className="tw flex flex-col gap-6">
+      <div className="flex flex-col gap-6">
         <h2 className="text-2xl font-semibold tracking-tight">Import and export</h2>
 
         {/* ---- IMPORT (writers and up) ---- */}

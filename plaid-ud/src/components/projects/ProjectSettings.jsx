@@ -71,12 +71,12 @@ export const ProjectSettings = () => {
           sections migrate one at a time, and a Mantine one inside the scoped
           preflight would have its own reset pulled out from under it. Each
           migrated section brings its own root. */}
-      <div className="tw mb-6">
+      <div className="mb-6">
         <h1 className="text-3xl font-bold tracking-tight">Project Settings</h1>
       </div>
 
       <div className="flex flex-col gap-6 sm:flex-row">
-        <nav className="tw flex shrink-0 flex-col gap-1 sm:w-52">
+        <nav className="flex shrink-0 flex-col gap-1 sm:w-52">
           {SECTIONS.map(([value, label]) => (
             <Link
               key={value}

@@ -434,7 +434,7 @@ export const AnnotationEditor = () => {
   // enough entry predates the setup and is not a statement about the project.
   if (!reconciling && project && !getUdLayerInfo(project).isConfigured) {
     return (
-      <div className="tw min-h-screen w-full">
+      <div className="min-h-screen w-full">
         <div className="flex justify-center py-16">
           <div className="flex max-w-lg gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-900">
             <Info className="mt-0.5 h-4 w-4 shrink-0" />
@@ -465,7 +465,7 @@ export const AnnotationEditor = () => {
   }
 
   return (
-    <div className="tw min-h-screen w-full">
+    <div className="min-h-screen w-full">
       <HistoryDrawer
         isOpen={isHistoryDrawerOpen}
         onClose={handleCloseHistory}

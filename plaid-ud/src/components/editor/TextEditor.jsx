@@ -196,7 +196,7 @@ export const TextEditor = () => {
     : [];
 
   return (
-    <div className="tw">
+    <div>
       {readOnly && (
         <div className="mb-3 rounded-md border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-sm text-blue-900">
           Read-only. You have viewer access to this project.

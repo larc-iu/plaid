@@ -109,7 +109,7 @@ export const RedeemInvite = () => {
   // Renders outside the Layout shell, so it carries its own `.tw` root for the
   // scoped preflight subset (see src/index.css).
   return (
-    <div className="tw flex min-h-screen items-center justify-center bg-muted/40 p-4">
+    <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center">
           <CardTitle className="text-2xl">

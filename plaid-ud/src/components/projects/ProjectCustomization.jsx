@@ -120,7 +120,7 @@ export const ProjectCustomization = () => {
   };
 
   if (loading) {
-    return <p className="tw p-4 text-sm text-muted-foreground">Loading…</p>;
+    return <p className="p-4 text-sm text-muted-foreground">Loading…</p>;
   }
 
   if (!project || !canConfigure) {
@@ -131,7 +131,7 @@ export const ProjectCustomization = () => {
 
   if (!info.isConfigured) {
     return (
-      <p className="tw rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+      <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
         Set up the project&apos;s UD layers first. Vocabulary and color settings attach to those
         annotation layers.
       </p>
@@ -145,7 +145,7 @@ export const ProjectCustomization = () => {
   );
 
   return (
-    <div className="tw flex flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0">
           <CardTitle className="text-lg">UPOS tags</CardTitle>

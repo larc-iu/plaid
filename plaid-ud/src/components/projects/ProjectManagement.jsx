@@ -406,11 +406,11 @@ export const ProjectManagement = () => {
   };
 
   if (loading) {
-    return <p className="tw p-4 text-sm text-muted-foreground">Loading…</p>;
+    return <p className="p-4 text-sm text-muted-foreground">Loading…</p>;
   }
 
   const denied = (message) => (
-    <div className="tw">
+    <div>
       <div
         role="alert"
         className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
@@ -435,7 +435,7 @@ export const ProjectManagement = () => {
   );
 
   return (
-    <div className="tw flex flex-col gap-6">
+    <div className="flex flex-col gap-6">
       {isAdmin && (
         <div>
           <Button

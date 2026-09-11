@@ -18,7 +18,7 @@ import { Textarea } from '@ui/components/ui/textarea';
 export function ServiceParamForm({ schema, values, onChange, errors = {}, disabled = false }) {
   if (!schema || schema.length === 0) return null;
   return (
-    <div className="tw flex flex-col gap-3">
+    <div className="flex flex-col gap-3">
       {schema.map((param) => (
         <ParamField
           key={param.key}

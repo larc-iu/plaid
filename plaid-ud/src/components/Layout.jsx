@@ -21,7 +21,7 @@ export const Layout = () => {
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <header className="tw border-b bg-background">
+      <header className="border-b bg-background">
         <div className="mx-auto flex h-16 max-w-[1320px] items-center justify-between px-4">
           <Link to="/" className="text-xl font-bold">
             Plaid UD

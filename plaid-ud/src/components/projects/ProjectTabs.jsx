@@ -40,7 +40,7 @@ export const ProjectTabs = ({ projectId, project }) => {
   };
 
   return (
-    <div className="tw mb-6">
+    <div className="mb-6">
       <nav aria-label="Breadcrumb" className="mb-4 flex items-center gap-2 text-sm">
         <Link to="/projects" className="text-muted-foreground hover:text-foreground">
           Projects

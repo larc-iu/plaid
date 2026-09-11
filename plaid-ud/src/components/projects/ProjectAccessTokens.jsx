@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@ui/components/ui/card
 // token, which is individually revocable and attributed by name in the audit
 // log. The content is project-agnostic, so it fetches nothing.
 export const ProjectAccessTokens = () => (
-  <Card className="tw">
+  <Card>
     <CardHeader>
       <CardTitle className="text-lg">API access</CardTitle>
     </CardHeader>

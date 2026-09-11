@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { X, History, ChevronRight } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
 import { Badge } from '../ui/badge.jsx';
-import { cn, PREFLIGHT_SCOPE } from '../../lib/utils.js';
+import { cn } from '../../lib/utils.js';
 import { fullTimestamp } from '../../utils/formatTime.js';
 
 // The audit log arrives already folded into logical units by the server: a
@@ -141,14 +141,8 @@ export const HistoryDrawer = ({
   if (!isOpen) return null;
 
   return (
-    // The panel is a fixed-position root of its own, mounted by whatever screen
-    // owns the document — in plaid-ud that screen is still Mantine — so it
-    // carries PREFLIGHT_SCOPE for the same reason a portaled surface does.
     <div
-      className={cn(
-        PREFLIGHT_SCOPE,
-        'fixed left-0 top-0 z-40 flex h-screen flex-col border-r bg-background shadow-lg',
-      )}
+      className="fixed left-0 top-0 z-40 flex h-screen flex-col border-r bg-background shadow-lg"
       style={{ width: HISTORY_DRAWER_WIDTH }}
     >
       {/* Header */}

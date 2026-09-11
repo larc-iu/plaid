@@ -1,13 +1,19 @@
-/* Styling for the inline token badges + their text container. The hover panel
-   and word editor are plain Mantine (HoverCard / Modal) — see TokenVisualizer.jsx.
-   Badge variants are driven by data-mwt / data-sent-start attributes. */
+/* Styling for the inline token badges and their text container. The hover panel
+   and word editor are shadcn primitives — see TokenVisualizer.jsx. Badge
+   variants are driven by data-mwt / data-sent-start attributes.
+
+   The colours are written out rather than taken from utility classes, because
+   this is a measured overlay rendered over the raw document text and the classes
+   would fight the badge geometry. Tailwind's scale, so it sits with the rest. */
 
 .container {
   padding: 1rem;
-  background: var(--mantine-color-white);
-  border: 1px solid var(--mantine-color-gray-2);
-  border-radius: var(--mantine-radius-sm);
-  font-family: var(--mantine-font-family-monospace);
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
   font-size: 0.875rem;
   line-height: 1.625;
   user-select: text;
@@ -22,8 +28,9 @@
   position: relative;
 }
 
+/* The text between tokens: present, but not the thing being edited. */
 .plainText {
-  color: var(--mantine-color-gray-4);
+  color: #9ca3af;
 }
 
 /* --- token badges --- */
@@ -32,24 +39,25 @@
   display: inline-block;
   padding: 0.125rem 0.25rem;
   margin: 0 0.125rem;
-  border: 1px solid var(--mantine-color-blue-3);
-  border-radius: var(--mantine-radius-sm);
-  background: var(--mantine-color-blue-1);
+  border: 1px solid #93c5fd;
+  border-radius: 4px;
+  background: #dbeafe;
   cursor: pointer;
   transition: background-color 100ms ease;
   white-space: pre;
 }
 .badge:hover {
-  background: var(--mantine-color-blue-2);
+  background: #bfdbfe;
 }
+/* A token split into more than one word (a multi-word token). */
 .badge[data-mwt='true'] {
-  background: var(--mantine-color-orange-1);
-  border-color: var(--mantine-color-orange-4);
+  background: #ffedd5;
+  border-color: #fb923c;
 }
 .badge[data-mwt='true']:hover {
-  background: var(--mantine-color-orange-2);
+  background: #fed7aa;
 }
 .badge[data-sent-start='true'] {
-  border-color: var(--mantine-color-green-5);
+  border-color: #22c55e;
   border-width: 2px;
 }

@@ -270,11 +270,11 @@ export const ProjectServicesSettings = () => {
   );
 
   if (loading && !project) {
-    return <p className="tw p-4 text-sm text-muted-foreground">Loading…</p>;
+    return <p className="p-4 text-sm text-muted-foreground">Loading…</p>;
   }
 
   return (
-    <div className="tw flex flex-col gap-4">
+    <div className="flex flex-col gap-4">
       <div className="flex items-start justify-between gap-4">
         <p className="max-w-xl text-sm text-muted-foreground">
           Services that have connected to this project are remembered here, online or not. Set a
