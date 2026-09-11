@@ -518,3 +518,12 @@ def test_a_failed_parse_does_not_claim_that_nothing_was_written(ws, monkeypatch)
 
 # The corpus-wide branch of worklist goes through the query engine, which the
 # fake client does not have. tests/test_live_corpus.py covers that side.
+
+
+def test_a_document_with_nothing_waiting_is_told_so(ws):
+    """Every field appended a "none waiting" line before the `if not out`
+    check, so the check was dead and a clean document got four such lines plus
+    an invitation to confirm things that are not there."""
+    out = run(ws, 'worklist', kind='contributed', document='Viaje')
+    assert 'Nothing is waiting for review' in out, out
+    assert 'confirm marks these as reviewed' not in out

@@ -229,7 +229,7 @@ Places where the corpus disagrees with itself: one lemma under several UPOS, one
 
 ### worklist
 
-What is unfinished. kind "unverified" is machine output nobody has confirmed, "contributed" a contributor's unreviewed work, "missing" words with no value in a column at all. Without a document it counts per document, so a session has somewhere to start. WITH kind "missing" AND a document it names the words themselves, by reference: that is the list to plan from, and it saves reading or searching the document to find them.
+What is unfinished. kind "unverified" is machine output nobody has confirmed, "contributed" a contributor's unreviewed work, "missing" words with no value in a column at all. Without a document it counts per document, so a session has somewhere to start. WITH A DOCUMENT it names the words themselves, by reference, whichever kind you ask for: that is the list to plan from, and it saves reading or searching the document to find them.
 
 - `kind` (one of `unverified`, `contributed`, `missing`)
 - `field` (one of `lemma`, `upos`, `xpos`, `features`): Which column: lemma, upos, xpos or features.

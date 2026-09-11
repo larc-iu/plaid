@@ -40,18 +40,24 @@ test('no pattern block means nothing to narrow', () => {
   assert.equal(refinePattern('dog', 'V', 'upos', 'VERB'), null);
 });
 
-test('a brace inside a string is not a brace', () => {
-  // A pattern may legally look for one. Counting it closed the block early and
-  // put the clause inside the regex, which then did not parse.
-  for (const text of [
+test("a brace in any of Grew's four contexts is not a brace", () => {
+  // Grew has three value literals and a comment, and a brace inside any of
+  // them is not a brace. A hand-rolled scanner that knew about "…" only
+  // spliced the clause into the middle of a PCRE regex, and the result still
+  // PARSED, as a silently different search. The block's end is lexed now.
+  const cases = [
     'pattern { V [lemma=re".*}.*"] }',
     'pattern { V [lemma=re".*{.*"] }',
-    'pattern { V [lemma=re".*[{}].*"] }',
-    'pattern { V [lemma="a\\"}\\"b"] }',
-  ]) {
-    const out = refinePattern(text, 'V', 'upos', 'VERB');
+    'pattern { V [form=/a\\}b/] }',
+    'pattern { V [form=/a\\{b/] }',
+    "pattern { V [form=/o'clock/] }",
+    'pattern {\n  % close it }\n  V [upos=VERB];\n}',
+  ];
+  for (const text of cases) {
+    const out = refinePattern(text, 'V', 'upos', 'NOUN');
     assert.ok(out, `declined: ${text}`);
-    assert.ok(out.endsWith('V [upos="VERB"] }'), `clause misplaced: ${out}`);
+    // The clause lands after the user's own body, not inside a literal.
+    assert.match(out, /V \[upos="NOUN"\] \}$/, `clause misplaced: ${out}`);
     parse(out);
   }
 });

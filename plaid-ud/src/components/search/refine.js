@@ -1,3 +1,4 @@
+import { lex, TT } from '../../grew/lexer.js';
 import { BARE_KEY, exactRegex, quote } from '../../grew/literals.js';
 
 // Narrowing a search to one value from the count table.
@@ -34,37 +35,51 @@ export const clauseFor = (node, field, value) => {
 // The clause added at the end of the FIRST `pattern { … }` block, which is the
 // one the count was run against. Null when there is no such block to add to.
 //
-// Braces are counted, and a brace inside a STRING is not a brace: a pattern
-// may legally look for one (`V [lemma=re".*}.*"]`), and counting it closed the
-// block early and inserted the clause into the middle of the regex. Grew's
-// strings are double-quoted with backslash escapes, which is all this has to
-// know to skip them.
+// The block's end is found by LEXING, not by counting braces. Grew has three
+// value literals (`"…"`, `re"…"`, `/…/flags`) and a `%` comment to end of
+// line, and a brace inside any of them is not a brace: a hand-rolled scanner
+// that knew about one of them spliced the clause into the middle of a PCRE
+// regex, and the result still parsed, as a silently different search. The app
+// owns a lexer that knows all four contexts, so it answers this.
 export const refinePattern = (text, node, field, value) => {
   const clause = clauseFor(node, field, value);
   if (!clause) return null;
-  const open = /\bpattern\s*\{/.exec(text || '');
-  if (!open) return null;
+
+  let tokens;
+  try {
+    tokens = lex(String(text ?? ''));
+  } catch {
+    return null; // not lexable, so the box is already showing a parse error
+  }
+
+  // Absolute offset of a token's 1-based {line, col}.
+  const lineStarts = [0];
+  for (let i = 0; i < text.length; i += 1) {
+    if (text[i] === '\n') lineStarts.push(i + 1);
+  }
+  const offsetOf = (t) => lineStarts[t.line - 1] + (t.col - 1);
+
+  let i = tokens.findIndex(
+    (t, k) =>
+      t.type === TT.IDENT &&
+      t.value === 'pattern' &&
+      tokens[k + 1] &&
+      tokens[k + 1].type === TT.LBRACE,
+  );
+  if (i < 0) return null;
+
   let depth = 0;
-  let quote = null;
-  for (let i = open.index + open[0].length - 1; i < text.length; i += 1) {
-    const c = text[i];
-    if (quote) {
-      if (c === '\\') i += 1;
-      else if (c === quote) quote = null;
-      continue;
-    }
-    if (c === '"' || c === "'") {
-      quote = c;
-      continue;
-    }
-    if (c === '{') depth += 1;
-    else if (c === '}') {
+  for (i += 1; i < tokens.length; i += 1) {
+    const t = tokens[i];
+    if (t.type === TT.LBRACE) depth += 1;
+    else if (t.type === TT.RBRACE) {
       depth -= 1;
       if (depth > 0) continue;
+      const at = offsetOf(t);
       // Keep the body exactly as the user wrote it, including its line breaks.
-      const before = text.slice(0, i).replace(/\s+$/, '');
+      const before = text.slice(0, at).replace(/\s+$/, '');
       const separator = /[{;]$/.test(before) ? '' : ';';
-      return `${before}${separator} ${clause} ${text.slice(i)}`;
+      return `${before}${separator} ${clause} ${text.slice(at)}`;
     }
   }
   return null;

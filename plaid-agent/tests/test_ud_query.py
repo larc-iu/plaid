@@ -105,3 +105,19 @@ def test_a_limit_the_model_wrote_into_the_query_is_refused_in_words(ws):
 
     with pytest.raises(QueryRefused, match='has to be a number'):
         run(ws.client, {'where': [], 'find': ['?t'], 'limit': 'about twenty'}, 'p1')
+
+
+def test_every_tool_that_takes_a_limit_refuses_a_non_number_in_words(ws):
+    """Nine sites did `int(limit or N)` unguarded, so the model got a Python
+    message about base 10 from tools whose contract is a readable refusal."""
+    from plaid_agent.ud.tools import call_tool
+
+    for tool, args in [
+        ('search', {'field': 'lemma', 'pattern': 'x'}),
+        ('worklist', {'kind': 'unverified', 'document': 'Viaje'}),
+        ('recent_changes', {}),
+        ('frequency_list', {}),
+    ]:
+        out = call_tool(ws, tool, {**args, 'limit': 'about twenty'})
+        assert 'has to be a number' in out, f'{tool}: {out}'
+        assert 'base 10' not in out

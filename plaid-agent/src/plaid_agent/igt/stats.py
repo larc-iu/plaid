@@ -14,6 +14,7 @@ from plaid_client.provenance import prov_state, CONTRIBUTED_STATE, PROV_SOURCE_K
 from .project import IgtDoc, Sentence, Word, REVIEWABLE, mwe_form, render_word, segmentation, word_ref
 from .tools import Workspace, ToolError, _matcher, _truncate, entry_line
 from .vocab import descendants_of, validate_vocab_refs
+from ..core.args import clamp_limit
 
 
 def _pct(n, d):
@@ -204,7 +205,7 @@ def t_frequency_list(ws: Workspace, what: str = 'wordform', document: Optional[s
                      limit: int = 100, min_count: int = 1) -> str:
     """Counts with document dispersion for wordforms, morpheme forms, or a
     field's values."""
-    limit = max(1, min(int(limit or 100), 1000))
+    limit = clamp_limit(limit, 100, 1000)
     what_l = (what or 'wordform').lower()
     counts: Counter = Counter()
     spread: Dict[str, set] = defaultdict(set)
@@ -315,7 +316,7 @@ def t_worklist(ws: Workspace, kind: str = 'unglossed', field: Optional[str] = No
     if user and kind != 'contributed':
         raise ToolError('user= goes with kind="contributed"')
     project = ws.project
-    limit = max(1, min(int(limit or 50), 500))
+    limit = clamp_limit(limit, 50, 500)
     docs = _docs(ws, document) if ws.use_scan(document) else []
     f = None
     if kind == 'unglossed':
@@ -723,7 +724,7 @@ def t_sequence_search(ws: Workspace, sequence: list, adjacent: bool = True, docu
     sentence is reported, so the count is sentences, not occurrences."""
     if not isinstance(sequence, list) or not sequence or not all(isinstance(c, dict) and c for c in sequence):
         raise ToolError('sequence must be a non-empty list of condition objects, e.g. [{"POS":"v"},{"Gloss":"PL"}]')
-    limit = max(1, min(int(limit or 40), 200))
+    limit = clamp_limit(limit, 40, 200)
     out: List[str] = []
     total = 0
 

@@ -357,9 +357,14 @@ class BaseAssistantService(BaseService):
             if e.applied:
                 self._remember_applied(plan_id)
             settled()
-            response_helper.error(f'The plan failed after {e.applied} of {e.total} changes were applied: {e}. '
-                                  + ('Those changes stand (see recent_changes); the rest were not applied.' if e.applied
-                                     else 'Nothing was written.'))
+            # No fraction: `applied` counts batch calls and `total` counts plan
+            # ops, and one op can be several calls, so the two together read as
+            # "failed after 10 of 3 changes were applied".
+            response_helper.error(
+                f'The plan failed part-way: {e}. '
+                + ('Some of its changes were written before it failed and they stand '
+                   '(see recent_changes); the rest were not applied.' if e.applied
+                   else 'Nothing was written.'))
             return
         except ValueError as e:
             settled()

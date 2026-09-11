@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 from .corpus import DOCS_PER_SEARCH, Corpus, rx
 from .project import Sentence, UdDoc, Word, word_ref
 from .tools import FIELDS, ToolError, Workspace, _truncate
+from ..core.args import clamp_limit
 
 SEARCHABLE = FIELDS + ('form', 'deprel')
 COUNTABLE = ('form', 'lemma', 'upos', 'xpos', 'features', 'deprel')
@@ -73,7 +74,7 @@ def t_search(ws: Workspace, field: str = None, pattern: str = None, document: st
         raise ToolError(f'Unknown field "{field}". One of: ' + ', '.join(SEARCHABLE))
     if not pattern:
         raise ToolError('Give a pattern to search for.')
-    limit = max(1, min(int(limit or 30), 200))
+    limit = clamp_limit(limit, 30, 200)
     import re as _re
     spec = rx(pattern, regex=regex, whole=whole)
     try:
@@ -130,7 +131,7 @@ def t_frequency_list(ws: Workspace, what: str = 'lemma', document: str = None,
     """The commonest values of one column."""
     if what not in COUNTABLE:
         raise ToolError(f'Unknown column "{what}". One of: ' + ', '.join(COUNTABLE))
-    limit = max(1, min(int(limit or 30), 200))
+    limit = clamp_limit(limit, 30, 200)
     if what == 'form' or document:
         # The engine does not know a form (a Form span overrides the token's
         # text), and one document is cheap to read outright.
@@ -173,7 +174,7 @@ def t_check_consistency(ws: Workspace, kind: str = None, limit: int = 25) -> str
     for k in kinds:
         if k not in CONSISTENCY:
             raise ToolError(f'Unknown check "{k}". One of: ' + ', '.join(CONSISTENCY))
-    limit = max(1, min(int(limit or 25), 100))
+    limit = clamp_limit(limit, 25, 100)
     c = _corpus(ws)
     out: List[str] = []
 
@@ -245,7 +246,7 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
     """What is unfinished, by document, so a session has somewhere to start."""
     if kind not in WORKLIST_KINDS:
         raise ToolError(f'Unknown kind "{kind}". One of: ' + ', '.join(WORKLIST_KINDS))
-    limit = max(1, min(int(limit or 20), 100))
+    limit = clamp_limit(limit, 20, 100)
     c = _corpus(ws)
     fields = [field] if field else list(FIELDS)
     for f in fields:
@@ -295,7 +296,9 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
         for f in fields:
             hits = _awaiting_in(doc, f, state)
             if not hits:
-                out.append(f'{f}: none waiting in "{doc.name}".')
+                # No line at all, so the "nothing is waiting" reply below is
+                # reachable. Appending "none waiting" per field made it dead,
+                # and a clean document was told to go and confirm things.
                 continue
             out.append(f'{f}: {len(hits)} {word} value(s) in "{doc.name}"')
             for sent, w in hits[:limit]:
@@ -337,7 +340,7 @@ def t_recent_changes(ws: Workspace, document: str = None, limit: int = 20,
     own applied plans appear here like anyone else's work."""
     import datetime
     import re as _re
-    limit = max(1, min(int(limit or 20), 100))
+    limit = clamp_limit(limit, 20, 100)
     ws.on_progress('Reading the change history…')
     u = (user or '').casefold()
 
@@ -388,7 +391,7 @@ def t_comments(ws: Workspace, document: str = None, ref: str = None, limit: int 
     """What people have written to each other on a sentence or a document.
     These are notes between annotators, never annotation."""
     from .project import Sentence as _S
-    limit = max(1, min(int(limit or 30), 100))
+    limit = clamp_limit(limit, 30, 100)
     doc = ws.doc(document)
     kw = {'document_id': doc.id}
     if ref:

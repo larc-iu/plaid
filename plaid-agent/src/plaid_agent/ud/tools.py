@@ -741,9 +741,9 @@ TOOLS += [
         'What is unfinished. kind "unverified" is machine output nobody has confirmed, '
         '"contributed" a contributor\'s unreviewed work, "missing" words with no value in a '
         'column at all. Without a document it counts per document, so a session has somewhere to '
-        'start. WITH kind "missing" AND a document it names the words themselves, by reference: '
-        'that is the list to plan from, and it saves reading or searching the document to find '
-        'them.',
+        'start. WITH A DOCUMENT it names the words themselves, by reference, whichever kind you '
+        'ask for: that is the list to plan from, and it saves reading or searching the document '
+        'to find them.',
         {'kind': {'type': 'string', 'enum': list(WORKLIST_KINDS)},
          'field': _FIELD, 'document': _DOC,
          'limit': {'type': 'integer', 'description': 'How many rows per column (default 20, '

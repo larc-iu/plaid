@@ -104,9 +104,15 @@ def created_id(r):
 
 
 class PlanError(Exception):
-    """A plan failed part-way. ``applied`` says how many ops had already been
-    committed (each atomic batch commits on its own; the operation label is
-    only an audit grouping)."""
+    """A plan failed part-way.
+
+    ``applied`` is how many WRITES had already been committed when it failed,
+    counted in batch calls: each atomic batch commits on its own, and the
+    operation label is only an audit grouping. One plan op can be several
+    calls, so this is NOT a count of the plan's changes and must never be
+    shown as a fraction of ``total`` (which is ops). What it is good for is
+    the only question that matters here: did anything land.
+    """
 
     def __init__(self, message: str, applied: int, total: int):
         super().__init__(message)

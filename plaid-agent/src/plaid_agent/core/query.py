@@ -14,6 +14,8 @@ examples.
 
 import json
 import re
+
+from .args import clamp_limit
 from typing import Any, Callable, Dict, List, Optional
 
 UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
@@ -135,13 +137,11 @@ def run(client, q: Dict[str, Any], project_id: str) -> Dict[str, Any]:
     if not isinstance(ret, dict) and ret != 'count':
         q['return'] = ret or 'entities'
         # The model writes this object, so the limit inside it is as likely to
-        # be "20 or so" as a number. Every other refusal here is a sentence it
-        # can act on, and int() raising would be the one that is not.
-        raw = q.get('limit')
+        # be "20 or so" as a number.
         try:
-            q['limit'] = min(int(raw or 1000), 1000) if raw is not None else 1000
-        except (TypeError, ValueError):
-            raise QueryRefused(f'"limit" has to be a number, not {raw!r}.')
+            q['limit'] = clamp_limit(q.get('limit'), 1000, 1000)
+        except ValueError as e:
+            raise QueryRefused(str(e)) from None
     try:
         return client.query(q)
     except Exception as e:  # noqa: BLE001 - the engine's complaint is the answer

@@ -61,6 +61,31 @@ describe('useServiceParams', () => {
     await unmount();
   });
 
+  it('keeps a ticked destructive opt-in across a late re-seed', async () => {
+    // The re-seed exists for the late-arriving project, which is a moment the
+    // user may already have spent ticking Overwrite. `seed()` never restores
+    // those from the cache, on purpose, so a re-seed used to clear the tick
+    // with no feedback: the user asked to replace human work and the run
+    // quietly did not.
+    // In memory, so nothing is cached: a cached value outranks a seed by
+    // design, which would otherwise hide whether the re-seed ran at all.
+    const { params, step, again, unmount } = await mount({});
+    await step(async () => params().setParam('overwrite', true));
+    expect(params().values.overwrite).toBe(true);
+
+    await again({ seedParams: { language: 'es' } });
+    expect(params().values.language).toBe('es'); // the re-seed really happened
+    expect(params().values.overwrite).toBe(true); // and it kept the tick
+    await unmount();
+  });
+
+  it('still starts a fresh form with the destructive opt-in off', async () => {
+    localStorage.setItem('k', JSON.stringify({ overwrite: true }));
+    const { params, unmount } = await mount({ storageKey: 'k' });
+    expect(params().values.overwrite).toBe(false);
+    await unmount();
+  });
+
   it('does not re-seed when the same values arrive as a new object', async () => {
     const { params, step, again, unmount } = await mount({
       storageKey: 'k',

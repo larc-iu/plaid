@@ -86,8 +86,28 @@ export function useServiceParams({ schema, storageKey, seedParams = null, defaul
     [storageKey, seedSignature, defaultSignature],
   );
 
+  // A re-seed replaces the form, and `seed()` deliberately does not restore a
+  // destructive opt-in from the cache. On the FIRST seed that is the point.
+  // On a LATER one it is not: the caller re-seeds because its project data
+  // finally arrived, which is a moment the user may already have spent
+  // ticking Overwrite, and clearing that tick without saying so turns a "yes,
+  // replace the human work" into a silent no. So a later re-seed keeps what
+  // is on screen for those, and only those.
+  const seeded = useRef(false);
   useEffect(() => {
-    setValues(schema.length ? seed() : {});
+    if (!schema.length) {
+      setValues({});
+      seeded.current = false;
+      return;
+    }
+    const next = seed();
+    if (seeded.current) {
+      for (const k of NON_PERSISTENT_PARAMS) {
+        if (k in valuesRef.current) next[k] = valuesRef.current[k];
+      }
+    }
+    seeded.current = true;
+    setValues(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seed]);
 
