@@ -7,8 +7,8 @@ import { Textarea } from '@ui/components/ui/textarea';
 import { Badge } from '@ui/components/ui/badge';
 import { cn } from '@ui/lib/utils';
 import { notifyError, humanizeError } from '@/utils/feedback';
-import { AssistantMarkdown } from './AssistantMarkdown.jsx';
-import { rewindForRetry } from './resume.js';
+import { AssistantMarkdown } from '@ui/components/assistant/AssistantMarkdown.jsx';
+import { rewindForRetry } from '@ui/components/assistant/resume.js';
 import { AssistantPicker, ConversationRow, ExportMenu } from './ConversationList.jsx';
 import { Turn } from './Turn.jsx';
 import {

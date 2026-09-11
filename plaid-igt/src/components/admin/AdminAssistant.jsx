@@ -7,7 +7,7 @@ import { DataTable } from '@ui/components/ui/data-table';
 import { UserAvatar } from '@ui/components/shared/UserAvatar';
 import { timeAgo, fullTimestamp } from '@ui/utils/formatTime';
 import { notifyError, humanizeError } from '@/utils/feedback';
-import { AssistantMarkdown } from '../projects/assistant/AssistantMarkdown.jsx';
+import { AssistantMarkdown } from '@ui/components/assistant/AssistantMarkdown.jsx';
 import { conversationToMarkdown } from '../projects/assistant/exportMarkdown.js';
 
 // Every assistant conversation on the instance. A conversation is private to

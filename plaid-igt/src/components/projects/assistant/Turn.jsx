@@ -1,7 +1,7 @@
 import { Fragment, useLayoutEffect, useRef, useState } from 'react';
 import { Bot, ChevronDown, ChevronRight, Wrench, ExternalLink } from 'lucide-react';
 import { cn } from '@ui/lib/utils';
-import { AssistantMarkdown } from './AssistantMarkdown.jsx';
+import { AssistantMarkdown } from '@ui/components/assistant/AssistantMarkdown.jsx';
 import {
   centeredScrollLeft,
   citationHighlights,
