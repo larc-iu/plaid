@@ -86,6 +86,10 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
         field = f' ({a["field"]})' if a.get('field') else ''
         scope = plural(count(a), 'word') if a.get('refs') else 'everything awaiting review'
         return f'Planned confirming {scope}{field}{in_doc(a)}'
+    if name == 'run_parse':
+        n = count(a, 'documents')
+        over = ', overwriting human work' if a.get('overwrite') else ''
+        return f'Planned re-parsing {plural(n, "document")}{over}'
     if name == 'discard_predictions':
         scope = plural(count(a), 'word') if a.get('refs') else 'every unconfirmed machine value'
         return f'Planned discarding {scope}{in_doc(a)}'
@@ -112,6 +116,7 @@ _PROGRESS = {
     'worklist': lambda a: f'Listing {a.get("kind") or "unfinished"} work…',
     'recent_changes': lambda a: 'Reading the change history…',
     'comments': lambda a: 'Reading the comments…',
+    'run_parse': lambda a: 'Checking the parser…',
     'plan_status': lambda a: 'Reviewing the plan…',
     'web_search': lambda a: f'Searching the web for "{a.get("query", "")}"…',
     'read_url': lambda a: f'Reading {a.get("url", "")}…',

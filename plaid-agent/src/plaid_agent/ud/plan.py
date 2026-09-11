@@ -15,13 +15,19 @@ from typing import Any, Dict, List, Optional
 
 from ..core.plan import CONFIRM, PlanError, Stamps, TrackingBatcher, created_id
 
-KINDS = ('set_span', 'set_head', 'del_relation', 'confirm')
+KINDS = ('set_span', 'set_head', 'del_relation', 'confirm', 'run_parse')
+
+# How long the parser may say nothing before the plan gives up on it. This
+# measures SILENCE, not elapsed time: the parser reports progress as it goes,
+# so a long document does not trip it and a parser that has died does.
+PARSE_SILENCE_S = 10 * 60
 
 REQUIRED = {
     'set_span': ('layer_id', 'token_id'),
     'set_head': ('word_id', 'head_id', 'lemma_layer_id', 'relation_layer_id', 'deprel'),
     'del_relation': ('relation_id',),
     'confirm': (),
+    'run_parse': ('document_ids', 'service_id', 'project_id', 'language'),
 }
 
 
@@ -36,6 +42,16 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
                 raise ValueError(f'op {i} ({kind}): missing {key}')
         if kind == 'confirm' and not (op.get('span_id') or op.get('relation_id')):
             raise ValueError(f'op {i} (confirm): needs a span_id or a relation_id')
+    # A parse rewrites a document from scratch, so anything else this plan
+    # writes into the same document would be thrown away by it. The tools
+    # refuse the combination as it is built; this is the backstop, because a
+    # plan that silently lost half its changes is the worst outcome here.
+    parsed = {d for op in ops if op.get('kind') == 'run_parse' for d in (op.get('document_ids') or [])}
+    if parsed:
+        clash = {op.get('document_id') for op in ops if op.get('kind') != 'run_parse'} & parsed
+        if clash:
+            raise ValueError('this plan both parses and edits ' + ', '.join(sorted(clash))
+                             + ', and a parse would throw the edits away')
 
 
 def normalize_ops(ops: List[Dict[str, Any]]):
@@ -158,6 +174,17 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps) -> Dict[str, 
                 counts['dependencies'] += 1
         b.flush()
 
+        # --- pass 3: the parser ---
+        # Last, and outside the batches, because it is not a write of ours at
+        # all: it is another service rewriting whole documents, under its own
+        # document lock, for as long as that takes.
+        for op in ops:
+            if op.get('kind') != 'run_parse':
+                continue
+            for did in op['document_ids']:
+                _parse(client, op, did, notes)
+                counts['parsed documents'] += 1
+
     result = dict(counts)
     if notes:
         result['notes'] = notes
@@ -179,7 +206,27 @@ def summarize(ops: List[Dict[str, Any]]) -> str:
             c['removed dependency'] += 1
         elif kind == 'confirm':
             c['confirmation'] += 1
+        elif kind == 'run_parse':
+            c['parsed document'] += len(op.get('document_ids') or [])
     if not c:
         return 'no changes'
     parts = [f'{n} {name}' + ('s' if n != 1 else '') for name, n in c.most_common()]
     return ', '.join(parts)
+
+
+def _parse(client, op, document_id: str, notes: List[str]) -> None:
+    """Ask the project's parser to re-parse one document, and wait."""
+    from plaid_client.services import request_service
+    from ..core.plan import PlanError
+    try:
+        request_service(client, op['project_id'], op['service_id'],
+                        {'document_id': document_id, 'language': op['language'],
+                         'overwrite': bool(op.get('overwrite'))},
+                        timeout=PARSE_SILENCE_S)
+    except TimeoutError:
+        # The request outlives the call: the parse is probably still running,
+        # so saying it failed would be worse than saying what is true.
+        notes.append(f'the parser stopped reporting on {document_id}; it may still be running')
+    except Exception as e:  # noqa: BLE001 - whatever the service said, the user needs it
+        raise PlanError(f'the parser refused {document_id}: {e}', 0, 1) from e
+

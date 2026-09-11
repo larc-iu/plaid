@@ -162,7 +162,8 @@ def test_the_payload_carries_the_document_version_it_was_read_at(ws):
 
 def test_every_declared_tool_is_a_plan_tool_or_is_not(ws):
     names = {t['function']['name'] for t in TOOLS}
-    assert WRITE_TOOLS == {'set_field', 'set_head', 'del_relation', 'confirm', 'discard_predictions'}
+    assert WRITE_TOOLS == {'set_field', 'set_head', 'del_relation', 'confirm',
+                           'discard_predictions', 'run_parse'}
     assert 'read_document' in names and 'read_document' not in WRITE_TOOLS
 
 
@@ -252,3 +253,80 @@ def test_search_refuses_a_column_it_cannot_search(ws):
 def test_search_refuses_a_broken_regular_expression(ws):
     out = call_tool(ws, 'search', {'field': 'lemma', 'pattern': '[', 'regex': True})
     assert 'not a valid regular expression' in out
+
+
+# --- run_parse -------------------------------------------------------------------
+
+def _parsers(*ids):
+    return [{'service_id': i, 'service_name': i.title(), 'online': True, 'tasks': ['parse']}
+            for i in ids]
+
+
+def test_run_parse_refuses_when_no_parser_is_connected(ws, monkeypatch):
+    monkeypatch.setattr('plaid_agent.ud.tools.parse_services', lambda w: [])
+    out = call_tool(ws, 'run_parse', {'documents': ['Viaje']})
+    assert 'No parser is connected' in out and not ws.ops
+
+
+def test_run_parse_asks_which_parser_when_there_are_several(ws, monkeypatch):
+    monkeypatch.setattr('plaid_agent.ud.tools.parse_services', lambda w: _parsers('a', 'b'))
+    assert 'name one in service_id' in call_tool(ws, 'run_parse', {'documents': ['Viaje']})
+
+
+def test_run_parse_plans_the_whole_document(ws, monkeypatch):
+    monkeypatch.setattr('plaid_agent.ud.tools.parse_services', lambda w: _parsers('stanza-parser'))
+    out = call_tool(ws, 'run_parse', {'documents': ['Viaje']})
+    assert 'Planned a parse of 1 document(s)' in out
+    assert 'left alone' in out            # overwrite defaults off
+    op = ws.ops[0]
+    assert op['kind'] == 'run_parse' and op['document_ids'] == ['ud1']
+    assert op['language'] == 'es'         # the project's own language
+    assert op['service_id'] == 'stanza-parser' and op['project_id'] == PID
+
+
+def test_a_parse_and_an_edit_of_the_same_document_cannot_share_a_plan(ws, monkeypatch):
+    """A parse rewrites the document, so the edit would be thrown away. Both
+    orders are refused, and validate_ops is the backstop for either."""
+    monkeypatch.setattr('plaid_agent.ud.tools.parse_services', lambda w: _parsers('stanza-parser'))
+    call_tool(ws, 'set_field', {'document': 'Viaje', 'refs': ['s2.w1'], 'field': 'lemma',
+                                'value': 'correr'})
+    assert 'would be thrown away' in call_tool(ws, 'run_parse', {'documents': ['Viaje']})
+    assert len(ws.ops) == 1
+
+    ws.ops.clear()
+    call_tool(ws, 'run_parse', {'documents': ['Viaje']})
+    assert 'would be thrown away' in call_tool(ws, 'set_field', {
+        'document': 'Viaje', 'refs': ['s2.w1'], 'field': 'lemma', 'value': 'correr'})
+    assert len(ws.ops) == 1
+
+
+def test_a_parse_without_a_language_anywhere_says_so(ws, monkeypatch):
+    monkeypatch.setattr('plaid_agent.ud.tools.parse_services', lambda w: _parsers('stanza-parser'))
+    ws.project.language = ''
+    assert 'Give language' in call_tool(ws, 'run_parse', {'documents': ['Viaje']})
+
+
+def test_applying_a_parse_asks_the_service_and_counts_it(ws, monkeypatch):
+    monkeypatch.setattr('plaid_agent.ud.tools.parse_services', lambda w: _parsers('stanza-parser'))
+    call_tool(ws, 'run_parse', {'documents': ['Viaje'], 'language': 'es'})
+    asked = []
+    monkeypatch.setattr('plaid_client.services.request_service',
+                        lambda c, pid, sid, data, **kw: asked.append((pid, sid, data, kw)))
+    counts = execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified')
+    assert counts == {'parsed documents': 1}
+    pid, sid, data, kw = asked[0]
+    assert (pid, sid) == (PID, 'stanza-parser')
+    assert data == {'document_id': 'ud1', 'language': 'es', 'overwrite': False}
+    assert kw['timeout'] == 600          # silence, not elapsed time
+
+
+def test_a_parser_that_goes_quiet_is_reported_as_maybe_still_running(ws, monkeypatch):
+    monkeypatch.setattr('plaid_agent.ud.tools.parse_services', lambda w: _parsers('stanza-parser'))
+    call_tool(ws, 'run_parse', {'documents': ['Viaje'], 'language': 'es'})
+
+    def timeout(*a, **k):
+        raise TimeoutError()
+
+    monkeypatch.setattr('plaid_client.services.request_service', timeout)
+    counts = execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified')
+    assert counts['notes'] == ['the parser stopped reporting on ud1; it may still be running']

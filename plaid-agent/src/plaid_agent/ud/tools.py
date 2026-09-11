@@ -213,9 +213,20 @@ def t_read_document(ws: Workspace, document: str = None, from_sentence: int = No
 
 # --- planning helpers ----------------------------------------------------------
 
+def _no_parse_planned(ws: Workspace, doc: UdDoc) -> None:
+    """A parse rewrites a document from scratch, so nothing else in the same
+    plan may write into it: whichever was planned first, the other is lost."""
+    for op in ws.ops:
+        if op.get('kind') == 'run_parse' and doc.id in (op.get('document_ids') or []):
+            raise ToolError(f'This plan already parses "{doc.name}", and a parse rewrites the '
+                            f'document from scratch, so this change would be thrown away. Plan '
+                            f'the parse on its own, or drop it first (plan_status, drop_planned).')
+
+
 def _words(ws: Workspace, doc: UdDoc, refs) -> List[Word]:
     """The words a list of references names, with a readable failure when one
     of them names a sentence or a multi-word token instead."""
+    _no_parse_planned(ws, doc)
     if isinstance(refs, str):
         refs = [refs]
     if not refs:
@@ -504,6 +515,18 @@ TOOLS = [
         {'document': _DOC, 'refs': _REFS,
          'field': {'type': 'string', 'enum': list(FIELDS) + ['deprel']}},
         ['document']),
+    _fn('run_parse',
+        'PLAN: have the project\'s parser re-parse whole documents. This REWRITES each document '
+        'from scratch (tokens, columns and tree), so it cannot share a plan with any other change '
+        'to the same document, and it is the right tool only when a document should be parsed '
+        'afresh, never for fixing particular words. overwrite=false leaves sentences a person made '
+        'or confirmed alone.',
+        {'documents': {'type': 'array', 'items': {'type': 'string'},
+                       'description': 'Document ids or exact names.'},
+         'language': {'type': 'string', 'description': 'Defaults to the project\'s own language.'},
+         'overwrite': {'type': 'boolean'},
+         'service_id': {'type': 'string', 'description': 'Only when several parsers are connected.'}},
+        ['documents']),
     _fn('plan_status', 'Every change planned so far in this turn, numbered.', {}, []),
     _fn('discard_plan', 'Throw away everything planned so far and start the plan over.', {}, []),
     _fn('drop_planned', 'Drop some of the planned changes by their numbers from plan_status.',
@@ -634,3 +657,70 @@ def call_tool(ws: Workspace, name: str, args: Dict[str, Any]) -> str:
         import traceback
         traceback.print_exc()
         return f'Error: {type(e).__name__}: {e}'
+
+
+# --- running the parser ----------------------------------------------------------
+# The odd one out among the plan ops: it does not write anything itself, it
+# asks another service to. It is a plan op all the same, because a parse
+# rewrites documents and that is exactly the kind of thing a user should be
+# approving rather than discovering.
+
+def parse_services(ws: Workspace) -> List[dict]:
+    """The parse services currently connected to this project."""
+    from plaid_client.services import discover_services
+    try:
+        seen = discover_services(ws.client, ws.project.id) or []
+    except Exception as e:  # noqa: BLE001 - the model reads the server's complaint
+        raise ToolError(f'The project\'s services could not be read: {e}')
+    return [s for s in seen if s.get('online') and 'parse' in (s.get('tasks') or [])]
+
+
+def t_run_parse(ws: Workspace, documents=None, language: str = None,
+                overwrite: bool = False, service_id: str = None) -> str:
+    if isinstance(documents, str):
+        documents = [documents]
+    if not documents:
+        raise ToolError('Name the documents to parse, as a list.')
+    online = parse_services(ws)
+    if not online:
+        raise ToolError('No parser is connected to this project right now. A parse cannot be '
+                        'planned until the operator starts one.')
+    if service_id:
+        chosen = next((s for s in online if s.get('service_id') == service_id), None)
+        if not chosen:
+            raise ToolError(f'No connected parser "{service_id}". Connected: '
+                            + ', '.join(s.get('service_id') for s in online))
+    elif len(online) > 1:
+        raise ToolError('Several parsers are connected; name one in service_id: '
+                        + ', '.join(f'{s.get("service_id")} ({s.get("service_name")})' for s in online))
+    else:
+        chosen = online[0]
+
+    ids = [ws.resolve_document_id(d) for d in documents]
+    # A parse deletes and recreates a document's tokens, spans and relations.
+    # Anything else this plan writes into the same document would be thrown
+    # away by it, so the two cannot travel together.
+    clash = {op.get('document_id') for op in ws.ops} & set(ids)
+    if clash:
+        names = ', '.join(f'"{ws.doc(i).name}"' for i in clash)
+        raise ToolError(f'This plan already changes {names}, and a parse rewrites a document from '
+                        f'scratch, so those changes would be thrown away. Plan the parse on its own, '
+                        f'or drop the other changes first (plan_status, drop_planned).')
+    lang = (language or ws.project.language or '').strip()
+    if not lang:
+        raise ToolError('Give language: the project does not record one, and the parser needs to '
+                        'know which models to load.')
+    names = [ws.doc(i).name for i in ids]
+    ws.add_op({'kind': 'run_parse', 'document_ids': ids, 'service_id': chosen.get('service_id'),
+               'project_id': ws.project.id, 'language': lang, 'overwrite': bool(overwrite),
+               'label': (f'parse {len(ids)} document(s) with {chosen.get("service_name")} ({lang})'
+                         + (', overwriting human work' if overwrite else '')),
+               'ref': None})
+    warn = (' It will overwrite annotations a person made or confirmed.' if overwrite
+            else ' Sentences a person made or confirmed are left alone.')
+    return (f'Planned a parse of {len(ids)} document(s) with {chosen.get("service_name")} '
+            f'in {lang}: ' + ', '.join(f'"{n}"' for n in names) + '.' + warn
+            + ' A parse rewrites a document, so it is the only kind of change in this plan.')
+
+
+_IMPL['run_parse'] = t_run_parse
