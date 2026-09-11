@@ -15,7 +15,7 @@ import { html, svg, nothing } from 'lit-html';
 import { repeat } from 'lit-html/directives/repeat.js';
 import { ThreadIslandBase } from './ThreadIslandBase.js';
 import { timeAgo } from '@ui/utils/formatTime';
-import { plainText } from '@/domain/commentThreads';
+import { plainText } from '@ui/domain/commentThreads';
 import './comments-island.css';
 
 const SNIPPET = 140;
@@ -26,7 +26,7 @@ export class CommentsIsland extends ThreadIslandBase {
   /**
    * @param {HTMLElement} host
    * @param {object} opts
-   * @param {import('@/domain/CommentStore').CommentStore} opts.store
+   * @param {import('@ui/domain/CommentStore').CommentStore} opts.store
    * @param {Function} [opts.onJumpTo]  called with a thread's `anchor.jumpId`
    *   when its heading is activated (a sentence, or an entry).
    * @param {string} [opts.jumpTitle]  the tooltip on a heading that navigates.

@@ -169,47 +169,11 @@ export function buildEntryAnchorIndex(items, { glossField = 'gloss' } = {}) {
   return index;
 }
 
-// The heading for an anchor that no longer exists, by what it was.
-const GONE = {
-  document: 'This document',
-  text: 'Baseline text',
-  token: 'Deleted word',
-  span: 'Deleted annotation',
-  relation: 'Deleted relation',
-  'vocab-item': 'Deleted entry',
-};
-
 /**
- * Describe one anchor. When the entity is gone the descriptor is OUTDATED:
- * the comment outlived what it was about (a merge, a re-segmentation, a typo
- * fix that recreated the word, a deleted entry), and `anchorLabel`, the
- * caption it was posted with, is the honest heading. Nothing is offered to
- * jump to.
+ * `describeAnchor` and `anchorCaption` moved to plaid-ui: they turn a
+ * descriptor into words and decide whether the thing it named is still there,
+ * and neither depends on what an app's document looks like. The two builders
+ * above do, which is why they stayed. Re-exported so this file is still the one
+ * place this app asks about an anchor.
  */
-export function describeAnchor(index, entityType, entityId, anchorLabel = null) {
-  const found = index.get(entityId);
-  if (found) return found;
-  const caption = String(anchorLabel ?? '').trim();
-  return {
-    kind: 'outdated',
-    outdated: true,
-    label: caption || GONE[entityType] || 'Deleted',
-    detail: '',
-    sentenceIndex: null,
-    sentenceId: null,
-    jumpId: null,
-  };
-}
-
-/**
- * The caption to post a comment with: the descriptor's words, so an outdated
- * comment later reads the way its thread heading did. A sentence, the
- * document, and the text are their own label; anything inside a sentence
- * says where it sat.
- */
-export function anchorCaption(descriptor) {
-  if (!descriptor) return null;
-  const { kind, label, detail } = descriptor;
-  const place = ['word', 'morpheme', 'annotation', 'entry'].includes(kind) && detail;
-  return place ? `${label}, ${detail}` : label || null;
-}
+export { describeAnchor, anchorCaption } from '@ui/domain/commentAnchors';

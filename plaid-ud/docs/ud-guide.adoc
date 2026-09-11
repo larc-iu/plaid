@@ -306,6 +306,22 @@ A closed list is enforced where a person types: the annotation cells and the Gre
 Each value can carry a one-line definition, shown beside it while picking one. The 17 UPOS tags and the 37 universal relations ship with theirs; edit any of them, or describe your own values, under the list. A definition you change is stored with the project, so a value you never touched follows the app.
 * **General**: the project's **language**, the **tokenizer locale** used by **Tokenize**, and project deletion. The language is a BCP-47 tag such as `en`, `de` or `zh-Hans`. It is the language a connected parser starts on, and the locale **Tokenize** segments with unless the tokenizer locale is set to something more specific.
 
+== Comments
+
+A document has a **Comments** tab: every thread on it, the document's own first, then one per sentence.
+
+Comments are for talking about the work, not annotating it. They are not part of the data: they never change a document, they do not appear in an export, and they are not in its history.
+
+Where they can be attached is deliberately limited to a **sentence** and the **document**. There are no per-word threads, and a note about one word belongs in the sentence's thread where the context is.
+
+From the **Annotate** view, each sentence carries a small badge under its grid: the number of comments on it, or an invitation to write the first. It opens the thread in place, so a remark can be made without leaving the text.
+
+A thread is collapsed to its latest comment, and opens on click. Bodies are Markdown. You may edit and delete your own; a maintainer may delete anyone's. Readers can read comments but not write them.
+
+A comment **outlives what it is about**. If the sentence it hangs on is merged away or re-segmented, the comment stays, marked **Outdated**, under the caption it was posted with. Those are shown separately from the current ones.
+
+While a thread is open, comments from other people appear as they are written.
+
 == Validation
 
 Maintainers get a **Validation** tab: every value the project has stored that its own vocabularies do not list, with how many times it occurs.

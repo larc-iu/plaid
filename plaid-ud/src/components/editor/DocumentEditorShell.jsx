@@ -1,9 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { useConlluDocument } from '../../domain/useConlluDocument.js';
 import { DocumentTabs } from './DocumentTabs.jsx';
+import { CommentStore } from '@ui/domain/CommentStore';
+import { useCommentStore } from '@ui/domain/useCommentStore';
+import { canEditProject, canManageProject } from '../../utils/permissions.js';
 
 // Parent route of the four document tabs (/edit, /annotate, /export, /details).
 // It owns the project + ConlluDocument load and renders the breadcrumbs and the
@@ -35,6 +38,26 @@ export const DocumentEditorShell = () => {
   // overlaying it. The chrome lives up here now, so it has to move too — the
   // child publishes the offset through the outlet context.
   const [chromeOffset, setChromeOffset] = useState(0);
+
+  // One comment store per document, shared by every tab through the outlet, so
+  // the Comments tab and the grid's badges read the same instance rather than
+  // each loading the thread list.
+  //
+  // Comments are SOCIAL data, not annotation data: the store is separate from
+  // ConlluDocument on purpose, never bumps the document version, and is
+  // deliberately absent from the document read.
+  const comments = useMemo(
+    () =>
+      documentId && user?.id
+        ? new CommentStore({ client: getClient(), projectId, documentId, currentUserId: user.id })
+        : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projectId, documentId, user?.id],
+  );
+  useCommentStore(comments);
+  useEffect(() => {
+    comments?.load();
+  }, [comments]);
   // The tab strip is chrome, so it survives a tab switch — but it must not be
   // clickable while the body is repairing the document (see DocumentTabs). The
   // child raises this the same way it publishes its offset.
@@ -165,6 +188,9 @@ export const DocumentEditorShell = () => {
             doc,
             project,
             reload,
+            comments,
+            canComment: canEditProject(project, user),
+            canDeleteAnyComment: canManageProject(project, user),
             setChromeOffset,
             setChromeBusy,
           }}

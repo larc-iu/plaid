@@ -3,10 +3,15 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '@/domain/useIgtDocument';
 import { buildAnchorIndex } from '@/domain/commentAnchors';
-import { CommentsBrowser } from './CommentsBrowser.jsx';
+import { CommentsBrowser } from '@ui/components/shared/CommentsBrowser';
 
 // The document's Comments tab: every thread in the document, described by the
 // shared IgtDocument, with the document's own thread pinned first.
+//
+// The browser is plaid-ui's, shared with plaid-ud. Its threads render in REACT;
+// the lit-html thread under island/ stays, because that one mounts inside the
+// interlinear editor where React cannot go. Two renderings, one store, and
+// both read their rules (who may edit, who may delete) off it.
 export const CommentsTab = () => {
   const { doc, comments, canWrite, canManage } = useDocumentCtx();
   const { projectId, documentId } = useParams();

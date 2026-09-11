@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { CommentsIsland } from './CommentsIsland.js';
-import { CommentStore } from '@/domain/CommentStore';
-import { threadList } from '@/domain/commentThreads';
+import { CommentStore } from '@ui/domain/CommentStore';
+import { threadList } from '@ui/domain/commentThreads';
 
 const ME = 'me@example.com';
 

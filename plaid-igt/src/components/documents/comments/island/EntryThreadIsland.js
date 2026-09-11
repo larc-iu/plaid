@@ -12,7 +12,7 @@ export class EntryThreadIsland extends ThreadIslandBase {
   /**
    * @param {HTMLElement} host
    * @param {object} opts
-   * @param {import('@/domain/CommentStore').CommentStore} opts.store  the vocabulary's store
+   * @param {import('@ui/domain/CommentStore').CommentStore} opts.store  the vocabulary's store
    * @param {string} opts.entityId  the entry
    * @param {string|null} [opts.caption]  what a new comment is posted as being about
    */

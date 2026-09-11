@@ -11,7 +11,9 @@ export const DocumentTabs = ({ projectId, documentId, project, document, disable
       ? 'export'
       : currentPath.includes('/details')
         ? 'details'
-        : 'edit';
+        : currentPath.includes('/comments')
+          ? 'comments'
+          : 'edit';
   const base = `/projects/${projectId}/documents/${documentId}`;
 
   const routes = {
@@ -19,6 +21,7 @@ export const DocumentTabs = ({ projectId, documentId, project, document, disable
     annotate: `${base}/annotate`,
     export: `${base}/export`,
     details: `${base}/details`,
+    comments: `${base}/comments`,
   };
 
   // A tab is a real anchor, so middle-click and cmd-click open it in a new
@@ -58,6 +61,9 @@ export const DocumentTabs = ({ projectId, documentId, project, document, disable
           </TabsTrigger>
           <TabsTrigger value="export" {...target('export')}>
             Export
+          </TabsTrigger>
+          <TabsTrigger value="comments" {...target('comments')}>
+            Comments
           </TabsTrigger>
           <TabsTrigger value="details" {...target('details')}>
             Details

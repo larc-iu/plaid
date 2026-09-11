@@ -24,8 +24,8 @@ import { lazyNamed } from '@ui/lib/lazyNamed';
 // conversion) and the Comments tab ride in their own chunks.
 const DocumentMedia = lazyNamed(() => import('./media/DocumentMedia.jsx'), 'DocumentMedia');
 const CommentsTab = lazyNamed(() => import('./comments/CommentsTab.jsx'), 'CommentsTab');
-import { CommentStore } from '@/domain/CommentStore';
-import { useCommentStore } from '@/domain/useCommentStore';
+import { CommentStore } from '@ui/domain/CommentStore';
+import { useCommentStore } from '@ui/domain/useCommentStore';
 import { useDocumentPermissions } from './hooks/useDocumentPermissions.js';
 import { useWriteLock } from './hooks/useWriteLock.js';
 import { useResumedRun } from './hooks/useResumedRun.js';

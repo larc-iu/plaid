@@ -12,6 +12,10 @@ export const VirtualSentenceRow = ({
   onDiscardTokens,
   onSentenceMetadata,
   onEditText,
+  comments,
+  commentAnchorLabel,
+  canComment,
+  canDeleteAnyComment,
   validators,
   descriptions,
   sentenceFields,
@@ -94,6 +98,10 @@ export const VirtualSentenceRow = ({
         onDiscardTokens={onDiscardTokens}
         onSentenceMetadata={onSentenceMetadata}
         onEditText={onEditText}
+        comments={comments}
+        commentAnchorLabel={commentAnchorLabel}
+        canComment={canComment}
+        canDeleteAnyComment={canDeleteAnyComment}
         validators={validators}
         descriptions={descriptions}
         sentenceFields={sentenceFields}

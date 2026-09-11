@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CommentsBrowser } from '@/components/documents/comments/CommentsBrowser.jsx';
+import { CommentsBrowser } from '@ui/components/shared/CommentsBrowser';
 import { buildEntryAnchorIndex } from '@/domain/commentAnchors';
 import { notifyError } from '@/utils/feedback';
 

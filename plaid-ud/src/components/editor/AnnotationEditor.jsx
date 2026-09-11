@@ -19,6 +19,7 @@ import { canEditProject, canManageProject } from '../../utils/permissions.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { readMetadataFields } from '../../utils/udMetadata.js';
 import { makeValidators } from '../../utils/udVocabMode.js';
+import { buildAnchorIndex, anchorCaption } from '../../domain/commentAnchors.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 // Document-wide annotation-row expansion. FEATS defaults to collapsed because its
@@ -98,8 +99,18 @@ export const AnnotationEditor = () => {
   // Project, document, the breadcrumbs/tab strip and the version-counter
   // subscription all come from DocumentEditorShell, which guarantees both the
   // project and the document are loaded before this renders.
-  const { projectId, documentId, doc, project, reload, setChromeOffset, setChromeBusy } =
-    useDocumentEditor();
+  const {
+    projectId,
+    documentId,
+    doc,
+    project,
+    reload,
+    comments,
+    canComment,
+    canDeleteAnyComment,
+    setChromeOffset,
+    setChromeBusy,
+  } = useDocumentEditor();
   // Deep link from the search page: ?sent=<sentenceTokenId> scrolls to and
   // briefly highlights that sentence once the grid is rendered.
   const [searchParams] = useSearchParams();
@@ -342,6 +353,13 @@ export const AnnotationEditor = () => {
   // memoized cell subtree does not churn. Open vocabularies yield a validator
   // that always allows, which is the normal case.
   const validators = useMemo(() => makeValidators(layerInfo), [layerInfo]);
+
+  // A sentence's comment badge needs the words its thread is captioned with,
+  // and those come from the same anchor index the Comments tab uses. Keyed on
+  // the document's DATA version, like every other derived cache here.
+  const dataVersion = doc?.dataVersion ?? 0;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const anchors = useMemo(() => buildAnchorIndex(doc), [doc, dataVersion]);
 
   const sentenceFields = useMemo(
     () => readMetadataFields(project?.config, 'sentence'),
@@ -598,6 +616,10 @@ export const AnnotationEditor = () => {
                         onSentenceMetadata={readOnly ? null : handleSentenceMetadata}
                         onEditText={viewingHistoricalState ? null : handleEditText}
                         validators={validators}
+                        comments={viewingHistoricalState ? null : comments}
+                        commentAnchorLabel={anchorCaption(anchors.get(sentenceData.id))}
+                        canComment={canComment}
+                        canDeleteAnyComment={canDeleteAnyComment}
                         descriptions={layerInfo?.descriptions}
                         sentenceFields={sentenceFields}
                         reviewable={doc?.writer.reviewable}

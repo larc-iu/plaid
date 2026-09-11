@@ -15,6 +15,7 @@ import {
   provMark,
 } from '../../../utils/provenanceUi.js';
 import { MetadataFields } from '../../common/MetadataFields.jsx';
+import { SentenceComments } from './SentenceComments.jsx';
 import { metadataRows } from '../../../utils/udMetadata.js';
 import './SentenceRow.css';
 
@@ -960,6 +961,10 @@ export const SentenceRow = React.memo(
     onDiscardTokens,
     onSentenceMetadata,
     onEditText,
+    comments,
+    commentAnchorLabel,
+    canComment,
+    canDeleteAnyComment,
     validators,
     descriptions,
     sentenceFields = EMPTY_FIELDS,
@@ -1313,7 +1318,7 @@ export const SentenceRow = React.memo(
           with the first token, so they read as belonging to this sentence.
           Accept takes everything proposed, Discard throws the machine's
           proposals away, and each shows only when it has something to do. */}
-        {(handleEditText || (!isReadOnly && (hasInferred || hasMachine))) && (
+        {(handleEditText || comments || (!isReadOnly && (hasInferred || hasMachine))) && (
           <div className="sentence-confirm">
             {!isReadOnly && onConfirmTokens && hasInferred && (
               <Button
@@ -1347,6 +1352,15 @@ export const SentenceRow = React.memo(
                 <PenLine width={12} height={12} />
                 Edit text
               </Button>
+            )}
+            {comments && sentenceToken?.id && (
+              <SentenceComments
+                store={comments}
+                sentenceId={sentenceToken.id}
+                anchorLabel={commentAnchorLabel}
+                canWrite={canComment}
+                canDeleteAny={canDeleteAnyComment}
+              />
             )}
           </div>
         )}

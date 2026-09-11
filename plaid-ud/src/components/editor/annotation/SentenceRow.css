@@ -403,3 +403,38 @@
   margin-top: 4px;
   margin-left: 14px;
 }
+
+/* The sentence's comment badge, in its button row. Quiet when the sentence has
+   no comments and loud enough to find when it does: a count is information,
+   an empty "+" is an invitation, and an invitation should not shout. */
+.sentence-comments {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #6b7280;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.55;
+  transition:
+    opacity 120ms ease,
+    background-color 120ms ease,
+    color 120ms ease;
+}
+.sentence-comments:hover {
+  opacity: 1;
+  background-color: #f3f4f6;
+  color: #111827;
+}
+.sentence-comments--has {
+  opacity: 1;
+  color: #2563eb;
+}
+.sentence-comments--has:hover {
+  background-color: #dbeafe;
+  color: #1d4ed8;
+}

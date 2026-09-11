@@ -35,6 +35,10 @@ const ProjectValidation = lazyNamed(
   () => import('./components/validate/ProjectValidation.jsx'),
   'ProjectValidation',
 );
+const DocumentComments = lazyNamed(
+  () => import('./components/documents/DocumentComments.jsx'),
+  'DocumentComments',
+);
 const ProjectConfiguration = lazyNamed(
   () => import('./components/projects/ProjectConfiguration.jsx'),
   'ProjectConfiguration',
@@ -185,6 +189,14 @@ function App() {
               <Route path="edit" element={<TextEditor />} />
               <Route path="annotate" element={<AnnotationEditor />} />
               <Route path="details" element={<DocumentDetails />} />
+              <Route
+                path="comments"
+                element={
+                  <Suspended>
+                    <DocumentComments />
+                  </Suspended>
+                }
+              />
               <Route
                 path="export"
                 element={

@@ -13,7 +13,7 @@
 import { html, svg, nothing } from 'lit-html';
 import { repeat } from 'lit-html/directives/repeat.js';
 import { live } from 'lit-html/directives/live.js';
-import { isPending } from '@/domain/CommentStore';
+import { isPending } from '@ui/domain/CommentStore';
 import { timeAgo } from '@ui/utils/formatTime';
 import { renderCommentBody } from './renderCommentBody.js';
 import './comments.css';
@@ -182,7 +182,7 @@ function commentRow(comment, ctx) {
  * Render one thread.
  *
  * @param {object} opts
- * @param {import('@/domain/CommentStore').CommentStore} opts.store
+ * @param {import('@ui/domain/CommentStore').CommentStore} opts.store
  * @param {Array}  opts.comments      the thread, oldest first
  * @param {boolean} opts.canWrite     project write access (readers may read, not post)
  * @param {boolean} opts.canDeleteAny project maintainer (may delete anyone's)

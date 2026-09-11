@@ -51,7 +51,7 @@ import { BulkAddDialog } from './BulkAddDialog';
 import { ReplaceDialog } from './ReplaceDialog';
 import { fieldText, fieldEmpty } from '@/domain/vocabItemFilter';
 import { EntryComments } from './EntryComments';
-import { useCommentStore } from '@/domain/useCommentStore';
+import { useCommentStore } from '@ui/domain/useCommentStore';
 import { anchorCaption } from '@/domain/commentAnchors';
 import { downloadBlob, sanitizeFilename } from '@/export/files';
 import {
