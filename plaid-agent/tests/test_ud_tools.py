@@ -5,7 +5,7 @@ import pytest
 from plaid_agent.ud.plan import execute_plan, summarize
 from plaid_agent.ud.project import load_project
 from plaid_agent.ud.tools import TOOLS, WRITE_TOOLS, Workspace, call_tool
-from ud_fixtures import DEPREL, LEMMA, PID, UPOS, ud_client
+from ud_fixtures import DEPREL, LEMMA, PID, UPOS, WORD_LAYER, ud_client
 
 
 @pytest.fixture
@@ -212,3 +212,43 @@ def test_summarize_reads_as_a_phrase():
     assert summarize([]) == 'no changes'
     assert summarize([{'kind': 'set_span', 'value': 'X'}, {'kind': 'set_head'}]) \
         == '1 field value, 1 dependency'
+
+
+# --- the corpus queries ----------------------------------------------------------
+# These pin the query GRAMMAR, which is the part that is easy to get wrong and
+# silently get nothing back for. What the engine does with them is checked
+# against a real treebank, not here.
+
+def test_a_span_is_joined_to_its_word_by_covers(ws):
+    from plaid_agent.ud.corpus import Corpus
+    c = Corpus(ws)
+    where = [c.word('?t'), c.field('upos', '?u'), c.on('?u')]
+    assert where == [['token', '?t', {'layer': WORD_LAYER}],
+                     ['span', '?u', {'layer': UPOS}],
+                     ['covers', '?u', '?t']]
+    # A span clause takes only doc, layer, metadata and value: joining it to a
+    # token with a `tokens` key is rejected by the engine (400).
+    assert set(where[1][2]) <= {'doc', 'layer', 'metadata', 'value'}
+
+
+def test_an_unconfirmed_value_is_a_negated_clause(ws):
+    from plaid_agent.ud.corpus import Corpus
+    c = Corpus(ws)
+    assert c.unconfirmed('?s') == ['not', ['span', '?s', {'metadata': {'provConfirmed': True}}]]
+
+
+def test_a_literal_pattern_is_escaped_and_a_whole_match_is_anchored():
+    from plaid_agent.ud.corpus import rx
+    assert rx('a.b') == {'regex': r'a\.b', 'flags': 'i'}
+    assert rx('run', whole=True)['regex'] == '^(?:run)$'
+    assert rx('a.b', regex=True, case_sensitive=True) == {'regex': 'a.b'}
+
+
+def test_search_refuses_a_column_it_cannot_search(ws):
+    out = call_tool(ws, 'search', {'field': 'head', 'pattern': 'x'})
+    assert 'Unknown field "head"' in out
+
+
+def test_search_refuses_a_broken_regular_expression(ws):
+    out = call_tool(ws, 'search', {'field': 'lemma', 'pattern': '[', 'regex': True})
+    assert 'not a valid regular expression' in out

@@ -34,6 +34,7 @@ class Workspace:
         self._docs: Dict[str, UdDoc] = {}
         self.ops: List[Dict[str, Any]] = []
         self.replaced = 0  # ops superseded by a later op on the same target this turn
+        self._corpus = None  # the query helper, made on first corpus-wide read
         # Set when the operator configured web search. None means the web tools
         # are not offered to the model at all.
         self.web = None
@@ -509,8 +510,58 @@ TOOLS = [
         {'indexes': {'type': 'array', 'items': {'type': 'integer'}}}, ['indexes']),
 ]
 
+# The corpus-wide reads live in their own module, which imports this one for
+# the workspace: declare them after TOOLS exists.
+from .stats import (COUNTABLE, CONSISTENCY, SEARCHABLE, WORKLIST_KINDS,  # noqa: E402
+                    t_check_consistency, t_comments, t_frequency_list, t_recent_changes,
+                    t_search, t_worklist)
+
+TOOLS += [
+    _fn('search',
+        'Words whose column matches a pattern, with the sentence each sits in. Searches the whole '
+        'project unless a document is named. field "form" and a named document are read outright; '
+        'the rest go through the query engine.',
+        {'field': {'type': 'string', 'enum': list(SEARCHABLE)},
+         'pattern': {'type': 'string', 'description': 'A literal substring unless regex is true.'},
+         'document': _DOC, 'whole': {'type': 'boolean', 'description': 'Match the whole value only.'},
+         'regex': {'type': 'boolean'}, 'limit': {'type': 'integer'}},
+        ['field', 'pattern']),
+    _fn('frequency_list',
+        'The commonest values of one column, with counts. Across the project, or inside one document.',
+        {'what': {'type': 'string', 'enum': list(COUNTABLE)}, 'document': _DOC,
+         'limit': {'type': 'integer'}}, ['what']),
+    _fn('check_consistency',
+        'Places where the corpus disagrees with itself: one lemma under several UPOS, one form under '
+        'several lemmas, deprel and UPOS pairs seen once or twice. Every hit is a question, not a '
+        'verdict: read the sentences before planning anything.',
+        {'kind': {'type': 'string', 'enum': list(CONSISTENCY)}, 'limit': {'type': 'integer'}}, []),
+    _fn('worklist',
+        'What is unfinished, counted per document so a session has somewhere to start. kind '
+        '"unverified" is machine output nobody has confirmed, "contributed" a contributor\'s '
+        'unreviewed work, "missing" words with no value in a column at all.',
+        {'kind': {'type': 'string', 'enum': list(WORKLIST_KINDS)},
+         'field': _FIELD, 'document': _DOC, 'limit': {'type': 'integer'}}, []),
+    _fn('recent_changes',
+        'Who changed what, when, and under which operation label. Each entry prints the as_of '
+        'instant a restore would use.',
+        {'document': _DOC, 'limit': {'type': 'integer'},
+         'since': {'type': 'string', 'description': 'A date (YYYY-MM-DD) or timestamp.'},
+         'user': {'type': 'string', 'description': 'Match the actor\'s name or email.'}}, []),
+    _fn('comments',
+        'What people have written to each other on a document or one of its sentences. These are '
+        'notes between annotators, never annotation.',
+        {'document': _DOC, 'ref': {'type': 'string', 'description': 'One sentence, e.g. "s3".'},
+         'limit': {'type': 'integer'}}, ['document']),
+]
+
 _IMPL = {
     'project_overview': t_project_overview,
+    'search': t_search,
+    'frequency_list': t_frequency_list,
+    'check_consistency': t_check_consistency,
+    'worklist': t_worklist,
+    'recent_changes': t_recent_changes,
+    'comments': t_comments,
     'list_documents': t_list_documents,
     'read_document': t_read_document,
     'set_field': t_set_field,

@@ -46,6 +46,22 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
             span = f' (sentences {a.get("from_sentence") or 1}'
             span += f'–{a["to_sentence"]})' if a.get('to_sentence') else ' on)'
         return f'Read {q(a.get("document"))}{span}'
+    if name == 'search':
+        where = a.get('field') or 'the corpus'
+        return f'Searched {where} for {q(a.get("pattern"))}{in_doc(a)}'
+    if name == 'frequency_list':
+        return f'Ranked {a.get("what") or "lemma"}s by frequency{in_doc(a)}'
+    if name == 'check_consistency':
+        what = f' ({a["kind"]})' if a.get('kind') else ''
+        return f'Checked the corpus against itself{what}'
+    if name == 'worklist':
+        field = f'{a["field"]} ' if a.get('field') else ''
+        return f'Listed {a.get("kind") or "unverified"} {field}work{in_doc(a)}'
+    if name == 'recent_changes':
+        return f'Read the change history{in_doc(a)}'
+    if name == 'comments':
+        where = f' on {a["ref"]}' if a.get('ref') else ''
+        return f'Read the comments{where}{in_doc(a)}'
     if name == 'plan_status':
         return 'Reviewed the plan so far'
 
@@ -90,6 +106,12 @@ _PROGRESS = {
     'project_overview': lambda a: 'Looking at the project…',
     'list_documents': lambda a: 'Listing the documents…',
     'read_document': lambda a: f'Reading "{a.get("document", "")}"…',
+    'search': lambda a: f'Searching for "{a.get("pattern", "")}"…',
+    'frequency_list': lambda a: 'Counting frequencies…',
+    'check_consistency': lambda a: 'Checking the corpus for disagreements…',
+    'worklist': lambda a: f'Listing {a.get("kind") or "unfinished"} work…',
+    'recent_changes': lambda a: 'Reading the change history…',
+    'comments': lambda a: 'Reading the comments…',
     'plan_status': lambda a: 'Reviewing the plan…',
     'web_search': lambda a: f'Searching the web for "{a.get("query", "")}"…',
     'read_url': lambda a: f'Reading {a.get("url", "")}…',

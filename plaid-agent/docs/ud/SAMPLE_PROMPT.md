@@ -63,7 +63,7 @@ Looking outside the project:
 
 ## Tools
 
-13 tools, in the order the model receives them: 5 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
+19 tools, in the order the model receives them: 5 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
 
 ### project_overview
 
@@ -145,6 +145,58 @@ No parameters.
 Drop some of the planned changes by their numbers from plan_status.
 
 - `indexes` (array of integer, required)
+
+### search
+
+Words whose column matches a pattern, with the sentence each sits in. Searches the whole project unless a document is named. field "form" and a named document are read outright; the rest go through the query engine.
+
+- `field` (one of `lemma`, `upos`, `xpos`, `features`, `form`, `deprel`, required)
+- `pattern` (string, required): A literal substring unless regex is true.
+- `document` (string): Document id or exact name (see project_overview).
+- `whole` (boolean): Match the whole value only.
+- `regex` (boolean)
+- `limit` (integer)
+
+### frequency_list
+
+The commonest values of one column, with counts. Across the project, or inside one document.
+
+- `what` (one of `form`, `lemma`, `upos`, `xpos`, `features`, `deprel`, required)
+- `document` (string): Document id or exact name (see project_overview).
+- `limit` (integer)
+
+### check_consistency
+
+Places where the corpus disagrees with itself: one lemma under several UPOS, one form under several lemmas, deprel and UPOS pairs seen once or twice. Every hit is a question, not a verdict: read the sentences before planning anything.
+
+- `kind` (one of `lemma-upos`, `form-lemma`, `rare-pairs`)
+- `limit` (integer)
+
+### worklist
+
+What is unfinished, counted per document so a session has somewhere to start. kind "unverified" is machine output nobody has confirmed, "contributed" a contributor's unreviewed work, "missing" words with no value in a column at all.
+
+- `kind` (one of `unverified`, `contributed`, `missing`)
+- `field` (one of `lemma`, `upos`, `xpos`, `features`): Which column: lemma, upos, xpos or features.
+- `document` (string): Document id or exact name (see project_overview).
+- `limit` (integer)
+
+### recent_changes
+
+Who changed what, when, and under which operation label. Each entry prints the as_of instant a restore would use.
+
+- `document` (string): Document id or exact name (see project_overview).
+- `limit` (integer)
+- `since` (string): A date (YYYY-MM-DD) or timestamp.
+- `user` (string): Match the actor's name or email.
+
+### comments
+
+What people have written to each other on a document or one of its sentences. These are notes between annotators, never annotation.
+
+- `document` (string, required): Document id or exact name (see project_overview).
+- `ref` (string): One sentence, e.g. "s3".
+- `limit` (integer)
 
 ### web_search
 
