@@ -381,7 +381,9 @@ export const chrome = {
           <span aria-hidden="true">${index + 1}</span>
           ${this._commentBadge('token', sentence.id, `sentence ${index + 1}`)}
         </span>
-        ${this._copyControl(sentence, ctx)}
+        <div class="igt-sentence__tools">
+          ${this._assistantControl(sentence, index)} ${this._copyControl(sentence, ctx)}
+        </div>
         <div class="igt-grid">
           <div class="igt-tokens">
             ${this._labels(ctx)}

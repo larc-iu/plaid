@@ -178,6 +178,15 @@ const DocumentEditor = () => {
   const project = doc?.project;
   const rowRef = useRef(null);
   const assistantAvailable = useAssistantAvailable(client, projectId);
+  // The interlinear grid is a lit island, so its "Ask" reaches this React tree
+  // as a window event, the same bridge the auto-analyze opener uses.
+  useEffect(() => {
+    const onAsk = (e) => {
+      if (e.detail) setAssistantFocus(e.detail);
+    };
+    window.addEventListener('igt:ask-assistant', onAsk);
+    return () => window.removeEventListener('igt:ask-assistant', onAsk);
+  }, []);
   const docked = activeTab === 'analyze' && assistantOpen;
   const rowHeight = useViewportFill(rowRef, docked, [history.open, writeLock.held]);
   // An applied plan rewrote the document, so the grid beside the panel is
@@ -667,6 +676,7 @@ const DocumentEditor = () => {
               canManage: permissions.canManage,
               writeLock: writeLock.held,
               acquireWriteLock: writeLock.acquire,
+              assistantOnline: !!assistantAvailable,
             }}
           >
             {/* The initial repair takes the tab strip's place rather than

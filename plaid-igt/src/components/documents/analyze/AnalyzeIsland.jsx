@@ -13,7 +13,7 @@ import { useAuth } from '../../../contexts/AuthContext.jsx';
 // doc identity changes and the mount effect below re-mounts the island onto the
 // new historical snapshot automatically. readOnly is synced without remounting.
 export const AnalyzeIsland = () => {
-  const { doc, readOnly, comments, canWrite, canManage } = useDocumentCtx();
+  const { doc, readOnly, comments, canWrite, canManage, assistantOnline } = useDocumentCtx();
   const hostRef = useRef(null);
   const editorRef = useRef(null);
   // The island's Auto-analyze toolbar button requests this React-side modal
@@ -52,6 +52,7 @@ export const AnalyzeIsland = () => {
       comments,
       canComment: canWrite,
       canDeleteAnyComment: canManage,
+      assistantOnline,
     });
     return () => {
       if (editorRef.current) {
@@ -71,6 +72,10 @@ export const AnalyzeIsland = () => {
   useEffect(() => {
     editorRef.current?.setCanAutoAnalyze(canWrite);
   }, [canWrite]);
+
+  useEffect(() => {
+    editorRef.current?.setAssistantOnline(assistantOnline);
+  }, [assistantOnline]);
 
   useEffect(() => {
     editorRef.current?.setCommentPermissions({

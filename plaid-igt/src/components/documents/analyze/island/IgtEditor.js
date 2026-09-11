@@ -27,6 +27,7 @@ import { review } from './editor/review.js';
 import { morphForm } from './editor/morphForm.js';
 import { chrome } from './editor/chrome.js';
 import { copy } from './editor/copy.js';
+import { assistant } from './editor/assistant.js';
 import { rows } from './editor/rows.js';
 import { grid } from './editor/grid.js';
 import { vocabPopover } from './editor/vocabPopover.js';
@@ -42,6 +43,7 @@ export class IgtEditor {
       comments = null,
       canComment = false,
       canDeleteAnyComment = false,
+      assistantOnline = false,
     } = {},
   ) {
     // Event handlers handed to lit templates, bound so `this` survives.
@@ -62,6 +64,9 @@ export class IgtEditor {
     this.comments = comments;
     this.canComment = canComment;
     this.canDeleteAnyComment = canDeleteAnyComment;
+    // Whether a sentence offers "Ask". Discovered after mount, so it also has
+    // a setter (see editor/assistant.js).
+    this.assistantOnline = assistantOnline;
     // Transient comment-popover state: which comment is being edited, its
     // draft, and the composer's draft. Cleared on every open.
     this._cmtEditingId = null;
@@ -677,6 +682,7 @@ Object.assign(
   morphForm,
   chrome,
   copy,
+  assistant,
   rows,
   grid,
   vocabPopover,
