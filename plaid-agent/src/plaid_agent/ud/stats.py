@@ -25,6 +25,23 @@ def _value(w: Word, field: str) -> str:
     return w.form if field == 'form' else (w.deprel or '' if field == 'deprel' else w.value(field))
 
 
+def _enough_for(docs: List[tuple], limit: int) -> List[tuple]:
+    """Only as many documents as the hit limit can possibly need.
+
+    The engine already said how many hits each document has, and loading one
+    is a round trip over a whole document's tokens, spans and relations.
+    Taking twelve of them to print thirty hits is what made a corpus-wide
+    question take minutes against EWT.
+    """
+    out, got = [], 0
+    for entry in docs:
+        if got >= limit or len(out) >= DOCS_PER_SEARCH:
+            break
+        out.append(entry)
+        got += entry[1] or 1
+    return out
+
+
 def _hits_in(doc: UdDoc, field: str, matches) -> List[tuple]:
     """[(sentence, word)] in one document whose ``field`` matches."""
     out = []
@@ -51,6 +68,7 @@ def t_search(ws: Workspace, field: str = None, pattern: str = None, document: st
         raise ToolError(f'That is not a valid regular expression: {e}')
     matches = lambda v: bool(v) and bool(rgx.search(v))  # noqa: E731
 
+    total_docs = None
     if document:
         docs = [(ws.resolve_document_id(document), None)]
     else:
@@ -64,7 +82,8 @@ def t_search(ws: Workspace, field: str = None, pattern: str = None, document: st
             docs = c.documents_with([c.dep('?r', value=spec)], '?r')
         else:
             docs = c.documents_with([c.field(field, '?s', value=spec)], '?s')
-        docs = docs[:DOCS_PER_SEARCH]
+        total_docs = len(docs)
+        docs = _enough_for(docs, limit)
     if not docs:
         return f'No {field} matches "{pattern}".'
 
@@ -87,8 +106,8 @@ def t_search(ws: Workspace, field: str = None, pattern: str = None, document: st
     if not shown:
         return f'No {field} matches "{pattern}".'
     head = f'{shown} match(es) for {field} "{pattern}"'
-    if len(docs) >= DOCS_PER_SEARCH and not document:
-        head += f' (the first {DOCS_PER_SEARCH} documents with hits)'
+    if total_docs is not None and total_docs > len(docs):
+        head += f' (from {len(docs)} of the {total_docs} documents that have them)'
     return _truncate(head + ':\n' + '\n'.join(out))
 
 

@@ -330,3 +330,26 @@ def test_a_parser_that_goes_quiet_is_reported_as_maybe_still_running(ws, monkeyp
     monkeypatch.setattr('plaid_client.services.request_service', timeout)
     counts = execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified')
     assert counts['notes'] == ['the parser stopped reporting on ud1; it may still be running']
+
+
+def test_a_search_loads_only_the_documents_its_limit_can_need():
+    """The engine already said how many hits each document has. Loading one is
+    a round trip over the whole document, so taking twelve to print thirty
+    hits is what made a corpus-wide question take minutes against EWT."""
+    from plaid_agent.ud.stats import _enough_for
+    docs = [('a', 20), ('b', 15), ('c', 9), ('d', 1)]
+    assert _enough_for(docs, 30) == [('a', 20), ('b', 15)]
+    assert _enough_for(docs, 5) == [('a', 20)]
+    assert _enough_for(docs, 100) == docs
+    # A document whose count the engine did not give still counts for one, so
+    # an unknown count cannot make this loop forever over the corpus.
+    assert _enough_for([('a', None)] * 50, 3) == [('a', None)] * 3
+
+
+def test_reading_a_document_names_it_the_way_the_user_would(ws):
+    """A corpus-wide tool passes an id, and "Reading 019ed0b8-…" tells a
+    watcher nothing."""
+    said = []
+    ws.on_progress = said.append
+    ws.doc('ud1')
+    assert said == ['Reading "Viaje"…']

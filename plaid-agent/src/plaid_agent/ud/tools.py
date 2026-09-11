@@ -69,7 +69,10 @@ class Workspace:
     def doc(self, document: str) -> UdDoc:
         did = self.resolve_document_id(document)
         if did not in self._docs:
-            self.on_progress(f'Reading "{document}"…')
+            # Name it the way the user would: a corpus-wide tool passes an id,
+            # and "Reading 019ed0b8-…" tells a watcher nothing.
+            entry = next((d for d in self.documents() if d['id'] == did), {})
+            self.on_progress(f'Reading "{entry.get("name") or document}"…')
             self._docs[did] = load_document(self.client, self.project, did)
         return self._docs[did]
 
