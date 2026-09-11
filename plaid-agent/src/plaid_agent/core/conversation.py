@@ -189,10 +189,23 @@ def conversation_bytes(conv: Dict[str, Any]) -> int:
 
 
 def prune(conv: Dict[str, Any], budget: int = CONVERSATION_BUDGET) -> Dict[str, Any]:
-    """Drop the oldest tool results until the record fits its budget."""
+    """Thin the record until it fits its budget, oldest and cheapest first.
+
+    Three stages, because the budget counts `display` as well as `messages`
+    and only the first stage used to run: a conversation whose weight was in
+    `display` came back still over budget with every tool result destroyed for
+    nothing, and then the save was refused by the server.
+
+    What a stage may take is the question. A tool RESULT is recoverable by
+    asking again. A step TRACE is diagnostic, and its output is the `tool`
+    message stage one already took. CITATIONS are the evidence a reply rests
+    on, so they go last and never from the newest reply. A PLAN is never
+    touched at any stage: the user has not decided on it yet.
+    """
     excess = conversation_bytes(conv) - budget
     if excess <= 0:
         return conv
+
     dropped = _bytes(DROPPED)
     messages = []
     for m in conv['messages']:
@@ -201,4 +214,22 @@ def prune(conv: Dict[str, Any], budget: int = CONVERSATION_BUDGET) -> Dict[str, 
             continue
         excess -= _bytes(m.get('content')) - dropped
         messages.append({**m, 'content': DROPPED})
-    return {**conv, 'messages': messages}
+    conv = {**conv, 'messages': messages}
+    if excess <= 0:
+        return conv
+
+    # Stages two and three walk `display` oldest first and leave the last item
+    # whole, because that is the reply on screen.
+    display = list(conv.get('display') or [])
+    for key in ('steps', 'citations'):
+        for i in range(max(0, len(display) - 1)):
+            if excess <= 0:
+                break
+            item = display[i]
+            if item.get('kind') != 'assistant' or not item.get(key):
+                continue
+            excess -= _bytes(item[key])
+            display[i] = {**item, key: []}
+        if excess <= 0:
+            break
+    return {**conv, 'display': display}

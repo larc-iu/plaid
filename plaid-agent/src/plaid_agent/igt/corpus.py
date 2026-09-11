@@ -80,6 +80,20 @@ class Corpus:
         self.truncated = bool(res.get('truncated'))
         return res.get('results') or []
 
+    def clipped_note(self, what: str = 'values') -> str:
+        """A line to append when the LAST read hit the engine's row limit.
+
+        `group` and `entities` record `truncated` and nothing read it, so a
+        "commonest" list was the top of an arbitrary prefix stated as the top
+        of the corpus. Read it straight after the call: the Corpus is cached
+        for the whole turn, so the flag belongs to the most recent read only.
+        """
+        if not self.truncated:
+            return ''
+        return (f'\n(note) The engine returned as many rows as it will, so these {what} come '
+                f'from part of the corpus and not all of it. Narrowing it to one document or '
+                f'one field gives a complete answer.')
+
     def entities(self, where: List[Any], find: List[str], limit: int, order_by=None) -> List[list]:
         body: Dict[str, Any] = {'find': find, 'where': where, 'return': 'entities', 'limit': min(limit, ROW_LIMIT)}
         if order_by:
@@ -736,7 +750,7 @@ def q_analyses_of(ws: Workspace, form: str) -> str:
             lines.append(f'Morpheme "{form}": no occurrences.')
         else:
             lines.append(f'Morpheme "{form}": {n} occurrence{"s" if n != 1 else ""}.')
-            # Containing words, type and slot from one grouped query; every
+            # Containing words, type and slot from one grouped query. Every
             # morpheme field from one more.
             words_t: Counter = Counter()
             types_t: Counter = Counter()
@@ -999,10 +1013,24 @@ def _docs_of(rows: List[list]) -> set:
 
 
 def q_replace_in_field(ws: Workspace, f, rep, cap: int) -> List[Dict[str, Any]]:
+    """The edits a replacement would make, or a refusal when the corpus holds
+    more values of this field than one pass can even LOOK at.
+
+    The cap is on MATCHES, and what the engine caps here is CANDIDATES: every
+    value of the field, ordered by document. So on a field with more values
+    than the cap, everything past the cap was never examined, and a pattern
+    that matches only later documents answered "nothing matched" for a corpus
+    full of matches. Refusing is the only honest answer, because staging the
+    prefix would edit part of the corpus and say it edited all of it.
+    """
     c = ws.corpus
     layer = c.scope_layer(f.scope)
     rows = c.entities([c.span('?s', f.layer_id), ['covers', '?s', '?t'], ['token', '?t', {'layer': layer}]],
                       ['?s', '?t'], cap + 1, [['?t.doc'], ['?t.begin']])
+    if len(rows) > cap:
+        raise ToolError(f'This project holds more than {cap} {f.name} values, which is more than '
+                        f'one pass can read, so a project-wide replacement here would only see '
+                        f'part of the corpus. Narrow it to a document and go in passes.')
     budget = _docs_of(rows)
     staged = []
     for sp, tok in rows:

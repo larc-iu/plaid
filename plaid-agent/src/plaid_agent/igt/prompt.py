@@ -3,7 +3,7 @@
 from ..core import webtools
 from .project import IgtProject, SCOPES, tagset_lines
 
-# Values of one tagset shown in the system prompt; project_overview lists the rest.
+# Values of one tagset shown in the system prompt. Project_overview lists the rest.
 PROMPT_TAGSET_VALUES = 120
 
 SYSTEM = '''You are the assistant inside Plaid IGT, a tool linguists use to build interlinear glossed text (IGT): \

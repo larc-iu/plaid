@@ -3,7 +3,7 @@
 from ..core import webtools
 from .project import UdProject
 
-# Values of one vocabulary shown in the prompt; project_overview lists the rest.
+# Values of one vocabulary shown in the prompt. Project_overview lists the rest.
 PROMPT_VALUES = 60
 
 SYSTEM = '''You are the assistant inside Plaid UD, a tool linguists use to build Universal Dependencies \

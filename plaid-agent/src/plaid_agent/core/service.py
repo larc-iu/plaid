@@ -108,6 +108,10 @@ class BaseAssistantService(BaseService):
         """What the model is told before the conversation."""
         raise NotImplementedError
 
+    #: How this app writes a reference to a place in a document, for the focus
+    #: note. The app's own grammar, so the app states it.
+    reference_shape = 'a bare reference'
+
     def document_name(self, ws, document_id: str) -> Optional[str]:
         """What to call the document the user has open, in the language the
         tools use. An app whose assistant has no document view keeps the
@@ -280,7 +284,7 @@ class BaseAssistantService(BaseService):
         if document_id:
             open_doc = self.document_name(ws, document_id)
             if open_doc:
-                system = f'{system}\n\n{focus_note(open_doc)}'
+                system = f'{system}\n\n{focus_note(open_doc, self.reference_shape)}'
         try:
             turn = run_turn(self.cfg, self.kit, ws, system,
                             transcript, on_progress, cancelled=cancelled, on_text=on_text)
@@ -301,7 +305,23 @@ class BaseAssistantService(BaseService):
         item = assistant_item(turn.text, ws.plan_payload(), self.citations(ws, turn.text),
                               turn.steps, turn.summary, model)
         done = prune({'messages': transcript + turn.messages, 'display': conv['display'] + [item]})
-        self._write(store, conv_id, done, build_meta(meta, conv_id, done, self.service_id, model), request_id)
+        try:
+            self._write(store, conv_id, done, build_meta(meta, conv_id, done, self.service_id, model), request_id)
+        except Exception as e:  # noqa: BLE001 - the answer is in hand; say so rather than lose it
+            # This write is the LAST thing a turn does, and it sat outside the
+            # try that catches everything else, so a refused save (too large,
+            # a network blip) threw here: the finished reply never reached the
+            # record and the pending marker was never cleared, which leaves
+            # the card undecidable. The answer is already computed, so hand it
+            # over and say the record did not take it.
+            traceback.print_exc()
+            response_helper.error(
+                f'The answer is ready but the conversation could not be saved: {e}. '
+                f'It is below, and this turn is not in the record.')
+            response_helper.complete({'kind': 'turn', 'message': turn.text, 'plan': None,
+                                      'citations': item['citations'], 'steps': turn.steps,
+                                      'steps_summary': turn.summary})
+            return
         response_helper.progress(100, 'Done')
         response_helper.complete({'kind': 'turn', 'message': turn.text, 'plan': item['plan'],
                                   'citations': item['citations'], 'steps': turn.steps, 'steps_summary': turn.summary})
@@ -442,8 +462,15 @@ def stale_documents(client, documents: list) -> list:
 # words, it listed the project, searched the whole corpus, and read a document
 # the user was not looking at. So the escape is now conditional and last, and
 # reading the open document is an instruction rather than an inference.
-def focus_note(name: str) -> str:
+def focus_note(name: str, refs: str = 'a bare reference') -> str:
+    """What to add to the prompt when the user has one document open.
+
+    ``refs`` is how the app writes a reference to a place in a document. That
+    is the app's own grammar and not this file's, and the apps do not agree on
+    it, so the app states it. One app's shape was hardcoded here, in a file
+    whose whole point is to name no app.
+    """
     return (f'The user has "{name}" open and is asking about what is in front of them. Unless they '
-            f'name another document, this question is about "{name}": read it first, and take a '
-            f'bare reference like s3 or s3.w2 as a place in it. Look at other documents only when '
-            f'the question is explicitly about the corpus as a whole or asks you to compare.')
+            f'name another document, this question is about "{name}": read it first, and take '
+            f'{refs} as a place in it. Look at other documents only when the question is '
+            f'explicitly about the corpus as a whole or asks you to compare.')

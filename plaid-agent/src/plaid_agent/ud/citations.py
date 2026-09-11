@@ -40,8 +40,14 @@ def parse_refs(ref: str) -> List[str]:
     out: List[str] = []
     si = wi = None
     for part in (ref or '').split(','):
-        m = PART_RE.match(part.strip())
-        if not m:
+        part = part.strip()
+        # Every group in PART_RE is optional, so `.match` succeeds on anything
+        # with a zero-length match and the `if not m` below was dead code: a
+        # part that matched NOTHING carried the previous word forward and
+        # repeated the reference before it. "s3.w2,garbage" marked word 2
+        # twice. A part has to match all of itself to count.
+        m = PART_RE.fullmatch(part)
+        if not part or not m:
             continue
         s, w, w2 = m.groups()
         si = int(s) if s else si
@@ -109,7 +115,7 @@ def _card(doc: UdDoc, sentence_index: int, focus: List[int],
     # is left out. ID and FORM always stay: they are what a reference points at.
     keep = [c.lower() for c in COLUMNS]
     keep = [c for c in keep if c in ('id', 'form') or any(r[c] for r in rows)]
-    # The INDEX is what a reference names and what the card prints; the ID is
+    # The INDEX is what a reference names and what the card prints. The ID is
     # what the editor's ?sent= deep link needs. Both, or the link lands on the
     # document and never scrolls.
     return {'sentence': s.index, 'sentence_id': s.id, 'text': s.text, 'columns': keep, 'rows': rows,

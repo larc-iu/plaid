@@ -74,6 +74,20 @@ class Corpus:
         self.truncated = bool(res.get('truncated'))
         return sorted(res.get('results') or [], key=lambda r: -r[-1])
 
+    def clipped_note(self, what: str = 'values') -> str:
+        """A line to append when the LAST read hit the engine's row limit.
+
+        `group` and `entities` record `truncated` and nothing read it, so a
+        "commonest" list was the top of an arbitrary prefix stated as the top
+        of the corpus. Read it straight after the call: the Corpus is cached
+        for the whole turn, so the flag belongs to the most recent read only.
+        """
+        if not self.truncated:
+            return ''
+        return (f'\n(note) The engine returned as many rows as it will, so these {what} come '
+                f'from part of the corpus and not all of it. Narrowing it to one document or '
+                f'one field gives a complete answer.')
+
     # --- clauses ----------------------------------------------------------
 
     def word(self, var: str = '?t', **c) -> list:

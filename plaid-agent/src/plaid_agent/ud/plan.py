@@ -62,7 +62,7 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
                              f'op in its plan')
     # A parse rewrites a document from scratch, so anything else this plan
     # writes into the same document would be thrown away by it. The tools
-    # refuse the combination as it is built; this is the backstop, because a
+    # refuse the combination as it is built. This is the backstop, because a
     # plan that silently lost half its changes is the worst outcome here.
     # Reshaping a token deletes and remakes its words, so an op that names one
     # of those words would be writing to something that will not exist.
@@ -93,7 +93,7 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
     # reference in this plan is positional: s7.w2 means a different word once
     # s3 has been cut. Rather than resolve that with a rule nobody will
     # remember, a plan that moves a boundary does that and nothing else to the
-    # document. The tools refuse the combination as it is built; this is the
+    # document. The tools refuse the combination as it is built. This is the
     # backstop.
     # Per DOCUMENT: a boundary moving in one renumbers nothing in another, so a
     # plan may move one boundary and still edit a different document.

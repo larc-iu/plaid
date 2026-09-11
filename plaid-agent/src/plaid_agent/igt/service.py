@@ -41,6 +41,7 @@ class AssistantService(BaseAssistantService):
     DESCRIPTION = 'Chat about the project and plan edits, with the operator\'s model'
     SUMMARY = SUMMARY
     PING_QUERY = 'interlinear glossed text'
+    reference_shape = 'a bare reference like s3, s3.w2 or s3.w2.m1'
 
     def toolkit(self) -> Toolkit:
         return Toolkit(tools_for=tools_for, call_tool=call_tool, tracer=TRACER)

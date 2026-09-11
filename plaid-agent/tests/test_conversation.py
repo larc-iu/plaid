@@ -114,3 +114,41 @@ def test_store_round_trip_and_ownership():
     assert store.owned_by('c1', 'r2'), 'nothing pending: anyone may write'
     c.user_data.delete('u@x', meta_key('igt', 'p1', 'c1'))
     assert not store.owned_by('c1', 'r1'), 'a deleted conversation is not resurrected'
+
+
+def test_prune_can_actually_reach_its_budget():
+    """It measured `display` and pruned only `messages`, so a conversation
+    whose weight was in the display came back still over budget with every
+    tool result destroyed for nothing, and the save was then refused."""
+    from plaid_agent.core.conversation import CONVERSATION_BUDGET, conversation_bytes, prune
+
+    heavy = 'x' * 200_000
+    conv = {
+        'messages': [{'role': 'tool', 'tool_call_id': 't1', 'content': 'y' * 50_000}],
+        'display': [
+            {'kind': 'user', 'text': 'first'},
+            {'kind': 'assistant', 'text': 'a', 'plan': None,
+             'citations': [{'text': heavy}], 'steps': [{'out': heavy}],
+             'status': None, 'model': 'm', 'steps_summary': 's'},
+            {'kind': 'assistant', 'text': 'b', 'plan': None,
+             'citations': [{'text': heavy}], 'steps': [{'out': heavy}],
+             'status': None, 'model': 'm', 'steps_summary': 's'},
+            {'kind': 'assistant', 'text': 'newest', 'plan': None,
+             'citations': [{'text': 'small'}], 'steps': [], 'status': None,
+             'model': 'm', 'steps_summary': 's'},
+        ],
+    }
+    assert conversation_bytes(conv) > CONVERSATION_BUDGET
+    out = prune(conv, CONVERSATION_BUDGET)
+    assert conversation_bytes(out) <= CONVERSATION_BUDGET, 'still over budget'
+    # The newest reply keeps its evidence, and no plan was touched.
+    assert out['display'][-1]['citations'] == [{'text': 'small'}]
+    assert all(i.get('plan') is None for i in out['display'] if i['kind'] == 'assistant')
+
+
+def test_prune_leaves_a_record_that_already_fits_alone():
+    from plaid_agent.core.conversation import prune
+
+    conv = {'messages': [{'role': 'tool', 'tool_call_id': 't', 'content': 'small'}],
+            'display': [{'kind': 'user', 'text': 'hi'}]}
+    assert prune(conv) == conv

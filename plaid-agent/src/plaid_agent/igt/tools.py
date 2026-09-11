@@ -887,7 +887,7 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
         hits, total = q_concordance_hits(ws, pattern, where_l, field, bool(regex), limit)
     else:
         # Whole-form match by default (a concordance of "ar" must not include
-        # "para"); regex for anything looser.
+        # "para"). Regex for anything looser.
         if regex:
             match = _matcher(pattern, True)
         else:
@@ -1493,7 +1493,7 @@ def t_respell(ws: Workspace, document: str, ref: str, new_text: str, morpheme_fo
     check_respell_overlap(ws, w.text_id, w.begin, w.end, f'{ws.doc_label(doc.id)} {ref}')
     staged = [{'kind': 'respell', 'text_id': w.text_id, 'begin': w.begin, 'end': w.end, 'value': new_text,
                'label': f'{ws.doc_label(doc.id)} {ref}: respell "{w.surface}" → "{new_text}"'}]
-    # A single-morpheme own form spelt like the word follows it; a longer
+    # A single-morpheme own form spelt like the word follows it. A longer
     # chain cannot be re-derived from a whole-word replacement.
     kept = []
     for m in w.morphemes:
@@ -1658,7 +1658,7 @@ def t_unlink_phrase(ws: Workspace, document: str, refs) -> str:
     if not candidates:
         raise ToolError(', '.join(r for r, _, _ in words) + ' belong to no multi-word expression'
                         + (' (unlink_entry removes a word\'s own link)' if any(w.link for _, _, w in words) else ''))
-    # Every named word must be a member; among the expressions they name,
+    # Every named word must be a member. Among the expressions they name,
     # the one containing all of them wins, else ask.
     full = [l for l in candidates.values() if named <= set(l.tokens)]
     if len(full) != 1:
@@ -1704,7 +1704,7 @@ def _create_entry(ws: Workspace, v: dict, form: str, fields: Optional[dict],
                       if (e.get('metadata') or {}).get('parent') == parent['id'])
         metadata = with_parent(metadata, parent['id'],
                                next_sense_order(view.tree, parent['id']) + planned)
-    # The key is a handle the model passes back; it must not contain spaces
+    # The key is a handle the model passes back. It must not contain spaces
     # (a phrase entry's form does).
     # CI runs Python 3.11, which refuses a backslash inside an f-string
     # expression, so the slug is made first.

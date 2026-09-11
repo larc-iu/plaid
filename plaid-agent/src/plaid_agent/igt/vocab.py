@@ -44,7 +44,7 @@ from typing import Dict, List, Optional, Tuple
 PARENT_KEY = 'parent'
 SENSE_ORDER_KEY = 'senseOrder'
 # The order of an entry among the entries that share its form. A FLEx import
-# writes FLEx's homograph number here; reordering in the app rewrites it 1..n.
+# writes FLEx's homograph number here. Reordering in the app rewrites it 1..n.
 HOMOGRAPH_KEY = 'homograph'
 EXAMPLES_KEY = 'examples'
 
@@ -340,7 +340,7 @@ def build_sense_tree(items: Optional[List[dict]]) -> SenseTree:
 
     def order_key(it):
         o = sense_order_of(it)
-        # Numbered siblings first, in order; unnumbered after, in creation order.
+        # Numbered siblings first, in order. Unnumbered after, in creation order.
         return (0, o, position[it['id']]) if o is not None else (1, 0, position[it['id']])
     for l in children.values():
         l.sort(key=order_key)
@@ -746,7 +746,7 @@ def homograph_groups(items: Optional[List[dict]], tree: Optional[SenseTree] = No
 
     def key(r):
         h = homograph_of(r)
-        # Numbered entries first, in their number; the rest after, as created.
+        # Numbered entries first, in their number. The rest after, as created.
         return (0, h, position.get(r['id'], 0)) if h is not None else (1, 0.0, position.get(r['id'], 0))
     for g in by_form.values():
         g.sort(key=key)

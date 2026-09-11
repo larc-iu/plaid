@@ -91,7 +91,7 @@ def _layer_index(ws: Workspace) -> Dict[str, List[tuple]]:
                     add(alias, 'token-layer', tk['id'])
             for sl in tk.get('span_layers') or []:
                 f = p.field_by_layer(sl['id'])
-                # The IGT display name ("Gloss (Word)") first; the bare layer
+                # The IGT display name ("Gloss (Word)") first. The bare layer
                 # name too, which is ambiguous when scopes collide.
                 if f and f.name != sl.get('name'):
                     add(f.name, 'span-layer', sl['id'])

@@ -474,7 +474,7 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
         for s in d.sentences:
             for w in s.words:
                 # A multi-word expression counts once per member word, as the
-                # query path counts linked tokens; for the stale check it is
+                # query path counts linked tokens. For the stale check it is
                 # one link whose form is its members' surfaces.
                 for l in w.mwes:
                     if l.item_id not in items:

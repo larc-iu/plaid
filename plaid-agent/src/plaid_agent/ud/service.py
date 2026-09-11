@@ -39,6 +39,7 @@ class AssistantService(BaseAssistantService):
     DESCRIPTION = 'Chat about the treebank and plan edits, with the operator\'s model'
     SUMMARY = SUMMARY
     PING_QUERY = 'universal dependencies treebank'
+    reference_shape = 'a bare reference like s3 or s3.w2'
 
     def toolkit(self) -> Toolkit:
         return Toolkit(tools_for=tools_for, call_tool=call_tool, tracer=TRACER)

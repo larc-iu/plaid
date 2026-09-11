@@ -433,7 +433,7 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps) -> D
 
             elif kind == 'delete_word':
                 # A multi-word expression the deletion would leave with one
-                # member goes first; the server only trims links otherwise.
+                # member goes first. The server only trims links otherwise.
                 for lid in op.get('link_ids') or []:
                     b.add(lambda i=lid: client.vocab_links.delete(i))
                 b.add(lambda o=op: client.tokens.delete(o['word_id']))  # cascades morphemes, spans, links

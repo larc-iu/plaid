@@ -152,11 +152,13 @@ def t_frequency_list(ws: Workspace, what: str = 'lemma', document: str = None,
         else:
             rows = [(r[0], r[-1]) for r in c.group([c.field(what, '?s')], ['?s.value'])]
         rows = [(v, n) for v, n in rows if v]
+        clipped = c.clipped_note(f'{what} values')
         where = ' across the project'
     if not rows:
         return f'Nothing has a {what} yet{where}.'
     total = sum(n for _, n in rows)
-    out = [f'{what} by frequency{where}: {len(rows)} distinct value(s), {total} in all.']
+    out = [f'{what} by frequency{where}: {len(rows)} distinct value(s), {total} in all.'
+           + (clipped if not document else '')]
     for v, n in rows[:limit]:
         out.append(f'  {n:>7}  {v}')
     if len(rows) > limit:
@@ -177,10 +179,15 @@ def t_check_consistency(ws: Workspace, kind: str = None, limit: int = 25) -> str
     limit = clamp_limit(limit, 25, 100)
     c = _corpus(ws)
     out: List[str] = []
+    # Every check here states a count as a fact, so a clipped read has to be
+    # said out loud: the engine's row limit makes "the commonest" the top of an
+    # arbitrary prefix.
+    clipped = ''
 
     if 'lemma-upos' in kinds:
         rows = c.group([c.word('?t'), c.field('lemma', '?l'), c.on('?l'),
                         c.field('upos', '?u'), c.on('?u')], ['?l.value', '?u.value'])
+        clipped = clipped or c.clipped_note('lemmas')
         by = defaultdict(list)
         for lemma, upos, n in rows:
             if lemma and upos:
@@ -197,6 +204,7 @@ def t_check_consistency(ws: Workspace, kind: str = None, limit: int = 25) -> str
     if 'form-lemma' in kinds:
         rows = c.group([c.word('?t'), c.field('lemma', '?l'), c.on('?l'),
                         c.field('form', '?f'), c.on('?f')], ['?f.value', '?l.value'])
+        clipped = clipped or c.clipped_note('forms')
         by = defaultdict(list)
         for form, lemma, n in rows:
             if form and lemma:
@@ -212,6 +220,7 @@ def t_check_consistency(ws: Workspace, kind: str = None, limit: int = 25) -> str
 
     if 'rare-pairs' in kinds:
         pairs = _deprel_upos_pairs(c)
+        clipped = clipped or c.clipped_note('pairs')
         rare = [(d, u, n) for (d, u), n in sorted(pairs.items(), key=lambda kv: kv[1]) if n <= 2]
         out.append('')
         out.append(f'deprel and UPOS pairs seen once or twice: {len(rare)}.')
@@ -220,7 +229,7 @@ def t_check_consistency(ws: Workspace, kind: str = None, limit: int = 25) -> str
             out.append(f'  {d} on {u}: {n}')
         if len(rare) > limit:
             out.append(f'  … and {len(rare) - limit} more')
-    return _truncate('\n'.join(out))
+    return _truncate('\n'.join(out) + clipped)
 
 
 def _deprel_upos_pairs(c: Corpus) -> Dict[tuple, int]:
@@ -248,6 +257,9 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
         raise ToolError(f'Unknown kind "{kind}". One of: ' + ', '.join(WORKLIST_KINDS))
     limit = clamp_limit(limit, 20, 100)
     c = _corpus(ws)
+    # A per-document count read from a clipped result is the top of a prefix,
+    # and this is the tool a session starts from.
+    clipped = ''
     fields = [field] if field else list(FIELDS)
     for f in fields:
         if f not in FIELDS:
@@ -279,12 +291,13 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
                      ['not', ['span', '?s', {'layer': c.p.layer(f)}], c.on('?s')]]
             docs = c.documents_with(where, '?t')
             total = sum(n for _, n in docs)
+            clipped = clipped or c.clipped_note('documents')
             out.append(f'{f}: {total} word(s) with none, in {len(docs)} document(s)')
             for did, n in docs[:limit]:
                 out.append(f'    {n:>6}  "{c.doc_name(did)}"')
             if len(docs) > limit:
                 out.append(f'    … and {len(docs) - limit} more documents')
-        return _truncate('\n'.join(out) or 'Nothing is missing.')
+        return _truncate(('\n'.join(out) + clipped) or 'Nothing is missing.')
 
     stamp = {'prov': 'contributed'} if kind == 'contributed' else {'prov': 'inferred'}
     word = 'a contributor\'s unreviewed' if kind == 'contributed' else 'unconfirmed machine'
@@ -317,6 +330,7 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
         total = sum(n for _, n in docs)
         if not total:
             continue
+        clipped = clipped or c.clipped_note('documents')
         out.append(f'{f}: {total} {word} value(s), in {len(docs)} document(s)')
         for did, n in docs[:limit]:
             out.append(f'    {n:>6}  "{c.doc_name(did)}"')
@@ -326,7 +340,7 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
         return f'Nothing is waiting for review ({kind}).'
     out.append('')
     out.append('confirm marks these as reviewed; discard_predictions throws the machine ones away.')
-    return _truncate('\n'.join(out))
+    return _truncate('\n'.join(out) + clipped)
 
 
 # --- history and comments --------------------------------------------------------
@@ -405,7 +419,7 @@ def t_comments(ws: Workspace, document: str = None, ref: str = None, limit: int 
         raise ToolError(f'The comments could not be read: {e}')
     if not got:
         return f'No comments on {ref}.' if ref else f'No comments in "{doc.name}".'
-    # A comment names the entity it is anchored to; turn that back into the
+    # A comment names the entity it is anchored to. Turn that back into the
     # positional reference the rest of the tools speak.
     where = {}
     for sn in doc.sentences:

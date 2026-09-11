@@ -50,7 +50,7 @@ class ModelConfig:
     temperature: Optional[float] = None
     max_tokens: Optional[int] = None
     # Stream the model's text as it is written (progress events carry the
-    # text so far); off for a provider that misbehaves under streaming.
+    # text so far). Off for a provider that misbehaves under streaming.
     stream: bool = True
 
     def describe(self) -> Dict[str, Any]:
@@ -268,5 +268,6 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
         if rounds >= cfg.max_steps:
             text = ask_for_the_reply(kwargs, '(system) You have used the tool budget for this turn. '
                                              'Reply now with what you found and what remains to do.')
-            return TurnResult(text + f'\n\n*(Stopped after {cfg.max_steps} tool calls, the per-turn limit; '
-                                     f'the operator can raise it with `--max-steps`.)*', new, trace)
+            return TurnResult(text + f'\n\n*(Stopped after {cfg.max_steps} rounds of tool calls, '
+                                     f'the per-turn limit; the operator can raise it with '
+                                     f'`--max-steps`.)*', new, trace)

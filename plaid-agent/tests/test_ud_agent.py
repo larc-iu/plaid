@@ -207,3 +207,19 @@ def test_the_model_can_ask_for_how_an_example_is_drawn(ws):
     # card would draw an empty stripe for it.
     [gone] = resolve_citations(ws, '<cite doc="Viaje" ref="s1" view="grid" fields="upos,nonsense"/>')
     assert gone['fields'] == ['upos']
+
+
+def test_a_garbage_part_of_a_reference_list_is_dropped_not_repeated():
+    """Every group in PART_RE is optional, so `.match` succeeded on anything
+    and the "if not m: continue" guard was dead: a part that matched nothing
+    carried the previous word forward, marking one word twice and losing the
+    other."""
+    assert parse_refs('s3.w2,garbage') == ['s3.w2']
+    assert parse_refs('s3.w2, and w5') == ['s3.w2']
+    assert parse_refs('s3.w2,') == ['s3.w2']
+    assert parse_refs('s3.w2,,w4') == ['s3.w2', 's3.w4']
+    assert parse_refs('s3.w2,-') == ['s3.w2']
+    # And nothing the grammar really accepts was lost.
+    assert parse_refs('s3.w2,w5') == ['s3.w2', 's3.w5']
+    assert parse_refs('s3.w2,3') == ['s3.w2', 's3.w3']
+    assert parse_refs('s3.w2-3,w7') == ['s3.w2-3', 's3.w7']

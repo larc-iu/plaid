@@ -33,6 +33,8 @@ import shutil
 import subprocess
 import tempfile
 
+from live import _skip_or_fail
+
 import pytest
 
 from plaid_agent.igt import vocab as vocab_module
@@ -184,7 +186,7 @@ def _python_side(c: dict) -> dict:
 def compared():
     node = _node()
     if not node:
-        pytest.skip('needs node 18+ and plaid-igt installed beside the agent')
+        _skip_or_fail('needs node 18+ and plaid-igt installed beside the agent')
     cases = [_case(s) for s in range(CASES)]
     with tempfile.TemporaryDirectory() as d:
         path = os.path.join(d, 'cases.json')
@@ -248,7 +250,7 @@ def test_every_app_function_is_ported_or_exempted():
     to one the app grew and the port never got. This is not."""
     node = _node()
     if not node:
-        pytest.skip('node or plaid-igt not available')
+        _skip_or_fail('node or plaid-igt not available')
     run = subprocess.run([node, RUNNER, '--surface'], capture_output=True, text=True, timeout=120)
     assert run.returncode == 0, run.stderr
     surface = json.loads(run.stdout)

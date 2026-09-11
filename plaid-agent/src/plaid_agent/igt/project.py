@@ -301,7 +301,7 @@ class Link:
     vocab_id: str
     metadata: Optional[dict] = None
     # Every token the link covers, in text order. One token is an ordinary
-    # link; two or more word tokens make a multi-word expression, one link
+    # link. Two or more word tokens make a multi-word expression, one link
     # shared by all of its members (see plaid-igt's domain/mwe.js).
     tokens: List[str] = field(default_factory=list)
     # For a multi-word expression: its members as (sentence index, word
@@ -504,7 +504,7 @@ def parse_document(raw: dict, project: IgtProject) -> IgtDoc:
                 mm = m.get('metadata') or {}
                 form = mm.get('form')
                 # A lone morpheme with no form is the editor's default (the
-                # whole word); in a longer chain a missing form is a gap.
+                # whole word). In a longer chain a missing form is a gap.
                 morphemes.append(Morpheme(
                     id=m['id'], index=mi,
                     form=form if form not in (None, '') else (surface if len(chain) == 1 else ''),

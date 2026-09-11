@@ -15,6 +15,16 @@ PASSWORD = os.environ.get('PLAID_TEST_PASSWORD', 'password')
 OVERLAP = {'sentence': 'partitioning', 'word': 'non-overlapping', 'morpheme': 'any'}
 
 
+# These tests are the only coverage of the real query engine, and a skip turns
+# them green having run nothing: on CI, or after a path moves, the suite still
+# says every test passed. `PLAID_AGENT_REQUIRE_LIVE=1` makes the skip a
+# failure, so a runner that means to exercise the engine can demand it.
+def _skip_or_fail(why: str) -> None:
+    if os.environ.get('PLAID_AGENT_REQUIRE_LIVE'):
+        raise AssertionError(f'{why} (PLAID_AGENT_REQUIRE_LIVE is set)')
+    pytest.skip(why)
+
+
 def reachable() -> bool:
     try:
         urllib.request.urlopen(URL + '/api/v1/login', timeout=2)
@@ -170,8 +180,8 @@ def seed(client, project_raw, documents, lexicons, name='igt-agent test'):
 @pytest.fixture(scope='module')
 def live_client():
     if not reachable():
-        pytest.skip(f'no Plaid server at {URL}')
+        _skip_or_fail(f'no Plaid server at {URL}')
     try:
         return login()
     except Exception as e:  # noqa: BLE001
-        pytest.skip(f'cannot log in at {URL}: {e}')
+        _skip_or_fail(f'cannot log in at {URL}: {e}')

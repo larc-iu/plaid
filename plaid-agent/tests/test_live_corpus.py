@@ -40,9 +40,18 @@ def test_seeded_project_parses_like_the_fixture(proj):
 
 
 def same(proj, tool, args, normalize=lambda s: s):
-    """Both paths, compared; the scan path is the oracle. Returns the query output."""
+    """Both paths, compared; the scan path is the oracle. Returns the query output.
+
+    Agreement alone is not enough. `call_tool` turns every failure into the
+    string "Error: ...", and both sides run the same project load and the same
+    tool body, so any shared breakage made both return the same error text and
+    every comparison here passed having verified nothing.
+    """
     a, b = two(proj)
     ra, rb = call_tool(a, tool, args), call_tool(b, tool, args)
+    for label, out in (('scan', ra), ('query', rb)):
+        assert not out.startswith('Error:'), f'{tool} {args}: the {label} path failed: {out}'
+        assert out.strip(), f'{tool} {args}: the {label} path answered nothing'
     assert normalize(rb) == normalize(ra), f'{tool} {args}\n--- scan ---\n{ra}\n--- query ---\n{rb}'
     return rb
 
@@ -100,7 +109,7 @@ def test_lexicon_sequence_and_entry(proj):
     for args in ({'sequence': [{'Gloss': 'Ali'}, {'form': 'gam'}]}, {'sequence': [{'Morph Gloss': 'ERG'}, {'form': 'akuna'}], 'adjacent': False},
                  {'sequence': [{'form': 'gam'}]}, {'sequence': [{'morpheme': 'ar'}]}, {'sequence': [{'type': 'suffix'}, {'form': 'gam'}]},
                  {'sequence': [{'form': 'gam'}, {'form': 'akuna'}]}, {'sequence': [{'form': 'ali-di'}, {'form': 'akuna'}]},
-                 {'sequence': [{'form': '^g', 'form2': 'x'}], 'regex': True} if False else {'sequence': [{'form': '^g'}], 'regex': True}):
+                 {'sequence': [{'form': '^g'}], 'regex': True}):
         same(proj, 'sequence_search', args)
     for args in ({'entry_form': 'Ali'}, {'entry_form': '-di'}, {'entry_form': 'gam', 'entry_gloss': 'fish'}):
         same(proj, 'lexicon_entry', args)

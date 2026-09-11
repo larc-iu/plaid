@@ -183,8 +183,13 @@ def fetch(url: str, cfg: WebConfig, client=None) -> tuple:
                     if r.status_code >= 400:
                         raise WebError(f'{seen} answered {r.status_code}.')
                     kind = _content_type(r)
-                    if kind and kind not in READABLE_TYPES:
-                        raise WebError(f'{seen} is {kind}, and this tool reads HTML and plain text only. '
+                    # A server that sends no type at all gets the check too:
+                    # `kind and ...` skipped it for exactly the servers least
+                    # likely to be well behaved, and their bytes went to the
+                    # HTML parser on a guess.
+                    if kind not in READABLE_TYPES:
+                        raise WebError(f'{seen} is {kind or "of no stated type"}, and this tool reads '
+                                       f'HTML and plain text only. '
                                        'Say so rather than guessing at what it contains.')
                     body = b''
                     capped = False
