@@ -8,8 +8,10 @@ import { useLayerInfo } from './hooks/useLayerInfo.js';
 import { useSentenceData } from './hooks/useSentenceData.js';
 import { useDocumentHistory } from './hooks/useDocumentHistory.js';
 import { useDocumentEditor } from './useDocumentEditor.js';
+import { useReviewGestures } from './hooks/useReviewGestures.js';
 import { HistoryDrawer, HISTORY_DRAWER_WIDTH } from '@ui/components/shared/HistoryDrawer';
 import { RestoreDialog } from './annotation/RestoreDialog.jsx';
+import { EditorLegend } from './annotation/EditorLegend.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { formatFindingsForClipboard } from '../../domain/validate.js';
 import { notifyError, notifyWithAction } from '../../utils/feedback.jsx';
@@ -309,6 +311,16 @@ export const AnnotationEditor = () => {
   const handleRelationUpdate = useCallback((id, dep) => doc?.updateRelation(id, dep), [doc]);
   const handleRelationDelete = useCallback((id) => doc?.deleteRelation(id), [doc]);
   const handleConfirmTokens = useCallback((tokenIds) => doc?.confirmTokens(tokenIds), [doc]);
+  const handleDiscardTokens = useCallback((tokenIds) => doc?.discardTokens(tokenIds), [doc]);
+
+  // The review gestures live here, not on a sentence row: every one of them can
+  // cross a sentence boundary, and a row only knows its own sentence.
+  const reviewKeyDown = useReviewGestures({
+    sentences: processedSentences,
+    doc,
+    readOnly,
+    visibleFields,
+  });
 
   // History drawer handlers
   const handleOpenHistory = () => {
@@ -509,14 +521,7 @@ export const AnnotationEditor = () => {
             <div className="px-6 pb-4">
               {toolbar}
               {readOnlyBanner}
-              {processedSentences.length > 0 && !readOnly && (
-                <p className="mt-3 text-xs text-muted-foreground">
-                  Drag from one token to another to create a dependency relation. Click a relation
-                  label to rename it, or a cell to edit an annotation. Ctrl/Cmd+Enter accepts a
-                  word&rsquo;s machine predictions without editing them, and &ldquo;Accept
-                  predictions&rdquo; does the whole sentence.
-                </p>
-              )}
+              {processedSentences.length > 0 && !readOnly && <EditorLegend project={project} />}
             </div>
 
             {processedSentences.length === 0 ? (
@@ -526,42 +531,48 @@ export const AnnotationEditor = () => {
                   : 'No sentences. Tokenize the document in the Text Editor.'}
               </p>
             ) : (
-              processedSentences.map((sentenceData, index) => {
-                // Calculate total tokens before this sentence
-                const totalTokensBefore = processedSentences
-                  .slice(0, index)
-                  .reduce((total, prevSentence) => total + prevSentence.tokens.length, 0);
+              // The review gestures listen here, above every sentence, because
+              // each of them can cross a sentence boundary.
+              <div onKeyDown={reviewKeyDown}>
+                {processedSentences.map((sentenceData, index) => {
+                  // Calculate total tokens before this sentence
+                  const totalTokensBefore = processedSentences
+                    .slice(0, index)
+                    .reduce((total, prevSentence) => total + prevSentence.tokens.length, 0);
 
-                return (
-                  <div
-                    key={sentenceData.id}
-                    data-sentence-row={sentenceData.id}
-                    className="transition-shadow duration-300"
-                    style={
-                      flashSentId === String(sentenceData.id)
-                        ? { boxShadow: '0 0 0 3px #fcd34d', borderRadius: 6 }
-                        : undefined
-                    }
-                  >
-                    <VirtualSentenceRow
-                      sentenceData={sentenceData}
-                      onAnnotationUpdate={readOnly ? null : handleAnnotationUpdate}
-                      onFeatureDelete={readOnly ? null : handleFeatureDelete}
-                      onRelationCreate={readOnly ? null : handleRelationCreate}
-                      onRelationUpdate={readOnly ? null : handleRelationUpdate}
-                      onRelationDelete={readOnly ? null : handleRelationDelete}
-                      onConfirmTokens={readOnly ? null : handleConfirmTokens}
-                      sentenceIndex={index}
-                      totalTokensBefore={totalTokensBefore}
-                      estimatedHeight={250} // Estimated height for placeholder
-                      vocab={layerInfo?.vocab}
-                      colors={layerInfo?.colors}
-                      visibleFields={visibleFields}
-                      onToggleField={handleToggleField}
-                    />
-                  </div>
-                );
-              })
+                  return (
+                    <div
+                      key={sentenceData.id}
+                      data-sentence-row={sentenceData.id}
+                      className="transition-shadow duration-300"
+                      style={
+                        flashSentId === String(sentenceData.id)
+                          ? { boxShadow: '0 0 0 3px #fcd34d', borderRadius: 6 }
+                          : undefined
+                      }
+                    >
+                      <VirtualSentenceRow
+                        sentenceData={sentenceData}
+                        onAnnotationUpdate={readOnly ? null : handleAnnotationUpdate}
+                        onFeatureDelete={readOnly ? null : handleFeatureDelete}
+                        onRelationCreate={readOnly ? null : handleRelationCreate}
+                        onRelationUpdate={readOnly ? null : handleRelationUpdate}
+                        onRelationDelete={readOnly ? null : handleRelationDelete}
+                        onConfirmTokens={readOnly ? null : handleConfirmTokens}
+                        onDiscardTokens={readOnly ? null : handleDiscardTokens}
+                        reviewable={doc?.writer.reviewable}
+                        sentenceIndex={index}
+                        totalTokensBefore={totalTokensBefore}
+                        estimatedHeight={250} // Estimated height for placeholder
+                        vocab={layerInfo?.vocab}
+                        colors={layerInfo?.colors}
+                        visibleFields={visibleFields}
+                        onToggleField={handleToggleField}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </>
         )}

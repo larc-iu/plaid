@@ -81,7 +81,7 @@ test('updateRelation reverts via reload when the server rejects', async () => {
 
 const provClient = () => {
   const calls = [];
-  return {
+  const client = {
     calls,
     beginBatch() {},
     async submitBatch() {
@@ -103,8 +103,15 @@ const provClient = () => {
       patchMetadata: (id, body) => {
         calls.push(['relations.patchMetadata', id, body]);
       },
+      delete: (id) => {
+        calls.push(['relations.delete', id]);
+      },
     },
   };
+  client.spans.delete = (id) => {
+    calls.push(['spans.delete', id]);
+  };
+  return client;
 };
 
 test('editing a machine-made annotation verifies it (batched update + patchMetadata)', async () => {
@@ -240,6 +247,98 @@ test('confirmTokens: a contributor takes machine proposals as contributions and 
     doc.layerInfo.uposLayer.spans.find((s) => s.id === noun.id).metadata,
     CONTRIBUTED,
   );
+});
+
+test('discardTokens deletes the machine proposal and leaves everything else', async () => {
+  const raw = rawDocFromConllu(INPUT, 'mut-doc');
+  const client = provClient();
+  const doc = new ConlluDocument({ raw, client: withOps(client) });
+
+  const machine = { prov: 'inferred', provSource: 'service:stanza-parser' };
+  const noun = doc.layerInfo.uposLayer.spans.find((s) => s.value === 'NOUN');
+  noun.metadata = { ...machine };
+  const nnXpos = doc.layerInfo.xposLayer.spans.find((s) => s.value === 'NN');
+  nnXpos.metadata = { ...machine, provConfirmed: true }; // somebody vouched
+  const det = doc.layerInfo.uposLayer.spans.find((s) => s.value === 'DET');
+  det.metadata = { ...CONTRIBUTED };
+
+  // Every word in one gesture: only the plain machine span goes.
+  const everyToken = doc.sentences.flatMap((sent) => sent.tokens.map((t) => t.token.id));
+  assert.equal(await doc.discardTokens(everyToken), true);
+  assert.deepEqual(
+    client.calls.filter((c) => c[0] === 'spans.delete').map((c) => c[1]),
+    [noun.id],
+  );
+  const uposLeft = doc.layerInfo.uposLayer.spans.map((s) => s.value);
+  assert.ok(!uposLeft.includes('NOUN'));
+  assert.ok(uposLeft.includes('DET'));
+  assert.ok(doc.layerInfo.xposLayer.spans.some((s) => s.id === nnXpos.id));
+});
+
+test('discardTokens takes a machine relation but keeps a lemma span a human relation hangs on', async () => {
+  const raw = rawDocFromConllu(INPUT, 'mut-doc');
+  const client = provClient();
+  const doc = new ConlluDocument({ raw, client: withOps(client) });
+
+  const machine = { prov: 'inferred', provSource: 'service:stanza-parser' };
+  // 'de' is the dependent of a `case` relation. Make both its lemma span and
+  // that relation the parser's.
+  const deLemma = doc.layerInfo.lemmaLayer.spans.find((s) => s.value === 'de');
+  deLemma.metadata = { ...machine };
+  const caseRel = doc.layerInfo.relationLayer.relations.find((r) => r.value === 'case');
+  caseRel.metadata = { ...machine };
+  const deToken = deLemma.tokens[0];
+
+  assert.equal(await doc.discardTokens([deToken]), true);
+  assert.deepEqual(
+    client.calls.filter((c) => c[0] === 'relations.delete').map((c) => c[1]),
+    [caseRel.id],
+  );
+  assert.deepEqual(
+    client.calls.filter((c) => c[0] === 'spans.delete').map((c) => c[1]),
+    [deLemma.id],
+  );
+  // Relations go before spans: a relation whose anchor is already gone is gone,
+  // and deleting it twice is a 404.
+  const order = client.calls.filter((c) => c[0].endsWith('.delete')).map((c) => c[0]);
+  assert.deepEqual(order, ['relations.delete', 'spans.delete']);
+});
+
+test('discardTokens spares a machine lemma span that a human relation still hangs on', async () => {
+  const raw = rawDocFromConllu(INPUT, 'mut-doc');
+  const client = provClient();
+  const doc = new ConlluDocument({ raw, client: withOps(client) });
+
+  const machine = { prov: 'inferred', provSource: 'service:stanza-parser' };
+  const deLemma = doc.layerInfo.lemmaLayer.spans.find((s) => s.value === 'de');
+  deLemma.metadata = { ...machine };
+  // Its incoming relation is a person's: deleting the lemma span would cascade
+  // that relation away, which is the one way this gesture could destroy work.
+  const deToken = deLemma.tokens[0];
+
+  assert.equal(await doc.discardTokens([deToken]), true);
+  assert.deepEqual(
+    client.calls.filter((c) => c[0] === 'spans.delete').map((c) => c[1]),
+    [],
+  );
+  assert.ok(doc.layerInfo.lemmaLayer.spans.some((s) => s.id === deLemma.id));
+});
+
+test("discardTokens leaves a contributor's work alone, for a verifier too", async () => {
+  const raw = rawDocFromConllu(INPUT, 'mut-doc');
+  const client = provClient();
+  const doc = new ConlluDocument({ raw, client: withOps(client) });
+  const det = doc.layerInfo.uposLayer.spans.find((s) => s.value === 'DET');
+  det.metadata = { ...CONTRIBUTED };
+
+  // Nothing machine-made anywhere, so the gesture is a no-op and says so.
+  const everyToken = doc.sentences.flatMap((sent) => sent.tokens.map((t) => t.token.id));
+  assert.equal(await doc.discardTokens(everyToken), true);
+  assert.deepEqual(
+    client.calls.filter((c) => c[0].endsWith('.delete')),
+    [],
+  );
+  assert.ok(doc.layerInfo.uposLayer.spans.some((s) => s.id === det.id));
 });
 
 test('deleteWord mirrors the server cascade locally before the round trip', async () => {

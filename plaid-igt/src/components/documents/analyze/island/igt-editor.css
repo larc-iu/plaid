@@ -5,15 +5,20 @@
 
 .igt-island {
   --igt-blue: #2563eb;
-  --igt-violet: #6d28d9;
   /* Provenance hues: violet for machine-made material, amber for a
      contributor's unreviewed work. Each has a soft tint for underlines and
-     the sweep's focus fill. Neither is a scope color. */
-  --igt-violet-soft: #c4b5fd;
-  --igt-violet-fill: #ede9fe;
-  --igt-amber: #b45309;
-  --igt-amber-soft: #fcd34d;
-  --igt-amber-fill: #fef3c7;
+     the sweep's focus fill. Neither is a scope color.
+
+     Defined once for every app in plaid-ui's index.css, which main.jsx loads
+     above this file: the same violet has to mean "a machine proposed this" in
+     plaid-ud's grid too, or a project open in both reads as two corpora. These
+     names stay because the island's rules are written in them. */
+  --igt-violet: var(--plaid-machine);
+  --igt-violet-soft: var(--plaid-machine-soft);
+  --igt-violet-fill: var(--plaid-machine-fill);
+  --igt-amber: var(--plaid-contributed);
+  --igt-amber-soft: var(--plaid-contributed-soft);
+  --igt-amber-fill: var(--plaid-contributed-fill);
   /* Morpheme scope is teal, a hue of its own: violet is machine provenance
      and must never be mistaken for a row label. The softer teal is for the
      large recurring surfaces (row labels, joiners); the full teal for the

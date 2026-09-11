@@ -9,6 +9,8 @@ export const VirtualSentenceRow = ({
   onRelationUpdate,
   onRelationDelete,
   onConfirmTokens,
+  onDiscardTokens,
+  reviewable,
   sentenceIndex = 0,
   totalTokensBefore = 0,
   estimatedHeight = 200, // Default estimated height in pixels
@@ -84,6 +86,8 @@ export const VirtualSentenceRow = ({
         onRelationUpdate={onRelationUpdate}
         onRelationDelete={onRelationDelete}
         onConfirmTokens={onConfirmTokens}
+        onDiscardTokens={onDiscardTokens}
+        reviewable={reviewable}
         totalTokensBefore={totalTokensBefore}
         vocab={vocab}
         colors={colors}

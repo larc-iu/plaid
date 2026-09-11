@@ -122,11 +122,11 @@
   outline-offset: 2px;
 }
 
-/* Machine-made, not yet human-verified (provenance convention). The fill is set
-   inline to the unapproved violet (see INFERRED_COLOR in DependencyTree.jsx, which
-   also dashes the arc); this italicizes to reinforce the state. Editing the label
-   verifies it and clears this. */
-.tree-deprel-text--inferred {
+/* Unreviewed (provenance convention). The fill is set inline to the mark's hue
+   (see PROV_MARK_COLORS in provenanceUi.js, which also dashes the arc); this
+   italicizes to reinforce the state whatever the hue. Editing or accepting the
+   label clears it. */
+.tree-deprel-text--marked {
   font-style: italic;
   opacity: 0.85;
 }

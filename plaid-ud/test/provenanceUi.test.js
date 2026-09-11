@@ -4,12 +4,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+
 import {
   readFieldProbs,
   groupSuggestions,
   probLabel,
   provCellTitle,
+  provMark,
   PARSER_GROUP,
+  PROV_MARK_COLORS,
 } from '../src/utils/provenanceUi.js';
 
 const MACHINE_META = {
@@ -82,4 +87,31 @@ test('provCellTitle describes machine-made annotations and passes humans through
     provCellTitle('deprel', { prov: 'inferred', provSource: 'service:p' }),
     'deprel: machine-made, unverified (service:p)',
   );
+});
+
+test('provMark marks the two unreviewed states and nothing else', () => {
+  assert.equal(provMark(undefined), null);
+  assert.equal(provMark({}), null);
+  assert.equal(provMark(MACHINE_META), 'machine');
+  assert.equal(provMark({ prov: 'contributed', provSource: 'user:u1' }), 'contributed');
+  // Confirmed material renders plain whichever origin it had: the mark going
+  // away is how a reviewer sees the confirmation land.
+  assert.equal(provMark({ ...MACHINE_META, provConfirmed: true }), null);
+  assert.equal(provMark({ prov: 'contributed', provSource: 'user:u1', provConfirmed: true }), null);
+});
+
+// The dependency tree paints arcs and labels with SVG presentation attributes,
+// which cannot read a CSS variable, so the two hues are written twice: once in
+// plaid-ui's stylesheet for the grid's classes and once in PROV_MARK_COLORS for
+// the tree. Written twice and changed once is how a colour silently rots (see
+// the .module.css that named --mantine-color-* through Tier 0), so assert the
+// copies agree rather than trusting a comment to be read.
+test('PROV_MARK_COLORS matches the shared palette in plaid-ui', async () => {
+  const css = await readFile(
+    fileURLToPath(new URL('../../plaid-ui/src/index.css', import.meta.url)),
+    'utf8',
+  );
+  const varValue = (name) => css.match(new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{3,8})`))?.[1];
+  assert.equal(varValue('plaid-machine'), PROV_MARK_COLORS.machine);
+  assert.equal(varValue('plaid-contributed'), PROV_MARK_COLORS.contributed);
 });

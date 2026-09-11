@@ -10,10 +10,12 @@
   position: relative; /* Enable absolute positioning for children */
 }
 
-/* "Accept predictions" affordance. Sits BELOW this sentence's grid and is
-   left-aligned with the first token column (the labels column is 80px wide), so
-   it unambiguously belongs to the sentence above it. */
+/* The sentence's review affordances. They sit BELOW this sentence's grid and
+   are left-aligned with the first token column (the labels column is 80px
+   wide), so they unambiguously belong to the sentence above. */
 .sentence-confirm {
+  display: flex;
+  gap: 6px;
   margin-top: 6px;
   margin-left: 80px;
 }
@@ -43,6 +45,33 @@
 }
 .sentence-confirm .accept-predictions-btn:hover,
 .sentence-confirm .accept-predictions-btn:hover * {
+  color: #fff;
+}
+
+/* "Discard predictions" is the destructive twin, so it is red rather than
+   violet and just as quiet until you are on it. Same shape as its neighbour,
+   which is what says the two are a pair. */
+.sentence-confirm .discard-predictions-btn {
+  background-color: transparent;
+  border: 1px solid #fca5a5;
+  opacity: 0.6;
+  transition:
+    opacity 120ms ease,
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+.sentence-confirm .discard-predictions-btn,
+.sentence-confirm .discard-predictions-btn * {
+  color: #dc2626;
+}
+.sentence-confirm .discard-predictions-btn:hover {
+  opacity: 1;
+  background-color: #dc2626;
+  border-color: #dc2626;
+}
+.sentence-confirm .discard-predictions-btn:hover,
+.sentence-confirm .discard-predictions-btn:hover * {
   color: #fff;
 }
 
@@ -203,17 +232,32 @@
   font-style: normal;
 }
 
-/* Machine-made, not yet human-verified (provenance convention). Editing the
-   cell verifies it, which clears this styling. The dotted underline survives
-   per-value cell colors (e.g. UPOS color coding), so machine state stays
-   visible even on colored cells; uncolored cells also go violet. */
-.editable-field--inferred,
-.token-form--inferred {
-  color: #6d28d9;
+/* Unreviewed material (provenance convention), in the two hues the apps share:
+   violet for a machine's, amber for a contributor's. Editing the cell verifies
+   it, which clears this styling; so does accepting it. The dotted underline
+   survives per-value cell colors (e.g. UPOS color coding), so the state stays
+   visible even on colored cells; uncolored cells also take the hue.
+
+   A VERIFIED value renders plain, deliberately: watching the mark go is how a
+   reviewer knows the confirmation landed. plaid-igt keeps a quiet mark on one
+   instead, which is the one place the two grids differ on purpose. */
+.editable-field--machine,
+.editable-field--contributed,
+.token-form--machine,
+.token-form--contributed {
   font-style: italic;
   text-decoration: underline dotted;
-  text-decoration-color: #c4b5fd;
   text-underline-offset: 2px;
+}
+.editable-field--machine,
+.token-form--machine {
+  color: var(--plaid-machine);
+  text-decoration-color: var(--plaid-machine-soft);
+}
+.editable-field--contributed,
+.token-form--contributed {
+  color: var(--plaid-contributed);
+  text-decoration-color: var(--plaid-contributed-soft);
 }
 
 /* Features */
@@ -260,10 +304,16 @@
   text-align: center;
 }
 
-/* Machine-made, unverified feature (provenance convention). */
-.feature-text--inferred {
-  color: #6d28d9;
+/* Unreviewed feature (provenance convention), same two hues as the cells. */
+.feature-text--machine,
+.feature-text--contributed {
   font-style: italic;
+}
+.feature-text--machine {
+  color: var(--plaid-machine);
+}
+.feature-text--contributed {
+  color: var(--plaid-contributed);
 }
 
 .feature-delete-btn {

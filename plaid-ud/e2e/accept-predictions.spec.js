@@ -159,7 +159,7 @@ test('the per-word ✓ is hidden by default and reveals on keyboard focus', asyn
   await openAnnotate(page);
 
   // "dog"'s UPOS is a machine prediction → rendered inferred (violet).
-  await expect(page.locator('.editable-field--inferred')).toHaveCount(1);
+  await expect(page.locator('.editable-field--machine')).toHaveCount(1);
   // Two ✓s: "dog" (UPOS span) and "the" (its incoming det relation is machine-made).
   await expect(page.locator('.word-accept')).toHaveCount(2);
   const accept = dogAccept(page);
@@ -180,7 +180,7 @@ test('the per-word ✓ is reachable by mouse and accepts the word', async ({ pag
 
   // Must survive the trip up to it (across the tree SVG) and be clickable.
   await accept.click();
-  await expect(page.locator('.editable-field--inferred')).toHaveCount(0, { timeout: 8000 });
+  await expect(page.locator('.editable-field--machine')).toHaveCount(0, { timeout: 8000 });
   await expect(dogAccept(page)).toHaveCount(0, { timeout: 8000 });
   await expect(page.locator('.word-accept')).toHaveCount(1); // "the" still pending
 });
@@ -196,14 +196,32 @@ test('an unapproved dependency edge is violet + dashed', async ({ page }) => {
   expect(await arc.evaluate((el) => getComputedStyle(el).strokeDasharray)).not.toBe('none');
 });
 
-test('Ctrl+Enter accepts the token and keeps focus on the cell', async ({ page }) => {
+test('Ctrl+Enter accepts the word and moves to the next one', async ({ page }) => {
   await openAnnotate(page);
-  const lemmaId = `${S.morphIds[1]}-lemma`;
+  // "dog" is the middle word; "runs" is the next.
+  await page.locator(`[id="${S.morphIds[1]}-lemma"]`).focus();
+
+  await page.keyboard.press('Control+Enter');
+
+  await expect(page.locator('.editable-field--machine')).toHaveCount(0, { timeout: 8000 });
+  // The review flow is glance, accept, glance, accept: focus lands on the next
+  // word's cell after a beat, so the mark going away is visible first.
+  await expect
+    .poll(() => page.evaluate(() => document.activeElement?.id), { timeout: 8000 })
+    .toBe(`${S.morphIds[2]}-lemma`);
+});
+
+test('Ctrl+Enter on a settled word holds position', async ({ page }) => {
+  await openAnnotate(page);
+  // "runs" carries nothing unreviewed. A hop here would read exactly like a
+  // confirmation that never happened.
+  const lemmaId = `${S.morphIds[2]}-lemma`;
   await page.locator(`[id="${lemmaId}"]`).focus();
 
   await page.keyboard.press('Control+Enter');
 
-  await expect(page.locator('.editable-field--inferred')).toHaveCount(0, { timeout: 8000 });
-  // Focus must stay on the same cell (not blur away).
-  await expect.poll(() => page.evaluate(() => document.activeElement?.id)).toBe(lemmaId);
+  await page.waitForTimeout(600);
+  expect(await page.evaluate(() => document.activeElement?.id)).toBe(lemmaId);
+  // And nothing was accepted anywhere.
+  await expect(page.locator('.editable-field--machine')).toHaveCount(1);
 });

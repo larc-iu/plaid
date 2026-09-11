@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { ChevronRight, Check } from 'lucide-react';
+import { ChevronRight, Check, Undo2 } from 'lucide-react';
 import { Combobox } from '@ui/components/ui/combobox';
 import { Button } from '@ui/components/ui/button';
-import { needsReview, provState, PROV_STATES } from '@larc-iu/plaid-client';
+import { isMachine, needsReview, provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { DependencyTree } from './DependencyTree.jsx';
 import { useTokenPositions } from '../hooks/useTokenPositions.js';
 import { resolveColor } from '../../../utils/udVocab.js';
@@ -11,13 +11,9 @@ import {
   groupSuggestions,
   probLabel,
   provCellTitle,
+  provMark,
 } from '../../../utils/provenanceUi.js';
 import './SentenceRow.css';
-
-// Machine-made or contributed, not yet human-verified (provenance convention)
-// — such cells render distinctly (italic + dotted violet underline) until a
-// human edits them, which verifies them.
-const isInferredSpan = (span) => !!span && needsReview(span.metadata);
 
 // Shared throttle for tab navigation across all EditableCell instances
 let lastGlobalTabPress = 0;
@@ -47,7 +43,7 @@ const EditableCell = React.memo(
     isReadOnly,
     suggestions,
     cellColor,
-    isInferred,
+    mark,
     provMeta,
   }) => {
     const [localValue, setLocalValue] = useState(value || '');
@@ -121,7 +117,7 @@ const EditableCell = React.memo(
       // (provenance write contract): commit it even though the value is the
       // same, so the span gets verified. `pristine` guards this to actual
       // typing — tabbing through a cell must not confirm anything.
-      const retyped = !changed && !pristine && isInferred && !!newValue;
+      const retyped = !changed && !pristine && !!mark && !!newValue;
       if (changed || retyped) {
         onUpdate(tokenId, field, newValue || null).catch((error) => {
           console.error(`Failed to update ${field}:`, error);
@@ -162,6 +158,10 @@ const EditableCell = React.memo(
         return;
       }
 
+      // Ctrl/Cmd+Shift+Up/Down is the review sweep (useReviewGestures, at the
+      // document level, since it crosses sentences). Let it bubble untouched.
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey) return;
+
       // Grid navigation. Up/Down always navigate (single-line inputs don't use
       // them anyway). Left/Right navigate only at the edge of the input so
       // they still move the caret within text.
@@ -199,8 +199,15 @@ const EditableCell = React.memo(
     const hasContent = displayValue && displayValue.trim() !== '';
     const fieldClass =
       `editable-field ${hasContent ? 'editable-field--filled' : 'editable-field--empty'}` +
-      (isInferred && hasContent ? ' editable-field--inferred' : '');
+      (mark && hasContent ? ` editable-field--${mark}` : '');
 
+    // An unreviewed cell wears its provenance hue, NOT the per-value colour a
+    // UPOS tag carries: "nobody has looked at this" outranks "this is a NOUN",
+    // and the tag's colour comes back the moment the mark clears. Without this
+    // the two marks would be told apart only by the underline tint on exactly
+    // the row a parser writes most. The dependency tree already resolves the
+    // same clash the same way (see PROV_MARK_COLORS in DependencyTree).
+    //
     // Machine-origin record for the tooltip + the producer's distribution (when
     // one was recorded in provDetail) for ranking the dropdown.
     const cellTitle = provCellTitle(`Edit ${field}`, provMeta);
@@ -215,7 +222,7 @@ const EditableCell = React.memo(
           style={{
             width: columnWidth ? `${columnWidth}px` : 'auto',
             cursor: 'default',
-            ...(hasContent && cellColor ? { color: cellColor } : {}),
+            ...(hasContent && cellColor && !mark ? { color: cellColor } : {}),
           }}
           title={provCellTitle(field, provMeta)}
         >
@@ -254,6 +261,10 @@ const EditableCell = React.memo(
           ref={inputRef}
           id={`${tokenId}-${field}`}
           spellCheck={false}
+          // The cell's saved value, so the document-level Ctrl/Cmd+Backspace
+          // can tell an untouched cell from one with unsaved typing in it and
+          // leave the browser's delete-a-word alone in the second case.
+          data-orig={value || ''}
           options={isEditing ? groupSuggestions(suggestions, fieldProbs) : NO_OPTIONS}
           renderOption={
             fieldProbs
@@ -288,6 +299,9 @@ const EditableCell = React.memo(
             // arrows browse it (Enter picks). The combobox hands us that state
             // rather than leaving us to read it off the DOM.
             const browsing = !pristine && combo.open;
+            // Ctrl/Cmd+Shift+Up/Down is the review sweep, handled at the
+            // document level. Never let it browse the tag list.
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey) return;
             if (e.key === 'Tab') {
               const now = Date.now();
               if (now - lastGlobalTabPress < 55) {
@@ -342,7 +356,7 @@ const EditableCell = React.memo(
           className={fieldClass}
           style={{
             width: columnWidth ? `${columnWidth}px` : 'auto',
-            ...(hasContent && cellColor ? { color: cellColor } : {}),
+            ...(hasContent && cellColor && !mark ? { color: cellColor } : {}),
           }}
           optionClassName="px-2 py-0.5 text-xs"
         />
@@ -355,6 +369,7 @@ const EditableCell = React.memo(
         id={`${tokenId}-${field}`}
         type="text"
         spellCheck={false}
+        data-orig={value || ''}
         value={displayValue}
         onChange={handleChange}
         onBlur={handleBlur}
@@ -363,7 +378,7 @@ const EditableCell = React.memo(
         className={fieldClass}
         style={{
           width: columnWidth ? `${columnWidth}px` : 'auto',
-          ...(hasContent && cellColor ? { color: cellColor } : {}),
+          ...(hasContent && cellColor && !mark ? { color: cellColor } : {}),
         }}
         title={cellTitle}
         tabIndex={tabIndex}
@@ -386,7 +401,7 @@ const EditableCell = React.memo(
 const FeaturesCell = React.memo(
   ({
     features,
-    featureInferred,
+    featureMarks,
     spanIds,
     tokenId,
     tokenIndex,
@@ -449,6 +464,11 @@ const FeaturesCell = React.memo(
     };
 
     const handleKeyDown = (e, combo) => {
+      // The document-level review gestures (Ctrl/Cmd+Enter, Ctrl/Cmd+Backspace,
+      // Ctrl/Cmd+Shift+Up/Down) own these chords. Enter is the exception: it is
+      // let through below so the cell can decline to commit a half-typed
+      // feature on its way out.
+      if ((e.ctrlKey || e.metaKey) && e.key !== 'Enter') return;
       if (e.key === 'Tab') {
         const now = Date.now();
         if (now - lastGlobalTabPress < 55) {
@@ -558,7 +578,7 @@ const FeaturesCell = React.memo(
             }
           >
             <span
-              className={`feature-text${featureInferred?.[index] ? ' feature-text--inferred' : ''}`}
+              className={`feature-text${featureMarks?.[index] ? ` feature-text--${featureMarks[index]}` : ''}`}
             >
               {feature}
             </span>
@@ -610,6 +630,10 @@ const FeaturesCell = React.memo(
             tabIndex={tabIndex}
             placeholder="+"
             title="Add feature (Key=Value)"
+            // Always empty when untouched, so Ctrl/Cmd+Backspace over it is the
+            // word's discard gesture and, once something is typed, the
+            // browser's delete-a-word.
+            data-orig=""
             className="feature-chip-input"
             optionClassName="px-2 py-0.5 text-xs"
           />
@@ -638,6 +662,7 @@ const TokenColumn = React.memo(
     featureInventory,
     visibleFields,
     relationInferred,
+    reviewable,
   }) => {
     // This word still has machine predictions a human hasn't reviewed (a span on
     // it, or its incoming dependency relation — confirmTokens covers both). When so, a
@@ -648,11 +673,9 @@ const TokenColumn = React.memo(
     // a pure-CSS column hover before you can reach it).
     const wordInferred =
       relationInferred ||
-      isInferredSpan(data.form) ||
-      isInferredSpan(data.lemma) ||
-      isInferredSpan(data.xpos) ||
-      isInferredSpan(data.upos) ||
-      (data.feats || []).some(isInferredSpan);
+      [data.form, data.lemma, data.xpos, data.upos, ...(data.feats || [])].some(
+        (span) => !!span && reviewable(span.metadata),
+      );
     const showCheck = !isReadOnly && onConfirmTokens && wordInferred;
     const [hoverShow, setHoverShow] = useState(false);
     const hideTimer = useRef(null);
@@ -698,10 +721,10 @@ const TokenColumn = React.memo(
             <Check width={12} height={12} />
           </button>
         )}
-        {/* Token form (baseline). A machine-made Form span (MWT components from
-            the parser) gets the same unverified styling as the cells. */}
+        {/* Token form (baseline). An unreviewed Form span (MWT components from
+            the parser) gets the same marking as the cells. */}
         <div
-          className={`token-form${isInferredSpan(data.form) ? ' token-form--inferred' : ''}`}
+          className={`token-form${provMark(data.form?.metadata) ? ` token-form--${provMark(data.form.metadata)}` : ''}`}
           title={
             provState(data.form?.metadata) === PROV_STATES.HUMAN
               ? undefined
@@ -732,7 +755,7 @@ const TokenColumn = React.memo(
               onUpdate={onAnnotationUpdate}
               onNavigate={onNavigate}
               isReadOnly={isReadOnly}
-              isInferred={isInferredSpan(data.lemma)}
+              mark={provMark(data.lemma?.metadata)}
               provMeta={data.lemma?.metadata}
             />
           </div>
@@ -755,7 +778,7 @@ const TokenColumn = React.memo(
               onNavigate={onNavigate}
               isReadOnly={isReadOnly}
               suggestions={vocab?.xpos}
-              isInferred={isInferredSpan(data.xpos)}
+              mark={provMark(data.xpos?.metadata)}
               provMeta={data.xpos?.metadata}
             />
           </div>
@@ -779,7 +802,7 @@ const TokenColumn = React.memo(
               isReadOnly={isReadOnly}
               suggestions={vocab?.upos}
               cellColor={data.upos?.value ? resolveColor(data.upos.value, uposColors) : undefined}
-              isInferred={isInferredSpan(data.upos)}
+              mark={provMark(data.upos?.metadata)}
               provMeta={data.upos?.metadata}
             />
           </div>
@@ -797,7 +820,7 @@ const TokenColumn = React.memo(
           >
             <FeaturesCell
               features={data.feats.map((feat) => feat.value)}
-              featureInferred={data.feats.map(isInferredSpan)}
+              featureMarks={data.feats.map((f) => provMark(f?.metadata))}
               spanIds={{
                 features: data.spanIds.features,
               }}
@@ -829,6 +852,9 @@ const TokenColumn = React.memo(
       prevProps.onNavigate === nextProps.onNavigate &&
       prevProps.getTabIndex === nextProps.getTabIndex &&
       prevProps.isReadOnly === nextProps.isReadOnly &&
+      prevProps.relationInferred === nextProps.relationInferred &&
+      // Stable per contributor id (doc.writer memoizes the policy).
+      prevProps.reviewable === nextProps.reviewable &&
       // Stable identity per layerInfo version, so these don't trigger re-renders.
       prevProps.vocab === nextProps.vocab &&
       prevProps.uposColors === nextProps.uposColors &&
@@ -840,7 +866,7 @@ const TokenColumn = React.memo(
 
 // Clickable row header (LEMMA/XPOS/UPOS/FEATS). Always shown so a collapsed row
 // can be re-expanded; the leading chevron reflects state (rotated down = expanded,
-// pointing right = collapsed), matching the relation-color legend disclosure.
+// pointing right = collapsed).
 // When no onToggle is provided (e.g. the read-only historical view) it renders as
 // a plain, non-interactive label.
 const RowLabelHeader = ({ field, label, expanded, onToggle, style }) => {
@@ -879,6 +905,8 @@ export const SentenceRow = React.memo(
     onRelationUpdate,
     onRelationDelete,
     onConfirmTokens,
+    onDiscardTokens,
+    reviewable = needsReview,
     totalTokensBefore = 0,
     vocab,
     colors,
@@ -1022,58 +1050,53 @@ export const SentenceRow = React.memo(
       [NAV_FIELDS],
     );
 
-    // Provenance review (see ConlluDocument.confirmTokens): show an "Accept
-    // predictions" affordance only when this sentence still has machine-made,
-    // unverified material — on a span (form/lemma/xpos/upos/feats) or a relation.
-    const hasInferred = useMemo(() => {
-      const spanInferred = tokenData.some(
-        (d) =>
-          isInferredSpan(d.form) ||
-          isInferredSpan(d.lemma) ||
-          isInferredSpan(d.xpos) ||
-          isInferredSpan(d.upos) ||
-          (d.feats || []).some(isInferredSpan),
-      );
-      return spanInferred || (relations || []).some((r) => needsReview(r.metadata));
-    }, [tokenData, relations]);
+    // Provenance review: whether this sentence still holds material worth a
+    // gesture — on a span (form/lemma/xpos/upos/feats) or a relation.
+    //
+    // Two scopes, and they are not the same. ACCEPT acts on what this writer
+    // reviews (a verifier reviews machine and contributed material, a
+    // contributor machine proposals only), so `reviewable` is the writer
+    // policy's own predicate. DISCARD acts on MACHINE material whoever is
+    // looking: see ConlluDocument.discardTokens for why a contributor's work is
+    // never thrown away by a keyboard chord.
+    const holds = useCallback(
+      (predicate) => {
+        const onSpans = tokenData.some((d) =>
+          [d.form, d.lemma, d.xpos, d.upos, ...(d.feats || [])].some(
+            (span) => !!span && predicate(span.metadata),
+          ),
+        );
+        return onSpans || (relations || []).some((r) => predicate(r.metadata));
+      },
+      [tokenData, relations],
+    );
+    const hasInferred = useMemo(() => holds(reviewable), [holds, reviewable]);
+    const hasMachine = useMemo(() => holds(isMachine), [holds]);
 
-    // Tokens whose incoming dependency relation is machine-made and unverified
+    // Tokens whose incoming dependency relation still needs this writer's look
     // (the dependent is the relation's TARGET lemma span), for the per-word ✓.
     const inferredRelTokenIds = useMemo(() => {
       const tokenByLemma = new Map();
       for (const d of tokenData) if (d.lemma?.id) tokenByLemma.set(d.lemma.id, d.token.id);
       const ids = new Set();
       for (const r of relations || []) {
-        if (!needsReview(r.metadata)) continue;
+        if (!reviewable(r.metadata)) continue;
         const tokenId = tokenByLemma.get(r.target);
         if (tokenId) ids.add(tokenId);
       }
       return ids;
-    }, [tokenData, relations]);
+    }, [tokenData, relations, reviewable]);
 
     const handleConfirmSentence = useCallback(() => {
       onConfirmTokens?.(tokenData.map((d) => d.token.id));
     }, [onConfirmTokens, tokenData]);
 
-    // Ctrl/Cmd+Enter confirms just the focused token. The focused cell's input id
-    // is `${tokenId}-${field}` — read it off the event target (the cell's own
-    // Enter handler may blur before this bubbling handler runs, so activeElement
-    // is unreliable, but e.target still points at the input).
-    const handleContainerKeyDown = useCallback(
-      (e) => {
-        if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey)) return;
-        if (isReadOnly || !onConfirmTokens) return;
-        const m = /^(.*)-(?:lemma|xpos|upos|feats)$/.exec(e.target?.id || '');
-        if (m) {
-          e.preventDefault();
-          onConfirmTokens([m[1]]);
-        }
-      },
-      [isReadOnly, onConfirmTokens],
-    );
+    const handleDiscardSentence = useCallback(() => {
+      onDiscardTokens?.(tokenData.map((d) => d.token.id));
+    }, [onDiscardTokens, tokenData]);
 
     return (
-      <div className="sentence-container" onKeyDown={handleContainerKeyDown}>
+      <div className="sentence-container">
         {/* Dependency tree visualization */}
         <DependencyTree
           ref={treeRef}
@@ -1153,26 +1176,39 @@ export const SentenceRow = React.memo(
               featureInventory={vocab?.featureInventory}
               visibleFields={visibleFields}
               relationInferred={inferredRelTokenIds.has(data.token.id)}
+              reviewable={reviewable}
             />
           ))}
         </div>
 
-        {/* Sentence-level "Accept predictions" — BELOW the grid and left-aligned
-          with the first token, so it reads as belonging to this sentence. The
-          button is shadcn inside a grid that is not a Tailwind subtree, so its
-          wrapper carries the preflight scope, and loses it with all the others
-          when preflight turns global. */}
-        {!isReadOnly && onConfirmTokens && hasInferred && (
+        {/* The sentence's own review gestures — BELOW the grid and left-aligned
+          with the first token, so they read as belonging to this sentence.
+          Accept takes everything proposed, Discard throws the machine's
+          proposals away, and each shows only when it has something to do. */}
+        {!isReadOnly && (hasInferred || hasMachine) && (
           <div className="sentence-confirm">
-            <Button
-              className="accept-predictions-btn h-6 gap-1 px-2 text-xs"
-              variant="outline"
-              onClick={handleConfirmSentence}
-              title="Mark every machine prediction in this sentence as reviewed (hover a word for a per-word ✓ / Ctrl/Cmd+Enter)."
-            >
-              <Check width={12} height={12} />
-              Accept predictions
-            </Button>
+            {onConfirmTokens && hasInferred && (
+              <Button
+                className="accept-predictions-btn h-6 gap-1 px-2 text-xs"
+                variant="outline"
+                onClick={handleConfirmSentence}
+                title="Accept every proposal in this sentence as it stands. Ctrl/Cmd+Enter does one word."
+              >
+                <Check width={12} height={12} />
+                Accept predictions
+              </Button>
+            )}
+            {onDiscardTokens && hasMachine && (
+              <Button
+                className="discard-predictions-btn h-6 gap-1 px-2 text-xs"
+                variant="outline"
+                onClick={handleDiscardSentence}
+                title="Delete every machine annotation in this sentence that nobody has confirmed. Ctrl/Cmd+Backspace does one word."
+              >
+                <Undo2 width={12} height={12} />
+                Discard predictions
+              </Button>
+            )}
           </div>
         )}
       </div>

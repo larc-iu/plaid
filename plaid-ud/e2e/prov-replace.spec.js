@@ -163,14 +163,14 @@ test('API: batched(update + patchMetadata) verifies on the server', async () => 
 
 test('replace UPOS (Autocomplete cell) on dog', async ({ page }) => {
   const c = await openAnnotate(page);
-  const before = await page.locator('.editable-field--inferred').count();
+  const before = await page.locator('.editable-field--machine').count();
   const cell = page.locator(`[id="${S.morphIds[1]}-upos"]`);
   await cell.focus();
   await page.keyboard.press('Control+a');
   await page.keyboard.type('VERB', { delay: 20 });
   await page.keyboard.press('Enter');
   await page.waitForTimeout(1200);
-  const after = await page.locator('.editable-field--inferred').count();
+  const after = await page.locator('.editable-field--machine').count();
   const span = await S.client.spans.get(S.uposDog);
   dump('upos-replace', {
     before,
@@ -197,7 +197,7 @@ test('replace lemma (plain input) on dog', async ({ page }) => {
   await page.waitForTimeout(1200);
   const span = await S.client.spans.get(S.lemDog);
   dump('lemma-replace', {
-    inferredCount: await page.locator('.editable-field--inferred').count(),
+    inferredCount: await page.locator('.editable-field--machine').count(),
     cellValue: await cell.inputValue(),
     server: { value: span.value, metadata: span.metadata },
     api: apiSummary(c),
@@ -253,7 +253,7 @@ test('replace feature value (chip input) on dog', async ({ page }) => {
   await page.waitForTimeout(1200);
   const span = await S.client.spans.get(S.featDog).catch((e) => ({ error: e.message }));
   dump('feat-replace', {
-    inferredFeats: await page.locator('.feature-text--inferred').count(),
+    inferredFeats: await page.locator('.feature-text--machine').count(),
     server: span.error ? span : { value: span.value, metadata: span.metadata },
     api: apiSummary(c),
     errors: c.errors.map((e) => e.text),
@@ -292,7 +292,7 @@ const readUpos = async (page, c) => {
   await page.waitForTimeout(1200);
   const span = await S.client.spans.get(S.uposDog);
   return {
-    inferredCount: await page.locator('.editable-field--inferred').count(),
+    inferredCount: await page.locator('.editable-field--machine').count(),
     cellValue: await page.locator(`[id="${S.morphIds[1]}-upos"]`).inputValue(),
     server: { value: span.value, metadata: span.metadata },
     api: apiSummary(c),
@@ -382,9 +382,9 @@ test('export skips reserved provenance keys on sentence tokens', async ({ page }
 test('Accept predictions (sentence) verifies the Form span too', async ({ page }) => {
   await S.client.spans.patchMetadata(S.formDog, { ...MACHINE, provConfirmed: null });
   const c = await openAnnotate(page);
-  await expect(page.locator('.token-form--inferred')).toHaveCount(1);
+  await expect(page.locator('.token-form--machine')).toHaveCount(1);
   await page.locator('.accept-predictions-btn').first().click();
-  await expect(page.locator('.token-form--inferred')).toHaveCount(0, { timeout: 8000 });
+  await expect(page.locator('.token-form--machine')).toHaveCount(0, { timeout: 8000 });
   await page.waitForTimeout(500);
   const span = await S.client.spans.get(S.formDog);
   dump('form-accept', {

@@ -181,15 +181,25 @@ Below the grid, each sentence's dependency tree is drawn as arcs between words.
 
 == Machine vs. Human Annotations
 
-When annotations come from an automatic parser rather than a person, they are shown in a distinct **violet, dashed** style so you can see what still needs review.
-Work entered by a member whose work the project reviews (see <<_sharing_and_permissions>>) is shown the same way, and hovering a cell or relation says which it is.
-Any edit you make to a cell or relation confirms it as checked and clears the styling.
-If your own work is reviewed, the styling stays on what you enter until a maintainer or another trusted member confirms it, and accepting a prediction records it as your contribution rather than confirming it.
+Annotations nobody has checked yet are marked, so you can see at a glance what is left to review.
+There are two marks, and they say where the annotation came from:
+
+* **violet, dashed** — an automatic parser produced it.
+* **amber, dashed** — a member whose work the project reviews (see <<_sharing_and_permissions>>) entered it. This mark appears only in projects that review somebody.
+
+Anything a trusted member has entered or confirmed is shown plainly, in its own colour.
+Hovering a cell or a relation names its state and its producer.
+Any edit you make to a marked cell or relation confirms it and clears the mark.
+If your own work is reviewed, the mark stays on what you enter until a maintainer or another trusted member confirms it, and accepting a prediction records it as your contribution rather than confirming it.
 
 If a prediction is already correct, you don't have to retype it:
 
-* press **Ctrl+Enter** (or **Cmd+Enter**) on a word to accept that word's prediction as-is (it gets a ✓), or
-* use **Accept predictions** to confirm the whole sentence at once.
+* **Ctrl+Enter** (or **Cmd+Enter**) accepts everything proposed on the word and moves to the next word, so a sentence can be reviewed with one hand.
+* **Ctrl+Backspace** throws the parser's work on the word away and moves on, for a proposal that is wrong wholesale rather than worth correcting cell by cell. Work entered by a person is never deleted this way.
+* **Ctrl+Shift+↓** and **Ctrl+Shift+↑** jump to the next and previous word that still needs a look, across sentences.
+* **Accept predictions** and **Discard predictions**, under each sentence, do the same for the whole sentence.
+
+The **?** above the grid opens a legend of these marks and every gesture in the editor.
 
 = Export
 
@@ -274,7 +284,9 @@ For writing your own scripts against a project, see the link:api-py.html[Python 
 | **Tab** / **Shift+Tab** | Move to the next / previous cell in the annotation grid.
 | **Enter** | Commit the current cell.
 | **Escape** | Discard a cell edit, or close a panel / popover.
-| **Ctrl/Cmd+Enter** | Accept the predicted annotations for the current word.
+| **Ctrl/Cmd+Enter** | Accept everything proposed on the current word, then move to the next word.
+| **Ctrl/Cmd+Backspace** | Discard the parser's unconfirmed work on the current word, then move to the next word.
+| **Ctrl/Cmd+Shift+Down** / **Up** | Jump to the next / previous word that still needs a look.
 | **Ctrl/Cmd+D** | Jump focus from the grid into the dependency tree.
 | **Arrow keys** | Move between grid cells, and into / out of the dependency tree.
 | **Shift+Delete** | Delete the dependency relation whose label you are editing.

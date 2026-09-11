@@ -2,6 +2,7 @@ import {
   cpLength,
   cpSlice,
   utf16ToCp,
+  isMachine,
   isReviewed,
   mergeMetadata,
   PLAID_NAMESPACE,
@@ -1754,6 +1755,108 @@ export class ConlluDocument {
         });
       },
       'Confirm predicted annotations',
+    );
+  }
+
+  // Throw away the unreviewed MACHINE proposal on the given tokens: delete the
+  // machine-made spans (form/lemma/upos/xpos/features) and machine-made
+  // incoming dependency relations, and leave everything else exactly as it is.
+  // The mirror of confirmTokens, for a proposal that is wrong wholesale rather
+  // than worth correcting cell by cell. Used by the editor's per-word
+  // Ctrl/Cmd+Backspace and per-sentence "Discard predictions" gestures.
+  //
+  // MACHINE material only, for every writer — narrower than plaid-igt, whose
+  // discard takes whatever that writer reviews and so lets a verifier delete a
+  // contributor's hand annotation with one chord. The convention's own rule is
+  // that a contributor's work is a person's work, and a gesture that throws it
+  // away without naming it is not one to give a keyboard shortcut. A verifier
+  // who disagrees with a contributor still edits the cell.
+  //
+  // A lemma span is the tree's node: deleting one takes its relations with it.
+  // So a machine lemma span that anchors a relation this gesture is NOT
+  // deleting (a head someone re-pointed by hand) is kept, and only its value
+  // would have been the machine's. Losing a person's relation to a cascade is
+  // the one way this gesture could destroy work.
+  async discardTokens(tokenIds) {
+    const idSet = new Set(tokenIds || []);
+    if (idSet.size === 0) return false;
+    return this._withSaving(
+      'Failed to discard predictions',
+      async () => {
+        const info = this.layerInfo;
+
+        // Machine-made incoming relations first: the dependent is the
+        // relation's TARGET lemma span.
+        const lemmaTokensBySpan = new Map(
+          (info.lemmaLayer?.spans || []).map((s) => [s.id, s.tokens || []]),
+        );
+        const relIds = new Set();
+        const keptRelSpanIds = new Set();
+        for (const rel of info.relationLayer?.relations || []) {
+          if (!isMachine(rel.metadata)) {
+            // Somebody vouched for this one. Both its anchors have to survive.
+            keptRelSpanIds.add(rel.source);
+            keptRelSpanIds.add(rel.target);
+            continue;
+          }
+          const targetTokens = lemmaTokensBySpan.get(rel.target) || [];
+          if (targetTokens.some((t) => idSet.has(t))) relIds.add(rel.id);
+          // A machine relation anchored elsewhere on a lemma span this gesture
+          // deletes goes with it. It is the same machine's proposal, and the
+          // optimistic patch below drops it so the tree matches the server.
+        }
+
+        // Machine-made spans on the target tokens, minus any lemma span a
+        // surviving relation still hangs on.
+        const spanIds = new Set();
+        for (const layer of [
+          info.formLayer,
+          info.lemmaLayer,
+          info.uposLayer,
+          info.xposLayer,
+          info.featuresLayer,
+        ].filter(Boolean)) {
+          const isLemma = layer.id === info.lemmaLayer?.id;
+          for (const span of layer.spans || []) {
+            if (!Array.isArray(span.tokens) || !span.tokens.some((t) => idSet.has(t))) continue;
+            if (!isMachine(span.metadata)) continue;
+            if (isLemma && keptRelSpanIds.has(span.id)) continue;
+            spanIds.add(span.id);
+          }
+        }
+
+        if (spanIds.size === 0 && relIds.size === 0) return; // nothing to discard
+
+        // Optimistic: a delete, so the grid empties now and _withSaving
+        // reloads on failure.
+        this._applyRawPatch((next, infoNext) => {
+          for (const layer of [
+            infoNext.formLayer,
+            infoNext.lemmaLayer,
+            infoNext.uposLayer,
+            infoNext.xposLayer,
+            infoNext.featuresLayer,
+          ]) {
+            if (layer && Array.isArray(layer.spans)) {
+              layer.spans = layer.spans.filter((span) => !spanIds.has(span.id));
+            }
+          }
+          const relLayer = infoNext.relationLayer;
+          if (relLayer && Array.isArray(relLayer.relations)) {
+            relLayer.relations = relLayer.relations.filter(
+              (rel) => !relIds.has(rel.id) && !spanIds.has(rel.source) && !spanIds.has(rel.target),
+            );
+          }
+        });
+
+        await this._client.batched(async () => {
+          // Relations before spans: a relation whose anchor span is already
+          // gone is gone too, and deleting it twice is a 404.
+          for (const id of relIds) this._client.relations.delete(id);
+          for (const id of spanIds) this._client.spans.delete(id);
+        });
+      },
+      'Discard predicted annotations',
     );
   }
 

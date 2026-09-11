@@ -1,19 +1,19 @@
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { needsReview, provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { resolveColor, baseRel } from '../../../utils/udVocab.js';
-import { provCellTitle } from '../../../utils/provenanceUi.js';
+import { provCellTitle, provMark, PROV_MARK_COLORS } from '../../../utils/provenanceUi.js';
 import { DeprelEditor } from './DeprelEditor.jsx';
 import './DependencyTree.css';
 
 // Machine-made or contributed, not yet human-verified (provenance convention)
-// — the deprel label renders distinctly until a human edits it (which
-// verifies it).
+// — the deprel label renders marked until a human edits or accepts it.
 const isInferredRelation = (relation) => needsReview(relation?.metadata);
 
-// The "unapproved" violet, matching the inferred annotation cells. Paired with a
-// dashed stroke so the unapproved state never relies on color alone (a configured
-// DEPREL color could itself be purple — see the dash below).
-const INFERRED_COLOR = '#6d28d9';
+// Which mark an unreviewed relation wears: violet for a machine's, amber for a
+// contributor's, matching the annotation cells. Paired with a dashed stroke so
+// the state never relies on colour alone (a configured DEPREL colour could
+// itself be purple — see the dash below).
+const relationMark = (relation) => provMark(relation?.metadata);
 
 export const DependencyTree = forwardRef(
   (
@@ -534,16 +534,17 @@ export const DependencyTree = forwardRef(
         labelX = midX;
       }
 
-      // Unapproved (machine) relations read as "unapproved" violet + a dashed
-      // stroke — the dash is the unambiguous cue, so it can't be confused with an
-      // APPROVED relation whose configured DEPREL color happens to be purple.
+      // Unreviewed relations read as their provenance hue + a dashed stroke —
+      // the dash is the unambiguous cue, so it can't be confused with a settled
+      // relation whose configured DEPREL color happens to be purple or amber.
       // Approved relations color by the base DEPREL (configured map → deterministic
       // auto); selection/hover/focus keep the highlight blue. `color` drives the
       // arc stroke, arrowhead fill, and resting label fill, so the label matches.
-      const inferred = isInferredRelation(relation);
+      const mark = relationMark(relation);
+      const inferred = !!mark;
       const active = isSelected || isHovered || isFocused;
-      const restColor = inferred
-        ? INFERRED_COLOR
+      const restColor = mark
+        ? PROV_MARK_COLORS[mark]
         : resolveColor(baseRel(relation.value || 'dep'), deprelColors);
       const color = active ? '#2563eb' : restColor;
       const strokeWidth = active ? 2 : 1;
@@ -631,7 +632,7 @@ export const DependencyTree = forwardRef(
               x={labelX}
               y={labelY}
               fill={color}
-              className={`tree-deprel-text ${isFocused ? 'tree-deprel-text--focused' : ''}${isInferredRelation(relation) ? ' tree-deprel-text--inferred' : ''}`}
+              className={`tree-deprel-text ${isFocused ? 'tree-deprel-text--focused' : ''}${mark ? ' tree-deprel-text--marked' : ''}`}
               tabIndex="-1"
               onMouseEnter={() => setHoveredRelation(relation.id)}
               onMouseLeave={() => setHoveredRelation(null)}
