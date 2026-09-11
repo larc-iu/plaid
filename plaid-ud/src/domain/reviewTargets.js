@@ -34,7 +34,7 @@ export function wordsInOrder(sentences) {
  * and contributed material, a contributor machine proposals only.
  *
  * A word counts when any of its spans does, or when its INCOMING dependency
- * relation does — the two things confirmTokens covers, so a stop is never a
+ * relation does: the two things confirmTokens covers, so a stop is never a
  * word whose ✓ would do nothing.
  */
 export function reviewWords(sentences, reviewable) {
@@ -119,7 +119,7 @@ export function findWord(sentences, tokenId) {
 }
 
 /**
- * Whether a word holds any material matching `predicate` — its spans OR its
+ * Whether a word holds any material matching `predicate`: its spans OR its
  * incoming dependency relation. This is the "is there anything for this gesture
  * to do" test, and it has to include the relation: a word whose only machine
  * material is the head the parser guessed is exactly the case markedFields

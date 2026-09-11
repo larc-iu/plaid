@@ -17,7 +17,7 @@
 //
 // The counts come from the server, not from the open document: the point is
 // what the PROJECT has done, and a project is bigger than a document. The open
-// document's own words are included, which is right — a decision made a moment
+// document's own words are included, which is right: a decision made a moment
 // ago in this document is precedent too.
 
 const COUNT = { aggregates: [['count']] };
@@ -68,7 +68,7 @@ export const byLemma = (projectId, layers, layerId, lemma) => [
 ];
 
 /**
- * The queries for one cell, or null when there is nothing to ask about — an
+ * The queries for one cell, or null when there is nothing to ask about: an
  * empty key, or a field with no precedent question of its own.
  */
 export function precedentQueries(projectId, layers, field, key) {

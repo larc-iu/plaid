@@ -26,7 +26,7 @@ import { canEditProject, canManageProject } from '../../utils/permissions.js';
 // `DocumentTabs` *behind its own loading gate*, so every switch unmounted the
 // chrome, flashed a bare spinner where the whole page had been, and
 // re-downloaded the entire document. Keep the chrome here, above the loading
-// gate, and keep the tabs children of this route — that is the whole point of
+// gate, and keep the tabs children of this route, which is the whole point of
 // the shell.
 
 // The annotation editor is full-bleed and supplies its own padding; the others

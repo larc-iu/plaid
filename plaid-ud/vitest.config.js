@@ -19,7 +19,7 @@ export default defineConfig({
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
       '@ui': PLAID_UI_SRC,
-      // Straight to the source, matching vite.config.js — see the long note
+      // Straight to the source, matching vite.config.js: see the long note
       // there about the dep optimizer's immutable `?v=` cache.
       '@larc-iu/plaid-client': fileURLToPath(
         new URL('../plaid-client-js/src/index.js', import.meta.url),

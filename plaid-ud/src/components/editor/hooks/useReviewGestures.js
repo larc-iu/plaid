@@ -28,7 +28,7 @@ const ADVANCE_BEAT_MS = 200;
 
 // Rows are virtualized: a sentence nobody has scrolled to renders a
 // placeholder, so a hop into one has to scroll first and then wait for the row
-// to mount. Bounded, and silent when it runs out — a sweep that gives up
+// to mount. Bounded, and silent when it runs out: a sweep that gives up
 // quietly is better than one that throws.
 const MOUNT_WAIT_MS = 1500;
 

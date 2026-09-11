@@ -694,7 +694,7 @@ export class ConlluDocument {
   // this document: the copy is a different document with a server-minted id,
   // and the caller navigates to it. Returns the new document, or null.
   //
-  // Same project only, and comments do not travel — that is the server's
+  // Same project only, and comments do not travel, which is the server's
   // ruling, not this method's choice.
   async copyTo(name) {
     let created = null;
@@ -730,7 +730,7 @@ export class ConlluDocument {
     );
   }
 
-  // Write one sentence metadata field, on the SENTENCE TOKEN — where CoNLL-U's
+  // Write one sentence metadata field, on the SENTENCE TOKEN, where CoNLL-U's
   // `# k = v` lines have always been read from and written back to (see
   // importFromConllu and toConllu). Same delete-on-empty rule as the document
   // level, and the same reason for a PATCH.
@@ -1815,7 +1815,7 @@ export class ConlluDocument {
   // than worth correcting cell by cell. Used by the editor's per-word
   // Ctrl/Cmd+Backspace and per-sentence "Discard predictions" gestures.
   //
-  // MACHINE material only, for every writer — narrower than plaid-igt, whose
+  // MACHINE material only, for every writer: narrower than plaid-igt, whose
   // discard takes whatever that writer reviews and so lets a verifier delete a
   // contributor's hand annotation with one chord. The convention's own rule is
   // that a contributor's work is a person's work, and a gesture that throws it

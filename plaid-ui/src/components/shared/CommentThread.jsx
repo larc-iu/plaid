@@ -11,8 +11,8 @@ import { isPending } from '../../domain/CommentStore.js';
 // This is the REACT rendering of a thread, for the two Comments tabs. plaid-igt
 // keeps a lit-html twin (island/CommentThread.js) because that one mounts
 // inside the interlinear editor's lit island, where React cannot go. The two
-// render the same store and must keep the same rules — who may edit, who may
-// delete, what a pending comment looks like — so both read them off the store
+// render the same store and must keep the same rules: who may edit, who may
+// delete, what a pending comment looks like, so both read them off the store
 // rather than deciding for themselves.
 
 const MAX_BODY = 10000; // matches plaid.sql.comment/max-body-length

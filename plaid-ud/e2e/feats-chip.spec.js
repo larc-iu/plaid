@@ -229,7 +229,7 @@ test('B2: suggestions — keys as "Key=", then values; picking fills/commits', a
   await expect(input).toBeFocused();
 
   // The list closes after an option pick; typing the value's first letter
-  // reopens it — now in stage 2 (value suggestions "Case=Value").
+  // reopens it: now in stage 2 (value suggestions "Case=Value").
   const reopened = await input.getAttribute('aria-expanded');
   console.log('dropdown open right after "Case=" pick:', reopened);
   await input.pressSequentially('A', { delay: 30 });

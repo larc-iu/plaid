@@ -128,7 +128,7 @@ test('Ctrl+Backspace discards the machine proposal and moves on', async ({ page 
   // "the"'s machine UPOS is gone, "fast"'s remains.
   await expect(page.locator('.editable-field--machine')).toHaveCount(1, { timeout: 8000 });
   await expect(cell(page, 0, 'upos')).toHaveValue('');
-  // And the caret moved to the next word, as accepting does — onto the cell
+  // And the caret moved to the next word, as accepting does, onto the cell
   // that needs a look there, which on "dog" is its contributed UPOS.
   await expect.poll(() => activeId(page), { timeout: 8000 }).toBe(`${S.morphIds[1]}-upos`);
 });

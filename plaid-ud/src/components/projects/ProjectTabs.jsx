@@ -7,7 +7,7 @@ import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvai
 
 // Shared top tab bar for the project-level views (Documents / Search / Assistant /
 // Project Settings / Import & Export), mirroring the per-document `DocumentTabs`.
-// Each tab is route-backed; no panels are rendered — each route renders its own
+// Each tab is route-backed; no panels are rendered: each route renders its own
 // body. `project` is the full object every page already fetches (carries layer
 // config for `getUdLayerInfo`); it may be null mid-load, which all the gating
 // below tolerates.

@@ -3,8 +3,8 @@
 // A treebank carries notes at two levels, and CoNLL-U has a line for each:
 // document-level facts (`# newdoc id`, source, genre, licence) and
 // sentence-level ones (`# sent_id`, a free translation, a comment). Plaid
-// stores them as ordinary entity metadata — the document's own for the first,
-// the sentence TOKEN's for the second — and `ConlluDocument.toConllu` has
+// stores them as ordinary entity metadata: the document's own for the first,
+// the sentence TOKEN's for the second, and `ConlluDocument.toConllu` has
 // always round-tripped the sentence half. What was missing was any way to see
 // or edit them.
 //

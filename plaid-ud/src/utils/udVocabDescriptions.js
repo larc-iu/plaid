@@ -5,7 +5,7 @@
 // for an annotator mid-decision rather than copied: what a tag is FOR, and
 // where the confusable neighbour sits. A project that edits its vocabulary
 // edits these too (they seed `ud.vocabDescriptions`), so nothing here is
-// binding — it is the starting point a fresh project gets.
+// binding: it is the starting point a fresh project gets.
 
 /** The 17 universal parts of speech. */
 export const UPOS_DESCRIPTIONS = Object.freeze({

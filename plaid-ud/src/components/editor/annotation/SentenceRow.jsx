@@ -77,7 +77,7 @@ const EditableCell = React.memo(
 
     // Select-all on arrival, so the next keystroke replaces the cell rather than
     // appending to it. It has to be DEFERRED, because a click puts the caret in
-    // after focus and would undo a selection made during it — and, being
+    // after focus and would undo a selection made during it: and, being
     // deferred, it has to check that nothing has been typed in the meantime, or
     // a fast typist (or a test driving the keyboard) loses their first
     // character to it.
@@ -119,7 +119,7 @@ const EditableCell = React.memo(
 
     // A cell with no controlled list of its own (LEMMA) is a plain input, and
     // showing precedent turns it into a combobox. React unmounts the input to
-    // do that, which fires a blur — one that must not be read as "the annotator
+    // do that, which fires a blur: one that must not be read as "the annotator
     // left", or the list would be cleared the instant it arrived and focus
     // would land on nothing.
     const swappingRef = useRef(false);
@@ -271,8 +271,8 @@ const EditableCell = React.memo(
     const handleFocus = () => {
       // The new element has focus, so the swap is over: from here a blur is the
       // annotator leaving and must commit. Clearing this on the BLUR instead
-      // would never happen — React fires none when it unmounts a focused
-      // element — and the next real blur would be swallowed silently.
+      // would never happen: React fires none when it unmounts a focused
+      // element, and the next real blur would be swallowed silently.
       swappingRef.current = false;
       setIsEditing(true);
       setPristine(true);
@@ -1269,7 +1269,7 @@ export const SentenceRow = React.memo(
     );
 
     // Provenance review: whether this sentence still holds material worth a
-    // gesture — on a span (form/lemma/xpos/upos/feats) or a relation.
+    // gesture: on a span (form/lemma/xpos/upos/feats) or a relation.
     //
     // Two scopes, and they are not the same. ACCEPT acts on what this writer
     // reviews (a verifier reviews machine and contributed material, a
@@ -1471,7 +1471,7 @@ export const SentenceRow = React.memo(
           </div>
         )}
 
-        {/* The sentence's own review gestures — BELOW the grid and left-aligned
+        {/* The sentence's own review gestures: BELOW the grid and left-aligned
           with the first token, so they read as belonging to this sentence.
           Accept takes everything proposed, Discard throws the machine's
           proposals away, and each shows only when it has something to do. */}

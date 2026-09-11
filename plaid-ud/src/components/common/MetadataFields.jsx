@@ -10,7 +10,7 @@ const Field = ({ name, declared, value, readOnly, dense, onCommit }) => {
 
   // Follow the stored value when it changes underneath (another tab, a reload,
   // a service run). Keyed on the value alone, so typing here is never stomped
-  // by an unrelated emit — the same rule the annotation cells follow.
+  // by an unrelated emit, the same rule the annotation cells follow.
   useEffect(() => {
     setDraft(value ?? '');
   }, [value]);

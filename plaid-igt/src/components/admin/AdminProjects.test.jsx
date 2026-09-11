@@ -4,7 +4,7 @@ import { renderComponent, texts } from '@ui/test/renderComponent.jsx';
 import { AdminProjects } from './AdminProjects';
 
 // The Shape column is the only place on the server that says which app owns a
-// project, and getting it wrong sends an admin to the wrong app — which, for a
+// project, and getting it wrong sends an admin to the wrong app: which, for a
 // project this one did not set up, means its setup wizard, pointed at somebody
 // else's corpus. So: what each shape reads off, and that a UD project's name
 // leaves this app rather than linking inside it.

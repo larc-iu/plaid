@@ -4,7 +4,7 @@ import { listPrefKey, useStickyState } from './useStickyState.js';
 // Rows per page. There are two sizes and no others: a call site picks one of
 // these rather than inventing a number, so that lists of a kind page alike.
 //
-// LIST_PAGE_SIZE is for a table whose rows are one line — a project, a
+// LIST_PAGE_SIZE is for a table whose rows are one line: a project, a
 // document, a user. A hundred of those is a few screens of scrolling and the
 // pager is rarely needed at all.
 //

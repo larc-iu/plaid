@@ -219,7 +219,7 @@ class Compiler {
 
   // The extra `where` clauses that bind one field of one pattern node (or one
   // named edge) to a variable, for a grouped count. `spec` is
-  // `{ node, field }` — `field` is a CoNLL-U column, a FEATS key, or 'label'
+  // `{ node, field }`: `field` is a CoNLL-U column, a FEATS key, or 'label'
   // when `node` names an edge.
   groupClause(spec) {
     const variable = '?groupValue';

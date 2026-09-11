@@ -12,7 +12,7 @@
 // loads a document until someone clicks a value and asks where it is.
 
 // The REGEXP UDF matches on `contains`, so "." means "has at least one
-// character" — every span in the layer, whatever its value.
+// character": every span in the layer, whatever its value.
 const ANY_VALUE = { regex: '.' };
 
 const COUNT = { aggregates: [['count']] };
@@ -42,7 +42,7 @@ export const relationValueCounts = (projectId, layerId) => ({
  * "show me where" costs: one query per value, asked only when clicked.
  *
  * Grouped by document AND sentence token, because a link into the editor is
- * `annotate?sent=<sentence token id>` — landing on the document and leaving the
+ * `annotate?sent=<sentence token id>`: landing on the document and leaving the
  * reader to find the word is most of the work not done. `within` is the
  * containment predicate the Grew compiler already leans on for the same reason.
  */
@@ -79,7 +79,7 @@ export const relationValueSentences = (projectId, sentenceLayerId, layerId, valu
  * sorted commonest first.
  *
  * `allows` is the field's rule from udVocabMode (`(value) => message | null`),
- * so this answers the question the SAME way the cells do — including a DEPREL
+ * so this answers the question the SAME way the cells do: including a DEPREL
  * judged by its base, which a plain set difference would get wrong.
  */
 export function offListValues(counts, allows) {
@@ -91,7 +91,7 @@ export function offListValues(counts, allows) {
 
 /**
  * The values a project HAS that its list does not, whether or not the list is
- * closed — what the seed button offers to add. The difference from
+ * closed: what the seed button offers to add. The difference from
  * `offListValues` is that this ignores the mode: a suggestion list is worth
  * completing too, and a project usually turns a list closed only after seeding
  * it from what is already there.

@@ -101,7 +101,7 @@ test('picking one commits it, through the swap from input to list', async ({ pag
 test('Alt+Down in an XPOS cell asks about the LEMMA, not the form', async ({ page }) => {
   await openAnnotate(page);
   // "dogs" (NNS) and "dog" (NN) are both lemma `dog`. Asking from the second
-  // offers both, because the question is what this LEMMA has been tagged — the
+  // offers both, because the question is what this LEMMA has been tagged: the
   // form would have offered only what "dog" itself was.
   const cell = page.locator(`[id="${S.morphIds[4]}-xpos"]`);
   await cell.click();

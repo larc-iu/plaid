@@ -5,13 +5,13 @@ import { fileURLToPath } from 'node:url';
 export const PLAID_UI_SRC = fileURLToPath(new URL('./src', import.meta.url));
 
 /**
- * Resolve this package's own bare imports — react, lucide-react, sonner, the
- * Radix primitives — from the app that is compiling it.
+ * Resolve this package's own bare imports: react, lucide-react, sonner, the
+ * Radix primitives, from the app that is compiling it.
  *
  * Why it is needed: `@ui` aliases straight to `plaid-ui/src`, which is OUTSIDE
  * any app and has no node_modules, so a bare specifier in here resolves against
  * nothing. Node's own answer is a node_modules symlink, and aliasing through
- * one does make bare imports resolve — but it also puts every file in this
+ * one does make bare imports resolve, but it also puts every file in this
  * package under `node_modules/`, which is Vite's definition of a dependency.
  * The optimizer then pre-bundles them, and a module imported BOTH by an app
  * (`@ui/lib/uiConfig.js`, optimized) and by a sibling in here (`../lib/

@@ -3,7 +3,7 @@
 //
 // The enforcement is deliberately narrow: the annotation cells and the Grew
 // rewrite, and nowhere else. An import, a parser, the assistant and the API all
-// still write whatever they like, which is the whole point — off-list machine
+// still write whatever they like, which is the whole point: off-list machine
 // output is a signal worth seeing, and the Validation tab is the cleanup path.
 import { test, expect, seedAuth } from './fixtures.js';
 import { seedUdDoc } from './seedUdDoc.js';

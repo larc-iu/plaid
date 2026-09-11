@@ -11,7 +11,7 @@ import { CommentThread } from './CommentThread.jsx';
 // Every thread on one document (or one vocabulary), with the list chrome around
 // it: search, count, sort, Current / Outdated, a pager top and bottom.
 //
-// `anchors` is the entity index the threads are described by — each app builds
+// `anchors` is the entity index the threads are described by: each app builds
 // its own, since only the app knows what a "sentence 4" is (see
 // domain/commentAnchors.js). `pinnedId` is the thread always shown first, which
 // for a document is its own.

@@ -1,5 +1,5 @@
 // What a finished parse is allowed to claim (C8). Uses Node's built-in test
-// runner — run `npm test`.
+// runner: run `npm test`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 

@@ -38,7 +38,7 @@ export default defineConfig(({ command }) => ({
       // component can move between the apps and the shared package unedited.
       '@': fileURLToPath(new URL('./src', import.meta.url)),
       // The shared UI package, aliased to its REAL source path so it stays
-      // first-party — one module instance, watched, no immutable `?v=`. Its own
+      // first-party: one module instance, watched, no immutable `?v=`. Its own
       // bare imports are resolved from this app by the plaidUiDeps plugin; see
       // the long note in ../plaid-ui/vite.js for what went wrong when this
       // pointed through the node_modules symlink instead.

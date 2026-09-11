@@ -35,7 +35,7 @@ const SPAN_LAYER_NAMES = {
 };
 
 // The standalone /configuration page: the layer-structure half of project
-// setup — the text layer plus the three-level token hierarchy and the
+// setup: the text layer plus the three-level token hierarchy and the
 // annotation layers under it. Project-specific vocabularies, colors and locale
 // live in the separate Customization settings tab (ProjectCustomization).
 // Saving creates or completes the layers idempotently.

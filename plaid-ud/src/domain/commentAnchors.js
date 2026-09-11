@@ -8,7 +8,7 @@
 // Comments here are SENTENCE and DOCUMENT level only, by ruling: no per-word or
 // per-annotation threads. So the index is small, and a thread that names
 // anything else came from another app on the same substrate and describes as
-// outdated, which is honest — this app cannot show you an IGT gloss.
+// outdated, which is honest: this app cannot show you an IGT gloss.
 //
 // `describeAnchor` and `anchorCaption` live in plaid-ui: neither depends on
 // what a document looks like. Re-exported so this file is the one place the

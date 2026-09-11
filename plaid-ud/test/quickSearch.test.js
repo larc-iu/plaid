@@ -4,7 +4,7 @@
 // compiler, one set of warnings, one residue of unsupported things, and the box
 // hands its pattern to the Grew box so a quick search is the first draft of a
 // real one. So the test that matters is that everything it writes PARSES AND
-// COMPILES — a pattern the compiler rejects would be a dead end with no error
+// COMPILES: a pattern the compiler rejects would be a dead end with no error
 // the user could act on.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -60,7 +60,7 @@ test('a relation search finds the DEPENDENT, which is the word to land on', () =
   assert.equal(quickPattern('deprel', 'exact', 'nsubj'), 'pattern { H -[nsubj]-> W }');
   // The label goes in the ARC. `e.label = re"subj"` on a named edge looks
   // right and is not: the compiler reads `e.something` as a feature of a NODE
-  // called e, so it searches for a FEATS span reading `label=subj` on a word —
+  // called e, so it searches for a FEATS span reading `label=subj` on a word:
   // no error, no warning, no matches. Found by running one.
   assert.equal(quickPattern('deprel', 'contains', 'subj'), 'pattern { H -[re"subj"]-> W }');
   assert.equal(quickPattern('deprel', 'regex', '^nsubj'), 'pattern { H -[re"^nsubj"]-> W }');

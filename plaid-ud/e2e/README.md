@@ -23,7 +23,7 @@ nothing was being edited before believing it.
   `readToken`, `BASE_URL`, `collectClientErrors`).
 - `fixtureProject.js`: the shared "E2E UD Fixture" project, created or found by
   `node e2e/fixtureProject.js`. Its layers come from `createUdProject`, the same
-  function the New Project modal calls — never rebuild them by hand here, which
+  function the New Project modal calls: never rebuild them by hand here, which
   is what rotted before.
 - `seedUdDoc.js`: a throwaway project with one tokenized document, for the specs
   that need annotated words of their own. Same rule: the layers come from

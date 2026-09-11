@@ -148,7 +148,7 @@ export const RedeemInvite = () => {
               {/* A maintainer testing their own link would otherwise be
                   silently swapped into a brand-new account, having spent one
                   of the invite's uses without noticing. Say so rather than
-                  blocking it — testing the link is a legitimate reason to be
+                  blocking it: testing the link is a legitimate reason to be
                   here signed in. */}
               {user && (
                 <p className="rounded-md border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">

@@ -5,7 +5,7 @@ import { Input } from '@ui/components/ui/input';
 //
 // The swatch is `<input type="color">`, which is the OS picker and needs no
 // library. The text box beside it accepts a hex directly and, emptied, clears
-// the override so the label falls back to its automatic color — which is why
+// the override so the label falls back to its automatic color, which is why
 // the two are not one control.
 export const ColorField = ({ label, value, onChange }) => (
   <div className="flex flex-col gap-1">

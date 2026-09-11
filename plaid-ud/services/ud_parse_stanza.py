@@ -468,7 +468,7 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
 
             # Parse in groups rather than handing Stanza every sentence at
             # once: the bar then moves through a long document, and `report`
-            # is a cancellation checkpoint, so a stop lands between groups —
+            # is a cancellation checkpoint, so a stop lands between groups: 
             # before any write, leaving the document untouched.
             sentences_data = []
             total = len(reparse)
@@ -632,7 +632,7 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
         # document was being read or parsed has already landed, before anything
         # was touched; one that arrives from here on is held off until the
         # document is whole again. The caller's final report belongs inside a
-        # critical block too — a checkpoint after the last write would throw a
+        # critical block too: a checkpoint after the last write would throw a
         # finished parse away and call it stopped.
         with progress.critical():
             del_ids, del_label = deletions
@@ -642,9 +642,9 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
                 client.tokens.bulk_delete(del_ids)
             # Combine the creations into a single atomic batch (server runs them
             # sequentially, so child layers see the parents from earlier ops in
-            # the same batch — those creates don't reference the *ids* produced
+            # the same batch: those creates don't reference the *ids* produced
             # earlier in the batch, only the pre-existing layer ids). Order is
-            # top-down (sentences → words → morphemes) — a child without its
+            # top-down (sentences → words → morphemes): a child without its
             # parent on the server is a 400. In substrate-preserving mode the
             # sentence/word op lists are empty and only syntactic words land.
             log(f"Building token ops: {len(sentence_ops)} sentences, "
@@ -720,7 +720,7 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
             #
             # Note: unlike the JS importer (which creates a new document and
             # deletes it on any failure), the parser operates on an EXISTING user
-            # document. We don't delete on failure — the user re-runs the parse;
+            # document. We don't delete on failure: the user re-runs the parse;
             # the cascade-delete at the top of `parse_document` clears any
             # partial-state tokens before re-creating.
             log(f"Building span ops: form={len(form_spans)}, lemma={len(lemma_spans)}, "

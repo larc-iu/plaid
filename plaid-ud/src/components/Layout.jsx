@@ -52,7 +52,7 @@ export const Layout = () => {
       <main className="flex-1">
         {/* One container that changes shape, never a `cond ? <Outlet/> :
             <div><Outlet/></div>`. Swapping the element AT this position would
-            unmount everything below it when you move into or out of /annotate —
+            unmount everything below it when you move into or out of /annotate: 
             which is exactly the remount DocumentEditorShell exists to prevent,
             since the shell renders through this Outlet. */}
         {/* No `.tw` on this container. Most screens below are still Mantine,

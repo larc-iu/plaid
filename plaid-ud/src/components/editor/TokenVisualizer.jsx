@@ -377,7 +377,7 @@ export const TokenVisualizer = ({
           data-token-panel="true"
           className="w-auto min-w-[244px] max-w-[320px] p-3"
           // Hovering opens this panel, so it must not take focus on the way in
-          // or hand it back on the way out — the caret belongs to whatever the
+          // or hand it back on the way out: the caret belongs to whatever the
           // user was doing.
           onOpenAutoFocus={(e) => e.preventDefault()}
           onCloseAutoFocus={(e) => e.preventDefault()}

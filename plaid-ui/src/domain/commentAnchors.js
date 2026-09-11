@@ -1,4 +1,4 @@
-// What a comment is attached to, said in words — the app-agnostic half.
+// What a comment is attached to, said in words: the app-agnostic half.
 //
 // A comment carries only `(entityType, entityId)`. That is enough for the
 // surface it sits on, and useless in a Comments tab, which would otherwise be a

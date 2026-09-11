@@ -14,7 +14,7 @@ import {
 // Grew answers this with `cluster`, which is in the unsupported residue, so the
 // same pattern is re-run as a grouped aggregate: the hits are never fetched and
 // the server does the counting. The fields offered are the ones a UD pattern
-// can name — a node's columns and features, and a named edge's label.
+// can name: a node's columns and features, and a named edge's label.
 const COLUMNS = ['lemma', 'upos', 'xpos'];
 
 export const CountBy = ({ nodes, edges, rows, total, busy, onCount, onPick }) => {

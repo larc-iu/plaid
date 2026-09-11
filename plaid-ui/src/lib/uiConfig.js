@@ -16,7 +16,7 @@ const DEFAULTS = {
   //
   // There is deliberately NO default. An app that forgets `configureUi`, or one
   // whose bundler has quietly given this module a second instance, would
-  // otherwise write every key under a prefix nobody chose — which is invisible
+  // otherwise write every key under a prefix nobody chose, which is invisible
   // until someone notices their remembered sorts are gone. `listPrefKey` throws
   // instead. That is not hypothetical: it shipped once, when an alias through
   // node_modules made the optimizer pre-bundle this file (../vite.js).
@@ -24,8 +24,8 @@ const DEFAULTS = {
   // Optional. Given `(element) => cleanup`, the package's Input and Textarea
   // honor their `compose` prop by handing the element to it on mount. It is
   // how plaid-igt wires its backslash composer (`\sw` -> ə) into fields this
-  // package owns without the composer itself — which reads a project's own
-  // bound codes — having to live here. An app that registers nothing leaves
+  // package owns without the composer itself, which reads a project's own
+  // bound codes: having to live here. An app that registers nothing leaves
   // `compose` inert, which is the right behavior for an app with no codes.
   attachCompose: null,
   // The app's own namespace inside a project's or a layer's `config` bucket:

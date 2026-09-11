@@ -6,13 +6,13 @@ import { DeprelEditor } from './DeprelEditor.jsx';
 import './DependencyTree.css';
 
 // Machine-made or contributed, not yet human-verified (provenance convention)
-// — the deprel label renders marked until a human edits or accepts it.
+//: the deprel label renders marked until a human edits or accepts it.
 const isInferredRelation = (relation) => needsReview(relation?.metadata);
 
 // Which mark an unreviewed relation wears: violet for a machine's, amber for a
 // contributor's, matching the annotation cells. Paired with a dashed stroke so
 // the state never relies on colour alone (a configured DEPREL colour could
-// itself be purple — see the dash below).
+// itself be purple: see the dash below).
 const relationMark = (relation) => provMark(relation?.metadata);
 
 export const DependencyTree = forwardRef(
@@ -548,7 +548,7 @@ export const DependencyTree = forwardRef(
         labelX = midX;
       }
 
-      // Unreviewed relations read as their provenance hue + a dashed stroke —
+      // Unreviewed relations read as their provenance hue + a dashed stroke:
       // the dash is the unambiguous cue, so it can't be confused with a settled
       // relation whose configured DEPREL color happens to be purple or amber.
       // Approved relations color by the base DEPREL (configured map → deterministic

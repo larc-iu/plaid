@@ -6,7 +6,7 @@ export default {
   darkMode: ['class'],
   // Preflight is ON (global). Mantine is gone, so the app is pure shadcn and
   // Tailwind and wants the standard base reset, including the sans-serif font
-  // stack — without it the app falls back to the browser's serif default. The
+  // stack: without it the app falls back to the browser's serif default. The
   // `:where(.tw)` opt-in scoping that stood in for it through Tier 0 is retired.
   content: [
     './index.html',

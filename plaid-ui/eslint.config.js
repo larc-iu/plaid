@@ -10,7 +10,7 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 //
 // The package has its own eslint rather than borrowing an app's because ESLint
 // 10 refuses to lint files outside its config's directory. Tests are the other
-// way round — they run under plaid-igt's vitest, which has the React and the
+// way round, since they run under plaid-igt's vitest, which has the React and the
 // happy-dom. See README.md.
 export default [
   { ignores: ['dist', 'node_modules', 'test-results', 'playwright-report'] },

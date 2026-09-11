@@ -11,7 +11,7 @@ const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5173';
 // right default for a session that already has one open.
 //
 // A run against the SHARED server reloads the page of whoever is looking at it,
-// and — worse — an edit to `src/` during a run reloads the page under the test,
+// and, worse, an edit to `src/` during a run reloads the page under the test,
 // which looks exactly like flakiness. Prefer a server of your own.
 const OWN_SERVER = process.env.PLAYWRIGHT_OWN_SERVER === '1';
 

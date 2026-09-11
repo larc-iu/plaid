@@ -1,5 +1,5 @@
 /* Styling for the inline token badges and their text container. The hover panel
-   and word editor are shadcn primitives — see TokenVisualizer.jsx. Badge
+   and word editor are shadcn primitives: see TokenVisualizer.jsx. Badge
    variants are driven by data-mwt / data-sent-start attributes.
 
    The colours are written out rather than taken from utility classes, because

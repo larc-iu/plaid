@@ -30,8 +30,8 @@ const entryLabel = (entry) => {
 const placeOf = (entry) => entry.documents?.[0] || entry.projects?.[0] || null;
 
 // `projectHref` and `documentHref` build the "Where" column's links. The apps
-// route differently — plaid-igt opens a document at `/projects/:p/documents/:d`,
-// plaid-ud at `.../annotate` — and a feed that hardcoded either would send half
+// route differently: plaid-igt opens a document at `/projects/:p/documents/:d`,
+// plaid-ud at `.../annotate`, and a feed that hardcoded either would send half
 // its readers to a 404. Return null from a builder to render the name as plain
 // text instead of a link.
 export const AuditFeed = ({

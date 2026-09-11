@@ -11,7 +11,7 @@ import { composeAttacher } from '../lib/uiConfig.js';
  * `lib/uiConfig.js`.
  *
  * A native listener rather than React's `onBeforeInput`, whose synthetic event
- * has never carried `inputType` reliably across browsers — which is why the
+ * has never carried `inputType` reliably across browsers, which is why the
  * attacher takes the element rather than a handler.
  */
 export function useComposeRef(enabled, forwardedRef) {

@@ -5,7 +5,7 @@ import { notifyWarning } from '../../../utils/notify.js';
 
 // Inline editor for a dependency-relation label, rendered inside the tree's
 // SVG <foreignObject>. Mirrors the grid's vocab cells: a Combobox seeded with
-// the configured DEPREL vocabulary — focusing shows the full list, the first
+// the configured DEPREL vocabulary: focusing shows the full list, the first
 // keystroke filters, and off-list values are still accepted (soft). When the
 // producing parser recorded a deprel distribution
 // (metadata.provDetail.deprelProbs), its top-k floats above the rest as a

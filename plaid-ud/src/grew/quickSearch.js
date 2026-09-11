@@ -30,7 +30,7 @@ export const MATCH_TYPES = Object.freeze([
 ]);
 
 // Grew string literals are double-quoted; a regex literal is re"…". Both need
-// the quote and the backslash escaped, and nothing else — the pattern text is
+// the quote and the backslash escaped, and nothing else: the pattern text is
 // parsed by our own lexer, not by a shell.
 const quote = (text) => `"${String(text).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 
@@ -59,7 +59,7 @@ export function quickPattern(field, match, text) {
     // The label goes in the ARC, never as `e.label` on a named edge: the
     // compiler reads `e.something` as a feature of a NODE called e, so
     // `e.label = re"subj"` compiles to a search for a FEATS span reading
-    // `label=subj` on a word — no error, no warning, no matches.
+    // `label=subj` on a word: no error, no warning, no matches.
     return match === 'exact' ? `pattern { H -[${needle}]-> W }` : `pattern { H -[${value}]-> W }`;
   }
 

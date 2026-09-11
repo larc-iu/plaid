@@ -15,7 +15,7 @@ import { QUICK_FIELDS, MATCH_TYPES, quickPattern } from '../../grew/quickSearch.
 //
 // It does not run a search of its own: it writes the Grew pattern and hands it
 // to the box below, which runs it. So a quick search is the first draft of a
-// real one — change the field, see the pattern, edit it — and there is one
+// real one (change the field, see the pattern, edit it), and there is one
 // compiler, one set of warnings, one residue of unsupported things.
 export const QuickSearch = ({ onSearch, disabled }) => {
   const [field, setField] = useState('lemma');

@@ -1,7 +1,7 @@
 // Item 10: the project's Activity tab. The panel itself is plaid-igt's, moved
 // into plaid-ui, so what is worth asserting here is the adapter: that this app
 // mounts it, that it is maintainers-only, and that the two things it had to
-// change for UD actually changed — the document links go to UD's routes, and
+// change for UD actually changed: the document links go to UD's routes, and
 // there are no avatars, which this app decided against.
 import PlaidClient from '@larc-iu/plaid-client';
 import { test, expect, seedAuth } from './fixtures.js';

@@ -419,7 +419,7 @@ export const UserProfile = () => {
         </CardContent>
       </Card>
 
-      {/* API Tokens — named, revocable credentials for scripts and services.
+      {/* API Tokens: named, revocable credentials for scripts and services.
           Actions performed with one are attributed by name in the audit log,
           unlike the session token. They carry the same permissions as you. */}
       <Card>
