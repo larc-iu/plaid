@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button } from '@ui/components/ui/button';
-import { DataTable } from '@ui/components/ui/data-table';
-import { UserAvatar } from '@ui/components/shared/UserAvatar';
-import { timeAgo, fullTimestamp } from '@ui/utils/formatTime';
-import { notifyError } from '@/utils/feedback';
-import { AuditFeed } from './AuditFeed';
+import { Button } from '../ui/button.jsx';
+import { DataTable } from '../ui/data-table.jsx';
+import { UserAvatar } from './UserAvatar.jsx';
+import { timeAgo, fullTimestamp } from '../../utils/formatTime.js';
+import { notifyError } from '../../lib/notify.js';
+import { AuditFeed } from './AuditFeed.jsx';
 
 // Who has been working, and on what. Two reads: a tally of people, and the
 // feed of what happened. `projectId` scopes both to one project, which is what
@@ -51,7 +51,17 @@ const Sparkline = ({ byDay, days = 14 }) => {
   );
 };
 
-export const ActivityPanel = ({ client, projectId, roster }) => {
+// `showAvatars` is off for an app that has decided against them (plaid-ud has,
+// deliberately), and the two href builders are AuditFeed's, passed straight
+// through so a mounting app names its own routes once.
+export const ActivityPanel = ({
+  client,
+  projectId,
+  roster,
+  showAvatars = true,
+  projectHref,
+  documentHref,
+}) => {
   const [range, setRange] = useState('30');
   const [tally, setTally] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -98,12 +108,14 @@ export const ActivityPanel = ({ client, projectId, roster }) => {
       render: (row) =>
         row.user?.id ? (
           <div className="flex items-center gap-2">
-            <UserAvatar
-              client={client}
-              userId={row.user.id}
-              displayName={row.user.displayName}
-              className="h-6 w-6"
-            />
+            {showAvatars && (
+              <UserAvatar
+                client={client}
+                userId={row.user.id}
+                displayName={row.user.displayName}
+                className="h-6 w-6"
+              />
+            )}
             <span>{nameOf(row)}</span>
           </div>
         ) : (
@@ -160,12 +172,14 @@ export const ActivityPanel = ({ client, projectId, roster }) => {
       sort: (m) => (m.displayName || m.id).toLowerCase(),
       render: (m) => (
         <div className="flex items-center gap-2">
-          <UserAvatar
-            client={client}
-            userId={m.id}
-            displayName={m.displayName}
-            className="h-6 w-6"
-          />
+          {showAvatars && (
+            <UserAvatar
+              client={client}
+              userId={m.id}
+              displayName={m.displayName}
+              className="h-6 w-6"
+            />
+          )}
           <span>{m.displayName || m.id}</span>
         </div>
       ),
@@ -233,6 +247,8 @@ export const ActivityPanel = ({ client, projectId, roster }) => {
         title="Recent changes"
         id="activity-feed"
         scope={projectId}
+        projectHref={projectHref}
+        documentHref={documentHref}
         resetKey={`${projectId || 'all'}:${range}`}
         showUser
         empty="Nothing in this window."

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Button } from '@ui/components/ui/button';
-import { ListHint } from '@ui/components/ui/list-search';
-import { DataTable } from '@ui/components/ui/data-table';
-import { timeAgo, fullTimestamp } from '@ui/utils/formatTime';
-import { notifyError } from '@/utils/feedback';
+import { Button } from '../ui/button.jsx';
+import { ListHint } from '../ui/list-search.jsx';
+import { DataTable } from '../ui/data-table.jsx';
+import { timeAgo, fullTimestamp } from '../../utils/formatTime.js';
+import { notifyError } from '../../lib/notify.js';
 
 // A paged audit feed. `fetchPage({cursor, limit})` returns the server's
 // `{entries, nextCursor}` newest-first, and this holds what has been loaded so
@@ -29,6 +29,11 @@ const entryLabel = (entry) => {
 
 const placeOf = (entry) => entry.documents?.[0] || entry.projects?.[0] || null;
 
+// `projectHref` and `documentHref` build the "Where" column's links. The apps
+// route differently — plaid-igt opens a document at `/projects/:p/documents/:d`,
+// plaid-ud at `.../annotate` — and a feed that hardcoded either would send half
+// its readers to a 404. Return null from a builder to render the name as plain
+// text instead of a link.
 export const AuditFeed = ({
   fetchPage,
   showUser = false,
@@ -37,6 +42,8 @@ export const AuditFeed = ({
   resetKey,
   id,
   scope,
+  projectHref = (project) => `/projects/${project.id}`,
+  documentHref = (document, project) => `/projects/${project.id}/documents/${document.id}`,
 }) => {
   const [entries, setEntries] = useState([]);
   const [cursor, setCursor] = useState(null);
@@ -113,20 +120,23 @@ export const AuditFeed = ({
         const project = e.projects?.[0];
         const document = e.documents?.[0];
         if (document && project) {
-          return (
-            <Link
-              to={`/projects/${project.id}/documents/${document.id}`}
-              className="hover:underline"
-            >
+          const href = documentHref(document, project);
+          return href ? (
+            <Link to={href} className="hover:underline">
               {document.name}
             </Link>
+          ) : (
+            document.name
           );
         }
         if (project) {
-          return (
-            <Link to={`/projects/${project.id}`} className="hover:underline">
+          const href = projectHref(project);
+          return href ? (
+            <Link to={href} className="hover:underline">
               {project.name}
             </Link>
+          ) : (
+            project.name
           );
         }
         return '';

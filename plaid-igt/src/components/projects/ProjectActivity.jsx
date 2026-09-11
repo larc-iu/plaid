@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityPanel } from '../admin/ActivityPanel';
+import { ActivityPanel } from '@ui/components/shared/ActivityPanel';
 
 // The project-scoped half of the activity view. Its roster is the project's
 // own members, so "no changes in this window" names the people who were given

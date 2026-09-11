@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityPanel } from './ActivityPanel';
+import { ActivityPanel } from '@ui/components/shared/ActivityPanel';
 
 // The instance-wide half of the activity view. The roster it passes is the
 // account directory, so "no changes in this window" names people who exist

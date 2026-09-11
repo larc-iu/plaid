@@ -8,7 +8,7 @@ import { DataTable } from '@ui/components/ui/data-table';
 import { timeAgo, fullTimestamp } from '@ui/utils/formatTime';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
-import { AuditFeed } from './AuditFeed';
+import { AuditFeed } from '@ui/components/shared/AuditFeed';
 
 // One account: what they can reach, what they have been doing, and what is
 // holding a session open in their name.
