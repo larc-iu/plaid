@@ -62,7 +62,7 @@ The editor has three levels you move between:
 * **Documents**: the texts inside one project.
 * **A document's own tabs**: `Text Editor`, `Annotate`, `Export`, `Comments` and `Details`, switched at the top of an open document.
 
-Project-wide tabs sit alongside the document list inside each project: `Search`, `Validation`, `Activity`, `Project Settings` and `Import & Export`. The last three are for maintainers.
+Project-wide tabs sit alongside the document list inside each project: `Search`, `Assistant`, `Validation`, `Activity`, `Project Settings` and `Import & Export`. The last three are for maintainers, and `Assistant` appears only when one is running.
 
 = Projects
 
@@ -241,6 +241,52 @@ If a prediction is already correct, you don't have to retype it:
 The **Export** tab shows the current document as CoNLL-U, with **Copy** and **Download**.
 
 To export a whole project, use its **Import & Export** tab, which packages every document into one ZIP of `.conllu` files.
+
+= Assistant
+
+The **Assistant** tab is a chat with a language model that knows your project.
+Ask it which words still have no lemma, whether any dependency relations look wrong, or to summarize the parts of speech across the corpus.
+It reads the documents, the search results and the history to answer, and it shows what it read.
+
+When you ask it to change something, it does not touch the data.
+It proposes a **plan**, which you **Approve** or **Discard**.
+Every change is listed under the document it lands in, naming the word and its reference, and each one links to that sentence in the annotation editor, so a plan can be checked before it is approved.
+Approved changes are written under your own account and marked as machine-made until you confirm them like any other proposal.
+Tick **Record as human-made** before approving to record them as your own work instead.
+Reading needs Reader access, and applying a plan needs Writer.
+
+A reply lands whether or not the page stays open: leave the tab, reload, or close the browser, and the answer is there when the conversation is next opened.
+**Stop** ends a turn early.
+Conversations are private to you, kept per project, and can be downloaded or copied as Markdown.
+Your server's administrator can read them.
+
+== Examples in a reply
+
+When a reply rests on a particular sentence, that sentence is shown, and it can be drawn three ways.
+**Tree** gives the dependency arcs over the words, with the relation on each arc and an arrowhead on the word it points at, as the UD documentation draws them.
+**Grid** gives only the columns the point is about.
+**Table** gives every column the sentence fills.
+
+The assistant picks whichever fits what it is saying, and you can switch.
+A sentence nobody has parsed is not offered a tree.
+The heading of each example opens that sentence in the annotation editor.
+
+== Asking about the document you are looking at
+
+The **Assistant** button on the **Annotate** tab opens the same assistant in a panel beside the annotation, so a question can be asked without leaving the text.
+The panel takes its width from the editor, which goes on scrolling sideways, and it can be dragged wider or narrower and hidden again.
+The width is remembered.
+
+A question asked there is about the document in front of you: name no document and that is the one it reads, though it can still look at the rest of the project when the question calls for it, to compare or to count.
+**Ask**, beside **Edit text** under a sentence, puts that sentence into the question, and you can take it out again before sending.
+An example that names a sentence of the open document scrolls the editor to it rather than opening a new tab.
+
+The conversation is an ordinary one.
+It appears in the **Assistant** tab's list with the document's name on it, it can be opened there and carried on, and a plan approved in the panel re-reads the document so the annotation shows the result.
+
+The assistant is a service that your server's operator runs and picks the model for (`plaid-ud-agent`, installed from PyPI).
+When none is connected there is nothing to open, so the tab, the button and **Ask** are not shown.
+Conversations already saved are unaffected and open from their own links.
 
 = Additional Features
 
