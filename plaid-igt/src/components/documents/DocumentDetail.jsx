@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useStrictClient } from './contexts/StrictModeContext.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
@@ -36,6 +36,13 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useTabParam, tabTo } from '@/hooks/useTabParam';
 import { useDelayedFlag } from '@/hooks/useDelayedFlag';
 import { useComposeProject } from '@/hooks/useCompose';
+import { isReviewed } from '@larc-iu/plaid-client';
+import { useViewportFill } from '@ui/hooks/useViewportFill.js';
+import {
+  DocumentAssistant,
+  DocumentAssistantButton,
+} from '@ui/components/assistant/DocumentAssistant.jsx';
+import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 
 // Renders only the active tab's panel (others stay unmounted).
 const Panel = ({ active, children }) => (active ? children : null);
@@ -156,12 +163,30 @@ const DocumentEditor = () => {
   const docPath = `/projects/${projectId}/documents/${documentId}`;
 
   const permissions = useDocumentPermissions(doc?.project);
+
   const writeLock = useWriteLock();
   // A run the previous page started and did not live to see the end of.
   useResumedRun(client, doc, writeLock.acquire);
   // A code bound under Settings applies in the grid and every other field here.
   useComposeProject(doc?.project);
   const history = useDocumentHistory(documentId, client);
+  // --- the assistant docked beside the interlinear grid ---------------------
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  // What the editor pointed at, as {ref, label}. It clears when it is sent.
+  const [assistantFocus, setAssistantFocus] = useState(null);
+  const project = doc?.project;
+  const rowRef = useRef(null);
+  const docked = activeTab === 'analyze' && assistantOpen;
+  const rowHeight = useViewportFill(rowRef, docked, [history.open, writeLock.held]);
+  // An applied plan rewrote the document, so the grid beside the panel is
+  // stale. A fresh read at the state being viewed is the same swap the
+  // restore dialog does.
+  const reloadForAssistant = useCallback(async () => {
+    if (!doc) return;
+    const next = await doc.atAsOf(asOf ?? null);
+    next.onError = doc.onError;
+    setDoc(next);
+  }, [doc, asOf]);
 
   // Comments live in their own store, not on IgtDocument: they are social data,
   // they are unaudited, and they must never bump the document version. One per
@@ -585,12 +610,22 @@ const DocumentEditor = () => {
         </button>
       )}
 
+      {/* With the assistant open the page area is bounded to the screen and
+          scrolls inside itself, so the panel is exactly as tall as the viewport
+          and its composer is always reachable. The height is measured, not
+          guessed: the app header and a run banner both sit above it. */}
       <div
-        className="transition-[margin] duration-200"
-        style={{ marginLeft: history.open ? HISTORY_DRAWER_WIDTH : 0, minHeight: '100vh' }}
+        ref={rowRef}
+        className={`transition-[margin] duration-200 ${docked ? 'flex' : ''}`}
+        style={{
+          marginLeft: history.open ? HISTORY_DRAWER_WIDTH : 0,
+          ...(docked && rowHeight ? { height: rowHeight } : { minHeight: '100vh' }),
+        }}
       >
         <div
-          className={`mx-auto px-4 py-8 ${WIDE_TABS.has(activeTab) ? 'max-w-[1700px]' : 'max-w-5xl'}`}
+          className={`mx-auto px-4 py-8 ${WIDE_TABS.has(activeTab) ? 'max-w-[1700px]' : 'max-w-5xl'} ${
+            docked ? 'min-w-0 flex-1 overflow-y-auto' : ''
+          }`}
         >
           <div>
             <h1 className="text-3xl font-bold tracking-tight">{doc.document.name}</h1>
@@ -675,6 +710,12 @@ const DocumentEditor = () => {
                         <Download className="h-4 w-4" /> Export
                       </TabsTrigger>
                     </TabsList>
+                    {activeTab === 'analyze' && (
+                      <DocumentAssistantButton
+                        open={assistantOpen}
+                        onOpenChange={setAssistantOpen}
+                      />
+                    )}
                   </div>
                 </div>
 
@@ -748,6 +789,26 @@ const DocumentEditor = () => {
             )}
           </DocumentProvider>
         </div>
+        {activeTab === 'analyze' && (
+          <DocumentAssistant
+            open={assistantOpen}
+            onOpenChange={setAssistantOpen}
+            documentId={documentId}
+            documentName={doc.document.name}
+            focus={assistantFocus}
+            onClearFocus={() => setAssistantFocus(null)}
+            onApplied={reloadForAssistant}
+            projectId={projectId}
+            projectName={project?.name}
+            client={client}
+            userId={user?.id}
+            canWrite={permissions.canWrite && !isViewingHistorical}
+            contributor={
+              !!project && !!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin })
+            }
+            adapter={IGT_ASSISTANT}
+          />
+        )}
       </div>
     </>
   );
