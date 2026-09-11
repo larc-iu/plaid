@@ -9,8 +9,8 @@ import { AdminAssistant } from './AdminAssistant';
 // may take the screen down, because there is no other way for an operator to
 // see what the assistant did here.
 
-const entry = (userId, projectId, convId, value) => ({
-  key: `igt:assistant:${projectId}:meta:${convId}`,
+const entry = (userId, projectId, convId, value, app = 'igt') => ({
+  key: `${app}:assistant:${projectId}:meta:${convId}`,
   userId,
   updatedAt: '2026-09-01T10:00:00Z',
   value,
@@ -71,7 +71,7 @@ describe('AdminAssistant', () => {
     const { container, unmount } = await mount(client);
 
     expect(client.admin.userData).toHaveBeenCalledWith({
-      pattern: 'igt:assistant:*:meta:*',
+      pattern: '*:assistant:*:meta:*',
       includeValues: true,
     });
     const cells = rowCells(container);
@@ -95,7 +95,7 @@ describe('AdminAssistant', () => {
   it('names a deleted project instead of showing a blank or breaking', async () => {
     const { container, unmount } = await mount(fakeClient());
     const row = rowCells(container).find((c) => c[0] === 'About a project since deleted');
-    expect(row[2]).toBe('Deleted project');
+    expect(row[3]).toBe('Deleted project');
     await unmount();
   });
 
@@ -108,17 +108,17 @@ describe('AdminAssistant', () => {
     const header = all(container, 'thead button').find((b) => b.textContent.startsWith('Project'));
 
     await step(async () => header.click());
-    expect(rowCells(container).map((c) => c[2])).toEqual(['Deleted project', 'Lezgi', 'Lezgi']);
+    expect(rowCells(container).map((c) => c[3])).toEqual(['Deleted project', 'Lezgi', 'Lezgi']);
 
     await step(async () => header.click());
-    expect(rowCells(container).map((c) => c[2])).toEqual(['Lezgi', 'Lezgi', 'Deleted project']);
+    expect(rowCells(container).map((c) => c[3])).toEqual(['Lezgi', 'Lezgi', 'Deleted project']);
     await unmount();
   });
 
   it('shows a dash where an older record has no turn count or model', async () => {
     const { container, unmount } = await mount(fakeClient());
     const row = rowCells(container).find((c) => c[0] === 'Untitled');
-    expect(row[3]).toBe('—');
+    expect(row[4]).toBe('—');
     expect(row[4]).toBe('—');
     await unmount();
   });
@@ -175,6 +175,45 @@ describe('AdminAssistant', () => {
 
     expect(container.textContent).toContain('The transcript is gone');
     expect(container.textContent).toContain('Which words are unglossed?');
+    await unmount();
+  });
+});
+
+describe('AdminAssistant across apps', () => {
+  // plaid-ud writes `ud:assistant:` records against the same projects. An
+  // admin looking for "who has been talking to an assistant" means all of
+  // them, so the index is not this app's tag alone.
+  const withUd = () =>
+    fakeClient({
+      admin: {
+        userData: vi.fn(async () => [
+          ...ENTRIES,
+          entry('ada@example.com', PA, 'c4', { title: 'Words with no lemma?', turns: 2 }, 'ud'),
+        ]),
+      },
+    });
+
+  it("lists another app's conversations beside its own, and says which is which", async () => {
+    const { container, unmount } = await mount(withUd());
+    const rows = rowCells(container);
+    expect(rows).toHaveLength(4);
+    expect(rows.map((r) => r[2]).sort()).toEqual(['igt', 'igt', 'igt', 'ud']);
+    await unmount();
+  });
+
+  it("does not link a foreign conversation's project into this app's routes", async () => {
+    const { container, unmount } = await mount(withUd());
+    const foreign = all(container, 'tbody tr').find((tr) =>
+      tr.textContent.includes('Words with no lemma?'),
+    );
+    const mine = all(container, 'tbody tr').find((tr) =>
+      tr.textContent.includes('Which words are unglossed?'),
+    );
+    // Both name the project; only this app's row makes it a link, because the
+    // other app's editor is not at a route this one can build.
+    expect(foreign.textContent).toContain('Lezgi');
+    expect(foreign.querySelector('a[href*="/projects/"]')).toBeNull();
+    expect(mine.querySelector('a[href*="/projects/"]')).not.toBeNull();
     await unmount();
   });
 });

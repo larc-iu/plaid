@@ -10,6 +10,7 @@ import { notifyError, humanizeError } from '@/utils/feedback';
 import { AssistantMarkdown } from '@ui/components/assistant/AssistantMarkdown.jsx';
 import { conversationToMarkdown } from '@ui/components/assistant/exportMarkdown.js';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
+import { PLAIN_CITATIONS } from '@ui/components/assistant/plainCitations.js';
 
 // Every assistant conversation on the instance. A conversation is private to
 // the person who had it — it never appears in anyone else's sidebar — and an
@@ -17,25 +18,35 @@ import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 // them anyway. So: an admin-only index of all of them, and each one whole.
 //
 // The record lives in the core user-data store under
-// `igt:assistant:<project>:meta:<id>` (the sidebar entry) and `...:conv:<id>`
+// `<app>:assistant:<project>:meta:<id>` (the sidebar entry) and `...:conv:<id>`
 // (the transcript). The index is one cross-account read of the meta keys; a
 // transcript is fetched only when one is opened, because they are large.
+//
+// EVERY app's conversations, not just this one's: plaid-ud writes `ud:` keys
+// against the same projects, and an admin looking for "who has been talking to
+// an assistant" means all of them. A conversation from another app is shown
+// and read, but its citations are not drawn the way that app would draw them
+// and its rows do not link into an editor this app cannot address.
 //
 // Read-only, deliberately. The admin panels report and unblock; deleting
 // somebody's conversation is neither, and the owner can already delete their
 // own.
 
-const META_PATTERN = 'igt:assistant:*:meta:*';
+const META_PATTERN = '*:assistant:*:meta:*';
 
-// `igt:assistant:<project>:meta:<id>`. Both ids are UUIDs, so no segment can
+// This app's own tag, so a conversation it can render is told from one it
+// cannot.
+const OWN_APP = 'igt';
+
+// `<app>:assistant:<project>:meta:<id>`. Both ids are UUIDs, so no segment can
 // contain the separator.
 const parseKey = (key) => {
   const parts = String(key).split(':');
-  if (parts.length !== 5 || parts[0] !== 'igt' || parts[1] !== 'assistant') return null;
-  return { projectId: parts[2], convId: parts[4] };
+  if (parts.length !== 5 || parts[1] !== 'assistant') return null;
+  return { app: parts[0], projectId: parts[2], convId: parts[4] };
 };
 
-const convKeyFor = (projectId, convId) => `igt:assistant:${projectId}:conv:${convId}`;
+const convKeyFor = (app, projectId, convId) => `${app}:assistant:${projectId}:conv:${convId}`;
 
 const ConversationDetail = ({ client, row, onBack }) => {
   const [markdown, setMarkdown] = useState(null);
@@ -46,7 +57,7 @@ const ConversationDetail = ({ client, row, onBack }) => {
     setMarkdown(null);
     setError(null);
     client.userData
-      .get(row.userId, convKeyFor(row.projectId, row.convId))
+      .get(row.userId, convKeyFor(row.app, row.projectId, row.convId))
       .then((entry) => {
         if (!live) return;
         const value = entry?.value || {};
@@ -58,7 +69,9 @@ const ConversationDetail = ({ client, row, onBack }) => {
             origin: '',
             projectId: row.projectId,
             projectName: row.projectName,
-            adapter: IGT_ASSISTANT,
+            // Another app's citations are shown as the reference they
+            // name: this app cannot draw its grid or link into its editor.
+            adapter: row.app === OWN_APP ? IGT_ASSISTANT : PLAIN_CITATIONS,
           }),
         );
       })
@@ -159,6 +172,7 @@ export const AdminAssistant = ({ client }) => {
       return [
         {
           key: entry.key,
+          app: parsed.app,
           userId: entry.userId,
           user,
           userName: user?.displayName || entry.userId,
@@ -220,16 +234,26 @@ export const AdminAssistant = ({ client }) => {
       ),
     },
     {
+      key: 'app',
+      label: 'App',
+      sort: (r) => r.app,
+      render: (r) => <Badge variant={r.app === OWN_APP ? 'secondary' : 'outline'}>{r.app}</Badge>,
+    },
+    {
       key: 'project',
       label: 'Project',
       sort: (r) => r.projectName.toLowerCase(),
+      // A project opens here only for this app's own conversations: the others
+      // belong to an app whose routes this one does not know.
       render: (r) =>
-        r.projectExists ? (
+        !r.projectExists ? (
+          <Badge variant="outline">Deleted project</Badge>
+        ) : r.app === OWN_APP ? (
           <Link to={`/projects/${r.projectId}`} className="hover:underline">
             {r.projectName}
           </Link>
         ) : (
-          <Badge variant="outline">Deleted project</Badge>
+          <span>{r.projectName}</span>
         ),
     },
     {
