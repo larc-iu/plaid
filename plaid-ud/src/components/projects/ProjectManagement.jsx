@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { useDebouncedValue } from '@mantine/hooks';
 import { MoreVertical, Plus } from 'lucide-react';
 import {
   PLAID_NAMESPACE,
@@ -16,7 +15,6 @@ import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { canManageProject } from '../../utils/permissions.js';
 import { isEmail, EMAIL_INVALID_MESSAGE } from '../../utils/email';
-import { UserAvatar } from '@ui/components/shared/UserAvatar';
 import { Badge } from '@ui/components/ui/badge';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
@@ -71,7 +69,14 @@ export const ProjectManagement = () => {
 
   // Search-to-add. The roster isn't fetched wholesale; we query the server.
   const [search, setSearch] = useState('');
-  const [debouncedSearch] = useDebouncedValue(search, 250);
+  // The directory search hits the server, so it waits for a pause in typing.
+  // Four lines rather than a dependency, and the same 250 ms plaid-igt's
+  // useUserSearch settled on.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 250);
+    return () => clearTimeout(t);
+  }, [search]);
   const [searchActive, setSearchActive] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -420,23 +425,13 @@ export const ProjectManagement = () => {
     return denied('You do not have permission to manage this project');
 
   const userCell = (u) => (
-    <>
-      <UserAvatar
-        client={getClient()}
-        userId={u.id}
-        displayName={u.displayName}
-        avatarHash={u.avatarHash}
-        className="h-7 w-7"
-        fallbackClassName="text-[10px]"
-      />
-      <span className="min-w-0">
-        <span className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium">{u.displayName}</span>
-          {u.isAdmin && <Badge variant="secondary">Admin</Badge>}
-        </span>
-        <span className="block truncate text-xs text-muted-foreground">{u.id}</span>
-      </span>
-    </>
+    <div className="min-w-0">
+      <div className="flex items-center gap-2">
+        <span className="truncate text-sm font-medium">{u.displayName}</span>
+        {u.isAdmin && <Badge variant="secondary">Admin</Badge>}
+      </div>
+      <span className="block truncate text-xs text-muted-foreground">{u.id}</span>
+    </div>
   );
 
   return (
@@ -486,9 +481,7 @@ export const ProjectManagement = () => {
                 <tbody>
                   {rows.map((m) => (
                     <tr key={m.id} className="border-b">
-                      <td className="py-2 pr-3">
-                        <div className="flex items-center gap-2">{userCell(m)}</div>
-                      </td>
+                      <td className="py-2 pr-3">{userCell(m)}</td>
                       <td className="px-3 py-2">
                         <select
                           className="h-8 w-36 rounded-md border border-input bg-transparent px-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
@@ -601,7 +594,7 @@ export const ProjectManagement = () => {
                     key={u.id}
                     className={`flex items-center justify-between gap-2 py-2 ${i ? 'border-t' : ''}`}
                   >
-                    <div className="flex min-w-0 items-center gap-2">{userCell(u)}</div>
+                    {userCell(u)}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="outline" size="sm">

@@ -91,7 +91,7 @@ export const CodeEditor = ({
           // rather than `-webkit-text-fill-color`, because the latter takes
           // the placeholder with it.
           color: 'transparent',
-          caretColor: 'var(--mantine-color-text)',
+          caretColor: 'hsl(var(--foreground))',
           outline: 'none',
         }}
       />

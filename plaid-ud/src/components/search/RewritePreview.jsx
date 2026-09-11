@@ -1,24 +1,30 @@
-import { useMemo, useState, useEffect } from 'react';
-import {
-  Stack,
-  Paper,
-  Text,
-  Box,
-  Divider,
-  Group,
-  Checkbox,
-  Button,
-  Badge,
-  Anchor,
-} from '@mantine/core';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { modals } from '@mantine/modals';
-import { pageSlice } from '../../hooks/usePagedList.js';
-import { ListPager } from '../common/ListChrome.jsx';
-
-const PAGE_SIZE = 50; // sentences per page
+import { pageSlice } from '@ui/hooks/usePagedList';
+import { ListPager } from '@ui/components/ui/list-search';
+import { Button } from '@ui/components/ui/button';
+import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+// A native checkbox rather than a Radix one: the document header needs the
+// indeterminate state, which lives only on the DOM node and cannot be set from
+// markup, and every one of these sits inside a plain row that wants nothing
+// else from a primitive.
+const Check = ({ indeterminate = false, className = '', ...props }) => {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = indeterminate;
+  }, [indeterminate]);
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      className={`h-4 w-4 shrink-0 cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
+      {...props}
+    />
+  );
+};
 
 // The rewrite preview: every sentence a rule changed, grouped by document,
 // each with its change lines and a checkbox. `rows` come from planRewrite;
@@ -26,11 +32,12 @@ const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 // annotation editor (deep-linked via ?sent=), built by `hrefFor`.
 export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, busy, onApply }) => {
   const [page, setPage] = useState(0);
+  const confirm = useConfirm();
   useEffect(() => {
     setPage(0);
   }, [rows]);
 
-  const paged = useMemo(() => pageSlice(rows, page, PAGE_SIZE), [rows, page]);
+  const paged = useMemo(() => pageSlice(rows, page), [rows, page]);
   const { pageItems } = paged;
   const byDoc = useMemo(() => {
     const m = new Map();
@@ -53,33 +60,30 @@ export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, bu
     onSelect(next);
   };
 
-  const confirmApply = () =>
-    modals.openConfirmModal({
-      title: 'Apply changes?',
-      children: (
-        <Text size="sm">
-          {plural(chosen.length, 'sentence')} in {plural(chosenDocs.size, 'document')}.
-        </Text>
-      ),
-      labels: { confirm: 'Apply', cancel: 'Cancel' },
-      onConfirm: onApply,
+  const confirmApply = async () => {
+    const ok = await confirm({
+      title: 'Apply changes',
+      description: `${plural(chosen.length, 'sentence')} in ${plural(chosenDocs.size, 'document')}.`,
+      confirmLabel: 'Apply',
     });
+    if (ok) onApply();
+  };
 
   return (
-    <Stack gap="md">
-      <Group justify="space-between" align="center">
-        <Text size="sm" c="dimmed">
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">
           {rows.length === 0
             ? 'No sentences to change.'
             : `${plural(rows.length, 'sentence')} in ${plural(new Set(rows.map((r) => r.docId)).size, 'document')}, ${chosen.length} selected` +
               (errors ? `, ${plural(errors, 'error')}` : '') +
               (warned ? `, ${plural(warned, 'warning')}` : '')}
-        </Text>
+        </p>
         {rows.length > 0 && (
-          <Group gap="xs">
+          <div className="flex items-center gap-2">
             <Button
-              variant="subtle"
-              size="compact-sm"
+              variant="ghost"
+              size="sm"
               onClick={() =>
                 setMany(
                   applicable.map((r) => r.key),
@@ -90,97 +94,77 @@ export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, bu
               {chosen.length !== applicable.length ? 'Select all' : 'Select none'}
             </Button>
             {canApply ? (
-              <Button onClick={confirmApply} disabled={!chosen.length} loading={busy}>
-                Apply {plural(chosen.length, 'change')}
+              <Button onClick={confirmApply} disabled={!chosen.length || busy}>
+                {busy ? 'Applying…' : `Apply ${plural(chosen.length, 'change')}`}
               </Button>
             ) : (
-              <Text size="sm" c="dimmed">
-                Maintainers only.
-              </Text>
+              <p className="text-sm text-muted-foreground">Maintainers only.</p>
             )}
-          </Group>
+          </div>
         )}
-      </Group>
+      </div>
 
-      <ListPager {...paged} onPage={setPage} position="top" />
+      <ListPager {...paged} onPage={setPage} position="top" className="rounded-md border" />
 
       {byDoc.map(([docId, sentences]) => {
         const keys = sentences.filter((r) => !r.error).map((r) => r.key);
         const on = keys.filter((k) => selected.has(k)).length;
         return (
-          <Paper key={docId} withBorder radius="md">
-            <Group
-              px="md"
-              py="xs"
-              gap="sm"
-              style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}
-            >
-              <Checkbox
-                size="sm"
+          <div key={docId} className="overflow-hidden rounded-md border">
+            <div className="flex items-center gap-3 border-b px-4 py-2">
+              <Check
                 checked={keys.length > 0 && on === keys.length}
                 indeterminate={on > 0 && on < keys.length}
                 disabled={!keys.length}
                 onChange={(e) => setMany(keys, e.currentTarget.checked)}
                 aria-label="Select document"
               />
-              <Text fw={600} size="sm" truncate>
-                {sentences[0].docName}
-              </Text>
-            </Group>
-            <Stack gap={0}>
+              <span className="truncate text-sm font-semibold">{sentences[0].docName}</span>
+            </div>
+            <div className="flex flex-col">
               {sentences.map((r, idx) => (
-                <Box key={r.key}>
-                  {idx > 0 && <Divider />}
-                  <Group p="md" gap="sm" align="flex-start" wrap="nowrap">
-                    <Checkbox
-                      size="sm"
-                      mt={2}
-                      checked={selected.has(r.key)}
-                      disabled={!!r.error}
-                      onChange={(e) => setMany([r.key], e.currentTarget.checked)}
-                      aria-label="Select sentence"
-                    />
-                    <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-                      <Group gap="xs" wrap="nowrap">
-                        <Anchor
-                          component={Link}
-                          to={hrefFor(r.docId, r.id)}
-                          size="sm"
-                          style={{ lineHeight: 1.6 }}
-                        >
-                          {r.text}
-                        </Anchor>
-                        {r.applications > 1 && (
-                          <Badge size="xs" variant="light" color="gray">
-                            {r.applications}×
-                          </Badge>
-                        )}
-                      </Group>
-                      {r.changes.map((c, i) => (
-                        <Text key={i} size="xs" ff="monospace">
-                          {c.text}
-                        </Text>
-                      ))}
-                      {r.warnings.map((w, i) => (
-                        <Text key={i} size="xs" c="yellow.8">
-                          {w}
-                        </Text>
-                      ))}
-                      {r.error && (
-                        <Text size="xs" c="red.7">
-                          {r.error}
-                        </Text>
+                <div key={r.key} className={`flex gap-3 p-4 ${idx ? 'border-t' : ''}`}>
+                  <Check
+                    className="mt-1"
+                    checked={selected.has(r.key)}
+                    disabled={!!r.error}
+                    onChange={(e) => setMany([r.key], e.currentTarget.checked)}
+                    aria-label="Select sentence"
+                  />
+                  <div className="flex min-w-0 flex-1 flex-col gap-1">
+                    <div className="flex items-baseline gap-2">
+                      <Link
+                        to={hrefFor(r.docId, r.id)}
+                        className="text-sm leading-relaxed text-primary underline-offset-4 hover:underline"
+                      >
+                        {r.text}
+                      </Link>
+                      {r.applications > 1 && (
+                        <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                          {r.applications}×
+                        </span>
                       )}
-                    </Stack>
-                  </Group>
-                </Box>
+                    </div>
+                    {r.changes.map((c, i) => (
+                      <p key={i} className="font-mono text-xs">
+                        {c.text}
+                      </p>
+                    ))}
+                    {r.warnings.map((w, i) => (
+                      <p key={i} className="text-xs text-amber-700">
+                        {w}
+                      </p>
+                    ))}
+                    {r.error && <p className="text-xs text-destructive">{r.error}</p>}
+                  </div>
+                </div>
               ))}
-            </Stack>
-          </Paper>
+            </div>
+          </div>
         );
       })}
 
-      <ListPager {...paged} onPage={setPage} />
-    </Stack>
+      <ListPager {...paged} onPage={setPage} className="rounded-md border" />
+    </div>
   );
 };

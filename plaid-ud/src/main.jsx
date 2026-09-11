@@ -1,9 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MantineProvider } from '@mantine/core';
-import { ModalsProvider } from '@mantine/modals';
 import '@mantine/core/styles.css';
-import '@mantine/dropzone/styles.css';
 import { Toaster } from '@ui/components/ui/sonner';
 import { ConfirmProvider } from '@ui/components/shared/ConfirmProvider';
 import { configureUi } from '@ui/lib/uiConfig.js';
@@ -17,19 +15,16 @@ import App from './App.jsx';
 // decide how each other's lists open. This app binds no compose codes.
 configureUi({ appPrefix: 'plaid_ud' });
 
-// Mantine still provides the theme and, until 0.4 retires RewritePreview's
-// modal, the modal manager. Toasts and confirmations are already sonner and the
-// shared ConfirmProvider, so the two halves of the migration never show two
-// toast stacks at once.
+// Mantine is down to the theme, for the editor screens 0.5 has yet to reach.
+// Its modal manager, notifications and dropzone are all gone; toasts and
+// confirmations are sonner and the shared ConfirmProvider.
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <MantineProvider theme={theme}>
-      <ModalsProvider>
-        <Toaster richColors closeButton position="bottom-right" />
-        <ConfirmProvider>
-          <App />
-        </ConfirmProvider>
-      </ModalsProvider>
+      <Toaster richColors closeButton position="bottom-right" />
+      <ConfirmProvider>
+        <App />
+      </ConfirmProvider>
     </MantineProvider>
   </StrictMode>,
 );

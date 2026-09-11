@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react';
 import { X, History, ChevronRight } from 'lucide-react';
-import { Button } from '@ui/components/ui/button';
-import { Badge } from '@ui/components/ui/badge';
-import { cn } from '@ui/lib/utils';
+import { Button } from '../ui/button.jsx';
+import { Badge } from '../ui/badge.jsx';
+import { cn, PREFLIGHT_SCOPE } from '../../lib/utils.js';
+import { fullTimestamp } from '../../utils/formatTime.js';
 
 // The audit log arrives already folded into logical units by the server: a
 // labeled operation ("Merge morphemes"), else an atomic batch, else a lone
@@ -15,10 +16,13 @@ import { cn } from '@ui/lib/utils';
 const unitLabel = (entry) =>
   entry.message || entry.ops?.[0]?.description || 'No description available';
 
-const formatTime = (timestamp) => new Date(timestamp).toLocaleString();
-
 const actor = (user, apiToken) =>
   user ? ` · by ${user.displayName}${apiToken ? ` (via ${apiToken.name})` : ''}` : '';
+
+// The panel pushes the page's content right rather than overlaying it, so the
+// app that mounts it has to know how wide it is. One number, exported, rather
+// than the same literal in two call sites.
+export const HISTORY_DRAWER_WIDTH = 400;
 
 // Non-modal left slide-in panel (no overlay, no focus trap) so the editor stays
 // interactive while browsing history. A Radix Dialog or Sheet would trap focus.
@@ -67,7 +71,7 @@ export const HistoryDrawer = ({
       >
         <p className="line-clamp-2 text-sm leading-snug">{op.description}</p>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          {formatTime(op.time)}
+          {fullTimestamp(op.time)}
           {actor(op.user, null)}
         </p>
       </div>
@@ -83,7 +87,7 @@ export const HistoryDrawer = ({
     const containsSelected = !isExpanded && multi && ops.some((op) => op.id === selectedEntry?.id);
     const range =
       multi && entry.endTime && entry.endTime !== entry.time
-        ? `${formatTime(entry.time)} → ${formatTime(entry.endTime)}`
+        ? `${fullTimestamp(entry.time)} → ${fullTimestamp(entry.endTime)}`
         : undefined;
     return (
       <div key={entry.id}>
@@ -123,7 +127,7 @@ export const HistoryDrawer = ({
               {unitLabel(entry)}
             </p>
             <p className="mt-0.5 text-xs text-muted-foreground" title={range}>
-              {formatTime(entry.time)}
+              {fullTimestamp(entry.time)}
               {actor(entry.user, entry.apiToken)}
             </p>
           </div>
@@ -137,7 +141,16 @@ export const HistoryDrawer = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed left-0 top-0 z-40 flex h-screen w-[400px] flex-col border-r bg-background shadow-lg">
+    // The panel is a fixed-position root of its own, mounted by whatever screen
+    // owns the document — in plaid-ud that screen is still Mantine — so it
+    // carries PREFLIGHT_SCOPE for the same reason a portaled surface does.
+    <div
+      className={cn(
+        PREFLIGHT_SCOPE,
+        'fixed left-0 top-0 z-40 flex h-screen flex-col border-r bg-background shadow-lg',
+      )}
+      style={{ width: HISTORY_DRAWER_WIDTH }}
+    >
       {/* Header */}
       <div className="flex items-center justify-between border-b p-4">
         <div className="flex items-center gap-2">
@@ -193,7 +206,7 @@ export const HistoryDrawer = ({
             {selectedEntry.label && (
               <p className="line-clamp-2 text-xs font-medium">{selectedEntry.label}</p>
             )}
-            <p className="text-xs text-muted-foreground">{formatTime(selectedEntry.time)}</p>
+            <p className="text-xs text-muted-foreground">{fullTimestamp(selectedEntry.time)}</p>
             <div className="flex flex-wrap gap-2">
               <Button size="sm" onClick={() => onSelectEntry(null)}>
                 Return to Current State

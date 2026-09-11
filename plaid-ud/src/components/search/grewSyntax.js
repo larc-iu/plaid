@@ -1,18 +1,19 @@
 // Tolerant syntax highlighter for the Grew query box. Returns an HTML string
-// (react-simple-code-editor renders it under a transparent textarea). It mirrors
+// (CodeEditor paints it into a <pre> under a transparent textarea). It mirrors
 // the token rules of src/grew/lexer.js but never throws on partial/while-typing
 // input — anything unrecognized is emitted as plain text.
 //
-// Colors use Mantine CSS variables so they track the active theme.
+// The colors are named once in src/index.css, as the `--grew-*` variables, so
+// the palette is in one place and the highlighter stays a pure string function.
 
 const COLORS = {
-  keyword: 'var(--mantine-color-blue-7)',
-  global: 'var(--mantine-color-grape-6)',
-  string: 'var(--mantine-color-teal-7)',
-  number: 'var(--mantine-color-orange-7)',
-  operator: 'var(--mantine-color-violet-6)',
-  punct: 'var(--mantine-color-gray-6)',
-  comment: 'var(--mantine-color-gray-5)',
+  keyword: 'var(--grew-keyword)',
+  global: 'var(--grew-global)',
+  string: 'var(--grew-string)',
+  number: 'var(--grew-number)',
+  operator: 'var(--grew-operator)',
+  punct: 'var(--grew-punct)',
+  comment: 'var(--grew-comment)',
 };
 
 // Ordered alternation — longest / most specific first. Group index → class.

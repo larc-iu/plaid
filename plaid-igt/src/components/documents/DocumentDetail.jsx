@@ -12,7 +12,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@ui/components/ui/tabs
 import { Button } from '@ui/components/ui/button';
 import { ExportRunner } from '@/components/export/ExportRunner.jsx';
 import { DocumentTokenize } from './tokenize/DocumentTokenize.jsx';
-import { HistoryDrawer } from './HistoryDrawer.jsx';
+import { HistoryDrawer, HISTORY_DRAWER_WIDTH } from '@ui/components/shared/HistoryDrawer';
 import { RestoreDialog } from './RestoreDialog.jsx';
 import { DocumentMetadata } from './metadata/DocumentMetadata.jsx';
 import { DocumentBaseline } from './baseline/DocumentBaseline.jsx';
@@ -586,7 +586,7 @@ const DocumentEditor = () => {
 
       <div
         className="transition-[margin] duration-200"
-        style={{ marginLeft: history.open ? '400px' : '0', minHeight: '100vh' }}
+        style={{ marginLeft: history.open ? HISTORY_DRAWER_WIDTH : 0, minHeight: '100vh' }}
       >
         <div
           className={`mx-auto px-4 py-8 ${WIDE_TABS.has(activeTab) ? 'max-w-[1700px]' : 'max-w-5xl'}`}

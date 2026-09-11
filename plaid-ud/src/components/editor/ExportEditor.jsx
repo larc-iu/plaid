@@ -1,5 +1,6 @@
-import { Title, Button, Group, Textarea, CopyButton } from '@mantine/core';
-import { IconCopy, IconCheck, IconDownload } from '@tabler/icons-react';
+import { useState } from 'react';
+import { Check, Copy, Download } from 'lucide-react';
+import { Button } from '@ui/components/ui/button';
 import { useDocumentEditor } from './useDocumentEditor.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
@@ -7,10 +8,17 @@ export const ExportEditor = () => {
   // Project, document and the breadcrumbs/tab strip all come from
   // DocumentEditorShell, which guarantees both are loaded before this renders.
   const { doc, project } = useDocumentEditor();
+  const [copied, setCopied] = useState(false);
 
   useDocumentTitle('Export', doc?.name, project?.name);
 
   const conlluContent = doc.toConllu();
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(conlluContent);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const handleDownload = () => {
     const blob = new Blob([conlluContent], { type: 'text/plain;charset=utf-8' });
@@ -25,42 +33,29 @@ export const ExportEditor = () => {
   };
 
   return (
-    <>
-      <Title order={3} mb="md">
-        CoNLL-U Export
-      </Title>
+    <div className="tw flex flex-col gap-4">
+      <h3 className="text-xl font-semibold tracking-tight">CoNLL-U</h3>
 
-      <Group gap="sm" mb="md">
-        <CopyButton value={conlluContent} timeout={2000}>
-          {({ copied, copy }) => (
-            <Button
-              color={copied ? 'teal' : 'blue'}
-              leftSection={copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
-              onClick={copy}
-            >
-              {copied ? 'Copied!' : 'Copy to Clipboard'}
-            </Button>
-          )}
-        </CopyButton>
-
-        <Button color="green" leftSection={<IconDownload size={16} />} onClick={handleDownload}>
-          Download .conllu
+      <div className="flex flex-wrap gap-2">
+        <Button onClick={handleCopy}>
+          {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+          {copied ? 'Copied' : 'Copy'}
         </Button>
-      </Group>
+        <Button variant="outline" onClick={handleDownload}>
+          <Download className="h-4 w-4" />
+          Download
+        </Button>
+      </div>
 
-      <Textarea
+      {/* Read-only and sized to the document: a treebank is read by scrolling
+          one long column, not by scrolling a box inside a page. */}
+      <textarea
         value={conlluContent}
         spellCheck={false}
         readOnly
-        autosize
-        minRows={20}
-        styles={{
-          input: {
-            fontFamily: 'var(--mantine-font-family-monospace)',
-            backgroundColor: 'var(--mantine-color-gray-0)',
-          },
-        }}
+        rows={Math.min(Math.max(conlluContent.split('\n').length, 20), 400)}
+        className="w-full rounded-md border bg-muted/40 p-3 font-mono text-xs leading-relaxed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       />
-    </>
+    </div>
   );
 };

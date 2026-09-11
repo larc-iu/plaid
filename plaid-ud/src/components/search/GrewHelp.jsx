@@ -1,4 +1,39 @@
-import { Accordion, Stack, Text, Code, Anchor, List, Group } from '@mantine/core';
+import { ChevronRight } from 'lucide-react';
+
+// The three reference panels above the query box. Native <details> rather than
+// a disclosure primitive: the browser owns the open state, the summary is
+// focusable and keyboard-operable for free, and Find-in-page reaches the closed
+// panels. The only thing worth styling is the marker, which we replace with a
+// chevron that turns.
+const Panel = ({ title, children }) => (
+  <details className="group rounded-md border bg-card">
+    <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium [&::-webkit-details-marker]:hidden">
+      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
+      {title}
+    </summary>
+    <div className="border-t px-4 py-3">{children}</div>
+  </details>
+);
+
+// Inline code, the one thing this screen uses on nearly every line.
+const C = ({ children }) => (
+  <code className="whitespace-pre-wrap rounded bg-muted px-1 py-0.5 font-mono text-xs">
+    {children}
+  </code>
+);
+
+const A = ({ href, children }) => (
+  <a
+    className="text-primary underline underline-offset-4"
+    href={href}
+    target="_blank"
+    rel="noreferrer"
+  >
+    {children}
+  </a>
+);
+
+const Bullets = ({ children }) => <ul className="ml-5 list-disc space-y-1 text-sm">{children}</ul>;
 
 // Click an example to drop it into the query box.
 const EXAMPLES = [
@@ -42,150 +77,130 @@ const REWRITE_EXAMPLES = [
 ];
 
 const ExampleList = ({ items, onPick }) => (
-  <Stack gap={6}>
+  <div className="flex flex-col gap-1.5">
     {items.map(([label, q]) => (
-      <Group key={q} gap="sm" wrap="nowrap" align="baseline">
-        <Anchor
-          component="button"
+      <div key={q} className="flex items-baseline gap-3">
+        <button
           type="button"
-          size="sm"
+          className="shrink-0 text-sm text-primary underline-offset-4 hover:underline"
           onClick={() => onPick(q)}
-          style={{ flexShrink: 0 }}
         >
           {label}
-        </Anchor>
-        <Code style={{ fontSize: 12, whiteSpace: 'pre-wrap' }}>{q}</Code>
-      </Group>
+        </button>
+        <C>{q}</C>
+      </div>
     ))}
-  </Stack>
+  </div>
 );
 
 export const GrewHelp = ({ onPick }) => (
-  <Accordion variant="separated" defaultValue={null}>
-    <Accordion.Item value="examples">
-      <Accordion.Control>Search examples</Accordion.Control>
-      <Accordion.Panel>
-        <ExampleList items={EXAMPLES} onPick={onPick} />
-      </Accordion.Panel>
-    </Accordion.Item>
+  <div className="flex flex-col gap-2">
+    <Panel title="Search examples">
+      <ExampleList items={EXAMPLES} onPick={onPick} />
+    </Panel>
 
-    <Accordion.Item value="rewrite">
-      <Accordion.Control>Rewrite examples</Accordion.Control>
-      <Accordion.Panel>
-        <Stack gap="xs">
-          <ExampleList items={REWRITE_EXAMPLES} onPick={onPick} />
-          <Text size="sm">
-            A pattern with a{' '}
-            <Code>
-              commands {'{'} … {'}'}
-            </Code>{' '}
-            block is a{' '}
-            <Anchor href="https://grew.fr/doc/commands/" target="_blank" rel="noreferrer">
-              Grew rewriting rule
-            </Anchor>
-            . Each sentence is rewritten until no rule matches, one match at a time, and the result
-            is previewed before anything is applied.
-          </Text>
-          <List size="sm" spacing={2}>
-            <List.Item>
-              <Code>X.upos = VERB</Code>, <Code>X.Number = D.Number</Code>,{' '}
-              <Code>X.lemma = Y.lemma + "s"</Code>, <Code>X.f = Y.f[1:]</Code>,{' '}
-              <Code>del_feat X.Number</Code>
-            </List.Item>
-            <List.Item>
-              <Code>e.label = "obj"</Code>, <Code>e.2 = pass</Code>, <Code>del_feat e.2</Code> — on
-              an edge named <Code>e: X -[…]-&gt; Y</Code>
-            </List.Item>
-            <List.Item>
-              <Code>add_edge X -[obj]-&gt; Y</Code>, <Code>add_edge e: X -&gt; Y</Code> (the label
-              of e), <Code>del_edge e</Code>, <Code>del_edge X -[obj]-&gt; Y</Code>
-            </List.Item>
-            <List.Item>
-              <Code>shift X ==&gt; Y</Code>, <Code>shift_in X =[nsubj|obj]=&gt; Y</Code>,{' '}
-              <Code>shift_out X =[^det]=&gt; Y</Code> — move X's edges to Y; the root moves with its
-              incoming edges
-            </List.Item>
-            <List.Item>
-              <Code>del_node X</Code> — delete the word and its edges;{' '}
-              <Code>append_feats "/" X =[re"Number|Gender"]=&gt; Y</Code> — copy X's features (never
-              form/lemma/upos/xpos)
-            </List.Item>
-            <List.Item>
-              <Code>X [lemma=lex.noun]</Code> … <Code>X.Gender = lex.Gender</Code> — a lexicon
-              declared in the rule between <Code>#BEGIN lex</Code> and <Code>#END</Code>:
-              tab-separated, first line the field names
-            </List.Item>
-            <List.Item>
-              The root is an edge from an anchor node with <Code>form="__0__"</Code>, as in Grew:{' '}
-              <Code>X []</Code> matches it, <Code>X [upos]</Code> does not
-            </List.Item>
-            <List.Item>
-              <Code>
-                rule name {'{'} pattern {'{'} … {'}'} commands {'{'} … {'}'} {'}'}
-              </Code>{' '}
-              and{' '}
-              <Code>
-                strat main {'{'} Seq(Onf(a), Onf(b)) {'}'}
-              </Code>{' '}
-              — several rules; without a strategy they run as <Code>Onf(Alt(…))</Code>
-            </List.Item>
-          </List>
-          <Text size="sm" c="dimmed">
-            Not supported: <Code>add_node</Code>, <Code>unorder</Code>, <Code>insert</Code>, lexicon
-            files. A rule that matches but changes nothing stops with an error.
-          </Text>
-        </Stack>
-      </Accordion.Panel>
-    </Accordion.Item>
+    <Panel title="Rewrite examples">
+      <div className="flex flex-col gap-3">
+        <ExampleList items={REWRITE_EXAMPLES} onPick={onPick} />
+        <p className="text-sm">
+          A pattern with a{' '}
+          <C>
+            commands {'{'} … {'}'}
+          </C>{' '}
+          block is a <A href="https://grew.fr/doc/commands/">Grew rewriting rule</A>. Each sentence
+          is rewritten until no rule matches, one match at a time, and the result is previewed
+          before anything is applied.
+        </p>
+        <Bullets>
+          <li>
+            <C>X.upos = VERB</C>, <C>X.Number = D.Number</C>, <C>X.lemma = Y.lemma + "s"</C>,{' '}
+            <C>X.f = Y.f[1:]</C>, <C>del_feat X.Number</C>
+          </li>
+          <li>
+            <C>e.label = "obj"</C>, <C>e.2 = pass</C>, <C>del_feat e.2</C> — on an edge named{' '}
+            <C>e: X -[…]-&gt; Y</C>
+          </li>
+          <li>
+            <C>add_edge X -[obj]-&gt; Y</C>, <C>add_edge e: X -&gt; Y</C> (the label of e),{' '}
+            <C>del_edge e</C>, <C>del_edge X -[obj]-&gt; Y</C>
+          </li>
+          <li>
+            <C>shift X ==&gt; Y</C>, <C>shift_in X =[nsubj|obj]=&gt; Y</C>,{' '}
+            <C>shift_out X =[^det]=&gt; Y</C> — move X's edges to Y; the root moves with its
+            incoming edges
+          </li>
+          <li>
+            <C>del_node X</C> — delete the word and its edges;{' '}
+            <C>append_feats "/" X =[re"Number|Gender"]=&gt; Y</C> — copy X's features (never
+            form/lemma/upos/xpos)
+          </li>
+          <li>
+            <C>X [lemma=lex.noun]</C> … <C>X.Gender = lex.Gender</C> — a lexicon declared in the
+            rule between <C>#BEGIN lex</C> and <C>#END</C>: tab-separated, first line the field
+            names
+          </li>
+          <li>
+            The root is an edge from an anchor node with <C>form="__0__"</C>, as in Grew:{' '}
+            <C>X []</C> matches it, <C>X [upos]</C> does not
+          </li>
+          <li>
+            <C>
+              rule name {'{'} pattern {'{'} … {'}'} commands {'{'} … {'}'} {'}'}
+            </C>{' '}
+            and{' '}
+            <C>
+              strat main {'{'} Seq(Onf(a), Onf(b)) {'}'}
+            </C>{' '}
+            — several rules; without a strategy they run as <C>Onf(Alt(…))</C>
+          </li>
+        </Bullets>
+        <p className="text-sm text-muted-foreground">
+          Not supported: <C>add_node</C>, <C>unorder</C>, <C>insert</C>, lexicon files. A rule that
+          matches but changes nothing stops with an error.
+        </p>
+      </div>
+    </Panel>
 
-    <Accordion.Item value="syntax">
-      <Accordion.Control>Grew syntax reference</Accordion.Control>
-      <Accordion.Panel>
-        <Stack gap="xs">
-          <Text size="sm">
-            Queries use{' '}
-            <Anchor href="https://grew.fr/doc/request/" target="_blank" rel="noreferrer">
-              Grew request syntax
-            </Anchor>
-            . A node is a syntactic word; a sentence matches when the whole pattern fits inside it.
-          </Text>
-          <List size="sm" spacing={2}>
-            <List.Item>
-              <Code>X [upos=VERB, Number=Sing]</Code> — node with features (<Code>|</Code> for "or",{' '}
-              <Code>!Feat</Code> undefined, <Code>Feat&lt;&gt;Val</Code> not-equal,{' '}
-              <Code>re"…"</Code> / <Code>/…/i</Code> regex)
-            </List.Item>
-            <List.Item>
-              <Code>X -[nsubj]-&gt; Y</Code> — dependency edge (<Code>-[a|b]-&gt;</Code>,{' '}
-              <Code>-[^a|b]-&gt;</Code>, <Code>-[re"…"]-&gt;</Code>, <Code>X -&gt; Y</Code> any)
-            </List.Item>
-            <List.Item>
-              <Code>X &lt; Y</Code> / <Code>X &lt;&lt; Y</Code> — immediate / any precedence (
-              <Code>&gt;</Code> / <Code>&gt;&gt;</Code> reversed); <Code>X -&gt;&gt; Y</Code> —
-              dominates
-            </List.Item>
-            <List.Item>
-              <Code>X.lemma = Y.lemma</Code> — same value across nodes; <Code>delta(X,Y)=2</Code> —
-              linear distance
-            </List.Item>
-            <List.Item>
-              <Code>
-                without {'{'} … {'}'}
-              </Code>{' '}
-              — must NOT match;{' '}
-              <Code>
-                global {'{'} is_projective {'}'}
-              </Code>{' '}
-              — whole-sentence constraint
-            </List.Item>
-          </List>
-          <Text size="sm" c="dimmed">
-            Not supported (these report a clear error): grew lexicons & cluster-by, enhanced
-            dependencies, and very large linear distances. <Code>is_tree</Code>/
-            <Code>is_cyclic</Code> assume well-formed UD trees.
-          </Text>
-        </Stack>
-      </Accordion.Panel>
-    </Accordion.Item>
-  </Accordion>
+    <Panel title="Grew syntax reference">
+      <div className="flex flex-col gap-3">
+        <p className="text-sm">
+          Queries use <A href="https://grew.fr/doc/request/">Grew request syntax</A>. A node is a
+          syntactic word; a sentence matches when the whole pattern fits inside it.
+        </p>
+        <Bullets>
+          <li>
+            <C>X [upos=VERB, Number=Sing]</C> — node with features (<C>|</C> for "or", <C>!Feat</C>{' '}
+            undefined, <C>Feat&lt;&gt;Val</C> not-equal, <C>re"…"</C> / <C>/…/i</C> regex)
+          </li>
+          <li>
+            <C>X -[nsubj]-&gt; Y</C> — dependency edge (<C>-[a|b]-&gt;</C>, <C>-[^a|b]-&gt;</C>,{' '}
+            <C>-[re"…"]-&gt;</C>, <C>X -&gt; Y</C> any)
+          </li>
+          <li>
+            <C>X &lt; Y</C> / <C>X &lt;&lt; Y</C> — immediate / any precedence (<C>&gt;</C> /{' '}
+            <C>&gt;&gt;</C> reversed); <C>X -&gt;&gt; Y</C> — dominates
+          </li>
+          <li>
+            <C>X.lemma = Y.lemma</C> — same value across nodes; <C>delta(X,Y)=2</C> — linear
+            distance
+          </li>
+          <li>
+            <C>
+              without {'{'} … {'}'}
+            </C>{' '}
+            — must NOT match;{' '}
+            <C>
+              global {'{'} is_projective {'}'}
+            </C>{' '}
+            — whole-sentence constraint
+          </li>
+        </Bullets>
+        <p className="text-sm text-muted-foreground">
+          Not supported (these report a clear error): grew lexicons and cluster-by, enhanced
+          dependencies, and very large linear distances. <C>is_tree</C> / <C>is_cyclic</C> assume
+          well-formed UD trees.
+        </p>
+      </div>
+    </Panel>
+  </div>
 );

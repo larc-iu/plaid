@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Title, Anchor, Stack, Center, Loader, Alert, Text } from '@mantine/core';
-import { IconAlertTriangle } from '@tabler/icons-react';
+import { TriangleAlert } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { canManageProject } from '../../utils/permissions.js';
@@ -175,30 +174,42 @@ export const SearchPage = () => {
     [projectId],
   );
 
-  if (loading)
+  if (loading) return <p className="tw p-4 text-sm text-muted-foreground">Loading…</p>;
+  if (loadError)
     return (
-      <Center py={48}>
-        <Loader />
-      </Center>
+      <div
+        role="alert"
+        className="tw rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+      >
+        {loadError}
+      </div>
     );
-  if (loadError) return <Alert color="red">{loadError}</Alert>;
 
   return (
     <>
       <ProjectTabs projectId={projectId} project={project} />
 
-      <Stack gap="lg">
-        <Title order={2}>Search {project?.name}</Title>
+      <div className="tw flex flex-col gap-6">
+        <h2 className="text-2xl font-semibold tracking-tight">Search {project?.name}</h2>
 
         {!layerInfo.isConfigured ? (
-          <Alert color="yellow" icon={<IconAlertTriangle size={16} />} title="Not available">
-            This project isn’t configured for UD annotation yet, so dependency search isn’t
-            available.{' '}
-            <Anchor component={Link} to={`/projects/${projectId}/configuration`}>
-              Set up its layers
-            </Anchor>{' '}
-            first.
-          </Alert>
+          <div className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-900">
+            <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <p className="font-medium">Not available</p>
+              <p>
+                This project is not set up for UD annotation, so dependency search has nothing to
+                search.{' '}
+                <Link
+                  className="text-primary underline underline-offset-4"
+                  to={`/projects/${projectId}/configuration`}
+                >
+                  Set up its layers
+                </Link>{' '}
+                first.
+              </p>
+            </div>
+          </div>
         ) : (
           <>
             <GrewHelp onPick={(q) => setQueryText(q)} />
@@ -210,11 +221,7 @@ export const SearchPage = () => {
               error={error}
               action={isRewrite ? 'Preview changes' : 'Search'}
             />
-            {progress && (
-              <Text size="sm" c="dimmed">
-                {progress}
-              </Text>
-            )}
+            {progress && <p className="text-sm text-muted-foreground">{progress}</p>}
             {plan ? (
               <RewritePreview
                 rows={plan.rows}
@@ -238,7 +245,7 @@ export const SearchPage = () => {
             )}
           </>
         )}
-      </Stack>
+      </div>
     </>
   );
 };

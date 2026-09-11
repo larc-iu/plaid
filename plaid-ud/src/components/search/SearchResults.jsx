@@ -1,19 +1,15 @@
 import { useMemo, useState, useEffect } from 'react';
-import { Stack, Paper, Text, Box, Alert, Divider, Group } from '@mantine/core';
 import { Link } from 'react-router-dom';
-import { IconInfoCircle } from '@tabler/icons-react';
-import classes from '../common/listRow.module.css';
+import { Info } from 'lucide-react';
+import { pageSlice } from '@ui/hooks/usePagedList';
+import { ListPager } from '@ui/components/ui/list-search';
 import { segmentize } from './grewToHighlight.js';
-import { pageSlice } from '../../hooks/usePagedList.js';
-import { ListPager } from '../common/ListChrome.jsx';
-
-const PAGE_SIZE = 50; // matched sentences per page
 
 // Renders grouped sentence matches. `groups` come from groupResults():
 // [{ docId, sentenceId, text, highlights }]. Each sentence is a real link to
 // the annotation editor (deep-linked via ?sent=), built by `hrefFor`. The full
 // match set is paged client-side (the query API returns all matches at once —
-// it has no offset/cursor).
+// it has no offset/cursor), at the shared page size like every other list.
 export const SearchResults = ({
   groups,
   count,
@@ -30,7 +26,7 @@ export const SearchResults = ({
 
   // Memoized so `pageItems` keeps its identity across renders that change
   // neither the results nor the page — the grouping below keys on it.
-  const paged = useMemo(() => pageSlice(groups, page, PAGE_SIZE), [groups, page]);
+  const paged = useMemo(() => pageSlice(groups, page), [groups, page]);
   const { pageItems } = paged;
 
   // Group only the current page's sentences by document for rendering.
@@ -44,74 +40,57 @@ export const SearchResults = ({
   }, [pageItems]);
 
   return (
-    <Stack gap="md">
+    <div className="flex flex-col gap-4">
       {warnings?.length > 0 && (
-        <Alert color="yellow" icon={<IconInfoCircle size={16} />} title="Notes">
-          <Stack gap={2}>
+        <div className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-900">
+          <Info className="mt-0.5 h-4 w-4 shrink-0" />
+          <div className="flex flex-col gap-0.5">
             {warnings.map((w, i) => (
-              <Text key={i} size="sm">
-                {w}
-              </Text>
+              <span key={i}>{w}</span>
             ))}
-          </Stack>
-        </Alert>
+          </div>
+        </div>
       )}
 
       {searched && (
-        <Text size="sm" c="dimmed">
+        <p className="text-sm text-muted-foreground">
           {groups.length === 0
             ? 'No matching sentences.'
             : `${groups.length} matching sentence${groups.length === 1 ? '' : 's'}` +
               (truncated ? ` (capped at ${count}; refine the query for more)` : '')}
-        </Text>
+        </p>
       )}
 
-      <ListPager {...paged} onPage={setPage} position="top" />
+      <ListPager {...paged} onPage={setPage} position="top" className="rounded-md border" />
 
       {byDoc.map(([docId, sentences]) => (
-        <Paper key={docId} withBorder radius="md">
-          <Box px="md" py="xs" style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
-            <Text fw={600} size="sm" truncate>
-              {docName(docId) || docId}
-            </Text>
-          </Box>
-          <Stack gap={0}>
+        <div key={docId} className="overflow-hidden rounded-md border">
+          <div className="truncate border-b px-4 py-2 text-sm font-semibold">
+            {docName(docId) || docId}
+          </div>
+          <div className="flex flex-col">
             {sentences.map((s, idx) => (
-              <Box key={s.sentenceId}>
-                {idx > 0 && <Divider />}
-                <Box
-                  className={classes.row}
-                  p="md"
-                  component={Link}
-                  to={hrefFor(s.docId, s.sentenceId)}
-                >
-                  <Text size="sm" style={{ lineHeight: 1.6 }}>
-                    {segmentize(s.text, s.highlights).map((seg, i) =>
-                      seg.hl ? (
-                        <Box
-                          key={i}
-                          component="mark"
-                          style={{
-                            background: 'var(--mantine-color-yellow-2)',
-                            borderRadius: 3,
-                            padding: '0 2px',
-                          }}
-                        >
-                          {seg.text}
-                        </Box>
-                      ) : (
-                        <span key={i}>{seg.text}</span>
-                      ),
-                    )}
-                  </Text>
-                </Box>
-              </Box>
+              <Link
+                key={s.sentenceId}
+                to={hrefFor(s.docId, s.sentenceId)}
+                className={`block p-4 text-sm leading-relaxed hover:bg-muted/50 ${idx ? 'border-t' : ''}`}
+              >
+                {segmentize(s.text, s.highlights).map((seg, i) =>
+                  seg.hl ? (
+                    <mark key={i} className="rounded-sm bg-yellow-200 px-0.5 text-foreground">
+                      {seg.text}
+                    </mark>
+                  ) : (
+                    <span key={i}>{seg.text}</span>
+                  ),
+                )}
+              </Link>
             ))}
-          </Stack>
-        </Paper>
+          </div>
+        </div>
       ))}
 
-      <ListPager {...paged} onPage={setPage} />
-    </Stack>
+      <ListPager {...paged} onPage={setPage} className="rounded-md border" />
+    </div>
   );
 };

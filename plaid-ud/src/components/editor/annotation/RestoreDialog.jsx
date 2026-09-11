@@ -4,7 +4,14 @@
 // restore offers Undo.
 
 import { useEffect, useRef, useState } from 'react';
-import { Button, Group, List, Loader, Modal, Stack, Text } from '@mantine/core';
+import { Button } from '@ui/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@ui/components/ui/dialog';
 import { changeLines, indexLayers, skippedLines } from '../../../domain/restoreSummary.js';
 import {
   notifySuccess,
@@ -137,74 +144,52 @@ export const RestoreDialog = ({ opened, onClose, client, documentId, raw, entry,
   };
 
   return (
-    <Modal
-      opened={opened}
-      onClose={close}
-      title={`Restore to ${asOf ? fullTimestamp(asOf) : ''}`}
-      size="md"
-    >
-      <Stack gap="sm">
-        {entry?.label && (
-          <Text size="sm" c="dimmed">
-            {entry.label}
-          </Text>
-        )}
+    <Dialog open={opened} onOpenChange={(o) => !o && close()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Restore to {asOf ? fullTimestamp(asOf) : ''}</DialogTitle>
+        </DialogHeader>
 
-        {error && (
-          <Text size="sm" c="red">
-            {error}
-          </Text>
-        )}
+        <div className="flex flex-col gap-3">
+          {entry?.label && <p className="text-sm text-muted-foreground">{entry.label}</p>}
 
-        {!error && !preview && (
-          <Group gap="xs">
-            <Loader size="xs" />
-            <Text size="sm" c="dimmed">
-              Comparing…
-            </Text>
-          </Group>
-        )}
+          {error && <p className="text-sm text-destructive">{error}</p>}
 
-        {preview && lines.length === 0 && (
-          <Text size="sm" c="dimmed">
-            Nothing differs from the current state.
-          </Text>
-        )}
+          {!error && !preview && <p className="text-sm text-muted-foreground">Comparing…</p>}
 
-        {preview && lines.length > 0 && (
-          <div>
-            <Text size="sm" fw={500} mb={4}>
-              Changes
-            </Text>
-            <List size="sm" withPadding>
-              {lines.map((l) => (
-                <List.Item key={l}>{l}</List.Item>
+          {preview && lines.length === 0 && (
+            <p className="text-sm text-muted-foreground">Nothing differs from the current state.</p>
+          )}
+
+          {preview && lines.length > 0 && (
+            <div>
+              <p className="mb-1 text-sm font-medium">Changes</p>
+              <ul className="ml-5 list-disc space-y-0.5 text-sm">
+                {lines.map((l) => (
+                  <li key={l}>{l}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {gaps.length > 0 && (
+            <ul className="ml-5 list-disc space-y-0.5 text-sm text-destructive">
+              {gaps.map((g) => (
+                <li key={g}>{g}</li>
               ))}
-            </List>
-          </div>
-        )}
+            </ul>
+          )}
+        </div>
 
-        {gaps.length > 0 && (
-          <List size="sm" withPadding c="red">
-            {gaps.map((g) => (
-              <List.Item key={g}>{g}</List.Item>
-            ))}
-          </List>
-        )}
-
-        <Group justify="flex-end" mt="sm">
-          <Button variant="default" onClick={close} disabled={busy}>
+        <DialogFooter>
+          <Button variant="outline" onClick={close} disabled={busy}>
             Cancel
           </Button>
-          <Button
-            onClick={restore}
-            disabled={busy || !preview || lines.length === 0}
-            loading={busy}
-          >
-            Restore
+          <Button onClick={restore} disabled={busy || !preview || lines.length === 0}>
+            {busy ? 'Restoring…' : 'Restore'}
           </Button>
-        </Group>
-      </Stack>
-    </Modal>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };

@@ -12,21 +12,17 @@ import { PLAID_NAMESPACE, ROLE_KEY, ROLES, findByRole } from '@larc-iu/plaid-cli
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { canManageProject } from '../../utils/permissions.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { Button } from '@ui/components/ui/button';
+import { Input } from '@ui/components/ui/input';
+import { Label } from '@ui/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle } from '@ui/components/ui/card';
 import {
-  Container,
-  Title,
-  Text,
-  Button,
-  Group,
-  Stack,
-  Paper,
-  Radio,
   Select,
-  TextInput,
-  List,
-  Center,
-  Loader,
-} from '@mantine/core';
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@ui/components/ui/select';
 
 // Span layers, in creation order, all attached to the morpheme token layer.
 const SPAN_KEYS_IN_ORDER = ['form', 'lemma', 'upos', 'xpos', 'features'];
@@ -38,11 +34,12 @@ const SPAN_LAYER_NAMES = {
   features: 'Features',
 };
 
-// "UD Configuration" tab: the layer-structure half of project setup — the text
-// layer plus the three-level token hierarchy and the annotation layers under it.
-// Project-specific vocabularies/colors/locale live in the separate Customization
-// tab (ProjectCustomization). Saving creates/completes the layers idempotently.
-export const ProjectConfiguration = ({ embedded = false }) => {
+// The standalone /configuration page: the layer-structure half of project
+// setup — the text layer plus the three-level token hierarchy and the
+// annotation layers under it. Project-specific vocabularies, colors and locale
+// live in the separate Customization settings tab (ProjectCustomization).
+// Saving creates or completes the layers idempotently.
+export const ProjectConfiguration = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const { getClient, user } = useAuth();
@@ -70,7 +67,7 @@ export const ProjectConfiguration = ({ embedded = false }) => {
       return data;
     } catch (err) {
       console.error('Failed to load project configuration:', err);
-      notifyError('Failed to load project configuration.');
+      notifyError('Failed to load the project.');
       return null;
     } finally {
       setLoading(false);
@@ -259,7 +256,7 @@ export const ProjectConfiguration = ({ embedded = false }) => {
         );
       }
 
-      notifySuccess('UD layer configuration saved successfully.');
+      notifySuccess('Layers saved');
       // Setup/repair done — head back to the project's document view.
       navigate(`/projects/${projectId}/documents`);
     } catch (err) {
@@ -271,11 +268,7 @@ export const ProjectConfiguration = ({ embedded = false }) => {
   };
 
   if (loading) {
-    return (
-      <Center py={48}>
-        <Loader />
-      </Center>
-    );
+    return <p className="tw p-4 text-sm text-muted-foreground">Loading…</p>;
   }
 
   if (!project || !canConfigure) {
@@ -288,136 +281,135 @@ export const ProjectConfiguration = ({ embedded = false }) => {
     : '';
 
   const statusLine = info.isConfigured ? (
-    <Text size="sm" c="green">
-      All Universal Dependencies layers are configured.
-    </Text>
+    <p className="text-sm text-green-700">Every Universal Dependencies layer is set up.</p>
   ) : (
-    missingLabels && (
-      <Text size="sm" c="orange">
-        Missing configuration detected for: {missingLabels}
-      </Text>
-    )
+    missingLabels && <p className="text-sm text-amber-700">Missing: {missingLabels}</p>
   );
 
-  const content = (
-    <>
-      {embedded ? (
-        statusLine && <div style={{ marginBottom: 'var(--mantine-spacing-md)' }}>{statusLine}</div>
-      ) : (
-        <Group justify="space-between" align="flex-start" mb="lg">
-          <div>
-            <Title order={1}>Configure UD Layers</Title>
-            <Text c="dimmed" mt={4}>
-              Project: {project.name}
-            </Text>
-            <div style={{ marginTop: 'var(--mantine-spacing-xs)' }}>{statusLine}</div>
-          </div>
-          <Button component={Link} to={`/projects/${projectId}/documents`} variant="default">
-            Back to Documents
-          </Button>
-        </Group>
-      )}
+  return (
+    <div className="tw mx-auto flex max-w-4xl flex-col gap-6 py-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Configure UD layers</h1>
+          <p className="text-sm text-muted-foreground">{project.name}</p>
+          {statusLine}
+        </div>
+        <Button variant="outline" asChild>
+          <Link to={`/projects/${projectId}/documents`}>Documents</Link>
+        </Button>
+      </div>
 
-      <form onSubmit={handleSubmit}>
-        <Stack gap="xl">
-          <Paper withBorder p="lg" radius="md">
-            <Title order={2} size="h4" mb="md">
-              Text Layer
-            </Title>
-            <Stack gap="md">
-              <Radio.Group
-                value={formData.textLayerType}
-                onChange={(value) => setFormData((prev) => ({ ...prev, textLayerType: value }))}
-              >
-                <Group gap="lg">
-                  <Radio
-                    value="existing"
-                    label="Use existing"
-                    disabled={availableTextLayers.length === 0}
-                  />
-                  <Radio value="new" label="Create new" />
-                </Group>
-              </Radio.Group>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Text layer</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            {/* Two radios rather than a select: there are exactly two choices,
+                and one of them disables itself when the project has no layers
+                to reuse. */}
+            <div className="flex gap-6">
+              <label className="flex items-center gap-2 text-sm has-[:disabled]:opacity-50">
+                <input
+                  type="radio"
+                  name="textLayerType"
+                  className="h-4 w-4 accent-primary"
+                  value="existing"
+                  checked={formData.textLayerType === 'existing'}
+                  disabled={availableTextLayers.length === 0}
+                  onChange={() => setFormData((prev) => ({ ...prev, textLayerType: 'existing' }))}
+                />
+                Use existing
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="textLayerType"
+                  className="h-4 w-4 accent-primary"
+                  value="new"
+                  checked={formData.textLayerType === 'new'}
+                  onChange={() => setFormData((prev) => ({ ...prev, textLayerType: 'new' }))}
+                />
+                Create new
+              </label>
+            </div>
 
-              {formData.textLayerType === 'existing' ? (
+            {formData.textLayerType === 'existing' ? (
+              <div className="flex max-w-md flex-col gap-1.5">
+                <Label htmlFor="text-layer">Text layer</Label>
                 <Select
-                  label="Select text layer"
-                  placeholder="Select a text layer"
-                  value={formData.selectedTextLayerId || null}
-                  onChange={(value) =>
+                  value={formData.selectedTextLayerId || undefined}
+                  onValueChange={(value) =>
                     setFormData((prev) => ({ ...prev, selectedTextLayerId: value || '' }))
                   }
-                  data={availableTextLayers.map((layer) => ({
-                    value: layer.id,
-                    label: `${layer.name} (${layer.id})`,
-                  }))}
-                />
-              ) : (
-                <TextInput
-                  label="New text layer name"
+                >
+                  <SelectTrigger id="text-layer">
+                    <SelectValue placeholder="Select a text layer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableTextLayers.map((layer) => (
+                      <SelectItem key={layer.id} value={layer.id}>
+                        {layer.name} ({layer.id})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <div className="flex max-w-md flex-col gap-1.5">
+                <Label htmlFor="new-text-layer">New text layer name</Label>
+                <Input
+                  id="new-text-layer"
                   name="newTextLayerName"
                   value={formData.newTextLayerName}
                   onChange={(e) =>
                     setFormData((prev) => ({ ...prev, newTextLayerName: e.target.value }))
                   }
-                  placeholder="e.g. Text"
+                  placeholder="Text"
                 />
-              )}
-            </Stack>
-          </Paper>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-          <Paper withBorder p="lg" radius="md">
-            <Title order={2} size="h4" mb="xs">
-              Token Hierarchy &amp; Annotations
-            </Title>
-            <Text size="sm" c="dimmed" mb="md">
-              Saving creates (or completes) the three-layer token hierarchy and the annotation
-              layers below. Existing layers are reused — including a shared substrate set up by
-              another app — so this is safe to re-run.
-            </Text>
-            <List size="sm" spacing={4}>
-              <List.Item>
-                <Text span fw={500}>
-                  Sentences
-                </Text>{' '}
-                token layer (partitioning)
-              </List.Item>
-              <List.Item>
-                <Text span fw={500}>
-                  Tokens
-                </Text>{' '}
-                token layer (non-overlapping, nested in sentences) — orthographic tokens
-              </List.Item>
-              <List.Item>
-                <Text span fw={500}>
-                  Words
-                </Text>{' '}
-                token layer (overlap allowed, nested in tokens) — where annotations live; a token
-                splits into one or more words (multi-word tokens)
-              </List.Item>
-              <List.Item>Span layers on words: Form, Lemma, UPOS, XPOS, Features</List.Item>
-              <List.Item>Dependency relation layer on the Lemma layer</List.Item>
-            </List>
-          </Paper>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Token hierarchy and annotations</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">
+              Saving creates, or completes, the three-layer token hierarchy and the annotation
+              layers below. Existing layers are reused, including a shared substrate set up by
+              another app, so this is safe to re-run.
+            </p>
+            <ul className="ml-5 list-disc space-y-1 text-sm">
+              <li>
+                <span className="font-medium">Sentences</span> token layer (partitioning)
+              </li>
+              <li>
+                <span className="font-medium">Tokens</span> token layer (non-overlapping, nested in
+                sentences) — orthographic tokens
+              </li>
+              <li>
+                <span className="font-medium">Words</span> token layer (overlap allowed, nested in
+                tokens) — where annotations live; a token splits into one or more words (multi-word
+                tokens)
+              </li>
+              <li>Span layers on words: Form, Lemma, UPOS, XPOS, Features</li>
+              <li>Dependency relation layer on the Lemma layer</li>
+            </ul>
+          </CardContent>
+        </Card>
 
-          <Group justify="flex-end" gap="sm">
-            <Button type="button" variant="default" onClick={() => navigate(-1)} disabled={saving}>
-              Cancel
-            </Button>
-            <Button type="submit" color="dark" loading={saving}>
-              Save Configuration
-            </Button>
-          </Group>
-        </Stack>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={() => navigate(-1)} disabled={saving}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={saving}>
+            {saving ? 'Saving…' : 'Save'}
+          </Button>
+        </div>
       </form>
-    </>
-  );
-
-  return embedded ? (
-    content
-  ) : (
-    <Container size="lg" py="xl">
-      {content}
-    </Container>
+    </div>
   );
 };

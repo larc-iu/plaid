@@ -41,6 +41,18 @@ body,
     --input: 214.3 31.8% 91.4%;
     --ring: 221.2 83.2% 53.3%;
     --radius: 0.5rem;
+
+    /* The Grew query box paints its own syntax colors (see grewSyntax.js),
+       which emits an HTML string rather than utility classes, so the palette
+       is named here instead. Tailwind's 600/700 steps, to sit alongside the
+       rest of the app. */
+    --grew-keyword: #1d4ed8;
+    --grew-global: #9333ea;
+    --grew-string: #0f766e;
+    --grew-number: #c2410c;
+    --grew-operator: #7c3aed;
+    --grew-punct: #4b5563;
+    --grew-comment: #6b7280;
   }
 
   /* The essential subset of Tailwind preflight, SCOPED to `.tw` subtrees.

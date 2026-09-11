@@ -8,7 +8,7 @@ import { useLayerInfo } from './hooks/useLayerInfo.js';
 import { useSentenceData } from './hooks/useSentenceData.js';
 import { useDocumentHistory } from './hooks/useDocumentHistory.js';
 import { useDocumentEditor } from './useDocumentEditor.js';
-import { HistoryDrawer } from './annotation/HistoryDrawer.jsx';
+import { HistoryDrawer, HISTORY_DRAWER_WIDTH } from '@ui/components/shared/HistoryDrawer';
 import { RestoreDialog } from './annotation/RestoreDialog.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { formatFindingsForClipboard } from '../../domain/validate.js';
@@ -16,8 +16,6 @@ import { notifyError, notifyWithAction } from '../../utils/feedback.jsx';
 import { canEditProject, canManageProject } from '../../utils/permissions.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
-
-const DRAWER_WIDTH = 384;
 
 // Document-wide annotation-row expansion. FEATS defaults to collapsed because its
 // vertically-stacked tags inflate column widths; users expand it via its row header.
@@ -237,7 +235,7 @@ export const AnnotationEditor = () => {
   // breadcrumbs and tab strip live in DocumentEditorShell now, so tell it to
   // move with us — and put it back when we leave the tab.
   useEffect(() => {
-    setChromeOffset(isHistoryDrawerOpen ? DRAWER_WIDTH : 0);
+    setChromeOffset(isHistoryDrawerOpen ? HISTORY_DRAWER_WIDTH : 0);
     return () => setChromeOffset(0);
   }, [isHistoryDrawerOpen, setChromeOffset]);
 
@@ -493,7 +491,7 @@ export const AnnotationEditor = () => {
       {/* Main content area - pushed right (not overlaid) when the drawer is open */}
       <Box
         style={{
-          marginLeft: isHistoryDrawerOpen ? DRAWER_WIDTH : 0,
+          marginLeft: isHistoryDrawerOpen ? HISTORY_DRAWER_WIDTH : 0,
           transition: 'margin-left 300ms ease',
           minHeight: '100vh',
         }}
