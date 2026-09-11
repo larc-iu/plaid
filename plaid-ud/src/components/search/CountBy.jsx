@@ -19,6 +19,10 @@ const COLUMNS = ['lemma', 'upos', 'xpos'];
 
 export const CountBy = ({ nodes, edges, rows, total, busy, onCount, onPick }) => {
   const [choice, setChoice] = useState('');
+  // What the rows on screen were counted by, which is not `choice` once the
+  // select has been changed again. Narrowing needs the field the values belong
+  // to, so it reads this and not the picker.
+  const [ran, setRan] = useState(null);
 
   // Every "node.field" the pattern makes available. A FEATS key is not offered
   // by name because a pattern does not say which keys exist; FEATS as a whole
@@ -42,8 +46,15 @@ export const CountBy = ({ nodes, edges, rows, total, busy, onCount, onPick }) =>
 
   const run = () => {
     const [node, field] = choice.split('.');
-    if (node && field) onCount({ node, field });
+    if (!node || !field) return;
+    setRan({ node, field });
+    onCount({ node, field });
   };
+
+  // A node's field becomes a clause on that node. An edge's label cannot: it
+  // belongs in the arc, and rewriting the arc the pattern already has is a
+  // different gesture from adding to it.
+  const pick = onPick && ran && ran.field !== 'label' ? ran : null;
 
   const columns = [
     {
@@ -51,11 +62,12 @@ export const CountBy = ({ nodes, edges, rows, total, busy, onCount, onPick }) =>
       label: 'Value',
       sort: (r) => String(r.value).toLowerCase(),
       render: (r) =>
-        onPick ? (
+        pick ? (
           <button
             type="button"
             className="text-left font-medium hover:underline"
-            onClick={() => onPick(r.value)}
+            title={`Narrow the search to ${pick.node}.${pick.field} = ${r.value}`}
+            onClick={() => onPick(pick.node, pick.field, r.value)}
           >
             {r.value}
           </button>

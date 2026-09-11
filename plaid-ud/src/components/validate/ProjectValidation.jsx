@@ -40,6 +40,41 @@ const FIELDS = [
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
+// Where an off-list value is, once someone has opened it: the documents it is
+// in, and a link into each sentence. The links are numbered by the order the
+// query returned them, so they are called occurrences: their position in the
+// document is not something this screen knows, and a label saying "sentence 2"
+// over the seventeenth sentence is worse than no number at all.
+const Occurrences = ({ found, projectId }) => (
+  <div className="border-t bg-muted/20 px-3 py-2">
+    {!found && <p className="text-sm text-muted-foreground">Finding it…</p>}
+    {found === 'failed' && (
+      <p className="text-sm text-destructive">Could not search for this value. Try again.</p>
+    )}
+    {Array.isArray(found) &&
+      found.map((doc) => (
+        <p key={doc.docId} className="mb-1 flex flex-wrap items-center gap-1.5 text-xs last:mb-0">
+          <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="font-medium">{doc.docName}</span>
+          {doc.sentences.map((sentId, i) => (
+            <Link
+              key={sentId}
+              to={`/projects/${projectId}/documents/${doc.docId}/annotate?sent=${sentId}`}
+              className="rounded bg-background px-1.5 py-0.5 hover:underline"
+            >
+              occurrence {i + 1}
+            </Link>
+          ))}
+        </p>
+      ))}
+    {Array.isArray(found) && found.length === 0 && (
+      <p className="text-sm text-muted-foreground">
+        No occurrences found. It may have been changed since the check.
+      </p>
+    )}
+  </div>
+);
+
 export const ProjectValidation = () => {
   const { project, projectId, loading, canConfigure } = useManagedProject();
   const { getClient } = useAuth();
@@ -260,12 +295,32 @@ export const ProjectValidation = () => {
                           </span>
                         )}
                       </p>
-                      <ul className="ml-4 text-sm text-muted-foreground">
-                        {entry.values.map((v) => (
-                          <li key={v.value}>
-                            <code>{v.value}</code> <span className="text-xs">({v.count})</span>
-                          </li>
-                        ))}
+                      <ul className="ml-4">
+                        {entry.values.map((v) => {
+                          // The span stores the whole `Key=Value` string, which
+                          // is what the same query looks for.
+                          const pair = `${entry.key}=${v.value}`;
+                          const key = `${field.key}:${pair}`;
+                          const open = expanded === key;
+                          return (
+                            <li key={v.value}>
+                              <button
+                                type="button"
+                                className="flex w-full items-center gap-2 py-0.5 text-left text-sm text-muted-foreground hover:bg-muted/40"
+                                onClick={() => locate(field, pair)}
+                              >
+                                {open ? (
+                                  <ChevronDown className="h-3.5 w-3.5" />
+                                ) : (
+                                  <ChevronRight className="h-3.5 w-3.5" />
+                                )}
+                                <code>{v.value}</code>
+                                <span className="text-xs">{plural(v.count, 'time', 'times')}</span>
+                              </button>
+                              {open && <Occurrences found={where[key]} projectId={projectId} />}
+                            </li>
+                          );
+                        })}
                       </ul>
                     </div>
                   ))}
@@ -294,40 +349,7 @@ export const ProjectValidation = () => {
                             {plural(v.count, 'time', 'times')}
                           </span>
                         </button>
-                        {open && (
-                          <div className="border-t bg-muted/20 px-3 py-2">
-                            {!found && <p className="text-sm text-muted-foreground">Finding it…</p>}
-                            {found === 'failed' && (
-                              <p className="text-sm text-destructive">
-                                Could not search for this value. Try again.
-                              </p>
-                            )}
-                            {Array.isArray(found) &&
-                              found.map((doc) => (
-                                <p
-                                  key={doc.docId}
-                                  className="mb-1 flex flex-wrap items-center gap-1.5 text-xs last:mb-0"
-                                >
-                                  <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-                                  <span className="font-medium">{doc.docName}</span>
-                                  {doc.sentences.map((sentId, i) => (
-                                    <Link
-                                      key={sentId}
-                                      to={`/projects/${projectId}/documents/${doc.docId}/annotate?sent=${sentId}`}
-                                      className="rounded bg-background px-1.5 py-0.5 hover:underline"
-                                    >
-                                      sentence {i + 1}
-                                    </Link>
-                                  ))}
-                                </p>
-                              ))}
-                            {Array.isArray(found) && found.length === 0 && (
-                              <p className="text-sm text-muted-foreground">
-                                No occurrences found. It may have been changed since the check.
-                              </p>
-                            )}
-                          </div>
-                        )}
+                        {open && <Occurrences found={found} projectId={projectId} />}
                       </li>
                     );
                   })}

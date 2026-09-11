@@ -560,6 +560,7 @@ const FeaturesCell = React.memo(
     onFeatureDelete,
     onNavigate,
     featureInventory,
+    featureDescriptions,
     isReadOnly,
   }) => {
     const [text, setText] = useState('');
@@ -793,6 +794,25 @@ const FeaturesCell = React.memo(
             }}
             onSubmit={takeOption}
             onKeyDown={handleKeyDown}
+            // What the pair MEANS, beside it, the same way the tag pickers do
+            // it. Keyed by the whole `Key=Value`, which is what a span stores.
+            renderOption={
+              featureDescriptions
+                ? ({ option }) => {
+                    const gloss = featureDescriptions[option.value];
+                    return (
+                      <span>
+                        {option.value}
+                        {gloss && (
+                          <span style={{ opacity: 0.6, marginLeft: 8, fontSize: '0.85em' }}>
+                            {gloss}
+                          </span>
+                        )}
+                      </span>
+                    );
+                  }
+                : undefined
+            }
             // Auto-highlight the best match once typing starts, so Enter takes
             // it. Gated on input so Enter on an EMPTY cell doesn't insert the
             // first inventory key.
@@ -1012,6 +1032,7 @@ const TokenColumn = React.memo(
               onFeatureDelete={onFeatureDelete}
               onNavigate={onNavigate}
               featureInventory={featureInventory}
+              featureDescriptions={descriptions?.feats}
               isReadOnly={isReadOnly}
             />
           </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { UD_NAMESPACE, getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import {
@@ -46,12 +46,23 @@ export const ProjectCustomization = () => {
   const [deprelColors, setDeprelColors] = useState({}); // { baseRel: '#hex' }
   const [uposColors, setUposColors] = useState({}); // { UPOS: '#hex' }
   const [featureInventory, setFeatureInventory] = useState([]); // [{key, values}]
+
+  // A FEATS description belongs to the whole `Key=Value` pair, because that is
+  // what a span stores and what the picker offers. A key with no values listed
+  // accepts anything, so there is no pair to describe and none is offered.
+  const featurePairs = useMemo(
+    () =>
+      featureInventory.flatMap((entry) =>
+        entry.key.trim() ? (entry.values || []).map((v) => `${entry.key.trim()}=${v}`) : [],
+      ),
+    [featureInventory],
+  );
   const [documentFields, setDocumentFields] = useState([]); // field names
   const [sentenceFields, setSentenceFields] = useState([]); // field names
   // Whether each vocabulary refuses off-list values, and the one-line
   // definitions shown beside a value in the picker.
   const [modes, setModes] = useState({});
-  const [descriptions, setDescriptions] = useState({ upos: {}, xpos: {}, deprel: {} });
+  const [descriptions, setDescriptions] = useState({ upos: {}, xpos: {}, deprel: {}, feats: {} });
 
   // Seed the editors from the project's current layer config.
   useEffect(() => {
@@ -72,6 +83,7 @@ export const ProjectCustomization = () => {
       upos: { ...info.descriptions.upos },
       xpos: { ...info.descriptions.xpos },
       deprel: { ...info.descriptions.deprel },
+      feats: { ...info.descriptions.feats },
     });
     setDocumentFields(readMetadataFields(project.config, 'document'));
     setSentenceFields(readMetadataFields(project.config, 'sentence'));
@@ -193,6 +205,12 @@ export const ProjectCustomization = () => {
           UD_NAMESPACE,
           'vocabMode',
           modes.feats || MODES.OPEN,
+        );
+        await client.spanLayers.setConfig(
+          info.featuresLayer.id,
+          UD_NAMESPACE,
+          'vocabDescriptions',
+          storedDescriptions(descriptions.feats),
         );
       }
 
@@ -451,6 +469,11 @@ export const ProjectCustomization = () => {
               Both the key and the value are checked. A key with no values listed accepts any value.
             </p>
           )}
+          <DescriptionList
+            values={featurePairs}
+            descriptions={descriptions.feats}
+            onChange={setDescription('feats')}
+          />
         </CardContent>
       </Card>
 

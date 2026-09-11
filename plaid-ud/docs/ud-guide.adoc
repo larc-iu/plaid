@@ -315,6 +315,8 @@ After a search, **Count by** re-runs the same pattern as a tally: pick a pattern
 
 The matches themselves are never fetched for this, because the server does the counting, so it stays fast on a corpus too large to page through.
 
+Clicking a value narrows the search to it. The clause goes into the pattern in the box, where you can see it and edit it, and the search re-runs. A named edge's label is the exception: it belongs in the arc rather than on a node, so those rows are not clickable.
+
 == History
 
 Every change is recorded.
@@ -374,6 +376,8 @@ A closed list is enforced where a person types: the annotation cells and the Gre
 
 Each value can carry a one-line definition, shown beside it while picking one. The 17 UPOS tags and the 37 universal relations ship with theirs. Edit any of them, or describe your own values, under the list. A definition you change is stored with the project, so a value you never touched follows the app.
 
+Features are described on the whole pair, `Number=Plur` rather than `Plur`, since that is what the picker offers and what a word stores. A key with no values listed accepts anything, so it has no pairs to describe.
+
 == Comments
 
 A document has a **Comments** tab: every thread on it, the document's own first, then one per sentence.
@@ -396,7 +400,7 @@ Maintainers get a **Validation** tab: every value the project has stored that it
 
 It exists because a closed list is enforced where a person types and nowhere else. A parser, an import, the assistant or a script writes what it produces whatever the list says, and refusing those at the door would hide them. This is where you see what got in.
 
-Each value opens to the sentences it occurs in, and each of those is a link straight to that sentence in the editor.
+Each value opens to the sentences it occurs in, and each of those is a link straight to that sentence in the editor. Features open the same way, on the whole `Key=Value` pair.
 
 Where the list is simply incomplete rather than the values wrong, **Add N values** puts them on it. That is offered, never done for you: a project may well want the list as it is and the values changed instead.
 

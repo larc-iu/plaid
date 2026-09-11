@@ -159,8 +159,7 @@ export const DocumentList = () => {
   // yet has nothing to annotate (the tab would just say "tokenize first"), so
   // point it at the Text Editor. Only divert once word counts have loaded and
   // confirm zero tokens — while they're still loading we keep the default so a
-  // tokenized doc clicked early isn't mis-routed. (Deleting a document now lives
-  // on a "Delete Document" button at the bottom of the Text Editor.)
+  // tokenized doc clicked early isn't mis-routed.
   const rowHref = (documentId) => {
     const knownEmpty = hasWordLayer && !wordsLoading && (wordCounts[documentId] ?? 0) === 0;
     return `/projects/${projectId}/documents/${documentId}/${knownEmpty ? 'edit' : 'annotate'}`;

@@ -280,6 +280,9 @@ export const getUdLayerInfo = (document) => {
       upos: readDescriptions(uposLayer?.config, UPOS_DESCRIPTIONS),
       xpos: readDescriptions(xposLayer?.config),
       deprel: readDescriptions(relationLayer?.config, DEPREL_DESCRIPTIONS),
+      // Keyed by the whole `Key=Value` pair, which is what a FEATS span
+      // stores and what the picker offers.
+      feats: readDescriptions(featuresLayer?.config),
     },
     missingLayers: normalizedMissing,
     isConfigured: normalizedMissing.length === 0,

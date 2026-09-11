@@ -14,6 +14,7 @@ import { GrewHelp } from './GrewHelp.jsx';
 import { SearchResults } from './SearchResults.jsx';
 import { QuickSearch } from './QuickSearch.jsx';
 import { CountBy } from './CountBy.jsx';
+import { refinePattern } from './refine.js';
 import { RewritePreview } from './RewritePreview.jsx';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
@@ -185,6 +186,19 @@ export const SearchPage = () => {
     }
   }, [queryText, running, isRewrite, runPreview, runSearch, reportError]);
 
+  // Clicking a count row narrows the search to that value: the clause goes
+  // into the pattern the user can see and edit, and the search re-runs the way
+  // the quick box's does.
+  const refine = useCallback(
+    (node, field, value) => {
+      const next = refinePattern(queryText, node, field, value);
+      if (!next) return;
+      setQueryText(next);
+      setPendingRun(true);
+    },
+    [queryText],
+  );
+
   useEffect(() => {
     if (!pendingRun) return;
     setPendingRun(false);
@@ -305,6 +319,7 @@ export const SearchPage = () => {
                     total={count}
                     busy={counting}
                     onCount={runCount}
+                    onPick={refine}
                   />
                 )}
                 <SearchResults
