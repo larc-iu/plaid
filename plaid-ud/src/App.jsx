@@ -27,6 +27,10 @@ const ProjectSettings = lazyNamed(
   () => import('./components/projects/ProjectSettings.jsx'),
   'ProjectSettings',
 );
+const ProjectAssistantPage = lazyNamed(
+  () => import('./components/projects/ProjectAssistantPage.jsx'),
+  'ProjectAssistantPage',
+);
 const ProjectActivity = lazyNamed(
   () => import('./components/projects/ProjectActivity.jsx'),
   'ProjectActivity',
@@ -98,6 +102,17 @@ function App() {
               element={
                 <Suspended>
                   <ProjectValidation />
+                </Suspended>
+              }
+            />
+
+            {/* A chat with the project's assist service. Anyone who can open
+                the project, since the assistant acts as the user. */}
+            <Route
+              path="projects/:projectId/assistant"
+              element={
+                <Suspended>
+                  <ProjectAssistantPage />
                 </Suspended>
               }
             />

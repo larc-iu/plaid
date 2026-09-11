@@ -4,7 +4,7 @@ import { canManageProject } from '../../utils/permissions.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { Tabs, TabsList, TabsTrigger } from '@ui/components/ui/tabs';
 
-// Shared top tab bar for the four project-level views (Documents / Search /
+// Shared top tab bar for the project-level views (Documents / Search / Assistant /
 // Project Settings / Import & Export), mirroring the per-document `DocumentTabs`.
 // Each tab is route-backed; no panels are rendered — each route renders its own
 // body. `project` is the full object every page already fetches (carries layer
@@ -26,19 +26,22 @@ export const ProjectTabs = ({ projectId, project }) => {
   const p = location.pathname;
   const active = p.endsWith('/search')
     ? 'search'
-    : p.endsWith('/import-export')
-      ? 'import-export'
-      : p.endsWith('/activity')
-        ? 'activity'
-        : p.endsWith('/validate')
-          ? 'validate'
-          : /\/(management|customization|services|tokens|general|configuration)$/.test(p)
-            ? 'settings'
-            : 'documents';
+    : p.endsWith('/assistant')
+      ? 'assistant'
+      : p.endsWith('/import-export')
+        ? 'import-export'
+        : p.endsWith('/activity')
+          ? 'activity'
+          : p.endsWith('/validate')
+            ? 'validate'
+            : /\/(management|customization|services|tokens|general|configuration)$/.test(p)
+              ? 'settings'
+              : 'documents';
 
   const routes = {
     documents: `/projects/${projectId}/documents`,
     search: `/projects/${projectId}/search`,
+    assistant: `/projects/${projectId}/assistant`,
     activity: `/projects/${projectId}/activity`,
     validate: `/projects/${projectId}/validate`,
     settings: settingsTo,
@@ -66,6 +69,9 @@ export const ProjectTabs = ({ projectId, project }) => {
           </TabsTrigger>
           <TabsTrigger value="search" to={routes.search}>
             Search
+          </TabsTrigger>
+          <TabsTrigger value="assistant" to={routes.assistant}>
+            Assistant
           </TabsTrigger>
           {canManage && (
             <TabsTrigger value="validate" to={routes.validate}>

@@ -155,8 +155,9 @@ def test_the_payload_carries_the_document_version_it_was_read_at(ws):
     run(ws, 'set_field', document='Viaje', refs=['s2.w1'], field='lemma', value='correr')
     payload = ws.plan_payload()
     assert payload['documents'] == [{'id': 'ud1', 'name': 'Viaje', 'version': 3}]
-    assert payload['changes'][0]['where'] == {'document_id': 'ud1', 'document': 'Viaje',
-                                              'ref': 's2.w1', 'sentence': 2}
+    assert payload['changes'][0]['where'] == {'kind': 'token', 'document_id': 'ud1',
+                                              'document_name': 'Viaje', 'ref': 's2.w1',
+                                              'sentence': 2, 'surface': 'Corre', 'word': 1}
     assert payload['summary'] == '1 field value'
 
 
