@@ -64,35 +64,3 @@ export function readRole(config) {
 export function findByRole(layers, role) {
   return (layers || []).find(l => readRole(l?.config) === role) || null;
 }
-
-/**
- * Whether a project is set up for plaid-ud, from its layer structure alone.
- *
- * Two apps share this substrate and both use it for words below the
- * orthographic word, so the `syntactic-word` ROLE does not tell them apart:
- * plaid-igt tags a morpheme layer too. What is distinctive is that plaid-ud
- * hangs its annotation span layers off that token layer under its OWN `ud`
- * namespace, which no other app writes.
- *
- * Lives here rather than in either app because both need it: plaid-ud asks it
- * of its own projects and plaid-igt's admin area asks it of everyone's, and a
- * second copy of the answer in the other app is how two apps start disagreeing
- * about what a project is.
- *
- * Takes a project WITH its layers (`client.projects.get`), which is what an
- * admin project listing already returns.
- *
- * @param {object} [project] a project with `textLayers`
- * @returns {boolean}
- */
-export function isUdProject(project) {
-  for (const text of project?.textLayers || []) {
-    for (const token of text?.tokenLayers || []) {
-      if (readRole(token?.config) !== ROLES.SYNTACTIC_WORD) continue;
-      for (const span of token?.spanLayers || []) {
-        if (span?.config?.ud && typeof span.config.ud === 'object') return true;
-      }
-    }
-  }
-  return false;
-}

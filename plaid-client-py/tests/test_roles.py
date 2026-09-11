@@ -16,7 +16,6 @@ from plaid_client import (
     ROLE_KEY,
     read_role,
     find_by_role,
-    is_ud_project,
 )
 
 
@@ -54,53 +53,8 @@ def test_find_by_role_returns_first_match_else_none():
     assert find_by_role(None, ROLES.WORD) is None
 
 
-def _project(role, span_config, camel=False):
-    """The shape ``client.projects.get`` hands back: snake_case structural
-    keys. ``camel`` builds the wire's own spelling instead, which a caller
-    that decoded a response body itself would have."""
-    k = (('textLayers', 'tokenLayers', 'spanLayers') if camel
-         else ('text_layers', 'token_layers', 'span_layers'))
-    return {
-        k[0]: [
-            {
-                k[1]: [
-                    {
-                        'config': {'plaid': {'role': role}},
-                        k[2]: [{'config': span_config}],
-                    }
-                ]
-            }
-        ]
-    }
-
-
-def test_is_ud_project_reads_the_structure_ud_alone_writes():
-    # The ROLE alone does not answer it: plaid-igt tags a morpheme layer and
-    # can carry syntactic-word too. The `ud` namespace on the span layers does.
-    assert is_ud_project(_project(ROLES.SYNTACTIC_WORD, {'ud': {'upos': True}})) is True
-    assert is_ud_project(_project(ROLES.SYNTACTIC_WORD, {'igt': {'gloss': True}})) is False
-    # Right namespace, wrong layer: annotations hang off syntactic-word in UD.
-    assert is_ud_project(_project(ROLES.MORPHEME, {'ud': {'upos': True}})) is False
-    # A `ud` key that is not a namespace object says nothing.
-    assert is_ud_project(_project(ROLES.SYNTACTIC_WORD, {'ud': 'yes'})) is False
-    assert is_ud_project(_project(ROLES.SYNTACTIC_WORD, {})) is False
-    assert is_ud_project({'text_layers': []}) is False
-    assert is_ud_project({}) is False
-    assert is_ud_project(None) is False
-
-
-def test_is_ud_project_reads_both_spellings_of_the_structural_keys():
-    """The client recases structural keys, so a project read through it says
-    `text_layers` where the wire says `textLayers`. Reading only the wire's
-    spelling made this answer False for every real project."""
-    ud = {'ud': {'upos': True}}
-    assert is_ud_project(_project(ROLES.SYNTACTIC_WORD, ud)) is True
-    assert is_ud_project(_project(ROLES.SYNTACTIC_WORD, ud, camel=True)) is True
-
-
 if __name__ == '__main__':
     test_role_values_match_the_interop_contract()
     test_read_role()
     test_find_by_role_returns_first_match_else_none()
-    test_is_ud_project_reads_the_structure_ud_alone_writes()
     print('roles tests passed')

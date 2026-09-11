@@ -4,8 +4,8 @@ import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
 import { DataTable } from '@ui/components/ui/data-table';
 import { timeAgo, fullTimestamp } from '@ui/utils/formatTime';
+import { isUdProject } from '@ui/domain/udProject';
 import { notifySuccess, notifyError } from '@/utils/feedback';
-import { isUdProject } from '@larc-iu/plaid-client';
 import { findBaselineTextLayer, readInitialized } from '../../domain/igtConfig';
 import { udProjectUrl } from '../../domain/siblingApps';
 
@@ -14,12 +14,11 @@ import { udProjectUrl } from '../../domain/siblingApps';
 // everywhere else is who is on each, which app owns it, and whether anyone has
 // touched it lately.
 
-// Which app owns the project. This one knows its own for certain, and knows
-// plaid-ud's by asking the client (`isUdProject`), which reads the structure UD
-// alone writes: annotation span layers under a `ud` namespace on the
-// syntactic-word token layer. The ROLES do not tell them apart, since IGT tags
-// a morpheme layer too, and a second copy of that answer living here is how two
-// apps start disagreeing about what a project is.
+// Which app owns the project. This one knows its own for certain, from its own
+// config module, and knows plaid-ud's from the shared package: a shape one app
+// has to recognise in ANOTHER app's project is what plaid-ui is for, and a
+// second copy of that answer living here is how two apps start disagreeing
+// about what a project is.
 const shapeOf = (project) => {
   if (readInitialized(project.config)) return 'IGT';
   if (isUdProject(project)) return 'UD';

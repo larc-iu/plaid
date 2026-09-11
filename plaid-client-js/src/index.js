@@ -3258,7 +3258,6 @@ export {
   ROLES,
   readRole,
   findByRole,
-  isUdProject,
 } from "./roles.js";
 // Service self-description helpers: filter discovered services by task, read a
 // service's parameter schema/summary, and build/coerce form values. See
