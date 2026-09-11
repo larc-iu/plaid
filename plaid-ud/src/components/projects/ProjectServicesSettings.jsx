@@ -33,7 +33,7 @@ const SPOTS = [
     label: 'Auto-parse',
     description:
       'Fills in lemmas, POS tags, features, and dependencies for a document ' +
-      '(the "Auto Parse" button in the annotation editor).',
+      '(the "Parse" button in the annotation editor).',
     builtins: [],
   },
 ];

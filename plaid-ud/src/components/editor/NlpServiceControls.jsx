@@ -1,12 +1,20 @@
 import { useEffect, useRef } from 'react';
-import { Group, Text, Loader, Select, Popover, ActionIcon, Button } from '@mantine/core';
-import { IconBolt, IconAdjustments } from '@tabler/icons-react';
+import { Zap, SlidersHorizontal } from 'lucide-react';
+import { Button } from '@ui/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@ui/components/ui/popover';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@ui/components/ui/select';
 import { ServiceSummary } from './ServiceSummary.jsx';
 import { ServiceParamForm } from './ServiceParamForm.jsx';
 import { useNlpService } from './hooks/useNlpService.js';
 import { notifySuccess, notifyWarning } from '../../utils/feedback.jsx';
 
-// The shared NLP "Auto Parse" cluster used by both the Text Editor and the
+// The shared NLP "Parse" cluster used by both the Text Editor and the
 // Annotate tab: discover parse-capable services, pick one, fill its declared
 // arguments, and run it. Renders nothing unless `enabled` (text present,
 // editable, not time-traveling). On a successful parse it toasts and calls
@@ -86,53 +94,50 @@ export const NlpServiceControls = ({ projectId, documentId, project, enabled, on
   // No runnable service: surface "still discovering" vs "nothing online" (+retry).
   if (!hasServices) {
     return isDiscovering ? (
-      <Group gap={6}>
-        <Loader size={14} color="gray" />
-        <Text size="sm" c="dimmed">
-          Checking for NLP services…
-        </Text>
-      </Group>
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-muted border-t-primary" />
+        Checking for parsing services…
+      </div>
     ) : (
-      <Group gap="xs">
-        <Text size="sm" c="dimmed">
-          No parsing service online
-        </Text>
-        <Button size="xs" variant="light" color="gray" onClick={discoverServices}>
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-muted-foreground">No parsing service online</span>
+        <Button variant="secondary" size="sm" onClick={discoverServices}>
           Retry
         </Button>
-      </Group>
+      </div>
     );
   }
 
   return (
-    <Group gap="xs">
-      <Select
-        size="sm"
-        w={220}
-        data={parseServices.map((s) => ({ value: s.serviceId, label: s.serviceName }))}
-        value={selectedServiceId}
-        onChange={(v) => v && setSelectedService(v)}
-        allowDeselect={false}
-        disabled={isParsing}
-        aria-label="Parsing service"
-      />
+    <div className="flex items-center gap-2">
+      <Select value={selectedServiceId ?? undefined} onValueChange={setSelectedService}>
+        <SelectTrigger className="w-[220px]" disabled={isParsing} aria-label="Parsing service">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {parseServices.map((s) => (
+            <SelectItem key={s.serviceId} value={s.serviceId}>
+              {s.serviceName}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
       <ServiceSummary service={selectedService} />
 
       {paramSchema.length > 0 && (
-        <Popover width={320} position="bottom-end" withArrow shadow="md">
-          <Popover.Target>
-            <ActionIcon
-              variant="light"
-              color="gray"
-              size="lg"
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="secondary"
+              size="icon"
               aria-label="Service options"
               disabled={isParsing}
             >
-              <IconAdjustments size={18} />
-            </ActionIcon>
-          </Popover.Target>
-          <Popover.Dropdown>
+              <SlidersHorizontal className="h-4 w-4" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-80">
             <ServiceParamForm
               schema={paramSchema}
               values={paramValues}
@@ -140,35 +145,38 @@ export const NlpServiceControls = ({ projectId, documentId, project, enabled, on
               onChange={setParam}
               disabled={isParsing}
             />
-          </Popover.Dropdown>
+          </PopoverContent>
         </Popover>
       )}
 
       <Button
-        color="green"
-        leftSection={<IconBolt size={16} />}
+        className="bg-emerald-600 text-white hover:bg-emerald-700"
         onClick={requestParse}
         disabled={!canParse || isParsing}
-        loading={isParsing}
       >
-        Auto Parse
+        {isParsing ? (
+          <span className="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+        ) : (
+          <Zap className="mr-2 h-4 w-4" />
+        )}
+        Parse
       </Button>
 
       {isParsing && (
         <>
-          <Button size="sm" variant="default" onClick={cancelParse}>
+          <Button variant="outline" onClick={cancelParse}>
             Stop
           </Button>
           {/* The parser names each stretch of its work, and this is the only
               moving part while it is quiet. */}
           {parseProgress?.message && (
-            <Text size="sm" c="dimmed">
+            <span className="text-sm text-muted-foreground">
               {parseProgress.percent != null && `${parseProgress.percent}% · `}
               {parseProgress.message}
-            </Text>
+            </span>
           )}
         </>
       )}
-    </Group>
+    </div>
   );
 };

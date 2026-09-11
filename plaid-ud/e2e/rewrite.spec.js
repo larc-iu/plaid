@@ -14,7 +14,7 @@ import { getUdLayerInfo } from '../src/utils/udLayerUtils.js';
 //      nothing in it is written;
 //   4. a runtime error shows on its sentence; an unsupported command reports.
 
-const BASE = process.env.UD_BASE || 'http://localhost:5173';
+const BASE = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5173';
 const CONLLU = [
   '# text = the dog saw a cat',
   '1\tthe\tthe\tDET\t_\tDefinite=Def\t2\tdet\t_\t_',

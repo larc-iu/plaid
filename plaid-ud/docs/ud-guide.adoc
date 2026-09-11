@@ -120,10 +120,10 @@ Paste or type your text into the editor.
 We encourage the convention of using newlines to separate sentences.
 There are two ways to turn that text into tokens:
 
-* **Basic Tokenize** segments the text into sentences and tokens using your project's tokenizer locale, falling back to the project's language (both set in <<_customization,project settings>>, and language-agnostic when neither is set). It produces tokens only. You add the annotations and dependency tree yourself in the Annotate tab.
+* **Tokenize** segments the text into sentences and tokens using your project's tokenizer locale, falling back to the project's language (both set in <<_customization,project settings>>, and language-agnostic when neither is set). It produces tokens only. You add the annotations and dependency tree yourself in the Annotate tab.
 * **Parsing with a service** does the whole job at once. If your project has an NLP service connected (for example the bundled Stanza parser, see <<_automation_and_scripting>>), pick it, set any options it offers, and run it to fill in the *entire* document: sentences, tokens, words, every annotation, and the dependency tree. This gives you a first draft to correct by hand, and is the fastest way to get started.
 
-Use **Save Text** to save edits to the raw text without re-tokenizing.
+Use **Save** to save edits to the raw text without re-tokenizing.
 Tokenizing replaces the existing tokens for the document, so it is normally a one-time step per document.
 
 == Working with Tokens
@@ -254,7 +254,7 @@ The mark is shared with every Plaid app on the project.
 A project's maintainers can tailor the annotation scheme from the project's settings tabs:
 
 * **UD Customization**: the controlled vocabularies (UPOS, XPOS, DEPREL tags), tag and relation **colors**, and the **feature inventory** offered in the Features column. All vocabularies start from the standard universal sets and can be extended or replaced.
-* **General**: the project's **language**, the **tokenizer locale** used by Basic Tokenize, and project deletion. The language is a BCP-47 tag such as `en`, `de` or `zh-Hans`. It is the language a connected parser starts on, and the locale Basic Tokenize segments with unless the tokenizer locale is set to something more specific.
+* **General**: the project's **language**, the **tokenizer locale** used by **Tokenize**, and project deletion. The language is a BCP-47 tag such as `en`, `de` or `zh-Hans`. It is the language a connected parser starts on, and the locale **Tokenize** segments with unless the tokenizer locale is set to something more specific.
 
 == Automation and Scripting
 

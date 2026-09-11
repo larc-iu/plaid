@@ -749,7 +749,7 @@ export class ConlluDocument {
       return false;
     }
     if (sentenceTokens.length || wordTokens.length || morphemeTokens.length) {
-      this.setError('Tokens already exist. Use "Clear Tokens" before re-tokenizing.');
+      this.setError('Tokens already exist. Use "Clear tokens" before re-tokenizing.');
       return false;
     }
 

@@ -6,6 +6,11 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TOKEN_PATH = path.join(__dirname, '..', '.token');
 
+// The dev server the suite is pointed at, matching playwright.config.js. A spec
+// that builds absolute URLs (or trims them out of a log line) reads it here
+// rather than writing the port again.
+export const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5173';
+
 function parseJwtPayload(token) {
   const payload = token.split('.')[1];
   const padded = payload + '='.repeat((4 - (payload.length % 4)) % 4);

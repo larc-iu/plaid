@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Anchor, Box, Group, Button, Loader, Text, Center, Alert, Stack } from '@mantine/core';
-import { IconHistory, IconInfoCircle } from '@tabler/icons-react';
+import { History, Info } from 'lucide-react';
+import { Button } from '@ui/components/ui/button';
 import { NlpServiceControls } from './NlpServiceControls.jsx';
 import { VirtualSentenceRow } from './annotation/VirtualSentenceRow.jsx';
 import { useLayerInfo } from './hooks/useLayerInfo.js';
@@ -369,24 +369,18 @@ export const AnnotationEditor = () => {
 
   // Single shared toolbar: History on the left; everything NLP lives in one
   // right-hand cluster. There is no separate status badge — when services
-  // exist, the selector + Auto Parse button ARE the "ready" signal; the only
+  // exist, the selector and the Parse button ARE the "ready" signal. The only
   // states needing words are "still discovering" and "nothing online" (with a
   // retry). The cluster only renders when parsing could actually happen
   // (text present, editable, not time-traveling).
   const toolbar = (
-    <Group justify="space-between" mt="md">
-      <Group gap="sm">
-        <Button
-          variant="light"
-          color="gray"
-          leftSection={<IconHistory size={16} />}
-          onClick={handleOpenHistory}
-        >
-          History
-        </Button>
-      </Group>
+    <div className="mt-4 flex items-center justify-between gap-3">
+      <Button variant="secondary" className="gap-2" onClick={handleOpenHistory}>
+        <History className="h-4 w-4" />
+        History
+      </Button>
 
-      <Group gap="sm">
+      <div className="flex items-center gap-3">
         {selectedHistoryEntry && <Button onClick={handleCloseHistory}>Return to Current</Button>}
 
         <NlpServiceControls
@@ -396,8 +390,8 @@ export const AnnotationEditor = () => {
           enabled={hasText && canEdit && !selectedHistoryEntry}
           onParsed={reload}
         />
-      </Group>
-    </Group>
+      </div>
+    </div>
   );
 
   // Persistent read-only banner, shown whenever editing is disabled — either
@@ -409,21 +403,24 @@ export const AnnotationEditor = () => {
     ? new Date(selectedHistoryEntry.time).toLocaleString()
     : null;
   const readOnlyBanner = selectedHistoryEntry ? (
-    <Alert
-      mt="md"
-      py="xs"
-      variant="light"
-      color="yellow"
-      icon={loadingHistorical ? <Loader size={16} color="yellow" /> : <IconInfoCircle size={18} />}
-    >
-      {loadingHistorical
-        ? `Loading the document state as of ${historicalTime}…`
-        : `Read-only — viewing the document as of ${historicalTime}. Return to the current state to make changes.`}
-    </Alert>
+    <div className="mt-4 flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-900">
+      {loadingHistorical ? (
+        <>
+          <span className="inline-block h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-amber-500/40 border-t-amber-700" />
+          Loading the document as of {historicalTime}…
+        </>
+      ) : (
+        <>
+          <Info className="h-4 w-4 shrink-0" />
+          Read-only. This is the document as of {historicalTime}.
+        </>
+      )}
+    </div>
   ) : !canEdit ? (
-    <Alert mt="md" py="xs" variant="light" color="blue" icon={<IconInfoCircle size={18} />}>
-      Read-only — you have viewer access to this project, so editing is disabled.
-    </Alert>
+    <div className="mt-4 flex items-center gap-2 rounded-md border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-sm text-blue-900">
+      <Info className="h-4 w-4 shrink-0" />
+      Read-only. You have viewer access to this project.
+    </div>
   ) : null;
 
   // Always render the main container with drawer to maintain state.
@@ -437,36 +434,38 @@ export const AnnotationEditor = () => {
   // enough entry predates the setup and is not a statement about the project.
   if (!reconciling && project && !getUdLayerInfo(project).isConfigured) {
     return (
-      <Box style={{ width: '100%', minHeight: '100vh' }}>
-        <Center py={64}>
-          <Alert
-            color="yellow"
-            title="Not set up for UD"
-            maw={520}
-            icon={<IconInfoCircle size={18} />}
-          >
-            {canManageProject(project, user) ? (
-              <>
-                This project hasn’t been set up for Universal Dependencies yet.{' '}
-                <Anchor component={Link} to={`/projects/${projectId}/configuration`}>
-                  Set up its layers
-                </Anchor>{' '}
-                to annotate it.
-              </>
-            ) : (
-              <>
-                This project hasn’t been set up for Universal Dependencies yet. Ask a project
-                maintainer to add UD support.
-              </>
-            )}
-          </Alert>
-        </Center>
-      </Box>
+      <div className="tw min-h-screen w-full">
+        <div className="flex justify-center py-16">
+          <div className="flex max-w-lg gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-900">
+            <Info className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <p className="font-medium">Not set up for UD</p>
+              {canManageProject(project, user) ? (
+                <p className="mt-1">
+                  This project is not set up for Universal Dependencies.{' '}
+                  <Link
+                    className="font-medium underline underline-offset-2"
+                    to={`/projects/${projectId}/configuration`}
+                  >
+                    Set up its layers
+                  </Link>
+                  .
+                </p>
+              ) : (
+                <p className="mt-1">
+                  This project is not set up for Universal Dependencies. A project maintainer can
+                  set it up.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
     );
   }
 
   return (
-    <Box style={{ width: '100%', minHeight: '100vh' }}>
+    <div className="tw min-h-screen w-full">
       <HistoryDrawer
         isOpen={isHistoryDrawerOpen}
         onClose={handleCloseHistory}
@@ -489,48 +488,43 @@ export const AnnotationEditor = () => {
       />
 
       {/* Main content area - pushed right (not overlaid) when the drawer is open */}
-      <Box
-        style={{
-          marginLeft: isHistoryDrawerOpen ? HISTORY_DRAWER_WIDTH : 0,
-          transition: 'margin-left 300ms ease',
-          minHeight: '100vh',
-        }}
+      <div
+        className="min-h-screen transition-[margin-left] duration-300 ease-out"
+        style={{ marginLeft: isHistoryDrawerOpen ? HISTORY_DRAWER_WIDTH : 0 }}
       >
         {/* Only the BODY waits here — the breadcrumbs and tab strip are the
             shell's and stay on screen throughout. */}
         {reconciling && (
-          <Center py={48}>
-            <Loader />
-          </Center>
+          <div className="flex justify-center py-12">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-primary" />
+          </div>
         )}
 
         {!reconciling && !activeDocument && (
-          <Text ta="center" c="dimmed" py="xl">
-            Document not found
-          </Text>
+          <p className="py-10 text-center text-muted-foreground">Document not found</p>
         )}
 
         {!reconciling && activeDocument && (
           <>
-            <Box px="lg" pb="md">
+            <div className="px-6 pb-4">
               {toolbar}
               {readOnlyBanner}
               {processedSentences.length > 0 && !readOnly && (
-                <Text size="xs" c="dimmed" mt="sm">
-                  Tip: drag from one token to another to create a dependency relation; click a
-                  relation's label to rename it, and click a cell to edit an annotation. Accept a
-                  machine prediction without editing with Ctrl/Cmd+Enter (the word's ✓), or “Accept
-                  predictions” for the whole sentence.
-                </Text>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Drag from one token to another to create a dependency relation. Click a relation
+                  label to rename it, or a cell to edit an annotation. Ctrl/Cmd+Enter accepts a
+                  word&rsquo;s machine predictions without editing them, and &ldquo;Accept
+                  predictions&rdquo; does the whole sentence.
+                </p>
               )}
-            </Box>
+            </div>
 
             {processedSentences.length === 0 ? (
-              <Text ta="center" c="dimmed" py="xl">
+              <p className="py-10 text-center text-muted-foreground">
                 {viewingHistoricalState
-                  ? 'This historical state has no tokenized content to display.'
-                  : 'No sentences found. Please ensure the document has been tokenized in the Text Editor.'}
-              </Text>
+                  ? 'This state has no tokens.'
+                  : 'No sentences. Tokenize the document in the Text Editor.'}
+              </p>
             ) : (
               processedSentences.map((sentenceData, index) => {
                 // Calculate total tokens before this sentence
@@ -539,17 +533,14 @@ export const AnnotationEditor = () => {
                   .reduce((total, prevSentence) => total + prevSentence.tokens.length, 0);
 
                 return (
-                  <Box
+                  <div
                     key={sentenceData.id}
                     data-sentence-row={sentenceData.id}
+                    className="transition-shadow duration-300"
                     style={
                       flashSentId === String(sentenceData.id)
-                        ? {
-                            boxShadow: '0 0 0 3px var(--mantine-color-yellow-4)',
-                            borderRadius: 6,
-                            transition: 'box-shadow 0.3s',
-                          }
-                        : { transition: 'box-shadow 0.3s' }
+                        ? { boxShadow: '0 0 0 3px #fcd34d', borderRadius: 6 }
+                        : undefined
                     }
                   >
                     <VirtualSentenceRow
@@ -568,13 +559,13 @@ export const AnnotationEditor = () => {
                       visibleFields={visibleFields}
                       onToggleField={handleToggleField}
                     />
-                  </Box>
+                  </div>
                 );
               })
             )}
           </>
         )}
-      </Box>
-    </Box>
+      </div>
+    </div>
   );
 };

@@ -1,15 +1,6 @@
-import { useState, useEffect } from 'react';
-import {
-  SimpleGrid,
-  Stack,
-  Title,
-  Textarea,
-  Button,
-  Group,
-  Text,
-  Alert,
-  Paper,
-} from '@mantine/core';
+import { useState, useEffect, useRef } from 'react';
+import { Button } from '@ui/components/ui/button';
+import { Textarea } from '@ui/components/ui/textarea';
 import { cpSlice } from '@larc-iu/plaid-client';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import {
@@ -34,6 +25,10 @@ export const TextEditor = () => {
   const [lastSaved, setLastSaved] = useState(null);
   const { getClient, user } = useAuth();
   const confirm = useConfirm();
+  // The box grows with the text rather than scrolling, the way it did before:
+  // a treebank's source text is read as a whole, and an inner scrollbar inside
+  // a page that also scrolls is two places to lose your position.
+  const textareaRef = useRef(null);
 
   useDocumentTitle('Text Editor', doc?.name, project?.name);
 
@@ -55,10 +50,17 @@ export const TextEditor = () => {
   }, [documentId, serverText]);
 
   useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [textContent]);
+
+  useEffect(() => {
     // The text editor does structural edits (text body, tokenization) that
     // aren't optimistic-concurrency-gated. Make sure no leaked strict mode (from
     // a previously-open annotation editor) attaches a stale document-version and
-    // makes Basic Tokenize / Save Text fail with a spurious 409.
+    // makes Tokenize / Save fail with a spurious 409.
     const client = getClient();
     if (client) client.exitStrictMode();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -194,32 +196,31 @@ export const TextEditor = () => {
     : [];
 
   return (
-    <>
+    <div className="tw">
       {readOnly && (
-        <Alert color="blue" variant="light" mb="sm" py="xs">
-          Read-only — you have viewer access to this project, so the text and tokenization can't be
-          edited.
-        </Alert>
+        <div className="mb-3 rounded-md border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-sm text-blue-900">
+          Read-only. You have viewer access to this project.
+        </div>
       )}
 
       {missingLayerLabels.length > 0 && (
-        <Alert color="yellow" mb="sm">
+        <div className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-900">
           Project configuration incomplete: {missingLayerLabels.join(', ')}.
-        </Alert>
+        </div>
       )}
 
       {layersMisconfigured && (
-        <Alert color="yellow" mb="sm">
-          This project's token layers are missing their overlap-mode / parent configuration (likely
-          created with an older client bundle). Tokenization will still work, but server-enforced
-          nesting and partitioning won't. Consider recreating the project.
-        </Alert>
+        <div className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-900">
+          This project&rsquo;s token layers have no overlap mode or parent set. Tokenizing still
+          works, server-enforced nesting and partitioning do not. Recreate the project to fix it.
+        </div>
       )}
 
-      <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="xl">
-        <Stack gap="md">
-          <Title order={4}>Text Content</Title>
+      <div className="grid gap-8 lg:grid-cols-2">
+        <div className="flex flex-col gap-4">
+          <h4 className="text-base font-semibold">Text Content</h4>
           <Textarea
+            ref={textareaRef}
             value={textContent}
             spellCheck={false}
             onChange={handleTextChange}
@@ -229,73 +230,62 @@ export const TextEditor = () => {
 Example:
 The quick brown fox jumps over the lazy dog.
 This is a second sentence for testing.`}
-            autosize
-            minRows={12}
-            styles={{
-              input: { fontFamily: 'var(--mantine-font-family-monospace)', lineHeight: 1.6 },
-            }}
+            rows={12}
+            className="resize-none overflow-hidden font-mono leading-relaxed"
           />
 
-          <Group gap="sm">
+          <div className="flex items-center gap-3">
             {!readOnly && (
               <Button
-                color="green"
+                className="bg-emerald-600 text-white hover:bg-emerald-700"
                 onClick={handleSaveText}
                 disabled={saving || !textContent.trim()}
-                loading={saving}
               >
-                Save Text
+                Save
               </Button>
             )}
 
             {!readOnly && (
               <Button
+                variant="secondary"
                 onClick={handleTokenize}
                 disabled={saving || !textContent.trim() || isTextDirty || hasTokens}
                 title={
                   isTextDirty
-                    ? 'Please save text changes before tokenizing'
+                    ? 'Save the text first.'
                     : hasTokens
-                      ? 'Clear tokens before re-tokenizing'
-                      : ''
+                      ? 'Clear tokens before re-tokenizing.'
+                      : undefined
                 }
               >
-                Basic Tokenize
+                Tokenize
               </Button>
             )}
 
             {!readOnly && hasTokens && (
-              <Button color="red" onClick={handleClearTokens} disabled={saving}>
-                Clear Tokens
+              <Button variant="destructive" onClick={handleClearTokens} disabled={saving}>
+                Clear tokens
               </Button>
             )}
 
-            <Text size="sm" fw={500} c="dimmed" ml="auto">
+            <span className="ml-auto text-sm font-medium text-muted-foreground">
               {wordTokens.length} token{wordTokens.length !== 1 ? 's' : ''}, {sentenceTokens.length}{' '}
               sentence{sentenceTokens.length !== 1 ? 's' : ''}
-            </Text>
-          </Group>
+            </span>
+          </div>
 
-          <Text size="sm">
-            {saving && (
-              <Text span c="blue" fs="italic">
-                Processing...
-              </Text>
-            )}
+          <p className="text-sm">
+            {saving && <span className="italic text-blue-600">Saving…</span>}
             {!saving && lastSaved && (
-              <Text span c="green">
-                Saved: {lastSaved.toLocaleTimeString()}
-              </Text>
+              <span className="text-emerald-600">Saved: {lastSaved.toLocaleTimeString()}</span>
             )}
             {!saving && !lastSaved && textContent && isTextDirty && (
-              <Text span c="yellow.8" fs="italic">
-                Unsaved changes
-              </Text>
+              <span className="italic text-amber-700">Unsaved changes</span>
             )}
-          </Text>
+          </p>
 
           {!readOnly && hasText && (
-            <Group gap="xs">
+            <div>
               <NlpServiceControls
                 projectId={projectId}
                 documentId={documentId}
@@ -303,14 +293,12 @@ This is a second sentence for testing.`}
                 enabled
                 onParsed={reload}
               />
-            </Group>
+            </div>
           )}
-        </Stack>
+        </div>
 
-        <Paper withBorder bg="gray.0" p="md" radius="md">
-          <Title order={4} mb="md">
-            Token Visualization
-          </Title>
+        <div className="rounded-md border bg-muted/40 p-4">
+          <h4 className="mb-4 text-base font-semibold">Token Visualization</h4>
           <TokenVisualizer
             text={textContent}
             originalText={originalTokenizedText}
@@ -324,8 +312,8 @@ This is a second sentence for testing.`}
             onSetWordMorphemes={readOnly ? null : handleSetWordMorphemes}
             setError={(msg) => doc.setError(msg)}
           />
-        </Paper>
-      </SimpleGrid>
-    </>
+        </div>
+      </div>
+    </div>
   );
 };

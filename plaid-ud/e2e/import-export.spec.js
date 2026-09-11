@@ -7,7 +7,7 @@ import { getUdLayerInfo } from '../src/utils/udLayerUtils.js';
 // Drives the real React UI against the live core, importing into the first
 // UD-configured project found and cleaning up the docs it creates.
 
-const BASE = process.env.UD_BASE || 'http://localhost:5173';
+const BASE = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5173';
 const NAME_PREFIX = 'e2e_imp_';
 let PID;
 let client;
@@ -51,15 +51,15 @@ test('four tabs, bulk import (newdoc split + reject), and zip export', async ({ 
     await expect(page.getByRole('tab', { name })).toBeVisible();
   }
 
-  // --- Project Settings inner tabs are now vertical (left side) ---
+  // --- Project Settings has a link-list nav down the left ---
   await page.getByRole('tab', { name: 'Project Settings' }).click();
   await expect(page).toHaveURL(/management/);
-  await expect(page.locator('[role=tablist][aria-orientation=vertical]')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'UD Customization' })).toBeVisible();
 
   // --- Import / Export tab ---
   await page.getByRole('tab', { name: 'Import & Export' }).click();
   await expect(page).toHaveURL(/import-export/);
-  await expect(page.getByText(/Drag .* files here/i)).toBeVisible();
+  await expect(page.getByText(/Drop .* files here/i)).toBeVisible();
 
   // One valid file with TWO `# newdoc id` blocks (=> 2 documents), plus one
   // malformed file (=> 1 rejected).
@@ -90,7 +90,7 @@ test('four tabs, bulk import (newdoc split + reject), and zip export', async ({ 
   // --- Project-wide export downloads a .zip ---
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('button', { name: /Export all as \.zip/ }).click(),
+    page.getByRole('button', { name: 'Export', exact: true }).click(),
   ]);
   expect(download.suggestedFilename()).toMatch(/\.zip$/);
 });

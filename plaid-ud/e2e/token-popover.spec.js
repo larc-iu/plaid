@@ -1,5 +1,5 @@
 // Verification spec for the redesigned TokenVisualizer (Text Editor view):
-// Mantine HoverCard hover panel + click-to-toggle-sentence + Modal word editor.
+// The hover panel + click-to-toggle-sentence + the inline word editor.
 // Seeds a throwaway UD project 'the dog runs' with the full layer hierarchy +
 // tokens, opens the /edit route, and drives the new popover behaviors.
 import { test, expect, seedAuth, readToken } from './fixtures.js';
@@ -107,7 +107,7 @@ async function openEditor(page) {
 
 const badges = (page) => page.locator('[data-mwt]');
 
-const panel = (page) => page.locator('.mantine-Popover-dropdown');
+const panel = (page) => page.locator('[data-token-panel]');
 
 test('hovering a token shows the inline panel (switch, word editor, footer)', async ({ page }) => {
   await openEditor(page);

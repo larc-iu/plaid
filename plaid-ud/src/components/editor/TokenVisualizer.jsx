@@ -1,17 +1,10 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import {
-  Alert,
-  Text,
-  Popover,
-  Switch,
-  Button,
-  Group,
-  Stack,
-  TextInput,
-  ActionIcon,
-  Divider,
-} from '@mantine/core';
-import { IconTrash, IconPlus, IconX } from '@tabler/icons-react';
+import { Trash2, Plus, X } from 'lucide-react';
+import { Button } from '@ui/components/ui/button';
+import { Input } from '@ui/components/ui/input';
+import { Popover, PopoverAnchor, PopoverContent } from '@ui/components/ui/popover';
+import { Switch } from '@ui/components/ui/switch';
+import { Label } from '@ui/components/ui/label';
 import { cpLength, cpSlice, cpIndexOf, utf16ToCp } from '@larc-iu/plaid-client';
 import { containsToken } from '../../utils/udLayerUtils.js';
 import { notifyError } from '../../utils/feedback.jsx';
@@ -25,9 +18,9 @@ import classes from './TokenVisualizer.module.css';
 //
 // Hovering a token opens its panel — token text + range, a sentence-start
 // toggle, the word editor inline (split a token into words / a multi-word
-// token), and a Delete. The panel is a Mantine Popover opened on hover but
-// PINNED while you're editing inside it (so it never vanishes mid-edit); it
-// dismisses on click-outside / Escape. Selecting text creates a token, and a
+// token), and a Delete. The panel is a popover opened on hover but PINNED while
+// you're editing inside it (so it never vanishes mid-edit). It dismisses on
+// click-outside and Escape. Selecting text creates a token, and a
 // live preview relocates tokens when the document text is edited after
 // tokenization. There is deliberately NO token-resize affordance: a resize
 // keeps token identity while changing what the token means, so annotations
@@ -294,11 +287,7 @@ export const TokenVisualizer = ({
   }, [wordTokens, originalText, text]);
 
   if (!text) {
-    return (
-      <Text ta="center" py="xl" c="dimmed">
-        No text to visualize
-      </Text>
-    );
+    return <p className="py-8 text-center text-muted-foreground">No text to visualize</p>;
   }
 
   if (wordTokens.length === 0) {
@@ -311,10 +300,9 @@ export const TokenVisualizer = ({
         >
           {text}
         </div>
-        <Text size="sm" c="dimmed" ta="center" mt="md">
-          No tokens yet. Click &quot;Basic Tokenize&quot; to create the hierarchy, or select text to
-          create a token.
-        </Text>
+        <p className="mt-4 text-center text-sm text-muted-foreground">
+          No tokens. Tokenize the text, or select text to create a token.
+        </p>
       </div>
     );
   }
@@ -346,46 +334,53 @@ export const TokenVisualizer = ({
     return (
       <Popover
         key={`w-${word.id}`}
-        opened={openId === word.id}
-        onDismiss={closePanel}
-        position="bottom"
-        withArrow
-        shadow="md"
-        radius="md"
-        withinPortal
+        open={openId === word.id}
+        onOpenChange={(next) => {
+          if (!next) closePanel();
+        }}
       >
-        <Popover.Target>{badge}</Popover.Target>
-        <Popover.Dropdown p="sm" onMouseEnter={keepOpen} onMouseLeave={requestClose}>
-          <Stack ref={panelRef} gap="xs" miw={244} maw={320}>
-            <Group justify="space-between" gap="md" wrap="nowrap">
-              <Text ff="monospace" fw={600} size="sm">
-                {display}
-              </Text>
-              <Text size="xs" c="dimmed">
-                [{word.begin}–{word.end}]
-              </Text>
-            </Group>
+        <PopoverAnchor asChild>{badge}</PopoverAnchor>
+        <PopoverContent
+          align="center"
+          data-token-panel="true"
+          className="w-auto min-w-[244px] max-w-[320px] p-3"
+          // Hovering opens this panel, so it must not take focus on the way in
+          // or hand it back on the way out — the caret belongs to whatever the
+          // user was doing.
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          onCloseAutoFocus={(e) => e.preventDefault()}
+          onMouseEnter={keepOpen}
+          onMouseLeave={requestClose}
+        >
+          <div ref={panelRef} className="flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-4">
+              <span className="font-mono text-sm font-semibold">{display}</span>
+              <span className="text-xs text-muted-foreground">
+                [{word.begin}&ndash;{word.end}]
+              </span>
+            </div>
 
             {onSentenceToggle && (
-              <Switch
-                size="sm"
-                checked={isSentStart}
-                onChange={() => toggleSentence(word)}
-                label="Start of sentence"
-              />
+              <div className="flex items-center gap-2">
+                <Switch
+                  id={`sent-${word.id}`}
+                  checked={isSentStart}
+                  onCheckedChange={() => toggleSentence(word)}
+                />
+                <Label htmlFor={`sent-${word.id}`}>Start of sentence</Label>
+              </div>
             )}
 
             {onSetWordMorphemes && (
               <>
-                <Divider my={2} />
-                <Text size="xs" c="dimmed">
+                <div className="border-t" />
+                <span className="text-xs text-muted-foreground">
                   Words{isMwt ? ' (multi-word token)' : ''}
-                </Text>
-                <Stack gap={6}>
+                </span>
+                <div className="flex flex-col gap-1.5">
                   {draftForms.map((form, i) => (
-                    <Group key={i} gap="xs" wrap="nowrap">
-                      <TextInput
-                        size="xs"
+                    <div key={i} className="flex items-center gap-2">
+                      <Input
                         value={form}
                         spellCheck={false}
                         onChange={(e) =>
@@ -399,60 +394,59 @@ export const TokenVisualizer = ({
                             saveWords(word);
                           }
                         }}
-                        style={{ flex: 1 }}
-                        styles={{ input: { fontFamily: 'var(--mantine-font-family-monospace)' } }}
+                        className="h-8 flex-1 font-mono text-sm"
                       />
                       {draftForms.length > 1 && (
-                        <ActionIcon
-                          variant="subtle"
-                          color="gray"
-                          size="sm"
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 shrink-0"
                           onClick={() =>
                             setDraftForms((prev) => prev.filter((_, idx) => idx !== i))
                           }
                           aria-label="Remove word"
                         >
-                          <IconX size={14} />
-                        </ActionIcon>
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
                       )}
-                    </Group>
+                    </div>
                   ))}
                   <Button
-                    variant="subtle"
-                    size="compact-xs"
-                    leftSection={<IconPlus size={14} />}
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 gap-1 self-start px-2 text-xs"
                     onClick={() => setDraftForms((prev) => [...prev, ''])}
-                    style={{ alignSelf: 'flex-start' }}
                   >
+                    <Plus className="h-3.5 w-3.5" />
                     Add word
                   </Button>
-                </Stack>
+                </div>
               </>
             )}
 
-            <Divider my={2} />
-            <Group justify="space-between" gap="xs">
+            <div className="border-t" />
+            <div className="flex items-center justify-between gap-2">
               {onWordDelete ? (
                 <Button
-                  variant="subtle"
-                  color="red"
-                  size="compact-xs"
-                  leftSection={<IconTrash size={14} />}
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1 px-2 text-xs text-destructive hover:text-destructive"
                   onClick={() => handleDeleteClick(word)}
                 >
+                  <Trash2 className="h-3.5 w-3.5" />
                   Delete
                 </Button>
               ) : (
                 <span />
               )}
               {onSetWordMorphemes && (
-                <Button size="compact-xs" onClick={() => saveWords(word)}>
+                <Button size="sm" className="h-7 px-3 text-xs" onClick={() => saveWords(word)}>
                   Save
                 </Button>
               )}
-            </Group>
-          </Stack>
-        </Popover.Dropdown>
+            </div>
+          </div>
+        </PopoverContent>
       </Popover>
     );
   };
@@ -505,10 +499,10 @@ export const TokenVisualizer = ({
     }
     if (invalid.length) {
       blocks.push(
-        <Text key="invalid" size="xs" c="orange.6" mt="xs">
-          {invalid.length} token{invalid.length !== 1 ? 's' : ''} no longer match the edited text —
-          save and re-tokenize to resync.
-        </Text>,
+        <p key="invalid" className="mt-2 text-xs text-amber-700">
+          {invalid.length} token{invalid.length !== 1 ? 's' : ''} no longer match the edited text.
+          Save and re-tokenize to resync.
+        </p>,
       );
     }
     return blocks;
@@ -517,17 +511,17 @@ export const TokenVisualizer = ({
   return (
     <div>
       {isTextDirty && (
-        <Alert color="yellow" mb="xs" p="xs">
-          Showing token positions relocated for your unsaved edits. Save the text to apply.
-        </Alert>
+        <div className="mb-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-900">
+          Token positions are shown against the unsaved text. Save the text to apply them.
+        </div>
       )}
       <div ref={textContainerRef} className={classes.container} onMouseUp={handleTextSelection}>
         {renderText()}
       </div>
-      <Text size="xs" c="dimmed" mt="sm">
-        Click a token to toggle its sentence boundary; hover a token to edit its words or delete it;
-        select text to create a token.
-      </Text>
+      <p className="mt-3 text-xs text-muted-foreground">
+        Click a token to toggle its sentence boundary. Hover a token to edit its words or delete it.
+        Select text to create a token.
+      </p>
     </div>
   );
 };

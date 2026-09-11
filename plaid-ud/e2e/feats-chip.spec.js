@@ -2,7 +2,7 @@
 // Builds its own throwaway UD project (mirroring ProjectForm.jsx's 8 batches),
 // seeds 'the dog runs' with tokens + lemma spans + two pre-seeded features on
 // the first morpheme, then drives the FEATS chip input through behaviors 1-5.
-import { test, expect, seedAuth, collectClientErrors, readToken } from './fixtures.js';
+import { test, expect, seedAuth, collectClientErrors, readToken, BASE_URL } from './fixtures.js';
 import { PlaidClient, ROLES, PLAID_NAMESPACE, ROLE_KEY } from '@larc-iu/plaid-client';
 
 const BASE = 'http://localhost:8085';
@@ -181,8 +181,7 @@ function reportCollected(label, { errors, failures, apiCalls }) {
   for (const f of failures) console.log(JSON.stringify(f));
   console.log(`--- [${label}] write API calls ---`);
   for (const c of apiCalls) {
-    if (c.method !== 'GET')
-      console.log(`${c.status} ${c.method} ${c.url.replace('http://localhost:5173', '')}`);
+    if (c.method !== 'GET') console.log(`${c.status} ${c.method} ${c.url.replace(BASE_URL, '')}`);
   }
 }
 

@@ -448,6 +448,12 @@ test('a word whose only machine material is its incoming relation shows the ✓'
   await page.locator(`[id="${S.morphIds[0]}-lemma"]`).focus();
   await page.keyboard.press('Control+Enter');
   await expect(theCol.locator('.word-accept')).toHaveCount(0, { timeout: 8000 });
-  const rel = await S.client.relations.get(S.relDet);
-  expect(rel.metadata.provConfirmed).toBe(true);
+  // The mark clears optimistically, BEFORE the batched PATCH lands (see
+  // ConlluDocument.confirmTokens), so the server has to be polled rather than
+  // read once — reading once is a coin flip on how busy the core is.
+  await expect
+    .poll(async () => (await S.client.relations.get(S.relDet)).metadata.provConfirmed, {
+      timeout: 8000,
+    })
+    .toBe(true);
 });

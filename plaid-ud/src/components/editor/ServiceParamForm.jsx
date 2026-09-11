@@ -1,6 +1,12 @@
-import { cn } from '@ui/lib/utils';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@ui/components/ui/select';
 import { Switch } from '@ui/components/ui/switch';
 import { Textarea } from '@ui/components/ui/textarea';
 
@@ -8,17 +14,6 @@ import { Textarea } from '@ui/components/ui/textarea';
 // edits via onChange(key, value); the parent owns the values and the validation
 // `errors` (see useNlpService). Returns null when the service declares no
 // parameters.
-//
-// The enum field is a NATIVE <select>, not the shared Radix one, on purpose.
-// This form is rendered inside a popover on the annotation editor, and a Radix
-// Select portals its list to <body>, which that popover reads as an outside
-// click and closes on. A native select has no portal and no such conflict. When
-// item 11 moves the whole service-run idiom into plaid-ui and the editor's
-// popover goes with it, this can become the shared Select.
-const SELECT_CLASS =
-  'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm ' +
-  'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ' +
-  'disabled:cursor-not-allowed disabled:opacity-50';
 
 export function ServiceParamForm({ schema, values, onChange, errors = {}, disabled = false }) {
   if (!schema || schema.length === 0) return null;
@@ -86,26 +81,24 @@ function ParamField({ param, value, error, onChange, disabled }) {
     case 'enum':
       return (
         <Field id={id} label={label} description={param.description} error={error}>
-          <select
-            id={id}
-            className={cn(SELECT_CLASS, error && 'border-destructive')}
-            value={value ?? ''}
-            onChange={(e) => onChange(e.target.value)}
-            disabled={disabled}
-          >
-            {value == null && <option value="" />}
-            {options.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+          <Select value={value ?? undefined} onValueChange={onChange} disabled={disabled}>
+            <SelectTrigger id={id} className={error ? 'border-destructive' : undefined}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {options.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </Field>
       );
 
     // A checkbox list rather than a combobox: these lists are short, and every
     // option being visible at once is what the reader wants when picking
-    // several. It also has no portal, for the reason above.
+    // several.
     case 'multiselect': {
       const selected = Array.isArray(value) ? value : [];
       const toggle = (v) =>
