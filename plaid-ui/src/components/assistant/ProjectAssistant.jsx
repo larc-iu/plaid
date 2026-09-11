@@ -580,9 +580,8 @@ export const ProjectAssistant = ({
                   <Bot className="h-6 w-6 text-muted-foreground" />
                 </div>
                 <div className="max-w-md text-sm text-muted-foreground">
-                  Ask about the corpus or the lexicon, or ask for changes. The assistant reads the
-                  project and answers with evidence. Anything that would change data comes back as a
-                  plan for you to approve.
+                  {adapter.intro} The assistant reads the project and answers with evidence.
+                  Anything that would change data comes back as a plan for you to approve.
                 </div>
                 {/* Which assistant answers is settled here, at the start, and
                     then stays put for the rest of the conversation. */}

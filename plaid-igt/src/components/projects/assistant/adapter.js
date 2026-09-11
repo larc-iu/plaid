@@ -139,7 +139,7 @@ export const changePlace = (projectId, where) => {
 
 export const IGT_ASSISTANT = {
   app: 'igt',
-  label: 'this project',
+  intro: 'Ask about the corpus or the lexicon, or ask for changes.',
   convHref: (projectId, id) => `/projects/${projectId}?tab=assistant&conversation=${id}`,
   documentHref: (projectId, documentId) =>
     `#/projects/${projectId}/documents/${documentId}?tab=analyze`,

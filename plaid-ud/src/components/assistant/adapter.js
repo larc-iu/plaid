@@ -104,7 +104,7 @@ export const citationToMarkdown = (c, { origin, projectId }) => {
 
 export const UD_ASSISTANT = {
   app: 'ud',
-  label: 'this project',
+  intro: 'Ask about the corpus or the annotation, or ask for changes.',
   convHref: (projectId, id) => `/projects/${projectId}/assistant?conversation=${id}`,
   documentHref: (projectId, documentId) =>
     `#/projects/${projectId}/documents/${documentId}/annotate`,
