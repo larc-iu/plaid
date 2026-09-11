@@ -15,6 +15,10 @@ attributed to them in the audit log, and the record is theirs.
 Request data:
     project_id       the project (a service instance may serve many)
     conversation_id  the conversation to continue
+    document_id      optional: the document the user is looking at. It is a DEFAULT,
+                     not a fence. The model is told which document is open so an
+                     unqualified question is about that one, and every tool that
+                     reads the rest of the project stays available.
     approve          instead of a turn: {plan_id, as_human, contributed_by} for a plan
                      in the conversation the user approved (as_human: record the writes
                      as human-made instead of verified machine-made; contributed_by: the
@@ -103,6 +107,12 @@ class BaseAssistantService(BaseService):
     def system_prompt(self, project, web: bool) -> str:
         """What the model is told before the conversation."""
         raise NotImplementedError
+
+    def document_name(self, ws, document_id: str) -> Optional[str]:
+        """What to call the document the user has open, in the language the
+        tools use. An app whose assistant has no document view keeps the
+        default and the focus note is left off."""
+        return None
 
     def citations(self, ws, text: str) -> List[Dict[str, Any]]:
         """The references in a reply, resolved to whatever the tab shows as a
@@ -223,7 +233,8 @@ class BaseAssistantService(BaseService):
         if approve:
             self._apply(client, project, store, conv_id, conv, meta, approve, request_id, response_helper)
         else:
-            self._turn(client, project, store, conv_id, conv, meta, request_id, response_helper)
+            self._turn(client, project, store, conv_id, conv, meta, request_id, response_helper,
+                       request_data.get('document_id'))
 
     def _write(self, store: ConversationStore, conv_id: str, conv: dict, meta: dict, request_id) -> bool:
         """Write the outcome, unless the conversation moved on meanwhile (its
@@ -235,7 +246,8 @@ class BaseAssistantService(BaseService):
         store.save(conv_id, conv, meta)
         return True
 
-    def _turn(self, client, project, store, conv_id, conv, meta, request_id, response_helper) -> None:
+    def _turn(self, client, project, store, conv_id, conv, meta, request_id, response_helper,
+              document_id: Optional[str] = None) -> None:
         transcript = conv['messages']
         if not transcript or transcript[-1].get('role') != 'user':
             response_helper.error('The conversation has no message to answer')
@@ -262,8 +274,15 @@ class BaseAssistantService(BaseService):
         ws = self.make_workspace(client, project, send)
         if self.web_cfg is not None:
             ws.web = session_for(self.web_cfg, transcript)
+        system = self.system_prompt(project, web=ws.web is not None)
+        # Asked from inside a document: say which one, so an unqualified
+        # question is about it. Nothing is taken away.
+        if document_id:
+            open_doc = self.document_name(ws, document_id)
+            if open_doc:
+                system = f'{system}\n\n{focus_note(open_doc)}'
         try:
-            turn = run_turn(self.cfg, self.kit, ws, self.system_prompt(project, web=ws.web is not None),
+            turn = run_turn(self.cfg, self.kit, ws, system,
                             transcript, on_progress, cancelled=cancelled, on_text=on_text)
         except TurnCancelled:
             # The user's message leaves the model transcript (a retry must not
@@ -409,3 +428,12 @@ def stale_documents(client, documents: list) -> list:
         if now.get('version') != d['version']:
             out.append(f'document "{now.get("name") or d.get("name") or d["id"]}" has changed since the plan was made')
     return out
+
+# What the model is told when the user asks from inside a document. It names
+# the open document so an unqualified question is about that one, and says in
+# as many words that the rest of the project is still readable: a soft default,
+# never a fence.
+def focus_note(name: str) -> str:
+    return (f'The user is looking at "{name}" right now. A question that names no document '
+            f'is about that one, and a bare reference is a place in it. Read anything else in '
+            f'the project when the question calls for it.')

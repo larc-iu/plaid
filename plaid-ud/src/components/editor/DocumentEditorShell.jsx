@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
@@ -7,9 +7,13 @@ import { DocumentTabs } from './DocumentTabs.jsx';
 import { CommentStore } from '@ui/domain/CommentStore';
 import { useCommentStore } from '@ui/domain/useCommentStore';
 import { useWriteLock } from '@ui/hooks/useWriteLock.js';
+import { useViewportFill } from '@ui/hooks/useViewportFill.js';
 import { useResumedRun } from '@ui/hooks/useResumedRun.js';
 import { RunBanner } from '@ui/components/services/RunBanner.jsx';
 import { useEditorServices } from './hooks/useEditorServices.js';
+import { isReviewed } from '@larc-iu/plaid-client';
+import { DocumentAssistant } from '@ui/components/assistant/DocumentAssistant.jsx';
+import { UD_ASSISTANT } from '../assistant/adapter.js';
 import { canEditProject, canManageProject } from '../../utils/permissions.js';
 
 // Parent route of the four document tabs (/edit, /annotate, /export, /details).
@@ -176,6 +180,19 @@ export const DocumentEditorShell = () => {
   }, [doc]);
 
   const wide = isWideRoute(pathname);
+  // The assistant is offered where the annotation is, which is the only tab
+  // whose content it can talk about.
+  const onAnnotate = pathname.endsWith('/annotate');
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  // What the editor pointed at, as {ref, label}. It clears when it is sent.
+  const [assistantFocus, setAssistantFocus] = useState(null);
+
+  const docked = onAnnotate && assistantOpen;
+  // The row fills the rest of the screen, measured rather than guessed: the
+  // app header, the breadcrumbs, the tab strip and the run banner all sit
+  // above it and not one of them is a fixed height.
+  const rowRef = useRef(null);
+  const rowHeight = useViewportFill(rowRef, docked, [writeLock.held]);
 
   return (
     <div className="w-full">
@@ -213,23 +230,56 @@ export const DocumentEditorShell = () => {
         </div>
       )}
 
+      {/* With the assistant open the editor row is bounded to the screen and
+          scrolls inside itself, so the panel is exactly as tall as the viewport
+          and its composer is always reachable. Closed, the page scrolls the way
+          it always did. */}
       {!loading && !loadError && doc && project && (
-        <Outlet
-          context={{
-            projectId,
-            documentId,
-            doc,
-            project,
-            reload,
-            comments,
-            canComment: canEditProject(project, user),
-            canDeleteAnyComment: canManageProject(project, user),
-            services,
-            writeLockHeld: writeLock.held,
-            setChromeOffset,
-            setChromeBusy,
-          }}
-        />
+        <div
+          ref={rowRef}
+          style={docked && rowHeight ? { height: rowHeight } : undefined}
+          className={docked ? 'flex min-h-0' : 'flex items-start'}
+        >
+          <div className={docked ? 'min-w-0 flex-1 overflow-y-auto' : 'min-w-0 flex-1'}>
+            <Outlet
+              context={{
+                projectId,
+                documentId,
+                doc,
+                project,
+                reload,
+                comments,
+                canComment: canEditProject(project, user),
+                canDeleteAnyComment: canManageProject(project, user),
+                services,
+                writeLockHeld: writeLock.held,
+                setChromeOffset,
+                setChromeBusy,
+                assistantOpen: onAnnotate ? assistantOpen : false,
+                setAssistantOpen,
+                askAssistant: setAssistantFocus,
+              }}
+            />
+          </div>
+          {onAnnotate && (
+            <DocumentAssistant
+              open={assistantOpen}
+              onOpenChange={setAssistantOpen}
+              documentId={documentId}
+              documentName={doc.raw?.name}
+              focus={assistantFocus}
+              onClearFocus={() => setAssistantFocus(null)}
+              onApplied={reload}
+              projectId={projectId}
+              projectName={project.name}
+              client={client}
+              userId={user?.id}
+              canWrite={canEditProject(project, user)}
+              contributor={!!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin })}
+              adapter={UD_ASSISTANT}
+            />
+          )}
+        </div>
       )}
     </div>
   );

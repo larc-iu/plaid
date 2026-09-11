@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Send, RotateCcw, Check, X, Loader2, Plus, Trash2 } from 'lucide-react';
+import { Bot, Send, RotateCcw, Check, X, Loader2, Plus, Trash2, Maximize2 } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { TASKS, filterServicesByTask } from '@larc-iu/plaid-client';
 import { Button } from '../ui/button.jsx';
@@ -73,7 +73,25 @@ export const ProjectAssistant = ({
   canWrite,
   contributor = false,
   adapter,
+  // 'tab' is the whole screen; 'panel' is the same conversation docked beside
+  // a document, with the chrome the tab owns left out (see DocumentAssistant).
+  variant = 'tab',
+  documentId = null,
+  documentName = null,
+  onApplied,
+  // What the user pointed at in the editor, as {ref, label}. It rides on the
+  // next message and then clears: nothing is attached that was not chosen.
+  focus = null,
+  onClearFocus,
 }) => {
+  const panel = variant === 'panel';
+  // Each document remembers its own thread, so opening the panel on one
+  // document never resumes a conversation about another.
+  const openKey = panel && documentId ? `${projectId}:${documentId}` : projectId;
+  // The listener below is mounted once, so it reaches the caller's latest
+  // handler through a ref rather than re-subscribing on every render.
+  const onAppliedRef = useRef(onApplied);
+  onAppliedRef.current = onApplied;
   // Everything the record layer needs, in one object: which app's keys to
   // write under, whose store, and which project.
   const store = useMemo(
@@ -90,18 +108,26 @@ export const ProjectAssistant = ({
   const [loadingList, setLoadingList] = useState(true);
   const [active, setActive] = useState(newConversation); // {id, messages, display, draft?}
   const [opening, setOpening] = useState(null); // id being fetched
-  // Which conversation the URL names, if any.
+  // Which conversation is open. The tab keeps it in the URL, so a link to one
+  // is shareable. The panel keeps it in state instead: it lives on a document
+  // route, whose URL is the document's and not the assistant's.
   const [searchParams, setSearchParams] = useSearchParams();
-  const urlConv = searchParams.get('conversation');
+  const [panelConv, setPanelConv] = useState(null);
+  const urlConv = panel ? panelConv : searchParams.get('conversation');
   const setUrlConv = useCallback(
-    (id, options) =>
+    (id, options) => {
+      if (panel) {
+        setPanelConv(id);
+        return;
+      }
       setSearchParams((prev) => {
         const next = new URLSearchParams(prev);
         if (id) next.set('conversation', id);
         else next.delete('conversation');
         return next;
-      }, options),
-    [setSearchParams],
+      }, options);
+    },
+    [setSearchParams, panel],
   );
   const urlConvRef = useRef(urlConv);
   urlConvRef.current = urlConv;
@@ -266,29 +292,37 @@ export const ProjectAssistant = ({
   // conversation that was open when it was left (the tab links drop the
   // conversation from the URL, so it is put back).
   useEffect(() => {
-    const remembered = lastOpen.get(projectId);
+    const remembered = lastOpen.get(openKey);
     loadList().then((metas) => {
+      if (urlConvRef.current) return;
       // Only a conversation that still exists (it may have been deleted meanwhile).
-      if (
-        !urlConvRef.current &&
-        remembered &&
-        (jobFor(remembered) || metas.some((m) => m.id === remembered))
-      ) {
+      if (remembered && (jobFor(remembered) || metas.some((m) => m.id === remembered))) {
         setUrlConvRef.current(remembered, { replace: true });
+        return;
+      }
+      // Opening the panel on a document that has been discussed before picks
+      // that thread back up. A conversation about ANOTHER document never
+      // opens here: it would answer about the wrong text.
+      if (panel && documentId) {
+        const mine = metas.find((m) => m.about?.documentId === documentId);
+        if (mine) setUrlConvRef.current(mine.id, { replace: true });
       }
     });
     return () => {
       const a = activeRef.current;
-      if (a && !a.draft) lastOpen.set(projectId, a.id);
-      else lastOpen.delete(projectId);
+      if (a && !a.draft) lastOpen.set(openKey, a.id);
+      else lastOpen.delete(openKey);
     };
-  }, [loadList, projectId]);
+  }, [loadList, openKey, panel, documentId]);
 
   // Reflect jobs as they progress and finish, for whichever conversation is
   // shown; a finished job always refreshes the sidebar entry.
   useEffect(() => {
     const onJob = (j) => {
       if (j.done) setConvs(upsert(j.result.meta));
+      // A plan that landed changed the project, so whatever is showing it
+      // (the document beside this panel) is now stale.
+      if (j.done && j.kind === 'apply' && !j.error) onAppliedRef.current?.();
       if (activeRef.current?.id !== j.id) return;
       if (j.done) {
         activeRef.current = j.result.conv;
@@ -379,9 +413,13 @@ export const ProjectAssistant = ({
   const canSend = !!service && !busy;
 
   const send = (textOverride) => {
-    const text = (textOverride ?? input).trim();
-    if (!text || !canSend) return;
+    const typed = (textOverride ?? input).trim();
+    if (!typed || !canSend) return;
+    // The chip is the reference the question is about, said the way the
+    // assistant addresses one. A question that already names it is left alone.
+    const text = focus && !typed.includes(focus.ref) ? `${focus.ref}: ${typed}` : typed;
     setInput('');
+    onClearFocus?.();
     // Sending is what turns a draft into a saved conversation, so the flag
     // does not travel with it.
     const base = activeRef.current ?? newConversation();
@@ -396,7 +434,7 @@ export const ProjectAssistant = ({
     setActive(conv);
     if (urlConvRef.current !== conv.id) setUrlConv(conv.id, { replace: true });
     setConvs(upsert(buildMeta(prevMeta, conv, service)));
-    showJob(startTurn({ store, service, conv, prevMeta }));
+    showJob(startTurn({ store, service, conv, prevMeta, documentId, documentName }));
   };
 
   // Send the user's last message again, whether the turn was lost (its
@@ -470,9 +508,13 @@ export const ProjectAssistant = ({
   const applyingPlanId = busy === 'apply' ? jobFor(active?.id)?.planId || null : null;
 
   return (
-    <div className="flex h-[calc(100vh-15rem)] min-h-[32rem] gap-4">
+    <div
+      className={cn('flex gap-4', panel ? 'h-full min-h-0' : 'h-[calc(100vh-15rem)] min-h-[32rem]')}
+    >
       {/* --- sidebar --------------------------------------------------- */}
-      <aside className="flex w-64 shrink-0 flex-col rounded-lg border bg-card">
+      <aside
+        className={cn('flex w-64 shrink-0 flex-col rounded-lg border bg-card', panel && 'hidden')}
+      >
         <div className="flex items-center justify-between border-b px-3 py-2">
           <span className="text-sm font-medium">Conversations</span>
           <Button
@@ -526,15 +568,24 @@ export const ProjectAssistant = ({
       </aside>
 
       {/* --- chat --------------------------------------------------------- */}
-      <section className="flex min-w-0 flex-1 flex-col rounded-lg border bg-card">
+      <section
+        className={cn(
+          'flex min-w-0 flex-1 flex-col bg-card',
+          panel ? 'min-h-0' : 'rounded-lg border',
+        )}
+      >
         <header className="flex flex-wrap items-center gap-2 border-b px-3 py-2 text-sm">
-          <Bot className="h-4 w-4 text-muted-foreground" />
+          <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
           {discovering && !services.length ? (
             <span className="text-muted-foreground">Looking for an assistant…</span>
           ) : !service ? (
             <span className="text-muted-foreground">
               No assistant is online for this project. An operator can start one with{' '}
-              <code className="rounded bg-muted px-1">plaid-igt-agent --model …</code>.
+              <code className="rounded bg-muted px-1">{adapter.command} --model …</code>.
+            </span>
+          ) : panel ? (
+            <span className="min-w-0 truncate text-muted-foreground" title={service.serviceName}>
+              {model || service.serviceName}
             </span>
           ) : (
             <>
@@ -550,7 +601,29 @@ export const ProjectAssistant = ({
             </>
           )}
           <div className="ml-auto flex items-center gap-1">
-            {display.length > 0 && (
+            {panel && (
+              <>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={startNew}
+                  title="New conversation"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+                {!active?.draft && (
+                  <Link
+                    to={adapter.convHref(projectId, active.id)}
+                    title="Open in Assistant"
+                    className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    <Maximize2 className="h-4 w-4" />
+                  </Link>
+                )}
+              </>
+            )}
+            {!panel && display.length > 0 && (
               <ExportMenu
                 conv={active}
                 meta={activeMeta}
@@ -572,20 +645,35 @@ export const ProjectAssistant = ({
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-4 py-4">
+        <div className={cn('flex-1 overflow-y-auto', panel ? 'px-3 py-3' : 'px-4 py-4')}>
           <div className="mx-auto flex max-w-3xl flex-col gap-5">
             {display.length === 0 && !busy && (
-              <div className="mt-10 flex flex-col items-center gap-4 text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-                  <Bot className="h-6 w-6 text-muted-foreground" />
-                </div>
+              <div
+                className={cn(
+                  'flex flex-col items-center gap-4 text-center',
+                  panel ? 'mt-4' : 'mt-10',
+                )}
+              >
+                {!panel && (
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                    <Bot className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                )}
                 <div className="max-w-md text-sm text-muted-foreground">
-                  {adapter.intro} The assistant reads the project and answers with evidence.
-                  Anything that would change data comes back as a plan for you to approve.
+                  {panel ? (
+                    <>
+                      Ask about {documentName || 'this document'}, or about the rest of the project.
+                    </>
+                  ) : (
+                    <>
+                      {adapter.intro} The assistant reads the project and answers with evidence.
+                      Anything that would change data comes back as a plan for you to approve.
+                    </>
+                  )}
                 </div>
                 {/* Which assistant answers is settled here, at the start, and
                     then stays put for the rest of the conversation. */}
-                {canChoose && (
+                {!panel && canChoose && (
                   <AssistantPicker
                     assistants={assistants}
                     value={service?.serviceId}
@@ -593,7 +681,7 @@ export const ProjectAssistant = ({
                     disabled={!!busy}
                   />
                 )}
-                <div className="flex flex-wrap justify-center gap-2">
+                <div className={cn('flex flex-wrap justify-center gap-2', panel && 'hidden')}>
                   {adapter.examples.map((ex) => (
                     <button
                       key={ex}
@@ -693,7 +781,7 @@ export const ProjectAssistant = ({
           </div>
         </div>
 
-        <div className="border-t px-4 py-3">
+        <div className={cn('border-t', panel ? 'px-3 py-2' : 'px-4 py-3')}>
           {/* The conversation's own assistant is gone. Rather than answer in a
               different voice without saying so, name the replacement, and let
               the user choose it where there is more than one. */}
@@ -711,6 +799,22 @@ export const ProjectAssistant = ({
                   disabled={!!busy}
                 />
               )}
+            </div>
+          )}
+          {focus && (
+            <div className="mx-auto mb-2 flex max-w-3xl items-center gap-1">
+              <span className="inline-flex items-center gap-1.5 rounded-full border bg-muted/50 py-1 pl-2.5 pr-1 text-xs">
+                <span className="font-medium">{focus.label}</span>
+                <span className="text-muted-foreground">{focus.ref}</span>
+                <button
+                  type="button"
+                  onClick={() => onClearFocus?.()}
+                  title="Remove"
+                  className="rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
             </div>
           )}
           <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-xl border bg-background p-2 focus-within:ring-1 focus-within:ring-ring">

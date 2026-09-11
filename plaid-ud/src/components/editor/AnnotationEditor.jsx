@@ -23,6 +23,7 @@ import { makeValidators } from '../../utils/udVocabMode.js';
 import { buildAnchorIndex, anchorCaption } from '../../domain/commentAnchors.js';
 import { precedentKey } from '../../domain/precedent.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { DocumentAssistantButton } from '@ui/components/assistant/DocumentAssistant.jsx';
 
 // Document-wide annotation-row expansion. FEATS defaults to collapsed because its
 // vertically-stacked tags inflate column widths; users expand it via its row header.
@@ -114,6 +115,8 @@ export const AnnotationEditor = () => {
     writeLockHeld,
     setChromeOffset,
     setChromeBusy,
+    assistantOpen,
+    setAssistantOpen,
   } = useDocumentEditor();
   // Deep link from the search page: ?sent=<sentenceTokenId> scrolls to and
   // briefly highlights that sentence once the grid is rendered.
@@ -471,6 +474,8 @@ export const AnnotationEditor = () => {
 
       <div className="flex items-center gap-3">
         {selectedHistoryEntry && <Button onClick={handleCloseHistory}>Return to current</Button>}
+
+        <DocumentAssistantButton open={assistantOpen} onOpenChange={setAssistantOpen} />
 
         {hasText && canEdit && !selectedHistoryEntry && (
           <ParseDialog

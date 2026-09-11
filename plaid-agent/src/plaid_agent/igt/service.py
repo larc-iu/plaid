@@ -54,6 +54,11 @@ class AssistantService(BaseAssistantService):
     def system_prompt(self, project, web: bool) -> str:
         return build_system_prompt(project, web=web)
 
+    def document_name(self, ws, document_id: str) -> Optional[str]:
+        # The name a printed reference uses, so what the model is told matches
+        # what a tool will accept back.
+        return ws.corpus.ref_name(document_id)
+
     def citations(self, ws, text: str) -> List[Dict[str, Any]]:
         return resolve_citations(ws, text)
 

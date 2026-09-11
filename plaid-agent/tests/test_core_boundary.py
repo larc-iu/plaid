@@ -45,3 +45,23 @@ def test_the_core_imports_no_app():
                 if re.search(r'^\s*(from|import)\s+.*\b(plaid_agent\.(igt|ud)|\.\.(igt|ud))\b', line):
                     offences.append(f'{name}:{n}: {line.strip()!r}')
     assert not offences, 'plaid_agent/core imports an app:\n  ' + '\n  '.join(offences)
+
+
+def test_the_focus_note_names_the_document_and_fences_nothing():
+    """Asked from inside a document, the model is told which one is open. It is
+    a default, not a fence: the note must say the rest of the project is still
+    readable, or a question that needs the corpus gets refused."""
+    from plaid_agent.core.service import focus_note
+
+    note = focus_note('Text 1')
+    assert '"Text 1"' in note
+    # The whole point of the soft scope.
+    assert 'anything else in the project' in note
+    # Nothing in it may read as a restriction.
+    assert not any(w in note.lower() for w in ('only', 'do not read', 'must not', 'restrict'))
+
+
+def test_an_app_with_no_document_view_gets_no_focus_note():
+    from plaid_agent.core.service import BaseAssistantService
+
+    assert BaseAssistantService.document_name(None, None, 'any-id') is None

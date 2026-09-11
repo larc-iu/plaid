@@ -72,7 +72,7 @@ export const upsert = (meta) => (prev) => [meta, ...prev.filter((m) => m.id !== 
 
 // The sidebar entry after a write. `pending` names the request under way, if
 // any: {kind, requestId, serviceId, planId, asHuman, contributedBy, startedAt}.
-export const buildMeta = (prev, conv, service, pending = null) => {
+export const buildMeta = (prev, conv, service, pending = null, about = null) => {
   const firstUser = conv.display.find((d) => d.kind === 'user');
   return {
     id: conv.id,
@@ -82,6 +82,10 @@ export const buildMeta = (prev, conv, service, pending = null) => {
     serviceId: service?.serviceId || prev?.serviceId || null,
     model: service?.extras?.model || prev?.model || null,
     turns: conv.display.filter((d) => d.kind === 'user').length,
+    // The document the conversation was started from, if any. It is what the
+    // tab's list tags a row with, and it never changes once set: a
+    // conversation belongs to where it began.
+    about: prev?.about || about,
     pending,
   };
 };
@@ -247,7 +251,14 @@ export const newJob = (fields) => ({
 });
 
 // Run one turn for `conv`, whose last message is the user's.
-export const startTurn = ({ store, service, conv, prevMeta }) => {
+export const startTurn = ({
+  store,
+  service,
+  conv,
+  prevMeta,
+  documentId = null,
+  documentName = null,
+}) => {
   const { client, projectId } = store;
   const requestId = newId();
   const j = newJob({
@@ -262,12 +273,13 @@ export const startTurn = ({ store, service, conv, prevMeta }) => {
     progress: 'Thinking…',
   });
   jobs.set(conv.id, j);
-  const meta = buildMeta(prevMeta, conv, service, {
-    kind: 'turn',
-    requestId,
-    serviceId: service.serviceId,
-    startedAt: new Date().toISOString(),
-  });
+  const meta = buildMeta(
+    prevMeta,
+    conv,
+    service,
+    { kind: 'turn', requestId, serviceId: service.serviceId, startedAt: new Date().toISOString() },
+    documentId ? { documentId, documentName } : null,
+  );
   j.promise = (async () => {
     // The record first: the service reads the message from it, and a tab
     // that comes back finds the request there.
@@ -276,7 +288,9 @@ export const startTurn = ({ store, service, conv, prevMeta }) => {
       client.messages.requestService(
         projectId,
         service.serviceId,
-        { projectId, conversationId: conv.id },
+        // The open document is a DEFAULT for the turn, not a fence: the
+        // service names it in the prompt and leaves every tool in place.
+        { projectId, conversationId: conv.id, ...(documentId ? { documentId } : {}) },
         REQUEST_TIMEOUT_MS,
         progressOf(j),
         j.controller.signal,

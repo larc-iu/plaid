@@ -104,6 +104,7 @@ export const citationToMarkdown = (c, { origin, projectId }) => {
 
 export const UD_ASSISTANT = {
   app: 'ud',
+  command: 'plaid-ud-agent',
   intro: 'Ask about the corpus or the annotation, or ask for changes.',
   convHref: (projectId, id) => `/projects/${projectId}/assistant?conversation=${id}`,
   documentHref: (projectId, documentId) =>
