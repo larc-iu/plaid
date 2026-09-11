@@ -77,12 +77,31 @@
 
 /* "Edit text" is always here, unlike its two neighbours, so it is quieter than
    both: no border, and it only fills in on hover. */
-.sentence-confirm .edit-text-btn {
+/* The four standing actions under a sentence: edit its metadata, edit its
+   text, ask the assistant, comment. One treatment for all of them, because
+   none is the thing you came to the sentence to do and a difference in weight
+   between them would be claiming otherwise. Dimmed at rest, full strength on
+   hover or focus. */
+.sentence-confirm .sentence-action {
   opacity: 0.55;
+  font-weight: 400;
+  color: #374151;
   transition: opacity 120ms ease;
 }
-.sentence-confirm .edit-text-btn:hover {
+.sentence-confirm .sentence-action:hover,
+.sentence-confirm .sentence-action:focus-visible {
   opacity: 1;
+}
+/* Expanded is a state of the sentence, so the control that opened it stays lit. */
+.sentence-confirm .sentence-meta__toggle[aria-expanded='true'] {
+  opacity: 1;
+}
+/* The one value worth seeing without expanding, after the label rather than
+   instead of it. */
+.sentence-meta__summary {
+  margin-left: 2px;
+  font-family: monospace;
+  color: #6b7280;
 }
 
 .sentence-grid {
@@ -379,44 +398,25 @@
 /* The sentence's own metadata, under its grid: a chevron toggle on the same
    line as the annotation-row headers' idiom, and the fields when open. Aligned
    with the labels column so it reads as belonging to the sentence above. */
+/* The fields the "Edit metadata" action opens, under the row that opens them
+   and left-aligned with it rather than with the page, so they read as
+   belonging to that control. 80px is the label column the grid above uses. */
 .sentence-meta {
-  margin-top: 8px;
-  margin-left: 8px;
-}
-
-.sentence-meta__toggle {
-  display: inline-flex;
-  width: auto;
-  min-height: 20px;
-  padding-right: 6px;
-}
-
-/* Collapsed, the toggle carries the one value worth seeing at a glance. */
-.sentence-meta__summary {
-  margin-left: 8px;
-  font-weight: normal;
-  font-family: monospace;
-  color: #6b7280;
-}
-
-.sentence-meta__fields {
   margin-top: 4px;
-  margin-left: 14px;
+  margin-left: 80px;
 }
 
-/* The sentence's comment badge, in its button row. Quiet when the sentence has
-   no comments and loud enough to find when it does: a count is information,
-   an empty "+" is an invitation, and an invitation should not shout. */
+/* The sentence's comment action, one of the four. */
 .sentence-comments {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   height: 24px;
-  padding: 0 6px;
+  padding: 0 8px;
   border: 1px solid transparent;
   border-radius: 4px;
-  font-size: 11px;
-  color: #6b7280;
+  font-size: 12px;
+  color: #374151;
   background: transparent;
   cursor: pointer;
   opacity: 0.55;
@@ -430,11 +430,15 @@
   background-color: #f3f4f6;
   color: #111827;
 }
+/* A sentence someone has written on: the COUNT carries that, not the whole
+   control, so the four actions keep one resting appearance between them. */
 .sentence-comments--has {
   opacity: 1;
+}
+.sentence-comments--has .tabular-nums {
   color: #2563eb;
+  font-weight: 500;
 }
 .sentence-comments--has:hover {
-  background-color: #dbeafe;
-  color: #1d4ed8;
+  background-color: #f3f4f6;
 }

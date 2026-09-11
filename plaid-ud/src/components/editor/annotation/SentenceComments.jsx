@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react';
-import { MessageSquare, MessageSquarePlus } from 'lucide-react';
+import { MessageSquare } from 'lucide-react';
 import { Popover, PopoverAnchor, PopoverContent } from '@ui/components/ui/popover';
 import { CommentThread } from '@ui/components/shared/CommentThread';
 import { useCommentStore } from '@ui/domain/useCommentStore';
 
-// The comment badge on a sentence: its count, or a "+" when there is nothing
-// yet and the reader may write. Opens the thread in a popover over the grid.
+// The comment action on a sentence, one of the four the strip under the grid
+// offers: the same dimmed icon and label the other three wear
+// (`sentence-action`), with the count beside it when there is one. Opens the
+// thread in a popover over the grid.
+//
+// Only the COUNT colours in, because a sentence someone has written on is a
+// fact about the sentence and not a state of the button.
 //
 // The popover holds a LIVE claim while it is open, refcounted in the store, so
 // two open threads and the Comments tab share one stream and the last to close
@@ -35,19 +40,14 @@ export const SentenceComments = ({ store, sentenceId, anchorLabel, canWrite, can
       <PopoverAnchor asChild>
         <button
           type="button"
-          className={`sentence-comments${count > 0 ? ' sentence-comments--has' : ''}`}
+          className={`sentence-comments sentence-action${count > 0 ? ' sentence-comments--has' : ''}`}
           title={label}
           aria-label={label}
           onClick={() => setOpen((prev) => !prev)}
         >
-          {count > 0 ? (
-            <>
-              <MessageSquare width={12} height={12} />
-              <span className="tabular-nums">{count}</span>
-            </>
-          ) : (
-            <MessageSquarePlus width={12} height={12} />
-          )}
+          <MessageSquare width={12} height={12} />
+          Comment
+          {count > 0 && <span className="tabular-nums">{count}</span>}
         </button>
       </PopoverAnchor>
       <PopoverContent

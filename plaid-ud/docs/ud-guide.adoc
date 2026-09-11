@@ -186,7 +186,7 @@ A treebank records more than annotations. CoNLL-U keeps those notes as comment l
 
 **About a document**, on its **Details** tab: where the text came from, its genre, its licence, whatever the project decides to keep.
 
-**About a sentence**, under the sentence in the Annotate view, behind the **SENTENCE** disclosure. Every sentence carries `sent_id`, CoNLL-U's own identifier for it, whether the project declares anything else or not. A free translation is conventionally `text_en`, naming the language it is in.
+**About a sentence**, under the sentence in the Annotate view, behind **Edit metadata** in the row of actions below the grid. Every sentence carries `sent_id`, CoNLL-U's own identifier for it, whether the project declares anything else or not. A free translation is conventionally `text_en`, naming the language it is in.
 
 Which fields a project offers is a maintainer's choice, under **Settings > UD Customization**. A field name cannot contain a dot, and a sentence field cannot be called `sent_id` or `text`, which the exporter writes itself.
 

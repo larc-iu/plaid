@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { ChevronRight, Check, Undo2, PenLine, Bot } from 'lucide-react';
+import { ChevronRight, Check, Undo2, PenLine, Bot, Tags, MessageSquare } from 'lucide-react';
 import { Combobox } from '@ui/components/ui/combobox';
 import { Button } from '@ui/components/ui/button';
 import { isMachine, needsReview, provState, PROV_STATES } from '@larc-iu/plaid-client';
@@ -1438,56 +1438,20 @@ export const SentenceRow = React.memo(
           ))}
         </div>
 
-        {/* The sentence's own notes, under its grid and behind the same chevron
-          disclosure the annotation rows use, so expanding it once expands it
-          for the whole document. Collapsed by default: sent_id is housekeeping
-          most of the time, and a strip per sentence would crowd the grid it
-          belongs to. It sits below rather than above because the dependency
-          tree is absolutely positioned over the top of this container. */}
-        {metaRows.length > 0 && (
-          <div className="sentence-meta">
-            <div
-              className="row-label row-label--toggle sentence-meta__toggle"
-              role="button"
-              tabIndex={-1}
-              title={`${visibleFields.meta ? 'Hide' : 'Show'} sentence fields`}
-              onClick={() => onToggleField?.('meta')}
-            >
-              <ChevronRight
-                width={12}
-                height={12}
-                className="row-label__chevron"
-                style={{
-                  transform: visibleFields.meta ? 'rotate(90deg)' : 'none',
-                  transition: 'transform 150ms ease',
-                }}
-              />
-              SENTENCE
-              {!visibleFields.meta && sentenceMeta?.sent_id && (
-                <span className="sentence-meta__summary">{sentenceMeta.sent_id}</span>
-              )}
-            </div>
-            {visibleFields.meta && (
-              <div className="sentence-meta__fields">
-                <MetadataFields
-                  rows={metaRows}
-                  values={sentenceMeta}
-                  readOnly={isReadOnly || !onSentenceMetadata}
-                  dense
-                  onCommit={handleSentenceMetadata}
-                />
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* The sentence's own review gestures: BELOW the grid and left-aligned
-          with the first token, so they read as belonging to this sentence.
-          Accept takes everything proposed, Discard throws the machine's
-          proposals away, and each shows only when it has something to do. */}
+        {/* Everything the sentence itself offers, BELOW the grid and
+          left-aligned with the first token so it reads as belonging to this
+          sentence. Two kinds, told apart by weight rather than by position:
+          Accept and Discard are outlined and only appear when they have
+          something to do, while the four standing actions are one dimmed
+          icon-and-label treatment apiece (`sentence-action`) because none of
+          them is the thing you came to the sentence to do. The metadata
+          disclosure is one of the four: it used to be a bold SENTENCE heading
+          on its own line, which made housekeeping the loudest thing under the
+          grid. */}
         {(handleEditText ||
           comments ||
           onAskAssistant ||
+          metaRows.length > 0 ||
           (!isReadOnly && (hasInferred || hasMachine))) && (
           <div className="sentence-confirm">
             {!isReadOnly && onConfirmTokens && hasInferred && (
@@ -1512,9 +1476,24 @@ export const SentenceRow = React.memo(
                 Discard predictions
               </Button>
             )}
+            {metaRows.length > 0 && (
+              <Button
+                className="sentence-meta__toggle sentence-action h-6 gap-1 px-2 text-xs"
+                variant="ghost"
+                aria-expanded={!!visibleFields.meta}
+                onClick={() => onToggleField?.('meta')}
+                title={`${visibleFields.meta ? 'Hide' : 'Show'} this sentence's own fields. Expanding one expands them for the whole document.`}
+              >
+                <Tags width={12} height={12} />
+                Edit metadata
+                {!visibleFields.meta && sentenceMeta?.sent_id && (
+                  <span className="sentence-meta__summary">{sentenceMeta.sent_id}</span>
+                )}
+              </Button>
+            )}
             {handleEditText && (
               <Button
-                className="edit-text-btn h-6 gap-1 px-2 text-xs"
+                className="edit-text-btn sentence-action h-6 gap-1 px-2 text-xs"
                 variant="ghost"
                 onClick={handleEditText}
                 title="Open this sentence in the Text Editor. Alt+click a word does the same."
@@ -1525,7 +1504,7 @@ export const SentenceRow = React.memo(
             )}
             {onAskAssistant && (
               <Button
-                className="h-6 gap-1 px-2 text-xs"
+                className="sentence-action h-6 gap-1 px-2 text-xs"
                 variant="ghost"
                 onClick={() => onAskAssistant({ ref: `s${sentenceIndex + 1}`, label: 'Sentence' })}
                 title="Ask the assistant about this sentence"
@@ -1543,6 +1522,20 @@ export const SentenceRow = React.memo(
                 canDeleteAny={canDeleteAnyComment}
               />
             )}
+          </div>
+        )}
+
+        {metaRows.length > 0 && visibleFields.meta && (
+          <div className="sentence-meta">
+            <div className="sentence-meta__fields">
+              <MetadataFields
+                rows={metaRows}
+                values={sentenceMeta}
+                readOnly={isReadOnly || !onSentenceMetadata}
+                dense
+                onCommit={handleSentenceMetadata}
+              />
+            </div>
           </div>
         )}
       </div>
