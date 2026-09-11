@@ -8,7 +8,8 @@ import { UserAvatar } from '@ui/components/shared/UserAvatar';
 import { timeAgo, fullTimestamp } from '@ui/utils/formatTime';
 import { notifyError, humanizeError } from '@/utils/feedback';
 import { AssistantMarkdown } from '@ui/components/assistant/AssistantMarkdown.jsx';
-import { conversationToMarkdown } from '../projects/assistant/exportMarkdown.js';
+import { conversationToMarkdown } from '@ui/components/assistant/exportMarkdown.js';
+import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 
 // Every assistant conversation on the instance. A conversation is private to
 // the person who had it — it never appears in anyone else's sidebar — and an
@@ -57,6 +58,7 @@ const ConversationDetail = ({ client, row, onBack }) => {
             origin: '',
             projectId: row.projectId,
             projectName: row.projectName,
+            adapter: IGT_ASSISTANT,
           }),
         );
       })

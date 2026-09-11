@@ -1,21 +1,16 @@
-import { timeAgo } from '@ui/utils/formatTime';
+import { timeAgo } from '../../utils/formatTime.js';
 import { MessageSquare, Download, Copy, FileDown } from 'lucide-react';
-import { Button } from '@ui/components/ui/button';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@ui/components/ui/select';
+import { Button } from '../ui/button.jsx';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/select.jsx';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-} from '@ui/components/ui/dropdown-menu';
-import { cn } from '@ui/lib/utils';
-import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
+} from '../ui/dropdown-menu.jsx';
+import { cn } from '../../lib/utils.js';
+import { notifySuccess, notifyError } from '../../lib/notify.js';
+import { humanizeError } from '../../lib/errors.js';
 import { conversationToMarkdown, markdownFilename } from './exportMarkdown.js';
 import { jobFor } from './jobs.js';
 
@@ -60,12 +55,13 @@ export const AssistantPicker = ({ assistants, value, onChange, disabled }) => (
 // ---- export -----------------------------------------------------------------
 // The conversation as Markdown: downloaded as a file, or copied.
 
-export const ExportMenu = ({ conv, meta, projectId, projectName }) => {
+export const ExportMenu = ({ conv, meta, projectId, projectName, adapter }) => {
   const build = () =>
     conversationToMarkdown(conv, meta, {
       origin: `${window.location.origin}${window.location.pathname}`,
       projectId,
       projectName,
+      adapter,
     });
   const download = () => {
     const blob = new Blob([build()], { type: 'text/markdown;charset=utf-8' });

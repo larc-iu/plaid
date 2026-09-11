@@ -1,15 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import {
-  CITE_RE,
   centeredScrollLeft,
   citePlain,
   citationFocus,
+  linkifyCitations,
+} from '@ui/components/assistant/citations.js';
+import {
+  CITE_RE,
+  IGT_ASSISTANT,
   citationHighlights,
   citationTitle,
   citationRows,
-  linkifyCitations,
   sentenceHref,
-} from './citations.js';
+} from './adapter.js';
 
 const matches = (s) => s.match(CITE_RE) || [];
 
@@ -123,6 +126,7 @@ describe('linkifyCitations', () => {
   it('links resolved citations, flattens the rest, and reports each resolved one', () => {
     const seen = [];
     const out = linkifyCitations(
+      IGT_ASSISTANT,
       'See <cite doc="Text 1" ref="s3"/> but not <cite doc="Text 1" ref="s99"/>.',
       new Map([[c.key, c]]),
       { projectId: 'p1', onCited: (m, cc) => seen.push(cc.sentence) },

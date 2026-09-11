@@ -1,4 +1,5 @@
-import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
+import { notifySuccess, notifyError, notifyWarning } from '../../lib/notify.js';
+import { humanizeError } from '../../lib/errors.js';
 
 // The assistant's conversations and the runs behind them: what is stored
 // where, the page-independent job registry, and starting, watching,
@@ -14,14 +15,14 @@ export const TITLE_MAX = 60;
 export const LOST_CONTACT =
   'Lost contact with the assistant. It is still working. Reload to pick it back up.';
 
-export const metaKey = (projectId, id) => `igt:assistant:${projectId}:meta:${id}`;
+// The record keys carry the app's tag, the same one the service writes
+// (plaid_agent/core/conversation.py), so one user's ud: and igt: records
+// never collide.
+export const metaKey = (app, projectId, id) => `${app}:assistant:${projectId}:meta:${id}`;
 
-export const convKey = (projectId, id) => `igt:assistant:${projectId}:conv:${id}`;
+export const convKey = (app, projectId, id) => `${app}:assistant:${projectId}:conv:${id}`;
 
-export const metaPrefix = (projectId) => `igt:assistant:${projectId}:meta:`;
-
-export const convHref = (projectId, id) =>
-  `/projects/${projectId}?tab=assistant&conversation=${id}`;
+export const metaPrefix = (app, projectId) => `${app}:assistant:${projectId}:meta:`;
 
 // A UUID: request ids must be one (the server checks), and conversation ids
 // share the generator.
@@ -54,7 +55,7 @@ export const titleFrom = (text) => {
 // The registry lives on globalThis rather than in this module's scope, so a
 // hot update of this file in development (which re-evaluates the module
 // while a job may be running) finds the same maps instead of empty ones.
-export const registry = (globalThis.__igtAssistantJobs ??= {
+export const registry = (globalThis.__plaidAssistantJobs ??= {
   serviceCache: new Map(), // project id -> services, so a remount need not blank the picker
   saveQueues: new Map(), // conversation id -> Promise (writes in order)
   jobs: new Map(), // conversation id -> job in flight
@@ -88,18 +89,19 @@ export const buildMeta = (prev, conv, service, pending = null) => {
 // Write a conversation (transcript + sidebar entry, or the entry alone).
 // Writes for one conversation run one after another so a slow earlier PUT
 // cannot land on top of a newer one.
-export const persistConv = (client, userId, projectId, conv, meta, { metaOnly = false } = {}) => {
+export const persistConv = (store, conv, meta, { metaOnly = false } = {}) => {
+  const { client, userId, app, projectId } = store;
   if (!userId) return Promise.resolve();
   const prev = saveQueues.get(conv.id) || Promise.resolve();
   const next = prev
     .then(async () => {
       if (!metaOnly) {
-        await client.userData.put(userId, convKey(projectId, conv.id), {
+        await client.userData.put(userId, convKey(app, projectId, conv.id), {
           messages: conv.messages,
           display: conv.display,
         });
       }
-      await client.userData.put(userId, metaKey(projectId, conv.id), meta);
+      await client.userData.put(userId, metaKey(app, projectId, conv.id), meta);
     })
     .catch((e) => {
       console.error('[Assistant] could not save the conversation', e);
@@ -114,11 +116,12 @@ export const persistConv = (client, userId, projectId, conv, meta, { metaOnly = 
 };
 
 // The record as the server has it. Read after any write of ours has landed.
-export const readConv = async (client, userId, projectId, id) => {
+export const readConv = async (store, id) => {
+  const { client, userId, app, projectId } = store;
   await (saveQueues.get(id) || Promise.resolve());
   const [c, m] = await Promise.all([
-    client.userData.get(userId, convKey(projectId, id)),
-    client.userData.get(userId, metaKey(projectId, id)),
+    client.userData.get(userId, convKey(app, projectId, id)),
+    client.userData.get(userId, metaKey(app, projectId, id)),
   ]);
   const v = c?.value || {};
   return {
@@ -178,11 +181,11 @@ export const watch = async (j, run) => {
 // a timeout). Then the service is working and will write the record itself,
 // and settling it as failed would both lose the answer when it lands and stop
 // the next page from rejoining. Leave it pending and say so.
-export const finishJob = async (j, client, userId, projectId, service) => {
+export const finishJob = async (j, store, service) => {
   let conv;
   let meta;
   try {
-    ({ conv, meta } = await readConv(client, userId, projectId, j.id));
+    ({ conv, meta } = await readConv(store, j.id));
   } catch (e) {
     console.error('[Assistant] could not read the conversation back', e);
     conv = j.conv;
@@ -219,7 +222,7 @@ export const finishJob = async (j, client, userId, projectId, service) => {
       };
     }
     meta = buildMeta(meta, conv, service, null);
-    await persistConv(client, userId, projectId, conv, meta);
+    await persistConv(store, conv, meta);
   }
   j.done = true;
   j.result = { conv, meta };
@@ -244,7 +247,8 @@ export const newJob = (fields) => ({
 });
 
 // Run one turn for `conv`, whose last message is the user's.
-export const startTurn = ({ client, userId, projectId, service, conv, prevMeta }) => {
+export const startTurn = ({ store, service, conv, prevMeta }) => {
+  const { client, projectId } = store;
   const requestId = newId();
   const j = newJob({
     id: conv.id,
@@ -267,7 +271,7 @@ export const startTurn = ({ client, userId, projectId, service, conv, prevMeta }
   j.promise = (async () => {
     // The record first: the service reads the message from it, and a tab
     // that comes back finds the request there.
-    await persistConv(client, userId, projectId, conv, meta);
+    await persistConv(store, conv, meta);
     await watch(j, () =>
       client.messages.requestService(
         projectId,
@@ -279,7 +283,7 @@ export const startTurn = ({ client, userId, projectId, service, conv, prevMeta }
         { requestId },
       ),
     );
-    return finishJob(j, client, userId, projectId, service);
+    return finishJob(j, store, service);
   })();
   return j;
 };
@@ -307,9 +311,7 @@ export const applyToasts = (j, summary) => {
 // refuses a second application of the same plan (a retried request, a double
 // click), so a failure leaves the plan undecided and approving again is safe.
 export const startApply = ({
-  client,
-  userId,
-  projectId,
+  store,
   service,
   conv,
   prevMeta,
@@ -317,6 +319,7 @@ export const startApply = ({
   asHuman,
   contributedBy = null,
 }) => {
+  const { client, projectId } = store;
   const requestId = newId();
   const j = newJob({
     id: conv.id,
@@ -342,7 +345,7 @@ export const startApply = ({
     startedAt: new Date().toISOString(),
   });
   j.promise = (async () => {
-    await persistConv(client, userId, projectId, conv, meta, { metaOnly: true });
+    await persistConv(store, conv, meta, { metaOnly: true });
     await watch(j, () =>
       client.messages.requestService(
         projectId,
@@ -359,7 +362,7 @@ export const startApply = ({
       ),
     );
     applyToasts(j, plan.summary);
-    return finishJob(j, client, userId, projectId, service);
+    return finishJob(j, store, service);
   })();
   return j;
 };
@@ -367,7 +370,8 @@ export const startApply = ({
 // Rejoin the request a conversation's record says is under way (it was
 // submitted from a page that is gone). The record gets the outcome either
 // way; this is for showing progress and refreshing when it lands.
-export const attachJob = ({ client, userId, projectId, conv, meta }) => {
+export const attachJob = ({ store, conv, meta }) => {
+  const { client, projectId } = store;
   const p = meta.pending;
   const j = newJob({
     id: conv.id,
@@ -395,7 +399,7 @@ export const attachJob = ({ client, userId, projectId, conv, meta }) => {
       const plan = conv.display.find((d) => d.plan?.id === j.planId)?.plan;
       applyToasts(j, plan?.summary || 'the changes');
     }
-    return finishJob(j, client, userId, projectId, null);
+    return finishJob(j, store, null);
   })();
   return j;
 };

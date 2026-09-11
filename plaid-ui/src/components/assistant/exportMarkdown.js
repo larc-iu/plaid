@@ -1,60 +1,9 @@
 // A conversation as a Markdown document: the questions, the replies with
-// their citations expanded to interlinear tables (linked to the sentence in
-// the editor), plans with their changes and outcome, and errors. Tool traces
-// are summarized in one line per reply. Pure: no DOM, so it is unit-tested.
+// their citations expanded by the app (`adapter.citationToMarkdown`), plans
+// with their changes and outcome, and errors. Tool traces are summarized in
+// one line per reply. Pure: no DOM, so it is unit-tested.
 
-import {
-  citationHighlights,
-  citationRows,
-  citationTitle,
-  linkifyCitations,
-  sentenceHref,
-} from './citations.js';
-
-const esc = (s) =>
-  String(s ?? '')
-    .replace(/\|/g, '\\|')
-    .replace(/\n/g, ' ');
-
-// One cited sentence as a Markdown table: a column per word, a row per tier
-// (words, morphemes, each field), then the sentence fields. What the citation
-// names is bold: the word, or the morphemes named inside it.
-export const citationToMarkdown = (c, { origin, projectId }) => {
-  const words = c.words || [];
-  const cited = citationHighlights(c);
-  const [surface, ...rows] = citationRows(c);
-
-  // A morpheme row of a word cited for its morphemes, rebuilt piece by piece
-  // with the named ones bold; anything else is the cell as the grid shows it.
-  const cell = (r, j) => {
-    const w = words[j] || {};
-    const marked = cited.get(w.index);
-    const parts =
-      marked instanceof Set &&
-      (r.kind === 'morphemes' ? w.morphs : (w.lines || []).find((l) => l.field === r.label)?.parts);
-    if (!parts) return r.cells[j];
-    return parts
-      .map((part, k) => (marked.has(k + 1) ? `**${part}**` : part))
-      .reduce((acc, part, k) => (k ? acc + (w.joiners?.[k - 1] ?? '-') + part : part), '');
-  };
-
-  const out = [`**[${esc(citationTitle(c))}](${sentenceHref(origin, projectId, c)})**`, ''];
-  if (words.length) {
-    out.push(
-      `| | ${surface.cells
-        .map((v, j) => (cited.has(words[j].index) ? `**${esc(v)}**` : esc(v)))
-        .join(' | ')} |`,
-    );
-    out.push(`|---|${words.map(() => '---').join('|')}|`);
-    rows.forEach((r) =>
-      out.push(`| ${[r.label, ...r.cells.map((_, j) => cell(r, j))].map(esc).join(' | ')} |`),
-    );
-  } else {
-    out.push(esc(c.text));
-  }
-  (c.fields || []).forEach((f) => out.push('', `*${esc(f.field)}:* ${esc(f.value)}`));
-  return out.join('\n');
-};
+import { linkifyCitations } from './citations.js';
 
 // Reply text with its citations: a citation alone on a line becomes the
 // table in place, an inline one a link, and the inline-only ones' tables
@@ -67,9 +16,9 @@ export const replyToMarkdown = (text, citations, ctx) => {
     const key = line.trim();
     if (byKey.has(key)) {
       shown.add(key);
-      return citationToMarkdown(byKey.get(key), ctx);
+      return ctx.adapter.citationToMarkdown(byKey.get(key), ctx);
     }
-    return linkifyCitations(line, byKey, {
+    return linkifyCitations(ctx.adapter, line, byKey, {
       ...ctx,
       onCited: (m, c) => {
         if (!shown.has(m) && !inline.includes(c)) inline.push(c);
@@ -78,7 +27,7 @@ export const replyToMarkdown = (text, citations, ctx) => {
   });
   const out = lines.join('\n');
   if (!inline.length) return out;
-  return `${out}\n\n**Cited examples**\n\n${inline.map((c) => citationToMarkdown(c, ctx)).join('\n\n')}`;
+  return `${out}\n\n**Cited examples**\n\n${inline.map((c) => ctx.adapter.citationToMarkdown(c, ctx)).join('\n\n')}`;
 };
 
 const planToMarkdown = (plan, status, interrupted) => {
@@ -95,8 +44,8 @@ const planToMarkdown = (plan, status, interrupted) => {
   return lines.join('\n');
 };
 
-export const conversationToMarkdown = (conv, meta, { origin, projectId, projectName }) => {
-  const ctx = { origin, projectId };
+export const conversationToMarkdown = (conv, meta, { origin, projectId, projectName, adapter }) => {
+  const ctx = { origin, projectId, adapter };
   const out = [`# ${meta?.title || 'Conversation'}`, ''];
   const facts = [];
   if (projectName) facts.push(`Project: ${projectName}`);

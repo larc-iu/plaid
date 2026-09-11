@@ -2,11 +2,17 @@ import { describe, it, expect } from 'vitest';
 import {
   conversationToMarkdown,
   replyToMarkdown,
-  citationToMarkdown,
   markdownFilename,
-} from './exportMarkdown.js';
+} from '@ui/components/assistant/exportMarkdown.js';
+import { IGT_ASSISTANT } from './adapter.js';
+import { citationToMarkdown } from './citationMarkdown.js';
 
-const ctx = { origin: 'http://x/', projectId: 'p1', projectName: 'Demo' };
+const ctx = {
+  origin: 'http://x/',
+  projectId: 'p1',
+  projectName: 'Demo',
+  adapter: IGT_ASSISTANT,
+};
 const cite = {
   key: '<cite doc="Text 1" ref="s3.w2"/>',
   documentId: 'd1',

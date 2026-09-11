@@ -1,12 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import {
-  changeHref,
-  changeRef,
-  changeTitle,
-  collapseGroups,
-  groupRows,
-  planRows,
-} from './planChanges.js';
+import { collapseGroups, groupRows, planRows } from '@ui/components/assistant/planChanges.js';
+import { changeHref, changeRef, changeTitle, IGT_ASSISTANT } from './adapter.js';
 
 const word = {
   kind: 'token',
@@ -91,7 +85,7 @@ describe('groupRows and collapseGroups', () => {
   ];
 
   it('groups by document or lexicon, in order of first appearance', () => {
-    const groups = groupRows(rows, 'p');
+    const groups = groupRows(rows, 'p', IGT_ASSISTANT);
     expect(groups.map((g) => [g.title, g.rows.map((r) => r.index)])).toEqual([
       ['Text 1', [0, 3]],
       ['Lexicon', [1]],
@@ -104,7 +98,7 @@ describe('groupRows and collapseGroups', () => {
   });
 
   it('keeps the first rows across groups when collapsed', () => {
-    const groups = groupRows(rows, 'p');
+    const groups = groupRows(rows, 'p', IGT_ASSISTANT);
     expect(collapseGroups(groups, 10)).toEqual({ groups, hidden: 0 });
     const { groups: cut, hidden } = collapseGroups(groups, 3);
     expect(hidden).toBe(2);

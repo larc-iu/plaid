@@ -1,17 +1,9 @@
 import { Fragment, useMemo, useState } from 'react';
 import { RotateCcw, Check, X, Loader2, ChevronDown } from 'lucide-react';
-import { Button } from '@ui/components/ui/button';
-import { Badge } from '@ui/components/ui/badge';
-import { cn } from '@ui/lib/utils';
-import {
-  ROWS_COLLAPSED,
-  changeHref,
-  changeRef,
-  changeTitle,
-  collapseGroups,
-  groupRows,
-  planRows,
-} from './planChanges.js';
+import { Button } from '../ui/button.jsx';
+import { Badge } from '../ui/badge.jsx';
+import { cn } from '../../lib/utils.js';
+import { collapseGroups, groupRows, planRows, ROWS_COLLAPSED } from './planChanges.js';
 
 // A proposed change set, row by row, with its apply controls.
 // A proposed plan: what it does in one line, every change as a row under the
@@ -29,9 +21,13 @@ export const PlanCard = ({
   onDiscard,
   contributor = false,
   projectId,
+  adapter,
 }) => {
   const allRows = useMemo(() => planRows(plan), [plan]);
-  const groups = useMemo(() => groupRows(allRows, projectId), [allRows, projectId]);
+  const groups = useMemo(
+    () => groupRows(allRows, projectId, adapter),
+    [allRows, projectId, adapter],
+  );
   const [expanded, setExpanded] = useState(allRows.length <= ROWS_COLLAPSED);
   const [asHuman, setAsHuman] = useState(!!recordedAsHuman);
   const humanId = `plan-human-${plan.id}`;
@@ -110,7 +106,7 @@ export const PlanCard = ({
                   </th>
                 </tr>
                 {g.rows.map((r) => (
-                  <ChangeRow key={r.index} row={r} projectId={projectId} />
+                  <ChangeRow key={r.index} row={r} projectId={projectId} adapter={adapter} />
                 ))}
               </Fragment>
             ))}
@@ -169,51 +165,34 @@ export const PlanCard = ({
   );
 };
 
-// One change: where it lands, as a link into the editor (the word itself,
-// with its reference; a sentence by number; a lexicon entry by form), and
-// what changes.
-export const ChangeRow = ({ row, projectId }) => {
-  const w = row.where;
-  const href = changeHref(projectId, w);
-  const title = changeTitle(w);
-  let place = null;
-  if (w?.kind === 'token') {
-    const isSentence = !w.word;
-    place = (
-      <>
-        <a
-          href={href}
-          target="_blank"
-          rel="noopener noreferrer"
-          title={title}
-          className="font-medium text-foreground hover:underline"
-        >
-          {isSentence ? `Sentence ${w.sentence}` : w.surface}
-        </a>
-        <span className="ml-1.5 text-muted-foreground">
-          {isSentence ? w.surface : changeRef(w)}
-        </span>
-      </>
-    );
-  } else if (w?.kind === 'entry') {
-    place = href ? (
-      <a
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        title={title}
-        className="font-medium text-foreground hover:underline"
-      >
-        {w.form}
-      </a>
-    ) : (
-      <span className="font-medium">{w.form}</span>
-    );
-  }
+// One change: where it lands, as a link into the editor, and what changes.
+// The app says what that place is called and where it opens
+// (`adapter.changePlace`); a change with no location shows its label alone.
+export const ChangeRow = ({ row, projectId, adapter }) => {
+  const place = adapter.changePlace(projectId, row.where);
   return (
     <tr className="align-top">
       <td className="w-px whitespace-nowrap py-0.5 pr-4">
-        <span className="inline-block max-w-[18rem] truncate align-bottom">{place}</span>
+        <span className="inline-block max-w-[18rem] truncate align-bottom">
+          {place && (
+            <>
+              {place.href ? (
+                <a
+                  href={place.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={place.title}
+                  className="font-medium text-foreground hover:underline"
+                >
+                  {place.name}
+                </a>
+              ) : (
+                <span className="font-medium">{place.name}</span>
+              )}
+              {place.detail && <span className="ml-1.5 text-muted-foreground">{place.detail}</span>}
+            </>
+          )}
+        </span>
       </td>
       <td className="py-0.5">{row.change ?? row.label}</td>
     </tr>
