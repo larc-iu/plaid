@@ -83,7 +83,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ./plaid-client-py
-          pip install -e './plaid-igt-agent[dev]'
+          pip install -e './plaid-agent[dev]'
       # `bb test` is every suite: the Clojure core, all three SPAs, and the
       # Python assistant and services. Shared with release.yml and local dev
       # (bb/pipeline.clj), so the gate can't drift.

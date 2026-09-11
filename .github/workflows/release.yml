@@ -73,7 +73,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ./plaid-client-py
-          pip install -e './plaid-igt-agent[dev]'
+          pip install -e './plaid-agent[dev]'
       - name: Run tests
         run: bb test
 
@@ -192,7 +192,7 @@ jobs:
       # Keyless via OIDC trusted publishing. Configure a trusted publisher (or a
       # pending publisher for the first release) on PyPI for EACH Python
       # distribution `bb build` stages: `larc-plaid-client` and
-      # `larc-plaid-igt-agent` (the publish action uploads every wheel/sdist in
+      # `larc-plaid-agent` (the publish action uploads every wheel/sdist in
       # pydist/). `skip-existing` makes re-runs idempotent.
       - name: Collect Python dists
         run: |
@@ -239,7 +239,7 @@ jobs:
           A bring-your-own-model chat assistant for IGT projects: the **Assistant** tab on a project page. Users ask questions about the corpus and lexicon or ask for edits; edits come back as a plan the user approves, then are applied under that user's own account. Nothing runs unless the instance operator starts the service:
 
           1. On any machine that can reach the server, with Python 3.11+:
-             \`pip install --pre larc-plaid-igt-agent==$PYVER\`
+             \`pip install --pre larc-plaid-agent==$PYVER\`
           2. Create a named API token for the account the service will register with (Profile → API Tokens). The account needs **writer** access on the projects it serves; it never edits with its own credentials.
           3. Start it, naming any model litellm supports and the provider's key in the usual environment variable:
              \`\`\`

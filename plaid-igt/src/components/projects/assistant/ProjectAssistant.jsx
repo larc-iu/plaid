@@ -34,7 +34,7 @@ import {
 } from './jobs.js';
 
 // The Assistant tab: a chat with whatever `assist` service(s) the operator
-// runs (see ../../../../../plaid-igt-agent), laid out like any chat app: past
+// runs (see ../../../../../plaid-agent), laid out like any chat app: past
 // conversations on the left, the active one on the right.
 //
 // The record is the conversation. It lives in the user's key/value store

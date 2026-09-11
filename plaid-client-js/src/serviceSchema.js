@@ -62,7 +62,7 @@ export const TASKS = Object.freeze({
    * holds them as proposals until a person types into one.
    */
   DETECT_SPEECH: "detect-speech",
-  /** A conversational assistant over a project (chat turns; see plaid-igt-agent). */
+  /** A conversational assistant over a project (chat turns; see plaid-agent). */
   ASSIST: "assist",
 });
 

@@ -1,7 +1,7 @@
 // A plan's changes as the card shows them: grouped by where they land (a
 // document, a lexicon), each row linking to the place in the editor.
 //
-// The service locates every change (plaid-igt-agent's changes.py): `where`
+// The service locates every change (plaid-agent's igt/changes.py): `where`
 // names the document and, for a token change, the sentence, word, and
 // morpheme, with the word's offset for the editor's deep link; `change` is
 // the label without that location. A plan from before this existed, or a

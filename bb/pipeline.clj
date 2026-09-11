@@ -100,9 +100,9 @@
   ;; app's own domain modules through node and SKIPS ITSELF when plaid-igt's
   ;; node_modules are missing, which would make it pass by not running.
   (let [py (python-exe)]
-    (step "Run the Python test suite (plaid-igt-agent)")
+    (step "Run the Python test suite (plaid-agent)")
     ;; The live suites talk to a running server, which a gate does not have.
-    (p/shell {:dir "plaid-igt-agent"} py "-m" "pytest" "-q"
+    (p/shell {:dir "plaid-agent"} py "-m" "pytest" "-q"
              "--ignore=tests/test_live_corpus.py"
              "--ignore=tests/test_live_dictionary.py")
     (step "Run the Python test suite (plaid-igt services)")
@@ -155,10 +155,11 @@
 
 (def python-packages
   "The Python distributions a release publishes, in build order: the client,
-  then the IGT assistant service (which depends on the client at the same
-  release, so its floor is stamped alongside its version)."
+  then the assistant services (one distribution for every app's assistant,
+  which depends on the client at the same release, so its floor is stamped
+  alongside its version)."
   [{:dir "plaid-client-py" :label "Python client"}
-   {:dir "plaid-igt-agent" :label "IGT assistant (plaid-igt-agent)" :pin-client? true}])
+   {:dir "plaid-agent" :label "Assistant services (plaid-agent)" :pin-client? true}])
 
 (defn python-pyprojects []
   (mapv #(str (:dir %) "/pyproject.toml") python-packages))

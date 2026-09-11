@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "larc-plaid-agent"
+version = "0.0.0"
+description = "Bring-your-own-model LLM assistant services for Plaid projects"
+requires-python = ">=3.11"
+# The client floor is stamped to the release version at build time (bb build).
+# httpx already arrives with litellm, but the web tools use it directly.
+dependencies = ["larc-plaid-client", "litellm>=1.70", "regex", "httpx"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+# One distribution, two services. The harness they share is subtle enough
+# (the request lifecycle, the record's ownership, the batching) to want a
+# single copy that moves with both, and an operator installing Plaid gets the
+# assistant for whichever app they run.
+[project.scripts]
+plaid-igt-agent = "plaid_agent.igt.service:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/plaid_agent"]
