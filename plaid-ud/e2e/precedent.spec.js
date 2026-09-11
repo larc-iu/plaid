@@ -127,6 +127,40 @@ test('Escape leaves the precedent list and keeps the value', async ({ page }) =>
   await expect.poll(lemmaValues, { timeout: 8000 }).toContain('Dog');
 });
 
+test('leaving the precedent list leaves a cell you can still type in', async ({ page }) => {
+  // A lemma cell has no list of its own, so showing precedent swaps the plain
+  // input for a combobox and leaving swaps it back. React fires no blur when it
+  // unmounts a focused element, so the cell was left thinking it was being
+  // edited with nothing focused: the next character went nowhere and the cell
+  // stopped following the stored value. The old test asserted the option count
+  // and the value, which both survived it.
+  await openAnnotate(page);
+  const cell = page.locator(`[id="${S.morphIds[7]}-lemma"]`);
+  await cell.click();
+  await cell.press('Alt+ArrowDown');
+  await expect(page.getByRole('option', { name: /^dog/ })).toBeVisible({ timeout: 8000 });
+
+  await cell.press('Escape');
+  await expect(cell).toBeFocused();
+
+  await cell.fill('hound');
+  await cell.press('Tab');
+  await expect.poll(lemmaValues, { timeout: 8000 }).toContain('hound');
+});
+
+test('typing over the precedent list keeps the character you typed', async ({ page }) => {
+  // The same swap, taken by typing instead of Escape.
+  await openAnnotate(page);
+  const cell = page.locator(`[id="${S.morphIds[7]}-lemma"]`);
+  await cell.click();
+  await cell.press('Alt+ArrowDown');
+  await expect(page.getByRole('option', { name: /^dog/ })).toBeVisible({ timeout: 8000 });
+
+  await cell.pressSequentially('wolf');
+  await expect(cell).toBeFocused();
+  await expect(cell).toHaveValue(/wolf/);
+});
+
 test('a word with no precedent gets no list, and says so by not changing', async ({ page }) => {
   await openAnnotate(page);
   // "sleeps" is the only word with that form, and its own lemma is the only

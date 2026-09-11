@@ -263,7 +263,17 @@ const EditableCell = React.memo(
     const hadPrecedent = useRef(false);
     useEffect(() => {
       if (hadPrecedent.current && !precedent && isEditingRef.current) {
-        inputRef.current?.focus();
+        const el = inputRef.current;
+        if (el) {
+          el.focus();
+          // Coming back from the list is not ARRIVING at the cell, so the
+          // select-all that focus asks for has to be called off: the text is
+          // what the annotator has already typed, and selecting it means the
+          // next character replaces it ("wolf" arrived as "olf").
+          selectPendingRef.current = false;
+          const end = el.value.length;
+          el.setSelectionRange?.(end, end);
+        }
       }
       hadPrecedent.current = !!precedent;
     }, [precedent]);
