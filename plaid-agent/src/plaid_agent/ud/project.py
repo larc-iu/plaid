@@ -481,21 +481,37 @@ def render_sentence(s: Sentence, *, header: bool = True) -> str:
     return '\n'.join(out)
 
 
-def render_document(doc: UdDoc, *, from_sentence: int = None, to_sentence: int = None) -> str:
-    """A document as the model reads it. A range keeps a long document inside
-    one tool result without the model losing where it is."""
+def render_document(doc: UdDoc, *, from_sentence: int = None, to_sentence: int = None,
+                    indexes: Optional[List[int]] = None) -> str:
+    """A document as the model reads it.
+
+    Either a RANGE, which keeps a long document inside one tool result without
+    the model losing where it is, or an explicit list of sentence ``indexes``,
+    which is what a reader wants once it knows where to look: a long document
+    otherwise costs one call per page, and paging is the whole step budget.
+    """
     sentences = doc.sentences
-    lo = max(1, from_sentence or 1)
-    hi = min(len(sentences), to_sentence or len(sentences))
     out = [f'Document "{doc.name}" ({len(sentences)} sentences, {doc.word_count} words)']
     for k in sorted(doc.metadata):
         if isinstance(doc.metadata[k], str) and doc.metadata[k]:
             out.append(f'# {k} = {doc.metadata[k]}')
-    if lo > 1 or hi < len(sentences):
-        out.append(f'Showing sentences {lo} to {hi}.')
     if not sentences:
         out.append('The document has no sentences yet: it has not been tokenized.')
-    for s in sentences[lo - 1:hi]:
+        return '\n'.join(out)
+
+    if indexes is not None:
+        picked = [i for i in indexes if 1 <= i <= len(sentences)]
+        out.append('Showing sentences ' + ', '.join(str(i) for i in picked) + '.'
+                   if picked else 'None of those sentences exist.')
+        chosen = [sentences[i - 1] for i in picked]
+    else:
+        lo = max(1, from_sentence or 1)
+        hi = min(len(sentences), to_sentence or len(sentences))
+        if lo > 1 or hi < len(sentences):
+            out.append(f'Showing sentences {lo} to {hi}.')
+        chosen = sentences[lo - 1:hi]
+
+    for s in chosen:
         out.append('')
         out.append(render_sentence(s))
     return '\n'.join(out)

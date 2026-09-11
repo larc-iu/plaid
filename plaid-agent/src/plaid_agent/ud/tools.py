@@ -204,9 +204,33 @@ def t_list_documents(ws: Workspace, pattern: str = None, limit: int = 50, offset
 MAX_SENTENCES_PER_READ = 40
 
 
+def _sentence_numbers(sentences) -> List[int]:
+    """The sentence numbers a ``sentences`` argument names. Accepts what a read
+    prints and what a search returns: 34, "34", "s34", and "s34.w2" (the word's
+    sentence), in any mix."""
+    out: List[int] = []
+    for item in (sentences if isinstance(sentences, list) else [sentences]):
+        text = str(item).strip()
+        head = text.split('.')[0]
+        if head[:1].lower() == 's':
+            head = head[1:]
+        if not head.isdigit():
+            raise ToolError(f'"{item}" does not name a sentence. Use a number or a reference '
+                            f'like "s34".')
+        n = int(head)
+        if n not in out:
+            out.append(n)
+    return out
+
+
 def t_read_document(ws: Workspace, document: str = None, from_sentence: int = None,
-                    to_sentence: int = None) -> str:
+                    to_sentence: int = None, sentences=None) -> str:
     doc = ws.doc(document)
+    # Named sentences beat a range: a reader that already knows where to look
+    # should not have to page a long document to get there.
+    if sentences:
+        picked = _sentence_numbers(sentences)[:MAX_SENTENCES_PER_READ]
+        return _truncate(render_document(doc, indexes=picked))
     lo = max(1, int(from_sentence or 1))
     hi = int(to_sentence) if to_sentence else min(len(doc.sentences), lo + MAX_SENTENCES_PER_READ - 1)
     if hi - lo + 1 > MAX_SENTENCES_PER_READ:
@@ -494,8 +518,15 @@ TOOLS = [
         'Read a document as CoNLL-U rows: one line per word with its form, lemma, UPOS, XPOS, features, '
         'head and deprel, and a range line for each multi-word token. A value followed by ~ was made by '
         'a machine and nobody has confirmed it; ^ is a contributor\'s unreviewed work. Up to 40 '
-        'sentences per call.',
+        'sentences per call. WHEN YOU ALREADY KNOW WHICH SENTENCES YOU NEED (a search told you, or an '
+        'earlier read did), name them in `sentences` and get them all in ONE call. Paging a long '
+        'document with from_sentence/to_sentence costs a call per page and will run out of steps '
+        'before it runs out of document.',
         {'document': _DOC,
+         'sentences': {'type': 'array', 'items': {'type': 'string'},
+                       'description': 'Just these sentences, e.g. ["s34","s64","s104"]. A word '
+                                      'reference like "s34.w2" names its sentence. Overrides the '
+                                      'range below.'},
          'from_sentence': {'type': 'integer', 'description': 'First sentence, 1-based (default 1).'},
          'to_sentence': {'type': 'integer', 'description': 'Last sentence, inclusive.'}},
         ['document']),

@@ -418,3 +418,36 @@ def test_collapsing_to_one_word_drops_the_tokens_form(ws):
     assert patch == {'form': None}
     # One word spelled like its token needs no Form span, only a lemma.
     assert len(ws.client.batches[1]) == 1
+
+
+def test_a_read_can_name_the_sentences_it_wants(ws):
+    """The failure this fixes: asked to plan lemmas for words a search had
+    already located, the model paged a 112-sentence document nine times and ran
+    out of steps before it staged anything. Naming the sentences is one call."""
+    out = run(ws, 'read_document', document='Viaje', sentences=['s2'])
+    assert 'Showing sentences 2.' in out
+    assert 'Corre' in out and 'Vamos' not in out
+
+
+def test_a_read_accepts_every_shape_a_reference_comes_in(ws):
+    """A search returns "s2.w1", a read prints "2", and a person writes "s2".
+    All three name the same sentence, and mixing them is not an error."""
+    same = [run(ws, 'read_document', document='Viaje', sentences=s)
+            for s in (['s2'], [2], ['2'], ['s2.w1'])]
+    assert len(set(same)) == 1, 'the same sentence read four ways differed'
+    # Duplicates collapse rather than printing the sentence twice.
+    once = run(ws, 'read_document', document='Viaje', sentences=['s2', 's2.w1', 2])
+    assert once == same[0]
+
+
+def test_naming_a_sentence_that_is_not_one_says_so(ws):
+    assert 'does not name a sentence' in run(ws, 'read_document', document='Viaje',
+                                             sentences=['the second one'])
+
+
+def test_naming_a_sentence_beyond_the_document_is_not_an_error(ws):
+    """A model working from a stale count should get an answer, not a failure:
+    the ones that exist are shown and the rest are simply absent."""
+    out = run(ws, 'read_document', document='Viaje', sentences=['s1', 's99'])
+    assert 'Showing sentences 1.' in out
+    assert 'None of those' in run(ws, 'read_document', document='Viaje', sentences=['s99'])

@@ -42,7 +42,10 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
         return 'Listed the documents' + (f' matching {q(a["pattern"])}' if a.get('pattern') else '')
     if name == 'read_document':
         span = ''
-        if a.get('from_sentence') or a.get('to_sentence'):
+        picked = a.get('sentences')
+        if picked:
+            span = f' ({plural(len(picked), "sentence")})'
+        elif a.get('from_sentence') or a.get('to_sentence'):
             span = f' (sentences {a.get("from_sentence") or 1}'
             span += f'–{a["to_sentence"]})' if a.get('to_sentence') else ' on)'
         return f'Read {q(a.get("document"))}{span}'
