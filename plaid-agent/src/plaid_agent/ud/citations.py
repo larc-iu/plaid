@@ -28,8 +28,10 @@ MAX_FOCUS = 20          # marked words in one citation
 CITE_DOC_BUDGET = 8     # documents one reply's citations may fetch that the turn did not read
 
 # One part of a ref="…" list: a whole reference, or only the piece that differs
-# from the one before it ("s3.w2,w5").
-PART_RE = re.compile(r'(?:s(\d+))?\.?(?:w(\d+)(?:-(\d+))?)?')
+# from the one before it ("s3.w2,w5"). The `w` is optional on a continuation,
+# because REF above accepts "s3.w2,3" and a part that matched nothing silently
+# repeated the word before it.
+PART_RE = re.compile(r'(?:s(\d+))?\.?(?:w?(\d+)(?:-(\d+))?)?')
 
 
 def parse_refs(ref: str) -> List[str]:

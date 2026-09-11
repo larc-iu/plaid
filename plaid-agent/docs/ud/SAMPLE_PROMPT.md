@@ -54,6 +54,7 @@ The subject follows the verb here:
 <cite doc="Viaje" ref="s3"/>
 
 while in <cite doc="Viaje" ref="s5"/> it precedes it.
+- SAY HOW AN EXAMPLE SHOULD BE DRAWN, with view= on the tag. A full CoNLL-U table is rarely what a claim rests on, and it is a lot to read in a narrow panel. view="tree" draws the dependency arcs over the words, the way the UD documentation does: use it whenever the point is about heads, relations, or the shape of the tree. view="grid" draws only the columns you name, as in view="grid" fields="upos": use it when the point is about one or two columns. Leave view off for a point that really does need the whole table. The reader can switch any example to any of the three, so this is a starting view and not a decision made for them.
 
 Looking outside the project:
 - web_search and read_url reach the WEB. Use them only for background this project cannot supply: what a dependency relation conventionally covers, how a construction is analyzed in the UD guidelines or in related treebanks, a reference for a claim. Never use them to answer a question about this corpus: the project tools are the only source for that.
@@ -65,7 +66,7 @@ Looking outside the project:
 
 ## Tools
 
-21 tools, in the order the model receives them: 7 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
+26 tools, in the order the model receives them: 10 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
 
 ### project_overview
 
@@ -83,9 +84,10 @@ The documents by name, a page at a time, optionally filtered by a name substring
 
 ### read_document
 
-Read a document as CoNLL-U rows: one line per word with its form, lemma, UPOS, XPOS, features, head and deprel, and a range line for each multi-word token. A value followed by ~ was made by a machine and nobody has confirmed it; ^ is a contributor's unreviewed work. Up to 40 sentences per call.
+Read a document as CoNLL-U rows: one line per word with its form, lemma, UPOS, XPOS, features, head and deprel, and a range line for each multi-word token. A value followed by ~ was made by a machine and nobody has confirmed it; ^ is a contributor's unreviewed work. Up to 40 sentences per call. WHEN YOU ALREADY KNOW WHICH SENTENCES YOU NEED (a search told you, or an earlier read did), name them in `sentences` and get them all in ONE call. Paging a long document with from_sentence/to_sentence costs a call per page and will run out of steps before it runs out of document.
 
 - `document` (string, required): Document id or exact name (see project_overview).
+- `sentences` (array of string): Just these sentences, e.g. ["s34","s64","s104"]. A word reference like "s34.w2" names its sentence. Overrides the range below.
 - `from_sentence` (integer): First sentence, 1-based (default 1).
 - `to_sentence` (integer): Last sentence, inclusive.
 
@@ -147,6 +149,40 @@ PLAN: say which WORDS a token holds. Two or more makes it a multi-word token (Sp
 - `ref` (string, required): The token: "s3.w2", or "s3.w2-3" if it is already a multi-word token.
 - `forms` (array of string, required): The words, in order, e.g. ["a", "el"].
 
+### split_sentence
+
+PLAN: start a new sentence at this word, so the sentence it is in becomes two. Any dependency relation that would end up spanning the two is deleted, because a relation never crosses a sentence. Sentences after it renumber, so this is the ONLY change a plan may carry for this document: every other reference would move.
+
+- `document` (string, required): Document id or exact name (see project_overview).
+- `ref` (string, required): The word the new sentence starts at, "s3.w5".
+
+### merge_sentences
+
+PLAN: join this sentence onto the one before it, so the two become one. Name the SECOND of them: "s3" joins s2 and s3. Nothing is lost, since merging only widens a sentence. Sentences after it renumber, so this is the ONLY change a plan may carry for this document.
+
+- `document` (string, required): Document id or exact name (see project_overview).
+- `ref` (string, required): The second of the two sentences, "s3".
+
+### query_help
+
+The Plaid query language, and this project's layer names. Call it before writing a query; it costs nothing until you need it.
+
+No parameters.
+
+### query
+
+Run one read-only Plaid query over this project. The escape hatch for a question the other reads cannot express: two columns at once, adjacency, a join. Layers are named by name. Call query_help first.
+
+- `query` (object, required): The query object: find, where, return, limit, order_by. See query_help.
+- `limit` (integer): Rows to show (default 50, max 500).
+
+### restore_document
+
+PLAN: put a document back as it was at a moment in its history, every layer of it. The plan shows what would change, from the server's own dry run, so it is not a guess. Maintainers only. It rewrites the whole document, so it must be the ONLY change in its plan. recent_changes prints an as_of instant for every change.
+
+- `document` (string, required): Document id or exact name (see project_overview).
+- `as_of` (string, required): An ISO-8601 instant, e.g. 2026-09-05T18:45:49Z.
+
 ### plan_status
 
 Every change planned so far in this turn, numbered.
@@ -193,12 +229,12 @@ Places where the corpus disagrees with itself: one lemma under several UPOS, one
 
 ### worklist
 
-What is unfinished, counted per document so a session has somewhere to start. kind "unverified" is machine output nobody has confirmed, "contributed" a contributor's unreviewed work, "missing" words with no value in a column at all.
+What is unfinished. kind "unverified" is machine output nobody has confirmed, "contributed" a contributor's unreviewed work, "missing" words with no value in a column at all. Without a document it counts per document, so a session has somewhere to start. WITH kind "missing" AND a document it names the words themselves, by reference: that is the list to plan from, and it saves reading or searching the document to find them.
 
 - `kind` (one of `unverified`, `contributed`, `missing`)
 - `field` (one of `lemma`, `upos`, `xpos`, `features`): Which column: lemma, upos, xpos or features.
 - `document` (string): Document id or exact name (see project_overview).
-- `limit` (integer)
+- `limit` (integer): How many rows per column (default 20, max 100).
 
 ### recent_changes
 

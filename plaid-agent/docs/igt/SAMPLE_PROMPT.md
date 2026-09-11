@@ -416,7 +416,7 @@ Ranked counts with document dispersion for wordforms (default), morpheme forms, 
 
 ### worklist
 
-The unfinished work, grouped by form and ordered by frequency: kind="unlinked" (no lexicon link), "unglossed" (no value in `field`, default the first morpheme field), "unanalyzed" (no analysis at all), "unverified" (annotations awaiting review: machine-made and unconfirmed, or a contributor's), or "contributed" (contributors' unreviewed work only; user= narrows to one person). Use this to decide what to do next.
+The unfinished work, grouped by form and ordered by frequency: kind="unlinked" (no lexicon link), "unglossed" (no value in `field`, default the first morpheme field), "unanalyzed" (no analysis at all), "unverified" (annotations awaiting review: machine-made and unconfirmed, or a contributor's), or "contributed" (contributors' unreviewed work only; user= narrows to one person). Use this to decide what to do next. Across the project each form shows a few examples; NAME A DOCUMENT and it lists every reference instead, which is the list to plan from and saves reading the document to find them.
 
 - `kind` (one of `unlinked`, `unglossed`, `unanalyzed`, `unverified`, `contributed`)
 - `field` (string)

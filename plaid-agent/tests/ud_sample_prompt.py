@@ -41,7 +41,8 @@ which goes back to the user to approve or discard.
 '''
 
 
-def main() -> None:
+def render() -> str:
+    """The snapshot as text, so a test can hold the file to it."""
     client = ud_client()
     ws = Workspace(client, load_project(client, PID))
     ws.web = object()  # so the web tools are declared
@@ -56,9 +57,13 @@ def main() -> None:
               '```text', call_tool(ws, 'project_overview', {}).rstrip(), '```\n',
               '`read_document` on "Viaje":\n',
               '```text', call_tool(ws, 'read_document', {'document': 'Viaje'}).rstrip(), '```\n']
+    return '\n'.join(parts)
+
+
+def main() -> None:
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, 'w', encoding='utf-8') as fh:
-        fh.write('\n'.join(parts))
+        fh.write(render())
     print(f'wrote {os.path.normpath(OUT)}: {len(TOOLS)} tools')
 
 

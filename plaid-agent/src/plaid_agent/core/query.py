@@ -134,7 +134,14 @@ def run(client, q: Dict[str, Any], project_id: str) -> Dict[str, Any]:
     ret = q.get('return')
     if not isinstance(ret, dict) and ret != 'count':
         q['return'] = ret or 'entities'
-        q['limit'] = min(int(q.get('limit') or 1000), 1000)
+        # The model writes this object, so the limit inside it is as likely to
+        # be "20 or so" as a number. Every other refusal here is a sentence it
+        # can act on, and int() raising would be the one that is not.
+        raw = q.get('limit')
+        try:
+            q['limit'] = min(int(raw or 1000), 1000) if raw is not None else 1000
+        except (TypeError, ValueError):
+            raise QueryRefused(f'"limit" has to be a number, not {raw!r}.')
     try:
         return client.query(q)
     except Exception as e:  # noqa: BLE001 - the engine's complaint is the answer

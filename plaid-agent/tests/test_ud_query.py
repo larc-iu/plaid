@@ -96,3 +96,12 @@ def test_the_help_carries_the_language_itself(ws):
     help_text = call_tool(ws, 'query_help', {})
     for clause in ('["span"', '["token"', '["covers"', '["precedes"', '["within"'):
         assert clause in help_text, clause
+
+
+def test_a_limit_the_model_wrote_into_the_query_is_refused_in_words(ws):
+    """Every other refusal here is a sentence the model can act on. This one
+    reached int() and came back as a Python message about base 10."""
+    from plaid_agent.core.query import run
+
+    with pytest.raises(QueryRefused, match='has to be a number'):
+        run(ws.client, {'where': [], 'find': ['?t'], 'limit': 'about twenty'}, 'p1')

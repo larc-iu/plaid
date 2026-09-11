@@ -40,7 +40,8 @@ which goes back to the user to approve or discard.
 '''
 
 
-def main() -> None:
+def render() -> str:
+    """The snapshot as text, so a test can hold the file to it."""
     ws = scan_ws(FakeClient())
     parts = [HEADER, '\n## System prompt\n', '```text', build_system_prompt(ws.project, web=True).rstrip(), '```\n',
              f'## Tools\n\n{len(TOOLS)} tools, in the order the model receives them: {len(WRITE_TOOLS)} plan a change '
@@ -52,8 +53,12 @@ def main() -> None:
               '```text', call_tool(ws, 'project_overview', {}).rstrip(), '```\n',
               '`read_document` on "Text 1":\n',
               '```text', call_tool(ws, 'read_document', {'document': 'Text 1'}).rstrip(), '```\n']
+    return '\n'.join(parts)
+
+
+def main() -> None:
     with open(OUT, 'w', encoding='utf-8') as fh:
-        fh.write('\n'.join(parts))
+        fh.write(render())
     print(f'wrote {os.path.normpath(OUT)}: {len(TOOLS)} tools')
 
 

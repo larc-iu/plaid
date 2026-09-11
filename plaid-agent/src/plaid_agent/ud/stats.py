@@ -52,6 +52,20 @@ def _hits_in(doc: UdDoc, field: str, matches) -> List[tuple]:
     return out
 
 
+def _awaiting_in(doc: UdDoc, field: str, state: str) -> List[tuple]:
+    """[(sentence, word)] in one document whose ``field`` is unconfirmed and
+    in this provenance state. `prov_state` folds "confirmed" into 'verified',
+    so asking for 'machine' or 'contributed' already excludes what is done."""
+    from plaid_client.provenance import prov_state
+    out = []
+    for s in doc.sentences:
+        for w in s.words:
+            sp = w.fields.get(field)
+            if sp and sp.value and prov_state(sp.metadata) == state:
+                out.append((s, w))
+    return out
+
+
 def t_search(ws: Workspace, field: str = None, pattern: str = None, document: str = None,
              whole: bool = False, regex: bool = False, limit: int = 30) -> str:
     """Words whose field matches, with the sentence each sits in."""
@@ -273,6 +287,27 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
 
     stamp = {'prov': 'contributed'} if kind == 'contributed' else {'prov': 'inferred'}
     word = 'a contributor\'s unreviewed' if kind == 'contributed' else 'unconfirmed machine'
+    # Naming a document answers WHICH values, the same way `missing` does.
+    # Counting a document the model already named leaves it nothing to act on.
+    if document:
+        doc = ws.doc(document)
+        state = 'contributed' if kind == 'contributed' else 'machine'
+        for f in fields:
+            hits = _awaiting_in(doc, f, state)
+            if not hits:
+                out.append(f'{f}: none waiting in "{doc.name}".')
+                continue
+            out.append(f'{f}: {len(hits)} {word} value(s) in "{doc.name}"')
+            for sent, w in hits[:limit]:
+                out.append(f'  {word_ref(sent, w)}  {_value(w, f)}   {sent.text[:90]}')
+            if len(hits) > limit:
+                out.append(f'  … and {len(hits) - limit} more (raise limit)')
+        if not out:
+            return f'Nothing is waiting for review in "{doc.name}" ({kind}).'
+        out.append('')
+        out.append('confirm marks these as reviewed; discard_predictions throws the machine ones away.')
+        return _truncate('\n'.join(out))
+
     for f in fields:
         where = [c.field(f, '?s', metadata=stamp), c.unconfirmed('?s')]
         docs = c.documents_with(where, '?s')

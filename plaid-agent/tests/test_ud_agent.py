@@ -85,6 +85,10 @@ def test_a_ref_list_repeats_what_it_leaves_out():
     assert parse_refs('s3.w2,w5') == ['s3.w2', 's3.w5']
     assert parse_refs('s3') == ['s3']
     assert parse_refs('s1.w2-3') == ['s1.w2-3']
+    # REF accepts a bare number after the comma, so parse_refs has to as well.
+    # It did not, and the part that matched nothing silently repeated the word
+    # before it, so the second word was never marked.
+    assert parse_refs('s3.w2,3') == ['s3.w2', 's3.w3']
 
 
 def test_a_citation_becomes_the_sentence_with_its_words_marked(ws):
