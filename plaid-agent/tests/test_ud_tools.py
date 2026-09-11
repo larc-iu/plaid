@@ -467,5 +467,38 @@ def test_the_worklist_names_the_words_when_it_is_given_a_document(ws):
     assert 's2.w1' in out or 's1.w1' in out
     assert 'word(s) with none in "Viaje"' in out or 'none missing' in out
 
+def test_the_worklist_names_the_words_for_the_review_kinds_too(ws):
+    """Only `missing` listed them. Asked which values in a named document were
+    unconfirmed, the answer was "1 value, in 1 document" and the name of the
+    document the model had just given, which is nothing to act on."""
+    out = run(ws, 'worklist', kind='unverified', field='upos', document='Viaje')
+    assert 's1.w4' in out, out
+    assert 'in 1 document(s)' not in out
+
+
+def test_a_failed_parse_does_not_claim_that_nothing_was_written(ws, monkeypatch):
+    """A plan may write to one document and parse another, so by the time the
+    parser answers, earlier batches stand committed. The count was hardcoded to
+    zero, and the user was told "Nothing was written" over changes that were
+    in the database."""
+    import plaid_client.services as services
+    from plaid_agent.core.plan import PlanError
+
+    run(ws, 'set_field', document='Viaje', refs=['s1.w1'], field='lemma', value='ir')
+    # A parse of a DIFFERENT document, which is the combination the tools allow.
+    ws.ops.append({'kind': 'run_parse', 'document_ids': ['ud-other'], 'project_id': PID,
+                   'service_id': 'stanza-parser', 'language': 'es',
+                   'label': 'parse another document'})
+
+    def refuse(*a, **kw):
+        raise RuntimeError('the parser is not configured for es')
+
+    monkeypatch.setattr(services, 'request_service', refuse)
+    with pytest.raises(PlanError) as e:
+        execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified')
+    assert e.value.applied > 0, 'the lemma batch had already committed'
+    assert e.value.total == len(ws.ops)
+
+
 # The corpus-wide branch of worklist goes through the query engine, which the
 # fake client does not have. tests/test_live_corpus.py covers that side.

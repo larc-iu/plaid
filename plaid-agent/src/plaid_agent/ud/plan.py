@@ -140,20 +140,31 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
     validate_ops(ops)
     ops, notes = normalize_ops(ops)
     counts: Counter = Counter()
+    # Only a failure inside `flush` carries `_applied` out with it. Everything
+    # else raised mid-plan (a parser refusing, a word that could not be made)
+    # arrives bare, and reporting 0 there told the user "Nothing was written"
+    # while earlier batches stood committed. The batcher itself is the count.
+    tracker: Dict[str, Any] = {}
     try:
-        return _execute(client, ops, label=label, counts=counts, notes=notes, stamps=stamps)
+        return _execute(client, ops, label=label, counts=counts, notes=notes, stamps=stamps,
+                        tracker=tracker)
     except PlanError:
         raise
     except Exception as e:
         applied = getattr(e, '_applied', None)
-        raise PlanError(f'{type(e).__name__}: {e}', applied if applied is not None else 0, len(ops)) from e
+        if applied is None:
+            b = tracker.get('batcher')
+            applied = b.applied if b is not None else 0
+        raise PlanError(f'{type(e).__name__}: {e}', applied, len(ops)) from e
 
 
-def _execute(client, ops, *, label, counts, notes, stamps: Stamps) -> Dict[str, int]:
+def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None) -> Dict[str, int]:
     stamp, restamp = stamps.stamp, stamps.restamp
 
     with client.operation(label):
         b = TrackingBatcher(client)
+        if tracker is not None:
+            tracker['batcher'] = b
         restores: List[Dict[str, Any]] = []
 
         # --- pass 1: the columns, and any lemma span a head is going to need ---
@@ -256,7 +267,7 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps) -> Dict[str, 
             if op.get('kind') != 'run_parse':
                 continue
             for did in op['document_ids']:
-                _parse(client, op, did, notes)
+                _parse(client, op, did, notes, b, len(ops))
                 counts['parsed documents'] += 1
 
     result = dict(counts)
@@ -307,8 +318,12 @@ def summarize(ops: List[Dict[str, Any]]) -> str:
     return ', '.join(f'{n} {_plural(name, n)}' for name, n in c.most_common())
 
 
-def _parse(client, op, document_id: str, notes: List[str]) -> None:
-    """Ask the project's parser to re-parse one document, and wait."""
+def _parse(client, op, document_id: str, notes: List[str], b, total: int) -> None:
+    """Ask the project's parser to re-parse one document, and wait.
+
+    A plan may write to one document and parse another, so by the time the
+    parser answers, earlier batches may already stand. The count comes from
+    the batcher rather than being assumed to be zero."""
     from plaid_client.services import request_service
     from ..core.plan import PlanError
     try:
@@ -321,5 +336,5 @@ def _parse(client, op, document_id: str, notes: List[str]) -> None:
         # so saying it failed would be worse than saying what is true.
         notes.append(f'the parser stopped reporting on {document_id}; it may still be running')
     except Exception as e:  # noqa: BLE001 - whatever the service said, the user needs it
-        raise PlanError(f'the parser refused {document_id}: {e}', 0, 1) from e
+        raise PlanError(f'the parser refused {document_id}: {e}', b.applied, total) from e
 

@@ -150,6 +150,11 @@ def build_meta(prev: Optional[Dict[str, Any]], conv_id: str, conv: Dict[str, Any
         'model': model or prev.get('model'),
         'turns': sum(1 for d in conv['display'] if d.get('kind') == 'user'),
         'pending': pending,
+        # The document a docked conversation is about. The app writes it when
+        # it opens the conversation and never again, so this rewrite is the
+        # only thing that can lose it, and losing it means the panel starts a
+        # new thread instead of resuming the one about this document.
+        'about': prev.get('about'),
     }
 
 

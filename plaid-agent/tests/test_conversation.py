@@ -63,6 +63,19 @@ def test_title_and_meta():
     assert build_meta({'title': 'Kept'}, 'c1', conv, 's', 'm')['title'] == 'Kept'
 
 
+def test_the_document_a_docked_conversation_is_about_survives_a_write():
+    """The app writes `about` once, when it opens the conversation, and the
+    service rewrites the whole record on every settle. Dropping it meant the
+    panel forgot its document the moment the first reply landed, and opening
+    the panel on that document again started a new thread instead of resuming."""
+    conv = {'display': [{'kind': 'user', 'text': 'Which words have no lemma?'}]}
+    about = {'documentId': 'd1', 'documentName': 'Viaje'}
+    meta = build_meta({'about': about}, 'c1', conv, 's', 'm')
+    assert meta['about'] == about
+    assert build_meta(meta, 'c1', conv, None, None)['about'] == about
+    assert build_meta(None, 'c1', conv, 's', 'm')['about'] is None
+
+
 def test_items_and_plan_settlement():
     plan = {'id': 'p1', 'summary': '1 field value', 'ops': [], 'labels': [], 'documents': []}
     conv = _conv(user_item('fix it'), assistant_item('Here is a plan.', plan, [], [], '', 'm'),
