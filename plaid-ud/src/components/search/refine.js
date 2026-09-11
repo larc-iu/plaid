@@ -23,15 +23,32 @@ export const clauseFor = (node, field, value) => {
 
 // The clause added at the end of the FIRST `pattern { … }` block, which is the
 // one the count was run against. Null when there is no such block to add to.
+//
+// Braces are counted, and a brace inside a STRING is not a brace: a pattern
+// may legally look for one (`V [lemma=re".*}.*"]`), and counting it closed the
+// block early and inserted the clause into the middle of the regex. Grew's
+// strings are double-quoted with backslash escapes, which is all this has to
+// know to skip them.
 export const refinePattern = (text, node, field, value) => {
   const clause = clauseFor(node, field, value);
   if (!clause) return null;
   const open = /\bpattern\s*\{/.exec(text || '');
   if (!open) return null;
   let depth = 0;
+  let quote = null;
   for (let i = open.index + open[0].length - 1; i < text.length; i += 1) {
-    if (text[i] === '{') depth += 1;
-    else if (text[i] === '}') {
+    const c = text[i];
+    if (quote) {
+      if (c === '\\') i += 1;
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      quote = c;
+      continue;
+    }
+    if (c === '{') depth += 1;
+    else if (c === '}') {
       depth -= 1;
       if (depth > 0) continue;
       // Keep the body exactly as the user wrote it, including its line breaks.

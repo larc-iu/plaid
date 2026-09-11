@@ -39,3 +39,19 @@ test('no pattern block means nothing to narrow', () => {
   assert.equal(refinePattern('', 'V', 'upos', 'VERB'), null);
   assert.equal(refinePattern('dog', 'V', 'upos', 'VERB'), null);
 });
+
+test('a brace inside a string is not a brace', () => {
+  // A pattern may legally look for one. Counting it closed the block early and
+  // put the clause inside the regex, which then did not parse.
+  for (const text of [
+    'pattern { V [lemma=re".*}.*"] }',
+    'pattern { V [lemma=re".*{.*"] }',
+    'pattern { V [lemma=re".*[{}].*"] }',
+    'pattern { V [lemma="a\\"}\\"b"] }',
+  ]) {
+    const out = refinePattern(text, 'V', 'upos', 'VERB');
+    assert.ok(out, `declined: ${text}`);
+    assert.ok(out.endsWith('V [upos="VERB"] }'), `clause misplaced: ${out}`);
+    parse(out);
+  }
+});
