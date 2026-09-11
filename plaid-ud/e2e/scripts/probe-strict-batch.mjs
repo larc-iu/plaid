@@ -3,7 +3,7 @@
 //    (the head-repoint regression: delete-old + create-new in one batch).
 // 2. OCC must still work: after ANOTHER client modifies the document, the
 //    strict client's next write — single op or batch — must 409.
-import { PlaidClient } from '../../plaid-client-js/src/index.js';
+import { PlaidClient } from '../../../plaid-client-js/src/index.js';
 
 const API = 'http://localhost:8085';
 let failures = 0;

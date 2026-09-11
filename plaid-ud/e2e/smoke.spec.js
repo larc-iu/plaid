@@ -1,5 +1,5 @@
 import { test, expect, seedAuth, collectClientErrors, BASE_URL } from './fixtures.js';
-import { getFixture } from './fixture.js';
+import { getFixture } from './fixtureProject.js';
 
 test('text editor loads for a 3-layer UD doc', async ({ page }) => {
   const { projectId, documentId } = await getFixture();

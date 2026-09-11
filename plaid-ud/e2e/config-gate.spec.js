@@ -4,7 +4,7 @@
 // state that predated the project's layers.
 //
 // Seeds its own project (bare: no layers at all), reused by name across runs
-// the way `fixture.js` does.
+// the way `fixtureProject.js` does.
 import { test, expect } from '@playwright/test';
 import PlaidClient from '@larc-iu/plaid-client';
 import { readToken, seedAuth } from './fixtures.js';

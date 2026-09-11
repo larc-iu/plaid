@@ -14,7 +14,8 @@
     "test:unit": "node --test 'test/*.test.js'",
     "test:components": "vitest run",
     "test:components:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:own": "PLAYWRIGHT_OWN_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:5183 playwright test"
   },
   "dependencies": {
     "@larc-iu/plaid-client": "file:../plaid-client-js",

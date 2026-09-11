@@ -2,7 +2,7 @@
 // replace pattern at the client level — a single relations.create inside a
 // batch yields body.id, and delete+create in one batch leaves exactly one
 // incoming relation on the target.
-import { PlaidClient } from '../../plaid-client-js/src/index.js';
+import { PlaidClient } from '../../../plaid-client-js/src/index.js';
 
 const client = await PlaidClient.login('http://localhost:8085', 'a@b.com', 'password');
 const project = await client.projects.create(`probe-relbatch-${Date.now()}`);

@@ -26,7 +26,7 @@
 // it, so this keeps working as the parser changes.
 import PlaidClient from '@larc-iu/plaid-client';
 import { readToken } from '../fixtures.js';
-import { getFixture } from '../fixture.js';
+import { getFixture } from '../fixtureProject.js';
 
 const BASE_URL = 'http://localhost:8085';
 const SERVICE_ID = 'stanza-parser';

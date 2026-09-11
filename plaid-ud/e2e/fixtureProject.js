@@ -71,7 +71,7 @@ export async function getFixture() {
   return cached;
 }
 
-// CLI mode: `node e2e/fixture.js` prints the IDs and exits.
+// CLI mode: `node e2e/fixtureProject.js` prints the IDs and exits.
 if (import.meta.url === `file://${process.argv[1]}`) {
   ensureFixture()
     .then((f) => {
