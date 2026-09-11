@@ -17,8 +17,6 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@dicebear/collection": "^9.4.2",
-    "@dicebear/core": "^9.4.2",
     "@larc-iu/plaid-client": "file:../plaid-client-js",
     "@larc-iu/plaid-ui": "file:../plaid-ui",
     "@mantine/core": "^7.17.8",

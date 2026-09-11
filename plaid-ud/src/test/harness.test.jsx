@@ -8,23 +8,26 @@ import { describe, it, expect } from 'vitest';
 import { MantineProvider } from '@mantine/core';
 import { renderComponent, texts } from '@ui/test/renderComponent.jsx';
 import { Button } from '@ui/components/ui/button.jsx';
-import { EntityAvatar } from '@/components/common/EntityAvatar.jsx';
 import { PROVENANCE_KEYS } from '@larc-iu/plaid-client';
+
+// Declared here rather than imported: these two tests are about the harness,
+// so they must not fail because some screen's component changed.
+const Greeting = ({ name }) => <p data-testid="greeting">Hello, {name}</p>;
 
 describe('the component-test harness', () => {
   it('mounts a component and reads it off the DOM', async () => {
-    const view = await renderComponent(<EntityAvatar id="019ecd83-7617-7501-b200-131681d59b7c" />);
-    const img = view.container.querySelector('img');
-    expect(img).not.toBeNull();
-    expect(img.getAttribute('src')).toMatch(/^data:image\/svg\+xml/);
+    const view = await renderComponent(<Greeting name="Ada" />);
+    expect(view.container.querySelector('[data-testid="greeting"]').textContent).toBe('Hello, Ada');
     await view.unmount();
   });
 
   it('re-renders with new props against the same root', async () => {
-    const view = await renderComponent(<EntityAvatar id="a" />);
-    const first = view.container.querySelector('img').getAttribute('src');
-    await view.rerender(<EntityAvatar id="b" />);
-    expect(view.container.querySelector('img').getAttribute('src')).not.toEqual(first);
+    const view = await renderComponent(<Greeting name="Ada" />);
+    const first = view.container.querySelector('[data-testid="greeting"]');
+    await view.rerender(<Greeting name="Grace" />);
+    const second = view.container.querySelector('[data-testid="greeting"]');
+    expect(second.textContent).toBe('Hello, Grace');
+    expect(second).toBe(first); // the same node, updated in place
     await view.unmount();
   });
 

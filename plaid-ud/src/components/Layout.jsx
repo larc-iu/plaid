@@ -1,13 +1,12 @@
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { UserAvatar } from '@ui/components/shared/UserAvatar';
 import { Button } from '@ui/components/ui/button';
 
 // The shell. `.tw` is on the header only: every route screen carries its own
 // `.tw` root as it migrates, and the Mantine screens below must not inherit the
 // scoped preflight reset. See src/index.css.
 export const Layout = () => {
-  const { user, getClient, logout } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -36,18 +35,8 @@ export const Layout = () => {
               )}
               {/* Profile is a destination, so it is a real anchor: middle-click
                   and cmd-click open it in a new tab like any link. */}
-              <Button asChild variant="ghost" size="sm" className="gap-2">
-                <Link to="/profile">
-                  <UserAvatar
-                    client={getClient()}
-                    userId={user.id}
-                    displayName={user.displayName}
-                    avatarHash={user.avatarHash}
-                    className="h-6 w-6"
-                    fallbackClassName="text-[10px]"
-                  />
-                  {user.displayName}
-                </Link>
+              <Button asChild variant="ghost" size="sm">
+                <Link to="/profile">{user.displayName}</Link>
               </Button>
               <Button variant="ghost" size="sm" onClick={handleLogout}>
                 Logout

@@ -8,7 +8,6 @@ import { canEditProject, canManageProject } from '../../utils/permissions.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { timeAgo, fullTimestamp } from '../../utils/formatTime.js';
 import { notifyWarning } from '../../utils/feedback.jsx';
-import { EntityAvatar } from '../common/EntityAvatar.jsx';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { Button } from '@ui/components/ui/button';
 import { DataTable } from '@ui/components/ui/data-table';
@@ -257,14 +256,11 @@ export const DocumentList = () => {
       render: (d) =>
         linked(
           d,
-          'flex items-center gap-3 px-4 py-3',
-          <>
-            <EntityAvatar id={d.id} size={36} />
-            <div className="min-w-0">
-              <div className="truncate font-medium">{d.name}</div>
-              <div className="truncate text-xs text-muted-foreground">ID: {d.id}</div>
-            </div>
-          </>,
+          'block px-4 py-3',
+          <div className="min-w-0">
+            <div className="truncate font-medium">{d.name}</div>
+            <div className="truncate text-xs text-muted-foreground">ID: {d.id}</div>
+          </div>,
         ),
     },
     {

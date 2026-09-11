@@ -6,7 +6,6 @@ import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { isEmail, EMAIL_INVALID_MESSAGE } from '../../utils/email';
-import { UserAvatar } from '@ui/components/shared/UserAvatar';
 import { Badge } from '@ui/components/ui/badge';
 import { Button } from '@ui/components/ui/button';
 import { DataTable } from '@ui/components/ui/data-table';
@@ -268,25 +267,15 @@ export const AdminUsers = () => {
       render: (u) => (
         <button
           type="button"
-          className="flex w-full items-center gap-2 px-3 py-2 text-left"
+          className="block w-full min-w-0 px-3 py-2 text-left"
           onClick={() => startEditingUser(u)}
         >
-          <UserAvatar
-            client={getClient()}
-            userId={u.id}
-            displayName={u.displayName}
-            avatarHash={u.avatarHash}
-            className="h-7 w-7"
-            fallbackClassName="text-[10px]"
-          />
-          <span className="min-w-0">
-            <span className="flex items-center gap-2">
-              <span className="truncate text-sm font-medium">{u.displayName}</span>
-              {u.isAdmin && <Badge variant="secondary">Admin</Badge>}
-              {u.id === user.id && <Badge variant="outline">You</Badge>}
-            </span>
-            <span className="block truncate text-xs text-muted-foreground">{u.id}</span>
+          <span className="flex items-center gap-2">
+            <span className="truncate text-sm font-medium">{u.displayName}</span>
+            {u.isAdmin && <Badge variant="secondary">Admin</Badge>}
+            {u.id === user.id && <Badge variant="outline">You</Badge>}
           </span>
+          <span className="block truncate text-xs text-muted-foreground">{u.id}</span>
         </button>
       ),
     },

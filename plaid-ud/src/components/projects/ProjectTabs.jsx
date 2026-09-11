@@ -2,7 +2,6 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { canManageProject } from '../../utils/permissions.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
-import { EntityAvatar } from '../common/EntityAvatar.jsx';
 import { Tabs, TabsList, TabsTrigger } from '@ui/components/ui/tabs';
 
 // Shared top tab bar for the four project-level views (Documents / Search /
@@ -47,10 +46,7 @@ export const ProjectTabs = ({ projectId, project }) => {
           Projects
         </Link>
         <span className="text-muted-foreground">/</span>
-        <span className="flex min-w-0 items-center gap-1.5">
-          <EntityAvatar id={projectId} size={16} />
-          <span className="truncate text-muted-foreground">{project?.name || 'Loading…'}</span>
-        </span>
+        <span className="truncate text-muted-foreground">{project?.name || 'Loading…'}</span>
       </nav>
 
       {/* Every tab is a real anchor (`to`), so middle-click and cmd-click open

@@ -3,7 +3,6 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { ProjectForm } from './ProjectForm';
-import { EntityAvatar } from '../common/EntityAvatar.jsx';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { timeAgo, fullTimestamp } from '../../utils/formatTime.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
@@ -135,14 +134,11 @@ export const ProjectList = () => {
       render: (p) =>
         linked(
           p,
-          'flex items-center gap-3 px-4 py-3',
-          <>
-            <EntityAvatar id={p.id} size={36} />
-            <div className="min-w-0">
-              <div className="truncate font-medium">{p.name}</div>
-              <div className="truncate text-xs text-muted-foreground">ID: {p.id}</div>
-            </div>
-          </>,
+          'block px-4 py-3',
+          <div className="min-w-0">
+            <div className="truncate font-medium">{p.name}</div>
+            <div className="truncate text-xs text-muted-foreground">ID: {p.id}</div>
+          </div>,
         ),
     },
     {

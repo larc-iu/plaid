@@ -1,5 +1,4 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { EntityAvatar } from '../common/EntityAvatar.jsx';
 import { Tabs, TabsList, TabsTrigger } from '@ui/components/ui/tabs';
 
 export const DocumentTabs = ({ projectId, documentId, project, document, disabled = false }) => {
@@ -41,16 +40,12 @@ export const DocumentTabs = ({ projectId, documentId, project, document, disable
         <span className="text-muted-foreground">/</span>
         <Link
           to={`/projects/${projectId}/documents`}
-          className="flex min-w-0 items-center gap-1.5 text-muted-foreground hover:text-foreground"
+          className="min-w-0 truncate text-muted-foreground hover:text-foreground"
         >
-          <EntityAvatar id={projectId} size={16} />
-          <span className="truncate">{project?.name || 'Loading…'}</span>
+          {project?.name || 'Loading…'}
         </Link>
         <span className="text-muted-foreground">/</span>
-        <span className="flex min-w-0 items-center gap-1.5">
-          <EntityAvatar id={documentId} size={16} />
-          <span className="truncate text-muted-foreground">{document?.name || 'Loading…'}</span>
-        </span>
+        <span className="truncate text-muted-foreground">{document?.name || 'Loading…'}</span>
       </nav>
 
       <Tabs value={active} onValueChange={(v) => !disabled && navigate(routes[v])}>
