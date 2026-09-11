@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { CommentsIsland } from './CommentsIsland.js';
 import { CommentStore } from '@ui/domain/CommentStore';
 import { threadList } from '@ui/domain/commentThreads';
@@ -129,5 +129,45 @@ describe('CommentsIsland', () => {
     mount(store);
     expect(threads()).toHaveLength(0);
     expect(host.textContent).toContain('Nobody yet.');
+  });
+});
+
+// A comment is unaudited by ruling, so deleting one cannot be undone and the
+// island has to ask. Nothing here was covered before: the only delete tests
+// check that the button is OFFERED.
+describe('deleting a comment', () => {
+  const armed = () => {
+    const only = row();
+    const store = storeWith([only]);
+    store.remove = vi.fn(async () => {});
+    return { store, only };
+  };
+
+  it('asks first, and deletes when the answer is yes', async () => {
+    const { store, only } = armed();
+    const confirmDelete = vi.fn(async () => true);
+    const island = mount(store, { confirmDelete });
+
+    await island._remove(only);
+    expect(confirmDelete).toHaveBeenCalledTimes(1);
+    expect(store.remove).toHaveBeenCalledWith(only.id);
+  });
+
+  it('deletes nothing when the answer is no', async () => {
+    const { store, only } = armed();
+    const island = mount(store, { confirmDelete: async () => false });
+
+    await island._remove(only);
+    expect(store.remove).not.toHaveBeenCalled();
+  });
+
+  it('deletes nothing at all when the mount cannot ask', async () => {
+    // A mount that gives no way to ask does not get to delete. Falling back to
+    // deleting would put the hole back wherever the next island is mounted.
+    const { store, only } = armed();
+    const island = mount(store);
+
+    await island._remove(only);
+    expect(store.remove).not.toHaveBeenCalled();
   });
 });

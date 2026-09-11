@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { EntryThreadIsland } from '@/components/documents/comments/island/EntryThreadIsland.js';
 
 // Thin React shell around the vanilla EntryThreadIsland, the same shape as
@@ -8,6 +9,13 @@ export const EntryComments = ({ store, itemId, caption, canWrite, canDeleteAny }
   const hostRef = useRef(null);
   const islandRef = useRef(null);
 
+  // The island is built once, so the confirm it holds reads through a ref and
+  // its identity never has to change. Same dialog the React thread uses: two
+  // renderings of a thread should not ask differently.
+  const confirm = useConfirm();
+  const confirmRef = useRef(confirm);
+  confirmRef.current = confirm;
+
   useEffect(() => {
     if (!store || !hostRef.current) return undefined;
     islandRef.current = new EntryThreadIsland(hostRef.current, {
@@ -16,6 +24,16 @@ export const EntryComments = ({ store, itemId, caption, canWrite, canDeleteAny }
       caption,
       canWrite,
       canDeleteAny,
+      confirmDelete: (comment) =>
+        confirmRef.current({
+          title:
+            comment.authorId === store.currentUserId
+              ? 'Delete your comment?'
+              : `Delete ${store.authorName(comment.authorId)}'s comment?`,
+          description: 'Comments are not kept in the history, so this cannot be undone.',
+          confirmLabel: 'Delete',
+          destructive: true,
+        }),
     });
     return () => {
       islandRef.current?.destroy();

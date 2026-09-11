@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Pencil, Trash2 } from 'lucide-react';
+import { useConfirm } from './ConfirmProvider.jsx';
 import { Button } from '../ui/button.jsx';
 import { Textarea } from '../ui/textarea.jsx';
 import { SafeMarkdown } from '../ui/markdown.jsx';
@@ -45,6 +46,21 @@ const Comment = ({ comment, store, canDeleteAny, onEdit, onRemove }) => {
   // The author may always remove their own; a maintainer may remove any. Never
   // offered for a comment the server has not acknowledged yet.
   const mayDelete = !pending && (mayEdit || canDeleteAny);
+
+  // A comment is unaudited by ruling, so there is no history entry and no
+  // restore: a mis-click on a colleague's thread is permanent. One more click
+  // is the house rule for anything destructive, and the only thing standing
+  // between the trash icon and a comment nobody can get back.
+  const confirm = useConfirm();
+  const askThenRemove = async () => {
+    const ok = await confirm({
+      title: mine ? 'Delete your comment?' : `Delete ${name}'s comment?`,
+      description: 'Comments are not kept in the history, so this cannot be undone.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (ok) onRemove(comment);
+  };
 
   if (draft !== null) {
     const unchanged = !draft.trim() || draft.trim() === comment.body;
@@ -121,7 +137,7 @@ const Comment = ({ comment, store, canDeleteAny, onEdit, onRemove }) => {
                 title="Delete"
                 aria-label="Delete this comment"
                 className="rounded p-1 hover:bg-muted hover:text-destructive"
-                onClick={() => onRemove(comment)}
+                onClick={askThenRemove}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>

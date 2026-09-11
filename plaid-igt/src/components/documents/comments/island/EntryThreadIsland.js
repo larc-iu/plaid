@@ -16,11 +16,10 @@ export class EntryThreadIsland extends ThreadIslandBase {
    * @param {string} opts.entityId  the entry
    * @param {string|null} [opts.caption]  what a new comment is posted as being about
    */
-  constructor(
-    host,
-    { store, entityId, caption = null, canWrite = false, canDeleteAny = false } = {},
-  ) {
-    super(host, { store, canWrite, canDeleteAny });
+  constructor(host, { entityId, caption = null, ...base } = {}) {
+    // The rest goes STRAIGHT through: naming the base's options here meant a
+    // new one silently reached neither subclass.
+    super(host, base);
     this.entityId = entityId;
     this.caption = caption;
     this._render();

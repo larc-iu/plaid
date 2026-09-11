@@ -13,11 +13,20 @@ import { render, nothing } from 'lit-html';
 import { commentThread } from './CommentThread.js';
 
 export class ThreadIslandBase {
-  constructor(host, { store, canWrite = false, canDeleteAny = false } = {}) {
+  /**
+   * `confirmDelete` is asked before a comment is removed and must resolve
+   * truthy to go ahead. It is REQUIRED, not optional: a comment is unaudited
+   * by ruling, so there is no history entry and no restore, and a mis-click on
+   * a colleague's thread is permanent. A mount that cannot ask is a mount that
+   * does not get to delete, which is why `_remove` refuses without it rather
+   * than falling back to deleting.
+   */
+  constructor(host, { store, canWrite = false, canDeleteAny = false, confirmDelete = null } = {}) {
     this.host = host;
     this.store = store;
     this.canWrite = canWrite;
     this.canDeleteAny = canDeleteAny;
+    this.confirmDelete = confirmDelete;
 
     this._editingId = null;
     this._editDraft = '';
@@ -74,6 +83,8 @@ export class ThreadIslandBase {
   }
 
   async _remove(comment) {
+    if (!this.confirmDelete) return;
+    if (!(await this.confirmDelete(comment))) return;
     if (this._editingId === comment.id) this._cancelEdit();
     await this.store.remove(comment.id);
   }

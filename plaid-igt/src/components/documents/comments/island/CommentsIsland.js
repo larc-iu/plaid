@@ -33,15 +33,12 @@ export class CommentsIsland extends ThreadIslandBase {
    */
   constructor(
     host,
-    {
-      store,
-      canWrite = false,
-      canDeleteAny = false,
-      onJumpTo = null,
-      jumpTitle = 'Show in the interlinear editor',
-    } = {},
+    { onJumpTo = null, jumpTitle = 'Show in the interlinear editor', ...base } = {},
   ) {
-    super(host, { store, canWrite, canDeleteAny });
+    // The rest goes STRAIGHT through. Naming the base's options here meant a
+    // new one reached neither subclass, silently: `confirmDelete` was dropped
+    // on the way and the island would not have asked before deleting.
+    super(host, base);
     this.onJumpTo = onJumpTo;
     this.jumpTitle = jumpTitle;
 
@@ -52,7 +49,7 @@ export class CommentsIsland extends ThreadIslandBase {
 
     // Someone is looking at every thread, so this is exactly when live updates
     // earn their connection (a no-op for a vocabulary, which has no stream).
-    this._releaseLive = store.watchLive();
+    this._releaseLive = this.store.watchLive();
     this._render();
   }
 
