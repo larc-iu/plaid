@@ -50,6 +50,18 @@ test.beforeAll(async () => {
   );
 });
 
+// Every seeded project stays on the dev core otherwise, and other specs pick
+// a project by scanning: search.spec.js takes the first configured one that
+// has tokens, so eight leftover "Assistant panel" projects (which have words
+// and no dependency relations) made it query an empty treebank and fail.
+test.afterAll(async () => {
+  if (S.client && S.projectId) {
+    await S.client.projects
+      .delete(S.projectId)
+      .catch((e) => console.error('cleanup failed:', e.message));
+  }
+});
+
 const annotate = (page) =>
   page.goto(`/#/projects/${S.projectId}/documents/${S.documentId}/annotate`);
 

@@ -20,10 +20,15 @@ test.beforeAll(async () => {
   for (const p of projects) {
     const full = await client.projects.get(p.id);
     const li = getUdLayerInfo(full);
-    if (!li.isConfigured) continue;
+    if (!li.isConfigured || !li.relationLayer) continue;
+    // Ask for what this spec actually queries: a project with WORDS but no
+    // dependency relations passes a token count and then matches nothing, so
+    // the run reports "0 matching sentences" and there is no highlight to
+    // find. Any spec that seeds a tokenized project can put one of those
+    // ahead of the real treebank, which is how this started failing.
     const r = await client.query({
-      find: ['?t'],
-      where: [['token', '?t', { layer: li.morphemeTokenLayer.id }]],
+      find: ['?r'],
+      where: [['relation', '?r', { layer: li.relationLayer.id }]],
       return: 'count',
       scope: { projectIds: [p.id] },
     });
