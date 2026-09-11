@@ -121,7 +121,7 @@ class FakeClient:
             {'id': 'o2', 'time': '2026-08-28T10:00:00Z', 'user': {'id': 'x@y.z', 'display_name': 'Someone'},
              'documents': [], 'ops': [{'type': 'project/create', 'description': 'Create project "Demo"'}]},
         ]
-        for name in ('tokens', 'spans', 'vocab_links', 'vocab_items', 'texts'):
+        for name in ('tokens', 'spans', 'relations', 'vocab_links', 'vocab_items', 'texts'):
             setattr(self, name, Recorder(self.log, name))
 
     class _Projects:
