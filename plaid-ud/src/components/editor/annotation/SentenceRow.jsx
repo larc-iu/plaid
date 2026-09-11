@@ -6,6 +6,7 @@ import { isMachine, needsReview, provState, PROV_STATES } from '@larc-iu/plaid-c
 import { DependencyTree } from './DependencyTree.jsx';
 import { useTokenPositions } from '../hooks/useTokenPositions.js';
 import { resolveColor } from '../../../utils/udVocab.js';
+import { notifyWarning } from '../../../utils/notify.js';
 import {
   readFieldProbs,
   groupSuggestions,
@@ -51,6 +52,8 @@ const EditableCell = React.memo(
     cellColor,
     mark,
     provMeta,
+    validate,
+    descriptions,
   }) => {
     const [localValue, setLocalValue] = useState(value || '');
     // What the input currently shows, readable synchronously. Enter in a vocab
@@ -117,6 +120,20 @@ const EditableCell = React.memo(
         return;
       }
       const newValue = valueRef.current.trim();
+
+      // A CLOSED vocabulary refuses a value that is not on its list. The
+      // saved value is kept, not the typed one: an annotator who meant a tag
+      // the project does not have wants to see what is actually stored, and a
+      // maintainer can open the list up in two clicks. Enforced here and in the
+      // Grew rewrite, and nowhere else — an import, a service, the assistant
+      // and the API all still get through, which is what the Validation tab is
+      // for.
+      const refusal = validate?.(newValue);
+      if (refusal) {
+        notifyWarning(refusal, 'Not in the list');
+        setValue(value || '');
+        return;
+      }
 
       const changed = newValue !== (value || '');
       // Re-typing a machine prediction's value is a human confirmation
@@ -273,15 +290,24 @@ const EditableCell = React.memo(
           data-orig={value || ''}
           options={isEditing ? groupSuggestions(suggestions, fieldProbs) : NO_OPTIONS}
           renderOption={
-            fieldProbs
+            fieldProbs || descriptions
               ? ({ option }) => {
                   const pct = probLabel(fieldProbs, option.value);
+                  // What the tag MEANS, beside it. The whole reason to seed the
+                  // universal sets with definitions is that a picker is where
+                  // the question "which of these is it" gets asked.
+                  const gloss = descriptions?.[option.value];
                   return (
                     <span>
                       {option.value}
                       {pct && (
                         <span style={{ opacity: 0.55, marginLeft: 6, fontSize: '0.85em' }}>
                           {pct}
+                        </span>
+                      )}
+                      {gloss && (
+                        <span style={{ opacity: 0.6, marginLeft: 8, fontSize: '0.85em' }}>
+                          {gloss}
                         </span>
                       )}
                     </span>
@@ -408,6 +434,7 @@ const FeaturesCell = React.memo(
   ({
     features,
     featureMarks,
+    validate,
     spanIds,
     tokenId,
     tokenIndex,
@@ -443,6 +470,15 @@ const FeaturesCell = React.memo(
       const t = (raw ?? text).trim();
       const i = t.indexOf('=');
       if (i <= 0 || i === t.length - 1) return false; // need non-empty Key=Value
+      // A CLOSED inventory governs both halves: the key must be in it and the
+      // value in that key's list. The typed text is KEPT here, unlike a cell:
+      // a chip is added rather than replacing something, so there is nothing
+      // to restore and the annotator can correct what they typed.
+      const refusal = validate?.(t);
+      if (refusal) {
+        notifyWarning(refusal, 'Not in the inventory');
+        return false;
+      }
       setText('');
       onAnnotationUpdate(tokenId, 'features', t).catch((error) => {
         console.error('Failed to add feature:', error);
@@ -669,6 +705,8 @@ const TokenColumn = React.memo(
     visibleFields,
     relationInferred,
     reviewable,
+    validators,
+    descriptions,
   }) => {
     // This word still has machine predictions a human hasn't reviewed (a span on
     // it, or its incoming dependency relation — confirmTokens covers both). When so, a
@@ -785,6 +823,8 @@ const TokenColumn = React.memo(
               isReadOnly={isReadOnly}
               suggestions={vocab?.xpos}
               mark={provMark(data.xpos?.metadata)}
+              validate={validators?.xpos}
+              descriptions={descriptions?.xpos}
               provMeta={data.xpos?.metadata}
             />
           </div>
@@ -809,6 +849,8 @@ const TokenColumn = React.memo(
               suggestions={vocab?.upos}
               cellColor={data.upos?.value ? resolveColor(data.upos.value, uposColors) : undefined}
               mark={provMark(data.upos?.metadata)}
+              validate={validators?.upos}
+              descriptions={descriptions?.upos}
               provMeta={data.upos?.metadata}
             />
           </div>
@@ -827,6 +869,7 @@ const TokenColumn = React.memo(
             <FeaturesCell
               features={data.feats.map((feat) => feat.value)}
               featureMarks={data.feats.map((f) => provMark(f?.metadata))}
+              validate={validators?.feats}
               spanIds={{
                 features: data.spanIds.features,
               }}
@@ -861,6 +904,9 @@ const TokenColumn = React.memo(
       prevProps.relationInferred === nextProps.relationInferred &&
       // Stable per contributor id (doc.writer memoizes the policy).
       prevProps.reviewable === nextProps.reviewable &&
+      // Stable per layerInfo version, like vocab below.
+      prevProps.validators === nextProps.validators &&
+      prevProps.descriptions === nextProps.descriptions &&
       // Stable identity per layerInfo version, so these don't trigger re-renders.
       prevProps.vocab === nextProps.vocab &&
       prevProps.uposColors === nextProps.uposColors &&
@@ -914,6 +960,8 @@ export const SentenceRow = React.memo(
     onDiscardTokens,
     onSentenceMetadata,
     onEditText,
+    validators,
+    descriptions,
     sentenceFields = EMPTY_FIELDS,
     reviewable = needsReview,
     totalTokensBefore = 0,
@@ -1144,6 +1192,8 @@ export const SentenceRow = React.memo(
           deprelVocab={vocab?.deprel}
           onExitDown={focusGridCell}
           onEditText={handleEditText}
+          validateDeprel={validators?.deprel}
+          deprelDescriptions={descriptions?.deprel}
         />
 
         {/* Main container with labels and columns */}
@@ -1210,6 +1260,8 @@ export const SentenceRow = React.memo(
               visibleFields={visibleFields}
               relationInferred={inferredRelTokenIds.has(data.token.id)}
               reviewable={reviewable}
+              validators={validators}
+              descriptions={descriptions}
             />
           ))}
         </div>

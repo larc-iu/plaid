@@ -18,7 +18,6 @@ import './App.css';
 // Screens a session opens rarely, if at all: they download when first opened
 // rather than riding along with the project list. The editor and the two lists
 // stay eager, being where a session starts and spends its time.
-const AdminUsers = lazyNamed(() => import('./components/admin/AdminUsers'), 'AdminUsers');
 const SearchPage = lazyNamed(() => import('./components/search/SearchPage.jsx'), 'SearchPage');
 const ProjectImportExport = lazyNamed(
   () => import('./components/projects/ProjectImportExport.jsx'),
@@ -27,6 +26,14 @@ const ProjectImportExport = lazyNamed(
 const ProjectSettings = lazyNamed(
   () => import('./components/projects/ProjectSettings.jsx'),
   'ProjectSettings',
+);
+const ProjectActivity = lazyNamed(
+  () => import('./components/projects/ProjectActivity.jsx'),
+  'ProjectActivity',
+);
+const ProjectValidation = lazyNamed(
+  () => import('./components/validate/ProjectValidation.jsx'),
+  'ProjectValidation',
 );
 const ProjectConfiguration = lazyNamed(
   () => import('./components/projects/ProjectConfiguration.jsx'),
@@ -65,17 +72,6 @@ function App() {
             {/* User profile page */}
             <Route path="profile" element={<UserProfile />} />
 
-            {/* Instance-wide user administration (admin-only; the component
-                renders a permission notice for non-admins). */}
-            <Route
-              path="admin/users"
-              element={
-                <Suspended>
-                  <AdminUsers />
-                </Suspended>
-              }
-            />
-
             {/* Projects page */}
             <Route path="projects" element={<ProjectList />} />
 
@@ -88,6 +84,26 @@ function App() {
               element={
                 <Suspended>
                   <SearchPage />
+                </Suspended>
+              }
+            />
+
+            {/* Values stored that the project's vocabularies do not list. */}
+            <Route
+              path="projects/:projectId/validate"
+              element={
+                <Suspended>
+                  <ProjectValidation />
+                </Suspended>
+              }
+            />
+
+            {/* Who has been working on this project, and on what. Maintainers. */}
+            <Route
+              path="projects/:projectId/activity"
+              element={
+                <Suspended>
+                  <ProjectActivity />
                 </Suspended>
               }
             />

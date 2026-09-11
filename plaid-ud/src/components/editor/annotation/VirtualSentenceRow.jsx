@@ -12,6 +12,8 @@ export const VirtualSentenceRow = ({
   onDiscardTokens,
   onSentenceMetadata,
   onEditText,
+  validators,
+  descriptions,
   sentenceFields,
   reviewable,
   sentenceIndex = 0,
@@ -92,6 +94,8 @@ export const VirtualSentenceRow = ({
         onDiscardTokens={onDiscardTokens}
         onSentenceMetadata={onSentenceMetadata}
         onEditText={onEditText}
+        validators={validators}
+        descriptions={descriptions}
         sentenceFields={sentenceFields}
         reviewable={reviewable}
         totalTokensBefore={totalTokensBefore}

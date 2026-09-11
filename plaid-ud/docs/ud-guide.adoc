@@ -288,7 +288,47 @@ The mark is shared with every Plaid app on the project.
 A project's maintainers can tailor the annotation scheme from the project's settings tabs:
 
 * **UD Customization**: the controlled vocabularies (UPOS, XPOS, DEPREL tags), tag and relation **colors**, the **feature inventory** offered in the Features column, and the **document** and **sentence fields** the project keeps notes in (see <<_metadata>>). All vocabularies start from the standard universal sets and can be extended or replaced.
+
+=== Suggestions or rules
+
+A vocabulary offers its values and accepts anything else. That is the default, and for most projects it is the right one: a value nobody expected is usually worth seeing rather than refusing.
+
+Where a project wants the list to be binding, **Refuse values outside this list** on that vocabulary makes it so. What that means differs by field, and each says so beneath the switch:
+
+* **UPOS** and **XPOS**: the tag must be on the list.
+* **Dependency relations**: the BASE relation must be on the list. A subtype is judged by its base, so `nsubj:pass` is allowed wherever `nsubj` is, and a project does not have to list every subtype its language uses.
+* **Features**: the key must be in the inventory and the value in that key's list. A key listed with no values accepts any value.
+
+A closed list is enforced where a person types: the annotation cells and the Grew rewrite preview. It is deliberately **not** enforced on an import, a parser, the assistant or the API, which all write whatever they produce. Off-list machine output is a signal, and refusing it at the door would hide it.
+
+=== What a value is for
+
+Each value can carry a one-line definition, shown beside it while picking one. The 17 UPOS tags and the 37 universal relations ship with theirs; edit any of them, or describe your own values, under the list. A definition you change is stored with the project, so a value you never touched follows the app.
 * **General**: the project's **language**, the **tokenizer locale** used by **Tokenize**, and project deletion. The language is a BCP-47 tag such as `en`, `de` or `zh-Hans`. It is the language a connected parser starts on, and the locale **Tokenize** segments with unless the tokenizer locale is set to something more specific.
+
+== Validation
+
+Maintainers get a **Validation** tab: every value the project has stored that its own vocabularies do not list, with how many times it occurs.
+
+It exists because a closed list is enforced where a person types and nowhere else. A parser, an import, the assistant or a script writes what it produces whatever the list says, and refusing those at the door would hide them. This is where you see what got in.
+
+Each value opens to the sentences it occurs in, and each of those is a link straight to that sentence in the editor.
+
+Where the list is simply incomplete rather than the values wrong, **Add N values** puts them on it. That is offered, never done for you: a project may well want the list as it is and the values changed instead.
+
+Two things it deliberately does not report: a relation subtype whose base is listed, since `nsubj:pass` is already legal wherever `nsubj` is, and a feature value under a key listed with no values, since such a key accepts any value.
+
+== Activity
+
+A project's maintainers get an **Activity** tab: who has been working on it, and on what.
+
+It shows a tally per person over a window (7, 30 or 90 days, or all time) with the changes they made, the documents they touched, and when they were last seen, alongside the members who have not appeared in that window at all. Below it is the project's own history, newest first, with each entry linking to the document it changed.
+
+== Administration
+
+The server administers itself through one area, and it lives in Plaid IGT: the release bundles both apps together, so a second one here would be a second answer to the same questions. Administrators reach it from **Admin** in the header.
+
+It covers accounts (creating people, deactivating them, issuing password-reset links), invitations, every project on the server and who is on each, the services connected, and server-wide activity. A project set up for Universal Dependencies is labelled **UD** in its project list, and its name opens it back here.
 
 == Automation and Scripting
 

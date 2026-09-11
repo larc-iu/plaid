@@ -20,6 +20,10 @@ import { useManagedProject } from './useManagedProject.js';
 import { RotateCcw, Trash2 } from 'lucide-react';
 import { TagList } from '../common/TagList.jsx';
 import { MetadataFieldList } from '../common/MetadataFieldList.jsx';
+import { VocabModeSwitch } from '../common/VocabModeSwitch.jsx';
+import { DescriptionList } from '../common/DescriptionList.jsx';
+import { MODES, cleanDescriptions } from '../../utils/udVocabMode.js';
+import { UPOS_DESCRIPTIONS, DEPREL_DESCRIPTIONS } from '../../utils/udVocabDescriptions.js';
 import { ColorField } from '../common/ColorField.jsx';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
@@ -44,6 +48,10 @@ export const ProjectCustomization = () => {
   const [featureInventory, setFeatureInventory] = useState([]); // [{key, values}]
   const [documentFields, setDocumentFields] = useState([]); // field names
   const [sentenceFields, setSentenceFields] = useState([]); // field names
+  // Whether each vocabulary refuses off-list values, and the one-line
+  // definitions shown beside a value in the picker.
+  const [modes, setModes] = useState({});
+  const [descriptions, setDescriptions] = useState({ upos: {}, xpos: {}, deprel: {} });
 
   // Seed the editors from the project's current layer config.
   useEffect(() => {
@@ -59,9 +67,21 @@ export const ProjectCustomization = () => {
     );
     // These two are on the PROJECT, not on a layer: they describe the document
     // and the sentence, neither of which belongs to an annotation layer.
+    setModes({ ...info.modes });
+    setDescriptions({
+      upos: { ...info.descriptions.upos },
+      xpos: { ...info.descriptions.xpos },
+      deprel: { ...info.descriptions.deprel },
+    });
     setDocumentFields(readMetadataFields(project.config, 'document'));
     setSentenceFields(readMetadataFields(project.config, 'sentence'));
   }, [project]);
+
+  const setMode = (field) => (closed) =>
+    setModes((prev) => ({ ...prev, [field]: closed ? MODES.CLOSED : MODES.OPEN }));
+
+  const setDescription = (field) => (value, text) =>
+    setDescriptions((prev) => ({ ...prev, [field]: { ...prev[field], [value]: text } }));
 
   // Set/clear a single color in a {label: '#hex'} map (clearing falls back to auto).
   const setColorIn = (setter) => (key, value) => {
@@ -82,8 +102,31 @@ export const ProjectCustomization = () => {
       if (!client) throw new Error('Not authenticated');
       const info = getUdLayerInfo(project);
 
+      // Mode and descriptions are SIBLING keys beside `vocab`, never a new
+      // shape for it: see utils/udVocabMode.js. Descriptions are stored only
+      // where they differ from what ships, so a project that never edited them
+      // stores nothing and follows the app's copy.
+      const storedDescriptions = (map, shipped) =>
+        cleanDescriptions(
+          Object.fromEntries(
+            Object.entries(map || {}).filter(([value, text]) => text !== (shipped?.[value] ?? '')),
+          ),
+        );
+
       if (info.xposLayer) {
         await client.spanLayers.setConfig(info.xposLayer.id, UD_NAMESPACE, 'vocab', xposVocab);
+        await client.spanLayers.setConfig(
+          info.xposLayer.id,
+          UD_NAMESPACE,
+          'vocabMode',
+          modes.xpos || MODES.OPEN,
+        );
+        await client.spanLayers.setConfig(
+          info.xposLayer.id,
+          UD_NAMESPACE,
+          'vocabDescriptions',
+          storedDescriptions(descriptions.xpos),
+        );
       }
       if (info.relationLayer) {
         await client.relationLayers.setConfig(
@@ -98,6 +141,18 @@ export const ProjectCustomization = () => {
           'colors',
           cleanColorMap(deprelColors),
         );
+        await client.relationLayers.setConfig(
+          info.relationLayer.id,
+          UD_NAMESPACE,
+          'vocabMode',
+          modes.deprel || MODES.OPEN,
+        );
+        await client.relationLayers.setConfig(
+          info.relationLayer.id,
+          UD_NAMESPACE,
+          'vocabDescriptions',
+          storedDescriptions(descriptions.deprel, DEPREL_DESCRIPTIONS),
+        );
       }
       if (info.uposLayer) {
         await client.spanLayers.setConfig(info.uposLayer.id, UD_NAMESPACE, 'vocab', uposVocab);
@@ -106,6 +161,18 @@ export const ProjectCustomization = () => {
           UD_NAMESPACE,
           'colors',
           cleanColorMap(uposColors),
+        );
+        await client.spanLayers.setConfig(
+          info.uposLayer.id,
+          UD_NAMESPACE,
+          'vocabMode',
+          modes.upos || MODES.OPEN,
+        );
+        await client.spanLayers.setConfig(
+          info.uposLayer.id,
+          UD_NAMESPACE,
+          'vocabDescriptions',
+          storedDescriptions(descriptions.upos, UPOS_DESCRIPTIONS),
         );
       }
       if (info.featuresLayer) {
@@ -120,6 +187,12 @@ export const ProjectCustomization = () => {
           UD_NAMESPACE,
           'inventory',
           inventory,
+        );
+        await client.spanLayers.setConfig(
+          info.featuresLayer.id,
+          UD_NAMESPACE,
+          'vocabMode',
+          modes.feats || MODES.OPEN,
         );
       }
 
@@ -180,15 +253,27 @@ export const ProjectCustomization = () => {
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
-            Universal part-of-speech tags suggested while annotating. Defaults to the 17 universal
-            tags; edit them for project-specific needs. Annotators may still type values outside
-            this list.
+            Universal part-of-speech tags offered while annotating. Defaults to the 17 universal
+            tags; edit them for project-specific needs. Off-list values are accepted unless you
+            refuse them below, and a parser, an import or the API can write one either way. The
+            Validation tab lists what is off-list.
           </p>
           <TagList
             value={uposVocab}
             onChange={setUposVocab}
             label="UPOS tags"
             placeholder="Add a UPOS tag and press Enter"
+          />
+          <VocabModeSwitch
+            id="upos-closed"
+            noun="tags"
+            closed={modes.upos === MODES.CLOSED}
+            onChange={setMode('upos')}
+          />
+          <DescriptionList
+            values={uposVocab}
+            descriptions={descriptions.upos}
+            onChange={setDescription('upos')}
           />
         </CardContent>
       </Card>
@@ -199,14 +284,24 @@ export const ProjectCustomization = () => {
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
-            Language-specific part-of-speech tags suggested while annotating. Annotators may still
-            type values outside this list.
+            Language-specific part-of-speech tags offered while annotating.
           </p>
           <TagList
             value={xposVocab}
             onChange={setXposVocab}
             label="XPOS tags"
             placeholder="Add an XPOS tag and press Enter"
+          />
+          <VocabModeSwitch
+            id="xpos-closed"
+            noun="tags"
+            closed={modes.xpos === MODES.CLOSED}
+            onChange={setMode('xpos')}
+          />
+          <DescriptionList
+            values={xposVocab}
+            descriptions={descriptions.xpos}
+            onChange={setDescription('xpos')}
           />
         </CardContent>
       </Card>
@@ -226,6 +321,23 @@ export const ProjectCustomization = () => {
             onChange={setDeprelVocab}
             label="Dependency relations"
             placeholder="Add a relation and press Enter"
+          />
+          <VocabModeSwitch
+            id="deprel-closed"
+            noun="relations"
+            closed={modes.deprel === MODES.CLOSED}
+            onChange={setMode('deprel')}
+          />
+          {modes.deprel === MODES.CLOSED && (
+            <p className="text-xs text-muted-foreground">
+              A subtype is judged by its base relation, so <code>nsubj:pass</code> is allowed
+              wherever <code>nsubj</code> is.
+            </p>
+          )}
+          <DescriptionList
+            values={deprelVocab}
+            descriptions={descriptions.deprel}
+            onChange={setDescription('deprel')}
           />
         </CardContent>
       </Card>
@@ -329,6 +441,18 @@ export const ProjectCustomization = () => {
           >
             Add feature
           </Button>
+          <VocabModeSwitch
+            id="feats-closed"
+            noun="features"
+            closed={modes.feats === MODES.CLOSED}
+            onChange={setMode('feats')}
+          />
+          {modes.feats === MODES.CLOSED && (
+            <p className="text-xs text-muted-foreground">
+              Both halves are judged: the key must be listed, and the value must be one of its. A
+              key with no values listed accepts any value.
+            </p>
+          )}
         </CardContent>
       </Card>
 

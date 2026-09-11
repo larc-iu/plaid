@@ -28,13 +28,19 @@ export const ProjectTabs = ({ projectId, project }) => {
     ? 'search'
     : p.endsWith('/import-export')
       ? 'import-export'
-      : /\/(management|customization|services|tokens|general|configuration)$/.test(p)
-        ? 'settings'
-        : 'documents';
+      : p.endsWith('/activity')
+        ? 'activity'
+        : p.endsWith('/validate')
+          ? 'validate'
+          : /\/(management|customization|services|tokens|general|configuration)$/.test(p)
+            ? 'settings'
+            : 'documents';
 
   const routes = {
     documents: `/projects/${projectId}/documents`,
     search: `/projects/${projectId}/search`,
+    activity: `/projects/${projectId}/activity`,
+    validate: `/projects/${projectId}/validate`,
     settings: settingsTo,
     'import-export': `/projects/${projectId}/import-export`,
   };
@@ -61,6 +67,16 @@ export const ProjectTabs = ({ projectId, project }) => {
           <TabsTrigger value="search" to={routes.search}>
             Search
           </TabsTrigger>
+          {canManage && (
+            <TabsTrigger value="validate" to={routes.validate}>
+              Validation
+            </TabsTrigger>
+          )}
+          {canManage && (
+            <TabsTrigger value="activity" to={routes.activity}>
+              Activity
+            </TabsTrigger>
+          )}
           {canManage && (
             <TabsTrigger value="settings" to={routes.settings}>
               Project Settings

@@ -18,6 +18,7 @@ import { notifyError, notifyWithAction } from '../../utils/feedback.jsx';
 import { canEditProject, canManageProject } from '../../utils/permissions.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { readMetadataFields } from '../../utils/udMetadata.js';
+import { makeValidators } from '../../utils/udVocabMode.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 // Document-wide annotation-row expansion. FEATS defaults to collapsed because its
@@ -337,6 +338,11 @@ export const AnnotationEditor = () => {
     [navigate, projectId, documentId],
   );
 
+  // What a closed vocabulary refuses, built once per layerInfo version so a
+  // memoized cell subtree does not churn. Open vocabularies yield a validator
+  // that always allows, which is the normal case.
+  const validators = useMemo(() => makeValidators(layerInfo), [layerInfo]);
+
   const sentenceFields = useMemo(
     () => readMetadataFields(project?.config, 'sentence'),
     [project?.config],
@@ -591,6 +597,8 @@ export const AnnotationEditor = () => {
                         onDiscardTokens={readOnly ? null : handleDiscardTokens}
                         onSentenceMetadata={readOnly ? null : handleSentenceMetadata}
                         onEditText={viewingHistoricalState ? null : handleEditText}
+                        validators={validators}
+                        descriptions={layerInfo?.descriptions}
                         sentenceFields={sentenceFields}
                         reviewable={doc?.writer.reviewable}
                         sentenceIndex={index}

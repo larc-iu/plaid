@@ -15,6 +15,7 @@ import { GrewRuntimeError, GrewUnsupportedError } from '../errors.js';
 import { graphFromSentence } from './graph.js';
 import { rewriteSentence } from './engine.js';
 import { diffGraphs } from './diff.js';
+import { makeValidators } from '../../utils/udVocabMode.js';
 
 // Ops per atomic batch. A batch is one server transaction holding the single
 // write lock until it commits, so this bounds how long a concurrent writer
@@ -57,6 +58,7 @@ async function findDocs(client, grs, layerInfo, projectId) {
 // loaded ConlluDocument (the apply step writes as its `writer`).
 export async function planRewrite(client, { project, user, layerInfo, grs }, onProgress) {
   const projectId = project.id;
+  const validators = makeValidators(layerInfo);
   let docIds = await findDocs(client, grs, layerInfo, projectId);
   if (docIds === null) {
     const all = await client.projects.listDocuments(projectId);
@@ -84,6 +86,24 @@ export async function planRewrite(client, { project, user, layerInfo, grs }, onP
       try {
         const { graph: after, applications } = rewriteSentence(grs, before);
         if (!applications.length) return;
+        // A CLOSED vocabulary refuses the row rather than the run: the rest of
+        // the corpus still rewrites, and the preview says which sentence and
+        // why. This and the annotation cells are the only two places a closed
+        // list is enforced — an import, a service, the assistant and the API
+        // all still get through, which is what the Validation tab is for.
+        const refusal = offVocabulary(after, validators);
+        if (refusal) {
+          rows.push({
+            ...base,
+            applications: 0,
+            changes: [],
+            warnings: [],
+            writes: null,
+            nodes: before.nodes,
+            error: refusal,
+          });
+          return;
+        }
         const { changes, writes, warnings } = diffGraphs(before, after, doc.layerInfo);
         rows.push({
           ...base,
@@ -110,6 +130,34 @@ export async function planRewrite(client, { project, user, layerInfo, grs }, onP
   }
   onProgress?.('');
   return { rows, docs, documentsVisited: docIds.length };
+}
+
+// The first value in a rewritten sentence that a closed vocabulary refuses, as
+// the message the preview shows on that row, or null when everything is legal.
+// Reports ONE: a rule that produces an illegal tag usually produces it
+// everywhere, and a row listing forty of them says nothing the first does not.
+function offVocabulary(graph, validators) {
+  for (const id of graph.order) {
+    const node = graph.nodes.get(id);
+    if (!node || node.deleted || node.anchor) continue;
+    for (const [col, check] of [
+      ['upos', validators.upos],
+      ['xpos', validators.xpos],
+    ]) {
+      const refusal = node[col] == null ? null : check(node[col]);
+      if (refusal) return `${node.form}: ${refusal}`;
+    }
+    for (const [key, value] of node.feats || []) {
+      const refusal = validators.feats(`${key}=${value}`);
+      if (refusal) return `${node.form}: ${refusal}`;
+    }
+  }
+  // `edges` is a Map keyed by relation id.
+  for (const edge of graph.edges?.values() || []) {
+    const refusal = edge.label == null ? null : validators.deprel(edge.label);
+    if (refusal) return refusal;
+  }
+  return null;
 }
 
 // `fn` over `items` with at most `limit` in flight; one promise per item, in

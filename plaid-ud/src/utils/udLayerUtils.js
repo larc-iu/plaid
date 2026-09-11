@@ -5,6 +5,8 @@ import {
   readColorMap,
   readFeatureInventory,
 } from './udVocab.js';
+import { MODES, readVocabMode, readDescriptions } from './udVocabMode.js';
+import { UPOS_DESCRIPTIONS, DEPREL_DESCRIPTIONS } from './udVocabDescriptions.js';
 import { ROLES, findByRole, readRole } from '@larc-iu/plaid-client';
 
 const UD_NAMESPACE = 'ud';
@@ -188,6 +190,8 @@ export const getUdLayerInfo = (document) => {
         featureInventory: readFeatureInventory(null),
       },
       colors: { upos: {}, deprel: {} },
+      modes: { upos: MODES.OPEN, xpos: MODES.OPEN, deprel: MODES.OPEN, feats: MODES.OPEN },
+      descriptions: { upos: UPOS_DESCRIPTIONS, xpos: {}, deprel: DEPREL_DESCRIPTIONS },
       missingLayers: [...EMPTY_MISSING],
       isConfigured: false,
     };
@@ -262,6 +266,20 @@ export const getUdLayerInfo = (document) => {
     colors: {
       upos: readColorMap(uposLayer?.config),
       deprel: readColorMap(relationLayer?.config),
+    },
+    // Whether each vocabulary is a suggestion or a rule, and the one-line
+    // definitions shown beside a value. Both are sibling config keys: see
+    // udVocabMode.js for why they are not folded into `vocab`.
+    modes: {
+      upos: readVocabMode(uposLayer?.config),
+      xpos: readVocabMode(xposLayer?.config),
+      deprel: readVocabMode(relationLayer?.config),
+      feats: readVocabMode(featuresLayer?.config),
+    },
+    descriptions: {
+      upos: readDescriptions(uposLayer?.config, UPOS_DESCRIPTIONS),
+      xpos: readDescriptions(xposLayer?.config),
+      deprel: readDescriptions(relationLayer?.config, DEPREL_DESCRIPTIONS),
     },
     missingLayers: normalizedMissing,
     isConfigured: normalizedMissing.length === 0,

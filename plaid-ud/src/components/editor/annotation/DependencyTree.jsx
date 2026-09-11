@@ -30,6 +30,8 @@ export const DependencyTree = forwardRef(
       deprelVocab,
       onExitDown,
       onEditText,
+      validateDeprel,
+      deprelDescriptions,
     },
     ref,
   ) => {
@@ -607,6 +609,8 @@ export const DependencyTree = forwardRef(
               <DeprelEditor
                 relation={relation}
                 suggestions={deprelVocab}
+                descriptions={deprelDescriptions}
+                validate={validateDeprel}
                 onCommit={(v, typed) => {
                   commitLabel(relation, v, typed);
                   // Stay on this label (selected, not editing) so arrow/Tab nav

@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { Combobox } from '@ui/components/ui/combobox';
 import { readFieldProbs, groupSuggestions, probLabel } from '../../../utils/provenanceUi.js';
+import { notifyWarning } from '../../../utils/notify.js';
 
 // Inline editor for a dependency-relation label, rendered inside the tree's
 // SVG <foreignObject>. Mirrors the grid's vocab cells: a Combobox seeded with
@@ -24,7 +25,16 @@ import { readFieldProbs, groupSuggestions, probLabel } from '../../../utils/prov
 //   Tab / Shift+Tab  → commit + move to the next/previous relation
 // A `done` ref guards against the blur firing a second commit after an
 // explicit Enter/Tab/Escape/Delete already closed the editor.
-export function DeprelEditor({ relation, suggestions, onCommit, onCancel, onDelete, onTab }) {
+export function DeprelEditor({
+  relation,
+  suggestions,
+  descriptions,
+  validate,
+  onCommit,
+  onCancel,
+  onDelete,
+  onTab,
+}) {
   const [value, setValue] = useState(relation.value || 'dep');
   const [pristine, setPristine] = useState(true);
   const doneRef = useRef(false);
@@ -33,6 +43,21 @@ export function DeprelEditor({ relation, suggestions, onCommit, onCancel, onDele
     if (doneRef.current) return;
     doneRef.current = true;
     fn();
+  };
+
+  // A CLOSED deprel list governs the BASE relation: `nsubj:pass` is legal
+  // wherever `nsubj` is, because subtypes are language-specific and open-ended
+  // and a project that listed every one it used would be re-listing the
+  // language. A refusal cancels the edit rather than committing, so the arc
+  // keeps the label it had.
+  const commitOr = (next, typed) => {
+    const refusal = validate?.(next);
+    if (refusal) {
+      notifyWarning(refusal, 'Not in the list');
+      onCancel();
+      return;
+    }
+    onCommit(next, typed);
   };
 
   const deprelProbs = readFieldProbs(relation.metadata, 'deprel');
@@ -110,10 +135,14 @@ export function DeprelEditor({ relation, suggestions, onCommit, onCancel, onDele
           );
         }
         const pct = deprelProbs ? probLabel(deprelProbs, option.value) : null;
+        const gloss = descriptions?.[option.value];
         return (
           <span>
             {option.value}
             {pct && <span style={{ opacity: 0.55, marginLeft: 6, fontSize: '0.85em' }}>{pct}</span>}
+            {gloss && (
+              <span style={{ opacity: 0.6, marginLeft: 8, fontSize: '0.85em' }}>{gloss}</span>
+            )}
           </span>
         );
       }}
@@ -129,9 +158,9 @@ export function DeprelEditor({ relation, suggestions, onCommit, onCancel, onDele
       // The second argument tells the caller whether the human actually typed /
       // picked (vs. just opened and left): re-entering the machine's own label
       // is a confirmation, but merely passing through the editor is not.
-      onBlur={() => once(() => onCommit(value, !pristine))}
+      onBlur={() => once(() => commitOr(value, !pristine))}
       // Clicking an option commits it, and a click is always a deliberate pick.
-      onSubmit={(v) => once(() => onCommit(v, true))}
+      onSubmit={(v) => once(() => commitOr(v, true))}
       onKeyDown={(e, combo) => {
         // stopPropagation so the dependency tree's global document keydown
         // listener (Escape = bail, Ctrl+D = enter) doesn't also fire while the
@@ -145,7 +174,7 @@ export function DeprelEditor({ relation, suggestions, onCommit, onCancel, onDele
           // list rather than inferred from a later event, which is the whole
           // point of the combobox handing its state to the key handler.
           const picked = combo.activeValue;
-          once(() => (picked != null ? onCommit(picked, true) : onCommit(value, !pristine)));
+          once(() => (picked != null ? commitOr(picked, true) : commitOr(value, !pristine)));
         } else if (e.key === 'Escape') {
           e.preventDefault();
           e.stopPropagation();
@@ -157,7 +186,15 @@ export function DeprelEditor({ relation, suggestions, onCommit, onCancel, onDele
         } else if (e.key === 'Tab') {
           e.preventDefault();
           e.stopPropagation();
-          once(() => onTab(value, e.shiftKey, !pristine));
+          once(() => {
+            const refusal = validate?.(value);
+            if (refusal) {
+              notifyWarning(refusal, 'Not in the list');
+              onCancel();
+              return;
+            }
+            onTab(value, e.shiftKey, !pristine);
+          });
         }
       }}
       filter={optionsFilter}
