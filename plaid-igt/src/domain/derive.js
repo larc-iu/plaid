@@ -11,7 +11,13 @@
 import { provState, provOrigin } from '@larc-iu/plaid-client';
 import { lexiconView } from './vocabDictionary.js';
 import { itemsById, linkedItem } from './vocabLookup.js';
-import { readDocumentMetadata, readOrthographies } from './igtConfig.js';
+import {
+  readDocumentMetadata,
+  readOrthographies,
+  readIgnoredTokens,
+  isTokenIgnored,
+} from './igtConfig.js';
+import { virtualMorphemeId } from './virtualMorpheme.js';
 import { collectMweLinks, bracketPieces, assignLanes } from './mwe.js';
 
 // Local copy of plaid-client-js's cpSlicer (spread the body into code points
@@ -146,6 +152,41 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
     morphemesByWord.forEach((arr) => arr.sort((a, b) => a.precedence - b.precedence));
   }
 
+  // A word nobody has analyzed yet gets a morpheme anyway, synthesized here
+  // rather than stored (see virtualMorpheme.js). It is the word: same extent,
+  // same text, no annotation. Consumers of `token.morphemes` therefore see one
+  // morpheme per word whether or not anyone has segmented it, which is what
+  // they saw when reconcile-on-open wrote these rows into the database.
+  //
+  // Ignored tokens (punctuation, per the project's ignored-tokens config) are
+  // excluded, exactly as reconcile excluded them: they carry no annotation and
+  // the editor renders them as gaps, so a morpheme there would be invisible.
+  const ignoredCfg = readIgnoredTokens(primaryTokenLayer?.config);
+  const emptyMorphAnnotations = annotationsFor(null, morphSpanMaps);
+  const virtualMorpheme = (word) => ({
+    id: virtualMorphemeId(word.id),
+    virtual: true,
+    text: word.text,
+    begin: word.begin,
+    end: word.end,
+    precedence: 1,
+    content: word.content,
+    metadata: {},
+    annotations: { ...emptyMorphAnnotations },
+    // Nothing is linked to it and it has no metadata, so both morph types are
+    // null by construction rather than by lookup: there is no entry to ask.
+    vocabItem: null,
+    morphType: null,
+    entryMorphType: null,
+  });
+  const morphemesOf = (word) => {
+    const own = morphemesByWord.get(word.id);
+    if (own && own.length) return own;
+    if (!morphemeTokenLayer) return [];
+    if (isTokenIgnored(word.content, ignoredCfg)) return [];
+    return [virtualMorpheme(word)];
+  };
+
   // Sentence bucketing.
   const sentenceTokens = [...(sentenceTokenLayer?.tokens || [])]
     .map((s) => ({
@@ -170,7 +211,7 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
         tokensInSentence.push({
           ...t,
           annotations: annotationsFor(t.id, wordSpanMaps),
-          morphemes: morphemesByWord.get(t.id) || [],
+          morphemes: morphemesOf(t),
         });
       }
       ti++;

@@ -2,11 +2,11 @@ import PlaidClient, { ROLES } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 
-// Reconcile-on-open WRITES (it seeds morphemes and deletes orphans), so the
-// document must not be open and editable while it runs. Seed an orphan
-// morpheme so the initial pass has real work to do, hold its batch open, and
-// check that the editor is a spinner — with no tab strip to escape through —
-// for as long as the repair is in flight.
+// Reconcile-on-open WRITES (it deletes orphan morphemes), so the document must
+// not be open and editable while it runs. Seed an orphan morpheme so the
+// initial pass has real work to do, hold its batch open, and check that the
+// editor is a spinner, with no tab strip to escape through, for as long as the
+// repair is in flight.
 //
 // The seeded orphan is self-cleaning: reconcile deletes it, which is the very
 // repair under test.

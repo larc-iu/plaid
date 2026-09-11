@@ -236,7 +236,13 @@ export const grid = {
       <div class="igt-morphemes">
         ${repeat(
           morphemes,
-          (m) => m.id,
+          // Keyed by POSITION in the word, not by token id. A word nobody has
+          // analyzed shows a morpheme that is not stored (virtualMorpheme.js),
+          // and committing into it gives it a real id. Keyed by id, lit would
+          // tear the column down and rebuild it, dropping the caret out of the
+          // cell the user had just moved to. Precedence is 1-based and unique
+          // within a word, so it identifies the column either way.
+          (m) => m.precedence,
           (m, i) => {
             const joiner = i > 0 ? morphemeJoiner(morphemes[i - 1]?.morphType, m.morphType) : null;
             return html`

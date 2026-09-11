@@ -613,7 +613,13 @@ describe('word-token structural ops', () => {
     const doc = makeDoc({ raw });
     await doc.splitToken('w-1', 2);
     expect(kinds(doc.client)).toContain('tokens.bulkDelete');
-    expect(doc.sentences[0].tokens[0].morphemes).toHaveLength(0);
+    // The stored morpheme spanned the whole word and is gone with it. Each half
+    // shows a morpheme of its own straight away, synthesized rather than
+    // written, so the halves are ready to annotate with nothing saved yet.
+    const [left, right] = doc.sentences[0].tokens;
+    expect(left.morphemes).toHaveLength(1);
+    expect(left.morphemes[0]).toMatchObject({ virtual: true, content: left.content });
+    expect(right.morphemes[0]).toMatchObject({ virtual: true, content: right.content });
   });
 
   it('mergeTokens grows the first token and drops the rest', async () => {

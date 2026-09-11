@@ -34,7 +34,6 @@ import { RunBanner } from '@ui/components/services/RunBanner.jsx';
 import { useDocumentHistory } from './hooks/useDocumentHistory.js';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useTabParam, tabTo } from '@/hooks/useTabParam';
-import { useDelayedFlag } from '@/hooks/useDelayedFlag';
 import { useComposeProject } from '@/hooks/useCompose';
 import { isReviewed } from '@larc-iu/plaid-client';
 import { useViewportFill } from '@ui/hooks/useViewportFill.js';
@@ -314,23 +313,22 @@ const DocumentEditor = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc, asOf]);
 
-  // Reconcile: heal IGT invariants in the shared substrate — every word token
-  // must have a full-width morpheme, and no morpheme may be orphaned. This runs
-  // (a) once when the document loads (to repair what another app, e.g. UD, may
-  // have left), and (b) every time the user enters the Analyze tab. The
-  // analyze-entry re-run is essential: word tokens created in the Tokenize tab
-  // this session have no morpheme yet, and tokenization never creates one — only
-  // reconcile does. Without it, freshly-tokenized words show empty "Morphemes"
-  // rows until a full page reload. Edit permission only, not while time-travelling
-  // (asOf is a read-only snapshot). Idempotent + single-flighted, so re-entry is
-  // a cheap no-op when nothing needs healing.
+  // Reconcile: heal IGT invariants in the shared substrate: no morpheme may be
+  // orphaned, no token may carry duplicate spans or links. Runs once when the
+  // document loads, to repair what another app (e.g. UD) may have left. Edit
+  // permission only, not while time-travelling (asOf is a read-only snapshot).
+  // Idempotent + single-flighted.
   //
-  // Both passes run behind a spinner rather than over a live, editable document:
-  // reconcile WRITES (it seeds morphemes and deletes orphans), and letting the
-  // user annotate into a document that is still being repaired invites edits
-  // against tokens that are about to be deleted. The initial pass takes the tab
-  // strip's place; the Analyze re-entry pass covers only that panel, and only
-  // after a delay, so the common no-op re-entry stays invisible.
+  // It used to re-run on every entry into the Analyze tab, because words
+  // tokenized this session had no morpheme yet and only reconcile made one.
+  // Nothing makes one now: derive gives every word a morpheme whether or not
+  // one is stored (virtualMorpheme.js), so a freshly tokenized word is ready to
+  // annotate the moment it exists, and the re-entry pass had nothing left to do.
+  //
+  // The pass runs behind a spinner rather than over a live, editable document:
+  // reconcile WRITES (it deletes orphans), and letting the user annotate into a
+  // document that is still being repaired invites edits against tokens that are
+  // about to be deleted. It takes the tab strip's place while it runs.
   //
   // The gate reads the DOCUMENT's asOf as well as the page's: on the way back
   // from history the page's asOf is already null while `doc` is still the
@@ -339,8 +337,6 @@ const DocumentEditor = () => {
   // it arrives (the loser 409s and toasts "Repair failed").
   const reconciledDocRef = useRef(null);
   const [reconciling, setReconciling] = useState(true);
-  const [reanalyzing, setReanalyzing] = useState(false);
-  const showReanalyzing = useDelayedFlag(reanalyzing);
   useEffect(() => {
     // Paths with nothing to repair still have to lower the gate, or the editor
     // waits forever on a pass that will never run.
@@ -348,17 +344,13 @@ const DocumentEditor = () => {
       if (doc) setReconciling(false);
       return undefined;
     }
-    const isInitial = reconciledDocRef.current !== doc;
-    // After the initial pass, only re-reconcile on Analyze entry.
-    if (!isInitial && activeTab !== 'analyze') return undefined;
+    if (reconciledDocRef.current === doc) return undefined;
     reconciledDocRef.current = doc;
     let cancelled = false;
-    const setBusy = isInitial ? setReconciling : setReanalyzing;
-    setBusy(true);
+    setReconciling(true);
     (async () => {
       try {
         const {
-          created = 0,
           deleted = 0,
           deletedAnnotatedOrphans = 0,
           dedupedSpans = 0,
@@ -391,9 +383,8 @@ const DocumentEditor = () => {
         // dismiss toasts. The tally goes to the console, where it stays
         // available for a bug report. Failures and un-healable findings below
         // still speak up.
-        if (created + deleted + dedupedSpans + dedupedLinks > 0) {
+        if (deleted + dedupedSpans + dedupedLinks > 0) {
           const parts = [];
-          if (created) parts.push(`added ${created} default morpheme${created === 1 ? '' : 's'}`);
           if (deleted) {
             const note = deletedAnnotatedOrphans
               ? `matching no word, ${deletedAnnotatedOrphans} carrying annotations that are recoverable via document history`
@@ -413,32 +404,27 @@ const DocumentEditor = () => {
           console.info(`Reconcile: ${parts.join('; ')}`);
         }
         // Integrity findings (things we could NOT auto-repair) — console + toast.
-        // Only on the initial pass per doc, so re-entering Analyze doesn't
-        // re-toast the same pre-existing, un-healable issues.
-        if (isInitial) reportIntegrityFindings(findings, doc.id);
+        reportIntegrityFindings(findings, doc.id);
       } catch (e) {
         console.error('Reconcile failed:', e);
       } finally {
         // Raise the gate however the pass ended — a repair that threw must not
         // strand the document behind a spinner. A CANCELLED pass deliberately
-        // leaves the initial gate down: the run that replaces it re-arms it
+        // leaves the gate down: the run that replaces it re-arms it
         // synchronously, so clearing it here would flash the editor open in
         // between (StrictMode's double-invoke does exactly this in dev).
-        if (!cancelled) setBusy(false);
+        if (!cancelled) setReconciling(false);
       }
     })();
     return () => {
       cancelled = true;
       // If this pass was cancelled before it could report (StrictMode's dev
-      // double-invoke, a quick tab switch), let the next run count as the
-      // initial one again, or the integrity findings toast is never shown.
-      // reconcileOnOpen itself is idempotent, so re-running is cheap.
-      if (isInitial && reconciledDocRef.current === doc) reconciledDocRef.current = null;
-      // The re-entry gate has no such successor when the user simply leaves
-      // Analyze mid-pass, so it does have to be cleared here.
-      if (!isInitial) setReanalyzing(false);
+      // double-invoke, a quick tab switch), let the next run happen, or the
+      // integrity findings toast is never shown. reconcileOnOpen itself is
+      // idempotent, so re-running is cheap.
+      if (reconciledDocRef.current === doc) reconciledDocRef.current = null;
     };
-  }, [doc, asOf, permissions?.canWrite, activeTab]);
+  }, [doc, asOf, permissions?.canWrite]);
 
   // The integrity toast is sticky (duration Infinity) so it isn't missed, but
   // it is about THIS document: drop it when the user leaves for another
@@ -770,18 +756,7 @@ const DocumentEditor = () => {
                 </TabsContent>
                 <TabsContent value="analyze">
                   <Panel active={activeTab === 'analyze'}>
-                    {/* Entering Analyze re-reconciles, because words tokenized
-                      this session have no morpheme yet. Hold the island back
-                      until that lands, so it can't render (and be annotated)
-                      against a half-repaired morpheme layer. Nothing is drawn
-                      for the first beat: the pass is usually a local no-op, and
-                      a spinner that resolves in the same frame reads as a
-                      flicker — see useDelayedFlag. */}
-                    {reanalyzing ? (
-                      showReanalyzing && <Spinner label="Preparing morphemes…" className="py-16" />
-                    ) : (
-                      <AnalyzeIsland />
-                    )}
+                    <AnalyzeIsland />
                   </Panel>
                 </TabsContent>
                 <TabsContent value="comments">

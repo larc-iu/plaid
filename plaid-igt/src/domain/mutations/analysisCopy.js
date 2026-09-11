@@ -211,6 +211,16 @@ export const analysisCopyMutations = {
 
     {
       for (const chunk of chunks) {
+        // Every word here is unanalyzed by definition, so its first morpheme is
+        // usually the one derive synthesized rather than a stored token. Write
+        // those first, in one bulk create, since batch 1 below addresses them
+        // by id and a create inside a batch does not hand its id back.
+        const firstIds = await this.materializeMorphemeIds(chunk.map((p) => p.m0.id));
+        chunk.forEach((p, i) => {
+          p.m0Id = firstIds[i];
+        });
+        const live = chunk.filter((p) => p.m0Id);
+
         // ---- batch 1: structure + everything addressable now ----
         let opIdx = 0;
         const pendingMorphs = []; // { slot, opIdx } — created morphemes needing batch-2 links/spans
@@ -229,8 +239,8 @@ export const analysisCopyMutations = {
         };
 
         const results = await this._client.batched(async () => {
-          for (const p of chunk) {
-            const { token, m0, analysis } = p;
+          for (const p of live) {
+            const { token, m0Id, analysis } = p;
             const slots = analysis.morphemes || [];
             const s0 = slots[0] || null;
 
@@ -243,10 +253,10 @@ export const analysisCopyMutations = {
               if (s0.morphType != null) patch.morphType = s0.morphType;
               const merged = { ...patch, ...stampForm(s0.form) };
               if (Object.keys(merged).length && (Object.keys(patch).length || slots.length > 1)) {
-                this._client.tokens.patchMetadata(m0.id, merged);
+                this._client.tokens.patchMetadata(m0Id, merged);
                 opIdx++;
               }
-              queueLinkAndSpans(m0.id, s0);
+              queueLinkAndSpans(m0Id, s0);
             }
             // Remaining slots: create stamped morpheme tokens; their links/spans
             // wait for batch 2 (ids unknown until this batch lands).
@@ -432,11 +442,21 @@ export const analysisCopyMutations = {
     if (!spanIds.length && !tokenIds.length && !linkIds.length && !writes.length) return true;
 
     return this._withSaving('Failed to confirm word analysis', async () => {
+      // An adoption can target the morpheme derive synthesized for a word
+      // nobody has segmented, which is the ordinary case for a guessed gloss.
+      // Write those morphemes before the batch that points spans at them: a
+      // create inside a batch does not hand its id back. A word-scope target
+      // passes through untouched.
+      const adoptIds = await this.materializeMorphemeIds(writes.map((w) => w.targetId));
+      const live = writes
+        .map((w, i) => ({ ...w, targetId: adoptIds[i] }))
+        .filter((w) => w.targetId);
+
       await this._client.batched(async () => {
         tokenIds.forEach((id) => this._client.tokens.patchMetadata(id, confirm));
         linkIds.forEach((id) => this._client.vocabLinks.patchMetadata(id, confirm));
         spanIds.forEach((id) => this._client.spans.patchMetadata(id, confirm));
-        writes.forEach((w) =>
+        live.forEach((w) =>
           this._client.spans.create(w.layerId, [w.targetId], w.value, w.metadata || undefined),
         );
       });

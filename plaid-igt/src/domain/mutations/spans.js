@@ -6,6 +6,7 @@
 // rather than silently "succeeding" via the saving wrapper.
 
 import { mergeMetadata } from '@larc-iu/plaid-client';
+import { isVirtualMorphemeId } from '../virtualMorpheme.js';
 
 const findSpanLayer = (doc, scope, fieldName) => {
   const spanLayers = doc.layerInfo.spanLayers?.[scope] || [];
@@ -99,7 +100,14 @@ const makeSpanUpdater = (scope) =>
       return false;
     }
     return this._withSaving(`Failed to update ${fieldName}`, async () => {
-      await upsertSpan(this, scope, layer, targetId, value, metadata);
+      // Glossing an unanalyzed word writes its morpheme before the span that
+      // hangs off it: a span needs a token to point at. Any other id is handed
+      // straight back (see materializeMorphemeId).
+      const id = isVirtualMorphemeId(targetId)
+        ? await this.materializeMorphemeId(targetId)
+        : targetId;
+      if (!id) throw new Error(`Morpheme ${targetId} not found`);
+      await upsertSpan(this, scope, layer, id, value, metadata);
     });
   };
 

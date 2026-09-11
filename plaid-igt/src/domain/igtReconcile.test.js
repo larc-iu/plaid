@@ -30,10 +30,9 @@ const m = (id, begin, end) => ({ id, text: 'text-1', begin, end, precedence: 1, 
 beforeEach(() => resetIds());
 
 describe('planMorphemeReconcile', () => {
-  it('flags a bare word (no full-width morpheme)', () => {
+  it('leaves a bare word alone (derive gives it a morpheme, nothing is written)', () => {
     const raw = buildRawDoc({ words: twoWords, morphemes: [m('m-1', 0, 3)] });
     const plan = planMorphemeReconcile(getIgtLayerInfo(raw));
-    expect(plan.wordsNeedingMorpheme.map((w) => w.id)).toEqual(['w-2']);
     expect(plan.orphanMorphemeIds).toEqual([]);
   });
 
@@ -43,7 +42,6 @@ describe('planMorphemeReconcile', () => {
       morphemes: [m('m-1', 0, 3), m('m-2', 4, 7), m('m-orphan', 3, 4)],
     });
     const plan = planMorphemeReconcile(getIgtLayerInfo(raw));
-    expect(plan.wordsNeedingMorpheme).toEqual([]);
     expect(plan.orphanMorphemeIds).toEqual(['m-orphan']);
   });
 
@@ -70,13 +68,11 @@ describe('planMorphemeReconcile', () => {
 
   it('is empty for a well-formed doc', () => {
     const plan = planMorphemeReconcile(getIgtLayerInfo(buildRawDoc()));
-    expect(plan.wordsNeedingMorpheme).toEqual([]);
     expect(plan.orphanMorphemeIds).toEqual([]);
   });
 
   it('is empty when there is no morpheme layer (foreign project not yet adopted)', () => {
     expect(planMorphemeReconcile({ primaryTokenLayer: { tokens: twoWords } })).toEqual({
-      wordsNeedingMorpheme: [],
       orphanMorphemeIds: [],
       deletedAnnotatedOrphans: 0,
     });
@@ -221,24 +217,21 @@ describe('planSpanDedup', () => {
 });
 
 describe('IgtDocument.reconcileOnOpen', () => {
-  it('creates a default morpheme for a bare word', async () => {
+  it('writes nothing for a bare word, which derives a morpheme of its own', async () => {
     const raw = buildRawDoc({ words: twoWords, morphemes: [m('m-1', 0, 3)] });
     const client = makeFakeClient();
     const doc = makeDoc(raw, client);
 
     const res = await doc.reconcileOnOpen();
 
-    expect(res).toMatchObject({ created: 1, deleted: 0 });
-    // One bulk create carries every bare word, so a big document stays under
-    // the server's per-batch cap.
-    const bulk = client.calls.filter((c) => c.kind === 'tokens.bulkCreate');
-    expect(bulk.length).toBe(1);
-    expect(bulk[0].args[0]).toMatchObject([{ begin: 4, end: 7, precedence: 1 }]);
-    expect(client.calls.filter((c) => c.kind === 'tokens.create').length).toBe(0);
-    const morphemes = doc.layerInfo.morphemeTokenLayer.tokens;
-    expect(morphemes.length).toBe(2);
-    // the new morpheme is full-width over the bare word [4, 7]
-    expect(morphemes.some((t) => t.begin === 4 && t.end === 7)).toBe(true);
+    expect(res).toMatchObject({ deleted: 0 });
+    expect(client.calls.filter((c) => c.kind.startsWith('tokens.')).length).toBe(0);
+    // Still one stored morpheme, and w-2 shows one anyway.
+    expect(doc.layerInfo.morphemeTokenLayer.tokens.length).toBe(1);
+    const [first, second] = doc.sentences[0].tokens;
+    expect(first.morphemes[0].id).toBe('m-1');
+    expect(first.morphemes[0].virtual).toBeUndefined();
+    expect(second.morphemes[0]).toMatchObject({ id: 'virtual:w-2', virtual: true });
   });
 
   it('deletes an orphan morpheme', async () => {
@@ -251,7 +244,7 @@ describe('IgtDocument.reconcileOnOpen', () => {
 
     const res = await doc.reconcileOnOpen();
 
-    expect(res).toMatchObject({ created: 0, deleted: 1 });
+    expect(res).toMatchObject({ deleted: 1 });
     expect(client.calls.filter((c) => c.kind === 'tokens.bulkDelete').length).toBe(1);
     const ids = doc.layerInfo.morphemeTokenLayer.tokens.map((t) => t.id);
     expect(ids).not.toContain('m-orphan');
@@ -264,7 +257,7 @@ describe('IgtDocument.reconcileOnOpen', () => {
 
     const res = await doc.reconcileOnOpen();
 
-    expect(res).toMatchObject({ created: 0, deleted: 0, findings: [] });
+    expect(res).toMatchObject({ deleted: 0, findings: [] });
     expect(client.calls.filter((c) => c.kind === 'submitBatch').length).toBe(0);
   });
 
@@ -284,7 +277,7 @@ describe('IgtDocument.reconcileOnOpen', () => {
 
     const res = await doc.reconcileOnOpen();
 
-    expect(res).toMatchObject({ created: 0, deleted: 1, deletedAnnotatedOrphans: 1 });
+    expect(res).toMatchObject({ deleted: 1, deletedAnnotatedOrphans: 1 });
     const ids = doc.layerInfo.morphemeTokenLayer.tokens.map((t) => t.id);
     expect(ids).not.toContain('m-orphan');
   });

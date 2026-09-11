@@ -40,8 +40,8 @@ const CONTRIBUTED = { prov: 'contributed', provSource: 'user:ann@x.com' };
 
 // `tagset`, when given, governs the morpheme-scope Gloss field (msl-0).
 // `contributor` mounts the editor as ANN in a project that reviews her work.
-function mount({ tagset = null, contributor = false } = {}) {
-  const raw = buildRawDoc();
+function mount({ tagset = null, contributor = false, morphemes = undefined } = {}) {
+  const raw = buildRawDoc(morphemes === undefined ? {} : { morphemes });
   const client = makeFakeClient();
   client.query = async () => ({ results: [] });
   const igt = tagset ? { tagsets: { Leipzig: tagset } } : {};
@@ -467,6 +467,47 @@ describe('splitting a morpheme form', () => {
     key(document.activeElement, 'Enter');
     await settle();
     expect(formsOf(doc)).toEqual(['the', 'kom']);
+  });
+});
+
+describe('a word nobody has analyzed', () => {
+  // Its morpheme is synthesized, not stored (domain/virtualMorpheme.js). The
+  // first commit into it writes the token, which changes the id every cell in
+  // that column is keyed by, and the caret has already moved on to the next
+  // cell of the same column by then.
+  it('keeps the caret where the user put it when the first commit writes the morpheme', async () => {
+    const { doc } = mount({ morphemes: [] });
+    await settle();
+    const form = cell('mf:virtual:w-1');
+    focus(form);
+    type(form, 'ngo');
+    // Down into the gloss of the same morpheme, which commits the form behind it.
+    const gloss = cell('ma:virtual:w-1:Gloss');
+    focus(gloss);
+    await settle();
+
+    const m = doc.sentences[0].tokens[0].morphemes[0];
+    expect(m.virtual).toBeUndefined();
+    expect(m.metadata.form).toBe('ngo');
+    expect(document.activeElement).toBe(cell(`ma:${m.id}:Gloss`));
+    expect(host.contains(document.activeElement)).toBe(true);
+  });
+
+  it('writes the gloss typed into it against the morpheme it just became', async () => {
+    const { doc, client } = mount({ morphemes: [] });
+    await settle();
+    const gloss = cell('ma:virtual:w-1:Gloss');
+    focus(gloss);
+    type(gloss, 'dog');
+    gloss.blur();
+    await settle();
+
+    const m = doc.sentences[0].tokens[0].morphemes[0];
+    expect(m.annotations.Gloss?.value).toBe('dog');
+    const spans = client.calls.filter((c) => c.kind === 'spans.create');
+    expect(spans).toHaveLength(1);
+    expect(spans[0].args[1]).toEqual([m.id]);
+    expect(m.id.startsWith('virtual:')).toBe(false);
   });
 });
 

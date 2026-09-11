@@ -8,6 +8,7 @@
 
 import { stampInferred, isMachine, mergeMetadata } from '@larc-iu/plaid-client';
 import { isValidMorphType } from '../affixMarkers.js';
+import { isVirtualMorphemeId } from '../virtualMorpheme.js';
 
 // Link replacements emit 2 ops apiece (delete + create); 400 per batch keeps
 // each atomic batch comfortably under plaid-core's 1000-op cap.
@@ -55,8 +56,8 @@ export const vocabMutations = {
   // as chunked atomic delete+create batches. Ends with one _reload(). Returns
   // the number of links written (false on failure).
   async bulkLinkVocab(proposals, provSource) {
-    const creates = []; // { tokenId, item }
-    const replaces = []; // { tokenId, item, priorLinkId }
+    let creates = []; // { tokenId, item }
+    let replaces = []; // { tokenId, item, priorLinkId }
     for (const p of proposals || []) {
       const { item } = findVocabForItem(this._vocabularies, p.vocabItemId);
       if (!item) continue;
@@ -74,6 +75,23 @@ export const vocabMutations = {
     const metadata = stampInferred(provSource);
 
     const ok = await this._withSaving('Failed to auto-link', async () => {
+      // Proposals can name an unanalyzed word's morpheme, which auto-link reads
+      // by the form the word gives it. One bulk create turns those into tokens
+      // before anything links to them, and before the batches below. A proposal
+      // whose word is gone drops out rather than linking to nothing.
+      const resolved = await this.materializeMorphemeIds([
+        ...creates.map((c) => c.tokenId),
+        ...replaces.map((r) => r.tokenId),
+      ]);
+      creates.forEach((c, i) => {
+        c.tokenId = resolved[i];
+      });
+      replaces.forEach((r, i) => {
+        r.tokenId = resolved[creates.length + i];
+      });
+      const live = (x) => Boolean(x.tokenId);
+      creates = creates.filter(live);
+      replaces = replaces.filter(live);
       if (creates.length) {
         // The dedicated endpoint has no per-batch op cap, so even a document
         // with thousands of unlinked tokens links in a single tx.
@@ -135,17 +153,24 @@ export const vocabMutations = {
     const stamp = metadata || this.createStamp;
 
     return this._withSaving('Failed to link vocab item', async () => {
+      // Linking an unanalyzed word's morpheme writes the morpheme first: a link
+      // needs a token to point at. Before the batch below, never inside it: a
+      // create's id is only readable outside one. A word id passes through.
+      const targetTokenId = isVirtualMorphemeId(tokenId)
+        ? await this.materializeMorphemeId(tokenId)
+        : tokenId;
+      if (!targetTokenId) throw new Error(`Token ${tokenId} not found`);
       let newLinkId;
       if (priorLink) {
         const results = await this._client.batched(async () => {
           this._client.vocabLinks.delete(priorLink.id);
-          this._client.vocabLinks.create(vocabItemId, [tokenId], stamp || undefined);
+          this._client.vocabLinks.create(vocabItemId, [targetTokenId], stamp || undefined);
         });
         newLinkId = results[results.length - 1]?.body?.id;
       } else {
         const result = await this._client.vocabLinks.create(
           vocabItemId,
-          [tokenId],
+          [targetTokenId],
           stamp || undefined,
         );
         newLinkId = result?.id || result;
@@ -165,7 +190,7 @@ export const vocabMutations = {
           if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
           tv.vocabLinks.push({
             id: newLinkId,
-            tokens: [tokenId],
+            tokens: [targetTokenId],
             vocabItem: itemSnapshot,
             ...(stamp ? { metadata: stamp } : {}),
           });
@@ -192,8 +217,13 @@ export const vocabMutations = {
     if (!ids.length) return false;
     const stamp = this.createStamp || undefined;
     return this._withSaving('Failed to link entries', async () => {
+      // The matches can include unanalyzed words, whose morphemes read as the
+      // word: one bulk create brings those into being, outside the batch below
+      // so their ids come back. A word reading roa is a roa to link.
+      const targetIds = (await this.materializeMorphemeIds(ids)).filter(Boolean);
+      if (!targetIds.length) return;
       const results = await this._client.batched(async () => {
-        for (const id of ids) this._client.vocabLinks.create(vocabItemId, [id], stamp);
+        for (const id of targetIds) this._client.vocabLinks.create(vocabItemId, [id], stamp);
       });
       const newIds = results.map((r) => r?.body?.id ?? r?.id ?? null);
       const itemSnapshot = { id: vocabItem.id, layer: targetVocab.id, form: vocabItem.form };
@@ -201,7 +231,7 @@ export const vocabMutations = {
         const tv = vocabs[targetVocab.id];
         if (!tv) return;
         if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
-        ids.forEach((tokenId, i) => {
+        targetIds.forEach((tokenId, i) => {
           tv.vocabLinks.push({
             id: newIds[i],
             tokens: [tokenId],
@@ -538,6 +568,12 @@ export const vocabMutations = {
     const stamp = this.createStamp || undefined;
 
     return this._withSaving('Failed to create and link vocab item', async () => {
+      // Same as linkVocab: an unanalyzed word's morpheme becomes a token before
+      // anything points at it, and before the batch below.
+      const targetTokenId = isVirtualMorphemeId(tokenId)
+        ? await this.materializeMorphemeId(tokenId)
+        : tokenId;
+      if (!targetTokenId) throw new Error(`Token ${tokenId} not found`);
       const createResult = await this._client.vocabItems.create(vocabId, form, metadataArg);
       const newItemId = createResult?.id || createResult;
 
@@ -545,11 +581,11 @@ export const vocabMutations = {
       if (priorLink) {
         const results = await this._client.batched(async () => {
           this._client.vocabLinks.delete(priorLink.id);
-          this._client.vocabLinks.create(newItemId, [tokenId], stamp);
+          this._client.vocabLinks.create(newItemId, [targetTokenId], stamp);
         });
         newLinkId = results[results.length - 1]?.body?.id;
       } else {
-        const linkResult = await this._client.vocabLinks.create(newItemId, [tokenId], stamp);
+        const linkResult = await this._client.vocabLinks.create(newItemId, [targetTokenId], stamp);
         newLinkId = linkResult?.id || linkResult;
       }
 
@@ -572,7 +608,7 @@ export const vocabMutations = {
           if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
           tv.vocabLinks.push({
             id: newLinkId,
-            tokens: [tokenId],
+            tokens: [targetTokenId],
             vocabItem: { id: newItem.id, form: newItem.form, metadata: newItem.metadata },
             ...(stamp ? { metadata: stamp } : {}),
           });

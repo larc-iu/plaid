@@ -34,15 +34,9 @@ export function validateIgtDocument(
 
   // --- (1) Heal-residue tripwires (should all be empty post-reconcile) ---
   try {
-    const { wordsNeedingMorpheme, orphanMorphemeIds } = planMorphemeReconcile(layerInfo);
-    if (wordsNeedingMorpheme.length) {
-      add(
-        SEVERITY.ERROR,
-        'morpheme-missing',
-        `${wordsNeedingMorpheme.length} word(s) still lack a full-width morpheme after auto-repair.`,
-        { extents: wordsNeedingMorpheme.map((w) => `${w.begin}:${w.end}`) },
-      );
-    }
+    // A word with no stored morpheme is not a finding: derive gives it one and
+    // the first write makes it real (virtualMorpheme.js). An orphan still is.
+    const { orphanMorphemeIds } = planMorphemeReconcile(layerInfo);
     if (orphanMorphemeIds.length) {
       add(
         SEVERITY.ERROR,

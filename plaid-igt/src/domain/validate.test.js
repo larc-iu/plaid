@@ -20,12 +20,13 @@ describe('validateIgtDocument', () => {
     expect(findings.find((f) => f.code === 'morpheme-orphan')).toMatchObject({ severity: 'error' });
   });
 
-  it('flags a residual bare word (heal tripwire)', () => {
+  it('does not flag a word with no stored morpheme', () => {
+    // A word gets a morpheme from derive whether or not one is stored, so
+    // having none stored is the ordinary state of an unanalyzed word, not a
+    // repair that failed.
     const raw = buildRawDoc({ morphemes: [morph('m-1', 0, 3)] }); // w-2 has no morpheme
     const findings = validateIgtDocument(getIgtLayerInfo(raw));
-    expect(findings.find((f) => f.code === 'morpheme-missing')).toMatchObject({
-      severity: 'error',
-    });
+    expect(findings.find((f) => f.code === 'morpheme-missing')).toBeUndefined();
   });
 
   it('flags residual duplicate spans (heal tripwire)', () => {

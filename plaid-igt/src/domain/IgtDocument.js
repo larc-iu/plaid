@@ -473,12 +473,13 @@ export class IgtDocument {
 
   // Reconcile-on-open: repair IGT invariants another app may have broken while
   // editing the shared substrate, then validate what remains. Repairs:
-  //  - Morphemes: every word must have a full-width morpheme; morphemes whose
-  //    extent matches no word are orphans (e.g. left behind when another app
-  //    merges two words). Heal downward (the word tokenization is
-  //    authoritative): create a default morpheme for each bare word and delete
-  //    EVERY orphan — including annotated ones (the gloss loss is rare and
-  //    recoverable via document history; a kept orphan was invisible+immortal).
+  //  - Morphemes: a morpheme whose extent matches no word is an orphan (e.g.
+  //    left behind when another app merges two words). Heal downward (the word
+  //    tokenization is authoritative) by deleting EVERY orphan, including
+  //    annotated ones (the gloss loss is rare and recoverable via document
+  //    history; a kept orphan was invisible+immortal). A word with no morpheme
+  //    is NOT repaired here: derive synthesizes one and the first write makes
+  //    it real, so there is nothing to write on open (virtualMorpheme.js).
   //  - Duplicate spans at any scope (word/morpheme/sentence): a token merge
   //    elsewhere reparents the dying token's spans onto the survivor, leaving
   //    >1 span per layer — invisible here (derive renders only the first). Heal
@@ -548,7 +549,6 @@ export class IgtDocument {
 
   async _reconcileOnOpenImpl() {
     const ZERO = {
-      created: 0,
       deleted: 0,
       deletedAnnotatedOrphans: 0,
       dedupedSpans: 0,
@@ -568,37 +568,17 @@ export class IgtDocument {
       // that way leaves nothing for a later pass to find.
       await this._backfillPreserveOnSplit(info);
       await this._backfillFieldLangs(info);
-      const { wordsNeedingMorpheme, orphanMorphemeIds, deletedAnnotatedOrphans } =
-        planMorphemeReconcile(info);
+      const { orphanMorphemeIds, deletedAnnotatedOrphans } = planMorphemeReconcile(info);
       const dedupPlans = planSpanDedup(info);
       const linkPlans = planVocabLinkDedup(this._vocabularies);
       const typePlans = planMorphTypeSync(this.sentences);
 
       const morphemeLayer = info.morphemeTokenLayer;
-      const textId = info.primaryTextLayer?.text?.id;
-      const morphemeWork = Boolean(
-        morphemeLayer?.id && textId && (wordsNeedingMorpheme.length || orphanMorphemeIds.length),
-      );
+      const morphemeWork = Boolean(morphemeLayer?.id && orphanMorphemeIds.length);
 
       if (morphemeWork || dedupPlans.length || linkPlans.length || typePlans.length) {
-        const results = await this._client.batched(async () => {
-          if (morphemeWork && orphanMorphemeIds.length)
-            this._client.tokens.bulkDelete(orphanMorphemeIds);
-          // One bulk create for every bare word: a document with thousands of
-          // them must stay under the server's per-batch cap, and the ids come
-          // back in input order.
-          if (morphemeWork && wordsNeedingMorpheme.length) {
-            this._client.tokens.bulkCreate(
-              wordsNeedingMorpheme.map((w) => ({
-                tokenLayerId: morphemeLayer.id,
-                text: textId,
-                begin: w.begin,
-                end: w.end,
-                precedence: 1,
-              })),
-            );
-          }
-          // Dedup ops LAST so the morpheme-create result slicing below stays simple.
+        await this._client.batched(async () => {
+          if (morphemeWork) this._client.tokens.bulkDelete(orphanMorphemeIds);
           dedupPlans.forEach((p) => {
             if (p.needsUpdate) this._client.spans.update(p.keepSpanId, p.mergedValue);
             p.deleteSpanIds.forEach((id) => this._client.spans.delete(id));
@@ -611,10 +591,6 @@ export class IgtDocument {
             this._client.tokens.patchMetadata(p.morphemeId, { morphType: p.morphType });
           });
         });
-        // Op order: the optional bulkDelete first, then the bulk create.
-        const createOffset = morphemeWork && orphanMorphemeIds.length ? 1 : 0;
-        const created = morphemeWork && wordsNeedingMorpheme.length ? results[createOffset] : null;
-        const newIds = created?.body?.ids ?? created?.ids ?? [];
         const removed = new Set(orphanMorphemeIds);
 
         this._applyRawPatch((next, infoNext, vocabs) => {
@@ -627,21 +603,8 @@ export class IgtDocument {
           }
           if (morphemeWork) {
             const layer = infoNext.morphemeTokenLayer;
-            if (layer) {
-              if (!Array.isArray(layer.tokens)) layer.tokens = [];
-              if (removed.size) layer.tokens = layer.tokens.filter((m) => !removed.has(m.id));
-              wordsNeedingMorpheme.forEach((w, i) => {
-                const id = newIds[i];
-                if (id)
-                  layer.tokens.push({
-                    id,
-                    text: textId,
-                    begin: w.begin,
-                    end: w.end,
-                    precedence: 1,
-                    metadata: {},
-                  });
-              });
+            if (layer && Array.isArray(layer.tokens)) {
+              layer.tokens = layer.tokens.filter((m) => !removed.has(m.id));
             }
           }
           if (dedupPlans.length) {
@@ -674,7 +637,6 @@ export class IgtDocument {
       });
 
       return {
-        created: morphemeWork ? wordsNeedingMorpheme.length : 0,
         deleted: morphemeWork ? orphanMorphemeIds.length : 0,
         deletedAnnotatedOrphans,
         dedupedSpans: dedupPlans.reduce((n, p) => n + p.deleteSpanIds.length, 0),
