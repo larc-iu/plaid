@@ -224,8 +224,16 @@ class FakeClient:
         entries = self.log[self._batch_start:]
         self.batches.append(entries)
         self._batch_start = None
-        # Result per op, like the server: created things carry an id.
-        return [{'status': 201, 'body': {'id': f'new-{e[0]}-{i}'}} for i, e in enumerate(entries)]
+        # Result per op, like the server: created things carry an id, and a
+        # bulk create carries `ids`, one per item, in input order.
+        out = []
+        for i, e in enumerate(entries):
+            body = {'id': f'new-{e[0]}-{i}'}
+            if e[1].startswith('bulk_create'):
+                n = len(e[2][0]) if e[2] and isinstance(e[2][0], list) else 1
+                body['ids'] = [f'new-{e[0]}-{i}-{k}' for k in range(n)]
+            out.append({'status': 201, 'body': body})
+        return out
 
     @contextmanager
     def operation(self, message):

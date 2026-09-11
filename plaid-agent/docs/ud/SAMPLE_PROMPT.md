@@ -65,7 +65,7 @@ Looking outside the project:
 
 ## Tools
 
-20 tools, in the order the model receives them: 6 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
+21 tools, in the order the model receives them: 7 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
 
 ### project_overview
 
@@ -138,6 +138,14 @@ PLAN: have the project's parser re-parse whole documents. This REWRITES each doc
 - `language` (string): Defaults to the project's own language.
 - `overwrite` (boolean)
 - `service_id` (string): Only when several parsers are connected.
+
+### set_words
+
+PLAN: say which WORDS a token holds. Two or more makes it a multi-word token (Spanish "al" holding "a" and "el"); one collapses it back to a plain token. This REPLACES the token's words, so it discards their lemma, UPOS, XPOS, features and heads, and seeds each new word's lemma from its form. Use it to fix segmentation, never to change one value.
+
+- `document` (string, required): Document id or exact name (see project_overview).
+- `ref` (string, required): The token: "s3.w2", or "s3.w2-3" if it is already a multi-word token.
+- `forms` (array of string, required): The words, in order, e.g. ["a", "el"].
 
 ### plan_status
 

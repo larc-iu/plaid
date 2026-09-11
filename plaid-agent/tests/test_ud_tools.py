@@ -163,7 +163,7 @@ def test_the_payload_carries_the_document_version_it_was_read_at(ws):
 def test_every_declared_tool_is_a_plan_tool_or_is_not(ws):
     names = {t['function']['name'] for t in TOOLS}
     assert WRITE_TOOLS == {'set_field', 'set_head', 'del_relation', 'confirm',
-                           'discard_predictions', 'run_parse'}
+                           'discard_predictions', 'run_parse', 'set_words'}
     assert 'read_document' in names and 'read_document' not in WRITE_TOOLS
 
 
@@ -353,3 +353,67 @@ def test_reading_a_document_names_it_the_way_the_user_would(ws):
     ws.on_progress = said.append
     ws.doc('ud1')
     assert said == ['Reading "Viaje"…']
+
+
+# --- reshaping a token -----------------------------------------------------------
+
+def test_set_words_makes_a_multi_word_token(ws):
+    out = call_tool(ws, 'set_words', {'document': 'Viaje', 'ref': 's2.w1',
+                                      'forms': ['co', 'rre']})
+    assert 'Planned "Corre" in s2 as 2 words: "co", "rre".' == out
+    op = ws.ops[0]
+    assert op['kind'] == 'set_words' and op['forms'] == ['co', 'rre']
+    assert op['existing_word_ids'] == ['uw-5'] and op['surface'] == 'Corre'
+    assert op['ref'] == 's2.w1'
+
+
+def test_set_words_collapses_one_back(ws):
+    out = call_tool(ws, 'set_words', {'document': 'Viaje', 'ref': 's1.w2-3', 'forms': ['al']})
+    assert 'as one word' in out
+    assert ws.ops[0]['existing_word_ids'] == ['uw-2a', 'uw-2b']
+
+
+def test_set_words_says_what_it_discards(ws):
+    """The words are deleted and remade, which cascades everything on them.
+    A user approving this has to see how much goes."""
+    out = call_tool(ws, 'set_words', {'document': 'Viaje', 'ref': 's1.w1', 'forms': ['va', 'mos']})
+    assert 'discards 3 annotation value(s) and 1 dependency' in out
+
+
+def test_a_word_reference_reaches_its_token(ws):
+    call_tool(ws, 'set_words', {'document': 'Viaje', 'ref': 's1.w2', 'forms': ['al']})
+    assert ws.ops[0]['token_id'] == 'ut-2'      # the token, not the word
+
+
+def test_reshaping_and_annotating_the_same_token_cannot_share_a_plan(ws):
+    call_tool(ws, 'set_words', {'document': 'Viaje', 'ref': 's1.w1', 'forms': ['va', 'mos']})
+    out = call_tool(ws, 'set_field', {'document': 'Viaje', 'refs': ['s1.w1'], 'field': 'lemma',
+                                      'value': 'ir'})
+    assert 'already reshapes the token' in out and len(ws.ops) == 1
+    from plaid_agent.ud.plan import validate_ops
+    with pytest.raises(ValueError, match='reshapes a token and annotates'):
+        validate_ops(ws.ops + [{'kind': 'set_span', 'layer_id': 'l', 'token_id': 'uw-1'}])
+
+
+def test_applying_a_reshape_remakes_the_words_then_their_spans(ws):
+    call_tool(ws, 'set_words', {'document': 'Viaje', 'ref': 's2.w1', 'forms': ['co', 'rre']})
+    counts = execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified')
+    assert counts == {'reshaped tokens': 1}
+    first, second = ws.client.batches
+    kinds = [(e[0], e[1]) for e in first]
+    assert kinds == [('tokens', 'bulk_delete'), ('tokens', 'bulk_create'),
+                     ('tokens', 'patch_metadata')]
+    # The multi-word token records its own surface, the way the editor does.
+    assert first[2][2][1] == {'form': 'Corre'}
+    # Then a Form and a Lemma span per word, which could not be in the first
+    # batch: they name ids that batch made.
+    assert [(e[0], e[1]) for e in second] == [('spans', 'bulk_create')] * 4
+
+
+def test_collapsing_to_one_word_drops_the_tokens_form(ws):
+    call_tool(ws, 'set_words', {'document': 'Viaje', 'ref': 's1.w2-3', 'forms': ['al']})
+    execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified')
+    patch = ws.client.calls('tokens', 'patch_metadata')[0][2][1]
+    assert patch == {'form': None}
+    # One word spelled like its token needs no Form span, only a lemma.
+    assert len(ws.client.batches[1]) == 1

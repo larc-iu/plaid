@@ -14,8 +14,9 @@ from collections import Counter
 from typing import Any, Dict, List, Optional
 
 from ..core.plan import CONFIRM, PlanError, Stamps, TrackingBatcher, created_id
+from .shape import apply_set_words, finish_set_words
 
-KINDS = ('set_span', 'set_head', 'del_relation', 'confirm', 'run_parse')
+KINDS = ('set_span', 'set_head', 'del_relation', 'confirm', 'run_parse', 'set_words')
 
 # How long the parser may say nothing before the plan gives up on it. This
 # measures SILENCE, not elapsed time: the parser reports progress as it goes,
@@ -28,6 +29,8 @@ REQUIRED = {
     'del_relation': ('relation_id',),
     'confirm': (),
     'run_parse': ('document_ids', 'service_id', 'project_id', 'language'),
+    'set_words': ('token_id', 'text_id', 'forms', 'word_layer_id', 'form_layer_id',
+                  'lemma_layer_id'),
 }
 
 
@@ -46,6 +49,16 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
     # writes into the same document would be thrown away by it. The tools
     # refuse the combination as it is built; this is the backstop, because a
     # plan that silently lost half its changes is the worst outcome here.
+    # Reshaping a token deletes and remakes its words, so an op that names one
+    # of those words would be writing to something that will not exist.
+    reshaped = {w for op in ops if op.get('kind') == 'set_words'
+                for w in (op.get('existing_word_ids') or [])}
+    if reshaped:
+        for op in ops:
+            if op.get('kind') in ('set_span', 'set_head', 'del_relation') and (
+                    op.get('token_id') in reshaped or op.get('word_id') in reshaped):
+                raise ValueError('this plan both reshapes a token and annotates one of its words, '
+                                 'and the reshape deletes that word')
     parsed = {d for op in ops if op.get('kind') == 'run_parse' for d in (op.get('document_ids') or [])}
     if parsed:
         clash = {op.get('document_id') for op in ops if op.get('kind') != 'run_parse'} & parsed
@@ -141,6 +154,9 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps) -> Dict[str, 
                         lemma_at[wid] = b.add(
                             lambda o=op, w=wid, f=form: client.spans.create(
                                 o['lemma_layer_id'], [w], f, stamp()))
+            elif kind == 'set_words':
+                apply_set_words(client, op, b, stamp)
+                counts['reshaped tokens'] += 1
 
         # The relations need those spans to exist, so the batch has to land first.
         b.flush()
@@ -155,7 +171,10 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps) -> Dict[str, 
                 return sid
             return at
 
-        # --- pass 2: the dependencies ---
+        # --- pass 2: what needed the first batch's ids ---
+        for op in ops:
+            if op.get('kind') == 'set_words':
+                finish_set_words(client, op, b, b.results, stamp)
         for op in ops:
             kind = op.get('kind')
             if kind == 'del_relation':
@@ -208,6 +227,8 @@ def summarize(ops: List[Dict[str, Any]]) -> str:
             c['confirmation'] += 1
         elif kind == 'run_parse':
             c['parsed document'] += len(op.get('document_ids') or [])
+        elif kind == 'set_words':
+            c['reshaped token'] += 1
     if not c:
         return 'no changes'
     parts = [f'{n} {name}' + ('s' if n != 1 else '') for name, n in c.most_common()]

@@ -226,6 +226,17 @@ def _no_parse_planned(ws: Workspace, doc: UdDoc) -> None:
                             f'the parse on its own, or drop it first (plan_status, drop_planned).')
 
 
+def _not_being_reshaped(ws: Workspace, words: List[Word]) -> None:
+    """Reshaping a token deletes and remakes its words, so annotating one of
+    them in the same plan writes to something that will not exist."""
+    doomed = {w for op in ws.ops if op.get('kind') == 'set_words'
+              for w in (op.get('existing_word_ids') or [])}
+    hit = [w for w in words if w.id in doomed]
+    if hit:
+        raise ToolError('This plan already reshapes the token these words belong to, and that '
+                        'deletes them. Do one or the other (plan_status, drop_planned).')
+
+
 def _words(ws: Workspace, doc: UdDoc, refs) -> List[Word]:
     """The words a list of references names, with a readable failure when one
     of them names a sentence or a multi-word token instead."""
@@ -244,6 +255,7 @@ def _words(ws: Workspace, doc: UdDoc, refs) -> List[Word]:
             raise ToolError(f'{ref} is a multi-word token, which carries no annotation of its own. '
                             f'Name its words: ' + ', '.join(f's?.w{w.index}' for w in thing.words))
         out.append(thing)
+    _not_being_reshaped(ws, out)
     return out
 
 
@@ -530,6 +542,18 @@ TOOLS = [
          'overwrite': {'type': 'boolean'},
          'service_id': {'type': 'string', 'description': 'Only when several parsers are connected.'}},
         ['documents']),
+    _fn('set_words',
+        'PLAN: say which WORDS a token holds. Two or more makes it a multi-word token (Spanish '
+        '"al" holding "a" and "el"); one collapses it back to a plain token. This REPLACES the '
+        'token\'s words, so it discards their lemma, UPOS, XPOS, features and heads, and seeds '
+        'each new word\'s lemma from its form. Use it to fix segmentation, never to change one '
+        'value.',
+        {'document': _DOC,
+         'ref': {'type': 'string', 'description': 'The token: "s3.w2", or "s3.w2-3" if it is '
+                                                  'already a multi-word token.'},
+         'forms': {'type': 'array', 'items': {'type': 'string'},
+                   'description': 'The words, in order, e.g. ["a", "el"].'}},
+        ['document', 'ref', 'forms']),
     _fn('plan_status', 'Every change planned so far in this turn, numbered.', {}, []),
     _fn('discard_plan', 'Throw away everything planned so far and start the plan over.', {}, []),
     _fn('drop_planned', 'Drop some of the planned changes by their numbers from plan_status.',
@@ -727,3 +751,7 @@ def t_run_parse(ws: Workspace, documents=None, language: str = None,
 
 
 _IMPL['run_parse'] = t_run_parse
+
+from .shape import t_set_words  # noqa: E402
+
+_IMPL['set_words'] = t_set_words
