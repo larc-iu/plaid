@@ -203,10 +203,10 @@ const DocumentEditor = () => {
   // browser tab. The island owns the scrolling, so it is asked over the same
   // window bridge its own "Ask" uses.
   const focusHere = useCallback(
-    ({ documentId: cited, focus }) => {
+    ({ documentId: cited, focus, begin }) => {
       if (cited !== documentId || !focus) return false;
       window.dispatchEvent(
-        new CustomEvent('igt:focus-sentence', { detail: { documentId, focus } }),
+        new CustomEvent('igt:focus-sentence', { detail: { documentId, focus, begin } }),
       );
       return true;
     },

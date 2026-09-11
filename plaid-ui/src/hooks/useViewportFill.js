@@ -21,8 +21,23 @@ export const useViewportFill = (ref, active, deps = []) => {
     }
     const measure = () => {
       const el = ref.current;
-      if (el)
-        setHeight(Math.max(0, Math.round(window.innerHeight - el.getBoundingClientRect().top)));
+      if (!el) return;
+      let top = el.getBoundingClientRect().top;
+      // `top` is viewport-relative, so it goes NEGATIVE when the page is
+      // scrolled past the element. Filling "the rest of the viewport" from
+      // there makes the element taller than the screen by the scroll offset:
+      // the page still scrolls by that much, and the panel's header and its
+      // composer can never both be on screen. Opening the panel on a sentence
+      // below the fold did exactly that.
+      //
+      // The docked layout assumes the page itself is not scrolled, which is
+      // also what it produces once it is applied, since the element then fits
+      // exactly. So put the page back there and measure again.
+      if (top < 0) {
+        window.scrollTo(0, 0);
+        top = el.getBoundingClientRect().top;
+      }
+      setHeight(Math.max(0, Math.round(window.innerHeight - Math.max(top, 0))));
     };
     measure();
     window.addEventListener('resize', measure);

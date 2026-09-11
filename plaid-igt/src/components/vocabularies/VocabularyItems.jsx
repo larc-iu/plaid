@@ -206,6 +206,9 @@ export const VocabularyItems = ({
     () => (emptyField ? items.filter((it) => fieldEmpty(it, emptyField)).length : 0),
     [items, emptyField],
   );
+  useEffect(() => {
+    if (!emptyField || emptyCount === 0) dispatch({ type: 'scope/clearEmptyOnly' });
+  }, [emptyField, emptyCount]);
   const emptyOnly = scope.emptyOnly && !!emptyField && emptyCount > 0;
 
   const selectedItem = useMemo(

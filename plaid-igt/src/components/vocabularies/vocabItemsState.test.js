@@ -81,6 +81,21 @@ describe('the scope', () => {
     );
     expect(s.scope).toMatchObject({ field: 'pos', emptyOnly: false });
   });
+  it('drops the empty-only filter for good once nothing is empty', () => {
+    // Deriving it from the count instead left the switch armed, so filling the
+    // last empty value and then adding an entry snapped the list to that one.
+    const s = run(
+      { type: 'scope/field', field: 'gloss' },
+      { type: 'scope/toggleEmptyOnly' },
+      { type: 'scope/clearEmptyOnly' },
+    );
+    expect(s.scope).toMatchObject({ field: 'gloss', emptyOnly: false });
+  });
+  it('leaves the state alone when there is no empty-only filter to clear', () => {
+    const before = run({ type: 'scope/field', field: 'gloss' });
+    const after = run({ type: 'scope/field', field: 'gloss' }, { type: 'scope/clearEmptyOnly' });
+    expect(after.scope).toEqual(before.scope);
+  });
   it('toggles each filter on its own', () => {
     const s = run({ type: 'scope/toggleOffTagsetOnly' }, { type: 'scope/search', search: 'ka' });
     expect(s.scope).toEqual({

@@ -99,7 +99,9 @@ const ConversationDetail = ({ client, row, onBack }) => {
         <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
           <span>{row.userName}</span>
           <span>·</span>
-          {row.projectExists ? (
+          {/* Only this app's own conversations link into its routes, the same
+              rule the list column follows: a UD project has no page here. */}
+          {row.projectExists && row.app === OWN_APP ? (
             <Link to={`/projects/${row.projectId}`} className="hover:underline">
               {row.projectName}
             </Link>

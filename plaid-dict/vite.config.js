@@ -31,7 +31,7 @@ export default defineConfig(({ command }) => ({
     alias: aliases,
   },
   optimizeDeps: {
-    exclude: ['@larc-iu/plaid-client'],
+    exclude: ['@larc-iu/plaid-client', '@larc-iu/plaid-ui'],
   },
   server: {
     port: 5175,

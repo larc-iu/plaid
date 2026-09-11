@@ -38,14 +38,31 @@ export function useServiceParams({ schema, storageKey, seedParams = null, defaul
   const valuesRef = useRef(values);
   valuesRef.current = values;
 
+  // Read through refs, so what the callback CLOSES OVER is always current
+  // while what it DEPENDS ON is the content below, not objects a caller
+  // rebuilds every render.
+  const seedRef = useRef(seedParams);
+  seedRef.current = seedParams;
+  const defaultRef = useRef(defaultParams);
+  defaultRef.current = defaultParams;
+
   // A schema is stable for the life of a method, so seeding is keyed on the
   // storage key rather than on schema identity (re-discovery replaces a
   // service object without changing what it declares).
+  //
+  // It is keyed on what the two param sources SAY as well, because they do not
+  // all arrive at once: discovery is one small GET and a project is not, so a
+  // caller can have its storage key before it has anything to seed with. UD's
+  // parse spot did, and opened on the schema's default language rather than
+  // the project's, for anyone who had never touched the dialog.
+  const seedSignature = JSON.stringify(seedParams ?? null);
+  const defaultSignature = JSON.stringify(defaultParams ?? null);
+
   const seed = useCallback(
     ({ useCache = true } = {}) => {
       const defaults = buildDefaultValues(schema);
-      const seeded = seedParams || {};
-      const projectParams = defaultParams || {};
+      const seeded = seedRef.current || {};
+      const projectParams = defaultRef.current || {};
       let cached = {};
       if (useCache && storageKey) {
         try {
@@ -66,7 +83,7 @@ export function useServiceParams({ schema, storageKey, seedParams = null, defaul
       return merged;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [storageKey],
+    [storageKey, seedSignature, defaultSignature],
   );
 
   useEffect(() => {

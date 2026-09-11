@@ -89,6 +89,14 @@ export function reducer(state, action) {
       return { ...state, scope: { ...state.scope, field: action.field, emptyOnly: false } };
     case 'scope/toggleEmptyOnly':
       return { ...state, scope: { ...state.scope, emptyOnly: !state.scope.emptyOnly } };
+    // Nothing left to filter to: the filter goes off and STAYS off. Deriving
+    // it instead (`emptyOnly && emptyCount > 0`) left the switch armed, so
+    // filling the last empty value and then adding a new entry snapped the
+    // list to that one entry on its own.
+    case 'scope/clearEmptyOnly':
+      return state.scope.emptyOnly
+        ? { ...state, scope: { ...state.scope, emptyOnly: false } }
+        : state;
     case 'scope/toggleOffTagsetOnly':
       return {
         ...state,

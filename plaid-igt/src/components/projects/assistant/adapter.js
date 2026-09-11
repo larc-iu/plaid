@@ -139,9 +139,18 @@ export const changePlace = (projectId, where) => {
 
 // A link back into a document this app is showing: the document it names and
 // the sentence to put in view, or null when it points somewhere else.
+// The same link, read back. `focusWord` has to come with it: the island uses
+// it to land on the cited WORD, so dropping it made an in-place scroll deliver
+// less than opening the very same link in a new tab.
 export const parseCitationHref = (href) => {
   const m = /#\/projects\/[^/]+\/documents\/([^/?#]+)\?[^#]*focusSentence=([^&]+)/.exec(href || '');
-  return m ? { documentId: m[1], focus: decodeURIComponent(m[2]) } : null;
+  if (!m) return null;
+  const at = /[?&]focusWord=(\d+)/.exec(href);
+  return {
+    documentId: m[1],
+    focus: decodeURIComponent(m[2]),
+    begin: at ? Number(at[1]) : null,
+  };
 };
 
 export const IGT_ASSISTANT = {

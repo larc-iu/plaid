@@ -201,6 +201,27 @@ describe('AdminAssistant across apps', () => {
     await unmount();
   });
 
+  it('does not link a foreign project from the conversation it opens either', async () => {
+    // The list column got this right and the detail header did not, so opening
+    // a ud: conversation offered the very route the list refuses to build.
+    const { container, step, unmount } = await mount(withUd());
+    await step(async () => {
+      byText(container, 'tbody button', 'Words with no lemma?').click();
+    });
+    expect(container.textContent).toContain('Lezgi');
+    expect(container.querySelector('a[href*="/projects/"]')).toBeNull();
+    await unmount();
+  });
+
+  it('still links its own project from the conversation it opens', async () => {
+    const { container, step, unmount } = await mount(withUd());
+    await step(async () => {
+      byText(container, 'tbody button', 'Which words are unglossed?').click();
+    });
+    expect(container.querySelector('a[href*="/projects/"]')).not.toBeNull();
+    await unmount();
+  });
+
   it("does not link a foreign conversation's project into this app's routes", async () => {
     const { container, unmount } = await mount(withUd());
     const foreign = all(container, 'tbody tr').find((tr) =>
