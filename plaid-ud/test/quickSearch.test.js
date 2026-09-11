@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 
 import { quickPattern, QUICK_FIELDS, MATCH_TYPES } from '../src/grew/quickSearch.js';
 import { parseAndCompile } from '../src/grew/index.js';
+import { parse } from '../src/grew/parser.js';
 
 const LAYERS = {
   morphemeTokenLayer: { id: 'M' },
@@ -80,6 +81,32 @@ test('a relation search actually compiles to a RELATION constraint', () => {
       `${match} compiled a relation with no value constraint`,
     );
   }
+});
+
+test('a deprel label that is not bare-safe still produces a pattern that parses', () => {
+  // An arc label is written BARE in Grew, so this is the one field a quick
+  // search cannot escape what it was handed. Typing two words emitted
+  // `-[a b]->` and answered with a Grew syntax error about a pattern the
+  // reader never wrote.
+  for (const label of ['a b', 'nsubj]', '"', 'a.b', 'nsubj]-> X; Y [upos=NOUN']) {
+    const pattern = quickPattern('deprel', 'exact', label);
+    parse(pattern); // throws if the label leaked into the syntax
+    const { query } = parseAndCompile(pattern, LAYERS, { projectId: 'p' });
+    const relation = query.where.find((c) => c[0] === 'relation');
+    assert.ok(relation?.[2]?.value !== undefined, `${label} compiled no value constraint`);
+  }
+});
+
+test('an exact deprel search stays exact when it takes the regex route', () => {
+  // The fallback has to mean the same thing, so it is anchored: `nsubj` must
+  // not start matching `xnsubjy`.
+  const pattern = quickPattern('deprel', 'exact', 'a b');
+  assert.match(pattern, /\^a b\$/);
+});
+
+test('the common labels keep the bare form', () => {
+  assert.equal(quickPattern('deprel', 'exact', 'nsubj'), 'pattern { H -[nsubj]-> W }');
+  assert.equal(quickPattern('deprel', 'exact', 'obl:tmod'), 'pattern { H -[obl:tmod]-> W }');
 });
 
 test('a FEATS search looks in the whole Key=Value, as the spans store it', () => {

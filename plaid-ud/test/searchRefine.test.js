@@ -55,3 +55,25 @@ test('a brace inside a string is not a brace', () => {
     parse(out);
   }
 });
+
+test('a feature key that cannot be written bare falls back to the whole FEATS string', () => {
+  // A key is written bare in Grew, so it cannot be escaped. A project can hold
+  // one that is not bare-safe, which is exactly what the Validation tab lists,
+  // and the count row for it is one click away.
+  for (const pair of ['odd key=x', 'a]=x', 'a"b=x', 'a.b=x']) {
+    const out = refinePattern('pattern { V [upos=VERB] }', 'V', 'FEATS', pair);
+    assert.ok(out, `declined: ${pair}`);
+    assert.match(out, /FEATS=re"/, `key leaked into the syntax: ${out}`);
+    parse(out);
+  }
+  // A well-formed key still gets the clause a reader would write by hand.
+  assert.equal(
+    refinePattern('pattern { V [upos=VERB] }', 'V', 'FEATS', 'Number=Sing'),
+    'pattern { V [upos=VERB]; V [Number="Sing"] }',
+  );
+});
+
+test('a node or field name that is not bare-safe is declined, not interpolated', () => {
+  assert.equal(refinePattern('pattern { V [upos=VERB] }', 'V]', 'upos', 'NOUN'), null);
+  assert.equal(refinePattern('pattern { V [upos=VERB] }', 'V', 'upos]', 'NOUN'), null);
+});

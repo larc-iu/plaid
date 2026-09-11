@@ -13,6 +13,8 @@
 //   upos is "NOUN"        ->  pattern { W [upos="NOUN"] }
 //   feats regex "Number"  ->  pattern { W [Number=re"..."] }
 
+import { BARE_LABEL, exactRegex, literalRegex, quote } from './literals.js';
+
 /** The fields a quick search can look in, in the order the picker shows them. */
 export const QUICK_FIELDS = Object.freeze([
   { value: 'form', label: 'Form' },
@@ -29,14 +31,12 @@ export const MATCH_TYPES = Object.freeze([
   { value: 'regex', label: 'matches' },
 ]);
 
-// Grew string literals are double-quoted; a regex literal is re"…". Both need
-// the quote and the backslash escaped, and nothing else: the pattern text is
-// parsed by our own lexer, not by a shell.
-const quote = (text) => `"${String(text).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
-
-// What a `contains` search means as a regex: the text, with every regex
-// metacharacter made literal. Someone typing `dog.` wants a full stop.
-const literalRegex = (text) => String(text).replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+// The escaping rules live in one place, because three callers need them and
+// two of the positions they write into cannot be quoted at all. An arc label
+// is one of those: a label that is not bare-safe goes through the anchored
+// regex form instead, which means the same thing and parses. Typing two words
+// here used to emit `-[a b]->` and answer with a Grew syntax error about a
+// pattern the reader never wrote.
 
 /**
  * The Grew pattern for one quick search, or null when there is nothing to
@@ -60,7 +60,9 @@ export function quickPattern(field, match, text) {
     // compiler reads `e.something` as a feature of a NODE called e, so
     // `e.label = re"subj"` compiles to a search for a FEATS span reading
     // `label=subj` on a word: no error, no warning, no matches.
-    return match === 'exact' ? `pattern { H -[${needle}]-> W }` : `pattern { H -[${value}]-> W }`;
+    if (match !== 'exact') return `pattern { H -[${value}]-> W }`;
+    if (BARE_LABEL.test(needle)) return `pattern { H -[${needle}]-> W }`;
+    return `pattern { H -[${exactRegex(needle)}]-> W }`;
   }
 
   if (field === 'feats') {
