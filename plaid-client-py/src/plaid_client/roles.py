@@ -86,14 +86,26 @@ def is_ud_project(project):
     second copy of the answer in the other app is how two apps start disagreeing
     about what a project is.
 
+    This client hands back ``text_layers`` where the wire says ``textLayers``,
+    so both spellings are read: the one a caller gets from
+    ``client.projects.get``, and the one in a response body it decoded itself.
+
     Args:
         project: a project dict WITH its layers (``client.projects.get``).
     """
-    for text in (project or {}).get('textLayers') or []:
-        for token in text.get('tokenLayers') or []:
+    for text in _either(project, 'text_layers', 'textLayers'):
+        for token in _either(text, 'token_layers', 'tokenLayers'):
             if read_role(token.get('config')) != ROLES.SYNTACTIC_WORD:
                 continue
-            for span in token.get('spanLayers') or []:
+            for span in _either(token, 'span_layers', 'spanLayers'):
                 if isinstance((span.get('config') or {}).get('ud'), dict):
                     return True
     return False
+
+
+def _either(d, *keys):
+    for k in keys:
+        v = (d or {}).get(k)
+        if v:
+            return v
+    return []
