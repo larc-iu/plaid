@@ -160,6 +160,16 @@ class FakeClient:
         def audit(self, did, **kw):
             return [e for e in self.c.audit if any(d['id'] == did for d in e.get('documents', []))]
 
+        def restore(self, did, as_of, dry_run=False, **kw):
+            """The server's restore. A dry run answers with what WOULD change,
+            which is what a plan shows instead of promising."""
+            if not dry_run:
+                self.c.log.append(('documents', 'restore', (did, as_of), {}))
+                return {'id': did}
+            return {'total': 3, 'texts': {'updated': 1},
+                    'tokens': {'by_layer': [{'layer_id': 'sent-layer', 'inserted': 1}]},
+                    'relations': {'deleted': 1}}
+
     class _UserData:
         """The user's private key/value store, in memory: what the assistant
         keeps conversations in."""

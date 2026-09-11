@@ -168,7 +168,7 @@ def test_every_declared_tool_is_a_plan_tool_or_is_not(ws):
     names = {t['function']['name'] for t in TOOLS}
     assert WRITE_TOOLS == {'set_field', 'set_head', 'del_relation', 'confirm',
                            'discard_predictions', 'run_parse', 'set_words',
-                           'split_sentence', 'merge_sentences'}
+                           'split_sentence', 'merge_sentences', 'restore_document'}
     assert 'read_document' in names and 'read_document' not in WRITE_TOOLS
 
 

@@ -250,6 +250,17 @@ def _no_parse_planned(ws: Workspace, doc: UdDoc) -> None:
                             f'the parse on its own, or drop it first (plan_status, drop_planned).')
 
 
+def _no_restore_planned(ws: Workspace) -> None:
+    """A restore rewrites every layer of its document, so nothing may join its
+    plan. The check looks FORWARD as well as back: refusing only when a
+    restore is planned second would let an edit slip in after one."""
+    for op in ws.ops:
+        if op.get('kind') == 'restore_document':
+            raise ToolError('This plan restores a document, and a restore rewrites every layer of '
+                            'it, so nothing else can share the plan. Apply it on its own, then '
+                            'plan the rest against what it restored (plan_status, drop_planned).')
+
+
 def _no_boundary_moved(ws: Workspace, doc: UdDoc) -> None:
     """Moving a sentence boundary renumbers every sentence after it, and every
     reference in a plan is positional. Rather than decide whether a later
@@ -279,6 +290,7 @@ def _words(ws: Workspace, doc: UdDoc, refs) -> List[Word]:
     of them names a sentence or a multi-word token instead."""
     _no_parse_planned(ws, doc)
     _no_boundary_moved(ws, doc)
+    _no_restore_planned(ws)
     if isinstance(refs, str):
         refs = [refs]
     if not refs:
@@ -450,6 +462,9 @@ def t_discard_predictions(ws: Workspace, document: str = None, refs=None, field:
     """Throw away machine output nobody has confirmed. A person's work and a
     confirmed value are never touched."""
     doc = ws.doc(document)
+    _no_parse_planned(ws, doc)
+    _no_boundary_moved(ws, doc)
+    _no_restore_planned(ws)
     fields = [field] if field else list(FIELDS)
     words = _targets(ws, doc, refs, field)
     n = 0
@@ -615,6 +630,15 @@ TOOLS = [
         {'document': _DOC,
          'ref': {'type': 'string', 'description': 'The second of the two sentences, "s3".'}},
         ['document', 'ref']),
+    _fn('restore_document',
+        'PLAN: put a document back as it was at a moment in its history, every layer of it. The '
+        'plan shows what would change, from the server\'s own dry run, so it is not a guess. '
+        'Maintainers only. It rewrites the whole document, so it must be the ONLY change in its '
+        'plan. recent_changes prints an as_of instant for every change.',
+        {'document': _DOC,
+         'as_of': {'type': 'string', 'description': 'An ISO-8601 instant, e.g. '
+                                                    '2026-09-05T18:45:49Z.'}},
+        ['document', 'as_of']),
     _fn('plan_status', 'Every change planned so far in this turn, numbered.', {}, []),
     _fn('discard_plan', 'Throw away everything planned so far and start the plan over.', {}, []),
     _fn('drop_planned', 'Drop some of the planned changes by their numbers from plan_status.',
@@ -770,6 +794,7 @@ def parse_services(ws: Workspace) -> List[dict]:
 
 def t_run_parse(ws: Workspace, documents=None, language: str = None,
                 overwrite: bool = False, service_id: str = None) -> str:
+    _no_restore_planned(ws)
     if isinstance(documents, str):
         documents = [documents]
     if not documents:
@@ -822,5 +847,8 @@ from .shape import t_set_words  # noqa: E402
 from .sentences import t_merge_sentences, t_split_sentence  # noqa: E402
 
 _IMPL['set_words'] = t_set_words
+from .restore import t_restore_document  # noqa: E402
+
 _IMPL['split_sentence'] = t_split_sentence
+_IMPL['restore_document'] = t_restore_document
 _IMPL['merge_sentences'] = t_merge_sentences

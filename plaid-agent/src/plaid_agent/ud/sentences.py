@@ -55,9 +55,10 @@ def crossing_relations(sentence: Sentence, char_pos: int) -> List[str]:
 def t_split_sentence(ws: Workspace, document: str = None, ref: str = None) -> str:
     """PLAN: start a new sentence at the named word."""
     doc = ws.doc(document)
-    from .tools import _no_boundary_moved, _no_parse_planned
+    from .tools import _no_boundary_moved, _no_parse_planned, _no_restore_planned
     _no_parse_planned(ws, doc)
     _no_boundary_moved(ws, doc)
+    _no_restore_planned(ws)
     thing = resolve(doc, ref)
     if not isinstance(thing, Word):
         raise ToolError(f'{ref} names a sentence or a multi-word token. Name the WORD the new '
@@ -85,9 +86,10 @@ def t_split_sentence(ws: Workspace, document: str = None, ref: str = None) -> st
 def t_merge_sentences(ws: Workspace, document: str = None, ref: str = None) -> str:
     """PLAN: join the named sentence onto the one before it."""
     doc = ws.doc(document)
-    from .tools import _no_boundary_moved, _no_parse_planned
+    from .tools import _no_boundary_moved, _no_parse_planned, _no_restore_planned
     _no_parse_planned(ws, doc)
     _no_boundary_moved(ws, doc)
+    _no_restore_planned(ws)
     sentence = _sentence_of(doc, resolve(doc, ref))
     if sentence.index == 1:
         raise ToolError('s1 has nothing before it to join. Name the SECOND of the two sentences, '

@@ -18,7 +18,7 @@ from .sentences import apply_merge_sentences, apply_split_sentence
 from .shape import apply_set_words, finish_set_words
 
 KINDS = ('set_span', 'set_head', 'del_relation', 'confirm', 'run_parse', 'set_words',
-         'split_sentence', 'merge_sentences')
+         'split_sentence', 'merge_sentences', 'restore_document')
 
 # Ops that move where sentences begin, which renumbers every sentence after
 # them. References are positional, so no other op in the plan can be trusted
@@ -40,6 +40,7 @@ REQUIRED = {
                   'lemma_layer_id'),
     'split_sentence': ('document_id', 'sentence_id', 'char_pos'),
     'merge_sentences': ('document_id', 'sentence_id', 'previous_id'),
+    'restore_document': ('document_id', 'as_of'),
 }
 
 
@@ -54,6 +55,11 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
                 raise ValueError(f'op {i} ({kind}): missing {key}')
         if kind == 'confirm' and not (op.get('span_id') or op.get('relation_id')):
             raise ValueError(f'op {i} (confirm): needs a span_id or a relation_id')
+        # A restore rewrites every layer of the document, so anything else in the
+        # plan would address what it is about to replace.
+        if kind == 'restore_document' and len(ops) > 1:
+            raise ValueError(f'op {i + 1} (restore_document): a restore must be the only '
+                             f'op in its plan')
     # A parse rewrites a document from scratch, so anything else this plan
     # writes into the same document would be thrown away by it. The tools
     # refuse the combination as it is built; this is the backstop, because a
@@ -148,6 +154,7 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps) -> Dict[str, 
 
     with client.operation(label):
         b = TrackingBatcher(client)
+        restores: List[Dict[str, Any]] = []
 
         # --- pass 1: the columns, and any lemma span a head is going to need ---
         # A word with no lemma yet gets one valued with its FORM. The app does
@@ -190,6 +197,9 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps) -> Dict[str, 
             elif kind == 'set_words':
                 apply_set_words(client, op, b, stamp)
                 counts['reshaped tokens'] += 1
+            elif kind == 'restore_document':
+                restores.append(op)  # after the batches: the server's own operation
+                counts['restored documents'] += 1
             elif kind == 'split_sentence':
                 apply_split_sentence(client, op, b, stamp)
                 counts['sentence boundaries'] += 1
@@ -199,6 +209,12 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps) -> Dict[str, 
 
         # The relations need those spans to exist, so the batch has to land first.
         b.flush()
+
+        # The server's own restore, after the batches and never with them: it
+        # is one operation of its own and a plan holds at most one.
+        for op in restores:
+            client.documents.restore(op['document_id'], op['as_of'])
+            b.applied += 1
 
         def lemma_span(word_id):
             at = lemma_at.get(word_id)
@@ -284,6 +300,8 @@ def summarize(ops: List[Dict[str, Any]]) -> str:
                 c['removed dependency'] += gone
         elif kind == 'merge_sentences':
             c['sentence merge'] += 1
+        elif kind == 'restore_document':
+            c['restored document'] += 1
     if not c:
         return 'no changes'
     return ', '.join(f'{n} {_plural(name, n)}' for name, n in c.most_common())

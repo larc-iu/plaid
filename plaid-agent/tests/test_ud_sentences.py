@@ -144,3 +144,64 @@ def test_a_count_that_ends_in_y_pluralizes_properly():
 
     assert summarize([{'kind': 'del_relation'}, {'kind': 'del_relation'}]) == (
         '2 removed dependencies')
+
+
+# --- restore -----------------------------------------------------------------
+
+def test_a_restore_will_not_share_a_plan(ws):
+    """It rewrites every layer, so anything else planned would be addressing
+    what the restore is about to replace. Same reasoning as a parse."""
+    run(ws, 'set_field', document='Viaje', refs=['s2.w1'], field='lemma', value='correr')
+    out = run(ws, 'restore_document', document='Viaje', as_of='2026-09-05T18:45:49Z')
+    assert 'plan of its own' in out
+
+
+def test_a_restore_needs_a_real_instant(ws):
+    out = run(ws, 'restore_document', document='Viaje', as_of='last Tuesday')
+    assert 'ISO-8601' in out
+
+
+def test_validate_refuses_a_restore_beside_anything_else():
+    from plaid_agent.ud.plan import validate_ops
+
+    ops = [
+        {'kind': 'restore_document', 'document_id': 'd1', 'as_of': '2026-09-05T18:45:49Z'},
+        {'kind': 'set_span', 'document_id': 'd1', 'layer_id': 'L', 'token_id': 'w1', 'value': 'x'},
+    ]
+    with pytest.raises(ValueError, match='only op in its plan'):
+        validate_ops(ops)
+
+
+def test_the_restore_summary_reads_as_english():
+    """The dry run's counts become the phrase the user approves, so a count of
+    one must not say "1 dependencies" and three must not say "3 dependencys"."""
+    from plaid_agent.ud.restore import restore_lines
+
+    class P:
+        sentence_layer_id, token_layer_id, word_layer_id = 'S', 'T', 'W'
+
+    assert restore_lines(P(), {'relations': {'deleted': 1}}) == ['1 dependency']
+    assert restore_lines(P(), {'relations': {'deleted': 3}}) == ['3 dependencies']
+    assert restore_lines(P(), {'tokens': {'by_layer': [{'layer_id': 'S', 'inserted': 1}]}}) == [
+        '1 sentence']
+
+
+@pytest.mark.parametrize('tool,args', [
+    ('set_field', {'refs': ['s1.w1'], 'field': 'lemma', 'value': 'x'}),
+    ('set_head', {'ref': 's1.w2', 'head': 1, 'deprel': 'obl'}),
+    ('confirm', {'refs': ['s1.w1']}),
+    ('discard_predictions', {'refs': ['s1.w1']}),
+    ('set_words', {'ref': 's1.w1', 'forms': ['a', 'b']}),
+    ('split_sentence', {'ref': 's1.w2'}),
+    ('merge_sentences', {'ref': 's2'}),
+])
+def test_nothing_joins_a_restore_whatever_tool_is_used(ws, tool, args):
+    """The guard has to look FORWARD as well as back. Refusing only when the
+    restore is planned SECOND let an edit slip in after one, and two tools
+    (run_parse, discard_predictions) never reached the shared chokepoint at
+    all."""
+    run(ws, 'restore_document', document='Viaje', as_of='2026-09-05T18:45:49Z')
+    if not any(op.get('kind') == 'restore_document' for op in ws.ops):
+        pytest.skip('the fake client reports nothing to restore')
+    out = run(ws, tool, document='Viaje', **args)
+    assert 'nothing else can share the plan' in out, f'{tool} slipped past the guard'
