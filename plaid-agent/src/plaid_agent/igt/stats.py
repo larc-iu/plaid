@@ -364,8 +364,13 @@ def t_worklist(ws: Workspace, kind: str = 'unglossed', field: Optional[str] = No
                             groups[m.form.casefold()].append(f'{ref}.m{m.index}')
                         elif kind == 'unglossed' and f and not (m.fields.get(f.name) and m.fields[f.name].value != ''):
                             groups[m.form.casefold()].append(f'{ref}.m{m.index}')
+    # Three examples per form is enough to SEE what is unfinished across a
+    # corpus. It is not enough to ACT on one document: a form unglossed ten
+    # times gives three references and no way to the other seven but reading.
+    # So naming a document lists them all, which is the list to plan from.
+    per_form = limit if document else 3
     return _worklist_lines(kind, f, lvl, limit, {k: len(v) for k, v in groups.items()},
-                           {k: v[:3] for k, v in groups.items()}, user)
+                           {k: v[:per_form] for k, v in groups.items()}, user)
 
 
 def _worklist_lines(kind, f, lvl, limit, counts: Dict[str, int], examples: Dict[str, List[str]],

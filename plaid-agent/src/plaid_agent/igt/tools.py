@@ -2833,7 +2833,8 @@ TOOLS += [
         '"unglossed" (no value in `field`, default the first morpheme field), "unanalyzed" (no analysis at all), '
         '"unverified" (annotations awaiting review: machine-made and unconfirmed, or a contributor\'s), or '
         '"contributed" (contributors\' unreviewed work only; user= narrows to one person). Use this to decide what '
-        'to do next.',
+        'to do next. Across the project each form shows a few examples; NAME A DOCUMENT and it lists every '
+        'reference instead, which is the list to plan from and saves reading the document to find them.',
         {'kind': {'type': 'string', 'enum': ['unlinked', 'unglossed', 'unanalyzed', 'unverified', 'contributed']},
          'field': {'type': 'string'},
          'level': {'type': 'string', 'enum': ['word', 'morpheme'], 'description': 'For unlinked: which level to list (default morpheme when there is a morpheme layer). For unglossed the field\'s scope decides.'},

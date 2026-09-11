@@ -271,3 +271,23 @@ def test_formless_morphemes_in_a_chain_render_as_gaps():
     assert '1 words with a morpheme that has no form (shown as ?): s1.w2 gam' in out
     assert '0 words whose morpheme forms do not add up' in out
     assert '  1\t1\tgam' in call_tool(w, 'frequency_list', {'what': 'morpheme'})  # the gap is not a form
+
+
+def test_naming_a_document_lists_every_reference_not_a_sample():
+    """Three examples per form is enough to SEE what is unfinished across a
+    corpus; it is not enough to ACT on one document. A form unglossed ten
+    times would give three references and no way to the other seven but
+    reading the document, which is how the UD assistant burned a whole turn."""
+    w = ws()
+    # The fixture's "gam" is unglossed twice, so the cap cannot be seen on it
+    # directly: what is pinned is that naming a document does not truncate.
+    everywhere = call_tool(w, 'worklist', {'kind': 'unglossed'})
+    here = call_tool(ws(), 'worklist', {'kind': 'unglossed', 'document': 'Text 1'})
+    assert 'gam' in here
+    # Whatever it shows for a form, it is the whole count for that form.
+    for line in here.splitlines():
+        parts = line.split('\t')
+        if len(parts) == 3 and parts[0].strip().isdigit():
+            n, _form, examples = int(parts[0].strip()), parts[1], parts[2]
+            assert len(examples.split(', ')) == n, line
+    assert everywhere  # the corpus-wide view still renders
