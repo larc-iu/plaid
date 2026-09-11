@@ -217,9 +217,9 @@ test('B2: suggestions — keys as "Key=", then values; picking fills/commits', a
   await input.pressSequentially('Cas', { delay: 30 });
 
   // Stage 1: key suggestions rendered as "Key="
-  const keyOption = page.locator('[data-combobox-option]', { hasText: 'Case=' });
+  const keyOption = page.locator('[role="option"]', { hasText: 'Case=' });
   await expect(keyOption.first()).toBeVisible({ timeout: 5000 });
-  const stage1 = await page.locator('[data-combobox-option]').allInnerTexts();
+  const stage1 = await page.locator('[role="option"]').allInnerTexts();
   console.log('stage-1 options for "Cas":', JSON.stringify(stage1));
   expect(stage1).toContain('Case=');
   expect(stage1.every((o) => o.endsWith('='))).toBe(true);
@@ -229,14 +229,14 @@ test('B2: suggestions — keys as "Key=", then values; picking fills/commits', a
   await expect(input).toHaveValue('Case=');
   await expect(input).toBeFocused();
 
-  // Mantine closes the dropdown after an option pick; typing the value's first
-  // letter reopens it — now in stage 2 (value suggestions "Case=Value").
+  // The list closes after an option pick; typing the value's first letter
+  // reopens it — now in stage 2 (value suggestions "Case=Value").
   const reopened = await input.getAttribute('aria-expanded');
   console.log('dropdown open right after "Case=" pick:', reopened);
   await input.pressSequentially('A', { delay: 30 });
-  const valOption = page.locator('[data-combobox-option]:visible', { hasText: 'Case=Acc' });
+  const valOption = page.locator('[role="option"]:visible', { hasText: 'Case=Acc' });
   await expect(valOption.first()).toBeVisible({ timeout: 5000 });
-  const stage2 = await page.locator('[data-combobox-option]:visible').allInnerTexts();
+  const stage2 = await page.locator('[role="option"]:visible').allInnerTexts();
   console.log('stage-2 options for "Case=A":', JSON.stringify(stage2));
   expect(stage2.every((o) => o.startsWith('Case='))).toBe(true);
 

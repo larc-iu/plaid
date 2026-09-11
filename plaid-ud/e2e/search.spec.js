@@ -6,7 +6,7 @@ import { getUdLayerInfo } from '../src/utils/udLayerUtils.js';
 // the live core. Finds a UD-configured project with data, runs a labeled-edge
 // query, checks results render, and verifies the result→editor deep link.
 
-const BASE = process.env.UD_BASE || 'http://localhost:5173';
+const BASE = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5173';
 let PID;
 
 test.beforeAll(async () => {

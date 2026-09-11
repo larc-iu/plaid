@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Autocomplete, Button, Tooltip, ActionIcon } from '@mantine/core';
-import { IconChevronRight, IconCheck } from '@tabler/icons-react';
+import { ChevronRight, Check } from 'lucide-react';
+import { Combobox } from '@ui/components/ui/combobox';
+import { Button } from '@ui/components/ui/button';
 import { needsReview, provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { DependencyTree } from './DependencyTree.jsx';
 import { useTokenPositions } from '../hooks/useTokenPositions.js';
@@ -25,9 +26,10 @@ let lastGlobalTabPress = 0;
 // show every annotation row. Stable reference so memoized children don't churn.
 const ALL_FIELDS_VISIBLE = { lemma: true, xpos: true, upos: true, feats: true };
 
-// Stable empty-options reference: idle vocab cells pass this (instead of the
-// real suggestion list) so Mantine doesn't keep ~17 hidden option nodes mounted
-// per cell. Options populate only while the cell is focused/editing.
+// Stable empty-options reference: an idle vocab cell passes this instead of the
+// real suggestion list, so a grid of a thousand cells doesn't rank and group a
+// tag set per cell per render. Options are built only while the cell is
+// focused/editing, which is the only time the list can be open.
 const NO_OPTIONS = [];
 
 // Editable cell component for annotation fields
@@ -49,11 +51,38 @@ const EditableCell = React.memo(
     provMeta,
   }) => {
     const [localValue, setLocalValue] = useState(value || '');
+    // What the input currently shows, readable synchronously. Enter in a vocab
+    // cell takes the highlighted option and blurs in the same tick, and a blur
+    // handler reading `localValue` would still see the prefix that was typed.
+    const valueRef = useRef(localValue);
+    const setValue = (next) => {
+      valueRef.current = next;
+      setLocalValue(next);
+    };
     const [isEditing, setIsEditing] = useState(false);
     // `pristine` = focused but not yet typed: the vocab dropdown shows the full
     // list; the first keystroke flips it off so the list filters.
     const [pristine, setPristine] = useState(true);
     const inputRef = useRef(null);
+
+    // Select-all on arrival, so the next keystroke replaces the cell rather than
+    // appending to it. It has to be DEFERRED, because a click puts the caret in
+    // after focus and would undo a selection made during it — and, being
+    // deferred, it has to check that nothing has been typed in the meantime, or
+    // a fast typist (or a test driving the keyboard) loses their first
+    // character to it.
+    const selectPendingRef = useRef(false);
+    // Escape means cancel. The blur it fires must neither write the typed value
+    // nor count as re-typing the machine's own (which would verify it), and a
+    // flag is the only way to say so: `blur()` inside a key handler runs the
+    // blur handler before React has committed anything set alongside it.
+    const cancelledRef = useRef(false);
+    const selectOnArrival = () => {
+      selectPendingRef.current = true;
+      setTimeout(() => {
+        if (selectPendingRef.current) inputRef.current?.select();
+      }, 0);
+    };
     // Mirror `isEditing` into a ref so the value-sync effect can read the latest
     // value without listing `isEditing` in its deps (see below).
     const isEditingRef = useRef(false);
@@ -67,18 +96,25 @@ const EditableCell = React.memo(
     // already commits-or-reverts explicitly, so no blur-time reset is needed.
     useEffect(() => {
       if (!isEditingRef.current) {
+        valueRef.current = value || '';
         setLocalValue(value || '');
       }
     }, [value]);
 
     const handleChange = (e) => {
-      setLocalValue(e.target.value);
+      selectPendingRef.current = false;
+      setValue(e.target.value);
       setPristine(false);
     };
 
     const handleBlur = () => {
       setIsEditing(false);
-      const newValue = localValue.trim();
+      if (cancelledRef.current) {
+        cancelledRef.current = false;
+        setValue(value || '');
+        return;
+      }
+      const newValue = valueRef.current.trim();
 
       const changed = newValue !== (value || '');
       // Re-typing a machine prediction's value is a human confirmation
@@ -90,11 +126,11 @@ const EditableCell = React.memo(
         onUpdate(tokenId, field, newValue || null).catch((error) => {
           console.error(`Failed to update ${field}:`, error);
           // Revert to original value on error
-          setLocalValue(value || '');
+          setValue(value || '');
         });
       } else {
         // Revert to original if unchanged
-        setLocalValue(value || '');
+        setValue(value || '');
       }
     };
 
@@ -119,8 +155,8 @@ const EditableCell = React.memo(
         return;
       }
       if (e.key === 'Escape') {
-        // Revert to original value
-        setLocalValue(value || '');
+        cancelledRef.current = true;
+        setValue(value || '');
         setIsEditing(false);
         inputRef.current?.blur();
         return;
@@ -155,10 +191,7 @@ const EditableCell = React.memo(
     const handleFocus = () => {
       setIsEditing(true);
       setPristine(true);
-      // Select all text when focused
-      setTimeout(() => {
-        inputRef.current?.select();
-      }, 0);
+      selectOnArrival();
     };
 
     const displayValue =
@@ -191,9 +224,9 @@ const EditableCell = React.memo(
       );
     }
 
-    // Vocab cells (UPOS/XPOS) use a Mantine Autocomplete: clicking opens the FULL
-    // controlled list and it filters only once the user starts typing (the custom
-    // `pristine` filter). Off-list values are still accepted (soft). It reuses the
+    // Vocab cells (UPOS/XPOS) use a Combobox: focusing opens the FULL controlled
+    // list and it filters only once the user starts typing (the custom `pristine`
+    // filter). Off-list values are still accepted (soft). It reuses the
     // `.editable-field` styling so it matches the grid, and has no native picker
     // arrow (which is what shifted the datalist's centered text off-center).
     // When the producing parser recorded a distribution, its top-k floats above
@@ -209,12 +242,19 @@ const EditableCell = React.memo(
           .map((o) => ('group' in o ? { ...o, items: filterItems(o.items, q) } : o))
           .filter((o) => ('group' in o ? o.items.length > 0 : o.label.toLowerCase().includes(q)));
       };
+      // Commit the picked tag and leave, from a click or from Enter. The value
+      // goes through the ref-backed setter so the blur this triggers reads the
+      // tag and not the prefix that was typed to find it.
+      const takeOption = (picked) => {
+        setValue(picked);
+        inputRef.current?.blur();
+      };
       return (
-        <Autocomplete
+        <Combobox
           ref={inputRef}
           id={`${tokenId}-${field}`}
           spellCheck={false}
-          data={isEditing ? groupSuggestions(suggestions, fieldProbs) : NO_OPTIONS}
+          options={isEditing ? groupSuggestions(suggestions, fieldProbs) : NO_OPTIONS}
           renderOption={
             fieldProbs
               ? ({ option }) => {
@@ -234,53 +274,48 @@ const EditableCell = React.memo(
           }
           value={displayValue}
           onChange={(val) => {
-            setLocalValue(val);
+            selectPendingRef.current = false;
+            setValue(val);
             setPristine(false);
           }}
-          onFocus={() => {
-            setIsEditing(true);
-            setPristine(true);
-            setTimeout(() => inputRef.current?.select(), 0);
-          }}
+          onFocus={handleFocus}
           onBlur={handleBlur}
-          onKeyDown={(e) => {
+          onSubmit={takeOption}
+          onKeyDown={(e, combo) => {
+            // Arrows belong to the grid until the user has TYPED into this cell:
+            // focusing opens the full list, and arrows on a pristine cell keep
+            // moving through the grid; once typing has filtered the list, the
+            // arrows browse it (Enter picks). The combobox hands us that state
+            // rather than leaving us to read it off the DOM.
+            const browsing = !pristine && combo.open;
             if (e.key === 'Tab') {
               const now = Date.now();
               if (now - lastGlobalTabPress < 55) {
                 e.preventDefault();
-                return;
+              } else {
+                lastGlobalTabPress = now;
               }
-              lastGlobalTabPress = now;
               return;
             }
             if (e.key === 'Enter') {
               // Ctrl/Cmd+Enter is the per-token accept gesture (container
               // handler): let it bubble and keep focus here.
               if (e.ctrlKey || e.metaKey) return;
-              // Commit via blur, like the plain-input cells — but DEFERRED:
-              // Mantine's own keydown runs after ours and applies a highlighted
-              // option via onOptionSubmit → onChange (setLocalValue). A macrotask
-              // lands after that and after React's flush, so handleBlur commits
-              // the picked option (or, with nothing highlighted, the typed text)
-              // rather than a stale prefix.
-              setTimeout(() => inputRef.current?.blur(), 0);
+              e.preventDefault();
+              takeOption(combo.activeValue ?? valueRef.current);
               return;
             }
             if (e.key === 'Escape') {
-              setLocalValue(value || '');
+              // Reverts and leaves the cell, list open or not. Not
+              // preventDefault-ed, so the list closes on the way out.
+              cancelledRef.current = true;
+              setValue(value || '');
               inputRef.current?.blur();
               return;
             }
-            // Grid navigation, like the plain-input cells — until the user has
-            // TYPED into this cell: focusing opens the full list, and arrows on
-            // a pristine cell keep moving through the grid; once typing has
-            // filtered the list, the arrows highlight options (Enter picks).
-            // NB: Mantine's Combobox never sets aria-expanded on the input (only
-            // with withExpandedAttribute); data-expanded is the reliable signal.
-            const dropdownOpen = !pristine && e.target.getAttribute('data-expanded') === 'true';
             if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
               if (
-                !dropdownOpen &&
+                !browsing &&
                 onNavigate?.(field, tokenIndex, e.key === 'ArrowUp' ? 'up' : 'down')
               ) {
                 e.preventDefault();
@@ -301,37 +336,15 @@ const EditableCell = React.memo(
             }
           }}
           filter={optionsFilter}
-          selectFirstOptionOnChange={false}
-          variant="unstyled"
-          size="xs"
+          autoHighlight={false}
           tabIndex={tabIndex}
           title={cellTitle}
-          classNames={{ input: fieldClass }}
-          styles={{
-            // Match the plain inputs: take the full column width and be allowed to
-            // overflow the (narrower) cell. Mantine's default max-width:100% would
-            // otherwise trap the field at the cell width, clipping longer tags and
-            // shifting the text left of center.
-            root: {
-              width: columnWidth ? `${columnWidth}px` : 'auto',
-              maxWidth: 'none',
-              flexShrink: 0,
-            },
-            input: {
-              width: '100%',
-              height: 'auto',
-              minHeight: 18,
-              lineHeight: '16px',
-              textAlign: 'center',
-              color: hasContent && cellColor ? cellColor : undefined,
-            },
-            // The cell column can be very narrow; let the dropdown grow to fit its
-            // options and keep each tag on a single line (no char-by-char wrap).
-            dropdown: { minWidth: 'max-content' },
-            option: { whiteSpace: 'nowrap' },
+          className={fieldClass}
+          style={{
+            width: columnWidth ? `${columnWidth}px` : 'auto',
+            ...(hasContent && cellColor ? { color: cellColor } : {}),
           }}
-          maxDropdownHeight={240}
-          comboboxProps={{ withinPortal: true }}
+          optionClassName="px-2 py-0.5 text-xs"
         />
       );
     }
@@ -390,11 +403,9 @@ const FeaturesCell = React.memo(
     const [isEditing, setIsEditing] = useState(false);
     const [hoveredFeatureIndex, setHoveredFeatureIndex] = useState(null);
     const inputRef = useRef(null);
-    // Mantine fires onOptionSubmit BEFORE its own onChange(option), so after an
-    // option-pick commit the echoed onChange would resurrect the committed text
-    // in the input. Set on commit-by-pick; onChange consumes it and swallows
-    // that one echo.
-    const optionCommittedRef = useRef(false);
+    // As in EditableCell: Escape cancels, and the blur it fires reads the text
+    // React has committed, not the text Escape just cleared.
+    const cancelledRef = useRef(false);
 
     const inv = featureInventory || { list: [], map: new Map() };
 
@@ -430,7 +441,14 @@ const FeaturesCell = React.memo(
       });
     };
 
-    const handleKeyDown = (e) => {
+    // A picked suggestion: a bare "Key=" just fills the input (keep typing the
+    // value), a full "Key=Value" commits. Shared by the click and by Enter.
+    const takeOption = (option) => {
+      if (option.endsWith('=')) setText(option);
+      else commit(option);
+    };
+
+    const handleKeyDown = (e, combo) => {
       if (e.key === 'Tab') {
         const now = Date.now();
         if (now - lastGlobalTabPress < 55) {
@@ -442,27 +460,19 @@ const FeaturesCell = React.memo(
       }
       const input = inputRef.current;
       const empty = !text;
-      // While the dropdown is open (or an option is highlighted), Enter and the
-      // vertical arrows belong to the combobox, not to us. An option counts as
-      // highlighted when the open dropdown has a [data-combobox-selected] item —
-      // set by BOTH arrow nav and auto-highlight (selectFirstOptionOnChange).
-      // (aria-activedescendant only tracks arrow nav, so relying on it would let
-      // Enter both commit the typed text AND submit the auto-highlighted option.
-      // And Mantine never sets aria-expanded on the input — read data-expanded.)
-      // An EMPTY input counts as closed: focusing opens the key list, but arrows
-      // on an untouched cell should keep moving through the grid, like the
-      // UPOS/XPOS cells; typing is what hands the arrows to the dropdown.
-      const dropdownOpen = !empty && e.target.getAttribute('data-expanded') === 'true';
-      const optionActive = dropdownOpen && !!document.querySelector('[data-combobox-selected]');
+      // While the dropdown is open, Enter and the vertical arrows belong to the
+      // list, not to the grid. An EMPTY input counts as closed: focusing opens
+      // the key list, but arrows on an untouched cell should keep moving through
+      // the grid, like the UPOS/XPOS cells; typing is what hands them over.
+      const dropdownOpen = !empty && combo.open;
 
       if (e.key === 'Enter') {
         // Ctrl/Cmd+Enter confirms the whole token (container handler) — don't also
         // commit a (possibly empty) feature, and keep focus on this cell.
         if (e.ctrlKey || e.metaKey) return;
-        if (!optionActive) {
-          e.preventDefault();
-          commit();
-        }
+        e.preventDefault();
+        if (dropdownOpen && combo.activeValue != null) takeOption(combo.activeValue);
+        else commit();
         return;
       }
       if (e.key === 'Escape') {
@@ -472,6 +482,7 @@ const FeaturesCell = React.memo(
           return;
         }
         if (!dropdownOpen) {
+          cancelledRef.current = true;
           setText('');
           input?.blur();
         }
@@ -568,17 +579,13 @@ const FeaturesCell = React.memo(
         ))}
 
         {!isReadOnly && (
-          <Autocomplete
+          <Combobox
             ref={inputRef}
             id={`${tokenId}-feats`}
             spellCheck={false}
-            data={isEditing ? suggestions : NO_OPTIONS}
+            options={isEditing ? suggestions : NO_OPTIONS}
             value={text}
             onChange={(val) => {
-              if (optionCommittedRef.current) {
-                optionCommittedRef.current = false;
-                return;
-              }
               setText(val);
               setSelectedPill(null);
             }}
@@ -587,43 +594,24 @@ const FeaturesCell = React.memo(
               // Commit a complete Key=Value on the way out; discard fragments.
               setIsEditing(false);
               setSelectedPill(null);
-              if (!commit()) setText('');
-            }}
-            onOptionSubmit={(option) => {
-              // A bare "Key=" pick just fills the input (keep typing the value);
-              // a full "Key=Value" pick commits immediately.
-              if (!option.endsWith('=')) {
-                optionCommittedRef.current = true;
-                commit(option);
+              if (cancelledRef.current) {
+                cancelledRef.current = false;
+                setText('');
+              } else if (!commit()) {
+                setText('');
               }
             }}
+            onSubmit={takeOption}
             onKeyDown={handleKeyDown}
-            // Auto-highlight the best match once typing starts, so Enter selects it
-            // (like the deprel editor). The existing Enter/onOptionSubmit logic then
-            // does the right thing: a "Key=" pick fills the input, a "Key=Value"
-            // pick commits. Gated on input so Enter on an EMPTY cell doesn't insert
-            // the first inventory key.
-            selectFirstOptionOnChange={text.length > 0}
-            variant="unstyled"
-            size="xs"
+            // Auto-highlight the best match once typing starts, so Enter takes
+            // it. Gated on input so Enter on an EMPTY cell doesn't insert the
+            // first inventory key.
+            autoHighlight={text.length > 0}
             tabIndex={tabIndex}
             placeholder="+"
             title="Add feature (Key=Value)"
-            classNames={{ input: 'feature-chip-input' }}
-            styles={{
-              root: { width: '100%', maxWidth: 'none' },
-              input: {
-                width: '100%',
-                height: 'auto',
-                minHeight: 18,
-                lineHeight: '14px',
-                textAlign: 'center',
-              },
-              dropdown: { minWidth: 'max-content' },
-              option: { whiteSpace: 'nowrap' },
-            }}
-            maxDropdownHeight={240}
-            comboboxProps={{ withinPortal: true }}
+            className="feature-chip-input"
+            optionClassName="px-2 py-0.5 text-xs"
           />
         )}
       </div>
@@ -693,27 +681,22 @@ const TokenColumn = React.memo(
         onMouseEnter={showCheck ? revealCheck : undefined}
         onMouseLeave={showCheck ? hideCheckSoon : undefined}
       >
+        {/* A native title rather than a tooltip primitive: there is one of these
+            per word in a grid that runs to thousands, and every other affordance
+            in the grid (each cell, the sentence-level Accept) explains itself the
+            same way. */}
         {showCheck && (
-          <Tooltip
-            label="Accept this word's predictions (Ctrl/Cmd+Enter)"
-            withArrow
-            position="top"
-            openDelay={250}
+          <button
+            type="button"
+            className="word-accept"
+            data-show={hoverShow || undefined}
+            tabIndex={-1}
+            title="Accept this word's predictions (Ctrl/Cmd+Enter)"
+            aria-label="Accept this word's predictions"
+            onClick={() => onConfirmTokens([data.token.id])}
           >
-            <ActionIcon
-              className="word-accept"
-              data-show={hoverShow || undefined}
-              size="xs"
-              radius="xl"
-              variant="filled"
-              color="violet"
-              tabIndex={-1}
-              aria-label="Accept this word's predictions"
-              onClick={() => onConfirmTokens([data.token.id])}
-            >
-              <IconCheck size={12} />
-            </ActionIcon>
-          </Tooltip>
+            <Check width={12} height={12} />
+          </button>
         )}
         {/* Token form (baseline). A machine-made Form span (MWT components from
             the parser) gets the same unverified styling as the cells. */}
@@ -872,8 +855,9 @@ const RowLabelHeader = ({ field, label, expanded, onToggle, style }) => {
       title={interactive ? `${expanded ? 'Hide' : 'Show'} ${label}` : undefined}
     >
       {interactive && (
-        <IconChevronRight
-          size={12}
+        <ChevronRight
+          width={12}
+          height={12}
           className="row-label__chevron"
           style={{
             transform: expanded ? 'rotate(90deg)' : 'none',
@@ -1174,18 +1158,19 @@ export const SentenceRow = React.memo(
         </div>
 
         {/* Sentence-level "Accept predictions" — BELOW the grid and left-aligned
-          with the first token, so it reads as belonging to this sentence. */}
+          with the first token, so it reads as belonging to this sentence. The
+          button is shadcn inside a grid that is not a Tailwind subtree, so its
+          wrapper carries the preflight scope, and loses it with all the others
+          when preflight turns global. */}
         {!isReadOnly && onConfirmTokens && hasInferred && (
-          <div className="sentence-confirm">
+          <div className="sentence-confirm tw">
             <Button
-              className="accept-predictions-btn"
-              size="compact-xs"
-              variant="subtle"
-              color="violet"
-              leftSection={<IconCheck size={12} />}
+              className="accept-predictions-btn h-6 gap-1 px-2 text-xs"
+              variant="outline"
               onClick={handleConfirmSentence}
               title="Mark every machine prediction in this sentence as reviewed (hover a word for a per-word ✓ / Ctrl/Cmd+Enter)."
             >
+              <Check width={12} height={12} />
               Accept predictions
             </Button>
           </div>

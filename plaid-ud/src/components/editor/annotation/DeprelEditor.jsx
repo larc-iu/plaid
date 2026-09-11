@@ -1,12 +1,12 @@
 import { useState, useRef } from 'react';
-import { Autocomplete } from '@mantine/core';
+import { Combobox } from '@ui/components/ui/combobox';
 import { readFieldProbs, groupSuggestions, probLabel } from '../../../utils/provenanceUi.js';
 
 // Inline editor for a dependency-relation label, rendered inside the tree's
-// SVG <foreignObject>. Mirrors the grid's vocab cells: a Mantine Autocomplete
-// seeded with the configured DEPREL vocabulary — clicking shows the full list,
-// the first keystroke filters, and off-list values are still accepted (soft).
-// When the producing parser recorded a deprel distribution
+// SVG <foreignObject>. Mirrors the grid's vocab cells: a Combobox seeded with
+// the configured DEPREL vocabulary — focusing shows the full list, the first
+// keystroke filters, and off-list values are still accepted (soft). When the
+// producing parser recorded a deprel distribution
 // (metadata.provDetail.deprelProbs), its top-k floats above the rest as a
 // "Parser suggestions" group with dimmed probability suffixes.
 //
@@ -100,8 +100,8 @@ export function DeprelEditor({ relation, suggestions, onCommit, onCancel, onDele
   };
 
   return (
-    <Autocomplete
-      data={data}
+    <Combobox
+      options={data}
       spellCheck={false}
       renderOption={({ option }) => {
         if (literalValue && option.value === literalValue) {
@@ -130,15 +130,9 @@ export function DeprelEditor({ relation, suggestions, onCommit, onCancel, onDele
       // picked (vs. just opened and left): re-entering the machine's own label
       // is a confirmation, but merely passing through the editor is not.
       onBlur={() => once(() => onCommit(value, !pristine))}
-      // Arrow-key navigation only HIGHLIGHTS an option; it doesn't update
-      // `value`. Mantine applies the highlighted option via onOptionSubmit (on
-      // Enter or click) — commit *that* value. The Enter branch below handles
-      // free text (no highlighted option, so onOptionSubmit never fires); it's
-      // deferred to a microtask so that when an option IS highlighted,
-      // onOptionSubmit (which runs synchronously right after our keydown) wins
-      // and `once` blocks the stale typed-value commit.
-      onOptionSubmit={(v) => once(() => onCommit(v, true))}
-      onKeyDown={(e) => {
+      // Clicking an option commits it, and a click is always a deliberate pick.
+      onSubmit={(v) => once(() => onCommit(v, true))}
+      onKeyDown={(e, combo) => {
         // stopPropagation so the dependency tree's global document keydown
         // listener (Escape = bail, Ctrl+D = enter) doesn't also fire while the
         // editor owns these keys — keeps Enter/Escape returning focus to the
@@ -146,7 +140,12 @@ export function DeprelEditor({ relation, suggestions, onCommit, onCancel, onDele
         if (e.key === 'Enter') {
           e.preventDefault();
           e.stopPropagation();
-          queueMicrotask(() => once(() => onCommit(value, !pristine)));
+          // Arrow keys highlight an option without touching `value`, so the
+          // highlighted one wins when there is one. It is read straight off the
+          // list rather than inferred from a later event, which is the whole
+          // point of the combobox handing its state to the key handler.
+          const picked = combo.activeValue;
+          once(() => (picked != null ? onCommit(picked, true) : onCommit(value, !pristine)));
         } else if (e.key === 'Escape') {
           e.preventDefault();
           e.stopPropagation();
@@ -165,24 +164,10 @@ export function DeprelEditor({ relation, suggestions, onCommit, onCancel, onDele
       // Auto-highlight the best match for Enter — but only once typing has
       // started. While pristine (just opened, showing the full list) nothing is
       // pre-selected, so Enter keeps the current value.
-      selectFirstOptionOnChange={!pristine}
+      autoHighlight={!pristine}
       autoFocus
-      size="xs"
-      maxDropdownHeight={240}
-      comboboxProps={{ withinPortal: true, width: 'max-content', position: 'bottom-start' }}
-      styles={{
-        input: {
-          height: 22,
-          minHeight: 22,
-          padding: '0 6px',
-          fontSize: 11,
-          textAlign: 'center',
-          fontFamily: 'sans-serif',
-          borderColor: '#2563eb',
-          color: '#2563eb',
-        },
-        option: { whiteSpace: 'nowrap', fontSize: 11 },
-      }}
+      className="deprel-edit-input"
+      optionClassName="px-2 py-0.5 text-[11px]"
     />
   );
 }
