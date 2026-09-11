@@ -365,3 +365,31 @@
   color: #999;
   font-style: italic;
 }
+
+/* The sentence's own metadata, under its grid: a chevron toggle on the same
+   line as the annotation-row headers' idiom, and the fields when open. Aligned
+   with the labels column so it reads as belonging to the sentence above. */
+.sentence-meta {
+  margin-top: 8px;
+  margin-left: 8px;
+}
+
+.sentence-meta__toggle {
+  display: inline-flex;
+  width: auto;
+  min-height: 20px;
+  padding-right: 6px;
+}
+
+/* Collapsed, the toggle carries the one value worth seeing at a glance. */
+.sentence-meta__summary {
+  margin-left: 8px;
+  font-weight: normal;
+  font-family: monospace;
+  color: #6b7280;
+}
+
+.sentence-meta__fields {
+  margin-top: 4px;
+  margin-left: 14px;
+}

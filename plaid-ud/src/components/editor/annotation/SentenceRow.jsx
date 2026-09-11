@@ -13,6 +13,8 @@ import {
   provCellTitle,
   provMark,
 } from '../../../utils/provenanceUi.js';
+import { MetadataFields } from '../../common/MetadataFields.jsx';
+import { metadataRows } from '../../../utils/udMetadata.js';
 import './SentenceRow.css';
 
 // Shared throttle for tab navigation across all EditableCell instances
@@ -20,13 +22,17 @@ let lastGlobalTabPress = 0;
 
 // Fallback when no per-document visibility is supplied (e.g. historical view):
 // show every annotation row. Stable reference so memoized children don't churn.
-const ALL_FIELDS_VISIBLE = { lemma: true, xpos: true, upos: true, feats: true };
+const ALL_FIELDS_VISIBLE = { lemma: true, xpos: true, upos: true, feats: true, meta: true };
 
 // Stable empty-options reference: an idle vocab cell passes this instead of the
 // real suggestion list, so a grid of a thousand cells doesn't rank and group a
 // tag set per cell per render. Options are built only while the cell is
 // focused/editing, which is the only time the list can be open.
 const NO_OPTIONS = [];
+
+// Stable empty reference for the project's declared sentence fields, so a
+// sentence row memoized on its props doesn't churn when there are none.
+const EMPTY_FIELDS = [];
 
 // Editable cell component for annotation fields
 const EditableCell = React.memo(
@@ -906,6 +912,8 @@ export const SentenceRow = React.memo(
     onRelationDelete,
     onConfirmTokens,
     onDiscardTokens,
+    onSentenceMetadata,
+    sentenceFields = EMPTY_FIELDS,
     reviewable = needsReview,
     totalTokensBefore = 0,
     vocab,
@@ -1095,6 +1103,21 @@ export const SentenceRow = React.memo(
       onDiscardTokens?.(tokenData.map((d) => d.token.id));
     }, [onDiscardTokens, tokenData]);
 
+    // The sentence's own notes: sent_id, whatever the project declares, and
+    // whatever is already stored that it no longer does. They live on the
+    // SENTENCE TOKEN, which is where CoNLL-U's `# k = v` lines have always been
+    // read from and written back to.
+    const sentenceToken = sentenceData.sentenceToken;
+    const sentenceMeta = sentenceToken?.metadata;
+    const metaRows = useMemo(
+      () => metadataRows(sentenceFields, sentenceMeta, 'sentence'),
+      [sentenceFields, sentenceMeta],
+    );
+    const handleSentenceMetadata = useCallback(
+      (key, value) => onSentenceMetadata?.(sentenceToken?.id, key, value),
+      [onSentenceMetadata, sentenceToken],
+    );
+
     return (
       <div className="sentence-container">
         {/* Dependency tree visualization */}
@@ -1180,6 +1203,49 @@ export const SentenceRow = React.memo(
             />
           ))}
         </div>
+
+        {/* The sentence's own notes, under its grid and behind the same chevron
+          disclosure the annotation rows use, so expanding it once expands it
+          for the whole document. Collapsed by default: sent_id is housekeeping
+          most of the time, and a strip per sentence would crowd the grid it
+          belongs to. It sits below rather than above because the dependency
+          tree is absolutely positioned over the top of this container. */}
+        {metaRows.length > 0 && (
+          <div className="sentence-meta">
+            <div
+              className="row-label row-label--toggle sentence-meta__toggle"
+              role="button"
+              tabIndex={-1}
+              title={`${visibleFields.meta ? 'Hide' : 'Show'} sentence fields`}
+              onClick={() => onToggleField?.('meta')}
+            >
+              <ChevronRight
+                width={12}
+                height={12}
+                className="row-label__chevron"
+                style={{
+                  transform: visibleFields.meta ? 'rotate(90deg)' : 'none',
+                  transition: 'transform 150ms ease',
+                }}
+              />
+              SENTENCE
+              {!visibleFields.meta && sentenceMeta?.sent_id && (
+                <span className="sentence-meta__summary">{sentenceMeta.sent_id}</span>
+              )}
+            </div>
+            {visibleFields.meta && (
+              <div className="sentence-meta__fields">
+                <MetadataFields
+                  rows={metaRows}
+                  values={sentenceMeta}
+                  readOnly={isReadOnly || !onSentenceMetadata}
+                  dense
+                  onCommit={handleSentenceMetadata}
+                />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* The sentence's own review gestures — BELOW the grid and left-aligned
           with the first token, so they read as belonging to this sentence.

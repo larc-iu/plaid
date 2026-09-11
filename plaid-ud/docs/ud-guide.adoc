@@ -179,6 +179,20 @@ Below the grid, each sentence's dependency tree is drawn as arcs between words.
 * **Rename a relation**: click an arc's label to edit its dependency relation (`nsubj`, `obj`, …), again with autocomplete.
 * **Keyboard**: from the grid, **Ctrl/Cmd+D** jumps focus into the tree's labels. **Arrow Left/Right** or **Tab** move between labels. **Enter** opens the label for editing, and **Arrow Down** drops back into the grid. While editing a label, **Shift+Delete** removes the relation.
 
+== Metadata
+
+A treebank records more than annotations. CoNLL-U keeps those notes as comment lines, and Plaid UD edits them in two places.
+
+**About a document**, on its **Details** tab: where the text came from, its genre, its licence, whatever the project decides to keep.
+
+**About a sentence**, under the sentence in the Annotate view, behind the **SENTENCE** disclosure. Every sentence carries `sent_id`, CoNLL-U's own identifier for it, whether the project declares anything else or not. A free translation is conventionally `text_en`, naming the language it is in.
+
+Which fields a project offers is a maintainer's choice, under **Settings > UD Customization**. A field name cannot contain a dot, and a sentence field cannot be called `sent_id` or `text`, which the exporter writes itself.
+
+Fields save as you leave them, and clearing one removes the note rather than storing a blank. A value already stored under a name the project no longer offers is still shown, marked, so it can be read and cleared instead of quietly exporting forever.
+
+Everything here goes out with the document: `# source = ...` above a document, `# sent_id` and `# text_en` above a sentence.
+
 == Machine vs. Human Annotations
 
 Annotations nobody has checked yet are marked, so you can see at a glance what is left to review.
@@ -263,7 +277,7 @@ The mark is shared with every Plaid app on the project.
 
 A project's maintainers can tailor the annotation scheme from the project's settings tabs:
 
-* **UD Customization**: the controlled vocabularies (UPOS, XPOS, DEPREL tags), tag and relation **colors**, and the **feature inventory** offered in the Features column. All vocabularies start from the standard universal sets and can be extended or replaced.
+* **UD Customization**: the controlled vocabularies (UPOS, XPOS, DEPREL tags), tag and relation **colors**, the **feature inventory** offered in the Features column, and the **document** and **sentence fields** the project keeps notes in (see <<_metadata>>). All vocabularies start from the standard universal sets and can be extended or replaced.
 * **General**: the project's **language**, the **tokenizer locale** used by **Tokenize**, and project deletion. The language is a BCP-47 tag such as `en`, `de` or `zh-Hans`. It is the language a connected parser starts on, and the locale **Tokenize** segments with unless the tokenizer locale is set to something more specific.
 
 == Automation and Scripting

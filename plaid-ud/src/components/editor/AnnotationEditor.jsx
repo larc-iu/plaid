@@ -17,13 +17,23 @@ import { formatFindingsForClipboard } from '../../domain/validate.js';
 import { notifyError, notifyWithAction } from '../../utils/feedback.jsx';
 import { canEditProject, canManageProject } from '../../utils/permissions.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
+import { readMetadataFields } from '../../utils/udMetadata.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 // Document-wide annotation-row expansion. FEATS defaults to collapsed because its
 // vertically-stacked tags inflate column widths; users expand it via its row header.
 // Persisted across documents/sessions in localStorage.
 const FIELD_VISIBILITY_KEY = 'ud-annotation-visible-fields';
-const DEFAULT_VISIBLE_FIELDS = { lemma: true, xpos: true, upos: true, feats: false };
+const DEFAULT_VISIBLE_FIELDS = {
+  lemma: true,
+  xpos: true,
+  upos: true,
+  feats: false,
+  // The sentence's own fields (sent_id and whatever the project declares).
+  // Collapsed by default, like FEATS, and for the same reason: it is a row most
+  // sessions never touch, and one per sentence adds up.
+  meta: false,
+};
 
 const loadVisibleFields = () => {
   try {
@@ -312,6 +322,17 @@ export const AnnotationEditor = () => {
   const handleRelationDelete = useCallback((id) => doc?.deleteRelation(id), [doc]);
   const handleConfirmTokens = useCallback((tokenIds) => doc?.confirmTokens(tokenIds), [doc]);
   const handleDiscardTokens = useCallback((tokenIds) => doc?.discardTokens(tokenIds), [doc]);
+  const handleSentenceMetadata = useCallback(
+    (sentenceTokenId, key, value) => doc?.setSentenceMetadata(sentenceTokenId, key, value),
+    [doc],
+  );
+
+  // The sentence fields this project declares. Memoized on the project's config
+  // so a sentence row memoized on its props doesn't churn per render.
+  const sentenceFields = useMemo(
+    () => readMetadataFields(project?.config, 'sentence'),
+    [project?.config],
+  );
 
   // The review gestures live here, not on a sentence row: every one of them can
   // cross a sentence boundary, and a row only knows its own sentence.
@@ -560,6 +581,8 @@ export const AnnotationEditor = () => {
                         onRelationDelete={readOnly ? null : handleRelationDelete}
                         onConfirmTokens={readOnly ? null : handleConfirmTokens}
                         onDiscardTokens={readOnly ? null : handleDiscardTokens}
+                        onSentenceMetadata={readOnly ? null : handleSentenceMetadata}
+                        sentenceFields={sentenceFields}
                         reviewable={doc?.writer.reviewable}
                         sentenceIndex={index}
                         totalTokensBefore={totalTokensBefore}

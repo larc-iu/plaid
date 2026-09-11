@@ -12,6 +12,8 @@ import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@ui/components/ui/card';
+import { MetadataFields } from '../common/MetadataFields.jsx';
+import { readMetadataFields, metadataRows } from '../../utils/udMetadata.js';
 import {
   Dialog,
   DialogContent,
@@ -92,6 +94,15 @@ export const DocumentDetails = () => {
 
   const modified = doc.raw?.timeModified;
 
+  // What this project keeps about a document, plus anything already stored that
+  // it no longer declares (an import's field, or one somebody removed).
+  const documentMetadata = doc.metadata;
+  const metaRows = metadataRows(
+    readMetadataFields(project?.config, 'document'),
+    documentMetadata,
+    'document',
+  );
+
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
       <Card>
@@ -129,6 +140,26 @@ export const DocumentDetails = () => {
           )}
         </CardContent>
       </Card>
+
+      {metaRows.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-xl">Metadata</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              What this project records about a document. Each field saves as you leave it. A
+              maintainer chooses the fields under Settings, UD Customization.
+            </p>
+            <MetadataFields
+              rows={metaRows}
+              values={documentMetadata}
+              readOnly={readOnly}
+              onCommit={(key, value) => doc.setDocumentMetadata(key, value)}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {!readOnly && (
         <Card>

@@ -704,6 +704,56 @@ export class ConlluDocument {
     return ok ? created : null;
   }
 
+  /** The document's own metadata, never null. */
+  get metadata() {
+    return this._raw?.metadata || {};
+  }
+
+  // Write one document metadata field. An empty value DELETES the key rather
+  // than storing a blank, so a field cleared in the UI stops exporting instead
+  // of exporting an empty `# key =` line.
+  //
+  // A PATCH, not a replace: another app sharing this document may keep its own
+  // keys here, and a full setMetadata would take them with it.
+  async setDocumentMetadata(key, value) {
+    const next = value == null || value === '' ? null : String(value);
+    if ((this.metadata[key] ?? null) === next) return false;
+    return this._withSaving(
+      'Failed to save document metadata',
+      async () => {
+        this._applyRawPatch((raw) => {
+          raw.metadata = mergeMetadata(raw.metadata, { [key]: next });
+        });
+        await this._client.documents.patchMetadata(this.id, { [key]: next });
+      },
+      `Set document ${key}`,
+    );
+  }
+
+  // Write one sentence metadata field, on the SENTENCE TOKEN — where CoNLL-U's
+  // `# k = v` lines have always been read from and written back to (see
+  // importFromConllu and toConllu). Same delete-on-empty rule as the document
+  // level, and the same reason for a PATCH.
+  async setSentenceMetadata(sentenceTokenId, key, value) {
+    const info = this.layerInfo;
+    const token = (info.sentenceTokenLayer?.tokens || []).find((t) => t.id === sentenceTokenId);
+    if (!token) return false;
+    const next = value == null || value === '' ? null : String(value);
+    if ((token.metadata?.[key] ?? null) === next) return false;
+    return this._withSaving(
+      'Failed to save sentence metadata',
+      async () => {
+        this._applyRawPatch((raw, infoNext) => {
+          for (const t of infoNext.sentenceTokenLayer?.tokens || []) {
+            if (t.id === sentenceTokenId) t.metadata = mergeMetadata(t.metadata, { [key]: next });
+          }
+        });
+        await this._client.tokens.patchMetadata(sentenceTokenId, { [key]: next });
+      },
+      `Set sentence ${key}`,
+    );
+  }
+
   // ============================================================
   // Text-layer operations
   // ============================================================

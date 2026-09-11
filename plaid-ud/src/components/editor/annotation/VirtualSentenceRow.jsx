@@ -10,6 +10,8 @@ export const VirtualSentenceRow = ({
   onRelationDelete,
   onConfirmTokens,
   onDiscardTokens,
+  onSentenceMetadata,
+  sentenceFields,
   reviewable,
   sentenceIndex = 0,
   totalTokensBefore = 0,
@@ -87,6 +89,8 @@ export const VirtualSentenceRow = ({
         onRelationDelete={onRelationDelete}
         onConfirmTokens={onConfirmTokens}
         onDiscardTokens={onDiscardTokens}
+        onSentenceMetadata={onSentenceMetadata}
+        sentenceFields={sentenceFields}
         reviewable={reviewable}
         totalTokensBefore={totalTokensBefore}
         vocab={vocab}

@@ -8,10 +8,18 @@ import {
   cleanColorMap,
   baseRel,
 } from '../../utils/udVocab.js';
+import {
+  readMetadataFields,
+  toMetadataConfig,
+  metadataFieldError,
+  DOCUMENT_METADATA_KEY,
+  SENTENCE_METADATA_KEY,
+} from '../../utils/udMetadata.js';
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { useManagedProject } from './useManagedProject.js';
 import { RotateCcw, Trash2 } from 'lucide-react';
 import { TagList } from '../common/TagList.jsx';
+import { MetadataFieldList } from '../common/MetadataFieldList.jsx';
 import { ColorField } from '../common/ColorField.jsx';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
@@ -34,6 +42,8 @@ export const ProjectCustomization = () => {
   const [deprelColors, setDeprelColors] = useState({}); // { baseRel: '#hex' }
   const [uposColors, setUposColors] = useState({}); // { UPOS: '#hex' }
   const [featureInventory, setFeatureInventory] = useState([]); // [{key, values}]
+  const [documentFields, setDocumentFields] = useState([]); // field names
+  const [sentenceFields, setSentenceFields] = useState([]); // field names
 
   // Seed the editors from the project's current layer config.
   useEffect(() => {
@@ -47,6 +57,10 @@ export const ProjectCustomization = () => {
     setFeatureInventory(
       info.vocab.featureInventory.list.map((e) => ({ key: e.key, values: [...e.values] })),
     );
+    // These two are on the PROJECT, not on a layer: they describe the document
+    // and the sentence, neither of which belongs to an annotation layer.
+    setDocumentFields(readMetadataFields(project.config, 'document'));
+    setSentenceFields(readMetadataFields(project.config, 'sentence'));
   }, [project]);
 
   // Set/clear a single color in a {label: '#hex'} map (clearing falls back to auto).
@@ -108,6 +122,19 @@ export const ProjectCustomization = () => {
           inventory,
         );
       }
+
+      await client.projects.setConfig(
+        project.id,
+        UD_NAMESPACE,
+        DOCUMENT_METADATA_KEY,
+        toMetadataConfig(documentFields),
+      );
+      await client.projects.setConfig(
+        project.id,
+        UD_NAMESPACE,
+        SENTENCE_METADATA_KEY,
+        toMetadataConfig(sentenceFields),
+      );
 
       await fetchProject();
       notifySuccess('Customization saved');
@@ -302,6 +329,46 @@ export const ProjectCustomization = () => {
           >
             Add feature
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Document fields</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">
+            Notes kept about each document as a whole, edited on its Details tab. A treebank usually
+            records where a text came from and what it may be used for, as <code>source</code>,{' '}
+            <code>genre</code> or <code>license</code>.
+          </p>
+          <MetadataFieldList
+            value={documentFields}
+            onChange={setDocumentFields}
+            validate={(name, taken) => metadataFieldError(name, 'document', taken)}
+            label="Document fields"
+            placeholder="Add a field and press Enter"
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Sentence fields</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">
+            Notes kept about each sentence, edited under the sentence in the Annotate view. Every
+            sentence already carries <code>sent_id</code>. A free translation is usually{' '}
+            <code>text_en</code>, naming the language it is in.
+          </p>
+          <MetadataFieldList
+            value={sentenceFields}
+            onChange={setSentenceFields}
+            validate={(name, taken) => metadataFieldError(name, 'sentence', taken)}
+            label="Sentence fields"
+            placeholder="Add a field and press Enter"
+          />
         </CardContent>
       </Card>
 
