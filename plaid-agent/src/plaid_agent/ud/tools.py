@@ -285,12 +285,20 @@ def _not_being_reshaped(ws: Workspace, words: List[Word]) -> None:
                         'deletes them. Do one or the other (plan_status, drop_planned).')
 
 
-def _words(ws: Workspace, doc: UdDoc, refs) -> List[Word]:
-    """The words a list of references names, with a readable failure when one
-    of them names a sentence or a multi-word token instead."""
+def _guards(ws: Workspace, doc: UdDoc) -> None:
+    """The refusals every edit to a document owes, whichever tool stages it.
+    Kept in one place because the hole they leave is invisible: a tool that
+    reaches a document's words without passing through here can join a plan
+    that deletes the very tokens it writes to."""
     _no_parse_planned(ws, doc)
     _no_boundary_moved(ws, doc)
     _no_restore_planned(ws)
+
+
+def _words(ws: Workspace, doc: UdDoc, refs) -> List[Word]:
+    """The words a list of references names, with a readable failure when one
+    of them names a sentence or a multi-word token instead."""
+    _guards(ws, doc)
     if isinstance(refs, str):
         refs = [refs]
     if not refs:
@@ -419,12 +427,20 @@ def _reviewable(w: Word, field: str):
     return (sp, state) if state in ('machine', 'contributed') else None
 
 
-def _targets(ws: Workspace, doc: UdDoc, refs, field: Optional[str]):
+def _targets(ws: Workspace, doc: UdDoc, refs):
     """The words a review tool acts on: the ones named, or every word in the
-    document when none are."""
+    document when none are.
+
+    Both routes owe the same refusals. Naming no references used to skip
+    `_words` and every guard inside it, so `confirm(document=...)` could join a
+    plan that reshapes a token, and the batch deleted the token before patching
+    a span that sat on it."""
     if refs:
         return _words(ws, doc, refs)
-    return [w for s in doc.sentences for w in s.words]
+    _guards(ws, doc)
+    out = [w for s in doc.sentences for w in s.words]
+    _not_being_reshaped(ws, out)
+    return out
 
 
 def t_confirm(ws: Workspace, document: str = None, refs=None, field: str = None) -> str:
@@ -434,7 +450,7 @@ def t_confirm(ws: Workspace, document: str = None, refs=None, field: str = None)
     for f in fields:
         if f not in FIELDS and f != 'deprel':
             raise ToolError(f'Unknown field "{f}". One of: ' + ', '.join(FIELDS + ('deprel',)))
-    words = _targets(ws, doc, refs, field)
+    words = _targets(ws, doc, refs)
     n = 0
     for w in words:
         sentence = ws.sentence_of(doc, w)
@@ -462,11 +478,8 @@ def t_discard_predictions(ws: Workspace, document: str = None, refs=None, field:
     """Throw away machine output nobody has confirmed. A person's work and a
     confirmed value are never touched."""
     doc = ws.doc(document)
-    _no_parse_planned(ws, doc)
-    _no_boundary_moved(ws, doc)
-    _no_restore_planned(ws)
     fields = [field] if field else list(FIELDS)
-    words = _targets(ws, doc, refs, field)
+    words = _targets(ws, doc, refs)
     n = 0
     for w in words:
         sentence = ws.sentence_of(doc, w)

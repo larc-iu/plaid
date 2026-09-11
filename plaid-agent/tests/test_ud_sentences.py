@@ -62,6 +62,35 @@ def test_splitting_at_the_first_word_is_refused(ws):
     assert 'already starts' in out
 
 
+def test_a_sentence_that_owns_its_leading_space_still_refuses_a_split_at_its_first_word(ws):
+    """The sentence layer is a partitioning layer, so a sentence owns the
+    whitespace before its first word and `sentence.begin` is short of it. The
+    guard compared those two numbers, so the split went through and planned a
+    sentence holding no words at all, plus a renumber of everything after it."""
+    from ud_fixtures import FakeClient, PID, document_raw, project_raw
+    from plaid_agent.ud.project import load_project
+
+    raw = document_raw()
+    sents = raw['text_layers'][0]['token_layers'][0]['tokens']
+    assert sents[1]['begin'] == 14
+    sents[1]['begin'] = 13          # the real shape: no gap between sentences
+    client = FakeClient(project=project_raw(), documents={'ud1': raw})
+    w = Workspace(client, load_project(client, PID))
+
+    out = call_tool(w, 'split_sentence', {'document': 'Viaje', 'ref': 's2.w1'})
+    assert 'already starts' in out, out
+    assert not w.ops
+
+
+def test_a_split_inside_a_multi_word_token_is_refused(ws):
+    """Every word of a multi-word token shares that token's begin, so a cut
+    "before w3" of the token w2-3 really falls before w2. It was planned, and
+    labelled with the word it does not cut before."""
+    out = run(ws, 'split_sentence', document='Viaje', ref='s1.w3')
+    assert 'cannot begin inside one' in out, out
+    assert not ws.ops
+
+
 def test_merging_the_first_sentence_is_refused(ws):
     out = run(ws, 'merge_sentences', document='Viaje', ref='s1')
     assert 'nothing before it' in out
@@ -191,6 +220,10 @@ def test_the_restore_summary_reads_as_english():
     ('set_head', {'ref': 's1.w2', 'head': 1, 'deprel': 'obl'}),
     ('confirm', {'refs': ['s1.w1']}),
     ('discard_predictions', {'refs': ['s1.w1']}),
+    # No refs means "the whole document", which used to reach the words by a
+    # route with no guard on it at all.
+    ('confirm', {}),
+    ('discard_predictions', {}),
     ('set_words', {'ref': 's1.w1', 'forms': ['a', 'b']}),
     ('split_sentence', {'ref': 's1.w2'}),
     ('merge_sentences', {'ref': 's2'}),
@@ -201,7 +234,31 @@ def test_nothing_joins_a_restore_whatever_tool_is_used(ws, tool, args):
     (run_parse, discard_predictions) never reached the shared chokepoint at
     all."""
     run(ws, 'restore_document', document='Viaje', as_of='2026-09-05T18:45:49Z')
-    if not any(op.get('kind') == 'restore_document' for op in ws.ops):
-        pytest.skip('the fake client reports nothing to restore')
+    # Asserted, not skipped. As a skip it would have turned every case green
+    # the day the fake stopped reporting something to restore, which is the
+    # one day this test matters.
+    assert any(op.get('kind') == 'restore_document' for op in ws.ops), \
+        'the fixture must plan a restore for this test to mean anything'
     out = run(ws, tool, document='Viaje', **args)
     assert 'nothing else can share the plan' in out, f'{tool} slipped past the guard'
+
+
+# --- the whole-document route ------------------------------------------------
+
+@pytest.mark.parametrize('tool', ['confirm', 'discard_predictions'])
+def test_a_whole_document_review_cannot_join_a_reshape(ws, tool):
+    """Naming no references meant "every word in the document", and that route
+    skipped the guards the named route owes. So a plan could reshape a token
+    and confirm a span sitting on one of its words, and the batch deleted the
+    token before patching the span."""
+    run(ws, 'set_words', document='Viaje', ref='s1.w4', forms=['ma', 'r'])
+    out = run(ws, tool, document='Viaje')
+    assert 'reshapes the token' in out, out
+    assert not any(op.get('kind') in ('confirm', 'set_span') for op in ws.ops)
+
+
+@pytest.mark.parametrize('tool', ['confirm', 'discard_predictions'])
+def test_a_whole_document_review_cannot_join_a_moved_boundary(ws, tool):
+    run(ws, 'split_sentence', document='Viaje', ref='s1.w2')
+    out = run(ws, tool, document='Viaje')
+    assert 'renumbers' in out, out

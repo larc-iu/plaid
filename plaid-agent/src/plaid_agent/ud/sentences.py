@@ -64,9 +64,24 @@ def t_split_sentence(ws: Workspace, document: str = None, ref: str = None) -> st
         raise ToolError(f'{ref} names a sentence or a multi-word token. Name the WORD the new '
                         f'sentence should start at, like "s3.w5".')
     sentence = _sentence_of(doc, thing)
-    if thing.token.begin == sentence.begin:
+    # The sentence layer is a gap-free partition, so a sentence owns the
+    # whitespace before its first word and `sentence.begin` is often one or
+    # more characters short of it. Comparing the two begins let a split through
+    # at the first word, which planned a sentence holding no words at all,
+    # plus a renumber of everything after it. Identity is what the question
+    # actually asks.
+    if thing.token is sentence.tokens[0]:
         raise ToolError(f'{ref} already starts sentence s{sentence.index}. Name a word inside a '
                         f'sentence, not the first one.')
+    # Every word of a multi-word token shares that token's begin (the
+    # full-width rule), so a cut "before w3" of the token w2-3 really falls
+    # before w2. Planning it would renumber the document against a description
+    # that is not what happens, and the user approves that description.
+    if len(thing.token.words) > 1 and thing is not thing.token.words[0]:
+        first = thing.token.words[0]
+        raise ToolError(f'{ref} is inside the multi-word token "{thing.token.surface}", and a '
+                        f'sentence cannot begin inside one. The nearest place a sentence can '
+                        f'start is before "{first.form}" (w{first.index}).')
 
     losing = crossing_relations(sentence, thing.token.begin)
     ws.ops.append({
