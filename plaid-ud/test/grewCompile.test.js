@@ -221,3 +221,63 @@ test('sent_id compiles to a sentence-metadata constraint, with no warning', () =
     `expected a sent_id metadata clause, got ${JSON.stringify(query.where)}`,
   );
 });
+
+// --- count by: the same pattern as a grouped aggregate -----------------------
+//
+// Grew answers this with `cluster`, which is in the unsupported residue, so a
+// count re-runs the pattern with `return: {group, aggregates}` and the server
+// does the counting. The hits are never fetched.
+
+test('countBy groups by a node column and counts', () => {
+  const pattern = 'pattern { V [upos=VERB]; S [upos=NOUN]; e: V -[nsubj]-> S }';
+  const { query } = compile(pattern, {
+    projectId: 'p',
+    countBy: { node: 'S', field: 'lemma' },
+  });
+  assert.deepEqual(query.return, { group: ['?groupValue'], aggregates: [['count']] });
+  // No `find`, no `orderBy`, no `limit`: nothing is fetched.
+  assert.equal(query.find, undefined);
+  assert.equal(query.orderBy, undefined);
+  assert.equal(query.limit, undefined);
+  assert.deepEqual(query.scope, { projectIds: ['p'] });
+  // The grouped variable is bound to the field's own span.
+  assert.deepEqual(query.where.at(-1), ['span', '?grp3', { value: { var: '?groupValue' } }]);
+});
+
+test('countBy over a named edge groups by its label', () => {
+  const { query } = compile('pattern { e: H -> D }', {
+    projectId: 'p',
+    countBy: { node: 'e', field: 'label' },
+  });
+  assert.deepEqual(query.where.at(-1), ['relation', '?e_e', { value: { var: '?groupValue' } }]);
+});
+
+test('countBy names what the pattern offers, and refuses what it does not', () => {
+  const pattern = 'pattern { V [upos=VERB]; S []; e: V -[nsubj]-> S }';
+  const compiled = compile(pattern, { projectId: 'p' });
+  assert.deepEqual(compiled.nodes, ['S', 'V']);
+  assert.deepEqual(compiled.edges, ['e']);
+
+  assert.throws(
+    () => compile(pattern, { projectId: 'p', countBy: { node: 'Z', field: 'upos' } }),
+    /no node named Z/,
+  );
+  assert.throws(
+    () => compile(pattern, { projectId: 'p', countBy: { node: 'zz', field: 'label' } }),
+    /no edge named zz/,
+  );
+});
+
+test('countBy refuses FORM rather than answering it wrongly', () => {
+  // A word's form is the Form span when it has one and the token's own text
+  // otherwise, and a query cannot express "one or the other". Counting the
+  // spans alone would silently miss every ordinary word.
+  assert.throws(
+    () =>
+      compile('pattern { W [] }', {
+        projectId: 'p',
+        countBy: { node: 'W', field: 'form' },
+      }),
+    /not supported/,
+  );
+});

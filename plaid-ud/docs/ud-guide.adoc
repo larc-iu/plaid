@@ -247,6 +247,18 @@ Type a pattern and run it with the **Search** button or **Ctrl/Cmd+Enter**.
 Results are grouped by document. Click a match to jump straight to that sentence in the Annotate view.
 A built-in syntax reference with more examples is available on the search screen.
 
+=== Looking for a word
+
+Structure needs Grew; a word does not. The box above the pattern looks in a single field — form, lemma, UPOS, XPOS, dependency relation or features — for text that **contains**, **is**, or **matches** (as a regular expression) what you type.
+
+It does not run a search of its own: it writes the Grew pattern and hands it to the box below. So a quick lookup is the first draft of a real one — run it, then edit the pattern it wrote.
+
+=== Counting instead of reading
+
+After a search, **Count by** re-runs the same pattern as a tally: pick a pattern node and a field (`V.upos`, `S.lemma`, or a named edge's `e.label`) and the result is a sortable table of values with how many matches each accounts for.
+
+The matches themselves are never fetched for this — the server does the counting — so it stays fast on a corpus too large to page through.
+
 == History
 
 Every change is recorded.

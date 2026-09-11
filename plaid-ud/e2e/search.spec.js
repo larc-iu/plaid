@@ -34,6 +34,12 @@ test.beforeAll(async () => {
   }
 });
 
+// The page has two Search buttons: the quick-lookup box's (which writes a
+// pattern into the box below) and the Grew box's own, which runs what is in it.
+// This spec types a pattern, so it means the second.
+const runPattern = (page) =>
+  page.getByRole('button', { name: 'Search', exact: true }).last().click();
+
 test('runs a Grew query and shows highlighted matching sentences', async ({ page }) => {
   expect(PID, 'a UD project with data must exist').toBeTruthy();
   await seedAuth(page);
@@ -43,7 +49,7 @@ test('runs a Grew query and shows highlighted matching sentences', async ({ page
   const box = page.getByPlaceholder(/pattern \{/);
   await expect(box).toBeVisible();
   await box.fill('pattern { H []; D []; H -[nsubj]-> D }');
-  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await runPattern(page);
 
   // Results summary appears and at least one highlighted token is shown.
   await expect(page.getByText(/matching sentence/)).toBeVisible();
@@ -60,7 +66,7 @@ test('reports a clear error for an unsupported feature', async ({ page }) => {
   await page.goto(`${BASE}/#/projects/${PID}/search`);
   const box = page.getByPlaceholder(/pattern \{/);
   await box.fill('pattern { X [] } global { is_cyclic }');
-  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await runPattern(page);
   // is_cyclic is constant-folded to empty under the UD tree invariant.
   await expect(page.getByText('No matching sentences.')).toBeVisible();
 });

@@ -119,18 +119,36 @@ class Compiler {
       );
     }
 
-    const query = {
-      find: this.find,
-      where: this.where,
-      return: 'entities',
-      orderBy: [
-        ['?S', 'doc'],
-        ['?S', 'begin'],
-      ],
-      limit: this.opts.limit || 200,
-    };
+    // `countBy` turns the same pattern into a grouped aggregate: the hits are
+    // not fetched at all, the server counts them by one field, and what comes
+    // back is `[value, count]` pairs. Grew has `cluster` for this and it is in
+    // the unsupported residue, so this is the shape UD offers instead.
+    const grouped = this.opts.countBy ? this.groupClause(this.opts.countBy) : null;
+    const query = grouped
+      ? {
+          where: [...this.where, ...grouped.where],
+          return: { group: [grouped.variable], aggregates: [['count']] },
+        }
+      : {
+          find: this.find,
+          where: this.where,
+          return: 'entities',
+          orderBy: [
+            ['?S', 'doc'],
+            ['?S', 'begin'],
+          ],
+          limit: this.opts.limit || 200,
+        };
     if (this.opts.projectId) query.scope = { projectIds: [this.opts.projectId] };
-    return { query, warnings: this.warnings, impossible: this.impossible };
+    return {
+      query,
+      warnings: this.warnings,
+      impossible: this.impossible,
+      // What the pattern named, so a caller can offer "count by" over it
+      // without parsing the query text again.
+      nodes: [...this.topNodeIds].sort(),
+      edges: [...this.edgesById.keys()].sort(),
+    };
   }
 
   topCtx() {
@@ -197,6 +215,59 @@ class Compiler {
       default:
         break;
     }
+  }
+
+  // The extra `where` clauses that bind one field of one pattern node (or one
+  // named edge) to a variable, for a grouped count. `spec` is
+  // `{ node, field }` — `field` is a CoNLL-U column, a FEATS key, or 'label'
+  // when `node` names an edge.
+  groupClause(spec) {
+    const variable = '?groupValue';
+    const { node, field } = spec || {};
+    if (!node || !field) {
+      throw new GrewUnsupportedError('count-by', 'Nothing to count by.');
+    }
+
+    if (field === 'label') {
+      if (!this.edgesById.has(node)) {
+        throw new GrewUnsupportedError('count-by', `The pattern has no edge named ${node}.`);
+      }
+      return { variable, where: [['relation', `?e_${node}`, { value: { var: variable } }]] };
+    }
+
+    if (!this.topNodeIds.has(node)) {
+      throw new GrewUnsupportedError('count-by', `The pattern has no node named ${node}.`);
+    }
+    const lower = String(field).toLowerCase();
+
+    if (lower === 'form') {
+      // A word's form is the Form span when it has one and the token's own text
+      // otherwise, and a query cannot express "one or the other". Counting by
+      // the Form span alone would silently miss every ordinary word, so this is
+      // refused rather than answered wrongly.
+      throw new GrewUnsupportedError(
+        'count-by',
+        'Counting by form is not supported: a form is a span on a multi-word token and the text itself otherwise.',
+      );
+    }
+
+    const ctx = { scope: 'top', list: this.where, localBound: new Set(), localLemma: new Map() };
+    if (COLUMN_FEATS[lower]) {
+      const layer = this.layerId(COLUMN_FEATS[lower], lower);
+      const span = this.fresh('grp');
+      this.where.push(['span', span, { layer }]);
+      this.where.push(['covers', span, this.nodeTok(node, ctx)]);
+      return { variable, where: [['span', span, { value: { var: variable } }]] };
+    }
+
+    // A FEATS key: the span's value is the whole `Key=Value`, so the group is
+    // that string. Counting `Number` gives `Number=Sing` and `Number=Plur`,
+    // which is the honest answer and the one the picker's values look like.
+    const FEATS = this.layerId('featuresLayer', 'Features');
+    const span = this.fresh('grp');
+    this.where.push(['span', span, { layer: FEATS, value: { regex: featDefinedRegex(field) } }]);
+    this.where.push(['covers', span, this.nodeTok(node, ctx)]);
+    return { variable, where: [['span', span, { value: { var: variable } }]] };
   }
 
   bindTopNode(id) {

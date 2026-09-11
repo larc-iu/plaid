@@ -12,6 +12,8 @@ import { groupResults } from './grewToHighlight.js';
 import { GrewQueryInput } from './GrewQueryInput.jsx';
 import { GrewHelp } from './GrewHelp.jsx';
 import { SearchResults } from './SearchResults.jsx';
+import { QuickSearch } from './QuickSearch.jsx';
+import { CountBy } from './CountBy.jsx';
 import { RewritePreview } from './RewritePreview.jsx';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
@@ -47,6 +49,14 @@ export const SearchPage = () => {
   const [selected, setSelected] = useState(() => new Set());
   const [progress, setProgress] = useState('');
   const [applying, setApplying] = useState(false);
+
+  // Count-by: what the last search's pattern named, and the counts if asked for.
+  const [patternParts, setPatternParts] = useState(null);
+  const [counts, setCounts] = useState(null);
+  const [counting, setCounting] = useState(false);
+  // Set by the quick box: run as soon as the pattern it wrote is in state.
+  // Running from inside its handler would use the previous text.
+  const [pendingRun, setPendingRun] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,8 +107,12 @@ export const SearchPage = () => {
       query,
       warnings: warns,
       impossible,
+      nodes,
+      edges,
     } = parseAndCompile(queryText, layerInfo, { projectId, limit: RESULT_LIMIT });
     setWarnings(warns || []);
+    setPatternParts({ nodes, edges });
+    setCounts(null);
     if (impossible) {
       setGroups([]);
       setCount(0);
@@ -115,6 +129,36 @@ export const SearchPage = () => {
     setSearched(true);
   }, [queryText, layerInfo, projectId, getClient]);
 
+  // Re-run the SAME pattern as a grouped aggregate. The hits are never
+  // fetched: the server counts them by one field and returns [value, count].
+  const runCount = useCallback(
+    async (spec) => {
+      setCounting(true);
+      setError(null);
+      try {
+        const { query, impossible } = parseAndCompile(queryText, layerInfo, {
+          projectId,
+          countBy: spec,
+        });
+        if (impossible) {
+          setCounts([]);
+          return;
+        }
+        const res = await getClient().query(query);
+        setCounts(
+          (res?.results || [])
+            .filter(([value]) => value != null && value !== '')
+            .map(([value, n]) => ({ value: String(value), count: Number(n) || 0 })),
+        );
+      } catch (err) {
+        reportError(err);
+      } finally {
+        setCounting(false);
+      }
+    },
+    [queryText, layerInfo, projectId, getClient, reportError],
+  );
+
   const runPreview = useCallback(async () => {
     const grs = parseGrs(queryText);
     const result = await planRewrite(getClient(), { project, user, layerInfo, grs }, setProgress);
@@ -129,6 +173,7 @@ export const SearchPage = () => {
     setError(null);
     setPlan(null);
     setSearched(false);
+    setCounts(null);
     try {
       if (isRewrite) await runPreview();
       else await runSearch();
@@ -139,6 +184,15 @@ export const SearchPage = () => {
       setRunning(false);
     }
   }, [queryText, running, isRewrite, runPreview, runSearch, reportError]);
+
+  useEffect(() => {
+    if (!pendingRun) return;
+    setPendingRun(false);
+    run();
+    // `run` is rebuilt whenever the text changes, which is exactly when this
+    // should fire; depending on it would re-run on every keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingRun]);
 
   const apply = useCallback(async () => {
     if (!plan || applying) return;
@@ -212,6 +266,16 @@ export const SearchPage = () => {
           </div>
         ) : (
           <>
+            {/* A plain lookup writes a pattern into the box below rather than
+                searching on its own, so a quick search is the first draft of a
+                real one and there is only ever one compiler. */}
+            <QuickSearch
+              disabled={running}
+              onSearch={(pattern) => {
+                setQueryText(pattern);
+                setPendingRun(true);
+              }}
+            />
             <GrewHelp onPick={(q) => setQueryText(q)} />
             <GrewQueryInput
               value={queryText}
@@ -233,15 +297,27 @@ export const SearchPage = () => {
                 onApply={apply}
               />
             ) : (
-              <SearchResults
-                groups={groups}
-                count={count}
-                truncated={truncated}
-                warnings={warnings}
-                searched={searched}
-                docName={docName}
-                hrefFor={sentenceHref}
-              />
+              <>
+                {searched && patternParts && (
+                  <CountBy
+                    nodes={patternParts.nodes}
+                    edges={patternParts.edges}
+                    rows={counts}
+                    total={count}
+                    busy={counting}
+                    onCount={runCount}
+                  />
+                )}
+                <SearchResults
+                  groups={groups}
+                  count={count}
+                  truncated={truncated}
+                  warnings={warnings}
+                  searched={searched}
+                  docName={docName}
+                  hrefFor={sentenceHref}
+                />
+              </>
             )}
           </>
         )}
