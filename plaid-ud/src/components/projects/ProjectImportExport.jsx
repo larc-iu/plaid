@@ -324,7 +324,7 @@ export const ProjectImportExport = () => {
       downloadBlob(blob, `${sanitize(project?.name)}.zip`);
       if (skippedAcc.length > 0) {
         notifyWarning(
-          `Exported ${used.size}; ${skippedAcc.length} skipped (empty or unconfigured).`,
+          `Exported ${used.size}. ${skippedAcc.length} skipped (empty or unconfigured).`,
         );
       } else {
         notifySuccess(`Exported ${used.size} document${used.size === 1 ? '' : 's'}.`);
@@ -560,7 +560,7 @@ export const ProjectImportExport = () => {
                 <ul className="ml-5 list-disc space-y-0.5 text-xs">
                   {skipped.map((s, i) => (
                     <li key={i}>
-                      <b>{s.name || 'Untitled'}</b> — {s.reason}
+                      <b>{s.name || 'Untitled'}</b>: {s.reason}
                     </li>
                   ))}
                 </ul>

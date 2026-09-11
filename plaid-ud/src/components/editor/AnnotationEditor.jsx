@@ -87,7 +87,7 @@ const reportIntegrityFindings = (findings, documentId) => {
   const reason =
     headline.length === 1
       ? headline[0].message
-      : `${headline.length} issues found — see the browser console for details.`;
+      : `${headline.length} issues found. The browser console has the details.`;
   const detail = formatFindingsForClipboard(findings, { documentId });
   notifyWithAction(reason, 'Data integrity issue detected', {
     label: 'Copy details',
@@ -197,7 +197,7 @@ export const AnnotationEditor = () => {
       if (dedupedSpans > 0) {
         parts.push(
           `merged ${dedupedSpans} duplicate annotation${dedupedSpans === 1 ? '' : 's'} ` +
-            "(values joined with ' | ' — review them)",
+            "(values joined with ' | ', review them)",
         );
       }
       if (deletedRelations > 0) {
@@ -464,7 +464,7 @@ export const AnnotationEditor = () => {
       </Button>
 
       <div className="flex items-center gap-3">
-        {selectedHistoryEntry && <Button onClick={handleCloseHistory}>Return to Current</Button>}
+        {selectedHistoryEntry && <Button onClick={handleCloseHistory}>Return to current</Button>}
 
         <NlpServiceControls
           projectId={projectId}

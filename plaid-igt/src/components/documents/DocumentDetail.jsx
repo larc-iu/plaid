@@ -18,6 +18,7 @@ import { DocumentMetadata } from './metadata/DocumentMetadata.jsx';
 import { DocumentBaseline } from './baseline/DocumentBaseline.jsx';
 import { AnalyzeIsland } from './analyze/AnalyzeIsland.jsx';
 import { Suspended } from '@ui/components/shared/Suspended';
+import { fullTimestamp } from '@ui/utils/formatTime';
 import { lazyNamed } from '@ui/lib/lazyNamed';
 
 // The Media tab (the timeline, waveform, speech detection, and recording
@@ -597,17 +598,15 @@ const DocumentEditor = () => {
 
             {isViewingHistorical && (
               <div className="mb-4 rounded-md border border-blue-300 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-                <p className="font-medium">Viewing Historical State</p>
-                <p className="text-xs">Changes cannot be made while viewing historical data.</p>
+                <p className="font-medium">Read-only</p>
+                <p className="text-xs">This is the document as of {fullTimestamp(asOf)}.</p>
               </div>
             )}
 
             {!isViewingHistorical && permissions.isReadOnly && (
               <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                <p className="font-medium">Read-only access</p>
-                <p className="text-xs">
-                  You have viewer access to this project, so changes are disabled.
-                </p>
+                <p className="font-medium">Read-only</p>
+                <p className="text-xs">You have viewer access to this project.</p>
               </div>
             )}
 
@@ -721,8 +720,7 @@ const DocumentEditor = () => {
                   <Panel active={activeTab === 'comments'}>
                     {isViewingHistorical ? (
                       <p className="pt-6 text-sm text-muted-foreground">
-                        Comments are not part of the annotation history, so they are not shown at a
-                        past state. Return to the current version to read or add them.
+                        Comments are not shown at a past state.
                       </p>
                     ) : (
                       <Suspended>

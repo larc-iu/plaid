@@ -72,7 +72,7 @@ export const RedeemInvite = () => {
     if (!isReset && !isEmail(email)) return setError(EMAIL_INVALID_MESSAGE);
     if (password.length < MIN_PASSWORD)
       return setError(`Password must be at least ${MIN_PASSWORD} characters`);
-    if (password !== confirm) return setError('Passwords do not match');
+    if (password !== confirm) return setError('Passwords do not match.');
 
     setSubmitting(true);
     const result = await redeemInvite(code, {
@@ -104,7 +104,7 @@ export const RedeemInvite = () => {
       ? `Choose a new password for ${preview.email}.`
       : preview?.projectName
         ? `You have been invited to join ${preview.projectName} as a ${preview.projectRole}.`
-        : 'Choose an email address and password to get started.';
+        : 'Choose an email address and password.';
 
   // Renders outside the Layout shell, so it carries its own `.tw` root for the
   // scoped preflight subset (see src/index.css).
@@ -180,7 +180,7 @@ export const RedeemInvite = () => {
                       autoFocus
                     />
                     <p className="text-xs text-muted-foreground">
-                      This is how you will sign in. It cannot be changed later.
+                      Your sign-in address. It cannot be changed later.
                     </p>
                   </div>
 

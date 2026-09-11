@@ -49,7 +49,7 @@ export function rewriteSentence(grs, graph, { maxApplications = MAX_APPLICATIONS
     if (!m) return null;
     if (applications.length >= maxApplications) {
       throw new GrewRuntimeError(
-        `Rule '${rule.name}' did not terminate after ${maxApplications} applications; add a \`without\` clause that stops it.`,
+        `Rule '${rule.name}' did not terminate after ${maxApplications} applications. Add a \`without\` clause that stops it.`,
         { rule: rule.name, line: rule.line },
       );
     }
@@ -98,7 +98,7 @@ export function rewriteSentence(grs, graph, { maxApplications = MAX_APPLICATIONS
           if (fingerprint(r) === fingerprint(cur)) {
             const last = applications[applications.length - 1];
             throw new GrewRuntimeError(
-              `Rule '${last.rule}' matched but changed nothing, so it would match forever; add a \`without\` clause that stops it.`,
+              `Rule '${last.rule}' matched but changed nothing and would match forever. Add a \`without\` clause that stops it.`,
               { rule: last.rule, line: rules.get(last.rule)?.line ?? null },
             );
           }

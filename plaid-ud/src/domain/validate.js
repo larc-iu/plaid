@@ -83,7 +83,7 @@ export function validateConlluDocument(layerInfo) {
     add(
       SEVERITY.WARNING,
       'multi-head',
-      `A node has ${count} dependency heads (only one is allowed) — fix it by hand.`,
+      `A node has ${count} dependency heads. Only one is allowed.`,
       { target, count },
     );
   });

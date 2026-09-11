@@ -65,7 +65,7 @@ class Compiler {
     if (!layer || !layer.id) {
       throw new GrewUnsupportedError(
         `layer:${feature || key}`,
-        `This project has no ${feature || key} layer, so that constraint can't be matched here.`,
+        `This project has no ${feature || key} layer. That constraint cannot be matched here.`,
       );
     }
     return layer.id;
@@ -441,7 +441,7 @@ class Compiler {
     if (this._formWarned) return;
     this._formWarned = true;
     this.warnings.push(
-      "`form` matches the token's text slice; for multiword tokens the surface form may differ.",
+      "`form` matches the token's text slice. For multiword tokens the surface form may differ.",
     );
   }
 
@@ -474,7 +474,7 @@ class Compiler {
     if (lower === 'form') {
       throw new GrewUnsupportedError(
         'form-cmp',
-        'Comparing `form` across nodes is not supported; compare `lemma` instead.',
+        'Comparing `form` across nodes is not supported. Compare `lemma` instead.',
       );
     }
     if (COLUMN_FEATS[lower])
@@ -593,7 +593,7 @@ class Compiler {
     if (k < 0)
       throw new GrewUnsupportedError(
         'delta-negative-threshold',
-        `delta(X,Y) ${op} ${k} with a negative threshold is not supported; use an exact delta or a non-negative threshold.`,
+        `delta(X,Y) ${op} ${k} with a negative threshold is not supported. Use an exact delta or a non-negative threshold.`,
       );
     if (op === '>') {
       if (k === 0) ctx.list.push(['precedes*', a, b]);
@@ -747,7 +747,7 @@ class Compiler {
     if (this._treeWarned) return;
     this._treeWarned = true;
     this.warnings.push(
-      'Tree/cyclicity globals assume well-formed UD trees (one head per word, acyclic); partially-annotated sentences may not satisfy that assumption.',
+      'Tree/cyclicity globals assume well-formed UD trees (one head per word, acyclic). Partially-annotated sentences may not satisfy that assumption.',
     );
   }
 
@@ -860,7 +860,7 @@ class Compiler {
       if (v.items.every((it) => it.type === 'lit')) return v.items.map((it) => it.value);
       throw new GrewUnsupportedError(
         'regex-disjunction',
-        'A disjunction mixing regexes is not supported; use separate clauses or a single regex.',
+        'A disjunction mixing regexes is not supported. Use separate clauses or a single regex.',
       );
     }
     return undefined;

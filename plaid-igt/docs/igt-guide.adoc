@@ -805,7 +805,7 @@ Actions performed by a service, such as a transcription, show up the same way, u
 A change made through an API token names the token too, so a script's work is told apart from yours.
 
 Viewing history changes nothing.
-To bring a document back to an earlier state, select that entry and click **Restore to this state**.
+To bring a document back to an earlier state, select that entry and click **Restore**.
 Everything in the document goes back to how it was at that moment: the name, the text, the sentences, words and morphemes, the time alignment, the annotations, the vocabulary links, the metadata, and any layers another app keeps in the same project.
 Before anything is written, a dialog lists what will change, and the restore lands in the history as one more entry, so the state just before it can be restored in turn.
 The message that confirms a restore offers **Undo**, which brings that state back.

@@ -152,8 +152,8 @@ const bootstrap = async (client, projectName) => {
       const original = err?.message || 'Unknown error';
       const dErr = deleteErr?.message || 'Unknown error';
       const wrapped = new Error(
-        `Project bootstrap failed (${original}) AND rollback also failed (${dErr}). ` +
-          `Please manually delete project ${projectId}.`,
+        `Project setup failed (${original}) and the rollback failed too (${dErr}). ` +
+          `Delete project ${projectId} manually.`,
       );
       wrapped.cause = err;
       throw wrapped;

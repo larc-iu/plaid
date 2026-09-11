@@ -164,7 +164,7 @@ export const UserProfile = () => {
       const client = getClient();
 
       if (!formData.displayName.trim()) {
-        setError('Enter a display name');
+        setError('Enter a display name.');
         setLoading(false);
         return;
       }
@@ -172,17 +172,17 @@ export const UserProfile = () => {
       // Validate passwords if changing password
       if (formData.newPassword) {
         if (formData.newPassword !== formData.confirmPassword) {
-          setError('New passwords do not match');
+          setError('New passwords do not match.');
           setLoading(false);
           return;
         }
         if (formData.newPassword.length < 6) {
-          setError('Password must be at least 6 characters long');
+          setError('Password must be at least 6 characters.');
           setLoading(false);
           return;
         }
         if (!formData.currentPassword) {
-          setError('Current password is required to change password');
+          setError('Current password is required.');
           setLoading(false);
           return;
         }
@@ -209,7 +209,7 @@ export const UserProfile = () => {
 
       // If no changes, don't make API call
       if (Object.keys(updateData).length === 0) {
-        setError('No changes to save');
+        setError('No changes to save.');
         setLoading(false);
         return;
       }
@@ -318,7 +318,7 @@ export const UserProfile = () => {
                 )}
               </div>
               <p className="text-xs text-muted-foreground">
-                PNG, JPEG, WebP or GIF. Cropped to a square and resized for you.
+                PNG, JPEG, WebP or GIF. Cropped to a square and resized.
               </p>
             </div>
           </div>
@@ -428,10 +428,9 @@ export const UserProfile = () => {
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
-            Create named tokens to access the API from external services (parsers, scripts, the
-            Python <code>PlaidClient</code>). Each token carries your permissions, never expires,
-            and survives password changes. Revoke one to cut off access. Actions taken with a token
-            are labelled by its name in the audit history.
+            A named credential for scripts and services (parsers, the Python{' '}
+            <code>PlaidClient</code>). It carries your permissions and does not expire. Actions
+            taken with one are labelled by its name in the audit history.
           </p>
 
           {tokensError && (
@@ -448,7 +447,7 @@ export const UserProfile = () => {
             <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3">
               <p className="text-sm font-medium">Token &ldquo;{mintedToken.name}&rdquo; created</p>
               <p className="mb-2 mt-0.5 text-xs text-muted-foreground">
-                Copy it now. You will not be able to see it again.
+                Copy it now. It is not shown again.
               </p>
               <div className="flex items-center gap-2">
                 <code className="min-w-0 flex-1 break-all rounded bg-background px-2 py-1 text-xs">
@@ -489,7 +488,7 @@ export const UserProfile = () => {
                 Loading tokens…
               </div>
             ) : activeTokens.length === 0 ? (
-              <p className="text-sm text-muted-foreground">You have no active API tokens.</p>
+              <p className="text-sm text-muted-foreground">No active tokens.</p>
             ) : (
               <div className="flex flex-col">
                 {activeTokens.map((t) => (

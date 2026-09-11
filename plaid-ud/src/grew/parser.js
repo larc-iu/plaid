@@ -83,7 +83,7 @@ function createParser(src) {
       }
       blocks.push(parseBlock());
     }
-    if (blocks.length === 0) fail('Empty query — expected a `pattern { … }` block');
+    if (blocks.length === 0) fail('Empty query. Expected a `pattern { … }` block.');
     return { blocks, nonInjective: [...nonInjective] };
   }
 
@@ -136,7 +136,7 @@ function createParser(src) {
       }
     }
     if (anon) fail('Expected a `commands { … }` block after the pattern');
-    if (rules.length === 0) fail('Empty rule set — expected a `rule` or a pattern with `commands`');
+    if (rules.length === 0) fail('Empty rule set. Expected a `rule` or a pattern with `commands`.');
     rules.forEach(resolveLexiconRefs);
     return { rules, strats };
   }

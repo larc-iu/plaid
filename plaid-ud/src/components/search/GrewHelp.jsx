@@ -117,7 +117,7 @@ export const GrewHelp = ({ onPick }) => (
             <C>X.f = Y.f[1:]</C>, <C>del_feat X.Number</C>
           </li>
           <li>
-            <C>e.label = "obj"</C>, <C>e.2 = pass</C>, <C>del_feat e.2</C> — on an edge named{' '}
+            <C>e.label = "obj"</C>, <C>e.2 = pass</C>, <C>del_feat e.2</C>, on an edge named{' '}
             <C>e: X -[…]-&gt; Y</C>
           </li>
           <li>
@@ -126,18 +126,19 @@ export const GrewHelp = ({ onPick }) => (
           </li>
           <li>
             <C>shift X ==&gt; Y</C>, <C>shift_in X =[nsubj|obj]=&gt; Y</C>,{' '}
-            <C>shift_out X =[^det]=&gt; Y</C> — move X's edges to Y; the root moves with its
+            <C>shift_out X =[^det]=&gt; Y</C>: move X's edges to Y, and the root moves with its
             incoming edges
           </li>
           <li>
-            <C>del_node X</C> — delete the word and its edges;{' '}
-            <C>append_feats "/" X =[re"Number|Gender"]=&gt; Y</C> — copy X's features (never
+            <C>del_node X</C>: delete the word and its edges
+          </li>
+          <li>
+            <C>append_feats "/" X =[re"Number|Gender"]=&gt; Y</C>: copy X's features (never
             form/lemma/upos/xpos)
           </li>
           <li>
-            <C>X [lemma=lex.noun]</C> … <C>X.Gender = lex.Gender</C> — a lexicon declared in the
-            rule between <C>#BEGIN lex</C> and <C>#END</C>: tab-separated, first line the field
-            names
+            <C>X [lemma=lex.noun]</C> … <C>X.Gender = lex.Gender</C>, a lexicon declared in the rule
+            between <C>#BEGIN lex</C> and <C>#END</C>: tab-separated, first line the field names
           </li>
           <li>
             The root is an edge from an anchor node with <C>form="__0__"</C>, as in Grew:{' '}
@@ -150,8 +151,8 @@ export const GrewHelp = ({ onPick }) => (
             and{' '}
             <C>
               strat main {'{'} Seq(Onf(a), Onf(b)) {'}'}
-            </C>{' '}
-            — several rules; without a strategy they run as <C>Onf(Alt(…))</C>
+            </C>
+            , several rules. Without a strategy they run as <C>Onf(Alt(…))</C>
           </li>
         </Bullets>
         <p className="text-sm text-muted-foreground">
@@ -165,40 +166,46 @@ export const GrewHelp = ({ onPick }) => (
       <div className="flex flex-col gap-3">
         <p className="text-sm">
           Queries use <A href="https://grew.fr/doc/request/">Grew request syntax</A>. A node is a
-          syntactic word; a sentence matches when the whole pattern fits inside it.
+          syntactic word. A sentence matches when the whole pattern fits inside it.
         </p>
         <Bullets>
           <li>
-            <C>X [upos=VERB, Number=Sing]</C> — node with features (<C>|</C> for "or", <C>!Feat</C>{' '}
+            <C>X [upos=VERB, Number=Sing]</C>: node with features (<C>|</C> for "or", <C>!Feat</C>{' '}
             undefined, <C>Feat&lt;&gt;Val</C> not-equal, <C>re"…"</C> / <C>/…/i</C> regex)
           </li>
           <li>
-            <C>X -[nsubj]-&gt; Y</C> — dependency edge (<C>-[a|b]-&gt;</C>, <C>-[^a|b]-&gt;</C>,{' '}
+            <C>X -[nsubj]-&gt; Y</C>: dependency edge (<C>-[a|b]-&gt;</C>, <C>-[^a|b]-&gt;</C>,{' '}
             <C>-[re"…"]-&gt;</C>, <C>X -&gt; Y</C> any)
           </li>
           <li>
-            <C>X &lt; Y</C> / <C>X &lt;&lt; Y</C> — immediate / any precedence (<C>&gt;</C> /{' '}
-            <C>&gt;&gt;</C> reversed); <C>X -&gt;&gt; Y</C> — dominates
+            <C>X &lt; Y</C> / <C>X &lt;&lt; Y</C>: immediate / any precedence (<C>&gt;</C> /{' '}
+            <C>&gt;&gt;</C> reversed)
           </li>
           <li>
-            <C>X.lemma = Y.lemma</C> — same value across nodes; <C>delta(X,Y)=2</C> — linear
-            distance
+            <C>X -&gt;&gt; Y</C>: dominates
+          </li>
+          <li>
+            <C>X.lemma = Y.lemma</C>: same value across nodes
+          </li>
+          <li>
+            <C>delta(X,Y)=2</C>: linear distance
           </li>
           <li>
             <C>
               without {'{'} … {'}'}
-            </C>{' '}
-            — must NOT match;{' '}
+            </C>
+            : must NOT match
+          </li>
+          <li>
             <C>
               global {'{'} is_projective {'}'}
-            </C>{' '}
-            — whole-sentence constraint
+            </C>
+            : whole-sentence constraint
           </li>
         </Bullets>
         <p className="text-sm text-muted-foreground">
-          Not supported (these report a clear error): grew lexicons and cluster-by, enhanced
-          dependencies, and very large linear distances. <C>is_tree</C> / <C>is_cyclic</C> assume
-          well-formed UD trees.
+          Not supported: grew lexicons and cluster-by, enhanced dependencies, and very large linear
+          distances. <C>is_tree</C> / <C>is_cyclic</C> assume well-formed UD trees.
         </p>
       </div>
     </Panel>

@@ -200,7 +200,7 @@ function setLabelPart(label, feat, value) {
   if (!Number.isInteger(i) || i < 1) {
     throw new GrewUnsupportedError(
       'edge-feature',
-      `Edge feature '${feat}' is not supported; use e.label, e.1, e.2.`,
+      `Edge feature '${feat}' is not supported. Use e.label, e.1, e.2.`,
     );
   }
   const parts = labelParts(label);

@@ -383,8 +383,8 @@ export class ConlluDocument {
           // Surface the orphan id so the user knows they need to clean up
           // manually. The original error message stays at the front.
           const wrapped = new Error(
-            `${err?.message || 'Import failed'} (rollback also failed; ` +
-              `manually delete orphan document ${createdDocumentId})`,
+            `${err?.message || 'Import failed'} (rollback also failed, ` +
+              `delete orphan document ${createdDocumentId} manually)`,
           );
           wrapped.cause = err;
           throw wrapped;
@@ -788,15 +788,15 @@ export class ConlluDocument {
     const morphemeTokens = morphemeTokenLayer?.tokens || [];
 
     if (!textContent.trim()) {
-      this.setError('Please enter some text before tokenizing');
+      this.setError('No text to tokenize.');
       return false;
     }
     if (!text?.id) {
-      this.setError('Please save the text first before tokenizing');
+      this.setError('The text is not saved.');
       return false;
     }
     if (!sentenceTokenLayer?.id || !wordTokenLayer?.id || !morphemeTokenLayer?.id) {
-      this.setError('Token layers are not fully configured');
+      this.setError('Token layers are not fully configured.');
       return false;
     }
     if (sentenceTokens.length || wordTokens.length || morphemeTokens.length) {
@@ -1281,7 +1281,7 @@ export class ConlluDocument {
     const sentenceTokens = sentenceTokenLayer?.tokens || [];
 
     if (!text?.id || !sentenceTokenLayer?.id || !wordTokenLayer?.id || !morphemeTokenLayer?.id) {
-      this.setError('Token layers are not fully configured');
+      this.setError('Token layers are not fully configured.');
       return false;
     }
 
@@ -1292,7 +1292,7 @@ export class ConlluDocument {
     // do we transparently create one covering the whole text.
     const selRange = { begin, end };
     if (sentenceTokens.length > 0 && !sentenceTokens.some((s) => containsToken(s, selRange))) {
-      this.setError('Selection must be inside an existing sentence');
+      this.setError('Selection must be inside an existing sentence.');
       return false;
     }
 
@@ -1567,11 +1567,11 @@ export class ConlluDocument {
   async createRelation(sourceSpanId, targetSpanId, deprel) {
     const info = this.layerInfo;
     if (!info.relationLayer) {
-      this.setError('Relation layer not found. Please ensure the project is properly configured.');
+      this.setError('Relation layer not found.');
       return false;
     }
     if (!info.lemmaLayer) {
-      this.setError('Lemma layer not found. Cannot create dependency relation.');
+      this.setError('Lemma layer not found.');
       return false;
     }
 

@@ -253,10 +253,9 @@ export const ProjectCustomization = () => {
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
-            Universal part-of-speech tags offered while annotating. Defaults to the 17 universal
-            tags; edit them for project-specific needs. Off-list values are accepted unless you
-            refuse them below, and a parser, an import or the API can write one either way. The
-            Validation tab lists what is off-list.
+            Part-of-speech tags offered while annotating. The 17 universal tags by default. Off-list
+            values are accepted unless refused below, and a parser, an import or the API can write
+            one either way. The Validation tab lists what is off-list.
           </p>
           <TagList
             value={uposVocab}
@@ -330,8 +329,8 @@ export const ProjectCustomization = () => {
           />
           {modes.deprel === MODES.CLOSED && (
             <p className="text-xs text-muted-foreground">
-              A subtype is judged by its base relation, so <code>nsubj:pass</code> is allowed
-              wherever <code>nsubj</code> is.
+              A subtype is judged by its base relation. <code>nsubj:pass</code> is allowed wherever{' '}
+              <code>nsubj</code> is.
             </p>
           )}
           <DescriptionList
@@ -449,8 +448,7 @@ export const ProjectCustomization = () => {
           />
           {modes.feats === MODES.CLOSED && (
             <p className="text-xs text-muted-foreground">
-              Both halves are judged: the key must be listed, and the value must be one of its. A
-              key with no values listed accepts any value.
+              Both the key and the value are checked. A key with no values listed accepts any value.
             </p>
           )}
         </CardContent>

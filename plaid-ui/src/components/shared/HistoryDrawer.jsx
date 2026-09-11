@@ -13,8 +13,7 @@ import { fullTimestamp } from '../../utils/formatTime.js';
 //
 // Rows size to their content (no fixed-height virtualization): a lone write
 // is two short lines, a multi-op unit adds a count badge and can expand.
-const unitLabel = (entry) =>
-  entry.message || entry.ops?.[0]?.description || 'No description available';
+const unitLabel = (entry) => entry.message || entry.ops?.[0]?.description || 'No description';
 
 const actor = (user, apiToken) =>
   user ? ` · by ${user.displayName}${apiToken ? ` (via ${apiToken.name})` : ''}` : '';
@@ -149,7 +148,7 @@ export const HistoryDrawer = ({
       <div className="flex items-center justify-between border-b p-4">
         <div className="flex items-center gap-2">
           <History className="h-5 w-5" />
-          <span className="text-lg font-semibold">Document History</span>
+          <span className="text-lg font-semibold">History</span>
         </div>
         <Button variant="ghost" size="sm" onClick={onClose}>
           <X className="h-4 w-4" /> Close
@@ -161,7 +160,7 @@ export const HistoryDrawer = ({
         {loading && (
           <div className="flex flex-col items-center gap-2 py-10">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-foreground" />
-            <p className="text-sm text-muted-foreground">Loading history...</p>
+            <p className="text-sm text-muted-foreground">Loading history…</p>
           </div>
         )}
 
@@ -176,14 +175,14 @@ export const HistoryDrawer = ({
 
         {!loading && !error && reversedAuditEntries.length === 0 && (
           <div className="py-10 text-center">
-            <p className="text-sm text-muted-foreground">No history entries found</p>
+            <p className="text-sm text-muted-foreground">No entries</p>
           </div>
         )}
 
         {!loading && !error && reversedAuditEntries.length > 0 && (
           <div className="flex min-h-0 flex-1 flex-col p-4">
             <p className="mb-4 text-xs text-muted-foreground">
-              {reversedAuditEntries.length} entries • Click to view historical state
+              {reversedAuditEntries.length} entries
             </p>
             <div className="min-h-0 flex-1 overflow-auto rounded-md border bg-background">
               {reversedAuditEntries.map(renderUnit)}
@@ -196,18 +195,18 @@ export const HistoryDrawer = ({
       {selectedEntry && (
         <div className="border-t bg-accent p-4">
           <div className="flex flex-col items-start gap-2">
-            <Badge>Viewing Historical State</Badge>
+            <Badge>Historical state</Badge>
             {selectedEntry.label && (
               <p className="line-clamp-2 text-xs font-medium">{selectedEntry.label}</p>
             )}
             <p className="text-xs text-muted-foreground">{fullTimestamp(selectedEntry.time)}</p>
             <div className="flex flex-wrap gap-2">
               <Button size="sm" onClick={() => onSelectEntry(null)}>
-                Return to Current State
+                Return to current
               </Button>
               {canRestore && (
                 <Button size="sm" variant="outline" onClick={() => onRestore?.(selectedEntry)}>
-                  Restore to this state
+                  Restore
                 </Button>
               )}
             </div>

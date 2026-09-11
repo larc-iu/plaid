@@ -252,15 +252,14 @@ export const SearchPage = () => {
             <div>
               <p className="font-medium">Not available</p>
               <p>
-                This project is not set up for UD annotation, so dependency search has nothing to
-                search.{' '}
+                This project is not set up for UD annotation.{' '}
                 <Link
                   className="text-primary underline underline-offset-4"
                   to={`/projects/${projectId}/configuration`}
                 >
                   Set up its layers
-                </Link>{' '}
-                first.
+                </Link>
+                .
               </p>
             </div>
           </div>

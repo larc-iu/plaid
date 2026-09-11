@@ -112,7 +112,7 @@ export const ProjectConfiguration = () => {
       return 'Select a text layer or choose to create a new one.';
     }
     if (formData.textLayerType === 'new' && !formData.newTextLayerName.trim()) {
-      return 'Provide a name for the new text layer.';
+      return 'Name the new text layer.';
     }
     return '';
   };
@@ -379,8 +379,7 @@ export const ProjectConfiguration = () => {
           <CardContent className="flex flex-col gap-3">
             <p className="text-sm text-muted-foreground">
               Saving creates, or completes, the three-layer token hierarchy and the annotation
-              layers below. Existing layers are reused, including a shared substrate set up by
-              another app, so this is safe to re-run.
+              layers below. Layers that already exist are reused, including ones another app set up.
             </p>
             <ul className="ml-5 list-disc space-y-1 text-sm">
               <li>
@@ -388,11 +387,11 @@ export const ProjectConfiguration = () => {
               </li>
               <li>
                 <span className="font-medium">Tokens</span> token layer (non-overlapping, nested in
-                sentences) — orthographic tokens
+                sentences): orthographic tokens
               </li>
               <li>
                 <span className="font-medium">Words</span> token layer (overlap allowed, nested in
-                tokens) — where annotations live; a token splits into one or more words (multi-word
+                tokens): where annotations live. A token splits into one or more words (multi-word
                 tokens)
               </li>
               <li>Span layers on words: Form, Lemma, UPOS, XPOS, Features</li>

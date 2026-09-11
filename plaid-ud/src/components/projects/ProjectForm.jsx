@@ -68,7 +68,7 @@ export const ProjectForm = ({ isOpen, onClose, onSuccess }) => {
           </div>
 
           <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
-            <p>The project is created with every layer UD annotation needs:</p>
+            <p>Layers created with the project:</p>
             <ul className="mt-2 list-disc pl-5">
               <li>Text layer</li>
               <li>Token hierarchy: Sentences &rarr; Tokens &rarr; Words</li>

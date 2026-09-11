@@ -58,7 +58,7 @@ export const SearchResults = ({
           {groups.length === 0
             ? 'No matching sentences.'
             : `${groups.length} matching sentence${groups.length === 1 ? '' : 's'}` +
-              (truncated ? ` (capped at ${count}; refine the query for more)` : '')}
+              (truncated ? ` (capped at ${count}, refine the query for more)` : '')}
         </p>
       )}
 

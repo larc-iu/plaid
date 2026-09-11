@@ -295,13 +295,13 @@ export const ProjectManagement = () => {
     }
 
     if (newUserForm.password !== newUserForm.confirmPassword) {
-      setCreateUserError('Passwords do not match');
+      setCreateUserError('Passwords do not match.');
       setCreateUserLoading(false);
       return;
     }
 
     if (newUserForm.password.length < 6) {
-      setCreateUserError('Password must be at least 6 characters long');
+      setCreateUserError('Password must be at least 6 characters.');
       setCreateUserLoading(false);
       return;
     }
@@ -317,7 +317,7 @@ export const ProjectManagement = () => {
         newUserForm.displayName.trim() || undefined,
       );
 
-      notifySuccess('User created successfully');
+      notifySuccess('User created');
       setShowCreateUserForm(false);
       setNewUserForm(EMPTY_USER_FORM);
       setCreateUserError('');
@@ -351,17 +351,17 @@ export const ProjectManagement = () => {
     setEditUserError('');
 
     if (!editUserForm.displayName.trim()) {
-      setEditUserError('Enter a display name');
+      setEditUserError('Enter a display name.');
       return;
     }
 
     if (editUserForm.password && editUserForm.password !== editUserForm.confirmPassword) {
-      setEditUserError('Passwords do not match');
+      setEditUserError('Passwords do not match.');
       return;
     }
 
     if (editUserForm.password && editUserForm.password.length < 6) {
-      setEditUserError('Password must be at least 6 characters long');
+      setEditUserError('Password must be at least 6 characters.');
       return;
     }
 
@@ -375,7 +375,7 @@ export const ProjectManagement = () => {
 
       await client.users.update(editingUser.id, newPassword, newDisplayName, newIsAdmin);
 
-      notifySuccess('User updated successfully');
+      notifySuccess('User updated');
       setEditingUser(null);
       setEditUserForm(EMPTY_USER_FORM);
       await fetchProject();
@@ -396,7 +396,7 @@ export const ProjectManagement = () => {
     if (!ok) return;
     try {
       await getClient().users.delete(target.id);
-      notifySuccess('User deleted successfully');
+      notifySuccess('User deleted');
       setEditingUser(null);
       await fetchProject();
     } catch (err) {
@@ -422,7 +422,7 @@ export const ProjectManagement = () => {
 
   if (!project) return denied('Project not found');
   if (!canManageProject(project, user))
-    return denied('You do not have permission to manage this project');
+    return denied('You do not have permission to manage this project.');
 
   const userCell = (u) => (
     <div className="min-w-0">
@@ -808,7 +808,7 @@ export const ProjectManagement = () => {
                   onClick={handleDeleteUser}
                   disabled={editingUser.id === user.id}
                   title={
-                    editingUser.id === user.id ? 'You cannot delete your own account' : undefined
+                    editingUser.id === user.id ? 'You cannot delete your own account.' : undefined
                   }
                 >
                   Delete user

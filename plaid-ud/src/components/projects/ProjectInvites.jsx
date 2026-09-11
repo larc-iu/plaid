@@ -71,10 +71,7 @@ export const MintedLinkModal = ({ code, onClose, title = 'Invitation link create
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
-        <p className="text-sm text-muted-foreground">
-          Copy this link now. It is not stored, so it cannot be shown again. If you lose it, revoke
-          this invite and create another.
-        </p>
+        <p className="text-sm text-muted-foreground">Copy this link now. It is not shown again.</p>
         <div className="flex items-center gap-2">
           <Input
             readOnly
@@ -285,9 +282,6 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage }) =>
                 value={maxUses}
                 onChange={(e) => setMaxUses(Math.max(1, Number(e.target.value) || 1))}
               />
-              <p className="text-xs text-muted-foreground">
-                Raise this to share one link with a whole class.
-              </p>
             </div>
             <div className="flex flex-1 flex-col gap-1.5">
               <Label htmlFor="invite-ttl">Expires in (days)</Label>
@@ -309,9 +303,7 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage }) =>
               value={note}
               onChange={(e) => setNote(e.target.value)}
             />
-            <p className="text-xs text-muted-foreground">
-              Only you see this. It is how you will recognize the link later.
-            </p>
+            <p className="text-xs text-muted-foreground">Only you see this.</p>
           </div>
 
           <DialogFooter>

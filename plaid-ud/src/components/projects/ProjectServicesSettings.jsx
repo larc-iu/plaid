@@ -100,8 +100,7 @@ function SpotCard({ spot, services, draftEntry, onChange, canManage, onDiscard }
 
         {spot.builtins.length === 0 && spotServices.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No service for this spot has ever connected to this project. Start one and it will
-            appear here.
+            No service for this spot has connected to this project. Start one to see it here.
           </p>
         ) : (
           <div className="flex flex-col gap-2">
@@ -125,7 +124,7 @@ function SpotCard({ spot, services, draftEntry, onChange, canManage, onDiscard }
                     variant="ghost"
                     size="icon"
                     className="h-7 w-7 text-destructive"
-                    title="Forget this service (it reappears if it reconnects)"
+                    title="Forget this service. It reappears if it reconnects."
                     aria-label={`Forget ${svc.serviceName || svc.serviceId}`}
                     onClick={() => onDiscard(svc.serviceId)}
                   >
@@ -278,7 +277,7 @@ export const ProjectServicesSettings = () => {
       <div className="flex items-start justify-between gap-4">
         <p className="max-w-xl text-sm text-muted-foreground">
           Services that have connected to this project are remembered here, online or not. Set a
-          default (and default options) for each spot; people can still switch per use.
+          default and default options for each spot.
         </p>
         <Button variant="outline" size="sm" onClick={load} disabled={loading}>
           <RefreshCw className="h-4 w-4" /> Refresh
@@ -287,7 +286,7 @@ export const ProjectServicesSettings = () => {
 
       {!canManage && project && (
         <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-          You can view this registry. Only project maintainers can change defaults.
+          Read-only. Only project maintainers can change defaults.
         </p>
       )}
 

@@ -13,9 +13,8 @@ export const ProjectAccessTokens = () => (
     </CardHeader>
     <CardContent className="flex flex-col items-start gap-4">
       <p className="text-sm text-muted-foreground">
-        To reach the API from an external service such as a parser or a script, create a named API
-        token. Unlike your login session, a named token can be revoked on its own, and its name
-        appears in the audit history, so machine-made changes are distinguishable from yours.
+        A named token reaches the API from an external service such as a parser or a script. It can
+        be revoked on its own, and its name appears in the audit history.
       </p>
       <Button asChild variant="outline">
         <Link to="/profile">Manage API tokens</Link>
