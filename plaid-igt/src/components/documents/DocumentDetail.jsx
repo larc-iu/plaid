@@ -28,9 +28,9 @@ const CommentsTab = lazyNamed(() => import('./comments/CommentsTab.jsx'), 'Comme
 import { CommentStore } from '@ui/domain/CommentStore';
 import { useCommentStore } from '@ui/domain/useCommentStore';
 import { useDocumentPermissions } from './hooks/useDocumentPermissions.js';
-import { useWriteLock } from './hooks/useWriteLock.js';
-import { useResumedRun } from './hooks/useResumedRun.js';
-import { RunBanner } from './RunBanner.jsx';
+import { useWriteLock } from '@ui/hooks/useWriteLock.js';
+import { useResumedRun } from '@ui/hooks/useResumedRun.js';
+import { RunBanner } from '@ui/components/services/RunBanner.jsx';
 import { useDocumentHistory } from './hooks/useDocumentHistory.js';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useTabParam, tabTo } from '@/hooks/useTabParam';
@@ -158,7 +158,7 @@ const DocumentEditor = () => {
   const permissions = useDocumentPermissions(doc?.project);
   const writeLock = useWriteLock();
   // A run the previous page started and did not live to see the end of.
-  useResumedRun(doc, writeLock.acquire);
+  useResumedRun(client, doc, writeLock.acquire);
   // A code bound under Settings applies in the grid and every other field here.
   useComposeProject(doc?.project);
   const history = useDocumentHistory(documentId, client);

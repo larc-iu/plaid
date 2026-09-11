@@ -6,6 +6,10 @@ import { useConlluDocument } from '../../domain/useConlluDocument.js';
 import { DocumentTabs } from './DocumentTabs.jsx';
 import { CommentStore } from '@ui/domain/CommentStore';
 import { useCommentStore } from '@ui/domain/useCommentStore';
+import { useWriteLock } from '@ui/hooks/useWriteLock.js';
+import { useResumedRun } from '@ui/hooks/useResumedRun.js';
+import { RunBanner } from '@ui/components/services/RunBanner.jsx';
+import { useEditorServices } from './hooks/useEditorServices.js';
 import { canEditProject, canManageProject } from '../../utils/permissions.js';
 
 // Parent route of the four document tabs (/edit, /annotate, /export, /details).
@@ -65,6 +69,29 @@ export const DocumentEditorShell = () => {
 
   // Re-render on any mutation of the shared document (see useConlluDocument).
   useConlluDocument(doc);
+
+  // A service run that writes takes the document read-only for as long as it
+  // writes: the run outlives its dialog and ends in a reload, so anything
+  // typed underneath it would be discarded. The lock lives here rather than in
+  // a tab, because it has to outlive a tab switch and because the banner is
+  // the only surface once the dialog is shut.
+  const writeLock = useWriteLock();
+  // authService keeps one client, so this is the same object every render.
+  const client = user ? getClient() : null;
+  // A run this page did not finish, picked back up: the service kept working
+  // while the tab was away, and the result is still waiting.
+  useResumedRun(client, doc, writeLock.acquire);
+
+  // The editor's two integration spots. One instance for the whole shell, so
+  // the Text Editor's dialog and the Annotate toolbar's button are the same
+  // run rather than two.
+  const services = useEditorServices({
+    client,
+    projectId,
+    doc,
+    project,
+    acquireWriteLock: writeLock.acquire,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -167,6 +194,12 @@ export const DocumentEditorShell = () => {
         />
       </div>
 
+      {writeLock.held && (
+        <div className={wide ? 'px-6' : undefined}>
+          <RunBanner {...writeLock.held} />
+        </div>
+      )}
+
       {loading && <p className="p-4 text-sm text-muted-foreground">Loading…</p>}
 
       {!loading && (loadError || !doc || !project) && (
@@ -191,6 +224,8 @@ export const DocumentEditorShell = () => {
             comments,
             canComment: canEditProject(project, user),
             canDeleteAnyComment: canManageProject(project, user),
+            services,
+            writeLockHeld: writeLock.held,
             setChromeOffset,
             setChromeBusy,
           }}

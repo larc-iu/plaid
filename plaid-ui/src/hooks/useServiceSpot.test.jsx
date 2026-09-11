@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { TASKS } from '@larc-iu/plaid-client';
-import { renderComponent } from '@ui/test/renderComponent.jsx';
+import { renderComponent } from '../test/renderComponent.jsx';
 import { useServiceSpot } from './useServiceSpot.js';
 
 // The spot hook is what makes a built-in and a registered service the same

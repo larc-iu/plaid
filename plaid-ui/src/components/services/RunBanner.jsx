@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { Button } from '@ui/components/ui/button';
-import { formatElapsed } from './hooks/useRunProgress.js';
+import { Button } from '../ui/button.jsx';
+import { formatElapsed } from '../../hooks/useRunProgress.js';
 
 // Why the document has stopped accepting edits, and that the run behind it is
 // still moving.

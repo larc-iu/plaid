@@ -1,11 +1,5 @@
-import { Label } from '@ui/components/ui/label';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@ui/components/ui/select';
+import { Label } from '../ui/label.jsx';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/select.jsx';
 import { ServiceSummary } from './ServiceSummary.jsx';
 import { ServiceParamForm } from './ServiceParamForm.jsx';
 

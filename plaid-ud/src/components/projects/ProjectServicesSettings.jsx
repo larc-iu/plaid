@@ -12,17 +12,20 @@ import {
   buildDefaultValues,
 } from '@larc-iu/plaid-client';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { ServiceParamForm } from '../editor/ServiceParamForm.jsx';
-import { ServiceSummary } from '../editor/ServiceSummary.jsx';
+import { ServiceParamForm } from '@ui/components/services/ServiceParamForm.jsx';
+import { ServiceSummary } from '@ui/components/services/ServiceSummary.jsx';
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { canManageProject } from '../../utils/permissions.js';
 import {
-  UD_NAMESPACE,
   encodeServiceSelection,
+  encodeBuiltinSelection,
   decodeSelection,
   selectionFromConfig,
   selectionToConfig,
-} from '../../utils/serviceDefaults.js';
+} from '@ui/domain/serviceDefaults.js';
+import { BUILTIN_TOKENIZE_SEGMENTER } from '../../utils/serviceDefaults.js';
+
+const UD_NAMESPACE = 'ud';
 
 // The app's service integration spots: each is a place in the UI where an
 // external service can be plugged in, keyed by the task vocabulary services
@@ -30,11 +33,24 @@ import {
 const SPOTS = [
   {
     key: TASKS.PARSE,
-    label: 'Auto-parse',
+    label: 'Parse',
     description:
-      'Fills in lemmas, POS tags, features, and dependencies for a document ' +
-      '(the "Parse" button in the annotation editor).',
+      'Fills in lemmas, POS tags, features and dependencies for a document. ' +
+      'The Parse button in the text and annotation editors.',
     builtins: [],
+  },
+  {
+    key: TASKS.TOKENIZE,
+    label: 'Tokenize',
+    description:
+      'Splits a document into sentences, tokens and words. ' +
+      'The Tokenize button in the text editor.',
+    builtins: [
+      {
+        name: BUILTIN_TOKENIZE_SEGMENTER,
+        label: 'Unicode segmentation (this browser)',
+      },
+    ],
   },
 ];
 
@@ -107,7 +123,7 @@ function SpotCard({ spot, services, draftEntry, onChange, canManage, onDiscard }
             {radio('none', <span className="text-sm">No default (pick per use)</span>)}
             {spot.builtins.map((b) => (
               <div key={b.name} className="flex items-center gap-2">
-                {radio(`builtin:${b.name}`, <span className="text-sm">{b.label}</span>)}
+                {radio(encodeBuiltinSelection(b.name), <span className="text-sm">{b.label}</span>)}
                 <Badge variant="secondary">built-in</Badge>
               </div>
             ))}

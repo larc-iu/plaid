@@ -2,15 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import { TASKS } from '@larc-iu/plaid-client';
 import { notifySuccess, notifyError, notifyInfo, notifyWarning } from '@/utils/feedback';
-import { useServiceRequest } from '../hooks/useServiceRequest.js';
-import { useServiceSpot } from '../hooks/useServiceSpot.js';
-import { useRunProgress, useMirroredProgress, formatElapsed } from '../hooks/useRunProgress.js';
-import { ServiceRunDialog } from '../services/ServiceRunDialog.jsx';
-import { ServiceMethodRow } from '../services/ServiceMethodRow.jsx';
+import { useServiceRequest } from '@ui/hooks/useServiceRequest.js';
+import { useServiceSpot } from '@ui/hooks/useServiceSpot.js';
+import { useRunProgress, useMirroredProgress, formatElapsed } from '@ui/hooks/useRunProgress.js';
+import { ServiceRunDialog } from '@ui/components/services/ServiceRunDialog.jsx';
+import { ServiceMethodRow } from '@ui/components/services/ServiceMethodRow.jsx';
 import { runBuiltinAnalysis } from '@/domain/autoPass';
 import { BUILTIN_LINK_PRECEDENT } from '@/domain/serviceDefaults';
 import { resolveAutoAnalysis } from '@/domain/igtConfig';
-import { writeRunRecord, clearRunRecord } from '@/domain/runRecord';
+import { writeRunRecord, clearRunRecord } from '@ui/domain/runRecord.js';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 
 const STEPS_STORAGE_KEY = 'plaid_igt_auto_analyze_steps';
@@ -51,7 +51,7 @@ const readSteps = () => {
 
 export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
   const project = doc?.project;
-  const { writeLock, acquireWriteLock } = useDocumentCtx();
+  const { client, writeLock, acquireWriteLock } = useDocumentCtx();
   const {
     availableServices,
     isDiscovering,
@@ -61,7 +61,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
     cancelRequest,
     progressPercent,
     progressMessage,
-  } = useServiceRequest();
+  } = useServiceRequest(client);
   const [busy, setBusy] = useState(false);
   // Set by Stop, read at every step boundary and by the built-in phases'
   // checkpoints. Cleared when a run starts.

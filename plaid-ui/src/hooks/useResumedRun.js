@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { notifySuccess, notifyWarning, notifyInfo } from '@/utils/feedback';
-import { clearRunRecord, readRunRecord } from '@/domain/runRecord';
+import { notifySuccess, notifyWarning, notifyInfo } from '../lib/notify.js';
+import { clearRunRecord, readRunRecord } from '../domain/runRecord.js';
 import { useServiceRequest } from './useServiceRequest.js';
 
 // Picks a service run back up after the page that started it went away.
@@ -13,8 +13,9 @@ import { useServiceRequest } from './useServiceRequest.js';
 //
 // Runs once per opened document. A record that names a request the server no
 // longer knows (404: expired, or finished and collected) is simply forgotten.
-export function useResumedRun(doc, acquireWriteLock) {
-  const { attachToRequest, cancelRequest, progressPercent, progressMessage } = useServiceRequest();
+export function useResumedRun(client, doc, acquireWriteLock) {
+  const { attachToRequest, cancelRequest, progressPercent, progressMessage } =
+    useServiceRequest(client);
   const documentId = doc?.id ?? null;
   // One attempt per document, even under StrictMode's double-invoke.
   const triedFor = useRef(null);

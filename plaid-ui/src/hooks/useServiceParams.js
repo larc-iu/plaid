@@ -20,10 +20,18 @@ const NON_PERSISTENT_PARAMS = new Set(['overwrite']);
 // options (speech detection) runs through the same path as a service.
 // `useServiceSpot` is the normal caller.
 //
+// The merge order, lowest first: the schema's own defaults, `seedParams`, the
+// project's defaults for this method, the user's cached values. `seedParams` is
+// what an app can answer from the project itself (UD seeds a parse service's
+// `language` from the project's language). It sits lowest of the three because
+// it is the broadest statement: an argument a maintainer set for this spot, or
+// one this user last ran with, is the more specific answer.
+//
 //   schema:        the parameter descriptors (see plaid-client serviceSchema)
 //   storageKey:    full localStorage key, or null to keep values in memory
+//   seedParams:    app-supplied values under the project's, else null
 //   defaultParams: project-level defaults for THIS method, else null
-export function useServiceParams({ schema, storageKey, defaultParams = null }) {
+export function useServiceParams({ schema, storageKey, seedParams = null, defaultParams = null }) {
   const [values, setValues] = useState({});
 
   // Latest values, so setParam can persist without recreating on every change.
@@ -36,6 +44,7 @@ export function useServiceParams({ schema, storageKey, defaultParams = null }) {
   const seed = useCallback(
     ({ useCache = true } = {}) => {
       const defaults = buildDefaultValues(schema);
+      const seeded = seedParams || {};
       const projectParams = defaultParams || {};
       let cached = {};
       if (useCache && storageKey) {
@@ -48,6 +57,7 @@ export function useServiceParams({ schema, storageKey, defaultParams = null }) {
       }
       const merged = { ...defaults };
       for (const k of Object.keys(defaults)) {
+        if (seeded[k] !== undefined) merged[k] = seeded[k];
         if (projectParams[k] !== undefined) merged[k] = projectParams[k];
         // Destructive opt-ins are never re-seeded from the cache — they reset
         // to the schema/project default on each open (NON_PERSISTENT_PARAMS).

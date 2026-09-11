@@ -10,20 +10,22 @@ import {
 import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@ui/components/ui/card';
-import { ServiceParamForm } from '../../documents/services/ServiceParamForm';
-import { ServiceSummary } from '../../documents/services/ServiceSummary';
+import { ServiceParamForm } from '@ui/components/services/ServiceParamForm.jsx';
+import { ServiceSummary } from '@ui/components/services/ServiceSummary.jsx';
 import { notifyError } from '@/utils/feedback';
 import { IGT_NAMESPACE, resolveAutoAnalysis } from '@/domain/igtConfig';
 import {
   BUILTIN_TOKENIZE_RULE_BASED,
   BUILTIN_LINK_PRECEDENT,
   BUILTIN_DETECT_SPEECH_SILERO,
+} from '@/domain/serviceDefaults';
+import {
   encodeServiceSelection,
   encodeBuiltinSelection,
   decodeSelection,
   selectionFromConfig,
   selectionToConfig,
-} from '@/domain/serviceDefaults';
+} from '@ui/domain/serviceDefaults.js';
 
 // The app's service integration spots: each is a place in the UI where an
 // external service can be plugged in, keyed by the task vocabulary services

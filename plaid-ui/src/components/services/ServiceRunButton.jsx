@@ -1,12 +1,7 @@
 import { Loader2 } from 'lucide-react';
-import { Button } from '@ui/components/ui/button';
-import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-  TooltipProvider,
-} from '@ui/components/ui/tooltip';
-import { formatElapsed } from '../hooks/useRunProgress.js';
+import { Button } from '../ui/button.jsx';
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '../ui/tooltip.jsx';
+import { formatElapsed } from '../../hooks/useRunProgress.js';
 
 // The button that opens a run dialog, and the run's progress indicator once it
 // is closed. A run outlives its dialog, so this is where a linguist who shut

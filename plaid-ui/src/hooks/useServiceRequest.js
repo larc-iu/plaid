@@ -1,8 +1,13 @@
 import { useState, useCallback, useRef } from 'react';
-import { notifySuccess, notifyError, notifyInfo, notifyWarning } from '@/utils/feedback';
-import { useStrictClient } from '../contexts/StrictModeContext.jsx';
+import { notifySuccess, notifyError, notifyInfo, notifyWarning } from '../lib/notify.js';
 
-export const useServiceRequest = () => {
+// One service request, from discovery to result, with the progress contract
+// every run in every app wears.
+//
+// The `client` comes in rather than out of a context: each app reaches its own
+// (plaid-igt through a StrictMode-safe context, plaid-ud through its auth
+// provider), and a package that picked one would only work in that app.
+export const useServiceRequest = (client) => {
   const [availableServices, setAvailableServices] = useState([]);
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -16,8 +21,6 @@ export const useServiceRequest = () => {
   const inFlight = useRef(null); // { projectId, requestId }
   // Re-entrancy guard for discovery, read at call time rather than captured.
   const discovering = useRef(false);
-
-  const client = useStrictClient();
 
   // Discover available services
   const discoverServices = useCallback(
@@ -68,7 +71,18 @@ export const useServiceRequest = () => {
     setProcessStatus(stopped ? 'stopped' : 'success');
     setProgressPercent(stopped ? null : 100);
     setProgressMessage(stopped ? 'Stopped.' : 'Finished.');
-    if (stopped) notifyInfo(copy.stoppedMessage, copy.stoppedTitle || copy.successTitle);
+    if (stopped) {
+      notifyInfo(copy.stoppedMessage, copy.stoppedTitle || copy.successTitle);
+      return;
+    }
+    // A service reports a per-item failure in its counts rather than by
+    // failing the request, so a run where every item was skipped still comes
+    // back a success. A caller that can read the counts passes `notice`, and
+    // what it returns replaces the fixed copy, warning where a fixed
+    // "Finished" would have congratulated an untouched document.
+    const notice = copy.notice?.(result);
+    if (notice?.level === 'warning') notifyWarning(notice.message, notice.title);
+    else if (notice) notifySuccess(notice.message, notice.title);
     else notifySuccess(copy.successMessage, copy.successTitle);
   }, []);
 
@@ -113,6 +127,9 @@ export const useServiceRequest = () => {
         // a run that writes nothing (speech detection) says something else.
         stoppedTitle,
         stoppedMessage = 'Stopped. What it had already written stays.',
+        // `(result) => {level, title, message}`, for a caller that can tell a
+        // real success from a run that did nothing. See `succeed`.
+        notice,
         // Said when the client gives up but the request has not: only true for
         // a run this page wrote down, which is what a reload looks for.
         lostMessage = 'Lost contact with the service. It is still running. Reload to pick it back up.',
@@ -135,7 +152,7 @@ export const useServiceRequest = () => {
           undefined,
           { requestId },
         );
-        succeed(result, { successMessage, successTitle, stoppedTitle, stoppedMessage });
+        succeed(result, { successMessage, successTitle, stoppedTitle, stoppedMessage, notice });
         return result;
       } catch (error) {
         console.error('Failed to request service:', error);

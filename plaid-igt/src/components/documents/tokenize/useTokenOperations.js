@@ -2,9 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { cpLength, cpSlice, TASKS } from '@larc-iu/plaid-client';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
-import { useServiceRequest } from '../hooks/useServiceRequest.js';
-import { useServiceSpot } from '../hooks/useServiceSpot.js';
-import { useRunProgress, useMirroredProgress } from '../hooks/useRunProgress.js';
+import { useServiceRequest } from '@ui/hooks/useServiceRequest.js';
+import { useServiceSpot } from '@ui/hooks/useServiceSpot.js';
+import { useRunProgress, useMirroredProgress } from '@ui/hooks/useRunProgress.js';
 import {
   countAnnotationLossForWord,
   countSubWordAnnotationLoss,
@@ -12,7 +12,7 @@ import {
 } from '../../../domain/annotationLoss.js';
 import { BUILTIN_TOKENIZE_RULE_BASED } from '../../../domain/serviceDefaults.js';
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
-import { writeRunRecord, clearRunRecord } from '../../../domain/runRecord.js';
+import { writeRunRecord, clearRunRecord } from '@ui/domain/runRecord.js';
 
 // The rule-based tokenizer is always available and declares no options.
 const TOKENIZE_BUILTINS = [
@@ -29,7 +29,7 @@ const TOKENIZE_BUILTINS = [
 // reload-on-error; doc.sentences re-derives the token/gap `pieces` after each.
 // Only the service glue, method selection, and progress are local.
 export const useTokenOperations = () => {
-  const { doc, acquireWriteLock } = useDocumentCtx();
+  const { doc, client, acquireWriteLock } = useDocumentCtx();
   useIgtDocument(doc);
   const project = doc.project;
 
@@ -43,7 +43,7 @@ export const useTokenOperations = () => {
     hasServices,
     progressPercent,
     progressMessage,
-  } = useServiceRequest();
+  } = useServiceRequest(client);
 
   const [isTokenizing, setIsTokenizing] = useState(false);
 

@@ -4,4 +4,4 @@
 // its sort somewhere nobody chose.
 import { configureUi } from '@ui/lib/uiConfig.js';
 
-configureUi({ appPrefix: 'plaid_igt' });
+configureUi({ appPrefix: 'plaid_igt', configNamespace: 'igt' });

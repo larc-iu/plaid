@@ -1,15 +1,9 @@
-import { Label } from '@ui/components/ui/label';
-import { Input } from '@ui/components/ui/input';
-import { Switch } from '@ui/components/ui/switch';
-import { Textarea } from '@ui/components/ui/textarea';
-import { Slider } from '@ui/components/ui/slider';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@ui/components/ui/select';
+import { Label } from '../ui/label.jsx';
+import { Input } from '../ui/input.jsx';
+import { Switch } from '../ui/switch.jsx';
+import { Textarea } from '../ui/textarea.jsx';
+import { Slider } from '../ui/slider.jsx';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/select.jsx';
 
 // Renders a service's declared parameter schema as a form. Each field reports
 // edits via onChange(key, value); the parent holds the values + validation

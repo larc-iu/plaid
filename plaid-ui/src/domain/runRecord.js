@@ -12,7 +12,9 @@
 // Per user, per browser, because that is who reloaded the tab. It is a
 // pointer, not data: losing it costs the progress display, never the work.
 
-const key = (documentId) => `plaid_igt_run_${documentId}`;
+import { appPrefix } from '../lib/uiConfig.js';
+
+const key = (documentId) => `${appPrefix()}_run_${documentId}`;
 
 // A page that is going away must NOT delete the pointer to a run that is still
 // going: the next page finding it is the entire point.

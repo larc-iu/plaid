@@ -11,9 +11,10 @@ import './index.css';
 
 // What plaid-ui cannot know on its own. `plaid_igt` is the prefix this app's
 // remembered list state has always carried, so nothing a reader had set is
-// forgotten. The composer stays here because it reads the open project's own
-// bound codes; the package just hands it the fields that opt in.
-configureUi({ appPrefix: 'plaid_igt', attachCompose });
+// forgotten, and `igt` is its half of a project's config bucket. The composer
+// stays here because it reads the open project's own bound codes, and the
+// package just hands it the fields that opt in.
+configureUi({ appPrefix: 'plaid_igt', configNamespace: 'igt', attachCompose });
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

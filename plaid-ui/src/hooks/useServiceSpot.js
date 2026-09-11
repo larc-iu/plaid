@@ -7,7 +7,8 @@ import {
   readSpotDefault,
   resolveInitialSelection,
   selectionFromConfig,
-} from '@/domain/serviceDefaults';
+} from '../domain/serviceDefaults.js';
+import { appPrefix } from '../lib/uiConfig.js';
 import { useServiceParams } from './useServiceParams.js';
 
 const EMPTY = [];
@@ -22,13 +23,23 @@ const EMPTY = [];
 // A service that goes offline between runs falls back rather than leaving a
 // dead selection in the box.
 //
-//   task:      one of TASKS
-//   project:   the open project (for config.igt.serviceDefaults)
-//   services:  everything discovery returned, online or not
-//   builtins:  [{ name, label, schema? }] — always runnable, listed first
-//   storageId: localStorage namespace for this spot, e.g. 'tokenize'
-export function useServiceSpot({ task, project, services, builtins = EMPTY, storageId }) {
-  const selectionKey = `plaid_igt_${storageId}_service`;
+//   task:       one of TASKS
+//   project:    the open project (for its serviceDefaults)
+//   services:   everything discovery returned, online or not
+//   builtins:   [{ name, label, schema? }], always runnable, listed first
+//   storageId:  localStorage namespace for this spot, e.g. 'tokenize'
+//   seedParams: values to sit UNDER the project's defaults, for an argument the
+//               app can answer from the project itself (UD seeds `language`).
+//               A function of the chosen method's schema, or a plain object.
+export function useServiceSpot({
+  task,
+  project,
+  services,
+  builtins = EMPTY,
+  storageId,
+  seedParams = null,
+}) {
+  const selectionKey = `${appPrefix()}_${storageId}_service`;
   const [choice, setChoice] = useState(null);
 
   // Only ONLINE services can take work; discovery also returns services that
@@ -96,9 +107,14 @@ export function useServiceSpot({ task, project, services, builtins = EMPTY, stor
       selected?.service ? getParamSchema(selected.service) : (selected?.builtin?.schema ?? EMPTY),
     [selected],
   );
+  const seeded = useMemo(
+    () => (typeof seedParams === 'function' ? seedParams(schema) : seedParams),
+    [seedParams, schema],
+  );
   const params = useServiceParams({
     schema,
-    storageKey: selection ? `plaid_igt_${storageId}_params_${selection}` : null,
+    storageKey: selection ? `${appPrefix()}_${storageId}_params_${selection}` : null,
+    seedParams: seeded,
     // A project default's params belong to the method it names, and to no other.
     defaultParams:
       projectDefault && selectionFromConfig(projectDefault) === selection

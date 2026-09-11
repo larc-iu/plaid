@@ -1,4 +1,4 @@
-// The two things this package cannot know on its own, told to it once by the
+// The three things this package cannot know on its own, told to it once by the
 // app that mounts it. Call `configureUi` from the app's entry point, before
 // anything renders.
 //
@@ -28,6 +28,12 @@ const DEFAULTS = {
   // bound codes — having to live here. An app that registers nothing leaves
   // `compose` inert, which is the right behavior for an app with no codes.
   attachCompose: null,
+  // The app's own namespace inside a project's or a layer's `config` bucket:
+  // 'igt', 'ud', 'dict'. Shared code that reads a project's configuration (the
+  // service defaults a maintainer set for each spot) needs to know which half
+  // of the bucket is this app's. No default, for the same reason `appPrefix`
+  // has none: reading the wrong app's settings is silent and wrong.
+  configNamespace: null,
 };
 
 let config = { ...DEFAULTS };
@@ -50,3 +56,13 @@ export const appPrefix = () => {
 
 /** The app's compose attacher, or null. */
 export const composeAttacher = () => config.attachCompose;
+
+/** The app's namespace in a config bucket. Throws if the app never named one. */
+export const configNamespace = () => {
+  if (!config.configNamespace) {
+    throw new Error(
+      'plaid-ui: no configNamespace. Call configureUi({configNamespace}) from the app entry.',
+    );
+  }
+  return config.configNamespace;
+};

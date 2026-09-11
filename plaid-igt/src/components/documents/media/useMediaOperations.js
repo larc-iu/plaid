@@ -3,15 +3,15 @@ import { TASKS } from '@larc-iu/plaid-client';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import { notifySuccess, notifyError } from '@/utils/feedback';
-import { useServiceRequest } from '../../documents/hooks/useServiceRequest.js';
-import { useServiceSpot } from '../../documents/hooks/useServiceSpot.js';
-import { useRunProgress, useMirroredProgress } from '../../documents/hooks/useRunProgress.js';
+import { useServiceRequest } from '@ui/hooks/useServiceRequest.js';
+import { useServiceSpot } from '@ui/hooks/useServiceSpot.js';
+import { useRunProgress, useMirroredProgress } from '@ui/hooks/useRunProgress.js';
 import { whenIdle } from '../../../domain/whenIdle.js';
 import { transcodeToMp3 } from '../../../domain/media/transcodeToMp3.js';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { useVadProposals, VAD_METADATA_KEY } from './useVadProposals.js';
 import { DETECT_SPEECH_BUILTIN } from './detectSpeechBuiltin.js';
-import { writeRunRecord, clearRunRecord } from '../../../domain/runRecord.js';
+import { writeRunRecord, clearRunRecord } from '@ui/domain/runRecord.js';
 
 // Hotkeys ignore key events from form fields.
 const TAGS_TO_IGNORE = ['INPUT', 'TEXTAREA', 'SELECT'];
@@ -76,7 +76,7 @@ const parseBool = (raw) => (raw === 'true' ? true : raw === 'false' ? false : un
 // they single-flight + toast + reload-on-error). The returned object is the
 // single source the timeline + player read from.
 export const useMediaOperations = () => {
-  const { doc, acquireWriteLock, canWrite } = useDocumentCtx();
+  const { doc, client, acquireWriteLock, canWrite } = useDocumentCtx();
   useIgtDocument(doc);
   const confirm = useConfirm();
 
@@ -133,7 +133,7 @@ export const useMediaOperations = () => {
     hasServices,
     progressPercent,
     progressMessage,
-  } = useServiceRequest();
+  } = useServiceRequest(client);
 
   // The two integration spots on this tab. Both offer whatever services are
   // online for their task; speech detection also offers the in-browser model.

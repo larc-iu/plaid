@@ -6,10 +6,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@ui/components/ui/dialog';
-import { Button } from '@ui/components/ui/button';
-import { Progress } from '@ui/components/ui/progress';
-import { formatElapsed } from '../hooks/useRunProgress.js';
+} from '../ui/dialog.jsx';
+import { Button } from '../ui/button.jsx';
+import { Progress } from '../ui/progress.jsx';
+import { formatElapsed } from '../../hooks/useRunProgress.js';
 
 // The one shape every service run wears (tokenize, transcribe, detect speech,
 // auto-analyze). Body slots, in order:

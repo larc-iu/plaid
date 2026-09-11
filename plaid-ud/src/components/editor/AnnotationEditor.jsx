@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { History, Info } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
-import { NlpServiceControls } from './NlpServiceControls.jsx';
+import { ParseDialog } from './services/ParseDialog.jsx';
 import { VirtualSentenceRow } from './annotation/VirtualSentenceRow.jsx';
 import { useLayerInfo } from './hooks/useLayerInfo.js';
 import { useSentenceData } from './hooks/useSentenceData.js';
@@ -110,6 +110,8 @@ export const AnnotationEditor = () => {
     comments,
     canComment,
     canDeleteAnyComment,
+    services,
+    writeLockHeld,
     setChromeOffset,
     setChromeBusy,
   } = useDocumentEditor();
@@ -294,7 +296,12 @@ export const AnnotationEditor = () => {
   // "historical" yet the live current-doc handlers are still wired — letting
   // edits land on the current document (and 409 on save).
   const canEdit = canEditProject(project, user);
-  const readOnly = !canEdit || !!selectedHistoryEntry;
+  // A service run writing to this document takes the grid read-only for as
+  // long as it writes: the run outlives its dialog and ends in a reload that
+  // would discard anything typed underneath it. The run's OWN controls are
+  // gated on `canEdit` instead, or the button carrying its progress would
+  // vanish the moment the run started.
+  const readOnly = !canEdit || !!selectedHistoryEntry || !!writeLockHeld;
 
   const historicalLayerInfo = useLayerInfo(historicalDocument);
   const layerInfo = viewingHistoricalState ? historicalLayerInfo : doc?.layerInfo;
@@ -450,12 +457,11 @@ export const AnnotationEditor = () => {
 
   const hasText = !viewingHistoricalState && Boolean(activeDocument?.textLayers?.[0]?.text);
 
-  // Single shared toolbar: History on the left; everything NLP lives in one
-  // right-hand cluster. There is no separate status badge — when services
-  // exist, the selector and the Parse button ARE the "ready" signal. The only
-  // states needing words are "still discovering" and "nothing online" (with a
-  // retry). The cluster only renders when parsing could actually happen
-  // (text present, editable, not time-traveling).
+  // Single shared toolbar: History on the left, the run controls on the right.
+  // Parse is the same run the Text Editor's button opens, so a parse started
+  // there shows its clock here. It is gated on `canEdit` rather than on
+  // `readOnly`, or the button carrying a run's progress would vanish the
+  // moment that run took the lock.
   const toolbar = (
     <div className="mt-4 flex items-center justify-between gap-3">
       <Button variant="secondary" className="gap-2" onClick={handleOpenHistory}>
@@ -466,13 +472,13 @@ export const AnnotationEditor = () => {
       <div className="flex items-center gap-3">
         {selectedHistoryEntry && <Button onClick={handleCloseHistory}>Return to current</Button>}
 
-        <NlpServiceControls
-          projectId={projectId}
-          documentId={documentId}
-          project={project}
-          enabled={hasText && canEdit && !selectedHistoryEntry}
-          onParsed={reload}
-        />
+        {hasText && canEdit && !selectedHistoryEntry && (
+          <ParseDialog
+            parse={services.parse}
+            isDiscovering={services.isDiscovering}
+            writeLockHeld={writeLockHeld}
+          />
+        )}
       </div>
     </div>
   );
@@ -556,7 +562,9 @@ export const AnnotationEditor = () => {
         loading={loadingAudit}
         onSelectEntry={handleSelectHistoryEntry}
         selectedEntry={selectedHistoryEntry}
-        canRestore={canManageProject(project, user)}
+        // A restore rewrites the whole document, which is exactly what a
+        // running service is doing.
+        canRestore={canManageProject(project, user) && !writeLockHeld}
         onRestore={setRestoreEntry}
       />
 

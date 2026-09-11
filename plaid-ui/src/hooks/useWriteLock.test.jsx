@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { renderComponent } from '@ui/test/renderComponent.jsx';
+import { renderComponent } from '../test/renderComponent.jsx';
 import { useWriteLock } from './useWriteLock.js';
 
 // The lock is what stops a linguist editing under a service run they closed

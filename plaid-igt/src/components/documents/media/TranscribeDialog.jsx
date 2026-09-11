@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Mic } from 'lucide-react';
-import { ServiceRunDialog } from '../services/ServiceRunDialog.jsx';
-import { ServiceMethodRow } from '../services/ServiceMethodRow.jsx';
-import { ServiceRunButton } from '../services/ServiceRunButton.jsx';
+import { ServiceRunDialog } from '@ui/components/services/ServiceRunDialog.jsx';
+import { ServiceMethodRow } from '@ui/components/services/ServiceMethodRow.jsx';
+import { ServiceRunButton } from '@ui/components/services/ServiceRunButton.jsx';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 
 // Transcription: the button in the Transcript header and the dialog behind it.

@@ -13,14 +13,15 @@ import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { canEditProject } from '../../utils/permissions.js';
 import { TokenVisualizer } from './TokenVisualizer.jsx';
 import { useDocumentEditor } from './useDocumentEditor.js';
-import { NlpServiceControls } from './NlpServiceControls.jsx';
+import { ParseDialog } from './services/ParseDialog.jsx';
+import { TokenizeDialog } from './services/TokenizeDialog.jsx';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 export const TextEditor = () => {
   // Project, document, the breadcrumbs/tab strip and the version-counter
   // subscription all come from DocumentEditorShell, which guarantees both the
   // project and the document are loaded before this renders.
-  const { projectId, documentId, doc, project, reload } = useDocumentEditor();
+  const { projectId, documentId, doc, project, services, writeLockHeld } = useDocumentEditor();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const sentParam = searchParams.get('sent');
@@ -79,18 +80,12 @@ export const TextEditor = () => {
   const serverText = doc.layerInfo.textLayer?.text?.body || '';
 
   // Mirror the server's text into the textarea whenever it changes underneath
-  // us — the initial load, or an NLP service that rewrote the body. Keyed on
-  // the body itself rather than on the doc instance, so the many emits from
-  // ordinary token edits don't stomp on what the user is typing.
+  // us: the initial load, or a service that rewrote the body. Keyed on the body
+  // itself rather than on the doc instance, so the many emits from ordinary
+  // token edits don't stomp on what the user is typing.
   useEffect(() => {
     if (!serverText) return;
     setTextContent(serverText);
-    const info = doc.layerInfo;
-    const hasTokens =
-      (info.sentenceTokenLayer?.tokens || []).length > 0 ||
-      (info.wordTokenLayer?.tokens || []).length > 0;
-    if (hasTokens) setOriginalTokenizedText((prev) => prev || serverText);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentId, serverText]);
 
   useEffect(() => {
@@ -126,12 +121,6 @@ export const TextEditor = () => {
   const handleTextChange = (e) => {
     setTextContent(e.target.value);
     if (lastSaved) setLastSaved(null);
-  };
-
-  const handleTokenize = async () => {
-    if (!doc) return;
-    const ok = await doc.tokenize(textContent);
-    if (ok) setOriginalTokenizedText(textContent);
   };
 
   const handleClearTokens = async () => {
@@ -212,13 +201,24 @@ export const TextEditor = () => {
 
   const isTextDirty = originalTokenizedText && textContent !== originalTokenizedText;
   const hasTokens = sentenceTokens.length > 0 || wordTokens.length > 0 || morphemeTokens.length > 0;
+
+  // Once the document has tokens, the text those tokens were cut from is what
+  // "Unsaved changes" is measured against. Keyed on `hasTokens` as well as the
+  // body, so a tokenize run that changes no text still settles the mark.
+  useEffect(() => {
+    if (!serverText || !hasTokens) return;
+    setOriginalTokenizedText((prev) => prev || serverText);
+  }, [documentId, serverText, hasTokens]);
   const hasText = Boolean(layerInfo.textLayer?.text?.body);
   const saving = doc.isSaving;
 
   // Viewer-access users get the text editor read-only: the textarea is locked,
   // the save/tokenize/clear actions are hidden, and the visualizer's edit
-  // handlers are withheld (it already null-guards every interaction).
-  const readOnly = !canEditProject(project, user);
+  // handlers are withheld (it already null-guards every interaction). A service
+  // run writing to this document folds in the same way: it ends in a reload
+  // that would discard anything typed underneath it.
+  const canEdit = canEditProject(project, user);
+  const readOnly = !canEdit || !!writeLockHeld;
 
   // Project-level misconfig: the three token layers exist but their
   // overlap-mode / parent chain doesn't match the UD layout. Runtime
@@ -241,7 +241,7 @@ export const TextEditor = () => {
 
   return (
     <div>
-      {readOnly && (
+      {!canEdit && (
         <div className="mb-3 rounded-md border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-sm text-blue-900">
           Read-only. You have viewer access to this project.
         </div>
@@ -289,21 +289,30 @@ This is a second sentence for testing.`}
               </Button>
             )}
 
-            {!readOnly && (
-              <Button
-                variant="secondary"
-                onClick={handleTokenize}
-                disabled={saving || !textContent.trim() || isTextDirty || hasTokens}
-                title={
-                  isTextDirty
-                    ? 'Save the text first.'
-                    : hasTokens
-                      ? 'Clear tokens before re-tokenizing.'
-                      : undefined
+            {canEdit && (
+              <TokenizeDialog
+                tokenize={services.tokenize}
+                text={textContent}
+                writeLockHeld={writeLockHeld}
+                blockedHint={
+                  !textContent.trim()
+                    ? 'There is no text to tokenize.'
+                    : isTextDirty
+                      ? 'Save the text first.'
+                      : hasTokens
+                        ? 'Clear tokens before re-tokenizing.'
+                        : null
                 }
-              >
-                Tokenize
-              </Button>
+              />
+            )}
+
+            {canEdit && hasText && (
+              <ParseDialog
+                parse={services.parse}
+                isDiscovering={services.isDiscovering}
+                writeLockHeld={writeLockHeld}
+                blockedHint={hasTokens ? null : 'Tokenize the text first.'}
+              />
             )}
 
             {!readOnly && hasTokens && (
@@ -327,18 +336,6 @@ This is a second sentence for testing.`}
               <span className="italic text-amber-700">Unsaved changes</span>
             )}
           </p>
-
-          {!readOnly && hasText && (
-            <div>
-              <NlpServiceControls
-                projectId={projectId}
-                documentId={documentId}
-                project={project}
-                enabled
-                onParsed={reload}
-              />
-            </div>
-          )}
         </div>
 
         <div className="rounded-md border bg-muted/40 p-4">

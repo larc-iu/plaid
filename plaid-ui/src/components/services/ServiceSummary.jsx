@@ -1,8 +1,8 @@
 import { Info } from 'lucide-react';
+import { Button } from '../ui/button.jsx';
+import { Popover, PopoverTrigger, PopoverContent } from '../ui/popover.jsx';
+import { SafeMarkdown } from '../ui/markdown.jsx';
 import { getServiceSummary } from '@larc-iu/plaid-client';
-import { SafeMarkdown } from '@ui/components/ui/markdown';
-import { Button } from '@ui/components/ui/button';
-import { Popover, PopoverContent, PopoverTrigger } from '@ui/components/ui/popover';
 
 // Info popover showing a service's self-provided summary (markdown via
 // extras.summary, else the short description). The summary is written by
@@ -15,9 +15,10 @@ export function ServiceSummary({ service }) {
     <Popover>
       <PopoverTrigger asChild>
         <Button
+          type="button"
           variant="ghost"
           size="icon"
-          className="h-7 w-7 text-muted-foreground"
+          className="h-6 w-6 text-muted-foreground"
           aria-label={`About ${service.serviceName || 'service'}`}
         >
           <Info className="h-4 w-4" />

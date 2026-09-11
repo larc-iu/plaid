@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { AudioLines } from 'lucide-react';
-import { ServiceRunDialog } from '../services/ServiceRunDialog.jsx';
-import { ServiceMethodRow } from '../services/ServiceMethodRow.jsx';
-import { ServiceRunButton } from '../services/ServiceRunButton.jsx';
+import { ServiceRunDialog } from '@ui/components/services/ServiceRunDialog.jsx';
+import { ServiceMethodRow } from '@ui/components/services/ServiceMethodRow.jsx';
+import { ServiceRunButton } from '@ui/components/services/ServiceRunButton.jsx';
 
 // Speech detection: the button in the Recording header and the dialog behind
 // it. Only the controls live here. What detection produces is shown where it
