@@ -1,9 +1,20 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { listPrefKey, useStickyState } from './useStickyState.js';
 
-// Rows per page for every browsable list in the app. A call site should never
-// have to name a number, so that the lists page alike by default.
+// Rows per page. There are two sizes and no others: a call site picks one of
+// these rather than inventing a number, so that lists of a kind page alike.
+//
+// LIST_PAGE_SIZE is for a table whose rows are one line — a project, a
+// document, a user. A hundred of those is a few screens of scrolling and the
+// pager is rarely needed at all.
+//
+// TALL_LIST_PAGE_SIZE is for rows that carry several lines each: a sentence
+// that wraps, a change list under it, a compose code with its description. A
+// hundred of those is a page nobody can find the end of. It is the size the
+// interlinear editor already pages sentences at (IgtEditor.PAGE_SIZE), so a
+// screenful of sentences is a screenful of sentences wherever you meet one.
 export const LIST_PAGE_SIZE = 100;
+export const TALL_LIST_PAGE_SIZE = 25;
 
 // The paging math, as a pure function: `page` is clamped into range, so a list
 // that shrinks under the reader (a delete, a narrowed search) falls back onto

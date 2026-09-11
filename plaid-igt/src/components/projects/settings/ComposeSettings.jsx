@@ -5,7 +5,7 @@ import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import { Badge } from '@ui/components/ui/badge';
 import { SearchInput, ListCount, ListPager } from '@ui/components/ui/list-search';
-import { usePagedList } from '@ui/hooks/usePagedList';
+import { usePagedList, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
 import { notifyError } from '@/utils/feedback';
 import { IGT_NAMESPACE, readCompose } from '@/domain/igtConfig';
 import {
@@ -73,7 +73,7 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
     );
   }, [draft, q]);
 
-  const paged = usePagedList(matches, { pageSize: 25, resetKey: q });
+  const paged = usePagedList(matches, { pageSize: TALL_LIST_PAGE_SIZE, resetKey: q });
 
   const patch = (row, next) =>
     setDraft((rows) => rows.map((r) => (r === row ? { ...r, ...next } : r)));

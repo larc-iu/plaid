@@ -4,7 +4,7 @@ import { Input } from '@ui/components/ui/input';
 import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
 import { SearchInput, ListCount, ListPager } from '@ui/components/ui/list-search';
-import { pageSlice } from '@ui/hooks/usePagedList';
+import { pageSlice, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
 import { Switch } from '@ui/components/ui/switch';
 import { Textarea } from '@ui/components/ui/textarea';
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
@@ -38,8 +38,9 @@ const SAMPLE = '1SG.NOM';
 
 // A seeded Leipzig tagset runs to well over a thousand values, so the table is
 // searched and paged rather than rendered whole. Smaller than the app's usual
-// page: a value row is an expandable editor, not a line of text.
-export const VALUE_PAGE_SIZE = 25;
+// page: a value row is an expandable editor, not a line of text. Re-exported
+// under a local name because the tests address it that way.
+export const VALUE_PAGE_SIZE = TALL_LIST_PAGE_SIZE;
 
 // How each mode presents itself. The help text is the whole explanation a user
 // gets: what can be entered, and which kind of field it suits. Nothing else.

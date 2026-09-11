@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { pageSlice } from '@ui/hooks/usePagedList';
+import { pageSlice, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
 import { ListPager } from '@ui/components/ui/list-search';
 import { Button } from '@ui/components/ui/button';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
@@ -27,7 +27,9 @@ const Check = ({ indeterminate = false, className = '', ...props }) => {
 };
 
 // The rewrite preview: every sentence a rule changed, grouped by document,
-// each with its change lines and a checkbox. `rows` come from planRewrite;
+// each with its change lines and a checkbox. The tallest rows in the app, and
+// each one is a decision rather than something to scan past, so it pages at
+// the tall-row size. `rows` come from planRewrite;
 // `selected` is the set of row keys to apply. Sentences are links into the
 // annotation editor (deep-linked via ?sent=), built by `hrefFor`.
 export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, busy, onApply }) => {
@@ -37,7 +39,7 @@ export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, bu
     setPage(0);
   }, [rows]);
 
-  const paged = useMemo(() => pageSlice(rows, page), [rows, page]);
+  const paged = useMemo(() => pageSlice(rows, page, TALL_LIST_PAGE_SIZE), [rows, page]);
   const { pageItems } = paged;
   const byDoc = useMemo(() => {
     const m = new Map();

@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Info } from 'lucide-react';
-import { pageSlice } from '@ui/hooks/usePagedList';
+import { pageSlice, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
 import { ListPager } from '@ui/components/ui/list-search';
 import { segmentize } from './grewToHighlight.js';
 
@@ -9,7 +9,8 @@ import { segmentize } from './grewToHighlight.js';
 // [{ docId, sentenceId, text, highlights }]. Each sentence is a real link to
 // the annotation editor (deep-linked via ?sent=), built by `hrefFor`. The full
 // match set is paged client-side (the query API returns all matches at once —
-// it has no offset/cursor), at the shared page size like every other list.
+// it has no offset/cursor), at the shared tall-row page size: a hit is a whole
+// sentence under a document heading, not a table row.
 export const SearchResults = ({
   groups,
   count,
@@ -26,7 +27,7 @@ export const SearchResults = ({
 
   // Memoized so `pageItems` keeps its identity across renders that change
   // neither the results nor the page — the grouping below keys on it.
-  const paged = useMemo(() => pageSlice(groups, page), [groups, page]);
+  const paged = useMemo(() => pageSlice(groups, page, TALL_LIST_PAGE_SIZE), [groups, page]);
   const { pageItems } = paged;
 
   // Group only the current page's sentences by document for rendering.
