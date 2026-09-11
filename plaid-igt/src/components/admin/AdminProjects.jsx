@@ -5,19 +5,24 @@ import { Badge } from '@ui/components/ui/badge';
 import { DataTable } from '@ui/components/ui/data-table';
 import { timeAgo, fullTimestamp } from '@ui/utils/formatTime';
 import { notifySuccess, notifyError } from '@/utils/feedback';
+import { isUdProject } from '@larc-iu/plaid-client';
 import { findBaselineTextLayer, readInitialized } from '../../domain/igtConfig';
+import { udProjectUrl } from '../../domain/siblingApps';
 
 // Every project on the server, including the ones this admin has no role in.
 // An admin's project list already returns all of them; what is missing
 // everywhere else is who is on each, which app owns it, and whether anyone has
 // touched it lately.
 
-// Whether this app set the project up, which is the only thing it can say for
-// certain. A project carrying the shared layer roles that IGT did NOT set up
-// belongs to another app on the same substrate (plaid-ud), and guessing which
-// from the roles alone gets it wrong: UD projects carry morpheme layers too.
+// Which app owns the project. This one knows its own for certain, and knows
+// plaid-ud's by asking the client (`isUdProject`), which reads the structure UD
+// alone writes: annotation span layers under a `ud` namespace on the
+// syntactic-word token layer. The ROLES do not tell them apart, since IGT tags
+// a morpheme layer too, and a second copy of that answer living here is how two
+// apps start disagreeing about what a project is.
 const shapeOf = (project) => {
   if (readInitialized(project.config)) return 'IGT';
+  if (isUdProject(project)) return 'UD';
   return findBaselineTextLayer(project.textLayers || []) ? 'Other app' : 'Not set up';
 };
 
@@ -67,11 +72,20 @@ export const AdminProjects = ({ client, currentUser }) => {
       key: 'name',
       label: 'Name',
       sort: (p) => p.name.toLowerCase(),
-      render: (p) => (
-        <Link to={`/projects/${p.id}`} className="font-medium hover:underline">
-          {p.name}
-        </Link>
-      ),
+      // A project's name is its way in, and a UD project's way in is the UD
+      // app: this one sends a project it did not set up to its setup wizard,
+      // which is the wrong thing to do to someone else's corpus. That is a
+      // full page load, so a plain anchor, not a router Link.
+      render: (p) =>
+        isUdProject(p) ? (
+          <a href={udProjectUrl(p.id)} className="font-medium hover:underline">
+            {p.name}
+          </a>
+        ) : (
+          <Link to={`/projects/${p.id}`} className="font-medium hover:underline">
+            {p.name}
+          </Link>
+        ),
     },
     {
       key: 'shape',

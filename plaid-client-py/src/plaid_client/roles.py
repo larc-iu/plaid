@@ -70,3 +70,30 @@ def find_by_role(layers, role):
         if read_role(layer.get('config')) == role:
             return layer
     return None
+
+
+def is_ud_project(project):
+    """Whether a project is set up for plaid-ud, from its layer structure alone.
+
+    Two apps share this substrate and both use it for words below the
+    orthographic word, so the ``syntactic-word`` ROLE does not tell them apart:
+    plaid-igt tags a morpheme layer too. What is distinctive is that plaid-ud
+    hangs its annotation span layers off that token layer under its OWN ``ud``
+    namespace, which no other app writes.
+
+    Lives here rather than in either app because both need it: plaid-ud asks it
+    of its own projects and plaid-igt's admin area asks it of everyone's, and a
+    second copy of the answer in the other app is how two apps start disagreeing
+    about what a project is.
+
+    Args:
+        project: a project dict WITH its layers (``client.projects.get``).
+    """
+    for text in (project or {}).get('textLayers') or []:
+        for token in text.get('tokenLayers') or []:
+            if read_role(token.get('config')) != ROLES.SYNTACTIC_WORD:
+                continue
+            for span in token.get('spanLayers') or []:
+                if isinstance((span.get('config') or {}).get('ud'), dict):
+                    return True
+    return False

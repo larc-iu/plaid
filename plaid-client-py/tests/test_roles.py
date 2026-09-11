@@ -10,7 +10,14 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from plaid_client import ROLES, PLAID_NAMESPACE, ROLE_KEY, read_role, find_by_role
+from plaid_client import (
+    ROLES,
+    PLAID_NAMESPACE,
+    ROLE_KEY,
+    read_role,
+    find_by_role,
+    is_ud_project,
+)
 
 
 def test_role_values_match_the_interop_contract():
@@ -47,8 +54,39 @@ def test_find_by_role_returns_first_match_else_none():
     assert find_by_role(None, ROLES.WORD) is None
 
 
+def _project(role, span_config):
+    return {
+        'textLayers': [
+            {
+                'tokenLayers': [
+                    {
+                        'config': {'plaid': {'role': role}},
+                        'spanLayers': [{'config': span_config}],
+                    }
+                ]
+            }
+        ]
+    }
+
+
+def test_is_ud_project_reads_the_structure_ud_alone_writes():
+    # The ROLE alone does not answer it: plaid-igt tags a morpheme layer and
+    # can carry syntactic-word too. The `ud` namespace on the span layers does.
+    assert is_ud_project(_project(ROLES.SYNTACTIC_WORD, {'ud': {'upos': True}})) is True
+    assert is_ud_project(_project(ROLES.SYNTACTIC_WORD, {'igt': {'gloss': True}})) is False
+    # Right namespace, wrong layer: annotations hang off syntactic-word in UD.
+    assert is_ud_project(_project(ROLES.MORPHEME, {'ud': {'upos': True}})) is False
+    # A `ud` key that is not a namespace object says nothing.
+    assert is_ud_project(_project(ROLES.SYNTACTIC_WORD, {'ud': 'yes'})) is False
+    assert is_ud_project(_project(ROLES.SYNTACTIC_WORD, {})) is False
+    assert is_ud_project({'textLayers': []}) is False
+    assert is_ud_project({}) is False
+    assert is_ud_project(None) is False
+
+
 if __name__ == '__main__':
     test_role_values_match_the_interop_contract()
     test_read_role()
     test_find_by_role_returns_first_match_else_none()
+    test_is_ud_project_reads_the_structure_ud_alone_writes()
     print('roles tests passed')

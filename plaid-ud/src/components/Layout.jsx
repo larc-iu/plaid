@@ -1,10 +1,9 @@
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '@ui/components/ui/button';
+import { adminUrl } from '../domain/siblingApps.js';
 
-// The shell. `.tw` is on the header only: every route screen carries its own
-// `.tw` root as it migrates, and the Mantine screens below must not inherit the
-// scoped preflight reset. See src/index.css.
+// The shell.
 export const Layout = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -28,9 +27,13 @@ export const Layout = () => {
           </Link>
           {user && (
             <nav className="flex items-center gap-1">
+              {/* The server's admin area is plaid-igt's. The release jar always
+                  ships both apps on one server, so there is exactly one, and a
+                  second here would be a second answer to the same question.
+                  A real anchor, not a Link: it is another document. */}
               {user.isAdmin && (
                 <Button asChild variant="ghost" size="sm">
-                  <Link to="/admin/users">Users</Link>
+                  <a href={adminUrl()}>Admin</a>
                 </Button>
               )}
               {/* Profile is a destination, so it is a real anchor: middle-click

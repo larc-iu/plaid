@@ -43,6 +43,7 @@ from plaid_client.roles import (
     ROLES,
     read_role,
     find_by_role,
+    is_ud_project,
 )
 
 __all__ = [
@@ -88,4 +89,5 @@ __all__ = [
     "ROLES",
     "read_role",
     "find_by_role",
+    "is_ud_project",
 ]
