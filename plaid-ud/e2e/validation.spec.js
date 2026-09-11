@@ -78,7 +78,10 @@ test('a value opens to the sentences it is in, each a link into the editor', asy
   await openValidation(page);
   await page.getByRole('button', { name: /WIDGET/ }).click();
 
-  const link = page.getByRole('link', { name: /sentence 1/ }).first();
+  // Numbered by the order they came back, so they are called occurrences: this
+  // screen does not know where in the document each one sits, and a link
+  // saying "sentence 2" over the seventeenth sentence is worse than no number.
+  const link = page.getByRole('link', { name: /occurrence 1/ }).first();
   await expect(link).toBeVisible({ timeout: 15000 });
   // Landing on the document and leaving the reader to find the word is most of
   // the work not done, so the link carries the sentence.
