@@ -122,10 +122,11 @@ test.describe('when one is online', () => {
 
     await page.getByRole('button', { name: 'Hide the assistant' }).click();
     await expect(page.locator('aside.border-l')).toHaveCount(0);
-    // And the document is back to scrolling the page, as it always did.
-    await expect
-      .poll(async () => page.evaluate(() => document.documentElement.style.height || 'auto'))
-      .not.toBe('0px');
+    // And the document is back to scrolling the page, as it always did. The
+    // old assertion here read `documentElement.style.height || 'auto'` and
+    // checked it was not '0px'; nothing ever sets that property, so it was
+    // 'auto' on every page and the close half of this test verified nothing.
+    await expect.poll(scrolls).toBe(true);
   });
 
   test('a width survives a reload', async ({ page }) => {

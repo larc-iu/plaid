@@ -113,14 +113,18 @@ test('B11-01/02/03 + B5-03/01: unicode-punctuation rule with a `?` whitelist', a
       page.locator(`[title="${BODY.split(' ')[W[k]]}: excluded from annotation"]`),
     ).toHaveCount(1);
   }
-  // Whitelisted `?` and the emoji are annotatable: opener + a healed morpheme form cell.
+  // Whitelisted `?` and the emoji are annotatable: opener + a morpheme form cell.
   for (const k of ['q', 'emoji']) {
     await expect(opener(page, ids.w[W[k]])).toHaveCount(1);
     await expect(page.locator(`.igt-morph-field[data-word="${ids.w[W[k]]}"]`)).toHaveCount(1);
   }
+  // The cells above are there and the inert columns above have none, and
+  // NOTHING was written to say so: an unanalyzed word's morpheme is synthesized
+  // by derive and becomes a token only when someone writes to it
+  // (src/domain/virtualMorpheme.js).
   const raw = await client.documents.get(documentId, true);
   const ml = raw.textLayers[0].tokenLayers.find((l) => roleOf(l) === ROLES.MORPHEME);
-  expect(ml.tokens.length, 'one healed morpheme per annotatable word (5 of 7)').toBe(5);
+  expect(ml.tokens.length, 'opening a document stores no morphemes').toBe(0);
   // Create-row trimming follows the same rule, and the exceptions are LETTER-LIKE
   // CHARACTERS: an edge is trimmed only where the project has not claimed the
   // character. This project claims `?`, so `Qué?` keeps it — the price of

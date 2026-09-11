@@ -101,8 +101,10 @@ test('B9-01: deleting a linked entry names the link count and removes the links'
   await page.getByRole('button', { name: /^Delete$/ }).click();
   const dialog = page.getByRole('dialog').or(page.getByRole('alertdialog'));
   await expect(dialog).toBeVisible();
-  await expect(dialog).toContainText('3');
-  await expect(dialog).toContainText(/links will be removed/i);
+  // The dialog quotes the entry's form, which carries a Date.now() stamp, so
+  // `toContainText('3')` was satisfied by the timestamp. Bind the count to the
+  // sentence it belongs to.
+  await expect(dialog).toContainText(/linked to 3 words\/morphemes/i);
   await dialog.getByRole('button', { name: /Delete entry/ }).click();
   await expect(page.getByText(items.dupForm)).toHaveCount(0);
   await expect

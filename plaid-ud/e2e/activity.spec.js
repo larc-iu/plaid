@@ -79,9 +79,13 @@ test('the panel brings no avatars with it', async ({ page }) => {
   await page.goto(`/#/projects/${S.projectId}/activity`);
   await expect(page.getByText('Who has been working')).toBeVisible({ timeout: 15000 });
 
-  // Deliberate, and this app's ruling: the shared panel draws one by default.
-  await expect(page.locator('.activity-avatar, [data-slot="avatar"]')).toHaveCount(0);
-  await expect(page.locator('img')).toHaveCount(0);
+  // The panel has rendered people, so the absence below is the ruling and not
+  // a failed load. `.activity-avatar` never existed and `img` cannot catch a
+  // reintroduced avatar either: Radix renders no image until one has loaded,
+  // and a user with no picture shows only their initials. `data-slot="avatar"`
+  // is on the shared primitive's root for exactly this count.
+  await expect(page.getByText('a@b.com', { exact: false }).first()).toBeVisible();
+  await expect(page.locator('[data-slot="avatar"]')).toHaveCount(0);
 });
 
 test('a maintainer is offered the tab', async ({ page }) => {

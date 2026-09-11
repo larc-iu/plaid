@@ -93,7 +93,9 @@ test('the list draws senses under their entry in the By entry view', async ({ pa
   await page.getByRole('button', { name: 'By entry' }).click();
   const sense = page.locator('a[data-depth="1"]');
   await expect(sense).toHaveCount(1);
-  await expect(sense).toContainText('1');
+  // Scoped to the number itself. The forms carry a Date.now() stamp, so
+  // `toContainText('1')` on the row was satisfied by the timestamp.
+  await expect(sense.locator('.vocab-num')).toHaveText('1.1');
   await expect(sense).toContainText('lion');
   await page.getByRole('button', { name: 'Flat' }).click();
   await expect(page.locator('a[data-depth="1"]')).toHaveCount(0);
@@ -125,7 +127,10 @@ test('the entries spelled alike are reordered by dragging in a dialog', async ({
   const twin = (await client.vocabItems.create(vocab.id, `kat${stamp}`, { gloss: 'twin' })).id;
   try {
     await openView(page, twin);
-    await expect(page.getByRole('heading', { level: 3 })).toContainText('2');
+    // The number itself, not the heading: the forms carry a Date.now() stamp,
+    // so `toContainText('2')` on the heading was satisfied by the timestamp.
+    const numbered = page.getByRole('button', { name: /Reorder the entries spelled this way/ });
+    await expect(numbered).toHaveAccessibleName(/^2\. /);
     await page
       .getByRole('button', { name: /Reorder the entries spelled this way/ })
       .first()
@@ -138,7 +143,7 @@ test('the entries spelled alike are reordered by dragging in a dialog', async ({
     await expect.poll(() => meta(twin)).toMatchObject({ homograph: 1 });
     await expect.poll(() => meta(ids.kat)).toMatchObject({ homograph: 2 });
     await page.keyboard.press('Escape');
-    await expect(page.getByRole('heading', { level: 3 })).toContainText('1');
+    await expect(numbered).toHaveAccessibleName(/^1\. /);
   } finally {
     await client.vocabItems.delete(twin).catch(() => {});
   }
