@@ -38,6 +38,7 @@ import { useDelayedFlag } from '@/hooks/useDelayedFlag';
 import { useComposeProject } from '@/hooks/useCompose';
 import { isReviewed } from '@larc-iu/plaid-client';
 import { useViewportFill } from '@ui/hooks/useViewportFill.js';
+import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
 import {
   DocumentAssistant,
   DocumentAssistantButton,
@@ -176,6 +177,7 @@ const DocumentEditor = () => {
   const [assistantFocus, setAssistantFocus] = useState(null);
   const project = doc?.project;
   const rowRef = useRef(null);
+  const assistantAvailable = useAssistantAvailable(client, projectId);
   const docked = activeTab === 'analyze' && assistantOpen;
   const rowHeight = useViewportFill(rowRef, docked, [history.open, writeLock.held]);
   // An applied plan rewrote the document, so the grid beside the panel is
@@ -714,6 +716,7 @@ const DocumentEditor = () => {
                       <DocumentAssistantButton
                         open={assistantOpen}
                         onOpenChange={setAssistantOpen}
+                        available={assistantAvailable}
                       />
                     )}
                   </div>
@@ -789,7 +792,7 @@ const DocumentEditor = () => {
             )}
           </DocumentProvider>
         </div>
-        {activeTab === 'analyze' && (
+        {activeTab === 'analyze' && assistantAvailable && (
           <DocumentAssistant
             open={assistantOpen}
             onOpenChange={setAssistantOpen}

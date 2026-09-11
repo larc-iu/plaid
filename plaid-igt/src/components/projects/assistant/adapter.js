@@ -139,6 +139,7 @@ export const changePlace = (projectId, where) => {
 
 export const IGT_ASSISTANT = {
   app: 'igt',
+  command: 'plaid-igt-agent',
   intro: 'Ask about the corpus or the lexicon, or ask for changes.',
   convHref: (projectId, id) => `/projects/${projectId}?tab=assistant&conversation=${id}`,
   documentHref: (projectId, documentId) =>

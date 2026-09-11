@@ -8,6 +8,7 @@ import { CommentStore } from '@ui/domain/CommentStore';
 import { useCommentStore } from '@ui/domain/useCommentStore';
 import { useWriteLock } from '@ui/hooks/useWriteLock.js';
 import { useViewportFill } from '@ui/hooks/useViewportFill.js';
+import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
 import { useResumedRun } from '@ui/hooks/useResumedRun.js';
 import { RunBanner } from '@ui/components/services/RunBanner.jsx';
 import { useEditorServices } from './hooks/useEditorServices.js';
@@ -183,6 +184,7 @@ export const DocumentEditorShell = () => {
   // The assistant is offered where the annotation is, which is the only tab
   // whose content it can talk about.
   const onAnnotate = pathname.endsWith('/annotate');
+  const assistantAvailable = useAssistantAvailable(client, projectId);
   const [assistantOpen, setAssistantOpen] = useState(false);
   // What the editor pointed at, as {ref, label}. It clears when it is sent.
   const [assistantFocus, setAssistantFocus] = useState(null);
@@ -256,12 +258,13 @@ export const DocumentEditorShell = () => {
                 setChromeOffset,
                 setChromeBusy,
                 assistantOpen: onAnnotate ? assistantOpen : false,
+                assistantAvailable,
                 setAssistantOpen,
                 askAssistant: setAssistantFocus,
               }}
             />
           </div>
-          {onAnnotate && (
+          {onAnnotate && assistantAvailable && (
             <DocumentAssistant
               open={assistantOpen}
               onOpenChange={setAssistantOpen}

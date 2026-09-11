@@ -117,6 +117,7 @@ export const AnnotationEditor = () => {
     setChromeBusy,
     assistantOpen,
     setAssistantOpen,
+    assistantAvailable,
     askAssistant,
   } = useDocumentEditor();
   // Deep link from the search page: ?sent=<sentenceTokenId> scrolls to and
@@ -476,7 +477,11 @@ export const AnnotationEditor = () => {
       <div className="flex items-center gap-3">
         {selectedHistoryEntry && <Button onClick={handleCloseHistory}>Return to current</Button>}
 
-        <DocumentAssistantButton open={assistantOpen} onOpenChange={setAssistantOpen} />
+        <DocumentAssistantButton
+          open={assistantOpen}
+          onOpenChange={setAssistantOpen}
+          available={assistantAvailable}
+        />
 
         {hasText && canEdit && !selectedHistoryEntry && (
           <ParseDialog
@@ -663,7 +668,9 @@ export const AnnotationEditor = () => {
                         colors={layerInfo?.colors}
                         visibleFields={visibleFields}
                         onToggleField={handleToggleField}
-                        onAskAssistant={viewingHistoricalState ? undefined : askAssistant}
+                        onAskAssistant={
+                          viewingHistoricalState || !assistantAvailable ? undefined : askAssistant
+                        }
                       />
                     </div>
                   );

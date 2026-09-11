@@ -38,6 +38,7 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useTabParam, tabTo } from '@/hooks/useTabParam';
 import { cn } from '@ui/lib/utils';
 import { useComposeProject } from '@/hooks/useCompose';
+import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
 
 // The settings sections live behind these path suffixes; keeping them in the
 // URL means deep links and the back button still land on the right section.
@@ -147,6 +148,7 @@ export const ProjectDetail = () => {
   // Documents/Search live in `?tab=`, so a reload or a shared link reopens the
   // tab the user was on.
   const [contentTab, setContentTab] = useTabParam(CONTENT_TABS, 'documents');
+  const assistantAvailable = useAssistantAvailable(client, projectId);
   const activeTab = onExport
     ? 'export'
     : onSettings && canManage
@@ -312,12 +314,18 @@ export const ProjectDetail = () => {
               <Activity className="h-4 w-4" /> Activity
             </TabsTrigger>
           )}
-          <TabsTrigger
-            value="assistant"
-            to={tabTo(`/projects/${projectId}`, 'assistant', 'documents')}
-          >
-            <Bot className="h-4 w-4" /> Assistant
-          </TabsTrigger>
+          {/* Offered only when an assistant is online. The tab itself still
+              renders when it is the active one, so a link to a past
+              conversation opens whether or not one is running: this hides the
+              invitation, not the conversations. */}
+          {(assistantAvailable || activeTab === 'assistant') && (
+            <TabsTrigger
+              value="assistant"
+              to={tabTo(`/projects/${projectId}`, 'assistant', 'documents')}
+            >
+              <Bot className="h-4 w-4" /> Assistant
+            </TabsTrigger>
+          )}
           <TabsTrigger value="export" to={`/projects/${projectId}/export`}>
             <Download className="h-4 w-4" /> Export
           </TabsTrigger>

@@ -118,9 +118,12 @@ export const DocumentAssistant = ({
   );
 };
 
-// The control that opens it, for a toolbar. Hidden while the panel is open.
-export const DocumentAssistantButton = ({ open, onOpenChange, className }) =>
-  open ? null : (
+// The control that opens it, for a toolbar. Hidden while the panel is open,
+// and hidden entirely when no assistant is online: a button that opens an
+// empty panel is worse than no button. `available` being null means not known
+// yet, which is also not offered.
+export const DocumentAssistantButton = ({ open, onOpenChange, available, className }) =>
+  open || !available ? null : (
     <Button
       type="button"
       variant="outline"
