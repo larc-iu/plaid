@@ -55,8 +55,12 @@ const EditableCell = React.memo(
     provMeta,
     validate,
     descriptions,
+    onPrecedent,
   }) => {
     const [localValue, setLocalValue] = useState(value || '');
+    // Alt+Down replaces the cell's list with what the project has said before
+    // about a word like this one, counts and all. Null means the ordinary list.
+    const [precedent, setPrecedent] = useState(null);
     // What the input currently shows, readable synchronously. Enter in a vocab
     // cell takes the highlighted option and blurs in the same tick, and a blur
     // handler reading `localValue` would still see the prefix that was typed.
@@ -113,8 +117,34 @@ const EditableCell = React.memo(
       setPristine(false);
     };
 
+    // A cell with no controlled list of its own (LEMMA) is a plain input, and
+    // showing precedent turns it into a combobox. React unmounts the input to
+    // do that, which fires a blur — one that must not be read as "the annotator
+    // left", or the list would be cleared the instant it arrived and focus
+    // would land on nothing.
+    const swappingRef = useRef(false);
+
+    // What this project has given words like this one. Asked on the gesture,
+    // never on focus: it is a query per open, and most cells never want it.
+    const askPrecedent = async () => {
+      if (!onPrecedent) return false;
+      const rows = await onPrecedent(field);
+      // Nothing to show is not a mode worth entering: the cell keeps its list
+      // and the annotator learns the answer by the list not changing.
+      if (!rows?.length) return false;
+      swappingRef.current = !suggestions?.length;
+      setPrecedent(rows);
+      setPristine(true);
+      return true;
+    };
+
     const handleBlur = () => {
+      // The swap below unmounts this input; if that produced a blur it is not
+      // the annotator leaving, and committing on it would commit nothing and
+      // clear the list that was just asked for.
+      if (swappingRef.current) return;
       setIsEditing(false);
+      setPrecedent(null);
       if (cancelledRef.current) {
         cancelledRef.current = false;
         setValue(value || '');
@@ -186,6 +216,12 @@ const EditableCell = React.memo(
       // document level, since it crosses sentences). Let it bubble untouched.
       if ((e.ctrlKey || e.metaKey) && e.shiftKey) return;
 
+      if (e.key === 'ArrowDown' && e.altKey && onPrecedent) {
+        e.preventDefault();
+        askPrecedent();
+        return;
+      }
+
       // Grid navigation. Up/Down always navigate (single-line inputs don't use
       // them anyway). Left/Right navigate only at the edge of the input so
       // they still move the caret within text.
@@ -213,6 +249,11 @@ const EditableCell = React.memo(
     };
 
     const handleFocus = () => {
+      // The new element has focus, so the swap is over: from here a blur is the
+      // annotator leaving and must commit. Clearing this on the BLUR instead
+      // would never happen — React fires none when it unmounts a focused
+      // element — and the next real blur would be swallowed silently.
+      swappingRef.current = false;
       setIsEditing(true);
       setPristine(true);
       selectOnArrival();
@@ -263,11 +304,14 @@ const EditableCell = React.memo(
     // When the producing parser recorded a distribution, its top-k floats above
     // the rest as a "Parser suggestions" group, with the probability rendered as
     // a dimmed suffix (renderOption only — the committed value stays the bare tag).
-    if (suggestions && suggestions.length && !isReadOnly) {
+    // A cell showing PRECEDENT is a combobox whichever field it is: a lemma
+    // cell has no controlled list of its own and is a plain input the rest of
+    // the time, but Alt+Down gives it one to show.
+    if (!isReadOnly && (precedent || (suggestions && suggestions.length))) {
       // Group-aware pristine filter: the data may be flat or grouped.
       const filterItems = (items, q) => items.filter((o) => o.label.toLowerCase().includes(q));
       const optionsFilter = ({ options, search }) => {
-        if (pristine) return options;
+        if (precedent || pristine) return options;
         const q = search.toLowerCase().trim();
         return options
           .map((o) => ('group' in o ? { ...o, items: filterItems(o.items, q) } : o))
@@ -289,38 +333,61 @@ const EditableCell = React.memo(
           // can tell an untouched cell from one with unsaved typing in it and
           // leave the browser's delete-a-word alone in the second case.
           data-orig={value || ''}
-          options={isEditing ? groupSuggestions(suggestions, fieldProbs) : NO_OPTIONS}
+          options={
+            precedent
+              ? precedent.map((row) => ({ value: row.value, label: row.value }))
+              : isEditing
+                ? groupSuggestions(suggestions, fieldProbs)
+                : NO_OPTIONS
+          }
           renderOption={
-            fieldProbs || descriptions
+            precedent
               ? ({ option }) => {
-                  const pct = probLabel(fieldProbs, option.value);
-                  // What the tag MEANS, beside it. The whole reason to seed the
-                  // universal sets with definitions is that a picker is where
-                  // the question "which of these is it" gets asked.
-                  const gloss = descriptions?.[option.value];
+                  const row = precedent.find((r) => r.value === option.value);
                   return (
                     <span>
                       {option.value}
-                      {pct && (
-                        <span style={{ opacity: 0.55, marginLeft: 6, fontSize: '0.85em' }}>
-                          {pct}
-                        </span>
-                      )}
-                      {gloss && (
-                        <span style={{ opacity: 0.6, marginLeft: 8, fontSize: '0.85em' }}>
-                          {gloss}
+                      {row && (
+                        <span style={{ opacity: 0.55, marginLeft: 8, fontSize: '0.85em' }}>
+                          {row.count}
                         </span>
                       )}
                     </span>
                   );
                 }
-              : undefined
+              : fieldProbs || descriptions
+                ? ({ option }) => {
+                    const pct = probLabel(fieldProbs, option.value);
+                    // What the tag MEANS, beside it. The whole reason to seed the
+                    // universal sets with definitions is that a picker is where
+                    // the question "which of these is it" gets asked.
+                    const gloss = descriptions?.[option.value];
+                    return (
+                      <span>
+                        {option.value}
+                        {pct && (
+                          <span style={{ opacity: 0.55, marginLeft: 6, fontSize: '0.85em' }}>
+                            {pct}
+                          </span>
+                        )}
+                        {gloss && (
+                          <span style={{ opacity: 0.6, marginLeft: 8, fontSize: '0.85em' }}>
+                            {gloss}
+                          </span>
+                        )}
+                      </span>
+                    );
+                  }
+                : undefined
           }
           value={displayValue}
           onChange={(val) => {
             selectPendingRef.current = false;
             setValue(val);
             setPristine(false);
+            // Typing leaves the precedent list: what the project did before is
+            // an answer to "what have we called this", not a filter.
+            setPrecedent(null);
           }}
           onFocus={handleFocus}
           onBlur={handleBlur}
@@ -331,10 +398,22 @@ const EditableCell = React.memo(
             // moving through the grid; once typing has filtered the list, the
             // arrows browse it (Enter picks). The combobox hands us that state
             // rather than leaving us to read it off the DOM.
-            const browsing = !pristine && combo.open;
+            // While precedent is showing, the list IS the point: arrows browse
+            // it from the first keystroke, not only once something is typed.
+            const browsing = precedent ? combo.open : !pristine && combo.open;
             // Ctrl/Cmd+Shift+Up/Down is the review sweep, handled at the
             // document level. Never let it browse the tag list.
             if ((e.ctrlKey || e.metaKey) && e.shiftKey) return;
+            if (e.key === 'ArrowDown' && e.altKey && onPrecedent) {
+              e.preventDefault();
+              askPrecedent();
+              return;
+            }
+            if (e.key === 'Escape' && precedent) {
+              e.preventDefault();
+              setPrecedent(null);
+              return;
+            }
             if (e.key === 'Tab') {
               const now = Date.now();
               if (now - lastGlobalTabPress < 55) {
@@ -383,6 +462,10 @@ const EditableCell = React.memo(
             }
           }}
           filter={optionsFilter}
+          // Arriving from the swap above: the input is a new element, so focus
+          // has to be asked for. Harmless on a cell that was already a
+          // combobox, which has focus already.
+          autoFocus={!!precedent}
           autoHighlight={false}
           tabIndex={tabIndex}
           title={cellTitle}
@@ -708,6 +791,7 @@ const TokenColumn = React.memo(
     reviewable,
     validators,
     descriptions,
+    onPrecedent,
   }) => {
     // This word still has machine predictions a human hasn't reviewed (a span on
     // it, or its incoming dependency relation — confirmTokens covers both). When so, a
@@ -801,6 +885,7 @@ const TokenColumn = React.memo(
               onNavigate={onNavigate}
               isReadOnly={isReadOnly}
               mark={provMark(data.lemma?.metadata)}
+              onPrecedent={onPrecedent}
               provMeta={data.lemma?.metadata}
             />
           </div>
@@ -826,6 +911,7 @@ const TokenColumn = React.memo(
               mark={provMark(data.xpos?.metadata)}
               validate={validators?.xpos}
               descriptions={descriptions?.xpos}
+              onPrecedent={onPrecedent}
               provMeta={data.xpos?.metadata}
             />
           </div>
@@ -908,6 +994,7 @@ const TokenColumn = React.memo(
       // Stable per layerInfo version, like vocab below.
       prevProps.validators === nextProps.validators &&
       prevProps.descriptions === nextProps.descriptions &&
+      prevProps.onPrecedent === nextProps.onPrecedent &&
       // Stable identity per layerInfo version, so these don't trigger re-renders.
       prevProps.vocab === nextProps.vocab &&
       prevProps.uposColors === nextProps.uposColors &&
@@ -967,6 +1054,7 @@ export const SentenceRow = React.memo(
     canDeleteAnyComment,
     validators,
     descriptions,
+    onPrecedent,
     sentenceFields = EMPTY_FIELDS,
     reviewable = needsReview,
     totalTokensBefore = 0,
@@ -1267,6 +1355,7 @@ export const SentenceRow = React.memo(
               reviewable={reviewable}
               validators={validators}
               descriptions={descriptions}
+              onPrecedent={onPrecedent ? (field) => onPrecedent(field, data) : undefined}
             />
           ))}
         </div>

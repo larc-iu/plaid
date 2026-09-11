@@ -9,6 +9,7 @@ import { useSentenceData } from './hooks/useSentenceData.js';
 import { useDocumentHistory } from './hooks/useDocumentHistory.js';
 import { useDocumentEditor } from './useDocumentEditor.js';
 import { useReviewGestures } from './hooks/useReviewGestures.js';
+import { usePrecedent } from './hooks/usePrecedent.js';
 import { HistoryDrawer, HISTORY_DRAWER_WIDTH } from '@ui/components/shared/HistoryDrawer';
 import { RestoreDialog } from './annotation/RestoreDialog.jsx';
 import { EditorLegend } from './annotation/EditorLegend.jsx';
@@ -20,6 +21,7 @@ import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { readMetadataFields } from '../../utils/udMetadata.js';
 import { makeValidators } from '../../utils/udVocabMode.js';
 import { buildAnchorIndex, anchorCaption } from '../../domain/commentAnchors.js';
+import { precedentKey } from '../../domain/precedent.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 // Document-wide annotation-row expansion. FEATS defaults to collapsed because its
@@ -354,6 +356,22 @@ export const AnnotationEditor = () => {
   // that always allows, which is the normal case.
   const validators = useMemo(() => makeValidators(layerInfo), [layerInfo]);
 
+  // What this project has said before about a word like this one (Alt+Down).
+  // One query per (field, key), cached for as long as the document is open.
+  const lookupPrecedent = usePrecedent({
+    client: getClient(),
+    projectId,
+    layerInfo,
+    documentId,
+  });
+  const handlePrecedent = useCallback(
+    (field, entry) => {
+      const key = precedentKey(field, entry);
+      return key ? lookupPrecedent(field, key) : Promise.resolve([]);
+    },
+    [lookupPrecedent],
+  );
+
   // A sentence's comment badge needs the words its thread is captioned with,
   // and those come from the same anchor index the Comments tab uses. Keyed on
   // the document's DATA version, like every other derived cache here.
@@ -621,6 +639,7 @@ export const AnnotationEditor = () => {
                         canComment={canComment}
                         canDeleteAnyComment={canDeleteAnyComment}
                         descriptions={layerInfo?.descriptions}
+                        onPrecedent={readOnly ? undefined : handlePrecedent}
                         sentenceFields={sentenceFields}
                         reviewable={doc?.writer.reviewable}
                         sentenceIndex={index}

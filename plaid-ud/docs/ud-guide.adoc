@@ -193,6 +193,16 @@ Fields save as you leave them, and clearing one removes the note rather than sto
 
 Everything here goes out with the document: `# source = ...` above a document, `# sent_id` and `# text_en` above a sentence.
 
+== What This Project Has Said Before
+
+In a **Lemma**, **XPOS** or **Features** cell, **Alt+Down** lists the values this project has already used for a word like this one, with how many times each.
+
+The lemma cell asks about the **form** — what have we called this string before. The other two ask about the **lemma**, because once that is settled the tag and the features usually follow, and the same string can be two lemmas.
+
+Pick one with the arrows and **Enter**, or click it. **Escape** goes back to the cell. A word with nothing to compare against simply shows nothing.
+
+This is consistency help for hand annotation. A connected parser writes a first draft of most of this already.
+
 == Moving Between the Text and the Annotations
 
 Tokenizing and annotating are one job done in two places, so each hands over to the other at the sentence you are looking at.

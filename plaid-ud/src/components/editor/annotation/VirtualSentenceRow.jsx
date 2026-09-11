@@ -18,6 +18,7 @@ export const VirtualSentenceRow = ({
   canDeleteAnyComment,
   validators,
   descriptions,
+  onPrecedent,
   sentenceFields,
   reviewable,
   sentenceIndex = 0,
@@ -104,6 +105,7 @@ export const VirtualSentenceRow = ({
         canDeleteAnyComment={canDeleteAnyComment}
         validators={validators}
         descriptions={descriptions}
+        onPrecedent={onPrecedent}
         sentenceFields={sentenceFields}
         reviewable={reviewable}
         totalTokensBefore={totalTokensBefore}

@@ -77,6 +77,12 @@ export const EditorLegend = ({ project }) => {
           back to it here.
         </Row>
 
+        <Row title="Precedent">
+          <Key>Alt</Key>+<Key>↓</Key> in a lemma, XPOS or FEATS cell lists what this project has
+          given words like this one, with counts. The lemma asks about the form, the other two about
+          the lemma.
+        </Row>
+
         <Row title="Tree">
           Drag from one word to another to draw a relation · click a label to rename it ·{' '}
           <Key>Ctrl</Key>/<Key>Cmd</Key>+<Key>D</Key> jumps into the labels, <Key>←</Key>
