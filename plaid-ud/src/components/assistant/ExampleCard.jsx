@@ -1,20 +1,138 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { cn } from '@ui/lib/utils';
 import { centeredScrollLeft } from '@ui/components/assistant/citations.js';
 import { citationTitle, sentenceHref } from './adapter.js';
+import { layout } from './depTree.js';
 
-// A cited sentence as UD draws it: the CoNLL-U table, one row per line, with
-// the words the model named filled in. A multi-word token's range row is
-// tinted rather than filled, the way the annotation editor shows it.
+// A cited sentence as UD draws it, in whichever of three views fits the claim.
+//
+// A full CoNLL-U table is rarely what a point rests on, and eight columns is a
+// lot to read in a docked panel. So the model says which view it means with
+// view= on its cite tag, and the reader can switch: the model's choice is a
+// starting point, not a decision taken away from them.
+//
+//   tree   the dependency arcs over the words, as the UD docs draw them
+//   grid   only the columns the point is about
+//   table  every column the sentence fills
+
+const VIEWS = [
+  { id: 'tree', label: 'Tree' },
+  { id: 'grid', label: 'Grid' },
+  { id: 'table', label: 'Table' },
+];
+
+// The columns a grid shows: what the model asked for, else the annotation a
+// reader most often wants beside the words.
+const gridColumns = (c) => {
+  const asked = (c.fields || []).filter((f) => f !== 'id' && f !== 'form');
+  if (asked.length) return asked;
+  return (c.columns || []).filter((col) => col === 'upos' || col === 'lemma');
+};
+
+const DepTree = ({ c }) => {
+  const tree = layout(c.rows || [], { maxHeight: 150 });
+  if (!tree.words.length) return null;
+  return (
+    <svg
+      width={tree.width}
+      height={tree.height}
+      viewBox={`0 0 ${tree.width} ${tree.height}`}
+      className="font-mono"
+      role="img"
+      aria-label={`Dependency tree for sentence ${c.sentence}`}
+    >
+      {tree.arcs.map((a, i) => (
+        <g key={i} className="text-muted-foreground">
+          <path d={a.d} fill="none" stroke="currentColor" strokeWidth="1" opacity="0.7" />
+          {/* The arrowhead sits on the dependent: which way a relation points
+              is most of what a tree says. */}
+          <path
+            d={`M ${a.tipX - 3} ${tree.baseY - 5} L ${a.tipX} ${tree.baseY} L ${a.tipX + 3} ${tree.baseY - 5} Z`}
+            fill="currentColor"
+            opacity="0.7"
+          />
+          {a.deprel && (
+            <text
+              x={a.labelX}
+              y={a.labelY}
+              textAnchor="middle"
+              fontSize="9"
+              fill="currentColor"
+              className="text-primary"
+            >
+              {a.deprel}
+            </text>
+          )}
+        </g>
+      ))}
+      {tree.words.map((w, i) => (
+        <text
+          key={i}
+          x={w.x}
+          y={tree.baseY + 12}
+          textAnchor="middle"
+          fontSize="11"
+          fill="currentColor"
+          className={cn(w.focus ? 'font-bold text-primary' : 'text-foreground')}
+        >
+          {w.form}
+        </text>
+      ))}
+    </svg>
+  );
+};
+
+const Table = ({ c, columns, scroller }) => (
+  <div ref={scroller} className="mt-1.5 overflow-x-auto">
+    <table className="border-separate border-spacing-0 whitespace-nowrap font-mono text-xs">
+      <thead>
+        <tr>
+          {columns.map((col) => (
+            <th
+              key={col}
+              scope="col"
+              className="px-1.5 text-left align-bottom text-[11px] font-normal leading-5 text-muted-foreground"
+            >
+              {col}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {(c.rows || []).map((r, i) => (
+          <tr key={i}>
+            {columns.map((col, j) => (
+              <td
+                key={col}
+                data-cited={r.focus && j === 0 ? '' : undefined}
+                className={cn(
+                  'px-1.5 align-top leading-5',
+                  r.token && 'text-muted-foreground',
+                  r.focus && (r.token ? 'bg-primary/10' : 'bg-primary/15'),
+                  r.focus && j === 0 && 'rounded-l',
+                  r.focus && j === columns.length - 1 && 'rounded-r',
+                )}
+              >
+                {r[col]}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+);
+
 export const ExampleCard = ({ c, projectId }) => {
   const columns = c.columns || [];
-  const rows = c.rows || [];
+  // The model's choice opens the card; the switch is the reader's.
+  const [view, setView] = useState(c.view || 'table');
   const scroller = useRef(null);
 
   // A wide table scrolls inside the card, so bring the cited rows into view:
   // centre them before the card is painted (only the card scrolls, never the
-  // page).
+  // page). The tree draws whole, so it has nothing to centre.
   useLayoutEffect(() => {
     const box = scroller.current;
     if (!box || box.scrollWidth <= box.clientWidth) return;
@@ -24,62 +142,53 @@ export const ExampleCard = ({ c, projectId }) => {
     const left = Math.min(...marks.map((r) => r.left)) - outer.left + box.scrollLeft;
     const right = Math.max(...marks.map((r) => r.right)) - outer.left + box.scrollLeft;
     box.scrollLeft = centeredScrollLeft(left, right, box.clientWidth, box.scrollWidth);
-  }, [c]);
+  }, [c, view]);
+
+  // A sentence nobody has parsed has no tree to draw, so that view is not
+  // offered rather than offered and empty.
+  const hasTree = (c.rows || []).some((r) => !r.token && r.head !== '' && r.head != null);
+  const shown = view === 'tree' && !hasTree ? 'table' : view;
+  const cols = shown === 'grid' ? ['id', 'form', ...gridColumns(c)] : columns;
 
   return (
     <div className="my-3 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
-      <div className="mb-1.5 text-xs">
+      <div className="mb-1.5 flex items-start gap-2 text-xs">
         <a
           href={sentenceHref('', projectId, c)}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 font-medium text-foreground hover:underline"
+          className="inline-flex min-w-0 items-center gap-1.5 font-medium text-foreground hover:underline"
           title="Open this sentence in the editor"
         >
-          <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
-          {citationTitle(c)}
+          <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <span className="truncate">{citationTitle(c)}</span>
         </a>
+        <div className="ml-auto flex shrink-0 rounded border bg-background">
+          {VIEWS.filter((v) => v.id !== 'tree' || hasTree).map((v) => (
+            <button
+              key={v.id}
+              type="button"
+              onClick={() => setView(v.id)}
+              aria-pressed={shown === v.id}
+              className={cn(
+                'px-1.5 py-0.5 text-[11px] first:rounded-l last:rounded-r',
+                shown === v.id
+                  ? 'bg-primary/15 font-medium text-foreground'
+                  : 'text-muted-foreground hover:bg-muted',
+              )}
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="py-0.5">{c.text}</div>
-      {columns.length > 0 && (
-        <div ref={scroller} className="mt-1.5 overflow-x-auto">
-          <table className="border-separate border-spacing-0 whitespace-nowrap font-mono text-xs">
-            <thead>
-              <tr>
-                {columns.map((col) => (
-                  <th
-                    key={col}
-                    scope="col"
-                    className="px-1.5 text-left align-bottom text-[11px] font-normal leading-5 text-muted-foreground"
-                  >
-                    {col}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r, i) => (
-                <tr key={i}>
-                  {columns.map((col, j) => (
-                    <td
-                      key={col}
-                      data-cited={r.focus && j === 0 ? '' : undefined}
-                      className={cn(
-                        'px-1.5 align-top leading-5',
-                        r.token && 'text-muted-foreground',
-                        r.focus && (r.token ? 'bg-primary/10' : 'bg-primary/15'),
-                        r.focus && j === 0 && 'rounded-l',
-                        r.focus && j === columns.length - 1 && 'rounded-r',
-                      )}
-                    >
-                      {r[col]}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {shown === 'tree' ? (
+        <div className="mt-1.5 overflow-x-auto">
+          <DepTree c={c} />
         </div>
+      ) : (
+        columns.length > 0 && <Table c={c} columns={cols} scroller={scroller} />
       )}
     </div>
   );

@@ -153,3 +153,53 @@ def test_the_toolkit_wires_uds_tools_to_the_shared_loop():
 
 class _NoWeb:
     web = None
+
+
+def test_a_citation_leaves_out_columns_nothing_fills(ws):
+    """Eight CoNLL-U columns is a lot for a narrow panel, and a column no word
+    in the sentence fills is pure noise. ID and FORM always stay: they are what
+    a reference points at."""
+    from plaid_agent.ud.citations import resolve_citations
+
+    call_tool(ws, 'read_document', {'document': 'Viaje'})
+    [card] = resolve_citations(ws, '<cite doc="Viaje" ref="s1"/>')
+    assert card['columns'][:2] == ['id', 'form']
+    # Exactly the filled columns survive, in both directions.
+    for col in card['columns'][2:]:
+        assert any(r[col] for r in card['rows']), f'{col} survived but nothing fills it'
+    for col in ('lemma', 'upos', 'xpos', 'feats', 'head', 'deprel'):
+        if col not in card['columns']:
+            assert not any(r[col] for r in card['rows']), f'{col} was dropped but is filled'
+
+
+def test_a_row_is_keyed_by_its_column_name(ws):
+    """The card reads row[column] for whichever columns it draws, so the two
+    have to agree. They did not: the column was "feats" and the key
+    "features", and the card's FEATS column rendered blank for every
+    sentence that had any."""
+    from plaid_agent.ud.citations import resolve_citations
+
+    call_tool(ws, 'read_document', {'document': 'Viaje'})
+    [card] = resolve_citations(ws, '<cite doc="Viaje" ref="s1"/>')
+    for row in card['rows']:
+        for col in card['columns']:
+            assert col in row, col
+
+
+def test_the_model_can_ask_for_how_an_example_is_drawn(ws):
+    """A full CoNLL-U table is rarely what a claim rests on. The model says
+    which view fits its point; the reader can still switch the card."""
+    from plaid_agent.ud.citations import resolve_citations
+
+    call_tool(ws, 'read_document', {'document': 'Viaje'})
+    [tree] = resolve_citations(ws, '<cite doc="Viaje" ref="s1" view="tree"/>')
+    assert tree['view'] == 'tree'
+    [grid] = resolve_citations(ws, '<cite doc="Viaje" ref="s1" view="grid" fields="upos"/>')
+    assert grid['view'] == 'grid' and grid['fields'] == ['upos']
+    # An unknown view is not passed on: the card would not know what to do.
+    [odd] = resolve_citations(ws, '<cite doc="Viaje" ref="s1" view="hologram"/>')
+    assert odd['view'] == 'table'
+    # A field that is not a column of this sentence cannot be asked for: the
+    # card would draw an empty stripe for it.
+    [gone] = resolve_citations(ws, '<cite doc="Viaje" ref="s1" view="grid" fields="upos,nonsense"/>')
+    assert gone['fields'] == ['upos']

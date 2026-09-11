@@ -76,6 +76,12 @@ yourself: cite instead. Where you would show an example, put the tag ALONE on it
 rendered example appears there); a tag inside a sentence becomes a link only. Always give doc: never write a \
 bare reference like "s3.w2" on its own. For instance:\n\nThe subject follows the verb here:\n\n\
 <cite doc="Viaje" ref="s3"/>\n\nwhile in <cite doc="Viaje" ref="s5"/> it precedes it.
+- SAY HOW AN EXAMPLE SHOULD BE DRAWN, with view= on the tag. A full CoNLL-U table is rarely what a claim \
+rests on, and it is a lot to read in a narrow panel. view="tree" draws the dependency arcs over the words, \
+the way the UD documentation does: use it whenever the point is about heads, relations, or the shape of the \
+tree. view="grid" draws only the columns you name, as in view="grid" fields="upos": use it when the point is \
+about one or two columns. Leave view off for a point that really does need the whole table. The reader can \
+switch any example to any of the three, so this is a starting view and not a decision made for them.
 '''
 
 WEB = webtools.prompt(

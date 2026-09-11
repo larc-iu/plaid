@@ -8,7 +8,7 @@ tag's own text.
 """
 
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from .project import COLUMNS, UdDoc, parse_ref, resolve
 from .tools import ToolError, Workspace
@@ -55,17 +55,28 @@ def parse_refs(ref: str) -> List[str]:
     return out
 
 
+VIEWS = ('table', 'tree', 'grid')
+
+
 def tag_parts(attrs: str):
-    """-> (doc, ref) from a <cite> tag's attributes, either possibly ''."""
+    """-> (doc, ref, view, fields) from a <cite> tag's attributes.
+
+    ``doc`` and ``ref`` may each be ''. ``view`` is how the example is drawn
+    and ``fields`` which columns a grid shows; both are what the model ASKS
+    for, and the reader can still switch the card to any of them.
+    """
     at = {}
     for m in ATTR_RE.finditer(attrs):
         at[m.group(1).lower()] = next(g for g in m.groups()[1:] if g is not None)
     doc = at.get('doc') or at.get('document') or ''
     ref = at.get('ref') or at.get('sentence') or ''
-    return doc.strip(), ref.strip()
+    view = at.get('view', '').strip().lower()
+    fields = [f.strip().lower() for f in at.get('fields', '').split(',') if f.strip()]
+    return doc.strip(), ref.strip(), (view if view in VIEWS else ''), fields
 
 
-def _card(doc: UdDoc, sentence_index: int, focus: List[int]) -> Dict[str, Any]:
+def _card(doc: UdDoc, sentence_index: int, focus: List[int],
+          view: str = '', fields: Optional[List[str]] = None) -> Dict[str, Any]:
     """One example card: the sentence as STRUCTURE, not as a rendered block.
 
     The tab has to mark the words the citation singles out, and it cannot do
@@ -73,6 +84,9 @@ def _card(doc: UdDoc, sentence_index: int, focus: List[int]) -> Dict[str, Any]:
     row per line, each saying whether it is in focus, and the tab decides how a
     CoNLL-U table looks.
     """
+    # A row is keyed by its COLUMN name, lowercased, so the card can read
+    # row[column] for any column. The app calls the field "features" and
+    # CoNLL-U calls the column FEATS: the column name wins here.
     s = doc.sentences[sentence_index - 1]
     marked = set(focus)
     rows = []
@@ -80,17 +94,22 @@ def _card(doc: UdDoc, sentence_index: int, focus: List[int]) -> Dict[str, Any]:
         if len(t.words) > 1:
             span = f'{t.words[0].index}-{t.words[-1].index}'
             rows.append({'id': span, 'form': t.surface, 'lemma': '', 'upos': '', 'xpos': '',
-                         'features': '', 'head': '', 'deprel': '', 'token': True,
+                         'feats': '', 'head': '', 'deprel': '', 'token': True,
                          'focus': any(w.index in marked for w in t.words)})
         for w in t.words:
             rows.append({'id': str(w.index), 'form': w.form,
                          'lemma': w.marked('lemma'), 'upos': w.marked('upos'),
-                         'xpos': w.marked('xpos'), 'features': w.marked('features'),
+                         'xpos': w.marked('xpos'), 'feats': w.marked('features'),
                          'head': '' if w.head is None else str(w.head),
                          'deprel': w.deprel or '', 'token': False,
                          'focus': w.index in marked})
-    return {'sentence': s.index, 'text': s.text, 'columns': [c.lower() for c in COLUMNS],
-            'rows': rows, 'focus': focus}
+    # A column nothing in this sentence fills is noise in a narrow panel, so it
+    # is left out. ID and FORM always stay: they are what a reference points at.
+    keep = [c.lower() for c in COLUMNS]
+    keep = [c for c in keep if c in ('id', 'form') or any(r[c] for r in rows)]
+    return {'sentence': s.index, 'text': s.text, 'columns': keep, 'rows': rows,
+            'focus': focus, 'view': view or 'table',
+            'fields': [f for f in (fields or []) if f in keep]}
 
 
 def resolve_citations(ws: Workspace, text: str) -> List[Dict[str, Any]]:
@@ -102,7 +121,7 @@ def resolve_citations(ws: Workspace, text: str) -> List[Dict[str, Any]]:
     loaded = list(ws._docs.values())
     read_before = len(ws._docs)
 
-    def add(key: str, doc_name: str, ref: str) -> None:
+    def add(key: str, doc_name: str, ref: str, view: str = '', fields=None) -> None:
         if key in seen or len(out) >= MAX_CITATIONS:
             return
         seen.add(key)
@@ -136,21 +155,21 @@ def resolve_citations(ws: Workspace, text: str) -> List[Dict[str, Any]]:
         if sentence is None:
             return
         out.append({'key': key, 'document_id': doc.id, 'document_name': doc.name,
-                    **_card(doc, sentence, focus)})
+                    **_card(doc, sentence, focus, view, fields)})
 
     found: List[tuple] = []
     for m in TAG_RE.finditer(text):
-        doc, ref = tag_parts(m.group('attrs'))
+        doc, ref, view, fields = tag_parts(m.group('attrs'))
         # A tag without doc= means one thing when the turn read one document.
         if ref and (doc or len(loaded) == 1):
-            found.append((m.start(), m.group(0), doc or loaded[0].id, ref))
+            found.append((m.start(), m.group(0), doc or loaded[0].id, ref, view, fields))
     for m in BRACE_RE.finditer(text):
-        found.append((m.start(), m.group(0), m.group('doc').strip().strip('"\''), m.group('ref')))
+        found.append((m.start(), m.group(0), m.group('doc').strip().strip('"\''), m.group('ref'), '', []))
     if len(loaded) == 1:
         blank = lambda m: ' ' * len(m.group(0))  # noqa: E731 - keep offsets, so order survives
         rest = BRACE_RE.sub(blank, TAG_RE.sub(blank, text))
         for m in BARE_RE.finditer(rest):
-            found.append((m.start(), m.group(0), loaded[0].id, m.group('ref')))
-    for _, key, doc, ref in sorted(found, key=lambda f: f[0]):
-        add(key, doc, ref)
+            found.append((m.start(), m.group(0), loaded[0].id, m.group('ref'), '', []))
+    for _, key, doc, ref, view, fields in sorted(found, key=lambda f: f[0]):
+        add(key, doc, ref, view, fields)
     return out
