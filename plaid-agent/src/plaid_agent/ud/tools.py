@@ -630,6 +630,17 @@ TOOLS = [
         {'document': _DOC,
          'ref': {'type': 'string', 'description': 'The second of the two sentences, "s3".'}},
         ['document', 'ref']),
+    _fn('query_help',
+        'The Plaid query language, and this project\'s layer names. Call it before writing a '
+        'query; it costs nothing until you need it.', {}, []),
+    _fn('query',
+        'Run one read-only Plaid query over this project. The escape hatch for a question the '
+        'other reads cannot express: two columns at once, adjacency, a join. Layers are named by '
+        'name. Call query_help first.',
+        {'query': {'type': 'object', 'description': 'The query object: find, where, return, limit, '
+                                                    'order_by. See query_help.'},
+         'limit': {'type': 'integer', 'description': 'Rows to show (default 50, max 500).'}},
+        ['query']),
     _fn('restore_document',
         'PLAN: put a document back as it was at a moment in its history, every layer of it. The '
         'plan shows what would change, from the server\'s own dry run, so it is not a guess. '
@@ -847,8 +858,11 @@ from .shape import t_set_words  # noqa: E402
 from .sentences import t_merge_sentences, t_split_sentence  # noqa: E402
 
 _IMPL['set_words'] = t_set_words
+from .query import t_query, t_query_help  # noqa: E402
 from .restore import t_restore_document  # noqa: E402
 
 _IMPL['split_sentence'] = t_split_sentence
 _IMPL['restore_document'] = t_restore_document
+_IMPL['query'] = t_query
+_IMPL['query_help'] = t_query_help
 _IMPL['merge_sentences'] = t_merge_sentences

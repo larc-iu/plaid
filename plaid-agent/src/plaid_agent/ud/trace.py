@@ -49,6 +49,10 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
             span = f' (sentences {a.get("from_sentence") or 1}'
             span += f'–{a["to_sentence"]})' if a.get('to_sentence') else ' on)'
         return f'Read {q(a.get("document"))}{span}'
+    if name == 'query_help':
+        return 'Looked up the query language'
+    if name == 'query':
+        return 'Ran a query'
     if name == 'restore_document':
         return f'Planned restoring {q(a.get("document"))} to {a.get("as_of", "")}'
     if name == 'split_sentence':
@@ -126,6 +130,8 @@ _PROGRESS = {
     'read_document': lambda a: f'Reading "{a.get("document", "")}"…',
     'split_sentence': lambda a: 'Splitting a sentence…',
     'restore_document': lambda a: f'Checking a restore of "{a.get("document", "")}"…',
+    'query': lambda a: 'Running a query…',
+    'query_help': lambda a: 'Reading the query language…',
     'merge_sentences': lambda a: 'Joining two sentences…',
     'search': lambda a: f'Searching for "{a.get("pattern", "")}"…',
     'frequency_list': lambda a: 'Counting frequencies…',
