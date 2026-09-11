@@ -28,6 +28,7 @@ export const VirtualSentenceRow = ({
   colors,
   visibleFields,
   onToggleField,
+  onAskAssistant,
 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [hasBeenVisible, setHasBeenVisible] = useState(false);
@@ -113,6 +114,8 @@ export const VirtualSentenceRow = ({
         colors={colors}
         visibleFields={visibleFields}
         onToggleField={onToggleField}
+        onAskAssistant={onAskAssistant}
+        sentenceIndex={sentenceIndex}
       />
     </div>
   );

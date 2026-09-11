@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { ChevronRight, Check, Undo2, PenLine } from 'lucide-react';
+import { ChevronRight, Check, Undo2, PenLine, Bot } from 'lucide-react';
 import { Combobox } from '@ui/components/ui/combobox';
 import { Button } from '@ui/components/ui/button';
 import { isMachine, needsReview, provState, PROV_STATES } from '@larc-iu/plaid-client';
@@ -1062,6 +1062,9 @@ export const SentenceRow = React.memo(
     colors,
     visibleFields = ALL_FIELDS_VISIBLE,
     onToggleField,
+    onAskAssistant,
+    // 0-based here; the assistant addresses sentences from 1, as CoNLL-U does.
+    sentenceIndex = 0,
   }) => {
     // Token data is already pre-processed in sentenceData
     const tokenData = sentenceData.tokens;
@@ -1407,7 +1410,10 @@ export const SentenceRow = React.memo(
           with the first token, so they read as belonging to this sentence.
           Accept takes everything proposed, Discard throws the machine's
           proposals away, and each shows only when it has something to do. */}
-        {(handleEditText || comments || (!isReadOnly && (hasInferred || hasMachine))) && (
+        {(handleEditText ||
+          comments ||
+          onAskAssistant ||
+          (!isReadOnly && (hasInferred || hasMachine))) && (
           <div className="sentence-confirm">
             {!isReadOnly && onConfirmTokens && hasInferred && (
               <Button
@@ -1440,6 +1446,17 @@ export const SentenceRow = React.memo(
               >
                 <PenLine width={12} height={12} />
                 Edit text
+              </Button>
+            )}
+            {onAskAssistant && (
+              <Button
+                className="h-6 gap-1 px-2 text-xs"
+                variant="ghost"
+                onClick={() => onAskAssistant({ ref: `s${sentenceIndex + 1}`, label: 'Sentence' })}
+                title="Ask the assistant about this sentence"
+              >
+                <Bot width={12} height={12} />
+                Ask
               </Button>
             )}
             {comments && sentenceToken?.id && (

@@ -117,6 +117,7 @@ export const AnnotationEditor = () => {
     setChromeBusy,
     assistantOpen,
     setAssistantOpen,
+    askAssistant,
   } = useDocumentEditor();
   // Deep link from the search page: ?sent=<sentenceTokenId> scrolls to and
   // briefly highlights that sentence once the grid is rendered.
@@ -662,6 +663,7 @@ export const AnnotationEditor = () => {
                         colors={layerInfo?.colors}
                         visibleFields={visibleFields}
                         onToggleField={handleToggleField}
+                        onAskAssistant={viewingHistoricalState ? undefined : askAssistant}
                       />
                     </div>
                   );
