@@ -17,22 +17,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 
-from plaid_client.provenance import prov_state, MACHINE, CONTRIBUTED_STATE
-
-UNVERIFIED = '~'    # after a value: machine-made, nobody has confirmed it
-CONTRIBUTED = '^'   # after a value: a contributor's work, no verifier has reviewed it
-REVIEWABLE = (MACHINE, CONTRIBUTED_STATE)
-
-
-def review_mark(metadata) -> str:
-    """The mark a value carries in a read: ``~`` for unconfirmed machine
-    output, ``^`` for a contributor's unreviewed work, nothing otherwise."""
-    state = prov_state(metadata)
-    return UNVERIFIED if state == MACHINE else CONTRIBUTED if state == CONTRIBUTED_STATE else ''
-
-
-def _mark(value: str, metadata) -> str:
-    return value + review_mark(metadata)
+from ..core.provenance import CONTRIBUTED, REVIEWABLE, UNVERIFIED, mark as _mark, review_mark  # noqa: F401
 from typing import Dict, List, Optional, Tuple
 
 import regex as uregex
