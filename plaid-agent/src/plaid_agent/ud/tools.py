@@ -91,6 +91,21 @@ class Workspace:
     def add_op(self, op: Dict[str, Any]) -> None:
         """Add one op, replacing an earlier op on the same target so a model
         that changes its mind inside one turn does not plan two writes."""
+        # A page from the web is text by a stranger, and this turn has read
+        # one. Nothing it says gets to become a proposed change in the same
+        # breath: the user sees what was found first, and asks for the change
+        # separately if they want it.
+        #
+        # IGT has had this since its web tools landed, and the prompt UD ships
+        # (webtools.PROMPT) tells the model the workspace enforces it. UD's did
+        # not, so the assistant could stage a plan in a turn a web page had
+        # steered, and the user would have been approving a card whose origin
+        # was a stranger's page.
+        if self.web is not None and getattr(self.web, 'read', False):
+            raise ToolError(
+                'This turn has read the web, so it cannot also plan changes. Tell the user what you '
+                'found and what you would change, and let them ask for it. The next turn can plan it '
+                'without looking anything up.')
         key = op_target(op)
         if key is not None:
             for i, prev in enumerate(self.ops):
@@ -274,6 +289,19 @@ def _no_boundary_moved(ws: Workspace, doc: UdDoc) -> None:
                             f'(plan_status, drop_planned).')
 
 
+def _boundary_can_still_move(ws: Workspace, doc: UdDoc) -> None:
+    """The same rule seen from the other side, for the boundary tools
+    themselves. `_no_boundary_moved` refuses an edit planned AFTER a boundary
+    move; without this, planning them the other way round was accepted, the
+    card said the sentences would renumber, and `validate_ops` refused the
+    whole thing only once the user had approved it."""
+    if any(op.get('document_id') == doc.id for op in ws.ops):
+        raise ToolError(f'This plan already changes "{doc.name}", and moving a sentence boundary '
+                        f'renumbers the sentences every other reference names, so it has to be a '
+                        f'plan of its own. Apply what is planned, then move the boundary '
+                        f'(plan_status, drop_planned).')
+
+
 def _not_being_reshaped(ws: Workspace, words: List[Word]) -> None:
     """Reshaping a token deletes and remakes its words, so annotating one of
     them in the same plan writes to something that will not exist."""
@@ -283,6 +311,21 @@ def _not_being_reshaped(ws: Workspace, words: List[Word]) -> None:
     if hit:
         raise ToolError('This plan already reshapes the token these words belong to, and that '
                         'deletes them. Do one or the other (plan_status, drop_planned).')
+
+
+def _no_words_annotated(ws: Workspace, token) -> None:
+    """Reshaping a token deletes and remakes its words, so a plan that already
+    annotates one of them would be writing to something that will not exist.
+    `_not_being_reshaped` is this rule seen from the other side; without both,
+    annotate-then-reshape was staged, approved, and only then refused."""
+    doomed = {w.id for w in token.words}
+    for op in ws.ops:
+        if op.get('kind') == 'set_words' and set(op.get('existing_word_ids') or []) & doomed:
+            raise ToolError('This plan already reshapes this token. Do one or the other '
+                            '(plan_status, drop_planned).')
+        if op.get('token_id') in doomed or op.get('word_id') in doomed:
+            raise ToolError('This plan already annotates a word of this token, and reshaping it '
+                            'deletes that word. Do one or the other (plan_status, drop_planned).')
 
 
 def _guards(ws: Workspace, doc: UdDoc) -> None:

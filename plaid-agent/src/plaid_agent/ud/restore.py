@@ -71,7 +71,7 @@ def t_restore_document(ws: Workspace, document: str = None, as_of: str = None) -
     if not total:
         return f'Nothing to restore: "{doc.name}" is already as it was at {as_of}.'
     lines = restore_lines(ws.project, summary)
-    ws.ops.append({'kind': 'restore_document', 'document_id': doc.id, 'as_of': as_of,
+    ws.add_op({'kind': 'restore_document', 'document_id': doc.id, 'as_of': as_of,
                    'label': f'restore "{doc.name}" to {as_of} '
                             f'({total} change{"s" if total != 1 else ""}: ' + ', '.join(lines) + ')'})
     return ('Planned: restore "{}" to {}. From the server\'s dry run, that changes {}.'

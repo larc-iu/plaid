@@ -69,11 +69,26 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
     reshaped = {w for op in ops if op.get('kind') == 'set_words'
                 for w in (op.get('existing_word_ids') or [])}
     if reshaped:
+        # `confirm` carries a span_id, not a token_id, so listing the kinds
+        # that name a word let it through. Ask the op what it names instead.
         for op in ops:
-            if op.get('kind') in ('set_span', 'set_head', 'del_relation') and (
-                    op.get('token_id') in reshaped or op.get('word_id') in reshaped):
+            if op.get('kind') == 'set_words':
+                continue
+            if op.get('token_id') in reshaped or op.get('word_id') in reshaped:
                 raise ValueError('this plan both reshapes a token and annotates one of its words, '
                                  'and the reshape deletes that word')
+    # Two reshapes of the same token delete its words twice and then create
+    # both sets, so the token ends up holding the union or the batch fails
+    # outright. Either way it is not what was approved.
+    seen_reshapes = set()
+    for op in ops:
+        if op.get('kind') != 'set_words':
+            continue
+        words = frozenset(op.get('existing_word_ids') or [])
+        if words & seen_reshapes:
+            raise ValueError('this plan reshapes the same token twice; keep the one you want '
+                             '(plan_status, drop_planned)')
+        seen_reshapes |= words
     # A sentence boundary moving renumbers every sentence after it, and every
     # reference in this plan is positional: s7.w2 means a different word once
     # s3 has been cut. Rather than resolve that with a rule nobody will

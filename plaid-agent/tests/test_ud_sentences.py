@@ -106,10 +106,15 @@ def test_a_boundary_and_an_edit_cannot_share_a_plan(ws):
 
 
 def test_the_same_holds_the_other_way_round(ws):
+    """The edit was planned first, so THIS is the op that would invalidate it.
+    The old assertion here was `'renumbers' in out or 'plan' in out.lower()`,
+    and the SUCCESS message begins "Planned: s1 splits before ...", so it was
+    green over a real hole: the split was accepted and the whole plan was
+    refused only once the user had approved it."""
     run(ws, 'set_field', document='Viaje', refs=['s2.w1'], field='lemma', value='correr')
     out = run(ws, 'split_sentence', document='Viaje', ref='s1.w2')
-    # The edit was planned first, so THIS is the op that would invalidate it.
-    assert 'renumbers' in out or 'plan' in out.lower()
+    assert 'plan of its own' in out, out
+    assert not any(op.get('kind') == 'split_sentence' for op in ws.ops)
 
 
 def test_a_plan_moves_at_most_one_boundary(ws):
@@ -262,3 +267,58 @@ def test_a_whole_document_review_cannot_join_a_moved_boundary(ws, tool):
     run(ws, 'split_sentence', document='Viaje', ref='s1.w2')
     out = run(ws, tool, document='Viaje')
     assert 'renumbers' in out, out
+
+
+# --- the guards, from both sides -----------------------------------------------
+
+def test_a_reshape_will_not_join_a_plan_that_annotates_the_token_it_deletes(ws):
+    """`_not_being_reshaped` refused annotate-AFTER-reshape. The other order was
+    staged, shown on the card, approved, and only then refused by validate_ops."""
+    run(ws, 'set_field', document='Viaje', refs=['s1.w2'], field='upos', value='ADP')
+    out = run(ws, 'set_words', document='Viaje', ref='s1.w2', forms=['a', 'el'])
+    assert 'already annotates a word of this token' in out, out
+    assert not any(op.get('kind') == 'set_words' for op in ws.ops)
+
+
+def test_the_same_token_is_not_reshaped_twice(ws):
+    """Two reshapes delete its words twice and create both sets, so the token
+    ends up holding the union or the batch fails outright."""
+    run(ws, 'set_words', document='Viaje', ref='s1.w2-3', forms=['al'])
+    out = run(ws, 'set_words', document='Viaje', ref='s1.w2', forms=['a', 'el'])
+    assert 'reshapes' in out.lower(), out
+
+
+def test_validate_refuses_a_confirm_on_a_word_a_reshape_deletes():
+    """A confirm op carries a span_id, not a token_id, so listing the kinds
+    that name a word let it straight through the backstop."""
+    ops = [
+        {'kind': 'set_words', 'document_id': 'd1', 'existing_word_ids': ['w1', 'w2'],
+         'forms': ['a', 'b'], 'surface': 'ab', 'token_id': 't1', 'text_id': 'tx',
+         'word_layer_id': 'W', 'form_layer_id': 'F', 'lemma_layer_id': 'L'},
+        {'kind': 'confirm', 'span_id': 'sp1', 'token_id': 'w1', 'document_id': 'd1'},
+    ]
+    with pytest.raises(ValueError, match='annotates one of its words'):
+        validate_ops(ops)
+
+
+def test_a_turn_that_read_the_web_cannot_plan_a_change(ws):
+    """IGT has refused this since its web tools landed, and the prompt UD ships
+    says the workspace enforces it. UD's did not, so a page returned by a web
+    search could tell the model to stage changes and the user would be
+    approving a card whose origin was a stranger's page."""
+    class Web:
+        read = True
+
+    ws.web = Web()
+    for tool, args in [
+        ('set_field', {'refs': ['s1.w1'], 'field': 'lemma', 'value': 'x'}),
+        ('set_head', {'ref': 's1.w2', 'head': 1, 'deprel': 'obl'}),
+        ('confirm', {}),
+        ('set_words', {'ref': 's1.w1', 'forms': ['a', 'b']}),
+        ('split_sentence', {'ref': 's1.w2'}),
+        ('merge_sentences', {'ref': 's2'}),
+        ('restore_document', {'as_of': '2026-09-05T18:45:49Z'}),
+    ]:
+        out = run(ws, tool, document='Viaje', **args)
+        assert 'read the web' in out, f'{tool} planned anyway: {out}'
+    assert not ws.ops
