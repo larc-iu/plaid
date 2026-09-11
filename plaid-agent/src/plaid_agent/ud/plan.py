@@ -14,9 +14,16 @@ from collections import Counter
 from typing import Any, Dict, List, Optional
 
 from ..core.plan import CONFIRM, PlanError, Stamps, TrackingBatcher, created_id
+from .sentences import apply_merge_sentences, apply_split_sentence
 from .shape import apply_set_words, finish_set_words
 
-KINDS = ('set_span', 'set_head', 'del_relation', 'confirm', 'run_parse', 'set_words')
+KINDS = ('set_span', 'set_head', 'del_relation', 'confirm', 'run_parse', 'set_words',
+         'split_sentence', 'merge_sentences')
+
+# Ops that move where sentences begin, which renumbers every sentence after
+# them. References are positional, so no other op in the plan can be trusted
+# to still mean what it said.
+RESHAPES_DOCUMENT = ('split_sentence', 'merge_sentences')
 
 # How long the parser may say nothing before the plan gives up on it. This
 # measures SILENCE, not elapsed time: the parser reports progress as it goes,
@@ -31,6 +38,8 @@ REQUIRED = {
     'run_parse': ('document_ids', 'service_id', 'project_id', 'language'),
     'set_words': ('token_id', 'text_id', 'forms', 'word_layer_id', 'form_layer_id',
                   'lemma_layer_id'),
+    'split_sentence': ('document_id', 'sentence_id', 'char_pos'),
+    'merge_sentences': ('document_id', 'sentence_id', 'previous_id'),
 }
 
 
@@ -59,6 +68,30 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
                     op.get('token_id') in reshaped or op.get('word_id') in reshaped):
                 raise ValueError('this plan both reshapes a token and annotates one of its words, '
                                  'and the reshape deletes that word')
+    # A sentence boundary moving renumbers every sentence after it, and every
+    # reference in this plan is positional: s7.w2 means a different word once
+    # s3 has been cut. Rather than resolve that with a rule nobody will
+    # remember, a plan that moves a boundary does that and nothing else to the
+    # document. The tools refuse the combination as it is built; this is the
+    # backstop.
+    # Per DOCUMENT: a boundary moving in one renumbers nothing in another, so a
+    # plan may move one boundary and still edit a different document.
+    moved: Dict[Any, int] = {}
+    for op in ops:
+        if op.get('kind') in RESHAPES_DOCUMENT:
+            moved[op.get('document_id')] = moved.get(op.get('document_id'), 0) + 1
+    if moved:
+        others = {op.get('document_id') for op in ops
+                  if op.get('kind') not in RESHAPES_DOCUMENT} & set(moved)
+        if others:
+            raise ValueError('this plan both moves a sentence boundary in and edits '
+                             + ', '.join(sorted(others))
+                             + ', and the boundary renumbers the references the edits use')
+        crowded = sorted(d for d, n in moved.items() if n > 1)
+        if crowded:
+            raise ValueError('a plan moves at most one sentence boundary per document, and this '
+                             'one moves several in ' + ', '.join(crowded)
+                             + ': each renumbers the sentences the next would name')
     parsed = {d for op in ops if op.get('kind') == 'run_parse' for d in (op.get('document_ids') or [])}
     if parsed:
         clash = {op.get('document_id') for op in ops if op.get('kind') != 'run_parse'} & parsed
@@ -157,6 +190,12 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps) -> Dict[str, 
             elif kind == 'set_words':
                 apply_set_words(client, op, b, stamp)
                 counts['reshaped tokens'] += 1
+            elif kind == 'split_sentence':
+                apply_split_sentence(client, op, b, stamp)
+                counts['sentence boundaries'] += 1
+            elif kind == 'merge_sentences':
+                apply_merge_sentences(client, op, b, stamp)
+                counts['sentence boundaries'] += 1
 
         # The relations need those spans to exist, so the batch has to land first.
         b.flush()
@@ -212,6 +251,13 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps) -> Dict[str, 
 
 # --- summary --------------------------------------------------------------------
 
+def _plural(name: str, n: int) -> str:
+    """"dependency" -> "dependencies", not "dependencys"."""
+    if n == 1:
+        return name
+    return name[:-1] + 'ies' if name.endswith('y') else name + 's'
+
+
 def summarize(ops: List[Dict[str, Any]]) -> str:
     """A plan in one phrase, for the audit label and the applied message."""
     c = Counter()
@@ -229,10 +275,18 @@ def summarize(ops: List[Dict[str, Any]]) -> str:
             c['parsed document'] += len(op.get('document_ids') or [])
         elif kind == 'set_words':
             c['reshaped token'] += 1
+        elif kind == 'split_sentence':
+            c['sentence split'] += 1
+            # The relations it orphans go with it, and the user should see how
+            # many rather than discover it afterwards.
+            gone = len(op.get('relation_ids') or [])
+            if gone:
+                c['removed dependency'] += gone
+        elif kind == 'merge_sentences':
+            c['sentence merge'] += 1
     if not c:
         return 'no changes'
-    parts = [f'{n} {name}' + ('s' if n != 1 else '') for name, n in c.most_common()]
-    return ', '.join(parts)
+    return ', '.join(f'{n} {_plural(name, n)}' for name, n in c.most_common())
 
 
 def _parse(client, op, document_id: str, notes: List[str]) -> None:

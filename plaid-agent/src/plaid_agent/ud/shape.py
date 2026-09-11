@@ -35,8 +35,9 @@ def _token_of(ws: Workspace, doc: UdDoc, ref: str) -> Token:
 
 def t_set_words(ws: Workspace, document: str = None, ref: str = None, forms=None) -> str:
     doc = ws.doc(document)
-    from .tools import _no_parse_planned
+    from .tools import _no_boundary_moved, _no_parse_planned
     _no_parse_planned(ws, doc)
+    _no_boundary_moved(ws, doc)
     token = _token_of(ws, doc, ref)
     if isinstance(forms, str):
         forms = [forms]

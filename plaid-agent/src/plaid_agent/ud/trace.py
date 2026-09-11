@@ -49,6 +49,10 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
             span = f' (sentences {a.get("from_sentence") or 1}'
             span += f'–{a["to_sentence"]})' if a.get('to_sentence') else ' on)'
         return f'Read {q(a.get("document"))}{span}'
+    if name == 'split_sentence':
+        return f'Planned a sentence split at {q(a.get("ref"))}{in_doc(a)}'
+    if name == 'merge_sentences':
+        return f'Planned joining {q(a.get("ref"))} onto the sentence before it{in_doc(a)}'
     if name == 'search':
         where = a.get('field') or 'the corpus'
         return f'Searched {where} for {q(a.get("pattern"))}{in_doc(a)}'
@@ -118,6 +122,8 @@ _PROGRESS = {
     'project_overview': lambda a: 'Looking at the project…',
     'list_documents': lambda a: 'Listing the documents…',
     'read_document': lambda a: f'Reading "{a.get("document", "")}"…',
+    'split_sentence': lambda a: 'Splitting a sentence…',
+    'merge_sentences': lambda a: 'Joining two sentences…',
     'search': lambda a: f'Searching for "{a.get("pattern", "")}"…',
     'frequency_list': lambda a: 'Counting frequencies…',
     'check_consistency': lambda a: 'Checking the corpus for disagreements…',

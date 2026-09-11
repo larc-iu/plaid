@@ -250,6 +250,19 @@ def _no_parse_planned(ws: Workspace, doc: UdDoc) -> None:
                             f'the parse on its own, or drop it first (plan_status, drop_planned).')
 
 
+def _no_boundary_moved(ws: Workspace, doc: UdDoc) -> None:
+    """Moving a sentence boundary renumbers every sentence after it, and every
+    reference in a plan is positional. Rather than decide whether a later
+    "s7.w2" means before or after, a plan that moves a boundary does that and
+    nothing else to the document."""
+    for op in ws.ops:
+        if op.get('kind') in ('split_sentence', 'merge_sentences') and op.get('document_id') == doc.id:
+            raise ToolError(f'This plan already moves a sentence boundary in "{doc.name}", and '
+                            f'that renumbers the sentences every other reference names. Apply it '
+                            f'on its own, then plan the rest against the new numbering '
+                            f'(plan_status, drop_planned).')
+
+
 def _not_being_reshaped(ws: Workspace, words: List[Word]) -> None:
     """Reshaping a token deletes and remakes its words, so annotating one of
     them in the same plan writes to something that will not exist."""
@@ -265,6 +278,7 @@ def _words(ws: Workspace, doc: UdDoc, refs) -> List[Word]:
     """The words a list of references names, with a readable failure when one
     of them names a sentence or a multi-word token instead."""
     _no_parse_planned(ws, doc)
+    _no_boundary_moved(ws, doc)
     if isinstance(refs, str):
         refs = [refs]
     if not refs:
@@ -585,6 +599,22 @@ TOOLS = [
          'forms': {'type': 'array', 'items': {'type': 'string'},
                    'description': 'The words, in order, e.g. ["a", "el"].'}},
         ['document', 'ref', 'forms']),
+    _fn('split_sentence',
+        'PLAN: start a new sentence at this word, so the sentence it is in becomes two. Any '
+        'dependency relation that would end up spanning the two is deleted, because a relation '
+        'never crosses a sentence. Sentences after it renumber, so this is the ONLY change a '
+        'plan may carry for this document: every other reference would move.',
+        {'document': _DOC,
+         'ref': {'type': 'string', 'description': 'The word the new sentence starts at, "s3.w5".'}},
+        ['document', 'ref']),
+    _fn('merge_sentences',
+        'PLAN: join this sentence onto the one before it, so the two become one. Name the SECOND '
+        'of them: "s3" joins s2 and s3. Nothing is lost, since merging only widens a sentence. '
+        'Sentences after it renumber, so this is the ONLY change a plan may carry for this '
+        'document.',
+        {'document': _DOC,
+         'ref': {'type': 'string', 'description': 'The second of the two sentences, "s3".'}},
+        ['document', 'ref']),
     _fn('plan_status', 'Every change planned so far in this turn, numbered.', {}, []),
     _fn('discard_plan', 'Throw away everything planned so far and start the plan over.', {}, []),
     _fn('drop_planned', 'Drop some of the planned changes by their numbers from plan_status.',
@@ -789,5 +819,8 @@ def t_run_parse(ws: Workspace, documents=None, language: str = None,
 _IMPL['run_parse'] = t_run_parse
 
 from .shape import t_set_words  # noqa: E402
+from .sentences import t_merge_sentences, t_split_sentence  # noqa: E402
 
 _IMPL['set_words'] = t_set_words
+_IMPL['split_sentence'] = t_split_sentence
+_IMPL['merge_sentences'] = t_merge_sentences
