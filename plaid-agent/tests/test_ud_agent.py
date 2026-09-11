@@ -95,7 +95,14 @@ def test_a_citation_becomes_the_sentence_with_its_words_marked(ws):
     assert card['document_name'] == 'Viaje' and card['sentence'] == 1
     assert card['text'] == 'Vamos al mar.'
     assert card['focus'] == [2, 4]
-    assert '2-3  al' in card['rows'] and '# sent_id' not in card['rows']
+    # Structure, not a rendered block: the tab has to mark the cited words, and
+    # it cannot do that inside a pre-formatted string.
+    assert card['columns'] == ['id', 'form', 'lemma', 'upos', 'xpos', 'feats', 'head', 'deprel']
+    assert [r['id'] for r in card['rows']] == ['1', '2-3', '2', '3', '4', '5']
+    assert [r['id'] for r in card['rows'] if r['focus']] == ['2-3', '2', '4']
+    mwt = next(r for r in card['rows'] if r['id'] == '2-3')
+    assert mwt['token'] is True and mwt['form'] == 'al' and mwt['lemma'] == ''
+    assert next(r for r in card['rows'] if r['id'] == '4')['upos'] == 'NOUN~'
 
 
 def test_a_multi_word_token_citation_marks_both_its_words(ws):

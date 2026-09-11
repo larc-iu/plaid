@@ -10,7 +10,7 @@ tag's own text.
 import re
 from typing import Any, Dict, List
 
-from .project import UdDoc, parse_ref, render_sentence, resolve
+from .project import COLUMNS, UdDoc, parse_ref, resolve
 from .tools import ToolError, Workspace
 
 REF = r's\d+(?:\.w\d+(?:-\d+)?)?(?:\s*,\s*(?:s\d+\.)?w?\d+(?:-\d+)?)*'
@@ -66,9 +66,31 @@ def tag_parts(attrs: str):
 
 
 def _card(doc: UdDoc, sentence_index: int, focus: List[int]) -> Dict[str, Any]:
+    """One example card: the sentence as STRUCTURE, not as a rendered block.
+
+    The tab has to mark the words the citation singles out, and it cannot do
+    that inside a pre-formatted string. So a card carries the columns and one
+    row per line, each saying whether it is in focus, and the tab decides how a
+    CoNLL-U table looks.
+    """
     s = doc.sentences[sentence_index - 1]
-    return {'sentence': s.index, 'text': s.text, 'rows': render_sentence(s, header=False),
-            'focus': focus}
+    marked = set(focus)
+    rows = []
+    for t in s.tokens:
+        if len(t.words) > 1:
+            span = f'{t.words[0].index}-{t.words[-1].index}'
+            rows.append({'id': span, 'form': t.surface, 'lemma': '', 'upos': '', 'xpos': '',
+                         'features': '', 'head': '', 'deprel': '', 'token': True,
+                         'focus': any(w.index in marked for w in t.words)})
+        for w in t.words:
+            rows.append({'id': str(w.index), 'form': w.form,
+                         'lemma': w.marked('lemma'), 'upos': w.marked('upos'),
+                         'xpos': w.marked('xpos'), 'features': w.marked('features'),
+                         'head': '' if w.head is None else str(w.head),
+                         'deprel': w.deprel or '', 'token': False,
+                         'focus': w.index in marked})
+    return {'sentence': s.index, 'text': s.text, 'columns': [c.lower() for c in COLUMNS],
+            'rows': rows, 'focus': focus}
 
 
 def resolve_citations(ws: Workspace, text: str) -> List[Dict[str, Any]]:
