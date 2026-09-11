@@ -29,6 +29,7 @@ export const DependencyTree = forwardRef(
       deprelColors,
       deprelVocab,
       onExitDown,
+      onEditText,
     },
     ref,
   ) => {
@@ -288,7 +289,18 @@ export const DependencyTree = forwardRef(
     };
 
     // Handle token click for relation creation (fallback to click-click)
-    const handleTokenClick = (position) => {
+    const handleTokenClick = (event, position) => {
+      // Alt+click hands over to the Text Editor at this sentence, the mirror of
+      // Alt+click on a token there. It lives on the tree's grab area rather
+      // than on the word's form below it, because this transparent rect is
+      // drawn over that form and is what a click on a word actually hits.
+      // Allowed while read-only: reading the text of a sentence is not an edit.
+      if (event?.altKey && onEditText) {
+        event.preventDefault();
+        event.stopPropagation();
+        onEditText();
+        return;
+      }
       if (isReadOnly) return;
       if (editingRelation) {
         setEditingRelation(null);
@@ -829,7 +841,7 @@ export const DependencyTree = forwardRef(
                 height={tokenHeight * 1.2}
                 fill="transparent"
                 className={`tree-token-area ${dragOrigin ? 'tree-token-area--drag' : 'tree-token-area--grab'}`}
-                onClick={() => handleTokenClick(position)}
+                onClick={(e) => handleTokenClick(e, position)}
                 onMouseDown={(e) => handleTokenMouseDown(e, position)}
                 onMouseUp={(e) => handleTokenMouseUp(e, position)}
                 onMouseEnter={() => setHoveredToken(position)}

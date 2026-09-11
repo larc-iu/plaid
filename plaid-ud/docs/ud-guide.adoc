@@ -193,6 +193,16 @@ Fields save as you leave them, and clearing one removes the note rather than sto
 
 Everything here goes out with the document: `# source = ...` above a document, `# sent_id` and `# text_en` above a sentence.
 
+== Moving Between the Text and the Annotations
+
+Tokenizing and annotating are one job done in two places, so each hands over to the other at the sentence you are looking at.
+
+From **Annotate**: **Edit text** under a sentence, or **Alt+click** any word in it, opens the Text Editor scrolled to that sentence.
+
+From the **Text Editor**: **Alt+click** any token opens Annotate at that token's sentence. A plain click still toggles the sentence boundary.
+
+Either way the sentence you arrived at is briefly outlined, so you can see where you landed.
+
 == Machine vs. Human Annotations
 
 Annotations nobody has checked yet are marked, so you can see at a glance what is left to review.
@@ -301,6 +311,7 @@ For writing your own scripts against a project, see the link:api-py.html[Python 
 | **Ctrl/Cmd+Enter** | Accept everything proposed on the current word, then move to the next word.
 | **Ctrl/Cmd+Backspace** | Discard the parser's unconfirmed work on the current word, then move to the next word.
 | **Ctrl/Cmd+Shift+Down** / **Up** | Jump to the next / previous word that still needs a look.
+| **Alt+click** | On a word in Annotate, open its sentence in the Text Editor. On a token in the Text Editor, annotate its sentence.
 | **Ctrl/Cmd+D** | Jump focus from the grid into the dependency tree.
 | **Arrow keys** | Move between grid cells, and into / out of the dependency tree.
 | **Shift+Delete** | Delete the dependency relation whose label you are editing.

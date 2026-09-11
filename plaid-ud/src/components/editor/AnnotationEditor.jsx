@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { History, Info } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { NlpServiceControls } from './NlpServiceControls.jsx';
@@ -329,6 +329,14 @@ export const AnnotationEditor = () => {
 
   // The sentence fields this project declares. Memoized on the project's config
   // so a sentence row memoized on its props doesn't churn per render.
+  // The hand-off to the Text Editor, the mirror of Alt+click on a token there.
+  const navigate = useNavigate();
+  const handleEditText = useCallback(
+    (sentenceTokenId) =>
+      navigate(`/projects/${projectId}/documents/${documentId}/edit?sent=${sentenceTokenId}`),
+    [navigate, projectId, documentId],
+  );
+
   const sentenceFields = useMemo(
     () => readMetadataFields(project?.config, 'sentence'),
     [project?.config],
@@ -582,6 +590,7 @@ export const AnnotationEditor = () => {
                         onConfirmTokens={readOnly ? null : handleConfirmTokens}
                         onDiscardTokens={readOnly ? null : handleDiscardTokens}
                         onSentenceMetadata={readOnly ? null : handleSentenceMetadata}
+                        onEditText={viewingHistoricalState ? null : handleEditText}
                         sentenceFields={sentenceFields}
                         reviewable={doc?.writer.reviewable}
                         sentenceIndex={index}

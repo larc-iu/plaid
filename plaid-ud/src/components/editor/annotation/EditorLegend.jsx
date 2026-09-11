@@ -71,6 +71,12 @@ export const EditorLegend = ({ project }) => {
           feature.
         </Row>
 
+        <Row title="Text">
+          <Key>Alt</Key>+click a word to open its sentence in the Text Editor, or{' '}
+          <strong>Edit text</strong> under the sentence. <Key>Alt</Key>+click a token there comes
+          back to it here.
+        </Row>
+
         <Row title="Tree">
           Drag from one word to another to draw a relation · click a label to rename it ·{' '}
           <Key>Ctrl</Key>/<Key>Cmd</Key>+<Key>D</Key> jumps into the labels, <Key>←</Key>

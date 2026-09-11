@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@ui/components/ui/button';
 import { Textarea } from '@ui/components/ui/textarea';
 import { cpSlice } from '@larc-iu/plaid-client';
@@ -20,6 +21,11 @@ export const TextEditor = () => {
   // subscription all come from DocumentEditorShell, which guarantees both the
   // project and the document are loaded before this renders.
   const { projectId, documentId, doc, project, reload } = useDocumentEditor();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const sentParam = searchParams.get('sent');
+  const [flashSentId, setFlashSentId] = useState(null);
+  const scrolledForRef = useRef(null);
   const [textContent, setTextContent] = useState('');
   const [originalTokenizedText, setOriginalTokenizedText] = useState('');
   const [lastSaved, setLastSaved] = useState(null);
@@ -29,6 +35,44 @@ export const TextEditor = () => {
   // a treebank's source text is read as a whole, and an inner scrollbar inside
   // a page that also scrolls is two places to lose your position.
   const textareaRef = useRef(null);
+
+  // Alt+click a token: hand over to Annotate at that sentence, using the same
+  // `?sent=` the Search results already land on.
+  const openInAnnotate = (sentenceTokenId) =>
+    navigate(`/projects/${projectId}/documents/${documentId}/annotate?sent=${sentenceTokenId}`);
+
+  // The other direction: arriving from Annotate with `?sent=`, scroll that
+  // sentence's block into view and flash it. Once per id, so a later render
+  // does not yank the page back to it.
+  //
+  // The block is not there on the first pass: this tab loads the text into
+  // local state before the visualizer can group anything into sentences, and
+  // that is not a change any dependency here can watch. So wait for it, on a
+  // bounded loop, and give up quietly if the document has no tokens at all.
+  useEffect(() => {
+    if (!sentParam || scrolledForRef.current === sentParam) return;
+    let frame = null;
+    let flashTimer = null;
+    const deadline = Date.now() + 3000;
+    const attempt = () => {
+      frame = null;
+      const el = document.querySelector(`[data-sentence-block="${CSS.escape(String(sentParam))}"]`);
+      if (el) {
+        scrolledForRef.current = sentParam;
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setFlashSentId(String(sentParam));
+        flashTimer = setTimeout(() => setFlashSentId(null), 2000);
+        return;
+      }
+      if (Date.now() > deadline) return;
+      frame = requestAnimationFrame(attempt);
+    };
+    attempt();
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      if (flashTimer) clearTimeout(flashTimer);
+    };
+  }, [sentParam]);
 
   useDocumentTitle('Text Editor', doc?.name, project?.name);
 
@@ -310,6 +354,8 @@ This is a second sentence for testing.`}
             onWordDelete={readOnly ? null : handleWordDelete}
             onSentenceToggle={readOnly ? null : handleSentenceBoundaryToggle}
             onSetWordMorphemes={readOnly ? null : handleSetWordMorphemes}
+            onOpenInAnnotate={openInAnnotate}
+            flashSentenceId={flashSentId}
             setError={(msg) => doc.setError(msg)}
           />
         </div>

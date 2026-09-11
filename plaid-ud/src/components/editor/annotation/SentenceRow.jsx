@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { ChevronRight, Check, Undo2 } from 'lucide-react';
+import { ChevronRight, Check, Undo2, PenLine } from 'lucide-react';
 import { Combobox } from '@ui/components/ui/combobox';
 import { Button } from '@ui/components/ui/button';
 import { isMachine, needsReview, provState, PROV_STATES } from '@larc-iu/plaid-client';
@@ -913,6 +913,7 @@ export const SentenceRow = React.memo(
     onConfirmTokens,
     onDiscardTokens,
     onSentenceMetadata,
+    onEditText,
     sentenceFields = EMPTY_FIELDS,
     reviewable = needsReview,
     totalTokensBefore = 0,
@@ -1118,6 +1119,14 @@ export const SentenceRow = React.memo(
       [onSentenceMetadata, sentenceToken],
     );
 
+    // Hand over to the Text Editor at this sentence, the mirror of Alt+click on
+    // a token there. Undefined when there is no sentence token to land on, so
+    // the affordance is simply absent rather than inert.
+    const handleEditText = useMemo(
+      () => (onEditText && sentenceToken?.id ? () => onEditText(sentenceToken.id) : undefined),
+      [onEditText, sentenceToken],
+    );
+
     return (
       <div className="sentence-container">
         {/* Dependency tree visualization */}
@@ -1134,6 +1143,7 @@ export const SentenceRow = React.memo(
           deprelColors={colors?.deprel}
           deprelVocab={vocab?.deprel}
           onExitDown={focusGridCell}
+          onEditText={handleEditText}
         />
 
         {/* Main container with labels and columns */}
@@ -1251,9 +1261,9 @@ export const SentenceRow = React.memo(
           with the first token, so they read as belonging to this sentence.
           Accept takes everything proposed, Discard throws the machine's
           proposals away, and each shows only when it has something to do. */}
-        {!isReadOnly && (hasInferred || hasMachine) && (
+        {(handleEditText || (!isReadOnly && (hasInferred || hasMachine))) && (
           <div className="sentence-confirm">
-            {onConfirmTokens && hasInferred && (
+            {!isReadOnly && onConfirmTokens && hasInferred && (
               <Button
                 className="accept-predictions-btn h-6 gap-1 px-2 text-xs"
                 variant="outline"
@@ -1264,7 +1274,7 @@ export const SentenceRow = React.memo(
                 Accept predictions
               </Button>
             )}
-            {onDiscardTokens && hasMachine && (
+            {!isReadOnly && onDiscardTokens && hasMachine && (
               <Button
                 className="discard-predictions-btn h-6 gap-1 px-2 text-xs"
                 variant="outline"
@@ -1273,6 +1283,17 @@ export const SentenceRow = React.memo(
               >
                 <Undo2 width={12} height={12} />
                 Discard predictions
+              </Button>
+            )}
+            {handleEditText && (
+              <Button
+                className="edit-text-btn h-6 gap-1 px-2 text-xs"
+                variant="ghost"
+                onClick={handleEditText}
+                title="Open this sentence in the Text Editor. Alt+click a word does the same."
+              >
+                <PenLine width={12} height={12} />
+                Edit text
               </Button>
             )}
           </div>

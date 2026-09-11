@@ -26,6 +26,15 @@
 .sentence {
   margin-bottom: 0.5rem;
   position: relative;
+  border-radius: 4px;
+  transition: box-shadow 300ms ease;
+}
+
+/* The sentence a hand-off from Annotate landed on. Same amber ring the
+   annotation grid flashes, so arriving at a sentence looks the same in both
+   directions. */
+.sentence[data-flash='true'] {
+  box-shadow: 0 0 0 3px #fcd34d;
 }
 
 /* The text between tokens: present, but not the thing being edited. */

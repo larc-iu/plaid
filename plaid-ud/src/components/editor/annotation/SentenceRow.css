@@ -75,6 +75,16 @@
   color: #fff;
 }
 
+/* "Edit text" is always here, unlike its two neighbours, so it is quieter than
+   both: no border, and it only fills in on hover. */
+.sentence-confirm .edit-text-btn {
+  opacity: 0.55;
+  transition: opacity 120ms ease;
+}
+.sentence-confirm .edit-text-btn:hover {
+  opacity: 1;
+}
+
 .sentence-grid {
   display: flex;
   padding-top: 215px; /* Moderate padding to make room for dependency tree */

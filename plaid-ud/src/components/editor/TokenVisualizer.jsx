@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Trash2, Plus, X } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
@@ -37,6 +37,8 @@ export const TokenVisualizer = ({
   onWordDelete,
   onSentenceToggle,
   onSetWordMorphemes,
+  onOpenInAnnotate,
+  flashSentenceId = null,
   setError,
 }) => {
   // Prefer the parent's error banner for inline validation errors; fall back to
@@ -72,6 +74,16 @@ export const TokenVisualizer = ({
   const sentenceInitialWordIds = useMemo(
     () => new Set(wordTokens.filter((w) => sentenceBegins.has(w.begin)).map((w) => w.id)),
     [wordTokens, sentenceBegins],
+  );
+
+  // Which sentence a character offset falls in. The hand-off to Annotate needs
+  // the sentence TOKEN's id, and a badge only knows its own range. Sentences
+  // tile the document, so the containing one is the answer.
+  const sentenceTokenAt = useCallback(
+    (offset) =>
+      sentenceTokens.find((sent) => offset >= sent.begin && offset < sent.end) ||
+      (sentenceTokens.length === 1 ? sentenceTokens[0] : null),
+    [sentenceTokens],
   );
 
   const formOf = (m, word) => {
@@ -314,12 +326,32 @@ export const TokenVisualizer = ({
     const morphs = morphemesByWord.get(word.id) || [];
     const isMwt = morphs.length > 1;
 
+    const sentenceToken = sentenceTokenAt(word.begin);
+    const canHandOff = Boolean(onOpenInAnnotate && sentenceToken);
+
     const badge = (
       <span
         className={classes.badge}
         data-mwt={isMwt}
         data-sent-start={isSentStart}
-        onClick={() => toggleSentence(word)}
+        data-sentence={sentenceToken?.id}
+        title={
+          canHandOff
+            ? 'Click to toggle the sentence boundary. Alt+click to annotate this sentence.'
+            : undefined
+        }
+        onClick={(e) => {
+          // Alt+click hands over to Annotate, the mirror of Alt+click on a word
+          // there. It must not also toggle the sentence boundary on the way
+          // out, which is what a plain click here does.
+          if (canHandOff && e.altKey) {
+            e.preventDefault();
+            e.stopPropagation();
+            onOpenInAnnotate(sentenceToken.id);
+            return;
+          }
+          toggleSentence(word);
+        }}
         onMouseEnter={isTextDirty ? undefined : () => requestOpen(word.id)}
         onMouseLeave={isTextDirty ? undefined : requestClose}
       >
@@ -483,8 +515,17 @@ export const TokenVisualizer = ({
         els.push(renderWordBadge(word));
         lastEnd = Math.max(lastEnd, word.end);
       });
+      // The block carries its sentence token's id so a hand-off FROM Annotate
+      // can scroll to it. Read off the first word, since a block is exactly the
+      // run of words between two sentence starts.
+      const blockSentence = words.length ? sentenceTokenAt(words[0].begin) : null;
       return (
-        <div key={`s-${si}`} className={classes.sentence}>
+        <div
+          key={`s-${si}`}
+          className={classes.sentence}
+          data-sentence-block={blockSentence?.id}
+          data-flash={blockSentence && blockSentence.id === flashSentenceId ? 'true' : undefined}
+        >
           {els}
         </div>
       );
@@ -520,7 +561,7 @@ export const TokenVisualizer = ({
       </div>
       <p className="mt-3 text-xs text-muted-foreground">
         Click a token to toggle its sentence boundary. Hover a token to edit its words or delete it.
-        Select text to create a token.
+        Select text to create a token. Alt+click a token to annotate its sentence.
       </p>
     </div>
   );
