@@ -20,6 +20,7 @@ dev = ["pytest"]
 # assistant for whichever app they run.
 [project.scripts]
 plaid-igt-agent = "plaid_agent.igt.service:main"
+plaid-ud-agent = "plaid_agent.ud.service:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/plaid_agent"]

@@ -1,0 +1,66 @@
+"""Write docs/ud/SAMPLE_PROMPT.md: what the model sees, rendered for a reader.
+
+The system prompt and the tool list are built by the real code over the small
+project the tests use (``ud_fixtures.py``), with web lookup on so every tool
+appears. The file is a snapshot for browsing, not a source of truth:
+
+    python tests/ud_sample_prompt.py
+"""
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from prompt_render import render_tool  # noqa: E402
+from ud_fixtures import PID, ud_client  # noqa: E402
+
+from plaid_agent.ud.project import load_project  # noqa: E402
+from plaid_agent.ud.prompt import build_system_prompt  # noqa: E402
+from plaid_agent.ud.tools import TOOLS, WEB_TOOLS, WRITE_TOOLS, Workspace, call_tool  # noqa: E402
+
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'docs', 'ud', 'SAMPLE_PROMPT.md')
+
+HEADER = '''# What the model sees
+
+The system prompt and the tools the UD assistant sends to the model, rendered
+for the small project the tests use (`tests/ud_fixtures.py`, project "Spanish")
+with web lookup switched on so that every tool appears. This file is a snapshot
+for browsing and may lag behind the code: the prompt is built in
+`src/plaid_agent/ud/prompt.py` and the tools are declared in
+`src/plaid_agent/ud/tools.py`. Regenerate it with
+
+    python tests/ud_sample_prompt.py
+
+Every model call carries the system prompt, the transcript so far (the browser
+keeps it between turns), and the whole tool list. The model answers with text
+or with tool calls; each result is appended to the transcript and the model is
+called again, up to `--max-steps` calls per turn (`core/agent.py`). A tool whose
+description begins with `PLAN:` writes nothing: it appends to the turn's plan,
+which goes back to the user to approve or discard.
+'''
+
+
+def main() -> None:
+    client = ud_client()
+    ws = Workspace(client, load_project(client, PID))
+    ws.web = object()  # so the web tools are declared
+    parts = [HEADER, '\n## System prompt\n', '```text',
+             build_system_prompt(ws.project, web=True).rstrip(), '```\n',
+             f'## Tools\n\n{len(TOOLS)} tools, in the order the model receives them: {len(WRITE_TOOLS)} plan a '
+             f'change (`PLAN:`), {len(WEB_TOOLS)} reach the web, the rest read the project or manage the plan.\n']
+    parts += [render_tool(t, WEB_TOOLS) for t in TOOLS]
+    parts += ['## What a read returns\n',
+              'Two tool results on the same project, so the positional addressing in the prompt has something '
+              'to point at. `project_overview` is what the prompt tells the model to call first.\n',
+              '```text', call_tool(ws, 'project_overview', {}).rstrip(), '```\n',
+              '`read_document` on "Viaje":\n',
+              '```text', call_tool(ws, 'read_document', {'document': 'Viaje'}).rstrip(), '```\n']
+    os.makedirs(os.path.dirname(OUT), exist_ok=True)
+    with open(OUT, 'w', encoding='utf-8') as fh:
+        fh.write('\n'.join(parts))
+    print(f'wrote {os.path.normpath(OUT)}: {len(TOOLS)} tools')
+
+
+if __name__ == '__main__':
+    main()

@@ -11,6 +11,7 @@ src/plaid_agent/
           an app's word appears in it.
   igt/    the IGT assistant: the project model, the tools, the prompt, the
           citation renderer, the plan executor.
+  ud/     the UD assistant, the same seven answers for a treebank.
 ```
 
 One distribution (`larc-plaid-agent`) ships all of it, with a console script
@@ -22,6 +23,29 @@ An app's assistant is a subclass of `core.service.BaseAssistantService` that
 answers seven questions: the project it loads, the workspace its tools run
 against, its toolkit, its prompt, how a citation resolves, how a plan is
 applied, and how a plan is summarized. Everything else is the harness.
+
+## The UD assistant
+
+A chat assistant for [Plaid UD](../plaid-ud) treebanks, run the same way:
+
+```sh
+plaid-ud-agent --url http://localhost:8080 --model openai/gpt-4o
+```
+
+It reads a project as CoNLL-U rows and plans changes to the four annotation
+columns and to the dependency tree. What it has to know that IGT does not:
+
+- a TOKEN is what the text is divided into, a WORD is what carries annotation,
+  and a multi-word token holds several words over the same characters. Nothing
+  sits on the token or on the sentence.
+- addressing is CoNLL-U's own (`s3.w2`, `s3.w1-2` for a multi-word token), so
+  the numbers the model uses are the numbers it reads in the ID column and the
+  numbers HEAD points at.
+- a dependency is a relation between two LEMMA spans, and the root is a
+  self-relation. A word with no lemma gets one before it can take a head.
+
+`docs/ud/SAMPLE_PROMPT.md` is what the model sees. Regenerate it with
+`python tests/ud_sample_prompt.py`.
 
 ## The IGT assistant
 

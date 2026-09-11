@@ -13,6 +13,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from fixtures import FakeClient, scan_ws  # noqa: E402
+from prompt_render import render_tool  # noqa: E402
 
 from plaid_agent.igt.prompt import build_system_prompt  # noqa: E402
 from plaid_agent.igt.tools import TOOLS, WEB_TOOLS, WRITE_TOOLS, call_tool  # noqa: E402
@@ -39,46 +40,12 @@ which goes back to the user to approve or discard.
 '''
 
 
-def typ(s: dict) -> str:
-    t = s.get('type')
-    if 'enum' in s:
-        return 'one of ' + ', '.join(f'`{v}`' for v in s['enum'])
-    if t == 'array':
-        return 'array of ' + typ(s.get('items') or {})
-    if t == 'object':
-        if s.get('properties'):
-            req = set(s.get('required') or [])
-            inner = ', '.join(f'{k}: {typ(v)}' + (' (required)' if k in req else '')
-                              for k, v in s['properties'].items())
-            return 'object {' + inner + '}'
-        if 'additionalProperties' in s:
-            return 'object of ' + typ(s['additionalProperties'])
-    return t or 'any'
-
-
-def render_tool(spec: dict) -> str:
-    f = spec['function']
-    lines = [f"### {f['name']}", '', f['description'], '']
-    if f['name'] in WEB_TOOLS:
-        lines += ['*Offered only when the operator started the service with `--web-search`.*', '']
-    props = f['parameters'].get('properties') or {}
-    req = set(f['parameters'].get('required') or [])
-    if not props:
-        lines.append('No parameters.')
-    else:
-        for name, s in props.items():
-            kind = typ(s) + (', required' if name in req else '')
-            desc = s.get('description')
-            lines.append(f'- `{name}` ({kind})' + (f': {desc}' if desc else ''))
-    return '\n'.join(lines) + '\n'
-
-
 def main() -> None:
     ws = scan_ws(FakeClient())
     parts = [HEADER, '\n## System prompt\n', '```text', build_system_prompt(ws.project, web=True).rstrip(), '```\n',
              f'## Tools\n\n{len(TOOLS)} tools, in the order the model receives them: {len(WRITE_TOOLS)} plan a change '
              f'(`PLAN:`), {len(WEB_TOOLS)} reach the web, the rest read the project or manage the plan.\n']
-    parts += [render_tool(t) for t in TOOLS]
+    parts += [render_tool(t, WEB_TOOLS) for t in TOOLS]
     parts += ['## What a read returns\n',
               'Two tool results on the same project, so the positional addressing in the prompt has something to '
               'point at. `project_overview` is what the prompt tells the model to call first.\n',
