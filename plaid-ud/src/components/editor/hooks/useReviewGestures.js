@@ -163,7 +163,8 @@ export function useReviewGestures({ sentences, doc, readOnly, visibleFields }) {
       if (e.key === 'Backspace' || e.key === 'Delete') {
         // Claimed only over an UNTOUCHED input: with text typed and not yet
         // saved this chord is the browser's own delete-a-word, and taking it
-        // would drop what was typed. `data-orig` is the cell's saved value.
+        // would drop what was typed. `data-orig` is what the cell shows at
+        // rest, which for a lemma with no lemma yet is the token's own form.
         const el = e.target;
         if (el.value !== (el.dataset.orig ?? '')) return;
         e.preventDefault();

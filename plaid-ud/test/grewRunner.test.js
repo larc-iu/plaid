@@ -215,3 +215,52 @@ test('apply as a reviewed contributor: creates and edits are marked contributed'
   const create = client.calls.find((c) => c.op === 'spans.create').args[3];
   assert.equal(create.prov, 'contributed');
 });
+
+// A closed vocabulary governs what a RULE WRITES, not what the sentence
+// already holds. Checking the whole rewritten graph meant one parser-written
+// off-list tag anywhere in a sentence blocked a rule that never touched that
+// column, and deselected the row.
+const closedUposSetup = () => {
+  const raw = rawDocFromConllu(
+    [
+      '# text = the dog saw a cat',
+      '1\tthe\tthe\tDET\t_\t_\t2\tdet\t_\t_',
+      '2\tdog\tdog\tNOUN\t_\t_\t3\tnsubj\t_\t_',
+      '3\tsaw\tsee\tWIDGET\t_\t_\t0\troot\t_\t_',
+      '4\ta\ta\tDET\t_\t_\t5\tdet\t_\t_',
+      '5\tcat\tcat\tNOUN\t_\t_\t2\tnmod\t_\t_',
+    ].join('\n'),
+    'doc1',
+  );
+  const upos = raw.textLayers[0].tokenLayers[2].spanLayers.find((l) => l.config.ud.upos);
+  upos.config.ud.vocabMode = 'closed';
+  const client = stubClient(raw);
+  const project = {
+    id: 'p1',
+    name: 'P',
+    maintainers: [],
+    writers: [],
+    readers: [],
+    textLayers: raw.textLayers,
+  };
+  return { client, project, layerInfo: getUdLayerInfo(raw) };
+};
+
+test('plan: an off-list value the rule never touches does not block the row', async () => {
+  const { client, project, layerInfo } = closedUposSetup();
+  const grs = parseGrs(
+    'pattern { X [upos=NOUN] } without { X [lemma="x"] } commands { X.lemma = "x" }',
+  );
+  const plan = await planRewrite(client, { project, user: null, layerInfo, grs });
+  const [row] = plan.rows;
+  assert.equal(row.error, null);
+  assert.equal(row.applications, 2);
+});
+
+test('plan: an off-list value the rule DOES write still refuses the row', async () => {
+  const { client, project, layerInfo } = closedUposSetup();
+  const grs = parseGrs('pattern { X [upos=DET] } commands { X.upos = GADGET }');
+  const plan = await planRewrite(client, { project, user: null, layerInfo, grs });
+  const [row] = plan.rows;
+  assert.match(row.error, /GADGET/);
+});

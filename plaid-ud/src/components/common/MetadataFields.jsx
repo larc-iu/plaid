@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 
@@ -15,7 +15,18 @@ const Field = ({ name, declared, value, readOnly, dense, onCommit }) => {
     setDraft(value ?? '');
   }, [value]);
 
+  // Escape blurs the input, and that blur fires synchronously inside the key
+  // handler with the typed text still in `draft`, so without this the cancel
+  // saved exactly what it was cancelling. The annotation cells carry the same
+  // ref for the same reason.
+  const cancelledRef = useRef(false);
+
   const commit = () => {
+    if (cancelledRef.current) {
+      cancelledRef.current = false;
+      setDraft(value ?? '');
+      return;
+    }
     if (draft === (value ?? '')) return;
     onCommit(name, draft.trim());
   };
@@ -40,6 +51,7 @@ const Field = ({ name, declared, value, readOnly, dense, onCommit }) => {
           e.preventDefault();
           e.currentTarget.blur();
         } else if (e.key === 'Escape') {
+          cancelledRef.current = true;
           setDraft(value ?? '');
           e.currentTarget.blur();
         }

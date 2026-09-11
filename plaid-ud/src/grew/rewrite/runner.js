@@ -91,7 +91,7 @@ export async function planRewrite(client, { project, user, layerInfo, grs }, onP
         // why. This and the annotation cells are the only two places a closed
         // list is enforced — an import, a service, the assistant and the API
         // all still get through, which is what the Validation tab is for.
-        const refusal = offVocabulary(after, validators);
+        const refusal = offVocabulary(before, after, validators);
         if (refusal) {
           rows.push({
             ...base,
@@ -132,29 +132,42 @@ export async function planRewrite(client, { project, user, layerInfo, grs }, onP
   return { rows, docs, documentsVisited: docIds.length };
 }
 
-// The first value in a rewritten sentence that a closed vocabulary refuses, as
-// the message the preview shows on that row, or null when everything is legal.
-// Reports ONE: a rule that produces an illegal tag usually produces it
+// The first value THIS RULE WRITES that a closed vocabulary refuses, as the
+// message the preview shows on that row, or null when everything it writes is
+// legal. Reports ONE: a rule that produces an illegal tag usually produces it
 // everywhere, and a row listing forty of them says nothing the first does not.
-function offVocabulary(graph, validators) {
-  for (const id of graph.order) {
-    const node = graph.nodes.get(id);
+//
+// Only what changed. Walking the whole rewritten sentence meant that one
+// parser-written off-list value anywhere in it blocked a rule that never
+// touched that column, which is neither what the rule did nor something the
+// annotator can fix from the preview.
+function offVocabulary(before, after, validators) {
+  for (const id of after.order) {
+    const node = after.nodes.get(id);
     if (!node || node.deleted || node.anchor) continue;
+    const was = before.nodes?.get(id) || null;
     for (const [col, check] of [
       ['upos', validators.upos],
       ['xpos', validators.xpos],
     ]) {
-      const refusal = node[col] == null ? null : check(node[col]);
+      if (node[col] == null || (was && was[col] === node[col])) continue;
+      const refusal = check(node[col]);
       if (refusal) return `${node.form}: ${refusal}`;
     }
+    // `feats` is a Map on a real node, so iterate rather than mapping it.
+    const had = new Set();
+    for (const [k, v] of was?.feats || []) had.add(`${k}=${v}`);
     for (const [key, value] of node.feats || []) {
-      const refusal = validators.feats(`${key}=${value}`);
+      const pair = `${key}=${value}`;
+      if (had.has(pair)) continue;
+      const refusal = validators.feats(pair);
       if (refusal) return `${node.form}: ${refusal}`;
     }
   }
   // `edges` is a Map keyed by relation id.
-  for (const edge of graph.edges?.values() || []) {
-    const refusal = edge.label == null ? null : validators.deprel(edge.label);
+  for (const [id, edge] of after.edges?.entries() || []) {
+    if (edge.label == null || before.edges?.get(id)?.label === edge.label) continue;
+    const refusal = validators.deprel(edge.label);
     if (refusal) return refusal;
   }
   return null;

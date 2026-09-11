@@ -152,27 +152,32 @@ const EditableCell = React.memo(
       }
       const newValue = valueRef.current.trim();
 
-      // A CLOSED vocabulary refuses a value that is not on its list. The
-      // saved value is kept, not the typed one: an annotator who meant a tag
-      // the project does not have wants to see what is actually stored, and a
-      // maintainer can open the list up in two clicks. Enforced here and in the
-      // Grew rewrite, and nowhere else — an import, a service, the assistant
-      // and the API all still get through, which is what the Validation tab is
-      // for.
-      const refusal = validate?.(newValue);
-      if (refusal) {
-        notifyWarning(refusal, 'Not in the list');
-        setValue(value || '');
-        return;
-      }
-
       const changed = newValue !== (value || '');
       // Re-typing a machine prediction's value is a human confirmation
       // (provenance write contract): commit it even though the value is the
       // same, so the span gets verified. `pristine` guards this to actual
-      // typing — tabbing through a cell must not confirm anything.
+      // typing: tabbing through a cell must not confirm anything.
       const retyped = !changed && !pristine && !!mark && !!newValue;
+
+      // A CLOSED vocabulary refuses a value that is not on its list. The
+      // saved value is kept, not the typed one: an annotator who meant a tag
+      // the project does not have wants to see what is actually stored, and a
+      // maintainer can open the list up in two clicks. Enforced here and in the
+      // Grew rewrite, and nowhere else: an import, a service, the assistant
+      // and the API all still get through, which is what the Validation tab is
+      // for.
+      //
+      // Only a value the annotator is actually committing. Refusing before
+      // asking whether anything changed meant that a parsed document with any
+      // off-list value in it warned once per cell as you tabbed across the
+      // sentence, about a value nobody had touched.
       if (changed || retyped) {
+        const refusal = validate?.(newValue);
+        if (refusal) {
+          notifyWarning(refusal, 'Not in the list');
+          setValue(value || '');
+          return;
+        }
         onUpdate(tokenId, field, newValue || null).catch((error) => {
           console.error(`Failed to update ${field}:`, error);
           // Revert to original value on error
@@ -248,6 +253,21 @@ const EditableCell = React.memo(
       }
     };
 
+    // Leaving precedent mode swaps the combobox back to a plain input whenever
+    // the cell has no list of its own, which LEMMA never does. React fires no
+    // blur when it unmounts a focused element, so the cell was left with
+    // `isEditing` true and nothing focused: the typed character sat
+    // uncommitted and the value-sync effect stayed skipped until the cell was
+    // re-entered. `isEditing` is false here when the annotator really left,
+    // so this only fires on the swap.
+    const hadPrecedent = useRef(false);
+    useEffect(() => {
+      if (hadPrecedent.current && !precedent && isEditingRef.current) {
+        inputRef.current?.focus();
+      }
+      hadPrecedent.current = !!precedent;
+    }, [precedent]);
+
     const handleFocus = () => {
       // The new element has focus, so the swap is over: from here a blur is the
       // annotator leaving and must commit. Clearing this on the BLUR instead
@@ -261,6 +281,12 @@ const EditableCell = React.memo(
 
     const displayValue =
       localValue || (field === 'lemma' && !value && !isReadOnly ? tokenForm : '');
+    // What the cell shows when nobody has typed in it. The review gestures
+    // compare the live input against this to tell an untouched cell from an
+    // edited one, and an empty lemma shows the token's form rather than an
+    // empty box: comparing against the SAVED value instead meant Ctrl/Cmd
+    // +Backspace was never claimed from a lemma cell that had no lemma yet.
+    const restingValue = value || (field === 'lemma' && !isReadOnly ? tokenForm : '');
     const hasContent = displayValue && displayValue.trim() !== '';
     const fieldClass =
       `editable-field ${hasContent ? 'editable-field--filled' : 'editable-field--empty'}` +
@@ -332,7 +358,7 @@ const EditableCell = React.memo(
           // The cell's saved value, so the document-level Ctrl/Cmd+Backspace
           // can tell an untouched cell from one with unsaved typing in it and
           // leave the browser's delete-a-word alone in the second case.
-          data-orig={value || ''}
+          data-orig={restingValue}
           options={
             precedent
               ? precedent.map((row) => ({ value: row.value, label: row.value }))
@@ -425,8 +451,14 @@ const EditableCell = React.memo(
             }
             if (e.key === 'Enter') {
               // Ctrl/Cmd+Enter is the per-token accept gesture (container
-              // handler): let it bubble and keep focus here.
-              if (e.ctrlKey || e.metaKey) return;
+              // handler): let it bubble and keep focus here. preventDefault
+              // claims the key from the combobox, which would otherwise commit
+              // whatever option is highlighted; the container's handler is on
+              // document and does not read defaultPrevented, so it still runs.
+              if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                return;
+              }
               e.preventDefault();
               takeOption(combo.activeValue ?? valueRef.current);
               return;
@@ -485,7 +517,7 @@ const EditableCell = React.memo(
         id={`${tokenId}-${field}`}
         type="text"
         spellCheck={false}
-        data-orig={value || ''}
+        data-orig={restingValue}
         value={displayValue}
         onChange={handleChange}
         onBlur={handleBlur}
@@ -550,6 +582,11 @@ const FeaturesCell = React.memo(
             (v) => `${text.slice(0, eqIdx)}=${v}`,
           );
 
+    // `true` when it committed, `'refused'` when a closed inventory turned the
+    // value down, `false` when there was nothing complete to commit. The three
+    // are not the same on the way out: a fragment is dropped, a refusal is
+    // kept. Both returning false meant Enter kept the text the ruling says to
+    // keep and clicking away wiped it, with the same warning either way.
     const commit = (raw) => {
       const t = (raw ?? text).trim();
       const i = t.indexOf('=');
@@ -561,7 +598,7 @@ const FeaturesCell = React.memo(
       const refusal = validate?.(t);
       if (refusal) {
         notifyWarning(refusal, 'Not in the inventory');
-        return false;
+        return 'refused';
       }
       setText('');
       onAnnotationUpdate(tokenId, 'features', t).catch((error) => {
@@ -613,9 +650,16 @@ const FeaturesCell = React.memo(
       const dropdownOpen = !empty && combo.open;
 
       if (e.key === 'Enter') {
-        // Ctrl/Cmd+Enter confirms the whole token (container handler) — don't also
-        // commit a (possibly empty) feature, and keep focus on this cell.
-        if (e.ctrlKey || e.metaKey) return;
+        // Ctrl/Cmd+Enter confirms the whole token (container handler). Don't
+        // also commit a half-typed feature: returning without preventDefault
+        // handed the key to the combobox, which auto-highlights as soon as
+        // anything is typed, so reviewing a word with "Ca" in the box wrote
+        // Case=Nom. The container's handler is on document and does not read
+        // defaultPrevented, so it still confirms the token.
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          return;
+        }
         e.preventDefault();
         if (dropdownOpen && combo.activeValue != null) takeOption(combo.activeValue);
         else commit();
@@ -743,7 +787,7 @@ const FeaturesCell = React.memo(
               if (cancelledRef.current) {
                 cancelledRef.current = false;
                 setText('');
-              } else if (!commit()) {
+              } else if (commit() === false) {
                 setText('');
               }
             }}

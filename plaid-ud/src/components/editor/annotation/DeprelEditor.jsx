@@ -39,6 +39,10 @@ export function DeprelEditor({
   const [pristine, setPristine] = useState(true);
   const doneRef = useRef(false);
 
+  // Whether leaving the editor writes anything: a different label, or the same
+  // one re-entered deliberately, which is a confirmation of a machine guess.
+  const isCommitting = (next, typed) => next !== (relation.value || 'dep') || typed;
+
   const once = (fn) => {
     if (doneRef.current) return;
     doneRef.current = true;
@@ -50,12 +54,19 @@ export function DeprelEditor({
   // and a project that listed every one it used would be re-listing the
   // language. A refusal cancels the edit rather than committing, so the arc
   // keeps the label it had.
+  //
+  // Only what the annotator is actually committing is checked. Validating an
+  // untouched label meant that opening the editor on a parser-written
+  // off-list relation and leaving warned and cancelled with no edit made, and
+  // Tab stalled at the first such label instead of walking the sentence.
   const commitOr = (next, typed) => {
-    const refusal = validate?.(next);
-    if (refusal) {
-      notifyWarning(refusal, 'Not in the list');
-      onCancel();
-      return;
+    if (isCommitting(next, typed)) {
+      const refusal = validate?.(next);
+      if (refusal) {
+        notifyWarning(refusal, 'Not in the list');
+        onCancel();
+        return;
+      }
     }
     onCommit(next, typed);
   };
@@ -187,11 +198,13 @@ export function DeprelEditor({
           e.preventDefault();
           e.stopPropagation();
           once(() => {
-            const refusal = validate?.(value);
-            if (refusal) {
-              notifyWarning(refusal, 'Not in the list');
-              onCancel();
-              return;
+            if (isCommitting(value, !pristine)) {
+              const refusal = validate?.(value);
+              if (refusal) {
+                notifyWarning(refusal, 'Not in the list');
+                onCancel();
+                return;
+              }
             }
             onTab(value, e.shiftKey, !pristine);
           });
