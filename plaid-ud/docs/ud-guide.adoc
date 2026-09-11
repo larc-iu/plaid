@@ -60,9 +60,9 @@ The editor has three levels you move between:
 
 * **Projects**: the list of all projects you can access (your home screen after login).
 * **Documents**: the texts inside one project.
-* **A document's editing views**: `Text Editor`, `Annotate`, and `Export`, switched with the tabs at the top of an open document.
+* **A document's own tabs**: `Text Editor`, `Annotate`, `Export`, `Comments` and `Details`, switched at the top of an open document.
 
-Project-wide actions (Search, Import / Export, Settings) live alongside the document list inside each project.
+Project-wide tabs sit alongside the document list inside each project: `Search`, `Validation`, `Activity`, `Project Settings` and `Import & Export`. The last three are for maintainers.
 
 = Projects
 
@@ -88,8 +88,8 @@ The split only matters for multi-word tokens, where one written token expands in
 
 == Creating and Opening Projects
 
-From the Projects screen you can sort and search the list, and create a new project with the **New Project** button.
-A new project is ready for Universal Dependencies annotation right away. Just click it to open its documents.
+From the Projects screen you can sort and search the list, and create a new project with **New UD project**.
+A new project is ready for Universal Dependencies annotation right away. Click it to open its documents.
 
 = Documents
 
@@ -101,8 +101,9 @@ A new document starts empty. You give it a name, then add text in the Text Edito
 
 If you already have annotated data, you can import it instead of typing it in.
 
-* **A single document**: use the **Import** action on the document list to upload one `.conllu` file as a new document.
-* **Many documents at once**: open the project's **Import / Export** screen to upload several `.conllu` files (or a ZIP of them) in one go. Each file with a `# newdoc` boundary becomes its own document.
+Open the project's **Import & Export** tab and drop `.conllu` files on it, one or many, or a ZIP of them.
+Each `# newdoc` boundary inside a file becomes its own document.
+The same tab exports the whole project as a ZIP of `.conllu` files.
 
 [WARNING]
 ====
@@ -118,12 +119,14 @@ The **Text Editor** tab is where raw text becomes tokens.
 
 Paste or type your text into the editor.
 We encourage the convention of using newlines to separate sentences.
-There are two ways to turn that text into tokens:
-
-* **Tokenize** segments the text into sentences and tokens using your project's tokenizer locale, falling back to the project's language (both set in <<_customization,project settings>>, and language-agnostic when neither is set). It produces tokens only. You add the annotations and dependency tree yourself in the Annotate tab.
-* **Parsing with a service** does the whole job at once. If your project has an NLP service connected (for example the bundled Stanza parser, see <<_automation_and_scripting>>), pick it, set any options it offers, and run it to fill in the *entire* document: sentences, tokens, words, every annotation, and the dependency tree. This gives you a first draft to correct by hand, and is the fastest way to get started.
-
 Use **Save** to save edits to the raw text without re-tokenizing.
+
+There are two ways to turn saved text into tokens, and both are runs (see <<_services>>):
+
+* **Tokenize** segments the text into sentences and tokens. The built-in method uses your project's tokenizer locale, falling back to the project's language (both set in <<_customization,project settings>>, and language-agnostic when neither is set). It produces tokens only. You add the annotations and dependency tree yourself in the Annotate tab.
+* **Parse** does the whole job at once. Where your project has a parsing service connected, for example the bundled Stanza parser, it fills in the entire document: sentences, tokens, words, every annotation, and the dependency tree. This gives you a first draft to correct by hand, and is the fastest way to get started.
+
+Each button opens a dialog naming the method it will use and the options that method offers.
 Tokenizing replaces the existing tokens for the document, so it is normally a one-time step per document.
 
 == Working with Tokens
@@ -161,14 +164,12 @@ Each word has cells for:
 |===
 
 Click a cell to edit it.
-The UPOS, XPOS, and Features cells (and the dependency-relation labels in the tree) offer **autocomplete** from your project's controlled vocabularies, but they are _suggestions only_. You can always type a value that isn't on the list.
+The UPOS, XPOS and Features cells, and the dependency-relation labels in the tree, offer **autocomplete** from your project's controlled vocabularies.
+By default those lists are suggestions and a value off the list is accepted, but a maintainer can close any one of them so only listed values are (see <<_suggestions_or_rules>>).
 
-Move around the grid with the keyboard:
-
-* **Tab** / **Shift+Tab**: next / previous cell.
-* **Enter**: commit the cell.
-* **Escape**: discard your change.
-* **Arrow keys**: move between cells. Pressing **Arrow Up** out of the top row jumps into the dependency tree.
+Move around the grid with **Tab**, **Enter**, **Escape** and the arrow keys.
+**Arrow Up** out of the top row jumps into the dependency tree.
+The full list is in <<_keyboard_shortcuts>>.
 
 == Tree Editing
 
@@ -177,7 +178,7 @@ Below the grid, each sentence's dependency tree is drawn as arcs between words.
 * **Draw an arc**: press and drag from one word to another. The word you start on becomes the **head**, and the word you release on becomes its **dependent**.
 * **Mark the root**: drag from the **ROOT** bar to a word.
 * **Rename a relation**: click an arc's label to edit its dependency relation (`nsubj`, `obj`, …), again with autocomplete.
-* **Keyboard**: from the grid, **Ctrl/Cmd+D** jumps focus into the tree's labels. **Arrow Left/Right** or **Tab** move between labels. **Enter** opens the label for editing, and **Arrow Down** drops back into the grid. While editing a label, **Shift+Delete** removes the relation.
+* **Keyboard**: from the grid, **Ctrl/Cmd+D** jumps focus into the tree's labels. See <<_keyboard_shortcuts>> for the rest.
 
 == Metadata
 
@@ -197,7 +198,7 @@ Everything here goes out with the document: `# source = ...` above a document, `
 
 In a **Lemma**, **XPOS** or **Features** cell, **Alt+Down** lists the values this project has already used for a word like this one, with how many times each.
 
-The lemma cell asks about the **form** — what have we called this string before. The other two ask about the **lemma**, because once that is settled the tag and the features usually follow, and the same string can be two lemmas.
+The lemma cell asks about the **form**, meaning what the project has called this string before. The other two ask about the **lemma**, because once that is settled the tag and the features usually follow, and the same string can be two lemmas.
 
 Pick one with the arrows and **Enter**, or click it. **Escape** goes back to the cell. A word with nothing to compare against simply shows nothing.
 
@@ -218,8 +219,8 @@ Either way the sentence you arrived at is briefly outlined, so you can see where
 Annotations nobody has checked yet are marked, so you can see at a glance what is left to review.
 There are two marks, and they say where the annotation came from:
 
-* **violet, dashed** — an automatic parser produced it.
-* **amber, dashed** — a member whose work the project reviews (see <<_sharing_and_permissions>>) entered it. This mark appears only in projects that review somebody.
+* **violet, dashed**: an automatic parser produced it.
+* **amber, dashed**: a member whose work the project reviews (see <<_sharing_and_permissions>>) entered it. This mark appears only in projects that review somebody.
 
 Anything a trusted member has entered or confirmed is shown plainly, in its own colour.
 Hovering a cell or a relation names its state and its producer.
@@ -233,14 +234,13 @@ If a prediction is already correct, you don't have to retype it:
 * **Ctrl+Shift+↓** and **Ctrl+Shift+↑** jump to the next and previous word that still needs a look, across sentences.
 * **Accept predictions** and **Discard predictions**, under each sentence, do the same for the whole sentence.
 
-The **?** above the grid opens a legend of these marks and every gesture in the editor.
+**Gestures and marks**, above the first sentence, opens a legend of these marks and every gesture in the editor.
 
 = Export
 
-The **Export** tab shows the current document as CoNLL-U.
-You can **Copy to Clipboard** or **Download .conllu**.
+The **Export** tab shows the current document as CoNLL-U, with **Copy** and **Download**.
 
-To export an entire project, use its **Import / Export** screen, which packages every document into a single ZIP of `.conllu` files.
+To export a whole project, use its **Import & Export** tab, which packages every document into one ZIP of `.conllu` files.
 
 = Additional Features
 
@@ -259,15 +259,15 @@ A built-in syntax reference with more examples is available on the search screen
 
 === Looking for a word
 
-Structure needs Grew; a word does not. The box above the pattern looks in a single field — form, lemma, UPOS, XPOS, dependency relation or features — for text that **contains**, **is**, or **matches** (as a regular expression) what you type.
+Structure needs Grew, and a word does not. The box above the pattern looks in a single field (form, lemma, UPOS, XPOS, dependency relation or features) for text that **contains**, **is**, or **matches** (as a regular expression) what you type.
 
-It does not run a search of its own: it writes the Grew pattern and hands it to the box below. So a quick lookup is the first draft of a real one — run it, then edit the pattern it wrote.
+It does not run a search of its own: it writes the Grew pattern and hands it to the box below. So a quick lookup is the first draft of a real one. Run it, then edit the pattern it wrote.
 
 === Counting instead of reading
 
 After a search, **Count by** re-runs the same pattern as a tally: pick a pattern node and a field (`V.upos`, `S.lemma`, or a named edge's `e.label`) and the result is a sortable table of values with how many matches each accounts for.
 
-The matches themselves are never fetched for this — the server does the counting — so it stays fast on a corpus too large to page through.
+The matches themselves are never fetched for this, because the server does the counting, so it stays fast on a corpus too large to page through.
 
 == History
 
@@ -310,6 +310,7 @@ The mark is shared with every Plaid app on the project.
 A project's maintainers can tailor the annotation scheme from the project's settings tabs:
 
 * **UD Customization**: the controlled vocabularies (UPOS, XPOS, DEPREL tags), tag and relation **colors**, the **feature inventory** offered in the Features column, and the **document** and **sentence fields** the project keeps notes in (see <<_metadata>>). All vocabularies start from the standard universal sets and can be extended or replaced.
+* **General**: the project's **language**, the **tokenizer locale** used by **Tokenize**, and project deletion. The language is a BCP-47 tag such as `en`, `de` or `zh-Hans`. It is the language a connected parser starts on, and the locale **Tokenize** segments with unless the tokenizer locale is set to something more specific.
 
 === Suggestions or rules
 
@@ -325,8 +326,7 @@ A closed list is enforced where a person types: the annotation cells and the Gre
 
 === What a value is for
 
-Each value can carry a one-line definition, shown beside it while picking one. The 17 UPOS tags and the 37 universal relations ship with theirs; edit any of them, or describe your own values, under the list. A definition you change is stored with the project, so a value you never touched follows the app.
-* **General**: the project's **language**, the **tokenizer locale** used by **Tokenize**, and project deletion. The language is a BCP-47 tag such as `en`, `de` or `zh-Hans`. It is the language a connected parser starts on, and the locale **Tokenize** segments with unless the tokenizer locale is set to something more specific.
+Each value can carry a one-line definition, shown beside it while picking one. The 17 UPOS tags and the 37 universal relations ship with theirs. Edit any of them, or describe your own values, under the list. A definition you change is stored with the project, so a value you never touched follows the app.
 
 == Comments
 
@@ -338,7 +338,7 @@ Where they can be attached is deliberately limited to a **sentence** and the **d
 
 From the **Annotate** view, each sentence carries a small badge under its grid: the number of comments on it, or an invitation to write the first. It opens the thread in place, so a remark can be made without leaving the text.
 
-A thread is collapsed to its latest comment, and opens on click. Bodies are Markdown. You may edit and delete your own; a maintainer may delete anyone's. Readers can read comments but not write them.
+A thread is collapsed to its latest comment, and opens on click. Bodies are Markdown. You may edit and delete your own, and a maintainer may delete anyone's. Readers can read comments but not write them.
 
 A comment **outlives what it is about**. If the sentence it hangs on is merged away or re-segmented, the comment stays, marked **Outdated**, under the caption it was posted with. Those are shown separately from the current ones.
 
@@ -368,30 +368,105 @@ The server administers itself through one area, and it lives in Plaid IGT: the r
 
 It covers accounts (creating people, deactivating them, issuing password-reset links), invitations, every project on the server and who is on each, the services connected, and server-wide activity. A project set up for Universal Dependencies is labelled **UD** in its project list, and its name opens it back here.
 
-== Automation and Scripting
+== Services
 
-Plaid UD can be driven by external programs as well as by hand:
+Plaid UD can call external **services** for certain tasks.
+A service is a small program, often a Python script wrapping a model, that connects to your project when it starts and advertises which task it handles.
+Once connected, it appears wherever its task is offered, and a maintainer can make it the default for that task under **Settings → Services**.
+Some tasks ship with a built-in method that needs no service at all.
 
-* **Parser services**: a Python service (such as the bundled Stanza parser) can register itself with a project and become available as a parsing option in the Text Editor (see <<_entering_and_tokenizing_text>>). Where the service offers a language option, it opens on the project's language. Running such a service is an administrator/power-user task.
-* **API tokens**: from the project's **Access Tokens** settings (and your user profile) you can create named tokens for scripts and services. Actions taken with a named token are attributed to it in the history.
+Both of them work the same way.
+A button names the run, and it opens a dialog with the **Method** to use, that method's options, and the button that starts the run.
+A run keeps going if you close the dialog, and the button that opened it shows how long it has been going and how far it has got.
+
+A run that writes to the document takes it read-only until it finishes, and the document says so at the top, with the clock still running: a run ends by re-reading the document, which would discard anything typed underneath it.
+Only one run goes at a time.
+
+A run outlives the page that started it.
+Close the tab or reload it and the service carries on. Reopen the document and the run is picked up where it got to, editing still paused, and its result lands as usual.
+A run that has been finished and collected, or that is more than fifteen minutes past, is gone, and the document simply opens with whatever it wrote.
+**Stop**, on the banner or in the dialog, ends a run.
+It takes effect at the next point the work reports progress, and a run part-way through writing always finishes writing, so a stop never leaves half a document.
+Whatever it wrote stays.
+
+If the page loses contact with a service, because the connection dropped or the service went quiet for a long time, it says so rather than reporting the run as failed.
+The service is still working. Reload the document to pick the run back up.
+
+There are two integration points, both in the Text Editor (see <<_entering_and_tokenizing_text>>), and Parse is also in the Annotate toolbar:
+
+* **Tokenization**: splits the saved text into sentences, tokens and words. The built-in uses the browser's own segmentation and is always available. A service can replace it with segmentation of its own.
+* **Parsing**: fills in lemmas, parts of speech, features and dependency relations. There is no built-in, so this needs a connected service. The bundled example wraps Stanza. Where the service offers a language option, it opens on the project's language, and sentences a person has annotated are left alone unless you say otherwise.
+
+Whatever a service produces is stamped unverified, in the same violet state as any other machine value (see <<_machine_vs_human_annotations>>), so you stay in control of what gets confirmed.
+A service reports what it could not do, and a run that changed nothing says so rather than reporting success.
+
+Writing a service of your own is not hard.
+The link:manual.html#_services[Services chapter of the Plaid manual] explains how.
+
+== Scripting
+
+From the project's **Access Tokens** settings, and from your user profile, you can create named **API tokens** for scripts and services.
+A token carries your permissions and does not expire, and actions taken with one are attributed to it in the history.
 
 For writing your own scripts against a project, see the link:api-py.html[Python client] and link:api-js.html[JavaScript client] references.
 
 = Keyboard Shortcuts
 
+Every shortcut that takes Ctrl also takes Cmd on a Mac.
+The editor carries a short version of this under **Gestures and marks**, above the first sentence.
+
+== Annotation grid
+
 [cols="1,3"]
 |===
 | Shortcut | Action
 
-| **Tab** / **Shift+Tab** | Move to the next / previous cell in the annotation grid.
-| **Enter** | Commit the current cell.
-| **Escape** | Discard a cell edit, or close a panel / popover.
+| **Tab** / **Shift+Tab** | Move to the next or previous cell in the row.
+| **↑** / **↓** | Move between rows. **←** / **→** move along the row from the ends of a value.
+| **Enter** | Commit the cell, taking the highlighted suggestion if the list is open.
+| **Esc** | Cancel the edit, or close an open list or panel.
+| **Backspace** (Features) | On the empty input, select the last feature, so a second press removes it.
+| **Alt+↓** | In a lemma, XPOS or Features cell, list what the project has given words like this one, with counts, and pick one. See <<_what_this_project_has_said_before>>.
 | **Ctrl/Cmd+Enter** | Accept everything proposed on the current word, then move to the next word.
-| **Ctrl/Cmd+Backspace** | Discard the parser's unconfirmed work on the current word, then move to the next word.
-| **Ctrl/Cmd+Shift+Down** / **Up** | Jump to the next / previous word that still needs a look.
-| **Alt+click** | On a word in Annotate, open its sentence in the Text Editor. On a token in the Text Editor, annotate its sentence.
-| **Ctrl/Cmd+D** | Jump focus from the grid into the dependency tree.
-| **Arrow keys** | Move between grid cells, and into / out of the dependency tree.
-| **Shift+Delete** | Delete the dependency relation whose label you are editing.
-| **Ctrl/Cmd+Enter** | Run the query on the Search screen.
+| **Ctrl/Cmd+Backspace** | Discard the machine's unconfirmed work on the current word, then move to the next word. Anything a person entered or confirmed stays.
+| **Ctrl/Cmd+Shift+↑** / **↓** | Jump to the previous or next word that still needs a look.
+| **Alt+click** a word | Open that sentence in the Text Editor.
+| **↑** out of the top row | Jump to this word's relation label in the tree.
+|===
+
+== Dependency tree
+
+[cols="1,3"]
+|===
+| Shortcut | Action
+
+| **Drag** from one word to another | Draw a relation, or re-point an existing one.
+| **Click** a label | Edit it.
+| **Ctrl/Cmd+D** | Jump from the grid into the relation labels.
+| **←** / **→** | Move between labels. **Enter** edits the one you are on, **↓** drops back into the grid.
+| **Esc** | Leave the labels, or cancel an edit.
+| **Shift+Delete** | Delete the relation whose label you are editing.
+|===
+
+== Text Editor
+
+[cols="1,3"]
+|===
+| Gesture | Action
+
+| **Click** a token | Start or end a sentence there.
+| **Hover** a token | Open its panel, to edit its words or delete it.
+| **Alt+click** a token | Open that sentence in the Annotate tab.
+| **Select** a stretch of text | Make a token of it.
+|===
+
+== Search
+
+[cols="1,3"]
+|===
+| Shortcut | Action
+
+| **Enter** (word box) | Write the pattern for what you typed and run it.
+| **Ctrl/Cmd+Enter** (pattern box) | Run the pattern.
+| **Tab** (pattern box) | Indent, rather than leaving the box.
 |===
