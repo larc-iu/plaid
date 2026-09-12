@@ -110,6 +110,44 @@ test('the panel docks at exactly viewport height', async ({ page }) => {
   expect(cbox.y + cbox.height).toBeLessThanOrEqual(viewport.height);
 });
 
+test('the panel picks which assistant answers, while the thread is new', async ({ page }) => {
+  const TWO = [
+    ASSISTANT[0],
+    {
+      serviceId: 'igt:assist:other',
+      serviceName: 'IGT Assistant (other)',
+      description: 'A second stand-in.',
+      extras: { model: 'other/model', app: 'igt', tasks: ['assist'] },
+      tasks: ['assist'],
+      online: true,
+    },
+  ];
+  await seedAuth(page);
+  await withAssistant(page, TWO);
+  await analyze(page);
+  await page.getByRole('button', { name: 'Assistant', exact: true }).click();
+  const panel = page.locator('aside.border-l');
+  await expect(panel).toBeVisible();
+
+  // The model's name IS the picker while the conversation is new.
+  const picker = panel.getByRole('combobox', { name: 'Assistant' });
+  await expect(picker).toHaveText('test/model');
+  await picker.click();
+  await page.getByRole('option', { name: 'other/model' }).click();
+  await expect(picker).toHaveText('other/model');
+});
+
+test('the panel names the one assistant rather than offering a choice of one', async ({ page }) => {
+  await seedAuth(page);
+  await withAssistant(page);
+  await analyze(page);
+  await page.getByRole('button', { name: 'Assistant', exact: true }).click();
+  const panel = page.locator('aside.border-l');
+  await expect(panel).toBeVisible();
+  await expect(panel.getByText('test/model')).toBeVisible();
+  await expect(panel.getByRole('combobox', { name: 'Assistant' })).toHaveCount(0);
+});
+
 test('the tab strip stays pinned under the app header, docked or not', async ({ page }) => {
   // A sticky offset is measured from the scrollport it sticks to, and which
   // one that IS changes here: normally the page scrolls, but with the panel

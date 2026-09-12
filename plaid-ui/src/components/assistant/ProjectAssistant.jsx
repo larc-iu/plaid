@@ -593,9 +593,23 @@ export const ProjectAssistant = ({
               <code className="rounded bg-muted px-1">{adapter.command} --model …</code>.
             </span>
           ) : panel ? (
-            <span className="min-w-0 truncate text-muted-foreground" title={service.serviceName}>
-              {model || service.serviceName}
-            </span>
+            // Which assistant answers is settled at the start of a
+            // conversation and then stays put, so the panel offers the choice
+            // exactly where it shows the answer: the model's name IS the
+            // picker while the thread is new, and plain text once it is not.
+            canChoose ? (
+              <AssistantPicker
+                assistants={assistants}
+                value={service.serviceId}
+                onChange={setChoice}
+                disabled={!!busy}
+                compact
+              />
+            ) : (
+              <span className="min-w-0 truncate text-muted-foreground" title={service.serviceName}>
+                {model || service.serviceName}
+              </span>
+            )
           ) : (
             <>
               <span className="font-medium">{service.serviceName}</span>
