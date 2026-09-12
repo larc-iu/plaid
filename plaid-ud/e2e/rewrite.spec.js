@@ -9,7 +9,7 @@ import { getUdLayerInfo } from '../src/utils/udLayerUtils.js';
 //   1. a feature rewrite: preview, apply, the server took it, the rule then
 //      matches nothing;
 //   2. the structural commands: del_node, shift (an endpoint move), and an
-//      add_edge onto a word that had no lemma (the lemma span is created first);
+//      add_edge onto a word with no Lemma span (it is created first);
 //   3. a document changed between preview and apply is refused (409) and
 //      nothing in it is written;
 //   4. a runtime error shows on its sentence; an unsupported command reports.
@@ -29,15 +29,19 @@ const CONLLU = [
   '3\tis\tbe\tAUX\t_\t_\t4\taux:pass\t_\t_',
   '4\tscheduled\tschedule\tVERB\t_\tVoice=Pass\t0\troot\t_\t_',
   '',
-  // "hat" has no lemma, so the import gives it no relations at all.
-  '# text = she saw a cat with a hat',
+  // "today" has no lemma AND no place in the tree, so the import gives it no
+  // Lemma span at all: a rule that hands IT an edge is what needs one created
+  // first. (A word with no lemma but a head, like "hat" before c51b9579, gets
+  // a null-valued span on import, because a relation hangs off one.)
+  '# text = she saw a cat with a hat today',
   '1\tshe\tshe\tPRON\t_\t_\t2\tnsubj\t_\t_',
   '2\tsaw\tsee\tVERB\t_\t_\t0\troot\t_\t_',
   '3\ta\ta\tDET\t_\t_\t4\tdet\t_\t_',
   '4\tcat\tcat\tNOUN\t_\t_\t2\tobj\t_\t_',
   '5\twith\twith\tADP\t_\t_\t7\tcase\t_\t_',
   '6\ta\ta\tDET\t_\t_\t7\tdet\t_\t_',
-  '7\that\t_\tNOUN\t_\t_\t4\tnmod\t_\t_',
+  '7\that\that\tNOUN\t_\t_\t4\tnmod\t_\t_',
+  '8\ttoday\t_\tADV\t_\t_\t_\t_\t_\t_',
 ].join('\n');
 const S = {};
 
@@ -118,7 +122,7 @@ test('structural commands: del_node, shift, and add_edge onto a word without a l
     page,
     box,
     [
-      'rule attach { pattern { N [form="cat"]; H [form="hat", !lemma] } commands { add_edge N -[nmod]-> H; H.lemma = "hat" } }',
+      'rule attach { pattern { V [form="saw"]; H [form="today", !lemma] } commands { add_edge V -[advmod]-> H; H.lemma = "today" } }',
       'rule drop { pattern { D [form="the"] } commands { del_node D } }',
       'rule promote { pattern { V [form="saw"]; N [form="dog"]; V -[obj]-> * } commands { shift_out V =[obj]=> N } }',
     ].join('\n'),
@@ -126,8 +130,8 @@ test('structural commands: del_node, shift, and add_edge onto a word without a l
   await expect(page.getByText('2 sentences in 1 document, 2 selected')).toBeVisible();
   await expect(page.getByText('the: word deleted')).toBeVisible();
   await expect(page.getByText('obj of cat: head saw → dog')).toBeVisible();
-  await expect(page.getByText('hat: lemma (none) → hat')).toBeVisible();
-  await expect(page.getByText('cat → hat: nmod added')).toBeVisible();
+  await expect(page.getByText('today: lemma (none) → today')).toBeVisible();
+  await expect(page.getByText('saw → today: advmod added')).toBeVisible();
 
   await applyAll(page, 2);
   await expect(page.getByText('Changed 2 sentences in 1 document.')).toBeVisible();
@@ -143,13 +147,15 @@ test('structural commands: del_node, shift, and add_edge onto a word without a l
   );
   expect(obj).toBeTruthy();
   // add_edge created the lemma span first and hung the relation on it.
-  const hat = lemmaSpanOf(li, 'hat');
-  expect(hat).toBeTruthy();
-  const nmod = li.relationLayer.relations.find((r) => r.value === 'nmod' && r.target === hat.id);
-  expect(nmod).toBeTruthy();
-  // There is a "cat" in two sentences; the source is one of their lemma spans.
-  const cats = li.lemmaLayer.spans.filter((s) => s.value === 'cat').map((s) => s.id);
-  expect(cats).toContain(nmod.source);
+  const today = lemmaSpanOf(li, 'today');
+  expect(today).toBeTruthy();
+  const advmod = li.relationLayer.relations.find(
+    (r) => r.value === 'advmod' && r.target === today.id,
+  );
+  expect(advmod).toBeTruthy();
+  // There is a "saw" in two sentences; the source is one of their lemma spans.
+  const saws = li.lemmaLayer.spans.filter((s) => s.value === 'see').map((s) => s.id);
+  expect(saws).toContain(advmod.source);
 });
 
 test('a document changed between preview and apply is refused and left alone', async ({ page }) => {
