@@ -409,8 +409,10 @@ def test_set_words_collapses_one_back(ws):
 def test_set_words_says_what_it_discards(ws):
     """The words are deleted and remade, which cascades everything on them.
     A user approving this has to see how much goes."""
+    # "Vamos" is the root (r-1) and the head of both r-3 and r-4. All three
+    # hang off its lemma span and all three go, so all three are named.
     out = call_tool(ws, 'set_words', {'document': 'Viaje', 'ref': 's1.w1', 'forms': ['va', 'mos']})
-    assert 'discards 3 annotation value(s) and 1 dependency' in out
+    assert 'discards 3 annotation value(s) and 3 dependencies' in out
 
 
 def test_a_word_reference_reaches_its_token(ws):
@@ -604,3 +606,16 @@ def test_a_discard_leaves_a_machine_lemma_that_a_vouched_arc_hangs_on():
     out = run(ws, 'discard_predictions', document='Viaje', field='lemma')
     assert out == 'Nothing to discard: 1 machine lemma(s) here anchor arcs a person drew.'
     assert ws.ops == []
+
+
+def test_a_head_or_an_index_that_is_not_a_number_reads_as_english(ws):
+    # `isdigit` is true of "²" and of the digits inside "--1", so int() got
+    # them and answered the model with its own error text.
+    for bad in ('--1', '²', '1.0', 1.5):
+        out = run(ws, 'set_head', document='Viaje', ref='s1.w4', head=bad, deprel='obj')
+        assert 'is not a head' in out and 'invalid literal' not in out
+    run(ws, 'set_field', document='Viaje', refs=['s2.w1'], field='lemma', value='correr')
+    assert 'whole numbers' in run(ws, 'drop_planned', indexes=['a'])
+    # A fraction is refused, not truncated onto change 1.
+    assert 'whole numbers' in run(ws, 'drop_planned', indexes=[1.5])
+    assert len(ws.ops) == 1

@@ -116,6 +116,18 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
             raise ValueError(f'op {i + 1} (restore_document): a restore must be the only op in its plan')
 
 
+def _bulk_gone(ops) -> set:
+    """Tokens that go without a `delete` call of their own: taken by a
+    `bulk_delete`, or cascaded by the delete of the word above them. A single
+    delete of one 404s and the batch it shares is atomic, while the bulk
+    tolerates ids already gone, so the single delete is the one to skip."""
+    out = set()
+    for op in ops:
+        if op.get('kind') in ('split_word', 'merge_words', 'delete_word'):
+            out.update(op.get('morpheme_ids') or [])
+    return out
+
+
 def _dead_tokens(ops) -> set:
     """Tokens (words and morphemes) shape ops in the plan delete."""
     dead = set()
@@ -131,6 +143,13 @@ def _dead_tokens(ops) -> set:
             dead.add(op['other_id'])
         elif k == 'edit_text':
             dead.update(op.get('word_ids') or [])
+            dead.update(op.get('morpheme_ids') or [])
+        # An analysis op removes morphemes too. Nothing else in the plan may
+        # annotate or confirm one of those: the patch lands after the delete in
+        # the same atomic batch and takes the whole plan down with it.
+        elif k == 'set_analysis':
+            dead.update(m['id'] for m in (op.get('existing') or [])[1:])
+        elif k == 'discard_analysis':
             dead.update(op.get('morpheme_ids') or [])
     return dead
 
@@ -151,8 +170,10 @@ def _doomed_ids(ops) -> set:
         elif k == 'set_analysis':
             ex = op.get('existing') or []
             gone.update(m['id'] for m in ex[1:])
-            if ex:
-                gone.update(ex[0].get('span_ids') or [])
+            # The survivor's spans are deleted outright and the rest ride
+            # morphemes that go with them. Both are gone by the end.
+            for m in ex:
+                gone.update(m.get('span_ids') or [])
         elif k == 'unlink':
             gone.add(op['link_id'])
         elif k in ('link', 'link_phrase') and op.get('existing_link_id'):
@@ -205,16 +226,23 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
         k = op.get('kind')
         key = _TOKEN_KEYS.get(k)
         if (key and op.get(key) in dead) or (k == 'link_phrase' and any(t in dead for t in op.get('token_ids') or [])):
-            raise ValueError(f'{op.get("label") or k}: that word or morpheme is deleted or merged away by another '
-                             'op in this plan')
+            # Refusing here refused a plan the user had already approved, and
+            # the op is moot either way: whatever it names is gone by the end.
+            notes.append(f'dropped: {op.get("label") or k} '
+                         '(that word or morpheme is deleted or merged away in this plan)')
+            continue
         if k in ('link', 'link_phrase') and op.get('item_id') in removed:
             notes.append(f'dropped: {op.get("label") or "a link"} (its entry is deleted in this plan)')
             continue
         if k in ('set_morpheme_form', 'set_morph_type') and op['morpheme_id'] in rewritten:
             notes.append(f'dropped: {op.get("label") or "a morpheme change"} (that analysis is rewritten in this plan)')
             continue
-        if k == 'confirm' and doomed:
-            op = {**op, **{key: [i for i in (op.get(key) or []) if i not in doomed]
+        if k == 'confirm' and (doomed or dead):
+            # `on` says which token each span and link sits on, because a span
+            # whose token is deleted is gone without ever being named.
+            on = op.get('on') or {}
+            op = {**op, **{key: [i for i in (op.get(key) or [])
+                                 if i not in doomed and on.get(i) not in dead]
                            for key in ('span_ids', 'token_ids', 'link_ids')}}
             if not any(op[key] for key in ('span_ids', 'token_ids', 'link_ids')):
                 notes.append(f'dropped: {op.get("label") or "a confirmation"} (everything it confirms is deleted in this plan)')
@@ -284,6 +312,10 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps) -> D
         # discard that deletes the same span, a merge beside a delete of the
         # same entry. Each pair is a whole plan refused after approval.
         gone: set = set()
+        # Seeded with what goes without a delete call of its own, so a single
+        # delete naming the same id is never issued beside it.
+        for _tid in _bulk_gone(ops):
+            gone.add(('tokens', _tid))
 
         def drop(resource, entity_id):
             if not entity_id or (resource, entity_id) in gone:

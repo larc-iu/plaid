@@ -864,6 +864,7 @@ def q_lexicon_usage(ws: Workspace, vocabs: List[dict], items: Dict[str, dict]):
     from grouped queries over the links of the given lexicons."""
     from .stats import _note_stale
     c = ws.corpus
+    c.forget_clipping()
     p = c.p
     gm, gw = p.gloss_field('Morpheme'), p.gloss_field('Word')
     uses: Counter = Counter()
@@ -1154,6 +1155,15 @@ def q_set_field_for_form(ws: Workspace, form: str, f, value: str, only_empty: bo
     without = c.entities(unit + [['not', c.span('?s', f.layer_id), ['covers', '?s', '?u']]], ['?u'], cap + 1,
                          [['?u.doc'], ['?u.begin']])
     rows = [(u, s) for u, s in with_span] + [(u, None) for (u,) in without]
+    # Both reads cap CANDIDATES, not matches, and they are ordered by document.
+    # Past the cap the later documents were never looked at, so a form whose
+    # first `cap` occurrences all hold the value already would answer "nothing
+    # to change" for a corpus full of changes. The same refusal
+    # `q_replace_in_field` gives for the same shape.
+    if len(with_span) > cap or len(without) > cap:
+        raise ToolError(f'"{form}" occurs more than {cap} times, which is more than one pass can '
+                        f'read, so setting {f.name} across the project here would only see part of '
+                        f'the corpus. Narrow it to a document and go in passes.')
     budget = _docs_of([[u] for u, _ in rows])
     staged = []
     for tok, sp in rows:

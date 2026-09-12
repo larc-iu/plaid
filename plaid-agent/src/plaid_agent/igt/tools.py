@@ -231,6 +231,19 @@ class Workspace:
         if '#' in form:
             form, _, hn = form.rpartition('#')
             suffix = hn.strip()
+        # A homograph number is a POSITION among the entries spelled alike, and
+        # the view it counts against leaves out what this plan deletes. So
+        # "gam#1" after a planned delete of gam#1 quietly names the other gam.
+        # A number whose referent has moved within the turn is not a name.
+        if suffix is not None and '.' not in suffix and self.doomed_entries():
+            same = [it for v in vocabs for it in self.lexicon(v)
+                    if (it.get('form') or '').lower() == form.lower()
+                    and it['id'] in self.doomed_entries()]
+            if same:
+                raise ToolError(
+                    f'"{form}#{suffix}" is not a name any more: this plan deletes or merges away an '
+                    f'entry spelled "{form}", so the numbers beside the others have moved. '
+                    'Pass entry_id, or drop that change with drop_planned first.')
         g = (gloss or '').strip().casefold()
 
         def has_gloss(meta, view=None):
@@ -2206,15 +2219,30 @@ def _needs_review(meta) -> bool:
     return prov_state(meta) in REVIEWABLE
 
 
+PIECE_KEYS = ('span_ids', 'token_ids', 'link_ids')
+
+
+def _empty_pieces() -> Dict[str, Any]:
+    return {'span_ids': [], 'token_ids': [], 'link_ids': [], 'on': {}}
+
+
+def _has_pieces(pieces) -> bool:
+    return any(pieces[k] for k in PIECE_KEYS)
+
+
 def _review_pieces(obj, f=None, into=None) -> Dict[str, list]:
     """Ids of the pieces of a sentence, word, or morpheme (a sentence includes
     its words) that await review: spans (only field ``f`` when given), links,
     multi-word expressions, and token metadata (only when no field is named).
     A multi-word expression is listed once however many members are seen."""
-    out = into if into is not None else {'span_ids': [], 'token_ids': [], 'link_ids': []}
+    out = into if into is not None else _empty_pieces()
     for name, sp in obj.fields.items():
         if (f is None or name == f.name) and _needs_review(sp.metadata):
             out['span_ids'].append(sp.id)
+            # Which token carries it. A span on a token another op in the plan
+            # deletes is gone without ever being named, and confirming it after
+            # the delete fails the whole batch.
+            out['on'][sp.id] = obj.id
     if isinstance(obj, Sentence):
         if f is None or f.scope != 'Sentence':
             for w in obj.words:
@@ -2223,6 +2251,7 @@ def _review_pieces(obj, f=None, into=None) -> Dict[str, list]:
     if f is None:
         if obj.link and _needs_review(obj.link.metadata):
             out['link_ids'].append(obj.link.id)
+            out['on'][obj.link.id] = obj.id
         for l in getattr(obj, 'mwes', ()):
             if _needs_review(l.metadata) and l.id not in out['link_ids']:
                 out['link_ids'].append(l.id)
@@ -2251,10 +2280,10 @@ MAX_CONFIRM_DOCS = 100
 
 
 def _document_confirm_op(ws: Workspace, doc: IgtDoc, f) -> Optional[Dict[str, Any]]:
-    pieces = {'span_ids': [], 'token_ids': [], 'link_ids': []}
+    pieces = _empty_pieces()
     for s in doc.sentences:
         _review_pieces(s, f, pieces)
-    if not any(pieces.values()):
+    if not _has_pieces(pieces):
         return None
     return {'kind': 'confirm', **pieces, 'doc': doc.id,
             'label': f'{ws.doc_label(doc.id)}: confirm {_pieces_label(pieces)}' + (f' ({f.name})' if f else '')}
@@ -2290,7 +2319,7 @@ def t_confirm(ws: Workspace, document: Optional[str] = None, refs=None, field: O
         for ref in refs:
             obj = resolve(doc, ref)
             pieces = _review_pieces(obj, f)
-            if not any(pieces.values()):
+            if not _has_pieces(pieces):
                 continue
             staged.append({'kind': 'confirm', **pieces,
                            'label': f'{ws.doc_label(doc.id)} {ref} "{_what(obj)[:40]}": confirm {_pieces_label(pieces)}'
@@ -2569,14 +2598,30 @@ def t_discard_plan(ws: Workspace) -> str:
     return f'Discarded {n} planned change{"s" if n != 1 else ""}.'
 
 
+def _whole(i) -> int:
+    """One plan index. A fraction is refused rather than truncated: 1.5 is not
+    change 1, and silently dropping change 1 for it is worse than a refusal."""
+    if isinstance(i, bool):
+        raise ValueError(i)
+    if isinstance(i, int):
+        return i
+    if isinstance(i, float):
+        if not i.is_integer():
+            raise ValueError(i)
+        return int(i)
+    if re.fullmatch(r'-?[0-9]+', str(i).strip()):
+        return int(str(i).strip())
+    raise ValueError(i)
+
+
 def t_drop_planned(ws: Workspace, indexes) -> str:
     """Drop some planned changes by their plan_status numbers, keeping the rest."""
     if isinstance(indexes, (int, str)):
         indexes = [indexes]
     try:
-        wanted = {int(i) for i in (indexes or [])}
+        wanted = {_whole(i) for i in (indexes or [])}
     except (TypeError, ValueError):
-        raise ToolError('indexes must be the numbers shown by plan_status, e.g. [2, 5]')
+        raise ToolError('indexes must be the whole numbers shown by plan_status, e.g. [2, 5]')
     bad = sorted(i for i in wanted if not 1 <= i <= len(ws.ops))
     if bad:
         raise ToolError(f'No planned change number {", ".join(map(str, bad))}; the plan holds {len(ws.ops)} (see plan_status)')

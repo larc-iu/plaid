@@ -171,7 +171,7 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
 
     if by is None:
         describe(whole, n_docs, f'Project "{project.name}"' if not document else f'Document "{names[next(iter(names))]}"')
-        return _truncate('\n'.join(lines) + clipped)
+        return _truncate(_with_note(lines, clipped))
 
     if by.lower() == 'document':
         gm, gs = project.gloss_field('Morpheme') or project.gloss_field('Word'), project.gloss_field('Sentence')
@@ -189,7 +189,7 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
                      _pct(n['hapax'], n['words']), f'{n["ttr"]:.2f}']
             cells += [str((metas.get(did) or {}).get(k, '') or '') for k in project.document_metadata]
             lines.append('\t'.join(c for c in cells if c is not None))
-        return _truncate('\n'.join(lines) + clipped)
+        return _truncate(_with_note(lines, clipped))
 
     key = next((k for k in project.document_metadata if k.lower() == by.lower()), None)
     if not key:
@@ -199,7 +199,7 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
         groups[str((metas.get(did) or {}).get(key, '') or '(none)')].append(did)
     for val, ids in sorted(groups.items(), key=lambda kv: -len(kv[1])):
         describe(total(ids), len(ids), f'{key} = {val}')
-    return _truncate('\n'.join(lines) + clipped)
+    return _truncate(_with_note(lines, clipped))
 
 
 # --- frequency_list -----------------------------------------------------------------
@@ -261,6 +261,16 @@ def t_frequency_list(ws: Workspace, what: str = 'wordform', document: Optional[s
                             empty += 1
     items = [(k, n) for k, n in counts.most_common() if n >= max(1, int(min_count or 1))]
     return _frequency_lines(items, spread, empty, field, what_l, limit)
+
+
+def _with_note(lines, clipped: str) -> str:
+    """The clipped warning on the FIRST line, where `_truncate` cannot cut it.
+    Appended last it was the first thing lost on exactly the long report that
+    had something to warn about."""
+    if not clipped:
+        return '\n'.join(lines)
+    head = (lines[0] + clipped) if lines else clipped.lstrip()
+    return '\n'.join([head] + list(lines[1:]))
 
 
 def _freq_noun(field, what_l: str) -> str:
@@ -627,7 +637,10 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
                      + (': ' + '; '.join(shown[:cap]) + (' …' if len(shown) > cap else '') if shown else '.'))
     if want('single') and n_docs > 1:
         listing('entries attested in a single document', (items[i].get('form') or '' for i, ds in use_docs.items() if len(ds) == 1))
-    return _truncate('\n'.join(lines))
+    # The sixth report, and the one with the widest grouping: one row per
+    # link-token. Past the group limit "entries never linked" lists entries
+    # whose links fell off the end of the read.
+    return _truncate(_with_note(lines, ws.corpus.clipped_note('links') if not ws.prefer_scan else ''))
 
 
 # --- check_integrity ----------------------------------------------------------------

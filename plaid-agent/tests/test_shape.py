@@ -117,15 +117,18 @@ def test_execute_shape_ops_in_order():
         ('tokens', 'merge', ('s-1', 's-2')), ('spans', 'update', ('sp-t1', 'x | y')), ('spans', 'delete', ('sp-t2',))]
 
 
-def test_ops_on_tokens_a_shape_op_removes_are_refused_or_filtered():
+def test_ops_on_tokens_a_shape_op_removes_are_dropped_or_filtered():
+    # Dropped rather than refused: the plan was already approved, and the op is
+    # moot either way because what it names is gone by the end.
     dead = [{'kind': 'delete_word', 'word_id': 'w-4', 'morpheme_ids': ['m-4a', 'm-4b'], 'label': ''}]
-    with pytest.raises(ValueError, match='deleted or merged away'):
-        normalize_ops(dead + [{'kind': 'set_span', 'layer_id': 'L', 'token_id': 'w-4', 'span_id': None, 'value': 'v', 'label': 'gloss w4'}])
-    with pytest.raises(ValueError, match='deleted or merged away'):
-        normalize_ops(dead + [{'kind': 'set_morpheme_form', 'morpheme_id': 'm-4b', 'form': 'x', 'label': ''}])
-    with pytest.raises(ValueError, match='deleted or merged away'):
-        normalize_ops([{'kind': 'merge_words', 'word_id': 'w-2', 'other_ids': ['w-3'], 'morpheme_ids': [], 'spans': [], 'links': {}, 'label': ''},
-                       {'kind': 'link', 'token_id': 'w-3', 'item_id': 'vi', 'label': ''}])
+    for extra in ({'kind': 'set_span', 'layer_id': 'L', 'token_id': 'w-4', 'span_id': None, 'value': 'v', 'label': 'gloss w4'},
+                  {'kind': 'set_morpheme_form', 'morpheme_id': 'm-4b', 'form': 'x', 'label': ''}):
+        out, notes = normalize_ops(dead + [extra])
+        assert [o['kind'] for o in out] == ['delete_word']
+        assert notes[0].startswith('dropped:') and 'deleted or merged away' in notes[0]
+    out, notes = normalize_ops([{'kind': 'merge_words', 'word_id': 'w-2', 'other_ids': ['w-3'], 'morpheme_ids': [], 'spans': [], 'links': {}, 'label': ''},
+                                {'kind': 'link', 'token_id': 'w-3', 'item_id': 'vi', 'label': ''}])
+    assert [o['kind'] for o in out] == ['merge_words'] and notes[0].startswith('dropped:')
     out, notes = normalize_ops(dead + [{'kind': 'confirm', 'span_ids': [], 'token_ids': ['m-4a', 'm-9'], 'link_ids': [], 'label': ''}])
     assert out[1]['token_ids'] == ['m-9'] and notes == []
     # The survivor of a merge may still be written to.
@@ -300,9 +303,47 @@ def test_execute_retype_keeps_unchanged_words_and_verifies_the_region():
     assert not [1 for r, m, a, k in c2.log if r == 'texts']
 
 
-def test_ops_on_retyped_words_are_refused():
+def test_ops_on_retyped_words_are_dropped():
     ops = [{'kind': 'edit_text', 'document_id': 'd1', 'text_id': 'text1', 'sentence_id': 's-1', 'begin': 0, 'end': 17,
             'old': 'x', 'new': 'y', 'word_ids': ['w-1'], 'morpheme_ids': ['m-1a'], 'label': ''},
            {'kind': 'set_span', 'layer_id': 'L', 'token_id': 'w-1', 'span_id': None, 'value': 'v', 'label': 'gloss'}]
-    with pytest.raises(ValueError, match='deleted or merged away'):
-        normalize_ops(ops)
+    out, notes = normalize_ops(ops)
+    assert [o['kind'] for o in out] == ['edit_text']
+    assert notes[0].startswith('dropped:') and 'deleted or merged away' in notes[0]
+
+
+def test_a_confirm_skips_what_rides_a_token_the_plan_rewrites():
+    # Neither span is named by the analysis op, and both are gone once it
+    # lands: sp-m1a is deleted outright, sp-m1b rides a morpheme that goes.
+    # Patching either after the delete fails the whole atomic batch, after the
+    # user has approved it.
+    ops = [{'kind': 'set_analysis', 'word_id': 'w-1', 'text_id': 't', 'begin': 0, 'end': 3,
+            'morpheme_layer_id': 'ml', 'morphemes': [{'form': 'x', 'fields': []}],
+            'existing': [{'id': 'm-1a', 'span_ids': ['sp-m1a']},
+                         {'id': 'm-1b', 'span_ids': ['sp-m1b']}], 'label': ''},
+           {'kind': 'confirm', 'span_ids': ['sp-m1a', 'sp-m1b', 'sp-ok'],
+            'token_ids': ['m-1b', 'w-9'], 'link_ids': [],
+            'on': {'sp-m1a': 'm-1a', 'sp-m1b': 'm-1b', 'sp-ok': 'w-9'}, 'label': ''}]
+    out, notes = normalize_ops(ops)
+    confirm = [o for o in out if o['kind'] == 'confirm'][0]
+    assert confirm['span_ids'] == ['sp-ok']
+    assert confirm['token_ids'] == ['w-9']
+    assert notes == []
+
+
+def test_a_single_delete_never_repeats_what_a_bulk_already_took():
+    # The split bulk-deletes the old chain; the analysis names the same
+    # morphemes. A bulk_delete of gone ids is accepted, a SINGLE delete of one
+    # is a 404, and the batch is atomic.
+    c = FakeClient()
+    ops = [{'kind': 'split_word', 'word_id': 'w-1', 'position': 3,
+            'morpheme_ids': ['m-1a', 'm-1b'], 'label': ''},
+           {'kind': 'set_analysis', 'word_id': 'w-1', 'text_id': 't', 'begin': 0, 'end': 6,
+            'morpheme_layer_id': 'ml', 'morphemes': [{'form': 'x', 'fields': []}],
+            'existing': [{'id': 'm-1a', 'span_ids': []}, {'id': 'm-1b', 'span_ids': []}],
+            'label': ''}]
+    out, _ = normalize_ops(ops)
+    execute_plan(c, out, source='s', label='l')
+    singles = [a for r, m, a, k in c.log if (r, m) == ('tokens', 'delete')]
+    assert ('m-1b',) not in singles and ('m-1a',) not in singles
+    assert [a for r, m, a, k in c.log if (r, m) == ('tokens', 'bulk_delete')] == [(['m-1a', 'm-1b'],)]

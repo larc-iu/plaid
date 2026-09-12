@@ -48,7 +48,13 @@ def t_set_words(ws: Workspace, document: str = None, ref: str = None, forms=None
 
     annotated = sum(1 for w in token.words for f in ('lemma', 'upos', 'xpos', 'features')
                     if w.value(f))
-    heads = sum(1 for w in token.words if w.relation_id)
+    # Arcs ON these words, in both directions. They all hang off the words'
+    # lemma spans, so an arc whose HEAD is one of them cascades exactly as one
+    # whose dependent is. Counting only `relation_id` (the dependent's end)
+    # promised one loss and took three.
+    indexes = {w.index for w in token.words}
+    heads = sum(1 for w in sentence.words
+                if w.relation_id and (w.index in indexes or w.head in indexes))
     lost = []
     if annotated:
         lost.append(f'{annotated} annotation value(s)')

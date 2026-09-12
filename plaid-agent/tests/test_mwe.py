@@ -147,10 +147,11 @@ def test_execute_link_phrase_and_pending_entries():
     assert first[2][:2] == ('vocab_links', 'create') and first[2][2][:2] == ('vi-ali', ['w-1', 'w-2'])
     second = [(r, m, a) for r, m, a, k in c.batches[1]]
     assert second[0][:2] == ('vocab_links', 'create') and second[0][2][:2] == ('new-vocab_items-0', ['w-2', 'w-3'])
-    # A member deleted elsewhere in the plan refuses the expression; a deleted entry drops it.
-    import pytest
-    with pytest.raises(ValueError, match='deleted or merged away'):
-        normalize_ops([{'kind': 'delete_word', 'word_id': 'w-2', 'morpheme_ids': [], 'label': ''}, ops[2]])
+    # A member deleted elsewhere in the plan drops the expression, as a deleted
+    # entry does: both leave the approved plan standing minus the moot op.
+    out, notes = normalize_ops([{'kind': 'delete_word', 'word_id': 'w-2', 'morpheme_ids': [], 'label': ''}, ops[2]])
+    assert [o['kind'] for o in out] == ['delete_word']
+    assert notes[0].startswith('dropped:') and 'deleted or merged away' in notes[0]
     out, notes = normalize_ops([{'kind': 'delete_entry', 'item_id': 'vi-ali', 'links': [], 'label': 'del'}, ops[2]])
     assert [o['kind'] for o in out] == ['delete_entry'] and notes[0].startswith('dropped:')
 

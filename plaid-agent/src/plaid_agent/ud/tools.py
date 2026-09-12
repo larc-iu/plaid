@@ -10,6 +10,7 @@ Everything is addressed positionally (``s3.w2``), never by id: see
 """
 
 import copy
+import re
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -412,7 +413,10 @@ def _head_id(head) -> int:
     if isinstance(head, float) and head.is_integer():
         return int(head)
     text = str(head).strip()
-    if text.lstrip('-').isdigit():
+    # `isdigit` is true of "\u00b2" and of the digits in "--1", and int() then
+    # answered the model with its own error text, which is the symptom this
+    # helper exists to remove.
+    if re.fullmatch(r'-?[0-9]+', text):
         return int(text)
     raise ToolError(f'"{head}" is not a head. Give the number the head word carries within its own sentence '
                     '(1, 2, 3 …), or 0 for the root. It is a plain number, not a reference.')
@@ -606,10 +610,29 @@ def t_discard_plan(ws: Workspace) -> str:
     return f'Discarded {n} planned change(s).' if n else 'Nothing was planned.'
 
 
+def _whole(i) -> int:
+    """One plan index. A fraction is refused rather than truncated: 1.5 is not
+    change 1, and silently dropping change 1 for it is worse than a refusal."""
+    if isinstance(i, bool):
+        raise ValueError(i)
+    if isinstance(i, int):
+        return i
+    if isinstance(i, float):
+        if not i.is_integer():
+            raise ValueError(i)
+        return int(i)
+    if re.fullmatch(r'-?[0-9]+', str(i).strip()):
+        return int(str(i).strip())
+    raise ValueError(i)
+
+
 def t_drop_planned(ws: Workspace, indexes=None) -> str:
     if not indexes:
         raise ToolError('Give indexes: the numbers plan_status shows, as a list.')
-    drop = {int(i) for i in indexes}
+    try:
+        drop = {_whole(i) for i in indexes}
+    except (TypeError, ValueError):
+        raise ToolError('indexes must be the whole numbers plan_status shows, as a list, e.g. [2, 5].')
     bad = [i for i in drop if not 1 <= i <= len(ws.ops)]
     if bad:
         raise ToolError(f'No planned change numbered {", ".join(str(b) for b in bad)}. '
