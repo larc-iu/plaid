@@ -875,7 +875,7 @@ export const ProjectAssistant = ({
                 {/* No disc around it: the mark is already a rounded
                     square, so a grey circle behind it was a container around a
                     container. */}
-                {!panel && <AssistantMark className="h-11 w-11" />}
+                {!panel && <AssistantMark ring className="h-11 w-11" />}
                 <div className="max-w-md text-sm text-muted-foreground">
                   {panel ? (
                     // The panel reaches screens that are about no one thing
@@ -977,7 +977,7 @@ export const ProjectAssistant = ({
                 )}
                 {busy === 'turn' && partial && (
                   <div className="flex gap-3">
-                    <AssistantMark className="mt-1 h-7 w-7 shrink-0" />
+                    <AssistantMark ring className="mt-1 h-7 w-7 shrink-0" />
                     <div className="min-w-0 flex-1">
                       <AssistantMarkdown>{partial}</AssistantMarkdown>
                     </div>

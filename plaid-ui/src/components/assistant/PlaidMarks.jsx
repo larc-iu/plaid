@@ -31,7 +31,7 @@ const CHECK = '#d6d3d1'; // bone, the fine overcheck that gives it a catch-light
 // One clip per instance. These appear several times on a screen (a header, a
 // reply, a picker), and a shared id is invalid markup that browsers resolve by
 // document order rather than by intent.
-const Sett = ({ clipShape, className, title }) => {
+const Sett = ({ clipShape, rim = null, className, title }) => {
   const clip = useId();
   return (
     <svg
@@ -54,6 +54,7 @@ const Sett = ({ clipShape, className, title }) => {
         <rect x="11.4" y="2.5" width="0.9" height="19" fill={CHECK} opacity="0.85" />
         <rect x="2.5" y="11.4" width="19" height="0.9" fill={CHECK} opacity="0.85" />
       </g>
+      {rim}
     </svg>
   );
 };
@@ -65,6 +66,26 @@ export const PlaidMark = (props) => (
 );
 
 // The assistant's mark.
-export const AssistantMark = (props) => (
-  <Sett {...props} clipShape={<circle cx="12" cy="12" r="9.5" />} />
+//
+// `ring` puts a hairline rim just outside the cloth, which is drawn INSIDE the
+// svg: a CSS ring sits on the element's box, and the disc is 19 of 24 units
+// across, so it would float off the edge and read as detached. The cloth shrinks
+// by half a unit to make room rather than the rim covering the outermost band.
+//
+// Opt-in, and off at the small sizes ON PURPOSE. Measured at 14, 16, 20, 28, 40
+// and 72: the rim looks properly finished from about 28 up, and below 20 it is
+// sub-pixel, so all it does is soften the perimeter and make the disc read
+// smaller. So the header, the buttons and the Ask gestures go without, and the
+// two places that render it big use it. (A drop shadow was tried and is worse
+// at every size: a visible halo, and at 14px it reads as a smudge.)
+export const AssistantMark = ({ ring = false, ...props }) => (
+  <Sett
+    {...props}
+    clipShape={<circle cx="12" cy="12" r={ring ? 9 : 9.5} />}
+    rim={
+      ring ? (
+        <circle cx="12" cy="12" r="9.35" stroke={CHECK} strokeWidth="0.6" opacity="0.38" />
+      ) : null
+    }
+  />
 );

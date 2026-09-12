@@ -126,7 +126,7 @@ export const Turn = ({
   }
   return (
     <div className="flex gap-3">
-      <AssistantMark className="mt-1 h-7 w-7 shrink-0" />
+      <AssistantMark ring className="mt-1 h-7 w-7 shrink-0" />
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         {fromAnotherModel && (
           <div className="text-xs text-muted-foreground">
