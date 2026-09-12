@@ -221,10 +221,17 @@ test("the island's Ask crosses to the panel and names the sentence", async ({ pa
 });
 
 test('docking keeps the reader where they were, and Ask keeps its sentence', async ({ page }) => {
-  // Measuring the docked height has to put the page at the top, and that used
-  // to throw the reader's place away: opening the panel from anywhere but the
-  // first line dumped them back at the top of the document. Worst on "Ask",
-  // whose whole point is the sentence in front of you.
+  // Opening the panel used to dump the reader at the top of the document:
+  // measuring the docked height puts the page at the top to do it, and the
+  // discarded offset was the reader's place. Worst on "Ask", whose whole point
+  // is the sentence in front of you. It was then handed to whatever element had
+  // become the scrollport, which is two moving parts to get a reader back where
+  // they already were.
+  //
+  // The dock is fixed in the shell now, so it is bounded to the viewport by
+  // construction, nothing measures anything, and the page is never touched. The
+  // assertion is correspondingly stronger: the scroll position is not restored
+  // to within a line, it is UNCHANGED.
   await seedAuth(page);
   await withAssistant(page);
   // Short enough that this document really scrolls.
@@ -235,6 +242,7 @@ test('docking keeps the reader where they were, and Ask keeps its sentence', asy
   const last = page.locator('.igt-sentence').last();
   await last.scrollIntoViewIfNeeded();
   await expect.poll(async () => await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  const scrolledTo = await page.evaluate(() => window.scrollY);
   const before = await last.boundingBox();
 
   await last.hover();
@@ -242,9 +250,12 @@ test('docking keeps the reader where they were, and Ask keeps its sentence', asy
 
   const panel = page.locator('aside.border-l');
   await expect(panel).toBeVisible();
-  // The page itself is at the top now, by design: the row scrolls instead.
-  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  expect(await page.evaluate(() => window.scrollY)).toBe(scrolledTo);
   // The sentence asked about is still on screen, within a line of where it was.
+  // Not exactly where it was: the dock takes width, so the column narrows and
+  // what is above this sentence re-wraps. That reflow is the reason for a
+  // tolerance here, and it is why the scroll position above is the assertion
+  // that can be exact.
   const after = await last.boundingBox();
   expect(after).not.toBeNull();
   expect(after.y).toBeGreaterThan(0);

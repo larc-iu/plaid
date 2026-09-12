@@ -39,6 +39,7 @@ import { useTabParam, tabTo } from '@/hooks/useTabParam';
 import { cn } from '@ui/lib/utils';
 import { useComposeProject } from '@/hooks/useCompose';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
+import { useAssistantSubject } from '@ui/components/assistant/subject.js';
 import { IGT_ASSISTANT } from './assistant/adapter.js';
 
 // The settings sections live behind these path suffixes; keeping them in the
@@ -150,6 +151,16 @@ export const ProjectDetail = () => {
   // tab the user was on.
   const [contentTab, setContentTab] = useTabParam(CONTENT_TABS, 'documents');
   const assistantAvailable = useAssistantAvailable(client, projectId, IGT_ASSISTANT.app);
+  // The shell's panel is about this PROJECT while the reader is on any of its
+  // screens. No subject of its own: what a reader is looking at here is the
+  // project at large, and naming a screen the assistant has no tool for (the
+  // export wizard, the access list) would invite it to claim it can act there.
+  useAssistantSubject({
+    projectId,
+    projectName: project?.name,
+    canWrite,
+    contributor: !!project && !!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin }),
+  });
   const activeTab = onExport
     ? 'export'
     : onSettings && canManage

@@ -74,10 +74,7 @@ import { EntryEditor } from './EntryEditor';
 import { ConcordancePanel } from './ConcordancePanel';
 import { EntryDialogs } from './EntryDialogs';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
-import {
-  DocumentAssistant,
-  DocumentAssistantButton,
-} from '@ui/components/assistant/DocumentAssistant.jsx';
+import { useAssistantSubject } from '@ui/components/assistant/subject.js';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 
 // How many repairs ride in one batch. A batch is one transaction holding the
@@ -98,9 +95,6 @@ export const VocabularyItems = ({
   canManage = true,
   comments = null,
   canComment = false,
-  // Told when the assistant is docked, so the page can stop centring its
-  // content inside `max-w-7xl` and let the panel reach the window's edge.
-  onDockedChange,
 }) => {
   // Re-render on comment changes, so the per-entry counts stay in step.
   useCommentStore(comments);
@@ -271,28 +265,26 @@ export const VocabularyItems = ({
       alive = false;
     };
   }, [client, vocabularyId]);
-  const [assistantOpen, setAssistantOpen] = useState(false);
-  // What the screen pointed at, as {ref, label}. It clears when it is sent.
-  const [assistantFocus, setAssistantFocus] = useState(null);
   const assistantAvailable = useAssistantAvailable(client, assistantProject?.id, IGT_ASSISTANT.app);
-  const docked = !!assistantAvailable && assistantOpen;
-  const dockedChangeRef = useRef(onDockedChange);
-  dockedChangeRef.current = onDockedChange;
-  useEffect(() => {
-    dockedChangeRef.current?.(docked);
-    return () => dockedChangeRef.current?.(false);
-  }, [docked]);
 
   const askAboutEntry = () => {
     if (!selectedItem) return;
     // The reference is the one `find_entry` accepts back: the form, with its
     // homograph number after a "#". The label is what the screen shows, which
     // writes the number out rather than subscripting it.
+    //
+    // Sent over the same window event the interlinear island's own Ask uses.
+    // The panel is the shell's now, so this both opens it and hands it the
+    // chip, and neither is this screen's to do directly.
     const n = numbers.get(selectedItem.id);
-    setAssistantFocus({
-      ref: n ? `${selectedItem.form}#${n}` : selectedItem.form,
-      label: itemLabel(selectedItem, numbers),
-    });
+    window.dispatchEvent(
+      new CustomEvent('igt:ask-assistant', {
+        detail: {
+          ref: n ? `${selectedItem.form}#${n}` : selectedItem.form,
+          label: itemLabel(selectedItem, numbers),
+        },
+      }),
+    );
   };
 
   const homographs = useMemo(
@@ -579,6 +571,19 @@ export const VocabularyItems = ({
     if (wasDirty || !openId || openId === NEW_ID || !refreshed) return;
     if (!refreshed.some((i) => i.id === openId)) goItem(null, { replace: true });
   };
+
+  // What the shell's assistant panel is about while this screen is open: the
+  // vocabulary, standing, the way a document is on the Analyze tab. An entry
+  // reaches the chat only through Ask.
+  useAssistantSubject({
+    projectId: assistantProject?.id,
+    projectName: assistantProject?.name,
+    kind: 'lexicon',
+    id: vocabularyId,
+    name: vocabulary?.name,
+    canWrite: canEditProject(assistantProject, user),
+    onApplied: handleImported,
+  });
 
   const handleSave = async () => {
     if (!draft.form.trim()) {
@@ -929,20 +934,12 @@ export const VocabularyItems = ({
 
         {/* ---- right pane: the entry, its concordance, its comments ---- */}
         <div className="min-w-0 flex-1">
-          {assistantAvailable && (!assistantOpen || selectedItem) && (
+          {assistantAvailable && selectedItem && (
             <div className="mb-3 flex items-center justify-end gap-2">
-              {assistantOpen && selectedItem && (
-                <Button type="button" variant="ghost" size="sm" onClick={askAboutEntry}>
-                  Ask about{' '}
-                  <FormLabel form={selectedItem.form} index={numbers.get(selectedItem.id)} />
-                </Button>
-              )}
-              <DocumentAssistantButton
-                open={assistantOpen}
-                onOpenChange={setAssistantOpen}
-                available={assistantAvailable}
-                title="Ask the assistant about this vocabulary"
-              />
+              <Button type="button" variant="ghost" size="sm" onClick={askAboutEntry}>
+                Ask about{' '}
+                <FormLabel form={selectedItem.form} index={numbers.get(selectedItem.id)} />
+              </Button>
             </div>
           )}
           {!selectedId ? (
@@ -1082,35 +1079,6 @@ export const VocabularyItems = ({
           client={client}
           onApplied={handleImported}
         />
-
-        {/* The panel is STICKY here, not a viewport-bounded inner scroller as
-            it is beside a document. This screen's left pane is already
-            `sticky top-4` with a measured height and the page itself scrolls,
-            so the panel joins that arrangement at the same height. Turning the
-            page into an inner scroller would move the scrollport the entry
-            list's own measurement and sticky offset are written against. */}
-        {assistantAvailable && assistantOpen && (
-          <div
-            className="sticky top-4 -mr-4 flex shrink-0 self-start"
-            style={paneMaxH ? { height: paneMaxH } : undefined}
-          >
-            <DocumentAssistant
-              open={assistantOpen}
-              onOpenChange={setAssistantOpen}
-              lexiconId={vocabularyId}
-              lexiconName={vocabulary?.name}
-              focus={assistantFocus}
-              onClearFocus={() => setAssistantFocus(null)}
-              onApplied={handleImported}
-              projectId={assistantProject?.id}
-              projectName={assistantProject?.name}
-              client={client}
-              userId={user?.id}
-              canWrite={canEditProject(assistantProject, user)}
-              adapter={IGT_ASSISTANT}
-            />
-          </div>
-        )}
 
         <EntryDialogs
           dialog={dialog}

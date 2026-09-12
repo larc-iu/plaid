@@ -36,12 +36,8 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useTabParam, tabTo } from '@/hooks/useTabParam';
 import { useComposeProject } from '@/hooks/useCompose';
 import { isReviewed } from '@larc-iu/plaid-client';
-import { useViewportFill } from '@ui/hooks/useViewportFill.js';
+import { useAssistantSubject } from '@ui/components/assistant/subject.js';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
-import {
-  DocumentAssistant,
-  DocumentAssistantButton,
-} from '@ui/components/assistant/DocumentAssistant.jsx';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 
 // Renders only the active tab's panel (others stay unmounted).
@@ -170,27 +166,13 @@ const DocumentEditor = () => {
   // A code bound under Settings applies in the grid and every other field here.
   useComposeProject(doc?.project);
   const history = useDocumentHistory(documentId, client);
-  // --- the assistant docked beside the interlinear grid ---------------------
-  const [assistantOpen, setAssistantOpen] = useState(false);
-  // What the editor pointed at, as {ref, label}. It clears when it is sent.
-  const [assistantFocus, setAssistantFocus] = useState(null);
   const project = doc?.project;
-  const rowRef = useRef(null);
+  // Declared up here because the subject hook below needs it, and a hook
+  // cannot move down past this component's early returns.
+  const isViewingHistorical = asOf != null;
+  // The island offers its own "Ask" gesture, which is only worth showing when
+  // there is something to ask. The panel itself is the shell's.
   const assistantAvailable = useAssistantAvailable(client, projectId, IGT_ASSISTANT.app);
-  // The interlinear grid is a lit island, so its "Ask" reaches this React tree
-  // as a window event, the same bridge the auto-analyze opener uses.
-  useEffect(() => {
-    const onAsk = (e) => {
-      if (e.detail) setAssistantFocus(e.detail);
-    };
-    window.addEventListener('igt:ask-assistant', onAsk);
-    return () => window.removeEventListener('igt:ask-assistant', onAsk);
-  }, []);
-  const docked = activeTab === 'analyze' && assistantOpen;
-  // The element that scrolls once the panel is docked, so the reader's place in
-  // the document survives the measurement.
-  const scrollerRef = useRef(null);
-  const rowHeight = useViewportFill(rowRef, docked, [history.open, writeLock.held], scrollerRef);
   // An applied plan rewrote the document, so the grid beside the panel is
   // stale. A fresh read at the state being viewed is the same swap the
   // restore dialog does.
@@ -209,14 +191,33 @@ const DocumentEditor = () => {
   // window bridge its own "Ask" uses.
   const focusHere = useCallback(
     ({ documentId: cited, focus, begin }) => {
-      if (cited !== documentId || !focus) return false;
+      // Only while the island is actually mounted. Claiming a citation on the
+      // Export tab swallowed the link and scrolled nothing: the panel is now
+      // open on every tab, and the grid only listens on one of them.
+      if (cited !== documentId || !focus || activeTab !== 'analyze') return false;
       window.dispatchEvent(
         new CustomEvent('igt:focus-sentence', { detail: { documentId, focus, begin } }),
       );
       return true;
     },
-    [documentId],
+    [documentId, activeTab],
   );
+
+  // What the shell's assistant panel is about while this screen is open. The
+  // document is the subject on EVERY tab, not just Analyze: it is what the
+  // reader is looking at either way, and the panel is no longer something the
+  // Analyze tab owns.
+  useAssistantSubject({
+    projectId,
+    projectName: project?.name,
+    kind: 'document',
+    id: documentId,
+    name: doc?.document?.name,
+    canWrite: permissions.canWrite && !isViewingHistorical,
+    contributor: !!project && !!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin }),
+    onApplied: reloadForAssistant,
+    onFocusHere: focusHere,
+  });
 
   // Comments live in their own store, not on IgtDocument: they are social data,
   // they are unaudited, and they must never bump the document version. One per
@@ -570,7 +571,6 @@ const DocumentEditor = () => {
     );
   }
 
-  const isViewingHistorical = asOf != null;
   // A service run writing to this document takes the editor read-only for as
   // long as it writes: the run outlives its dialog, and it ends in a reload
   // that would discard anything typed underneath it. See useWriteLock.
@@ -625,23 +625,16 @@ const DocumentEditor = () => {
         </button>
       )}
 
-      {/* With the assistant open the page area is bounded to the screen and
-          scrolls inside itself, so the panel is exactly as tall as the viewport
-          and its composer is always reachable. The height is measured, not
-          guessed: the app header and a run banner both sit above it. */}
+      {/* The PAGE scrolls, whether or not the assistant is open. The panel is
+          fixed in the shell and takes a gutter on the right, so this layout no
+          longer changes when it opens: no measured height, no scrollport of its
+          own, and no sticky offset that depends on which element that is. */}
       <div
-        ref={rowRef}
-        className={`transition-[margin] duration-200 ${docked ? 'flex' : ''}`}
-        style={{
-          marginLeft: history.open ? HISTORY_DRAWER_WIDTH : 0,
-          ...(docked && rowHeight ? { height: rowHeight } : { minHeight: '100vh' }),
-        }}
+        className="transition-[margin] duration-200"
+        style={{ marginLeft: history.open ? HISTORY_DRAWER_WIDTH : 0, minHeight: '100vh' }}
       >
         <div
-          ref={scrollerRef}
-          className={`mx-auto px-4 py-8 ${WIDE_TABS.has(activeTab) ? 'max-w-[1700px]' : 'max-w-5xl'} ${
-            docked ? 'min-w-0 flex-1 overflow-y-auto' : ''
-          }`}
+          className={`mx-auto px-4 py-8 ${WIDE_TABS.has(activeTab) ? 'max-w-[1700px]' : 'max-w-5xl'}`}
         >
           <div>
             <h1 className="text-3xl font-bold tracking-tight">{doc.document.name}</h1>
@@ -697,18 +690,12 @@ const DocumentEditor = () => {
                     down a long text you are. Asked for by the first real user
                     after scrolling back up for both, many times a day.
 
-                    The offset is what it sticks to, and that changes: normally
-                    the PAGE scrolls and 57px clears the app header above it,
-                    but with the assistant docked the content scrolls inside
-                    itself and its scrollport already starts below the header.
-                    Keeping the 57 there stuck the strip 57px down into the
-                    grid, with rows scrolling through the gap above it. Docked,
-                    the offset is NEGATIVE by this container's own top padding
-                    (py-8), because a sticky offset is measured from the
-                    scrollport's padding edge and not from where it starts. */}
-                <div
-                  className={`sticky ${docked ? '-top-8' : 'top-[57px]'} z-30 -mx-4 mb-4 border-b bg-background/95 px-4 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80`}
-                >
+                    57px clears the app header. One offset now, because the page
+                    is always what scrolls: the assistant used to bound this
+                    container and become the scrollport, and the offset had to
+                    flip negative for that, which is a whole class of bug that
+                    the fixed dock removes. */}
+                <div className="sticky top-[57px] z-30 -mx-4 mb-4 border-b bg-background/95 px-4 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
                   <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
                     {crumbs}
                     <TabsList>
@@ -739,13 +726,6 @@ const DocumentEditor = () => {
                         <Download className="h-4 w-4" /> Export
                       </TabsTrigger>
                     </TabsList>
-                    {activeTab === 'analyze' && (
-                      <DocumentAssistantButton
-                        open={assistantOpen}
-                        onOpenChange={setAssistantOpen}
-                        available={assistantAvailable}
-                      />
-                    )}
                   </div>
                 </div>
 
@@ -808,27 +788,6 @@ const DocumentEditor = () => {
             )}
           </DocumentProvider>
         </div>
-        {activeTab === 'analyze' && assistantAvailable && (
-          <DocumentAssistant
-            open={assistantOpen}
-            onOpenChange={setAssistantOpen}
-            documentId={documentId}
-            documentName={doc.document.name}
-            focus={assistantFocus}
-            onClearFocus={() => setAssistantFocus(null)}
-            onApplied={reloadForAssistant}
-            onFocusHere={focusHere}
-            projectId={projectId}
-            projectName={project?.name}
-            client={client}
-            userId={user?.id}
-            canWrite={permissions.canWrite && !isViewingHistorical}
-            contributor={
-              !!project && !!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin })
-            }
-            adapter={IGT_ASSISTANT}
-          />
-        )}
       </div>
     </>
   );

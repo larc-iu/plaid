@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { cn } from '@ui/lib/utils';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -81,8 +80,6 @@ const FIELD_CLEAR_CHUNK = 100;
 
 export const VocabularyDetail = () => {
   const { vocabularyId } = useParams();
-  // Set by the Entries tab when it docks the assistant.
-  const [assistantDocked, setAssistantDocked] = useState(false);
   const navigate = useNavigate();
   // The layer a failed creation already made, so pressing Create again
   // finishes it instead of leaving an unreachable second one behind.
@@ -912,7 +909,7 @@ export const VocabularyDetail = () => {
     // Centred and capped, until the assistant is docked on the Entries tab:
     // then the row spans the window so the panel sits against its right edge
     // instead of leaving a column of nothing beside it.
-    <div className={cn('px-4 py-8', assistantDocked ? 'w-full' : 'mx-auto max-w-7xl')}>
+    <div className="mx-auto max-w-7xl px-4 py-8">
       <div className="flex flex-col gap-6">
         <nav className="flex items-center gap-2 text-sm text-muted-foreground">
           <Link to="/vocabularies" className="text-primary hover:underline">
@@ -956,7 +953,6 @@ export const VocabularyDetail = () => {
 
             <TabsContent value="items">
               <VocabularyItems
-                onDockedChange={setAssistantDocked}
                 vocabularyId={vocabularyId}
                 vocabulary={vocabulary}
                 client={client}

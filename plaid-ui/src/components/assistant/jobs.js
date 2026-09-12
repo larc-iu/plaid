@@ -313,9 +313,12 @@ export const startTurn = ({ store, service, conv, prevMeta, about = null, where 
 };
 
 // `docked`: the plan card is on screen beside the document, where it turns
-// green and says "Applied". The toaster is bottom-right, which is exactly where
-// the docked panel's composer is, so the success toast covered the message the
-// user was about to type for the sake of repeating what the card already said.
+// green and says "Applied" in place, under the reader's eyes. A toast saying
+// the same thing again is noise, so the success one is left out. (It used to
+// be worse than noise: the toaster was bottom-right, which was exactly where
+// the docked composer is, so it covered the message the reader was about to
+// type. The dock is app chrome now and the toaster steps aside for it, but the
+// card still says it better than a toast does.)
 // Only the success one goes: a hard failure leaves the card undecided with no
 // inline explanation, so that toast is the only place the reason appears.
 export const applyToasts = (j, summary, { docked = false } = {}) => {

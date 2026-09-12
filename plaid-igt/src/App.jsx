@@ -63,183 +63,62 @@ function App() {
                 the server as part of a URL. */}
               <Route path="/invite/:code" element={<RedeemInvite />} />
 
-              {/* Protected routes */}
-              <Route
-                path="/"
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <Navigate to="/projects" replace />
-                    </AppLayout>
-                  </ProtectedRoute>
-                }
-              />
+              {/* Protected routes, all inside ONE shell.
 
+                Every one of these used to carry its own
+                `<ProtectedRoute><AppLayout>…</AppLayout></ProtectedRoute>`,
+                so the shell was re-declared 20-odd times and its survival
+                across a navigation was a matter of how React happened to
+                reconcile two different elements of the same type. The
+                assistant panel lives in the shell now and has to hold a
+                conversation while the reader walks from one screen to the
+                next, so the shell is declared once, as a layout route, and
+                the screens swap inside its Outlet. */}
               <Route
-                path="/projects"
                 element={
                   <ProtectedRoute>
-                    <AppLayout>
-                      <ProjectList />
-                    </AppLayout>
+                    <AppLayout />
                   </ProtectedRoute>
                 }
-              />
+              >
+                <Route path="/" element={<Navigate to="/projects" replace />} />
+                <Route path="/projects" element={<ProjectList />} />
+                <Route path="/projects/new" element={<NewProjectChooser />} />
+                <Route path="/projects/new/blank" element={<ProjectSetup />} />
+                <Route path="/projects/import" element={<ImportFlexProject />} />
+                <Route path="/projects/import-archive" element={<ImportNativeProject />} />
+                <Route path="/projects/import-cldf" element={<ImportCldfProject />} />
+                <Route path="/projects/import-elan" element={<ImportElanProject />} />
+                <Route path="/projects/:projectId/import-elan" element={<ImportElanDocuments />} />
+                <Route path="/projects/:projectId/setup" element={<ProjectSetup />} />
+                <Route
+                  path="/projects/:projectId/documents/:documentId"
+                  element={
+                    <StrictModeProvider>
+                      <DocumentDetail />
+                    </StrictModeProvider>
+                  }
+                />
+                <Route path="/projects/:projectId" element={<ProjectDetail />} />
 
-              <Route
-                path="/projects/new"
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <NewProjectChooser />
-                    </AppLayout>
-                  </ProtectedRoute>
-                }
-              />
+                {/* Project administration is the Settings tab of ProjectDetail; the
+                section suffixes keep each settings section deep-linkable. */}
+                <Route path="/projects/:projectId/access" element={<ProjectDetail />} />
+                <Route path="/projects/:projectId/services" element={<ProjectDetail />} />
+                <Route path="/projects/:projectId/export" element={<ProjectDetail />} />
+                <Route path="/projects/:projectId/export/:presetId" element={<ProjectDetail />} />
+                <Route path="/projects/:projectId/general" element={<ProjectDetail />} />
+                <Route path="/projects/:projectId/text-and-vocab" element={<ProjectDetail />} />
+                <Route path="/projects/:projectId/annotation" element={<ProjectDetail />} />
 
-              <Route
-                path="/projects/new/blank"
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <ProjectSetup />
-                    </AppLayout>
-                  </ProtectedRoute>
-                }
-              />
+                <Route path="/vocabularies" element={<VocabularyList />} />
+                <Route path="/vocabularies/new" element={<VocabularyDetail />} />
+                <Route path="/vocabularies/:vocabularyId" element={<VocabularyDetail />} />
 
-              <Route
-                path="/projects/import"
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <ImportFlexProject />
-                    </AppLayout>
-                  </ProtectedRoute>
-                }
-              />
+                <Route path="/admin" element={<AdminView />} />
+                <Route path="/profile" element={<UserProfile />} />
+              </Route>
 
-              <Route
-                path="/projects/import-archive"
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <ImportNativeProject />
-                    </AppLayout>
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/projects/import-cldf"
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <ImportCldfProject />
-                    </AppLayout>
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/projects/import-elan"
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <ImportElanProject />
-                    </AppLayout>
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/projects/:projectId/import-elan"
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <ImportElanDocuments />
-                    </AppLayout>
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/projects/:projectId/setup"
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <ProjectSetup />
-                    </AppLayout>
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/projects/:projectId/documents/:documentId"
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <StrictModeProvider>
-                        <DocumentDetail />
-                      </StrictModeProvider>
-                    </AppLayout>
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/projects/:projectId"
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <ProjectDetail />
-                    </AppLayout>
-                  </ProtectedRoute>
-                }
-              />
-
-              {/* Project administration is the Settings tab of ProjectDetail; the
-              section suffixes keep each settings section deep-linkable. */}
-              <Route
-                path="/projects/:projectId/access"
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <ProjectDetail />
-                    </AppLayout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/projects/:projectId/services"
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <ProjectDetail />
-                    </AppLayout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/projects/:projectId/export"
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <ProjectDetail />
-                    </AppLayout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/projects/:projectId/export/:presetId"
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <ProjectDetail />
-                    </AppLayout>
-                  </ProtectedRoute>
-                }
-              />
               {/* Settings used to be one long scroll at /settings before it was
               split into General / Text and Vocab / Annotation, and the middle
               section was briefly /orthography and then /lexicon. Without these, those URLs fall through
@@ -260,91 +139,6 @@ function App() {
               <Route
                 path="/projects/:projectId/tokens"
                 element={<Navigate to="../access" replace relative="path" />}
-              />
-              <Route
-                path="/projects/:projectId/general"
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <ProjectDetail />
-                    </AppLayout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/projects/:projectId/text-and-vocab"
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <ProjectDetail />
-                    </AppLayout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/projects/:projectId/annotation"
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <ProjectDetail />
-                    </AppLayout>
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/vocabularies"
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <VocabularyList />
-                    </AppLayout>
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/vocabularies/new"
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <VocabularyDetail />
-                    </AppLayout>
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/vocabularies/:vocabularyId"
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <VocabularyDetail />
-                    </AppLayout>
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/admin"
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <AdminView />
-                    </AppLayout>
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/profile"
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <UserProfile />
-                    </AppLayout>
-                  </ProtectedRoute>
-                }
               />
 
               {/* Catch all - redirect to login */}
