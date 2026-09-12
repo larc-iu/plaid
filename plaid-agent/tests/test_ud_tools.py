@@ -116,6 +116,21 @@ def test_a_head_outside_the_sentence_is_refused(ws):
                                            head=1, deprel='obj')
 
 
+def test_a_plan_never_confirms_what_it_deletes(ws):
+    """Clearing a wrong machine value and confirming the document is one
+    gesture a model reaches for, and the value being cleared is machine-made
+    and unconfirmed, which is exactly what the confirmation reaches for too.
+    Both ops named the same span: the delete goes first, the patch 404s, and
+    the batch they share is atomic, so the plan refused itself after the user
+    had approved it."""
+    assert 'cleared' in run(ws, 'set_field', document='Viaje', refs=['s1.w4'], field='upos', value='')
+    assert 'confirming 1' in run(ws, 'confirm', document='Viaje')
+    counts = execute_plan(ws.client, ws.ops, source='s', label='l')
+    calls = [(r, m, a) for r, m, a, k in ws.client.batches[0]]
+    assert calls == [('spans', 'delete', ('sp-u3',))]
+    assert 'the plan deletes what it confirms' in ' '.join(counts.get('notes') or [])
+
+
 def test_a_head_that_is_not_a_number_reads_as_english(ws):
     """Every other argument here is a reference, so a model reaches for one
     before it reaches for a bare number, and int() answered that with its own

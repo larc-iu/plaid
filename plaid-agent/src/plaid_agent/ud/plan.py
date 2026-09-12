@@ -121,13 +121,39 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
                              + ', and a parse would throw the edits away')
 
 
+def _deleted_by_the_plan(ops) -> set:
+    """Spans and relations other ops in the plan delete. A patch of one is a
+    404 and the batch it shares is atomic, so a confirmation of something the
+    plan throws away would refuse the whole plan after the user approved it.
+    A cleared field is the case that arises: the value is machine-made and
+    unconfirmed, which is exactly why it is being cleared and exactly what a
+    confirmation of the document reaches for."""
+    gone = set()
+    for op in ops:
+        kind = op.get('kind')
+        if kind == 'set_span' and op.get('span_id') and (op.get('value') or '') == '':
+            gone.add(op['span_id'])
+        elif kind == 'del_relation':
+            gone.add(op['relation_id'])
+        elif kind == 'set_head' and op.get('relation_id'):
+            gone.add(op['relation_id'])
+        elif kind in RESHAPES_DOCUMENT:
+            gone.update(op.get('relation_ids') or [])
+    return gone
+
+
 def normalize_ops(ops: List[Dict[str, Any]]):
     """Drop ops a later op supersedes, and say so. Returns (ops, notes)."""
     notes: List[str] = []
     out: List[Dict[str, Any]] = []
     last: Dict[Any, int] = {}
+    gone = _deleted_by_the_plan(ops)
     for op in ops:
         kind = op.get('kind')
+        if kind == 'confirm' and (op.get('span_id') or op.get('relation_id')) in gone:
+            notes.append(f'dropped: {op.get("label") or "a confirmation"} '
+                         '(the plan deletes what it confirms)')
+            continue
         if kind == 'set_span':
             key = ('span', op.get('layer_id'), op.get('token_id'))
         elif kind in ('set_head', 'del_relation'):
@@ -140,7 +166,7 @@ def normalize_ops(ops: List[Dict[str, Any]]):
             continue
         last[key] = len(out)
         out.append(op)
-    dropped = len(ops) - len(out)
+    dropped = len(ops) - len(out) - len(notes)
     if dropped:
         notes.append(f'{dropped} change(s) were superseded by a later change to the same thing')
     return out, notes
