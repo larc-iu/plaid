@@ -1087,25 +1087,30 @@ def _docs_of(rows: List[list]) -> set:
     return {e['document'] for r in rows for e in r if isinstance(e, dict) and e.get('document')}
 
 
-def q_replace_in_field(ws: Workspace, f, rep, cap: int) -> List[Dict[str, Any]]:
-    """The edits a replacement would make, or a refusal when the corpus holds
-    more values of this field than one pass can even LOOK at.
+REPLACE_MAX = 20000  # matches one replacement may consider; past it, narrow and go in passes
 
-    The cap is on MATCHES, and what the engine caps here is CANDIDATES: every
-    value of the field, ordered by document. So on a field with more values
-    than the cap, everything past the cap was never examined, and a pattern
-    that matches only later documents answered "nothing matched" for a corpus
-    full of matches. Refusing is the only honest answer, because staging the
-    prefix would edit part of the corpus and say it edited all of it.
+
+def q_replace_matches(ws: Workspace, f, spec: Dict[str, Any], document_id: Optional[str], cap: int) -> List[list]:
+    """The (span, token) rows whose value matches ``spec``, ``cap + 1`` at most
+    so the caller can tell a capped read from a full one.
+
+    The engine applies the pattern, so only matches come back: reading every
+    value of the field and matching here meant a field with more values than
+    the cap could never be searched at all, and a pattern that matched only
+    later documents answered "nothing matched" for a corpus full of matches.
     """
     c = ws.corpus
     layer = c.scope_layer(f.scope)
-    rows = c.entities([c.span('?s', f.layer_id), ['covers', '?s', '?t'], ['token', '?t', {'layer': layer}]],
-                      ['?s', '?t'], cap + 1, [['?t.doc'], ['?t.begin']])
-    if len(rows) > cap:
-        raise ToolError(f'This project holds more than {cap} {f.name} values, which is more than '
-                        f'one pass can read, so a project-wide replacement here would only see '
-                        f'part of the corpus. Narrow it to a document and go in passes.')
+    where = [c.span('?s', f.layer_id, value=spec), ['covers', '?s', '?t'], ['token', '?t', {'layer': layer}]]
+    if document_id:
+        where.append(['in', '?s.doc', [document_id]])
+    return c.entities(where, ['?s', '?t'], cap + 1, [['?t.doc'], ['?t.begin']])
+
+
+def q_replace_changes(ws: Workspace, f, rep, rows: List[list]) -> List[Dict[str, Any]]:
+    """The set_span ops a replacement makes over matched rows: one per span
+    whose value actually differs afterwards."""
+    c = ws.corpus
     budget = _docs_of(rows)
     staged = []
     for sp, tok in rows:
@@ -1124,6 +1129,16 @@ def q_replace_in_field(ws: Workspace, f, rep, cap: int) -> List[Dict[str, Any]]:
                        'value': new, 'doc': tok['document'],
                        'label': f'{head} "{what[:30]}": {f.name} "{cur}" → "{new}"' + (' (cleared)' if new == '' else '')})
     return staged
+
+
+def q_replace_in_field(ws: Workspace, f, rep, spec: Dict[str, Any], cap: int) -> List[Dict[str, Any]]:
+    """The edits a replacement would make, or a refusal when more values match
+    than one pass may consider."""
+    rows = q_replace_matches(ws, f, spec, None, cap)
+    if len(rows) > cap:
+        raise ToolError(f'More than {cap} {f.name} values match, which is more than one pass may '
+                        f'consider. Narrow it (a document, a stricter pattern) and go in passes.')
+    return q_replace_changes(ws, f, rep, rows)
 
 
 def q_respell_all(ws: Workspace, rep, spec: Dict[str, Any], morpheme_forms: bool, cap: int):

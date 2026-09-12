@@ -573,3 +573,44 @@ def test_hits_from_one_document_are_capped_and_the_rest_counted():
     lines = _hit_lines(c, rows, 0, 40, per_doc=1)
     assert len(lines) == 2 and lines[0].startswith('s1.w1 ')
     assert lines[1] == f'  … {len(words) - 1} more in this document (name the document to see them all)'
+
+
+def _engine_for_replace(w, spans):
+    """A fake engine answering the query path's replace: (span id, value, doc, token id) rows."""
+    def query(body):
+        if body.get('return') == 'entities':
+            return {'return': 'entities', 'results': [
+                [{'id': i, 'value': v, 'document': d, 'layer': 'sl-gloss', 'tokens': [t]},
+                 {'id': t, 'document': d, 'value': 'x', 'begin': 0, 'end': 1}] for i, v, d, t in spans]}
+        return {'return': 'aggregate', 'results': []}
+    w.client.query = query
+
+
+def test_a_replacement_past_the_cap_is_one_predicate_op_resolved_at_approval(monkeypatch):
+    """The query path read every value of a field and refused past the cap, so
+    a field with more values than the cap could never be replaced in. Now the
+    engine applies the pattern, and more changes than fit span by span are
+    stored as one op and found again at approval."""
+    from plaid_agent.igt import bulk
+    from plaid_agent.igt.plan import execute_plan, summarize
+    monkeypatch.setattr(bulk, 'MAX_BULK', 2)
+    w = scan_ws(FakeClient())
+    w.prefer_scan = False
+    spans = [('s1', 'Ali', 'd1', 'w-1'), ('s2', 'ali-x', 'd1', 'w-2'), ('s3', 'ALI', 'd1', 'w-3')]
+    _engine_for_replace(w, spans)
+    out = call_tool(w, 'replace_in_field', {'field': 'Gloss', 'pattern': 'ali', 'replacement': 'Bob'})
+    assert 'One change covering 3 Gloss values in 1 documents' in out
+    op = w.ops[0]
+    assert op['kind'] == 'replace_scope' and op['count'] == 3 and op['documents'] == ['d1']
+    assert summarize(w.ops) == '3 field values'
+    payload = w.plan_payload()
+    assert [d['id'] for d in payload['documents']] == ['d1']
+    counts = execute_plan(w.client, payload['ops'], source='s', label='l', project=w.project)
+    assert counts == {'field values': 3}
+    updates = [a for r, m, a, k in w.client.batches[0] if m == 'update']
+    assert updates == [('s1', 'Bob'), ('s2', 'Bob-x'), ('s3', 'Bob')]
+    # Under the cap, the same call stages per-span ops, as the scan path does.
+    monkeypatch.setattr(bulk, 'MAX_BULK', 3000)
+    w.ops.clear()
+    call_tool(w, 'replace_in_field', {'field': 'Gloss', 'pattern': 'ali', 'replacement': 'Bob'})
+    assert [op['kind'] for op in w.ops] == ['set_span'] * 3

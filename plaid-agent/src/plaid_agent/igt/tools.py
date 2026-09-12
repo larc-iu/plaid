@@ -393,6 +393,7 @@ class Workspace:
         out = []
         # Ops built from query results name their document directly.
         unloaded = {op['doc'] for op in self.ops if op.get('doc') and op['doc'] not in self._docs}
+        unloaded |= {d for op in self.ops for d in (op.get('documents') or []) if d not in self._docs}
         if unloaded:
             for did, version in self.corpus.versions(unloaded).items():
                 out.append({'id': did, 'name': self.corpus.doc_name(did), 'version': version})

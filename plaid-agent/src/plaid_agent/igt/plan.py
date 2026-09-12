@@ -72,8 +72,9 @@ KINDS = ('set_span', 'set_analysis', 'set_orthography', 'respell', 'link', 'unli
          'set_entry_field', 'set_entry_metadata', 'set_doc_metadata', 'create_document', 'merge_entries', 'delete_entry',
          'rename_entry', 'rename_document', 'confirm', 'discard_analysis', 'set_morpheme_form', 'set_morph_type',
          'split_word', 'merge_words', 'delete_word', 'split_sentence', 'merge_sentences', 'edit_text',
-         'add_comment', 'restore_document')
+         'add_comment', 'restore_document', 'replace_scope')
 REQUIRED = {
+    'replace_scope': ('field', 'layer_id', 'scope', 'pattern'),
     'set_span': ('layer_id', 'token_id'), 'set_analysis': ('word_id', 'text_id', 'begin', 'end', 'morpheme_layer_id', 'morphemes'),
     'set_orthography': ('word_id', 'key'), 'respell': ('text_id', 'begin', 'end', 'value'),
     'link': ('token_id',), 'unlink': ('link_id',), 'link_phrase': ('token_ids',), 'create_entry': ('vocab_id', 'form', 'key'),
@@ -281,6 +282,7 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
     stamps = Stamps(stamp_mode, source, contributor)
     ops = expand_ops(ops)
     validate_ops(ops)
+    ops = resolve_scopes(client, project, ops)
     ops, notes = normalize_ops(ops)
     counts: Counter = Counter()
     try:
@@ -290,6 +292,35 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
     except Exception as e:
         applied = getattr(e, '_applied', None)
         raise PlanError(f'{type(e).__name__}: {e}', applied if applied is not None else 0, len(ops)) from e
+
+
+def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """The per-span ops a stored replacement stands for, read from the corpus
+    NOW. Approval has already refused the plan if a matched document moved
+    since the preview, so what is found here is what was counted."""
+    if not any(op.get('kind') == 'replace_scope' for op in ops):
+        return ops
+    if project is None:
+        raise ValueError('a corpus-wide replacement needs the project to read the corpus with')
+    from .bulk import _replacer
+    from .corpus import REPLACE_MAX, q_replace_changes, q_replace_matches, rx
+    from .tools import Workspace
+    ws = Workspace(client, project)
+    out: List[Dict[str, Any]] = []
+    for op in ops:
+        if op.get('kind') != 'replace_scope':
+            out.append(op)
+            continue
+        f = ws.project.field(op['field'])
+        rep = _replacer(op['pattern'], op.get('replacement') or '', bool(op.get('regex')),
+                        bool(op.get('whole_value')), bool(op.get('case_sensitive')))
+        spec = rx(op['pattern'], regex=bool(op.get('regex')), whole=bool(op.get('whole_value')),
+                  case_sensitive=bool(op.get('case_sensitive')))
+        rows = q_replace_matches(ws, f, spec, op.get('document_id'), REPLACE_MAX)
+        if len(rows) > REPLACE_MAX:
+            raise ValueError(f'the replacement now matches more than {REPLACE_MAX} values')
+        out.extend(q_replace_changes(ws, f, rep, rows))
+    return out
 
 
 def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps) -> Dict[str, int]:
@@ -702,6 +733,8 @@ def _apply_text_edit(client, project, op: Dict[str, Any]) -> None:
 # What a kind is called in the line the user approves. Every kind needs one:
 # without it the summary shows the internal identifier instead.
 SUMMARY_NAMES = {
+    # Resolved to set_span ops at approval; the summary counts what it stands for.
+    'replace_scope': ('field value', 'field values'),
     'set_span': ('field value', 'field values'), 'set_analysis': ('analysis', 'analyses'),
     'set_orthography': ('orthography value', 'orthography values'), 'respell': ('respelling', 'respellings'),
     'link': ('lexicon link', 'lexicon links'), 'unlink': ('unlink', 'unlinks'),
@@ -724,7 +757,10 @@ SUMMARY_NAMES = {
 
 
 def summarize(ops: List[Dict[str, Any]]) -> str:
-    counts = Counter(op.get('kind') for op in expand_ops(ops))
+    # A stored replacement stands for `count` field values.
+    counts = Counter(kind for op in expand_ops(ops)
+                     for kind in (['set_span'] * int(op.get('count') or 0) if op.get('kind') == 'replace_scope'
+                                  else [op.get('kind')]))
     parts = []
     for kind, n in counts.items():
         one, many = SUMMARY_NAMES.get(kind, (kind, kind))

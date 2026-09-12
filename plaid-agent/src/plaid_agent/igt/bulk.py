@@ -65,10 +65,26 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
     labels: List[str] = []
     staged: List[Dict[str, Any]] = []
     if not ws.use_scan(document) and not _names_morpheme_forms(ws, field):
-        from .corpus import q_replace_in_field
+        from .corpus import REPLACE_MAX, q_replace_in_field, rx
         f = ws.project.field(field)
-        staged = q_replace_in_field(ws, f, rep, MAX_BULK)
-        _check_cap(len(staged))
+        spec = rx(pattern, regex=bool(regex), whole=bool(whole_value), case_sensitive=bool(case_sensitive))
+        staged = q_replace_in_field(ws, f, rep, spec, REPLACE_MAX)
+        if len(staged) > MAX_BULK:
+            # Too many to hold span by span: ONE op, the predicate, resolved to
+            # spans again at approval (igt.plan.resolve_scopes), with every
+            # matched document pinned by version so what is found then is
+            # what was counted now.
+            docs = sorted({op['doc'] for op in staged if op.get('doc')})
+            _clear_of_reshapes(ws, docs)
+            ws.add_op({'kind': 'replace_scope', 'field': f.name, 'layer_id': f.layer_id, 'scope': f.scope,
+                       'pattern': pattern, 'replacement': replacement, 'regex': bool(regex),
+                       'whole_value': bool(whole_value), 'case_sensitive': bool(case_sensitive),
+                       'document_id': None, 'documents': docs, 'count': len(staged),
+                       'label': f'{f.name}: replace "{pattern}" with "{replacement}" on {len(staged)} values '
+                                f'in {len(docs)} documents'})
+            return (ws.planned_note(1) + f'\n  One change covering {len(staged)} {f.name} values in '
+                    f'{len(docs)} documents. For example:\n  '
+                    + '\n  '.join(op['label'] for op in staged[:8]) + f'\n  … {len(staged) - 8} more')
         ws.add_ops(staged)
         return _bulk_note(ws, len(staged), [op['label'] for op in staged], f'{f.name} values')
     if _names_morpheme_forms(ws, field):
@@ -113,6 +129,18 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
     _check_cap(len(staged))
     ws.add_ops(staged)
     return _bulk_note(ws, len(labels), labels, f'{f.name} values')
+
+
+def _clear_of_reshapes(ws: Workspace, docs: List[str]) -> None:
+    """A corpus-wide replacement reaches every document it matched, so a plan
+    that already reshapes text or words in one of them cannot take it."""
+    reach = set(docs)
+    for op in ws.ops:
+        if op.get('kind') in ('respell', 'edit_text', 'split_word', 'merge_words', 'delete_word',
+                              'split_sentence', 'merge_sentences', 'set_analysis', 'discard_analysis') \
+                and (op.get('doc') in reach or not op.get('doc')):
+            raise ToolError('This plan already reshapes text or words in a document this replacement '
+                            'reaches. Apply one, then plan the other (plan_status, drop_planned).')
 
 
 def _names_morpheme_forms(ws: Workspace, field: str) -> bool:
