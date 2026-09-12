@@ -27,6 +27,10 @@ import {
 } from './regex.js';
 
 const COLUMN_FEATS = { upos: 'uposLayer', xpos: 'xposLayer', lemma: 'lemmaLayer' };
+
+// The REGEXP UDF matches on `contains`, so "." means "at least one
+// character": any span carrying a value, and no span carrying null.
+const ANY_VALUE = { regex: '.' };
 // A lexicon field with more distinct values than this is not turned into a
 // value list for the search (the rule then visits every document).
 const MAX_LEXICON_VALUES = 500;
@@ -386,8 +390,16 @@ class Compiler {
     if (COLUMN_FEATS[lower]) {
       const layer = this.layerId(COLUMN_FEATS[lower], lower);
       const av = this.fresh('s');
+      // A span with a null value is not a feature. The Lemma layer carries one
+      // on every word a dependency relation touches, whatever the LEMMA column
+      // said, because relations hang off lemma spans (ConlluDocument's
+      // `needsLemma`). Testing the span's EXISTENCE therefore called every
+      // headed word lemmatized and `[!lemma]` matched nothing at all on an
+      // unlemmatized treebank, while the local rewrite matcher read the same
+      // span as undefined (rewrite/graph.js maps a null value to undefined).
+      // ANY_VALUE is what makes both engines answer alike.
       if (fi.op === 'undefined') {
-        ctx.list.push(['not', ['span', av, { layer }], ['covers', av, tv]]);
+        ctx.list.push(['not', ['span', av, { layer, value: ANY_VALUE }], ['covers', av, tv]]);
         return;
       }
       const cm = { layer };
@@ -395,7 +407,8 @@ class Compiler {
         const vc = this.valueConstraint(fi.value, ctx);
         if (vc !== undefined) cm.value = vc;
       } else if (fi.op === '<>') cm.value = { regex: notExactlyRegex(this.litValue(fi.value)) };
-      // op 'defined' (and `=*`) -> just require the span to exist (no value)
+      // op 'defined' (and `=*`) -> the span must exist AND carry a value
+      if (cm.value === undefined) cm.value = ANY_VALUE;
       ctx.list.push(['span', av, cm]);
       ctx.list.push(['covers', av, tv]);
       return;

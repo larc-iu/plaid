@@ -391,7 +391,7 @@ def t_set_field(ws: Workspace, document: str = None, refs=None, field: str = Non
         sp = w.fields.get(field)
         ws.add_op({'kind': 'set_span', 'layer_id': layer_id, 'token_id': w.id,
                    'span_id': sp.id if sp else None, 'value': value,
-                   'document_id': doc.id,
+                   'field': field, 'document_id': doc.id,
                    'label': f'{field} = "{value}"' if value else f'clear {field}',
                    'ref': word_ref(ws.sentence_of(doc, w), w)})
     what = f'{field} = "{value}"' if value else f'{field} cleared'
@@ -536,6 +536,17 @@ def t_confirm(ws: Workspace, document: str = None, refs=None, field: str = None)
     return f'Planned confirming {n} value(s).'
 
 
+def _vouched_arc_hangs_on(sentence, w) -> bool:
+    """True when a relation nobody has to re-check anchors on this word's lemma
+    span, either as the dependent's end or as the head's."""
+    from plaid_client.provenance import prov_state
+    if w.relation_id and prov_state(w.relation_metadata) != 'machine':
+        return True
+    return any(o.relation_id and o.head == w.index
+               and prov_state(o.relation_metadata) != 'machine'
+               for o in sentence.words)
+
+
 def t_discard_predictions(ws: Workspace, document: str = None, refs=None, field: str = None) -> str:
     """Throw away machine output nobody has confirmed. A person's work and a
     confirmed value are never touched."""
@@ -543,13 +554,21 @@ def t_discard_predictions(ws: Workspace, document: str = None, refs=None, field:
     fields = [field] if field else list(FIELDS)
     words = _targets(ws, doc, refs)
     n = 0
+    spared = 0
     for w in words:
         sentence = ws.sentence_of(doc, w)
         for f in fields:
             hit = _reviewable(w, f)
             if hit and hit[1] == 'machine':
+                if f == 'lemma' and _vouched_arc_hangs_on(sentence, w):
+                    # The editor leaves this lemma alone: an arc somebody
+                    # vouched for hangs on its span, and that person was reading
+                    # this lemma when they did. Both anchors survive intact.
+                    spared += 1
+                    continue
                 ws.add_op({'kind': 'set_span', 'layer_id': hit[0].layer_id, 'token_id': w.id,
-                           'span_id': hit[0].id, 'value': '', 'document_id': doc.id,
+                           'span_id': hit[0].id, 'value': '', 'field': f,
+                           'document_id': doc.id,
                            'label': f'discard the unconfirmed {f} on {word_ref(sentence, w)}',
                            'ref': word_ref(sentence, w)})
                 n += 1
@@ -561,9 +580,12 @@ def t_discard_predictions(ws: Workspace, document: str = None, refs=None, field:
                            'label': f'discard the unconfirmed head of {word_ref(sentence, w)}',
                            'ref': word_ref(sentence, w)})
                 n += 1
+    spared_note = f' Left {spared} machine lemma(s) that anchor arcs a person drew.' if spared else ''
     if not n:
+        if spared:
+            return f'Nothing to discard: {spared} machine lemma(s) here anchor arcs a person drew.'
         return 'Nothing to discard: no unconfirmed machine values here.'
-    return f'Planned discarding {n} unconfirmed machine value(s).'
+    return f'Planned discarding {n} unconfirmed machine value(s).{spared_note}'
 
 
 # --- the plan so far -----------------------------------------------------------

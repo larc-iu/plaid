@@ -555,3 +555,52 @@ def test_a_document_with_nothing_waiting_is_told_so(ws):
     out = run(ws, 'worklist', kind='contributed', document='Viaje')
     assert 'Nothing is waiting for review' in out, out
     assert 'confirm marks these as reviewed' not in out
+
+
+def test_clearing_a_lemma_keeps_its_span_so_the_arcs_on_it_survive(ws):
+    # sp-l3 is the lemma of "mar", and three relations a person drew hang off
+    # it: r-2a and r-2b with it as their head, r-3 with it as the dependent.
+    # Deleting the span cascades all three. The editor nulls it instead.
+    run(ws, 'set_field', document='Viaje', refs=['s1.w4'], field='lemma', value='')
+    execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified')
+    assert ws.client.calls('spans', 'delete') == []
+    assert ws.client.calls('spans', 'update')[0][2] == ('sp-l3', None)
+
+
+def test_clearing_any_other_column_still_deletes_its_span(ws):
+    run(ws, 'set_field', document='Viaje', refs=['s1.w4'], field='upos', value='')
+    execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified')
+    assert ws.client.calls('spans', 'delete')[0][2] == ('sp-u3',)
+    assert ws.client.calls('spans', 'update') == []
+
+
+def _span(obj, span_id):
+    """The raw span dict with this id, wherever it sits in the document."""
+    if isinstance(obj, dict):
+        if obj.get('id') == span_id and 'tokens' in obj:
+            return obj
+        for v in obj.values():
+            hit = _span(v, span_id)
+            if hit:
+                return hit
+    elif isinstance(obj, list):
+        for v in obj:
+            hit = _span(v, span_id)
+            if hit:
+                return hit
+    return None
+
+
+def test_a_discard_leaves_a_machine_lemma_that_a_vouched_arc_hangs_on():
+    from ud_fixtures import FakeClient, document_raw, project_raw
+    raw = document_raw()
+    # The parser guessed "mar", and a person then drew the three arcs that hang
+    # off its lemma span. The editor leaves such a lemma alone: they were
+    # reading it when they drew them.
+    _span(raw, 'sp-l3')['metadata'] = {'prov': 'inferred', 'provSource': 'service:ud:parse'}
+    client = FakeClient(project=project_raw(), documents={'ud1': raw})
+    ws = Workspace(client, load_project(client, PID))
+
+    out = run(ws, 'discard_predictions', document='Viaje', field='lemma')
+    assert out == 'Nothing to discard: 1 machine lemma(s) here anchor arcs a person drew.'
+    assert ws.ops == []

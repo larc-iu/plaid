@@ -225,7 +225,17 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
             kind = op.get('kind')
             if kind == 'set_span':
                 span_id, value = op.get('span_id'), op.get('value') or ''
-                if span_id and value == '':
+                if span_id and value == '' and op.get('field') == 'lemma':
+                    # Clearing a UPOS or XPOS cell deletes its span. Lemma is the
+                    # exception, and it is not a cosmetic one: dependency
+                    # relations hang off lemma spans, so deleting one cascades
+                    # every arc on that word, including arcs a person drew and
+                    # vouched for. A cleared lemma keeps its null-valued span,
+                    # exactly as the editor leaves it (ConlluDocument's
+                    # `updateAnnotation`) and as an unlemmatized import writes it.
+                    b.add(lambda sid=span_id: client.spans.update(sid, None))
+                    b.add(lambda sid=span_id: client.spans.patch_metadata(sid, restamp()))
+                elif span_id and value == '':
                     b.add(lambda sid=span_id: client.spans.delete(sid))
                 elif span_id:
                     b.add(lambda sid=span_id, v=value: client.spans.update(sid, v))

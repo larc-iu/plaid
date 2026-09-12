@@ -682,6 +682,28 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
                 row_count = sum(1 for td in sentence_data if not isinstance(td["id"], tuple))
                 lemma_span_ids.append([None] * row_count)
 
+            # Rows a dependency relation will touch: its target (the row
+            # carrying the DEPREL) and its source (the row that one names as
+            # HEAD). Each needs a Lemma span for the relation to hang off, even
+            # where the parse produced no lemma at all. Stanza drops a processor
+            # whose model the language lacks and says so in a warning only, so a
+            # pipeline can return DEPREL with the lemma column empty throughout,
+            # and every tree in the document was then dropped in silence. The
+            # null-valued span is the one the editor leaves behind when a lemma
+            # is cleared, and it exports as `_` again. This mirrors
+            # ConlluDocument.importFromConllu, which carries the same rule.
+            needs_lemma = []
+            for sentence_data in sentences_data:
+                rows = set()
+                for td in sentence_data:
+                    if isinstance(td["id"], tuple) or not td.get("deprel"):
+                        continue
+                    rows.add(td["id"])
+                    head = td.get("head")
+                    if head and head > 0:
+                        rows.add(head)
+                needs_lemma.append(rows)
+
             form_spans, lemma_spans, lemma_targets = [], [], []
             upos_spans, xpos_spans, feature_spans = [], [], []
             for i, meta in enumerate(morpheme_meta):
@@ -698,8 +720,9 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
                 if form_layer and form and form != meta["word_substring"]:
                     form_spans.append(make_span_token(form_layer["id"], [mid], form, frag))
                 lemma = row.get("lemma")
-                if lemma_layer and lemma:
-                    lemma_spans.append(make_span_token(lemma_layer["id"], [mid], lemma, frag))
+                if lemma_layer and (lemma or row["id"] in needs_lemma[sent_idx]):
+                    lemma_spans.append(
+                        make_span_token(lemma_layer["id"], [mid], lemma or None, frag))
                     lemma_targets.append((sent_idx, row_index))
                 upos = row.get("upos")
                 if upos_layer and upos:

@@ -281,3 +281,26 @@ test('countBy refuses FORM rather than answering it wrongly', () => {
     /not supported/,
   );
 });
+
+test('a column feature is present only when its span carries a value', () => {
+  // The Lemma layer holds a null-valued span on every word a dependency
+  // relation touches, whatever the LEMMA column said, because relations hang
+  // off lemma spans. Testing existence alone made `[!lemma]` match nothing on
+  // an unlemmatized treebank and `[lemma]` match every headed word, while the
+  // local rewrite matcher read the same span as undefined.
+  const absent = compile('pattern { X [!lemma] }');
+  const negated = flat(absent.query.where).filter((c) => c[0] === 'not');
+  assert.equal(negated.length, 1);
+  const inner = negated[0].slice(1).find((c) => c[0] === 'span');
+  assert.deepEqual(inner[2], { layer: 'LEMMA', value: { regex: '.' } });
+
+  const present = compile('pattern { X [lemma] }');
+  const spans = clauses(present.query.where, 'span').filter((c) => c[2].layer === 'LEMMA');
+  assert.equal(spans.length, 1);
+  assert.deepEqual(spans[0][2], { layer: 'LEMMA', value: { regex: '.' } });
+
+  // An explicit value still constrains on that value, not on "any".
+  const exact = compile('pattern { X [lemma="dog"] }');
+  const one = clauses(exact.query.where, 'span').filter((c) => c[2].layer === 'LEMMA');
+  assert.deepEqual(one[0][2].value, 'dog');
+});
