@@ -190,19 +190,30 @@ test('replace UPOS (Autocomplete cell) on dog', async ({ page }) => {
 test('replace lemma (plain input) on dog', async ({ page }) => {
   const c = await openAnnotate(page);
   const cell = page.locator(`[id="${S.morphIds[1]}-lemma"]`);
+  const before = await page.locator('.editable-field--machine').count();
   await cell.focus();
   await page.keyboard.press('Control+a');
   await page.keyboard.type('doggo', { delay: 20 });
   await page.keyboard.press('Enter');
   await page.waitForTimeout(1200);
   const span = await S.client.spans.get(S.lemDog);
+  const after = await page.locator('.editable-field--machine').count();
   dump('lemma-replace', {
-    inferredCount: await page.locator('.editable-field--machine').count(),
+    inferredCount: after,
     cellValue: await cell.inputValue(),
     server: { value: span.value, metadata: span.metadata },
     api: apiSummary(c),
     errors: c.errors.map((e) => e.text),
   });
+  expect(span.value).toBe('doggo');
+  expect(span.metadata.provConfirmed).toBe(true);
+  // Verified, not laundered: a machine annotation a person checks keeps its
+  // origin, so `prov` and `provSource` stay exactly as the service left them.
+  expect(span.metadata.prov).toBe('inferred');
+  expect(span.metadata.provSource).toBe('service:test');
+  expect(await cell.inputValue()).toBe('doggo');
+  // Only this cell stops being violet; the word's other machine values stay.
+  expect(after).toBe(before - 1);
 });
 
 test('clear XPOS then retype on dog', async ({ page }) => {
@@ -252,12 +263,18 @@ test('replace feature value (chip input) on dog', async ({ page }) => {
   await input.press('Enter');
   await page.waitForTimeout(1200);
   const span = await S.client.spans.get(S.featDog).catch((e) => ({ error: e.message }));
+  const machineFeats = await page.locator('.feature-text--machine').count();
   dump('feat-replace', {
-    inferredFeats: await page.locator('.feature-text--machine').count(),
+    inferredFeats: machineFeats,
     server: span.error ? span : { value: span.value, metadata: span.metadata },
     api: apiSummary(c),
     errors: c.errors.map((e) => e.text),
   });
+  expect(span.value).toBe('Number=Plur');
+  expect(span.metadata.provConfirmed).toBe(true);
+  expect(span.metadata.prov).toBe('inferred');
+  // A chip is a span of its own, so the violet chip is the one that clears.
+  expect(machineFeats).toBe(0);
 });
 
 test('replace deprel label (tree editor)', async ({ page }) => {
@@ -274,13 +291,20 @@ test('replace deprel label (tree editor)', async ({ page }) => {
   await page.waitForTimeout(1200);
   const rel = await S.client.relations.get(S.relDet);
   const newLabel = page.locator('.tree-deprel-text', { hasText: 'nmod' }).first();
+  const classAfter = await newLabel.getAttribute('class').catch(() => null);
   dump('deprel-replace', {
     classBefore: cls,
-    classAfter: await newLabel.getAttribute('class').catch(() => null),
+    classAfter,
     server: { value: rel.value, metadata: rel.metadata },
     api: apiSummary(c),
     errors: c.errors.map((e) => e.text),
   });
+  expect(rel.value).toBe('nmod');
+  expect(rel.metadata.provConfirmed).toBe(true);
+  expect(rel.metadata.prov).toBe('inferred');
+  // The marking that says "machine-made, unreviewed" goes with the review.
+  expect(cls).toContain('tree-deprel-text--marked');
+  expect(classAfter).not.toContain('--marked');
 });
 
 // ---- UPOS gesture matrix: reset the span before each, then try one gesture ----
@@ -288,6 +312,19 @@ const resetUpos = async () => {
   await S.client.spans.update(S.uposDog, 'NOUN');
   await S.client.spans.patchMetadata(S.uposDog, { ...MACHINE, provConfirmed: null });
 };
+/** What every one of the gestures below has to have done. */
+const expectVerified = (got, before) => {
+  expect(got.server.value).toBe('VERB');
+  expect(got.server.metadata.provConfirmed).toBe(true);
+  // Verified, not laundered: the origin stays where the service put it.
+  expect(got.server.metadata.prov).toBe('inferred');
+  expect(got.server.metadata.provSource).toBe('service:test');
+  expect(got.cellValue).toBe('VERB');
+  // Counted against a reading taken in this test, not against 0: the specs
+  // share one seeded project and run in file order.
+  expect(got.inferredCount).toBe(before - 1);
+};
+
 const readUpos = async (page, c) => {
   await page.waitForTimeout(1200);
   const span = await S.client.spans.get(S.uposDog);
@@ -303,23 +340,29 @@ const readUpos = async (page, c) => {
 test('upos: Ctrl+A, type, Enter, then Tab', async ({ page }) => {
   await resetUpos();
   const c = await openAnnotate(page);
+  const before = await page.locator('.editable-field--machine').count();
   await page.locator(`[id="${S.morphIds[1]}-upos"]`).focus();
   await page.keyboard.press('Control+a');
   await page.keyboard.type('VERB', { delay: 20 });
   await page.keyboard.press('Enter');
   await page.waitForTimeout(300);
   await page.keyboard.press('Tab');
-  dump('upos-enter-tab', await readUpos(page, c));
+  const got = await readUpos(page, c);
+  dump('upos-enter-tab', got);
+  expectVerified(got, before);
 });
 
 test('upos: Ctrl+A, type, Tab', async ({ page }) => {
   await resetUpos();
   const c = await openAnnotate(page);
+  const before = await page.locator('.editable-field--machine').count();
   await page.locator(`[id="${S.morphIds[1]}-upos"]`).focus();
   await page.keyboard.press('Control+a');
   await page.keyboard.type('VERB', { delay: 20 });
   await page.keyboard.press('Tab');
-  dump('upos-tab', await readUpos(page, c));
+  const got = await readUpos(page, c);
+  dump('upos-tab', got);
+  expectVerified(got, before);
 });
 
 test('upos: type prefix, ArrowDown, Enter (option submit), then Tab', async ({ page }) => {
@@ -342,6 +385,7 @@ test('upos: type prefix, ArrowDown, Enter (option submit), then Tab', async ({ p
 test('upos: click cell, mouse-pick option, click away', async ({ page }) => {
   await resetUpos();
   const c = await openAnnotate(page);
+  const before = await page.locator('.editable-field--machine').count();
   await page.locator(`[id="${S.morphIds[1]}-upos"]`).click();
   const opt = page.locator('[role="option"]', { hasText: /^VERB/ }).first();
   await expect(opt).toBeVisible();
@@ -351,19 +395,26 @@ test('upos: click cell, mouse-pick option, click away', async ({ page }) => {
     .locator('h1, h2, .breadcrumb, body')
     .first()
     .click({ position: { x: 5, y: 5 } });
-  dump('upos-mouse-pick', { afterPick: mid, afterClickAway: await readUpos(page, c) });
+  const fin = await readUpos(page, c);
+  dump('upos-mouse-pick', { afterPick: mid, afterClickAway: fin });
+  // The pick alone commits, and clicking away does not undo or repeat it.
+  expectVerified(mid, before);
+  expectVerified(fin, before);
 });
 
 test('upos: Ctrl+A, type, Enter, click away', async ({ page }) => {
   await resetUpos();
   const c = await openAnnotate(page);
+  const before = await page.locator('.editable-field--machine').count();
   await page.locator(`[id="${S.morphIds[1]}-upos"]`).focus();
   await page.keyboard.press('Control+a');
   await page.keyboard.type('VERB', { delay: 20 });
   await page.keyboard.press('Enter');
   await page.waitForTimeout(300);
   await page.mouse.click(5, 5);
-  dump('upos-enter-clickaway', await readUpos(page, c));
+  const got = await readUpos(page, c);
+  dump('upos-enter-clickaway', got);
+  expectVerified(got, before);
 });
 
 test('export skips reserved provenance keys on sentence tokens', async ({ page }) => {
