@@ -154,12 +154,20 @@
           (rm-rf tmp))))))
 
 (def python-packages
-  "The Python distributions a release publishes, in build order: the client,
-  then the assistant services (one distribution for every app's assistant,
-  which depends on the client at the same release, so its floor is stamped
-  alongside its version)."
-  [{:dir "plaid-client-py" :label "Python client"}
-   {:dir "plaid-agent" :label "Assistant services (plaid-agent)" :pin-client? true}])
+  "The Python distributions a release publishes, in build order.
+
+  Just the client. **The assistant (`plaid-agent`, dist `larc-plaid-agent`) is
+  deliberately NOT here**: it does not go to PyPI yet (Luke's ruling,
+  2026-09-12), and a distribution staged in dist-artifacts/ IS a distribution
+  published, because release.yml uploads every wheel and sdist in there with
+  one call. It is still tested by `bb test`, and it installs from a checkout
+  (see plaid-agent/README.md). Putting it back means configuring a PyPI
+  publisher for the name first, or the upload 403s and takes the client's
+  publish down with it.
+
+  `:pin-client?` stamps a package's `larc-plaid-client` floor to the release
+  version; nothing needs it while the client is the only entry."
+  [{:dir "plaid-client-py" :label "Python client"}])
 
 (defn python-pyprojects []
   (mapv #(str (:dir %) "/pyproject.toml") python-packages))

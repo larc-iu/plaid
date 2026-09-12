@@ -71,9 +71,10 @@ tab shows it as an example card linking to that sentence in the editor.
 
 Python 3.11+.
 
+Not on PyPI: install it from a checkout.
+
 ```sh
-pip install larc-plaid-agent            # from PyPI (published with each Plaid release)
-# or, from a checkout:  pip install -e ../plaid-client-py -e .
+pip install ../plaid-client-py .        # or -e both, to develop against them
 # a named API token for the service account goes in ./.token (or you are prompted)
 plaid-igt-agent --url http://localhost:8080 --model openai/gpt-4o
 plaid-igt-agent --url http://localhost:8080 --model ollama/llama3.1

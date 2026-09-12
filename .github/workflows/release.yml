@@ -191,9 +191,11 @@ jobs:
       # --- PyPI ----------------------------------------------------------------
       # Keyless via OIDC trusted publishing. Configure a trusted publisher (or a
       # pending publisher for the first release) on PyPI for EACH Python
-      # distribution `bb build` stages: `larc-plaid-client` and
-      # `larc-plaid-agent` (the publish action uploads every wheel/sdist in
-      # pydist/). `skip-existing` makes re-runs idempotent.
+      # distribution `bb build` stages, which is `larc-plaid-client` alone: the
+      # assistant does not go to PyPI yet, and this action uploads every
+      # wheel/sdist in pydist/, so staging one IS publishing it (and an
+      # unconfigured name 403s, taking the client's upload with it).
+      # `skip-existing` makes re-runs idempotent.
       - name: Collect Python dists
         run: |
           mkdir -p pydist
@@ -235,16 +237,20 @@ jobs:
           - npm: \`npm install @larc-iu/plaid-client@$VER\`
           - PyPI: \`pip install --pre larc-plaid-client==$PYVER\`
 
-          ## IGT assistant (optional)
-          A bring-your-own-model chat assistant for IGT projects: the **Assistant** tab on a project page. Users ask questions about the corpus and lexicon or ask for edits; edits come back as a plan the user approves, then are applied under that user's own account. Nothing runs unless the instance operator starts the service:
+          ## Assistants (optional)
+          A bring-your-own-model chat assistant, for IGT projects and for UD treebanks: the **Assistant** tab on a project page, and a panel beside a document. Users ask questions about the corpus, the lexicon or the annotation, or ask for edits; edits come back as a plan the user approves, then are applied under that user's own account. Nothing runs unless the instance operator starts the service:
 
-          1. On any machine that can reach the server, with Python 3.11+:
-             \`pip install --pre larc-plaid-agent==$PYVER\`
+          1. On any machine that can reach the server, with Python 3.11+. Not on PyPI yet, so install it from the source tree at this tag:
+             \`\`\`
+             git clone --branch $GITHUB_REF_NAME --depth 1 https://github.com/larc-iu/plaid
+             pip install ./plaid/plaid-client-py ./plaid/plaid-agent
+             \`\`\`
           2. Create a named API token for the account the service will register with (Profile → API Tokens). The account needs **writer** access on the projects it serves; it never edits with its own credentials.
           3. Start it, naming any model litellm supports and the provider's key in the usual environment variable:
              \`\`\`
              export OPENAI_API_KEY=…            # or ANTHROPIC_API_KEY, GEMINI_API_KEY, …
-             plaid-igt-agent --url https://plaid.example.org --model openai/gpt-4o
+             plaid-igt-agent --url https://plaid.example.org --model openai/gpt-4o    # IGT projects
+             plaid-ud-agent  --url https://plaid.example.org --model openai/gpt-4o    # UD treebanks
              plaid-igt-agent --url https://plaid.example.org --model ollama/llama3.1
              plaid-igt-agent --url https://plaid.example.org --model openai/my-model --api-base http://gpu-box:8000/v1
              \`\`\`
