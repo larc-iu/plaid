@@ -117,7 +117,9 @@ test('Ask names the open entry the way find_entry takes it', async ({ page }) =>
 
   // Open the first of the two entries spelled "gam".
   await page.getByRole('link', { name: /^gam/ }).first().click();
-  const ask = page.getByRole('button', { name: /^Ask about/ });
+  // Just "Ask", matching the per-sentence gesture in the interlinear editor and
+  // in plaid-ud. The entry it is about is the heading right below it.
+  const ask = page.getByRole('button', { name: 'Ask', exact: true });
   await expect(ask).toBeVisible({ timeout: 8000 });
   await ask.click();
 
@@ -147,7 +149,7 @@ test('a vocabulary two projects link is never filed under one of them', async ({
   // The Ask gesture is what would attach an entry to a turn, and it needs the
   // resolved project, so it is not offered.
   await page.getByRole('link', { name: /^gam/ }).first().click();
-  await expect(page.getByRole('button', { name: /^Ask about/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Ask', exact: true })).toHaveCount(0);
 
   // And the panel, opened here, is about a project the reader picks rather
   // than this vocabulary.

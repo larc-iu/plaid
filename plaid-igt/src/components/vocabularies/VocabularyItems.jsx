@@ -75,6 +75,7 @@ import { ConcordancePanel } from './ConcordancePanel';
 import { EntryDialogs } from './EntryDialogs';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
 import { useAssistantSubject } from '@ui/components/assistant/subject.js';
+import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 
 // How many repairs ride in one batch. A batch is one transaction holding the
@@ -934,14 +935,6 @@ export const VocabularyItems = ({
 
         {/* ---- right pane: the entry, its concordance, its comments ---- */}
         <div className="min-w-0 flex-1">
-          {assistantAvailable && selectedItem && (
-            <div className="mb-3 flex items-center justify-end gap-2">
-              <Button type="button" variant="ghost" size="sm" onClick={askAboutEntry}>
-                Ask about{' '}
-                <FormLabel form={selectedItem.form} index={numbers.get(selectedItem.id)} />
-              </Button>
-            </div>
-          )}
           {!selectedId ? (
             <div className="flex min-h-[24rem] items-center justify-center rounded-lg border border-dashed bg-card/50">
               <p className="text-sm text-muted-foreground">
@@ -952,27 +945,50 @@ export const VocabularyItems = ({
             entryEditor
           ) : (
             <Tabs value={pane} onValueChange={setPane}>
-              <TabsList className="mb-3">
-                <TabsTrigger value="entry" to={paneTo('entry')}>
-                  Entry
-                </TabsTrigger>
-                <TabsTrigger value="concordance" to={paneTo('concordance')}>
-                  Concordance
-                  {conc.concPlan && (
-                    <span className="rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
-                      {conc.concPlan.totalHits.toLocaleString()}
-                    </span>
-                  )}
-                </TabsTrigger>
-                <TabsTrigger value="comments" to={paneTo('comments')}>
-                  Comments
-                  {(comments?.countFor(selectedId) ?? 0) > 0 && (
-                    <span className="rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
-                      {comments.countFor(selectedId)}
-                    </span>
-                  )}
-                </TabsTrigger>
-              </TabsList>
+              {/* Ask shares the tab strip's row rather than taking one of its
+                  own. In its own row it floated in the right margin with
+                  nothing around it, and because it comes and goes with the
+                  selection it moved the tabs down whenever an entry was
+                  chosen. Here the row's height is the strip's, so nothing
+                  reflows either way. Just "Ask": the entry it is about is the
+                  heading directly below, so naming it in the label repeated a
+                  fact from a centimetre away. */}
+              <div className="mb-3 flex items-start justify-between gap-4">
+                <TabsList>
+                  <TabsTrigger value="entry" to={paneTo('entry')}>
+                    Entry
+                  </TabsTrigger>
+                  <TabsTrigger value="concordance" to={paneTo('concordance')}>
+                    Concordance
+                    {conc.concPlan && (
+                      <span className="rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
+                        {conc.concPlan.totalHits.toLocaleString()}
+                      </span>
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger value="comments" to={paneTo('comments')}>
+                    Comments
+                    {(comments?.countFor(selectedId) ?? 0) > 0 && (
+                      <span className="rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
+                        {comments.countFor(selectedId)}
+                      </span>
+                    )}
+                  </TabsTrigger>
+                </TabsList>
+                {assistantAvailable && selectedItem && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="shrink-0 gap-1.5"
+                    onClick={askAboutEntry}
+                    title="Ask the assistant about this entry"
+                  >
+                    <AssistantMark className="h-3.5 w-3.5" />
+                    Ask
+                  </Button>
+                )}
+              </div>
 
               <TabsContent value="entry">
                 <div className="flex flex-col gap-4">
