@@ -200,11 +200,26 @@ export function makeFakeClient(opts = {}) {
       }
       this.operationGroup = null;
     },
+    // Mirrors the real client: `fn` gets a `setMessage` to refine the label once
+    // the outcome is known, and the refinement is only applied when the
+    // operation actually WROTE something (the real client relabels through
+    // operationGroups.update, and skips it when no group materialized). Recorded
+    // as `operationGroups.update` so a test can assert the label a mutation
+    // settled on.
     async withOperation(message, fn) {
       this.beginOperation(message);
+      const group = this.operationGroup;
+      const startedAt = calls.length;
+      const setMessage = (msg) => {
+        if (group.depth === 1) group.refined = msg;
+      };
       try {
-        return await fn(() => {});
+        return await fn(setMessage);
       } finally {
+        const wrote = calls.length > startedAt;
+        if (group.refined !== undefined && wrote) {
+          record('operationGroups.update', [group.id, group.refined]);
+        }
         await this.endOperation();
       }
     },

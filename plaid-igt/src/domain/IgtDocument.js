@@ -16,6 +16,8 @@ import {
   planVocabLinkDedup,
   applyVocabLinkDedup,
   planMorphTypeSync,
+  describeReconcile,
+  RECONCILE_LABEL,
   planPreserveOnSplit,
   planFieldLangBackfill,
   planVocabFieldLangBackfill,
@@ -489,9 +491,10 @@ export class IgtDocument {
   // and un-healable app-contract violations come back as `findings` for the
   // caller to log + toast. Loud + recoverable. Deliberately NOT via _withSaving
   // (a heal failure must not reload-and-revert the freshly loaded document).
-  // Every heal write folds under one "Reconcile layers on open" audit entry
-  // (no entry at all when nothing needed healing — groups are created lazily
-  // by the first write).
+  // Every heal write folds under ONE audit entry, relabelled by
+  // `describeReconcile` to name the repair that ran (no entry at all when
+  // nothing needed healing, since groups are created lazily by the first
+  // write).
   async reconcileOnOpen() {
     // Concurrent callers (React StrictMode's dev double-invoke, a quick tab
     // switch) share ONE in-flight pass and its results; a bare single-flight
@@ -499,7 +502,18 @@ export class IgtDocument {
     // reported, so integrity findings were never toasted in dev.
     if (this._reconcilePromise) return this._reconcilePromise;
     this._reconcilePromise = this._client
-      .withOperation('Reconcile layers on open', () => this._reconcileOnOpenImpl())
+      .withOperation(RECONCILE_LABEL, async (setMessage) => {
+        const result = await this._reconcileOnOpenImpl();
+        // Name the repair that ran, so the History drawer says what changed
+        // rather than only that something did. Not after a failure: the pass
+        // may have written half of what the label would claim. A pass that
+        // wrote nothing creates no group, so there is nothing to relabel.
+        if (!result.error) {
+          const refined = describeReconcile(result);
+          if (refined) setMessage(refined);
+        }
+        return result;
+      })
       .finally(() => {
         this._reconcilePromise = null;
       });

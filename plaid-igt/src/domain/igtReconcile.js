@@ -13,6 +13,48 @@ import { fieldNameLang } from './fieldNames.js';
 
 const extentKey = (t) => `${t.begin}:${t.end}`;
 
+/** The label a reconcile pass that wrote nothing keeps. */
+export const RECONCILE_LABEL = 'Reconcile layers on open';
+
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * The audit label for a reconcile pass, naming what it actually changed.
+ *
+ * A constant label made a repair unreadable: the History drawer said
+ * "Reconcile layers on open" and its member ops say "Patch metadata on token
+ * 01a08827-... with 1 keys", so a document nobody had edited that session
+ * carried an entry no one could account for. The counts are known before the
+ * label is needed, so the entry can say which repair ran.
+ *
+ * Terse on purpose. This is a row in a drawer, not the console tally, and it
+ * states what changed without the reasoning (that lives in the console line and
+ * in these comments). Null when nothing was written, which leaves the pass its
+ * plain label and, since a group is created lazily by its first write, usually
+ * no entry at all.
+ */
+export const describeReconcile = ({
+  deleted = 0,
+  dedupedSpans = 0,
+  dedupedLinks = 0,
+  syncedMorphTypes = 0,
+} = {}) => {
+  const parts = [];
+  if (deleted) parts.push(`removed ${plural(deleted, 'orphaned morpheme', 'orphaned morphemes')}`);
+  if (dedupedSpans)
+    parts.push(`merged ${plural(dedupedSpans, 'duplicate annotation', 'duplicate annotations')}`);
+  if (dedupedLinks)
+    parts.push(
+      `removed ${plural(dedupedLinks, 'extra vocabulary link', 'extra vocabulary links')}`,
+    );
+  if (syncedMorphTypes)
+    parts.push(
+      `synced ${plural(syncedMorphTypes, 'morpheme type', 'morpheme types')} from lexicon entries`,
+    );
+  if (!parts.length) return null;
+  return `Reconcile: ${parts.join(', ')}`;
+};
+
 /**
  * The heal plan for a document's morpheme layer: `orphanMorphemeIds`, the
  * morphemes whose extent matches no current word. Delete ALL of them (heal

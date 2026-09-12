@@ -9,6 +9,7 @@ import {
   planPreserveOnSplit,
   planFieldLangBackfill,
   planVocabFieldLangBackfill,
+  describeReconcile,
 } from './igtReconcile.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 
@@ -216,6 +217,26 @@ describe('planSpanDedup', () => {
   });
 });
 
+describe('describeReconcile', () => {
+  it('names each repair, and says nothing when nothing was written', () => {
+    expect(describeReconcile({})).toBeNull();
+    expect(describeReconcile({ deleted: 1 })).toBe('Reconcile: removed 1 orphaned morpheme');
+    expect(describeReconcile({ deleted: 2 })).toBe('Reconcile: removed 2 orphaned morphemes');
+    expect(describeReconcile({ syncedMorphTypes: 2 })).toBe(
+      'Reconcile: synced 2 morpheme types from lexicon entries',
+    );
+    expect(describeReconcile({ dedupedSpans: 1, dedupedLinks: 3 })).toBe(
+      'Reconcile: merged 1 duplicate annotation, removed 3 extra vocabulary links',
+    );
+  });
+
+  it('ignores the counts that are not repairs', () => {
+    // deletedAnnotatedOrphans qualifies `deleted`, it is not its own repair, and
+    // findings were not written at all.
+    expect(describeReconcile({ deletedAnnotatedOrphans: 2, findings: [{}] })).toBeNull();
+  });
+});
+
 describe('IgtDocument.reconcileOnOpen', () => {
   it('writes nothing for a bare word, which derives a morpheme of its own', async () => {
     const raw = buildRawDoc({ words: twoWords, morphemes: [m('m-1', 0, 3)] });
@@ -301,6 +322,54 @@ describe('IgtDocument.reconcileOnOpen', () => {
     const glossSpans = doc.layerInfo.morphemeTokenLayer.spanLayers[0].spans;
     expect(glossSpans.length).toBe(1);
     expect(glossSpans[0].value).toBe('the | THE');
+  });
+
+  // The prod case of 2026-09-12: an entry was linked, THEN given a morph type
+  // from the entry editor, which is not a document context and so patches no
+  // cache. Opening the document synced it, and the audit entry said only
+  // "Reconcile layers on open" over ops reading "Patch metadata on token
+  // 01a08827-... with 1 keys". It names the repair now.
+  it('syncs a morph type the entry gained after the link, and says so in the audit label', async () => {
+    const raw = buildRawDoc();
+    const client = makeFakeClient();
+    const doc = new IgtDocument({
+      raw,
+      project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: {} },
+      vocabularies: {
+        v1: {
+          id: 'v1',
+          items: [{ id: 'i1', form: 'the', metadata: { morphType: 'stem' } }],
+          // Linked while the entry had no type; the type came later.
+          vocabLinks: [{ id: 'lk-1', tokens: ['m-1'], vocabItem: { id: 'i1', form: 'the' } }],
+        },
+      },
+      client,
+      projectId: 'proj-1',
+    });
+
+    const res = await doc.reconcileOnOpen();
+
+    expect(res.syncedMorphTypes).toBe(1);
+    const patches = client.calls.filter((c) => c.kind === 'tokens.patchMetadata');
+    expect(patches).toHaveLength(1);
+    expect(patches[0].args).toEqual(['m-1', { morphType: 'stem' }]);
+    // The entry the History drawer shows.
+    const relabel = client.calls.filter((c) => c.kind === 'operationGroups.update');
+    expect(relabel).toHaveLength(1);
+    expect(relabel[0].args[1]).toBe('Reconcile: synced 1 morpheme type from lexicon entries');
+    // And a second open has nothing left to do, so no entry at all.
+    const again = await doc.reconcileOnOpen();
+    expect(again.syncedMorphTypes).toBe(0);
+  });
+
+  it('leaves the plain label on a pass that writes nothing', async () => {
+    const client = makeFakeClient();
+    const doc = makeDoc(buildRawDoc(), client);
+    await doc.reconcileOnOpen();
+    expect(client.calls.some((c) => c.kind === 'operationGroups.update')).toBe(false);
+    expect(client.calls.filter((c) => c.kind === 'beginOperation')[0].args[0]).toBe(
+      'Reconcile layers on open',
+    );
   });
 });
 
