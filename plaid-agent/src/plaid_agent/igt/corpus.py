@@ -56,6 +56,8 @@ class Corpus:
         self.p = ws.project
         self.W, self.M, self.S = self.p.word_layer_id, self.p.morpheme_layer_id, self.p.sentence_layer_id
         self._ref_names: Optional[Dict[str, str]] = None
+        self.truncated = False
+        self._clipped = False
 
     # --- running queries ------------------------------------------------------
 
@@ -77,18 +79,29 @@ class Corpus:
         instance for callers that want to say so."""
         res = self.run({'where': where, 'limit': limit,
                         'return': {'group': group, 'aggregates': aggregates or [['count']]}})
-        self.truncated = bool(res.get('truncated'))
+        self._note_truncation(res)
         return res.get('results') or []
 
-    def clipped_note(self, what: str = 'values') -> str:
-        """A line to append when the LAST read hit the engine's row limit.
+    def _note_truncation(self, res: Dict[str, Any]) -> None:
+        self.truncated = bool(res.get('truncated'))
+        self._clipped = self._clipped or self.truncated
 
-        `group` and `entities` record `truncated` and nothing read it, so a
-        "commonest" list was the top of an arbitrary prefix stated as the top
-        of the corpus. Read it straight after the call: the Corpus is cached
-        for the whole turn, so the flag belongs to the most recent read only.
+    def forget_clipping(self) -> None:
+        """Forget whether earlier reads were clipped. A corpus-wide tool calls
+        this before its own reads and :meth:`clipped_note` after them."""
+        self._clipped = False
+
+    def clipped_note(self, what: str = 'values') -> str:
+        """A line to append when ANY read since :meth:`forget_clipping` hit the
+        engine's row limit.
+
+        `group` and `entities` record it and nothing read it, so a "commonest"
+        list was the top of an arbitrary prefix stated as the top of the
+        corpus. Asked of every read since the reset, not only the last one:
+        these tools run several queries and the narrow ones come last, so the
+        last read's flag says nothing about the tally the numbers came from.
         """
-        if not self.truncated:
+        if not self._clipped:
             return ''
         return (f'\n(note) The engine returned as many rows as it will, so these {what} come '
                 f'from part of the corpus and not all of it. Narrowing it to one document or '
@@ -99,7 +112,7 @@ class Corpus:
         if order_by:
             body['order_by'] = order_by
         res = self.run(body)
-        self.truncated = bool(res.get('truncated'))
+        self._note_truncation(res)
         return res.get('results') or []
 
     # --- clause builders -------------------------------------------------------
@@ -368,6 +381,7 @@ def q_frequency_list(ws: Workspace, what_l: str, field, limit: int, min_count: i
     """(items [(key, n)], spread {key: documents}, empty) over the whole project."""
     c = ws.corpus
     empty = 0
+    c.forget_clipping()
     if what_l in ('wordform', 'word'):
         counts, raw = _casefold_tally(c.group([c.word('?t')], ['?t.value']),
                                       lambda r: ((r[0].casefold(), r[0]) if r[0] and not c.ignored(r[0]) else (None, None)))
@@ -449,6 +463,7 @@ def q_worklist(ws: Workspace, kind: str, f, lvl: str, user: Optional[str] = None
     names}; for sentence fields the groups are documents."""
     c = ws.corpus
     names = c.doc_names()
+    c.forget_clipping()
     examples: Dict[str, List[str]] = {}
     if lvl == 'sentence':
         rows = c.group([c.sent('?t'), ['not', c.span('?s', f.layer_id), ['covers', '?s', '?t']]], ['?t.doc'])
@@ -527,6 +542,7 @@ def q_corpus_numbers(ws: Workspace, per_doc: bool):
     (project-wide) or ``{doc_id: dict}``. ``longest`` is not computed here."""
     c = ws.corpus
     p = c.p
+    c.forget_clipping()
     fields = list(p.fields.values())
 
     def fresh():
@@ -794,6 +810,7 @@ def q_analyses_of(ws: Workspace, form: str) -> str:
 def q_consistency(ws: Workspace, f):
     """(values Counter, by_form {form: Counter}, unlinked (n, examples), linked_empty (n, examples))."""
     from .project import word_ref
+    ws.corpus.forget_clipping()
     c = ws.corpus
     layer = c.scope_layer(f.scope)
     values: Counter = Counter()
@@ -901,6 +918,7 @@ def q_sequence(ws: Workspace, sequence: List[Dict[str, Any]], adjacent: bool, re
     c = ws.corpus
     p = c.p
     n = len(sequence)
+    ws.corpus.forget_clipping()
     wvars = [f'?w{i}' for i in range(n)]
     extra: List[Any] = []
     token_cons: List[Dict[str, Any]] = []

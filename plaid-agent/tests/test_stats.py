@@ -197,6 +197,31 @@ def test_query_count_and_aggregate_shapes():
     assert out == '1 group: d\tcount\n  Text 1\t4'
 
 
+def test_a_clipped_read_is_never_reported_as_the_whole_corpus():
+    """Corpus.truncated was recorded on every query and read by nothing here,
+    so the corpus-wide reports stated the top of an arbitrary prefix as the
+    top of the corpus. An empty clipped read is the worst of them: "nothing to
+    do" for a corpus that may be full of it."""
+    c = FakeClient()
+    c.query = lambda body: {'return': body.get('return'), 'columns': [], 'results': [], 'count': 0,
+                            'truncated': True}
+
+    def query_ws():
+        # Not scan_ws: these reports only run on the engine project-wide.
+        return Workspace(c, load_project(c, 'p1'))
+
+    for name, args in [('corpus_stats', {}),
+                       ('frequency_list', {}),
+                       ('worklist', {'kind': 'unglossed'}),
+                       ('check_consistency', {'field': 'Gloss'}),
+                       ('sequence_search', {'sequence': [{'Gloss': 'x'}]})]:
+        out = call_tool(query_ws(), name, args)
+        assert 'come from part of the corpus and not all of it' in out, (name, out)
+    # Naming a document scans it whole, so there is nothing to warn about.
+    assert 'part of the corpus' not in call_tool(query_ws(), 'worklist', {'kind': 'unglossed',
+                                                                         'document': 'Text 1'})
+
+
 def test_a_failing_tool_call_leaves_no_partial_plan():
     w = ws()
     # the cap: 10 items would change, cap it at 2 for the test

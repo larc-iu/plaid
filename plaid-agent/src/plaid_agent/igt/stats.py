@@ -122,6 +122,7 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
     metadata field (`by="Genre"`)."""
     project = ws.project
     lines: List[str] = []
+    clipped = ''
     if ws.use_scan(document):
         docs = _docs(ws, document)
         rows = {d.id: _doc_numbers(d, project) for d in docs}
@@ -138,8 +139,10 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
         n_docs = len(names)
         if by is None:
             whole = q_corpus_numbers(ws, per_doc=False)
+            clipped = ws.corpus.clipped_note('counts')
         else:
             rows = q_corpus_numbers(ws, per_doc=True)
+            clipped = ws.corpus.clipped_note('counts')
             for did in names:
                 rows.setdefault(did, q_corpus_numbers.empty(project))
             metas = ws.corpus.document_metadata()
@@ -168,7 +171,7 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
 
     if by is None:
         describe(whole, n_docs, f'Project "{project.name}"' if not document else f'Document "{names[next(iter(names))]}"')
-        return _truncate('\n'.join(lines))
+        return _truncate('\n'.join(lines) + clipped)
 
     if by.lower() == 'document':
         gm, gs = project.gloss_field('Morpheme') or project.gloss_field('Word'), project.gloss_field('Sentence')
@@ -186,7 +189,7 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
                      _pct(n['hapax'], n['words']), f'{n["ttr"]:.2f}']
             cells += [str((metas.get(did) or {}).get(k, '') or '') for k in project.document_metadata]
             lines.append('\t'.join(c for c in cells if c is not None))
-        return _truncate('\n'.join(lines))
+        return _truncate('\n'.join(lines) + clipped)
 
     key = next((k for k in project.document_metadata if k.lower() == by.lower()), None)
     if not key:
@@ -196,7 +199,7 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
         groups[str((metas.get(did) or {}).get(key, '') or '(none)')].append(did)
     for val, ids in sorted(groups.items(), key=lambda kv: -len(kv[1])):
         describe(total(ids), len(ids), f'{key} = {val}')
-    return _truncate('\n'.join(lines))
+    return _truncate('\n'.join(lines) + clipped)
 
 
 # --- frequency_list -----------------------------------------------------------------
@@ -216,7 +219,8 @@ def t_frequency_list(ws: Workspace, what: str = 'wordform', document: Optional[s
     if not ws.use_scan(document):
         from .corpus import q_frequency_list
         items, spread, empty = q_frequency_list(ws, what_l, field, limit, min_count)
-        return _frequency_lines(items, spread, empty, field, what_l, limit)
+        return _frequency_lines(items, spread, empty, field, what_l, limit,
+                                ws.corpus.clipped_note(_freq_noun(field, what_l)))
     docs = _docs(ws, document)
     for d in docs:
         for s in d.sentences:
@@ -259,10 +263,14 @@ def t_frequency_list(ws: Workspace, what: str = 'wordform', document: Optional[s
     return _frequency_lines(items, spread, empty, field, what_l, limit)
 
 
-def _frequency_lines(items, spread, empty, field, what_l, limit) -> str:
-    noun = field.name + ' values' if field else ('wordforms' if what_l != 'morpheme' else 'morpheme forms')
+def _freq_noun(field, what_l: str) -> str:
+    return field.name + ' values' if field else ('wordforms' if what_l != 'morpheme' else 'morpheme forms')
+
+
+def _frequency_lines(items, spread, empty, field, what_l, limit, clipped: str = '') -> str:
+    noun = _freq_noun(field, what_l)
     lines = [f'{len(items)} {noun}, {sum(n for _, n in items)} tokens' + (f', {empty} empty' if field else '')
-             + (f' (showing {limit})' if len(items) > limit else '') + '. count\tdocuments\tform']
+             + (f' (showing {limit})' if len(items) > limit else '') + '. count\tdocuments\tform' + clipped]
     for k, n in sorted(items, key=lambda kv: (-kv[1], kv[0]))[:limit]:
         lines.append(f'  {n}\t{len(spread.get(k) or ())}\t{k}')
     return _truncate('\n'.join(lines))
@@ -335,7 +343,8 @@ def t_worklist(ws: Workspace, kind: str = 'unglossed', field: Optional[str] = No
     if not ws.use_scan(document):
         from .corpus import q_worklist
         counts, examples = q_worklist(ws, kind, f, lvl, user)
-        return _worklist_lines(kind, f, lvl, limit, counts, examples, user)
+        return _worklist_lines(kind, f, lvl, limit, counts, examples, user,
+                               ws.corpus.clipped_note(f'{lvl}s'))
     groups: Dict[str, List[str]] = defaultdict(list)
     for d in docs:
         tag = _tag(ws, docs, d)
@@ -375,7 +384,7 @@ def t_worklist(ws: Workspace, kind: str = 'unglossed', field: Optional[str] = No
 
 
 def _worklist_lines(kind, f, lvl, limit, counts: Dict[str, int], examples: Dict[str, List[str]],
-                    user: Optional[str] = None) -> str:
+                    user: Optional[str] = None, clipped: str = '') -> str:
     total = sum(counts.values())
     groups = counts
     what = {'unlinked': f'{lvl}s not linked to the lexicon',
@@ -384,9 +393,11 @@ def _worklist_lines(kind, f, lvl, limit, counts: Dict[str, int], examples: Dict[
             'unverified': 'words with annotations awaiting review (machine-made and unconfirmed, or a contributor\'s)',
             'contributed': 'words with unreviewed contributions' + (f' by {user}' if user else '')}[kind]
     if not total:
-        return f'Nothing to do: no {what}.'
+        # A clipped read that came back empty is the most misleading of all:
+        # "nothing to do" for a corpus that may be full of it.
+        return f'Nothing to do: no {what}.' + clipped
     lines = [f'{total} {what} across {len(groups)} distinct forms' + (f' (showing {limit})' if len(groups) > limit else '')
-             + '. count\tform\texamples']
+             + '. count\tform\texamples' + clipped]
     for form, n in sorted(groups.items(), key=lambda kv: (-kv[1], kv[0]))[:limit]:
         lines.append(f'  {n}\t{form}\t{", ".join(examples.get(form) or [])}')
     return _truncate('\n'.join(lines))
@@ -727,6 +738,7 @@ def t_sequence_search(ws: Workspace, sequence: list, adjacent: bool = True, docu
     limit = clamp_limit(limit, 40, 200)
     out: List[str] = []
     total = 0
+    clipped = ''
 
     def show(tag, s, matches):
         idx = set(matches)
@@ -736,6 +748,7 @@ def t_sequence_search(ws: Workspace, sequence: list, adjacent: bool = True, docu
     if not ws.use_scan(document):
         from .corpus import q_sequence
         found, total = q_sequence(ws, sequence, bool(adjacent), bool(regex), limit)
+        clipped = ws.corpus.clipped_note('matches')
         for d, s, word_ids in found:
             show(ws.corpus.tag(d.id), s, [w.index for w in s.words if w.id in word_ids])
     else:
@@ -750,8 +763,9 @@ def t_sequence_search(ws: Workspace, sequence: list, adjacent: bool = True, docu
                 if len(out) < limit:
                     show(tag, s, matches)
     if not total:
-        return 'No sentence matches that sequence.'
-    return _truncate('\n'.join([f'{total} sentence{"s" if total != 1 else ""} match' + (f' (showing {limit})' if total > limit else '') + ':'] + out))
+        return 'No sentence matches that sequence.' + clipped
+    return _truncate('\n'.join([f'{total} sentence{"s" if total != 1 else ""} match'
+                                + (f' (showing {limit})' if total > limit else '') + ':' + clipped] + out))
 
 
 def _find_sequence(s: Sentence, seq: List[Dict[str, Any]], adjacent: bool, project, regex: bool) -> List[int]:

@@ -1187,7 +1187,8 @@ def t_check_consistency(ws: Workspace, field: str, document: Optional[str] = Non
     if not ws.use_scan(document):
         from .corpus import q_consistency
         values, by_form, (unlinked_n, unlinked), (linked_empty_n, linked_empty) = q_consistency(ws, f)
-        return _consistency_lines(ws, f, values, by_form, unlinked_n, unlinked, linked_empty_n, linked_empty)
+        return _consistency_lines(ws, f, values, by_form, unlinked_n, unlinked, linked_empty_n, linked_empty,
+                                  ws.corpus.clipped_note(f'{f.name} values'))
     docs = [ws.doc(document)] if document else ws.all_docs()
     values: Counter = Counter()
     by_form: Dict[str, Counter] = {}
@@ -1223,8 +1224,10 @@ def t_check_consistency(ws: Workspace, field: str, document: Optional[str] = Non
     return _consistency_lines(ws, f, values, by_form, unlinked_n, unlinked, linked_empty_n, linked_empty)
 
 
-def _consistency_lines(ws, f, values, by_form, unlinked_n, unlinked, linked_empty_n, linked_empty) -> str:
-    lines = [f'Consistency of {f.name} ({f.scope} field): {sum(values.values())} values, {len(values)} distinct.']
+def _consistency_lines(ws, f, values, by_form, unlinked_n, unlinked, linked_empty_n, linked_empty,
+                       clipped: str = '') -> str:
+    lines = [f'Consistency of {f.name} ({f.scope} field): {sum(values.values())} values, '
+             f'{len(values)} distinct.' + clipped]
     groups: Dict[str, List[str]] = {}
     for v in values:
         groups.setdefault(_norm_value(v), []).append(v)
