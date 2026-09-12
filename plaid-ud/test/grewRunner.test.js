@@ -6,13 +6,18 @@ import { getUdLayerInfo } from '../src/utils/udLayerUtils.js';
 import { parseGrs } from '../src/grew/parser.js';
 import { planRewrite, applyRewrite } from '../src/grew/rewrite/runner.js';
 
+// "loudly" has no LEMMA and no place in the tree, so the import gives it no
+// Lemma span at all: a rule that hands IT an edge needs one created first. (A
+// word with no lemma but a head, like "saw", gets a null-valued span on
+// import, because a relation hangs off one.)
 const CONLLU = [
-  '# text = the dog saw a cat',
+  '# text = the dog saw a cat loudly',
   '1\tthe\tthe\tDET\t_\tDefinite=Def\t2\tdet\t_\t_',
   '2\tdog\tdog\tNOUN\t_\t_\t3\tnsubj\t_\t_',
   '3\tsaw\t_\tVERB\t_\t_\t0\troot\t_\t_',
   '4\ta\ta\tDET\t_\tDefinite=Ind\t5\tdet\t_\t_',
   '5\tcat\tcat\tNOUN\t_\t_\t2\tnmod\t_\t_',
+  '6\tloudly\t_\tADV\t_\t_\t_\t_\t_\t_',
 ].join('\n');
 
 // A recording client: every write lands in `calls` (and in the open batch,
@@ -98,7 +103,7 @@ test('plan: one row per rewritten sentence, with change lines and counts', async
   assert.equal(plan.rows.length, 1);
   const [row] = plan.rows;
   assert.equal(row.docName, 'doc1');
-  assert.equal(row.text, 'the dog saw a cat');
+  assert.equal(row.text, 'the dog saw a cat loudly');
   assert.equal(row.applications, 2);
   assert.deepEqual(
     row.changes.map((c) => c.text),
@@ -139,13 +144,14 @@ test('apply: updates carry the verifier stamp, all under one operation', async (
 
 test('apply: phases in order — token deletes, lemma creates, then relations on the new span', async () => {
   const { client, project, layerInfo } = setup();
-  // "saw" has no lemma and so no relations; give it the nsubj and drop "the".
-  const grs = parseGrs(`pattern { V [upos=VERB]; N [form="dog"]; D [form="the"] }
-    commands { add_edge V -[nsubj]-> N; del_node D } strat main { rule }`);
+  // "loudly" has no lemma and no place in the tree, so it has no Lemma span
+  // for a relation to hang on; give it the advmod and drop "the".
+  const grs = parseGrs(`pattern { V [upos=VERB]; A [upos=ADV]; D [form="the"] }
+    commands { add_edge V -[advmod]-> A; del_node D } strat main { rule }`);
   const plan = await planRewrite(client, { project, user: null, layerInfo, grs });
   assert.deepEqual(
     plan.rows[0].changes.map((c) => c.text),
-    ['the: word deleted', 'saw → dog: nsubj added', 'saw: lemma saw added'],
+    ['the: word deleted', 'saw → loudly: advmod added', 'loudly: lemma loudly added'],
   );
   await applyRewrite(client, { rows: plan.rows, docs: plan.docs, label: 'Rewrite' });
   assert.deepEqual(
@@ -153,10 +159,12 @@ test('apply: phases in order — token deletes, lemma creates, then relations on
     ['tokens.delete', 'spans.create', 'relations.create'],
   );
   const lemmaCreate = client.calls[1];
-  assert.equal(lemmaCreate.args[2], 'saw');
+  assert.equal(lemmaCreate.args[2], 'loudly');
   const relCreate = client.calls[2];
-  assert.equal(relCreate.args[1], 'spans.create-0'); // the id the batch handed back
-  assert.equal(relCreate.args[3], 'nsubj');
+  // The TARGET is the word that needed the span, so it is the id the batch
+  // handed back for the create above.
+  assert.equal(relCreate.args[2], 'spans.create-0');
+  assert.equal(relCreate.args[3], 'advmod');
   // The surface token of a one-word token is what gets deleted.
   const theWord = plan.rows[0].nodes.get([...plan.rows[0].nodes.keys()][1]); // [0] is the anchor
   assert.equal(client.calls[0].args[0], theWord.wordId);

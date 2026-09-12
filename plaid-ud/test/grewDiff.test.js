@@ -77,19 +77,37 @@ test('a missing column is created; a form equal to the text drops the Form span'
   assert.equal(r.writes.main[0].layer, 'form-layer');
 });
 
+// A word with no LEMMA but a place in the tree has a null-valued Lemma span
+// from the import, since a relation hangs off one. A word with no lemma AND no
+// syntax ("ayer" here) has no span at all, and that is the word a rule handing
+// out an edge needs one created for.
+const CONLLU_LOOSE = [
+  '# text = del perro vio ayer',
+  '1-2\tdel\t_\t_\t_\t_\t_\t_\t_\t_',
+  '1\tde\tde\tADP\t_\t_\t3\tcase\t_\t_',
+  '2\tel\tel\tDET\t_\tDefinite=Def|PronType=Art\t3\tdet\t_\t_',
+  '3\tperro\tperro\tNOUN\tNN\tGender=Masc|Number=Sing\t4\tnsubj\t_\t_',
+  '4\tvio\tver\tVERB\t_\t_\t0\troot\t_\t_',
+  '5\tayer\t_\tADV\t_\t_\t_\t_\t_\t_',
+].join('\n');
+
 test('edges: relabel, delete, create, and endpoint moves; lemma spans come first', () => {
-  // "vio" has no lemma, so the import gave it no relations; the rule hands it
-  // one, which needs the lemma span first.
-  const r = run(`pattern { e: N -[det]-> D; N -[case]-> C; V [upos=VERB] } commands {
-    e.label = "amod"; del_edge N -[case]-> C; add_edge V -[nsubj]-> N; shift_out N =[amod]=> V } strat main { rule }`);
+  const doc = new ConlluDocument({ raw: rawDocFromConllu(CONLLU_LOOSE) });
+  const before = graphFromSentence(doc.sentences[0]);
+  const { graph: after } = rewriteSentence(
+    parseGrs(`pattern { e: N -[det]-> D; N -[case]-> C; V [upos=VERB]; A [upos=ADV] } commands {
+    e.label = "amod"; del_edge N -[case]-> C; add_edge V -[advmod]-> A; shift_out N =[amod]=> V } strat main { rule }`),
+    before,
+  );
+  const r = { before, after, ...diffGraphs(before, after, doc.layerInfo) };
   assert.deepEqual(
     r.changes.map((c) => c.text),
     [
       'perro → de: case removed',
       'vio → el: det → amod',
       'amod of el: head perro → vio',
-      'vio → perro: nsubj added',
-      'vio: lemma vio added',
+      'vio → ayer: advmod added',
+      'ayer: lemma ayer added',
     ],
   );
   assert.deepEqual(ops(r.writes.main), [
@@ -99,12 +117,12 @@ test('edges: relabel, delete, create, and endpoint moves; lemma spans come first
     'createRelation',
   ]);
   assert.deepEqual(ops(r.writes.lemmaCreates), ['createSpan']);
-  assert.equal(r.writes.lemmaCreates[0].value, 'vio');
+  // No lemma of its own, so the span is seeded from the word's substring.
+  assert.equal(r.writes.lemmaCreates[0].value, 'ayer');
   assert.equal(r.writes.lemmaCreates[0].layer, 'lemma-layer');
   const create = r.writes.main[3];
-  assert.equal(create.src, r.writes.lemmaCreates[0].node);
-  assert.equal(r.writes.main[2].node, r.writes.lemmaCreates[0].node);
-  assert.equal(create.value, 'nsubj');
+  assert.equal(create.tgt, r.writes.lemmaCreates[0].node);
+  assert.equal(create.value, 'advmod');
 });
 
 test('del_node deletes the token (or just the word of a multi-word token) and nothing under it', () => {

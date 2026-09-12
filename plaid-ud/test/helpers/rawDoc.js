@@ -9,7 +9,21 @@ import { cpSlice } from '@larc-iu/plaid-client';
 import { parseCoNLLU, buildConlluHierarchy } from '../../src/utils/conlluParser.js';
 
 export function rawDocFromConllu(conlluText, name = 'doc') {
-  const hierarchy = buildConlluHierarchy(parseCoNLLU(conlluText));
+  const parsed = parseCoNLLU(conlluText);
+  const hierarchy = buildConlluHierarchy(parsed);
+
+  // Rows a relation touches need a Lemma span to hang off even where LEMMA is
+  // `_`. Mirrors importFromConllu; `importMirror.test.js` holds the two
+  // together.
+  const needsLemma = parsed.sentences.map((s) => {
+    const rows = new Set();
+    s.tokens.forEach((t) => {
+      if (!t.deprel) return;
+      rows.add(t.id);
+      if (t.head > 0) rows.add(t.head);
+    });
+    return rows;
+  });
 
   const sentenceTokens = [];
   const wordTokens = [];
@@ -24,7 +38,7 @@ export function rawDocFromConllu(conlluText, name = 'doc') {
   let nextId = 0;
   const id = (prefix) => `${prefix}-${nextId++}`;
 
-  hierarchy.sentences.forEach((s) => {
+  hierarchy.sentences.forEach((s, sentIdx) => {
     const sentenceToken = { id: id('sent'), begin: s.begin, end: s.end };
     if (s.metadata && Object.keys(s.metadata).length > 0) sentenceToken.metadata = s.metadata;
     sentenceTokens.push(sentenceToken);
@@ -36,7 +50,6 @@ export function rawDocFromConllu(conlluText, name = 'doc') {
       const wordToken = { id: id('word'), begin: w.begin, end: w.end };
       const meta = {};
       if (w.isMwt && w.hasExplicitForm && w.surfaceForm) meta.form = w.surfaceForm;
-      if (w.misc) meta.misc = w.misc;
       if (Object.keys(meta).length > 0) wordToken.metadata = meta;
       wordTokens.push(wordToken);
 
@@ -55,9 +68,9 @@ export function rawDocFromConllu(conlluText, name = 'doc') {
         if (row.form && row.form !== wordSubstring) {
           formSpans.push({ id: id('form'), tokens: [morphemeId], value: row.form });
         }
-        if (row.lemma) {
+        if (row.lemma || needsLemma[sentIdx]?.has(row.id)) {
           const lemmaId = id('lemma');
-          lemmaSpans.push({ id: lemmaId, tokens: [morphemeId], value: row.lemma });
+          lemmaSpans.push({ id: lemmaId, tokens: [morphemeId], value: row.lemma || null });
           lemmaSpanIdByRow.set(row.id, lemmaId);
         }
         if (row.upos) uposSpans.push({ id: id('upos'), tokens: [morphemeId], value: row.upos });

@@ -185,6 +185,23 @@ export class ConlluDocument {
 
       const hierarchy = buildConlluHierarchy(parsedData);
 
+      // Rows a dependency relation will touch: its target (the row carrying
+      // the DEPREL) and its source (the row that one names as HEAD). Each
+      // needs a LEMMA span for the relation to hang off, even where the file's
+      // LEMMA column is `_`: that is the same null-valued span the editor
+      // leaves behind when a lemma is cleared, for the same reason, and it
+      // exports as `_` again. Without it an unlemmatized treebank imported
+      // with every tree in it dropped, in silence.
+      const needsLemma = parsedData.sentences.map((s) => {
+        const rows = new Set();
+        s.tokens.forEach((t) => {
+          if (!t.deprel) return;
+          rows.add(t.id);
+          if (t.head > 0) rows.add(t.head);
+        });
+        return rows;
+      });
+
       // Synthetic-offset fallback (no-space/CJK scripts, or a missing `# text`):
       // when a token's surface form can't be located in the sentence text, the
       // hierarchy builder places it gap-free, so its offsets won't match the
@@ -265,6 +282,16 @@ export class ConlluDocument {
       });
       const morphemeIds =
         morphemeResultIndex >= 0 ? tokenResults[morphemeResultIndex]?.body?.ids || [] : [];
+      // Every annotation is addressed by its morpheme's position in this list,
+      // so a short one would attach some and drop the rest while the import
+      // still reported success. Fail instead: the catch below rolls the
+      // document back.
+      if (morphemeIds.length !== morphemeOps.length) {
+        throw new Error(
+          `Import failed: the server returned ${morphemeIds.length} morpheme ids for ` +
+            `${morphemeOps.length} morphemes, so the annotations could not be attached.`,
+        );
+      }
 
       // Annotation spans on morphemes. Bundle all five into ONE atomic batch.
       const lemmaSpanIds = parsedData.sentences.map((s) => s.tokens.map(() => null));
@@ -284,8 +311,12 @@ export class ConlluDocument {
         if (formLayer && row.form && row.form !== meta.wordSubstring) {
           formOps.push({ spanLayerId: formLayer.id, tokens: [morphemeId], value: row.form });
         }
-        if (lemmaLayer && row.lemma) {
-          lemmaOps.push({ spanLayerId: lemmaLayer.id, tokens: [morphemeId], value: row.lemma });
+        if (lemmaLayer && (row.lemma || needsLemma[meta.sentIdx]?.has(row.id))) {
+          lemmaOps.push({
+            spanLayerId: lemmaLayer.id,
+            tokens: [morphemeId],
+            value: row.lemma || null,
+          });
           lemmaMeta.push({ sentIdx: meta.sentIdx, rowIndex });
         }
         if (uposLayer && row.upos) {
@@ -329,6 +360,12 @@ export class ConlluDocument {
       const lemmaResultIdx = spanOpsInOrder.indexOf('lemma');
       if (lemmaResultIdx >= 0) {
         const ids = spanResults[lemmaResultIdx]?.body?.ids || [];
+        if (ids.length !== lemmaOps.length) {
+          throw new Error(
+            `Import failed: the server returned ${ids.length} Lemma span ids for ` +
+              `${lemmaOps.length} lemmas, so the dependency relations could not be attached.`,
+          );
+        }
         lemmaMeta.forEach((lm, k) => {
           lemmaSpanIds[lm.sentIdx][lm.rowIndex] = ids[k];
         });
