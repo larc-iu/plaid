@@ -82,14 +82,37 @@ describe('ExampleCard', () => {
     await unmount();
   });
 
-  it('draws one arrowhead per word: every word has exactly one head', async () => {
+  // Each arc contributes a curve and a filled arrowhead, so the arrowheads
+  // count the arcs. Five words, five incoming relations, root included.
+  const arrowheads = (container) =>
+    all(container, 'svg[role="img"] path').filter((p) => p.getAttribute('fill') === 'currentColor');
+
+  it('draws only the relation the citation named', async () => {
     const { container, unmount } = await mount({ ...CARD, view: 'tree' });
-    // Each arc contributes a curve and a filled arrowhead; the heads are the
-    // filled ones. Five words, five incoming relations, root included.
-    const filled = all(container, 'svg[role="img"] path').filter(
-      (p) => p.getAttribute('fill') === 'currentColor',
-    );
-    expect(filled).toHaveLength(5);
+    expect(arrowheads(container)).toHaveLength(1);
+    await unmount();
+  });
+
+  it('draws every relation for a citation that named no word', async () => {
+    const whole = {
+      ...CARD,
+      view: 'tree',
+      focus: [],
+      rows: CARD.rows.map((r) => ({ ...r, focus: false })),
+    };
+    const { container, unmount } = await mount(whole);
+    expect(arrowheads(container)).toHaveLength(5);
+    // Nothing was left out, so there is nothing to switch to.
+    expect(byText(container, 'button', 'All relations')).toBeNull();
+    await unmount();
+  });
+
+  it('gives the reader the rest of the tree, and takes it back', async () => {
+    const { container, step, unmount } = await mount({ ...CARD, view: 'tree' });
+    await step(() => byText(container, 'button', 'All relations').click());
+    expect(arrowheads(container)).toHaveLength(5);
+    await step(() => byText(container, 'button', 'All relations').click());
+    expect(arrowheads(container)).toHaveLength(1);
     await unmount();
   });
 });

@@ -79,7 +79,12 @@ bare reference like "s3.w2" on its own. For instance:\n\nThe subject follows the
 - SAY HOW AN EXAMPLE SHOULD BE DRAWN, with view= on the tag. A full CoNLL-U table is rarely what a claim \
 rests on, and it is a lot to read in a narrow panel. view="tree" draws the dependency arcs over the words, \
 the way the UD documentation does: use it whenever the point is about heads, relations, or the shape of the \
-tree. view="grid" draws only the columns you name, as in view="grid" fields="upos": use it when the point is \
+tree. The words ref names also choose the ARCS: the whole sentence is written out, with an arc over the \
+relation of each word named and nothing else, so name the DEPENDENT of every relation the point is about. In \
+"I won a $ 3.2 billion grant", ref="s6.w4,w5,w6" draws the compound and nummod arcs over "$ 3.2 billion" and \
+leaves the rest of the sentence bare, which is how the UD documentation draws one construction. A ref naming \
+only the sentence draws every relation in it, which is right only when the point is the whole tree. \
+view="grid" draws only the columns you name, as in view="grid" fields="upos": use it when the point is \
 about one or two columns. Leave view off for a point that really does need the whole table. The reader can \
 switch any example to any of the three, so this is a starting view and not a decision made for them.
 '''

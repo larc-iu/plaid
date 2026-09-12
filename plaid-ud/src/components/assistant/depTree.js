@@ -5,6 +5,12 @@
 // draws plain CoNLL-U rows, read-only, small enough for a docked panel. The
 // arc-height curve is the editor's, rescaled: a long arc has to clear the
 // short ones nested under it without running off the top.
+//
+// The tree a citation opens on is PARTIAL: the whole sentence, with arcs only
+// over the relations the citation named, as the UD documentation draws one
+// construction over a sentence. Every arc at once is a hairball on a real
+// sentence, and the longest one takes the whole height budget, so the short
+// arcs a point usually rests on end up flat against the baseline.
 
 export const WORD_GAP = 16; // space between words
 export const CHAR = 7.2; // monospace advance at the card's font size
@@ -51,6 +57,17 @@ export const arcs = (placed) => {
   return out;
 };
 
+// The arcs a citation named: the relation of each word it marks, which is the
+// arc ENDING there, since a word has one head and a dependency is named by its
+// dependent. A citation marking no word has singled nothing out, and one whose
+// words have no relation to draw would leave a row of words under an empty
+// box, so both draw the whole tree.
+export const cited = (placed, all) => {
+  if (!placed.some((w) => w.focus)) return all;
+  const kept = all.filter((a) => placed[a.to]?.focus);
+  return kept.length ? kept : all;
+};
+
 // The SVG path for one arc, and where its label sits. `baseY` is the line the
 // words sit on and `topY` the highest an arc may reach; y grows downward, so
 // an arc rising means a SMALLER y.
@@ -79,21 +96,32 @@ export const arcPath = (placed, arc, budget, baseY, topY) => {
 };
 
 // Everything the card needs to draw one sentence: placed words, arcs with
-// their paths, and the height the SVG needs.
-export const layout = (rows, { maxHeight = 150 } = {}) => {
+// their paths, and the height the SVG needs. `all` draws every relation rather
+// than the cited ones, which is the reader's switch.
+//
+// `hidden` counts what the partial tree leaves out, and counts it the same in
+// both states: it is what the switch is offered on, so a switch that turned
+// itself off once pressed would strand the reader in the whole tree.
+export const layout = (rows, { maxHeight = 150, all = false } = {}) => {
   // A range line (a multi-word token) is not a word of the tree.
   const words = rows.filter((r) => !r.token);
   const placed = measure(words);
-  const all = arcs(placed);
+  const every = arcs(placed);
+  const narrowed = cited(placed, every);
+  const shown = all ? every : narrowed;
   const budget = Math.max(20, maxHeight - BASELINE - LABEL_H - PAD);
-  const tallest = all.reduce((m, a) => Math.max(m, a.root ? 0 : arcHeight(a.distance, budget)), 0);
+  const tallest = shown.reduce(
+    (m, a) => Math.max(m, a.root ? 0 : arcHeight(a.distance, budget)),
+    0,
+  );
   const height = Math.round(Math.min(maxHeight, Math.max(52, tallest + BASELINE + LABEL_H + PAD)));
   const baseY = height - BASELINE;
   const topY = PAD;
   const last = placed.at(-1);
   return {
     words: placed,
-    arcs: all.map((a) => ({ ...a, ...arcPath(placed, a, budget, baseY, topY) })),
+    arcs: shown.map((a) => ({ ...a, ...arcPath(placed, a, budget, baseY, topY) })),
+    hidden: every.length - narrowed.length,
     height,
     width: Math.max(80, Math.round((last?.left ?? 0) + (last?.width ?? 0) + PAD)),
     baseY,

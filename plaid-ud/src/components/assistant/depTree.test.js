@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { arcHeight, arcs, layout, measure } from './depTree.js';
+import { arcHeight, arcs, cited, layout, measure } from './depTree.js';
 
 // s1: "Vamos al mar ." with al a multi-word token over words 2 and 3.
 const rows = [
@@ -42,6 +42,30 @@ describe('arcs', () => {
   });
 });
 
+describe('cited', () => {
+  const placed = (focus) =>
+    measure(rows.filter((r) => !r.token).map((r) => ({ ...r, focus: focus.includes(r.id) })));
+
+  it('keeps the relation of each marked word, which is the arc ending there', () => {
+    const words = placed(['3']);
+    const kept = cited(words, arcs(words));
+    expect(kept.map((a) => a.deprel)).toEqual(['det']);
+  });
+
+  it('draws the whole tree when the citation marked no word', () => {
+    const words = placed([]);
+    expect(cited(words, arcs(words))).toHaveLength(4);
+  });
+
+  it('draws the whole tree rather than an empty box when the marked words have no relation', () => {
+    const words = measure([
+      { id: '1', form: 'x', head: '0', deprel: 'root', focus: false },
+      { id: '2', form: 'y', head: '', deprel: '', focus: true },
+    ]);
+    expect(cited(words, arcs(words))).toHaveLength(1);
+  });
+});
+
 describe('arcHeight', () => {
   it('rises with distance and never exceeds the budget', () => {
     expect(arcHeight(1, 100)).toBeLessThan(arcHeight(5, 100));
@@ -70,6 +94,28 @@ describe('layout', () => {
     const out = layout(rows);
     expect(out.baseY).toBeLessThan(out.height);
     expect(out.baseY).toBeGreaterThan(0);
+  });
+
+  it('draws only the cited relations, and counts what it left out', () => {
+    const marked = rows.map((r) => ({ ...r, focus: r.id === '3' }));
+    const out = layout(marked, { maxHeight: 150 });
+    expect(out.arcs.map((a) => a.deprel)).toEqual(['det']);
+    expect(out.hidden).toBe(3);
+    // Every word stays: a partial tree is the whole sentence with some arcs
+    // over it, not a shorter sentence.
+    expect(out.words.map((w) => w.form)).toEqual(['Vamos', 'a', 'el', 'mar']);
+  });
+
+  it('draws the rest when the reader asks, and still offers to narrow again', () => {
+    const marked = rows.map((r) => ({ ...r, focus: r.id === '3' }));
+    const out = layout(marked, { maxHeight: 150, all: true });
+    expect(out.arcs).toHaveLength(4);
+    expect(out.hidden).toBe(3);
+  });
+
+  it('is shorter when it draws fewer arcs, which is the point of it', () => {
+    const marked = rows.map((r) => ({ ...r, focus: r.id === '3' }));
+    expect(layout(marked).height).toBeLessThan(layout(marked, { all: true }).height);
   });
 
   it('survives a sentence with no tree at all', () => {

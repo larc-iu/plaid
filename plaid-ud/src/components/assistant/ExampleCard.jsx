@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { cn } from '@ui/lib/utils';
 import { centeredScrollLeft } from '@ui/components/assistant/citations.js';
@@ -15,6 +15,9 @@ import { layout } from './depTree.js';
 //   tree   the dependency arcs over the words, as the UD docs draw them
 //   grid   only the columns the point is about
 //   table  every column the sentence fills
+//
+// A tree opens on the relations the citation named, over the whole sentence.
+// All of them at once is the switch under it.
 
 const VIEWS = [
   { id: 'tree', label: 'Tree' },
@@ -30,9 +33,16 @@ const gridColumns = (c) => {
   return (c.columns || []).filter((col) => col === 'upos' || col === 'lemma');
 };
 
-const DepTree = ({ c }) => {
-  const tree = layout(c.rows || [], { maxHeight: 150 });
+const DepTree = ({ c, tree }) => {
   if (!tree.words.length) return null;
+  // What a long sentence has to be scrolled to: the words the citation marked,
+  // and the head each of their relations comes from. Taken from the marks
+  // rather than from what is drawn, so revealing the rest does not move it.
+  const marked = new Set();
+  tree.words.forEach((w, i) => w.focus && marked.add(i));
+  tree.arcs.forEach((a) => {
+    if (tree.words[a.to]?.focus && a.from !== undefined) marked.add(a.from);
+  });
   return (
     <svg
       width={tree.width}
@@ -74,6 +84,7 @@ const DepTree = ({ c }) => {
           textAnchor="middle"
           fontSize="11"
           fill="currentColor"
+          data-cited={marked.has(i) ? '' : undefined}
           className={cn(w.focus ? 'font-bold text-primary' : 'text-foreground')}
         >
           {w.form}
@@ -128,11 +139,23 @@ export const ExampleCard = ({ c, projectId }) => {
   const columns = c.columns || [];
   // The model's choice opens the card; the switch is the reader's.
   const [view, setView] = useState(c.view || 'table');
+  // The relations the citation named, until the reader asks for the rest.
+  const [allArcs, setAllArcs] = useState(false);
   const scroller = useRef(null);
+  const tree = useMemo(
+    () => layout(c.rows || [], { maxHeight: 150, all: allArcs }),
+    [c.rows, allArcs],
+  );
 
-  // A wide table scrolls inside the card, so bring the cited rows into view:
-  // centre them before the card is painted (only the card scrolls, never the
-  // page). The tree draws whole, so it has nothing to centre.
+  // A sentence nobody has parsed has no tree to draw, so that view is not
+  // offered rather than offered and empty.
+  const hasTree = (c.rows || []).some((r) => !r.token && r.head !== '' && r.head != null);
+  const shown = view === 'tree' && !hasTree ? 'table' : view;
+  const cols = shown === 'grid' ? ['id', 'form', ...gridColumns(c)] : columns;
+
+  // A wide table or a long sentence scrolls inside the card, so bring the
+  // cited rows and the cited relations into view: centre them before the card
+  // is painted (only the card scrolls, never the page).
   useLayoutEffect(() => {
     const box = scroller.current;
     if (!box || box.scrollWidth <= box.clientWidth) return;
@@ -142,13 +165,7 @@ export const ExampleCard = ({ c, projectId }) => {
     const left = Math.min(...marks.map((r) => r.left)) - outer.left + box.scrollLeft;
     const right = Math.max(...marks.map((r) => r.right)) - outer.left + box.scrollLeft;
     box.scrollLeft = centeredScrollLeft(left, right, box.clientWidth, box.scrollWidth);
-  }, [c, view]);
-
-  // A sentence nobody has parsed has no tree to draw, so that view is not
-  // offered rather than offered and empty.
-  const hasTree = (c.rows || []).some((r) => !r.token && r.head !== '' && r.head != null);
-  const shown = view === 'tree' && !hasTree ? 'table' : view;
-  const cols = shown === 'grid' ? ['id', 'form', ...gridColumns(c)] : columns;
+  }, [c, shown]);
 
   return (
     <div className="my-3 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
@@ -184,8 +201,27 @@ export const ExampleCard = ({ c, projectId }) => {
       </div>
       <div className="py-0.5">{c.text}</div>
       {shown === 'tree' ? (
-        <div className="mt-1.5 overflow-x-auto">
-          <DepTree c={c} />
+        <div className="mt-1.5">
+          <div ref={scroller} className="overflow-x-auto">
+            <DepTree c={c} tree={tree} />
+          </div>
+          {tree.hidden > 0 && (
+            <div className="mt-1 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setAllArcs((on) => !on)}
+                aria-pressed={allArcs}
+                className={cn(
+                  'rounded border px-1.5 py-0.5 text-[11px]',
+                  allArcs
+                    ? 'bg-primary/15 font-medium text-foreground'
+                    : 'bg-background text-muted-foreground hover:bg-muted',
+                )}
+              >
+                All relations
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         columns.length > 0 && <Table c={c} columns={cols} scroller={scroller} />
