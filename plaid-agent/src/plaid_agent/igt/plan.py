@@ -277,13 +277,26 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps) -> D
         pending_deletes: List[str] = []  # entries to delete once their links are gone
         text_edits: List[Dict[str, Any]] = []
         restores: List[Dict[str, Any]] = []
+        # Once per entity, whichever ops name it. The server accepts a
+        # `bulk_delete` of ids that are already gone, but a SINGLE delete of
+        # one 404s, and the batch it shares is atomic: an unlink beside the
+        # word deletion that takes the same link, a cleared field beside the
+        # discard that deletes the same span, a merge beside a delete of the
+        # same entry. Each pair is a whole plan refused after approval.
+        gone: set = set()
+
+        def drop(resource, entity_id):
+            if not entity_id or (resource, entity_id) in gone:
+                return
+            gone.add((resource, entity_id))
+            b.add(lambda i=entity_id: getattr(client, resource).delete(i))
 
         for op in ops:
             kind = op.get('kind')
             if kind == 'set_span':
                 span_id, value = op.get('span_id'), op.get('value') or ''
                 if span_id and value == '':
-                    b.add(lambda sid=span_id: client.spans.delete(sid))
+                    drop('spans', span_id)
                 elif span_id:
                     b.add(lambda sid=span_id, v=value: client.spans.update(sid, v))
                     b.add(lambda sid=span_id: client.spans.patch_metadata(sid, restamp()))
@@ -301,9 +314,9 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps) -> D
                 if existing:
                     m0 = existing[0]
                     for m in existing[1:]:
-                        b.add(lambda mid=m['id']: client.tokens.delete(mid))  # cascades spans + links
+                        drop('tokens', m['id'])  # cascades spans + links
                     for sid in m0.get('span_ids') or []:
-                        b.add(lambda s=sid: client.spans.delete(s))
+                        drop('spans', sid)
                     first = morphemes[0]
                     b.add(lambda mid=m0['id'], f=first: client.tokens.patch_metadata(
                         mid, {'form': f['form'], 'morphType': f.get('morph_type'), **restamp()}))
@@ -338,7 +351,7 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps) -> D
             elif kind in ('link', 'link_phrase'):
                 tokens = [op['token_id']] if kind == 'link' else list(op['token_ids'])
                 if op.get('existing_link_id'):
-                    b.add(lambda lid=op['existing_link_id']: client.vocab_links.delete(lid))
+                    drop('vocab_links', op['existing_link_id'])
                 if op.get('item_id'):
                     b.add(lambda o=op, t=tokens: client.vocab_links.create(o['item_id'], t, stamp()))
                 elif op.get('new_entry_key'):
@@ -346,7 +359,7 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps) -> D
                 counts['links' if kind == 'link' else 'multi-word expressions'] += 1
 
             elif kind == 'unlink':
-                b.add(lambda lid=op['link_id']: client.vocab_links.delete(lid))
+                drop('vocab_links', op['link_id'])
                 counts['unlinks'] += 1
 
             elif kind == 'set_morph_type':
@@ -387,14 +400,14 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps) -> D
 
             elif kind == 'merge_entries':
                 for l in op.get('links') or []:
-                    b.add(lambda lid=l['link_id']: client.vocab_links.delete(lid))
+                    drop('vocab_links', l['link_id'])
                     b.add(lambda o=op, t=list(l['token_ids']): client.vocab_links.create(o['keep_id'], t, stamp()))
                 pending_deletes.append(op['remove_id'])
                 counts['merged entries'] += 1
 
             elif kind == 'delete_entry':
                 for lid in op.get('links') or []:
-                    b.add(lambda lid=lid: client.vocab_links.delete(lid))
+                    drop('vocab_links', lid)
                 pending_deletes.append(op['item_id'])
                 counts['deleted entries'] += 1
 
@@ -430,17 +443,17 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps) -> D
                     if sp.get('value') is not None:
                         b.add(lambda sp=sp: client.spans.update(sp['keep_id'], sp['value']))
                     for sid in sp.get('delete_ids') or []:
-                        b.add(lambda i=sid: client.spans.delete(i))
+                        drop('spans', sid)
                 for lid in (op.get('links') or {}).get('delete_ids') or []:
-                    b.add(lambda i=lid: client.vocab_links.delete(i))
+                    drop('vocab_links', lid)
                 counts['merged words' if kind == 'merge_words' else 'merged sentences'] += 1
 
             elif kind == 'delete_word':
                 # A multi-word expression the deletion would leave with one
                 # member goes first. The server only trims links otherwise.
                 for lid in op.get('link_ids') or []:
-                    b.add(lambda i=lid: client.vocab_links.delete(i))
-                b.add(lambda o=op: client.tokens.delete(o['word_id']))  # cascades morphemes, spans, links
+                    drop('vocab_links', lid)
+                drop('tokens', op['word_id'])  # cascades morphemes, spans, links
                 counts['deleted words'] += 1
 
             elif kind == 'split_sentence':
@@ -468,11 +481,11 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps) -> D
                 # machine first morpheme is reset to the healed default, and
                 # survivors are renumbered gap-free.
                 for lid in op.get('link_ids') or []:
-                    b.add(lambda i=lid: client.vocab_links.delete(i))
+                    drop('vocab_links', lid)
                 for sid in op.get('span_ids') or []:
-                    b.add(lambda i=sid: client.spans.delete(i))
+                    drop('spans', sid)
                 for mid in op.get('morpheme_ids') or []:
-                    b.add(lambda i=mid: client.tokens.delete(i))
+                    drop('tokens', mid)
                 if op.get('reset_first_id'):
                     b.add(lambda i=op['reset_first_id']: client.tokens.patch_metadata(
                         i, {'form': None, 'morphType': None, **CLEAR_PROV}))
@@ -497,10 +510,8 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps) -> D
             if not iid:
                 raise RuntimeError('a created lexicon entry came back without an id; a link to it was not written')
             b.add(lambda i=iid, t=tokens: client.vocab_links.create(i, t, stamp()))
-        # One delete per entry: a merge and a delete of the same entry both
-        # land here, and deleting it twice fails the batch they share.
-        for iid in dict.fromkeys(pending_deletes):
-            b.add(lambda i=iid: client.vocab_items.delete(i))
+        for iid in pending_deletes:
+            drop('vocab_items', iid)
         b.flush()
 
         # A restore is the server's own single operation over the document.

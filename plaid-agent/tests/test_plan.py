@@ -293,6 +293,28 @@ def test_execute_lexicon_and_document_ops():
     assert second == [('vocab_items', 'delete', ('vi-erg',)), ('vocab_items', 'delete', ('vi-gam',))]
 
 
+def test_an_entity_is_deleted_once_however_many_ops_ask_for_it():
+    """Measured against the dev core, 2026-09-12: `tokens.bulk_delete` of ids
+    that are already gone is ACCEPTED (and still deletes the live ones), but a
+    SINGLE delete of a gone id is a 404, a span a token delete cascaded away
+    404s on delete and on patch, and two single deletes of one id inside one
+    batch fail the whole batch (the other ops in it rolled back). So every
+    single delete the applier issues has to be once per entity, whichever ops
+    name it: an unlink beside the word deletion that takes the same link, a
+    cleared field beside the discard that deletes the same span, a merge
+    beside a delete of the same entry."""
+    c = FakeClient()
+    ops = [{'kind': 'unlink', 'link_id': 'l-1', 'label': ''},
+           {'kind': 'delete_word', 'word_id': 'w-9', 'morpheme_ids': [], 'link_ids': ['l-1'], 'label': ''},
+           {'kind': 'discard_analysis', 'word_id': 'w-8', 'link_ids': ['l-1'], 'span_ids': ['sp-1'],
+            'morpheme_ids': [], 'renumber': [], 'label': ''},
+           {'kind': 'set_span', 'layer_id': 'L', 'token_id': 'm-1', 'span_id': 'sp-1', 'value': '', 'label': ''}]
+    execute_plan(c, ops, source='s', label='l')
+    calls = [(r, m, a) for r, m, a, k in c.batches[0]]
+    assert [a for r, m, a in calls if (r, m) == ('vocab_links', 'delete')] == [('l-1',)]
+    assert [a for r, m, a in calls if (r, m) == ('spans', 'delete')] == [('sp-1',)]
+
+
 def test_an_entry_is_deleted_once_however_many_ops_ask_for_it():
     """The deletes a merge and a delete_entry defer both land in the last
     batch. Asking the server twice 404s the second call, and the batch is
