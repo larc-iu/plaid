@@ -63,7 +63,7 @@ The editor has three levels you move between:
 * **Documents**: the texts inside one project.
 * **A document's own tabs**: `Text Editor`, `Annotate`, `Export`, `Comments` and `Details`, switched at the top of an open document.
 
-Project-wide tabs sit alongside the document list inside each project: `Search`, `Assistant`, `Validation`, `Activity`, `Project Settings` and `Import & Export`. The last three are for maintainers, and `Assistant` appears only when one is running.
+Project-wide tabs sit alongside the document list inside each project: `Search`, `Assistant`, `Validation`, `Activity`, `Project Settings` and `Import & Export`. The last three are for maintainers, and `Assistant` appears only when one is running. The assistant is also a panel you can open beside any screen (see <<_the_panel>>).
 
 = Projects
 
@@ -272,19 +272,31 @@ The assistant picks whichever fits what it is saying, and you can switch.
 A sentence nobody has parsed is not offered a tree.
 The heading of each example opens that sentence in the annotation editor.
 
-== Asking about the document you are looking at
+== The panel
 
-The **Assistant** button on the **Annotate** tab opens the same assistant in a panel beside the annotation, so a question can be asked without leaving the text.
-The panel takes its width from the editor, which goes on scrolling sideways, and it can be dragged wider or narrower and hidden again.
-The width is remembered.
+The **Assistant** button in the header opens the same assistant in a panel on the right of the window, on every screen.
+It stays where it is as you move around, so a question can be asked without leaving what you are reading and an answer can be read while you get on with something else.
+The page narrows to make room for it.
+The panel can be dragged wider or narrower and hidden again, and its width and whether it is open are remembered.
+A narrow window has no room for it and it is not offered there.
 
-A question asked there is about the document in front of you: name no document and that is the one it reads, though it can still look at the rest of the project when the question calls for it, to compare or to count.
+One conversation runs per project.
+The panel picks up the last one you had in the project you are in and keeps it as you move from document to document.
+Each question records where it was asked from, so a question about "this sentence" still means the right document when the conversation is read again later.
+
+The panel's history lists the conversations you have had in the project, with **All projects** to widen the list past it.
+Opening one from there keeps you on the screen you are on.
+
+A question asked on a document is about that document: name no document and that is the one it reads, though it can still look at the rest of the project when the question calls for it, to compare or to count.
 **Ask**, beside **Edit text** under a sentence, puts that sentence into the question, and you can take it out again before sending.
-An example that names a sentence of the open document scrolls the editor to it rather than opening a new tab.
+An example that names a sentence of the open document scrolls the annotation editor to it rather than opening a new tab.
 
-The conversation is an ordinary one.
-It appears in the **Assistant** tab's list with the document's name on it, it can be opened there and carried on, and a plan approved in the panel re-reads the document so the annotation shows the result.
-The panel's own history opens an earlier conversation without leaving the editor.
+On a screen with no project of its own, the panel keeps the conversation it has.
+Before you have opened a project at all it asks which one to use, because the assistant reads one project at a time.
+
+A plan approved in the panel re-reads the document, so the annotation shows the result without losing your place.
+
+== When no assistant is connected
 
 The assistant is a service that your server's operator runs and picks the model for (`plaid-ud-agent`, installed from a checkout of the source tree).
 When none is connected there is nothing to open, so the tab, the button and **Ask** are not shown.

@@ -1,4 +1,4 @@
-// The assistant docked beside a document.
+// The assistant panel while a document is open.
 //
 // The turn itself is not exercised here: that needs a model, and what can go
 // wrong in the UI does not. What IS worth holding still is everything around
@@ -6,10 +6,14 @@
 // would survive a refactor otherwise:
 //
 //   - nothing is offered when no assistant is online
-//   - the panel docks at exactly viewport height, so its composer is reachable
-//   - the editor keeps its own scrolling when the panel is closed
+//   - the panel is exactly as tall as the screen, so its composer is reachable
+//   - the editor goes on scrolling the page, open or shut
 //   - a width survives a reload
-//   - "Ask" on a sentence puts that sentence in the composer, and lets go
+//   - "Ask" on a sentence opens the panel with that sentence, and lets go
+//
+// The panel is APP CHROME, not this screen's: e2e/assistant-chrome.spec.js
+// holds the properties that come from that (it survives a navigation, it keeps
+// one thread per project, it is reachable everywhere).
 //
 // An assistant is made to look online by answering the discovery call, which
 // is one GET. Registering a real service would mean implementing the request
@@ -78,6 +82,9 @@ test.afterAll(async () => {
 const annotate = (page) =>
   page.goto(`/#/projects/${S.projectId}/documents/${S.documentId}/annotate`);
 
+const panelOf = (page) => page.locator('aside.border-l');
+const toggle = (page) => page.getByRole('button', { name: 'Assistant', exact: true });
+
 test.describe('when no assistant is online', () => {
   test('nothing offers to open one', async ({ page }) => {
     await seedAuth(page);
@@ -86,7 +93,7 @@ test.describe('when no assistant is online', () => {
     await expect(page.getByRole('button', { name: 'History' })).toBeVisible();
 
     // A control that opens an empty panel is worse than no control.
-    await expect(page.getByRole('button', { name: 'Assistant', exact: true })).toHaveCount(0);
+    await expect(toggle(page)).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Ask', exact: true })).toHaveCount(0);
 
     // The project tab is not offered either, though its route still works.
@@ -104,7 +111,7 @@ test.describe('when no assistant is online', () => {
     await withAssistant(page, FOREIGN);
     await annotate(page);
     await expect(page.getByRole('button', { name: 'History' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Assistant', exact: true })).toHaveCount(0);
+    await expect(toggle(page)).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Ask', exact: true })).toHaveCount(0);
 
     await page.goto(`/#/projects/${S.projectId}/documents`);
@@ -119,11 +126,11 @@ test.describe('when one is online', () => {
     await withAssistant(page);
   });
 
-  test('the panel docks at exactly viewport height, composer and all', async ({ page }) => {
+  test('the panel is exactly as tall as the screen, composer and all', async ({ page }) => {
     await annotate(page);
-    await page.getByRole('button', { name: 'Assistant', exact: true }).click();
+    await toggle(page).click();
 
-    const panel = page.locator('aside.border-l');
+    const panel = panelOf(page);
     await expect(panel).toBeVisible();
     // ONE header bar. The panel used to carry a second one above the
     // assistant's own row, naming the document, which the page's heading says
@@ -134,9 +141,11 @@ test.describe('when one is online', () => {
 
     const box = await panel.boundingBox();
     const viewport = page.viewportSize();
-    // The bottom edge lands on the bottom of the screen, not past it: guessing
-    // this in CSS put the composer off the bottom, because an app header,
-    // breadcrumbs, a tab strip and a run banner all sit above it.
+    // It is fixed to the viewport, so this holds by construction rather than by
+    // measurement. It did not always: guessing a height in CSS put the composer
+    // off the bottom, because an app header, breadcrumbs, a tab strip and a run
+    // banner all sit above where the panel used to start.
+    expect(box.y).toBe(0);
     expect(box.y + box.height).toBeLessThanOrEqual(viewport.height + 1);
     expect(box.y + box.height).toBeGreaterThan(viewport.height - 4);
 
@@ -145,28 +154,49 @@ test.describe('when one is online', () => {
     expect(cbox.y + cbox.height).toBeLessThanOrEqual(viewport.height);
   });
 
-  test('the page scrolls again once the panel is closed', async ({ page }) => {
+  test('the PAGE scrolls, open or shut', async ({ page }) => {
+    // The panel is fixed and the shell pads a gutter for it, so opening it does
+    // not change what scrolls. It used to: the editor row was bounded to the
+    // viewport and became its own scrollport, which is what every sticky offset
+    // and every measured height in the app then had to agree with.
     await annotate(page);
     const scrolls = () =>
       page.evaluate(() => document.documentElement.scrollHeight > window.innerHeight + 1);
+    await page.setViewportSize({ width: 1400, height: 420 });
+    await expect.poll(scrolls).toBe(true);
 
-    await page.getByRole('button', { name: 'Assistant', exact: true }).click();
-    await expect(page.locator('aside.border-l')).toBeVisible();
-    expect(await scrolls()).toBe(false); // the editor scrolls inside itself now
+    await toggle(page).click();
+    await expect(panelOf(page)).toBeVisible();
+    expect(await scrolls()).toBe(true);
 
     await page.getByRole('button', { name: 'Hide the assistant' }).click();
-    await expect(page.locator('aside.border-l')).toHaveCount(0);
-    // And the document is back to scrolling the page, as it always did. The
-    // old assertion here read `documentElement.style.height || 'auto'` and
-    // checked it was not '0px'; nothing ever sets that property, so it was
-    // 'auto' on every page and the close half of this test verified nothing.
+    await expect(panelOf(page)).toHaveCount(0);
     await expect.poll(scrolls).toBe(true);
+  });
+
+  test('the panel never covers the annotation', async ({ page }) => {
+    // The shell pads by the dock's width. Padding the wrong element (or none)
+    // leaves the page as wide as it was and the panel sitting on top of the
+    // grid, which is the one thing it must never do.
+    await annotate(page);
+    await expect(page.locator('.sentence-grid').first()).toBeVisible();
+    await toggle(page).click();
+    const box = await panelOf(page).boundingBox();
+
+    const overlap = await page.evaluate((panelLeft) => {
+      const el = document.querySelector('.sentence-grid');
+      return el.getBoundingClientRect().right - panelLeft;
+    }, box.x);
+    expect(overlap).toBeLessThanOrEqual(0);
+    // And the app header stops short of it too, rather than running underneath.
+    const header = await page.locator('header').first().boundingBox();
+    expect(header.x + header.width).toBeLessThanOrEqual(box.x + 1);
   });
 
   test('a width survives a reload', async ({ page }) => {
     await annotate(page);
-    await page.getByRole('button', { name: 'Assistant', exact: true }).click();
-    const panel = page.locator('aside.border-l');
+    await toggle(page).click();
+    const panel = panelOf(page);
     const before = (await panel.boundingBox()).width;
 
     const grip = page.getByRole('separator', { name: 'Resize the assistant' });
@@ -179,9 +209,10 @@ test.describe('when one is online', () => {
     const widened = (await panel.boundingBox()).width;
     expect(widened).toBeGreaterThan(before + 40);
 
+    // It comes back open, too: whether it is open is remembered with its width.
     await page.reload();
-    await page.getByRole('button', { name: 'Assistant', exact: true }).click();
-    const after = (await page.locator('aside.border-l').boundingBox()).width;
+    await expect(panelOf(page)).toBeVisible();
+    const after = (await panelOf(page).boundingBox()).width;
     expect(Math.abs(after - widened)).toBeLessThan(3);
   });
 
@@ -190,7 +221,7 @@ test.describe('when one is online', () => {
     // The gesture opens the panel by itself: it is how you start asking.
     await page.getByRole('button', { name: 'Ask', exact: true }).first().click();
 
-    const panel = page.locator('aside.border-l');
+    const panel = panelOf(page);
     await expect(panel).toBeVisible();
     await expect(panel).toContainText('Sentence');
     await expect(panel).toContainText('s1');
@@ -200,10 +231,29 @@ test.describe('when one is online', () => {
     await expect(panel).not.toContainText('Sentence');
   });
 
+  test('Ask keeps the reader where they were', async ({ page }) => {
+    // Opening the panel used to dump the reader at the top of the document:
+    // measuring the docked height puts the page at the top to do it, and the
+    // discarded offset was the reader's place. Worst on "Ask", whose whole
+    // point is the sentence in front of you. Fixed in the shell, nothing
+    // measures anything and the page is never touched, so the assertion is
+    // that the scroll position is UNCHANGED rather than restored.
+    await annotate(page);
+    await page.setViewportSize({ width: 1400, height: 400 });
+    const ask = page.getByRole('button', { name: 'Ask', exact: true }).last();
+    await ask.scrollIntoViewIfNeeded();
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    const scrolledTo = await page.evaluate(() => window.scrollY);
+
+    await ask.click();
+    await expect(panelOf(page)).toBeVisible();
+    expect(await page.evaluate(() => window.scrollY)).toBe(scrolledTo);
+  });
+
   test("the panel does not build the tab's chrome", async ({ page }) => {
     await annotate(page);
-    await page.getByRole('button', { name: 'Assistant', exact: true }).click();
-    const panel = page.locator('aside.border-l');
+    await toggle(page).click();
+    const panel = panelOf(page);
     await expect(panel).toBeVisible();
 
     // These were once hidden with CSS, which still built every conversation

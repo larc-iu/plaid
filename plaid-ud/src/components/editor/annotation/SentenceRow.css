@@ -6,7 +6,10 @@
      its own "Accept predictions" button (which sits below the grid) and clearly
      separates it from the next sentence. */
   margin-bottom: 88px;
-  width: 100%;
+  /* NOT `width: 100%`, which is 100% of the parent's content box and then
+     pushed right by the margin, so every sentence hung 20px past the edge of
+     the page. Harmless while nothing was over there; the assistant dock is,
+     and the overhang went under it. A block box fills the width it is given. */
   position: relative; /* Enable absolute positioning for children */
 }
 

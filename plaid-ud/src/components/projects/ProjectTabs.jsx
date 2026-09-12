@@ -1,9 +1,11 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { isReviewed } from '@larc-iu/plaid-client';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { canManageProject } from '../../utils/permissions.js';
+import { canEditProject, canManageProject } from '../../utils/permissions.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { Tabs, TabsList, TabsTrigger } from '@ui/components/ui/tabs';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
+import { useAssistantSubject } from '@ui/components/assistant/subject.js';
 import { UD_ASSISTANT } from '../assistant/adapter.js';
 
 // Shared top tab bar for the project-level views (Documents / Search / Assistant /
@@ -12,6 +14,13 @@ import { UD_ASSISTANT } from '../assistant/adapter.js';
 // body. `project` is the full object every page already fetches (carries layer
 // config for `getUdLayerInfo`); it may be null mid-load, which all the gating
 // below tolerates.
+//
+// It is also where the shell's assistant panel learns which project the reader
+// is on. Every project-level screen renders this strip and is already handed
+// the project, so this is the ONE place that fact exists for all of them: the
+// alternative was the same five-line hook call repeated in seven screens, each
+// of which would then have to remember it. A document has a subject of its own
+// (see DocumentEditorShell) and does not render this.
 export const ProjectTabs = ({ projectId, project }) => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -22,6 +31,16 @@ export const ProjectTabs = ({ projectId, project }) => {
   const assistantAvailable = useAssistantAvailable(getClient(), projectId, UD_ASSISTANT.app);
 
   const canManage = canManageProject(project, user);
+  // The panel is about the PROJECT here. No subject of its own: what a reader
+  // is looking at on these screens is the project at large, and naming a screen
+  // the assistant has no tool for (the importer, the access list) would invite
+  // it to claim it can act there.
+  useAssistantSubject({
+    projectId,
+    projectName: project?.name,
+    canWrite: canEditProject(project, user),
+    contributor: !!project && !!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin }),
+  });
   const configured = getUdLayerInfo(project).isConfigured;
   // Settings assumes a configured project; an unconfigured one routes to the
   // standalone layer-setup page instead (matches DocumentList's old behavior).

@@ -37,11 +37,29 @@ import { createContext, useContext, useEffect, useRef } from 'react';
 // the subject: a screen that passes them inline (which every screen does) would
 // otherwise publish a new subject on every render, and the panel would reset on
 // each one.
+//
+// The same context carries the other direction of the same relationship: a
+// screen POINTS at something ("Ask", on a sentence or an entry) and the panel
+// picks it up, opening if it was shut. That is `useAskAssistant`, and it is
+// here rather than in each app because the panel it reaches is the shell's.
 
 export const SubjectContext = createContext(null);
 
 // The panel's side: what is currently published, or null.
 export const useAssistantScope = () => useContext(SubjectContext)?.subject ?? null;
+
+// A screen's side of "Ask": hand the panel a {ref, label} to put in the
+// composer. Outside a provider it is a no-op, so a screen can call it without
+// knowing whether the app it is in mounts a panel.
+const noAsk = () => {};
+export const useAskAssistant = () => useContext(SubjectContext)?.ask ?? noAsk;
+
+// The panel's side of the same: what was pointed at, and how to let go of it
+// once it has been sent. The shell opens the dock when this turns non-null.
+export const useAssistantFocus = () => {
+  const ctx = useContext(SubjectContext);
+  return { focus: ctx?.focus ?? null, clearFocus: ctx?.clearFocus ?? noAsk };
+};
 
 // A screen's side. Publishes while mounted, clears on unmount.
 export const useAssistantSubject = ({

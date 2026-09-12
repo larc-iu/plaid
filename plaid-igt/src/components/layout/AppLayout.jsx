@@ -9,7 +9,11 @@ import { AssistantMark, PlaidMark } from '@ui/components/assistant/PlaidMarks.js
 import { ProjectPicker } from '@ui/components/assistant/ProjectPicker.jsx';
 import { useDockWidth } from '@ui/components/assistant/useDock.js';
 import { AssistantSubjectProvider } from '@ui/components/assistant/AssistantSubject.jsx';
-import { useAssistantScope } from '@ui/components/assistant/subject.js';
+import {
+  useAskAssistant,
+  useAssistantFocus,
+  useAssistantScope,
+} from '@ui/components/assistant/subject.js';
 import { readDockOpen, saveDockOpen } from '@ui/components/assistant/panelWidth.js';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
@@ -90,24 +94,23 @@ const Shell = () => {
   const offerPicker = !projectId && !routeHasProject;
 
   // What the reader pointed at, as {ref, label}. The interlinear grid is a lit
-  // island, so its "Ask" reaches React as a window event. The shell listens
+  // island, so its "Ask" reaches React as a window event, and the shell listens
   // rather than the document screen: the panel lives here now, and Ask has to
-  // be able to open it.
-  const [focus, setFocus] = useState(null);
+  // be able to open it. Past that bridge it is the ordinary channel a React
+  // screen uses (`useAskAssistant`), which plaid-ud's editor calls directly.
+  const ask = useAskAssistant();
+  const { focus, clearFocus } = useAssistantFocus();
   useEffect(() => {
     const onAsk = (e) => {
-      if (!e.detail) return;
-      setFocus(e.detail);
-      setDockOpen(true);
+      if (e.detail) ask(e.detail);
     };
     window.addEventListener('igt:ask-assistant', onAsk);
     return () => window.removeEventListener('igt:ask-assistant', onAsk);
-  }, [setDockOpen]);
-  // A reference into a document the reader has since left means nothing, so it
-  // does not travel with them.
+  }, [ask]);
+  // Pointing at something opens the panel: it is how you start asking.
   useEffect(() => {
-    setFocus(null);
-  }, [subject?.id]);
+    if (focus) setDockOpen(true);
+  }, [focus, setDockOpen]);
 
   const navItem = (to, label, active) => (
     <Link key={to} to={to} className={headerItem(active)}>
@@ -194,7 +197,7 @@ const Shell = () => {
           lexiconId={subject?.kind === 'lexicon' ? subject.id : null}
           lexiconName={subject?.kind === 'lexicon' ? subject.name : null}
           focus={focus}
-          onClearFocus={() => setFocus(null)}
+          onClearFocus={clearFocus}
           onApplied={subject?.onApplied}
           onFocusHere={subject?.onFocusHere}
           picker={

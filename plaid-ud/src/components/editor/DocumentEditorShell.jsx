@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useLocation, Outlet, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
@@ -7,13 +7,12 @@ import { DocumentTabs } from './DocumentTabs.jsx';
 import { CommentStore } from '@ui/domain/CommentStore';
 import { useCommentStore } from '@ui/domain/useCommentStore';
 import { useWriteLock } from '@ui/hooks/useWriteLock.js';
-import { useViewportFill } from '@ui/hooks/useViewportFill.js';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
+import { useAskAssistant, useAssistantSubject } from '@ui/components/assistant/subject.js';
 import { useResumedRun } from '@ui/hooks/useResumedRun.js';
 import { RunBanner } from '@ui/components/services/RunBanner.jsx';
 import { useEditorServices } from './hooks/useEditorServices.js';
 import { isReviewed } from '@larc-iu/plaid-client';
-import { DocumentAssistant } from '@ui/components/assistant/DocumentAssistant.jsx';
 import { UD_ASSISTANT } from '../assistant/adapter.js';
 import { canEditProject, canManageProject } from '../../utils/permissions.js';
 
@@ -182,8 +181,9 @@ export const DocumentEditorShell = () => {
   }, [doc]);
 
   const wide = isWideRoute(pathname);
-  // The assistant is offered where the annotation is, which is the only tab
-  // whose content it can talk about.
+  // "Ask" under a sentence is only worth drawing where there is an assistant to
+  // ask, and only on the tab whose content it points into. The PANEL itself is
+  // the shell's and is open on every tab.
   const onAnnotate = pathname.endsWith('/annotate');
   const assistantAvailable = useAssistantAvailable(client, projectId, UD_ASSISTANT.app);
   // A citation into THIS document scrolls the editor instead of opening a
@@ -194,7 +194,10 @@ export const DocumentEditorShell = () => {
   const [focusNonce, setFocusNonce] = useState(0);
   const focusHere = useCallback(
     ({ documentId: cited, focus }) => {
-      if (cited !== documentId || !focus) return false;
+      // Only while the grid is actually on screen. Claiming a citation on the
+      // Export tab would swallow the link and scroll nothing: the panel is open
+      // on every tab now, and only one of them watches ?sent=.
+      if (cited !== documentId || !focus || !onAnnotate) return false;
       setFocusNonce((k) => k + 1);
       setSearchParams(
         (prev) => {
@@ -206,21 +209,26 @@ export const DocumentEditorShell = () => {
       );
       return true;
     },
-    [documentId, setSearchParams],
+    [documentId, onAnnotate, setSearchParams],
   );
-  const [assistantOpen, setAssistantOpen] = useState(false);
-  // What the editor pointed at, as {ref, label}. It clears when it is sent.
-  const [assistantFocus, setAssistantFocus] = useState(null);
-
-  const docked = onAnnotate && assistantOpen;
-  // The row fills the rest of the screen, measured rather than guessed: the
-  // app header, the breadcrumbs, the tab strip and the run banner all sit
-  // above it and not one of them is a fixed height.
-  const rowRef = useRef(null);
-  // The element that scrolls once the panel is docked, so the reader's place in
-  // the document survives the measurement.
-  const scrollerRef = useRef(null);
-  const rowHeight = useViewportFill(rowRef, docked, [writeLock.held], scrollerRef);
+  // What the shell's assistant panel is about while this screen is open. The
+  // document is the subject on EVERY tab, not just Annotate: it is what the
+  // reader is looking at either way, and the panel is no longer something the
+  // Annotate tab owns.
+  useAssistantSubject({
+    projectId,
+    projectName: project?.name,
+    kind: 'document',
+    id: documentId,
+    name: doc?.raw?.name,
+    canWrite: canEditProject(project, user),
+    contributor: !!project && !!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin }),
+    onApplied: reload,
+    onFocusHere: focusHere,
+  });
+  // "Ask" under a sentence hands the panel a {ref, label} and opens it. It goes
+  // down the outlet to the grid; the panel picks it up in the shell.
+  const askAssistant = useAskAssistant();
 
   return (
     <div className="w-full">
@@ -258,62 +266,30 @@ export const DocumentEditorShell = () => {
         </div>
       )}
 
-      {/* With the assistant open the editor row is bounded to the screen and
-          scrolls inside itself, so the panel is exactly as tall as the viewport
-          and its composer is always reachable. Closed, the page scrolls the way
-          it always did. */}
+      {/* The PAGE scrolls, whether or not the assistant is open. The panel is
+          fixed in the shell and takes a gutter on the right, so this layout no
+          longer changes when it opens: no measured height, and no scrollport of
+          its own. */}
       {!loading && !loadError && doc && project && (
-        <div
-          ref={rowRef}
-          style={docked && rowHeight ? { height: rowHeight } : undefined}
-          className={docked ? 'flex min-h-0' : 'flex items-start'}
-        >
-          <div
-            ref={scrollerRef}
-            className={docked ? 'min-w-0 flex-1 overflow-y-auto' : 'min-w-0 flex-1'}
-          >
-            <Outlet
-              context={{
-                projectId,
-                documentId,
-                doc,
-                project,
-                reload,
-                comments,
-                canComment: canEditProject(project, user),
-                canDeleteAnyComment: canManageProject(project, user),
-                services,
-                writeLockHeld: writeLock.held,
-                setChromeOffset,
-                setChromeBusy,
-                assistantOpen: onAnnotate ? assistantOpen : false,
-                assistantAvailable,
-                setAssistantOpen,
-                askAssistant: setAssistantFocus,
-                focusNonce,
-              }}
-            />
-          </div>
-          {onAnnotate && assistantAvailable && (
-            <DocumentAssistant
-              open={assistantOpen}
-              onOpenChange={setAssistantOpen}
-              documentId={documentId}
-              documentName={doc.raw?.name}
-              focus={assistantFocus}
-              onClearFocus={() => setAssistantFocus(null)}
-              onApplied={reload}
-              onFocusHere={focusHere}
-              projectId={projectId}
-              projectName={project.name}
-              client={client}
-              userId={user?.id}
-              canWrite={canEditProject(project, user)}
-              contributor={!!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin })}
-              adapter={UD_ASSISTANT}
-            />
-          )}
-        </div>
+        <Outlet
+          context={{
+            projectId,
+            documentId,
+            doc,
+            project,
+            reload,
+            comments,
+            canComment: canEditProject(project, user),
+            canDeleteAnyComment: canManageProject(project, user),
+            services,
+            writeLockHeld: writeLock.held,
+            setChromeOffset,
+            setChromeBusy,
+            assistantAvailable,
+            askAssistant,
+            focusNonce,
+          }}
+        />
       )}
     </div>
   );

@@ -111,8 +111,8 @@ export const ProjectAssistant = ({
   canWrite,
   contributor = false,
   adapter,
-  // 'tab' is the whole screen; 'panel' is the same conversation docked beside
-  // a document, with the chrome the tab owns left out (see DocumentAssistant).
+  // 'tab' is the whole screen; 'panel' is the same conversation in the shell's
+  // dock, with the chrome the tab owns left out (see AssistantDock).
   variant = 'tab',
   documentId = null,
   documentName = null,

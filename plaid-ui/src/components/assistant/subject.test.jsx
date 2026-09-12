@@ -1,7 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderComponent } from '../../test/renderComponent.jsx';
 import { AssistantSubjectProvider } from './AssistantSubject.jsx';
-import { useAssistantScope, useAssistantSubject } from './subject.js';
+import {
+  useAskAssistant,
+  useAssistantFocus,
+  useAssistantScope,
+  useAssistantSubject,
+} from './subject.js';
 
 // The screen publishes what it is showing and the shell's panel reads it. The
 // two things worth pinning down: a screen that passes its callbacks inline
@@ -156,6 +161,75 @@ describe('useAssistantSubject', () => {
     await rerender(tree('d2'));
     expect(read(container)).toBe('document:d2');
     expect(seen[seen.length - 1].name).toBe('Text d2');
+    await unmount();
+  });
+});
+
+// The other direction: a screen points at something and the panel picks it up.
+const Pointer = ({ detail }) => {
+  const ask = useAskAssistant();
+  return (
+    <button type="button" onClick={() => ask(detail)}>
+      Ask
+    </button>
+  );
+};
+
+const FocusWatcher = () => {
+  const { focus, clearFocus } = useAssistantFocus();
+  return (
+    <>
+      <span data-testid="focus">{focus ? focus.ref : 'none'}</span>
+      <button type="button" onClick={clearFocus}>
+        Remove
+      </button>
+    </>
+  );
+};
+
+const readFocus = (container) => container.querySelector('[data-testid="focus"]').textContent;
+const press = (container, label) =>
+  [...container.querySelectorAll('button')].find((b) => b.textContent === label).click();
+
+describe('useAskAssistant', () => {
+  it('hands the panel what the screen pointed at, and lets go on request', async () => {
+    const { container, step, unmount } = await renderComponent(
+      <AssistantSubjectProvider>
+        <FocusWatcher />
+        <Pointer detail={{ ref: 's1', label: 'Sentence' }} />
+      </AssistantSubjectProvider>,
+    );
+    expect(readFocus(container)).toBe('none');
+    await step(() => press(container, 'Ask'));
+    expect(readFocus(container)).toBe('s1');
+    await step(() => press(container, 'Remove'));
+    expect(readFocus(container)).toBe('none');
+    await unmount();
+  });
+
+  it('drops a reference into something the reader has since left', async () => {
+    // A sentence of the document you walked away from is not a thing to ask
+    // about, so it does not travel with the reader.
+    const seen = [];
+    const tree = (id) => (
+      <AssistantSubjectProvider>
+        <Watcher seen={seen} />
+        <FocusWatcher />
+        <Pointer detail={{ ref: 's1', label: 'Sentence' }} />
+        <Screen projectId="p1" kind="document" id={id} name={`Text ${id}`} />
+      </AssistantSubjectProvider>
+    );
+    const { container, step, rerender, unmount } = await renderComponent(tree('d1'));
+    await step(() => press(container, 'Ask'));
+    expect(readFocus(container)).toBe('s1');
+    await rerender(tree('d2'));
+    expect(readFocus(container)).toBe('none');
+    await unmount();
+  });
+
+  it('is a no-op outside a provider, so a screen need not know it has a panel', async () => {
+    const { container, step, unmount } = await renderComponent(<Pointer detail={{ ref: 's1' }} />);
+    await expect(step(() => press(container, 'Ask'))).resolves.not.toThrow();
     await unmount();
   });
 });

@@ -56,3 +56,14 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* The assistant dock is fixed to the right edge of the window, and toasts are
+   bottom-right, so every toast in the app landed on top of it: over the
+   panel's composer, which is exactly where the reader is about to type. The
+   shell publishes the dock's current width and the toaster steps left by it.
+   Selector carries `html` for specificity: sonner injects its own
+   `[data-sonner-toaster]` rule at runtime, which would otherwise come after
+   this stylesheet and win. */
+html [data-sonner-toaster][data-x-position='right'] {
+  right: calc(var(--plaid-dock-width, 0px) + 24px);
+}
