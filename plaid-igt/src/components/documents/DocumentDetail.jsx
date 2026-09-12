@@ -187,7 +187,10 @@ const DocumentEditor = () => {
     return () => window.removeEventListener('igt:ask-assistant', onAsk);
   }, []);
   const docked = activeTab === 'analyze' && assistantOpen;
-  const rowHeight = useViewportFill(rowRef, docked, [history.open, writeLock.held]);
+  // The element that scrolls once the panel is docked, so the reader's place in
+  // the document survives the measurement.
+  const scrollerRef = useRef(null);
+  const rowHeight = useViewportFill(rowRef, docked, [history.open, writeLock.held], scrollerRef);
   // An applied plan rewrote the document, so the grid beside the panel is
   // stale. A fresh read at the state being viewed is the same swap the
   // restore dialog does.
@@ -635,6 +638,7 @@ const DocumentEditor = () => {
         }}
       >
         <div
+          ref={scrollerRef}
           className={`mx-auto px-4 py-8 ${WIDE_TABS.has(activeTab) ? 'max-w-[1700px]' : 'max-w-5xl'} ${
             docked ? 'min-w-0 flex-1 overflow-y-auto' : ''
           }`}

@@ -217,7 +217,10 @@ export const DocumentEditorShell = () => {
   // app header, the breadcrumbs, the tab strip and the run banner all sit
   // above it and not one of them is a fixed height.
   const rowRef = useRef(null);
-  const rowHeight = useViewportFill(rowRef, docked, [writeLock.held]);
+  // The element that scrolls once the panel is docked, so the reader's place in
+  // the document survives the measurement.
+  const scrollerRef = useRef(null);
+  const rowHeight = useViewportFill(rowRef, docked, [writeLock.held], scrollerRef);
 
   return (
     <div className="w-full">
@@ -265,7 +268,10 @@ export const DocumentEditorShell = () => {
           style={docked && rowHeight ? { height: rowHeight } : undefined}
           className={docked ? 'flex min-h-0' : 'flex items-start'}
         >
-          <div className={docked ? 'min-w-0 flex-1 overflow-y-auto' : 'min-w-0 flex-1'}>
+          <div
+            ref={scrollerRef}
+            className={docked ? 'min-w-0 flex-1 overflow-y-auto' : 'min-w-0 flex-1'}
+          >
             <Outlet
               context={{
                 projectId,

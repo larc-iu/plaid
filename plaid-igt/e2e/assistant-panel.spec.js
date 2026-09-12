@@ -212,3 +212,35 @@ test("the island's Ask crosses to the panel and names the sentence", async ({ pa
   await panel.getByRole('button', { name: 'Remove' }).click();
   await expect(panel).not.toContainText('Sentence');
 });
+
+test('docking keeps the reader where they were, and Ask keeps its sentence', async ({ page }) => {
+  // Measuring the docked height has to put the page at the top, and that used
+  // to throw the reader's place away: opening the panel from anywhere but the
+  // first line dumped them back at the top of the document. Worst on "Ask",
+  // whose whole point is the sentence in front of you.
+  await seedAuth(page);
+  await withAssistant(page);
+  // Short enough that this document really scrolls.
+  await page.setViewportSize({ width: 1280, height: 400 });
+  await analyze(page);
+  await expect(page.locator('.igt-sentence').first()).toBeVisible();
+
+  const last = page.locator('.igt-sentence').last();
+  await last.scrollIntoViewIfNeeded();
+  await expect.poll(async () => await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  const before = await last.boundingBox();
+
+  await last.hover();
+  await last.locator('.igt-ask').click();
+
+  const panel = page.locator('aside.border-l');
+  await expect(panel).toBeVisible();
+  // The page itself is at the top now, by design: the row scrolls instead.
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  // The sentence asked about is still on screen, within a line of where it was.
+  const after = await last.boundingBox();
+  expect(after).not.toBeNull();
+  expect(after.y).toBeGreaterThan(0);
+  expect(after.y).toBeLessThan(400);
+  expect(Math.abs(after.y - before.y)).toBeLessThan(80);
+});
