@@ -83,3 +83,20 @@ test('a node or field name that is not bare-safe is declined, not interpolated',
   assert.equal(refinePattern('pattern { V [upos=VERB] }', 'V]', 'upos', 'NOUN'), null);
   assert.equal(refinePattern('pattern { V [upos=VERB] }', 'V', 'upos]', 'NOUN'), null);
 });
+
+test('a clause lands below a trailing comment, not inside it', () => {
+  // The brace is found by lexing, but the whitespace strip in front of it used
+  // to eat the newline that ended a `%` comment, so the new clause was
+  // commented out and the pattern stopped parsing.
+  const out = refinePattern('pattern {\n  V [upos=VERB] % main verb\n}', 'V', 'lemma', 'see');
+  assert.match(out, /% main verb\n/);
+  assert.match(out, /V \[lemma="see"\]/);
+  assert.ok(!/% main verb.*lemma/.test(out), out);
+  assert.doesNotThrow(() => parse(out));
+});
+
+test('a body that already ends in a semicolon does not get a second one', () => {
+  const out = refinePattern('pattern {\n  V [upos=VERB];\n}', 'V', 'lemma', 'see');
+  assert.ok(!/;\s*;/.test(out), out);
+  assert.doesNotThrow(() => parse(out));
+});

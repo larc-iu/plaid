@@ -201,3 +201,36 @@ test('re-typing a machine lemma through the precedent list still confirms it', a
     .poll(async () => (await client.spans.get(spanId)).metadata?.provConfirmed, { timeout: 8000 })
     .toBe(true);
 });
+
+test('leaving the precedent list without typing confirms nothing', async ({ page }) => {
+  // The other half of the rule above. `pristine` was forced false whenever the
+  // list closed, typed or not, so opening precedent on a machine value and
+  // pressing Escape verified it on the way out: a provenance stamp nobody
+  // earned, from a gesture that means "never mind".
+  const { client, morphIds } = S;
+  const spanId = S.lemmaSpans[7]; // "Dog", made to look machine-written
+  const otherId = S.lemmaSpans[4]; // "dog", re-typed for real below
+  for (const id of [spanId, otherId]) {
+    await client.spans.patchMetadata(id, { prov: 'inferred', provSource: 'service:test' });
+  }
+
+  await openAnnotate(page);
+  const cell = page.locator(`[id="${morphIds[7]}-lemma"]`);
+  await cell.click();
+  await cell.press('Alt+ArrowDown');
+  await expect(page.getByRole('option', { name: /^dog/ })).toBeVisible({ timeout: 8000 });
+  await cell.press('Escape');
+  await cell.press('Tab');
+
+  // A confirmation that IS earned, on another word, so the assertion below
+  // cannot pass merely by running before anything was written.
+  const other = page.locator(`[id="${morphIds[4]}-lemma"]`);
+  await other.click();
+  await other.pressSequentially('dog');
+  await other.press('Tab');
+  await expect
+    .poll(async () => (await client.spans.get(otherId)).metadata?.provConfirmed, { timeout: 8000 })
+    .toBe(true);
+
+  expect((await client.spans.get(spanId)).metadata?.provConfirmed).toBeUndefined();
+});

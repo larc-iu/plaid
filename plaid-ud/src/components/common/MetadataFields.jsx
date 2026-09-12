@@ -107,6 +107,10 @@ const AddField = ({ taken, validateName, onAdd }) => {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [error, setError] = useState(null);
+  // As in Field above: Escape blurs, and the blur it fires reads the name React
+  // has committed, not the empty string Escape just asked for. Without this the
+  // field Escape was cancelling got added.
+  const cancelledRef = useRef(false);
 
   const close = () => {
     setAdding(false);
@@ -115,6 +119,10 @@ const AddField = ({ taken, validateName, onAdd }) => {
   };
 
   const submit = () => {
+    if (cancelledRef.current) {
+      cancelledRef.current = false;
+      return close();
+    }
     const trimmed = name.trim();
     if (!trimmed) return close();
     const why = validateName ? validateName(trimmed, taken) : null;
@@ -149,6 +157,7 @@ const AddField = ({ taken, validateName, onAdd }) => {
         placeholder="field name"
         aria-label="New field name"
         onChange={(e) => {
+          cancelledRef.current = false;
           setName(e.target.value);
           setError(null);
         }}
@@ -162,6 +171,7 @@ const AddField = ({ taken, validateName, onAdd }) => {
             // the value field's Escape.
             e.preventDefault();
             e.stopPropagation();
+            cancelledRef.current = true;
             setName('');
             e.currentTarget.blur();
           }

@@ -170,8 +170,13 @@ export function useReviewGestures({ sentences, doc, readOnly, visibleFields, rev
         // Nothing to accept: hold position. A hop with no visible change reads
         // exactly like a confirmation that never happened.
         if (!wordHasMaterial(sentences, tokenId, doc.writer.reviewable)) return;
-        doc.confirmTokens([tokenId]);
-        afterABeat(() => hopToNextWord(tokenId, field));
+        // A save already in flight makes this one a no-op (`_withSaving`
+        // returns false and says nothing), and hopping anyway carries the
+        // reader past a word that was never confirmed. During a held-down
+        // sweep that is every second word.
+        doc.confirmTokens([tokenId]).then((ok) => {
+          if (ok) afterABeat(() => hopToNextWord(tokenId, field));
+        });
         return;
       }
 
@@ -187,8 +192,9 @@ export function useReviewGestures({ sentences, doc, readOnly, visibleFields, rev
         // Discard takes MACHINE material only, whoever is looking, so the
         // "anything to do" test is that and not the writer's review scope.
         if (!wordHasMaterial(sentences, tokenId, isMachine)) return;
-        doc.discardTokens([tokenId]);
-        afterABeat(() => hopToNextWord(tokenId, field));
+        doc.discardTokens([tokenId]).then((ok) => {
+          if (ok) afterABeat(() => hopToNextWord(tokenId, field));
+        });
       }
     },
     [readOnly, doc, sentences, landingField, focusCell, hopToNextWord, afterABeat, cancelPending],

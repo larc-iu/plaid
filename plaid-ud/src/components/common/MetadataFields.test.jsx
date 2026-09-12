@@ -50,4 +50,33 @@ describe('MetadataFields', () => {
     expect(input.value).toBe('fiction');
     await unmount();
   });
+
+  it('adds nothing when Escape cancels a new field name', async () => {
+    // The same shape as the value field above, in the sibling that had no
+    // guard: Escape blurs, and the blur read the name still in state.
+    const { container, step, unmount } = await renderComponent(
+      <MetadataFields
+        rows={ROWS}
+        values={{ genre: 'fiction' }}
+        onCommit={vi.fn()}
+        validateName={() => null}
+      />,
+    );
+    const before = all(container, 'input').length;
+    const button = all(container, 'button').find((b) => b.textContent.includes('Add field'));
+    await step(async () => button.click());
+
+    const input = all(container, 'input').find(
+      (i) => i.getAttribute('aria-label') === 'New field name',
+    );
+    await step(async () => type(input, 'speaker'));
+    // This box autofocuses, so Escape's own blur() fires the real focusout.
+    // Dispatching a second one by hand would submit twice, which the app never
+    // does and which no guard here should have to absorb.
+    await step(async () => press(input, 'Escape'));
+
+    expect(all(container, 'input').length).toBe(before);
+    expect(container.textContent).not.toContain('speaker');
+    await unmount();
+  });
 });

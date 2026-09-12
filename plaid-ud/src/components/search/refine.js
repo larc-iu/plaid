@@ -77,8 +77,16 @@ export const refinePattern = (text, node, field, value) => {
       if (depth > 0) continue;
       const at = offsetOf(t);
       // Keep the body exactly as the user wrote it, including its line breaks.
-      const before = text.slice(0, at).replace(/\s+$/, '');
-      const separator = /[{;]$/.test(before) ? '' : ';';
+      const raw = text.slice(0, at);
+      // A `%` comment runs to the end of its line, so collapsing the newline
+      // after one puts the new clause INSIDE the comment, where the lexer drops
+      // it and the pattern stops parsing. Keep that break, and only that one.
+      const trimmed = raw.replace(/\s+$/, '');
+      const lastLine = trimmed.slice(trimmed.lastIndexOf('\n') + 1);
+      const before = lastLine.includes('%') ? raw.replace(/[ \t]+$/, '') : trimmed;
+      // The separator question is about the last thing WRITTEN, not the last
+      // character, which above is deliberately a newline.
+      const separator = /[{;]$/.test(before.replace(/\s+$/, '')) ? '' : ';';
       return `${before}${separator} ${clause} ${text.slice(at)}`;
     }
   }

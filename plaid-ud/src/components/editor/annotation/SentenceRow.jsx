@@ -81,6 +81,16 @@ const EditableCell = React.memo(
     // a fast typist (or a test driving the keyboard) loses their first
     // character to it.
     const selectPendingRef = useRef(false);
+    // Did the annotator actually put something into this cell, by typing or by
+    // picking? `pristine` cannot answer that: it also drives the dropdown's
+    // filtering, and leaving the precedent list has to clear it whether or not
+    // anything was typed. Reading `pristine` for provenance meant that opening
+    // precedent on a machine value and pressing Escape verified it.
+    const typedRef = useRef(false);
+    // The precedent list swaps the input out and back, and each swap refocuses.
+    // Neither focus is the annotator ARRIVING at the cell, so neither may
+    // forget what they had already typed.
+    const reentryRef = useRef(false);
     // Escape means cancel. The blur it fires must neither write the typed value
     // nor count as re-typing the machine's own (which would verify it), and a
     // flag is the only way to say so: `blur()` inside a key handler runs the
@@ -114,6 +124,7 @@ const EditableCell = React.memo(
       selectPendingRef.current = false;
       setValue(e.target.value);
       setPristine(false);
+      typedRef.current = true;
     };
 
     // A cell with no controlled list of its own (LEMMA) is a plain input, and
@@ -156,7 +167,9 @@ const EditableCell = React.memo(
       // (provenance write contract): commit it even though the value is the
       // same, so the span gets verified. `pristine` guards this to actual
       // typing: tabbing through a cell must not confirm anything.
-      const retyped = !changed && !pristine && !!mark && !!newValue;
+      const retyped = !changed && typedRef.current && !!mark && !!newValue;
+      typedRef.current = false;
+      reentryRef.current = false;
 
       // A CLOSED vocabulary refuses a value that is not on its list. The
       // saved value is kept, not the typed one: an annotator who meant a tag
@@ -270,6 +283,7 @@ const EditableCell = React.memo(
           // what the annotator has already typed, and selecting it means the
           // next character replaces it ("wolf" arrived as "olf").
           selectPendingRef.current = false;
+          reentryRef.current = true;
           const end = el.value.length;
           el.setSelectionRange?.(end, end);
           // `handleFocus` runs on that focus and resets `pristine`, which is
@@ -288,9 +302,12 @@ const EditableCell = React.memo(
       // annotator leaving and must commit. Clearing this on the BLUR instead
       // would never happen: React fires none when it unmounts a focused
       // element, and the next real blur would be swallowed silently.
+      const arriving = !swappingRef.current && !reentryRef.current;
       swappingRef.current = false;
+      reentryRef.current = false;
       setIsEditing(true);
       setPristine(true);
+      if (arriving) typedRef.current = false;
       selectOnArrival();
     };
 
@@ -363,6 +380,11 @@ const EditableCell = React.memo(
       // tag and not the prefix that was typed to find it.
       const takeOption = (picked) => {
         setValue(picked);
+        // Choosing the value that is already stored is a verification, the same
+        // as re-typing it. The dependency tree's picker has always read a pick
+        // that way, and the two disagreed: picking a machine UPOS wrote
+        // nothing while picking a machine deprel confirmed it.
+        typedRef.current = true;
         inputRef.current?.blur();
       };
       return (
@@ -426,6 +448,7 @@ const EditableCell = React.memo(
             selectPendingRef.current = false;
             setValue(val);
             setPristine(false);
+            typedRef.current = true;
             // Typing leaves the precedent list: what the project did before is
             // an answer to "what have we called this", not a filter.
             setPrecedent(null);
