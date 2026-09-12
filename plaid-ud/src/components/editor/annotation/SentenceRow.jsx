@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { ChevronRight, Check, Undo2, PenLine, Bot, Tags } from 'lucide-react';
+import { ChevronRight, Check, Undo2, PenLine, Tags } from 'lucide-react';
+import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { Combobox } from '@ui/components/ui/combobox';
 import { Button } from '@ui/components/ui/button';
 import { isMachine, needsReview, provState, PROV_STATES } from '@larc-iu/plaid-client';
@@ -1543,7 +1544,7 @@ export const SentenceRow = React.memo(
                 onClick={() => onAskAssistant({ ref: `s${sentenceIndex + 1}`, label: 'Sentence' })}
                 title="Ask the assistant about this sentence"
               >
-                <Bot width={12} height={12} />
+                <AssistantMark className="h-3.5 w-3.5" />
                 Ask
               </Button>
             )}

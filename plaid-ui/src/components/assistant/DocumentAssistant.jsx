@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Bot } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
 import { cn } from '../../lib/utils.js';
 import { ProjectAssistant } from './ProjectAssistant.jsx';
 import { clampWidth, readWidth, saveWidth } from './panelWidth.js';
+import { AssistantMark } from './PlaidMarks.jsx';
 
 // The assistant docked beside what the user is working on: the same
 // conversation the Assistant tab holds, with the tab's chrome left out. A
@@ -136,7 +136,7 @@ export const DocumentAssistantButton = ({
       onClick={() => onOpenChange?.(true)}
       title={title}
     >
-      <Bot className="h-4 w-4" />
+      <AssistantMark className="h-4 w-4" />
       Assistant
     </Button>
   );

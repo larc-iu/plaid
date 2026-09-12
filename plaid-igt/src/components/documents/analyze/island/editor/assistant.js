@@ -1,5 +1,35 @@
 import { html } from 'lit-html';
 
+// The assistant's mark, for lit. The React copy and its reasoning are in
+// plaid-ui/src/components/assistant/PlaidMarks.jsx: keep the two in step,
+// and read that one first.
+//
+// The clip id carries the sentence index. One of these renders per sentence, so
+// a fixed id would put dozens of identical `clipPath` definitions under one id
+// in the document and leave the browser to pick by document order. It happens
+// to look right, because every instance clips to the same shape, and that is
+// exactly the kind of accidental correctness that breaks the first time the
+// shape changes.
+const assistantMark = (index) => {
+  const clip = `igt-ask-clip-${index}`;
+  return html`
+    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" aria-hidden="true">
+      <defs>
+        <clipPath id=${clip}><circle cx="12" cy="12" r="9.5" /></clipPath>
+      </defs>
+      <g clip-path="url(#${clip})">
+        <rect x="2.5" y="2.5" width="19" height="19" fill="#1e293b" />
+        <rect x="2.5" y="2.5" width="6.5" height="19" fill="#7f1d1d" opacity="0.72" />
+        <rect x="2.5" y="2.5" width="19" height="6.5" fill="#7f1d1d" opacity="0.72" />
+        <rect x="14.2" y="2.5" width="2.6" height="19" fill="#4d7c0f" opacity="0.5" />
+        <rect x="2.5" y="14.2" width="19" height="2.6" fill="#4d7c0f" opacity="0.5" />
+        <rect x="11.4" y="2.5" width="0.9" height="19" fill="#d6d3d1" opacity="0.85" />
+        <rect x="2.5" y="11.4" width="19" height="0.9" fill="#d6d3d1" opacity="0.85" />
+      </g>
+    </svg>
+  `;
+};
+
 // Asking the assistant about one sentence.
 //
 // The island cannot reach the docked panel directly (the panel is React, on
@@ -65,23 +95,7 @@ export const assistant = {
           this._askAssistant(sentence, index);
         }}
       >
-        <svg
-          viewBox="0 0 24 24"
-          width="13"
-          height="13"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <rect x="3" y="8" width="18" height="12" rx="2" />
-          <path d="M12 8V5" />
-          <circle cx="8.5" cy="14" r="1" />
-          <circle cx="15.5" cy="14" r="1" />
-        </svg>
-        Ask
+        ${assistantMark(index)} Ask
       </button>
     `;
   },

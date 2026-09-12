@@ -1,15 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
-import {
-  Activity,
-  FileText,
-  Search,
-  Replace,
-  ShieldCheck,
-  Bot,
-  Download,
-  Settings,
-} from 'lucide-react';
+import { Activity, FileText, Search, Replace, ShieldCheck, Download, Settings } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@ui/components/ui/tabs';
 import { useAuth } from '../../contexts/AuthContext';
 import { DocumentList } from './DocumentList';
@@ -40,6 +31,7 @@ import { cn } from '@ui/lib/utils';
 import { useComposeProject } from '@/hooks/useCompose';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
 import { useAssistantSubject } from '@ui/components/assistant/subject.js';
+import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { IGT_ASSISTANT } from './assistant/adapter.js';
 
 // The settings sections live behind these path suffixes; keeping them in the
@@ -335,7 +327,7 @@ export const ProjectDetail = () => {
               value="assistant"
               to={tabTo(`/projects/${projectId}`, 'assistant', 'documents')}
             >
-              <Bot className="h-4 w-4" /> Assistant
+              <AssistantMark className="h-4 w-4" /> Assistant
             </TabsTrigger>
           )}
           <TabsTrigger value="export" to={`/projects/${projectId}/export`}>

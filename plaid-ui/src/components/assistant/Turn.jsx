@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Bot, ChevronDown, ChevronRight, MapPin, Wrench } from 'lucide-react';
+import { ChevronDown, ChevronRight, MapPin, Wrench } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { AssistantMarkdown } from './AssistantMarkdown.jsx';
 import { linkifyCitations } from './citations.js';
 import { PlanCard } from './PlanCard.jsx';
+import { AssistantMark } from './PlaidMarks.jsx';
 
 // One turn of a conversation as drawn: the reply with its citations, the
 // example cards a citation opens, and the tool trace behind an answer.
@@ -125,9 +126,7 @@ export const Turn = ({
   }
   return (
     <div className="flex gap-3">
-      <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted">
-        <Bot className="h-4 w-4 text-muted-foreground" />
-      </div>
+      <AssistantMark className="mt-1 h-7 w-7 shrink-0" />
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         {fromAnotherModel && (
           <div className="text-xs text-muted-foreground">

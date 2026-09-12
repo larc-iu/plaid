@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { Bot } from 'lucide-react';
 import { UserButton } from './UserButton';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '@ui/components/ui/button';
 import { cn } from '@ui/lib/utils';
 import { AssistantDock } from '@ui/components/assistant/AssistantDock.jsx';
+import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { ProjectPicker } from '@ui/components/assistant/ProjectPicker.jsx';
 import { useDockWidth } from '@ui/components/assistant/useDock.js';
 import { AssistantSubjectProvider } from '@ui/components/assistant/AssistantSubject.jsx';
@@ -169,7 +169,7 @@ const Shell = () => {
                 onClick={() => setDockOpen(true)}
                 title="Assistant"
               >
-                <Bot className="h-4 w-4" />
+                <AssistantMark className="h-4 w-4" />
                 Assistant
               </Button>
             )}

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Bot,
   Send,
   RotateCcw,
   Check,
@@ -22,6 +21,7 @@ import { notifyError } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
 import { AssistantMarkdown } from './AssistantMarkdown.jsx';
 import { rewindForRetry } from './resume.js';
+import { AssistantMark } from './PlaidMarks.jsx';
 import { NEARLY_FULL, fullness, latestUsage, totalSpend, usageLabel, usageTitle } from './usage.js';
 import { AssistantPicker, ConversationRow, ExportMenu } from './ConversationList.jsx';
 import { Turn } from './Turn.jsx';
@@ -742,7 +742,7 @@ export const ProjectAssistant = ({
             flag: a slightly taller bar costs nothing where there is nothing to
             line up with. */}
         <header className="flex min-h-14 flex-wrap items-center gap-2 border-b px-3 py-2 text-sm">
-          <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <AssistantMark className="h-4 w-4 shrink-0" />
           {discovering && !services.length ? (
             <span className="text-muted-foreground">Looking for an assistant…</span>
           ) : !service ? (
@@ -872,11 +872,10 @@ export const ProjectAssistant = ({
                   panel ? 'mt-4' : 'mt-10',
                 )}
               >
-                {!panel && (
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-                    <Bot className="h-6 w-6 text-muted-foreground" />
-                  </div>
-                )}
+                {/* No disc around it: the mark is already a rounded
+                    square, so a grey circle behind it was a container around a
+                    container. */}
+                {!panel && <AssistantMark className="h-11 w-11" />}
                 <div className="max-w-md text-sm text-muted-foreground">
                   {panel ? (
                     // The panel reaches screens that are about no one thing
@@ -978,9 +977,7 @@ export const ProjectAssistant = ({
                 )}
                 {busy === 'turn' && partial && (
                   <div className="flex gap-3">
-                    <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted">
-                      <Bot className="h-4 w-4 text-muted-foreground" />
-                    </div>
+                    <AssistantMark className="mt-1 h-7 w-7 shrink-0" />
                     <div className="min-w-0 flex-1">
                       <AssistantMarkdown>{partial}</AssistantMarkdown>
                     </div>
