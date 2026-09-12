@@ -5,7 +5,7 @@ import { Combobox } from '@ui/components/ui/combobox';
 import { Button } from '@ui/components/ui/button';
 import { isMachine, needsReview, provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { DependencyTree } from './DependencyTree.jsx';
-import { computeArcLayout, buildIndexById } from './arcLayout.js';
+import { computeArcLayout, buildIndexById } from '../../../utils/arcLayout.js';
 import { useTokenPositions } from '../hooks/useTokenPositions.js';
 import { resolveColor } from '../../../utils/udVocab.js';
 import { notifyWarning } from '../../../utils/notify.js';

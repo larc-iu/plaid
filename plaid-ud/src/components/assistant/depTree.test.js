@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { arcHeight, arcs, cited, layout, measure } from './depTree.js';
+import { arcs, cited, layout, measure } from './depTree.js';
 
 // s1: "Vamos al mar ." with al a multi-word token over words 2 and 3.
 const rows = [
@@ -66,14 +66,34 @@ describe('cited', () => {
   });
 });
 
-describe('arcHeight', () => {
-  it('rises with distance and never exceeds the budget', () => {
-    expect(arcHeight(1, 100)).toBeLessThan(arcHeight(5, 100));
-    expect(arcHeight(40, 100)).toBeLessThanOrEqual(100);
+// The height of an arc's flat run, off its path data.
+const runY = (a) => Number(a.d.match(/Q [-\d.]+ ([-\d.]+)/)[1]);
+
+describe('stacking', () => {
+  it('draws an arc above the one it encloses', () => {
+    // "a" and "el" both hang off "mar", so obl (Vamos → mar) encloses both.
+    const out = layout(rows, { maxHeight: 150, all: true });
+    const at = (deprel) => out.arcs.find((a) => a.deprel === deprel);
+    expect(runY(at('obl'))).toBeLessThan(runY(at('case')));
+    expect(runY(at('obl'))).toBeLessThan(runY(at('det')));
   });
 
-  it('is zero for no distance, so a self-reference draws no hump', () => {
-    expect(arcHeight(0, 100)).toBe(0);
+  it('keeps a label between its own arc and the one above it', () => {
+    const out = layout(rows, { maxHeight: 150, all: true });
+    for (const a of out.arcs) {
+      if (a.root) continue;
+      expect(a.labelY).toBeLessThan(runY(a));
+      expect(a.labelY).toBeGreaterThan(0);
+    }
+  });
+
+  it('compresses the stack into a shallow panel rather than drawing outside it', () => {
+    const deep = layout(rows, { maxHeight: 60, all: true });
+    expect(deep.height).toBeLessThanOrEqual(60);
+    for (const a of deep.arcs) {
+      if (a.root) continue;
+      expect(runY(a)).toBeGreaterThanOrEqual(0);
+    }
   });
 });
 

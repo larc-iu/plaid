@@ -40,6 +40,9 @@ const DepTree = ({ c, tree }) => {
       role="img"
       aria-label={`Dependency tree for sentence ${c.sentence}`}
     >
+      {/* Arcs first, then every label, as the editor's tree does: SVG has no
+          z-index, so paint order is what keeps a label from being drawn over
+          by an arc running above the one it belongs to. */}
       {tree.arcs.map((a, i) => (
         <g key={i} className="text-muted-foreground">
           <path d={a.d} fill="none" stroke="currentColor" strokeWidth="1" opacity="0.7" />
@@ -50,20 +53,23 @@ const DepTree = ({ c, tree }) => {
             fill="currentColor"
             opacity="0.7"
           />
-          {a.deprel && (
-            <text
-              x={a.labelX}
-              y={a.labelY}
-              textAnchor="middle"
-              fontSize="9"
-              fill="currentColor"
-              className="text-primary"
-            >
-              {a.deprel}
-            </text>
-          )}
         </g>
       ))}
+      {tree.arcs.map((a, i) =>
+        a.deprel ? (
+          <text
+            key={i}
+            x={a.labelX}
+            y={a.labelY}
+            textAnchor="middle"
+            fontSize="9"
+            fill="currentColor"
+            className="text-primary"
+          >
+            {a.deprel}
+          </text>
+        ) : null,
+      )}
       {tree.words.map((w, i) => (
         <text
           key={i}

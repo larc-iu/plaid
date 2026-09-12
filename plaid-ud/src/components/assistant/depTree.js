@@ -1,16 +1,20 @@
 // Laying out a dependency tree for a citation card.
 //
-// Not the annotation editor's tree: that one is 862 lines of dragging,
-// inline label editing and keyboard navigation over live span objects. This
-// draws plain CoNLL-U rows, read-only, small enough for a docked panel. The
-// arc-height curve is the editor's, rescaled: a long arc has to clear the
-// short ones nested under it without running off the top.
+// Not the annotation editor's tree: that one is 850 lines of dragging, inline
+// label editing and keyboard navigation over live span objects, measuring its
+// words off the DOM. This draws plain CoNLL-U rows, read-only, small enough
+// for a docked panel, with its words placed by character count because there
+// is nothing to measure. What the two DO share is the geometry — how the arcs
+// stack and the shape one is drawn in — which comes from utils/arcLayout.js.
+// Read the note at the top of that file before changing the shape of an arc
+// here: it is the reason they are flat-topped rather than smooth.
 //
 // The tree a citation opens on is PARTIAL: the whole sentence, with arcs only
 // over the relations the citation named, as the UD documentation draws one
 // construction over a sentence. Every arc at once is a hairball on a real
-// sentence, and the longest one takes the whole height budget, so the short
-// arcs a point usually rests on end up flat against the baseline.
+// sentence, which is what the switch under it is for.
+
+import { arcHeight, arcPath, assignLevels } from '../../utils/arcLayout.js';
 
 export const WORD_GAP = 16; // space between words
 export const CHAR = 7.2; // monospace advance at the card's font size
@@ -18,14 +22,15 @@ export const PAD = 10;
 export const BASELINE = 18; // words sit this far above the bottom
 export const LABEL_H = 11;
 
-// How tall an arc spanning `distance` words rises. The editor's sigmoid, so a
-// one-word hop stays low and a long one rises fast at first then flattens.
-export const arcHeight = (distance, budget) => {
-  const d = Math.abs(distance);
-  if (!d) return 0;
-  const raw = 1 / (1 + Math.exp(-0.2 * Math.pow(d, 0.8)));
-  return Math.max(14, Math.min(budget * ((raw - 0.5) * 2) * 1.6, budget));
-};
+// The card draws at about half the editor's scale — a 9px label over words a
+// couple of characters wide — so the stack climbs in smaller steps and turns
+// through a tighter corner. The corner has to stay under half the narrowest
+// gap between two words, or arcs of different spans would turn at different
+// widths, which is what lets them cross.
+const CARD_BASE = 14;
+const CARD_STEP = 12;
+const CARD_CORNER = 8;
+const LABEL_LIFT = 3; // a label rides this far above its own arc
 
 // Each word's x centre and width, from its widest cell.
 export const measure = (words) => {
@@ -47,12 +52,12 @@ export const arcs = (placed) => {
     const head = String(w.head ?? '');
     if (head === '' || head === '_') return;
     if (head === '0') {
-      out.push({ root: true, to: i, deprel: w.deprel || 'root', distance: 0 });
+      out.push({ root: true, to: i, deprel: w.deprel || 'root' });
       return;
     }
     const from = byId.get(head);
     if (from === undefined) return; // a head pointing nowhere draws nothing
-    out.push({ root: false, from, to: i, deprel: w.deprel || '', distance: i - from });
+    out.push({ root: false, from, to: i, deprel: w.deprel || '' });
   });
   return out;
 };
@@ -71,7 +76,7 @@ export const cited = (placed, all) => {
 // The SVG path for one arc, and where its label sits. `baseY` is the line the
 // words sit on and `topY` the highest an arc may reach; y grows downward, so
 // an arc rising means a SMALLER y.
-export const arcPath = (placed, arc, budget, baseY, topY) => {
+export const placeArc = (placed, arc, height, baseY, topY) => {
   const to = placed[arc.to];
   // Every arc ends AT its dependent, which is what the arrowhead marks: a
   // dependency tree without direction is just a set of lines.
@@ -84,13 +89,13 @@ export const arcPath = (placed, arc, budget, baseY, topY) => {
     };
   }
   const from = placed[arc.from];
-  const peak = Math.max(topY, baseY - arcHeight(arc.distance, budget));
+  // A stack too deep for the panel flattens against the top rather than
+  // drawing outside the box.
+  const peak = Math.max(topY, baseY - height);
   return {
-    d: `M ${from.x} ${baseY} C ${from.x} ${peak}, ${to.x} ${peak}, ${to.x} ${baseY}`,
+    d: arcPath(from.x, to.x, baseY, baseY - peak, CARD_CORNER),
     labelX: (from.x + to.x) / 2,
-    // Just under the arc's crest, where a cubic sits at about a quarter of the
-    // way down from the control points.
-    labelY: peak + (baseY - peak) / 4,
+    labelY: peak - LABEL_LIFT,
     tipX: to.x,
   };
 };
@@ -110,17 +115,36 @@ export const layout = (rows, { maxHeight = 150, all = false } = {}) => {
   const narrowed = cited(placed, every);
   const shown = all ? every : narrowed;
   const budget = Math.max(20, maxHeight - BASELINE - LABEL_H - PAD);
-  const tallest = shown.reduce(
-    (m, a) => Math.max(m, a.root ? 0 : arcHeight(a.distance, budget)),
-    0,
+
+  // Each arc sits above whatever is nested inside it. `id` here is the arc's
+  // place in `shown`, which is how the level is read back below.
+  const { levels, maxLevel } = assignLevels(
+    shown
+      .map((arc, id) => ({ arc, id }))
+      .filter(({ arc }) => !arc.root)
+      .map(({ arc, id }) => ({
+        id,
+        left: Math.min(arc.from, arc.to),
+        right: Math.max(arc.from, arc.to),
+      })),
   );
+
+  // The stack has to fit the panel, so a deep tree steps in smaller increments.
+  // It stays free of crossings either way: that comes from the ORDER the arcs
+  // are stacked in, not from the gap between them.
+  const base = Math.min(CARD_BASE, budget);
+  const step =
+    maxLevel > 1 ? Math.max(3, Math.min(CARD_STEP, (budget - base) / (maxLevel - 1))) : CARD_STEP;
+  const riseOf = (id) => arcHeight(levels.get(id) || 1, { base, step });
+
+  const tallest = maxLevel ? Math.min(budget, arcHeight(maxLevel, { base, step })) : 0;
   const height = Math.round(Math.min(maxHeight, Math.max(52, tallest + BASELINE + LABEL_H + PAD)));
   const baseY = height - BASELINE;
   const topY = PAD;
   const last = placed.at(-1);
   return {
     words: placed,
-    arcs: shown.map((a) => ({ ...a, ...arcPath(placed, a, budget, baseY, topY) })),
+    arcs: shown.map((a, id) => ({ ...a, ...placeArc(placed, a, riseOf(id), baseY, topY) })),
     hidden: every.length - narrowed.length,
     height,
     width: Math.max(80, Math.round((last?.left ?? 0) + (last?.width ?? 0) + PAD)),

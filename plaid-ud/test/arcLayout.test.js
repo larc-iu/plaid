@@ -6,10 +6,13 @@ import assert from 'node:assert/strict';
 import {
   computeArcLayout,
   buildIndexById,
+  assignLevels,
   arcHeight,
+  arcPath,
   ARC_BASE,
   ARC_STEP,
-} from '../src/components/editor/annotation/arcLayout.js';
+  ARC_CORNER,
+} from '../src/utils/arcLayout.js';
 
 // A sentence of `n` words, one lemma span per word, named w0..w(n-1) / s0..s(n-1).
 const sentence = (n) => {
@@ -187,4 +190,49 @@ test('the tree is as tall as its deepest stack, and the grid reserves the same',
 test('each level adds a fixed step', () => {
   assert.equal(arcHeight(1), ARC_BASE);
   assert.equal(arcHeight(3), ARC_BASE + 2 * ARC_STEP);
+});
+
+test('a tree drawn at another scale passes its own base and step', () => {
+  // The citation card's stack compresses to fit a panel. Only the size
+  // changes: the order the levels come in is the same.
+  assert.equal(arcHeight(3, { base: 10, step: 5 }), 20);
+  assert.ok(arcHeight(2, { base: 10, step: 5 }) < arcHeight(3, { base: 10, step: 5 }));
+});
+
+test('levels can be assigned over plain intervals, whatever drew them', () => {
+  // The card works in word columns and has no relation ids, so it stacks
+  // through this rather than through computeArcLayout.
+  const { levels, maxLevel } = assignLevels([
+    { id: 'wide', left: 0, right: 4 },
+    { id: 'inner', left: 1, right: 2 },
+    { id: 'beside', left: 4, right: 5 },
+  ]);
+  assert.equal(levels.get('inner'), 1);
+  assert.equal(levels.get('wide'), 2);
+  assert.equal(levels.get('beside'), 1);
+  assert.equal(maxLevel, 2);
+});
+
+// The turn out of the rise, read back off a path: where the first curve ends.
+const turnWidth = (d, fromX) => Math.abs(Number(d.match(/Q [-\d.]+ [-\d.]+ ([-\d.]+)/)[1]) - fromX);
+
+test('an arc runs flat at its own height', () => {
+  const d = arcPath(100, 300, 200, 50);
+  const run = [...d.matchAll(/Q [-\d.]+ ([-\d.]+)/g)].map((m) => Number(m[1]));
+  assert.deepEqual(run, [150, 150]); // baseline 200, height 50, both turns level
+  assert.ok(d.startsWith('M 100 200'));
+  assert.ok(d.endsWith('300 200'));
+});
+
+test('every arc turns through the same width, which is what stops them crossing', () => {
+  // A wide arc that turned more gently than the narrow one nested under it
+  // would climb more slowly and cut through it near their shared endpoint.
+  assert.equal(turnWidth(arcPath(0, 200, 100, 30), 0), ARC_CORNER);
+  assert.equal(turnWidth(arcPath(0, 2000, 100, 90), 0), ARC_CORNER);
+  // Leftward, likewise.
+  assert.equal(turnWidth(arcPath(2000, 0, 100, 90), 2000), ARC_CORNER);
+});
+
+test('an arc narrower than two turns meets in the middle', () => {
+  assert.equal(turnWidth(arcPath(0, 20, 100, 30), 0), 10);
 });

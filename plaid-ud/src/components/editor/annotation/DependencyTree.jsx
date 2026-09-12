@@ -3,7 +3,7 @@ import { needsReview, provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { resolveColor, baseRel } from '../../../utils/udVocab.js';
 import { provCellTitle, provMark, PROV_MARK_COLORS } from '../../../utils/provenanceUi.js';
 import { DeprelEditor } from './DeprelEditor.jsx';
-import { ARC_BASE, arcHeight } from './arcLayout.js';
+import { ARC_BASE, arcHeight, arcPath } from '../../../utils/arcLayout.js';
 import './DependencyTree.css';
 
 // Machine-made or contributed, not yet human-verified (provenance convention).
@@ -58,12 +58,6 @@ export const DependencyTree = forwardRef(
     const PADDING = 20;
     const TOKEN_Y = TREE_HEIGHT - 30; // Tokens at bottom
     const ROOT_Y = 25; // ROOT bar at top
-    // Where an arc turns out of its vertical rise into its horizontal run. The
-    // SAME width for every arc: this is what keeps a taller arc above a shorter
-    // one along its whole length. (A dome whose radius grows with its span
-    // climbs more slowly than the narrower arcs nested under it, so near a
-    // shared endpoint it dips below them — which is how arcs came to cross.)
-    const CORNER = 18;
 
     // How high above the words this relation's arc runs. An arc encloses
     // everything nested under it, one step per level.
@@ -118,19 +112,6 @@ export const DependencyTree = forwardRef(
               index: index,
             };
           });
-
-    // An arc: up out of the head, a quarter turn into a horizontal run at its
-    // own height, and a quarter turn back down onto the word it points at. The
-    // turns are CORNER wide whatever the span, which is what stops arcs
-    // crossing; the flat run is where the deprel label sits.
-    const arcPath = (fromX, toX, baselineY, height) => {
-      const apexY = baselineY - height;
-      const direction = toX > fromX ? 1 : -1;
-      const corner = Math.min(CORNER, Math.abs(toX - fromX) / 2);
-      const riseEnd = fromX + direction * corner;
-      const fallStart = toX - direction * corner;
-      return `M ${fromX} ${baselineY} Q ${fromX} ${apexY} ${riseEnd} ${apexY} L ${fallStart} ${apexY} Q ${toX} ${apexY} ${toX} ${baselineY}`;
-    };
 
     // Generate SVG path for dependency arc
     const computeEdge = (sourcePos, targetPos, isToRoot, height) => {
