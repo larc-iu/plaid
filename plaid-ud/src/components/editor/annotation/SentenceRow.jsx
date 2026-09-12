@@ -273,6 +273,12 @@ const EditableCell = React.memo(
           selectPendingRef.current = false;
           const end = el.value.length;
           el.setSelectionRange?.(end, end);
+          // `handleFocus` runs on that focus and resets `pristine`, which is
+          // what tells a blur whether the annotator TYPED. Re-entering a
+          // machine's own value is a confirmation, and with pristine back to
+          // true the commit was skipped: opening precedent on a machine-made
+          // lemma, re-typing the same value and tabbing out wrote nothing.
+          setPristine(false);
         }
       }
       hadPrecedent.current = !!precedent;

@@ -31,8 +31,9 @@ test.beforeEach(async () => {
   // "dog" is lemmatised twice as `dog` and once, wrongly, as `Dog`.
   const lemmas = ['the', 'dog', 'run', 'the', 'dog', 'run', 'a', 'Dog', 'sleep'];
   const xpos = ['DT', 'NNS', 'VBP', 'DT', 'NN', 'VBZ', 'DT', 'NN', 'VBZ'];
+  S.lemmaSpans = [];
   for (const [i, lemma] of lemmas.entries()) {
-    await client.spans.create(layers.lemma, [morphIds[i]], lemma);
+    S.lemmaSpans.push((await client.spans.create(layers.lemma, [morphIds[i]], lemma)).id);
   }
   for (const [i, tag] of xpos.entries()) await client.spans.create(layers.xpos, [morphIds[i]], tag);
   for (const i of [1, 4]) await client.spans.create(layers.features, [morphIds[i]], 'Number=Plur');
@@ -171,4 +172,32 @@ test('a word with no precedent gets no list, and says so by not changing', async
 
   await page.waitForTimeout(1200);
   await expect(page.getByRole('option')).toHaveCount(1); // its own, and only its own
+});
+
+test('re-typing a machine lemma through the precedent list still confirms it', async ({ page }) => {
+  // Re-entering a machine's own value is a human confirmation (the provenance
+  // write contract), and `pristine` is what tells the blur that the annotator
+  // typed. The swap back out of precedent mode re-runs the cell's focus
+  // handler, which reset `pristine`, so the confirmation was skipped and
+  // nothing was written at all.
+  const { client, morphIds } = S;
+  // The fixture's own lemma on the word the other precedent tests use, made to
+  // look machine-written. That word HAS precedent, so the list really opens
+  // and leaving it really swaps the element.
+  const spanId = S.lemmaSpans[7];
+  await client.spans.patchMetadata(spanId, { prov: 'inferred', provSource: 'service:test' });
+
+  await openAnnotate(page);
+  const cell = page.locator(`[id="${morphIds[7]}-lemma"]`);
+  await cell.click();
+  await cell.press('Alt+ArrowDown');
+  await expect(page.getByRole('option', { name: /^dog/ })).toBeVisible({ timeout: 8000 });
+
+  // Re-type the machine's own value, which leaves the list, and tab out.
+  await cell.pressSequentially('Dog');
+  await cell.press('Tab');
+
+  await expect
+    .poll(async () => (await client.spans.get(spanId)).metadata?.provConfirmed, { timeout: 8000 })
+    .toBe(true);
 });
