@@ -51,17 +51,9 @@ const Sparkline = ({ byDay, days = 14 }) => {
   );
 };
 
-// `showAvatars` is off for an app that has decided against them (plaid-ud has,
-// deliberately), and the two href builders are AuditFeed's, passed straight
-// through so a mounting app names its own routes once.
-export const ActivityPanel = ({
-  client,
-  projectId,
-  roster,
-  showAvatars = true,
-  projectHref,
-  documentHref,
-}) => {
+// The two href builders are AuditFeed's, passed straight through so a mounting
+// app names its own routes once.
+export const ActivityPanel = ({ client, projectId, roster, projectHref, documentHref }) => {
   const [range, setRange] = useState('30');
   // "all" has no number, and a sparkline needs one: 30 days is as far back as
   // the widest fixed window goes, so it is what "all" draws.
@@ -111,14 +103,12 @@ export const ActivityPanel = ({
       render: (row) =>
         row.user?.id ? (
           <div className="flex items-center gap-2">
-            {showAvatars && (
-              <UserAvatar
-                client={client}
-                userId={row.user.id}
-                displayName={row.user.displayName}
-                className="h-6 w-6"
-              />
-            )}
+            <UserAvatar
+              client={client}
+              userId={row.user.id}
+              displayName={row.user.displayName}
+              className="h-6 w-6"
+            />
             <span>{nameOf(row)}</span>
           </div>
         ) : (
@@ -178,14 +168,12 @@ export const ActivityPanel = ({
       sort: (m) => (m.displayName || m.id).toLowerCase(),
       render: (m) => (
         <div className="flex items-center gap-2">
-          {showAvatars && (
-            <UserAvatar
-              client={client}
-              userId={m.id}
-              displayName={m.displayName}
-              className="h-6 w-6"
-            />
-          )}
+          <UserAvatar
+            client={client}
+            userId={m.id}
+            displayName={m.displayName}
+            className="h-6 w-6"
+          />
           <span>{m.displayName || m.id}</span>
         </div>
       ),

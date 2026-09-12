@@ -1,8 +1,12 @@
 // Item 10: the project's Activity tab. The panel itself is plaid-igt's, moved
 // into plaid-ui, so what is worth asserting here is the adapter: that this app
-// mounts it, that it is maintainers-only, and that the two things it had to
-// change for UD actually changed: the document links go to UD's routes, and
-// there are no avatars, which this app decided against.
+// mounts it, that it is maintainers-only, and that the one thing it had to
+// change for UD actually changed, the document links going to UD's routes.
+//
+// It used to assert that the panel brought no avatars with it. That ruling was
+// about the GENERATED ones this app once drew, not about people's own
+// pictures, which are welcome (Luke, 2026-09-12), so the panel shows them here
+// as it does in plaid-igt and the test is gone.
 import PlaidClient from '@larc-iu/plaid-client';
 import { test, expect, seedAuth } from './fixtures.js';
 import { seedUdDoc } from './seedUdDoc.js';
@@ -72,35 +76,6 @@ test("a document in the feed links to this app's annotation view", async ({ page
   // reader there is a dead end, which is why the feed takes a href builder.
   const link = page.locator(`a[href*="/documents/${S.documentId}"]`).first();
   await expect(link).toHaveAttribute('href', new RegExp(`/documents/${S.documentId}/annotate$`));
-});
-
-test('the panel brings no avatars with it', async ({ page }) => {
-  await seedAuth(page);
-  await page.goto(`/#/projects/${S.projectId}/activity`);
-  await expect(page.getByText('Who has been working')).toBeVisible({ timeout: 15000 });
-
-  // The panel has rendered people, so the absence below is the ruling and not
-  // a failed load. `.activity-avatar` never existed and `img` cannot catch a
-  // reintroduced avatar either: Radix renders no image until one has loaded,
-  // and a user with no picture shows only their initials. `data-slot="avatar"`
-  // is on the shared primitive's root for exactly this count.
-  //
-  // Scoped to `main` rather than the page: the ruling is that nobody's picture
-  // stands beside their name in this app's DATA (this panel, the members
-  // table, the admin directory). The header band is the one exemption, where
-  // the signed-in account wears its own picture as it does in plaid-igt
-  // (Luke's call, 2026-09-12), and the band is not in `main`.
-  // Both halves read the same scope, so a `main` that did not hold the panel
-  // would fail here rather than pass the count below vacuously. The tally's
-  // own rows, not a name: the name in them is the SERVER's display name for
-  // this account, and the one `seedAuth` writes into localStorage is the
-  // address. Matching on the latter is what let this guard pass by finding the
-  // header's account button instead of the panel.
-  const content = page.locator('main');
-  const tally = content.locator('table').first();
-  await expect(tally.getByRole('columnheader', { name: 'Person' })).toBeVisible();
-  await expect(tally.locator('tbody tr').first()).toBeVisible();
-  await expect(content.locator('[data-slot="avatar"]')).toHaveCount(0);
 });
 
 test('a maintainer is offered the tab', async ({ page }) => {

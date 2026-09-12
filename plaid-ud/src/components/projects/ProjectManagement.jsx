@@ -16,6 +16,7 @@ import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { canManageProject } from '../../utils/permissions.js';
 import { isEmail, EMAIL_INVALID_MESSAGE } from '../../utils/email';
 import { Badge } from '@ui/components/ui/badge';
+import { UserAvatar } from '@ui/components/shared/UserAvatar';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
@@ -427,12 +428,21 @@ export const ProjectManagement = () => {
     return denied('You do not have permission to manage this project.');
 
   const userCell = (u) => (
-    <div className="min-w-0">
-      <div className="flex items-center gap-2">
-        <span className="truncate text-sm font-medium">{u.displayName}</span>
-        {u.isAdmin && <Badge variant="secondary">Admin</Badge>}
+    <div className="flex min-w-0 items-center gap-2">
+      <UserAvatar
+        client={getClient()}
+        userId={u.id}
+        displayName={u.displayName}
+        avatarHash={u.avatarHash}
+        className="h-7 w-7"
+      />
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="truncate text-sm font-medium">{u.displayName}</span>
+          {u.isAdmin && <Badge variant="secondary">Admin</Badge>}
+        </div>
+        <span className="block truncate text-xs text-muted-foreground">{u.id}</span>
       </div>
-      <span className="block truncate text-xs text-muted-foreground">{u.id}</span>
     </div>
   );
 

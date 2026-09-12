@@ -64,8 +64,6 @@ export const ProjectActivity = () => {
         client={client}
         projectId={projectId}
         roster={roster}
-        // No avatars in this app, by ruling. See CLAUDE.md.
-        showAvatars={false}
         // A document opens on its annotation grid here, not on a metadata tab.
         documentHref={(document) => `/projects/${projectId}/documents/${document.id}/annotate`}
         projectHref={() => `/projects/${projectId}/documents`}
