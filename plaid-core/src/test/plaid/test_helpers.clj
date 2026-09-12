@@ -220,6 +220,21 @@
                              :path (str "/api/v1/spans/" span-id "/tokens")
                              :body {:tokens tokens}}))
 
+(defn bulk-update-spans [user-request-fn items]
+  (api-call user-request-fn {:method :patch
+                             :path "/api/v1/spans/bulk"
+                             :body items}))
+
+(defn bulk-update-relations [user-request-fn items]
+  (api-call user-request-fn {:method :patch
+                             :path "/api/v1/relations/bulk"
+                             :body items}))
+
+(defn bulk-update-tokens [user-request-fn items]
+  (api-call user-request-fn {:method :patch
+                             :path "/api/v1/tokens/bulk"
+                             :body items}))
+
 (defn delete-span [user-request-fn span-id]
   (api-call user-request-fn {:method :delete
                              :path (str "/api/v1/spans/" span-id)}))

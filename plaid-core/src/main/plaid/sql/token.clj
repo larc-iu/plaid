@@ -26,6 +26,8 @@
             [plaid.sql.common :as psc]
             [plaid.sql.operation :as op :refer [submit-operation!]]
             [plaid.sql.metadata :as metadata]
+            [plaid.server.locks :as locks]
+            [clojure.string]
             [plaid.sql.constraints.token :as tc]
             [plaid.util.codepoint :as cp])
   (:refer-clojure :exclude [get merge format]))
@@ -1191,6 +1193,49 @@
      (throw (ex-info (psc/err-msg-not-found "Token" eid) {:code 404 :id eid})))
    (metadata/replace-metadata! tx "token" eid metadata-map)
    eid))
+
+(defn bulk-patch-metadata
+  "Patch the metadata on many tokens in ONE operation: `items` are
+  `{:id :metadata}` with `plaid.sql.metadata/patch-metadata!` semantics per
+  item (a nil value deletes that key). The tokens may lie in several
+  documents of one project, each version-bumped and lock-checked; an
+  unknown id refuses the whole update. Returns the number of items."
+  [db items user-id]
+  (let [ids (mapv :id items)
+        pre-rows (psc/fetch-ids db :tokens ids)
+        pre-doc-ids (distinct (map :document_id pre-rows))
+        first-row (first pre-rows)]
+    (submit-operation!
+     [tx db {:type :token/bulk-patch-metadata
+             :project (when first-row (project-id db (:id first-row)))
+             :document (when (= 1 (count pre-doc-ids)) (first pre-doc-ids))
+             :description (str "Bulk patch metadata on " (count items) " tokens")
+             :user user-id}]
+     (when (empty? items)
+       (throw (ex-info "Token list is empty" {:code 400})))
+     (when (not= (count ids) (count (distinct ids)))
+       (throw (ex-info "A token may appear only once in a bulk update" {:code 400})))
+     (metadata/validate-entity-type! "token")
+     (let [rows (psc/fetch-ids tx :tokens ids)
+           by-id (into {} (map (juxt :id identity)) rows)
+           missing (remove by-id ids)]
+       (when (seq missing)
+         (throw (ex-info (str "Tokens not found: " (clojure.string/join ", " missing))
+                         {:code 404 :ids (vec missing)})))
+       (let [projects (->> rows (map :id) (map #(project-id tx %)) distinct)]
+         (when (not= 1 (count projects))
+           (throw (ex-info "Tokens must all belong to one project" {:code 400}))))
+       (let [doc-ids (distinct (map :document_id rows))]
+         (when (> (count doc-ids) 1)
+           (let [result (locks/check-document-locks (vec doc-ids) user-id)]
+             (when (not= :ok result)
+               (throw (ex-info (str "Document " (:document-id result) " is locked by " (:user-id result))
+                               {:code 423 :document-id (:document-id result) :locked-by (:user-id result)})))))
+         (doseq [it items :when (seq (:metadata it))]
+           (metadata/patch-metadata! tx "token" (:id it) (:metadata it)))
+         (when (> (count doc-ids) 1)
+           (op/bump-document-versions! tx doc-ids))
+         (count items))))))
 
 (defn patch-metadata
   "Shallow-merge a metadata patch on a token: keys present set/overwrite,

@@ -9,7 +9,9 @@
   (:require [taoensso.timbre :as log]
             [plaid.sql.common :as psc]
             [plaid.sql.operation :as op :refer [submit-operation!]]
-            [plaid.sql.metadata :as metadata])
+            [plaid.sql.metadata :as metadata]
+            [plaid.server.locks :as locks]
+            [clojure.string])
   (:refer-clojure :exclude [get merge format]))
 
 (def attr-keys [:relation/id
@@ -280,6 +282,58 @@
   "Return the document id that owns `span-id`."
   [db span-id]
   (:document_id (psc/fetch-by-id db :spans span-id)))
+
+;; ============================================================
+;; Bulk update
+;; ============================================================
+
+(defn bulk-update
+  "Update the value of, and/or patch the metadata on, many relations in
+  ONE operation. Same contract as `plaid.sql.span/bulk-update`: `items`
+  are `{:id :value? :metadata?}`, the relations may lie in several
+  documents of one project (each version-bumped and lock-checked), and
+  an unknown id refuses the whole update."
+  [db items user-id]
+  (let [ids (mapv :id items)
+        pre-rows (psc/fetch-ids db :relations ids)
+        pre-doc-ids (distinct (map :document_id pre-rows))
+        first-row (first pre-rows)]
+    (submit-operation!
+     [tx db {:type :relation/bulk-update
+             :project (when first-row (project-id db (:id first-row)))
+             :document (when (= 1 (count pre-doc-ids)) (first pre-doc-ids))
+             :description (str "Bulk update " (count items) " relations")
+             :user user-id}]
+     (when (empty? items)
+       (throw (ex-info "Relation list is empty" {:code 400})))
+     (when (not= (count ids) (count (distinct ids)))
+       (throw (ex-info "A relation may appear only once in a bulk update" {:code 400})))
+     (let [rows (psc/fetch-ids tx :relations ids)
+           by-id (into {} (map (juxt :id identity)) rows)
+           missing (remove by-id ids)]
+       (when (seq missing)
+         (throw (ex-info (str "Relations not found: " (clojure.string/join ", " missing))
+                         {:code 404 :ids (vec missing)})))
+       (let [projects (->> rows (map :id) (map #(project-id tx %)) distinct)]
+         (when (not= 1 (count projects))
+           (throw (ex-info "Relations must all belong to one project" {:code 400}))))
+       (doseq [it items :when (contains? it :value)]
+         (validate-atomic-value! (:value it)))
+       (let [doc-ids (distinct (map :document_id rows))]
+         (when (> (count doc-ids) 1)
+           (let [result (locks/check-document-locks (vec doc-ids) user-id)]
+             (when (not= :ok result)
+               (throw (ex-info (str "Document " (:document-id result) " is locked by " (:user-id result))
+                               {:code 423 :document-id (:document-id result) :locked-by (:user-id result)})))))
+         (let [value-pairs (vec (for [it items :when (contains? it :value)]
+                                  [(:id it) {:value (psc/write-json (:value it))}]))]
+           (when (seq value-pairs)
+             (psc/bulk-update-by-id! tx :relations value-pairs)))
+         (doseq [it items :when (seq (:metadata it))]
+           (metadata/patch-metadata! tx "relation" (:id it) (:metadata it)))
+         (when (> (count doc-ids) 1)
+           (op/bump-document-versions! tx doc-ids))
+         (count items))))))
 
 ;; ============================================================
 ;; Bulk create

@@ -439,6 +439,22 @@ class RelationsResource(_Resource):
         """
         return self._request('DELETE', '/api/v1/relations/bulk', body=body, audit_message=audit_message)
 
+    def bulk_update(self, body: list, audit_message=None) -> dict:
+        """Update many relations in a single operation: set values and/or patch metadata.
+
+        Args:
+            body: A list of ``{"id": ..., "value": ..., "metadata": {...}}``
+                objects. ``value`` is set only when the key is present (``None``
+                sends JSON null); ``metadata`` is a patch, a ``None`` value
+                deleting that key. The relations may lie in several documents of
+                one project; every document touched has its version bumped. An
+                unknown id refuses the whole update.
+
+        Returns:
+            ``{"count": n}`` — how many relations were updated.
+        """
+        return self._request('PATCH', '/api/v1/relations/bulk', body=body, audit_message=audit_message)
+
 
 class SpanLayersResource(_Resource):
     def get(self, span_layer_id: str, *, as_of: str | None = None) -> Any:
@@ -622,6 +638,22 @@ class SpansResource(_Resource):
             body: The request body
         """
         return self._request('DELETE', '/api/v1/spans/bulk', body=body, audit_message=audit_message)
+
+    def bulk_update(self, body: list, audit_message=None) -> dict:
+        """Update many spans in a single operation: set values and/or patch metadata.
+
+        Args:
+            body: A list of ``{"id": ..., "value": ..., "metadata": {...}}``
+                objects. ``value`` is set only when the key is present (``None``
+                sends JSON null); ``metadata`` is a patch, a ``None`` value
+                deleting that key. The spans may lie in several documents of
+                one project; every document touched has its version bumped. An
+                unknown id refuses the whole update.
+
+        Returns:
+            ``{"count": n}`` — how many spans were updated.
+        """
+        return self._request('PATCH', '/api/v1/spans/bulk', body=body, audit_message=audit_message)
 
 
 class TextsResource(_Resource):
@@ -2528,6 +2560,21 @@ class TokensResource(_Resource):
             body: The request body
         """
         return self._request('DELETE', '/api/v1/tokens/bulk', body=body, audit_message=audit_message)
+
+    def bulk_update(self, body: list, audit_message=None) -> dict:
+        """Patch the metadata of many tokens in a single operation.
+
+        Args:
+            body: A list of ``{"id": ..., "metadata": {...}}`` objects; each
+                ``metadata`` is a patch, a ``None`` value deleting that key. The
+                tokens may lie in several documents of one project; every document
+                touched has its version bumped. An unknown id refuses the whole
+                update.
+
+        Returns:
+            ``{"count": n}`` — how many tokens were updated.
+        """
+        return self._request('PATCH', '/api/v1/tokens/bulk', body=body, audit_message=audit_message)
 
     def split(self, token_id: str, position: int, audit_message=None) -> Any:
         """Split a token at a Unicode code-point offset.

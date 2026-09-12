@@ -1197,6 +1197,25 @@ except Exception as e:
 
 Owing to some implementation details, no other writes may be executed while a batch is being processed, so only use them where necessary.
 
+=== Bulk updates
+
+A batch of many single updates is expensive: every request in it is processed on its own inside the one transaction, and each writes its own operation.
+When the changes are all of one kind, use the bulk endpoints instead, which apply a whole list in one operation and one transaction.
+`bulk_create` and `bulk_delete` exist for tokens, spans, relations and vocab links.
+`bulk_update` exists for spans and relations (a value, a metadata patch, or both, per entry) and for tokens (a metadata patch per entry):
+
+[,python]
+----
+client.spans.bulk_update([
+    {"id": span_one, "value": "NOUN", "metadata": {"prov": "inferred"}},
+    {"id": span_two, "metadata": {"provConfirmed": True}},
+])
+----
+
+A `value` is set only when the key is present (`null` sets a null value); a `metadata` patch sets the keys it names and deletes a key whose value is `null`, leaving the rest alone.
+The entries may lie in several documents of one project; every document touched has its version bumped.
+An id that does not exist refuses the whole update, so an update never silently skips an entry.
+
 == Trust
 
 For all constraints which you might attempt to enforce using the three mechanisms described above, there is, of course, nothing stopping a malicious user from circumventing them and submitting changes which invalidate your formalism-specific data integrity constraints.

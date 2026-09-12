@@ -56,7 +56,18 @@
 
       :else nil)))
 
+(defn bulk-update-get-project-id
+  "For a bulk update, whose entries carry an id rather than a layer."
+  [{db :db params :parameters}]
+  (when-let [id (-> params :body first :id)]
+    (s/project-id db id)))
+
+(defn bulk-update-get-document-id [{db :db params :parameters}]
+  (when-let [id (-> params :body first :id)]
+    (s/get-doc-id-of-token db (first (:span/tokens (s/get db id))))))
+
 (def span-routes
+
   ["/spans"
 
    ;; Create a new span
@@ -124,6 +135,20 @@
                                     {:status 201 :body {:ids (:extra result)}}
                                     db doc-id)
                                    {:status (or (:code result) 500) :body {:error (:error result)}})))}
+             :patch {:summary "Update many spans in a single operation. Provide an array of objects whose keys are:\n<body>id</body>, the span's id\n<body>value</body>, optional: the new value (present with null to set null)\n<body>metadata</body>, optional: a metadata patch (a null value deletes that key)\nThe spans may lie in several documents of one project; every document touched has its version bumped. An unknown id refuses the whole update."
+                     :middleware [[pra/wrap-writer-required bulk-update-get-project-id]
+                                  [prm/wrap-document-version bulk-update-get-document-id]
+                                  metadata/wrap-inline-metadata-shape-guard]
+                     :parameters {:query [:map [:document-version {:optional true} :int]]
+                                  :body [:sequential [:map [:id :uuid] [:value {:optional true} [:or string? number? boolean? nil?]] [:metadata {:optional true} [:map-of string? any?]]]]}
+                     :handler (fn [{{items :body} :parameters db :db user-id :user/id :as request}]
+                                (let [doc-id (bulk-update-get-document-id request)
+                                      {:keys [success code error extra]} (s/bulk-update db items user-id)]
+                                  (if success
+                                    (prm/assoc-document-version-in-header
+                                     {:status 200 :body {:count extra}}
+                                     db doc-id)
+                                    {:status (or code 500) :body {:error (or error "Internal server error")}})))}
              :delete {:summary "Delete multiple spans in a single operation. Provide an array of IDs."
                       :middleware [[pra/wrap-writer-required bulk-get-project-id]
                                    [prm/wrap-document-version bulk-get-document-id]]

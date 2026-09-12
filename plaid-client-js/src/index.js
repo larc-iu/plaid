@@ -475,6 +475,16 @@ class PlaidClient {
           auditMessage,
           body,
         }),
+      /**
+       * Update many relations in a single operation: set values and/or patch metadata.
+       * @param {Array} body - Objects of the shape `{id, value?, metadata?}`. `value` is set only when the key is present (null sends JSON null); `metadata` is a patch, a null value deleting that key. The relations may lie in several documents of one project; every document touched has its version bumped. An unknown id refuses the whole update.
+       * @returns {Promise<{count: number}>} How many relations were updated.
+       */
+      bulkUpdate: (body, auditMessage) =>
+        this._request("PATCH", "/api/v1/relations/bulk", {
+          auditMessage,
+          body,
+        }),
     };
 
     this.spanLayers = {
@@ -625,6 +635,16 @@ class PlaidClient {
        */
       bulkDelete: (body, auditMessage) =>
         this._request("DELETE", "/api/v1/spans/bulk", { auditMessage, body }),
+      /**
+       * Update many spans in a single operation: set values and/or patch metadata.
+       * @param {Array} body - Objects of the shape `{id, value?, metadata?}`. `value` is set only when the key is present (null sends JSON null); `metadata` is a patch, a null value deleting that key. The spans may lie in several documents of one project; every document touched has its version bumped. An unknown id refuses the whole update.
+       * @returns {Promise<{count: number}>} How many spans were updated.
+       */
+      bulkUpdate: (body, auditMessage) =>
+        this._request("PATCH", "/api/v1/spans/bulk", {
+          auditMessage,
+          body,
+        }),
       /**
        * Replace all metadata for a span.
        * @param {string} spanId - The span ID
@@ -2377,6 +2397,16 @@ class PlaidClient {
        */
       bulkDelete: (body, auditMessage) =>
         this._request("DELETE", "/api/v1/tokens/bulk", { auditMessage, body }),
+      /**
+       * Update many tokens in a single operation: patch metadata.
+       * @param {Array} body - Objects of the shape `{id, metadata}`. `metadata` is a patch, a null value deleting that key. The tokens may lie in several documents of one project; every document touched has its version bumped. An unknown id refuses the whole update.
+       * @returns {Promise<{count: number}>} How many tokens were updated.
+       */
+      bulkUpdate: (body, auditMessage) =>
+        this._request("PATCH", "/api/v1/tokens/bulk", {
+          auditMessage,
+          body,
+        }),
       /**
        * Split a token at a Unicode code-point offset. The original token becomes the
        * left half (keeps its ID, spans, vocab-links); the new right token's ID is returned.

@@ -38,6 +38,17 @@
       (uuid? token-id) (when-let [token (tok/get db token-id)]
                          (tok/get-doc-id-of-text db (:token/text token))))))
 
+(defn bulk-update-get-project-id
+  "For a bulk update, whose entries carry an id rather than a layer."
+  [{db :db params :parameters}]
+  (when-let [id (-> params :body first :id)]
+    (tok/project-id db id)))
+
+(defn bulk-update-get-document-id [{db :db params :parameters}]
+  (when-let [id (-> params :body first :id)]
+    (when-let [token (tok/get db id)]
+      (tok/get-doc-id-of-text db (:token/text token)))))
+
 (def token-routes
   ["/tokens"
 
@@ -121,6 +132,24 @@
                                     {:status 201 :body {:ids (:extra result)}}
                                     db doc-id)
                                    {:status (or (:code result) 500) :body {:error (:error result)}})))}
+             :patch {:summary (str "Patch the metadata of many tokens in a single operation. Provide an array of objects whose "
+                                   "keys are:\n<body>id</body>, the token's id\n"
+                                   "<body>metadata</body>, a metadata patch (a null value deletes that key)\n"
+                                   "The tokens may lie in several documents of one project; every document touched has "
+                                   "its version bumped. An unknown id refuses the whole update.")
+                     :middleware [[pra/wrap-writer-required bulk-update-get-project-id]
+                                  [prm/wrap-document-version bulk-update-get-document-id]
+                                  metadata/wrap-inline-metadata-shape-guard]
+                     :parameters {:query [:map [:document-version {:optional true} :int]]
+                                  :body [:sequential [:map [:id :uuid] [:metadata [:map-of string? any?]]]]}
+                     :handler (fn [{{items :body} :parameters db :db user-id :user/id :as request}]
+                                (let [doc-id (bulk-update-get-document-id request)
+                                      {:keys [success code error extra]} (tok/bulk-patch-metadata db items user-id)]
+                                  (if success
+                                    (prm/assoc-document-version-in-header
+                                     {:status 200 :body {:count extra}}
+                                     db doc-id)
+                                    {:status (or code 500) :body {:error (or error "Internal server error")}})))}
              :delete {:summary (str "Delete multiple tokens in a single operation. Provide an array of IDs. All "
                                     "tokens must belong to the same document (400 otherwise). As with "
                                     "single delete, each deleted token also drags down the descendant tokens nested "
