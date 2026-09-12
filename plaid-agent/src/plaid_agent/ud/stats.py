@@ -72,6 +72,10 @@ def _awaiting_in(doc: UdDoc, field: str, state: str) -> List[tuple]:
     out = []
     for s in doc.sentences:
         for w in s.words:
+            if field == 'deprel':
+                if w.relation_id and prov_state(w.relation_metadata) == state:
+                    out.append((s, w))
+                continue
             sp = w.fields.get(field)
             if sp and sp.value and prov_state(sp.metadata) == state:
                 out.append((s, w))
@@ -85,7 +89,7 @@ REGEX_NOTE = ('(note) The engine matched this pattern in {docs}, but nothing in 
 
 
 def t_search(ws: Workspace, field: str = None, pattern: str = None, document: str = None,
-             whole: bool = False, regex: bool = False, limit: int = 30) -> str:
+             whole: bool = False, regex: bool = False, limit: int = 30, case_sensitive: bool = False) -> str:
     """Words whose field matches, each in its context."""
     if field not in SEARCHABLE:
         raise ToolError(f'Unknown field "{field}". One of: ' + ', '.join(SEARCHABLE))
@@ -93,7 +97,7 @@ def t_search(ws: Workspace, field: str = None, pattern: str = None, document: st
         raise ToolError('Give a pattern to search for.')
     limit = clamp_limit(limit, 30, 200)
     import re as _re
-    spec = rx(pattern, regex=regex, whole=whole)
+    spec = rx(pattern, regex=regex, whole=whole, case_sensitive=bool(case_sensitive))
     try:
         rgx = _re.compile(spec['regex'], _re.I if spec.get('flags') == 'i' else 0)
     except _re.error as e:
@@ -297,10 +301,12 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
     # A per-document count read from a clipped result is the top of a prefix,
     # and this is the tool a session starts from.
     clipped = ''
-    fields = [field] if field else list(FIELDS)
+    # deprel is the tree: the column the parser is least reliable on, and the
+    # one this tool could not see until it was added here.
+    fields = [field] if field else list(FIELDS) + ['deprel']
     for f in fields:
-        if f not in FIELDS:
-            raise ToolError(f'Unknown field "{f}". One of: ' + ', '.join(FIELDS))
+        if f not in FIELDS + ('deprel',):
+            raise ToolError(f'Unknown field "{f}". One of: ' + ', '.join(FIELDS + ('deprel',)))
     out: List[str] = []
 
     if kind == 'missing':
@@ -324,8 +330,13 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
             return _truncate('\n'.join(out))
 
         for f in fields:
-            where = [c.word('?t'),
-                     ['not', ['span', '?s', {'layer': c.p.layer(f)}], c.on('?s')]]
+            if f == 'deprel':
+                # A word with no head: no relation lands on its lemma span (a
+                # word with no lemma span has no head either).
+                where = [c.word('?t'), ['not', c.field('lemma', '?l'), c.on('?l'), c.dep('?r', target='?l')]]
+            else:
+                where = [c.word('?t'),
+                         ['not', ['span', '?s', {'layer': c.p.layer(f)}], c.on('?s')]]
             docs = c.documents_with(where, '?t')
             clipped = clipped or c.clipped_note('documents')
             total = sum(n for _, n in docs)
@@ -363,8 +374,13 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
         return _truncate('\n'.join(out))
 
     for f in fields:
-        where = [c.field(f, '?s', metadata=stamp), c.unconfirmed('?s')]
-        docs = c.documents_with(where, '?s')
+        if f == 'deprel':
+            where = [c.dep('?r', metadata=stamp),
+                     ['not', ['relation', '?r', {'metadata': {'provConfirmed': True}}]]]
+            docs = c.documents_with(where, '?r')
+        else:
+            where = [c.field(f, '?s', metadata=stamp), c.unconfirmed('?s')]
+            docs = c.documents_with(where, '?s')
         # Before the early continue: a clipped read that found nothing for this
         # field is exactly the one that must say so.
         clipped = clipped or c.clipped_note('documents')
@@ -461,7 +477,7 @@ def t_comments(ws: Workspace, document: str = None, ref: str = None, limit: int 
         thing = ws.word(document, ref)
         if not isinstance(thing, _S):
             raise ToolError(f'{ref} is not a sentence. A comment sits on a sentence or on the document.')
-        kw = {'entity_type': 'sentence', 'entity_id': thing.id}
+        kw = {'entity_id': thing.id}  # the app anchors a sentence's comments on its token
     try:
         got = ws.client.comments.list(ws.project.id, **kw) or []
     except Exception as e:  # noqa: BLE001 - the model reads the server's complaint

@@ -21,7 +21,7 @@ from .shape import apply_set_words, finish_set_words
 
 KINDS = ('set_span', 'set_head', 'del_relation', 'confirm', 'run_parse', 'set_words',
          'split_sentence', 'merge_sentences', 'restore_document', 'confirm_scope', 'discard_scope',
-         'replace_scope', 'set_deprel')
+         'replace_scope', 'set_deprel', 'add_comment')
 # A scope names a document and fields, or a field and a pattern, and is
 # resolved to spans at approval.
 SCOPES = ('confirm_scope', 'discard_scope', 'replace_scope')
@@ -51,6 +51,7 @@ REQUIRED = {
     'discard_scope': ('document_id', 'fields'),
     'replace_scope': ('field', 'pattern'),
     'set_deprel': ('relation_id', 'deprel'),
+    'add_comment': ('entity_type', 'entity_id', 'body'),
 }
 
 
@@ -323,6 +324,11 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
                 else:
                     continue  # nothing to clear
                 counts['field values'] += 1
+            elif kind == 'add_comment':
+                # Unaudited, like every comment; under the requester's name.
+                b.add(lambda o=op: client.comments.create(o['entity_type'], o['entity_id'], o['body'],
+                                                          anchor_label=o.get('anchor_label') or None))
+                counts['comments'] += 1
             elif kind == 'set_deprel':
                 b.add(lambda i=op['relation_id'], v=op['deprel']: client.relations.update(i, v))
                 b.add(lambda i=op['relation_id']: client.relations.patch_metadata(i, restamp()))
@@ -458,6 +464,8 @@ def summarize(ops: List[Dict[str, Any]]) -> str:
             c['confirmation'] += n
         elif kind == 'set_deprel':
             c['relabeled dependency'] += 1
+        elif kind == 'add_comment':
+            c['comment'] += 1
         elif kind == 'replace_scope':
             c['relabeled dependency' if op.get('field') == 'deprel' else 'field value'] += n
         elif kind == 'discard_scope':

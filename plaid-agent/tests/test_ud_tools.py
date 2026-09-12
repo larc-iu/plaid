@@ -284,7 +284,7 @@ def test_every_declared_tool_is_a_plan_tool_or_is_not(ws):
     assert WRITE_TOOLS == {'set_field', 'set_head', 'del_relation', 'confirm',
                            'discard_predictions', 'run_parse', 'set_words',
                            'split_sentence', 'merge_sentences', 'restore_document',
-                           'replace_in_field'}
+                           'replace_in_field', 'add_comment'}
     assert 'read_document' in names and 'read_document' not in WRITE_TOOLS
 
 
@@ -828,3 +828,44 @@ def test_a_review_over_several_documents_is_one_scope_op_each(ws):
     ws.client.query = lambda body: {'return': 'aggregate', 'results': []}
     ws.ops.clear()
     assert 'Nothing is waiting for review anywhere' in run(ws, 'confirm', documents='all')
+
+
+def test_the_worklist_sees_unconfirmed_dependencies(ws):
+    """The four span columns were the only ones the worklist walked, so a
+    document whose parser output was confirmed except for the tree said
+    nothing was waiting, while confirm and discard_predictions saw the tree."""
+    from ud_fixtures import FakeClient, document_raw, project_raw
+    raw = document_raw()
+    rel = next(r for sl in raw['text_layers'][0]['token_layers'][2]['span_layers'] if sl['id'] == LEMMA
+               for rl in sl['relation_layers'] for r in rl['relations'] if r['id'] == 'r-3')
+    rel['metadata'] = {'prov': 'inferred', 'provSource': 'service:ud:parse'}
+    client = FakeClient(project=project_raw(), documents={'ud1': raw})
+    w = Workspace(client, load_project(client, PID))
+    out = run(w, 'worklist', kind='unverified', document='Viaje', field='deprel')
+    assert 'deprel: 1 unconfirmed machine value(s) in "Viaje"' in out and 's1.w4  obl' in out
+    out = run(w, 'worklist', kind='missing', document='Viaje', field='deprel')
+    assert 'deprel: 2 word(s) with none in "Viaje"' in out  # s2.w1 and s2.w2 have no head
+
+
+def test_a_comment_is_a_plan_op_on_a_sentence_or_the_document(ws):
+    out = run(ws, 'add_comment', document='Viaje', ref='s1', body='Is "al" right here?')
+    assert out == 'Planned a comment on s1 of "Viaje".'
+    op = ws.ops[0]
+    assert op['kind'] == 'add_comment' and op['entity_type'] == 'token' and op['entity_id'] == 'us-1'
+    assert op['anchor_label'].startswith('s1: Vamos al mar.')
+    assert 'is not a sentence' in run(ws, 'add_comment', document='Viaje', ref='s1.w2', body='x')
+    run(ws, 'add_comment', document='Viaje', body='Whole document note')
+    assert ws.ops[1]['entity_type'] == 'document' and ws.ops[1]['ref'] is None
+    assert summarize(ws.ops) == '2 comments'
+    from fixtures import Recorder
+    ws.client.comments = Recorder(ws.client.log, 'comments')
+    counts = execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
+    assert counts == {'comments': 2}
+    calls = [(m, a) for r, m, a, k in ws.client.batches[0]]
+    assert calls[0][0] == 'create' and calls[0][1][:2] == ('token', 'us-1')
+
+
+def test_search_matches_case_only_when_asked(ws):
+    assert 's1.w1' in run(ws, 'search', field='form', pattern='vamos', document='Viaje')
+    assert run(ws, 'search', field='form', pattern='vamos', document='Viaje', case_sensitive=True).startswith('No form')
+    assert 's1.w1' in run(ws, 'search', field='form', pattern='Vamos', document='Viaje', case_sensitive=True)

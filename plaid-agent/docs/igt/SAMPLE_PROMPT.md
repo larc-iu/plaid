@@ -93,7 +93,7 @@ The documents by name, a page at a time, optionally filtered by a name substring
 
 ### read_document
 
-Read a document as compact interlinear text: baseline sentences, sentence fields, and one line per word with its segmentation, glosses, word fields, orthographies, and lexicon links. Up to 40 sentences per call.
+Read a document as compact interlinear text: baseline sentences, sentence fields, and one line per word with its segmentation, glosses, word fields, orthographies, and lexicon links. Up to 40 sentences per call, fewer when they are long: the header says which were shown and where to continue.
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `from_sentence` (integer): First sentence number to show (default 1).
@@ -107,6 +107,7 @@ Find words, morphemes, field values, or lexicon entries matching a pattern (case
 - `where` (string): "baseline" (word forms, default), "morpheme" (morpheme forms), "lexicon" (entries), or a field name (e.g. "Gloss", "Translation").
 - `document` (string): Document id or exact name (see project_overview).
 - `regex` (boolean): Treat pattern as a regular expression.
+- `case_sensitive` (boolean): Match case too (off by default: "ar" finds "Ar").
 - `limit` (integer): Max hits to return (default 40, max 200).
 
 ### read_lexicon
@@ -226,6 +227,7 @@ Every occurrence of a morpheme form (default), word form, or field value (whole-
 - `where` (string): "morpheme" (default), "baseline" (word forms), or a Word/Morpheme field name.
 - `document` (string): Document id or exact name (see project_overview).
 - `regex` (boolean)
+- `case_sensitive` (boolean): Match case too (off by default: "ar" finds "Ar").
 - `limit` (integer): Max occurrences to list (default 60); the pattern tally always covers all.
 
 ### analyses_of
@@ -467,6 +469,7 @@ PLAN: substitute inside every value of a field, project-wide or in one document:
 - `pattern` (string, required)
 - `replacement` (string, required)
 - `regex` (boolean)
+- `case_sensitive` (boolean): Match case too (off by default: "ar" finds "Ar").
 - `whole_value` (boolean)
 - `document` (string): Document id or exact name (see project_overview).
 
@@ -477,6 +480,7 @@ PLAN: change the baseline spelling of every word matching a pattern (an orthogra
 - `pattern` (string, required)
 - `replacement` (string, required)
 - `regex` (boolean)
+- `case_sensitive` (boolean): Match case too (off by default: "ar" finds "Ar").
 - `whole_word` (boolean)
 - `document` (string): Document id or exact name (see project_overview).
 - `morpheme_forms` (boolean)

@@ -76,7 +76,7 @@ Running code:
 
 ## Tools
 
-29 tools, in the order the model receives them: 11 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
+30 tools, in the order the model receives them: 12 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
 
 ### project_overview
 
@@ -235,6 +235,7 @@ Words whose column matches a pattern, each shown in its context with the hit in 
 - `whole` (boolean): Match the whole value only.
 - `regex` (boolean)
 - `limit` (integer)
+- `case_sensitive` (boolean): Match case too (off: "the" finds "The"). The same switch replace_in_field takes.
 
 ### frequency_list
 
@@ -256,7 +257,7 @@ Places where the corpus disagrees with itself: one lemma under several UPOS, one
 What is unfinished. kind "unverified" is machine output nobody has confirmed, "contributed" a contributor's unreviewed work, "missing" words with no value in a column at all. Without a document it counts per document, so a session has somewhere to start. WITH A DOCUMENT it names the words themselves, by reference, whichever kind you ask for: that is the list to plan from, and it saves reading or searching the document to find them.
 
 - `kind` (one of `unverified`, `contributed`, `missing`)
-- `field` (one of `lemma`, `upos`, `xpos`, `features`): Which column: lemma, upos, xpos or features.
+- `field` (one of `lemma`, `upos`, `xpos`, `features`, `deprel`): One column; without it, all five including the tree (deprel).
 - `document` (string): Document id or exact name (see project_overview).
 - `limit` (integer): How many rows per column (default 20, max 100).
 
@@ -276,6 +277,14 @@ What people have written to each other on a document or one of its sentences. Th
 - `document` (string, required): Document id or exact name (see project_overview).
 - `ref` (string): One sentence, e.g. "s3".
 - `limit` (integer)
+
+### add_comment
+
+PLAN: leave a note for the annotators on a sentence or on the document, under the user's name. A note, never annotation: use it for a question or an observation the data cannot hold, not for a change.
+
+- `document` (string, required): Document id or exact name (see project_overview).
+- `ref` (string): One sentence, e.g. "s3"; leave it out for the document.
+- `body` (string, required)
 
 ### web_search
 

@@ -703,13 +703,15 @@ def _refs(refs) -> List[str]:
     return out
 
 
-def _matcher(pattern: str, regex: bool):
+def _matcher(pattern: str, regex: bool, case_sensitive: bool = False):
     if regex:
         try:
-            rx = re.compile(pattern, re.IGNORECASE)
+            rx = re.compile(pattern, 0 if case_sensitive else re.IGNORECASE)
         except re.error as e:
             raise ToolError(f'Bad regex: {e}')
         return lambda s: bool(rx.search(s or ''))
+    if case_sensitive:
+        return lambda s: (pattern or '') in (s or '')
     p = (pattern or '').casefold()
     return lambda s: p in (s or '').casefold()
 
@@ -833,10 +835,10 @@ def t_read_document(ws: Workspace, document: str, from_sentence: int = 1, to_sen
 
 
 def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document: Optional[str] = None,
-             regex: bool = False, limit: int = 40) -> str:
+             regex: bool = False, limit: int = 40, case_sensitive: bool = False) -> str:
     if not pattern:
         raise ToolError('Give a pattern (to list items LACKING a value, use worklist).')
-    match = _matcher(pattern, bool(regex))
+    match = _matcher(pattern, bool(regex), bool(case_sensitive))
     limit = max(1, min(int(limit or 40), 200))
     where_name = (where or 'baseline').strip()
     if where_name.lower().startswith('field:'):
@@ -860,7 +862,7 @@ def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document
         field = ws.project.field(where_name)
     if not ws.use_scan(document):
         from .corpus import q_search
-        out, total = q_search(ws, pattern, where_l, field, bool(regex), limit)
+        out, total = q_search(ws, pattern, where_l, field, bool(regex), limit, bool(case_sensitive))
         return _finish(out, total, limit, 'hits')
     docs = [ws.doc(document)] if document else ws.all_docs()
     for doc in docs:
@@ -954,7 +956,7 @@ def _bracket_line(w: Word, hit: Morpheme, field: Optional[str]) -> str:
 
 
 def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document: Optional[str] = None,
-                  regex: bool = False, limit: int = 60) -> str:
+                  regex: bool = False, limit: int = 60, case_sensitive: bool = False) -> str:
     """Every occurrence of a morpheme form, word form, or field value with
     its aligned context: the containing word's segmentation and morpheme
     glosses (hit in brackets) and the neighbouring words, plus a tally of the
@@ -971,12 +973,14 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
             raise ToolError('concordance works on words and morphemes; use search for sentence fields')
     if not ws.use_scan(document):
         from .corpus import q_concordance_hits
-        hits, total = q_concordance_hits(ws, pattern, where_l, field, bool(regex), limit)
+        hits, total = q_concordance_hits(ws, pattern, where_l, field, bool(regex), limit, bool(case_sensitive))
     else:
         # Whole-form match by default (a concordance of "ar" must not include
         # "para"). Regex for anything looser.
         if regex:
-            match = _matcher(pattern, True)
+            match = _matcher(pattern, True, bool(case_sensitive))
+        elif case_sensitive:
+            match = lambda s: (s or '') == pattern  # noqa: E731
         else:
             wanted = pattern.casefold()
             match = lambda s: (s or '').casefold() == wanted  # noqa: E731
@@ -2748,7 +2752,8 @@ TOOLS = [
          'limit': {'type': 'integer'}, 'offset': {'type': 'integer'}}, []),
     _fn('read_document',
         'Read a document as compact interlinear text: baseline sentences, sentence fields, and one line per word '
-        'with its segmentation, glosses, word fields, orthographies, and lexicon links. Up to 40 sentences per call.',
+        'with its segmentation, glosses, word fields, orthographies, and lexicon links. Up to 40 sentences per '
+        'call, fewer when they are long: the header says which were shown and where to continue.',
         {'document': _DOC,
          'from_sentence': {'type': 'integer', 'description': 'First sentence number to show (default 1).'},
          'to_sentence': {'type': 'integer', 'description': 'Last sentence number to show.'}},
@@ -2761,7 +2766,7 @@ TOOLS = [
          'where': {'type': 'string', 'description': '"baseline" (word forms, default), "morpheme" (morpheme forms), '
                                                     '"lexicon" (entries), or a field name (e.g. "Gloss", "Translation").'},
          'document': _DOC,
-         'regex': {'type': 'boolean', 'description': 'Treat pattern as a regular expression.'},
+         'regex': {'type': 'boolean', 'description': 'Treat pattern as a regular expression.'}, 'case_sensitive': {'type': 'boolean', 'description': 'Match case too (off by default: "ar" finds "Ar").'},
          'limit': {'type': 'integer', 'description': 'Max hits to return (default 40, max 200).'}},
         ['pattern']),
     _fn('read_lexicon',
@@ -2851,7 +2856,7 @@ TOOLS = [
         'questions (what precedes/follows X, does X vary by context) instead of reading whole documents.',
         {'pattern': {'type': 'string'},
          'where': {'type': 'string', 'description': '"morpheme" (default), "baseline" (word forms), or a Word/Morpheme field name.'},
-         'document': _DOC, 'regex': {'type': 'boolean'},
+         'document': _DOC, 'regex': {'type': 'boolean'}, 'case_sensitive': {'type': 'boolean', 'description': 'Match case too (off by default: "ar" finds "Ar").'},
          'limit': {'type': 'integer', 'description': 'Max occurrences to list (default 60); the pattern tally always covers all.'}},
         ['pattern']),
     _fn('analyses_of',
@@ -3059,14 +3064,14 @@ TOOLS += [
         'whole_value=true for exact values, regex=true for patterns with backreferences (\\1). field="morpheme form" '
         'rewrites stored morpheme forms instead of a field. One call plans every change; the plan lists each.',
         {'field': {'type': 'string'}, 'pattern': {'type': 'string'}, 'replacement': {'type': 'string'},
-         'regex': {'type': 'boolean'}, 'whole_value': {'type': 'boolean'}, 'document': _DOC},
+         'regex': {'type': 'boolean'}, 'case_sensitive': {'type': 'boolean', 'description': 'Match case too (off by default: "ar" finds "Ar").'}, 'whole_value': {'type': 'boolean'}, 'document': _DOC},
         ['field', 'pattern', 'replacement']),
     _fn('respell_all',
         'PLAN: change the baseline spelling of every word matching a pattern (an orthography change), keeping each '
         'word\'s analysis, glosses, and links. The same replacement is carried into the stored morpheme forms of '
         'those words (morpheme_forms=false to leave them) and into lexicon headwords (lexicon=false to leave them; '
         'the pattern is applied to every entry, not only linked ones). Patterns apply within words only.',
-        {'pattern': {'type': 'string'}, 'replacement': {'type': 'string'}, 'regex': {'type': 'boolean'},
+        {'pattern': {'type': 'string'}, 'replacement': {'type': 'string'}, 'regex': {'type': 'boolean'}, 'case_sensitive': {'type': 'boolean', 'description': 'Match case too (off by default: "ar" finds "Ar").'},
          'whole_word': {'type': 'boolean'}, 'document': _DOC, 'morpheme_forms': {'type': 'boolean'},
          'lexicon': {'type': 'boolean'}}, ['pattern', 'replacement']),
     _fn('copy_to_orthography',

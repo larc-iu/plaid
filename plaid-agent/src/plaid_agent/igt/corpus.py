@@ -345,10 +345,11 @@ def _spread_note(shown: List[str], docs: int) -> List[str]:
     return shown
 
 
-def q_search(ws: Workspace, pattern: str, where_l: str, field, regex: bool, limit: int) -> Tuple[List[str], int]:
+def q_search(ws: Workspace, pattern: str, where_l: str, field, regex: bool, limit: int,
+             case_sensitive: bool = False) -> Tuple[List[str], int]:
     """Hits for search over the whole project: (lines, total)."""
     c = ws.corpus
-    spec = rx(pattern, regex=regex)
+    spec = rx(pattern, regex=regex, case_sensitive=case_sensitive)
     if where_l == 'baseline':
         where = [c.word('?t', value=spec)]
         total = c.word_count(where)
@@ -678,11 +679,12 @@ q_corpus_numbers.empty = _empty_numbers
 
 # --- concordance -------------------------------------------------------------------
 
-def q_concordance_hits(ws: Workspace, pattern: str, where_l: str, field, regex: bool, limit: int):
+def q_concordance_hits(ws: Workspace, pattern: str, where_l: str, field, regex: bool, limit: int,
+                       case_sensitive: bool = False):
     """[(doc, sentence, word, hit morpheme|None)] for the shown occurrences,
     ordered by document and position, and the total number of occurrences."""
     c = ws.corpus
-    spec = rx(pattern, regex=regex, whole=not regex)
+    spec = rx(pattern, regex=regex, whole=not regex, case_sensitive=case_sensitive)
     if where_l == 'baseline':
         where = [c.word('?w', value=spec)]
         total = c.word_count(where, '?w')

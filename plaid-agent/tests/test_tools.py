@@ -645,3 +645,11 @@ def test_a_respelling_past_the_cap_is_one_op_that_a_reshape_cannot_join(monkeypa
         validate_ops(w.ops + [{'kind': 'split_word', 'word_id': 'w-1', 'position': 2, 'morpheme_ids': [], 'doc': 'd1'}])
     counts = execute_plan(w.client, w.plan_payload()['ops'], source='s', label='l', project=w.project)
     assert counts.get('respellings') == 2
+
+
+def test_igt_search_and_concordance_match_case_only_when_asked():
+    w = scan_ws(FakeClient())
+    assert 's1.w1' in call_tool(w, 'search', {'pattern': 'ali', 'where': 'baseline'})
+    assert 'No hits' in call_tool(w, 'search', {'pattern': 'ali', 'where': 'baseline', 'case_sensitive': True}) \
+        or call_tool(w, 'search', {'pattern': 'ali', 'where': 'baseline', 'case_sensitive': True}).startswith('0 ')
+    assert 's1.w1' in call_tool(w, 'search', {'pattern': 'Ali', 'where': 'baseline', 'case_sensitive': True})

@@ -978,7 +978,9 @@ TOOLS += [
         {'field': {'type': 'string', 'enum': list(SEARCHABLE)},
          'pattern': {'type': 'string', 'description': 'A literal substring unless regex is true.'},
          'document': _DOC, 'whole': {'type': 'boolean', 'description': 'Match the whole value only.'},
-         'regex': {'type': 'boolean'}, 'limit': {'type': 'integer'}},
+         'regex': {'type': 'boolean'}, 'limit': {'type': 'integer'},
+         'case_sensitive': {'type': 'boolean', 'description': 'Match case too (off: "the" finds "The"). '
+                                                              'The same switch replace_in_field takes.'}},
         ['field', 'pattern']),
     _fn('frequency_list',
         'The commonest values of one column, with counts. Across the project, or inside one document. '
@@ -999,7 +1001,9 @@ TOOLS += [
         'ask for: that is the list to plan from, and it saves reading or searching the document '
         'to find them.',
         {'kind': {'type': 'string', 'enum': list(WORKLIST_KINDS)},
-         'field': _FIELD, 'document': _DOC,
+         'field': {'type': 'string', 'enum': list(FIELDS) + ['deprel'],
+                   'description': 'One column; without it, all five including the tree (deprel).'},
+         'document': _DOC,
          'limit': {'type': 'integer', 'description': 'How many rows per column (default 20, '
                                                      'max 100).'}}, []),
     _fn('recent_changes',
@@ -1013,10 +1017,43 @@ TOOLS += [
         'notes between annotators, never annotation.',
         {'document': _DOC, 'ref': {'type': 'string', 'description': 'One sentence, e.g. "s3".'},
          'limit': {'type': 'integer'}}, ['document']),
+    _fn('add_comment',
+        'PLAN: leave a note for the annotators on a sentence or on the document, under the user\'s '
+        'name. A note, never annotation: use it for a question or an observation the data cannot '
+        'hold, not for a change.',
+        {'document': _DOC, 'ref': {'type': 'string', 'description': 'One sentence, e.g. "s3"; leave it '
+                                                                    'out for the document.'},
+         'body': {'type': 'string'}}, ['document', 'body']),
 ]
+
+def t_add_comment(ws: Workspace, document: str = None, body: str = None, ref: str = None) -> str:
+    """PLAN: a note on a sentence or on the document."""
+    body = (body or '').strip()
+    if not body:
+        raise ToolError('Give body: the text of the note.')
+    if len(body) > 10000:
+        raise ToolError('A comment holds at most 10000 characters.')
+    doc = ws.doc(document)
+    _no_restore_planned(ws)
+    if ref:
+        thing = resolve(doc, str(ref))
+        if not isinstance(thing, Sentence):
+            raise ToolError(f'{ref} is not a sentence. A comment sits on a sentence (s3) or on the document.')
+        entity_type, entity_id = 'token', thing.id
+        anchor = f's{thing.index}: {thing.text[:120]}'
+        where = f's{thing.index}'
+    else:
+        entity_type, entity_id, anchor, where = 'document', doc.id, doc.name, None
+    short = body[:60] + ('…' if len(body) > 60 else '')
+    ws.add_op({'kind': 'add_comment', 'entity_type': entity_type, 'entity_id': entity_id, 'body': body,
+               'anchor_label': anchor[:200], 'document_id': doc.id, 'ref': where,
+               'label': f'comment on {where or "the document"}: "{short}"'})
+    return f'Planned a comment on {where or "the document"} of "{doc.name}".'
+
 
 _IMPL = {
     'project_overview': t_project_overview,
+    'add_comment': t_add_comment,
     'search': t_search,
     'frequency_list': t_frequency_list,
     'check_consistency': t_check_consistency,

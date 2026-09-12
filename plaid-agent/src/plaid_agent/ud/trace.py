@@ -125,6 +125,8 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
         scope = plural(count(a), 'word') if a.get('refs') else 'every unconfirmed machine value'
         return f'Planned discarding {scope}{in_doc(a)}{across(a)}'
 
+    if name == 'add_comment':
+        return f'Planned a comment on {a.get("ref") or "the document"}{in_doc(a)}'
     if name == 'run_code':
         return 'Ran code over the project'
     if name == 'code_help':
