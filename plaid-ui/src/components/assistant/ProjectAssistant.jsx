@@ -45,6 +45,7 @@ import {
   serviceCache,
   lastOpen,
   jobListeners,
+  jobs,
 } from './jobs.js';
 
 // The Assistant tab: a chat with whatever `assist` service(s) the operator
@@ -236,6 +237,13 @@ export const ProjectAssistant = ({
   activeRef.current = active;
   const convsRef = useRef(convs);
   convsRef.current = convs;
+  // The listener above is mounted once, so the project it compares against
+  // travels by ref.
+  const projectIdRef = useRef(projectId);
+  projectIdRef.current = projectId;
+  // Bumped whenever a job in another project reports, so the count below is
+  // recomputed. The jobs themselves live outside React.
+  const [elsewhereTick, setElsewhereTick] = useState(0);
 
   // Only ONLINE assist services OF THIS APP can take a turn: a conversation's
   // record is namespaced by `adapter.app`, the same value the service
@@ -419,6 +427,16 @@ export const ProjectAssistant = ({
   // shown; a finished job always refreshes the sidebar entry.
   useEffect(() => {
     const onJob = (j) => {
+      // A job outlives the screen it was started from and the registry is
+      // global, so once the panel stopped being unmounted on a navigation, a
+      // job in ANOTHER project began arriving here while it runs. Its sidebar
+      // row belongs to that project's list and its writes did not touch
+      // anything on screen in this one. Counted, so the way back to it can be
+      // offered, and otherwise left alone.
+      if (j.projectId !== projectIdRef.current) {
+        setElsewhereTick((n) => n + 1);
+        return;
+      }
       if (j.done) setConvs(upsert(j.result.meta));
       // A plan that landed changed the project, so whatever is showing it
       // (the document beside this panel) is now stale.
@@ -509,6 +527,14 @@ export const ProjectAssistant = ({
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' });
   }, [active?.display.length, busy, progress, partial]);
+
+  // Turns still running in another project. Navigating never stops one (the
+  // record gets the outcome either way), and a reader who walked away from a
+  // question should not have to remember which project they asked it in.
+  const elsewhere = useMemo(() => {
+    void elsewhereTick;
+    return [...jobs.values()].filter((j) => !j.done && j.projectId && j.projectId !== projectId);
+  }, [elsewhereTick, projectId]);
 
   // How full this thread is, from the newest reply that reported it.
   const usage = useMemo(() => latestUsage(active?.display), [active?.display]);
@@ -765,6 +791,18 @@ export const ProjectAssistant = ({
             </>
           )}
           <div className="ml-auto flex items-center gap-2">
+            {elsewhere.length > 0 && (
+              <Link
+                to={adapter.convHref(elsewhere[0].projectId, elsewhere[0].id)}
+                className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                title="Go to the turn still running"
+              >
+                <Loader2 className="h-3 w-3 animate-spin" />
+                {elsewhere.length === 1
+                  ? '1 running elsewhere'
+                  : `${elsewhere.length} running elsewhere`}
+              </Link>
+            )}
             <UsageMeter usage={usage} spend={spend} />
             {panel && (
               <>

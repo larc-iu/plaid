@@ -389,3 +389,57 @@ test('the tab can list conversations from every project, and links them there', 
     new RegExp(`/projects/${projectId}\\?tab=assistant&conversation=${here}$`),
   );
 });
+
+test('a turn running in another project is not mistaken for one here', async ({ page }) => {
+  // Navigating never stops a turn: the record gets the outcome either way. But
+  // once the panel stopped being unmounted on a navigation, a job in another
+  // project started arriving at the one on screen, whose list it does not
+  // belong in. It is counted instead, with the way back to it.
+  await seedAuth(page);
+  await withAssistant(page);
+  await analyze(page, documentId);
+  await expect(page.locator('.igt-sentence').first()).toBeVisible();
+  await openDock(page);
+  const panel = panelOf(page);
+
+  // A job for another project, put straight into the registry the way a real
+  // one lives there. No service is needed: what is under test is which project
+  // the panel attributes it to.
+  const foreign = await page.evaluate(() => {
+    const reg = globalThis.__plaidAssistantJobs;
+    const id = 'e2e-foreign-conversation';
+    reg.jobs.set(id, {
+      id,
+      projectId: 'e2e-foreign-project',
+      kind: 'turn',
+      conv: { id, messages: [], display: [] },
+      progress: 'Thinking…',
+      steps: [],
+      done: false,
+    });
+    reg.jobListeners.forEach((fn) => fn(reg.jobs.get(id)));
+    return id;
+  });
+
+  const back = panel.getByRole('link', { name: '1 running elsewhere' });
+  await expect(back).toBeVisible();
+  await expect(back).toHaveAttribute(
+    'href',
+    new RegExp(`/projects/e2e-foreign-project\\?tab=assistant&conversation=${foreign}$`),
+  );
+  // And it is not reported as this conversation's own work: the composer is
+  // still usable here.
+  await expect(panel.getByRole('textbox')).toBeEnabled();
+
+  // Gone once it finishes, without its row joining this project's list.
+  await page.evaluate((id) => {
+    const reg = globalThis.__plaidAssistantJobs;
+    const j = reg.jobs.get(id);
+    j.done = true;
+    j.result = { conv: j.conv, meta: { id, title: 'foreign thread', updatedAt: '2030-01-01' } };
+    reg.jobListeners.forEach((fn) => fn(j));
+    reg.jobs.delete(id);
+  }, foreign);
+  await expect(back).toHaveCount(0);
+  await expect(panel.getByText('foreign thread')).toHaveCount(0);
+});
