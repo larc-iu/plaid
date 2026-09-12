@@ -143,6 +143,20 @@ export class IgtDocument {
   // fetch. Only the document is snapshot-dependent: `load` deliberately reads
   // project config and vocab LIVE even for a historical view (layer structure is
   // immutable), so re-fetching those per click could not return anything new.
+  /** Re-read this document IN PLACE, keeping its identity.
+   *
+   * `atAsOf` returns a NEW IgtDocument, which is right for time travel (the
+   * snapshot really is a different document) and wrong for a refresh: the
+   * Analyze island's mount effect is keyed on doc identity, so a new object
+   * destroys and rebuilds the island and the reader loses their scroll
+   * position, the focused cell and any open popover. This emits instead, which
+   * the island repaints from. Use it whenever the document the user is looking
+   * at has simply changed underneath them.
+   */
+  async reload() {
+    await this._reload();
+  }
+
   async atAsOf(asOf) {
     const raw = await this._client.documents.get(this.id, true, asOf || undefined);
     return new IgtDocument({

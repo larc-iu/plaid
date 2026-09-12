@@ -193,10 +193,13 @@ const DocumentEditor = () => {
   // restore dialog does.
   const reloadForAssistant = useCallback(async () => {
     if (!doc) return;
-    const next = await doc.atAsOf(asOf ?? null);
-    next.onError = doc.onError;
-    setDoc(next);
-  }, [doc, asOf]);
+    // IN PLACE, not a swap for a fresh IgtDocument. The island's mount effect
+    // is keyed on doc identity, so a swap tore the grid down and rebuilt it:
+    // the reader lost their scroll position, the focused cell and any open
+    // popover, for a change they had just approved and wanted to look at.
+    // `reload` keeps the identity and emits, and the island repaints.
+    await doc.reload();
+  }, [doc]);
 
   // A citation into THIS document scrolls the grid instead of opening a second
   // browser tab. The island owns the scrolling, so it is asked over the same
@@ -597,14 +600,12 @@ const DocumentEditor = () => {
         onRestored={async () => {
           // Back to the live state, and the history rail shows the restore as
           // its newest entry. From history the snapshot effect re-reads the
-          // document; from live (the toast's Undo) it is swapped for a fresh
-          // read here, since setting asOf to null again changes nothing.
+          // document; from live (the toast's Undo) it is re-read IN PLACE here,
+          // since setting asOf to null again changes nothing. In place because
+          // a new IgtDocument rebuilds the island and throws away the reader's
+          // position in a document they have just changed and want to check.
           if (asOf != null) handleSelectHistoryEntry(null);
-          else if (doc) {
-            const next = await doc.atAsOf(null);
-            next.onError = doc.onError;
-            setDoc(next);
-          }
+          else if (doc) await doc.reload();
           await history.fetchAuditLog();
         }}
       />

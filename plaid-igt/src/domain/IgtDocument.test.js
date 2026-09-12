@@ -2190,3 +2190,32 @@ describe('copyDocument', () => {
     expect(await doc.copyDocument('Doc, copy')).toBe(false);
   });
 });
+
+describe('reload', () => {
+  it('re-reads in place, keeping identity and telling subscribers', async () => {
+    // The Analyze island's mount effect is keyed on doc IDENTITY, so a refresh
+    // that hands React a new IgtDocument destroys and rebuilds the island: the
+    // reader loses their scroll position, the focused cell and any open
+    // popover. `atAsOf` is right for time travel, which really is a different
+    // document, and wrong for "what you are looking at just changed".
+    const client = makeFakeClient();
+    const doc = makeDoc({ client });
+    const before = doc.dataVersion;
+    let emitted = 0;
+    doc.subscribe(() => {
+      emitted += 1;
+    });
+
+    const returned = await doc.reload();
+
+    expect(returned).toBeUndefined(); // nothing to swap in
+    expect(emitted).toBeGreaterThan(0);
+    expect(doc.dataVersion).toBeGreaterThan(before);
+  });
+
+  it('atAsOf still returns a NEW document, because a snapshot is one', async () => {
+    const doc = makeDoc();
+    const snapshot = await doc.atAsOf('2026-01-01T00:00:00Z');
+    expect(snapshot).not.toBe(doc);
+  });
+});
