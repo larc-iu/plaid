@@ -9,7 +9,9 @@ description = "Bring-your-own-model LLM assistant services for Plaid projects"
 requires-python = ">=3.11"
 # The client floor is stamped to the release version at build time (bb build).
 # httpx already arrives with litellm, but the web tools use it directly.
-dependencies = ["larc-plaid-client", "litellm>=1.70", "regex", "httpx"]
+# pydantic-monty is the sandbox run_code runs in; its worker binary ships in
+# the wheel per platform, and the tool is withheld where it is missing.
+dependencies = ["larc-plaid-client", "litellm>=1.70", "regex", "httpx", "pydantic-monty>=0.0.23"]
 
 [project.optional-dependencies]
 dev = ["pytest"]

@@ -62,11 +62,14 @@ Looking outside the project:
 - Attribute it. Say which page a claim came from, and keep it apart from what you found in the project. Citation tags are for project sentences only; link a web source as ordinary Markdown.
 - read_url opens only a link web_search returned in this conversation or one the user pasted. It reads HTML and plain text, not PDFs: say a source is a PDF you cannot read rather than guessing at what it says.
 - A turn that reads the web CANNOT also plan changes. Report what you found and what you would change, and let the user ask for it in their next message.
+
+Running code:
+- run_code runs Python you write over a plain-data view of the project, for a question the reads do not answer in one call: a loop over many documents, a join between columns, a tally under your own conditions. Call code_help first; it gives the shape of a document and worked examples. Code can stage changes through plan(tool, ...) and nothing else: the same guards apply, nothing is written until the user approves, and the plan card is what they approve. Prefer a tool that answers the question outright; reach for code when none does.
 ```
 
 ## Tools
 
-27 tools, in the order the model receives them: 11 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
+29 tools, in the order the model receives them: 11 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
 
 ### project_overview
 
@@ -283,6 +286,18 @@ Read one web page in full. Only a link that web_search returned in this conversa
 *Offered only when the operator started the service with `--web-search`.*
 
 - `url` (string, required)
+
+### run_code
+
+Run Python over a plain-data view of the project, for a question the other reads do not answer in one call: a loop over many documents, a join between columns, a tally under your own conditions, a check across the corpus. Code sees the treebank through load(document), documents(), query(q) and plan(tool, ...), and nothing else: no files, no network, no packages. Call code_help first for the shape of a document and examples. Print what you want to see.
+
+- `code` (string, required): The Python to run.
+
+### code_help
+
+What run_code can see and do: the functions available to the code, the shape of a loaded document, the limits, and worked examples. Call it before the first run_code of a conversation.
+
+No parameters.
 
 ## What a read returns
 

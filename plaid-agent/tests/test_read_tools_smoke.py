@@ -29,9 +29,9 @@ from plaid_agent.ud.tools import (TOOLS as UD_TOOLS, WRITE_TOOLS as UD_WRITES,  
 REFUSALS = (IgtToolError, UdToolError, ValueError)
 
 # A value for every parameter a read tool requires or declares an enum for.
-IGT_ARGS = {'document': 'Text 1', 'pattern': 'a', 'field': 'Gloss', 'sequence': [{'Gloss': 'ERG'}],
+IGT_ARGS = {'document': 'Text 1', 'pattern': 'a', 'field': 'Gloss', 'sequence': [{'Gloss': 'ERG'}], 'code': 'print(1)',
             'indexes': [1], 'query': {'find': ['?t'], 'where': [['token', '?t', {'layer': 'words'}]]}}
-UD_ARGS = {'document': 'Viaje', 'pattern': 'a', 'field': 'lemma', 'what': 'lemma', 'indexes': [1],
+UD_ARGS = {'document': 'Viaje', 'pattern': 'a', 'field': 'lemma', 'what': 'lemma', 'indexes': [1], 'code': 'print(1)',
            'query': {'find': ['?t'], 'where': [['token', '?t', {'layer': 'words'}]]}}
 
 SKIP = ('web_search', 'read_url')   # the network is not the tools' contract

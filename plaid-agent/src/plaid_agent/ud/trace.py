@@ -125,6 +125,11 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
         scope = plural(count(a), 'word') if a.get('refs') else 'every unconfirmed machine value'
         return f'Planned discarding {scope}{in_doc(a)}{across(a)}'
 
+    if name == 'run_code':
+        return 'Ran code over the project'
+    if name == 'code_help':
+        return 'Read what code can see'
+
     # --- bookkeeping ----------------------------------------------------------
     if name == 'discard_plan':
         return 'Discarded the plan so far'
@@ -145,6 +150,8 @@ _PROGRESS = {
     'restore_document': lambda a: f'Checking a restore of "{a.get("document", "")}"…',
     'query': lambda a: 'Running a query…',
     'query_help': lambda a: 'Reading the query language…',
+    'run_code': lambda a: 'Running code…',
+    'code_help': lambda a: 'Reading what code can see…',
     'merge_sentences': lambda a: 'Joining two sentences…',
     'search': lambda a: f'Searching for "{a.get("pattern", "")}"…',
     'replace_in_field': lambda a: f'Finding every {a.get("field", "value")} matching "{a.get("pattern", "")}"…',

@@ -1,6 +1,6 @@
 """The system prompt."""
 
-from ..core import webtools
+from ..core import sandbox, webtools
 from .project import IgtProject, SCOPES, tagset_lines
 
 # Values of one tagset shown in the system prompt. Project_overview lists the rest.
@@ -78,6 +78,16 @@ instance:\n\nThe relative noun takes dative case here:\n\n<cite doc="Text 1" ref
 <cite doc="Text 1" ref="s34"/> it is focused.
 '''
 
+CODE = '''
+Running code:
+- run_code runs Python you write over a plain-data view of the project, for a question the reads do not \
+answer in one call: a loop over many documents, a join between columns, a tally under your own \
+conditions. Call code_help first; it gives the shape of a document and worked examples. Code can \
+stage changes through plan(tool, ...) and nothing else: the same guards apply, nothing is written until \
+the user approves, and the plan card is what they approve. Prefer a tool that answers the question \
+outright; reach for code when none does.
+'''
+
 WEB = webtools.prompt(
     'what a gloss abbreviation conventionally means, how a construction is described in related '
     'languages or in the literature, a reference for a claim',
@@ -118,4 +128,5 @@ def build_system_prompt(project: IgtProject, web: bool = False) -> str:
     lines.append('- Lexicons: ' + (', '.join(v['name'] for v in project.vocabs) or 'none'))
     # Not str.format: field and layer names in the shape may contain braces.
     out = SYSTEM.replace('{project_name}', project.name).replace('{shape}', '\n'.join(lines))
-    return out + WEB if web else out
+    out = out + WEB if web else out
+    return out + CODE if sandbox.available() is None else out

@@ -1,6 +1,6 @@
 """The system prompt."""
 
-from ..core import webtools
+from ..core import sandbox, webtools
 from .project import UdProject
 
 # Values of one vocabulary shown in the prompt. Project_overview lists the rest.
@@ -92,6 +92,16 @@ tree, and the example is drawn as its CoNLL-U rows. The reader can switch an exa
 starting view and not a decision made for them.
 '''
 
+CODE = '''
+Running code:
+- run_code runs Python you write over a plain-data view of the project, for a question the reads do not \
+answer in one call: a loop over many documents, a join between columns, a tally under your own \
+conditions. Call code_help first; it gives the shape of a document and worked examples. Code can \
+stage changes through plan(tool, ...) and nothing else: the same guards apply, nothing is written until \
+the user approves, and the plan card is what they approve. Prefer a tool that answers the question \
+outright; reach for code when none does.
+'''
+
 WEB = webtools.prompt(
     'what a dependency relation conventionally covers, how a construction is analyzed in the UD '
     'guidelines or in related treebanks, a reference for a claim',
@@ -121,4 +131,5 @@ def build_system_prompt(project: UdProject, web: bool = False) -> str:
         lines.append('- features: no inventory set, any Feature=Value is allowed')
     # Not str.format: a project's own values may contain braces.
     out = SYSTEM.replace('{project_name}', project.name).replace('{shape}', '\n'.join(lines))
-    return out + WEB if web else out
+    out = out + WEB if web else out
+    return out + CODE if sandbox.available() is None else out

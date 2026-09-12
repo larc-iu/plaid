@@ -42,6 +42,9 @@ which goes back to the user to approve or discard.
 
 
 def render() -> str:
+    # Every tool appears, whether or not this machine can run code.
+    from plaid_agent.core import sandbox
+    sandbox.available = lambda: None
     """The snapshot as text, so a test can hold the file to it."""
     client = ud_client()
     ws = Workspace(client, load_project(client, PID))

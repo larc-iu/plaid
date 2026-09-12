@@ -1066,9 +1066,10 @@ def tools_for(ws: Workspace) -> List[Dict[str, Any]]:
     """The tools a turn on this workspace may call. The web tools exist only
     where the operator configured a search backend, so a model that cannot
     look anything up is never told that it can."""
-    if ws.web is not None:
-        return list(TOOLS)
-    return [t for t in TOOLS if t['function']['name'] not in WEB_TOOLS]
+    hidden = set() if ws.web is not None else set(WEB_TOOLS)
+    if _sandbox.available() is not None:
+        hidden |= set(CODE_TOOLS)
+    return [t for t in TOOLS if t['function']['name'] not in hidden]
 
 
 def call_tool(ws: Workspace, name: str, args: Dict[str, Any]) -> str:
@@ -1170,3 +1171,13 @@ _IMPL['restore_document'] = t_restore_document
 _IMPL['query'] = t_query
 _IMPL['query_help'] = t_query_help
 _IMPL['merge_sentences'] = t_merge_sentences
+
+
+# Offered only where the monty worker binary is present (see tools_for): a
+# model that cannot run code is never told that it can.
+from ..core import sandbox as _sandbox  # noqa: E402
+from .sandbox import t_code_help, t_run_code  # noqa: E402
+
+TOOLS += _sandbox.schemas('the treebank')
+_IMPL.update({'run_code': t_run_code, 'code_help': t_code_help})
+CODE_TOOLS = _sandbox.NAMES

@@ -79,6 +79,10 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
         return f'Checked data integrity{in_doc(a)}'
     if name == 'sequence_search':
         return f'Searched for a word sequence{in_doc(a)}'
+    if name == 'run_code':
+        return 'Ran code over the project'
+    if name == 'code_help':
+        return 'Read what code can see'
     if name == 'query_help':
         return 'Read the query language reference'
     if name == 'query':
@@ -229,6 +233,8 @@ _PROGRESS = {
     'check_integrity': lambda a: 'Checking data integrity…',
     'sequence_search': lambda a: 'Searching for the sequence…',
     'query_help': lambda a: 'Reading the query reference…',
+    'run_code': lambda a: 'Running code…',
+    'code_help': lambda a: 'Reading what code can see…',
     'query': lambda a: 'Running a query…',
     'web_search': lambda a: f'Searching the web for "{a.get("query", "")}"…',
     'read_url': lambda a: f'Reading {a.get("url", "")}…',

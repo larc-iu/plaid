@@ -41,6 +41,9 @@ which goes back to the user to approve or discard.
 
 
 def render() -> str:
+    # Every tool appears, whether or not this machine can run code.
+    from plaid_agent.core import sandbox
+    sandbox.available = lambda: None
     """The snapshot as text, so a test can hold the file to it."""
     ws = scan_ws(FakeClient())
     parts = [HEADER, '\n## System prompt\n', '```text', build_system_prompt(ws.project, web=True).rstrip(), '```\n',
