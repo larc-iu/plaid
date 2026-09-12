@@ -1,5 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Send, RotateCcw, Check, X, Loader2, Plus, Trash2, Maximize2 } from 'lucide-react';
+import {
+  Bot,
+  Send,
+  RotateCcw,
+  Check,
+  X,
+  Loader2,
+  Plus,
+  Trash2,
+  Maximize2,
+  PanelRightClose,
+} from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { assistantsAmong, strandedAssistants } from './useAssistantAvailable.js';
 import { Button } from '../ui/button.jsx';
@@ -91,6 +102,10 @@ export const ProjectAssistant = ({
   // the panel can scroll there. Returns true when it handled it, and the link
   // is left alone otherwise.
   onFocusHere,
+  // Hide the docked panel. Its button lives in THIS header rather than in a
+  // row of its own: the panel used to carry a second bar naming the document
+  // or vocabulary, which the page's own heading says a few pixels away.
+  onCollapse,
 }) => {
   const panel = variant === 'panel';
   // What this panel is about, in the shape the record stores: the field name is
@@ -698,6 +713,17 @@ export const ProjectAssistant = ({
             >
               <RotateCcw className={cn('h-4 w-4', discovering && 'animate-spin')} />
             </Button>
+            {panel && onCollapse && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={onCollapse}
+                title="Hide the assistant"
+              >
+                <PanelRightClose className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </header>
 

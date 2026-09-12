@@ -95,7 +95,14 @@ test('the panel docks at exactly viewport height', async ({ page }) => {
 
   const panel = page.locator('aside.border-l');
   await expect(panel).toBeVisible();
-  await expect(panel.getByTitle('Sample IGT Document')).toBeVisible();
+  // ONE header bar. The panel used to carry a second one above the assistant's
+  // own row, repeating the document's name, which the page's heading says a few
+  // pixels to the left. The hide button lives in the remaining row.
+  await expect(panel.locator('header')).toHaveCount(1);
+  // The HEADER does not repeat it. The empty-state line below still names what
+  // the panel is about, which is a sentence rather than a second title bar.
+  await expect(panel.locator('header')).not.toContainText('Sample IGT Document');
+  await expect(panel.getByTitle('Hide the assistant')).toBeVisible();
 
   const box = await panel.boundingBox();
   const viewport = page.viewportSize();

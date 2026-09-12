@@ -125,8 +125,12 @@ test.describe('when one is online', () => {
 
     const panel = page.locator('aside.border-l');
     await expect(panel).toBeVisible();
-    // It names the document it is about (seedUdDoc calls it "Doc").
-    await expect(panel.getByTitle('Doc')).toBeVisible();
+    // ONE header bar. The panel used to carry a second one above the
+    // assistant's own row, naming the document, which the page's heading says
+    // a few pixels to the left. The hide button lives in the remaining row.
+    await expect(panel.locator('header')).toHaveCount(1);
+    await expect(panel.locator('header')).not.toContainText('Doc');
+    await expect(panel.getByTitle('Hide the assistant')).toBeVisible();
 
     const box = await panel.boundingBox();
     const viewport = page.viewportSize();

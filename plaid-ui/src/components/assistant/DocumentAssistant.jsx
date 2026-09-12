@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Bot, PanelRightClose } from 'lucide-react';
+import { Bot } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
 import { cn } from '../../lib/utils.js';
 import { ProjectAssistant } from './ProjectAssistant.jsx';
@@ -68,7 +68,6 @@ export const DocumentAssistant = ({
   onFocusHere,
   ...assistant
 }) => {
-  const title = documentName || lexiconName;
   const [width, setWidth] = useState(readWidth);
 
   const resize = useCallback((w) => {
@@ -92,21 +91,11 @@ export const DocumentAssistant = ({
         style={{ width, maxWidth: '100%' }}
         className="flex h-full min-h-0 shrink-0 flex-col border-l bg-card"
       >
-        <div className="flex items-center gap-2 border-b px-3 py-2">
-          <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <span className="min-w-0 flex-1 truncate text-sm font-medium" title={title}>
-            {title || 'Assistant'}
-          </span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => onOpenChange?.(false)}
-            title="Hide the assistant"
-          >
-            <PanelRightClose className="h-4 w-4" />
-          </Button>
-        </div>
+        {/* No header of its own. It used to carry a bar naming the document or
+            the vocabulary, which is what the page's own heading says a few
+            pixels to the left, and the panel then had TWO stacked bars: one
+            repeating the title and one for the assistant and its controls.
+            The hide button moved into the second, which is the only one now. */}
         <div className="min-h-0 flex-1">
           <ProjectAssistant
             {...assistant}
@@ -119,6 +108,7 @@ export const DocumentAssistant = ({
             onClearFocus={onClearFocus}
             onApplied={onApplied}
             onFocusHere={onFocusHere}
+            onCollapse={() => onOpenChange?.(false)}
           />
         </div>
       </aside>

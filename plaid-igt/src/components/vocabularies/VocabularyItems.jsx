@@ -98,6 +98,9 @@ export const VocabularyItems = ({
   canManage = true,
   comments = null,
   canComment = false,
+  // Told when the assistant is docked, so the page can stop centring its
+  // content inside `max-w-7xl` and let the panel reach the window's edge.
+  onDockedChange,
 }) => {
   // Re-render on comment changes, so the per-entry counts stay in step.
   useCommentStore(comments);
@@ -272,6 +275,14 @@ export const VocabularyItems = ({
   // What the screen pointed at, as {ref, label}. It clears when it is sent.
   const [assistantFocus, setAssistantFocus] = useState(null);
   const assistantAvailable = useAssistantAvailable(client, assistantProject?.id, IGT_ASSISTANT.app);
+  const docked = !!assistantAvailable && assistantOpen;
+  const dockedChangeRef = useRef(onDockedChange);
+  dockedChangeRef.current = onDockedChange;
+  useEffect(() => {
+    dockedChangeRef.current?.(docked);
+    return () => dockedChangeRef.current?.(false);
+  }, [docked]);
+
   const askAboutEntry = () => {
     if (!selectedItem) return;
     // The reference is the one `find_entry` accepts back: the form, with its
@@ -1080,7 +1091,7 @@ export const VocabularyItems = ({
             list's own measurement and sticky offset are written against. */}
         {assistantAvailable && assistantOpen && (
           <div
-            className="sticky top-4 flex shrink-0 self-start"
+            className="sticky top-4 -mr-4 flex shrink-0 self-start"
             style={paneMaxH ? { height: paneMaxH } : undefined}
           >
             <DocumentAssistant
