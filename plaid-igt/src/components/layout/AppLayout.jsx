@@ -6,6 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '@ui/components/ui/button';
 import { cn } from '@ui/lib/utils';
 import { AssistantDock } from '@ui/components/assistant/AssistantDock.jsx';
+import { ProjectPicker } from '@ui/components/assistant/ProjectPicker.jsx';
 import { useDockWidth } from '@ui/components/assistant/useDock.js';
 import { AssistantSubjectProvider } from '@ui/components/assistant/AssistantSubject.jsx';
 import { useAssistantScope } from '@ui/components/assistant/subject.js';
@@ -53,7 +54,11 @@ const Shell = () => {
   }, [shown, width]);
 
   // The project the panel is about. A screen with no project of its own leaves
-  // the thread where it was rather than closing it.
+  // the thread where it was rather than closing it, and one chosen in the
+  // picker below is held the same way. A picked project carries no permissions
+  // with it, so plans cannot be applied until the reader opens the project
+  // itself, which is where those facts are read: it is a floor, not a fence,
+  // and the server is the one that decides either way.
   //
   // What the reader may DO travels with the project, not with the screen. Both
   // are facts about the project, and reading them off the current subject meant
@@ -74,6 +79,15 @@ const Shell = () => {
   const projectId = project?.projectId || null;
   const projectName = project?.projectName || null;
   const available = useAssistantAvailable(client, projectId, IGT_ASSISTANT.app);
+  // Whether to offer the picker: only where no project is in scope AND the
+  // route is not itself under a project. The route test is what keeps the
+  // picker off the new-project wizard and the importers, which publish no
+  // subject and have no annotation to ask about. It is NOT there for the first
+  // paint of a document screen: `projectId` on those comes from the route
+  // params, so it is published by the first effect and there is nothing to
+  // flicker. (Only `projectName` waits on the document load.)
+  const routeHasProject = /^\/projects\/[^/]+/.test(location.pathname);
+  const offerPicker = !projectId && !routeHasProject;
 
   // What the reader pointed at, as {ref, label}. The interlinear grid is a lit
   // island, so its "Ask" reaches React as a window event. The shell listens
@@ -146,7 +160,7 @@ const Shell = () => {
                 that is known, which is also not offered, and it answers from a
                 per-project cache so a navigation does not flicker it away and
                 back. Not offered in a window too narrow to give it width. */}
-            {projectId && available && wide && !shown && (
+            {wide && !shown && (projectId ? available : offerPicker) && (
               <Button
                 type="button"
                 variant="outline"
@@ -166,7 +180,7 @@ const Shell = () => {
       <main>
         <Outlet />
       </main>
-      {shown && projectId && available !== false && (
+      {shown && (projectId ? available !== false : offerPicker) && (
         <AssistantDock
           open
           width={width}
@@ -187,6 +201,14 @@ const Shell = () => {
           onClearFocus={() => setFocus(null)}
           onApplied={subject?.onApplied}
           onFocusHere={subject?.onFocusHere}
+          picker={
+            projectId ? null : (
+              <ProjectPicker
+                client={client}
+                onPick={(p) => setHeld({ projectId: p.id, projectName: p.name })}
+              />
+            )
+          }
         />
       )}
     </div>

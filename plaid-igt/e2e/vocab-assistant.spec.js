@@ -126,9 +126,17 @@ test('Ask names the open entry the way find_entry takes it', async ({ page }) =>
   await expect(page.locator('aside').getByText('gam 1', { exact: true })).toBeVisible();
 });
 
-test('a vocabulary two projects link offers no pane at all', async ({ page }) => {
+test('a vocabulary two projects link is never filed under one of them', async ({ page }) => {
   // The ruling: a conversation belongs to one project, and filing it under one
   // the user did not choose puts it in an Assistant tab they were never on.
+  //
+  // What that looks like changed when the panel became app chrome. There is no
+  // longer a per-screen control to withhold, and withholding the app's own
+  // would be wrong: the panel may be holding a thread from somewhere else, and
+  // it offers a project picker when it is not. So the rule is now about the
+  // SUBJECT. This screen publishes none, so nothing here says the assistant is
+  // about this vocabulary, and the reader chooses a project explicitly or not
+  // at all.
   const c = client();
   const second = await c.projects.create(`Vocab assistant ${Date.now()}`);
   extraProjects.push(second.id);
@@ -136,5 +144,15 @@ test('a vocabulary two projects link offers no pane at all', async ({ page }) =>
 
   await withAssistant(page);
   await openEntries(page);
-  await expect(page.getByRole('button', { name: 'Assistant' })).toHaveCount(0);
+  // The Ask gesture is what would attach an entry to a turn, and it needs the
+  // resolved project, so it is not offered.
+  await page.getByRole('link', { name: /^gam/ }).first().click();
+  await expect(page.getByRole('button', { name: /^Ask about/ })).toHaveCount(0);
+
+  // And the panel, opened here, is about a project the reader picks rather
+  // than this vocabulary.
+  await page.getByRole('button', { name: 'Assistant', exact: true }).click();
+  const panel = page.locator('aside.border-l');
+  await expect(panel).toBeVisible();
+  await expect(panel.getByText('Choose a project')).toBeVisible();
 });

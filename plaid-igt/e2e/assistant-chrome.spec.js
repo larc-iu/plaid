@@ -205,18 +205,36 @@ test('the panel stays shut across a navigation once it is shut', async ({ page }
   await expect(panelOf(page)).toHaveCount(0);
 });
 
-test('the control is offered on a project screen and not off one', async ({ page }) => {
+test('the control is offered on every screen after signing in', async ({ page }) => {
+  // "Always available" means the control does not come and go with the route.
+  // On a screen with no project in scope it opens the picker instead of the
+  // chat (see the last test in this file), which is why it is offered there
+  // too rather than hidden.
   await seedAuth(page);
   await withAssistant(page);
+
   await page.goto('/#/projects');
   await expect(page.getByRole('heading', { name: 'Projects' })).toBeVisible();
-  // No project is in scope and none has been seen, so there is nothing for an
-  // assistant to be about.
-  await expect(toggle(page)).toHaveCount(0);
+  await expect(toggle(page)).toBeVisible();
 
   await page.goto(`/#/projects/${projectId}`);
   await expect(page.getByRole('heading', { name: 'E2E IGT Fixture' })).toBeVisible();
   await expect(toggle(page)).toBeVisible();
+
+  await page.goto('/#/vocabularies');
+  await expect(page.getByRole('heading', { name: 'Vocabularies' })).toBeVisible();
+  await expect(toggle(page)).toBeVisible();
+});
+
+test('the picker is not offered where there is no annotation to ask about', async ({ page }) => {
+  // The new-project wizard and the importers sit under /projects/ and have no
+  // project, so nothing publishes a subject there. Offering to pick one would
+  // put a chat about some other project beside a form for making a new one.
+  await seedAuth(page);
+  await withAssistant(page);
+  await page.goto('/#/projects/new');
+  await expect(page.getByRole('heading', { name: /New Project/i })).toBeVisible();
+  await expect(toggle(page)).toHaveCount(0);
 });
 
 test('the page never scrolls sideways to make room for the panel', async ({ page }) => {
@@ -442,4 +460,28 @@ test('a turn running in another project is not mistaken for one here', async ({ 
   }, foreign);
   await expect(back).toHaveCount(0);
   await expect(panel.getByText('foreign thread')).toHaveCount(0);
+});
+
+test('the panel is reachable on the screen a reader lands on, and asks which project', async ({
+  page,
+}) => {
+  // "Always available after login" has to include the FIRST screen. Nothing is
+  // in scope there, and the assistant cannot work without a project, so the
+  // panel asks for one rather than sitting empty or refusing to open.
+  await seedAuth(page);
+  await withAssistant(page);
+  await page.goto('/#/projects');
+  await expect(page.getByRole('heading', { name: 'Projects' })).toBeVisible();
+
+  await toggle(page).click();
+  const panel = panelOf(page);
+  await expect(panel).toBeVisible();
+  await expect(panel.getByText('Choose a project')).toBeVisible();
+
+  // Choosing one is what gives the panel something to be about, without
+  // leaving the screen the reader is on.
+  await panel.getByRole('button', { name: 'E2E IGT Fixture' }).click();
+  await expect(panel.getByText('Choose a project')).toHaveCount(0);
+  await expect(panel.getByRole('textbox')).toBeVisible();
+  await expect(page).toHaveURL(/#\/projects$/);
 });

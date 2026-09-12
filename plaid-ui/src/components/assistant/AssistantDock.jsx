@@ -56,7 +56,18 @@ const Resizer = ({ width, onResize }) => {
   );
 };
 
-export const AssistantDock = ({ open, width, onResize, onClose, className, ...assistant }) => {
+// `picker` stands in for the chat when there is no project for it to be about
+// yet, which is the state a reader is in on the screen they land on after
+// signing in.
+export const AssistantDock = ({
+  open,
+  width,
+  onResize,
+  onClose,
+  className,
+  picker = null,
+  ...assistant
+}) => {
   if (!open) return null;
   return (
     <aside
@@ -65,7 +76,7 @@ export const AssistantDock = ({ open, width, onResize, onClose, className, ...as
     >
       <Resizer width={width} onResize={onResize} />
       <div className="min-h-0 flex-1">
-        <ProjectAssistant {...assistant} variant="panel" onCollapse={onClose} />
+        {picker || <ProjectAssistant {...assistant} variant="panel" onCollapse={onClose} />}
       </div>
     </aside>
   );
