@@ -39,13 +39,16 @@ test('split a morpheme with "-" then merge it back', async ({ page }) => {
   await expect.poll(() => page.locator(realSel).count(), { timeout: 5000 }).toBe(before);
   await expect(page.locator(`${realSel}`).first()).toHaveValue('ab');
 
-  // Restore the original form so the fixture stays clean for other specs.
+  // Restore the original form so the fixture stays clean for other specs, and
+  // CHECK the restore: this spec shares the fixture project, so a restore that
+  // silently failed would leave "ab" in it for every spec that runs after.
   const firstAgain = page.locator('.igt-morph-field[data-prec="1"]').first();
   await firstAgain.click();
   await page.keyboard.press('Control+a');
   await page.keyboard.type(origForm);
   await firstAgain.press('Enter');
   await page.waitForLoadState('networkidle');
+  await expect(page.locator('.igt-morph-field[data-prec="1"]').first()).toHaveValue(origForm);
 
   console.log('--- failed requests ---');
   for (const f of diag.failures) console.log(JSON.stringify(f));
@@ -93,6 +96,7 @@ test('split a morpheme with "=" types an enclitic, then merge it back', async ({
   await page.keyboard.type(origForm);
   await firstAgain.press('Enter');
   await page.waitForLoadState('networkidle');
+  await expect(page.locator('.igt-morph-field[data-prec="1"]').first()).toHaveValue(origForm);
 
   expect.soft(diag.failures, 'no API failures during "=" split').toEqual([]);
 });
