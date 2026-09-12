@@ -55,6 +55,7 @@ http://localhost:8080/ud/
 
 Sign in with the email address and password your project administrator gave you.
 Your session stays signed in until the token expires or you log out.
+Your name at the top right opens your account, with your profile and **Logout**.
 
 The editor has three levels you move between:
 

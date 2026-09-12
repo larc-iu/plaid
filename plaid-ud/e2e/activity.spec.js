@@ -84,8 +84,23 @@ test('the panel brings no avatars with it', async ({ page }) => {
   // reintroduced avatar either: Radix renders no image until one has loaded,
   // and a user with no picture shows only their initials. `data-slot="avatar"`
   // is on the shared primitive's root for exactly this count.
-  await expect(page.getByText('a@b.com', { exact: false }).first()).toBeVisible();
-  await expect(page.locator('[data-slot="avatar"]')).toHaveCount(0);
+  //
+  // Scoped to `main` rather than the page: the ruling is that nobody's picture
+  // stands beside their name in this app's DATA (this panel, the members
+  // table, the admin directory). The header band is the one exemption, where
+  // the signed-in account wears its own picture as it does in plaid-igt
+  // (Luke's call, 2026-09-12), and the band is not in `main`.
+  // Both halves read the same scope, so a `main` that did not hold the panel
+  // would fail here rather than pass the count below vacuously. The tally's
+  // own rows, not a name: the name in them is the SERVER's display name for
+  // this account, and the one `seedAuth` writes into localStorage is the
+  // address. Matching on the latter is what let this guard pass by finding the
+  // header's account button instead of the panel.
+  const content = page.locator('main');
+  const tally = content.locator('table').first();
+  await expect(tally.getByRole('columnheader', { name: 'Person' })).toBeVisible();
+  await expect(tally.locator('tbody tr').first()).toBeVisible();
+  await expect(content.locator('[data-slot="avatar"]')).toHaveCount(0);
 });
 
 test('a maintainer is offered the tab', async ({ page }) => {

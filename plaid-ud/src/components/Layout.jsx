@@ -1,12 +1,13 @@
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Button } from '@ui/components/ui/button';
 import { PlaidMark } from '@ui/components/assistant/PlaidMarks.jsx';
+import { UserButton } from '@ui/components/shared/UserButton';
+import { headerItem } from '@ui/components/shared/headerItem.js';
 import { adminUrl } from '../domain/siblingApps.js';
 
 // The shell.
 export const Layout = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, getClient } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -22,31 +23,31 @@ export const Layout = () => {
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <header className="border-b bg-background">
-        <div className="mx-auto flex h-16 max-w-[1320px] items-center justify-between px-4">
-          <Link to="/" className="flex items-center gap-2 text-xl font-bold">
-            <PlaidMark className="h-5 w-5 shrink-0" />
+        {/* `h-14`, the same band as plaid-igt's, which is also what the
+            assistant panel's own header measures itself against. The width is
+            this app's own: the band has to line up with the container below
+            it, and plaid-ud's screens are wider. */}
+        <div className="mx-auto flex h-14 max-w-[1320px] items-center justify-between px-4">
+          <Link to="/" className="flex items-center gap-2 font-bold">
+            <PlaidMark className="h-[18px] w-[18px] shrink-0" />
             Plaid UD
           </Link>
           {user && (
-            <nav className="flex items-center gap-1">
+            <div className="flex items-center gap-2">
               {/* The server's admin area is plaid-igt's. The release jar always
                   ships both apps on one server, so there is exactly one, and a
                   second here would be a second answer to the same question.
                   A real anchor, not a Link: it is another document. */}
               {user.isAdmin && (
-                <Button asChild variant="ghost" size="sm">
-                  <a href={adminUrl()}>Admin</a>
-                </Button>
+                <a href={adminUrl()} className={headerItem()}>
+                  Admin
+                </a>
               )}
-              {/* Profile is a destination, so it is a real anchor: middle-click
-                  and cmd-click open it in a new tab like any link. */}
-              <Button asChild variant="ghost" size="sm">
-                <Link to="/profile">{user.displayName}</Link>
-              </Button>
-              <Button variant="ghost" size="sm" onClick={handleLogout}>
-                Logout
-              </Button>
-            </nav>
+              {/* Profile and Logout are both in here now. Two bare text
+                  buttons beside the name made the account three controls wide
+                  and left Logout one stray click from Profile. */}
+              <UserButton user={user} client={getClient()} onLogout={handleLogout} />
+            </div>
           )}
         </div>
       </header>

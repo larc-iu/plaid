@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { UserButton } from './UserButton';
+import { UserButton } from '@ui/components/shared/UserButton';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '@ui/components/ui/button';
-import { cn } from '@ui/lib/utils';
+import { headerItem } from '@ui/components/shared/headerItem.js';
 import { AssistantDock } from '@ui/components/assistant/AssistantDock.jsx';
 import { AssistantMark, PlaidMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { ProjectPicker } from '@ui/components/assistant/ProjectPicker.jsx';
@@ -110,16 +110,7 @@ const Shell = () => {
   }, [subject?.id]);
 
   const navItem = (to, label, active) => (
-    <Link
-      key={to}
-      to={to}
-      className={cn(
-        'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-        active
-          ? 'bg-accent text-accent-foreground'
-          : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
-      )}
-    >
+    <Link key={to} to={to} className={headerItem(active)}>
       {label}
     </Link>
   );
@@ -142,13 +133,12 @@ const Shell = () => {
               'Vocabularies',
               location.pathname.startsWith('/vocabularies'),
             )}
-            {user?.isAdmin && navItem('/admin', 'Admin', location.pathname.startsWith('/admin'))}
             {/* The user guide is published with the docs site, not bundled here. */}
             <a
               href="https://larc-iu.github.io/plaid/igt-guide.html"
               target="_blank"
               rel="noreferrer"
-              className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+              className={headerItem()}
             >
               Guide
             </a>
@@ -174,6 +164,11 @@ const Shell = () => {
                 Assistant
               </Button>
             )}
+            {/* Administration is the server's, not this project's or this
+                screen's, so it sits with the account rather than in the nav
+                beside Projects and Vocabularies. plaid-ud says it in the same
+                place, where it has to be an anchor into this app. */}
+            {user?.isAdmin && navItem('/admin', 'Admin', location.pathname.startsWith('/admin'))}
             {user && <UserButton user={user} client={client} onLogout={logout} />}
           </div>
         </div>

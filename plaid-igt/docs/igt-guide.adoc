@@ -57,6 +57,7 @@ http://localhost:8080/igt/
 
 Sign in with the email address and password your project administrator gave you, or with the password you chose when you opened an invitation link (see <<_sharing_and_permissions>>).
 Your session stays signed in until the token expires or you log out.
+Your name at the top right opens your account, with your profile and **Logout**.
 
 The editor has a few levels you move between:
 
