@@ -1001,16 +1001,25 @@ class UserDataResource(_Resource):
     user across devices and sessions (assistant conversations, drafts,
     preferences). Owner or admin only; never audited; not batchable."""
 
-    def list(self, user_id: str, *, prefix: str | None = None, include_values: bool = False) -> Any:
+    def list(self, user_id: str, *, prefix: str | None = None, pattern: str | None = None,
+             include_values: bool = False) -> Any:
         """List a user's entries ({key, updated_at}, plus value when requested).
+
+        Narrow with ``prefix`` (the literal head of a key) and/or ``pattern``, a
+        GLOB over the whole key (``*`` any run, ``?`` one character) - the way to
+        ask for a key convention identified by a segment in the middle, e.g.
+        ``igt:assistant:*:meta:*`` for every conversation's sidebar entry across
+        every project without dragging down the transcripts beside them.
 
         Args:
             user_id: The owning user
             prefix: Only keys starting with this prefix
+            pattern: Only keys matching this GLOB
             include_values: Also return each entry's value
         """
         return self._request('GET', f'/api/v1/users/{user_id}/data',
-                             query_params={'prefix': prefix, 'include-values': include_values or None},
+                             query_params={'prefix': prefix, 'pattern': pattern,
+                                           'include-values': include_values or None},
                              no_batch=True)
 
     def get(self, user_id: str, key: str) -> Any:

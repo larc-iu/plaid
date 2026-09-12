@@ -13,15 +13,21 @@
     :middleware [pra/wrap-login-required wrap-self-or-admin]}
 
    [""
-    {:get {:summary (str "List a user's private data entries ({key, updated-at}), optionally only those "
-                         "whose key starts with <query>prefix</query>, and with each entry's value when "
-                         "<query>include-values</query> is true.")
+    {:get {:summary (str "List a user's private data entries ({key, updated-at}), narrowed by "
+                         "<query>prefix</query> (the literal head of a key) and/or "
+                         "<query>pattern</query>, a GLOB over the whole key (`*` any run, `?` one "
+                         "character) for a key convention whose selector is a segment in the middle, "
+                         "e.g. `igt:assistant:*:meta:*`. Each entry's value comes with "
+                         "<query>include-values</query>.")
            :parameters {:query [:map
                                 [:prefix {:optional true} string?]
+                                [:pattern {:optional true} string?]
                                 [:include-values {:optional true} boolean?]]}
-           :handler (fn [{{{:keys [user-id]} :path {:keys [prefix include-values]} :query} :parameters db :db}]
+           :handler (fn [{{{:keys [user-id]} :path {:keys [prefix pattern include-values]} :query} :parameters db :db}]
                       {:status 200
-                       :body (user-data/list db user-id {:prefix prefix :include-values? (true? include-values)})})}}]
+                       :body (user-data/list db user-id {:prefix prefix
+                                                         :pattern pattern
+                                                         :include-values? (true? include-values)})})}}]
 
    ["/:key"
     {:parameters {:path [:map [:key string?]]}}

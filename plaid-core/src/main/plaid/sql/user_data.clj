@@ -33,15 +33,33 @@
               true))
 
 (defn list
-  "The user's entries ({:key :updated-at}, plus :value when `include-values?`)
-  whose key starts with `prefix` (nil = all), ordered by key."
-  [db user-id {:keys [prefix include-values?]}]
+  "The user's entries ({:key :updated-at}, plus :value when `include-values?`),
+  ordered by key.
+
+  Two independent narrowings, ANDed when both are given:
+    :prefix   the literal head of a key (nil = all)
+    :pattern  a GLOB over the whole key (`*` any run, `?` one character)
+
+  `pattern` is what a key convention of `<app>:<feature>:<scope>:<kind>:<id>`
+  actually needs: the part worth listing is often identified by a segment in
+  the MIDDLE. `igt:assistant:*:meta:*` is every assistant conversation's small
+  sidebar entry across every project, and not one transcript, which no prefix
+  can express because the project sits before the kind. Selecting those with a
+  prefix instead would drag down a megabyte of transcript per conversation.
+
+  Neither narrowing can use an index: `prefix` compares a substr of the key, so
+  it scans the same as the glob does. That is affordable because the table holds
+  per-user app state, not annotation data."
+  [db user-id {:keys [prefix pattern include-values?]}]
   (->> (psc/q db {:select (if include-values? [:key :value :updated_at] [:key :updated_at])
                   :from :user_data
                   :where (cond-> [:and [:= :user_id user-id]]
                            ;; substr, not LIKE: keys routinely contain `_`,
                            ;; which LIKE would treat as a wildcard.
-                           (seq prefix) (conj [:= [:substr :key 1 (count prefix)] prefix]))
+                           (seq prefix) (conj [:= [:substr :key 1 (count prefix)] prefix])
+                           ;; glob(X, Y) is SQLite's function spelling of
+                           ;; `Y GLOB X`, so the pattern is the first argument.
+                           (seq pattern) (conj [:glob pattern :key]))
                   :order-by [:key]})
        (mapv #(row->entry % include-values?))))
 
@@ -71,17 +89,9 @@
   paginated by (user-id, key) — both are TEXT NOT NULL and together the
   primary key, so the page order is total and walking it is index-backed.
 
-  Two independent narrowings, ANDed when both are given:
-    :prefix   the literal head of a key, as on the per-user list
-    :pattern  a GLOB over the whole key (`*` any run, `?` one character)
-
-  `pattern` is what a key convention of `<app>:<feature>:<scope>:<kind>:<id>`
-  actually needs: the part worth listing is often identified by a segment in
-  the MIDDLE (`igt:assistant:*:meta:*` is every assistant conversation's
-  small sidebar entry, and not one transcript), which no prefix can express.
-  Neither narrowing can use an index: `prefix` compares a substr of the key,
-  so it scans the same as the glob does. That is affordable because the table
-  holds per-user app state, not annotation data."
+  Takes the same two narrowings as the per-user `list`, ANDed when both are
+  given: `:prefix` (the literal head of a key) and `:pattern` (a GLOB over the
+  whole key). See that docstring for what the glob is for and what it costs."
   [db {:keys [prefix pattern include-values? limit cursor-vals]}]
   (let [clauses (cond-> []
                   (seq prefix) (conj [:= [:substr :key 1 (count prefix)] prefix])

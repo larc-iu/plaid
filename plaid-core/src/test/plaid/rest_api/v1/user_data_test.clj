@@ -51,6 +51,35 @@
       (is (= 404 (:status (api-call user1-request {:method :delete :path (path u1 "igt:assistant:p1:msgs:c1")}))))
       (is (= 404 (:status (api-call user1-request {:method :get :path (path u1 "igt:assistant:p1:msgs:c1")})))))))
 
+(deftest glob-narrowing
+  "A key convention puts the selector in the MIDDLE: the assistant's keys are
+  `<app>:assistant:<project>:<kind>:<id>`, so listing every conversation's small
+  sidebar entry across every project cannot be said with a prefix. Without the
+  glob the only expressible query also matches every `:conv:` sibling, which is
+  a whole transcript apiece."
+  (doseq [k ["igt:assistant:p1:meta:c1" "igt:assistant:p1:conv:c1"
+             "igt:assistant:p2:meta:c9" "igt:assistant:p2:conv:c9"
+             "ud:assistant:p1:meta:c4" "other_app:pref"]]
+    (api-call user1-request {:method :put :path (path u1 k) :body {:k k}}))
+  (testing "a segment in the middle selects the metas and leaves the transcripts"
+    (is (= ["igt:assistant:p1:meta:c1" "igt:assistant:p2:meta:c9"]
+           (mapv :key (:body (api-call user1-request {:method :get :path (str (path u1) "?pattern=igt:assistant:*:meta:*")}))))))
+  (testing "the glob anchors at both ends, so it is not a substring match"
+    (is (= [] (:body (api-call user1-request {:method :get :path (str (path u1) "?pattern=assistant:*:meta:*")})))))
+  (testing "? is one character"
+    (is (= ["igt:assistant:p1:meta:c1"]
+           (mapv :key (:body (api-call user1-request {:method :get :path (str (path u1) "?pattern=igt:assistant:p?:meta:c1")}))))))
+  (testing "prefix and pattern are ANDed"
+    (is (= ["ud:assistant:p1:meta:c4"]
+           (mapv :key (:body (api-call user1-request {:method :get :path (str (path u1) "?prefix=ud:&pattern=*:meta:*")}))))))
+  (testing "values come with the same flag as a prefix listing"
+    (is (= [{"k" "igt:assistant:p1:meta:c1"} {"k" "igt:assistant:p2:meta:c9"}]
+           (mapv :value (:body (api-call user1-request {:method :get :path (str (path u1) "?pattern=igt:assistant:*:meta:*&include-values=true")}))))))
+  (testing "a glob is still scoped to the one user"
+    (api-call user2-request {:method :put :path (path "user2@example.com" "igt:assistant:p1:meta:theirs") :body {}})
+    (is (= ["igt:assistant:p1:meta:c1" "igt:assistant:p2:meta:c9"]
+           (mapv :key (:body (api-call user1-request {:method :get :path (str (path u1) "?pattern=igt:assistant:*:meta:*")})))))))
+
 (deftest scalar-values-and-encoded-keys
   (let [key "igt:assistant:p1:weird%2Fkey"]
     (is (= 200 (:status (api-call user1-request {:method :put :path (path u1 key) :body 42}))))

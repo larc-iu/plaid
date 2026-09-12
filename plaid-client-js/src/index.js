@@ -1010,14 +1010,21 @@ class PlaidClient {
       /**
        * List a user's private data entries ({key, updatedAt}, plus value when
        * includeValues). Owner or admin only.
+       *
+       * Narrow with `prefix` (the literal head of a key) and/or `pattern`, a
+       * GLOB over the whole key (`*` any run, `?` one character) — the way to
+       * ask for a key convention identified by a segment in the middle, e.g.
+       * `igt:assistant:*:meta:*` for every conversation's sidebar entry across
+       * every project without dragging down the transcripts beside them.
        * @param {string} userId
        * @param {object} [opts]
        * @param {string} [opts.prefix] - Only keys starting with this prefix
+       * @param {string} [opts.pattern] - Only keys matching this GLOB
        * @param {boolean} [opts.includeValues] - Also return each entry's value
        */
-      list: (userId, { prefix, includeValues } = {}) =>
+      list: (userId, { prefix, pattern, includeValues } = {}) =>
         this._request("GET", `/api/v1/users/${userId}/data`, {
-          queryParams: { prefix, "include-values": includeValues },
+          queryParams: { prefix, pattern, "include-values": includeValues },
         }),
       /**
        * Read one private data entry ({key, updatedAt, value}); 404 if absent.
