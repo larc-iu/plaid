@@ -1,0 +1,20 @@
+{
+  "name": "Plaid UD",
+  "short_name": "Plaid UD",
+  "description": "Universal Dependencies annotation.",
+  "start_url": ".",
+  "display": "browser",
+  "icons": [
+    {
+      "src": "plaid.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "plaid-square.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

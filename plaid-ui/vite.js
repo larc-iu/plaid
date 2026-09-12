@@ -5,11 +5,31 @@ import { fileURLToPath } from 'node:url';
 export const PLAID_UI_SRC = fileURLToPath(new URL('./src', import.meta.url));
 
 /**
- * Static files every app serves at its root, currently just the mark the
- * browser tab shows. Each app points `publicDir` here rather than keeping its
- * own copy, so the three tabs cannot drift apart from each other or from the
- * artwork in `src/components/assistant/PlaidMarks.jsx`. Vite copies whatever is
- * in here into each app's `dist/`, under that app's base path.
+ * Static files every app serves at its root: the mark the browser tab shows and
+ * the bits that hang off it. Each app points `publicDir` here rather than
+ * keeping its own copy, so the three tabs cannot drift apart from each other or
+ * from the artwork in `src/components/assistant/PlaidMarks.jsx`. Vite copies
+ * whatever is in here into each app's `dist/`, under that app's base path.
+ *
+ * `plaid.svg` is `PlaidMark`, the rounded swatch, cropped to its own bounds
+ * because a tab supplies its own padding.
+ *
+ * `plaid-square.png` is the same sett with the rounded clip removed, so it is
+ * opaque edge to edge. That is on purpose: iOS and Android both apply their own
+ * mask to a home-screen icon, so a rounded one with transparent corners comes
+ * out with black notches, and a sett survives being cropped to a circle. To
+ * redo it after an artwork change: drop the `<clipPath>` and the `clip-path`
+ * attribute from plaid.svg, then
+ * `inkscape -w 512 -h 512 <that> -o raw.png && convert raw.png -alpha off -strip PNG24:plaid-square.png`.
+ *
+ * The three `manifest-*.webmanifest` files differ only in the app's name, and
+ * live here rather than in each app because the icons are what they are mostly
+ * for. Every path inside them is relative, so one file works both at the dev
+ * server's root and under the jar's `/igt/`, `/ud/` or `/dict/` base. They say
+ * `"display": "browser"` deliberately: this gives a pinned shortcut the app's
+ * name and mark, and changes nothing about how the app runs. Sharing one
+ * directory means each app ships all three, which is a few hundred bytes and
+ * not a mistake; each `index.html` links only its own.
  */
 export const PLAID_UI_PUBLIC = fileURLToPath(new URL('./public', import.meta.url));
 

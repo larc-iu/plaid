@@ -6,6 +6,7 @@ import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@ui/components/ui/card';
+import { PlaidMark } from '@ui/components/assistant/PlaidMarks.jsx';
 
 export const LoginForm = () => {
   useDocumentTitle('Sign in');
@@ -55,6 +56,7 @@ export const LoginForm = () => {
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center">
+          <PlaidMark className="mb-1 h-10 w-10" />
           <CardTitle className="font-serif text-2xl">Plaid Dictionary</CardTitle>
           <CardDescription>Sign in to read.</CardDescription>
         </CardHeader>

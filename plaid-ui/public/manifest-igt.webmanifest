@@ -1,0 +1,20 @@
+{
+  "name": "Plaid IGT",
+  "short_name": "Plaid IGT",
+  "description": "Interlinear glossed text.",
+  "start_url": ".",
+  "display": "browser",
+  "icons": [
+    {
+      "src": "plaid.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "plaid-square.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

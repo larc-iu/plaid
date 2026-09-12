@@ -1,3 +1,5 @@
+<h1><img src="plaid-ui/public/plaid.svg" alt="" width="30" height="30"> Plaid</h1>
+
 > [!NOTE]
 > If you are looking for Glam, please see [the `glam` branch](https://github.com/larc-iu/plaid/tree/glam) of this repository.
 

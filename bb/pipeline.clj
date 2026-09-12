@@ -234,6 +234,9 @@
       (fs/copy-tree "plaid-ud/dist"   "plaid-core/resources/ud")
       (fs/copy-tree "plaid-igt/dist"  "plaid-core/resources/igt")
       (fs/copy-tree "plaid-dict/dist" "plaid-core/resources/dict")
+      ;; The mark, for the root landing page the jar serves at /. Same file the
+      ;; three SPAs serve, copied rather than duplicated (see wrap-root-landing).
+      (fs/copy "plaid-ui/public/plaid.svg" "plaid-core/resources/plaid.svg" {:replace-existing true})
       (spit "plaid-core/resources/version.edn" (str "{:version \"" version "\"}\n"))
 
       ;; Each app's services/*.py rides the jar and is extracted next to data/
@@ -347,6 +350,7 @@
                "plaid-core/resources/dict"
                "plaid-core/resources/services"
                "plaid-core/resources/version.edn"
+               "plaid-core/resources/plaid.svg"
                "plaid-ud/dist"
                "plaid-igt/dist"
                "plaid-dict/dist"]]

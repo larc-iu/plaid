@@ -1,0 +1,20 @@
+{
+  "name": "Plaid Dictionary",
+  "short_name": "Dictionary",
+  "description": "Read a project dictionary.",
+  "start_url": ".",
+  "display": "browser",
+  "icons": [
+    {
+      "src": "plaid.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "plaid-square.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

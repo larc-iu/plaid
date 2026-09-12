@@ -227,17 +227,18 @@
 <head>
   <meta charset=\"UTF-8\">
   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
+  <link rel=\"icon\" type=\"image/svg+xml\" href=\"/plaid.svg\">
   <title>Plaid</title>
   <style>
     body { font-family: sans-serif; max-width: 480px; margin: 80px auto; padding: 0 1rem; }
-    h1 { font-size: 1.5rem; margin-bottom: 1.5rem; }
+    h1 { display: flex; align-items: center; gap: 0.6rem; font-size: 1.5rem; margin-bottom: 1.5rem; }
     ul { list-style: none; padding: 0; }
     li { margin: 0.6rem 0; }
     a { font-size: 1.1rem; }
   </style>
 </head>
 <body>
-  <h1>Plaid</h1>
+  <h1><img src=\"/plaid.svg\" alt=\"\" width=\"26\" height=\"26\">Plaid</h1>
   <ul>
     <li><a href=\"/ud/\">UD Editor</a></li>
     <li><a href=\"/igt/\">IGT Editor</a></li>
@@ -249,14 +250,26 @@
 
 (defn wrap-root-landing
   "Intercepts GET / and returns a minimal HTML page linking to the bundled
-  apps and the API docs. All other requests fall through."
+  apps and the API docs, plus GET /plaid.svg, which is the mark that page and
+  its browser tab show. `bb build` copies the mark out of plaid-ui/public, the
+  same file the three SPAs serve, so there is no second copy of the artwork to
+  keep in step. In a source checkout that has not been built it is simply
+  absent and the page falls back to the browser's default icon.
+  All other requests fall through."
   [handler]
   (fn [{:keys [uri request-method] :as request}]
-    (if (and (= :get request-method) (= "/" uri))
+    (cond
+      (and (= :get request-method) (= "/" uri))
       {:status 200
        :headers {"Content-Type" "text/html; charset=utf-8"}
        :body root-landing-html}
-      (handler request))))
+
+      (and (= :get request-method) (= "/plaid.svg" uri))
+      (or (some-> (response/resource-response "plaid.svg")
+                  (response/content-type "image/svg+xml"))
+          (handler request))
+
+      :else (handler request))))
 
 (defn- ^java.util.regex.Pattern origin-string->exact-pattern
   "Build an anchored, regex-escaped pattern that matches `origin` EXACTLY
