@@ -2096,12 +2096,17 @@ def t_remove_example(ws: Workspace, index: int, entry_form: Optional[str] = None
     vocab, view, target = _dict_entry(ws, entry_form, lexicon, entry_id, entry_gloss, 'lose an example')
     before = _meta_of(ws, target)
     exs = all_examples({'metadata': before})
-    i = int(index)
     if not exs:
         raise ToolError(f'{view.label(target["id"])} has no usage examples.')
-    if i < 0 or i >= len(exs):
-        raise ToolError(f'{view.label(target["id"])} has {len(exs)} example(s), numbered 0 to {len(exs) - 1}; '
-                        'lexicon_entry lists them with their numbers.')
+    # One sentence for a number out of range and for something that is not a
+    # number at all: int() answered the second with its own error text.
+    try:
+        i = None if isinstance(index, bool) else int(index)
+    except (TypeError, ValueError, OverflowError):
+        i = None
+    if i is None or i < 0 or i >= len(exs):
+        raise ToolError(f'"{index}" is not one of {view.label(target["id"])}\'s {len(exs)} example(s), which are '
+                        f'numbered 0 to {len(exs) - 1}. lexicon_entry lists them with their numbers.')
     ws.add_op(_meta_op(ws, target['id'], before, with_example_removed(before, i),
                        f'entry {view.label(target["id"])}: drop usage example [{i}] '
                        + _example_line(ws, exs[i])))

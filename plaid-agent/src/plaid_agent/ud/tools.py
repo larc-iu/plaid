@@ -399,6 +399,25 @@ def t_set_field(ws: Workspace, document: str = None, refs=None, field: str = Non
         word_ref(ws.sentence_of(doc, w), w) for w in words)
 
 
+def _head_id(head) -> int:
+    """The head argument as a word number.
+
+    Every other argument in this module is a reference, so a model reaches for
+    one ("w3", "s3.w3") before it reaches for a bare number, and int() answered
+    that with its own error text. A number with a fraction is refused rather
+    than truncated: 2.7 is not word 2.
+    """
+    if isinstance(head, int) and not isinstance(head, bool):
+        return head
+    if isinstance(head, float) and head.is_integer():
+        return int(head)
+    text = str(head).strip()
+    if text.lstrip('-').isdigit():
+        return int(text)
+    raise ToolError(f'"{head}" is not a head. Give the number the head word carries within its own sentence '
+                    '(1, 2, 3 …), or 0 for the root. It is a plain number, not a reference.')
+
+
 def t_set_head(ws: Workspace, document: str = None, ref: str = None, head=None,
                deprel: str = None) -> str:
     doc = ws.doc(document)
@@ -406,7 +425,7 @@ def t_set_head(ws: Workspace, document: str = None, ref: str = None, head=None,
     sentence = ws.sentence_of(doc, word)
     if head is None:
         raise ToolError('Give head: the CoNLL-U id of the head word in the same sentence, or 0 for the root.')
-    head = int(head)
+    head = _head_id(head)
     if head and sentence.word(head) is None:
         raise ToolError(f'Sentence s{sentence.index} has no word {head}. Its words are 1 to {len(sentence.words)}.')
     if head == word.index:

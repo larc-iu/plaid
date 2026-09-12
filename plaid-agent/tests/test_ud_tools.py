@@ -116,6 +116,19 @@ def test_a_head_outside_the_sentence_is_refused(ws):
                                            head=1, deprel='obj')
 
 
+def test_a_head_that_is_not_a_number_reads_as_english(ws):
+    """Every other argument here is a reference, so a model reaches for one
+    before it reaches for a bare number, and int() answered that with its own
+    error text. A number with a fraction is refused rather than truncated."""
+    for bad in ('w1', 's2.w1', 'root', None, 2.7, True, [1]):
+        out = run(ws, 'set_head', document='Viaje', ref='s2.w2', head=bad, deprel='punct')
+        assert 'is a plain number, not a reference' in out or 'Give head:' in out, (bad, out)
+    assert not ws.ops
+    # A whole number in either shape still lands.
+    assert 'punct of' in run(ws, 'set_head', document='Viaje', ref='s2.w2', head='1', deprel='punct')
+    assert 'punct of' in run(ws, 'set_head', document='Viaje', ref='s2.w2', head=1.0, deprel='punct')
+
+
 def test_del_relation_says_when_there_is_no_head_to_remove(ws):
     assert 'already have no head' in run(ws, 'del_relation', document='Viaje', refs=['s2.w1'])
     assert not ws.ops

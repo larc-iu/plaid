@@ -112,7 +112,7 @@ def t_split_word(ws: Workspace, document: str, ref: str, at) -> str:
     else:
         try:
             n = int(at)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             raise ToolError('at must be the number of characters in the left part, or the left part itself')
     if not 0 < n < len(w.surface):
         raise ToolError(f'at must be between 1 and {len(w.surface) - 1} for "{w.surface}"')
@@ -214,7 +214,7 @@ def t_split_sentence(ws: Workspace, document: str, ref: str, before_word: int) -
     _guard(ws, s, ref)
     try:
         n = int(before_word)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         raise ToolError('before_word must be a word number (the first word of the new sentence)')
     if not 2 <= n <= len(s.words):
         raise ToolError(f'before_word must be between 2 and {len(s.words)} for {ref} (a split before w1 changes nothing)')
