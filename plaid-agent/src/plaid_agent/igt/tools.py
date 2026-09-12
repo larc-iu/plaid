@@ -1655,6 +1655,17 @@ def check_respell_overlap(ws: Workspace, text_id: str, begin: int, end: int, whe
         if op.get('kind') == 'edit_text' and op.get('text_id') == text_id and op['begin'] < end:
             raise ToolError(f'{where}: a sentence before or at this point is retyped or appended in this plan; '
                             'respell it in a separate plan')
+    no_scope_reaches(ws, next((d.id for d in ws._docs.values() if d.text_id == text_id), None), where)
+
+
+def no_scope_reaches(ws: Workspace, doc_id: Optional[str], where: str) -> None:
+    """A corpus-wide change stored as one op (bulk.scope_reaches) is resolved
+    to words only at approval, so nothing that reshapes a document it reaches
+    can share its plan: the two would meet for the first time in the batch."""
+    from .bulk import scope_reaches
+    if scope_reaches(ws, doc_id):
+        raise ToolError(f'{where}: this plan already holds a corpus-wide change that reaches this document. '
+                        'Apply it first, then plan this (plan_status, drop_planned).')
 
 
 def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] = None,

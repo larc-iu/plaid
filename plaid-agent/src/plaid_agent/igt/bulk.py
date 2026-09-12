@@ -65,28 +65,11 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
     labels: List[str] = []
     staged: List[Dict[str, Any]] = []
     if not ws.use_scan(document) and not _names_morpheme_forms(ws, field):
-        from .corpus import REPLACE_MAX, q_replace_in_field, rx
+        args = {'field': field, 'pattern': pattern, 'replacement': replacement, 'regex': bool(regex),
+                'whole_value': bool(whole_value), 'case_sensitive': bool(case_sensitive)}
         f = ws.project.field(field)
-        spec = rx(pattern, regex=bool(regex), whole=bool(whole_value), case_sensitive=bool(case_sensitive))
-        staged = q_replace_in_field(ws, f, rep, spec, REPLACE_MAX)
-        if len(staged) > MAX_BULK:
-            # Too many to hold span by span: ONE op, the predicate, resolved to
-            # spans again at approval (igt.plan.resolve_scopes), with every
-            # matched document pinned by version so what is found then is
-            # what was counted now.
-            docs = sorted({op['doc'] for op in staged if op.get('doc')})
-            _clear_of_reshapes(ws, docs)
-            ws.add_op({'kind': 'replace_scope', 'field': f.name, 'layer_id': f.layer_id, 'scope': f.scope,
-                       'pattern': pattern, 'replacement': replacement, 'regex': bool(regex),
-                       'whole_value': bool(whole_value), 'case_sensitive': bool(case_sensitive),
-                       'document_id': None, 'documents': docs, 'count': len(staged),
-                       'label': f'{f.name}: replace "{pattern}" with "{replacement}" on {len(staged)} values '
-                                f'in {len(docs)} documents'})
-            return (ws.planned_note(1) + f'\n  One change covering {len(staged)} {f.name} values in '
-                    f'{len(docs)} documents. For example:\n  '
-                    + '\n  '.join(op['label'] for op in staged[:8]) + f'\n  … {len(staged) - 8} more')
-        ws.add_ops(staged)
-        return _bulk_note(ws, len(staged), [op['label'] for op in staged], f'{f.name} values')
+        return _stage(ws, 'replace_in_field', args, _scoped_replace(ws, args, REPLACE_MAX), 'set_span',
+                      f'{f.name} values')
     if _names_morpheme_forms(ws, field):
         for doc in _docs(ws, document):
             for s in doc.sentences:
@@ -131,6 +114,108 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
     return _bulk_note(ws, len(labels), labels, f'{f.name} values')
 
 
+# --- corpus-wide changes as ONE op ----------------------------------------------
+#
+# Each corpus-wide tool's query path is a function of (workspace, args, cap)
+# that returns the per-span ops it would stage. Under MAX_BULK those ops are
+# staged as they are, in step with the scan path. Past it, the plan holds ONE
+# `bulk_scope` op naming the tool and its arguments, and the same function
+# runs again at approval (igt.plan.resolve_scopes), with every document the
+# preview matched pinned by version so what is found then is what was counted.
+
+REPLACE_MAX = 20000  # candidates one pass may consider; past it, narrow and go in passes
+
+
+def _scoped_replace(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str, Any]]:
+    from .corpus import q_replace_in_field, rx
+    f = ws.project.field(a['field'])
+    rep = _replacer(a['pattern'], a.get('replacement') or '', bool(a.get('regex')), bool(a.get('whole_value')),
+                    bool(a.get('case_sensitive')))
+    spec = rx(a['pattern'], regex=bool(a.get('regex')), whole=bool(a.get('whole_value')),
+              case_sensitive=bool(a.get('case_sensitive')))
+    return q_replace_in_field(ws, f, rep, spec, cap)
+
+
+def _lexicon_renames(ws: Workspace, rep) -> List[Dict[str, Any]]:
+    """The headwords a respelling carries into, from the plan's own view so a
+    respelling does not rename an entry a merge or a delete earlier in the
+    same plan takes away."""
+    out = []
+    for v in ws.project.vocabs:
+        for it in ws.view(v).items:
+            old = it.get('form') or ''
+            new = rep(old)
+            if new == old or not new.strip():
+                continue
+            out.append({'kind': 'rename_entry', 'item_id': it['id'], 'form': new,
+                        'label': f'{v["name"]}: rename entry "{old}" → "{new}"'})
+    return out
+
+
+def _scoped_respell(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str, Any]]:
+    from .corpus import q_respell_all, rx
+    rep = _replacer(a['pattern'], a.get('replacement') or '', bool(a.get('regex')), bool(a.get('whole_word')),
+                    bool(a.get('case_sensitive')))
+    spec = rx(a['pattern'], regex=bool(a.get('regex')), whole=bool(a.get('whole_word')),
+              case_sensitive=bool(a.get('case_sensitive')))
+    staged, n_words, _n = q_respell_all(ws, rep, spec, bool(a.get('morpheme_forms', True)), cap)
+    if n_words > cap:
+        raise ToolError(f'More than {cap} words match, which is more than one pass may consider. '
+                        f'Narrow it (a document, a stricter pattern) and go in passes.')
+    if a.get('lexicon', True):
+        staged = staged + _lexicon_renames(ws, rep)
+    return staged
+
+
+def _scoped_copy(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str, Any]]:
+    from .corpus import q_copy_to_orthography
+    target = ws.project.orthography(a['orthography'])
+    src = None if (a.get('source') or 'baseline').lower() == 'baseline' else ws.project.orthography(a['source'])
+    staged = q_copy_to_orthography(ws, target, src, bool(a.get('overwrite')), cap)
+    if len(staged) > cap:
+        raise ToolError(f'More than {cap} words are candidates, which is more than one pass may consider. '
+                        f'Narrow it to a document and go in passes.')
+    return staged
+
+
+def _scoped_set_for_form(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str, Any]]:
+    from .corpus import q_set_field_for_form
+    f = ws.project.field(a['field'])
+    return q_set_field_for_form(ws, a['form'], f, '' if a.get('value') is None else str(a['value']),
+                                bool(a.get('only_empty', True)), cap)
+
+
+SCOPED = {'replace_in_field': _scoped_replace, 'respell_all': _scoped_respell,
+          'copy_to_orthography': _scoped_copy, 'set_field_for_form': _scoped_set_for_form}
+
+
+def _stage(ws: Workspace, tool: str, args: Dict[str, Any], staged: List[Dict[str, Any]], unit: str,
+           what: str) -> str:
+    """Stage what a corpus-wide tool computed: op by op under the cap, as one
+    bulk_scope op past it."""
+    if len(staged) <= MAX_BULK:
+        ws.add_ops(staged)
+        return _bulk_note(ws, len(staged), [op['label'] for op in staged], what)
+    docs = sorted({op['doc'] for op in staged if op.get('doc')})
+    _clear_of_reshapes(ws, docs)
+    counts: Dict[str, int] = {}
+    for op in staged:
+        counts[op['kind']] = counts.get(op['kind'], 0) + 1
+    ws.add_op({'kind': 'bulk_scope', 'tool': tool, 'args': args, 'counts': counts, 'count': len(staged),
+               'documents': docs,
+               'label': f'{tool}: {len(staged)} changes in {len(docs)} documents ('
+                        + ', '.join(f'{k}={v}' for k, v in args.items() if v not in (None, '', False)) + ')'})
+    return (ws.planned_note(1) + f'\n  One change covering {len(staged)} changes to {what} in {len(docs)} documents. '
+            f'For example:\n  ' + '\n  '.join(op['label'] for op in staged[:8]) + f'\n  … {len(staged) - 8} more')
+
+
+def scope_reaches(ws: Workspace, doc_id: Optional[str]) -> bool:
+    """Whether a corpus-wide change already planned reaches this document (or
+    might, when the document is not known)."""
+    reach = {d for op in ws.ops if op.get('kind') == 'bulk_scope' for d in (op.get('documents') or [])}
+    return bool(reach) and (doc_id is None or doc_id in reach)
+
+
 def _clear_of_reshapes(ws: Workspace, docs: List[str]) -> None:
     """A corpus-wide replacement reaches every document it matched, so a plan
     that already reshapes text or words in one of them cannot take it."""
@@ -166,11 +251,16 @@ def t_respell_all(ws: Workspace, pattern: str, replacement: str, regex: bool = F
     staged: List[Dict[str, Any]] = []
     n_words = n_morphs = n_entries = 0
     if not ws.use_scan(document):
-        from .corpus import q_respell_all, rx
-        staged, n_words, n_morphs = q_respell_all(ws, rep, rx(pattern, regex=bool(regex), whole=bool(whole_word),
-                                                              case_sensitive=bool(case_sensitive)), bool(morpheme_forms), MAX_BULK)
-        labels = [op['label'] for op in staged]
-    for doc in (_docs(ws, document) if ws.use_scan(document) else []):
+        args = {'pattern': pattern, 'replacement': replacement, 'regex': bool(regex), 'whole_word': bool(whole_word),
+                'case_sensitive': bool(case_sensitive), 'morpheme_forms': bool(morpheme_forms), 'lexicon': bool(lexicon)}
+        staged = _scoped_respell(ws, args, REPLACE_MAX)
+        kinds = [op['kind'] for op in staged]
+        out = _stage(ws, 'respell_all', args, staged, 'respell', 'words')
+        if staged:
+            out += (f'\n({kinds.count("respell")} words, {kinds.count("set_morpheme_form")} morpheme forms, '
+                    f'{kinds.count("rename_entry")} lexicon headwords.)')
+        return out
+    for doc in _docs(ws, document):
         for s in doc.sentences:
             for w in s.words:
                 new = rep(w.surface)
@@ -198,18 +288,10 @@ def t_respell_all(ws: Workspace, pattern: str, replacement: str, regex: bool = F
                     labels.append(op['label'])
                     n_morphs += 1
     if lexicon:
-        for v in ws.project.vocabs:
-            # The plan's own view, so a respelling does not rename an entry a
-            # merge or a delete earlier in the same plan takes away.
-            for it in ws.view(v).items:
-                old = it.get('form') or ''
-                new = rep(old)
-                if new == old or not new.strip():
-                    continue
-                label = f'{v["name"]}: rename entry "{old}" → "{new}"'
-                staged.append({'kind': 'rename_entry', 'item_id': it['id'], 'form': new, 'label': label})
-                labels.append(label)
-                n_entries += 1
+        renames = _lexicon_renames(ws, rep)
+        staged += renames
+        labels += [op['label'] for op in renames]
+        n_entries = len(renames)
     _check_cap(len(staged))
     ws.add_ops(staged)
     out = _bulk_note(ws, len(labels), labels, 'words')
@@ -228,10 +310,9 @@ def t_copy_to_orthography(ws: Workspace, orthography: str, source: str = 'baseli
     labels: List[str] = []
     staged: List[Dict[str, Any]] = []
     if not ws.use_scan(document):
-        from .corpus import q_copy_to_orthography
-        staged = q_copy_to_orthography(ws, target, src, bool(overwrite), MAX_BULK)
-        labels = [op['label'] for op in staged]
-    for doc in (_docs(ws, document) if ws.use_scan(document) else []):
+        args = {'orthography': orthography, 'source': source or 'baseline', 'overwrite': bool(overwrite)}
+        return _stage(ws, 'copy_to_orthography', args, _scoped_copy(ws, args, REPLACE_MAX), 'set_orthography', 'words')
+    for doc in _docs(ws, document):
         for s in doc.sentences:
             for w in s.words:
                 cur = w.orthographies.get(target, '')
@@ -261,9 +342,10 @@ def t_set_field_for_form(ws: Workspace, form: str, field: str, value: str, only_
     value = '' if value is None else str(value)
     staged: List[Dict[str, Any]] = []
     if not ws.use_scan(document):
-        from .corpus import q_set_field_for_form
-        staged = q_set_field_for_form(ws, form, f, value, bool(only_empty), MAX_BULK)
-    for doc in (_docs(ws, document) if ws.use_scan(document) else []):
+        args = {'form': form, 'field': field, 'value': value, 'only_empty': bool(only_empty)}
+        return _stage(ws, 'set_field_for_form', args, _scoped_set_for_form(ws, args, REPLACE_MAX), 'set_span',
+                      f'occurrences of "{form}"' + (' without a value' if only_empty else ''))
+    for doc in _docs(ws, document):
         for s in doc.sentences:
             for w in s.words:
                 if f.scope == 'Word':

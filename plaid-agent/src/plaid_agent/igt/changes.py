@@ -58,8 +58,9 @@ def locate(ws, op: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return None
     # A stored group of like ops (core.plan.compact_ops) names no entity of
     # its own: it is placed at its document when its members share one.
-    if op.get('compact'):
-        doc_id = op.get('doc')
+    if op.get('compact') or kind == 'bulk_scope':
+        docs = op.get('documents') or []
+        doc_id = op.get('doc') or (docs[0] if len(docs) == 1 else None)
         return {'kind': 'document', 'document_id': doc_id, 'document_name': _doc_name(ws, doc_id)} if doc_id else None
     if kind == 'create_entry':
         v = _vocab(ws, op.get('vocab_id'))

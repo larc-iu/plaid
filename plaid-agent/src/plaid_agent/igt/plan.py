@@ -72,9 +72,9 @@ KINDS = ('set_span', 'set_analysis', 'set_orthography', 'respell', 'link', 'unli
          'set_entry_field', 'set_entry_metadata', 'set_doc_metadata', 'create_document', 'merge_entries', 'delete_entry',
          'rename_entry', 'rename_document', 'confirm', 'discard_analysis', 'set_morpheme_form', 'set_morph_type',
          'split_word', 'merge_words', 'delete_word', 'split_sentence', 'merge_sentences', 'edit_text',
-         'add_comment', 'restore_document', 'replace_scope')
+         'add_comment', 'restore_document', 'bulk_scope')
 REQUIRED = {
-    'replace_scope': ('field', 'layer_id', 'scope', 'pattern'),
+    'bulk_scope': ('tool', 'args', 'counts'),
     'set_span': ('layer_id', 'token_id'), 'set_analysis': ('word_id', 'text_id', 'begin', 'end', 'morpheme_layer_id', 'morphemes'),
     'set_orthography': ('word_id', 'key'), 'respell': ('text_id', 'begin', 'end', 'value'),
     'link': ('token_id',), 'unlink': ('link_id',), 'link_phrase': ('token_ids',), 'create_entry': ('vocab_id', 'form', 'key'),
@@ -91,8 +91,18 @@ REQUIRED = {
 }
 
 
+RESHAPES = ('respell', 'edit_text', 'split_word', 'merge_words', 'delete_word', 'split_sentence',
+            'merge_sentences', 'set_analysis', 'discard_analysis')
+
+
 def validate_ops(ops: List[Dict[str, Any]]) -> None:
     """Reject a malformed plan BEFORE anything is written."""
+    reach = {d for op in ops if op.get('kind') == 'bulk_scope' for d in (op.get('documents') or [])}
+    if reach:
+        for op in ops:
+            if op.get('kind') in RESHAPES and (not op.get('doc') or op['doc'] in reach):
+                raise ValueError('this plan holds a corpus-wide change and reshapes a document it reaches; '
+                                 'the two would meet for the first time in the batch')
     for i, op in enumerate(ops):
         kind = op.get('kind') if isinstance(op, dict) else None
         if kind not in KINDS:
@@ -295,31 +305,29 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
 
 
 def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """The per-span ops a stored replacement stands for, read from the corpus
-    NOW. Approval has already refused the plan if a matched document moved
-    since the preview, so what is found here is what was counted."""
-    if not any(op.get('kind') == 'replace_scope' for op in ops):
+    """The per-span ops a stored corpus-wide change stands for, computed
+    again NOW by the same function that previewed it. Approval has already
+    refused the plan if a matched document moved since, so what is found
+    here is what was counted."""
+    if not any(op.get('kind') == 'bulk_scope' for op in ops):
         return ops
     if project is None:
-        raise ValueError('a corpus-wide replacement needs the project to read the corpus with')
-    from .bulk import _replacer
-    from .corpus import REPLACE_MAX, q_replace_changes, q_replace_matches, rx
-    from .tools import Workspace
+        raise ValueError('a corpus-wide change needs the project to read the corpus with')
+    from .bulk import REPLACE_MAX, SCOPED
+    from .tools import ToolError, Workspace
     ws = Workspace(client, project)
     out: List[Dict[str, Any]] = []
     for op in ops:
-        if op.get('kind') != 'replace_scope':
+        if op.get('kind') != 'bulk_scope':
             out.append(op)
             continue
-        f = ws.project.field(op['field'])
-        rep = _replacer(op['pattern'], op.get('replacement') or '', bool(op.get('regex')),
-                        bool(op.get('whole_value')), bool(op.get('case_sensitive')))
-        spec = rx(op['pattern'], regex=bool(op.get('regex')), whole=bool(op.get('whole_value')),
-                  case_sensitive=bool(op.get('case_sensitive')))
-        rows = q_replace_matches(ws, f, spec, op.get('document_id'), REPLACE_MAX)
-        if len(rows) > REPLACE_MAX:
-            raise ValueError(f'the replacement now matches more than {REPLACE_MAX} values')
-        out.extend(q_replace_changes(ws, f, rep, rows))
+        fn = SCOPED.get(op.get('tool'))
+        if fn is None:
+            raise ValueError(f'unknown corpus-wide tool {op.get("tool")!r}')
+        try:
+            out.extend(fn(ws, dict(op.get('args') or {}), REPLACE_MAX))
+        except ToolError as e:
+            raise ValueError(str(e)) from e
     return out
 
 
@@ -734,7 +742,7 @@ def _apply_text_edit(client, project, op: Dict[str, Any]) -> None:
 # without it the summary shows the internal identifier instead.
 SUMMARY_NAMES = {
     # Resolved to set_span ops at approval; the summary counts what it stands for.
-    'replace_scope': ('field value', 'field values'),
+    'bulk_scope': ('corpus-wide change', 'corpus-wide changes'),
     'set_span': ('field value', 'field values'), 'set_analysis': ('analysis', 'analyses'),
     'set_orthography': ('orthography value', 'orthography values'), 'respell': ('respelling', 'respellings'),
     'link': ('lexicon link', 'lexicon links'), 'unlink': ('unlink', 'unlinks'),
@@ -759,8 +767,8 @@ SUMMARY_NAMES = {
 def summarize(ops: List[Dict[str, Any]]) -> str:
     # A stored replacement stands for `count` field values.
     counts = Counter(kind for op in expand_ops(ops)
-                     for kind in (['set_span'] * int(op.get('count') or 0) if op.get('kind') == 'replace_scope'
-                                  else [op.get('kind')]))
+                     for kind in ([k for k, n in (op.get('counts') or {}).items() for _ in range(int(n))]
+                                  if op.get('kind') == 'bulk_scope' else [op.get('kind')]))
     parts = []
     for kind, n in counts.items():
         one, many = SUMMARY_NAMES.get(kind, (kind, kind))

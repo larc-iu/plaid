@@ -1087,7 +1087,7 @@ def _docs_of(rows: List[list]) -> set:
     return {e['document'] for r in rows for e in r if isinstance(e, dict) and e.get('document')}
 
 
-REPLACE_MAX = 20000  # matches one replacement may consider; past it, narrow and go in passes
+REPLACE_MAX = 20000  # matches one replacement may consider (bulk.REPLACE_MAX is the one tools use)
 
 
 def q_replace_matches(ws: Workspace, f, spec: Dict[str, Any], document_id: Optional[str], cap: int) -> List[list]:

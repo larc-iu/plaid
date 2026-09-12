@@ -1,3 +1,4 @@
+import pytest
 from fixtures import scan_ws, FakeClient
 
 from plaid_agent.igt.project import load_project
@@ -599,9 +600,10 @@ def test_a_replacement_past_the_cap_is_one_predicate_op_resolved_at_approval(mon
     spans = [('s1', 'Ali', 'd1', 'w-1'), ('s2', 'ali-x', 'd1', 'w-2'), ('s3', 'ALI', 'd1', 'w-3')]
     _engine_for_replace(w, spans)
     out = call_tool(w, 'replace_in_field', {'field': 'Gloss', 'pattern': 'ali', 'replacement': 'Bob'})
-    assert 'One change covering 3 Gloss values in 1 documents' in out
+    assert 'One change covering 3 changes to Gloss values in 1 documents' in out
     op = w.ops[0]
-    assert op['kind'] == 'replace_scope' and op['count'] == 3 and op['documents'] == ['d1']
+    assert op['kind'] == 'bulk_scope' and op['tool'] == 'replace_in_field' and op['count'] == 3
+    assert op['documents'] == ['d1'] and op['args']['pattern'] == 'ali'
     assert summarize(w.ops) == '3 field values'
     payload = w.plan_payload()
     assert [d['id'] for d in payload['documents']] == ['d1']
@@ -614,3 +616,32 @@ def test_a_replacement_past_the_cap_is_one_predicate_op_resolved_at_approval(mon
     w.ops.clear()
     call_tool(w, 'replace_in_field', {'field': 'Gloss', 'pattern': 'ali', 'replacement': 'Bob'})
     assert [op['kind'] for op in w.ops] == ['set_span'] * 3
+
+
+
+def test_a_respelling_past_the_cap_is_one_op_that_a_reshape_cannot_join(monkeypatch):
+    from plaid_agent.igt import bulk
+    from plaid_agent.igt.plan import execute_plan, summarize, validate_ops
+    monkeypatch.setattr(bulk, 'MAX_BULK', 1)
+    w = scan_ws(FakeClient())
+    w.prefer_scan = False
+
+    def query(body):
+        find = body.get('find') or []
+        if body.get('return') == 'entities' and find == ['?t']:
+            return {'return': 'entities', 'results': [
+                [{'id': 'w-1', 'value': 'Alidi', 'document': 'd1', 'text': 't1', 'begin': 0, 'end': 5}],
+                [{'id': 'w-3', 'value': 'akuna', 'document': 'd1', 'text': 't1', 'begin': 10, 'end': 15}]]}
+        return {'return': 'entities', 'results': []}
+    w.client.query = query
+    out = call_tool(w, 'respell_all', {'pattern': 'a', 'replacement': 'ä', 'lexicon': False, 'morpheme_forms': False})
+    assert 'One change covering 2 changes to words' in out
+    op = w.ops[0]
+    assert op['kind'] == 'bulk_scope' and op['tool'] == 'respell_all' and op['counts'] == {'respell': 2}
+    assert summarize(w.ops) == '2 respellings'
+    # Nothing that reshapes a reached document may join the plan, in either order.
+    assert 'corpus-wide change' in call_tool(w, 'split_word', {'document': 'Text 1', 'ref': 's1.w1', 'at': 2})
+    with pytest.raises(ValueError, match='meet for the first time'):
+        validate_ops(w.ops + [{'kind': 'split_word', 'word_id': 'w-1', 'position': 2, 'morpheme_ids': [], 'doc': 'd1'}])
+    counts = execute_plan(w.client, w.plan_payload()['ops'], source='s', label='l', project=w.project)
+    assert counts.get('respellings') == 2

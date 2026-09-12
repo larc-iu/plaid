@@ -108,6 +108,8 @@ def _collapsed_mwes(words: List[Word]) -> list:
 def t_split_word(ws: Workspace, document: str, ref: str, at) -> str:
     """PLAN: split one word into two at a character position."""
     doc = ws.doc(document)
+    from .tools import no_scope_reaches
+    no_scope_reaches(ws, doc.id, ws.doc_label(doc.id))
     w = _need(resolve(doc, ref), Word, ref)
     _guard(ws, w, ref)
     if isinstance(at, str) and not at.strip().isdigit():
@@ -138,6 +140,8 @@ def t_split_word(ws: Workspace, document: str, ref: str, at) -> str:
 def t_merge_words(ws: Workspace, document: str, refs) -> str:
     """PLAN: merge consecutive words of one sentence into one."""
     doc = ws.doc(document)
+    from .tools import no_scope_reaches
+    no_scope_reaches(ws, doc.id, ws.doc_label(doc.id))
     refs = _refs(refs)
     if len(refs) < 2:
         raise ToolError('Give at least two word references in one sentence, e.g. ["s3.w2", "s3.w3"]')
@@ -185,6 +189,8 @@ def t_merge_words(ws: Workspace, document: str, refs) -> str:
 def t_delete_word(ws: Workspace, document: str, refs) -> str:
     """PLAN: delete word tokens (the text stays. Analysis, values, and links go)."""
     doc = ws.doc(document)
+    from .tools import no_scope_reaches
+    no_scope_reaches(ws, doc.id, ws.doc_label(doc.id))
     staged: List[Dict[str, Any]] = []
     words = [(ref, _need(resolve(doc, ref), Word, ref)) for ref in _refs(refs)]
     going = {w.id for _, w in words}
@@ -293,6 +299,8 @@ def t_append_text(ws: Workspace, document: str, text: str) -> str:
 def t_retype_sentence(ws: Workspace, document: str, ref: str, text: str) -> str:
     """PLAN: replace one sentence's baseline text."""
     doc = ws.doc(document)
+    from .tools import no_scope_reaches
+    no_scope_reaches(ws, doc.id, ws.doc_label(doc.id))
     s = _need(resolve(doc, ref), Sentence, ref)
     text = _clean_text(text)
     b, e = s.begin, s.end
