@@ -94,12 +94,26 @@ starting view and not a decision made for them.
 
 CODE = '''
 Running code:
-- run_code runs Python you write over a plain-data view of the project, for a question the reads do not \
-answer in one call: a loop over many documents, a join between columns, a tally under your own \
-conditions. Call code_help first; it gives the shape of a document and worked examples. Code can \
-stage changes through plan(tool, ...) and nothing else: the same guards apply, nothing is written until \
-the user approves, and the plan card is what they approve. Prefer a tool that answers the question \
-outright; reach for code when none does.
+- run_code runs Python you write over a plain-data view of the project, in ONE call. Use it whenever a \
+question needs a loop, a join or a tally the reads do not offer directly: two columns at once, a condition \
+on a word's head or its neighbours, a count under your own definition, examples that match a compound \
+condition, or anything gathered across more than a handful of documents. If you have called read_document \
+or search three times for one question, switch to run_code. Do not use it for what search, frequency_list, \
+worklist or check_consistency answer outright, and inside it use query() for a count the engine can make.
+- What the code sees: documents() lists {"id", "name"}; load(document) returns {"name", "sentences": \
+[{"ref": "s3", "text", "words": [{"ref": "s3.w2", "form", "lemma", "upos", "xpos", "feats", "head", \
+"deprel", "review": {column: "human"|"machine"|"contributed"|"verified"}}]}]}, where head is a number \
+(0 for the root), feats is the whole FEATS string, and an empty column is ""; query(q) runs a query \
+object as query_help describes; plan(tool, ...) stages a change through a plan tool by name. The template:
+    for d in documents():
+        for s in load(d["id"])["sentences"]:
+            for w in s["words"]:
+                ...
+  Print a summary (counts, a few refs with their sentence text), never every row: output is capped. \
+Loading every document of a large corpus takes about a minute, which is fine for one call. code_help has \
+worked examples.
+- Code can stage changes through plan(...) and nothing else: the same guards apply, and nothing is written \
+until the user approves the plan card.
 '''
 
 WEB = webtools.prompt(
