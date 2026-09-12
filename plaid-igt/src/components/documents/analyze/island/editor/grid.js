@@ -378,14 +378,6 @@ export const grid = {
               ${collapsed
                 ? nothing
                 : html`
-                    ${sentence.annotations?.[name]?.id
-                      ? this._commentBadge(
-                          'span',
-                          sentence.annotations[name].id,
-                          `${name} of sentence ${index + 1}`,
-                          { inline: true },
-                        )
-                      : nothing}
                     ${this._field({
                       key: `sa:${sentence.id}:${name}`,
                       value: sentence.annotations?.[name]?.value ?? '',
@@ -411,6 +403,14 @@ export const grid = {
                       confirmSentence: sentence.id,
                       fieldName: name,
                     })}
+                    ${sentence.annotations?.[name]?.id
+                      ? this._commentBadge(
+                          'span',
+                          sentence.annotations[name].id,
+                          `${name} of sentence ${index + 1}`,
+                          { inline: true },
+                        )
+                      : nothing}
                   `}
             </div>
           `;

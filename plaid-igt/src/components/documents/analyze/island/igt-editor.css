@@ -1740,9 +1740,10 @@
     color 0.12s;
 }
 
-/* In the flow, beside the label it belongs to. A sentence field's row is
+/* In the flow, after the field it belongs to. A sentence field's row is
    full-width and is its own containing block, so the absolute badge above
-   would sit at the end of the row rather than against the field. */
+   would sit at the end of the row rather than against the field, which stops
+   at its max width well short of that. */
 .igt-cmt-badge--inline {
   position: static;
   flex: 0 0 auto;
