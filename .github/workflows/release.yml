@@ -264,7 +264,7 @@ jobs:
           4. Optional: \`delegated_token_ttl_seconds\` under \`[auth]\` in \`config.toml\` bounds the per-request token the server mints for each user (default one hour).
 
           ## Bundled apps
-          The jar serves the UD editor at \`/ud/\` and the IGT editor at \`/igt/\`.
+          The jar serves the UD editor at \`/ud/\`, the IGT editor at \`/igt/\`, and the dictionary reader at \`/dict/\`.
           EOF
           )"
 

@@ -52,7 +52,18 @@ export const ConversationRow = ({ m, opening }) => (
 // header a third of a screen wide, so it drops its border and its minimum
 // width and names each assistant by its MODEL, which is what the reader was
 // already looking at there.
-export const AssistantPicker = ({ assistants, value, onChange, disabled, compact = false }) => (
+// `stranded` are assistants online that do not say which app they serve, from a
+// process older than `extras.app`. They are shown so an operator can see the
+// one they started, and disabled because a turn sent to one cannot find its
+// conversation.
+export const AssistantPicker = ({
+  assistants,
+  stranded = [],
+  value,
+  onChange,
+  disabled,
+  compact = false,
+}) => (
   <Select value={value} onValueChange={onChange} disabled={disabled}>
     <SelectTrigger
       className={
@@ -68,6 +79,11 @@ export const AssistantPicker = ({ assistants, value, onChange, disabled, compact
       {assistants.map((s) => (
         <SelectItem key={s.serviceId} value={s.serviceId}>
           {compact ? s.extras?.model || s.serviceName : s.serviceName}
+        </SelectItem>
+      ))}
+      {stranded.map((s) => (
+        <SelectItem key={s.serviceId} value={s.serviceId} disabled>
+          {s.serviceName} (restart it to use it here)
         </SelectItem>
       ))}
     </SelectContent>

@@ -41,6 +41,14 @@ export const linkLabel = (text) =>
     .replace(/\|/g, '\\|')
     .replace(/\n/g, ' ');
 
+// One value in a Markdown table cell. A pipe would end the cell and a newline
+// would end the row, so both go. Kept here because both apps' citation tables
+// need it and had a byte-identical copy each: one escaper per language.
+export const tableCell = (s) =>
+  String(s ?? '')
+    .replace(/\|/g, '\\|')
+    .replace(/\n/g, ' ');
+
 // Text with every citation replaced: a resolved one by a Markdown link to the
 // place in the editor (`onCited` sees each, for listing the cards), an
 // unresolved one by its plain reference.

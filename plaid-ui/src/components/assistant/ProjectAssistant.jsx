@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, Send, RotateCcw, Check, X, Loader2, Plus, Trash2, Maximize2 } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { assistantsAmong } from './useAssistantAvailable.js';
+import { assistantsAmong, strandedAssistants } from './useAssistantAvailable.js';
 import { Button } from '../ui/button.jsx';
 import { Textarea } from '../ui/textarea.jsx';
 import { Badge } from '../ui/badge.jsx';
@@ -157,6 +157,7 @@ export const ProjectAssistant = ({
   // record is namespaced by `adapter.app`, the same value the service
   // advertises, so another app's assistant could not find one of ours.
   const assistants = useMemo(() => assistantsAmong(services, adapter.app), [services, adapter.app]);
+  const stranded = useMemo(() => strandedAssistants(services), [services]);
   // A conversation keeps the assistant it started with: its earlier answers
   // were that model's, and swapping models halfway through a thread makes the
   // whole thread hard to read. So the picker is offered while a conversation
@@ -588,10 +589,22 @@ export const ProjectAssistant = ({
           {discovering && !services.length ? (
             <span className="text-muted-foreground">Looking for an assistant…</span>
           ) : !service ? (
-            <span className="text-muted-foreground">
-              No assistant is online for this project. An operator can start one with{' '}
-              <code className="rounded bg-muted px-1">{adapter.command} --model …</code>.
-            </span>
+            stranded.length ? (
+              // One IS online. It just predates `extras.app`, so it cannot be
+              // told which app a conversation belongs to. Saying none is online
+              // sent operators to start a second, which collides on the service
+              // id and 409s.
+              <span className="text-muted-foreground">
+                {stranded.length === 1 ? 'An assistant is' : `${stranded.length} assistants are`}{' '}
+                running from before this version. Restart {stranded.length === 1 ? 'it' : 'them'}{' '}
+                with <code className="rounded bg-muted px-1">{adapter.command} --model …</code>.
+              </span>
+            ) : (
+              <span className="text-muted-foreground">
+                No assistant is online for this project. An operator can start one with{' '}
+                <code className="rounded bg-muted px-1">{adapter.command} --model …</code>.
+              </span>
+            )
           ) : panel ? (
             // Which assistant answers is settled at the start of a
             // conversation and then stays put, so the panel offers the choice
@@ -600,6 +613,7 @@ export const ProjectAssistant = ({
             canChoose ? (
               <AssistantPicker
                 assistants={assistants}
+                stranded={stranded}
                 value={service.serviceId}
                 onChange={setChoice}
                 disabled={!!busy}
@@ -699,6 +713,7 @@ export const ProjectAssistant = ({
                 {!panel && canChoose && (
                   <AssistantPicker
                     assistants={assistants}
+                    stranded={stranded}
                     value={service?.serviceId}
                     onChange={setChoice}
                     disabled={!!busy}
@@ -820,6 +835,7 @@ export const ProjectAssistant = ({
               {canChoose && (
                 <AssistantPicker
                   assistants={assistants}
+                  stranded={stranded}
                   value={service.serviceId}
                   onChange={setChoice}
                   disabled={!!busy}

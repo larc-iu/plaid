@@ -80,3 +80,26 @@ test('sentence offsets advance in code points across sentences', () => {
     [[2, 4]],
   );
 });
+
+test('rows that are complete but out of order are refused', () => {
+  // The check used to sort the ids first, so 1, 3, 2 passed. The importer
+  // reads a relation's target by array POSITION and its head by id, so an
+  // accepted out-of-order sentence wires the tree to the wrong words.
+  const src =
+    '1\ta\ta\tX\t_\t_\t0\troot\t_\t_\n3\tc\tc\tX\t_\t_\t1\tdep\t_\t_\n2\tb\tb\tX\t_\t_\t1\tdep\t_\t_\n';
+  assert.throws(() => parseCoNLLU(src), /token ordering/);
+});
+
+test('a multi-word token range does not count as a row', () => {
+  const src =
+    '1\tVamos\tir\tVERB\t_\t_\t0\troot\t_\t_\n' +
+    '2-3\tal\t_\t_\t_\t_\t_\t_\t_\t_\n' +
+    '2\ta\ta\tADP\t_\t_\t4\tcase\t_\t_\n' +
+    '3\tel\tel\tDET\t_\t_\t4\tdet\t_\t_\n' +
+    '4\tmar\tmar\tNOUN\t_\t_\t1\tobl\t_\t_\n';
+  const { sentences } = parseCoNLLU(src);
+  assert.deepEqual(
+    sentences[0].tokens.map((t) => t.id),
+    [1, 2, 3, 4],
+  );
+});

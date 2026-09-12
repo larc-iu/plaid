@@ -57,15 +57,18 @@
                                    "(`mamba activate base`) first, or pass --skip-clients")
                               {}))))
 
-;; The SPA build (Vite) needs a recent Node; CI uses 20. The repo's default
-;; shell Node is often too old — fail fast with a useful hint rather than a
-;; cryptic Vite crash mid-build.
+;; The SPA build (Vite) needs a recent Node; CI uses 24. Node 20 ships npm 10,
+;; which cannot read the lockfiles npm 11 writes, and that is exactly how the
+;; v0.2.0-alpha.12 release failed: `npm ci` died on a lockfile the test job had
+;; just used. This guard exists to catch that before a build, so it has to
+;; track CI rather than trail it.
 (defn ensure-node! []
   (when-not (fs/which "node") (fail "node not found on PATH"))
   (let [v     (str/trim (:out (p/sh "node" "--version")))
         major (some-> (re-find (re-pattern "v(\\d+)") v) second parse-long)]
-    (when (or (nil? major) (< major 20))
-      (fail (str "Node " v " is too old — the SPA build needs Node >= 20 (CI uses 20). "
+    (when (or (nil? major) (< major 24))
+      (fail (str "Node " v " is too old — the SPA build needs Node >= 24 (CI uses 24), because "
+                 "npm 10 cannot read the lockfiles in this repo. "
                  "Activate a newer Node (e.g. `nvm use 24.1.0`), then re-run.")))))
 
 ;; Apps whose own `npm test` is part of the gate, in the order they fail fastest.

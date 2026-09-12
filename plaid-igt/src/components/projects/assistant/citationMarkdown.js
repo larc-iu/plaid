@@ -1,15 +1,8 @@
 // IGT's half of the conversation export: a cited sentence as an interlinear
 // Markdown table. The rest of the export is shared
 // (plaid-ui/src/components/assistant/exportMarkdown.js).
-import { linkLabel } from '@ui/components/assistant/citations.js';
+import { linkLabel, tableCell } from '@ui/components/assistant/citations.js';
 import { citationHighlights, citationRows, citationTitle, sentenceHref } from './adapter.js';
-
-// A cited sentence as a Markdown table, for the conversation export: a column
-// per word, a row per tier, and what the citation names in bold.
-export const esc = (s) =>
-  String(s ?? '')
-    .replace(/\|/g, '\\|')
-    .replace(/\n/g, ' ');
 
 // One cited sentence as a Markdown table: a column per word, a row per tier
 // (words, morphemes, each field), then the sentence fields. What the citation
@@ -37,16 +30,16 @@ export const citationToMarkdown = (c, { origin, projectId }) => {
   if (words.length) {
     out.push(
       `| | ${surface.cells
-        .map((v, j) => (cited.has(words[j].index) ? `**${esc(v)}**` : esc(v)))
+        .map((v, j) => (cited.has(words[j].index) ? `**${tableCell(v)}**` : tableCell(v)))
         .join(' | ')} |`,
     );
     out.push(`|---|${words.map(() => '---').join('|')}|`);
     rows.forEach((r) =>
-      out.push(`| ${[r.label, ...r.cells.map((_, j) => cell(r, j))].map(esc).join(' | ')} |`),
+      out.push(`| ${[r.label, ...r.cells.map((_, j) => cell(r, j))].map(tableCell).join(' | ')} |`),
     );
   } else {
-    out.push(esc(c.text));
+    out.push(tableCell(c.text));
   }
-  (c.fields || []).forEach((f) => out.push('', `*${esc(f.field)}:* ${esc(f.value)}`));
+  (c.fields || []).forEach((f) => out.push('', `*${tableCell(f.field)}:* ${tableCell(f.value)}`));
   return out.join('\n');
 };

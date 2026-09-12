@@ -25,6 +25,16 @@ export const assistantsAmong = (services, app) =>
     (s) => s.online !== false && s.extras?.app === app,
   );
 
+// Assistants that are online and say nothing about which app they serve: a
+// process started before `extras.app` existed. Filtering them out silently left
+// every surface either claiming no assistant was online, which was false, or
+// rendering nothing at all, and the remedy an operator would reach for (start
+// another) collides on the service id and 409s. They are listed, and disabled.
+export const strandedAssistants = (services) =>
+  filterServicesByTask(services || [], TASKS.ASSIST).filter(
+    (s) => s.online !== false && !s.extras?.app,
+  );
+
 export const useAssistantAvailable = (client, projectId, app) => {
   const cached = serviceCache.get(projectId);
   const [available, setAvailable] = useState(

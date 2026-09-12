@@ -1972,7 +1972,13 @@ export class ConlluDocument {
       return '# No tokenized content available';
     }
 
-    const esc = (v) => (v == null || v === '' ? UNDERSCORE : String(v));
+    // CoNLL-U is line- and tab-delimited with no escape of its own, so a tab
+    // inside a value would make an eleven-column row and a newline would make a
+    // bare line the parser cannot place. The UI's inputs are single-line, but
+    // the API, the assistant and a word carved over a tab in the Text Editor
+    // all reach here. One space each, so the file always re-parses.
+    const flat = (v) => String(v).replace(/[\t\r\n]+/g, ' ');
+    const esc = (v) => (v == null || v === '' ? UNDERSCORE : flat(v));
     const serializeFeats = (feats) => {
       if (!feats || feats.length === 0) return UNDERSCORE;
       const values = feats
@@ -1983,7 +1989,7 @@ export class ConlluDocument {
     };
 
     const output = [];
-    const docName = this.name || 'unknown';
+    const docName = flat(this.name || 'unknown');
     output.push(`# newdoc id = ${docName}`);
 
     sentenceData.forEach((sentence, sentIdx) => {
@@ -2018,11 +2024,11 @@ export class ConlluDocument {
           if (key === 'sent_id' || isProvKey(key)) return;
           const value = sentMeta[key];
           if (key === 'text') hasTextMetadata = true;
-          if (value === true) output.push(`# ${key}`);
-          else output.push(`# ${key} = ${value}`);
+          if (value === true) output.push(`# ${flat(key)}`);
+          else output.push(`# ${flat(key)} = ${flat(value)}`);
         });
       if (!hasTextMetadata) {
-        output.push(`# text = ${(sentence.text || '').trim()}`);
+        output.push(`# text = ${flat((sentence.text || '').trim())}`);
       }
 
       let i = 0;

@@ -10,9 +10,16 @@
 // label and a feature key are written BARE, so text that is not bare-safe
 // cannot go there at all and the caller has to say something else instead.
 
-/** A Grew string literal. The quote and the backslash escape; nothing else
- * does, because this text is read by our own lexer and not by a shell. */
-export const quote = (text) => `"${String(text).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+/** A Grew string literal. The quote and the backslash escape, and so do the
+ * two whitespace characters the lexer decodes: a raw newline ends the literal
+ * ("Unterminated string") where `\n` round-trips. Nothing else does, because
+ * this text is read by our own lexer and not by a shell. */
+export const quote = (text) =>
+  `"${String(text)
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\t/g, '\\t')}"`;
 
 /** The text as a regex that matches it literally: someone looking for `dog.`
  * wants a full stop. */

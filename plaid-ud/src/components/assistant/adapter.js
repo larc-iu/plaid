@@ -5,7 +5,7 @@
 //
 // This is the whole of UD's side of the tab. The generic half is
 // plaid-ui/src/components/assistant/, and plaid-igt has an adapter of its own.
-import { citationFocus, linkLabel } from '@ui/components/assistant/citations.js';
+import { citationFocus, linkLabel, tableCell } from '@ui/components/assistant/citations.js';
 import { ExampleCard } from './ExampleCard.jsx';
 
 // Cite tags, plus the older `{{Doc sN}}` braces and bare "s3.w2" references
@@ -89,22 +89,17 @@ export const changePlace = (projectId, where) => {
 
 // A cited sentence as a Markdown table, for the conversation export: the
 // CoNLL-U columns, one row per line, with the cited words in bold.
-const esc = (s) =>
-  String(s ?? '')
-    .replace(/\|/g, '\\|')
-    .replace(/\n/g, ' ');
-
 export const citationToMarkdown = (c, { origin, projectId }) => {
   const columns = c.columns || [];
   const out = [`**[${linkLabel(citationTitle(c))}](${sentenceHref(origin, projectId, c)})**`, ''];
   if (!columns.length) {
-    out.push(esc(c.text));
+    out.push(tableCell(c.text));
     return out.join('\n');
   }
-  out.push(`| ${columns.map(esc).join(' | ')} |`);
+  out.push(`| ${columns.map(tableCell).join(' | ')} |`);
   out.push(`|${columns.map(() => '---').join('|')}|`);
   for (const r of c.rows || []) {
-    const cells = columns.map((col) => (r.focus ? `**${esc(r[col])}**` : esc(r[col])));
+    const cells = columns.map((col) => (r.focus ? `**${tableCell(r[col])}**` : tableCell(r[col])));
     out.push(`| ${cells.join(' | ')} |`);
   }
   return out.join('\n');

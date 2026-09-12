@@ -24,7 +24,7 @@ const SAMPLE_TEXT = ' Todos los seres humanos nacen libres e iguales en dignidad
 const VOCAB_NAME = 'IGT Lexicon';
 const VOCAB_ITEMS = ['all', 'the', 'human', 'be.born', 'free', 'equal'];
 
-function makeClient() {
+export function makeClient() {
   const { token } = readToken();
   return new PlaidClient(CORE_URL, token);
 }

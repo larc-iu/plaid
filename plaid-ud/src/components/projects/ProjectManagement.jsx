@@ -101,8 +101,10 @@ export const ProjectManagement = () => {
 
   const isAdmin = user?.isAdmin || false;
   // Whether this user can hand out project invites. Maintainers can, which is
-  // the point: onboarding a class should not queue behind an admin.
-  const canInvite = isAdmin || (project?.maintainers || []).includes(user?.id);
+  // the point: onboarding a class should not queue behind an admin. The same
+  // test as every other maintainer gate, from the one place that owns it: the
+  // hand-rolled copy here also missed that the ACL can hold nulls.
+  const canInvite = canManageProject(project, user);
 
   // Mint a one-time link that lets someone set their own password, instead of
   // the admin inventing a temporary one and sending it over some side channel

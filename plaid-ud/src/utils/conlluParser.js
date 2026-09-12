@@ -190,14 +190,16 @@ export function parseCoNLLU(text) {
     sentences.push(currentSentence);
   }
 
-  // Validate that tokens are properly ordered within sentences
+  // Validate that tokens are properly ordered within sentences. In FILE order,
+  // not sorted: the importer reads a relation's target by array position and
+  // its head by id, so rows that are complete but out of order would wire the
+  // tree to the wrong words. Sorting first hid exactly that.
   for (const sentence of sentences) {
-    const sortedIds = sentence.tokens.map((t) => t.id).sort((a, b) => a - b);
-    for (let i = 0; i < sortedIds.length; i++) {
-      if (sortedIds[i] !== i + 1) {
+    sentence.tokens.forEach((t, i) => {
+      if (t.id !== i + 1) {
         throw new Error(`Invalid token ordering: expected continuous IDs starting from 1`);
       }
-    }
+    });
   }
 
   return { sentences, dropped: { emptyNodes: droppedEmptyNodes, miscTokens: droppedMiscTokens } };

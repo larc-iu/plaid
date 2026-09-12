@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 
 import { ConlluDocument } from '../src/domain/ConlluDocument.js';
 import { rawDocFromConllu } from './helpers/rawDoc.js';
+import { parseCoNLLU } from '../src/utils/conlluParser.js';
 
 const conllu = (lines) => lines.join('\n');
 
@@ -63,4 +64,15 @@ test('an incoming `# sent_id` survives import and is re-emitted verbatim', () =>
   assert.ok(!out.includes('# sent_id = rt-doc-1'), out);
   // And it stays put on a second pass.
   assert.equal(new ConlluDocument({ raw: rawDocFromConllu(out, 'rt-doc') }).toConllu(), out);
+});
+
+test('a value carrying a tab or a newline still exports a file that re-parses', () => {
+  // CoNLL-U has no escape of its own: a tab makes an eleven-column row and a
+  // newline makes a bare line. The UI's inputs are single-line, but the API,
+  // the assistant and the Text Editor all write here.
+  const doc = new ConlluDocument({ raw: rawDocFromConllu(INPUT, 'a\nb\tc') });
+  const text = doc.toConllu();
+  assert.ok(!/^# newdoc id = a$/m.test(text), text.split('\n')[0]);
+  assert.match(text.split('\n')[0], /# newdoc id = a b c/);
+  assert.doesNotThrow(() => parseCoNLLU(text));
 });

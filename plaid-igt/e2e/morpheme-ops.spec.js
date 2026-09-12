@@ -1,5 +1,5 @@
 import { test, expect, seedAuth, collectClientErrors } from './fixtures.js';
-import { getFixture } from './fixtureProject.js';
+import { getFixture, makeClient } from './fixtureProject.js';
 
 // Exercises the morpheme structural keyboard ops in the island as a clean
 // round-trip: split a morpheme with '-' (caret mid-string) then merge it back
@@ -48,7 +48,15 @@ test('split a morpheme with "-" then merge it back', async ({ page }) => {
   await page.keyboard.type(origForm);
   await firstAgain.press('Enter');
   await page.waitForLoadState('networkidle');
-  await expect(page.locator('.igt-morph-field[data-prec="1"]').first()).toHaveValue(origForm);
+  // The SERVER, not the input this test just typed into: that box holds the
+  // restored text whether or not the write landed, so asserting on it was a
+  // check that could not fail. This spec shares the fixture project, and a
+  // silent failure here leaves "ab" in it for every spec that runs after.
+  await expect
+    .poll(async () => JSON.stringify(await makeClient().documents.get(documentId, true)), {
+      timeout: 8000,
+    })
+    .not.toContain('"form":"ab"');
 
   console.log('--- failed requests ---');
   for (const f of diag.failures) console.log(JSON.stringify(f));
@@ -96,7 +104,12 @@ test('split a morpheme with "=" types an enclitic, then merge it back', async ({
   await page.keyboard.type(origForm);
   await firstAgain.press('Enter');
   await page.waitForLoadState('networkidle');
-  await expect(page.locator('.igt-morph-field[data-prec="1"]').first()).toHaveValue(origForm);
+  // See the note in the first test: the input is not evidence.
+  await expect
+    .poll(async () => JSON.stringify(await makeClient().documents.get(documentId, true)), {
+      timeout: 8000,
+    })
+    .not.toContain('"form":"ab"');
 
   expect.soft(diag.failures, 'no API failures during "=" split').toEqual([]);
 });

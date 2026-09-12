@@ -52,8 +52,11 @@ Plaid is a monorepo:
 | `plaid-core/` | The Clojure server: REST API, data model, storage, audit log, query engine. Also holds this documentation under `docs/`.
 | `plaid-ud/` | The bundled Universal Dependencies editor (a Vite/React SPA), served from the jar at `/ud/`.
 | `plaid-igt/` | The bundled interlinear glossed text editor (a Vite SPA), served from the jar at `/igt/`.
-| `plaid-client-js/` | The official JavaScript client, published to npm as `plaid-client`.
-| `plaid-client-py/` | The official Python client, published to PyPI as `plaid-client`.
+| `plaid-dict/` | The bundled dictionary reader (a Vite/React SPA), served from the jar at `/dict/`.
+| `plaid-ui/` | The component and helper package the three SPAs share. Not published: each app resolves it from the checkout.
+| `plaid-agent/` | The Python assistants for UD and IGT, one distribution named `larc-plaid-agent`. Installed from a checkout, not published.
+| `plaid-client-js/` | The official JavaScript client, published to npm as `@larc-iu/plaid-client`.
+| `plaid-client-py/` | The official Python client, published to PyPI as `larc-plaid-client`.
 | `examples/` | Small standalone demos built against the clients.
 | `bb/`, `bb.edn` | The babashka task runner that drives builds, tests, and releases.
 |===

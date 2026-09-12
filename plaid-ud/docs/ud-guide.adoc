@@ -284,7 +284,7 @@ An example that names a sentence of the open document scrolls the editor to it r
 The conversation is an ordinary one.
 It appears in the **Assistant** tab's list with the document's name on it, it can be opened there and carried on, and a plan approved in the panel re-reads the document so the annotation shows the result.
 
-The assistant is a service that your server's operator runs and picks the model for (`plaid-ud-agent`, installed from PyPI).
+The assistant is a service that your server's operator runs and picks the model for (`plaid-ud-agent`, installed from a checkout of the source tree).
 When none is connected there is nothing to open, so the tab, the button and **Ask** are not shown.
 Conversations already saved are unaffected and open from their own links.
 
