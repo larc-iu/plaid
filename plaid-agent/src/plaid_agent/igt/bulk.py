@@ -9,7 +9,8 @@ from typing import Any, Dict, List, Optional
 
 from .project import word_ref
 from .tools import (Workspace, ToolError, t_set_analysis, entry_line, check_respell_overlap, span_op,
-                    has_own_form, morpheme_form_op, parse_analysis, analysis_op, _meta_patch)
+                    has_own_form, morpheme_form_op, parse_analysis, analysis_op, _meta_patch,
+                    _refuse_doomed, _refuse_removing_survivor)
 from .vocab import plan_delete_refs, plan_merge_refs, ref_ids
 from .stats import _analyzed, _docs
 
@@ -170,7 +171,9 @@ def t_respell_all(ws: Workspace, pattern: str, replacement: str, regex: bool = F
                     n_morphs += 1
     if lexicon:
         for v in ws.project.vocabs:
-            for it in ws.lexicon(v):
+            # The plan's own view, so a respelling does not rename an entry a
+            # merge or a delete earlier in the same plan takes away.
+            for it in ws.view(v).items:
                 old = it.get('form') or ''
                 new = rep(old)
                 if new == old or not new.strip():
@@ -319,10 +322,11 @@ def _set_analysis_for_form_q(ws: Workspace, form: str, morphemes: list, skip_ana
 
 # --- lexicon and document operations ----------------------------------------------
 
-def _existing(ws: Workspace, form, lexicon, entry_id, gloss=None) -> dict:
+def _existing(ws: Workspace, form, lexicon, entry_id, gloss=None, what: str = 'be changed') -> dict:
     kind, target = ws.find_entry(form, lexicon, entry_id, gloss)
     if kind == 'new':
         raise ToolError('That entry is new in this plan; approve the plan first, then merge or rename it.')
+    _refuse_doomed(ws, target, what)
     return target
 
 
@@ -408,16 +412,14 @@ def t_merge_entries(ws: Workspace, keep_form: Optional[str] = None, remove_form:
     """PLAN: fold one lexicon entry into another: every link to the removed
     entry is moved to the kept one, then the removed entry is deleted. The
     kept entry's fields are untouched."""
-    keep = _existing(ws, keep_form, lexicon, keep_id, keep_gloss)
-    remove = _existing(ws, remove_form, lexicon, remove_id, remove_gloss)
+    keep = _existing(ws, keep_form, lexicon, keep_id, keep_gloss, 'be merged into')
+    remove = _existing(ws, remove_form, lexicon, remove_id, remove_gloss, 'be merged away')
     if keep['id'] == remove['id']:
         raise ToolError('keep and remove are the same entry')
-    doomed = {op.get('remove_id') for op in ws.ops if op.get('kind') == 'merge_entries'} | \
-        {op.get('item_id') for op in ws.ops if op.get('kind') == 'delete_entry'}
-    if keep['id'] in doomed:
-        raise ToolError(f'"{keep.get("form")}" is already being merged away or deleted in this plan; merge into the surviving entry instead')
-    if remove['id'] in doomed:
-        raise ToolError(f'"{remove.get("form")}" is already being merged away or deleted in this plan')
+    # Merges do not chain: this one's links are the ones the entry holds now,
+    # so folding the survivor of an earlier merge into a third entry would
+    # leave the links that earlier merge moved on an entry being deleted.
+    _refuse_removing_survivor(ws, remove, 'be merged away')
     links = _links_to(ws, remove['id'])
     view = ws.view_of_item(remove['id'])
     # Named the way a tool takes them back, so two entries spelled alike
@@ -435,7 +437,8 @@ def t_delete_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Opt
                    entry_id: Optional[str] = None, entry_gloss: Optional[str] = None) -> str:
     """PLAN: delete a lexicon entry and its links (the words and morphemes
     stay, just unlinked)."""
-    it = _existing(ws, entry_form, lexicon, entry_id, entry_gloss)
+    it = _existing(ws, entry_form, lexicon, entry_id, entry_gloss, 'be deleted')
+    _refuse_removing_survivor(ws, it, 'be deleted')
     links = _links_to(ws, it['id'])
     view = ws.view_of_item(it['id'])
     ws.add_op({'kind': 'delete_entry', 'item_id': it['id'], 'links': [l['link_id'] for l in links],
@@ -454,7 +457,7 @@ def t_rename_entry(ws: Workspace, new_form: str, entry_form: Optional[str] = Non
     new_form = (new_form or '').strip()
     if not new_form:
         raise ToolError('new_form must not be empty')
-    it = _existing(ws, entry_form, lexicon, entry_id, entry_gloss)
+    it = _existing(ws, entry_form, lexicon, entry_id, entry_gloss, 'be renamed')
     if it.get('form') == new_form:
         return ws.planned_note(0)
     view = ws.view_of_item(it['id'])

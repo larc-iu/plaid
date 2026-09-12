@@ -223,6 +223,10 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
             if op['item_id'] in seen_delete:
                 continue
             seen_delete.add(op['item_id'])
+            if any(o.get('kind') == 'merge_entries' and o['remove_id'] == op['item_id'] for o in ops):
+                notes.append(f'dropped: {op.get("label") or "an entry delete"} '
+                             '(a merge in this plan already removes that entry)')
+                continue
         if k == 'respell':
             key = (op['text_id'], op['begin'], op['end'])
             for (t, b, e), idx in respell_at.items():
@@ -493,7 +497,9 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps) -> D
             if not iid:
                 raise RuntimeError('a created lexicon entry came back without an id; a link to it was not written')
             b.add(lambda i=iid, t=tokens: client.vocab_links.create(i, t, stamp()))
-        for iid in pending_deletes:
+        # One delete per entry: a merge and a delete of the same entry both
+        # land here, and deleting it twice fails the batch they share.
+        for iid in dict.fromkeys(pending_deletes):
             b.add(lambda i=iid: client.vocab_items.delete(i))
         b.flush()
 

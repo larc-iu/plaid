@@ -193,6 +193,18 @@ class Workspace:
         v = self.vocab_of_item(item_id)
         return self.view(v) if v else None
 
+    def entry_name(self, item: dict) -> str:
+        """How a refusal names an entry, spelled the way a tool takes it back.
+
+        Asked of the whole lexicon, not of :meth:`view`: the view leaves out
+        what the plan removes, so a refusal ABOUT a removal would have only an
+        id to name it by, and no line the user could copy into a tool.
+        """
+        v = self.vocab_of_item(item['id'])
+        if v is None:
+            return f'"{item.get("form") or item["id"]}"'
+        return LexView(v, self.lexicon(v)).label(item['id'])
+
     def find_entry(self, form: Optional[str], lexicon: Optional[str], entry_id: Optional[str],
                    gloss: Optional[str] = None):
         """-> ('existing', item) | ('new', key). Errors list candidates.
@@ -1810,7 +1822,7 @@ def t_set_entry_field(ws: Workspace, field: str, value: str, entry_form: Optiona
                       entry_gloss: Optional[str] = None) -> str:
     kind, target = ws.find_entry(entry_form, lexicon, entry_id, entry_gloss)
     if kind == 'existing':
-        _refuse_doomed(ws, target['id'], 'take a value')
+        _refuse_doomed(ws, target, 'take a value')
     vocab = (next((v for v in ws.project.vocabs if v['id'] == ws.new_entries[target]['vocab_id']), None)
              if kind == 'new' else ws.vocab_of_item(target['id']))
     f = lexicon_field(vocab, field) if vocab else {**_FREE_FIELD, 'name': field}
@@ -1872,20 +1884,31 @@ def _dict_entry(ws: Workspace, entry_form, lexicon, entry_id, entry_gloss, what:
     # is the list vocab_of_item scans, so the lookup lands.
     vocab = ws.vocab_of_item(target['id'])
     view = ws.view(vocab)
-    _refuse_doomed(ws, target['id'], what)
+    _refuse_doomed(ws, target, what)
     return vocab, view, target
 
 
-def _refuse_doomed(ws: Workspace, item_id: str, what: str):
+def _refuse_doomed(ws: Workspace, item: dict, what: str):
     """A delete already planned takes the entry's senses and references with
-    it, so anything hung on it afterwards would be written and then dropped."""
-    doomed = ({op['item_id'] for op in ws.ops if op.get('kind') == 'delete_entry'}
-              | {op['remove_id'] for op in ws.ops if op.get('kind') == 'merge_entries'})
-    if item_id in doomed:
-        view = ws.view_of_item(item_id)
-        name = view.label(item_id) if view else item_id
-        raise ToolError(f'{name} is deleted or merged away by this same plan, so it cannot '
+    it, so anything hung on it afterwards would be written and then dropped.
+
+    Every lexicon tool that names an existing entry owes this refusal, the
+    removals (delete, merge, rename) included: without it the model stages a
+    second removal of the same entry, and the plan only refuses itself once
+    the user has approved it.
+    """
+    if item['id'] in ws.doomed_entries():
+        raise ToolError(f'{ws.entry_name(item)} is deleted or merged away by this same plan, so it cannot '
                         f'{what}. Drop that change with drop_planned, or work on the entry that survives.')
+
+
+def _refuse_removing_survivor(ws: Workspace, item: dict, what: str):
+    """An entry another op merges INTO cannot also be removed. The merge moves
+    links onto it and the removal then takes them with it, and the plan refuses
+    itself after the user has approved it."""
+    if any(op.get('kind') == 'merge_entries' and op.get('keep_id') == item['id'] for op in ws.ops):
+        raise ToolError(f'{ws.entry_name(item)} is what another change in this plan merges into, so it cannot '
+                        f'{what}. Drop that merge with drop_planned, or merge into an entry that stays.')
 
 
 def _meta_of(ws: Workspace, item: dict) -> dict:

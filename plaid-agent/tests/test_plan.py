@@ -206,6 +206,13 @@ def test_normalize_resolves_op_interactions():
     with pytest.raises(ValueError, match='merged away'):
         normalize_ops([{'kind': 'merge_entries', 'keep_id': 'A', 'remove_id': 'B', 'links': [], 'label': ''},
                        {'kind': 'merge_entries', 'keep_id': 'B', 'remove_id': 'C', 'links': [], 'label': ''}])
+    # A merge and a delete of one entry both end in a delete of it, and the
+    # second fails the batch they share. The tools refuse the pair; this is
+    # the backstop under them.
+    out, notes = normalize_ops([{'kind': 'merge_entries', 'keep_id': 'A', 'remove_id': 'B', 'links': [], 'label': ''},
+                                {'kind': 'delete_entry', 'item_id': 'B', 'links': [], 'label': 'Delete entry B'}])
+    assert [o['kind'] for o in out] == ['merge_entries']
+    assert notes == ['dropped: Delete entry B (a merge in this plan already removes that entry)']
 
 
 def test_plan_error_reports_how_much_was_applied():
@@ -274,6 +281,20 @@ def test_execute_lexicon_and_document_ops():
     # entries are deleted only after their links are gone, in the second batch
     second = [(r, m, a) for r, m, a, k in c.batches[1]]
     assert second == [('vocab_items', 'delete', ('vi-erg',)), ('vocab_items', 'delete', ('vi-gam',))]
+
+
+def test_an_entry_is_deleted_once_however_many_ops_ask_for_it():
+    """The deletes a merge and a delete_entry defer both land in the last
+    batch. Asking the server twice 404s the second call, and the batch is
+    atomic, so the whole tail of the plan failed."""
+    c = FakeClient()
+    # Two merges that remove the same entry: normalize collapses a merge with
+    # a delete of one entry, so this is the pair that reaches the flush.
+    execute_plan(c, [{'kind': 'merge_entries', 'keep_id': 'vi-ali', 'remove_id': 'vi-erg', 'links': [], 'label': ''},
+                     {'kind': 'merge_entries', 'keep_id': 'vi-gam', 'remove_id': 'vi-erg', 'links': [], 'label': ''}],
+                 source='s', label='l')
+    deletes = [a for r, m, a, k in c.batches[0] if (r, m) == ('vocab_items', 'delete')]
+    assert deletes == [('vi-erg',)]
 
 
 def test_op_keys_survive_the_wire_unchanged():

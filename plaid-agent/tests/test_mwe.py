@@ -103,8 +103,12 @@ def test_entry_tools_move_and_delete_the_whole_expression_once():
     call_tool(w, 'merge_entries', {'keep_id': 'vi-gam', 'remove_id': PHRASE_ITEM})
     assert w.ops[-1]['links'] == [{'link_id': MWE_LINK, 'token_ids': ['w-2', 'w-3']}]
     assert 'move 1 link' in w.ops[-1]['label']
-    call_tool(w, 'delete_entry', {'entry_id': PHRASE_ITEM})
-    assert w.ops[-1]['links'] == [MWE_LINK]
+    # Deleting the entry that same merge removes is refused: both ops end in
+    # one delete of it, and doing it twice fails the batch they share.
+    assert 'merged away by this same plan' in call_tool(w, 'delete_entry', {'entry_id': PHRASE_ITEM})
+    w2 = ws()
+    call_tool(w2, 'delete_entry', {'entry_id': PHRASE_ITEM})
+    assert w2.ops[-1]['links'] == [MWE_LINK]
     c = w.client
     execute_plan(c, [w.ops[0]], source='s', label='l')
     first = [(r, m, a) for r, m, a, k in c.batches[0]]

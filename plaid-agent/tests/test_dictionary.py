@@ -439,6 +439,47 @@ def test_a_structural_change_on_a_doomed_entry_is_refused():
     assert not ops_of(w, 'create_entry')
 
 
+def test_a_second_removal_of_the_same_entry_is_refused():
+    """Every lexicon tool refused a doomed entry except the three that REMOVE
+    one, which is where it matters most: a merge and a delete of one entry both
+    end in a delete of it, in the batch they share, so the plan refused itself
+    only once the user had approved it."""
+    w = dict_ws()
+    call_tool(w, 'delete_entry', {'entry_form': 'phika'})
+    assert 'deleted or merged away by this same plan' in call_tool(
+        w, 'rename_entry', {'entry_id': 'd-phika', 'new_form': 'phiika'})
+    assert 'deleted or merged away by this same plan' in call_tool(
+        w, 'merge_entries', {'keep_form': 'nyumba', 'remove_id': 'd-phika'})
+    assert ops_of(w, 'rename_entry') == [] and ops_of(w, 'merge_entries') == []
+
+
+def test_the_entry_a_merge_keeps_cannot_also_be_removed():
+    w = dict_ws()
+    call_tool(w, 'merge_entries', {'keep_form': 'nyumba', 'remove_id': 'd-phika'})
+    assert 'merges into' in call_tool(w, 'delete_entry', {'entry_form': 'nyumba'})
+    # Nor by a second merge: this one's links are the ones the entry holds now,
+    # so the links the first merge moves would go with it when it is deleted.
+    assert 'merges into' in call_tool(w, 'merge_entries', {'keep_form': 'kwatha', 'remove_form': 'nyumba'})
+    assert len(ops_of(w, 'merge_entries')) == 1 and ops_of(w, 'delete_entry') == []
+
+
+def test_a_refusal_names_the_entry_the_way_a_tool_takes_it_back():
+    """The view a refusal would have asked leaves out what the plan removes, so
+    it could only name the entry by its id: no line the user could copy."""
+    w = dict_ws()
+    call_tool(w, 'delete_entry', {'entry_id': 'd-boil'})
+    out = call_tool(w, 'add_sense', {'entry_id': 'd-boil', 'fields': {'gloss': 'stew'}})
+    assert '"kwatha#1.1" is deleted or merged away' in out and 'd-boil' not in out
+
+
+def test_a_respelling_does_not_rename_an_entry_the_plan_removes():
+    w = dict_ws()
+    call_tool(w, 'delete_entry', {'entry_form': 'phika'})
+    call_tool(w, 'respell_all', {'pattern': 'a', 'replacement': 'e'})
+    assert [o['item_id'] for o in ops_of(w, 'rename_entry')] == ['d-kwatha', 'd-boil', 'd-simmer', 'd-ferment',
+                                                                 'd-nyumba']
+
+
 def test_the_plan_is_what_a_later_read_sees():
     w = dict_ws()
     call_tool(w, 'delete_entry', {'entry_form': 'kwatha'})

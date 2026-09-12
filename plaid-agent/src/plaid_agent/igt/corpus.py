@@ -999,6 +999,12 @@ def q_entry_links(ws: Workspace, item_id: str) -> List[Dict[str, Any]]:
     from .bulk import links_to_in
     c = ws.corpus
     rows = c.entities([['vocab', '?v', {}], ['=', '?v.id', item_id], ['vocab-link', '?t', '?v']], ['?t'], ROW_LIMIT)
+    if c.truncated:
+        # The documents come from these rows, so a clipped read loses whole
+        # documents' links. A merge or a delete that misses one moves nothing
+        # there and the entry takes those links with it when it goes.
+        raise ToolError('That entry holds more links than one read will return, so this cannot tell where all '
+                        'of them are. Merge or delete it in the editor, which works one document at a time.')
     doc_ids = list(dict.fromkeys(r[0]['document'] for r in rows if isinstance(r[0], dict)))
     out = []
     for did in doc_ids:
