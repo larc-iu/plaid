@@ -113,8 +113,17 @@ test('each sentence carries a badge in the editor, and it opens the thread', asy
 
   const badges = page.locator('.sentence-comments');
   await expect(badges).toHaveCount(2);
-  // A sentence with comments shows the count; one without shows the invitation.
-  await expect(badges.nth(1)).toContainText(/\d/);
+  // Both controls read "Comment" now, and the COUNT is what tells them apart,
+  // so both halves of that have to be asserted: the comment here used to say
+  // one showed "the invitation", which stopped being true, and only the
+  // counted one was ever checked. Which sentence is which is not this test's
+  // business, so count them rather than assuming an order.
+  // Earlier tests in this file leave comments behind, so how many of each
+  // there are is not fixed. What is fixed: every control names the action, and
+  // a sentence someone has written on carries a number beside it.
+  const labels = await badges.allTextContents();
+  expect(labels.every((t) => t.trim().startsWith('Comment'))).toBe(true);
+  expect(labels.filter((t) => /Comment\s*\d/.test(t)).length).toBeGreaterThan(0);
 
   await badges.nth(1).click();
   await expect(page.getByText('Look at this one.')).toBeVisible({ timeout: 8000 });

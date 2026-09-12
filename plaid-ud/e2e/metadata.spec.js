@@ -179,3 +179,46 @@ test('the sentence strip collapses, and remembers that for the whole document', 
   });
   await expect(page.locator('.sentence-meta__fields')).toHaveCount(0);
 });
+
+test('the four things a sentence offers are one row of four, alike', async ({ page }) => {
+  // The metadata disclosure used to be a bold SENTENCE heading on its own line
+  // above the strip. Nothing pinned the redesign: the specs that survived it
+  // survived by naming CSS classes the redesign kept.
+  await open(page, 'annotate');
+  await expect(page.locator('.token-form').first()).toBeVisible({ timeout: 15000 });
+
+  const strip = page.locator('.sentence-confirm').first();
+  for (const label of ['Edit metadata', 'Edit text', 'Comment']) {
+    await expect(strip.getByText(label, { exact: false }).first()).toBeVisible();
+  }
+  // One treatment, so none of them is the loudest thing here. The metadata
+  // control is the exception WHILE ITS FIELDS ARE OPEN, which is a state of
+  // the sentence rather than a difference in weight, and the disclosure is
+  // remembered for the whole document, so collapse it first.
+  const toggle = page.locator('.sentence-meta__toggle').first();
+  if ((await toggle.getAttribute('aria-expanded')) === 'true') await toggle.click();
+  // These brighten on hover OR focus, so the thing just clicked is still lit
+  // under both the caret and the pointer.
+  const stepAside = async () => {
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.mouse.move(0, 0);
+  };
+  await stepAside();
+  const actions = strip.locator('.sentence-action');
+  await expect(actions).toHaveCount(3); // Ask needs an assistant online
+  for (let i = 0; i < 3; i += 1) {
+    await expect(actions.nth(i)).toHaveCSS('opacity', '0.55');
+  }
+
+  // Open, it stays lit while the other two do not.
+  await toggle.click();
+  await stepAside();
+  await expect(toggle).toHaveCSS('opacity', '1');
+  await expect(strip.getByText('Edit text')).toHaveCSS('opacity', '0.55');
+
+  // The fields open BELOW the row that opens them, not above the grid.
+  await expect(page.locator('.sentence-meta__fields').first()).toBeVisible();
+  const stripBox = await strip.boundingBox();
+  const fieldsBox = await page.locator('.sentence-meta').first().boundingBox();
+  expect(fieldsBox.y).toBeGreaterThan(stripBox.y);
+});
