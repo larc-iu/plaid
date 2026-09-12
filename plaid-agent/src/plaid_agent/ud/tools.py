@@ -514,6 +514,67 @@ def t_set_field(ws: Workspace, document: str = None, refs=None, field: str = Non
         word_ref(ws.sentence_of(doc, w), w) for w in words)
 
 
+def _features(bundle: str) -> List[tuple]:
+    """A FEATS string as (feature, value) pairs, in the order written."""
+    out = []
+    for pair in (bundle or '').split('|'):
+        if pair and '=' in pair:
+            k, v = pair.split('=', 1)
+            out.append((k, v))
+        elif pair:
+            out.append((pair, ''))
+    return out
+
+
+def _bundle(pairs: List[tuple]) -> str:
+    """Pairs as a FEATS string, ordered as CoNLL-U orders them: by feature,
+    case-insensitively."""
+    return '|'.join(f'{k}={v}' if v else k for k, v in sorted(pairs, key=lambda kv: kv[0].casefold()))
+
+
+def t_set_feature(ws: Workspace, document: str = None, refs=None, feature: str = None,
+                  value: str = None) -> str:
+    """PLAN: one Feature=Value inside the FEATS bundle, leaving the rest as
+    they are. set_field on features replaces the whole bundle."""
+    feature = (feature or '').strip()
+    if not feature or '=' in feature or '|' in feature:
+        raise ToolError('Give feature: one feature name, like Number (the value goes in value).')
+    value = '' if value is None else str(value).strip()
+    inventory = ws.project.vocab.get('feats') or {}
+    if inventory and ws.project.modes.get('feats') == 'closed' and value:
+        if feature not in inventory:
+            raise ToolError(f'"{feature}" is not in this project\'s feature inventory, which is closed. '
+                            f'Features: ' + ', '.join(sorted(inventory)))
+        allowed = inventory.get(feature) or []
+        if allowed and value not in allowed:
+            raise ToolError(f'"{value}" is not a value of {feature} here. Allowed: ' + ', '.join(allowed))
+    doc = ws.doc(document)
+    layer_id = ws.project.layer('features')
+    words = _words(ws, doc, refs)
+    ws.reserve(len(words))
+    changed = []
+    for w in words:
+        current = ws.planned_value(layer_id, w.id, w.value('features'))
+        pairs = [(k, v) for k, v in _features(current) if k != feature]
+        if value:
+            pairs.append((feature, value))
+        new = _bundle(pairs)
+        if new == current:
+            continue
+        sp = w.fields.get('features')
+        ref = word_ref(ws.sentence_of(doc, w), w)
+        ws.add_op({'kind': 'set_span', 'layer_id': layer_id, 'token_id': w.id,
+                   'span_id': sp.id if sp else None, 'value': new, 'field': 'features',
+                   'document_id': doc.id, 'ref': ref,
+                   'label': f'{feature}={value}' if value else f'remove {feature}'})
+        changed.append(ref)
+    if not changed:
+        return (f'Nothing to change: {feature}={value} is already set on every word named.' if value
+                else f'Nothing to change: none of the words named has {feature}.')
+    what = f'{feature}={value}' if value else f'{feature} removed'
+    return f'Planned {what} on {len(changed)} word(s): ' + ', '.join(changed)
+
+
 def _head_id(head) -> int:
     """The head argument as a word number.
 
@@ -692,6 +753,9 @@ def t_confirm(ws: Workspace, document: str = None, refs=None, field: str = None,
     """Mark machine output and contributors' work as reviewed and correct."""
     if documents and not document:
         return _many(ws, documents, field, t_confirm)
+    if not document:
+        raise ToolError('Name a document, or documents: a list of names, or ["all"] for every document with '
+                        'something waiting.')
     doc = ws.doc(document)
     fields = _review_fields(field)
     if refs:
@@ -723,6 +787,9 @@ def t_discard_predictions(ws: Workspace, document: str = None, refs=None, field:
     confirmed value are never touched."""
     if documents and not document:
         return _many(ws, documents, field, t_discard_predictions)
+    if not document:
+        raise ToolError('Name a document, or documents: a list of names, or ["all"] for every document with '
+                        'unconfirmed machine values.')
     doc = ws.doc(document)
     fields = _review_fields(field)
     if refs:
@@ -853,6 +920,14 @@ TOOLS = [
         {'document': _DOC, 'refs': _REFS, 'field': _FIELD,
          'value': {'type': 'string', 'description': 'The new value, or "" to clear the column.'}},
         ['document', 'refs', 'field']),
+    _fn('set_feature',
+        'PLAN: set or remove ONE Feature=Value inside the features of one or more words, keeping the '
+        'rest of the bundle as it is (set_field replaces the whole bundle). An empty value removes the '
+        'feature. The bundle is kept in CoNLL-U order.',
+        {'document': _DOC, 'refs': _REFS,
+         'feature': {'type': 'string', 'description': 'The feature name, e.g. Number.'},
+         'value': {'type': 'string', 'description': 'The value, e.g. Sing; "" removes the feature.'}},
+        ['document', 'refs', 'feature']),
     _fn('set_head',
         'PLAN: give one word its head and its relation to it. head is the CoNLL-U id of another word in '
         'the SAME sentence, or 0 to make this word the sentence root (deprel "root"). A word has one '
@@ -1063,6 +1138,7 @@ _IMPL = {
     'list_documents': t_list_documents,
     'read_document': t_read_document,
     'set_field': t_set_field,
+    'set_feature': t_set_feature,
     'set_head': t_set_head,
     'del_relation': t_del_relation,
     'confirm': t_confirm,

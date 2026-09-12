@@ -128,7 +128,13 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
     if name == 'confirm':
         what = f' ({a["field"]})' if a.get('field') else ''
         scope = plural(count(a), 'item') if a.get('refs') else 'everything awaiting review'
-        return f'Planned confirming {scope}{what}{in_doc(a) or (" across the project" if not a.get("refs") else "")}'
+        docs = a.get('documents')
+        if docs and not a.get('document'):
+            across = (' across the project' if isinstance(docs, str) or (len(docs) == 1 and str(docs[0]).lower() == 'all')
+                      else f' across {plural(len(docs), "document")}')
+        else:
+            across = in_doc(a) or (' across the project' if not a.get('refs') else '')
+        return f'Planned confirming {scope}{what}{across}'
     if name == 'discard_analysis':
         return f'Planned discarding the unverified analysis of {plural(count(a), "item")}{in_doc(a)}'
 

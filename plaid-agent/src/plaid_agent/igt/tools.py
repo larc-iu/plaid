@@ -2366,27 +2366,39 @@ def _document_confirm_op(ws: Workspace, doc: IgtDoc, f) -> Optional[Dict[str, An
             'label': f'{ws.doc_label(doc.id)}: confirm {_pieces_label(pieces)}' + (f' ({f.name})' if f else '')}
 
 
-def t_confirm(ws: Workspace, document: Optional[str] = None, refs=None, field: Optional[str] = None) -> str:
+def t_confirm(ws: Workspace, document: Optional[str] = None, refs=None, field: Optional[str] = None,
+              documents=None) -> str:
     """PLAN: mark annotations awaiting review (machine-made and unconfirmed,
-    or a contributor's) as verified, after checking them. Without a
-    document, every document with such material in the project."""
+    or a contributor's) as verified, after checking them. `documents` names
+    several, or "all" for every document with such material: a plan over
+    the whole project is asked for in words, never staged by omission."""
     f = ws.project.field(field) if field else None
     staged: List[Dict[str, Any]] = []
     refs = _refs(refs)
     if refs and not document:
         raise ToolError('refs need a document')
+    if isinstance(documents, list) and len(documents) == 1 and str(documents[0]).strip().lower() == 'all':
+        documents = 'all'
+    if not document and not documents:
+        raise ToolError('Name a document, or documents: a list of names, or ["all"] for every document with '
+                        'annotations awaiting review.')
     if not document:
         # The documents with reviewable spans or morphemes by query, then
         # each is read so links and multi-word expressions count too.
-        if ws.prefer_scan:
-            docs = ws.all_docs()
+        if isinstance(documents, str):
+            if ws.prefer_scan:
+                docs = ws.all_docs()
+            else:
+                from .corpus import q_review_docs
+                ids = q_review_docs(ws, f)
+                if len(ids) > MAX_CONFIRM_DOCS:
+                    raise ToolError(f'{len(ids)} documents have annotations awaiting review, more than the '
+                                    f'{MAX_CONFIRM_DOCS} one plan covers; confirm document by document, or narrow with field.')
+                docs = [ws.doc(i) for i in ids]
         else:
-            from .corpus import q_review_docs
-            ids = q_review_docs(ws, f)
-            if len(ids) > MAX_CONFIRM_DOCS:
-                raise ToolError(f'{len(ids)} documents have annotations awaiting review, more than the {MAX_CONFIRM_DOCS} '
-                                'one plan covers; confirm document by document, or narrow with field.')
-            docs = [ws.doc(i) for i in ids]
+            docs = [ws.doc(str(d)) for d in documents]
+            if len(docs) > MAX_CONFIRM_DOCS:
+                raise ToolError(f'{len(docs)} documents, more than the {MAX_CONFIRM_DOCS} one plan covers.')
         for doc in docs:
             op = _document_confirm_op(ws, doc, f)
             if op:
@@ -2916,8 +2928,11 @@ TOOLS = [
         'PLAN: mark annotations awaiting review as verified, after checking them: machine-made ones (other services, '
         'earlier assistant plans; ~ in reads) and contributors\' work (^ in reads); see worklist kind="unverified" / '
         '"contributed". refs: sentences, words, or morphemes (a sentence covers its words); field: only that '
-        'field\'s values; no refs: the whole document; no document: every document in the project.',
-        {'document': _DOC, 'refs': _REFS, 'field': {'type': 'string'}}, []),
+        'field\'s values; no refs: the whole document. Give `documents` instead of `document` to cover '
+        'several at once: a list of names, or ["all"] for every document with something waiting (up to 100).',
+        {'document': _DOC, 'refs': _REFS, 'field': {'type': 'string'},
+         'documents': {'type': 'array', 'items': {'type': 'string'},
+                       'description': 'Several documents, by id or name; or ["all"].'}}, []),
     _fn('discard_analysis',
         'PLAN: delete the unverified machine-made analysis of words (their machine links, values, and morphemes); '
         'human-made, contributed, and verified pieces stay. refs: words or sentences.',
@@ -3061,10 +3076,10 @@ TOOLS += [
          'limit': {'type': 'integer'}}, ['sequence']),
     _fn('replace_in_field',
         'PLAN: substitute inside every value of a field, project-wide or in one document: substring by default, '
-        'whole_value=true for exact values, regex=true for patterns with backreferences (\\1). field="morpheme form" '
+        'whole=true for exact values, regex=true for patterns with backreferences (\\1). field="morpheme form" '
         'rewrites stored morpheme forms instead of a field. One call plans every change; the plan lists each.',
         {'field': {'type': 'string'}, 'pattern': {'type': 'string'}, 'replacement': {'type': 'string'},
-         'regex': {'type': 'boolean'}, 'case_sensitive': {'type': 'boolean', 'description': 'Match case too (off by default: "ar" finds "Ar").'}, 'whole_value': {'type': 'boolean'}, 'document': _DOC},
+         'regex': {'type': 'boolean'}, 'case_sensitive': {'type': 'boolean', 'description': 'Match case too (off by default: "ar" finds "Ar").'}, 'whole': {'type': 'boolean', 'description': 'Match the whole value only.'}, 'document': _DOC},
         ['field', 'pattern', 'replacement']),
     _fn('respell_all',
         'PLAN: change the baseline spelling of every word matching a pattern (an orthography change), keeping each '
@@ -3072,7 +3087,7 @@ TOOLS += [
         'those words (morpheme_forms=false to leave them) and into lexicon headwords (lexicon=false to leave them; '
         'the pattern is applied to every entry, not only linked ones). Patterns apply within words only.',
         {'pattern': {'type': 'string'}, 'replacement': {'type': 'string'}, 'regex': {'type': 'boolean'}, 'case_sensitive': {'type': 'boolean', 'description': 'Match case too (off by default: "ar" finds "Ar").'},
-         'whole_word': {'type': 'boolean'}, 'document': _DOC, 'morpheme_forms': {'type': 'boolean'},
+         'whole': {'type': 'boolean', 'description': 'Match the whole word only.'}, 'document': _DOC, 'morpheme_forms': {'type': 'boolean'},
          'lexicon': {'type': 'boolean'}}, ['pattern', 'replacement']),
     _fn('copy_to_orthography',
         'PLAN: fill an orthography for every word that lacks a value, from the baseline or another orthography.',

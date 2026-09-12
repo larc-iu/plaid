@@ -239,6 +239,19 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str,
         return ops
     if project is None:
         raise ValueError('a whole-document review needs the project to read the document with')
+    # A change the model made by name beats one a scope finds at approval,
+    # whichever came first: the scope's preview read stored values, not
+    # planned ones, and last-wins by position would let it override a
+    # set_field the user read on the card.
+    spans = {(op.get('layer_id'), op.get('token_id')) for op in ops if op.get('kind') == 'set_span'}
+    relations = {op.get('relation_id') for op in ops if op.get('kind') in ('set_head', 'del_relation')
+                 and op.get('relation_id')}
+
+    def explicit(o):
+        if o.get('kind') == 'set_span':
+            return (o.get('layer_id'), o.get('token_id')) in spans
+        return o.get('kind') in ('set_deprel', 'del_relation') and o.get('relation_id') in relations
+
     out: List[Dict[str, Any]] = []
     docs: Dict[str, Any] = {}
     for op in ops:
@@ -248,7 +261,7 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str,
             continue
         if kind == 'replace_scope':
             from .bulk import resolve_replace
-            out.extend(resolve_replace(client, project, op))
+            out.extend(o for o in resolve_replace(client, project, op) if not explicit(o))
             continue
         did = op['document_id']
         if did not in docs:
@@ -266,13 +279,14 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str,
         for sentence, w, f, span, relation_id in targets:
             ref = word_ref(sentence, w)
             if f == 'deprel':
-                out.append({'kind': 'del_relation', 'word_id': w.id, 'relation_id': relation_id,
-                            'document_id': did, 'ref': ref,
-                            'label': f'discard the unconfirmed head of {ref}'})
+                o = {'kind': 'del_relation', 'word_id': w.id, 'relation_id': relation_id,
+                     'document_id': did, 'ref': ref, 'label': f'discard the unconfirmed head of {ref}'}
             else:
-                out.append({'kind': 'set_span', 'layer_id': span.layer_id, 'token_id': w.id,
-                            'span_id': span.id, 'value': '', 'field': f, 'document_id': did,
-                            'ref': ref, 'label': f'discard the unconfirmed {f} on {ref}'})
+                o = {'kind': 'set_span', 'layer_id': span.layer_id, 'token_id': w.id,
+                     'span_id': span.id, 'value': '', 'field': f, 'document_id': did,
+                     'ref': ref, 'label': f'discard the unconfirmed {f} on {ref}'}
+            if not explicit(o):
+                out.append(o)
     return out
 
 

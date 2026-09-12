@@ -284,7 +284,7 @@ def test_every_declared_tool_is_a_plan_tool_or_is_not(ws):
     assert WRITE_TOOLS == {'set_field', 'set_head', 'del_relation', 'confirm',
                            'discard_predictions', 'run_parse', 'set_words',
                            'split_sentence', 'merge_sentences', 'restore_document',
-                           'replace_in_field', 'add_comment'}
+                           'replace_in_field', 'add_comment', 'set_feature'}
     assert 'read_document' in names and 'read_document' not in WRITE_TOOLS
 
 
@@ -869,3 +869,31 @@ def test_search_matches_case_only_when_asked(ws):
     assert 's1.w1' in run(ws, 'search', field='form', pattern='vamos', document='Viaje')
     assert run(ws, 'search', field='form', pattern='vamos', document='Viaje', case_sensitive=True).startswith('No form')
     assert 's1.w1' in run(ws, 'search', field='form', pattern='Vamos', document='Viaje', case_sensitive=True)
+
+
+
+def test_set_feature_edits_one_feature_and_keeps_the_bundle_in_order(ws):
+    out = run(ws, 'set_feature', document='Viaje', refs=['s1.w1'], feature='Gender', value='Masc')
+    assert out == 'Planned Gender=Masc on 1 word(s): s1.w1'
+    assert ws.ops[0]['value'] == 'Gender=Masc|Number=Plur' and ws.ops[0]['span_id'] == 'sp-x1'
+    # A second edit in the same turn reads the planned bundle, not the stored one.
+    run(ws, 'set_feature', document='Viaje', refs=['s1.w1'], feature='Number', value='Sing')
+    assert len(ws.ops) == 1 and ws.ops[0]['value'] == 'Gender=Masc|Number=Sing'
+    run(ws, 'set_feature', document='Viaje', refs=['s1.w1'], feature='Gender', value='')
+    assert ws.ops[0]['value'] == 'Number=Sing'
+    # The fixture's inventory is a suggestion, so an unlisted value is allowed.
+    assert 'Planned Number=Dual' in run(ws, 'set_feature', document='Viaje', refs=['s1.w1'], feature='Number', value='Dual')
+    assert 'already set' in run(ws, 'set_feature', document='Viaje', refs=['s1.w1'], feature='Number', value='Dual')
+    assert 'Give feature' in run(ws, 'set_feature', document='Viaje', refs=['s1.w1'], feature='Number=Sing')
+
+
+def test_a_change_made_by_name_beats_a_scope_at_approval(ws):
+    """A replace previews stored values, so a set_field on the same span in
+    the same plan (either order) is what the user read on the card and what
+    must land."""
+    run(ws, 'set_field', document='Viaje', refs=['s1.w4'], field='lemma', value='océano')
+    _engine_rows(ws, [('sp-l3', 'mar', 'ud1', 'uw-3'), ('sp-l1', 'ir', 'ud1', 'uw-1')])
+    run(ws, 'replace_in_field', field='lemma', pattern='[a-z]+', replacement='X', regex=True)
+    counts = execute_plan(ws.client, ws.plan_payload()['ops'], source='s', label='l', project=ws.project)
+    updates = [a for r, m, a, k in ws.client.batches[0] if m == 'update']
+    assert ('sp-l3', 'océano') in updates and ('sp-l3', 'X') not in updates and ('sp-l1', 'X') in updates

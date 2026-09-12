@@ -46,8 +46,8 @@ without touching the rest of its chain; check_consistency, check_lexicon, check_
 for project-wide edits use replace_in_field, respell_all, set_analysis_for_form, copy_to_orthography rather than \
 many single set_field calls; confirm marks annotations awaiting review as verified once checked: machine-made \
 ones (another service's output; trailing ~ in reads; worklist kind="unverified") and contributors' work \
-(trailing ^; worklist kind="contributed", user= for one person), and with no document it covers the whole \
-project; discard_analysis deletes a word's unverified machine analysis (never a person's); a multi-word \
+(trailing ^; worklist kind="contributed", user= for one person), and documents=["all"] covers every document \
+with something waiting, as one planned change per document; discard_analysis deletes a word's unverified machine analysis (never a person's); a multi-word \
 expression (mwe= in reads) is one lexicon link shared by several words: link_phrase makes one, unlink_phrase \
 removes one, and a word's own link (link_entry / unlink_entry) is separate from it; a lexicon's entries form \
 a tree (a HEADWORD is an entry with nothing above it, a SENSE one under another). An entry_form takes the number shown beside it, where one segment is a headword and two or more a \

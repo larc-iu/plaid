@@ -127,7 +127,7 @@ def same_ops(proj, tool, args):
 
 
 def test_bulk_tools_plan_the_same_ops(proj):
-    same_ops(proj, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'ERG', 'replacement': 'OBL', 'whole_value': True})
+    same_ops(proj, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'ERG', 'replacement': 'OBL', 'whole': True})
     same_ops(proj, 'replace_in_field', {'field': 'Translation', 'pattern': r'(\w+)\.$', 'replacement': r'\1!', 'regex': True})
     same_ops(proj, 'replace_in_field', {'field': 'Gloss', 'pattern': 'zzz', 'replacement': 'y'})
     same_ops(proj, 'respell_all', {'pattern': 'a', 'replacement': 'ä'})
@@ -196,6 +196,6 @@ def test_multi_word_expressions_and_review_match_the_scan(review_proj):
     assert b.ops[-1]['links'] == [{'link_id': proj.ids['l-mwe'], 'token_ids': [proj.ids['w-2'], proj.ids['w-3']]}]
     same_ops(proj, 'delete_entry', {'entry_form': 'gam akuna'})
     # A project-wide confirm finds the document by query and reads it for its links.
-    b = same_ops(proj, 'confirm', {})
+    b = same_ops(proj, 'confirm', {'documents': ['all']})
     assert b.ops[-1]['link_ids'] == [proj.ids['l-mwe']] and b.ops[-1]['span_ids'] == [proj.ids['sp-g1']]
     assert [d['id'] for d in b.plan_payload()['documents']] == [proj.ids['d1']]

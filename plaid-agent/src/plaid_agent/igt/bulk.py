@@ -17,7 +17,7 @@ from .stats import _analyzed, _docs
 MAX_BULK = 3000
 
 
-def _replacer(pattern: str, replacement: str, regex: bool, whole_value: bool, case_sensitive: bool = False):
+def _replacer(pattern: str, replacement: str, regex: bool, whole: bool, case_sensitive: bool = False):
     """Case-insensitive by default, like search, so what search found is what
     the replacement hits. Regex replacement errors (bad backreferences) are
     reported on the first value rather than crashing mid-plan."""
@@ -29,7 +29,7 @@ def _replacer(pattern: str, replacement: str, regex: bool, whole_value: bool, ca
         rx = re.compile(pattern if regex else re.escape(pattern), flags)
     except re.error as e:
         raise ToolError(f'Bad regex: {e}')
-    if whole_value:
+    if whole:
         return lambda v: replacement if rx.fullmatch(v) else v
 
     def sub(v):
@@ -54,19 +54,19 @@ def _check_cap(n: int):
 
 
 def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str, regex: bool = False,
-                       whole_value: bool = False, document: Optional[str] = None,
+                       whole: bool = False, document: Optional[str] = None,
                        case_sensitive: bool = False) -> str:
     """PLAN: substitute inside every EXISTING value of a field (substring,
     whole value, or regex with backreferences), project-wide or in one
     document. Empty cells are not filled: use set_field_for_form for that.
     ``field`` may also name the stored morpheme forms (Bulk Edit's morpheme
     domain) when no field is so named."""
-    rep = _replacer(pattern, replacement, bool(regex), bool(whole_value), bool(case_sensitive))
+    rep = _replacer(pattern, replacement, bool(regex), bool(whole), bool(case_sensitive))
     labels: List[str] = []
     staged: List[Dict[str, Any]] = []
     if not ws.use_scan(document) and not _names_morpheme_forms(ws, field):
         args = {'field': field, 'pattern': pattern, 'replacement': replacement, 'regex': bool(regex),
-                'whole_value': bool(whole_value), 'case_sensitive': bool(case_sensitive)}
+                'whole': bool(whole), 'case_sensitive': bool(case_sensitive)}
         f = ws.project.field(field)
         return _stage(ws, 'replace_in_field', args, _scoped_replace(ws, args, REPLACE_MAX), 'set_span',
                       f'{f.name} values')
@@ -129,9 +129,9 @@ REPLACE_MAX = 20000  # candidates one pass may consider; past it, narrow and go 
 def _scoped_replace(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str, Any]]:
     from .corpus import q_replace_in_field, rx
     f = ws.project.field(a['field'])
-    rep = _replacer(a['pattern'], a.get('replacement') or '', bool(a.get('regex')), bool(a.get('whole_value')),
+    rep = _replacer(a['pattern'], a.get('replacement') or '', bool(a.get('regex')), bool(a.get('whole')),
                     bool(a.get('case_sensitive')))
-    spec = rx(a['pattern'], regex=bool(a.get('regex')), whole=bool(a.get('whole_value')),
+    spec = rx(a['pattern'], regex=bool(a.get('regex')), whole=bool(a.get('whole')),
               case_sensitive=bool(a.get('case_sensitive')))
     return q_replace_in_field(ws, f, rep, spec, cap)
 
@@ -154,9 +154,9 @@ def _lexicon_renames(ws: Workspace, rep) -> List[Dict[str, Any]]:
 
 def _scoped_respell(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str, Any]]:
     from .corpus import q_respell_all, rx
-    rep = _replacer(a['pattern'], a.get('replacement') or '', bool(a.get('regex')), bool(a.get('whole_word')),
+    rep = _replacer(a['pattern'], a.get('replacement') or '', bool(a.get('regex')), bool(a.get('whole')),
                     bool(a.get('case_sensitive')))
-    spec = rx(a['pattern'], regex=bool(a.get('regex')), whole=bool(a.get('whole_word')),
+    spec = rx(a['pattern'], regex=bool(a.get('regex')), whole=bool(a.get('whole')),
               case_sensitive=bool(a.get('case_sensitive')))
     staged, n_words, _n = q_respell_all(ws, rep, spec, bool(a.get('morpheme_forms', True)), cap)
     if n_words > cap:
@@ -238,7 +238,7 @@ def _names_morpheme_forms(ws: Workspace, field: str) -> bool:
 
 
 def t_respell_all(ws: Workspace, pattern: str, replacement: str, regex: bool = False,
-                  whole_word: bool = False, document: Optional[str] = None,
+                  whole: bool = False, document: Optional[str] = None,
                   case_sensitive: bool = False, morpheme_forms: bool = True, lexicon: bool = True) -> str:
     """PLAN: change the baseline spelling of every word matching a pattern
     (orthography migration). Each word is replaced whole, so its analysis,
@@ -246,12 +246,12 @@ def t_respell_all(ws: Workspace, pattern: str, replacement: str, regex: bool = F
     word boundaries. As in the editor's Bulk Edit, the replacement is carried
     into the stored morpheme forms of the respelled words and into every
     lexicon headword it matches, unless switched off."""
-    rep = _replacer(pattern, replacement, bool(regex), bool(whole_word), bool(case_sensitive))
+    rep = _replacer(pattern, replacement, bool(regex), bool(whole), bool(case_sensitive))
     labels: List[str] = []
     staged: List[Dict[str, Any]] = []
     n_words = n_morphs = n_entries = 0
     if not ws.use_scan(document):
-        args = {'pattern': pattern, 'replacement': replacement, 'regex': bool(regex), 'whole_word': bool(whole_word),
+        args = {'pattern': pattern, 'replacement': replacement, 'regex': bool(regex), 'whole': bool(whole),
                 'case_sensitive': bool(case_sensitive), 'morpheme_forms': bool(morpheme_forms), 'lexicon': bool(lexicon)}
         staged = _scoped_respell(ws, args, REPLACE_MAX)
         kinds = [op['kind'] for op in staged]

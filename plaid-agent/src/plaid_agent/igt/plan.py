@@ -314,8 +314,11 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str,
     if project is None:
         raise ValueError('a corpus-wide change needs the project to read the corpus with')
     from .bulk import REPLACE_MAX, SCOPED
-    from .tools import ToolError, Workspace
+    from .tools import ToolError, Workspace, op_target
     ws = Workspace(client, project)
+    # A change the model made by name beats one a scope finds at approval,
+    # whichever came first (the scope previewed stored values, not planned).
+    explicit = {op_target(op) for op in ops if op.get('kind') != 'bulk_scope'} - {None}
     out: List[Dict[str, Any]] = []
     for op in ops:
         if op.get('kind') != 'bulk_scope':
@@ -325,7 +328,7 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str,
         if fn is None:
             raise ValueError(f'unknown corpus-wide tool {op.get("tool")!r}')
         try:
-            out.extend(fn(ws, dict(op.get('args') or {}), REPLACE_MAX))
+            out.extend(o for o in fn(ws, dict(op.get('args') or {}), REPLACE_MAX) if op_target(o) not in explicit)
         except ToolError as e:
             raise ValueError(str(e)) from e
     return out

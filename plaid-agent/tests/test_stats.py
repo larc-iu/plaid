@@ -102,7 +102,7 @@ def test_sequence_search():
 
 def test_bulk_plans():
     w = ws()
-    out = call_tool(w, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'ERG', 'replacement': 'OBL', 'whole_value': True})
+    out = call_tool(w, 'replace_in_field', {'field': 'Morph Gloss', 'pattern': 'ERG', 'replacement': 'OBL', 'whole': True})
     assert out.startswith('Planned 1 change') and w.ops[-1]['value'] == 'OBL' and w.ops[-1]['span_id'] == 'sp-m1b'
     out = call_tool(w, 'replace_in_field', {'field': 'Translation', 'pattern': r'(\w+)\.$', 'replacement': r'\1!', 'regex': True})
     assert w.ops[-1]['value'] == 'Ali saw a fish!'
@@ -122,7 +122,7 @@ def test_bulk_plans():
                                                                     'morpheme_forms': False, 'lexicon': False})
     # replace_in_field on the stored morpheme forms (derived forms are left to respell_all)
     w2 = ws()
-    out = call_tool(w2, 'replace_in_field', {'field': 'morpheme form', 'pattern': 'ar', 'replacement': 'är', 'whole_value': True})
+    out = call_tool(w2, 'replace_in_field', {'field': 'morpheme form', 'pattern': 'ar', 'replacement': 'är', 'whole': True})
     assert 'Planned 1 change' in out and w2.ops == [w2.ops[0]] and w2.ops[0]['kind'] == 'set_morpheme_form' and w2.ops[0]['morpheme_id'] == 'm-4b'
     assert 'm2 (in "Gam-ar"): morpheme form "ar" → "är"' in w2.ops[0]['label']
     out = call_tool(w2, 'replace_in_field', {'field': 'form', 'pattern': 'gam', 'replacement': 'x'})

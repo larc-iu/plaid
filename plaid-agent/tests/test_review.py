@@ -51,14 +51,14 @@ def test_confirm_without_a_document_covers_the_project():
     from fixtures import document_raw
     c = ExtClient(documents={'d1': contributed_document_raw(), 'd2': {**document_raw(), 'id': 'd2', 'name': 'Text 2'}})
     w = scan_ws(c)
-    out = call_tool(w, 'confirm', {})
+    out = call_tool(w, 'confirm', {'documents': ['all']})
     assert 'Planned 1 change' in out and '3 annotations will be marked verified' in out
     assert w.ops[0]['doc'] == 'd1' and w.ops[0]['label'].startswith('Text 1: confirm 2 values, 1 link')
     assert 'd1' in [d['id'] for d in w.plan_payload()['documents']]  # d2 shares the fixture's ids, so it is named too
     assert 'refs need a document' in call_tool(scan_ws(c), 'confirm', {'refs': ['s1.w1']})
     # Field-restricted, project-wide.
     w3 = scan_ws(c)
-    call_tool(w3, 'confirm', {'field': 'Gloss'})
+    call_tool(w3, 'confirm', {'documents': ['all'], 'field': 'Gloss'})
     assert w3.ops[0]['span_ids'] == ['sp-g1'] and w3.ops[0]['link_ids'] == []
 
 

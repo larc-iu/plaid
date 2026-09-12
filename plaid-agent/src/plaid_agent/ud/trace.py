@@ -98,6 +98,9 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
     if name == 'set_field':
         what = f'{a.get("field")} = {q(a.get("value"))}' if a.get('value') else f'{a.get("field")} cleared'
         return f'Planned {what} on {plural(count(a), "word")}{in_doc(a)}'
+    if name == 'set_feature':
+        what = f'{a.get("feature")}={a.get("value")}' if a.get('value') else f'{a.get("feature")} removed'
+        return f'Planned {what} on {plural(count(a), "word")}{in_doc(a)}'
     if name == 'set_head':
         head = a.get('head')
         if head == 0:

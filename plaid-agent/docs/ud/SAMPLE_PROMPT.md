@@ -76,7 +76,7 @@ Running code:
 
 ## Tools
 
-30 tools, in the order the model receives them: 12 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
+31 tools, in the order the model receives them: 13 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
 
 ### project_overview
 
@@ -109,6 +109,15 @@ PLAN: set one annotation column on one or more words. An empty value clears it. 
 - `refs` (array of string, required): Word references in the same document, e.g. ["s3.w2", "s3.w5"].
 - `field` (one of `lemma`, `upos`, `xpos`, `features`, required): Which column: lemma, upos, xpos or features.
 - `value` (string): The new value, or "" to clear the column.
+
+### set_feature
+
+PLAN: set or remove ONE Feature=Value inside the features of one or more words, keeping the rest of the bundle as it is (set_field replaces the whole bundle). An empty value removes the feature. The bundle is kept in CoNLL-U order.
+
+- `document` (string, required): Document id or exact name (see project_overview).
+- `refs` (array of string, required): Word references in the same document, e.g. ["s3.w2", "s3.w5"].
+- `feature` (string, required): The feature name, e.g. Number.
+- `value` (string): The value, e.g. Sing; "" removes the feature.
 
 ### set_head
 
