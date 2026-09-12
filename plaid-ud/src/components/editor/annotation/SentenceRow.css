@@ -112,9 +112,12 @@
   color: #9ca3af;
 }
 
+/* The top padding is the room the dependency tree needs, and is set inline per
+   sentence: it depends on how deep that sentence's arcs stack (see arcLayout).
+   The value here is only what a sentence renders with before that lands. */
 .sentence-grid {
   display: flex;
-  padding-top: 215px; /* Moderate padding to make room for dependency tree */
+  padding-top: 215px;
 }
 
 .labels-column {

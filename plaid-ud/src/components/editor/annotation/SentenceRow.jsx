@@ -5,6 +5,7 @@ import { Combobox } from '@ui/components/ui/combobox';
 import { Button } from '@ui/components/ui/button';
 import { isMachine, needsReview, provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { DependencyTree } from './DependencyTree.jsx';
+import { computeArcLayout, buildIndexById } from './arcLayout.js';
 import { useTokenPositions } from '../hooks/useTokenPositions.js';
 import { resolveColor } from '../../../utils/udVocab.js';
 import { notifyWarning } from '../../../utils/notify.js';
@@ -1216,6 +1217,22 @@ export const SentenceRow = React.memo(
     // Lemma spans are already pre-processed in sentenceData
     const lemmaSpans = sentenceData.lemmaSpans;
 
+    // How the arcs stack over this sentence. Computed here rather than inside
+    // the tree because the grid has to reserve exactly the height the tree
+    // draws into, and it is computed from token order alone — no measurement —
+    // so a sentence scrolling into view lays out at its final height at once.
+    const arcLayout = useMemo(
+      () =>
+        computeArcLayout(
+          relations,
+          buildIndexById(
+            tokenData.map((d) => d.token),
+            lemmaSpans,
+          ),
+        ),
+      [relations, tokenData, lemmaSpans],
+    );
+
     // Create a text content object that can handle token extraction for DependencyTree
     const textContentProvider = {
       substring: (begin, end) => {
@@ -1404,10 +1421,15 @@ export const SentenceRow = React.memo(
           onEditText={handleEditText}
           validateDeprel={validators?.deprel}
           deprelDescriptions={descriptions?.deprel}
+          arcLayout={arcLayout}
         />
 
         {/* Main container with labels and columns */}
-        <div className="sentence-grid" ref={sentenceGridRef}>
+        <div
+          className="sentence-grid"
+          ref={sentenceGridRef}
+          style={{ paddingTop: `${arcLayout.gridPaddingTop}px` }}
+        >
           {/* Labels column */}
           <div className="labels-column">
             {/* Empty space for token form row */}

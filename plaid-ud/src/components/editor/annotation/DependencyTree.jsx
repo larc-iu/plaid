@@ -3,6 +3,7 @@ import { needsReview, provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { resolveColor, baseRel } from '../../../utils/udVocab.js';
 import { provCellTitle, provMark, PROV_MARK_COLORS } from '../../../utils/provenanceUi.js';
 import { DeprelEditor } from './DeprelEditor.jsx';
+import { ARC_BASE, arcHeight } from './arcLayout.js';
 import './DependencyTree.css';
 
 // Machine-made or contributed, not yet human-verified (provenance convention).
@@ -32,6 +33,7 @@ export const DependencyTree = forwardRef(
       onEditText,
       validateDeprel,
       deprelDescriptions,
+      arcLayout,
     },
     ref,
   ) => {
@@ -49,10 +51,23 @@ export const DependencyTree = forwardRef(
 
     // Constants for layout (back to original working version)
     const TOKEN_SPACING = 80;
-    const TREE_HEIGHT = 300;
+    // The tree is only as tall as its deepest stack of arcs needs (see
+    // arcLayout). The sentence grid reserves the matching padding, so the two
+    // read the same layout and cannot drift apart.
+    const TREE_HEIGHT = arcLayout.treeHeight;
     const PADDING = 20;
     const TOKEN_Y = TREE_HEIGHT - 30; // Tokens at bottom
     const ROOT_Y = 25; // ROOT bar at top
+    // Where an arc turns out of its vertical rise into its horizontal run. The
+    // SAME width for every arc: this is what keeps a taller arc above a shorter
+    // one along its whole length. (A dome whose radius grows with its span
+    // climbs more slowly than the narrower arcs nested under it, so near a
+    // shared endpoint it dips below them — which is how arcs came to cross.)
+    const CORNER = 18;
+
+    // How high above the words this relation's arc runs. An arc encloses
+    // everything nested under it, one step per level.
+    const heightOf = (relation) => arcHeight(arcLayout.levels.get(relation.id) || 1);
 
     const getEffectiveSpanId = (position) => {
       if (!position) return null;
@@ -104,51 +119,32 @@ export const DependencyTree = forwardRef(
             };
           });
 
-    // Use a modified logistic function to compute how high an arc should go
-    const getMaxHeight = (src, dest) => {
-      const diff = Math.abs(dest - src);
-      const expTerm = -0.2 * Math.pow(diff, 0.8);
-      const denom = 1 + Math.exp(expTerm);
-      const raw = 1 / denom;
-      // Cap the maximum height to prevent clipping and ensure reasonable arcs
-      const maxAllowedHeight = TREE_HEIGHT - ROOT_Y - 40; // Leave room for ROOT and tokens
-      const calculatedHeight = maxAllowedHeight * ((raw - 0.5) * 2);
-      return Math.max(15, Math.min(calculatedHeight, maxAllowedHeight * 0.8));
+    // An arc: up out of the head, a quarter turn into a horizontal run at its
+    // own height, and a quarter turn back down onto the word it points at. The
+    // turns are CORNER wide whatever the span, which is what stops arcs
+    // crossing; the flat run is where the deprel label sits.
+    const arcPath = (fromX, toX, baselineY, height) => {
+      const apexY = baselineY - height;
+      const direction = toX > fromX ? 1 : -1;
+      const corner = Math.min(CORNER, Math.abs(toX - fromX) / 2);
+      const riseEnd = fromX + direction * corner;
+      const fallStart = toX - direction * corner;
+      return `M ${fromX} ${baselineY} Q ${fromX} ${apexY} ${riseEnd} ${apexY} L ${fallStart} ${apexY} Q ${toX} ${apexY} ${toX} ${baselineY}`;
     };
 
-    // Generate SVG path for dependency arc (restored original logic)
-    const computeEdge = (sourcePos, targetPos, isToRoot = false, isFromRoot = false) => {
-      const x = sourcePos.x;
-      const y = isFromRoot ? sourcePos.y : TOKEN_Y - 10;
-      const destX = targetPos.x;
-      const destY = isToRoot ? ROOT_Y + 10 : TOKEN_Y - 10;
-      const dx = destX - x;
-      const dy = destY - y;
-      const maxHeight =
-        isToRoot || isFromRoot ? null : getMaxHeight(sourcePos.index, targetPos.index);
-      const offset = destX > x ? 5 : -5;
+    // Generate SVG path for dependency arc
+    const computeEdge = (sourcePos, targetPos, isToRoot, height) => {
+      const y = TOKEN_Y - 10;
 
-      let d;
-
-      // We're drawing to the root or from the root
-      if (maxHeight === null) {
-        d = `M ${x} ${y} l ${dx} ${dy}`;
-      }
-      // We're drawing a new edge from the root
-      else if (y === ROOT_Y + 10) {
-        d = `M ${x} ${y} 
-           c 0 0, ${dx} -${maxHeight / 4}, ${dx} ${dy}`;
-      } else if (dy !== 0) {
-        d = `M ${x} ${y} 
-           c 0 -${maxHeight}, ${dx} -${maxHeight}, ${dx} ${dy}`;
-      }
-      // We're drawing a normal static edge
-      else {
-        d = `M ${x + offset} ${y} 
-           a ${Math.abs(dx - offset) / 2} ${maxHeight} 0 0 ${x < destX ? '1' : '0'} ${dx - offset} 0`;
+      // A root relation drops straight from the ROOT bar onto its token.
+      if (isToRoot) {
+        return `M ${sourcePos.x} ${y} l 0 ${ROOT_Y + 10 - y}`;
       }
 
-      return d;
+      // The arc leaves the head a few pixels along, so that its rise doesn't sit
+      // on top of an arrowhead pointing at that same word.
+      const offset = targetPos.x > sourcePos.x ? 5 : -5;
+      return arcPath(sourcePos.x + offset, targetPos.x, y, height);
     };
 
     // Editing is disabled (read-only) whenever the parent withholds the relation
@@ -529,23 +525,22 @@ export const DependencyTree = forwardRef(
       const isFocused = focusedRelation === relation.id;
       const isToRoot = isSelfPointing;
 
-      const pathData = computeEdge(sourcePos, targetPos, isToRoot);
+      const height = heightOf(relation);
+      const pathData = computeEdge(sourcePos, targetPos, isToRoot, height);
       const pathId = `arc-${relation.id}`;
 
       // Calculate arrow position - for ROOT relations, arrow points to the token
       const arrowX = isToRoot ? sourcePos.x : targetPos.x;
       const arrowY = isToRoot ? TOKEN_Y - 10 : TOKEN_Y - 10;
 
-      // Calculate label position
+      // The label rides just above its arc's horizontal run.
       let labelX, labelY;
       if (isToRoot) {
         labelX = sourcePos.x;
         labelY = (TOKEN_Y + ROOT_Y) / 2;
       } else {
-        const midX = (sourcePos.x + targetPos.x) / 2;
-        const height = getMaxHeight(sourcePos.index, targetPos.index);
-        labelY = TOKEN_Y - height - 15;
-        labelX = midX;
+        labelX = (sourcePos.x + targetPos.x) / 2;
+        labelY = TOKEN_Y - 10 - height - 5;
       }
 
       // Unreviewed relations read as their provenance hue + a dashed stroke:
@@ -758,17 +753,12 @@ export const DependencyTree = forwardRef(
       } else {
         // Existing logic for token-to-token drags
         const isToRoot = dragCurrent.y < ROOT_Y + 15;
-        const maxHeight = isToRoot ? null : getMaxHeight(0, -1);
-        const offset = dx > 0 ? 5 : -5;
-
-        if (maxHeight === null) {
+        if (isToRoot) {
           pathData = `M ${originX} ${originY} l ${dx} ${dy}`;
-        } else if (dy !== 0) {
-          pathData = `M ${originX} ${originY} 
-             c 0 -${maxHeight}, ${dx} -${maxHeight}, ${dx} ${dy}`;
         } else {
-          pathData = `M ${originX + offset} ${originY} 
-             a ${Math.abs(dx - offset) / 2} ${maxHeight} 0 0 ${originX < originX + dx ? '1' : '0'} ${dx - offset} 0`;
+          // An arc in the hand ends at the pointer, not at a level: what it
+          // will enclose isn't known until it lands on a word.
+          pathData = `M ${originX} ${originY} c 0 ${-ARC_BASE}, ${dx} ${-ARC_BASE}, ${dx} ${dy}`;
         }
       }
 
