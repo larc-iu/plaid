@@ -189,6 +189,16 @@ def test_malformed_plans_are_rejected_before_any_write():
         assert c.batches == [] and c.log == []
 
 
+def test_every_op_kind_is_declared_everywhere_a_kind_is_declared():
+    """Four tables name the kinds: KINDS, the required keys, the prose name the
+    approval line uses, and the dispatch in _execute. A kind missing from one
+    of them fails at apply time (a KeyError, or an op written as nothing), and
+    a kind missing from the summary shows the user an internal identifier in
+    the line they approve."""
+    from plaid_agent.igt.plan import KINDS, REQUIRED, SUMMARY_NAMES
+    assert set(KINDS) == set(REQUIRED) == set(SUMMARY_NAMES)
+
+
 def test_normalize_resolves_op_interactions():
     from plaid_agent.igt.plan import normalize_ops
     ops = [{'kind': 'delete_entry', 'item_id': 'X', 'links': [], 'label': ''},

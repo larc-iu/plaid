@@ -164,12 +164,14 @@ def test_the_plan_says_how_many_relations_a_split_takes_with_it():
     assert summarize([{'kind': 'merge_sentences'}]) == '1 sentence merge'
 
 
-def test_a_plan_of_sentence_ops_is_not_summarized_as_nothing():
-    """It was: summarize knew six op kinds and a plan of the two new ones read
-    "no changes", which is what a user would have been asked to approve."""
-    from plaid_agent.ud.plan import summarize
+def test_no_op_kind_is_summarized_as_nothing():
+    """It happened: summarize knew six op kinds and a plan of the two new ones
+    read "no changes", which is what a user would have been asked to approve.
+    Its chain has no else, so every kind has to be named in it by hand."""
+    from plaid_agent.ud.plan import KINDS, summarize
 
-    assert summarize([{'kind': 'merge_sentences'}]) != 'no changes'
+    for kind in KINDS:
+        assert summarize([{'kind': kind, 'document_ids': ['d1']}]) != 'no changes', kind
 
 
 def test_a_count_that_ends_in_y_pluralizes_properly():

@@ -655,27 +655,34 @@ def _apply_text_edit(client, project, op: Dict[str, Any]) -> None:
         client.tokens.bulk_create(creates)
 
 
+# What a kind is called in the line the user approves. Every kind needs one:
+# without it the summary shows the internal identifier instead.
+SUMMARY_NAMES = {
+    'set_span': ('field value', 'field values'), 'set_analysis': ('analysis', 'analyses'),
+    'set_orthography': ('orthography value', 'orthography values'), 'respell': ('respelling', 'respellings'),
+    'link': ('lexicon link', 'lexicon links'), 'unlink': ('unlink', 'unlinks'),
+    'create_entry': ('new lexicon entry', 'new lexicon entries'), 'set_entry_field': ('entry field', 'entry fields'),
+    'set_doc_metadata': ('document metadata value', 'document metadata values'),
+    'create_document': ('new document', 'new documents'),
+    'merge_entries': ('merged entry', 'merged entries'), 'delete_entry': ('deleted entry', 'deleted entries'),
+    'set_entry_metadata': ('entry structure change', 'entry structure changes'),
+    'rename_entry': ('renamed entry', 'renamed entries'),
+    'rename_document': ('renamed document', 'renamed documents'),
+    'confirm': ('confirmation', 'confirmations'), 'discard_analysis': ('discarded analysis', 'discarded analyses'),
+    'set_morpheme_form': ('morpheme form', 'morpheme forms'),
+    'split_word': ('split word', 'split words'), 'merge_words': ('word merge', 'word merges'),
+    'delete_word': ('deleted word', 'deleted words'), 'split_sentence': ('split sentence', 'split sentences'),
+    'merge_sentences': ('sentence merge', 'sentence merges'), 'edit_text': ('text edit', 'text edits'),
+    'link_phrase': ('multi-word expression', 'multi-word expressions'),
+    'set_morph_type': ('morpheme type', 'morpheme types'), 'add_comment': ('comment', 'comments'),
+    'restore_document': ('document restore', 'document restores'),
+}
+
+
 def summarize(ops: List[Dict[str, Any]]) -> str:
     counts = Counter(op.get('kind') for op in ops)
-    names = {'set_span': ('field value', 'field values'), 'set_analysis': ('analysis', 'analyses'),
-             'set_orthography': ('orthography value', 'orthography values'), 'respell': ('respelling', 'respellings'),
-             'link': ('lexicon link', 'lexicon links'), 'unlink': ('unlink', 'unlinks'),
-             'create_entry': ('new lexicon entry', 'new lexicon entries'), 'set_entry_field': ('entry field', 'entry fields'),
-             'set_doc_metadata': ('document metadata value', 'document metadata values'),
-             'create_document': ('new document', 'new documents'),
-             'merge_entries': ('merged entry', 'merged entries'), 'delete_entry': ('deleted entry', 'deleted entries'),
-             'set_entry_metadata': ('entry structure change', 'entry structure changes'),
-             'rename_entry': ('renamed entry', 'renamed entries'), 'rename_document': ('renamed document', 'renamed documents'),
-             'confirm': ('confirmation', 'confirmations'), 'discard_analysis': ('discarded analysis', 'discarded analyses'),
-             'set_morpheme_form': ('morpheme form', 'morpheme forms'),
-             'split_word': ('split word', 'split words'), 'merge_words': ('word merge', 'word merges'),
-             'delete_word': ('deleted word', 'deleted words'), 'split_sentence': ('split sentence', 'split sentences'),
-             'merge_sentences': ('sentence merge', 'sentence merges'), 'edit_text': ('text edit', 'text edits'),
-             'link_phrase': ('multi-word expression', 'multi-word expressions'),
-             'set_morph_type': ('morpheme type', 'morpheme types'), 'add_comment': ('comment', 'comments'),
-             'restore_document': ('document restore', 'document restores')}
     parts = []
     for kind, n in counts.items():
-        one, many = names.get(kind, (kind, kind))
+        one, many = SUMMARY_NAMES.get(kind, (kind, kind))
         parts.append(f'{n} {one if n == 1 else many}')
     return ', '.join(parts) if parts else 'no changes'
