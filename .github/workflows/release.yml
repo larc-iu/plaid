@@ -96,9 +96,15 @@ jobs:
         with:
           cli: latest
           bb: latest
+      # Node 24, the same as the test job: the lockfiles every app commits
+      # are written by npm 11 on Node 24, and npm 10 (which ships with Node 20)
+      # computes a different ideal tree from them, so `npm ci` refuses one it
+      # cannot satisfy — v0.2.0-alpha.12's first cut died on plaid-dict with
+      # "Missing: esbuild@0.28.2 from lock file" while the test job, on 24,
+      # installed the same lock without complaint.
       - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
