@@ -276,7 +276,7 @@ export const ProjectAssistant = ({
         // The record is newer than the list (a reply may have landed since).
         if (meta) setConvs(upsert(meta));
         if (meta?.pending?.requestId && !jobFor(id)) {
-          attachJob({ store, conv, meta });
+          attachJob({ store, conv, meta, docked: panel });
         }
       } catch (e) {
         if (seq === openSeq.current) {
@@ -486,6 +486,9 @@ export const ProjectAssistant = ({
         plan,
         asHuman,
         contributedBy: contributor ? userId : null,
+        // The card beside the document says "Applied" already, and the toaster
+        // sits on top of this panel's composer.
+        docked: panel,
       }),
     );
   };

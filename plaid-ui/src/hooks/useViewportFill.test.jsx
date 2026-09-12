@@ -71,6 +71,74 @@ describe('useViewportFill', () => {
     await unmount();
   });
 
+  it('hands the discarded page scroll to the element that now scrolls', async () => {
+    // Measuring puts the page at the top, and that offset is the reader's place
+    // in the document. Thrown away, opening the panel from anywhere but the
+    // first line dumped them back at the top of what they were reading.
+    const seen = { current: null };
+    Object.defineProperty(window, 'scrollY', { value: 300, configurable: true, writable: true });
+    window.scrollTo = vi.fn((x, y) => {
+      Object.defineProperty(window, 'scrollY', { value: y, configurable: true, writable: true });
+    });
+    const scroller = { scrollTop: 0, scrollHeight: 4000, clientHeight: 600 };
+    const frames = [];
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((fn) => {
+      frames.push(fn);
+      return frames.length;
+    });
+
+    const Probe = () => {
+      const ref = useRef(null);
+      const scrollerRef = useRef(scroller);
+      seen.current = useViewportFill(ref, true, [], scrollerRef);
+      return (
+        <div
+          ref={(el) => {
+            if (el) el.getBoundingClientRect = () => ({ top: 177 - window.scrollY });
+            ref.current = el;
+          }}
+        />
+      );
+    };
+    const { unmount } = await renderComponent(<Probe />);
+    // The row starts 177 into the document, so 300 of page scroll is 123 into
+    // the row itself.
+    frames.forEach((fn) => fn());
+    expect(scroller.scrollTop).toBe(123);
+    expect(seen.current).toBe(VIEWPORT - 177);
+    await unmount();
+  });
+
+  it('does not move the reader on a re-measure', async () => {
+    // A resize or a chrome change re-measures with the page already at zero.
+    // Re-applying the offset then would move them for no reason.
+    Object.defineProperty(window, 'scrollY', { value: 0, configurable: true, writable: true });
+    window.scrollTo = vi.fn();
+    const scroller = { scrollTop: 40, scrollHeight: 4000, clientHeight: 600 };
+    const frames = [];
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((fn) => {
+      frames.push(fn);
+      return frames.length;
+    });
+    const Probe = () => {
+      const ref = useRef(null);
+      const scrollerRef = useRef(scroller);
+      useViewportFill(ref, true, [], scrollerRef);
+      return (
+        <div
+          ref={(el) => {
+            if (el) el.getBoundingClientRect = () => ({ top: 177 });
+            ref.current = el;
+          }}
+        />
+      );
+    };
+    const { unmount } = await renderComponent(<Probe />);
+    frames.forEach((fn) => fn());
+    expect(scroller.scrollTop).toBe(40); // untouched
+    await unmount();
+  });
+
   it('returns null when it is switched off', async () => {
     const seen = { current: 'unset' };
     const Probe = () => {

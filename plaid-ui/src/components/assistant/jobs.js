@@ -306,7 +306,13 @@ export const startTurn = ({ store, service, conv, prevMeta, about = null }) => {
   return j;
 };
 
-export const applyToasts = (j, summary) => {
+// `docked`: the plan card is on screen beside the document, where it turns
+// green and says "Applied". The toaster is bottom-right, which is exactly where
+// the docked panel's composer is, so the success toast covered the message the
+// user was about to type for the sake of repeating what the card already said.
+// Only the success one goes: a hard failure leaves the card undecided with no
+// inline explanation, so that toast is the only place the reason appears.
+export const applyToasts = (j, summary, { docked = false } = {}) => {
   // We stopped waiting, the service did not stop working. Nothing has failed
   // and nothing needs approving again, so say what actually happened.
   if (j.error?.pending) {
@@ -317,7 +323,7 @@ export const applyToasts = (j, summary) => {
         ' Approving again is safe: a plan that was already applied is not written twice.',
       'Not applied',
     );
-  } else if (j.outcome && !j.outcome.duplicate) {
+  } else if (j.outcome && !j.outcome.duplicate && !docked) {
     notifySuccess(j.outcome.message || `Applied ${summary}.`, 'Changes applied');
   }
 };
@@ -336,6 +342,7 @@ export const startApply = ({
   plan,
   asHuman,
   contributedBy = null,
+  docked = false,
 }) => {
   const { client, projectId } = store;
   const requestId = newId();
@@ -379,7 +386,7 @@ export const startApply = ({
         { requestId },
       ),
     );
-    applyToasts(j, plan.summary);
+    applyToasts(j, plan.summary, { docked });
     return finishJob(j, store, service);
   })();
   return j;
@@ -388,7 +395,7 @@ export const startApply = ({
 // Rejoin the request a conversation's record says is under way (it was
 // submitted from a page that is gone). The record gets the outcome either
 // way; this is for showing progress and refreshing when it lands.
-export const attachJob = ({ store, conv, meta }) => {
+export const attachJob = ({ store, conv, meta, docked = false }) => {
   const { client, projectId } = store;
   const p = meta.pending;
   const j = newJob({
@@ -415,7 +422,7 @@ export const attachJob = ({ store, conv, meta }) => {
     );
     if (j.kind === 'apply') {
       const plan = conv.display.find((d) => d.plan?.id === j.planId)?.plan;
-      applyToasts(j, plan?.summary || 'the changes');
+      applyToasts(j, plan?.summary || 'the changes', { docked });
     }
     return finishJob(j, store, null);
   })();
