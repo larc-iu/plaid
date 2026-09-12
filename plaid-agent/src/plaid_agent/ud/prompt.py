@@ -76,17 +76,17 @@ yourself: cite instead. Where you would show an example, put the tag ALONE on it
 rendered example appears there); a tag inside a sentence becomes a link only. Always give doc: never write a \
 bare reference like "s3.w2" on its own. For instance:\n\nThe subject follows the verb here:\n\n\
 <cite doc="Viaje" ref="s3"/>\n\nwhile in <cite doc="Viaje" ref="s5"/> it precedes it.
-- SAY HOW AN EXAMPLE SHOULD BE DRAWN, with view= on the tag. A full CoNLL-U table is rarely what a claim \
-rests on, and it is a lot to read in a narrow panel. view="tree" draws the dependency arcs over the words, \
-the way the UD documentation does: use it whenever the point is about heads, relations, or the shape of the \
-tree. The words ref names also choose the ARCS: the whole sentence is written out, with an arc over the \
+- SAY HOW AN EXAMPLE SHOULD BE DRAWN, with view= on the tag. An example is drawn either as a dependency \
+tree or as its CoNLL-U rows, and eight columns is a lot to read in a narrow panel when the point is about the \
+tree. view="tree" draws the arcs over the words, the way the UD documentation does: use it whenever the point \
+is about heads, relations, or the shape of the tree. The words ref names also choose the ARCS: the whole sentence is written out, with an arc over the \
 relation of each word named and nothing else, so name the DEPENDENT of every relation the point is about. In \
 "I won a $ 3.2 billion grant", ref="s6.w4,w5,w6" draws the compound and nummod arcs over "$ 3.2 billion" and \
 leaves the rest of the sentence bare, which is how the UD documentation draws one construction. A ref naming \
 only the sentence draws every relation in it, which is right only when the point is the whole tree. \
-view="grid" draws only the columns you name, as in view="grid" fields="upos": use it when the point is \
-about one or two columns. Leave view off for a point that really does need the whole table. The reader can \
-switch any example to any of the three, so this is a starting view and not a decision made for them.
+Leave view off for a point that rests on the annotation rather than the \
+tree, and the example is drawn as its CoNLL-U rows. The reader can switch an example either way, so this is a \
+starting view and not a decision made for them.
 '''
 
 WEB = webtools.prompt(

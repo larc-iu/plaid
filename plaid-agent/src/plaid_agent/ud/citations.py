@@ -8,7 +8,7 @@ tag's own text.
 """
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from .project import COLUMNS, UdDoc, parse_ref, resolve
 from .tools import ToolError, Workspace
@@ -67,15 +67,14 @@ def parse_refs(ref: str) -> List[str]:
     return out
 
 
-VIEWS = ('table', 'tree', 'grid')
+VIEWS = ('table', 'tree')
 
 
 def tag_parts(attrs: str):
-    """-> (doc, ref, view, fields) from a <cite> tag's attributes.
+    """-> (doc, ref, view) from a <cite> tag's attributes.
 
-    ``doc`` and ``ref`` may each be ''. ``view`` is how the example is drawn
-    and ``fields`` which columns a grid shows; both are what the model ASKS
-    for, and the reader can still switch the card to any of them.
+    ``doc`` and ``ref`` may each be ''. ``view`` is how the example is drawn,
+    which is what the model ASKS for: the reader can still switch the card.
     """
     at = {}
     for m in ATTR_RE.finditer(attrs):
@@ -83,12 +82,11 @@ def tag_parts(attrs: str):
     doc = at.get('doc') or at.get('document') or ''
     ref = at.get('ref') or at.get('sentence') or ''
     view = at.get('view', '').strip().lower()
-    fields = [f.strip().lower() for f in at.get('fields', '').split(',') if f.strip()]
-    return doc.strip(), ref.strip(), (view if view in VIEWS else ''), fields
+    return doc.strip(), ref.strip(), (view if view in VIEWS else '')
 
 
 def _card(doc: UdDoc, sentence_index: int, focus: List[int],
-          view: str = '', fields: Optional[List[str]] = None) -> Dict[str, Any]:
+          view: str = '') -> Dict[str, Any]:
     """One example card: the sentence as STRUCTURE, not as a rendered block.
 
     The tab has to mark the words the citation singles out, and it cannot do
@@ -123,8 +121,7 @@ def _card(doc: UdDoc, sentence_index: int, focus: List[int],
     # what the editor's ?sent= deep link needs. Both, or the link lands on the
     # document and never scrolls.
     return {'sentence': s.index, 'sentence_id': s.id, 'text': s.text, 'columns': keep, 'rows': rows,
-            'focus': focus, 'view': view or 'table',
-            'fields': [f for f in (fields or []) if f in keep]}
+            'focus': focus, 'view': view or 'table'}
 
 
 def resolve_citations(ws: Workspace, text: str) -> List[Dict[str, Any]]:
@@ -136,7 +133,7 @@ def resolve_citations(ws: Workspace, text: str) -> List[Dict[str, Any]]:
     loaded = list(ws._docs.values())
     read_before = len(ws._docs)
 
-    def add(key: str, doc_name: str, ref: str, view: str = '', fields=None) -> None:
+    def add(key: str, doc_name: str, ref: str, view: str = '') -> None:
         if key in seen or len(out) >= MAX_CITATIONS:
             return
         seen.add(key)
@@ -170,21 +167,21 @@ def resolve_citations(ws: Workspace, text: str) -> List[Dict[str, Any]]:
         if sentence is None:
             return
         out.append({'key': key, 'document_id': doc.id, 'document_name': doc.name,
-                    **_card(doc, sentence, focus, view, fields)})
+                    **_card(doc, sentence, focus, view)})
 
     found: List[tuple] = []
     for m in TAG_RE.finditer(text):
-        doc, ref, view, fields = tag_parts(m.group('attrs'))
+        doc, ref, view = tag_parts(m.group('attrs'))
         # A tag without doc= means one thing when the turn read one document.
         if ref and (doc or len(loaded) == 1):
-            found.append((m.start(), m.group(0), doc or loaded[0].id, ref, view, fields))
+            found.append((m.start(), m.group(0), doc or loaded[0].id, ref, view))
     for m in BRACE_RE.finditer(text):
-        found.append((m.start(), m.group(0), m.group('doc').strip().strip('"\''), m.group('ref'), '', []))
+        found.append((m.start(), m.group(0), m.group('doc').strip().strip('"\''), m.group('ref'), ''))
     if len(loaded) == 1:
         blank = lambda m: ' ' * len(m.group(0))  # noqa: E731 - keep offsets, so order survives
         rest = BRACE_RE.sub(blank, TAG_RE.sub(blank, text))
         for m in BARE_RE.finditer(rest):
-            found.append((m.start(), m.group(0), loaded[0].id, m.group('ref'), '', []))
-    for _, key, doc, ref, view, fields in sorted(found, key=lambda f: f[0]):
-        add(key, doc, ref, view, fields)
+            found.append((m.start(), m.group(0), loaded[0].id, m.group('ref'), ''))
+    for _, key, doc, ref, view in sorted(found, key=lambda f: f[0]):
+        add(key, doc, ref, view)
     return out

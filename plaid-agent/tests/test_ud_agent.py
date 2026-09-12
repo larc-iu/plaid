@@ -191,22 +191,22 @@ def test_a_row_is_keyed_by_its_column_name(ws):
 
 
 def test_the_model_can_ask_for_how_an_example_is_drawn(ws):
-    """A full CoNLL-U table is rarely what a claim rests on. The model says
-    which view fits its point; the reader can still switch the card."""
+    """A tree is rarely what a claim about the annotation rests on, and the
+    CoNLL-U rows are rarely what a claim about the tree rests on. The model
+    says which of the two fits its point, and the reader can still switch."""
     from plaid_agent.ud.citations import resolve_citations
 
     call_tool(ws, 'read_document', {'document': 'Viaje'})
     [tree] = resolve_citations(ws, '<cite doc="Viaje" ref="s1" view="tree"/>')
     assert tree['view'] == 'tree'
-    [grid] = resolve_citations(ws, '<cite doc="Viaje" ref="s1" view="grid" fields="upos"/>')
-    assert grid['view'] == 'grid' and grid['fields'] == ['upos']
+    [plain] = resolve_citations(ws, '<cite doc="Viaje" ref="s1"/>')
+    assert plain['view'] == 'table'
     # An unknown view is not passed on: the card would not know what to do.
-    [odd] = resolve_citations(ws, '<cite doc="Viaje" ref="s1" view="hologram"/>')
-    assert odd['view'] == 'table'
-    # A field that is not a column of this sentence cannot be asked for: the
-    # card would draw an empty stripe for it.
-    [gone] = resolve_citations(ws, '<cite doc="Viaje" ref="s1" view="grid" fields="upos,nonsense"/>')
-    assert gone['fields'] == ['upos']
+    # "grid" is one of those now, a third view that was retired.
+    for attrs in ('view="hologram"', 'view="grid" fields="upos"'):
+        [odd] = resolve_citations(ws, f'<cite doc="Viaje" ref="s1" {attrs}/>')
+        assert odd['view'] == 'table'
+        assert 'fields' not in odd
 
 
 def test_a_garbage_part_of_a_reference_list_is_dropped_not_repeated():

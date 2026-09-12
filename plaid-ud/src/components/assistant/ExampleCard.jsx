@@ -5,33 +5,21 @@ import { centeredScrollLeft } from '@ui/components/assistant/citations.js';
 import { citationTitle, sentenceHref } from './adapter.js';
 import { layout } from './depTree.js';
 
-// A cited sentence as UD draws it, in whichever of three views fits the claim.
-//
-// A full CoNLL-U table is rarely what a point rests on, and eight columns is a
-// lot to read in a docked panel. So the model says which view it means with
-// view= on its cite tag, and the reader can switch: the model's choice is a
-// starting point, not a decision taken away from them.
-//
-//   tree   the dependency arcs over the words, as the UD docs draw them
-//   grid   only the columns the point is about
-//   table  every column the sentence fills
+// A cited sentence as UD draws it, as a tree or as its CoNLL-U rows. The model
+// says which one with view= on its cite tag, and the reader can switch: the
+// model's choice is a starting point, not a decision taken away from them.
 //
 // A tree opens on the relations the citation named, over the whole sentence.
 // All of them at once is the switch under it.
+//
+// There was a third view, a grid of the two or three columns the model named
+// in fields=. It was the CoNLL-U table minus some columns, chosen by the model
+// for a reader who could not choose differently, so it went (Luke's call).
 
 const VIEWS = [
   { id: 'tree', label: 'Tree' },
-  { id: 'grid', label: 'Grid' },
-  { id: 'table', label: 'Table' },
+  { id: 'table', label: 'CoNLL-U' },
 ];
-
-// The columns a grid shows: what the model asked for, else the annotation a
-// reader most often wants beside the words.
-const gridColumns = (c) => {
-  const asked = (c.fields || []).filter((f) => f !== 'id' && f !== 'form');
-  if (asked.length) return asked;
-  return (c.columns || []).filter((col) => col === 'upos' || col === 'lemma');
-};
 
 const DepTree = ({ c, tree }) => {
   if (!tree.words.length) return null;
@@ -138,7 +126,8 @@ const Table = ({ c, columns, scroller }) => (
 export const ExampleCard = ({ c, projectId }) => {
   const columns = c.columns || [];
   // The model's choice opens the card; the switch is the reader's.
-  const [view, setView] = useState(c.view || 'table');
+  // A conversation from before a view was retired still carries its name.
+  const [view, setView] = useState(VIEWS.some((v) => v.id === c.view) ? c.view : 'table');
   // The relations the citation named, until the reader asks for the rest.
   const [allArcs, setAllArcs] = useState(false);
   const scroller = useRef(null);
@@ -151,7 +140,7 @@ export const ExampleCard = ({ c, projectId }) => {
   // offered rather than offered and empty.
   const hasTree = (c.rows || []).some((r) => !r.token && r.head !== '' && r.head != null);
   const shown = view === 'tree' && !hasTree ? 'table' : view;
-  const cols = shown === 'grid' ? ['id', 'form', ...gridColumns(c)] : columns;
+  const offered = VIEWS.filter((v) => v.id !== 'tree' || hasTree);
 
   // A wide table or a long sentence scrolls inside the card, so bring the
   // cited rows and the cited relations into view: centre them before the card
@@ -180,8 +169,14 @@ export const ExampleCard = ({ c, projectId }) => {
           <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           <span className="truncate">{citationTitle(c)}</span>
         </a>
-        <div className="ml-auto flex shrink-0 rounded border bg-background">
-          {VIEWS.filter((v) => v.id !== 'tree' || hasTree).map((v) => (
+        <div
+          className={cn(
+            'ml-auto flex shrink-0 rounded border bg-background',
+            // One view is not a switch.
+            offered.length < 2 && 'hidden',
+          )}
+        >
+          {offered.map((v) => (
             <button
               key={v.id}
               type="button"
@@ -224,7 +219,7 @@ export const ExampleCard = ({ c, projectId }) => {
           )}
         </div>
       ) : (
-        columns.length > 0 && <Table c={c} columns={cols} scroller={scroller} />
+        columns.length > 0 && <Table c={c} columns={columns} scroller={scroller} />
       )}
     </div>
   );

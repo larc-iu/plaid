@@ -51,18 +51,22 @@ describe('ExampleCard', () => {
     const { container, step, unmount } = await mount(CARD);
     await step(() => byText(container, 'button', 'Tree').click());
     expect(container.querySelector('svg[role="img"]')).not.toBeNull();
-    await step(() => byText(container, 'button', 'Grid').click());
-    const headers = all(container, 'th').map((th) => th.textContent.trim());
-    // A grid is the words plus what the point is about, not all eight columns.
-    expect(headers).toContain('form');
-    expect(headers).not.toContain('deprel');
+    await step(() => byText(container, 'button', 'CoNLL-U').click());
+    expect(container.querySelector('svg[role="img"]')).toBeNull();
     await unmount();
   });
 
-  it('shows only the columns asked for, when the model named them', async () => {
-    const { container, unmount } = await mount({ ...CARD, view: 'grid', fields: ['upos'] });
+  it('shows every column the sentence fills, which is the whole of that view', async () => {
+    const { container, unmount } = await mount(CARD);
     const headers = all(container, 'th').map((th) => th.textContent.trim());
-    expect(headers).toEqual(['id', 'form', 'upos']);
+    expect(headers).toEqual(CARD.columns);
+    await unmount();
+  });
+
+  it('lands on the CoNLL-U rows for a view that no longer exists', async () => {
+    const { container, unmount } = await mount({ ...CARD, view: 'grid' });
+    expect(container.querySelector('table')).not.toBeNull();
+    expect(byText(container, 'button', 'CoNLL-U').getAttribute('aria-pressed')).toBe('true');
     await unmount();
   });
 
@@ -79,6 +83,8 @@ describe('ExampleCard', () => {
     expect(container.querySelector('svg[role="img"]')).toBeNull();
     expect(container.querySelector('table')).not.toBeNull();
     expect(byText(container, 'button', 'Tree')).toBeNull();
+    // One view left, so there is nothing to switch between.
+    expect(container.querySelector('button[aria-pressed]').closest('.hidden')).not.toBeNull();
     await unmount();
   });
 
