@@ -211,15 +211,11 @@ def _confirm_label(first, members) -> str:
 
 # How the like ops of one plan fold into one stored op (core.plan.compact_ops).
 COMPACT = {
-    'set_span': {'by': ('layer_id', 'field', 'value', 'document_id'),
-                 'each': ('token_id', 'span_id', 'ref'), 'label': _set_span_label},
-    'set_head': {'by': ('lemma_layer_id', 'relation_layer_id', 'deprel', 'document_id'),
-                 'each': ('word_id', 'head_id', 'word_form', 'head_form', 'lemma_span_id',
+    'set_span': {'each': ('token_id', 'span_id', 'ref'), 'label': _set_span_label},
+    'set_head': {'each': ('word_id', 'head_id', 'word_form', 'head_form', 'lemma_span_id',
                           'head_lemma_span_id', 'relation_id', 'ref'), 'label': _set_head_label},
-    'del_relation': {'by': ('document_id',), 'each': ('word_id', 'relation_id', 'ref'),
-                     'label': _del_relation_label},
-    'confirm': {'by': ('document_id',), 'each': ('span_id', 'relation_id', 'ref'),
-                'label': _confirm_label},
+    'del_relation': {'each': ('word_id', 'relation_id', 'ref'), 'label': _del_relation_label},
+    'confirm': {'each': ('span_id', 'relation_id', 'ref'), 'label': _confirm_label},
 }
 
 

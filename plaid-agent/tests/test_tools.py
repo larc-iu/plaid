@@ -527,3 +527,24 @@ def test_parsed_documents_are_cached_across_workspaces_by_version():
     fresh = w.doc('d1')
     assert fresh is not d and fresh.version == 4 and T._DOC_CACHE[('d1', 4)] is fresh
     T._DOC_CACHE.clear()
+
+
+def test_a_large_group_of_like_changes_is_stored_as_one_op_and_applies_whole(monkeypatch):
+    """A bulk respell cost over a kilobyte per word in the record, so a plan
+    at the bulk cap could not be saved. Like ops fold into one stored op with
+    the id lists; approval expands it again."""
+    from plaid_agent.core import plan as core_plan
+    from plaid_agent.igt.plan import execute_plan, summarize
+    monkeypatch.setattr(core_plan, 'COMPACT_ABOVE', 2)
+    w = scan_ws(FakeClient())
+    call_tool(w, 'set_field', {'document': 'Text 1', 'refs': ['s1.w1', 's1.w2', 's1.w3'], 'field': 'Gloss', 'value': 'X'})
+    payload = w.plan_payload()
+    assert len(payload['ops']) == 1 and len(payload['changes']) == 1
+    group = payload['ops'][0]
+    assert group['compact'] and group['count'] == 3 and group['items']['token_id'] == ['w-1', 'w-2', 'w-3']
+    assert group['label'].startswith('Text 1: 3 changes: ')
+    assert payload['changes'][0]['where']['kind'] == 'document'
+    assert payload['changes'][0]['change'].startswith('3 changes: ')
+    assert payload['summary'] == summarize(payload['ops']) == '3 field values'
+    counts = execute_plan(w.client, payload['ops'], source='s', label='l')
+    assert counts == {'field values': 3}

@@ -65,7 +65,7 @@ from collections import Counter
 from typing import Any, Dict, List
 
 from ..core.plan import (BATCH_OP_BUDGET, CLEAR_PROV, CONFIRM, PlanError, Stamps, STAMP_MODES,  # noqa: F401
-                         TrackingBatcher, created_id)
+                         TrackingBatcher, created_id, expand_ops)
 
 
 KINDS = ('set_span', 'set_analysis', 'set_orthography', 'respell', 'link', 'unlink', 'link_phrase', 'create_entry',
@@ -279,6 +279,7 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
     id). Raises :class:`PlanError` with the applied count if a later batch
     fails: batches are atomic individually, the plan as a whole is not."""
     stamps = Stamps(stamp_mode, source, contributor)
+    ops = expand_ops(ops)
     validate_ops(ops)
     ops, notes = normalize_ops(ops)
     counts: Counter = Counter()
@@ -723,7 +724,7 @@ SUMMARY_NAMES = {
 
 
 def summarize(ops: List[Dict[str, Any]]) -> str:
-    counts = Counter(op.get('kind') for op in ops)
+    counts = Counter(op.get('kind') for op in expand_ops(ops))
     parts = []
     for kind, n in counts.items():
         one, many = SUMMARY_NAMES.get(kind, (kind, kind))

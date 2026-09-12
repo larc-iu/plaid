@@ -2,7 +2,7 @@
 
 from plaid_agent.core.plan import COMPACT_ABOVE, compact_ops, expand_ops
 
-SPEC = {'set': {'by': ('layer', 'value'), 'each': ('token', 'ref'),
+SPEC = {'set': {'each': ('token', 'ref'),
                 'label': lambda first, members: f'{first["value"]} on {len(members)}'}}
 
 
@@ -36,3 +36,13 @@ def test_groups_keep_the_order_of_first_appearance_and_other_kinds_stay_put():
     stored = compact_ops(ops, SPEC)
     assert [op.get('value', op['kind']) for op in stored] == ['a', 'other', 'b']
     assert expand_ops([other]) == [other]
+
+
+def test_a_key_the_spec_did_not_foresee_keeps_an_op_out_of_the_group():
+    """Grouping is by every key that is not per-member, so nothing an op
+    carries is ever dropped by being folded into a group."""
+    ops = _ops(20)
+    ops[3]['extra'] = {'nested': [1, 2]}
+    stored = compact_ops(ops, SPEC)
+    assert len(stored) == 2
+    assert stored[0]['count'] == 19 and stored[1] == ops[3]

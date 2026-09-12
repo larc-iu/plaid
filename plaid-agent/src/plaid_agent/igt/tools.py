@@ -350,11 +350,31 @@ class Workspace:
             return None
         from .plan import summarize
         from .changes import describe_changes
+        from ..core.plan import compact_ops
         # A snapshot: the payload must not alias the live list (discard_plan
-        # clears it) since it is what the user approves later.
+        # clears it) since it is what the user approves later. Large groups
+        # of like ops are stored as one op: a bulk respell cost over a
+        # kilobyte per word stored, and the record could not hold one.
+        ops = copy.deepcopy(self.ops)
+        spec = compact_spec(self)
+        # An op the scan path staged names no document; the group it joins
+        # must, so the card can place it and the label can head it.
+        from .changes import _doc_of
+        for op in ops:
+            if op.get('kind') in spec and not op.get('doc'):
+                doc_id = _doc_of(self, op)
+                if doc_id:
+                    op['doc'] = doc_id
+        ops = compact_ops(ops, spec)
+        # A group whose members share one document keeps it, so the card can
+        # place the row; expansion writes each member's own back over it.
+        for op in ops:
+            docs = set((op.get('items') or {}).get('doc') or []) if op.get('compact') else set()
+            if len(docs) == 1:
+                op['doc'] = docs.pop()
         return {'id': uuid.uuid4().hex, 'summary': summarize(self.ops),
-                'labels': [op['label'] for op in self.ops], 'ops': copy.deepcopy(self.ops),
-                'changes': describe_changes(self, self.ops),
+                'labels': [op['label'] for op in ops], 'ops': ops,
+                'changes': describe_changes(self, ops),
                 'documents': self.touched_documents()}
 
     def touched_documents(self) -> List[Dict[str, Any]]:
@@ -408,6 +428,38 @@ def _op_mentions(value, ids: set) -> bool:
     if isinstance(value, list):
         return any(_op_mentions(v, ids) for v in value)
     return False
+
+
+def _change_part(label: str) -> str:
+    """The change a label describes, after its location head."""
+    return label.split(': ', 1)[1] if ': ' in label else label
+
+
+def compact_spec(ws: Workspace) -> Dict[str, Dict[str, Any]]:
+    """How like ops fold into one stored op (core.plan.compact_ops): which
+    keys vary per member, and the group's line. The document is per member,
+    so a bulk change over a whole corpus is one group and not one per
+    document (most of which held too few to fold at all). The line is
+    headed by the document when the group has one, the way every label is,
+    so the card can split it the same way."""
+    def label(first, members):
+        n = len(members)
+        parts = [_change_part(m.get('label') or '') for m in members[:5]]
+        body = f'{n} changes: ' + '; '.join(parts) + (f'; … {n - 5} more' if n > 5 else '')
+        docs = {m.get('doc') for m in members} - {None}
+        if len(docs) == 1:
+            return f'{ws.doc_label(next(iter(docs)))}: {body}'
+        if docs:
+            return f'{n} changes in {len(docs)} documents: ' + body.split(': ', 1)[1]
+        return body
+
+    return {
+        'set_span': {'each': ('token_id', 'span_id', 'value', 'doc'), 'label': label},
+        'respell': {'each': ('text_id', 'begin', 'end', 'value', 'doc'), 'label': label},
+        'set_orthography': {'each': ('word_id', 'value', 'doc'), 'label': label},
+        'set_morpheme_form': {'each': ('morpheme_id', 'form', 'doc'), 'label': label},
+        'rename_entry': {'each': ('item_id', 'form'), 'label': label},
+    }
 
 
 def op_target(op: Dict[str, Any]):

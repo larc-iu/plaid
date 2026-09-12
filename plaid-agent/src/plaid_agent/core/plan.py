@@ -15,6 +15,7 @@ ops with a :class:`TrackingBatcher` and a :class:`Stamps`, and lets
 :class:`PlanError` out.
 """
 
+import json
 from typing import Any, Dict, List, Optional
 
 from plaid_client.provenance import (confirmed_inferred, stamp_contributed, PROV_KEY, PROV_SOURCE_KEY,
@@ -174,30 +175,38 @@ class Stamps:
 COMPACT_ABOVE = 12  # a group larger than this is stored as one op
 
 
+def _hashable(v: Any):
+    return json.dumps(v, sort_keys=True, ensure_ascii=False, default=str)
+
+
 def compact_ops(ops: List[Dict[str, Any]], spec: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """``spec`` maps an op kind to ``{'by': keys, 'each': keys, 'label': fn}``:
-    ops of that kind with equal ``by`` values form a group, ``each`` are the
-    keys that vary per member, and ``label(first, members)`` writes the
-    group's line. A group at or under :data:`COMPACT_ABOVE` is left as it
-    is. Order is the order of first appearance."""
+    """``spec`` maps an op kind to ``{'each': keys, 'label': fn}``: ``each``
+    are the keys that vary per member, and ops of that kind equal in EVERY
+    other key (the label aside) form a group, so a key the spec did not
+    foresee keeps an op out of a group rather than being dropped from it.
+    ``label(first, members)`` writes the group's line. A group at or under
+    :data:`COMPACT_ABOVE` is left as it is. Order is the order of first
+    appearance."""
     groups: Dict[tuple, List[int]] = {}
     for i, op in enumerate(ops):
         s = spec.get(op.get('kind'))
         if s is None:
             continue
-        key = (op.get('kind'),) + tuple(op.get(k) for k in s['by'])
+        each = set(s['each'])
+        key = tuple(sorted((k, _hashable(v)) for k, v in op.items() if k not in each and k != 'label'))
         groups.setdefault(key, []).append(i)
     replaced: Dict[int, Dict[str, Any]] = {}
     dropped: set = set()
     for key, members in groups.items():
         if len(members) <= COMPACT_ABOVE:
             continue
-        s = spec[key[0]]
         first = ops[members[0]]
-        group = {'kind': key[0], **{k: first.get(k) for k in s['by']},
-                 'items': {k: [ops[i].get(k) for i in members] for k in s['each']},
-                 'count': len(members), 'compact': True,
-                 'label': s['label'](first, [ops[i] for i in members])}
+        s = spec[first['kind']]
+        each = list(s['each'])
+        group = {k: v for k, v in first.items() if k not in each and k != 'label'}
+        group.update({'items': {k: [ops[i].get(k) for i in members] for k in each},
+                      'count': len(members), 'compact': True,
+                      'label': s['label'](first, [ops[i] for i in members])})
         replaced[members[0]] = group
         dropped.update(members[1:])
     out = []
