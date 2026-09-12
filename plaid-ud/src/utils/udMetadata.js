@@ -58,6 +58,10 @@ export function metadataFieldError(name, level, taken = []) {
   // The query engine reads a dot as a path separator, so a key containing one
   // is unreachable from a query for the rest of its life.
   if (trimmed.includes('.')) return 'A field name cannot contain a dot.';
+  // CoNLL-U writes a field as `# name = value`, so a name carrying an `=` or a
+  // line break comes back as a different field, or as a broken line, the next
+  // time the document is exported and read again.
+  if (/[=\r\n]/.test(trimmed)) return 'A field name cannot contain "=" or a line break.';
   if (isProvKey(trimmed)) return `${trimmed} is reserved for provenance.`;
   if (RESERVED[level]?.has(trimmed)) {
     return trimmed === SENT_ID

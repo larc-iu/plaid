@@ -14,9 +14,8 @@ import {
   provCellTitle,
   provMark,
 } from '../../../utils/provenanceUi.js';
-import { MetadataFields } from '../../common/MetadataFields.jsx';
 import { SentenceComments } from './SentenceComments.jsx';
-import { metadataRows } from '../../../utils/udMetadata.js';
+import { SentenceMetadataDialog } from './SentenceMetadataDialog.jsx';
 import './SentenceRow.css';
 
 // Shared throttle for tab navigation across all EditableCell instances
@@ -24,7 +23,7 @@ let lastGlobalTabPress = 0;
 
 // Fallback when no per-document visibility is supplied (e.g. historical view):
 // show every annotation row. Stable reference so memoized children don't churn.
-const ALL_FIELDS_VISIBLE = { lemma: true, xpos: true, upos: true, feats: true, meta: true };
+const ALL_FIELDS_VISIBLE = { lemma: true, xpos: true, upos: true, feats: true };
 
 // Stable empty-options reference: an idle vocab cell passes this instead of the
 // real suggestion list, so a grid of a thousand cells doesn't rank and group a
@@ -1332,13 +1331,11 @@ export const SentenceRow = React.memo(
     // The sentence's own notes: sent_id, whatever the project declares, and
     // whatever is already stored that it no longer does. They live on the
     // SENTENCE TOKEN, which is where CoNLL-U's `# k = v` lines have always been
-    // read from and written back to.
+    // read from and written back to. They open in a dialog of their own, one
+    // sentence at a time.
     const sentenceToken = sentenceData.sentenceToken;
     const sentenceMeta = sentenceToken?.metadata;
-    const metaRows = useMemo(
-      () => metadataRows(sentenceFields, sentenceMeta, 'sentence'),
-      [sentenceFields, sentenceMeta],
-    );
+    const [metaOpen, setMetaOpen] = useState(false);
     const handleSentenceMetadata = useCallback(
       (key, value) => onSentenceMetadata?.(sentenceToken?.id, key, value),
       [onSentenceMetadata, sentenceToken],
@@ -1352,8 +1349,20 @@ export const SentenceRow = React.memo(
       [onEditText, sentenceToken],
     );
 
+    // Where this sentence sits in the document. Its place, not its `sent_id`:
+    // the id is a field like any other and can be edited or imported to
+    // anything, while the position is what the pager, the assistant and a
+    // person counting down the page all mean by "sentence 7".
+    const sentenceNumber = sentenceIndex + 1;
+
     return (
       <div className="sentence-container">
+        {/* The sentence's number, top-left and quiet: it is how you refer to
+          this sentence, not something to read. It sits over the tree, which
+          covers the whole block, and is click-through so that a mouseup in this
+          corner still reaches the arc being drawn underneath. */}
+        <div className="sentence-id">{sentenceNumber}</div>
+
         {/* Dependency tree visualization */}
         <DependencyTree
           ref={treeRef}
@@ -1457,7 +1466,7 @@ export const SentenceRow = React.memo(
         {(handleEditText ||
           comments ||
           onAskAssistant ||
-          metaRows.length > 0 ||
+          sentenceToken ||
           (!isReadOnly && (hasInferred || hasMachine))) && (
           <div className="sentence-confirm">
             {!isReadOnly && onConfirmTokens && hasInferred && (
@@ -1482,19 +1491,15 @@ export const SentenceRow = React.memo(
                 Discard predictions
               </Button>
             )}
-            {metaRows.length > 0 && (
+            {sentenceToken && (
               <Button
                 className="sentence-meta__toggle sentence-action h-6 gap-1 px-2 text-xs"
                 variant="ghost"
-                aria-expanded={!!visibleFields.meta}
-                onClick={() => onToggleField?.('meta')}
-                title={`${visibleFields.meta ? 'Hide' : 'Show'} this sentence's own fields. Expanding one expands them for the whole document.`}
+                onClick={() => setMetaOpen(true)}
+                title="Edit this sentence's CoNLL-U comment lines"
               >
                 <Tags width={12} height={12} />
                 Edit metadata
-                {!visibleFields.meta && sentenceMeta?.sent_id && (
-                  <span className="sentence-meta__summary">{sentenceMeta.sent_id}</span>
-                )}
               </Button>
             )}
             {handleEditText && (
@@ -1531,18 +1536,16 @@ export const SentenceRow = React.memo(
           </div>
         )}
 
-        {metaRows.length > 0 && visibleFields.meta && (
-          <div className="sentence-meta">
-            <div className="sentence-meta__fields">
-              <MetadataFields
-                rows={metaRows}
-                values={sentenceMeta}
-                readOnly={isReadOnly || !onSentenceMetadata}
-                dense
-                onCommit={handleSentenceMetadata}
-              />
-            </div>
-          </div>
+        {sentenceToken && (
+          <SentenceMetadataDialog
+            open={metaOpen}
+            onOpenChange={setMetaOpen}
+            label={`sentence ${sentenceNumber}`}
+            fields={sentenceFields}
+            values={sentenceMeta}
+            readOnly={isReadOnly || !onSentenceMetadata}
+            onCommit={handleSentenceMetadata}
+          />
         )}
       </div>
     );

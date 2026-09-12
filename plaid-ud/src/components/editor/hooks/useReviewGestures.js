@@ -26,13 +26,14 @@ import {
 // character typed in the window belongs to the cell being moved to.
 const ADVANCE_BEAT_MS = 200;
 
-// Rows are virtualized: a sentence nobody has scrolled to renders a
-// placeholder, so a hop into one has to scroll first and then wait for the row
-// to mount. Bounded, and silent when it runs out: a sweep that gives up
-// quietly is better than one that throws.
+// A sentence the sweep lands on may not be rendered yet: it can be on another
+// page, and even on this page rows are virtualized, so one nobody has scrolled
+// to renders a placeholder. Both resolve on a later frame, so the hop turns the
+// page, then waits for the row and for the cell. Bounded, and silent when it
+// runs out: a sweep that gives up quietly is better than one that throws.
 const MOUNT_WAIT_MS = 1500;
 
-export function useReviewGestures({ sentences, doc, readOnly, visibleFields }) {
+export function useReviewGestures({ sentences, doc, readOnly, visibleFields, revealSentence }) {
   const beatRef = useRef(null);
   const rafRef = useRef(null);
 
@@ -57,30 +58,44 @@ export function useReviewGestures({ sentences, doc, readOnly, visibleFields }) {
     [],
   );
 
-  // Focus `${tokenId}-${field}`, scrolling its sentence into view and waiting
-  // for the row to mount when it is still a placeholder.
-  const focusCell = useCallback((sentenceId, tokenId, field) => {
-    const deadline = Date.now() + MOUNT_WAIT_MS;
-    const attempt = () => {
-      rafRef.current = null;
-      const el = document.getElementById(`${tokenId}-${field}`);
-      if (el) {
-        el.focus();
-        try {
-          el.select?.();
-        } catch {
-          /* not a text input */
+  // Focus `${tokenId}-${field}`, turning to the sentence's page, scrolling it
+  // into view and waiting for the row to mount when it is still a placeholder.
+  // The scroll is inside the retry loop rather than before it: on a cross-page
+  // hop the row does not exist until the page turn has rendered, and scrolling
+  // to nothing is how the sweep used to dead-end at a page boundary.
+  const focusCell = useCallback(
+    (sentenceId, tokenId, field) => {
+      const deadline = Date.now() + MOUNT_WAIT_MS;
+      let scrolled = false;
+      const attempt = () => {
+        rafRef.current = null;
+        if (!scrolled) {
+          const row = document.querySelector(
+            `[data-sentence-row="${CSS.escape(String(sentenceId))}"]`,
+          );
+          if (row) {
+            row.scrollIntoView({ block: 'center' });
+            scrolled = true;
+          }
         }
-        return;
-      }
-      if (Date.now() > deadline) return;
-      rafRef.current = requestAnimationFrame(attempt);
-    };
-    document
-      .querySelector(`[data-sentence-row="${CSS.escape(String(sentenceId))}"]`)
-      ?.scrollIntoView({ block: 'center' });
-    attempt();
-  }, []);
+        const el = document.getElementById(`${tokenId}-${field}`);
+        if (el) {
+          el.focus();
+          try {
+            el.select?.();
+          } catch {
+            /* not a text input */
+          }
+          return;
+        }
+        if (Date.now() > deadline) return;
+        rafRef.current = requestAnimationFrame(attempt);
+      };
+      revealSentence?.(sentenceId);
+      attempt();
+    },
+    [revealSentence],
+  );
 
   // Which cell of `target` to land on: the first visible field that earned the
   // stop, else the row the caret is already in, else the first visible row.

@@ -54,11 +54,20 @@ const open = async (page, tab) => {
     if (!localStorage.getItem('ud-annotation-visible-fields')) {
       localStorage.setItem(
         'ud-annotation-visible-fields',
-        JSON.stringify({ lemma: true, xpos: true, upos: true, feats: true, meta: true }),
+        JSON.stringify({ lemma: true, xpos: true, upos: true, feats: true }),
       );
     }
   });
   await page.goto(`/#/projects/${S.projectId}/documents/${S.documentId}/${tab}`);
+};
+
+// The sentence's own fields live in a dialog, one sentence at a time. Returns
+// the dialog, so a test names its fields inside it rather than on the page.
+const openMetadata = async (page, nth = 0) => {
+  await page.locator('.sentence-meta__toggle').nth(nth).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  return dialog;
 };
 
 test('the Details tab offers the fields the project declares, and saves one on Enter', async ({
@@ -107,9 +116,10 @@ test('a stored field the project no longer declares is still shown, and can be c
   // Hiding it would leave a value that exports but cannot be reached.
   const leftover = page.locator('#metadata-leftover');
   await expect(leftover).toHaveValue('from an import', { timeout: 15000 });
-  await expect(
-    page.getByText("leftover is not one of this project's fields", { exact: false }),
-  ).toBeVisible();
+  await expect(page.locator('label[for="metadata-leftover"]')).toHaveAttribute(
+    'title',
+    /leftover is not one of this project's fields/,
+  );
 
   await leftover.click();
   await leftover.fill('');
@@ -126,15 +136,14 @@ test('a sentence carries sent_id and the declared fields, and they reach the exp
     timeout: 15000,
   });
 
-  const strip = page.locator('.sentence-meta');
-  await expect(strip).toBeVisible();
-  await expect(strip.getByLabel('sent_id')).toBeVisible();
-  const translation = strip.getByLabel('text_en');
+  const fields = await openMetadata(page);
+  await expect(fields.getByLabel('sent_id', { exact: true })).toBeVisible();
+  const translation = fields.getByLabel('text_en', { exact: true });
   await expect(translation).toBeVisible();
 
-  await strip.getByLabel('sent_id').click();
-  await strip.getByLabel('sent_id').fill('ewt-1');
-  await strip.getByLabel('sent_id').press('Enter');
+  await fields.getByLabel('sent_id', { exact: true }).click();
+  await fields.getByLabel('sent_id', { exact: true }).fill('ewt-1');
+  await fields.getByLabel('sent_id', { exact: true }).press('Enter');
   await translation.click();
   await translation.fill('The dog runs.');
   await translation.press('Enter');
@@ -158,26 +167,77 @@ test('a sentence carries sent_id and the declared fields, and they reach the exp
   expect(text).toContain('# text_en = The dog runs.');
 });
 
-test('the sentence strip collapses, and remembers that for the whole document', async ({
-  page,
-}) => {
+test('the dialog edits ONE sentence, and nothing about the grid moves', async ({ page }) => {
   await S.client.tokens.patchMetadata(S.sentenceTokenId, { sent_id: 'ewt-9' });
   await open(page, 'annotate');
   await expect(page.locator('.token-form', { hasText: 'dog' }).first()).toBeVisible({
     timeout: 15000,
   });
 
-  await expect(page.locator('.sentence-meta__fields')).toBeVisible();
-  await page.locator('.sentence-meta__toggle').click();
-  await expect(page.locator('.sentence-meta__fields')).toHaveCount(0);
-  // Collapsed, the toggle still shows the one value worth seeing at a glance.
-  await expect(page.locator('.sentence-meta__summary')).toHaveText('ewt-9');
+  // Nothing under the grid until it is asked for. The strip that used to sit
+  // there opened for every sentence at once and buried the annotation.
+  await expect(page.locator('#metadata-sent_id')).toHaveCount(0);
 
-  await page.reload();
+  const fields = await openMetadata(page);
+  await expect(fields.getByLabel('sent_id', { exact: true })).toHaveValue('ewt-9');
+  await expect(page.getByText('sentence 1', { exact: false })).toBeVisible();
+
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#metadata-sent_id')).toHaveCount(0);
+});
+
+test('a field the project never declared can be added and removed', async ({ page }) => {
+  // CoNLL-U's `# k = v` lines are open-ended, so the editor is not limited to
+  // what the project declares.
+  await open(page, 'annotate');
   await expect(page.locator('.token-form', { hasText: 'dog' }).first()).toBeVisible({
     timeout: 15000,
   });
-  await expect(page.locator('.sentence-meta__fields')).toHaveCount(0);
+  const fields = await openMetadata(page);
+
+  await fields.getByRole('button', { name: 'Add field' }).click();
+  await fields.getByLabel('New field name').fill('speaker');
+  await fields.getByLabel('New field name').press('Enter');
+
+  const speaker = fields.getByLabel('speaker', { exact: true });
+  await expect(speaker).toBeVisible();
+  await speaker.fill('Claire');
+  await speaker.press('Enter');
+
+  await expect
+    .poll(async () => (await S.client.tokens.get(S.sentenceTokenId)).metadata?.speaker, {
+      timeout: 8000,
+    })
+    .toBe('Claire');
+
+  // Removing it takes the key out rather than storing a blank, and the row
+  // goes with it because nothing declares it.
+  await fields.getByRole('button', { name: 'Remove speaker' }).click();
+  await expect(speaker).toHaveCount(0, { timeout: 8000 });
+  await expect
+    .poll(
+      async () => 'speaker' in ((await S.client.tokens.get(S.sentenceTokenId)).metadata || {}),
+      {
+        timeout: 8000,
+      },
+    )
+    .toBe(false);
+});
+
+test('a name that cannot be a field says why and is not added', async ({ page }) => {
+  await open(page, 'annotate');
+  await expect(page.locator('.token-form', { hasText: 'dog' }).first()).toBeVisible({
+    timeout: 15000,
+  });
+  const fields = await openMetadata(page);
+
+  await fields.getByRole('button', { name: 'Add field' }).click();
+  await fields.getByLabel('New field name').fill('sent_id');
+  await fields.getByLabel('New field name').press('Enter');
+
+  await expect(fields.getByText('Every sentence already has sent_id.')).toBeVisible();
+  // One sent_id box, not two.
+  await expect(page.locator('#metadata-sent_id')).toHaveCount(1);
 });
 
 test('the four things a sentence offers are one row of four, alike', async ({ page }) => {
@@ -191,12 +251,8 @@ test('the four things a sentence offers are one row of four, alike', async ({ pa
   for (const label of ['Edit metadata', 'Edit text', 'Comment']) {
     await expect(strip.getByText(label, { exact: false }).first()).toBeVisible();
   }
-  // One treatment, so none of them is the loudest thing here. The metadata
-  // control is the exception WHILE ITS FIELDS ARE OPEN, which is a state of
-  // the sentence rather than a difference in weight, and the disclosure is
-  // remembered for the whole document, so collapse it first.
-  const toggle = page.locator('.sentence-meta__toggle').first();
-  if ((await toggle.getAttribute('aria-expanded')) === 'true') await toggle.click();
+  // One treatment, so none of them is the loudest thing here: none of these is
+  // what you came to the sentence to do.
   // These brighten on hover OR focus, so the thing just clicked is still lit
   // under both the caret and the pointer.
   const stepAside = async () => {
@@ -204,21 +260,25 @@ test('the four things a sentence offers are one row of four, alike', async ({ pa
     await page.mouse.move(0, 0);
   };
   await stepAside();
+  // Whichever of them are here wear the same treatment. The COUNT is not the
+  // point and is not pinned: "Ask" only appears while an assistant is online,
+  // which is a fact about the core this suite is pointed at.
   const actions = strip.locator('.sentence-action');
-  await expect(actions).toHaveCount(3); // Ask needs an assistant online
-  for (let i = 0; i < 3; i += 1) {
+  const n = await actions.count();
+  expect(n).toBeGreaterThanOrEqual(3);
+  for (let i = 0; i < n; i += 1) {
     await expect(actions.nth(i)).toHaveCSS('opacity', '0.55');
   }
+});
 
-  // Open, it stays lit while the other two do not.
-  await toggle.click();
-  await stepAside();
-  await expect(toggle).toHaveCSS('opacity', '1');
-  await expect(strip.getByText('Edit text')).toHaveCSS('opacity', '0.55');
-
-  // The fields open BELOW the row that opens them, not above the grid.
-  await expect(page.locator('.sentence-meta__fields').first()).toBeVisible();
-  const stripBox = await strip.boundingBox();
-  const fieldsBox = await page.locator('.sentence-meta').first().boundingBox();
-  expect(fieldsBox.y).toBeGreaterThan(stripBox.y);
+test("the top-left number is the sentence's place in the document", async ({ page }) => {
+  // Its POSITION, not its sent_id: the id is a field like any other and can be
+  // edited to anything, and a stale one at the corner of every sentence is
+  // worse than no label.
+  await S.client.tokens.patchMetadata(S.sentenceTokenId, { sent_id: 'anything-at-all' });
+  await open(page, 'annotate');
+  await expect(page.locator('.token-form', { hasText: 'dog' }).first()).toBeVisible({
+    timeout: 15000,
+  });
+  await expect(page.locator('.sentence-id').first()).toHaveText('1');
 });

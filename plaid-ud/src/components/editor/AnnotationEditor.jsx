@@ -11,6 +11,8 @@ import { useDocumentEditor } from './useDocumentEditor.js';
 import { useReviewGestures } from './hooks/useReviewGestures.js';
 import { usePrecedent } from './hooks/usePrecedent.js';
 import { HistoryDrawer, HISTORY_DRAWER_WIDTH } from '@ui/components/shared/HistoryDrawer';
+import { ListPager } from '@ui/components/ui/list-search';
+import { usePagedList, pageKey, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
 import { RestoreDialog } from './annotation/RestoreDialog.jsx';
 import { EditorLegend } from './annotation/EditorLegend.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
@@ -34,10 +36,6 @@ const DEFAULT_VISIBLE_FIELDS = {
   xpos: true,
   upos: true,
   feats: false,
-  // The sentence's own fields (sent_id and whatever the project declares).
-  // Collapsed by default, like FEATS, and for the same reason: it is a row most
-  // sessions never touch, and one per sentence adds up.
-  meta: false,
 };
 
 const loadVisibleFields = () => {
@@ -317,6 +315,59 @@ export const AnnotationEditor = () => {
     [viewingHistoricalState, historicalSentences, doc?.sentences],
   );
 
+  // One page of sentences in the DOM. Everything a sentence is addressed by
+  // stays GLOBAL to the document — its number, its tab order, what the
+  // assistant calls it — so paging changes what is rendered and nothing else.
+  // The page is remembered per document, because coming back to a treebank
+  // means coming back to where the work stopped.
+  const paged = usePagedList(processedSentences, {
+    pageSize: TALL_LIST_PAGE_SIZE,
+    storageKey: pageKey('ud-annotate', documentId),
+  });
+  const { page, setPage } = paged;
+
+  const indexById = useMemo(() => {
+    const map = new Map();
+    processedSentences.forEach((s, i) => map.set(String(s.id), i));
+    return map;
+  }, [processedSentences]);
+
+  // Turn to the page a sentence is on. Every way of reaching a particular
+  // sentence — the ?sent= deep link, the review sweep — has to go through this
+  // first: a scroll to a row on another page finds nothing in the DOM.
+  const revealSentence = useCallback(
+    (sentenceId) => {
+      const index = indexById.get(String(sentenceId));
+      if (index == null) return;
+      setPage(Math.floor(index / TALL_LIST_PAGE_SIZE));
+    },
+    [indexById, setPage],
+  );
+
+  // Turning the page from the bottom of the list leaves the reader at the
+  // bottom of a page they have not read yet, so that pager takes them back up.
+  // The top one does not, because they are already there.
+  const listTopRef = useRef(null);
+  const handlePageFromBottom = useCallback(
+    (next) => {
+      setPage(next);
+      listTopRef.current?.scrollIntoView({ block: 'start' });
+    },
+    [setPage],
+  );
+
+  // Tab order runs across the whole document, so a sentence needs the token
+  // count of every sentence before it, including the ones on other pages.
+  const tokensBefore = useMemo(() => {
+    const out = [];
+    let total = 0;
+    for (const s of processedSentences) {
+      out.push(total);
+      total += s.tokens.length;
+    }
+    return out;
+  }, [processedSentences]);
+
   // Scroll to (and flash) the sentence named by ?sent= once, after the grid
   // has rendered. Rows are virtualized but their placeholders hold the slot, so
   // the wrapper is always in the DOM to scroll to.
@@ -326,16 +377,36 @@ export const AnnotationEditor = () => {
     // without it a repeat click changes nothing and the guard swallows it.
     const asked = `${sentParam}:${focusNonce}`;
     if (scrolledForRef.current === asked) return;
-    if (!processedSentences.some((s) => String(s.id) === String(sentParam))) return;
+    const index = indexById.get(String(sentParam));
+    if (index == null) return;
+    // Turn to its page first and let the effect run again: the row only exists
+    // once that page has rendered. Not marked as done, so the second pass does
+    // the scrolling.
+    const target = Math.floor(index / TALL_LIST_PAGE_SIZE);
+    if (target !== page) {
+      setPage(target);
+      return;
+    }
     scrolledForRef.current = asked;
+    const timers = [];
     const raf = requestAnimationFrame(() => {
-      const el = document.querySelector(`[data-sentence-row="${CSS.escape(String(sentParam))}"]`);
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const selector = `[data-sentence-row="${CSS.escape(String(sentParam))}"]`;
+      const bring = () =>
+        document.querySelector(selector)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      bring();
+      // Every row on the page is still a virtualization placeholder of its
+      // estimated height at this point, and they grow to their real heights as
+      // they mount — which walks the target out from under the first scroll.
+      // Aim again once they have settled.
+      timers.push(setTimeout(bring, 400));
       setFlashSentId(String(sentParam));
-      setTimeout(() => setFlashSentId(null), 2000);
+      timers.push(setTimeout(() => setFlashSentId(null), 2000));
     });
-    return () => cancelAnimationFrame(raf);
-  }, [reconciling, sentParam, processedSentences, focusNonce]);
+    return () => {
+      cancelAnimationFrame(raf);
+      timers.forEach(clearTimeout);
+    };
+  }, [reconciling, sentParam, processedSentences, focusNonce, indexById, page, setPage]);
 
   // Bind annotation/relation handlers to the current document. When viewing
   // historical state we pass `null` so VirtualSentenceRow disables editing.
@@ -407,6 +478,7 @@ export const AnnotationEditor = () => {
     doc,
     readOnly,
     visibleFields,
+    revealSentence,
   });
 
   // History drawer handlers
@@ -616,6 +688,12 @@ export const AnnotationEditor = () => {
               {toolbar}
               {readOnlyBanner}
               {processedSentences.length > 0 && !readOnly && <EditorLegend project={project} />}
+              <ListPager
+                {...paged}
+                onPage={setPage}
+                position="top"
+                className="mt-4 rounded-md border"
+              />
             </div>
 
             {processedSentences.length === 0 ? (
@@ -627,12 +705,10 @@ export const AnnotationEditor = () => {
             ) : (
               // The review gestures listen here, above every sentence, because
               // each of them can cross a sentence boundary.
-              <div onKeyDown={reviewKeyDown}>
-                {processedSentences.map((sentenceData, index) => {
-                  // Calculate total tokens before this sentence
-                  const totalTokensBefore = processedSentences
-                    .slice(0, index)
-                    .reduce((total, prevSentence) => total + prevSentence.tokens.length, 0);
+              <div onKeyDown={reviewKeyDown} ref={listTopRef}>
+                {paged.pageItems.map((sentenceData, offset) => {
+                  // The sentence's place in the DOCUMENT, not on the page.
+                  const index = page * TALL_LIST_PAGE_SIZE + offset;
 
                   return (
                     <div
@@ -666,7 +742,7 @@ export const AnnotationEditor = () => {
                         sentenceFields={sentenceFields}
                         reviewable={doc?.writer.reviewable}
                         sentenceIndex={index}
-                        totalTokensBefore={totalTokensBefore}
+                        totalTokensBefore={tokensBefore[index] ?? 0}
                         estimatedHeight={250} // Estimated height for placeholder
                         vocab={layerInfo?.vocab}
                         colors={layerInfo?.colors}
@@ -679,6 +755,11 @@ export const AnnotationEditor = () => {
                     </div>
                   );
                 })}
+                <ListPager
+                  {...paged}
+                  onPage={handlePageFromBottom}
+                  className="mx-6 mb-6 rounded-md border"
+                />
               </div>
             )}
           </>

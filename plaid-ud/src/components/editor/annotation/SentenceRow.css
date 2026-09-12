@@ -92,16 +92,24 @@
 .sentence-confirm .sentence-action:focus-visible {
   opacity: 1;
 }
-/* Expanded is a state of the sentence, so the control that opened it stays lit. */
-.sentence-confirm .sentence-meta__toggle[aria-expanded='true'] {
-  opacity: 1;
-}
-/* The one value worth seeing without expanding, after the label rather than
-   instead of it. */
-.sentence-meta__summary {
-  margin-left: 2px;
+/* The sentence's number in the document, at the top-left of its block and
+   aligned with the row labels below it. Gray and small because it is how you
+   refer to the sentence, not part of the annotation.
+
+   Absolute, above the tree's z-index, and click-through: the tree covers the
+   whole block with an SVG that owns the drag-to-draw gestures, and a label
+   that swallowed a mouseup here would leave an arc stuck to the pointer. */
+.sentence-id {
+  position: absolute;
+  top: 0;
+  left: 8px;
+  z-index: 11;
+  pointer-events: none;
   font-family: monospace;
-  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  line-height: 1;
+  color: #9ca3af;
 }
 
 .sentence-grid {
@@ -393,17 +401,6 @@
 .feature-chip-input::placeholder {
   color: #999;
   font-style: italic;
-}
-
-/* The sentence's own metadata, under its grid: a chevron toggle on the same
-   line as the annotation-row headers' idiom, and the fields when open. Aligned
-   with the labels column so it reads as belonging to the sentence above. */
-/* The fields the "Edit metadata" action opens, under the row that opens them
-   and left-aligned with it rather than with the page, so they read as
-   belonging to that control. 80px is the label column the grid above uses. */
-.sentence-meta {
-  margin-top: 4px;
-  margin-left: 80px;
 }
 
 /* The sentence's comment action, one of the four. */

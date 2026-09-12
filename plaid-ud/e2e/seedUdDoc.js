@@ -21,8 +21,11 @@ const CORE = 'http://localhost:8085';
  * @param {string} name        project name (make it unique per run)
  * @param {string} body        the document's text
  * @param {[number, number][]} words  word spans as [begin, end] code-point pairs
+ * @param {[number, number][]} [sentences]  sentence spans, tiling the body.
+ *   Defaults to one sentence over the whole thing, which is what every spec
+ *   but the pager's wants.
  */
-export async function seedUdDoc(name, body, words) {
+export async function seedUdDoc(name, body, words, sentences) {
   const { token } = readToken();
   const client = new PlaidClient(CORE, token);
 
@@ -34,9 +37,14 @@ export async function seedUdDoc(name, body, words) {
   const text = await client.texts.create(info.textLayer.id, doc.id, body);
 
   client.beginBatch();
-  client.tokens.bulkCreate([
-    { tokenLayerId: info.sentenceTokenLayer.id, text: text.id, begin: 0, end: body.length },
-  ]);
+  client.tokens.bulkCreate(
+    (sentences || [[0, body.length]]).map(([begin, end]) => ({
+      tokenLayerId: info.sentenceTokenLayer.id,
+      text: text.id,
+      begin,
+      end,
+    })),
+  );
   client.tokens.bulkCreate(
     words.map(([begin, end]) => ({
       tokenLayerId: info.wordTokenLayer.id,
@@ -54,10 +62,13 @@ export async function seedUdDoc(name, body, words) {
       precedence: 0,
     })),
   );
-  const morphIds = (await client.submitBatch())[2].body.ids;
+  const results = await client.submitBatch();
+  const sentenceIds = results[0].body.ids;
+  const morphIds = results[2].body.ids;
 
   return {
     client,
+    sentenceIds,
     projectId: project.id,
     documentId: doc.id,
     morphIds,
