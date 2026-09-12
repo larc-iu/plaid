@@ -1,7 +1,9 @@
-// Disposable probe (e2e/ is a scratchpad): verify createRelation's new atomic
-// replace pattern at the client level — a single relations.create inside a
-// batch yields body.id, and delete+create in one batch leaves exactly one
-// incoming relation on the target.
+// A probe of the SERVER's contract, not of this app: a single relations.create
+// inside a batch yields body.id, and delete+create in one batch leaves exactly
+// one incoming relation on the target. That pair is what `createRelation`'s
+// atomic head-repoint rests on, and no unit test can see it, since the fake
+// clients the suite uses are the thing being assumed. Run it by hand when the
+// batch or relation endpoints change. Needs the dev core on :8085.
 import { PlaidClient } from '../../../plaid-client-js/src/index.js';
 
 const client = await PlaidClient.login('http://localhost:8085', 'a@b.com', 'password');

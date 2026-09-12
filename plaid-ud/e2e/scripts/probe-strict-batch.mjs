@@ -1,4 +1,5 @@
-// Disposable probe: strict-mode OCC vs multi-op batches.
+// A probe of the SERVER's contract: strict-mode OCC against multi-op batches.
+// Run it by hand when the batch or OCC behaviour changes; needs the dev core.
 // 1. A strict client's batch with 2+ writes must NOT 409 against itself
 //    (the head-repoint regression: delete-old + create-new in one batch).
 // 2. OCC must still work: after ANOTHER client modifies the document, the
