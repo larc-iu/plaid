@@ -55,7 +55,7 @@ from urllib.parse import urlsplit
 
 from plaid_client import BaseService, TASKS, service_source
 
-from .agent import ModelConfig, Toolkit, TurnCancelled, ping_model, run_turn
+from .agent import ModelConfig, Toolkit, TurnCancelled, context_window, ping_model, run_turn
 from .conversation import (ConversationStore, MissingConversation, assistant_item, build_meta, error_item,
                            find_plan, prune, settle_plan)
 from .plan import PlanError
@@ -346,8 +346,16 @@ class BaseAssistantService(BaseService):
             self._write(store, conv_id, failed, build_meta(meta, conv_id, failed, self.service_id, model), request_id)
             response_helper.error(str(e))
             return
+        # The window goes on the item beside the counts: the reader is told how
+        # full the thread is, and what it is full OF changes when the operator
+        # points the service at a different model.
+        usage = dict(turn.usage) if turn.usage else None
+        if usage:
+            window = context_window(model)
+            if window:
+                usage['window'] = window
         item = assistant_item(turn.text, ws.plan_payload(), self.citations(ws, turn.text),
-                              turn.steps, turn.summary, model)
+                              turn.steps, turn.summary, model, usage)
         done = prune({'messages': transcript + turn.messages, 'display': conv['display'] + [item]})
         try:
             self._write(store, conv_id, done, build_meta(meta, conv_id, done, self.service_id, model), request_id)

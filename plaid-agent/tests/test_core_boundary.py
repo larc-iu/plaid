@@ -172,3 +172,62 @@ def test_nothing_is_stamped_when_there_is_nowhere_to_name():
     other = [{'role': 'assistant', 'content': 'hi'}]
     assert stamped(other, ('document', 'Text 1')) is other
     assert stamped([], ('document', 'Text 1')) == []
+
+
+def test_usage_is_read_off_a_response_and_a_silent_provider_is_not_invented():
+    """The counts are the provider's, when it gives them. A provider that says
+    nothing leaves the reader with no figure, which is correct: an estimate
+    shown in the same place as a measurement reads as a measurement."""
+    from plaid_agent.core.agent import usage_of
+
+    class U:
+        prompt_tokens = 1200
+        completion_tokens = 340
+
+    class Resp:
+        usage = U()
+
+    assert usage_of(Resp()) == {'sent': 1200, 'received': 340}
+
+    class NoUsage:
+        usage = None
+
+    assert usage_of(NoUsage()) is None
+    assert usage_of(object()) is None
+
+    # A provider that counts the prompt but not the reply still answers the
+    # question the tracker asks, so it is kept with a zero rather than dropped.
+    class Half:
+        class usage:
+            prompt_tokens = 900
+            completion_tokens = None
+
+    assert usage_of(Half()) == {'sent': 900, 'received': 0}
+
+    # A prompt count that is not a number is no count at all.
+    class Bad:
+        class usage:
+            prompt_tokens = 'lots'
+            completion_tokens = 1
+
+    assert usage_of(Bad()) is None
+
+
+def test_an_unknown_model_has_no_window_rather_than_a_guessed_one():
+    """An operator can point the service at anything litellm can reach,
+    including a proxy litellm has no record of."""
+    from plaid_agent.core.agent import context_window
+
+    assert context_window('gpt-4o-mini') is not None
+    assert context_window('some-proxy/model-nobody-has-heard-of') is None
+
+
+def test_the_reply_carries_its_usage_only_when_there_is_one():
+    from plaid_agent.core.conversation import assistant_item
+
+    with_usage = assistant_item('hi', None, [], [], '', 'm', {'sent': 10, 'received': 2, 'window': 100})
+    assert with_usage['usage'] == {'sent': 10, 'received': 2, 'window': 100}
+    # No key at all rather than a null, so a reader cannot mistake "not
+    # reported" for "zero".
+    assert 'usage' not in assistant_item('hi', None, [], [], '', 'm')
+    assert 'usage' not in assistant_item('hi', None, [], [], '', 'm', None)

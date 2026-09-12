@@ -35,8 +35,13 @@ from plaid_client.http import PlaidAPIError
 # turn's tool results are almost all of a conversation's weight and the part
 # it can spare: the reply that drew conclusions from them stays, and so does
 # every question and every plan. Past the budget the oldest tool results are
-# dropped, in order, until it fits. The same transcript is what the next turn
-# sends the model, so this also keeps a long conversation inside its context.
+# dropped, in order, until it fits.
+#
+# This is a budget in BYTES, for the store. It bounds what the next turn sends
+# the model, but it is not the model's own limit and must not be read as one:
+# the same 700KB is comfortable for one model and beyond another. What a turn
+# actually sent, against the window it was sent into, is reported per reply
+# (`assistant_item`'s `usage`).
 CONVERSATION_BUDGET = 700_000
 DROPPED = '[This result was dropped to keep the conversation within its size limit.]'
 TITLE_MAX = 60
@@ -116,11 +121,21 @@ def user_item(text: str) -> Dict[str, Any]:
 
 
 def assistant_item(text: str, plan: Optional[Dict[str, Any]], citations: List[Dict[str, Any]],
-                   steps: List[Dict[str, Any]], steps_summary: str, model: Optional[str]) -> Dict[str, Any]:
+                   steps: List[Dict[str, Any]], steps_summary: str, model: Optional[str],
+                   usage: Optional[Dict[str, int]] = None) -> Dict[str, Any]:
     """What the person sees of a reply. A step's own output is not repeated
-    here: it is the ``tool`` message with the same id in the transcript."""
-    return {'kind': 'assistant', 'text': text or '', 'plan': plan, 'citations': citations or [],
+    here: it is the ``tool`` message with the same id in the transcript.
+
+    ``usage`` is ``{sent, received, window}`` for the turn that produced this
+    reply, with ``window`` absent when the model's limit is not known. It lives
+    per reply rather than on the sidebar entry so that the growth is visible
+    and so that reading the newest is how you get the current figure.
+    """
+    item = {'kind': 'assistant', 'text': text or '', 'plan': plan, 'citations': citations or [],
             'status': None, 'model': model, 'steps': steps or [], 'steps_summary': steps_summary or ''}
+    if usage:
+        item['usage'] = usage
+    return item
 
 
 def error_item(text: str, stopped: bool = False) -> Dict[str, Any]:

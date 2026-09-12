@@ -21,6 +21,7 @@ import { notifyError } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
 import { AssistantMarkdown } from './AssistantMarkdown.jsx';
 import { rewindForRetry } from './resume.js';
+import { NEARLY_FULL, fullness, latestUsage, totalSpend, usageLabel, usageTitle } from './usage.js';
 import { AssistantPicker, ConversationRow, ExportMenu } from './ConversationList.jsx';
 import { Turn } from './Turn.jsx';
 import {
@@ -76,6 +77,34 @@ import {
 // Discard. Approving submits the plan's id back; the service applies it under
 // the user's own account (it delegates, so Plaid mints the user a short-lived
 // token per request) and settles the plan in the record.
+
+// How full the conversation is, in the header beside the model that fills it.
+// A bar as well as a number: the number answers "how full" and the bar answers
+// "should I care", which is the question someone glancing at it is asking.
+const UsageMeter = ({ usage, spend }) => {
+  const label = usageLabel(usage);
+  if (!label) return null;
+  const f = fullness(usage);
+  return (
+    <span
+      className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"
+      title={usageTitle(usage, spend)}
+    >
+      {f !== null && (
+        <span className="h-1.5 w-8 overflow-hidden rounded-full bg-muted">
+          <span
+            className={cn(
+              'block h-full rounded-full',
+              f >= NEARLY_FULL ? 'bg-amber-500' : 'bg-primary/50',
+            )}
+            style={{ width: `${Math.max(2, Math.round(f * 100))}%` }}
+          />
+        </span>
+      )}
+      {label}
+    </span>
+  );
+};
 
 export const ProjectAssistant = ({
   projectId,
@@ -317,7 +346,7 @@ export const ProjectAssistant = ({
         if (seq === openSeq.current) setOpening(null);
       }
     },
-    [store],
+    [store, panel],
   );
   const openRef = useRef(open);
   openRef.current = open;
@@ -458,6 +487,11 @@ export const ProjectAssistant = ({
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' });
   }, [active?.display.length, busy, progress, partial]);
+
+  // How full this thread is, from the newest reply that reported it.
+  const usage = useMemo(() => latestUsage(active?.display), [active?.display]);
+  const spend = useMemo(() => totalSpend(active?.display), [active?.display]);
+  const nearlyFull = (fullness(usage) ?? 0) >= NEARLY_FULL;
 
   const canSend = !!service && !busy;
 
@@ -688,7 +722,8 @@ export const ProjectAssistant = ({
               )}
             </>
           )}
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex items-center gap-2">
+            <UsageMeter usage={usage} spend={spend} />
             {panel && (
               <>
                 <Button
@@ -905,6 +940,16 @@ export const ProjectAssistant = ({
                 />
               )}
             </div>
+          )}
+          {/* Nothing manages the window for the reader, so a thread that runs
+              long eventually fails a turn outright. Said here, where the next
+              message is about to be typed, and with the remedy named: the new
+              conversation button is a few pixels away in the header. */}
+          {nearlyFull && (
+            <p className="mx-auto mb-2 max-w-3xl text-xs text-amber-600 dark:text-amber-500">
+              This conversation is {Math.round(fullness(usage) * 100)}% full. Start a new one before
+              it stops fitting.
+            </p>
           )}
           {focus && (
             <div className="mx-auto mb-2 flex max-w-3xl items-center gap-1">

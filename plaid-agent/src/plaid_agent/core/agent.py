@@ -178,6 +178,49 @@ class TurnCancelled(Exception):
     inside a model call or a tool), so nothing is left half done."""
 
 
+def usage_of(resp) -> Optional[Dict[str, int]]:
+    """``{sent, received}`` for one model call, or None when the provider said
+    nothing.
+
+    ``sent`` is the whole prompt: system note, transcript, tool results, tool
+    schemas. It is the number that decides whether the next turn fits, which is
+    why it is worth keeping.
+
+    A streamed call's usage is usually litellm's own reconstruction from the
+    chunks rather than the provider's count (that needs `stream_options`, which
+    not every provider accepts), so treat it as close and not exact. For "how
+    full is this thread" that is entirely adequate, and it is the reason nothing
+    here is presented to the reader as a precise figure.
+    """
+    u = getattr(resp, 'usage', None)
+    if u is None:
+        return None
+    sent = getattr(u, 'prompt_tokens', None)
+    received = getattr(u, 'completion_tokens', None)
+    if not isinstance(sent, int):
+        return None
+    return {'sent': sent, 'received': received if isinstance(received, int) else 0}
+
+
+def context_window(model: str) -> Optional[int]:
+    """How much this model can be sent, or None when that is not known.
+
+    An operator can point the assistant at any model litellm can reach,
+    including one behind a proxy that litellm has no record of. None means the
+    caller must say the count WITHOUT a percentage: a made-up denominator would
+    be worse than no denominator, because it reads as a measurement.
+    """
+    try:
+        info = litellm.get_model_info(model) or {}
+    except Exception:  # noqa: BLE001 - an unknown model is the normal case, not an error
+        return None
+    for key in ('max_input_tokens', 'max_tokens'):
+        n = info.get(key)
+        if isinstance(n, int) and n > 0:
+            return n
+    return None
+
+
 @dataclass
 class TurnResult:
     """One finished turn: the reply, the messages it appended to the
@@ -185,6 +228,10 @@ class TurnResult:
     text: str
     messages: List[Dict[str, Any]]
     steps: List[Dict[str, Any]]
+    # What the LAST model call of the turn sent and got back, plus the window
+    # it was sent into. The last call is the high-water mark: a turn's prompt
+    # only grows as its tool results pile up.
+    usage: Optional[Dict[str, int]] = None
 
     @property
     def summary(self) -> str:
@@ -204,6 +251,11 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
     new: List[Dict[str, Any]] = []
     trace: List[Dict[str, Any]] = []
     rounds = 0
+    # The last call's usage, whichever call turns out to be last. A turn's
+    # prompt only grows as its tool results accumulate, so the last call is the
+    # most the thread has ever sent, which is the figure that answers whether
+    # another turn will fit.
+    spent: Dict[str, Any] = {'usage': None}
 
     def ask_for_the_reply(kwargs: Dict[str, Any], nudge: str) -> str:
         """One more call, without tools, when the model owes the user words."""
@@ -212,7 +264,9 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
         kwargs.pop('tools', None)
         kwargs.pop('tool_choice', None)
         on_text('')
-        choice = _complete(cfg, kwargs, on_text).choices[0]
+        resp = _complete(cfg, kwargs, on_text)
+        spent['usage'] = usage_of(resp) or spent['usage']
+        choice = resp.choices[0]
         d = _message_to_dict(choice.message)
         d.pop('tool_calls', None)
         new.append(d)  # the nudge itself never enters the saved transcript
@@ -231,6 +285,7 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
             kwargs['max_tokens'] = cfg.max_tokens
         on_text('')
         resp = _complete(cfg, kwargs, on_text)
+        spent['usage'] = usage_of(resp) or spent['usage']
         choice = resp.choices[0]
         d = _message_to_dict(choice.message)
         new.append(d)
@@ -245,7 +300,7 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
                                                  'Reply now with your answer to the user.')
             else:
                 text += _length_note(choice)
-            return TurnResult(text, new, trace)
+            return TurnResult(text, new, trace, spent['usage'])
         rounds += 1
         for c in calls:
             if cancelled():
@@ -270,4 +325,4 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
                                              'Reply now with what you found and what remains to do.')
             return TurnResult(text + f'\n\n*(Stopped after {cfg.max_steps} rounds of tool calls, '
                                      f'the per-turn limit; the operator can raise it with '
-                                     f'`--max-steps`.)*', new, trace)
+                                     f'`--max-steps`.)*', new, trace, spent['usage'])
