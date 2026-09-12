@@ -257,7 +257,7 @@ export const newJob = (fields) => ({
 // `{lexiconId, lexiconName}` beside a vocabulary. The field name IS the kind,
 // because it is also how a panel finds the thread to resume, and a conversation
 // written before there were vocabularies has to keep resuming on its document.
-export const startTurn = ({ store, service, conv, prevMeta, about = null }) => {
+export const startTurn = ({ store, service, conv, prevMeta, about = null, where = null }) => {
   const { client, projectId } = store;
   const requestId = newId();
   const j = newJob({
@@ -289,11 +289,17 @@ export const startTurn = ({ store, service, conv, prevMeta, about = null }) => {
         service.serviceId,
         // What is open is a DEFAULT for the turn, not a fence: the service
         // names it in the prompt and leaves every tool in place.
+        //
+        // `where` is the LIVE location, sent fresh with every turn, and not
+        // `about`, which is where the conversation began and never changes.
+        // The panel outlives the screen it was opened from, so a reader can
+        // walk from one document to another with the same thread open, and
+        // every turn after the first would otherwise claim to be about the
+        // place they started.
         {
           projectId,
           conversationId: conv.id,
-          ...(about?.documentId ? { documentId: about.documentId } : {}),
-          ...(about?.lexiconId ? { lexiconId: about.lexiconId } : {}),
+          ...(where ? { where: { kind: where.kind, id: where.id } } : {}),
         },
         REQUEST_TIMEOUT_MS,
         progressOf(j),
@@ -457,4 +463,19 @@ export const previousModel = (display, i) => {
     if (display[k].kind === 'assistant') return display[k].model || null;
   }
   return null;
+};
+
+// Whether the question at `i` was asked from somewhere new. Marking every
+// message with where it was asked from says the same thing over and over in a
+// thread that never moved; marking the CHANGES says the one thing a reader of
+// an old thread cannot otherwise recover. The service's stamp on the model's
+// own copy follows the same rule, for the same reason.
+export const movedHere = (display, i) => {
+  const here = display[i]?.where;
+  if (!here) return false;
+  for (let k = i - 1; k >= 0; k--) {
+    const was = display[k].kind === 'user' ? display[k].where : null;
+    if (was) return was.kind !== here.kind || was.id !== here.id;
+  }
+  return true;
 };

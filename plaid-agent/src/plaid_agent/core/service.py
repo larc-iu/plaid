@@ -15,12 +15,15 @@ attributed to them in the audit log, and the record is theirs.
 Request data:
     project_id       the project (a service instance may serve many)
     conversation_id  the conversation to continue
-    document_id      optional: the document the user is looking at. It is a DEFAULT,
-                     not a fence. The model is told which document is open so an
-                     unqualified question is about that one, and every tool that
-                     reads the rest of the project stays available.
-                     An app whose screens are about something else as well reads its own
-                     field here and says so in its `focus_note_for`.
+    where            optional: {kind, id} for what the user is looking at, sent fresh
+                     with EVERY turn because the panel outlives the screen it was
+                     opened from and the user walks between documents while it stays
+                     open. It is a DEFAULT, not a fence: the model is told what is
+                     open so an unqualified question is about that, and every tool
+                     that reads the rest of the project stays available.
+                     A `kind` of "document" is the case every app has. An app with
+                     other kinds of screen answers for them in `place`, and says how
+                     to treat one in `focus_note_for`.
     approve          instead of a turn: {plan_id, as_human, contributed_by} for a plan
                      in the conversation the user approved (as_human: record the writes
                      as human-made instead of verified machine-made. Contributed_by: the
@@ -114,19 +117,31 @@ class BaseAssistantService(BaseService):
     #: note. The app's own grammar, so the app states it.
     reference_shape = 'a bare reference'
 
+    def place(self, ws, where: Optional[dict]) -> Optional[tuple]:
+        """``(noun, name)`` for what the user has open, or None.
+
+        The noun is the app's own word for the kind of thing, and it is written
+        into the model's transcript, so the app answers for every kind but a
+        document. Every app has documents, so that one is answered here.
+        """
+        where = where or {}
+        if where.get('kind') != 'document':
+            return None
+        name = self.document_name(ws, where.get('id'))
+        return ('document', name) if name else None
+
     def focus_note_for(self, ws, request_data: dict) -> Optional[str]:
         """The line that tells the model what the user is looking at, or None.
 
         A document is the case every app has, so it lives here. An app that also
-        docks the assistant beside something else overrides this, reads its own
-        field out of ``request_data``, and calls back here for documents. That
-        is what keeps this file naming no app of its own.
+        docks the assistant beside something else overrides this, reads the
+        ``where`` kind it owns, and calls back here for documents. That is what
+        keeps this file naming no app of its own.
         """
-        document_id = request_data.get('document_id')
-        if not document_id:
+        found = self.place(ws, request_data.get('where'))
+        if not found or found[0] != 'document':
             return None
-        name = self.document_name(ws, document_id)
-        return focus_note(name, self.reference_shape) if name else None
+        return focus_note(found[1], self.reference_shape)
 
     def document_name(self, ws, document_id: str) -> Optional[str]:
         """What to call the document the user has open, in the language the
@@ -300,6 +315,12 @@ class BaseAssistantService(BaseService):
             return bool(getattr(response_helper, 'cancelled', False))
 
         ws = self.make_workspace(client, project, send)
+        # Where this question was asked from, stamped onto the question itself.
+        # The panel outlives the screen it was opened from, so one thread can
+        # hold questions asked from several places, and the system note below
+        # only ever describes the LAST of them. Without the stamp the model
+        # reads turn 1's "this sentence" as being about turn 5's document.
+        transcript = stamped(transcript, self.place(ws, (request_data or {}).get('where')))
         if self.web_cfg is not None:
             ws.web = session_for(self.web_cfg, transcript)
         system = self.system_prompt(project, web=ws.web is not None)
@@ -489,6 +510,45 @@ def stale_documents(client, documents: list) -> list:
         if now.get('version') != d['version']:
             out.append(f'document "{now.get("name") or d.get("name") or d["id"]}" has changed since the plan was made')
     return out
+
+# The stamp that records which place a question was asked from, written onto
+# the question and kept in the transcript for good.
+#
+# Read back as well as written: a thread that has not moved must not repeat the
+# same line on every turn, which is noise the model has to re-read and which
+# says nothing. Stamping only the CHANGES also gives the model the one fact
+# that matters in a thread that wandered, which is that it wandered.
+_STAMP = '[Asked from the {noun} "{name}"]'
+_STAMP_RE = re.compile(r'^\[Asked from the ([^"\]]+) "(.*)"\]')
+
+
+def _stamp_on(content) -> Optional[tuple]:
+    """The (noun, name) a message was stamped with, or None."""
+    if not isinstance(content, str):
+        return None
+    found = _STAMP_RE.match(content)
+    return (found.group(1).strip(), found.group(2)) if found else None
+
+
+def stamped(transcript: List[Dict[str, Any]], place: Optional[tuple]) -> List[Dict[str, Any]]:
+    """The transcript with its last message stamped, if the place has changed.
+
+    The scan looks back over the earlier messages for the last stamp, so the
+    decision needs nothing carried between requests: the transcript is the
+    record of where the user has been.
+    """
+    if not place or not transcript or transcript[-1].get('role') != 'user':
+        return transcript
+    for m in reversed(transcript[:-1]):
+        was = _stamp_on(m.get('content')) if m.get('role') == 'user' else None
+        if was:
+            if was == place:
+                return transcript
+            break
+    last = transcript[-1]
+    note = _STAMP.format(noun=place[0], name=place[1])
+    return transcript[:-1] + [{**last, 'content': f'{note}\n\n{last.get("content") or ""}'}]
+
 
 # What the model is told when the user asks from inside a document.
 #

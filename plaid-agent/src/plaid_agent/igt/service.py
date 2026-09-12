@@ -55,14 +55,22 @@ class AssistantService(BaseAssistantService):
     def system_prompt(self, project, web: bool) -> str:
         return build_system_prompt(project, web=web)
 
-    def focus_note_for(self, ws, request_data: dict) -> Optional[str]:
+    def place(self, ws, where: Optional[dict]) -> Optional[tuple]:
         # The Entries screen docks the assistant too, and what is in front of
-        # the user there is a vocabulary rather than a text.
-        lexicon_id = request_data.get('lexicon_id')
-        if lexicon_id:
-            name = next((v['name'] for v in ws.project.vocabs if v['id'] == lexicon_id), None)
-            if name:
-                return lexicon_focus_note(name)
+        # the user there is a vocabulary rather than a text. "Vocabulary" is
+        # the word the app puts on screen, and the stamp goes in front of the
+        # user's own question, so it is the word the model should read there.
+        if (where or {}).get('kind') == 'lexicon':
+            name = next((v['name'] for v in ws.project.vocabs if v['id'] == where.get('id')), None)
+            return ('vocabulary', name) if name else None
+        return super().place(ws, where)
+
+    def focus_note_for(self, ws, request_data: dict) -> Optional[str]:
+        # How to treat a vocabulary differs from how to treat a document, so
+        # the note is this app's even though `place` answered what it is.
+        found = self.place(ws, request_data.get('where'))
+        if found and found[0] == 'vocabulary':
+            return lexicon_focus_note(found[1])
         return super().focus_note_for(ws, request_data)
 
     def document_name(self, ws, document_id: str) -> Optional[str]:

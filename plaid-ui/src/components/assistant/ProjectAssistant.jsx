@@ -32,6 +32,7 @@ import {
   metaPrefix,
   newConversation,
   persistConv,
+  movedHere,
   previousModel,
   readConv,
   settle,
@@ -114,6 +115,19 @@ export const ProjectAssistant = ({
   const about = useMemo(
     () =>
       documentId ? { documentId, documentName } : lexiconId ? { lexiconId, lexiconName } : null,
+    [documentId, documentName, lexiconId, lexiconName],
+  );
+  // The same thing in the shape the SERVICE takes, and the one that travels
+  // with each turn. `about` is where the conversation began and is written
+  // once; `where` is where the reader is now, and a thread can hold turns
+  // asked from several places.
+  const where = useMemo(
+    () =>
+      documentId
+        ? { kind: 'document', id: documentId, name: documentName }
+        : lexiconId
+          ? { kind: 'lexicon', id: lexiconId, name: lexiconName }
+          : null,
     [documentId, documentName, lexiconId, lexiconName],
   );
   const subjectId = documentId || lexiconId;
@@ -458,10 +472,13 @@ export const ProjectAssistant = ({
     // Sending is what turns a draft into a saved conversation, so the flag
     // does not travel with it.
     const base = activeRef.current ?? newConversation();
+    // The display item carries the place as data, for the chip on the message.
+    // The model's copy is stamped by the service, which owns every word the
+    // model reads, and only when the place has changed since the last turn.
     const conv = {
       id: base.id,
       messages: [...base.messages, { role: 'user', content: text }],
-      display: [...base.display, { kind: 'user', text }],
+      display: [...base.display, { kind: 'user', text, ...(where ? { where } : {}) }],
     };
     const prevMeta = convsRef.current.find((m) => m.id === conv.id);
     openSeq.current++; // sending settles which conversation is open
@@ -469,7 +486,7 @@ export const ProjectAssistant = ({
     setActive(conv);
     if (urlConvRef.current !== conv.id) setUrlConv(conv.id, { replace: true });
     setConvs(upsert(buildMeta(prevMeta, conv, service)));
-    showJob(startTurn({ store, service, conv, prevMeta, about }));
+    showJob(startTurn({ store, service, conv, prevMeta, about, where }));
   };
 
   // Send the user's last message again, whether the turn was lost (its
@@ -792,6 +809,7 @@ export const ProjectAssistant = ({
                 fromAnotherModel={
                   !!d.model && !!previousModel(display, i) && d.model !== previousModel(display, i)
                 }
+                movedHere={movedHere(display, i)}
                 canWrite={canWrite}
                 contributor={contributor}
                 busy={!!busy}

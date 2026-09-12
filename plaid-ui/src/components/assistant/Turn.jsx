@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Bot, ChevronDown, ChevronRight, Wrench } from 'lucide-react';
+import { Bot, ChevronDown, ChevronRight, MapPin, Wrench } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { AssistantMarkdown } from './AssistantMarkdown.jsx';
 import { linkifyCitations } from './citations.js';
@@ -80,6 +80,7 @@ export const Turn = ({
   onFocusHere,
   results,
   fromAnotherModel,
+  movedHere,
   canWrite,
   contributor,
   busy,
@@ -90,7 +91,18 @@ export const Turn = ({
 }) => {
   if (item.kind === 'user') {
     return (
-      <div className="flex justify-end">
+      <div className="flex flex-col items-end gap-1">
+        {/* Where this one was asked from, shown only where that changed. The
+            panel stays open across a whole session, so an old thread can hold
+            questions asked from several documents, and the answers only make
+            sense against the place each question came from. The model is told
+            the same thing, on the same terms. */}
+        {movedHere && item.where?.name && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <MapPin className="h-3 w-3" />
+            {item.where.name}
+          </div>
+        )}
         <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-primary px-4 py-2 text-sm text-primary-foreground">
           {item.text}
         </div>
