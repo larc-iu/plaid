@@ -159,11 +159,16 @@ export const ProjectAssistant = ({
           : null,
     [documentId, documentName, lexiconId, lexiconName],
   );
-  const subjectId = documentId || lexiconId;
   const subjectName = documentName || lexiconName;
-  // Each subject remembers its own thread, so opening the panel on one document
-  // or vocabulary never resumes a conversation about another.
-  const openKey = panel && subjectId ? `${projectId}:${subjectId}` : projectId;
+  // ONE thread per project, wherever the reader is inside it. Each subject used
+  // to remember its own, which was right while the panel belonged to the screen
+  // that opened it: it appeared beside one document and resuming a thread about
+  // another would have answered about the wrong thing. The panel is app chrome
+  // now, so that rule would swap the conversation under the reader every time
+  // they walked to the next document, and nothing spanning two screens could be
+  // asked at all. Which place each question came from is recorded on the
+  // question instead (`where`, and the stamp the service writes).
+  const openKey = projectId;
   // The listener below is mounted once, so it reaches the caller's latest
   // handler through a ref rather than re-subscribing on every render.
   const onAppliedRef = useRef(onApplied);
@@ -376,22 +381,19 @@ export const ProjectAssistant = ({
         setUrlConvRef.current(remembered, { replace: true });
         return;
       }
-      // Opening the panel on something that has been discussed before picks
-      // that thread back up. A conversation about ANOTHER subject never opens
-      // here: it would answer about the wrong thing.
-      if (panel && subjectId) {
-        const mine = metas.find((m) =>
-          documentId ? m.about?.documentId === documentId : m.about?.lexiconId === lexiconId,
-        );
-        if (mine) setUrlConvRef.current(mine.id, { replace: true });
-      }
+      // The PANEL resumes the project's most recent thread. It is chrome: it
+      // comes back on every screen and on every visit, and a blank conversation
+      // each time would mean going to find what you were in the middle of. The
+      // TAB still opens new, the way a chat app does, because its sidebar puts
+      // every thread one click away.
+      if (panel && metas.length) setUrlConvRef.current(metas[0].id, { replace: true });
     });
     return () => {
       const a = activeRef.current;
       if (a && !a.draft) lastOpen.set(openKey, a.id);
       else lastOpen.delete(openKey);
     };
-  }, [loadList, openKey, panel, subjectId, documentId, lexiconId]);
+  }, [loadList, openKey, panel]);
 
   // Reflect jobs as they progress and finish, for whichever conversation is
   // shown; a finished job always refreshes the sidebar entry.
@@ -795,9 +797,15 @@ export const ProjectAssistant = ({
                 )}
                 <div className="max-w-md text-sm text-muted-foreground">
                   {panel ? (
-                    <>
-                      Ask about {subjectName || 'this document'}, or about the rest of the project.
-                    </>
+                    // The panel reaches screens that are about no one thing
+                    // (the project's own tabs, a vocabulary list), where the
+                    // old fallback to "this document" named something that was
+                    // not on screen.
+                    subjectName ? (
+                      <>Ask about {subjectName}, or about the rest of the project.</>
+                    ) : (
+                      <>Ask about {projectName || 'this project'}.</>
+                    )
                   ) : (
                     <>
                       {adapter.intro} The assistant reads the project and answers with evidence.

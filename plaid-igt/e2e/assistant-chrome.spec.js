@@ -1,4 +1,5 @@
 import PlaidClient from '@larc-iu/plaid-client';
+import { randomUUID } from 'node:crypto';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
 
 // The assistant panel as part of the app's chrome rather than one screen's.
@@ -17,6 +18,8 @@ let projectId;
 let documentId;
 let otherDocumentId;
 let vocabularyId;
+let userId;
+const seeded = []; // conversation ids to delete
 
 const ASSISTANT = [
   {
@@ -36,7 +39,49 @@ const withAssistant = (page, services = ASSISTANT) =>
 
 const client = () => new PlaidClient(CORE, readToken().token);
 
+const convKey = (kind, id) => `igt:assistant:${projectId}:${kind}:${id}`;
+
+// A conversation is a record in the user's own key/value store that the service
+// writes, so one can be seeded straight in and the panel driven from there. No
+// model and no service needed, the same as e2e/assistant.spec.js.
+const seedConversation = async (title, text, updatedAt) => {
+  const id = randomUUID();
+  seeded.push(id);
+  const c = client();
+  await c.userData.put(userId, convKey('conv', id), {
+    messages: [
+      { role: 'user', content: text },
+      { role: 'assistant', content: 'Noted.' },
+    ],
+    display: [
+      { kind: 'user', text },
+      {
+        kind: 'assistant',
+        text: `Reply to ${title}`,
+        plan: null,
+        citations: [],
+        status: null,
+        model: 'e2e/model',
+        steps: [],
+        stepsSummary: '',
+      },
+    ],
+  });
+  await c.userData.put(userId, convKey('meta', id), {
+    id,
+    title,
+    createdAt: updatedAt,
+    updatedAt,
+    serviceId: 'igt:assist:test',
+    model: 'test/model',
+    turns: 1,
+    pending: null,
+  });
+  return id;
+};
+
 test.beforeAll(async () => {
+  ({ userId } = readToken());
   const c = client();
   const project = (await c.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
   if (!project) throw new Error('run node e2e/fixtureProject.js first');
@@ -56,6 +101,11 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   const c = client();
+  for (const id of seeded) {
+    for (const kind of ['conv', 'meta']) {
+      await c.userData.delete(userId, convKey(kind, id)).catch(() => {});
+    }
+  }
   if (vocabularyId) {
     await c.vocabLayers
       .delete(vocabularyId)
@@ -224,4 +274,48 @@ test('toasts do not land on top of the panel', async ({ page }) => {
     () => getComputedStyle(document.querySelector('[data-sonner-toaster]')).right,
   );
   expect(parseInt(right, 10)).toBeGreaterThan(parseInt(width, 10));
+});
+
+test("the panel resumes the project's newest thread and holds it while the reader moves", async ({
+  page,
+}) => {
+  // The decision this pins down: ONE thread per project, wherever you are in
+  // it. Each subject used to remember its own, which is right for a panel that
+  // belongs to one screen and wrong for one that does not: walking to the next
+  // document swapped the conversation under the reader, so nothing spanning
+  // two screens could be asked at all.
+  await seedAuth(page);
+  await withAssistant(page);
+  const older = await seedConversation(
+    'chrome older thread',
+    'the older question',
+    '2020-01-01T00:00:00.000Z',
+  );
+  const newer = await seedConversation(
+    'chrome newer thread',
+    'the newer question',
+    '2030-01-01T00:00:00.000Z',
+  );
+  expect(older).not.toBe(newer);
+
+  await analyze(page, documentId);
+  await expect(page.locator('.igt-sentence').first()).toBeVisible();
+  await openDock(page);
+
+  // The newest, not a blank one: the panel comes back on every screen and on
+  // every visit, so starting empty would mean going to find your own thread.
+  const panel = panelOf(page);
+  await expect(panel.getByText('the newer question')).toBeVisible();
+
+  // To another document. The SAME thread, not one about the new document and
+  // not a fresh one.
+  await analyze(page, otherDocumentId);
+  await expect(page.getByRole('heading', { name: 'Chrome Spec Second Document' })).toBeVisible();
+  await expect(panel.getByText('the newer question')).toBeVisible();
+  await expect(panel.getByText('the older question')).toHaveCount(0);
+
+  // And on to the vocabulary, which is a different KIND of subject.
+  await page.goto(`/#/vocabularies/${vocabularyId}`);
+  await expect(page.getByRole('link', { name: 'New' })).toBeVisible({ timeout: 15000 });
+  await expect(panel.getByText('the newer question')).toBeVisible();
 });
