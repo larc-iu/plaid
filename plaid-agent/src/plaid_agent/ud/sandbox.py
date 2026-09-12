@@ -104,8 +104,10 @@ def api(ws: Workspace) -> Dict[str, Callable]:
 
 
 def t_run_code(ws: Workspace, code: str = None) -> str:
+    if getattr(ws, 'code', None) is None:
+        ws.code = sandbox.Session()
     try:
-        return sandbox.run(code, api(ws), on_progress=ws.on_progress)
+        return sandbox.run(code, api(ws), on_progress=ws.on_progress, session=ws.code)
     except sandbox.CodeError as e:
         raise ToolError(str(e))
 

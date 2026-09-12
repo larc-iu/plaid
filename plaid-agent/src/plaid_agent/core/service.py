@@ -333,6 +333,7 @@ class BaseAssistantService(BaseService):
             turn = run_turn(self.cfg, self.kit, ws, system,
                             transcript, on_progress, cancelled=cancelled, on_text=on_text)
         except TurnCancelled:
+            self._release(ws)
             # The user's message leaves the model transcript (a retry must not
             # send it twice) and stays on screen with what happened.
             stopped = {'messages': transcript[:-1], 'display': conv['display'] + [error_item('Stopped.', stopped=True)]}
@@ -340,12 +341,14 @@ class BaseAssistantService(BaseService):
             response_helper.complete({'kind': 'stopped'})
             return
         except Exception as e:  # noqa: BLE001 - whatever failed, the record must say so
+            self._release(ws)
             traceback.print_exc()
             failed = {'messages': transcript[:-1],
                       'display': conv['display'] + [error_item(f'The assistant could not answer: {e}')]}
             self._write(store, conv_id, failed, build_meta(meta, conv_id, failed, self.service_id, model), request_id)
             response_helper.error(str(e))
             return
+        self._release(ws)
         # The window goes on the item beside the counts: the reader is told how
         # full the thread is, and what it is full OF changes when the operator
         # points the service at a different model.
@@ -465,6 +468,17 @@ class BaseAssistantService(BaseService):
             'counts': [{'kind': k, 'count': n} for k, n in counts.items()],
             'message': f'Applied {self.summarize(ops)}.' + (' ' + '; '.join(notes) if notes else ''),
         })
+
+    @staticmethod
+    def _release(ws) -> None:
+        """Let the workspace give back what it held for the turn (a code
+        worker): the turn is over whichever way it ended."""
+        close = getattr(ws, 'close', None)
+        if close:
+            try:
+                close()
+            except Exception:  # noqa: BLE001 - releasing must never turn a finished turn into a failed one
+                traceback.print_exc()
 
     def _remember_applied(self, plan_id: str) -> None:
         self._applied_plans.append(plan_id)

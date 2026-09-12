@@ -72,10 +72,19 @@ class Workspace:
         # Corpus-wide tools ask the query engine unless told to scan every
         # document instead (tests compare the two).
         self.prefer_scan = False
+        # The turn's code worker (core.sandbox.Session), opened by the first
+        # run_code call and released by close().
+        self.code = None
         self._corpus = None
         # Set when the operator configured web search (see .web). None means
         # the web tools are not offered at all.
         self.web = None
+
+    def close(self) -> None:
+        """Release what the turn held: the code worker, if one was opened."""
+        if self.code is not None:
+            self.code.close()
+            self.code = None
 
     @property
     def corpus(self):

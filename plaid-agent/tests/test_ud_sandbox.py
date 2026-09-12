@@ -58,3 +58,12 @@ def test_an_unknown_document_is_an_error_the_code_can_read(ws):
 def test_code_help_shows_the_shape_and_the_functions(ws):
     out = call_tool(ws, 'code_help', {})
     assert 'load(document)' in out and '"review"' in out and 'plan(' in out
+
+
+def test_names_persist_between_calls_in_one_turn_and_not_after_close(ws):
+    assert call_tool(ws, 'run_code', {'code': 'tally = {"a": 1}\nprint("built")'}) == 'built'
+    assert call_tool(ws, 'run_code', {'code': 'tally["a"] + 1'}) == '=> 2'
+    ws.close()
+    assert ws.code is None
+    out = call_tool(ws, 'run_code', {'code': 'tally'})
+    assert out.startswith('Error:') and 'NameError' in out

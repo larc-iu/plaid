@@ -205,3 +205,31 @@ def test_a_settled_plan_is_not_applied(status, expected):
     _service().process_request(_request(client, approve={'plan_id': 'plan1'}), helper)
     assert helper.errors == [expected]
     assert not client.calls('spans', 'create')
+
+
+def test_the_workspace_is_released_when_the_turn_ends(monkeypatch):
+    """A turn may hold a code worker; whichever way the turn ends, the
+    service lets the workspace give it back."""
+    client = FakeClient()
+    _seed(client)
+    released = []
+    real = AssistantService.make_workspace
+
+    def make_workspace(self, c, project, on_progress):
+        ws = real(self, c, project, on_progress)
+        ws.close = lambda: released.append(True)
+        return ws
+    monkeypatch.setattr(AssistantService, 'make_workspace', make_workspace)
+    monkeypatch.setattr(service_mod, 'run_turn',
+                        lambda *a, **k: TurnResult('hi', [{'role': 'assistant', 'content': 'hi'}], []))
+    svc = _service()
+    svc.process_request(_request(client), Helper())
+    assert released == [True]
+    released.clear()
+
+    def cancelled(*a, **k):
+        raise TurnCancelled()
+    monkeypatch.setattr(service_mod, 'run_turn', cancelled)
+    _seed(client)
+    svc.process_request(_request(client), Helper())
+    assert released == [True]

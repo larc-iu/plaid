@@ -52,6 +52,15 @@ class Workspace:
         # Set when the operator configured web search. None means the web tools
         # are not offered to the model at all.
         self.web = None
+        # The turn's code worker (core.sandbox.Session), opened by the first
+        # run_code call and released by close().
+        self.code = None
+
+    def close(self) -> None:
+        """Release what the turn held: the code worker, if one was opened."""
+        if self.code is not None:
+            self.code.close()
+            self.code = None
 
     # --- loading ---------------------------------------------------------
 

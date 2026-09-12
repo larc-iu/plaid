@@ -28,6 +28,7 @@ EXEC_SECONDS = 120.0               # interpreter time; time spent in host functi
 WALL_SECONDS = 900.0               # the host-side backstop for one call, host functions included
 MEMORY_BYTES = 1024 * 1024 * 1024
 MAX_SUSPENSIONS = 500_000          # host calls one run may make: a walk over a large corpus is thousands
+TURN_EXEC_SECONDS = 600.0          # interpreter time over a whole turn's calls, which share one worker
 MODULES = ('re', 'json', 'math', 'collections', 'itertools', 'functools', 'datetime', 'unicodedata')
 
 NAMES = ('run_code', 'code_help')
@@ -72,6 +73,33 @@ def _pool():
         return _state['pool']
 
 
+class Session:
+    """One worker, held for a turn, so what one run_code call computed is
+    there for the next: a tally built by a walk can be queried again without
+    walking again. Opened on first use, closed by the workspace at the end
+    of the turn, and replaced after a crash."""
+
+    def __init__(self):
+        self._cm = None
+        self._session = None
+
+    def get(self):
+        if self._session is None:
+            self._cm = _pool().checkout(limits={'max_duration_secs': TURN_EXEC_SECONDS,
+                                                 'max_memory': MEMORY_BYTES,
+                                                 'max_suspensions': MAX_SUSPENSIONS})
+            self._session = self._cm.__enter__()
+        return self._session
+
+    def close(self) -> None:
+        cm, self._cm, self._session = self._cm, None, None
+        if cm is not None:
+            try:
+                cm.__exit__(None, None, None)
+            except Exception:  # noqa: BLE001 - a worker that is already gone has nothing to release
+                pass
+
+
 def _explain(e) -> str:
     """The sandbox's error, with a line about what the sandbox has where the
     error is about what it lacks."""
@@ -83,10 +111,13 @@ def _explain(e) -> str:
     return text
 
 
-def run(code: str, api: Dict[str, Callable], on_progress: Optional[Callable[[str], None]] = None) -> str:
+def run(code: str, api: Dict[str, Callable], on_progress: Optional[Callable[[str], None]] = None,
+        session: Optional[Session] = None) -> str:
     """Run ``code`` with ``api`` as its host functions. Returns what it
     printed and the value of its last expression, capped. Raises
-    :class:`CodeError` with the reason when it did not finish."""
+    :class:`CodeError` with the reason when it did not finish. With a
+    ``session``, the code runs in that turn's worker and its names persist
+    to the next call; without one, in a fresh worker released at once."""
     reason = available()
     if reason:
         raise CodeError(f'Code cannot run on this assistant: {reason}.')
@@ -99,17 +130,22 @@ def run(code: str, api: Dict[str, Callable], on_progress: Optional[Callable[[str
     limits = {'max_duration_secs': EXEC_SECONDS, 'max_memory': MEMORY_BYTES,
               'max_suspensions': MAX_SUSPENSIONS}
     try:
-        with _pool().checkout(limits=limits) as session:
-            value = session.feed_run(code, external_lookup=dict(api), print_callback=printed)
+        if session is not None:
+            value = session.get().feed_run(code, external_lookup=dict(api), print_callback=printed)
+        else:
+            with _pool().checkout(limits=limits) as fresh:
+                value = fresh.feed_run(code, external_lookup=dict(api), print_callback=printed)
     except MontyRuntimeError as e:
         raise CodeError(_explain(e) + _partial(printed))
     except MontyCrashedError as e:
+        if session is not None:
+            session.close()  # the worker is gone; the next call gets a new one, and starts over
         if getattr(e, 'timed_out', False):
             raise CodeError(f'The code ran for more than {WALL_SECONDS / 60:.0f} minutes and was stopped. '
                             f'Narrow it: fewer documents, or a query() for the counting.' + _partial(printed))
         raise CodeError('The sandbox stopped while running this code. Try again with less at once.'
                         + _partial(printed))
-    out = printed.output
+    out = (printed.output or '').rstrip('\n')
     if value is not None:
         out = (out + '\n' if out and not out.endswith('\n') else out) + f'=> {value!r}'
     if not out.strip():
@@ -144,6 +180,8 @@ The project reaches the code through four functions, and nothing else:
   plan(tool, **args)          -> stage a proposal through a plan tool by name, with the same arguments
                                  the tool takes; returns the tool's own reply as text. Nothing is written:
                                  the user approves the plan afterwards, exactly as with the tools.
+Names persist between run_code calls in one turn (a tally built by one call can be read by the next);
+the next turn starts clean.
 Print what you want to see; the value of the last expression is returned too. Output is capped at
 {output_max} characters, so summarize in the code rather than printing everything. One run may take up
 to {exec_seconds:.0f} seconds of computation; loading a document is a call to the server and does not
