@@ -325,7 +325,9 @@ def test_op_keys_survive_the_wire_unchanged():
     w = tools_ws()
     for name, args in [
         ('set_field', {'document': 'Text 1', 'refs': ['s1.w1'], 'field': 'Gloss', 'value': 'X'}),
-        ('set_analysis', {'document': 'Text 1', 'ref': 's1.w2', 'morphemes': [{'form': 'gam', 'Morph Gloss': 'fish'}]}),
+        # On a word no reshape below names: a plan may change a word's
+        # boundaries or its morpheme chain, never both.
+        ('set_analysis', {'document': 'Text 1', 'ref': 's1.w3', 'morphemes': [{'form': 'akuna', 'Morph Gloss': 'see'}]}),
         ('set_orthography', {'document': 'Text 1', 'refs': ['s1.w1'], 'orthography': 'IPA', 'value': 'ali'}),
         ('respell', {'document': 'Text 1', 'ref': 's1.w2', 'new_text': 'gamm'}),
         ('link_entry', {'document': 'Text 1', 'refs': ['s1.w1'], 'entry_form': 'Ali'}),

@@ -1413,6 +1413,7 @@ def t_set_analysis(ws: Workspace, document: str, ref: Optional[str] = None, morp
         if w.id in seen:
             raise ToolError(f'{r} is analysed twice in one call')
         seen.add(w.id)
+        refuse_shape_and_analysis(ws, w.id, r, analysing=True)
         out = parse_analysis(ws, item.get('morphemes'))
         existing = [{'id': m.id, 'span_ids': [sp.id for sp in m.fields.values()]} for m in w.morphemes]
         had_values = sum(1 for m in w.morphemes for sp in m.fields.values() if sp.value != '')
@@ -1423,6 +1424,47 @@ def t_set_analysis(ws: Workspace, document: str, ref: Optional[str] = None, morp
             notes.append(f'{r}{note}' if len(items) > 1 else note)
     ws.add_ops(staged)
     return ws.planned_note(len(staged)) + (' ' + ' '.join(notes) if notes else '')
+
+
+# A word's BOUNDARIES change (a split, a merge, a delete, a text edit over it)
+# or its MORPHEME CHAIN does. Never both in one plan.
+_WORD_SHAPE_KINDS = ('split_word', 'merge_words', 'delete_word')
+_ANALYSIS_KINDS = ('set_analysis', 'discard_analysis')
+
+
+def _reshaped_words(ws: Workspace) -> set:
+    out = set()
+    for op in ws.ops:
+        k = op.get('kind')
+        if k in _WORD_SHAPE_KINDS:
+            out.add(op['word_id'])
+        if k == 'merge_words':
+            out.update(op.get('other_ids') or [])
+        elif k == 'edit_text':
+            out.update(op.get('word_ids') or [])
+    return out
+
+
+def refuse_shape_and_analysis(ws: Workspace, word_id: str, ref: str, *, analysing: bool) -> None:
+    """A word's boundaries and its morpheme chain cannot both change in one plan.
+
+    A reshape deletes the word's morphemes by the ids it read before the plan
+    ran, and an analysis op reuses the first of those ids and deletes the rest.
+    So whichever goes second asks the server to delete a morpheme that is
+    already gone, and the batch it shares fails atomically, after the user has
+    approved the plan. The analysis also leaves a morpheme the reshape does not
+    know about, for the server to cascade-split into nonsense, which is the
+    very thing a reshape deletes them to prevent.
+    """
+    if analysing:
+        if word_id in _reshaped_words(ws):
+            raise ToolError(f'{ref} is split, merged, deleted or retyped in this plan, so its analysis cannot '
+                            'also change: a boundary change deletes the word\'s morphemes. discard_plan to '
+                            'start over, or plan the two in separate turns.')
+    elif any(op.get('kind') in _ANALYSIS_KINDS and op.get('word_id') == word_id for op in ws.ops):
+        raise ToolError(f'{ref} has an analysis change in this plan, so its boundaries cannot also change: a '
+                        'boundary change deletes the morphemes that analysis writes. discard_plan to start '
+                        'over, or plan the two in separate turns.')
 
 
 def parse_analysis(ws: Workspace, morphemes: list) -> List[Dict[str, Any]]:
@@ -2278,6 +2320,7 @@ def t_discard_analysis(ws: Workspace, document: str, refs) -> str:
             raise ToolError(f'{ref}: discard_analysis works on words (sN.wN), not single morphemes')
     staged: List[Dict[str, Any]] = []
     for ref, w in words:
+        refuse_shape_and_analysis(ws, w.id, ref, analysing=True)
         link_ids, span_ids, morpheme_ids = [], [], []
         reset_first = None
 
@@ -2321,6 +2364,7 @@ def t_set_morpheme(ws: Workspace, document: str, ref: str, form: Optional[str] =
     w = resolve(doc, word_ref_)
     if form is None and type is None:
         raise ToolError('Give form and/or type.')
+    refuse_shape_and_analysis(ws, w.id, word_ref_, analysing=True)
     staged: List[Dict[str, Any]] = []
     if form is not None:
         new = str(form).strip()

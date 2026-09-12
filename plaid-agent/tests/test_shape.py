@@ -134,6 +134,36 @@ def test_ops_on_tokens_a_shape_op_removes_are_refused_or_filtered():
     assert len(out) == 2
 
 
+def test_one_plan_changes_a_word_s_boundaries_or_its_analysis_never_both():
+    """It did both, and the second op deleted a morpheme the first had already
+    deleted: the batch they share fails atomically, after the user approved the
+    plan. The analysis also left behind a morpheme the reshape did not know
+    about, for the server to cascade-split, which is the very thing a reshape
+    deletes them to prevent."""
+    for first, second in [
+        (('set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [{'form': 'Al'}, {'form': 'i'}]}),
+         ('split_word', {'document': 'd1', 'ref': 's1.w1', 'at': 2})),
+        (('split_word', {'document': 'd1', 'ref': 's1.w1', 'at': 2}),
+         ('set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [{'form': 'Al'}, {'form': 'i'}]})),
+        (('set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [{'form': 'Ali'}]}),
+         ('delete_word', {'document': 'd1', 'refs': ['s1.w1']})),
+        (('merge_words', {'document': 'd1', 'refs': ['s1.w1', 's1.w2']}),
+         ('set_morpheme', {'document': 'd1', 'ref': 's1.w1.m1', 'form': 'Al'})),
+        (('set_analysis', {'document': 'd1', 'ref': 's1.w2', 'morphemes': [{'form': 'gam'}]}),
+         ('merge_words', {'document': 'd1', 'refs': ['s1.w1', 's1.w2']})),
+    ]:
+        w = ws()
+        assert not call_tool(w, *first).startswith('Error'), first
+        out = call_tool(w, *second)
+        assert 'cannot also change' in out, (first, second, out)
+        assert len(w.ops) == 1
+    # Named through its sentence, and with nothing to discard: the word is
+    # still one the plan has reshaped, and saying so beats saying nothing.
+    w = ws()
+    call_tool(w, 'delete_word', {'document': 'd1', 'refs': ['s1.w2']})
+    assert 'cannot also change' in call_tool(w, 'discard_analysis', {'document': 'd1', 'refs': ['s1']})
+
+
 def test_append_and_retype_plan_ops_and_guards():
     w = ws()
     out = call_tool(w, 'append_text', {'document': 'd1', 'text': 'Gam akuna.\n\n  Ali gam.\n'})

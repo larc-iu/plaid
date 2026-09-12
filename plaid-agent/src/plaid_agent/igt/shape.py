@@ -11,7 +11,8 @@ word takes its analysis, values, and links with it while the text stays."""
 from typing import Any, Dict, List, Optional
 
 from .project import Sentence, Word, resolve, word_ref
-from .tools import Workspace, ToolError, _refs, _need, split_sentences, split_words
+from .tools import (Workspace, ToolError, _refs, _need, split_sentences, split_words,
+                    refuse_shape_and_analysis)
 
 SHAPE_KINDS = ('split_word', 'merge_words', 'delete_word', 'split_sentence', 'merge_sentences')
 
@@ -38,9 +39,14 @@ def _shaped_ids(ws: Workspace, merges_only: bool) -> set:
 def _guard(ws: Workspace, obj, ref: str, merging: bool = False) -> None:
     """A word or sentence takes part in at most one merge per plan, and a
     merge takes no word or sentence another shape op changes. A repeated
-    split or delete of one item simply replaces the earlier op (last wins)."""
+    split or delete of one item simply replaces the earlier op (last wins).
+
+    A word whose analysis this plan rewrites is not reshaped either, whichever
+    came first: see :func:`refuse_shape_and_analysis`.
+    """
     if obj.id in _shaped_ids(ws, merges_only=not merging):
         raise ToolError(f'{ref} is already split, merged, or deleted in this plan; discard_plan to start over')
+    refuse_shape_and_analysis(ws, obj.id, ref, analysing=False)
 
 
 def _dedup_spans(units) -> List[Dict[str, Any]]:
