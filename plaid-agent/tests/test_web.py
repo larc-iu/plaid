@@ -350,3 +350,36 @@ def test_a_connection_that_lands_inside_the_network_is_refused(monkeypatch):
     assert _peer_is_public(Response('93.184.216.34')) is None
     # No peer to inspect is not a failure to report.
     assert _peer_is_public(Response(None)) is None
+
+
+def test_a_rebound_record_is_refused_by_fetch_itself(monkeypatch):
+    """The check above proves the function. This proves it is ON THE PATH,
+    which is the half a guard usually loses: the whole rebinding attack run
+    through the real `fetch`, with the first lookup answering publicly and the
+    connection landing on loopback. Read before the body, so nothing from
+    inside the network is ever parsed, let alone returned."""
+    resolving(monkeypatch, {'rebind.example': '93.184.216.34'})
+    read = []
+
+    class Sock:
+        def getpeername(self):
+            return ('127.0.0.1', 443)
+
+    class Stream:
+        def get_extra_info(self, name):
+            return Sock() if name == 'socket' else None
+
+    class Body(httpx.SyncByteStream):
+        def __iter__(self):
+            read.append(True)
+            yield b'<html><title>Inside</title><body>secrets</body></html>'
+
+    def handler(request):
+        return httpx.Response(200, headers={'content-type': 'text/html'}, stream=Body(),
+                              extensions={'network_stream': Stream()})
+
+    with pytest.raises(WebError) as e:
+        fetch('https://rebind.example/page', CFG, client=transport(handler))
+    assert 'connected to 127.0.0.1' in str(e.value)
+    assert 'inside the network' in str(e.value)
+    assert not read, 'the body was read before the peer was checked'
