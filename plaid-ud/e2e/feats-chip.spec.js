@@ -366,12 +366,14 @@ test('B4+B5: grid arrow navigation and tab order', async ({ page }) => {
   console.log('upos aria-expanded after ArrowUp focus:', uposExpanded);
   if (uposExpanded === 'true') {
     await upos.press('Escape');
-    const stillFocused = await upos.evaluate((el) => document.activeElement === el);
-    console.log('upos still focused after Escape:', stillFocused);
-    if (!stillFocused) await upos.focus();
-    if ((await upos.getAttribute('aria-expanded')) === 'true') {
-      console.log('NOTE: upos dropdown still open after Escape');
-    }
+    // Asserted HERE and not a line later: Escape also blurs the cell, and
+    // focusing a cell opens its list again, so a refocus would reopen the
+    // very list this is about. (The note that used to sit below was reading
+    // the reopened one and calling it an Escape that did not work.)
+    expect(await upos.getAttribute('aria-expanded'), 'Escape closes the UPOS list').not.toBe(
+      'true',
+    );
+    if (!(await upos.evaluate((el) => document.activeElement === el))) await upos.focus();
   }
   await upos.press('ArrowDown');
   await expect(input).toBeFocused();
