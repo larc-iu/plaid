@@ -375,6 +375,14 @@ def test_a_citation_may_highlight_several_words_and_morphemes():
     from plaid_agent.igt.citations import parse_refs, resolve_citations
     assert parse_refs('s3.w2, w5') == ['s3.w2', 's3.w5']
     assert parse_refs('s3.w2.m1 m3') == ['s3.w2.m1', 's3.w2.m3']  # each part inherits what it leaves out
+    # A reference is 1-BASED, so a zero is not a place. Read as "absent" it
+    # turned one reference into a different, valid-looking one: `s3.w0` became
+    # the whole of s3, and `s3.w0.m1` became `s3.m1`, which this very function
+    # refuses.
+    import pytest as _pytest
+    for bad in ('s0', 's3.w0', 's0.w1', 's3.w0.m1'):
+        with _pytest.raises(ValueError):
+            parse_refs(bad)
     assert parse_refs('s3') == ['s3']
     w = ws()
     out = resolve_citations(w, '<cite doc="Text 1" ref="s1.w1.m2,w2"/> then <cite doc="Text 1" ref="s1.w9,w1"/>')

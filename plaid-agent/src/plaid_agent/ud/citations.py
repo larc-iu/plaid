@@ -50,6 +50,10 @@ def parse_refs(ref: str) -> List[str]:
         if not part or not m:
             continue
         s, w, w2 = m.groups()
+        # A reference is 1-BASED, so a zero is not a place: it reads as absent
+        # and turns one reference into a different, valid-looking one.
+        if any(p is not None and int(p) == 0 for p in (s, w, w2)):
+            continue
         si = int(s) if s else si
         if si is None:
             continue

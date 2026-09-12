@@ -223,3 +223,14 @@ def test_a_garbage_part_of_a_reference_list_is_dropped_not_repeated():
     assert parse_refs('s3.w2,w5') == ['s3.w2', 's3.w5']
     assert parse_refs('s3.w2,3') == ['s3.w2', 's3.w3']
     assert parse_refs('s3.w2-3,w7') == ['s3.w2-3', 's3.w7']
+
+
+def test_a_zero_index_is_not_a_place():
+    """References are 1-based, so a zero read as "absent" turned one reference
+    into a different, valid-looking one: IGT's `s3.w0.m1` became `s3.m1`,
+    a shape its own parser refuses."""
+    for bad in ['s0', 's3.w0', 's0.w1', 's3.w2-0']:
+        assert parse_refs(bad) == [], bad
+    # And a real reference still parses, including the list forms.
+    assert parse_refs('s3.w2') == ['s3.w2']
+    assert parse_refs('s3.w2,w5') == ['s3.w2', 's3.w5']

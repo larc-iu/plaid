@@ -53,6 +53,11 @@ def parse_refs(ref: str) -> List[str]:
         if not m or not any(m.groups()):
             continue  # a stray word between references ("s3.w2 and w5"): skip it, keep the rest
         s_, w_, m_ = m.groups()
+        # A reference is 1-BASED, so a zero is not a place. Reading it as
+        # "absent" silently turned `s3.w0` into the whole of s3, and `s3.w0.m1`
+        # into `s3.m1`, which is a shape this very function refuses.
+        if any(p is not None and int(p) == 0 for p in (s_, w_, m_)):
+            continue
         if s_:
             si, wi = int(s_), (int(w_) if w_ else None)
         elif w_:
