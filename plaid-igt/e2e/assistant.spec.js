@@ -25,15 +25,21 @@ let posSpan; // {id, value} of the first word's current POS span, or null
 const seeded = []; // conversation ids to delete
 const key = (kind, id) => `igt:assistant:${projectId}:${kind}:${id}`;
 
-const seedConversation = async ({ display, messages = [], pending = null, title }) => {
+const seedConversation = async ({
+  display,
+  messages = [],
+  pending = null,
+  title,
+  updatedAt = new Date().toISOString(),
+}) => {
   const id = randomUUID();
   seeded.push(id);
   await client.userData.put(userId, key('conv', id), { messages, display });
   await client.userData.put(userId, key('meta', id), {
     id,
     title,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    createdAt: updatedAt,
+    updatedAt,
     serviceId: 'igt:assist:e2e',
     model: 'e2e/model',
     turns: 1,
@@ -225,6 +231,43 @@ test('the tab opens on a new conversation, and the sidebar links each saved one'
   await page.getByRole('button', { name: 'New conversation' }).click();
   await expect(page).not.toHaveURL(/conversation=/);
   await expect(page.getByText('Nothing sent yet')).toBeVisible();
+});
+
+test('opening a conversation leaves the list in the order it was in', async ({ page }) => {
+  // The list is ordered by when each conversation was last written to, and
+  // opening one only reads it. The read used to hoist the row it read to the
+  // top, which moved every other row out from under the pointer that had just
+  // clicked one.
+  const stamps = [
+    '2021-01-01T00:00:00.000Z',
+    '2022-01-01T00:00:00.000Z',
+    '2023-01-01T00:00:00.000Z',
+  ];
+  const ids = [];
+  for (const [i, updatedAt] of stamps.entries()) {
+    ids.push(
+      await seedConversation({
+        title: `E2E-ORDER-${i}`,
+        display: [{ kind: 'user', text: `ordered question ${i}` }],
+        updatedAt,
+      }),
+    );
+  }
+
+  await page.goto(`/#/projects/${projectId}?tab=assistant`);
+  const sidebar = page.getByRole('complementary').first();
+  const rows = sidebar.getByRole('link');
+  await expect(sidebar.getByRole('link', { name: /E2E-ORDER-2/ })).toBeVisible();
+  // By href, not by text: a row says how long ago it was written, and the
+  // draft row at the top is not a link at all.
+  const order = () => rows.evaluateAll((els) => els.map((e) => e.getAttribute('href')));
+  const before = await order();
+
+  // The oldest of the three, which is the furthest it could be moved.
+  await sidebar.getByRole('link', { name: /E2E-ORDER-0/ }).click();
+  await expect(page.getByText('ordered question 0')).toBeVisible();
+  expect(await order()).toEqual(before);
+  expect(before.filter((h) => h.includes(ids[0]))).toHaveLength(1);
 });
 
 test('approving a plan applies it under the user and settles the card', async ({ page }) => {

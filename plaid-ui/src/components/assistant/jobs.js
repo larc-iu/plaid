@@ -42,6 +42,9 @@ export const projectOfKey = (app, key) => {
   return cut > 0 ? rest.slice(0, cut) : null;
 };
 
+// Newest first, by when each conversation was last written to.
+export const byRecency = (a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || '');
+
 // The sidebar entries, newest first. `allProjects` widens the read from this
 // project to every one of them, for a reader looking for a thread whose
 // project they have forgotten. Each entry carries the project it belongs to,
@@ -62,7 +65,7 @@ export const readMetas = async (store, { allProjects = false } = {}) => {
       return { ...meta, projectId: projectOfKey(app, e.key) || projectId };
     })
     .filter(Boolean)
-    .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+    .sort(byRecency);
 };
 
 // A UUID: request ids must be one (the server checks), and conversation ids
@@ -109,7 +112,12 @@ export const jobFor = (id) => (id ? jobs.get(id) || null : null);
 
 export const notifyJob = (j) => jobListeners.forEach((fn) => fn(j));
 
-export const upsert = (meta) => (prev) => [meta, ...prev.filter((m) => m.id !== meta.id)];
+// An entry after a write, back in its place in the list. SORTED rather than
+// moved to the front: opening a conversation re-reads its record without
+// changing it, and hoisting it there moved every other row under the pointer
+// that had just clicked one.
+export const upsert = (meta) => (prev) =>
+  [meta, ...prev.filter((m) => m.id !== meta.id)].sort(byRecency);
 
 // The sidebar entry after a write. `pending` names the request under way, if
 // any: {kind, requestId, serviceId, planId, asHuman, contributedBy, startedAt}.
