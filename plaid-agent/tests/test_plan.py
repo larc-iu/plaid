@@ -28,9 +28,11 @@ def test_execute_set_span_variants():
     assert counts == {'field values': 3}  # clearing a span that does not exist writes nothing
     assert c.operations == ['test']
     kinds = [(r, m) for r, m, a, k in c.log]
-    assert kinds == [('spans', 'create'), ('spans', 'update'), ('spans', 'patch_metadata'), ('spans', 'delete')]
+    # Updates travel as bulk sub-ops appended after what the batch creates and
+    # deletes, so the update and its restamp come last.
+    assert kinds == [('spans', 'create'), ('spans', 'delete'), ('spans', 'update'), ('spans', 'patch_metadata')]
     # Approval is a human decision: everything a plan writes is machine-made AND confirmed.
-    assert c.log[2][2][1] == {'prov': 'inferred', 'provSource': 'service:igt:assist', 'provConfirmed': True}
+    assert c.log[3][2][1] == {'prov': 'inferred', 'provSource': 'service:igt:assist', 'provConfirmed': True}
     _, _, args, _ = c.log[0]
     assert args[:3] == ('L', ['T'], 'new') and args[3] == {'prov': 'inferred', 'provSource': 'service:igt:assist', 'provConfirmed': True}
     assert len(c.batches) == 1 and len(c.batches[0]) == 4
@@ -163,8 +165,9 @@ def test_execute_links_entries_orthography_and_respells_last():
     assert b0[1] == ('vocab_links', 'delete', ('l-1',))
     assert b0[2][:2] == ('vocab_links', 'create') and b0[2][2][:2] == ('vi-erg', ['w-1'])
     assert b0[3] == ('vocab_links', 'delete', ('l-2',))
-    assert b0[4] == ('tokens', 'patch_metadata', ('w-2', {'orthog:IPA': None}))
-    assert b0[5] == ('vocab_items', 'patch_metadata', ('vi-ali', {'pos': 'PN'}))
+    assert b0[4] == ('vocab_items', 'patch_metadata', ('vi-ali', {'pos': 'PN'}))
+    # The orthography is a token metadata patch, which travels as a bulk sub-op at the end of the batch.
+    assert b0[5] == ('tokens', 'patch_metadata', ('w-2', {'orthog:IPA': None}))
     # The link to the new entry waits for its id.
     b1 = [(r, m, a) for r, m, a, k in c.batches[1]]
     assert len(b1) == 1 and b1[0][:2] == ('vocab_links', 'create') and b1[0][2][:2] == ('new-vocab_items-0', ['w-3'])
@@ -389,3 +392,24 @@ def test_op_keys_survive_the_wire_unchanged():
                 walk(v, under_metadata or k in ('metadata', 'config'))
 
     walk(ops)
+
+
+
+def test_updates_fold_into_bulk_sub_ops_by_resource_and_chunk():
+    """Thousands of value updates and metadata patches are a handful of bulk
+    sub-ops in the same atomic batch, one per resource and chunk, merged per
+    entity, and counted per entity when a batch fails."""
+    from plaid_agent.core.plan import BULK_CHUNK, TrackingBatcher
+    c = FakeClient()
+    b = TrackingBatcher(c, budget=5000)
+    for i in range(BULK_CHUNK + 5):
+        b.update('spans', f's{i}', value='x')
+    b.update('spans', 's0', metadata={'k': 1})       # merges with s0's value
+    b.update('relations', 'r1', metadata={'k': 2})
+    b.add(lambda: c.spans.create('L', ['t'], 'v'))    # a plain sub-op, before the bulk ones
+    b.flush()
+    assert [(r, len(items)) for r, items in c.bulk_calls] == [('spans', BULK_CHUNK), ('spans', 5), ('relations', 1)]
+    assert c.bulk_calls[0][1][0] == {'id': 's0', 'value': 'x', 'metadata': {'k': 1}}
+    assert b.applied == BULK_CHUNK + 5 + 1 + 1
+    assert [m for r, m, a, k in c.batches[0]][:1] == ['create']
+    assert len(c.batches) == 1

@@ -89,13 +89,27 @@ def lexicon_raw():
 
 
 class Recorder:
-    """A resource stand-in: any method call is recorded as (resource, method, args, kwargs)."""
+    """A resource stand-in: any method call is recorded as (resource, method, args, kwargs).
 
-    def __init__(self, log, name):
-        self._log, self._name = log, name
+    A ``bulk_update`` is recorded as what it stands for, one ``update`` and
+    one ``patch_metadata`` entry per item as the executors once sent them,
+    so a test reads the same writes whichever way they travelled; the raw
+    bulk call goes to ``bulk_calls`` for a test about the batching itself."""
+
+    def __init__(self, log, name, bulk_calls=None):
+        self._log, self._name, self._bulk = log, name, bulk_calls
 
     def __getattr__(self, method):
         def call(*args, **kwargs):
+            if method == 'bulk_update':
+                if self._bulk is not None:
+                    self._bulk.append((self._name, list(args[0])))
+                for item in args[0]:
+                    if 'value' in item:
+                        self._log.append((self._name, 'update', (item['id'], item['value']), {}))
+                    if item.get('metadata'):
+                        self._log.append((self._name, 'patch_metadata', (item['id'], item['metadata']), {}))
+                return {'count': len(args[0])}
             self._log.append((self._name, method, args, kwargs))
             return {'id': f'{self._name}-{method}-{len(self._log)}'}
         return call
@@ -121,8 +135,9 @@ class FakeClient:
             {'id': 'o2', 'time': '2026-08-28T10:00:00Z', 'user': {'id': 'x@y.z', 'display_name': 'Someone'},
              'documents': [], 'ops': [{'type': 'project/create', 'description': 'Create project "Demo"'}]},
         ]
+        self.bulk_calls = []  # (resource, items) per bulk_update, for tests about the batching
         for name in ('tokens', 'spans', 'relations', 'vocab_links', 'vocab_items', 'texts'):
-            setattr(self, name, Recorder(self.log, name))
+            setattr(self, name, Recorder(self.log, name, self.bulk_calls))
 
     class _Projects:
         def __init__(self, c):

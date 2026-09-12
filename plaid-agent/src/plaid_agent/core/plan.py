@@ -32,32 +32,69 @@ CLEAR_PROV = {PROV_KEY: None, PROV_SOURCE_KEY: None, PROV_CONFIRMED_KEY: None, P
 CONFIRM = {PROV_CONFIRMED_KEY: True}
 
 BATCH_OP_BUDGET = 800  # the server caps one atomic batch at 1000 ops
+BULK_CHUNK = 1000      # entities one bulk update request carries
+_UNSET = object()
 
 
 class Batcher:
     """Queue client calls into atomic batches of at most ``budget`` ops,
     flushing as the budget fills. ``add`` returns a GLOBAL result index valid
-    after the next ``flush``; ``results`` accumulates across flushes."""
+    after the next ``flush``; ``results`` accumulates across flushes.
+
+    ``update`` queues a value and/or a metadata patch on one entity. At the
+    next flush the queued updates go into the same atomic batch as ONE bulk
+    sub-op per resource and chunk (``spans.bulk_update`` and its siblings),
+    so a plan of thousands of updates is a handful of sub-ops instead of one
+    per span, each re-dispatched through the whole server. The bulk sub-ops
+    are appended after everything ``add`` queued in the batch, which is the
+    order the executors need: what a pass creates or deletes comes first,
+    what it rewrites on entities that already exist comes last.
+    """
 
     def __init__(self, client, budget: int = BATCH_OP_BUDGET):
         self.client = client
         self.budget = budget
         self.results: List[Any] = []
-        self._pending = 0
+        self._pending = 0   # sub-ops in the open batch (result indexes)
+        self._weight = 0    # what the open batch stands for, against the budget
         self._open = False
+        self._bulk: Dict[str, Dict[str, Dict[str, Any]]] = {}
 
-    def add(self, fn) -> int:
+    def add(self, fn, weight: int = 1) -> int:
         if not self._open:
             self.client.begin_batch()
             self._open = True
         fn()
         idx = len(self.results) + self._pending
         self._pending += 1
-        if self._pending >= self.budget:
+        self._weight += weight
+        if self._weight >= self.budget:
             self.flush()
         return idx
 
+    def update(self, resource: str, entity_id: str, value: Any = _UNSET, metadata: Optional[Dict[str, Any]] = None) -> None:
+        """Queue a value and/or a metadata patch on ``entity_id`` of
+        ``resource`` ('spans', 'relations' or 'tokens'), merged with an
+        earlier update of the same entity in this flush."""
+        item = self._bulk.setdefault(resource, {}).setdefault(entity_id, {'id': entity_id})
+        if value is not _UNSET:
+            item['value'] = value
+        if metadata:
+            item.setdefault('metadata', {}).update(metadata)
+        if sum(len(v) for v in self._bulk.values()) >= self.budget:
+            self._drain()
+
+    def _drain(self) -> None:
+        """Turn the queued updates into bulk sub-ops of the open batch."""
+        pending, self._bulk = self._bulk, {}
+        for resource, items in pending.items():
+            entries = list(items.values())
+            for i in range(0, len(entries), BULK_CHUNK):
+                chunk = entries[i:i + BULK_CHUNK]
+                self.add(lambda r=resource, c=chunk: getattr(self.client, r).bulk_update(c), weight=len(chunk))
+
     def flush(self) -> None:
+        self._drain()
         if not self._open:
             return
         try:
@@ -70,6 +107,7 @@ class Batcher:
             self._open = False
         self.results.extend(res or [])
         self._pending = 0
+        self._weight = 0
 
 
 class TrackingBatcher(Batcher):
@@ -78,7 +116,8 @@ class TrackingBatcher(Batcher):
     Each batch commits on its own, so a plan that fails half way has really
     written its earlier batches. The count rides out on the exception, where
     the app's ``execute_plan`` turns it into :class:`PlanError.applied`: the
-    user is told what stands rather than being left to find out.
+    user is told what stands rather than being left to find out. A bulk
+    sub-op counts for every entity it carried.
     """
 
     def __init__(self, client, budget: int = BATCH_OP_BUDGET):
@@ -86,7 +125,8 @@ class TrackingBatcher(Batcher):
         self.applied = 0
 
     def flush(self) -> None:
-        n = self._pending
+        self._drain()
+        n = self._weight
         try:
             super().flush()
         except Exception as e:

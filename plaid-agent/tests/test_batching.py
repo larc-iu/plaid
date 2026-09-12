@@ -60,12 +60,12 @@ def test_set_morpheme_changes_form_or_type_in_place():
     assert 'is not a morpheme' in call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's2.w1', 'form': 'x'})
     assert 'Unknown morph type' in call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's2.w1.m2', 'type': 'sufix'})
     assert 'Give form and/or type' in call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's2.w1.m2'})
-    # Applied as one metadata patch each; a rewrite of the chain supersedes both.
+    # Applied as ONE metadata patch on the morpheme (the two ops merge into
+    # one bulk entry); a rewrite of the chain supersedes both.
     w.ops[1]['form'] = 'är'
     c = w.client
     execute_plan(c, w.ops, source='s', label='l')
-    assert ('tokens', 'patch_metadata', ('m-4b', {'morphType': None}), {}) in c.log
-    assert ('tokens', 'patch_metadata', ('m-4b', {'form': 'är'}), {}) in c.log
+    assert ('tokens', 'patch_metadata', ('m-4b', {'form': 'är', 'morphType': None}), {}) in c.log
     out, notes = normalize_ops(w.ops + [{'kind': 'set_analysis', 'word_id': 'w-4', 'text_id': 't', 'begin': 18, 'end': 24,
                                          'morpheme_layer_id': 'ml', 'existing': [{'id': 'm-4a', 'span_ids': []}, {'id': 'm-4b', 'span_ids': []}],
                                          'morphemes': [{'form': 'Gamar', 'fields': []}], 'label': ''}])

@@ -373,8 +373,7 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps) -> D
                 if span_id and value == '':
                     drop('spans', span_id)
                 elif span_id:
-                    b.add(lambda sid=span_id, v=value: client.spans.update(sid, v))
-                    b.add(lambda sid=span_id: client.spans.patch_metadata(sid, restamp()))
+                    b.update('spans', span_id, value=value, metadata=restamp())
                 elif value != '':
                     b.add(lambda o=op, v=value: client.spans.create(o['layer_id'], [o['token_id']], v, stamp()))
                 else:
@@ -416,7 +415,7 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps) -> D
                 counts['analyses'] += 1
 
             elif kind == 'set_orthography':
-                b.add(lambda o=op: client.tokens.patch_metadata(o['word_id'], {o['key']: o.get('value') or None}))
+                b.update('tokens', op['word_id'], metadata={op['key']: op.get('value') or None})
                 counts['orthography values'] += 1
 
             elif kind == 'respell':
@@ -438,7 +437,7 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps) -> D
                 counts['unlinks'] += 1
 
             elif kind == 'set_morph_type':
-                b.add(lambda o=op: client.tokens.patch_metadata(o['morpheme_id'], {'morphType': o.get('morph_type') or None}))
+                b.update('tokens', op['morpheme_id'], metadata={'morphType': op.get('morph_type') or None})
                 counts['morpheme types'] += 1
 
             elif kind == 'add_comment':
@@ -495,7 +494,7 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps) -> D
                 counts['renamed documents'] += 1
 
             elif kind == 'set_morpheme_form':
-                b.add(lambda o=op: client.tokens.patch_metadata(o['morpheme_id'], {'form': o['form']}))
+                b.update('tokens', op['morpheme_id'], metadata={'form': op['form']})
                 counts['morpheme forms'] += 1
 
             elif kind == 'split_word':
@@ -541,11 +540,11 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps) -> D
 
             elif kind == 'confirm':
                 for tid in op.get('token_ids') or []:
-                    b.add(lambda i=tid: client.tokens.patch_metadata(i, CONFIRM))
+                    b.update('tokens', tid, metadata=CONFIRM)
                 for lid in op.get('link_ids') or []:
                     b.add(lambda i=lid: client.vocab_links.patch_metadata(i, CONFIRM))
                 for sid in op.get('span_ids') or []:
-                    b.add(lambda i=sid: client.spans.patch_metadata(i, CONFIRM))
+                    b.update('spans', sid, metadata=CONFIRM)
                 counts['confirmed annotations'] += (len(op.get('token_ids') or []) + len(op.get('link_ids') or [])
                                                     + len(op.get('span_ids') or []))
 

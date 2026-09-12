@@ -324,13 +324,11 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
                     # vouched for. A cleared lemma keeps its null-valued span,
                     # exactly as the editor leaves it (ConlluDocument's
                     # `updateAnnotation`) and as an unlemmatized import writes it.
-                    b.add(lambda sid=span_id: client.spans.update(sid, None))
-                    b.add(lambda sid=span_id: client.spans.patch_metadata(sid, restamp()))
+                    b.update('spans', span_id, value=None, metadata=restamp())
                 elif span_id and value == '':
                     b.add(lambda sid=span_id: client.spans.delete(sid))
                 elif span_id:
-                    b.add(lambda sid=span_id, v=value: client.spans.update(sid, v))
-                    b.add(lambda sid=span_id: client.spans.patch_metadata(sid, restamp()))
+                    b.update('spans', span_id, value=value, metadata=restamp())
                 elif value != '':
                     creating[(op['layer_id'], op['token_id'])] = b.add(
                         lambda o=op, v=value: client.spans.create(
@@ -344,14 +342,13 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
                                                           anchor_label=o.get('anchor_label') or None))
                 counts['comments'] += 1
             elif kind == 'set_deprel':
-                b.add(lambda i=op['relation_id'], v=op['deprel']: client.relations.update(i, v))
-                b.add(lambda i=op['relation_id']: client.relations.patch_metadata(i, restamp()))
+                b.update('relations', op['relation_id'], value=op['deprel'], metadata=restamp())
                 counts['relabeled dependencies'] += 1
             elif kind == 'confirm':
                 if op.get('span_id'):
-                    b.add(lambda i=op['span_id']: client.spans.patch_metadata(i, CONFIRM))
+                    b.update('spans', op['span_id'], metadata=CONFIRM)
                 else:
-                    b.add(lambda i=op['relation_id']: client.relations.patch_metadata(i, CONFIRM))
+                    b.update('relations', op['relation_id'], metadata=CONFIRM)
                 counts['confirmations'] += 1
             elif kind == 'set_words':
                 apply_set_words(client, op, b, stamp)
