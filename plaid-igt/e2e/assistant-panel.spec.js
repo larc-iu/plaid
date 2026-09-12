@@ -110,6 +110,50 @@ test('the panel docks at exactly viewport height', async ({ page }) => {
   expect(cbox.y + cbox.height).toBeLessThanOrEqual(viewport.height);
 });
 
+test('the tab strip stays pinned under the app header, docked or not', async ({ page }) => {
+  // A sticky offset is measured from the scrollport it sticks to, and which
+  // one that IS changes here: normally the page scrolls, but with the panel
+  // docked the content scrolls inside itself, below the app header already.
+  // The strip kept the page's offset and so hung 57px down into the grid,
+  // with rows scrolling through the gap above it.
+  const under = async () => {
+    const header = await page.locator('header.sticky').boundingBox();
+    const strip = await page.locator('div.sticky.z-30').first().boundingBox();
+    return Math.round(strip.y - (header.y + header.height));
+  };
+  await seedAuth(page);
+  await withAssistant(page);
+  // Short, so the fixture's few sentences give the PAGE something to scroll:
+  // undocked, a document that fits leaves the strip in flow and never pins it.
+  await page.setViewportSize({ width: 1280, height: 420 });
+  await analyze(page);
+  await page.locator('.igt-island .igt-token-col').first().waitFor({ state: 'visible' });
+
+  // Far enough that the strip is pinned rather than still in flow, whichever
+  // of the two is the thing that scrolls.
+  const scrollDown = async () => {
+    await page.evaluate(() => {
+      const inner = [...document.querySelectorAll('*')].find((el) => {
+        const cs = getComputedStyle(el);
+        return (
+          (cs.overflowY === 'auto' || cs.overflowY === 'scroll') &&
+          el.scrollHeight > el.clientHeight
+        );
+      });
+      if (inner) inner.scrollTop = 1500;
+      window.scrollTo(0, 1500);
+    });
+    await page.waitForTimeout(400);
+  };
+  await scrollDown();
+  expect(await under(), 'pinned with the page scrolling').toBe(0);
+
+  await page.getByRole('button', { name: 'Assistant', exact: true }).click();
+  await expect(page.locator('aside.border-l')).toBeVisible();
+  await scrollDown();
+  expect(await under(), 'pinned with the content scrolling inside itself').toBe(0);
+});
+
 test("the island's Ask crosses to the panel and names the sentence", async ({ page }) => {
   await seedAuth(page);
   await withAssistant(page);

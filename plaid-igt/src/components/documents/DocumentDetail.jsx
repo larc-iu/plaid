@@ -690,8 +690,20 @@ const DocumentEditor = () => {
                 {/* Pinned under the app header: the way back to the project
                     and the way across the document stay in reach however far
                     down a long text you are. Asked for by the first real user
-                    after scrolling back up for both, many times a day. */}
-                <div className="sticky top-[57px] z-30 -mx-4 mb-4 border-b bg-background/95 px-4 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+                    after scrolling back up for both, many times a day.
+
+                    The offset is what it sticks to, and that changes: normally
+                    the PAGE scrolls and 57px clears the app header above it,
+                    but with the assistant docked the content scrolls inside
+                    itself and its scrollport already starts below the header.
+                    Keeping the 57 there stuck the strip 57px down into the
+                    grid, with rows scrolling through the gap above it. Docked,
+                    the offset is NEGATIVE by this container's own top padding
+                    (py-8), because a sticky offset is measured from the
+                    scrollport's padding edge and not from where it starts. */}
+                <div
+                  className={`sticky ${docked ? '-top-8' : 'top-[57px]'} z-30 -mx-4 mb-4 border-b bg-background/95 px-4 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80`}
+                >
                   <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
                     {crumbs}
                     <TabsList>
