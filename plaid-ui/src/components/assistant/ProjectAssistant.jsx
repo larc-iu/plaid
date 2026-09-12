@@ -1,21 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Send,
-  RotateCcw,
-  Check,
-  X,
-  Loader2,
-  Plus,
-  Trash2,
-  Maximize2,
-  PanelRightClose,
-} from 'lucide-react';
+import { Send, RotateCcw, Check, X, Loader2, Plus, Maximize2, PanelRightClose } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { assistantsAmong, strandedAssistants } from './useAssistantAvailable.js';
 import { Button } from '../ui/button.jsx';
 import { Textarea } from '../ui/textarea.jsx';
 import { Badge } from '../ui/badge.jsx';
-import { Switch } from '../ui/switch.jsx';
 import { cn } from '../../lib/utils.js';
 import { notifyError } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
@@ -23,7 +12,13 @@ import { AssistantMarkdown } from './AssistantMarkdown.jsx';
 import { rewindForRetry } from './resume.js';
 import { AssistantMark } from './PlaidMarks.jsx';
 import { NEARLY_FULL, fullness, latestUsage, totalSpend, usageLabel, usageTitle } from './usage.js';
-import { AssistantPicker, ConversationRow, ExportMenu } from './ConversationList.jsx';
+import {
+  AllProjectsSwitch,
+  AssistantPicker,
+  ConversationHistory,
+  ConversationRows,
+  ExportMenu,
+} from './ConversationList.jsx';
 import { Turn } from './Turn.jsx';
 import {
   attachJob,
@@ -396,6 +391,12 @@ export const ProjectAssistant = ({
     }
   }, [urlConv]);
 
+  // Which project this has already picked a conversation for. The effect below
+  // re-runs whenever the list widens to every project, and only its READ
+  // should: picking again would choose the newest thread anywhere, which
+  // neither surface here can open.
+  const resumed = useRef(null);
+
   // On mount: a new conversation, the way a chat app opens; the sidebar has
   // the rest. Within one page session, coming back to the tab returns to the
   // conversation that was open when it was left (the tab links drop the
@@ -403,9 +404,14 @@ export const ProjectAssistant = ({
   useEffect(() => {
     const remembered = lastOpen.get(openKey);
     loadList().then((metas) => {
+      if (resumed.current === openKey) return;
+      resumed.current = openKey;
       if (urlConvRef.current) return;
-      // Only a conversation that still exists (it may have been deleted meanwhile).
-      if (remembered && (jobFor(remembered) || metas.some((m) => m.id === remembered))) {
+      // Only a conversation of THIS project, whose keys are the only ones this
+      // screen reads, and only one that still exists (it may have been deleted
+      // meanwhile).
+      const mine = metas.filter((m) => !m.projectId || m.projectId === projectId);
+      if (remembered && (jobFor(remembered) || mine.some((m) => m.id === remembered))) {
         setUrlConvRef.current(remembered, { replace: true });
         return;
       }
@@ -414,14 +420,14 @@ export const ProjectAssistant = ({
       // each time would mean going to find what you were in the middle of. The
       // TAB still opens new, the way a chat app does, because its sidebar puts
       // every thread one click away.
-      if (panel && metas.length) setUrlConvRef.current(metas[0].id, { replace: true });
+      if (panel && mine.length) setUrlConvRef.current(mine[0].id, { replace: true });
     });
     return () => {
       const a = activeRef.current;
       if (a && !a.draft) lastOpen.set(openKey, a.id);
       else lastOpen.delete(openKey);
     };
-  }, [loadList, openKey, panel]);
+  }, [loadList, openKey, panel, projectId]);
 
   // Reflect jobs as they progress and finish, for whichever conversation is
   // shown; a finished job always refreshes the sidebar entry.
@@ -636,6 +642,18 @@ export const ProjectAssistant = ({
   const rows = active?.draft
     ? [{ id: active.id, title: 'New conversation', draft: true }, ...convs]
     : convs;
+  // What either surface needs to draw that list: the rail in the tab, the
+  // header's popover in the panel.
+  const listProps = {
+    rows,
+    activeId: active?.id,
+    projectId,
+    projectNames,
+    opening,
+    loading: loadingList,
+    hrefFor: (m) => adapter.convHref(m.projectId || projectId, m.id),
+    onDelete: remove,
+  };
   const pendingPlan = display.some((d) => d.plan && d.status === null);
   // Nothing is running for this conversation, so anything left mid-flight in
   // it was lost rather than in progress.
@@ -666,63 +684,13 @@ export const ProjectAssistant = ({
               <Plus className="h-4 w-4" />
             </Button>
           </div>
-          {/* A conversation belongs to the project it was started in, and a
-              reader who remembers discussing something does not always
-              remember where. A row from elsewhere links into that project's
-              own tab, since that is the only place its assistant can answer. */}
-          <label className="flex items-center gap-2 border-b px-3 py-1.5 text-[11px] text-muted-foreground">
-            <Switch
-              checked={allProjects}
-              onCheckedChange={setAllProjects}
-              aria-label="All projects"
-            />
-            All projects
-          </label>
+          <AllProjectsSwitch
+            checked={allProjects}
+            onCheckedChange={setAllProjects}
+            className="border-b px-3 py-1.5"
+          />
           <div className="flex-1 overflow-y-auto p-1.5">
-            {loadingList && !rows.length ? (
-              <div className="px-2 py-3 text-xs text-muted-foreground">Loading…</div>
-            ) : (
-              rows.map((m) => (
-                <div
-                  key={m.id}
-                  className={cn(
-                    'group flex items-start gap-2 rounded-md px-2 py-1.5 text-sm',
-                    active?.id === m.id ? 'bg-accent text-accent-foreground' : 'hover:bg-muted',
-                  )}
-                >
-                  {m.draft ? (
-                    <div className="min-w-0 flex-1 text-left">
-                      <ConversationRow m={m} opening={opening} />
-                    </div>
-                  ) : (
-                    <Link
-                      to={adapter.convHref(m.projectId || projectId, m.id)}
-                      className="min-w-0 flex-1 text-left"
-                    >
-                      <ConversationRow
-                        m={m}
-                        opening={opening}
-                        elsewhere={
-                          m.projectId && m.projectId !== projectId
-                            ? projectNames.get(m.projectId) || 'Another project'
-                            : null
-                        }
-                      />
-                    </Link>
-                  )}
-                  {!m.draft && (
-                    <button
-                      type="button"
-                      onClick={() => remove(m.id)}
-                      title="Delete conversation"
-                      className="mt-0.5 rounded p-0.5 text-muted-foreground opacity-0 hover:text-destructive focus:opacity-100 group-hover:opacity-100"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-              ))
-            )}
+            <ConversationRows {...listProps} />
           </div>
           <p className="border-t px-3 py-2 text-[11px] text-muted-foreground">
             Conversations are private to you and saved to your account.
@@ -810,6 +778,12 @@ export const ProjectAssistant = ({
             <UsageMeter usage={usage} spend={spend} />
             {panel && (
               <>
+                <ConversationHistory
+                  {...listProps}
+                  allProjects={allProjects}
+                  onAllProjects={setAllProjects}
+                  onPick={(id) => setUrlConv(id)}
+                />
                 <Button
                   type="button"
                   variant="ghost"

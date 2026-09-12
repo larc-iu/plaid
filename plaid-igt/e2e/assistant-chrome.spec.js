@@ -408,6 +408,41 @@ test('the tab can list conversations from every project, and links them there', 
   );
 });
 
+test('the panel opens a past conversation without leaving the screen', async ({ page }) => {
+  // The panel is where the assistant lives now, so the list of past
+  // conversations cannot live only in the tab: going there to find one means
+  // leaving the annotation the question was about. It hangs off the panel's
+  // own header instead, and picking a thread does not navigate.
+  await seedAuth(page);
+  await withAssistant(page);
+  await seedConversation(
+    'chrome archived thread',
+    'the archived question',
+    '2021-01-01T00:00:00.000Z',
+  );
+
+  await analyze(page, documentId);
+  await expect(page.locator('.igt-sentence').first()).toBeVisible();
+  await openDock(page);
+  const panel = panelOf(page);
+  // From a blank conversation, so what the panel shows next can only have come
+  // from the list.
+  await panel.getByTitle('New conversation').click();
+  await expect(panel.getByText('the archived question')).toHaveCount(0);
+
+  const url = page.url();
+  await panel.getByTitle('Past conversations').click();
+  const history = page.getByRole('dialog');
+  await history.getByText('chrome archived thread').click();
+  await expect(panel.getByText('the archived question')).toBeVisible();
+  // The popover closes on the way: it takes a third of the panel's height and
+  // covers the thread it was asked to open.
+  await expect(history).toHaveCount(0);
+  // Still on the document. The conversation is not in this URL because the URL
+  // belongs to the screen behind the panel.
+  expect(page.url()).toBe(url);
+});
+
 test('a turn running in another project is not mistaken for one here', async ({ page }) => {
   // Navigating never stops a turn: the record gets the outcome either way. But
   // once the panel stopped being unmounted on a navigation, a job in another

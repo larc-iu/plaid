@@ -1,6 +1,19 @@
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { timeAgo } from '../../utils/formatTime.js';
-import { MessageSquare, Download, Copy, FileDown, FileText, FolderOpen } from 'lucide-react';
+import {
+  MessageSquare,
+  Download,
+  Copy,
+  FileDown,
+  FileText,
+  FolderOpen,
+  History,
+  Trash2,
+} from 'lucide-react';
 import { Button } from '../ui/button.jsx';
+import { Switch } from '../ui/switch.jsx';
+import { Popover, PopoverTrigger, PopoverContent } from '../ui/popover.jsx';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/select.jsx';
 import {
   DropdownMenu,
@@ -58,6 +71,114 @@ export const ConversationRow = ({ m, opening, elsewhere = null }) => {
         </div>
       )}
     </>
+  );
+};
+
+// Whether the list reaches past the project on screen. A conversation belongs
+// to the project it was started in, and a reader who remembers discussing
+// something does not always remember where.
+export const AllProjectsSwitch = ({ checked, onCheckedChange, className }) => (
+  <label className={cn('flex items-center gap-2 text-[11px] text-muted-foreground', className)}>
+    <Switch checked={checked} onCheckedChange={onCheckedChange} aria-label="All projects" />
+    All projects
+  </label>
+);
+
+// The rows, as the tab's rail and the docked panel's history both draw them.
+//
+// A row from ANOTHER project is a link wherever it appears: only that
+// project's own assistant can answer in that thread, so choosing it is a
+// navigation. A row from this project is a link in the tab, where the
+// conversation is in the URL and so shareable, and a button in the panel,
+// where the URL belongs to the screen behind it. `onPick` is what tells the
+// two apart.
+export const ConversationRows = ({
+  rows,
+  activeId,
+  projectId,
+  projectNames,
+  opening,
+  loading,
+  hrefFor,
+  onPick = null,
+  onDelete,
+}) => {
+  if (loading && !rows.length)
+    return <div className="px-2 py-3 text-xs text-muted-foreground">Loading…</div>;
+  if (!rows.length)
+    return <div className="px-2 py-3 text-xs text-muted-foreground">No conversations yet.</div>;
+  return rows.map((m) => {
+    const other = m.projectId && m.projectId !== projectId ? m.projectId : null;
+    const row = (
+      <ConversationRow
+        m={m}
+        opening={opening}
+        elsewhere={other ? projectNames.get(other) || 'Another project' : null}
+      />
+    );
+    return (
+      <div
+        key={m.id}
+        className={cn(
+          'group flex items-start gap-2 rounded-md px-2 py-1.5 text-sm',
+          activeId === m.id ? 'bg-accent text-accent-foreground' : 'hover:bg-muted',
+        )}
+      >
+        {m.draft ? (
+          <div className="min-w-0 flex-1 text-left">{row}</div>
+        ) : onPick && !other ? (
+          <button type="button" onClick={() => onPick(m.id)} className="min-w-0 flex-1 text-left">
+            {row}
+          </button>
+        ) : (
+          <Link to={hrefFor(m)} className="min-w-0 flex-1 text-left">
+            {row}
+          </Link>
+        )}
+        {!m.draft && (
+          <button
+            type="button"
+            onClick={() => onDelete(m.id)}
+            title="Delete conversation"
+            className="mt-0.5 rounded p-0.5 text-muted-foreground opacity-0 hover:text-destructive focus:opacity-100 group-hover:opacity-100"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+    );
+  });
+};
+
+// Past conversations in the docked panel. The panel is a third of a screen
+// wide at most, so the list hangs off its header rather than standing beside
+// the chat, and closes as soon as a thread is chosen. The tab keeps the rail:
+// it has the room, and reading an old conversation is what it is for.
+export const ConversationHistory = ({ allProjects, onAllProjects, onPick, ...list }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="ghost" size="sm" title="Past conversations">
+          <History className="h-4 w-4" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-[22rem] max-w-[calc(100vw-1.5rem)] p-0">
+        <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
+          <span className="text-sm font-medium">Conversations</span>
+          <AllProjectsSwitch checked={allProjects} onCheckedChange={onAllProjects} />
+        </div>
+        <div className="max-h-[60vh] overflow-y-auto p-1.5">
+          <ConversationRows
+            {...list}
+            onPick={(id) => {
+              setOpen(false);
+              onPick(id);
+            }}
+          />
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 };
 
