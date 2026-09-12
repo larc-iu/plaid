@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { IgtDocument } from './IgtDocument.js';
 import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
+import { planMorphTypeSync } from './igtReconcile.js';
 
 // Build a doc wired to a fake client. `raw`/`project`/`vocabularies` overridable.
 function makeDoc({ raw, project, vocabularies, client } = {}) {
@@ -835,6 +836,87 @@ describe('vocab links (read path must reflect optimistic write)', () => {
     expect(doc.sentences[0].tokens.map((t) => t.vocabItem?.form)).toEqual(['CAT', 'CAT']);
     // Nothing left to link is not an operation.
     expect(await doc.linkVocabMany(['w-1'], 'vi-1')).toBe(false);
+  });
+
+  // The morph-type cache: a morpheme linked to a typed entry takes the entry's
+  // type on the spot. It used to be left stale, and reconcile-on-open patched
+  // it the next time anyone opened the document, which is how an audit entry
+  // appeared for a document nobody had touched that session.
+  const typedVocab = () => ({
+    v1: {
+      id: 'v1',
+      name: 'Lexicon',
+      items: [{ id: 'vi-1', form: 'CAT', metadata: { morphType: 'stem' } }],
+      vocabLinks: [],
+    },
+  });
+
+  it('linkVocab writes the entry type onto the morpheme, in the same operation', async () => {
+    const doc = makeDoc({
+      project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
+      vocabularies: typedVocab(),
+    });
+    expect(await doc.linkVocab('m-1', 'vi-1')).toBe(true);
+
+    const patches = doc.client.calls.filter((c) => c.kind === 'tokens.patchMetadata');
+    expect(patches).toHaveLength(1);
+    expect(patches[0].args).toEqual(['m-1', { morphType: 'stem' }]);
+    // One operation, so one audit entry rather than a link now and a repair later.
+    expect(doc.client.calls.filter((c) => c.kind === 'submitBatch')).toHaveLength(1);
+    // And reconcile has nothing left to do.
+    expect(planMorphTypeSync(doc.sentences)).toEqual([]);
+  });
+
+  it('linkVocab leaves a WORD alone, since a word has no morph type', async () => {
+    const doc = makeDoc({
+      project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
+      vocabularies: typedVocab(),
+    });
+    expect(await doc.linkVocab('w-2', 'vi-1')).toBe(true);
+    expect(doc.client.calls.filter((c) => c.kind === 'tokens.patchMetadata')).toHaveLength(0);
+  });
+
+  it('linkVocab writes no cache when the morpheme already agrees', async () => {
+    const raw = buildRawDoc({
+      morphemes: [
+        {
+          id: 'm-1',
+          text: 'text-1',
+          begin: 0,
+          end: 3,
+          precedence: 1,
+          metadata: { morphType: 'stem' },
+        },
+      ],
+    });
+    const doc = makeDoc({
+      raw,
+      project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
+      vocabularies: typedVocab(),
+    });
+    expect(await doc.linkVocab('m-1', 'vi-1')).toBe(true);
+    expect(doc.client.calls.filter((c) => c.kind === 'tokens.patchMetadata')).toHaveLength(0);
+  });
+
+  it('linkVocabMany writes the cache for every morpheme it links', async () => {
+    const raw = buildRawDoc({
+      morphemes: [
+        { id: 'm-1', text: 'text-1', begin: 0, end: 3, precedence: 1, metadata: {} },
+        { id: 'm-2', text: 'text-1', begin: 4, end: 7, precedence: 1, metadata: {} },
+      ],
+    });
+    const doc = makeDoc({
+      raw,
+      project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
+      vocabularies: typedVocab(),
+    });
+    expect(await doc.linkVocabMany(['m-1', 'm-2'], 'vi-1')).toBe(true);
+
+    const patched = doc.client.calls
+      .filter((c) => c.kind === 'tokens.patchMetadata')
+      .map((c) => c.args[0]);
+    expect(patched.sort()).toEqual(['m-1', 'm-2']);
+    expect(planMorphTypeSync(doc.sentences)).toEqual([]);
   });
 
   it('unlinkVocab removes the vocab item from the token', async () => {

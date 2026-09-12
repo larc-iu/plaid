@@ -9,10 +9,48 @@
 import { stampInferred, isMachine, mergeMetadata } from '@larc-iu/plaid-client';
 import { isValidMorphType } from '../affixMarkers.js';
 import { isVirtualMorphemeId } from '../virtualMorpheme.js';
+import { lexiconView } from '../vocabDictionary.js';
 
 // Link replacements emit 2 ops apiece (delete + create); 400 per batch keeps
 // each atomic batch comfortably under plaid-core's 1000-op cap.
 const REPLACE_CHUNK = 400;
+
+/**
+ * The morph-type cache a link has to keep in step.
+ *
+ * A morpheme linked to a lexicon entry goes by the ENTRY's type (its own, else
+ * its headword's), and `derive` reads the entry over the token's cached
+ * `metadata.morphType`. The cache is what unlinked morphemes and consumers that
+ * never load the lexicon read, so a link that leaves it stale is a repair
+ * waiting to happen: reconcile-on-open syncs it the next time anyone opens the
+ * document, under a label that says nothing about what changed. Writing it with
+ * the link is the same move `setVocabItemMorphType` already makes when an
+ * entry's type changes.
+ *
+ * Returns a `typeFor(tokenId, vocabId, itemId)` that answers the type to write,
+ * or null when there is nothing to write: the token is a WORD rather than a
+ * morpheme (a word has no morph type), the entry chain resolves to no type, or
+ * the cache already agrees. One lexicon view per vocabulary, built on demand,
+ * since a bulk link can name hundreds of tokens across a handful of entries.
+ */
+const morphTypeCache = (doc) => {
+  const morphemes = new Map((doc.layerInfo.morphemeTokenLayer?.tokens || []).map((m) => [m.id, m]));
+  const views = new Map();
+  const viewFor = (vocabId) => {
+    if (!views.has(vocabId)) {
+      const vocab = doc._vocabularies?.[vocabId];
+      views.set(vocabId, vocab ? lexiconView(vocab.items || []) : null);
+    }
+    return views.get(vocabId);
+  };
+  return (tokenId, vocabId, itemId) => {
+    const token = morphemes.get(tokenId);
+    if (!token) return null;
+    const type = viewFor(vocabId)?.morphTypeOf(itemId) ?? null;
+    if (!type) return null;
+    return (token.metadata?.morphType ?? null) === type ? null : type;
+  };
+};
 
 // Locate the existing single-token vocab link for `tokenId` across all
 // vocabularies. By convention there is at most one.
@@ -59,17 +97,17 @@ export const vocabMutations = {
     let creates = []; // { tokenId, item }
     let replaces = []; // { tokenId, item, priorLinkId }
     for (const p of proposals || []) {
-      const { item } = findVocabForItem(this._vocabularies, p.vocabItemId);
+      const { vocab, item } = findVocabForItem(this._vocabularies, p.vocabItemId);
       if (!item) continue;
       const { link } = findPriorLink(this._vocabularies, p.tokenId);
       if (!link) {
-        creates.push({ tokenId: p.tokenId, item });
+        creates.push({ tokenId: p.tokenId, item, vocabId: vocab.id });
         continue;
       }
       // Replace only machine-unverified links, and only when the item changes.
       if (!isMachine(link.metadata)) continue;
       if (link.vocabItem?.id === item.id) continue;
-      replaces.push({ tokenId: p.tokenId, item, priorLinkId: link.id });
+      replaces.push({ tokenId: p.tokenId, item, vocabId: vocab.id, priorLinkId: link.id });
     }
     if (!creates.length && !replaces.length) return 0;
     const metadata = stampInferred(provSource);
@@ -107,6 +145,23 @@ export const vocabMutations = {
           for (const r of chunk) {
             this._client.vocabLinks.delete(r.priorLinkId);
             this._client.vocabLinks.create(r.item.id, [r.tokenId], metadata);
+          }
+        });
+      }
+      // The morph-type caches those links just made stale, chunked like the
+      // replacements above. A link whose token is a word, or whose entry chain
+      // has no type, contributes nothing.
+      const typeFor = morphTypeCache(this);
+      const cachePatches = [];
+      for (const x of [...creates, ...replaces]) {
+        const type = typeFor(x.tokenId, x.vocabId, x.item.id);
+        if (type) cachePatches.push({ tokenId: x.tokenId, type });
+      }
+      for (let i = 0; i < cachePatches.length; i += REPLACE_CHUNK) {
+        const chunk = cachePatches.slice(i, i + REPLACE_CHUNK);
+        await this._client.batched(async () => {
+          for (const c of chunk) {
+            this._client.tokens.patchMetadata(c.tokenId, { morphType: c.type });
           }
         });
       }
@@ -160,13 +215,22 @@ export const vocabMutations = {
         ? await this.materializeMorphemeId(tokenId)
         : tokenId;
       if (!targetTokenId) throw new Error(`Token ${tokenId} not found`);
+      // Resolved AFTER materializing, since a morpheme written a moment ago is
+      // the one being linked.
+      const cachedType = morphTypeCache(this)(targetTokenId, targetVocabId, vocabItemId);
       let newLinkId;
-      if (priorLink) {
+      if (priorLink || cachedType) {
+        // Indexed, not `results.at(-1)`: the cache patch rides at the end, so
+        // the create is no longer the last op.
+        const createAt = priorLink ? 1 : 0;
         const results = await this._client.batched(async () => {
-          this._client.vocabLinks.delete(priorLink.id);
+          if (priorLink) this._client.vocabLinks.delete(priorLink.id);
           this._client.vocabLinks.create(vocabItemId, [targetTokenId], stamp || undefined);
+          if (cachedType) {
+            this._client.tokens.patchMetadata(targetTokenId, { morphType: cachedType });
+          }
         });
-        newLinkId = results[results.length - 1]?.body?.id;
+        newLinkId = results[createAt]?.body?.id;
       } else {
         const result = await this._client.vocabLinks.create(
           vocabItemId,
@@ -195,6 +259,10 @@ export const vocabMutations = {
             ...(stamp ? { metadata: stamp } : {}),
           });
         }
+        if (cachedType) {
+          const m = (info.morphemeTokenLayer?.tokens || []).find((x) => x.id === targetTokenId);
+          if (m) m.metadata = { ...(m.metadata || {}), morphType: cachedType };
+        }
       });
     });
   },
@@ -222,23 +290,38 @@ export const vocabMutations = {
       // so their ids come back. A word reading roa is a roa to link.
       const targetIds = (await this.materializeMorphemeIds(ids)).filter(Boolean);
       if (!targetIds.length) return;
+      // One entry, so one resolved type, but each token answers for its own
+      // cache: a word in the set takes none, and a morpheme that already agrees
+      // is left alone.
+      const typeFor = morphTypeCache(this);
+      const cacheIds = targetIds.filter((id) => typeFor(id, targetVocab.id, vocabItemId));
+      const cachedType = cacheIds.length ? typeFor(cacheIds[0], targetVocab.id, vocabItemId) : null;
       const results = await this._client.batched(async () => {
         for (const id of targetIds) this._client.vocabLinks.create(vocabItemId, [id], stamp);
+        // After the creates, so the link result indices below stay positional.
+        for (const id of cacheIds) this._client.tokens.patchMetadata(id, { morphType: cachedType });
       });
       const newIds = results.map((r) => r?.body?.id ?? r?.id ?? null);
       const itemSnapshot = { id: vocabItem.id, layer: targetVocab.id, form: vocabItem.form };
       this._applyRawPatch((next, info, vocabs) => {
         const tv = vocabs[targetVocab.id];
-        if (!tv) return;
-        if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
-        targetIds.forEach((tokenId, i) => {
-          tv.vocabLinks.push({
-            id: newIds[i],
-            tokens: [tokenId],
-            vocabItem: itemSnapshot,
-            ...(stamp ? { metadata: stamp } : {}),
+        if (tv) {
+          if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
+          targetIds.forEach((tokenId, i) => {
+            tv.vocabLinks.push({
+              id: newIds[i],
+              tokens: [tokenId],
+              vocabItem: itemSnapshot,
+              ...(stamp ? { metadata: stamp } : {}),
+            });
           });
-        });
+        }
+        if (cachedType) {
+          const cached = new Set(cacheIds);
+          (info.morphemeTokenLayer?.tokens || []).forEach((m) => {
+            if (cached.has(m.id)) m.metadata = { ...(m.metadata || {}), morphType: cachedType };
+          });
+        }
       });
     });
   },
@@ -577,13 +660,30 @@ export const vocabMutations = {
       const createResult = await this._client.vocabItems.create(vocabId, form, metadataArg);
       const newItemId = createResult?.id || createResult;
 
+      // A brand-new entry has no headword to inherit from, so its type is
+      // whatever `metadata` carried. Today's caller carries none and this is a
+      // no-op, but the cache rule holds on every link path, not just the ones
+      // that exercise it now.
+      const newType =
+        typeof metadata?.morphType === 'string' && metadata.morphType !== ''
+          ? metadata.morphType
+          : null;
+      const isMorpheme = (this.layerInfo.morphemeTokenLayer?.tokens || []).some(
+        (m) => m.id === targetTokenId,
+      );
+      const cachedType = isMorpheme ? newType : null;
+
       let newLinkId;
-      if (priorLink) {
+      if (priorLink || cachedType) {
+        const createAt = priorLink ? 1 : 0;
         const results = await this._client.batched(async () => {
-          this._client.vocabLinks.delete(priorLink.id);
+          if (priorLink) this._client.vocabLinks.delete(priorLink.id);
           this._client.vocabLinks.create(newItemId, [targetTokenId], stamp);
+          if (cachedType) {
+            this._client.tokens.patchMetadata(targetTokenId, { morphType: cachedType });
+          }
         });
-        newLinkId = results[results.length - 1]?.body?.id;
+        newLinkId = results[createAt]?.body?.id;
       } else {
         const linkResult = await this._client.vocabLinks.create(newItemId, [targetTokenId], stamp);
         newLinkId = linkResult?.id || linkResult;
@@ -612,6 +712,10 @@ export const vocabMutations = {
             vocabItem: { id: newItem.id, form: newItem.form, metadata: newItem.metadata },
             ...(stamp ? { metadata: stamp } : {}),
           });
+        }
+        if (cachedType) {
+          const m = (info.morphemeTokenLayer?.tokens || []).find((x) => x.id === targetTokenId);
+          if (m) m.metadata = { ...(m.metadata || {}), morphType: cachedType };
         }
       });
     });
