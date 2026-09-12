@@ -10,7 +10,8 @@
 //
 // Run: node e2e/bugbash/astral-ud.mjs   (server on :8085, admin a@b.com;
 // needs node >= 20 — `nvm use 24.1.0`)
-import { PlaidClient, ROLES, cpLength, cpSlice } from '@larc-iu/plaid-client';
+import { PlaidClient, cpLength, cpSlice } from '@larc-iu/plaid-client';
+import { createUdProject } from '../../src/domain/udProjectSetup.js';
 import { ConlluDocument } from '../../src/domain/ConlluDocument.js';
 import { basicTokenize } from '../../src/utils/basicTokenize.js';
 
@@ -25,46 +26,13 @@ const ranges = (tokens) =>
   [...tokens].sort((a, b) => a.begin - b.begin).map((t) => [t.begin, t.end]);
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
-// Build a full UD project (same 8-batch sequence as ProjectForm.jsx).
-async function buildUdProject(client, name) {
-  const project = await client.projects.create(name);
-  const pid = project.id;
-  const textLayer = await client.textLayers.create(pid, 'Text');
-  client.beginBatch();
-  client.textLayers.setConfig(textLayer.id, 'plaid', 'role', ROLES.BASELINE);
-  client.tokenLayers.create(textLayer.id, 'Sentences', 'partitioning');
-  const b3 = await client.submitBatch();
-  const sentId = b3[1].body.id;
-  client.beginBatch();
-  client.tokenLayers.setConfig(sentId, 'plaid', 'role', ROLES.SENTENCE);
-  client.tokenLayers.create(textLayer.id, 'Words', 'non-overlapping', sentId);
-  const b4 = await client.submitBatch();
-  const wordId = b4[1].body.id;
-  client.beginBatch();
-  client.tokenLayers.setConfig(wordId, 'plaid', 'role', ROLES.WORD);
-  client.tokenLayers.create(textLayer.id, 'Morphemes', 'any', wordId);
-  const b5 = await client.submitBatch();
-  const morphId = b5[1].body.id;
-  const SPANS = [
-    ['Form', 'form'],
-    ['Lemma', 'lemma'],
-    ['UPOS', 'upos'],
-    ['XPOS', 'xpos'],
-    ['Features', 'features'],
-  ];
-  client.beginBatch();
-  client.tokenLayers.setConfig(morphId, 'plaid', 'role', ROLES.SYNTACTIC_WORD);
-  SPANS.forEach(([n]) => client.spanLayers.create(morphId, n));
-  const b6 = await client.submitBatch();
-  const spanIds = SPANS.map((_, i) => b6[1 + i].body.id);
-  client.beginBatch();
-  SPANS.forEach(([, key], i) => client.spanLayers.setConfig(spanIds[i], 'ud', key, true));
-  client.relationLayers.create(spanIds[1], 'Dependency Relations');
-  const b7 = await client.submitBatch();
-  const relId = b7[b7.length - 1].body.id;
-  await client.relationLayers.setConfig(relId, 'ud', 'dependency', true);
-  return project;
-}
+// The project comes from `createUdProject`, the SAME function the New Project
+// modal calls. This file used to rebuild the layers by hand, which `e2e/README.md`
+// forbids and `udProjectSetup.js` was written to prevent: the hand copy had no
+// `config.plaid.preserveOnSplit`, so scenarios C and D exercised splits on a
+// shape no real project has, and it read batch results BY INDEX, which is the
+// exact fragility that broke project creation once when a config op shifted
+// every create down a slot.
 
 async function freshDoc(client, projectId, name) {
   const d = await client.documents.create(projectId, name);
@@ -72,7 +40,7 @@ async function freshDoc(client, projectId, name) {
 }
 
 const client = await PlaidClient.login(API, 'a@b.com', 'password');
-const project = await buildUdProject(client, `bugbash-astral-ud-${Date.now()}`);
+const project = await createUdProject(client, `bugbash-astral-ud-${Date.now()}`);
 console.log(`project ${project.id}`);
 
 try {

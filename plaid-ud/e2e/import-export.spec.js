@@ -1,11 +1,17 @@
 import { test, expect, seedAuth } from './fixtures.js';
 import { PlaidClient } from '@larc-iu/plaid-client';
 import { getUdLayerInfo } from '../src/utils/udLayerUtils.js';
+import { createUdProject } from '../src/domain/udProjectSetup.js';
 
 // Smoke for the four-tab project page + bulk CoNLL-U import (with `# newdoc id`
 // splitting and per-document reject reporting) + project-wide ZIP export.
-// Drives the real React UI against the live core, importing into the first
-// UD-configured project found and cleaning up the docs it creates.
+// Drives the real React UI against the live core.
+//
+// It SEEDS ITS OWN project and deletes it. It used to import into the first
+// UD-configured project on the server, which on a dev box is whatever someone
+// is working in: here that is the 1172-document EWT treebank. `e2e/README.md`
+// asks a spec to seed and delete its own or leave the shared fixture alone,
+// and this did neither, with a name-prefix cleanup inside a swallowed catch.
 
 const BASE = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5173';
 const NAME_PREFIX = 'e2e_imp_';
@@ -14,30 +20,23 @@ let client;
 
 test.beforeAll(async () => {
   client = await PlaidClient.login('http://localhost:8085', 'a@b.com', 'password');
-  let projects;
-  try {
-    projects = await client.projects.list();
-  } catch {
-    projects = await client.projects.listAll();
-  }
-  for (const p of projects) {
-    const full = await client.projects.get(p.id);
-    if (getUdLayerInfo(full).isConfigured) {
-      PID = p.id;
-      break;
-    }
+  // The same function the New Project modal calls, so the layers are the ones
+  // a real project has.
+  const project = await createUdProject(client, `${NAME_PREFIX}${Date.now()}`);
+  PID = project.id;
+  if (!getUdLayerInfo(await client.projects.get(PID)).isConfigured) {
+    throw new Error('the seeded project did not come back configured for UD');
   }
 });
 
 test.afterAll(async () => {
-  // Remove every document this spec imported (named with the prefix).
+  // The whole project goes, so there is nothing to leave behind. A swallowed
+  // failure here is still worth seeing: litter is what made `search.spec.js`
+  // fail a day ago.
   try {
-    const docs = await client.projects.listDocuments(PID);
-    for (const d of docs) {
-      if (d.name?.startsWith(NAME_PREFIX)) await client.documents.delete(d.id);
-    }
-  } catch {
-    /* best-effort cleanup */
+    if (PID) await client.projects.delete(PID);
+  } catch (e) {
+    console.error('cleanup failed:', e.message);
   }
 });
 

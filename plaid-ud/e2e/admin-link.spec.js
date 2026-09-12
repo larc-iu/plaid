@@ -25,7 +25,11 @@ test('this app no longer has a user administration page of its own', async ({ pa
   await seedAuth(page);
   await page.goto('/#/admin/users');
 
-  // The route is gone, so this is the app's not-found, not a working screen.
+  // The app rendered SOMETHING, so the absences below are the route being gone
+  // and not a blank page or a crashed render, which used to satisfy them both.
+  // What this route actually shows is the login screen, which is also why the
+  // two absences alone proved nothing about user administration.
+  await expect(page.getByText('Plaid UD').first()).toBeVisible({ timeout: 15000 });
   await expect(page.getByRole('heading', { name: 'Create User' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Create user/i })).toHaveCount(0);
 });
@@ -38,5 +42,8 @@ test('a non-admin is not offered it', async ({ page }) => {
     isAdmin: false,
   });
   await page.goto('/#/projects');
+  // As above: something has to be on screen for the link's absence to mean
+  // anything. A /#/projects that failed to load satisfied this on its own.
+  await expect(page.getByText('Plaid UD').first()).toBeVisible({ timeout: 15000 });
   await expect(page.getByRole('link', { name: 'Admin' })).toHaveCount(0);
 });

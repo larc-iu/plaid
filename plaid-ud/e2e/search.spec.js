@@ -11,12 +11,10 @@ let PID;
 
 test.beforeAll(async () => {
   const client = await PlaidClient.login('http://localhost:8085', 'a@b.com', 'password');
-  let projects;
-  try {
-    projects = await client.projects.list();
-  } catch {
-    projects = await client.projects.listAll();
-  }
+  // `projects.list()` already auto-paginates, and there is no `listAll` on the
+  // resource: the fallback that called it would have died with a TypeError
+  // that hid whatever the real failure was.
+  const projects = await client.projects.list();
   for (const p of projects) {
     const full = await client.projects.get(p.id);
     const li = getUdLayerInfo(full);

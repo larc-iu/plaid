@@ -111,7 +111,7 @@ test('a blank sorts as the smallest value, not pinned to the bottom', async ({ p
 
   await header.click();
   const first = await lastChange();
-  test.skip(!first.includes('Never'), 'no untouched project in this database');
+  expect(first, 'the dev database must hold a project nobody has opened').toContain('Never');
   expect(first[0]).toBe('Never');
 
   await header.click();
@@ -140,7 +140,9 @@ test('services collapse to one row per service, with its projects underneath', a
 
   const expanders = page.getByRole('button', { name: 'Expand' });
   const count = await expanders.count();
-  test.skip(count === 0, 'no services registered in this database');
+  // Asserted, not skipped: on a clean database this test used to pass having
+  // exercised nothing, and that is the run where it matters.
+  expect(count, 'the dev database must have a registered service for this test').toBeGreaterThan(0);
 
   // A registration is keyed (project, service id), so the row has to stand for
   // more than itself: opening it reveals the projects behind the count.
@@ -159,7 +161,9 @@ test('an assistant conversation opens whoever had it', async ({ page }) => {
   await expect(page.getByPlaceholder('Search conversations…')).toBeVisible({ timeout: 20000 });
 
   const count = await rows.count();
-  test.skip(count === 0, 'no assistant conversations in this database');
+  // The only coverage of item 13.3, the admin conversation index, so a skip
+  // here leaves that feature untested and says it passed.
+  expect(count, 'the dev database must hold an assistant conversation').toBeGreaterThan(0);
 
   const title = (await rows.first().locator('td').first().innerText()).trim();
   await rows.first().locator('button').first().click();
@@ -183,7 +187,7 @@ test('the activity feed reads newest first and can be searched', async ({ page }
 
   const feedRows = () => page.locator('table').last().locator('tbody tr');
   const before = await feedRows().count();
-  test.skip(before === 0, 'no audit history in this database');
+  expect(before, 'the dev database must have audit history').toBeGreaterThan(0);
 
   await search.fill('zzzznotathing');
   await expect(page.getByText(/No changes match/)).toBeVisible();

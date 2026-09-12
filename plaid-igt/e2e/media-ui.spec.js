@@ -87,13 +87,13 @@ test('the transcript adds a segment at the playhead and Enter saves an edit', as
   await openMedia(page);
   await expect(page.getByText('Timeline', { exact: true })).toBeVisible({ timeout: 15000 });
 
-  // The flow needs a decoded recording (duration > 0). Headless Chromium decodes
-  // the 6s WAV; if it ever does not, say so instead of failing on a hint string.
+  // The flow needs a decoded recording (duration > 0). Headless Chromium
+  // decodes the 6s WAV, so this is an assertion and not a skip: `isVisible()`
+  // does not auto-wait, so a genuine regression in the skip button or in the
+  // hint string, or a slow decode, hid the whole transcript-editing test
+  // behind a skip rather than failing.
   await page.getByRole('button', { name: 'Skip forward 5 seconds' }).click();
-  const hint = page.getByText(/to 0:05\.000 \(playback\)/);
-  if (!(await hint.isVisible().catch(() => false))) {
-    test.skip(true, 'media did not decode in headless Chromium, so the playhead cannot move');
-  }
+  await expect(page.getByText(/to 0:05\.000 \(playback\)/)).toBeVisible({ timeout: 15000 });
 
   // Type what was "heard" and save: the segment runs from 0 to the playhead.
   const fresh = page.getByLabel('New segment text');
