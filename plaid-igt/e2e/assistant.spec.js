@@ -229,8 +229,15 @@ test('the tab opens on a new conversation, and the sidebar links each saved one'
 
 test('approving a plan applies it under the user and settles the card', async ({ page }) => {
   const services = await client.messages.discoverServices(projectId);
-  const assistant = services.find((s) => s.online && (s.extras?.tasks || []).includes('assist'));
-  test.skip(!assistant, 'no assist service online on the fixture project');
+  // Picked the way the app picks it, THIS app's own: a shared project carries
+  // both apps' assistants, and a conversation belongs to the app it was
+  // started in. Asking only whether a service does `assist` found a
+  // `ud:assist:` one here, which the UI then refuses to use, so the skip
+  // guard said an assistant was online while the screen had none.
+  const assistant = services.find(
+    (s) => s.online && (s.extras?.tasks || []).includes('assist') && s.extras?.app === 'igt',
+  );
+  test.skip(!assistant, 'no IGT assist service online on the fixture project');
   const value = `E2E-${Date.now()}`;
   const id = await seedConversation({
     ...planConversation(value),
