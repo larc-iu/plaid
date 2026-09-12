@@ -1,6 +1,6 @@
 """The read-only escape hatch: Plaid's query language, project-scoped.
 
-The model writes a JSON query naming layers by NAME rather than by id; this
+The model writes a JSON query naming layers by NAME rather than by id. This
 module substitutes the ids, pins the scope to the project, runs it under the
 user's own token, and renders the rows. What a layer is CALLED, and how a row
 is named back to the user, are the app's: it supplies a name index and a
@@ -8,7 +8,7 @@ reference index, and everything else here is the same for every app.
 
 The language reference is served on demand (``query_help``) so it costs
 context only when a query is actually being written. ``HELP`` below is the
-half that is true of every project; an app appends its own layer names and
+half that is true of every project. An app appends its own layer names and
 examples.
 """
 

@@ -32,7 +32,7 @@ Reserved item keys, which are never fields:
   homograph   an integer ordering an ENTRY among the entries spelled the same.
               Same fallback.
   examples    a list of {document, token} references. A FLEx import stores
-              {text, translation} entries in the same list; those are text.
+              {text, translation} entries in the same list. Those are text.
 
 A field of type ``item`` holds a reference (or, with ``many``, a list of them)
 to another entry of the SAME vocabulary. References never cross vocabularies.

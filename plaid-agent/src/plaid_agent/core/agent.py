@@ -6,7 +6,7 @@ OpenAI-compatible server via ``--api-base``), keys come from the usual
 environment variables or ``--api-key``.
 
 The transcript is plain OpenAI-shaped message dicts (system message excluded)
-so the browser can hold it between turns and send it back; tool calls and
+so the browser can hold it between turns and send it back. Tool calls and
 results stay in it, which is what lets a later turn build on what an earlier
 one read without re-reading.
 """

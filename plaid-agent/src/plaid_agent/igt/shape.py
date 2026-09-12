@@ -77,7 +77,7 @@ def _combined_values(spans: List[Dict[str, Any]], project) -> str:
 
 
 def _dedup_links(words: List[Word]) -> Dict[str, Any]:
-    """Keep the survivor's own link, else the earliest merged word's; delete the rest."""
+    """Keep the survivor's own link, else the earliest merged word's. Delete the rest."""
     links = [w.link for w in words if w.link]
     if len(links) < 2:
         return {'keep_id': links[0].id if links else None, 'delete_ids': []}
@@ -177,7 +177,7 @@ def t_merge_words(ws: Workspace, document: str, refs) -> str:
 
 
 def t_delete_word(ws: Workspace, document: str, refs) -> str:
-    """PLAN: delete word tokens (the text stays; analysis, values, and links go)."""
+    """PLAN: delete word tokens (the text stays. Analysis, values, and links go)."""
     doc = ws.doc(document)
     staged: List[Dict[str, Any]] = []
     words = [(ref, _need(resolve(doc, ref), Word, ref)) for ref in _refs(refs)]

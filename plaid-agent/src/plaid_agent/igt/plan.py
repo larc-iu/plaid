@@ -2,7 +2,7 @@
 
 The assistant never writes during a chat turn. Its write tools append fully
 resolved operations (ids, not positional references) to a plan that goes back
-to the user with the turn; the user approves it in the UI, and the next
+to the user with the turn. The user approves it in the UI, and the next
 request carries the same operations back for :func:`execute_plan` to apply,
 under one audit-log operation, with the requester's own client.
 
@@ -30,14 +30,14 @@ wire's key recasing):
   create_entry    {vocab_id, form, metadata, key}
   set_entry_field {item_id, field, value}
   set_entry_metadata {item_id, patch}   (reserved keys on an entry: the sense tree, promoted examples, and the
-                   reference repair a delete or merge carries; a null in the patch deletes that key)
+                   reference repair a delete or merge carries, and a null in the patch deletes that key)
   set_doc_metadata {document_id, field, value}
   create_document {name, text, metadata}   (needs the project: text layer, token layers, ignored config)
   merge_entries   {keep_id, remove_id, links: [{link_id, token_id}]}
   delete_entry    {item_id, links: [link_id]}
   rename_entry    {item_id, form}
   rename_document {document_id, name}
-  set_morpheme_form {morpheme_id, form}   (a respelling carried into a morpheme's own form; no restamp, as in Bulk Edit)
+  set_morpheme_form {morpheme_id, form}   (a respelling carried into a morpheme's own form, with no restamp, as in Bulk Edit)
   split_word      {word_id, position, morpheme_ids}          (coincident morphemes deleted first, as the editor does)
   merge_words     {word_id, other_ids, morpheme_ids, spans: [{layer_id, keep_id, value|null, delete_ids}],
                    links: {keep_id, delete_ids}}              (sequential merges, then the lossless span/link dedup)
@@ -51,10 +51,10 @@ wire's key recasing):
   confirm         {span_ids, token_ids, link_ids}   (provConfirmed on material awaiting review, any origin)
   discard_analysis {word_id, link_ids, span_ids, morpheme_ids, reset_first_id|null, renumber: [{id, precedence}]}
   link_phrase     {token_ids: [word ids], item_id|null, new_entry_key|null, existing_link_id|null}
-                  (a multi-word expression: one link over two or more words; unlink with token_ids is one too)
+                  (a multi-word expression: one link over two or more words, and unlink with token_ids is one too)
   set_morph_type  {morpheme_id, morph_type|null}
   add_comment     {entity_type, entity_id, body, anchor_label, document_id}   (unaudited, as every comment)
-  restore_document {document_id, as_of}   (the server's own restore; always a plan of its own)
+  restore_document {document_id, as_of}   (the server's own restore, always a plan of its own)
   delete_word may carry link_ids: multi-word expressions the deletion would leave with one member.
   merge_entries links are [{link_id, token_ids}] so a moved multi-word expression keeps every member.
 

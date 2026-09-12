@@ -2792,7 +2792,7 @@ _IMPL = {
 
 
 def call_tool(ws: Workspace, name: str, args: Dict[str, Any]) -> str:
-    """Run one tool; every failure comes back as text for the model."""
+    """Run one tool. Every failure comes back as text for the model."""
     fn = _IMPL.get(name)
     if not fn:
         return f'Unknown tool {name}'

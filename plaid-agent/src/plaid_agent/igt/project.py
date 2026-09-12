@@ -1,8 +1,8 @@
 """The IGT view of a Plaid project, for the assistant's tools.
 
-Loads a project's IGT substrate (baseline text; sentence, word and morpheme
-token layers found by their shared role; annotation fields by their igt scope;
-orthographies; lexicons) and its documents into small dataclasses, and
+Loads a project's IGT substrate (baseline text. Sentence, word and morpheme
+token layers found by their shared role. Annotation fields by their igt scope;
+orthographies. Lexicons) and its documents into small dataclasses, and
 renders them as the compact text the model reads.
 
 Addresses are positional, so the model never handles ids: ``s3`` is the third

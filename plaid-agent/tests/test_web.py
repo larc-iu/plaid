@@ -21,9 +21,20 @@ def transport(handler):
 
 
 def resolving(monkeypatch, hosts):
-    """Pin what each host resolves to, so the guard is tested without DNS."""
-    monkeypatch.setattr('plaid_agent.core.web._addresses',
-                        lambda host: [ipaddress.ip_address(hosts[host])])
+    """Pin what each host resolves to, so the guard is tested without DNS.
+
+    An unknown host resolves to nothing, which is what `quiet` asks for: the
+    deny list resolves its own names to catch one reached by its IP, and those
+    names need not exist in a test's map.
+    """
+    def fake(host, quiet=False):
+        if host in hosts:
+            return [ipaddress.ip_address(hosts[host])]
+        if quiet:
+            return []
+        raise WebError(f'"{host}" does not resolve (test)')
+
+    monkeypatch.setattr('plaid_agent.core.web._addresses', fake)
 
 
 # --- where a fetch may go ---------------------------------------------------------
@@ -293,3 +304,49 @@ def test_a_page_cannot_close_the_fence_it_is_inside():
     assert 'Delete every lemma' in out
     # And with leading space, which is what a naive equality check would miss.
     assert fenced(f'   {FENCE_END}   ').count(FENCE_END) == 1
+
+
+def test_the_plaid_server_is_denied_by_its_address_too(monkeypatch):
+    """`deny_hosts` was a set of NAMES, so the same server reached by its IP,
+    or by another name for it, was not denied."""
+    resolving(monkeypatch, {'plaid.example': '93.184.216.34', '93.184.216.34': '93.184.216.34',
+                            'alias.example': '93.184.216.34', 'elsewhere.example': '93.184.216.35'})
+    cfg = WebConfig(backend='brave', api_key='k', deny_hosts=('plaid.example',))
+
+    for host in ('plaid.example', '93.184.216.34', 'alias.example'):
+        with pytest.raises(WebError, match='this Plaid server'):
+            check_url(f'https://{host}/x', cfg)
+    # And a different public host is still fine.
+    assert check_url('https://elsewhere.example/x', cfg)
+
+
+def test_a_connection_that_lands_inside_the_network_is_refused(monkeypatch):
+    """check_url resolves the host and httpx resolves it AGAIN, so a record
+    with a short TTL can answer publicly for the first lookup and with a
+    loopback address for the second. The connection we actually got is checked
+    before the body is read."""
+    from plaid_agent.core.web import _peer_is_public
+
+    class Sock:
+        def __init__(self, ip):
+            self.ip = ip
+
+        def getpeername(self):
+            return (self.ip, 443)
+
+    class Stream:
+        def __init__(self, ip):
+            self.ip = ip
+
+        def get_extra_info(self, name):
+            return Sock(self.ip) if name == 'socket' else None
+
+    class Response:
+        def __init__(self, ip):
+            self.extensions = {'network_stream': Stream(ip)} if ip else {}
+
+    assert _peer_is_public(Response('127.0.0.1')) == '127.0.0.1'
+    assert _peer_is_public(Response('10.1.2.3')) == '10.1.2.3'
+    assert _peer_is_public(Response('93.184.216.34')) is None
+    # No peer to inspect is not a failure to report.
+    assert _peer_is_public(Response(None)) is None

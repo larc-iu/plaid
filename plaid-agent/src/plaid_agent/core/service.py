@@ -3,7 +3,7 @@
 One request = one chat turn, or one plan approval, on a conversation that
 lives in the requester's private key/value store on the Plaid server (see
 :mod:`.conversation`). The browser appends the user's message to the record
-and marks the conversation pending before submitting; the service loads the
+and marks the conversation pending before submitting. The service loads the
 record, does the work, and writes the outcome back BEFORE reporting the
 request done. So the reply lands whether or not the browser is still
 watching, and a browser that comes back reads it from the record (or
@@ -21,10 +21,10 @@ Request data:
                      reads the rest of the project stays available.
     approve          instead of a turn: {plan_id, as_human, contributed_by} for a plan
                      in the conversation the user approved (as_human: record the writes
-                     as human-made instead of verified machine-made; contributed_by: the
+                     as human-made instead of verified machine-made. Contributed_by: the
                      approver's user id when they are a contributor, whose approval records
                      the writes as their own unreviewed work). The plan's ops and the
-                     document versions it was made against come from the record; a plan
+                     document versions it was made against come from the record. A plan
                      whose documents changed since is refused.
 
 Result data:
@@ -337,9 +337,11 @@ class BaseAssistantService(BaseService):
 
         def settled(next_conv=None):
             """Clear the pending marker (with the conversation as it stands, or
-            as given) so the card is decidable again."""
+            as given) so the card is decidable again. False when the record
+            refused the write, which `_write` reports rather than raising."""
             c = next_conv or conv
-            self._write(store, conv_id, c, build_meta(meta, conv_id, c, self.service_id, model), request_id)
+            return self._write(store, conv_id, c,
+                               build_meta(meta, conv_id, c, self.service_id, model), request_id)
 
         # A second approval of the same plan (a retried request, a double
         # click) does not write it twice.
@@ -393,7 +395,18 @@ class BaseAssistantService(BaseService):
         self._remember_applied(plan_id)
         notes = counts.pop('notes', [])
         note = f'(note) The plan was approved and applied: {summary}.' + (' ' + '; '.join(notes) if notes else '')
-        settled(settle_plan(conv, index, 'applied', note, as_human=as_human))
+        # `_write` returns False without raising when the conversation has moved
+        # on, so the 'applied' status can fail to reach the record while the
+        # writes have already happened. The only other guard against a second
+        # apply is `_applied_plans`, which lives in this process, so a restart
+        # in between left a card still offering Approve over work already done.
+        # Say so rather than leave it looking undecided.
+        if not settled(settle_plan(conv, index, 'applied', note, as_human=as_human)):
+            response_helper.error(
+                'The changes were applied, but the conversation could not be marked as such: '
+                'someone else wrote to it first. Do not approve this plan again, and check '
+                'recent_changes for what landed.')
+            return
         response_helper.progress(100, 'Done')
         response_helper.complete({
             'kind': 'applied', 'applied': sum(counts.values()),

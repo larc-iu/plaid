@@ -242,7 +242,7 @@ class Corpus:
         return self._ref_names.get(doc_id, doc_id)
 
     def tag(self, doc_id: str) -> str:
-        """The document prefix on a reference; none in a one-document project."""
+        """The document prefix on a reference. None in a one-document project."""
         return f'"{self.ref_name(doc_id)}" ' if len(self.doc_names()) > 1 else ''
 
 

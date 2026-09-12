@@ -13,7 +13,7 @@ short tag, so one user's assistants never read each other's conversations:
     The transcript the model sees (``messages``: OpenAI-shaped, tool calls
     and results included, so a later turn builds on what an earlier one
     read) and what the person sees (``display``: user, assistant, and error
-    items; an assistant item carries its plan, citations, and trace).
+    items, an assistant item carrying its plan, citations, and trace).
 
 The service owns the record while it works: the browser appends the user's
 message and marks the conversation pending, submits the request, and from
@@ -21,7 +21,7 @@ then on only reads. The service loads the record, runs the turn, and writes
 the reply back before reporting the request done, so the answer lands
 whether or not anyone is still watching the request's stream.
 
-Keys are snake_case here and camelCase in the browser; the clients recase
+Keys are snake_case here and camelCase in the browser. The clients recase
 them on the wire, so both sides read one record.
 """
 

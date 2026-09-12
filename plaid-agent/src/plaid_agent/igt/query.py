@@ -1,7 +1,7 @@
 """The read-only escape hatch: Plaid's query language, project-scoped.
 
 The model writes the JSON query with layers named by NAME (field names,
-"words", "morphemes", "sentences", "baseline", a lexicon's name); this module
+"words", "morphemes", "sentences", "baseline", a lexicon's name). This module
 substitutes the ids, pins the scope to the project, runs it under the user's
 own token, and renders rows with positional references where it can. The
 reference the model needs is served on demand by ``query_help`` so it costs

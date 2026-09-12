@@ -26,7 +26,7 @@ import re
 import socket
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
-from typing import Callable, List, Set
+from typing import Callable, List, Optional, Set
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
@@ -61,10 +61,14 @@ class WebConfig:
 
 # --- where a fetch may go -------------------------------------------------------
 
-def _addresses(host: str) -> List[ipaddress._BaseAddress]:
+def _addresses(host: str, quiet: bool = False) -> List[ipaddress._BaseAddress]:
+    """Every address a host resolves to. ``quiet`` returns [] instead of
+    raising, for a host whose failure to resolve is not the caller's subject."""
     try:
         infos = socket.getaddrinfo(host, None)
     except socket.gaierror as e:
+        if quiet:
+            return []
         raise WebError(f'"{host}" does not resolve ({e.strerror or e}).')
     return [ipaddress.ip_address(i[4][0]) for i in infos]
 
@@ -80,7 +84,11 @@ def check_url(url: str, cfg: WebConfig) -> str:
     host = (parts.hostname or '').lower()
     if not host:
         raise WebError(f'"{url}" has no host.')
-    if host in {h.lower() for h in cfg.deny_hosts}:
+    denied = {h.lower() for h in cfg.deny_hosts}
+    # A denied host reached by its IP, or by another name for it, is the same
+    # host: compare what the names RESOLVE to as well as the names themselves.
+    denied_ips = {ip for h in denied for ip in _addresses(h, quiet=True)}
+    if host in denied or (denied_ips and set(_addresses(host)) & denied_ips):
         raise WebError(f'"{host}" is this Plaid server; there is nothing to read there. '
                        'Use the project tools for project data.')
     for ip in _addresses(host):
@@ -88,6 +96,28 @@ def check_url(url: str, cfg: WebConfig) -> str:
             raise WebError(f'"{host}" resolves to {ip}, an address inside the network this service '
                            'runs on. Only public web pages can be read.')
     return urlunsplit((parts.scheme.lower(), parts.netloc, parts.path, parts.query, ''))
+
+
+def _peer_is_public(response) -> Optional[str]:
+    """The address this response actually came from, when it is NOT a public
+    one, else None.
+
+    `check_url` resolves the host itself and httpx resolves it again, so a
+    record with a short TTL can answer publicly for the first lookup and with
+    a loopback or RFC1918 address for the second. Checking the connection we
+    actually got closes that window at the only moment it matters: before the
+    body is read and handed back.
+    """
+    try:
+        stream = response.extensions.get('network_stream')
+        sock = stream.get_extra_info('socket') if stream else None
+        peer = sock.getpeername() if sock else None
+        ip = ipaddress.ip_address(peer[0]) if peer else None
+    except Exception:  # noqa: BLE001 - no peer to check is not a failure to report
+        return None
+    if ip is None or (ip.is_global and not ip.is_multicast):
+        return None
+    return str(ip)
 
 
 def canonical(url: str) -> str:
@@ -180,6 +210,10 @@ def fetch(url: str, cfg: WebConfig, client=None) -> tuple:
                             raise WebError(f'{seen} redirected without saying where.')
                         seen = check_url(str(httpx.URL(seen).join(target)), cfg)
                         continue
+                    bad = _peer_is_public(r)
+                    if bad:
+                        raise WebError(f'{seen} connected to {bad}, an address inside the network '
+                                       'this service runs on. Only public web pages can be read.')
                     if r.status_code >= 400:
                         raise WebError(f'{seen} answered {r.status_code}.')
                     kind = _content_type(r)
