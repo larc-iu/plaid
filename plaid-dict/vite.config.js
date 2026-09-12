@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath, URL } from 'node:url';
 import { aliases, IGT_SRC, PLAID_CLIENT_SRC, PLAID_UI_SRC } from './aliases.js';
-import { plaidUiDeps } from '../plaid-ui/vite.js';
+import { PLAID_UI_PUBLIC, plaidUiDeps } from '../plaid-ui/vite.js';
 
 // Both plaid-client and plaid-igt live OUTSIDE this app's root, and Vite's
 // watcher only covers the root, so edits over there reach no watcher: the dev
@@ -21,6 +21,9 @@ export default defineConfig(({ command }) => ({
   // asset URLs. The dev server stays at '/'. The app uses HashRouter, so client
   // routes live in the URL fragment and don't depend on the base path.
   base: command === 'build' ? '/dict/' : '/',
+  // The tab's mark, and anything else all three apps serve at their root,
+  // lives in plaid-ui rather than in a public/ of our own.
+  publicDir: PLAID_UI_PUBLIC,
   plugins: [
     react(),
     plaidUiDeps(fileURLToPath(new URL('.', import.meta.url))),

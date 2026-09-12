@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="2.5 2.5 19 19">
+  <!--
+    Plaid's mark as a standalone file, for the browser tab and the docs site.
+    All three SPAs serve this one copy: their vite configs point `publicDir` here.
+
+    The bands are `PlaidMark` from plaid-ui/src/components/assistant/PlaidMarks.jsx,
+    which is the artwork's definition and carries the notes on why the colours are
+    fixed and why the geometry must be checked at 14px. If it changes, change this
+    and the hand-written copy in plaid-igt's interlinear editor (assistant.js).
+
+    The viewBox is cropped to the swatch itself. The React mark sits on a 24-unit
+    canvas because it stands in a row of 24-unit icons; a tab has its own padding.
+  -->
+  <defs>
+    <clipPath id="swatch"><rect x="2.5" y="2.5" width="19" height="19" rx="3" /></clipPath>
+  </defs>
+  <g clip-path="url(#swatch)">
+    <rect x="2.5" y="2.5" width="19" height="19" fill="#1e293b" />
+    <rect x="2.5" y="2.5" width="6.5" height="19" fill="#7f1d1d" opacity="0.72" />
+    <rect x="2.5" y="2.5" width="19" height="6.5" fill="#7f1d1d" opacity="0.72" />
+    <rect x="14.2" y="2.5" width="2.6" height="19" fill="#4d7c0f" opacity="0.5" />
+    <rect x="2.5" y="14.2" width="19" height="2.6" fill="#4d7c0f" opacity="0.5" />
+    <rect x="11.4" y="2.5" width="0.9" height="19" fill="#d6d3d1" opacity="0.85" />
+    <rect x="2.5" y="11.4" width="19" height="0.9" fill="#d6d3d1" opacity="0.85" />
+  </g>
+</svg>

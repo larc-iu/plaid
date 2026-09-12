@@ -57,6 +57,10 @@ test-results/
 playwright-report/
 # Compiled AsciiDoc docs (built into _site/ by docs.yml; local renders land here)
 /plaid-core/docs/*.html
+# docinfo.html is a SOURCE file, not a render: asciidoctor splices it into the
+# <head> of every page (the favicon link). Without this it is ignored by the
+# rule above and CI builds a site with no favicon, and nothing fails.
+!/plaid-core/docs/docinfo.html
 
 # Local dev convenience: boots all 3 dev processes in a zellij session
 /dev

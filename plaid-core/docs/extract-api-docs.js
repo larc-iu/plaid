@@ -529,6 +529,7 @@ function generateHTML(title, bundles, lang) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/svg+xml" href="plaid.svg">
   <title>${title}</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; }

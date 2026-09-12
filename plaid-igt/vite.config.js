@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath, URL } from 'node:url';
-import { PLAID_UI_SRC, plaidUiDeps } from '../plaid-ui/vite.js';
+import { PLAID_UI_PUBLIC, PLAID_UI_SRC, plaidUiDeps } from '../plaid-ui/vite.js';
 
 const PLAID_CLIENT_SRC = fileURLToPath(new URL('../plaid-client-js/src', import.meta.url));
 
@@ -25,6 +25,9 @@ export default defineConfig(({ command }) => ({
   // asset URLs. The dev server stays at '/'. The app uses HashRouter, so client
   // routes live in the URL fragment and don't depend on the base path.
   base: command === 'build' ? '/igt/' : '/',
+  // The tab's mark, and anything else all three apps serve at their root,
+  // lives in plaid-ui rather than in a public/ of our own.
+  publicDir: PLAID_UI_PUBLIC,
   plugins: [
     react(),
     plaidUiDeps(fileURLToPath(new URL('.', import.meta.url))),

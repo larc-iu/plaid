@@ -1,4 +1,4 @@
-= Plaid
+= image:plaid.svg[Plaid,40,40] Plaid
 :lang: en
 :encoding: UTF-8
 :doctype: book

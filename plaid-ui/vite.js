@@ -5,6 +5,15 @@ import { fileURLToPath } from 'node:url';
 export const PLAID_UI_SRC = fileURLToPath(new URL('./src', import.meta.url));
 
 /**
+ * Static files every app serves at its root, currently just the mark the
+ * browser tab shows. Each app points `publicDir` here rather than keeping its
+ * own copy, so the three tabs cannot drift apart from each other or from the
+ * artwork in `src/components/assistant/PlaidMarks.jsx`. Vite copies whatever is
+ * in here into each app's `dist/`, under that app's base path.
+ */
+export const PLAID_UI_PUBLIC = fileURLToPath(new URL('./public', import.meta.url));
+
+/**
  * Resolve this package's own bare imports: react, lucide-react, sonner, the
  * Radix primitives, from the app that is compiling it.
  *

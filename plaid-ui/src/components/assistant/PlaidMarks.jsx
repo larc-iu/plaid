@@ -23,6 +23,12 @@ import { useId } from 'react';
 // Changing the geometry is a design change, not a tidy-up, and it FAILS SILENTLY:
 // it will still look fine at 72px in a review. Check 14px and 16px, on both
 // grounds, before and after.
+//
+// Two copies of these bands live outside this file, because neither place can
+// mount a React component: ../../../public/plaid.svg, which is the browser tab
+// and the docs site, and the hand-written round one in plaid-igt's interlinear
+// editor (analyze/island/editor/assistant.js), which is lit-html. A change here
+// is a change in all three.
 const GROUND = '#1e293b';
 const WARP = '#7f1d1d'; // oxblood, the broad band on each axis
 const WEFT = '#4d7c0f'; // sage, the narrow band

@@ -5,7 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '@ui/components/ui/button';
 import { cn } from '@ui/lib/utils';
 import { AssistantDock } from '@ui/components/assistant/AssistantDock.jsx';
-import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
+import { AssistantMark, PlaidMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { ProjectPicker } from '@ui/components/assistant/ProjectPicker.jsx';
 import { useDockWidth } from '@ui/components/assistant/useDock.js';
 import { AssistantSubjectProvider } from '@ui/components/assistant/AssistantSubject.jsx';
@@ -131,7 +131,8 @@ const Shell = () => {
     >
       <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4">
-          <Link to="/projects" className="font-bold">
+          <Link to="/projects" className="flex items-center gap-2 font-bold">
+            <PlaidMark className="h-[18px] w-[18px] shrink-0" />
             Plaid IGT
           </Link>
           <nav className="flex items-center gap-1">

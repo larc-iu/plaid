@@ -3,7 +3,7 @@ name: Build and Deploy Docs
 on:
   push:
     branches: [ master ]
-    paths: [ 'plaid-core/docs/**', 'plaid-ud/docs/**', 'plaid-igt/docs/**', 'plaid-client-js/src/**', 'plaid-client-py/src/**' ]
+    paths: [ 'plaid-core/docs/**', 'plaid-ud/docs/**', 'plaid-igt/docs/**', 'plaid-client-js/src/**', 'plaid-client-py/src/**', 'plaid-ui/public/**' ]
   workflow_dispatch:
 
 permissions:
@@ -37,12 +37,17 @@ jobs:
     - name: Build HTML
       run: |
         mkdir -p _site
-        asciidoctor -o _site/index.html plaid-core/docs/index.adoc
-        asciidoctor -o _site/manual.html plaid-core/docs/manual.adoc
-        asciidoctor -o _site/query.html plaid-core/docs/query.adoc
-        asciidoctor -o _site/dev.html plaid-core/docs/dev.adoc
-        asciidoctor -o _site/ud-guide.html plaid-ud/docs/ud-guide.adoc
-        asciidoctor -o _site/igt-guide.html plaid-igt/docs/igt-guide.adoc
+        # The mark, for the tab and for the landing page. One copy, shared with
+        # the three apps, which serve it out of the same directory.
+        cp plaid-ui/public/plaid.svg _site/plaid.svg
+        # The sources live in three directories, so docinfodir is absolute.
+        HEAD="-a docinfo=shared -a docinfodir=$PWD/plaid-core/docs"
+        asciidoctor $HEAD -o _site/index.html plaid-core/docs/index.adoc
+        asciidoctor $HEAD -o _site/manual.html plaid-core/docs/manual.adoc
+        asciidoctor $HEAD -o _site/query.html plaid-core/docs/query.adoc
+        asciidoctor $HEAD -o _site/dev.html plaid-core/docs/dev.adoc
+        asciidoctor $HEAD -o _site/ud-guide.html plaid-ud/docs/ud-guide.adoc
+        asciidoctor $HEAD -o _site/igt-guide.html plaid-igt/docs/igt-guide.adoc
         node plaid-core/docs/extract-api-docs.js
         
     - name: Upload artifact

@@ -317,9 +317,17 @@
   (let [site (fs/absolutize "_site")]
     (step (str "Build docs into " site " (mirrors .github/workflows/docs.yml)"))
     (fs/create-dirs site)
-    (doseq [[out src] doc-pages]
-      (println "  •" out)
-      (p/shell "asciidoctor" "-o" (str (fs/path site out)) src))
+    ;; The mark, for the tab and for the landing page. One copy, shared with the
+    ;; three apps, which serve it out of the same directory.
+    (fs/copy "plaid-ui/public/plaid.svg" (fs/path site "plaid.svg") {:replace-existing true})
+    ;; The favicon link lives in a shared docinfo.html. The sources sit in three
+    ;; directories and asciidoctor resolves docinfodir against each one, so it
+    ;; has to be absolute.
+    (let [docinfo (str (fs/absolutize "plaid-core/docs"))]
+      (doseq [[out src] doc-pages]
+        (println "  •" out)
+        (p/shell "asciidoctor" "-a" "docinfo=shared" "-a" (str "docinfodir=" docinfo)
+                 "-o" (str (fs/path site out)) src)))
     (step "Generate JS/Py API references (best-effort, needs node)")
     (if (fs/which "node")
       (let [r (p/sh "node" "plaid-core/docs/extract-api-docs.js")]

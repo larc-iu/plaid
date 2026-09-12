@@ -1,6 +1,7 @@
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '@ui/components/ui/button';
+import { PlaidMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { adminUrl } from '../domain/siblingApps.js';
 
 // The shell.
@@ -22,7 +23,8 @@ export const Layout = () => {
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <header className="border-b bg-background">
         <div className="mx-auto flex h-16 max-w-[1320px] items-center justify-between px-4">
-          <Link to="/" className="text-xl font-bold">
+          <Link to="/" className="flex items-center gap-2 text-xl font-bold">
+            <PlaidMark className="h-5 w-5 shrink-0" />
             Plaid UD
           </Link>
           {user && (
