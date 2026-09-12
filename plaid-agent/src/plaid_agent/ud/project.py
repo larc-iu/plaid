@@ -460,9 +460,10 @@ def _rows(s: Sentence) -> List[List[str]]:
 
 
 def render_sentence(s: Sentence, *, header: bool = True) -> str:
-    """One sentence as CoNLL-U-shaped rows, aligned so the columns can be read
-    down. ``~`` after a value means a machine made it and nobody has confirmed
-    it, ``^`` means a contributor's unreviewed work."""
+    """One sentence as CoNLL-U rows, tab-separated as CoNLL-U itself is (an
+    aligned layout cost nearly twice the characters, and a read is paid for
+    in the model's context). ``~`` after a value means a machine made it and
+    nobody has confirmed it, ``^`` means a contributor's unreviewed work."""
     rows = _rows(s)
     out = []
     if header:
@@ -473,22 +474,25 @@ def render_sentence(s: Sentence, *, header: bool = True) -> str:
         for k in sorted(s.metadata):
             if k not in ('sent_id', 'text') and isinstance(s.metadata[k], str) and s.metadata[k]:
                 out.append(f'# {k} = {s.metadata[k]}')
-    widths = [max(len(COLUMNS[i]), *(len(r[i]) for r in rows)) if rows else len(COLUMNS[i])
-              for i in range(len(COLUMNS))]
-    out.append('  '.join(c.ljust(widths[i]) for i, c in enumerate(COLUMNS)).rstrip())
+    out.append('\t'.join(COLUMNS))
     for r in rows:
-        out.append('  '.join(v.ljust(widths[i]) for i, v in enumerate(r)).rstrip())
+        out.append('\t'.join(r))
     return '\n'.join(out)
 
 
 def render_document(doc: UdDoc, *, from_sentence: int = None, to_sentence: int = None,
-                    indexes: Optional[List[int]] = None) -> str:
+                    indexes: Optional[List[int]] = None, budget: Optional[int] = None) -> str:
     """A document as the model reads it.
 
     Either a RANGE, which keeps a long document inside one tool result without
     the model losing where it is, or an explicit list of sentence ``indexes``,
     which is what a reader wants once it knows where to look: a long document
     otherwise costs one call per page, and paging is the whole step budget.
+
+    ``budget`` is the most characters the result may hold. Sentences are
+    rendered until it is spent, and the header says which were shown and
+    where to continue: cutting the text off mid-sentence under a header that
+    promised forty left the model to work out what it had got.
     """
     sentences = doc.sentences
     out = [f'Document "{doc.name}" ({len(sentences)} sentences, {doc.word_count} words)']
@@ -501,17 +505,61 @@ def render_document(doc: UdDoc, *, from_sentence: int = None, to_sentence: int =
 
     if indexes is not None:
         picked = [i for i in indexes if 1 <= i <= len(sentences)]
-        out.append('Showing sentences ' + ', '.join(str(i) for i in picked) + '.'
-                   if picked else 'None of those sentences exist.')
-        chosen = [sentences[i - 1] for i in picked]
+        if not picked:
+            out.append('None of those sentences exist.')
+            return '\n'.join(out)
+        wanted = picked
     else:
         lo = max(1, from_sentence or 1)
         hi = min(len(sentences), to_sentence or len(sentences))
-        if lo > 1 or hi < len(sentences):
-            out.append(f'Showing sentences {lo} to {hi}.')
-        chosen = sentences[lo - 1:hi]
+        wanted = list(range(lo, hi + 1))
 
-    for s in chosen:
+    rendered: List[str] = []
+    shown: List[int] = []
+    used = sum(len(line) + 1 for line in out) + 200  # the header line to come
+    for i in wanted:
+        text = render_sentence(sentences[i - 1])
+        if budget is not None and shown and used + len(text) + 1 > budget:
+            break
+        rendered.append(text)
+        shown.append(i)
+        used += len(text) + 1
+
+    left = [i for i in wanted if i not in shown]
+    if indexes is not None:
+        head = 'Showing sentences ' + ', '.join(str(i) for i in shown) + '.'
+        if left:
+            head += (f' Sentences {", ".join(str(i) for i in left)} did not fit: ask for them in '
+                     f'another call.')
+    else:
+        head = f'Showing sentences {shown[0]} to {shown[-1]}'
+        if left:
+            head += (f' of the {wanted[0]} to {wanted[-1]} asked for: the rest did not fit. Continue '
+                     f'with from_sentence={left[0]}.')
+        elif shown[0] > 1 or shown[-1] < len(sentences):
+            head += '.'
+        else:
+            head = ''
+    if head:
+        out.append(head)
+    for text in rendered:
         out.append('')
-        out.append(render_sentence(s))
+        out.append(text)
     return '\n'.join(out)
+
+
+# --- a hit in its context ---------------------------------------------------
+
+KWIC_SIDE = 40
+
+
+def kwic(doc: UdDoc, s: Sentence, w: Word, side: int = KWIC_SIDE) -> str:
+    """The word in its sentence, bracketed, with up to ``side`` characters
+    either way: what a search hit needs to be read. A sentence prefix hid the
+    hit whenever it fell past the cut."""
+    t = w.token
+    left = doc.body[max(s.begin, t.begin - side):t.begin]
+    right = doc.body[t.end:min(s.end, t.end + side)]
+    text = (('…' if t.begin - side > s.begin else '') + left + '[' + t.surface + ']' + right
+            + ('…' if t.end + side < s.end else ''))
+    return ' '.join(text.split())

@@ -251,6 +251,18 @@ def t_project_overview(ws: Workspace) -> str:
         out.append('  features: no inventory set, any Feature=Value is allowed')
     docs = ws.documents()
     out.append('')
+    # How much corpus there is, so the model knows before it reads anything
+    # whether reading is a way to answer. A project without the engine (a
+    # test double) just goes without the line.
+    try:
+        from .stats import _corpus
+        sizes = _corpus(ws).sizes()
+        out.append(f'Size: {len(docs)} documents, {sizes["sentences"]} sentences, {sizes["words"]} words. '
+                   'search, frequency_list, worklist and check_consistency read the whole corpus at '
+                   'once; read_document reads one document a page at a time.')
+        out.append('')
+    except Exception:  # noqa: BLE001 - the overview is worth having without the size
+        pass
     out.append(f'Documents ({len(docs)}):')
     for d in docs[:50]:
         out.append(f'  "{d.get("name")}"')
@@ -300,16 +312,17 @@ def _sentence_numbers(sentences) -> List[int]:
 def t_read_document(ws: Workspace, document: str = None, from_sentence: int = None,
                     to_sentence: int = None, sentences=None) -> str:
     doc = ws.doc(document)
+    budget = MAX_RESULT_CHARS - 100
     # Named sentences beat a range: a reader that already knows where to look
     # should not have to page a long document to get there.
     if sentences:
         picked = _sentence_numbers(sentences)[:MAX_SENTENCES_PER_READ]
-        return _truncate(render_document(doc, indexes=picked))
+        return _truncate(render_document(doc, indexes=picked, budget=budget))
     lo = max(1, int(from_sentence or 1))
     hi = int(to_sentence) if to_sentence else min(len(doc.sentences), lo + MAX_SENTENCES_PER_READ - 1)
     if hi - lo + 1 > MAX_SENTENCES_PER_READ:
         hi = lo + MAX_SENTENCES_PER_READ - 1
-    return _truncate(render_document(doc, from_sentence=lo, to_sentence=hi))
+    return _truncate(render_document(doc, from_sentence=lo, to_sentence=hi, budget=budget))
 
 
 # --- planning helpers ----------------------------------------------------------
@@ -720,13 +733,14 @@ TOOLS = [
         {'pattern': {'type': 'string'}, 'limit': {'type': 'integer'}, 'offset': {'type': 'integer'}},
         []),
     _fn('read_document',
-        'Read a document as CoNLL-U rows: one line per word with its form, lemma, UPOS, XPOS, features, '
-        'head and deprel, and a range line for each multi-word token. A value followed by ~ was made by '
-        'a machine and nobody has confirmed it; ^ is a contributor\'s unreviewed work. Up to 40 '
-        'sentences per call. WHEN YOU ALREADY KNOW WHICH SENTENCES YOU NEED (a search told you, or an '
-        'earlier read did), name them in `sentences` and get them all in ONE call. Paging a long '
-        'document with from_sentence/to_sentence costs a call per page and will run out of steps '
-        'before it runs out of document.',
+        'Read a document as tab-separated CoNLL-U rows: one line per word with its form, lemma, UPOS, '
+        'XPOS, features, head and deprel, and a range line for each multi-word token. A value followed '
+        'by ~ was made by a machine and nobody has confirmed it; ^ is a contributor\'s unreviewed work. '
+        'Up to 40 sentences per call, fewer when they are long: the first line says which sentences '
+        'were shown and where to continue. WHEN YOU ALREADY KNOW WHICH SENTENCES YOU NEED (a search '
+        'told you, or an earlier read did), name them in `sentences` and get them all in ONE call. '
+        'Paging a long document with from_sentence/to_sentence costs a call per page and will run out '
+        'of steps before it runs out of document.',
         {'document': _DOC,
          'sentences': {'type': 'array', 'items': {'type': 'string'},
                        'description': 'Just these sentences, e.g. ["s34","s64","s104"]. A word '
@@ -840,16 +854,19 @@ from .stats import (COUNTABLE, CONSISTENCY, SEARCHABLE, WORKLIST_KINDS,  # noqa:
 
 TOOLS += [
     _fn('search',
-        'Words whose column matches a pattern, with the sentence each sits in. Searches the whole '
-        'project unless a document is named. field "form" and a named document are read outright; '
-        'the rest go through the query engine.',
+        'Words whose column matches a pattern, each shown in its context with the hit in brackets. '
+        'Searches the whole project unless a document is named: the first line gives the total '
+        'and how many documents have hits, and the hits shown are a few from each of several '
+        'documents, not every hit from one. Name a document to see every hit in it.',
         {'field': {'type': 'string', 'enum': list(SEARCHABLE)},
          'pattern': {'type': 'string', 'description': 'A literal substring unless regex is true.'},
          'document': _DOC, 'whole': {'type': 'boolean', 'description': 'Match the whole value only.'},
          'regex': {'type': 'boolean'}, 'limit': {'type': 'integer'}},
         ['field', 'pattern']),
     _fn('frequency_list',
-        'The commonest values of one column, with counts. Across the project, or inside one document.',
+        'The commonest values of one column, with counts. Across the project, or inside one document. '
+        '"features" counts each Feature=Value on its own; "feature-bundles" counts whole FEATS strings '
+        'as stored.',
         {'what': {'type': 'string', 'enum': list(COUNTABLE)}, 'document': _DOC,
          'limit': {'type': 'integer'}}, ['what']),
     _fn('check_consistency',

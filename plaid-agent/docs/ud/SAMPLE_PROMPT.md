@@ -84,7 +84,7 @@ The documents by name, a page at a time, optionally filtered by a name substring
 
 ### read_document
 
-Read a document as CoNLL-U rows: one line per word with its form, lemma, UPOS, XPOS, features, head and deprel, and a range line for each multi-word token. A value followed by ~ was made by a machine and nobody has confirmed it; ^ is a contributor's unreviewed work. Up to 40 sentences per call. WHEN YOU ALREADY KNOW WHICH SENTENCES YOU NEED (a search told you, or an earlier read did), name them in `sentences` and get them all in ONE call. Paging a long document with from_sentence/to_sentence costs a call per page and will run out of steps before it runs out of document.
+Read a document as tab-separated CoNLL-U rows: one line per word with its form, lemma, UPOS, XPOS, features, head and deprel, and a range line for each multi-word token. A value followed by ~ was made by a machine and nobody has confirmed it; ^ is a contributor's unreviewed work. Up to 40 sentences per call, fewer when they are long: the first line says which sentences were shown and where to continue. WHEN YOU ALREADY KNOW WHICH SENTENCES YOU NEED (a search told you, or an earlier read did), name them in `sentences` and get them all in ONE call. Paging a long document with from_sentence/to_sentence costs a call per page and will run out of steps before it runs out of document.
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `sentences` (array of string): Just these sentences, e.g. ["s34","s64","s104"]. A word reference like "s34.w2" names its sentence. Overrides the range below.
@@ -203,7 +203,7 @@ Drop some of the planned changes by their numbers from plan_status.
 
 ### search
 
-Words whose column matches a pattern, with the sentence each sits in. Searches the whole project unless a document is named. field "form" and a named document are read outright; the rest go through the query engine.
+Words whose column matches a pattern, each shown in its context with the hit in brackets. Searches the whole project unless a document is named: the first line gives the total and how many documents have hits, and the hits shown are a few from each of several documents, not every hit from one. Name a document to see every hit in it.
 
 - `field` (one of `lemma`, `upos`, `xpos`, `features`, `form`, `deprel`, required)
 - `pattern` (string, required): A literal substring unless regex is true.
@@ -214,9 +214,9 @@ Words whose column matches a pattern, with the sentence each sits in. Searches t
 
 ### frequency_list
 
-The commonest values of one column, with counts. Across the project, or inside one document.
+The commonest values of one column, with counts. Across the project, or inside one document. "features" counts each Feature=Value on its own; "feature-bundles" counts whole FEATS strings as stored.
 
-- `what` (one of `form`, `lemma`, `upos`, `xpos`, `features`, `deprel`, required)
+- `what` (one of `form`, `lemma`, `upos`, `xpos`, `features`, `feature-bundles`, `deprel`, required)
 - `document` (string): Document id or exact name (see project_overview).
 - `limit` (integer)
 
@@ -298,17 +298,17 @@ Document "Viaje" (2 sentences, 7 words)
 
 # sent_id = s1
 # text = Vamos al mar.
-ID   FORM   LEMMA  UPOS   XPOS  FEATS        HEAD  DEPREL
-1    Vamos  ir     VERB   _     Number=Plur  0     root
-2-3  al     _      _      _     _            _     _
-2    a      a      ADP    _     _            4     case
-3    el     el     DET    _     _            4     det
-4    mar    mar    NOUN~  _     _            1     obl
-5    .      .      PUNCT  _     _            1     punct
+ID	FORM	LEMMA	UPOS	XPOS	FEATS	HEAD	DEPREL
+1	Vamos	ir	VERB	_	Number=Plur	0	root
+2-3	al	_	_	_	_	_	_
+2	a	a	ADP	_	_	4	case
+3	el	el	DET	_	_	4	det
+4	mar	mar	NOUN~	_	_	1	obl
+5	.	.	PUNCT	_	_	1	punct
 
 # sent_id = s2
 # text = Corre.
-ID  FORM   LEMMA  UPOS  XPOS  FEATS  HEAD  DEPREL
-1   Corre  _      _     _     _      _     _
-2   .      _      _     _     _      _     _
+ID	FORM	LEMMA	UPOS	XPOS	FEATS	HEAD	DEPREL
+1	Corre	_	_	_	_	_	_
+2	.	_	_	_	_	_	_
 ```

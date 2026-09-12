@@ -99,13 +99,24 @@ def test_the_help_carries_the_language_itself(ws):
 
 
 def test_the_commonest_forms_can_be_asked_for_project_wide(ws):
-    """The clipped-read note was set only on the query path, and "form" takes
-    the read path with no document, so the plainest call this tool has
-    ("what are the commonest forms?") raised UnboundLocalError."""
+    """A form is the token's surface unless a Form span overrides it. The
+    engine answers both halves (surfaces of tokens with no Form span, and
+    Form spans by value), and the tool sums them: before, it read the first
+    twelve documents by name and called that the corpus."""
     from plaid_agent.ud.tools import call_tool
 
+    asked = []
+
+    def engine(body):
+        asked.append(body)
+        rows = [['the', 5], ['a', 2]] if len(asked) == 1 else [['a', 1], ['el', 1]]
+        return {'return': 'aggregate', 'columns': ['value', 'count'], 'results': rows}
+
+    ws.client.query = engine
     out = call_tool(ws, 'frequency_list', {'what': 'form'})
-    assert out.startswith('form by frequency') and 'Error' not in out
+    assert out.startswith('form by frequency across the project: 3 distinct value(s), 9 in all.')
+    assert out.split('\n')[1:] == ['        5  the', '        3  a', '        1  el']
+    assert len(asked) == 2 and asked[0]['where'][1][0] == 'not'  # tokens WITHOUT a Form span
 
 
 def test_a_clipped_read_is_never_reported_as_the_whole_corpus(ws):

@@ -4,16 +4,17 @@ These go through the query engine (see :mod:`.corpus`) and load a document
 only to print the hits it actually has.
 """
 
+import math
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
 from .corpus import DOCS_PER_SEARCH, Corpus, rx
-from .project import Sentence, UdDoc, Word, word_ref
+from .project import Sentence, UdDoc, Word, kwic, word_ref
 from .tools import FIELDS, ToolError, Workspace, _truncate
 from ..core.args import clamp_limit
 
 SEARCHABLE = FIELDS + ('form', 'deprel')
-COUNTABLE = ('form', 'lemma', 'upos', 'xpos', 'features', 'deprel')
+COUNTABLE = ('form', 'lemma', 'upos', 'xpos', 'features', 'feature-bundles', 'deprel')
 
 
 def _corpus(ws: Workspace) -> Corpus:
@@ -26,21 +27,31 @@ def _value(w: Word, field: str) -> str:
     return w.form if field == 'form' else (w.deprel or '' if field == 'deprel' else w.value(field))
 
 
-def _enough_for(docs: List[tuple], limit: int) -> List[tuple]:
-    """Only as many documents as the hit limit can possibly need.
+def _hit_line(doc: UdDoc, s: Sentence, w: Word, value: str) -> str:
+    return f'  {word_ref(s, w)}  {value}   {kwic(doc, s, w)}'
 
-    The engine already said how many hits each document has, and loading one
-    is a round trip over a whole document's tokens, spans and relations.
-    Taking twelve of them to print thirty hits is what made a corpus-wide
-    question take minutes against EWT.
+
+def _spread(docs: List[tuple], limit: int) -> List[tuple]:
+    """Which documents a corpus-wide search reads, and how many hits each may
+    show: a few from each of several, not thirty from the one with the most.
+
+    The engine said how many hits each document has, most first. Taking
+    documents until the limit was full showed every hit from one blog post
+    and called it the corpus. Loading a document is one round trip, so the
+    count is capped as well.
     """
-    out, got = [], 0
-    for entry in docs:
-        if got >= limit or len(out) >= DOCS_PER_SEARCH:
-            break
-        out.append(entry)
-        got += entry[1] or 1
-    return out
+    if not docs:
+        return []
+    # Evenly spaced down the ranked list, not the top of it: the documents
+    # with the most hits are the largest documents, which cost the most to
+    # load (the twelve largest in EWT took nine seconds) and are one kind of
+    # text. Spaced picks load in a fifth of the time and range over sizes.
+    if len(docs) > DOCS_PER_SEARCH:
+        chosen = [docs[i * len(docs) // DOCS_PER_SEARCH] for i in range(DOCS_PER_SEARCH)]
+    else:
+        chosen = list(docs)
+    per_doc = max(1, math.ceil(limit / len(chosen)))
+    return [(did, min(int(n or per_doc), per_doc)) for did, n in chosen]
 
 
 def _hits_in(doc: UdDoc, field: str, matches) -> List[tuple]:
@@ -67,9 +78,15 @@ def _awaiting_in(doc: UdDoc, field: str, state: str) -> List[tuple]:
     return out
 
 
+REGEX_NOTE = ('(note) The engine matched this pattern in {docs}, but nothing in them matched it '
+              'here: the engine reads Java regular expressions and this reads Python\'s, and they '
+              'differ in places. A simpler pattern, or a literal with regex off, is read the same '
+              'way by both.')
+
+
 def t_search(ws: Workspace, field: str = None, pattern: str = None, document: str = None,
              whole: bool = False, regex: bool = False, limit: int = 30) -> str:
-    """Words whose field matches, with the sentence each sits in."""
+    """Words whose field matches, each in its context."""
     if field not in SEARCHABLE:
         raise ToolError(f'Unknown field "{field}". One of: ' + ', '.join(SEARCHABLE))
     if not pattern:
@@ -83,47 +100,63 @@ def t_search(ws: Workspace, field: str = None, pattern: str = None, document: st
         raise ToolError(f'That is not a valid regular expression: {e}')
     matches = lambda v: bool(v) and bool(rgx.search(v))  # noqa: E731
 
-    total_docs = None
     if document:
-        docs = [(ws.resolve_document_id(document), None)]
+        doc = ws.doc(document)
+        hits = _hits_in(doc, field, matches)
+        if not hits:
+            return f'No {field} matches "{pattern}" in "{doc.name}".'
+        out = [f'{len(hits)} match(es) for {field} "{pattern}" in "{doc.name}"'
+               + (f', showing {limit}' if len(hits) > limit else '') + ':']
+        out += [_hit_line(doc, s, w, _value(w, field)) for s, w in hits[:limit]]
+        return _truncate('\n'.join(out))
+
+    c = _corpus(ws)
+    if field == 'form':
+        docs = c.form_documents(spec)
+    elif field == 'deprel':
+        docs = c.documents_with([c.dep('?r', value=spec)], '?r')
     else:
-        c = _corpus(ws)
-        if field == 'form':
-            # A form is the token's own text unless a Form span overrides it,
-            # so the engine cannot answer this one: fall back to the documents
-            # the project has, newest first, and say what was covered.
-            docs = [(d['id'], None) for d in ws.documents()[:DOCS_PER_SEARCH]]
-        elif field == 'deprel':
-            docs = c.documents_with([c.dep('?r', value=spec)], '?r')
-        else:
-            docs = c.documents_with([c.field(field, '?s', value=spec)], '?s')
-        total_docs = len(docs)
-        docs = _enough_for(docs, limit)
+        docs = c.documents_with([c.field(field, '?s', value=spec)], '?s')
     if not docs:
         return f'No {field} matches "{pattern}".'
-
+    total = sum(int(n or 0) for _, n in docs)
     out: List[str] = []
     shown = 0
-    for did, _n in docs:
+    read = 0
+    empty: List[str] = []
+    for did, quota in _spread(docs, limit):
         if shown >= limit:
             break
         doc = ws.doc(did)
+        read += 1
         hits = _hits_in(doc, field, matches)
         if not hits:
+            empty.append(f'"{doc.name}"')
             continue
-        out.append(f'"{doc.name}"')
-        for s, w in hits:
-            if shown >= limit:
-                out.append('  … more in this document')
-                break
-            out.append(f'  {word_ref(s, w)}  {_value(w, field)}   {s.text[:90]}')
+        out.append(f'"{doc.name}" ({len(hits)})')
+        for s, w in hits[:min(quota, limit - shown)]:
+            out.append(_hit_line(doc, s, w, _value(w, field)))
             shown += 1
+        if len(hits) > quota:
+            out.append(f'  … {len(hits) - quota} more in this document (name it to see them all)')
+    head = (f'{total} match(es) for {field} "{pattern}" in {len(docs)} document(s), showing '
+            f'{shown} from {read - len(empty)}' + (' of them' if len(docs) > read else '') + ':')
     if not shown:
-        return f'No {field} matches "{pattern}".'
-    head = f'{shown} match(es) for {field} "{pattern}"'
-    if total_docs is not None and total_docs > len(docs):
-        head += f' (from {len(docs)} of the {total_docs} documents that have them)'
-    return _truncate(head + ':\n' + '\n'.join(out))
+        return f'No {field} matches "{pattern}".\n' + REGEX_NOTE.format(docs=', '.join(empty))
+    if empty:
+        out.append(REGEX_NOTE.format(docs=', '.join(empty)))
+    return _truncate(head + '\n' + '\n'.join(out) + c.clipped_note('documents'))
+
+
+def _split_features(rows: List[tuple]) -> List[tuple]:
+    """Feature=Value pairs from bundle counts: a bundle "Case=Nom|Number=Sing"
+    seen 40 times is Case=Nom 40 and Number=Sing 40."""
+    counts: Dict[str, int] = defaultdict(int)
+    for bundle, n in rows:
+        for pair in (bundle or '').split('|'):
+            if pair:
+                counts[pair] += n
+    return sorted(counts.items(), key=lambda kv: -kv[1])
 
 
 def t_frequency_list(ws: Workspace, what: str = 'lemma', document: str = None,
@@ -132,38 +165,38 @@ def t_frequency_list(ws: Workspace, what: str = 'lemma', document: str = None,
     if what not in COUNTABLE:
         raise ToolError(f'Unknown column "{what}". One of: ' + ', '.join(COUNTABLE))
     limit = clamp_limit(limit, 30, 200)
-    # Set before the branch: "form" has no document and still takes the read
-    # path below, which never assigns it.
+    column = 'features' if what == 'feature-bundles' else what
     clipped = ''
-    if what == 'form' or document:
-        # The engine does not know a form (a Form span overrides the token's
-        # text), and one document is cheap to read outright.
+    if document:
+        doc = ws.doc(document)
         counts: Dict[str, int] = defaultdict(int)
-        docs = [ws.doc(document)] if document else [ws.doc(d['id']) for d in ws.documents()[:DOCS_PER_SEARCH]]
-        for doc in docs:
-            for s in doc.sentences:
-                for w in s.words:
-                    v = _value(w, what)
-                    if v:
-                        counts[v] += 1
+        for s in doc.sentences:
+            for w in s.words:
+                v = _value(w, column)
+                if v:
+                    counts[v] += 1
         rows = sorted(counts.items(), key=lambda kv: -kv[1])
-        where = f' in "{docs[0].name}"' if document else f' (the first {len(docs)} documents)'
+        where = f' in "{doc.name}"'
     else:
         c = _corpus(ws)
-        if what == 'deprel':
+        if what == 'form':
+            rows = [(r[0], r[-1]) for r in c.form_values()]
+        elif what == 'deprel':
             rows = [(r[0], r[-1]) for r in c.group([c.dep('?r')], ['?r.value'])]
         else:
-            rows = [(r[0], r[-1]) for r in c.group([c.field(what, '?s')], ['?s.value'])]
+            rows = [(r[0], r[-1]) for r in c.group([c.field(column, '?s')], ['?s.value'])]
         rows = [(v, n) for v, n in rows if v]
         clipped = c.clipped_note(f'{what} values')
         where = ' across the project'
+    if what == 'features':
+        rows = _split_features(rows)
     if not rows:
         # With the note: a clipped read that came back empty is the most
         # misleading of all, and this one says the column is unused.
-        return f'Nothing has a {what} yet{where}.' + (clipped if not document else '')
+        return f'Nothing has a {column} yet{where}.' + clipped
     total = sum(n for _, n in rows)
-    out = [f'{what} by frequency{where}: {len(rows)} distinct value(s), {total} in all.'
-           + (clipped if not document else '')]
+    unit = 'feature(s)' if what == 'features' else 'in all'
+    out = [f'{what} by frequency{where}: {len(rows)} distinct value(s), {total} {unit}.' + clipped]
     for v, n in rows[:limit]:
         out.append(f'  {n:>7}  {v}')
     if len(rows) > limit:
@@ -207,8 +240,7 @@ def t_check_consistency(ws: Workspace, kind: str = None, limit: int = 25) -> str
             out.append(f'  … and {len(multi) - limit} more')
 
     if 'form-lemma' in kinds:
-        rows = c.group([c.word('?t'), c.field('lemma', '?l'), c.on('?l'),
-                        c.field('form', '?f'), c.on('?f')], ['?f.value', '?l.value'])
+        rows = c.form_lemma_pairs()
         clipped = clipped or c.clipped_note('forms')
         by = defaultdict(list)
         for form, lemma, n in rows:
@@ -217,7 +249,7 @@ def t_check_consistency(ws: Workspace, kind: str = None, limit: int = 25) -> str
         multi = [(k, sorted(v, key=lambda x: -x[1])) for k, v in by.items() if len(v) > 1]
         multi.sort(key=lambda kv: -sum(n for _, n in kv[1]))
         out.append('')
-        out.append(f'Forms with more than one lemma (only where a Form span is set): {len(multi)}.')
+        out.append(f'Forms with more than one lemma: {len(multi)}.')
         for form, vs in multi[:limit]:
             out.append(f'  {form!r}: ' + ', '.join(f'{l} x{n}' for l, n in vs))
         if len(multi) > limit:
@@ -286,7 +318,7 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
                     continue
                 out.append(f'{f}: {len(hits)} word(s) with none in "{doc.name}"')
                 for sent, w in hits[:limit]:
-                    out.append(f'  {word_ref(sent, w)}  {w.form}   {sent.text[:90]}')
+                    out.append(_hit_line(doc, sent, w, w.form))
                 if len(hits) > limit:
                     out.append(f'  … and {len(hits) - limit} more (raise limit)')
             return _truncate('\n'.join(out))
@@ -320,13 +352,14 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
                 continue
             out.append(f'{f}: {len(hits)} {word} value(s) in "{doc.name}"')
             for sent, w in hits[:limit]:
-                out.append(f'  {word_ref(sent, w)}  {_value(w, f)}   {sent.text[:90]}')
+                out.append(_hit_line(doc, sent, w, _value(w, f)))
             if len(hits) > limit:
                 out.append(f'  … and {len(hits) - limit} more (raise limit)')
         if not out:
             return f'Nothing is waiting for review in "{doc.name}" ({kind}).'
         out.append('')
-        out.append('confirm marks these as reviewed; discard_predictions throws the machine ones away.')
+        out.append('confirm marks these as reviewed; discard_predictions throws the machine ones away. '
+                   'Without refs, either covers the whole document as one planned change.')
         return _truncate('\n'.join(out))
 
     for f in fields:
@@ -352,14 +385,20 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
 
 # --- history and comments --------------------------------------------------------
 
-AUDIT_WINDOWS_DAYS = (7, 30, 180, None)
+AUDIT_PAGE = 200      # entries per page, newest first
+AUDIT_MAX_PAGES = 10  # how far back a filtered read will walk
 
 
 def t_recent_changes(ws: Workspace, document: str = None, limit: int = 20,
                      since: str = None, user: str = None) -> str:
     """Who changed what, when, under which operation label. The assistant's
-    own applied plans appear here like anyone else's work."""
-    import datetime
+    own applied plans appear here like anyone else's work.
+
+    Read newest first, a page at a time, and stopped as soon as the limit is
+    met: the log of a corpus is long (EWT's is six thousand entries and eight
+    megabytes with their ops), and reading a whole window of it to print
+    twenty lines was most of the cost of this tool.
+    """
     import re as _re
     limit = clamp_limit(limit, 20, 100)
     ws.on_progress('Reading the change history…')
@@ -370,33 +409,36 @@ def t_recent_changes(ws: Workspace, document: str = None, limit: int = 20,
         return not u or u in (who.get('display_name') or '').casefold() \
             or u in (who.get('id') or '').casefold()
 
-    def fetch(start):
-        kw = {'start_time': start} if start else {}
-        try:
-            if document:
-                entries = ws.client.documents.audit(ws.resolve_document_id(document), **kw)
-            else:
-                entries = ws.client.projects.audit(ws.project.id, **kw)
-        except Exception as e:  # noqa: BLE001 - the model reads the server's complaint
-            raise ToolError(f'The change history could not be read: {e}')
-        return [e for e in (entries or []) if keep(e)]
-
+    kw: Dict[str, Any] = {}
     if since:
         start = since.strip()
         if _re.fullmatch(r'\d{4}-\d{2}-\d{2}', start):
             start += 'T00:00:00Z'
-        entries = fetch(start)
-    else:
-        now = datetime.datetime.now(datetime.timezone.utc)
-        entries = []
-        for days in AUDIT_WINDOWS_DAYS:
-            start = (now - datetime.timedelta(days=days)).strftime('%Y-%m-%dT%H:%M:%SZ') if days else None
-            entries = fetch(start)
-            if len(entries) >= limit:
-                break
+        kw['start_time'] = start
+    source = ws.client.documents if document else ws.client.projects
+    target = ws.resolve_document_id(document) if document else ws.project.id
+    entries: List[dict] = []
+    cursor = None
+    pages = 0
+    walked = 0
+    while len(entries) < limit and pages < AUDIT_MAX_PAGES:
+        try:
+            page = source.audit_page(target, order='desc', limit=AUDIT_PAGE, cursor=cursor, **kw)
+        except Exception as e:  # noqa: BLE001 - the model reads the server's complaint
+            raise ToolError(f'The change history could not be read: {e}')
+        got = (page or {}).get('entries') or []
+        walked += len(got)
+        entries += [e for e in got if keep(e)]
+        cursor = (page or {}).get('next_cursor')
+        pages += 1
+        if not cursor or not got:
+            break
     entries = sorted(entries, key=lambda e: e.get('time') or '', reverse=True)[:limit]
     if not entries:
-        return 'Nothing has changed here in the window read.'
+        if u and walked:
+            return (f'Nothing by "{user}" among the {walked} most recent change(s)'
+                    + (f' since {since}' if since else '') + '.')
+        return 'Nothing has changed here' + (f' since {since}' if since else '') + '.'
     out = [f'{len(entries)} change(s), newest first. as_of is the instant to restore to.']
     for e in entries:
         who = (e.get('user') or {}).get('display_name') or (e.get('user') or {}).get('id') or '?'

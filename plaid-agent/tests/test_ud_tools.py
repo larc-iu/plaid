@@ -31,7 +31,7 @@ def test_the_overview_says_which_vocabularies_are_rules(ws):
 
 def test_read_document_returns_conllu(ws):
     out = run(ws, 'read_document', document='Viaje')
-    assert '2-3  al' in out and 'NOUN~' in out
+    assert '2-3\tal\t' in out and 'NOUN~' in out
 
 
 def test_read_document_takes_a_range(ws):
@@ -452,18 +452,42 @@ def test_a_parser_that_goes_quiet_is_reported_as_maybe_still_running(ws, monkeyp
     assert counts['notes'] == ['the parser stopped reporting on ud1; it may still be running']
 
 
-def test_a_search_loads_only_the_documents_its_limit_can_need():
-    """The engine already said how many hits each document has. Loading one is
-    a round trip over the whole document, so taking twelve to print thirty
-    hits is what made a corpus-wide question take minutes against EWT."""
-    from plaid_agent.ud.stats import _enough_for
+def test_a_search_spreads_its_hits_over_several_documents():
+    """The engine already said how many hits each document has, most first.
+    Taking documents until the limit was full showed thirty hits from one
+    blog post and called it the corpus. A few from each of several is the
+    sample a corpus question wants, and loading is still capped."""
+    from plaid_agent.ud.corpus import DOCS_PER_SEARCH
+    from plaid_agent.ud.stats import _spread
     docs = [('a', 20), ('b', 15), ('c', 9), ('d', 1)]
-    assert _enough_for(docs, 30) == [('a', 20), ('b', 15)]
-    assert _enough_for(docs, 5) == [('a', 20)]
-    assert _enough_for(docs, 100) == docs
-    # A document whose count the engine did not give still counts for one, so
-    # an unknown count cannot make this loop forever over the corpus.
-    assert _enough_for([('a', None)] * 50, 3) == [('a', None)] * 3
+    assert _spread(docs, 30) == [('a', 8), ('b', 8), ('c', 8), ('d', 1)]
+    assert _spread(docs, 2) == [('a', 1), ('b', 1), ('c', 1), ('d', 1)]
+    many = [(str(i), 50) for i in range(40)]
+    picks = _spread(many, 30)
+    assert len(picks) == DOCS_PER_SEARCH
+    # Spaced down the ranked list, not the top of it: the top is the largest
+    # documents, which cost the most to load and are one kind of text.
+    assert [d for d, _ in picks] == [str(i * 40 // DOCS_PER_SEARCH) for i in range(DOCS_PER_SEARCH)]
+    # A document whose count the engine did not give still gets its share.
+    assert _spread([('a', None)], 3) == [('a', 3)]
+    assert _spread([], 3) == []
+
+
+def test_a_read_that_does_not_fit_says_where_to_continue(ws, monkeypatch):
+    """The header promised forty sentences while the text was cut off inside
+    the ninth, and the model planned its paging on the promise."""
+    from plaid_agent.ud import tools
+    monkeypatch.setattr(tools, 'MAX_RESULT_CHARS', 420)
+    out = run(ws, 'read_document', document='Viaje')
+    assert 'Showing sentences 1 to 1 of the 1 to 2 asked for: the rest did not fit. Continue with from_sentence=2.' in out
+    assert '# sent_id = s1' in out and '# sent_id = s2' not in out and '[truncated' not in out
+    out = run(ws, 'read_document', document='Viaje', sentences=['s2', 's1'])
+    assert 'Showing sentences 2. Sentences 1 did not fit' in out
+
+
+def test_a_hit_is_shown_in_its_context_with_the_word_bracketed(ws):
+    out = run(ws, 'search', field='upos', pattern='NOUN', document='Viaje')
+    assert 's1.w4  NOUN   Vamos al [mar].' in out
 
 
 def test_reading_a_document_names_it_the_way_the_user_would(ws):

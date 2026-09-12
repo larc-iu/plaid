@@ -134,6 +134,11 @@ class FakeClient:
         def audit(self, pid, **kw):
             return self.c.audit
 
+        def audit_page(self, pid, *, order=None, limit=None, cursor=None, start_time=None, **kw):
+            entries = [e for e in self.c.audit if not start_time or (e.get('time') or '') >= start_time]
+            entries = sorted(entries, key=lambda e: e.get('time') or '', reverse=(order == 'desc'))
+            return {'entries': entries[:limit] if limit else entries, 'next_cursor': None}
+
         def list_documents(self, pid):
             return [{'id': k, 'name': v.get('name'), 'version': v.get('version'), 'time_modified': v.get('time_modified')}
                     for k, v in self.c._documents.items()]
@@ -159,6 +164,11 @@ class FakeClient:
 
         def audit(self, did, **kw):
             return [e for e in self.c.audit if any(d['id'] == did for d in e.get('documents', []))]
+
+        def audit_page(self, did, *, order=None, limit=None, cursor=None, start_time=None, **kw):
+            entries = [e for e in self.audit(did) if not start_time or (e.get('time') or '') >= start_time]
+            entries = sorted(entries, key=lambda e: e.get('time') or '', reverse=(order == 'desc'))
+            return {'entries': entries[:limit] if limit else entries, 'next_cursor': None}
 
         def restore(self, did, as_of, dry_run=False, **kw):
             """The server's restore. A dry run answers with what WOULD change,
