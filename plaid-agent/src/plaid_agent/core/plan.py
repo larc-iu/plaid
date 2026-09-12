@@ -158,3 +158,67 @@ class Stamps:
         if self.contributed:
             return {**CLEAR_PROV, **stamp_contributed(self.contributor)}
         return confirmed_inferred(self.source)
+
+
+# --- storing a large plan ---------------------------------------------------------
+#
+# A plan lives in the conversation record, which has a budget (see
+# :mod:`.conversation`) and a hard cap on the server. One op per span costs
+# about 600 bytes stored (the op, its label, and its row on the card), so a
+# plan over one long document was several megabytes and the save was refused
+# after the model had already announced the plan. Ops of one kind that differ
+# only in what they name are stored as ONE op carrying the id lists, and
+# expanded again when the plan is applied. The card shows such a group as one
+# row, with the count in its label.
+
+COMPACT_ABOVE = 12  # a group larger than this is stored as one op
+
+
+def compact_ops(ops: List[Dict[str, Any]], spec: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """``spec`` maps an op kind to ``{'by': keys, 'each': keys, 'label': fn}``:
+    ops of that kind with equal ``by`` values form a group, ``each`` are the
+    keys that vary per member, and ``label(first, members)`` writes the
+    group's line. A group at or under :data:`COMPACT_ABOVE` is left as it
+    is. Order is the order of first appearance."""
+    groups: Dict[tuple, List[int]] = {}
+    for i, op in enumerate(ops):
+        s = spec.get(op.get('kind'))
+        if s is None:
+            continue
+        key = (op.get('kind'),) + tuple(op.get(k) for k in s['by'])
+        groups.setdefault(key, []).append(i)
+    replaced: Dict[int, Dict[str, Any]] = {}
+    dropped: set = set()
+    for key, members in groups.items():
+        if len(members) <= COMPACT_ABOVE:
+            continue
+        s = spec[key[0]]
+        first = ops[members[0]]
+        group = {'kind': key[0], **{k: first.get(k) for k in s['by']},
+                 'items': {k: [ops[i].get(k) for i in members] for k in s['each']},
+                 'count': len(members), 'compact': True,
+                 'label': s['label'](first, [ops[i] for i in members])}
+        replaced[members[0]] = group
+        dropped.update(members[1:])
+    out = []
+    for i, op in enumerate(ops):
+        if i in replaced:
+            out.append(replaced[i])
+        elif i not in dropped:
+            out.append(op)
+    return out
+
+
+def expand_ops(ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """The per-item ops a stored plan stands for. An op that was never
+    compacted comes back as it is."""
+    out = []
+    for op in ops:
+        if not op.get('compact'):
+            out.append(op)
+            continue
+        items = op.get('items') or {}
+        fixed = {k: v for k, v in op.items() if k not in ('items', 'count', 'compact')}
+        for i in range(int(op.get('count') or 0)):
+            out.append({**fixed, **{k: vals[i] for k, vals in items.items()}})
+    return out

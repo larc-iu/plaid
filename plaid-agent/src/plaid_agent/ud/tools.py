@@ -16,8 +16,17 @@ from typing import Any, Dict, List, Optional
 
 from .project import (MISSING, Sentence, Token, UdDoc, UdProject, Word, load_document, parse_ref,
                       render_document, render_sentence, resolve, word_ref)
+from .review import (REVIEW_FIELDS, all_words, confirm_targets, counts_phrase, discard_targets,
+                     per_field)
 
 MAX_RESULT_CHARS = 12000
+# The most per-span changes one plan may hold. Stored compactly (see
+# core.plan.compact_ops) this many fit the conversation record with room for
+# the transcript; a whole document's review goes as a scope op and costs one.
+PLAN_MAX_OPS = 3000
+# Ops that name a document and a set of fields rather than spans, and are
+# resolved to spans when the plan is applied.
+SCOPE_KINDS = ('confirm_scope', 'discard_scope')
 
 
 class ToolError(Exception):
@@ -114,7 +123,18 @@ class Workspace:
                     self.ops[i] = op
                     self.replaced += 1
                     return
+        self.reserve(1)
         self.ops.append(op)
+
+    def reserve(self, n: int) -> None:
+        """Refuse BEFORE staging what would push the plan past what a record
+        can hold, so a tool never leaves half of its changes behind."""
+        if len(self.ops) + n > PLAN_MAX_OPS:
+            raise ToolError(f'That would bring the plan to {len(self.ops) + n} changes, more than the '
+                            f'{PLAN_MAX_OPS} one plan may hold. Let the user approve what is planned and '
+                            f'go on in another turn, or narrow it. A whole document\'s review (confirm or '
+                            f'discard_predictions without refs) counts as one change however many values '
+                            f'it covers.')
 
     def planned_value(self, layer_id: str, token_id: str, current: str) -> str:
         """The value a span will have once the plan runs, so a second tool in
@@ -130,11 +150,14 @@ class Workspace:
             return None
         from .plan import summarize
         from .changes import describe_changes
+        from ..core.plan import compact_ops
         # A snapshot: the payload must not alias the live list, since it is
-        # what the user approves later.
+        # what the user approves later. Large groups of like ops are stored
+        # as one (the summary still counts what they stand for).
+        ops = compact_ops(copy.deepcopy(self.ops), COMPACT)
         return {'id': uuid.uuid4().hex, 'summary': summarize(self.ops),
-                'labels': [op['label'] for op in self.ops], 'ops': copy.deepcopy(self.ops),
-                'changes': describe_changes(self, self.ops),
+                'labels': [op['label'] for op in ops], 'ops': ops,
+                'changes': describe_changes(self, ops),
                 'documents': self.touched_documents()}
 
     def touched_documents(self) -> List[Dict[str, Any]]:
@@ -158,7 +181,46 @@ def op_target(op: Dict[str, Any]):
         return ('head', op.get('word_id'))
     if kind == 'del_relation':
         return ('head', op.get('word_id'))
+    if kind in SCOPE_KINDS:
+        return ('scope', kind, op.get('document_id'))
     return None
+
+
+def _refs_phrase(members, limit: int = 8) -> str:
+    refs = [m.get('ref') for m in members if m.get('ref')]
+    shown = ', '.join(refs[:limit])
+    return shown + (f', … {len(refs) - limit} more' if len(refs) > limit else '')
+
+
+def _set_span_label(first, members) -> str:
+    what = f'{first["field"]} = "{first["value"]}"' if first.get('value') else f'clear {first["field"]}'
+    return f'{what} on {len(members)} words ({_refs_phrase(members)})'
+
+
+def _set_head_label(first, members) -> str:
+    return f'{first["deprel"]} on {len(members)} words ({_refs_phrase(members)})'
+
+
+def _del_relation_label(first, members) -> str:
+    return f'remove the head of {len(members)} words ({_refs_phrase(members)})'
+
+
+def _confirm_label(first, members) -> str:
+    return f'confirm {len(members)} values ({_refs_phrase(members)})'
+
+
+# How the like ops of one plan fold into one stored op (core.plan.compact_ops).
+COMPACT = {
+    'set_span': {'by': ('layer_id', 'field', 'value', 'document_id'),
+                 'each': ('token_id', 'span_id', 'ref'), 'label': _set_span_label},
+    'set_head': {'by': ('lemma_layer_id', 'relation_layer_id', 'deprel', 'document_id'),
+                 'each': ('word_id', 'head_id', 'word_form', 'head_form', 'lemma_span_id',
+                          'head_lemma_span_id', 'relation_id', 'ref'), 'label': _set_head_label},
+    'del_relation': {'by': ('document_id',), 'each': ('word_id', 'relation_id', 'ref'),
+                     'label': _del_relation_label},
+    'confirm': {'by': ('document_id',), 'each': ('span_id', 'relation_id', 'ref'),
+                'label': _confirm_label},
+}
 
 
 def _truncate(s: str) -> str:
@@ -314,7 +376,7 @@ def _not_being_reshaped(ws: Workspace, words: List[Word]) -> None:
                         'deletes them. Do one or the other (plan_status, drop_planned).')
 
 
-def _no_words_annotated(ws: Workspace, token) -> None:
+def _no_words_annotated(ws: Workspace, token, doc_id: str = None) -> None:
     """Reshaping a token deletes and remakes its words, so a plan that already
     annotates one of them would be writing to something that will not exist.
     `_not_being_reshaped` is this rule seen from the other side; without both,
@@ -324,6 +386,11 @@ def _no_words_annotated(ws: Workspace, token) -> None:
         if op.get('kind') == 'set_words' and set(op.get('existing_word_ids') or []) & doomed:
             raise ToolError('This plan already reshapes this token. Do one or the other '
                             '(plan_status, drop_planned).')
+        # A scope op reaches every word of its document, this token's included.
+        if op.get('kind') in SCOPE_KINDS and op.get('document_id') == doc_id:
+            raise ToolError('This plan already reviews every word of this document, and reshaping '
+                            'a token deletes some of them. Do one or the other (plan_status, '
+                            'drop_planned).')
         if op.get('token_id') in doomed or op.get('word_id') in doomed:
             raise ToolError('This plan already annotates a word of this token, and reshaping it '
                             'deletes that word. Do one or the other (plan_status, drop_planned).')
@@ -388,6 +455,7 @@ def t_set_field(ws: Workspace, document: str = None, refs=None, field: str = Non
     value = '' if value is None else str(value)
     _check_value(ws, field, value)
     words = _words(ws, doc, refs)
+    ws.reserve(len(words))
     for w in words:
         sp = w.fields.get(field)
         ws.add_op({'kind': 'set_span', 'layer_id': layer_id, 'token_id': w.id,
@@ -470,6 +538,7 @@ def t_del_relation(ws: Workspace, document: str = None, refs=None) -> str:
     if len(headless) == len(words):
         return 'Nothing to remove: ' + ', '.join(
             word_ref(ws.sentence_of(doc, w), w) for w in words) + ' already have no head.'
+    ws.reserve(len(words) - len(headless))
     for w in words:
         if not w.relation_id:
             continue
@@ -482,114 +551,105 @@ def t_del_relation(ws: Workspace, document: str = None, refs=None) -> str:
 
 
 # --- review -------------------------------------------------------------------
+#
+# Named words get one op per value. A whole document gets ONE op, a scope
+# (the document and the fields), found again at approval: see review.py.
 
-def _reviewable(w: Word, field: str):
-    """(span, state) for a field whose value is waiting for review, else None."""
-    from plaid_client.provenance import prov_state
-    sp = w.fields.get(field)
-    if not sp or not sp.value:
-        return None
-    state = prov_state(sp.metadata)
-    return (sp, state) if state in ('machine', 'contributed') else None
+def _review_fields(field: str) -> List[str]:
+    fields = [field] if field else list(REVIEW_FIELDS)
+    for f in fields:
+        if f not in REVIEW_FIELDS:
+            raise ToolError(f'Unknown field "{f}". One of: ' + ', '.join(REVIEW_FIELDS))
+    return fields
 
 
-def _targets(ws: Workspace, doc: UdDoc, refs):
-    """The words a review tool acts on: the ones named, or every word in the
-    document when none are.
+def _named(ws: Workspace, doc: UdDoc, refs) -> List[tuple]:
+    words = _words(ws, doc, refs)
+    return [(ws.sentence_of(doc, w), w) for w in words]
 
-    Both routes owe the same refusals. Naming no references used to skip
-    `_words` and every guard inside it, so `confirm(document=...)` could join a
-    plan that reshapes a token, and the batch deleted the token before patching
-    a span that sat on it."""
-    if refs:
-        return _words(ws, doc, refs)
+
+def _whole_document(ws: Workspace, doc: UdDoc) -> List[tuple]:
+    """Every word, with the refusals `_words` would have made: a scope op
+    reaches every word, so it cannot join a plan that reshapes any of them."""
     _guards(ws, doc)
-    out = [w for s in doc.sentences for w in s.words]
-    _not_being_reshaped(ws, out)
-    return out
+    words = all_words(doc)
+    _not_being_reshaped(ws, [w for _, w in words])
+    return words
+
+
+def _scope_fields(ws: Workspace, kind: str, doc: UdDoc, fields: List[str]) -> List[str]:
+    """The fields a scope op on this document ends up covering: a second call
+    widens the first rather than replacing it (add_op replaces by target)."""
+    for op in ws.ops:
+        if op.get('kind') == kind and op.get('document_id') == doc.id:
+            return [f for f in REVIEW_FIELDS if f in set(op.get('fields') or []) | set(fields)]
+    return fields
 
 
 def t_confirm(ws: Workspace, document: str = None, refs=None, field: str = None) -> str:
     """Mark machine output and contributors' work as reviewed and correct."""
     doc = ws.doc(document)
-    fields = [field] if field else list(FIELDS)
-    for f in fields:
-        if f not in FIELDS and f != 'deprel':
-            raise ToolError(f'Unknown field "{f}". One of: ' + ', '.join(FIELDS + ('deprel',)))
-    words = _targets(ws, doc, refs)
-    n = 0
-    for w in words:
-        sentence = ws.sentence_of(doc, w)
-        for f in fields:
-            hit = _reviewable(w, f)
-            if hit:
-                ws.add_op({'kind': 'confirm', 'span_id': hit[0].id, 'document_id': doc.id,
-                           'label': f'confirm {f} on {word_ref(sentence, w)}',
-                           'ref': word_ref(sentence, w)})
-                n += 1
-        if (not field or field == 'deprel') and w.relation_id:
-            from plaid_client.provenance import prov_state
-            if prov_state(w.relation_metadata) in ('machine', 'contributed'):
-                ws.add_op({'kind': 'confirm', 'relation_id': w.relation_id, 'document_id': doc.id,
-                           'label': f'confirm the head of {word_ref(sentence, w)}',
-                           'ref': word_ref(sentence, w)})
-                n += 1
-    if not n:
-        return ('Nothing to confirm: every value named is already a person\'s work or confirmed.'
-                if refs else f'Nothing in "{doc.name}" is waiting for review.')
-    return f'Planned confirming {n} value(s).'
-
-
-def _vouched_arc_hangs_on(sentence, w) -> bool:
-    """True when a relation nobody has to re-check anchors on this word's lemma
-    span, either as the dependent's end or as the head's."""
-    from plaid_client.provenance import prov_state
-    if w.relation_id and prov_state(w.relation_metadata) != 'machine':
-        return True
-    return any(o.relation_id and o.head == w.index
-               and prov_state(o.relation_metadata) != 'machine'
-               for o in sentence.words)
+    fields = _review_fields(field)
+    if refs:
+        targets = confirm_targets(_named(ws, doc, refs), fields)
+        if not targets:
+            return 'Nothing to confirm: every value named is already a person\'s work or confirmed.'
+        ws.reserve(len(targets))
+        for sentence, w, f, span_id, relation_id in targets:
+            ref = word_ref(sentence, w)
+            ws.add_op({'kind': 'confirm', 'span_id': span_id, 'relation_id': relation_id,
+                       'document_id': doc.id, 'ref': ref,
+                       'label': f'confirm the head of {ref}' if f == 'deprel' else f'confirm {f} on {ref}'})
+        return f'Planned confirming {len(targets)} value(s).'
+    fields = _scope_fields(ws, 'confirm_scope', doc, fields)
+    targets = confirm_targets(_whole_document(ws, doc), fields)
+    if not targets:
+        return f'Nothing in "{doc.name}" is waiting for review.'
+    counts = per_field(targets)
+    ws.add_op({'kind': 'confirm_scope', 'document_id': doc.id, 'fields': fields,
+               'count': len(targets), 'per_field': counts, 'ref': None,
+               'label': f'confirm {len(targets)} values in "{doc.name}" ({counts_phrase(counts)})'})
+    return (f'Planned confirming {len(targets)} value(s) in "{doc.name}": {counts_phrase(counts)}. '
+            f'That is one planned change covering the whole document.')
 
 
 def t_discard_predictions(ws: Workspace, document: str = None, refs=None, field: str = None) -> str:
     """Throw away machine output nobody has confirmed. A person's work and a
     confirmed value are never touched."""
     doc = ws.doc(document)
-    fields = [field] if field else list(FIELDS)
-    words = _targets(ws, doc, refs)
-    n = 0
-    spared = 0
-    for w in words:
-        sentence = ws.sentence_of(doc, w)
-        for f in fields:
-            hit = _reviewable(w, f)
-            if hit and hit[1] == 'machine':
-                if f == 'lemma' and _vouched_arc_hangs_on(sentence, w):
-                    # The editor leaves this lemma alone: an arc somebody
-                    # vouched for hangs on its span, and that person was reading
-                    # this lemma when they did. Both anchors survive intact.
-                    spared += 1
-                    continue
-                ws.add_op({'kind': 'set_span', 'layer_id': hit[0].layer_id, 'token_id': w.id,
-                           'span_id': hit[0].id, 'value': '', 'field': f,
-                           'document_id': doc.id,
-                           'label': f'discard the unconfirmed {f} on {word_ref(sentence, w)}',
-                           'ref': word_ref(sentence, w)})
-                n += 1
-        if (not field or field == 'deprel') and w.relation_id:
-            from plaid_client.provenance import prov_state
-            if prov_state(w.relation_metadata) == 'machine':
-                ws.add_op({'kind': 'del_relation', 'word_id': w.id, 'relation_id': w.relation_id,
-                           'document_id': doc.id,
-                           'label': f'discard the unconfirmed head of {word_ref(sentence, w)}',
-                           'ref': word_ref(sentence, w)})
-                n += 1
+    fields = _review_fields(field)
+    if refs:
+        targets, spared = discard_targets(_named(ws, doc, refs), fields)
+        if targets:
+            ws.reserve(len(targets))
+        for sentence, w, f, span, relation_id in targets:
+            ref = word_ref(sentence, w)
+            if f == 'deprel':
+                ws.add_op({'kind': 'del_relation', 'word_id': w.id, 'relation_id': relation_id,
+                           'document_id': doc.id, 'ref': ref,
+                           'label': f'discard the unconfirmed head of {ref}'})
+            else:
+                ws.add_op({'kind': 'set_span', 'layer_id': span.layer_id, 'token_id': w.id,
+                           'span_id': span.id, 'value': '', 'field': f, 'document_id': doc.id,
+                           'ref': ref, 'label': f'discard the unconfirmed {f} on {ref}'})
+        n = len(targets)
+    else:
+        fields = _scope_fields(ws, 'discard_scope', doc, fields)
+        targets, spared = discard_targets(_whole_document(ws, doc), fields)
+        n = len(targets)
+        if n:
+            counts = per_field(targets)
+            ws.add_op({'kind': 'discard_scope', 'document_id': doc.id, 'fields': fields,
+                       'count': n, 'per_field': counts, 'ref': None,
+                       'label': f'discard {n} unconfirmed machine values in "{doc.name}" '
+                                f'({counts_phrase(counts)})'})
     spared_note = f' Left {spared} machine lemma(s) that anchor arcs a person drew.' if spared else ''
     if not n:
         if spared:
             return f'Nothing to discard: {spared} machine lemma(s) here anchor arcs a person drew.'
         return 'Nothing to discard: no unconfirmed machine values here.'
-    return f'Planned discarding {n} unconfirmed machine value(s).{spared_note}'
+    scope_note = '' if refs else f' That is one planned change covering the whole of "{doc.name}".'
+    return f'Planned discarding {n} unconfirmed machine value(s).{spared_note}{scope_note}'
 
 
 # --- the plan so far -----------------------------------------------------------

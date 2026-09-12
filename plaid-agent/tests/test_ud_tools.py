@@ -125,7 +125,7 @@ def test_a_plan_never_confirms_what_it_deletes(ws):
     had approved it."""
     assert 'cleared' in run(ws, 'set_field', document='Viaje', refs=['s1.w4'], field='upos', value='')
     assert 'confirming 1' in run(ws, 'confirm', document='Viaje')
-    counts = execute_plan(ws.client, ws.ops, source='s', label='l')
+    counts = execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
     calls = [(r, m, a) for r, m, a, k in ws.client.batches[0]]
     assert calls == [('spans', 'delete', ('sp-u3',))]
     assert 'the plan deletes what it confirms' in ' '.join(counts.get('notes') or [])
@@ -152,10 +152,85 @@ def test_del_relation_says_when_there_is_no_head_to_remove(ws):
 # --- review ---------------------------------------------------------------------
 
 def test_confirm_finds_the_one_unconfirmed_value(ws):
-    out = run(ws, 'confirm', document='Viaje')
+    out = run(ws, 'confirm', document='Viaje', refs=['s1.w4', 's1.w1'])
     assert out == 'Planned confirming 1 value(s).'
-    assert ws.ops[0] == {'kind': 'confirm', 'span_id': 'sp-u3', 'document_id': 'ud1',
+    assert ws.ops[0] == {'kind': 'confirm', 'span_id': 'sp-u3', 'relation_id': None, 'document_id': 'ud1',
                          'label': 'confirm upos on s1.w4', 'ref': 's1.w4'}
+
+
+def test_confirming_a_whole_document_is_one_scope_op_resolved_at_approval(ws):
+    """A document with 1300 words and four columns is over five thousand
+    spans, and a plan naming each of them was too large for the record to
+    hold. The scope op costs one, and approval finds the spans again."""
+    out = run(ws, 'confirm', document='Viaje')
+    assert out.startswith('Planned confirming 1 value(s) in "Viaje": upos 1.')
+    assert ws.ops == [{'kind': 'confirm_scope', 'document_id': 'ud1',
+                       'fields': ['lemma', 'upos', 'xpos', 'features', 'deprel'],
+                       'count': 1, 'per_field': {'upos': 1}, 'ref': None,
+                       'label': 'confirm 1 values in "Viaje" (upos 1)'}]
+    assert summarize(ws.ops) == '1 confirmation'
+    payload = ws.plan_payload()
+    assert payload['changes'][0]['where']['kind'] == 'document'
+    counts = execute_plan(ws.client, payload['ops'], source='s', label='l', project=ws.project)
+    assert counts == {'confirmations': 1}
+    calls = [(r, m, a) for r, m, a, k in ws.client.batches[0]]
+    assert calls == [('spans', 'patch_metadata', ('sp-u3', {'provConfirmed': True}))]
+
+
+def test_a_scope_needs_the_project_to_read_with(ws):
+    run(ws, 'confirm', document='Viaje')
+    with pytest.raises(ValueError, match='needs the project'):
+        execute_plan(ws.client, ws.ops, source='s', label='l')
+
+
+def test_a_second_confirm_widens_the_scope_instead_of_replacing_it(ws):
+    run(ws, 'confirm', document='Viaje', field='upos')
+    assert ws.ops[0]['fields'] == ['upos']
+    run(ws, 'confirm', document='Viaje', field='lemma')
+    assert len(ws.ops) == 1 and ws.ops[0]['fields'] == ['lemma', 'upos']
+
+
+def test_a_scope_and_a_reshape_of_the_same_document_cannot_share_a_plan(ws):
+    run(ws, 'confirm', document='Viaje')
+    assert 'reviews every word' in run(ws, 'set_words', document='Viaje', ref='s1.w2-3', forms=['al'])
+    ws.ops.clear()
+    run(ws, 'set_words', document='Viaje', ref='s1.w2-3', forms=['al'])
+    assert 'reshapes the token' in run(ws, 'confirm', document='Viaje')
+    # The backstop, for a plan that reached the executor anyway.
+    with pytest.raises(ValueError, match='reviews every word'):
+        execute_plan(ws.client, ws.ops + [{'kind': 'confirm_scope', 'document_id': 'ud1', 'fields': ['upos']}],
+                     source='s', label='l', project=ws.project)
+
+
+def test_the_plan_refuses_to_grow_past_what_a_record_holds(ws, monkeypatch):
+    from plaid_agent.ud import tools
+    monkeypatch.setattr(tools, 'PLAN_MAX_OPS', 3)
+    run(ws, 'set_field', document='Viaje', refs=['s1.w1', 's1.w2'], field='xpos', value='x')
+    out = run(ws, 'set_field', document='Viaje', refs=['s1.w3', 's1.w4'], field='xpos', value='x')
+    assert 'more than the 3 one plan may hold' in out
+    assert len(ws.ops) == 2  # nothing half staged
+    # A whole document's review is one change however many values it covers.
+    assert 'Planned confirming' in run(ws, 'confirm', document='Viaje')
+
+
+def test_a_large_group_of_like_changes_is_stored_as_one_op(ws, monkeypatch):
+    from plaid_agent.core import plan as core_plan
+    monkeypatch.setattr(core_plan, 'COMPACT_ABOVE', 2)
+    run(ws, 'set_field', document='Viaje', refs=['s1.w1', 's1.w2', 's1.w3'], field='xpos', value='x')
+    run(ws, 'set_field', document='Viaje', refs=['s1.w4'], field='lemma', value='punto')
+    payload = ws.plan_payload()
+    assert len(payload['ops']) == 2 and len(payload['changes']) == 2
+    group = payload['ops'][0]
+    assert group['compact'] and group['count'] == 3 and group['items']['token_id'] == ['uw-1', 'uw-2a', 'uw-2b']
+    assert group['label'] == 'xpos = "x" on 3 words (s1.w1, s1.w2, s1.w3)'
+    assert payload['changes'][0]['where']['kind'] == 'document'
+    assert payload['summary'] == '4 field values'
+    assert summarize(payload['ops']) == '4 field values'
+    counts = execute_plan(ws.client, payload['ops'], source='s', label='l', project=ws.project)
+    assert counts == {'field values': 4}
+    calls = [(m, a) for r, m, a, k in ws.client.batches[0]]
+    assert [a[1] for m, a in calls if m == 'create'] == [['uw-1'], ['uw-2a'], ['uw-2b']]
+    assert ('update', ('sp-l3', 'punto')) in calls  # s1.w4 "mar" already had a lemma span
 
 
 def test_confirm_says_so_when_nothing_is_waiting(ws):
@@ -164,9 +239,21 @@ def test_confirm_says_so_when_nothing_is_waiting(ws):
 
 
 def test_discard_predictions_clears_the_machine_value_only(ws):
-    out = run(ws, 'discard_predictions', document='Viaje')
+    out = run(ws, 'discard_predictions', document='Viaje', refs=['s1.w4'])
     assert out == 'Planned discarding 1 unconfirmed machine value(s).'
     assert ws.ops[0]['value'] == '' and ws.ops[0]['span_id'] == 'sp-u3'
+
+
+def test_discarding_a_whole_document_is_one_scope_op_that_clears_at_approval(ws):
+    out = run(ws, 'discard_predictions', document='Viaje')
+    assert out == ('Planned discarding 1 unconfirmed machine value(s). That is one planned change '
+                   'covering the whole of "Viaje".')
+    assert ws.ops[0]['kind'] == 'discard_scope' and ws.ops[0]['per_field'] == {'upos': 1}
+    assert summarize(ws.ops) == '1 cleared value'
+    counts = execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
+    assert counts == {'field values': 1}
+    calls = [(r, m, a) for r, m, a, k in ws.client.batches[0]]
+    assert calls == [('spans', 'delete', ('sp-u3',))]
 
 
 # --- the plan -------------------------------------------------------------------

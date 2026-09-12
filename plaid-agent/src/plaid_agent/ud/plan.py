@@ -13,12 +13,16 @@ batch, and the relations go in the next.
 from collections import Counter
 from typing import Any, Dict, List, Optional
 
-from ..core.plan import CONFIRM, PlanError, Stamps, TrackingBatcher, created_id
+from ..core.plan import CONFIRM, PlanError, Stamps, TrackingBatcher, created_id, expand_ops
+from .project import load_document, word_ref
+from .review import all_words, confirm_targets, discard_targets
 from .sentences import apply_merge_sentences, apply_split_sentence
 from .shape import apply_set_words, finish_set_words
 
 KINDS = ('set_span', 'set_head', 'del_relation', 'confirm', 'run_parse', 'set_words',
-         'split_sentence', 'merge_sentences', 'restore_document')
+         'split_sentence', 'merge_sentences', 'restore_document', 'confirm_scope', 'discard_scope')
+# A scope names a document and fields, and is resolved to spans at approval.
+SCOPES = ('confirm_scope', 'discard_scope')
 
 # Ops that move where sentences begin, which renumbers every sentence after
 # them. References are positional, so no other op in the plan can be trusted
@@ -41,6 +45,8 @@ REQUIRED = {
     'split_sentence': ('document_id', 'sentence_id', 'char_pos'),
     'merge_sentences': ('document_id', 'sentence_id', 'previous_id'),
     'restore_document': ('document_id', 'as_of'),
+    'confirm_scope': ('document_id', 'fields'),
+    'discard_scope': ('document_id', 'fields'),
 }
 
 
@@ -68,6 +74,13 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
     # of those words would be writing to something that will not exist.
     reshaped = {w for op in ops if op.get('kind') == 'set_words'
                 for w in (op.get('existing_word_ids') or [])}
+    # A scope reaches every word of its document, so it clashes with any
+    # reshape there, without naming a word for the check below to catch.
+    reshaped_docs = {op.get('document_id') for op in ops if op.get('kind') == 'set_words'}
+    for op in ops:
+        if op.get('kind') in SCOPES and op.get('document_id') in reshaped_docs:
+            raise ValueError('this plan both reshapes a token and reviews every word of its '
+                             'document, and the reshape deletes some of them')
     if reshaped:
         # `confirm` carries a span_id, not a token_id, so listing the kinds
         # that name a word let it through. Ask the op what it names instead.
@@ -178,7 +191,9 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
     Per-kind counts of what was applied, plus ``notes``. Raises
     :class:`PlanError` with the applied count if a later batch fails."""
     stamps = Stamps(stamp_mode, source, contributor)
+    ops = expand_ops(ops)
     validate_ops(ops)
+    ops = resolve_scopes(client, project, ops)
     ops, notes = normalize_ops(ops)
     counts: Counter = Counter()
     # Only a failure inside `flush` carries `_applied` out with it. Everything
@@ -197,6 +212,50 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
             b = tracker.get('batcher')
             applied = b.applied if b is not None else 0
         raise PlanError(f'{type(e).__name__}: {e}', applied, len(ops)) from e
+
+
+def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """The per-span ops a scope stands for, read from the document NOW.
+
+    Approval has already refused the plan if the document's version moved
+    since the model counted, so what is found here is what it counted.
+    Nothing is written: this only reads, and a document that cannot be read
+    refuses the whole plan before any batch opens."""
+    if not any(op.get('kind') in SCOPES for op in ops):
+        return ops
+    if project is None:
+        raise ValueError('a whole-document review needs the project to read the document with')
+    out: List[Dict[str, Any]] = []
+    docs: Dict[str, Any] = {}
+    for op in ops:
+        kind = op.get('kind')
+        if kind not in SCOPES:
+            out.append(op)
+            continue
+        did = op['document_id']
+        if did not in docs:
+            docs[did] = load_document(client, project, did)
+        doc = docs[did]
+        fields = list(op.get('fields') or [])
+        if kind == 'confirm_scope':
+            for sentence, w, f, span_id, relation_id in confirm_targets(all_words(doc), fields):
+                ref = word_ref(sentence, w)
+                out.append({'kind': 'confirm', 'span_id': span_id, 'relation_id': relation_id,
+                            'document_id': did, 'ref': ref,
+                            'label': f'confirm the head of {ref}' if f == 'deprel' else f'confirm {f} on {ref}'})
+            continue
+        targets, _spared = discard_targets(all_words(doc), fields)
+        for sentence, w, f, span, relation_id in targets:
+            ref = word_ref(sentence, w)
+            if f == 'deprel':
+                out.append({'kind': 'del_relation', 'word_id': w.id, 'relation_id': relation_id,
+                            'document_id': did, 'ref': ref,
+                            'label': f'discard the unconfirmed head of {ref}'})
+            else:
+                out.append({'kind': 'set_span', 'layer_id': span.layer_id, 'token_id': w.id,
+                            'span_id': span.id, 'value': '', 'field': f, 'document_id': did,
+                            'ref': ref, 'label': f'discard the unconfirmed {f} on {ref}'})
+    return out
 
 
 def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None) -> Dict[str, int]:
@@ -366,14 +425,23 @@ def summarize(ops: List[Dict[str, Any]]) -> str:
     c = Counter()
     for op in ops:
         kind = op.get('kind')
+        # A stored group stands for `count` changes; a scope for what it found.
+        n = int(op.get('count') or 1) if (op.get('compact') or kind in SCOPES) else 1
         if kind == 'set_span':
-            c['field value' if op.get('value') else 'cleared value'] += 1
+            c['field value' if op.get('value') else 'cleared value'] += n
         elif kind == 'set_head':
-            c['dependency'] += 1
+            c['dependency'] += n
         elif kind == 'del_relation':
-            c['removed dependency'] += 1
-        elif kind == 'confirm':
-            c['confirmation'] += 1
+            c['removed dependency'] += n
+        elif kind in ('confirm', 'confirm_scope'):
+            c['confirmation'] += n
+        elif kind == 'discard_scope':
+            per = op.get('per_field') or {}
+            heads = int(per.get('deprel') or 0)
+            if heads:
+                c['removed dependency'] += heads
+            if n - heads:
+                c['cleared value'] += n - heads
         elif kind == 'run_parse':
             c['parsed document'] += len(op.get('document_ids') or [])
         elif kind == 'set_words':
