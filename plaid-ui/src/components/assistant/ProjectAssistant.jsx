@@ -16,6 +16,7 @@ import { assistantsAmong, strandedAssistants } from './useAssistantAvailable.js'
 import { Button } from '../ui/button.jsx';
 import { Textarea } from '../ui/textarea.jsx';
 import { Badge } from '../ui/badge.jsx';
+import { Switch } from '../ui/switch.jsx';
 import { cn } from '../../lib/utils.js';
 import { notifyError } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
@@ -30,7 +31,7 @@ import {
   convKey,
   jobFor,
   metaKey,
-  metaPrefix,
+  readMetas,
   newConversation,
   persistConv,
   movedHere,
@@ -187,6 +188,12 @@ export const ProjectAssistant = ({
   // --- conversations ----------------------------------------------------
   const [convs, setConvs] = useState([]); // sidebar metas, newest first
   const [loadingList, setLoadingList] = useState(true);
+  // Whether the list reaches past this project. Off by default, so nothing
+  // changes for a reader who never asks: the common case is looking for a
+  // thread about what is in front of them. On, for the reader who knows they
+  // discussed something and not which project it was in.
+  const [allProjects, setAllProjects] = useState(false);
+  const [projectNames, setProjectNames] = useState(new Map());
   const [active, setActive] = useState(newConversation); // {id, messages, display, draft?}
   const [opening, setOpening] = useState(null); // id being fetched
   // Which conversation is open. The tab keeps it in the URL, so a link to one
@@ -280,18 +287,10 @@ export const ProjectAssistant = ({
 
   // --- persistence ---------------------------------------------------------
   const loadList = useCallback(async () => {
-    const { client, userId, app, projectId } = store;
-    if (!userId) return [];
+    if (!store.userId) return [];
     setLoadingList(true);
     try {
-      const entries = await client.userData.list(userId, {
-        prefix: metaPrefix(app, projectId),
-        includeValues: true,
-      });
-      const metas = (entries || [])
-        .map((e) => e.value)
-        .filter((m) => m && m.id)
-        .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+      const metas = await readMetas(store, { allProjects });
       setConvs(metas);
       return metas;
     } catch (e) {
@@ -301,7 +300,28 @@ export const ProjectAssistant = ({
     } finally {
       setLoadingList(false);
     }
-  }, [store]);
+  }, [store, allProjects]);
+
+  // The names of the OTHER projects a listed conversation belongs to. Asked for
+  // only once the reader widens the list, because it is a call this screen has
+  // no other reason to make.
+  useEffect(() => {
+    if (!allProjects || !client) return undefined;
+    let alive = true;
+    client.projects
+      .list()
+      .then((all) => {
+        if (alive) setProjectNames(new Map((all || []).map((pr) => [pr.id, pr.name])));
+      })
+      .catch(() => {
+        // Without the names a row still lists and still links. It just cannot
+        // say which project it is in, which is better than not listing it.
+        if (alive) setProjectNames(new Map());
+      });
+    return () => {
+      alive = false;
+    };
+  }, [allProjects, client]);
 
   const showJob = (j) => {
     setBusy(j.kind);
@@ -620,6 +640,18 @@ export const ProjectAssistant = ({
               <Plus className="h-4 w-4" />
             </Button>
           </div>
+          {/* A conversation belongs to the project it was started in, and a
+              reader who remembers discussing something does not always
+              remember where. A row from elsewhere links into that project's
+              own tab, since that is the only place its assistant can answer. */}
+          <label className="flex items-center gap-2 border-b px-3 py-1.5 text-[11px] text-muted-foreground">
+            <Switch
+              checked={allProjects}
+              onCheckedChange={setAllProjects}
+              aria-label="All projects"
+            />
+            All projects
+          </label>
           <div className="flex-1 overflow-y-auto p-1.5">
             {loadingList && !rows.length ? (
               <div className="px-2 py-3 text-xs text-muted-foreground">Loading…</div>
@@ -638,10 +670,18 @@ export const ProjectAssistant = ({
                     </div>
                   ) : (
                     <Link
-                      to={adapter.convHref(projectId, m.id)}
+                      to={adapter.convHref(m.projectId || projectId, m.id)}
                       className="min-w-0 flex-1 text-left"
                     >
-                      <ConversationRow m={m} opening={opening} />
+                      <ConversationRow
+                        m={m}
+                        opening={opening}
+                        elsewhere={
+                          m.projectId && m.projectId !== projectId
+                            ? projectNames.get(m.projectId) || 'Another project'
+                            : null
+                        }
+                      />
                     </Link>
                   )}
                   {!m.draft && (

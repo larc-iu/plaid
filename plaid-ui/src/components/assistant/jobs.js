@@ -24,6 +24,47 @@ export const convKey = (app, projectId, id) => `${app}:assistant:${projectId}:co
 
 export const metaPrefix = (app, projectId) => `${app}:assistant:${projectId}:meta:`;
 
+// Every conversation of this app's, across every project. The project sits in
+// the MIDDLE of the key, so no prefix can select the small sidebar entries
+// alone: the nearest one also matches each `:conv:` sibling, which is a whole
+// transcript apiece. That is what the GLOB on the per-user data list is for
+// (plaid-core's sql/user_data.clj says the same thing from the other side).
+export const metaGlob = (app) => `${app}:assistant:*:meta:*`;
+
+// Which project a record belongs to, read off its key. The key is the only
+// place it is written: a sidebar entry carries no project id of its own, and
+// adding one would leave every conversation saved before today unattributed.
+export const projectOfKey = (app, key) => {
+  const head = `${app}:assistant:`;
+  if (typeof key !== 'string' || !key.startsWith(head)) return null;
+  const rest = key.slice(head.length);
+  const cut = rest.indexOf(':');
+  return cut > 0 ? rest.slice(0, cut) : null;
+};
+
+// The sidebar entries, newest first. `allProjects` widens the read from this
+// project to every one of them, for a reader looking for a thread whose
+// project they have forgotten. Each entry carries the project it belongs to,
+// so a row can say so and link there.
+export const readMetas = async (store, { allProjects = false } = {}) => {
+  const { client, userId, app, projectId } = store;
+  if (!userId) return [];
+  const entries = await client.userData.list(
+    userId,
+    allProjects
+      ? { pattern: metaGlob(app), includeValues: true }
+      : { prefix: metaPrefix(app, projectId), includeValues: true },
+  );
+  return (entries || [])
+    .map((e) => {
+      const meta = e.value;
+      if (!meta || !meta.id) return null;
+      return { ...meta, projectId: projectOfKey(app, e.key) || projectId };
+    })
+    .filter(Boolean)
+    .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+};
+
 // A UUID: request ids must be one (the server checks), and conversation ids
 // share the generator.
 export const newId = () =>

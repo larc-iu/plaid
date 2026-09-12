@@ -19,6 +19,7 @@ let documentId;
 let otherDocumentId;
 let vocabularyId;
 let userId;
+let otherProjectId;
 const seeded = []; // conversation ids to delete
 
 const ASSISTANT = [
@@ -102,9 +103,18 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   const c = client();
   for (const id of seeded) {
-    for (const kind of ['conv', 'meta']) {
-      await c.userData.delete(userId, convKey(kind, id)).catch(() => {});
+    for (const project of [projectId, otherProjectId].filter(Boolean)) {
+      for (const kind of ['conv', 'meta']) {
+        await c.userData.delete(userId, `igt:assistant:${project}:${kind}:${id}`).catch(() => {});
+      }
     }
+  }
+  // A seeded project that outlives its spec breaks other specs that take "the
+  // first configured project".
+  if (otherProjectId) {
+    await c.projects
+      .delete(otherProjectId)
+      .catch((e) => console.error('cleanup failed:', e.message));
   }
   if (vocabularyId) {
     await c.vocabLayers
@@ -318,4 +328,64 @@ test("the panel resumes the project's newest thread and holds it while the reade
   await page.goto(`/#/vocabularies/${vocabularyId}`);
   await expect(page.getByRole('link', { name: 'New' })).toBeVisible({ timeout: 15000 });
   await expect(panel.getByText('the newer question')).toBeVisible();
+});
+
+test('the tab can list conversations from every project, and links them there', async ({
+  page,
+}) => {
+  // A conversation belongs to the project it was started in: its record is
+  // keyed by one, and only that project's assistant can answer it. So a reader
+  // who remembers discussing something but not where needs to be able to see
+  // across projects, and a row from elsewhere has to link THERE rather than
+  // open here.
+  await seedAuth(page);
+  await withAssistant(page);
+  const here = await seedConversation(
+    'chrome thread here',
+    'asked in this project',
+    '2030-01-01T00:00:00.000Z',
+  );
+  const elsewhereId = randomUUID();
+  seeded.push(elsewhereId);
+  // `projects.create` answers with the id, not the whole project, so the name
+  // this asserts on is the one it was given.
+  const otherName = `Chrome Other Project ${Date.now()}`;
+  const other = await client().projects.create(otherName);
+  otherProjectId = other.id;
+  const c = client();
+  await c.userData.put(userId, `igt:assistant:${other.id}:conv:${elsewhereId}`, {
+    messages: [],
+    display: [{ kind: 'user', text: 'asked in the other project' }],
+  });
+  await c.userData.put(userId, `igt:assistant:${other.id}:meta:${elsewhereId}`, {
+    id: elsewhereId,
+    title: 'chrome thread elsewhere',
+    createdAt: '2029-01-01T00:00:00.000Z',
+    updatedAt: '2029-01-01T00:00:00.000Z',
+    serviceId: 'igt:assist:test',
+    model: 'test/model',
+    turns: 1,
+    pending: null,
+  });
+
+  await page.goto(`/#/projects/${projectId}?tab=assistant`);
+  const sidebar = page.getByRole('complementary').first();
+  await expect(sidebar.getByRole('link', { name: /chrome thread here/ })).toBeVisible();
+  // This project only, by default: nothing changes for a reader who never asks.
+  await expect(sidebar.getByRole('link', { name: /chrome thread elsewhere/ })).toHaveCount(0);
+
+  await sidebar.getByLabel('All projects').click();
+  const foreign = sidebar.getByRole('link', { name: /chrome thread elsewhere/ });
+  await expect(foreign).toBeVisible();
+  // It names the project it is in, and links into THAT project's own tab.
+  await expect(foreign).toContainText(otherName);
+  await expect(foreign).toHaveAttribute(
+    'href',
+    new RegExp(`/projects/${other.id}\\?tab=assistant&conversation=${elsewhereId}$`),
+  );
+  // The one from here is still listed, and still links here.
+  await expect(sidebar.getByRole('link', { name: /chrome thread here/ })).toHaveAttribute(
+    'href',
+    new RegExp(`/projects/${projectId}\\?tab=assistant&conversation=${here}$`),
+  );
 });

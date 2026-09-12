@@ -1,5 +1,5 @@
 import { timeAgo } from '../../utils/formatTime.js';
-import { MessageSquare, Download, Copy, FileDown, FileText } from 'lucide-react';
+import { MessageSquare, Download, Copy, FileDown, FileText, FolderOpen } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/select.jsx';
 import {
@@ -21,29 +21,45 @@ import { jobFor } from './jobs.js';
 // A conversation started from a document says so: the same list holds those
 // and the ones started from the tab, and which document a thread is about is
 // the first thing that tells them apart.
-export const ConversationRow = ({ m, opening }) => (
-  <>
-    <div className="flex items-center gap-1.5">
-      <MessageSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-      <span className={cn('truncate', m.draft && 'italic')}>{m.title || 'Untitled'}</span>
-    </div>
-    <div className="pl-5 text-[11px] text-muted-foreground">
-      {m.draft
-        ? 'Nothing sent yet'
-        : (opening === m.id ? 'Opening…' : timeAgo(m.updatedAt)) +
-          (m.model ? ` · ${m.model.split('/').pop()}` : '') +
-          (m.pending && !jobFor(m.id) ? ' · unfinished' : '')}
-    </div>
-    {m.about?.documentName && (
-      <div className="flex items-center gap-1 pl-5 text-[11px] text-muted-foreground">
-        <FileText className="h-3 w-3 shrink-0" />
-        <span className="truncate" title={m.about.documentName}>
-          {m.about.documentName}
-        </span>
+// `elsewhere` is the name of the project a row belongs to when that is not the
+// one on screen, for a list widened past this project.
+export const ConversationRow = ({ m, opening, elsewhere = null }) => {
+  // Where the conversation began. The field name is the kind, so a vocabulary
+  // thread reads its own: only the document was named here, and every thread
+  // started beside a vocabulary showed no subject at all.
+  const began = m.about?.documentName || m.about?.lexiconName;
+  return (
+    <>
+      <div className="flex items-center gap-1.5">
+        <MessageSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <span className={cn('truncate', m.draft && 'italic')}>{m.title || 'Untitled'}</span>
       </div>
-    )}
-  </>
-);
+      <div className="pl-5 text-[11px] text-muted-foreground">
+        {m.draft
+          ? 'Nothing sent yet'
+          : (opening === m.id ? 'Opening…' : timeAgo(m.updatedAt)) +
+            (m.model ? ` · ${m.model.split('/').pop()}` : '') +
+            (m.pending && !jobFor(m.id) ? ' · unfinished' : '')}
+      </div>
+      {elsewhere && (
+        <div className="flex items-center gap-1 pl-5 text-[11px] text-muted-foreground">
+          <FolderOpen className="h-3 w-3 shrink-0" />
+          <span className="truncate" title={elsewhere}>
+            {elsewhere}
+          </span>
+        </div>
+      )}
+      {began && (
+        <div className="flex items-center gap-1 pl-5 text-[11px] text-muted-foreground">
+          <FileText className="h-3 w-3 shrink-0" />
+          <span className="truncate" title={began}>
+            {began}
+          </span>
+        </div>
+      )}
+    </>
+  );
+};
 
 // Which assistant a new conversation talks to. Shown only where there is a
 // choice to make: more than one online, and a conversation not yet bound to
