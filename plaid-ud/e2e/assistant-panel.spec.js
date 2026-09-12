@@ -24,7 +24,20 @@ const ASSISTANT = [
     serviceId: 'ud:assist:test',
     serviceName: 'UD Assistant (test)',
     description: 'A stand-in for the specs.',
-    extras: { model: 'test/model', tasks: ['assist'] },
+    extras: { model: 'test/model', app: 'ud', tasks: ['assist'] },
+    tasks: ['assist'],
+    online: true,
+  },
+];
+
+// The OTHER app's assistant, online on this very project: UD and IGT share
+// projects, so this is the ordinary state of a shared one, not a contrivance.
+const FOREIGN = [
+  {
+    serviceId: 'igt:assist:test',
+    serviceName: 'Assistant from the other app',
+    description: 'A stand-in for the specs.',
+    extras: { model: 'test/model', app: 'igt', tasks: ['assist'] },
     tasks: ['assist'],
     online: true,
   },
@@ -77,6 +90,23 @@ test.describe('when no assistant is online', () => {
     await expect(page.getByRole('button', { name: 'Ask', exact: true })).toHaveCount(0);
 
     // The project tab is not offered either, though its route still works.
+    await page.goto(`/#/projects/${S.projectId}/documents`);
+    await expect(page.getByRole('tab', { name: 'Documents' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Assistant' })).toHaveCount(0);
+  });
+
+  test("and the OTHER app's assistant does not count as one", async ({ page }) => {
+    // It happened: the filter asked only whether a service does `assist`, so
+    // IGT offered a `ud:assist:` service on a shared project. A conversation's
+    // record is namespaced by the app it was started in, so every turn came
+    // back "No such conversation" and the thread could never be answered.
+    await seedAuth(page);
+    await withAssistant(page, FOREIGN);
+    await annotate(page);
+    await expect(page.getByRole('button', { name: 'History' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Assistant', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Ask', exact: true })).toHaveCount(0);
+
     await page.goto(`/#/projects/${S.projectId}/documents`);
     await expect(page.getByRole('tab', { name: 'Documents' })).toBeVisible();
     await expect(page.getByRole('tab', { name: 'Assistant' })).toHaveCount(0);

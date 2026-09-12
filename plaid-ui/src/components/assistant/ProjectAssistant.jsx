@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, Send, RotateCcw, Check, X, Loader2, Plus, Trash2, Maximize2 } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { TASKS, filterServicesByTask } from '@larc-iu/plaid-client';
+import { assistantsAmong } from './useAssistantAvailable.js';
 import { Button } from '../ui/button.jsx';
 import { Textarea } from '../ui/textarea.jsx';
 import { Badge } from '../ui/badge.jsx';
@@ -153,11 +153,10 @@ export const ProjectAssistant = ({
   const convsRef = useRef(convs);
   convsRef.current = convs;
 
-  // Only ONLINE assist services can take a turn.
-  const assistants = useMemo(
-    () => filterServicesByTask(services, TASKS.ASSIST).filter((s) => s.online !== false),
-    [services],
-  );
+  // Only ONLINE assist services OF THIS APP can take a turn: a conversation's
+  // record is namespaced by `adapter.app`, the same value the service
+  // advertises, so another app's assistant could not find one of ours.
+  const assistants = useMemo(() => assistantsAmong(services, adapter.app), [services, adapter.app]);
   // A conversation keeps the assistant it started with: its earlier answers
   // were that model's, and swapping models halfway through a thread makes the
   // whole thread hard to read. So the picker is offered while a conversation

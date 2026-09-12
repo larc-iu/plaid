@@ -176,7 +176,7 @@ const DocumentEditor = () => {
   const [assistantFocus, setAssistantFocus] = useState(null);
   const project = doc?.project;
   const rowRef = useRef(null);
-  const assistantAvailable = useAssistantAvailable(client, projectId);
+  const assistantAvailable = useAssistantAvailable(client, projectId, IGT_ASSISTANT.app);
   // The interlinear grid is a lit island, so its "Ask" reaches this React tree
   // as a window event, the same bridge the auto-analyze opener uses.
   useEffect(() => {

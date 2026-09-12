@@ -185,7 +185,7 @@ export const DocumentEditorShell = () => {
   // The assistant is offered where the annotation is, which is the only tab
   // whose content it can talk about.
   const onAnnotate = pathname.endsWith('/annotate');
-  const assistantAvailable = useAssistantAvailable(client, projectId);
+  const assistantAvailable = useAssistantAvailable(client, projectId, UD_ASSISTANT.app);
   // A citation into THIS document scrolls the editor instead of opening a
   // second browser tab: ?sent= is the deep link the annotation editor already
   // watches, so setting it reuses the scroll and the flash.

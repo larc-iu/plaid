@@ -132,11 +132,18 @@ def test_an_outcome_is_not_written_over_a_conversation_that_moved_on(monkeypatch
     assert meta['pending']['request_id'] == 'r2'
 
 
-def test_a_missing_conversation_is_an_error():
+def test_a_missing_conversation_is_an_error_that_names_the_app():
+    """A conversation's record is namespaced by app, so this is also what a
+    turn sent from ANOTHER app's screen looks like. It happened: IGT offered a
+    `ud:assist:` service because the discovery filter asked only about the
+    task, and every turn came back "No such conversation" with nothing in the
+    message to act on."""
     client = FakeClient()
     helper = Helper()
     _service().process_request(_request(client), helper)
-    assert helper.errors == ['No such conversation']
+    assert len(helper.errors) == 1
+    assert 'No such conversation in igt' in helper.errors[0]
+    assert 'belongs to the app it was started in' in helper.errors[0]
     helper = Helper()
     _service().process_request({'requester_client': client, 'requester_id': 'u@x', 'project_id': 'p1'}, helper)
     assert helper.errors == ['Missing conversation_id']

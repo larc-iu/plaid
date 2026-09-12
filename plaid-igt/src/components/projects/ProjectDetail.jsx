@@ -39,6 +39,7 @@ import { useTabParam, tabTo } from '@/hooks/useTabParam';
 import { cn } from '@ui/lib/utils';
 import { useComposeProject } from '@/hooks/useCompose';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
+import { IGT_ASSISTANT } from './assistant/adapter.js';
 
 // The settings sections live behind these path suffixes; keeping them in the
 // URL means deep links and the back button still land on the right section.
@@ -148,7 +149,7 @@ export const ProjectDetail = () => {
   // Documents/Search live in `?tab=`, so a reload or a shared link reopens the
   // tab the user was on.
   const [contentTab, setContentTab] = useTabParam(CONTENT_TABS, 'documents');
-  const assistantAvailable = useAssistantAvailable(client, projectId);
+  const assistantAvailable = useAssistantAvailable(client, projectId, IGT_ASSISTANT.app);
   const activeTab = onExport
     ? 'export'
     : onSettings && canManage

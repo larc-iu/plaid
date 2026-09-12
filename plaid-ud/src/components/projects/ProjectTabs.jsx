@@ -4,6 +4,7 @@ import { canManageProject } from '../../utils/permissions.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { Tabs, TabsList, TabsTrigger } from '@ui/components/ui/tabs';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
+import { UD_ASSISTANT } from '../assistant/adapter.js';
 
 // Shared top tab bar for the project-level views (Documents / Search / Assistant /
 // Project Settings / Import & Export), mirroring the per-document `DocumentTabs`.
@@ -18,7 +19,7 @@ export const ProjectTabs = ({ projectId, project }) => {
   // The tab is offered only when an assistant is online. The ROUTE still
   // works, so a link to a past conversation opens whether or not one is
   // running: this hides the invitation, not the conversations.
-  const assistantAvailable = useAssistantAvailable(getClient(), projectId);
+  const assistantAvailable = useAssistantAvailable(getClient(), projectId, UD_ASSISTANT.app);
 
   const canManage = canManageProject(project, user);
   const configured = getUdLayerInfo(project).isConfigured;

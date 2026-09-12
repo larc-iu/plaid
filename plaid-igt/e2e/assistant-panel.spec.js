@@ -25,7 +25,20 @@ const ASSISTANT = [
     serviceId: 'igt:assist:test',
     serviceName: 'IGT Assistant (test)',
     description: 'A stand-in for the specs.',
-    extras: { model: 'test/model', tasks: ['assist'] },
+    extras: { model: 'test/model', app: 'igt', tasks: ['assist'] },
+    tasks: ['assist'],
+    online: true,
+  },
+];
+
+// The OTHER app's assistant, online on this very project. UD and IGT share
+// projects, so that is the ordinary state of a shared one, not a contrivance.
+const FOREIGN = [
+  {
+    serviceId: 'ud:assist:test',
+    serviceName: 'Assistant from the other app',
+    description: 'A stand-in for the specs.',
+    extras: { model: 'test/model', app: 'ud', tasks: ['assist'] },
     tasks: ['assist'],
     online: true,
   },
@@ -56,6 +69,21 @@ test('nothing offers an assistant when none is online', async ({ page }) => {
 
   await expect(page.getByRole('button', { name: 'Assistant', exact: true })).toHaveCount(0);
   // The island draws its own "Ask", so it has to be told too.
+  await expect(page.locator('.igt-ask')).toHaveCount(0);
+});
+
+test("the OTHER app's assistant does not count as one", async ({ page }) => {
+  // It happened, and this is the project it happened on: UD and IGT share
+  // projects, the filter asked only whether a service does `assist`, so this
+  // app offered a `ud:assist:` service. A conversation's record is namespaced
+  // by the app it was started in, so every turn came back "No such
+  // conversation" and the thread could never be answered.
+  await seedAuth(page);
+  await withAssistant(page, FOREIGN);
+  await analyze(page);
+  await expect(page.locator('.igt-sentence').first()).toBeVisible();
+
+  await expect(page.getByRole('button', { name: 'Assistant', exact: true })).toHaveCount(0);
   await expect(page.locator('.igt-ask')).toHaveCount(0);
 });
 

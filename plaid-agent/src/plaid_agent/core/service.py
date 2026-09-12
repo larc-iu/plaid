@@ -179,8 +179,12 @@ class BaseAssistantService(BaseService):
         slug = re.sub(r'[^A-Za-z0-9._-]+', '-', self.cfg.model).strip('-')
         self.service_id = args.service_id or f'{self.APP}:assist:{slug}'
         self.service_name = args.service_name or f'{self.APP_LABEL} ({self.cfg.model})'
-        # Advertised so the UI can say which model answers.
+        # Advertised so the UI can say which model answers, and so it can tell
+        # its OWN assistant from another app's: a conversation's record is
+        # namespaced by app, so an app that offered a foreign assistant sent
+        # every turn to a service that could not find the conversation.
         self.extras['model'] = self.cfg.model
+        self.extras['app'] = self.APP
         print(f'Model: {self.cfg.model}' + (f' via {self.cfg.api_base}' if self.cfg.api_base else ''))
         # Ask the model one question before registering. A service that cannot
         # reach its model has nothing to offer, and the operator is here NOW.
@@ -225,7 +229,11 @@ class BaseAssistantService(BaseService):
         try:
             conv, meta = store.load(conv_id)
         except MissingConversation:
-            response_helper.error('No such conversation')
+            # A conversation lives under its app's own key prefix, so this is
+            # also what a turn from ANOTHER app's screen looks like.
+            response_helper.error(
+                f'No such conversation in {self.APP}. A conversation belongs to the app it was '
+                f'started in, and this is the {self.APP} assistant.')
             return
         try:
             project = self.load_project(client, project_id)
