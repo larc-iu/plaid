@@ -431,14 +431,10 @@
   color: #111827;
 }
 /* A sentence someone has written on: the COUNT carries that, not the whole
-   control, so the four actions keep one resting appearance between them. */
-.sentence-comments--has {
-  opacity: 1;
-}
+   control, so the four actions keep one resting appearance between them.
+   Setting opacity here would contradict that, and did: the rule had no effect
+   only because `.sentence-confirm .sentence-action` outranks it. */
 .sentence-comments--has .tabular-nums {
   color: #2563eb;
   font-weight: 500;
-}
-.sentence-comments--has:hover {
-  background-color: #f3f4f6;
 }

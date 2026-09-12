@@ -338,7 +338,8 @@ async function ensureEmptyDoc(client, projectId, name, layers) {
 async function main() {
   const client = makeClient();
   const project = await findProjectByName(client, PROJECT_NAME);
-  if (!project) throw new Error(`Project "${PROJECT_NAME}" not found — run e2e/fixtureProject.js first`);
+  if (!project)
+    throw new Error(`Project "${PROJECT_NAME}" not found — run e2e/fixtureProject.js first`);
   const projectId = project.id;
   const full = await client.projects.get(projectId);
   const layers = resolveLayers(full);

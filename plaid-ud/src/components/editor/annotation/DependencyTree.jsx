@@ -5,8 +5,8 @@ import { provCellTitle, provMark, PROV_MARK_COLORS } from '../../../utils/proven
 import { DeprelEditor } from './DeprelEditor.jsx';
 import './DependencyTree.css';
 
-// Machine-made or contributed, not yet human-verified (provenance convention)
-//: the deprel label renders marked until a human edits or accepts it.
+// Machine-made or contributed, not yet human-verified (provenance convention).
+// The deprel label renders marked until a human edits or accepts it.
 const isInferredRelation = (relation) => needsReview(relation?.metadata);
 
 // Which mark an unreviewed relation wears: violet for a machine's, amber for a

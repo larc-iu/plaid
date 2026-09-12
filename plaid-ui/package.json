@@ -7,8 +7,8 @@
   "main": "src/index.js",
   "scripts": {
     "lint": "eslint . --max-warnings 0",
-    "format": "prettier --write \"src/**/*.{js,jsx,css}\"",
-    "format:check": "prettier --check \"src/**/*.{js,jsx,css}\""
+    "format": "prettier --write \"src/**/*.{js,mjs,jsx,css}\"",
+    "format:check": "prettier --check \"src/**/*.{js,mjs,jsx,css}\""
   },
   "peerDependencies": {
     "@larc-iu/plaid-client": "*",

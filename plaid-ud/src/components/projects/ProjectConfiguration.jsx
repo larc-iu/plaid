@@ -271,8 +271,23 @@ export const ProjectConfiguration = () => {
     return <p className="p-4 text-sm text-muted-foreground">Loading…</p>;
   }
 
+  // A blank screen with no way back is what a writer following a link here
+  // used to get, and anyone whose project load failed after the toast had
+  // gone. This screen is the one the Documents tab redirects a maintainer
+  // into, so arriving here without the role is a real path.
   if (!project || !canConfigure) {
-    return null;
+    return (
+      <div className="flex flex-col items-start gap-3 p-4">
+        <p className="text-sm text-muted-foreground">
+          {project
+            ? "Setting up a project for UD is a maintainer's job."
+            : 'This project could not be loaded.'}
+        </p>
+        <Button variant="outline" size="sm" asChild>
+          <Link to={`/projects/${projectId}/documents`}>Back to Documents</Link>
+        </Button>
+      </div>
+    );
   }
 
   const info = getUdLayerInfo(project);

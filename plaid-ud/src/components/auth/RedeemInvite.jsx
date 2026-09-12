@@ -106,7 +106,7 @@ export const RedeemInvite = () => {
         ? `You have been invited to join ${preview.projectName} as a ${preview.projectRole}.`
         : 'Choose an email address and password.';
 
-  // Renders outside the Layout shell, so it carries its own `.tw` root for the
+  // Renders outside the Layout shell, so it carries its own root for the
   // scoped preflight subset (see src/index.css).
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">

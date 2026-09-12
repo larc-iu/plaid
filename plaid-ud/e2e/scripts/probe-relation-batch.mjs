@@ -18,7 +18,9 @@ try {
     { tokenLayerId: tokl.id, text: text.id, begin: 4, end: 7 },
     { tokenLayerId: tokl.id, text: text.id, begin: 8, end: 11 },
   ]);
-  const spans = await client.spans.bulkCreate(toks.ids.map(id => ({ spanLayerId: sl.id, tokens: [id], value: 'x' })));
+  const spans = await client.spans.bulkCreate(
+    toks.ids.map((id) => ({ spanLayerId: sl.id, tokens: [id], value: 'x' })),
+  );
   const [s0, s1, s2] = spans.ids;
 
   // 1. Single relations.create inside a batch — result body must carry id.
@@ -48,7 +50,12 @@ try {
   };
   const rels = findRels(full);
   console.log('final relations:', JSON.stringify(rels));
-  if (rels.length !== 1 || rels[0].source !== s2 || rels[0].target !== s1 || rels[0].value !== 'nsubj') {
+  if (
+    rels.length !== 1 ||
+    rels[0].source !== s2 ||
+    rels[0].target !== s1 ||
+    rels[0].value !== 'nsubj'
+  ) {
     throw new Error('FAIL: unexpected final relation state');
   }
   console.log('PASS');

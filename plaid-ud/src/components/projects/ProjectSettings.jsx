@@ -67,7 +67,8 @@ export const ProjectSettings = () => {
     <>
       <ProjectTabs projectId={projectId} project={project} />
 
-      {/* `.tw` covers the heading and the section list, NOT the body: the
+      {/* The heading and the section list, with the body left to each
+          section: the
           sections migrate one at a time, and a Mantine one inside the scoped
           preflight would have its own reset pulled out from under it. Each
           migrated section brings its own root. */}

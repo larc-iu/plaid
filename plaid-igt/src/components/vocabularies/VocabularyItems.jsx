@@ -156,7 +156,12 @@ export const VocabularyItems = ({
     measure();
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
-  }, []);
+    // `loading` is in here because the pane is NOT in the tree on the first
+    // commit: `measure` found a null ref, returned, and a []-dep effect never
+    // runs again, so the measured height never applied and the pane fell back
+    // to the guessed constant this exists to replace. Only a window resize
+    // ever rescued it.
+  }, [loading]);
 
   // The open entry's concordance, loaded a batch at a time.
   const conc = useItemConcordance({ client, vocabularyId, selectedId, skipId: NEW_ID });

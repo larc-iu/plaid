@@ -7,7 +7,7 @@ import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@ui/components/ui/card';
 
-// This screen renders outside the Layout shell, so it carries its own `.tw`
+// This screen renders outside the Layout shell, so it carries its own
 // root for the scoped preflight subset (see src/index.css).
 export const LoginForm = () => {
   useDocumentTitle('Sign In');

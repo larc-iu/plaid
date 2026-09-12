@@ -4,7 +4,7 @@
 # `git config core.hooksPath .githooks` once after a fresh clone).
 #
 # Scope: each subproject that has Prettier installed formats its own staged
-# *.js/*.jsx/*.css using its own config. Add a subproject to PROJECTS below to
+# *.js/*.mjs/*.jsx/*.css using its own config. Add a subproject to PROJECTS below to
 # enroll it. Other paths (plaid-core Clojure, etc.) pass through untouched.
 #
 # Behavior: formats the working-tree copy of each staged file and re-stages it,
@@ -22,7 +22,7 @@ for proj in "${PROJECTS[@]}"; do
   # Staged (added/copied/modified) code files under this subproject, NUL-safe.
   mapfile -d '' staged < <(
     git diff --cached --name-only --diff-filter=ACM -z -- \
-      "$proj/**/*.js" "$proj/**/*.jsx" "$proj/**/*.css"
+      "$proj/**/*.js" "$proj/**/*.mjs" "$proj/**/*.jsx" "$proj/**/*.css"
   )
   [ ${#staged[@]} -eq 0 ] && continue
 

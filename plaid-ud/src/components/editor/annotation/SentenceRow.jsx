@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { ChevronRight, Check, Undo2, PenLine, Bot, Tags, MessageSquare } from 'lucide-react';
+import { ChevronRight, Check, Undo2, PenLine, Bot, Tags } from 'lucide-react';
 import { Combobox } from '@ui/components/ui/combobox';
 import { Button } from '@ui/components/ui/button';
 import { isMachine, needsReview, provState, PROV_STATES } from '@larc-iu/plaid-client';

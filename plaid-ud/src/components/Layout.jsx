@@ -55,7 +55,7 @@ export const Layout = () => {
             unmount everything below it when you move into or out of /annotate: 
             which is exactly the remount DocumentEditorShell exists to prevent,
             since the shell renders through this Outlet. */}
-        {/* No `.tw` on this container. Most screens below are still Mantine,
+        {/* Preflight is global now, so nothing here scopes it. Every screen
             and each migrated one brings its own. */}
         <div className={isAnnotationEditor ? 'w-full' : 'mx-auto max-w-[1320px] px-4 py-8'}>
           <Outlet />

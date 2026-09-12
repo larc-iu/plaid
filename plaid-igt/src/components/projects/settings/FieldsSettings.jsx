@@ -267,7 +267,7 @@ export const FieldsSettings = ({
   }
 
   // The two cards (Annotation Fields + Ignored Tokens) come from the manager
-  // itself, so this wrapper just provides the `.tw` scope — no outer card.
+  // itself, so this wrapper adds nothing but a root: no outer card.
   return (
     <div>
       <FieldsManager

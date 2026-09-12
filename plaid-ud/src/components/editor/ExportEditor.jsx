@@ -3,6 +3,7 @@ import { Check, Copy, Download } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { useDocumentEditor } from './useDocumentEditor.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { notifyError } from '../../utils/feedback.jsx';
 
 export const ExportEditor = () => {
   // Project, document and the breadcrumbs/tab strip all come from
@@ -15,7 +16,16 @@ export const ExportEditor = () => {
   const conlluContent = doc.toConllu();
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(conlluContent);
+    // On a non-secure origin `navigator.clipboard` is undefined, and a denied
+    // permission rejects. Either way the button used to keep saying "Copy"
+    // with nothing said and an unhandled rejection in the console, and Download
+    // is the only other way to get the text out.
+    try {
+      await navigator.clipboard.writeText(conlluContent);
+    } catch {
+      notifyError('The clipboard is not available here. Download the file instead.', 'Not copied');
+      return;
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

@@ -27,7 +27,9 @@ try {
     { tokenLayerId: tokl.id, text: text.id, begin: 4, end: 7 },
     { tokenLayerId: tokl.id, text: text.id, begin: 8, end: 11 },
   ]);
-  const spans = await a.spans.bulkCreate(toks.ids.map((id) => ({ spanLayerId: sl.id, tokens: [id], value: 'x' })));
+  const spans = await a.spans.bulkCreate(
+    toks.ids.map((id) => ({ spanLayerId: sl.id, tokens: [id], value: 'x' })),
+  );
   const [s0, s1, s2] = spans.ids;
   const rel = await a.relations.create(rl.id, s0, s1, 'dep');
 
@@ -36,7 +38,8 @@ try {
   await a.documents.get(doc.id, true);
 
   // (1) Self-batch: delete the existing head + create the new one atomically.
-  let selfBatchOk = true, selfBatchErr = '';
+  let selfBatchOk = true,
+    selfBatchErr = '';
   try {
     a.beginBatch();
     a.relations.delete(rel.id);
@@ -51,7 +54,11 @@ try {
   // (2a) Concurrent modification, then a strict SINGLE write -> must 409.
   await b.relations.create(rl.id, s0, s2, 'obj'); // bumps the doc version
   let singleStale = null;
-  try { await a.relations.create(rl.id, s1, s0, 'amod'); } catch (e) { singleStale = e.status; }
+  try {
+    await a.relations.create(rl.id, s1, s0, 'amod');
+  } catch (e) {
+    singleStale = e.status;
+  }
   check('stale single write still 409s', singleStale === 409, `got ${singleStale}`);
 
   // (2b) Refresh, concurrent modification again, then a strict BATCH -> must 409.

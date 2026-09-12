@@ -20,7 +20,9 @@ const { documentId } = await freshDoc(client, projectId, {
 let file;
 if (sourceId) {
   const source = await client.documents.get(sourceId);
-  const url = source.mediaUrl.startsWith('/') ? `${client.baseUrl}${source.mediaUrl}` : source.mediaUrl;
+  const url = source.mediaUrl.startsWith('/')
+    ? `${client.baseUrl}${source.mediaUrl}`
+    : source.mediaUrl;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${client.token}` } });
   if (!res.ok) throw new Error(`could not read the source media: ${res.status}`);
   const bytes = new Uint8Array(await res.arrayBuffer());

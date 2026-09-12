@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight, CornerUpRight } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
 import { SearchInput, ListCount, ListPager } from '../ui/list-search.jsx';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select.jsx';
-import { usePagedList } from '../../hooks/usePagedList.js';
+import { usePagedList, TALL_LIST_PAGE_SIZE } from '../../hooks/usePagedList.js';
 import { useCommentStore } from '../../domain/useCommentStore.js';
 import { threadList, plainText } from '../../domain/commentThreads.js';
 import { CommentThread } from './CommentThread.jsx';
@@ -53,9 +53,13 @@ const ThreadRow = ({
                 outdated
               </span>
             )}
-            <span className="text-xs font-normal tabular-nums text-muted-foreground">
-              {thread.comments.length}
-            </span>
+            {/* The pinned thread is synthesized with no comments when the
+                document has none, so a literal "0" sat beside its label. */}
+            {thread.comments.length > 0 && (
+              <span className="text-xs font-normal tabular-nums text-muted-foreground">
+                {thread.comments.length}
+              </span>
+            )}
           </span>
           {!open && latest && (
             <span className="mt-0.5 block truncate text-sm text-muted-foreground">
@@ -121,11 +125,21 @@ export const CommentsBrowser = ({
   );
   const shown = list ? (filter === 'outdated' ? list.outdated : list.current) : [];
   const total = list ? (filter === 'outdated' ? list.outdatedTotal : list.currentTotal) : 0;
-  const paged = usePagedList(shown, { resetKey: `${query}|${sort}|${filter}` });
+  // A thread row is a label line plus a truncated latest comment, and it
+  // opens in place into a whole conversation: the taller of the two page
+  // sizes, like every other multi-line list.
+  const paged = usePagedList(shown, {
+    pageSize: TALL_LIST_PAGE_SIZE,
+    resetKey: `${query}|${sort}|${filter}`,
+  });
 
   if (!store) return null;
 
-  const rows = [...(filter === 'current' && list?.pinned ? [list.pinned] : []), ...paged.pageItems];
+  // The document's own thread is pinned to the TOP OF THE LIST, which is page
+  // one: prepending it to every page put it above rows it has nothing to do
+  // with.
+  const pinned = filter === 'current' && paged.page === 0 ? list?.pinned : null;
+  const rows = [...(pinned ? [pinned] : []), ...paged.pageItems];
   const q = query.trim();
 
   return (

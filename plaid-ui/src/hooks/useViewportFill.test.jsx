@@ -13,10 +13,12 @@ const VIEWPORT = 800;
 // An element whose viewport top is `top`, and a page scrolled by `scrolled`.
 function mountWith({ top, scrolled = 0 }) {
   const seen = { current: null };
-  let scrollY = scrolled;
-  window.scrollTo = vi.fn((x, y) => {
-    scrollY = y;
-  });
+  // The hook reads window.scrollY, so the fake page has to have one.
+  const setScroll = (y) => {
+    Object.defineProperty(window, 'scrollY', { value: y, configurable: true, writable: true });
+  };
+  setScroll(scrolled);
+  window.scrollTo = vi.fn((x, y) => setScroll(y));
   const Probe = () => {
     const ref = useRef(null);
     seen.current = useViewportFill(ref, true, []);
@@ -24,7 +26,7 @@ function mountWith({ top, scrolled = 0 }) {
       <div
         ref={(el) => {
           // `top` is where it sits with the page at the top.
-          if (el) el.getBoundingClientRect = () => ({ top: top - scrollY });
+          if (el) el.getBoundingClientRect = () => ({ top: top - window.scrollY });
           ref.current = el;
         }}
       />
@@ -44,6 +46,17 @@ describe('useViewportFill', () => {
   it('fills what is left of the viewport below the chrome', async () => {
     const { height, unmount } = await mountWith({ top: 177 });
     expect(height()).toBe(VIEWPORT - 177);
+    await unmount();
+  });
+
+  it('is right for a PARTIAL scroll too, not only a full one', async () => {
+    // Handling only "top has gone negative" left every partial scroll wrong:
+    // chrome at 177 with the page down 100 measured 723, and once the layout
+    // applied the browser clamped the scroll back to 0 and left the element
+    // 100px taller than the screen.
+    const { height, unmount } = await mountWith({ top: 177, scrolled: 100 });
+    expect(height()).toBe(VIEWPORT - 177);
+    expect(window.scrollTo).toHaveBeenCalledWith(0, 0);
     await unmount();
   });
 

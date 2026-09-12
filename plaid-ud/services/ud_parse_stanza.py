@@ -468,7 +468,7 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
 
             # Parse in groups rather than handing Stanza every sentence at
             # once: the bar then moves through a long document, and `report`
-            # is a cancellation checkpoint, so a stop lands between groups: 
+            # is a cancellation checkpoint, so a stop lands between groups:
             # before any write, leaving the document untouched.
             sentences_data = []
             total = len(reparse)

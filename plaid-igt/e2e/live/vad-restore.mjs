@@ -55,7 +55,11 @@ for (let i = 0; i < 20; i++) {
   await page.waitForTimeout(1000);
 }
 console.log('on screen:', JSON.stringify(seen));
-console.log(seen.proposalRows === 3 ? 'OK  all three kept cuts came back as proposals' : 'FAIL restore did not surface the cuts');
+console.log(
+  seen.proposalRows === 3
+    ? 'OK  all three kept cuts came back as proposals'
+    : 'FAIL restore did not surface the cuts',
+);
 
 await browser.close();
 await client.documents.setMetadata(DOC, before);

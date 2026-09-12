@@ -187,7 +187,7 @@ export const DocumentList = ({
 
   // Each cell wraps its content in a real <a> (rather than a row onClick) so
   // the row behaves as a true link: middle-click and right-click "open in new
-  // tab" work natively. Tailwind preflight (scoped to .tw) resets anchor
+  // tab" work natively. Tailwind preflight resets anchor
   // colour and underline. The cell keeps no padding of its own, so the link
   // fills it.
   const linked = (d, className, children) => (

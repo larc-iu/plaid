@@ -8,7 +8,7 @@ import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@ui/components/ui/card';
 
-// The `.tw` wrapper opts this subtree into the scoped preflight subset (see
+// Preflight is global now. This wrapper is the screen's own root (see
 // src/index.css).
 export const LoginForm = () => {
   useDocumentTitle('Sign In');

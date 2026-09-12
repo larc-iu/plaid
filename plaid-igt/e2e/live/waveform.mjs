@@ -7,7 +7,9 @@ const PROJECT = '01a043bf-fa13-7aa8-921c-13ff44e74415';
 const DOC = '01a043bf-fcdd-7965-8843-b320a24c10db';
 const browser = await chromium.launch();
 const page = await browser.newPage();
-page.on('console', (m) => { if (m.type() === 'error') console.log('  console error:', m.text()); });
+page.on('console', (m) => {
+  if (m.type() === 'error') console.log('  console error:', m.text());
+});
 
 await page.goto('http://localhost:5174/');
 await page.evaluate(() => localStorage.clear());
@@ -35,7 +37,10 @@ const read = async () =>
 
 for (let i = 0; i < 20; i++) {
   const s = await read();
-  if (s.box) { console.log('drawn at open :', JSON.stringify(s)); break; }
+  if (s.box) {
+    console.log('drawn at open :', JSON.stringify(s));
+    break;
+  }
   await page.waitForTimeout(1000);
   if (i === 19) console.log('never drawn   :', JSON.stringify(s));
 }
@@ -43,7 +48,10 @@ for (let i = 0; i < 20; i++) {
 // Zoom in and confirm the image is redrawn for the new width, not stretched.
 const before = await read();
 const zoomIn = page.locator('button:near(:text("px/s"))').last();
-for (let i = 0; i < 4; i++) { await zoomIn.click().catch(() => {}); await page.waitForTimeout(400); }
+for (let i = 0; i < 4; i++) {
+  await zoomIn.click().catch(() => {});
+  await page.waitForTimeout(400);
+}
 await page.waitForTimeout(1500);
 const after = await read();
 console.log('after zooming :', JSON.stringify(after));

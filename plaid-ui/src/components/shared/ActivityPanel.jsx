@@ -63,6 +63,9 @@ export const ActivityPanel = ({
   documentHref,
 }) => {
   const [range, setRange] = useState('30');
+  // "all" has no number, and a sparkline needs one: 30 days is as far back as
+  // the widest fixed window goes, so it is what "all" draws.
+  const sparkDays = range === 'all' ? 30 : Number(range);
   const [tally, setTally] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -158,7 +161,10 @@ export const ActivityPanel = ({
       className: 'text-muted-foreground',
       render: (row) => (
         <div className="flex items-center gap-2" title={fullTimestamp(row.lastTs)}>
-          <Sparkline byDay={row.byDay} />
+          {/* As many days as the window actually covers. Fixed at 14, a
+              "Last 7 days" view drew seven bars that were flat by
+              construction, which reads as "this person stopped working". */}
+          <Sparkline byDay={row.byDay} days={sparkDays} />
           <span className="whitespace-nowrap">{timeAgo(row.lastTs)}</span>
         </div>
       ),
@@ -202,6 +208,7 @@ export const ActivityPanel = ({
             key={w.value}
             size="sm"
             variant={range === w.value ? 'secondary' : 'ghost'}
+            aria-pressed={range === w.value}
             onClick={() => setRange(w.value)}
           >
             {w.label}
