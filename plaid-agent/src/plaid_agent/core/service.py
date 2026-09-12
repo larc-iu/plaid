@@ -19,6 +19,8 @@ Request data:
                      not a fence. The model is told which document is open so an
                      unqualified question is about that one, and every tool that
                      reads the rest of the project stays available.
+                     An app whose screens are about something else as well reads its own
+                     field here and says so in its `focus_note_for`.
     approve          instead of a turn: {plan_id, as_human, contributed_by} for a plan
                      in the conversation the user approved (as_human: record the writes
                      as human-made instead of verified machine-made. Contributed_by: the
@@ -111,6 +113,20 @@ class BaseAssistantService(BaseService):
     #: How this app writes a reference to a place in a document, for the focus
     #: note. The app's own grammar, so the app states it.
     reference_shape = 'a bare reference'
+
+    def focus_note_for(self, ws, request_data: dict) -> Optional[str]:
+        """The line that tells the model what the user is looking at, or None.
+
+        A document is the case every app has, so it lives here. An app that also
+        docks the assistant beside something else overrides this, reads its own
+        field out of ``request_data``, and calls back here for documents. That
+        is what keeps this file naming no app of its own.
+        """
+        document_id = request_data.get('document_id')
+        if not document_id:
+            return None
+        name = self.document_name(ws, document_id)
+        return focus_note(name, self.reference_shape) if name else None
 
     def document_name(self, ws, document_id: str) -> Optional[str]:
         """What to call the document the user has open, in the language the
@@ -246,7 +262,7 @@ class BaseAssistantService(BaseService):
             self._apply(client, project, store, conv_id, conv, meta, approve, request_id, response_helper)
         else:
             self._turn(client, project, store, conv_id, conv, meta, request_id, response_helper,
-                       request_data.get('document_id'))
+                       request_data)
 
     def _write(self, store: ConversationStore, conv_id: str, conv: dict, meta: dict, request_id) -> bool:
         """Write the outcome, unless the conversation moved on meanwhile (its
@@ -259,7 +275,7 @@ class BaseAssistantService(BaseService):
         return True
 
     def _turn(self, client, project, store, conv_id, conv, meta, request_id, response_helper,
-              document_id: Optional[str] = None) -> None:
+              request_data: Optional[dict] = None) -> None:
         transcript = conv['messages']
         if not transcript or transcript[-1].get('role') != 'user':
             response_helper.error('The conversation has no message to answer')
@@ -287,12 +303,11 @@ class BaseAssistantService(BaseService):
         if self.web_cfg is not None:
             ws.web = session_for(self.web_cfg, transcript)
         system = self.system_prompt(project, web=ws.web is not None)
-        # Asked from inside a document: say which one, so an unqualified
-        # question is about it. Nothing is taken away.
-        if document_id:
-            open_doc = self.document_name(ws, document_id)
-            if open_doc:
-                system = f'{system}\n\n{focus_note(open_doc, self.reference_shape)}'
+        # Asked from inside a screen that is about one thing: say which, so an
+        # unqualified question is about it. Nothing is taken away.
+        focus = self.focus_note_for(ws, request_data or {})
+        if focus:
+            system = f'{system}\n\n{focus}'
         try:
             turn = run_turn(self.cfg, self.kit, ws, system,
                             transcript, on_progress, cancelled=cancelled, on_text=on_text)

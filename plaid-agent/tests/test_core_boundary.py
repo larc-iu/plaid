@@ -67,3 +67,45 @@ def test_an_app_with_no_document_view_gets_no_focus_note():
     from plaid_agent.core.service import BaseAssistantService
 
     assert BaseAssistantService.document_name(None, None, 'any-id') is None
+
+
+def test_the_lexicon_focus_note_names_the_vocabulary_and_keeps_the_corpus_in_play():
+    """The Entries screen docks the assistant too, and what is open there is a
+    vocabulary. Same shape as the document note, with one deliberate difference:
+    reading the corpus is part of the job rather than the escape, because half
+    the useful questions about an entry are answered in the texts.
+    """
+    from plaid_agent.igt.prompt import lexicon_focus_note
+
+    note = lexicon_focus_note('Verbs')
+    assert note.count('"Verbs"') >= 2
+    assert 'read it first' in note
+    assert 'Reading the corpus' in note
+    # The escape is another VOCABULARY, not the corpus.
+    assert 'Open another vocabulary only when' in note
+    assert 'compare' in note
+
+
+def test_a_lexicon_id_beats_a_document_id_and_falls_back_to_it():
+    """The hook is the app's, and it has to keep answering for documents."""
+    from plaid_agent.igt.service import AssistantService
+
+    class Project:
+        vocabs = [{'id': 'v1', 'name': 'Verbs'}]
+
+    class Ws:
+        project = Project()
+
+        class corpus:
+            @staticmethod
+            def ref_name(_id):
+                return 'Text 1'
+
+    svc = AssistantService.__new__(AssistantService)
+    ws = Ws()
+    assert 'vocabulary "Verbs"' in svc.focus_note_for(ws, {'lexicon_id': 'v1'})
+    assert '"Text 1"' in svc.focus_note_for(ws, {'document_id': 'd1'})
+    # A vocabulary that is not this project's names nothing, and the document
+    # underneath still answers.
+    assert '"Text 1"' in svc.focus_note_for(ws, {'lexicon_id': 'nope', 'document_id': 'd1'})
+    assert svc.focus_note_for(ws, {}) is None

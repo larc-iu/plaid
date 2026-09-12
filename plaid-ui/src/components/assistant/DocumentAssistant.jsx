@@ -5,8 +5,9 @@ import { cn } from '../../lib/utils.js';
 import { ProjectAssistant } from './ProjectAssistant.jsx';
 import { clampWidth, readWidth, saveWidth } from './panelWidth.js';
 
-// The assistant docked beside a document: the same conversation the Assistant
-// tab holds, with the tab's chrome left out.
+// The assistant docked beside what the user is working on: the same
+// conversation the Assistant tab holds, with the tab's chrome left out. A
+// document in both apps, and in IGT a vocabulary on the Entries screen.
 //
 // The panel never covers the annotation. It takes width from the editor, which
 // both apps' editors absorb by scrolling sideways, and it collapses to a button
@@ -59,12 +60,15 @@ export const DocumentAssistant = ({
   onOpenChange,
   documentId,
   documentName,
+  lexiconId,
+  lexiconName,
   focus,
   onClearFocus,
   onApplied,
   onFocusHere,
   ...assistant
 }) => {
+  const title = documentName || lexiconName;
   const [width, setWidth] = useState(readWidth);
 
   const resize = useCallback((w) => {
@@ -90,8 +94,8 @@ export const DocumentAssistant = ({
       >
         <div className="flex items-center gap-2 border-b px-3 py-2">
           <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <span className="min-w-0 flex-1 truncate text-sm font-medium" title={documentName}>
-            {documentName || 'Assistant'}
+          <span className="min-w-0 flex-1 truncate text-sm font-medium" title={title}>
+            {title || 'Assistant'}
           </span>
           <Button
             type="button"
@@ -109,6 +113,8 @@ export const DocumentAssistant = ({
             variant="panel"
             documentId={documentId}
             documentName={documentName}
+            lexiconId={lexiconId}
+            lexiconName={lexiconName}
             focus={focus}
             onClearFocus={onClearFocus}
             onApplied={onApplied}
@@ -124,7 +130,13 @@ export const DocumentAssistant = ({
 // and hidden entirely when no assistant is online: a button that opens an
 // empty panel is worse than no button. `available` being null means not known
 // yet, which is also not offered.
-export const DocumentAssistantButton = ({ open, onOpenChange, available, className }) =>
+export const DocumentAssistantButton = ({
+  open,
+  onOpenChange,
+  available,
+  className,
+  title = 'Ask the assistant about this document',
+}) =>
   open || !available ? null : (
     <Button
       type="button"
@@ -132,7 +144,7 @@ export const DocumentAssistantButton = ({ open, onOpenChange, available, classNa
       size="sm"
       className={cn('gap-1.5', className)}
       onClick={() => onOpenChange?.(true)}
-      title="Ask the assistant about this document"
+      title={title}
     >
       <Bot className="h-4 w-4" />
       Assistant

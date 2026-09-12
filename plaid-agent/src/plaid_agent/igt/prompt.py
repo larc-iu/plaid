@@ -84,6 +84,26 @@ WEB = webtools.prompt(
     'Citation tags are for project sentences only; link a web source as ordinary Markdown.')
 
 
+def lexicon_focus_note(name: str) -> str:
+    """What to add to the prompt when the user has one vocabulary open.
+
+    The same shape as the document note in `core/service.py`, and for the same
+    reason: a first version that named the thing once and then invited the model
+    to read anything else sent it off across the project. Named twice, with the
+    escape conditional and last.
+
+    Corpus reads are NOT the escape here. Half the useful questions about an
+    entry ("is this gloss what the texts actually say") are answered by reading
+    the corpus, so that is stated as part of the job rather than left to be
+    inferred against the rest of the note.
+    """
+    return (f'The user has the vocabulary "{name}" open and is asking about the entries in front of '
+            f'them. Unless they name another vocabulary, this question is about "{name}": read it '
+            f'first, and take a bare form, or a form with a number like gam#1, as an entry in it. '
+            f'Reading the corpus to see how an entry is really used is part of answering here. '
+            f'Open another vocabulary only when the question names it or asks you to compare.')
+
+
 def build_system_prompt(project: IgtProject, web: bool = False) -> str:
     lines = []
     for scope in SCOPES:

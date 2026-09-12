@@ -8,8 +8,11 @@ import {
   useReducer,
 } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
+import { canEditProject } from '@/utils/permissions';
 import { AlertTriangle } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@ui/components/ui/tabs';
+import { Button } from '@ui/components/ui/button';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { useTabParam } from '@/hooks/useTabParam';
 import { notifySuccess, notifyError, notifyWarning, isPermissionError } from '@/utils/feedback';
@@ -65,9 +68,17 @@ import {
 } from './vocabItemsState';
 import { useEntryList } from './useEntryList';
 import { EntryList } from './EntryList';
+import { FormLabel } from './FormLabel';
+import { soleProjectLinking } from '@/domain/vocabProject';
 import { EntryEditor } from './EntryEditor';
 import { ConcordancePanel } from './ConcordancePanel';
 import { EntryDialogs } from './EntryDialogs';
+import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
+import {
+  DocumentAssistant,
+  DocumentAssistantButton,
+} from '@ui/components/assistant/DocumentAssistant.jsx';
+import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 
 // How many repairs ride in one batch. A batch is one transaction holding the
 // vocabulary's write lock, so it is sized by how long that lock is held.
@@ -90,6 +101,8 @@ export const VocabularyItems = ({
 }) => {
   // Re-render on comment changes, so the per-entry counts stay in step.
   useCommentStore(comments);
+  // The assistant's records are keyed by the user whose store they live in.
+  const { user } = useAuth();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -174,6 +187,7 @@ export const VocabularyItems = ({
   // How entries are told apart: the dotted number ("a 1.2"), used wherever an
   // entry is named.
   const numbers = useMemo(() => buildItemNumbers(items), [items]);
+
   const tree = useMemo(() => buildSenseTree(items), [items]);
   // `?parent=` as the lexicon actually has it. A stale id (the entry was
   // deleted, or the link was pasted) names nothing, and the new entry is
@@ -220,6 +234,56 @@ export const VocabularyItems = ({
     () => (selectedId && !isNew ? items.find((i) => i.id === selectedId) || null : null),
     [items, selectedId, isNew],
   );
+  // --- the assistant docked beside the entry list ---------------------------
+  // The vocabulary is the standing scope, the way a document is on Analyze. An
+  // entry reaches the chat only through Ask, as a chip that clears when sent.
+  //
+  // A vocabulary is its OWN resource at /vocabularies/:id, with no project in
+  // scope, while the assistant is per project: the service registers on one,
+  // discovery is per project, and a conversation's record is keyed by it. So
+  // the project has to be resolved backwards, from the projects that link this
+  // vocabulary. `projects.list()` carries each project's vocabs, so that is one
+  // call. When exactly one project links it, that is the answer. When several
+  // do the pane is not offered at all: filing the thread under a project the
+  // user did not choose puts it in an Assistant tab they were never on.
+  // The project itself, not just its id: the panel's write gate is a question
+  // about the PROJECT (a writer there may edit the corpus the assistant plans
+  // over) and not about who maintains this vocabulary.
+  const [assistantProject, setAssistantProject] = useState(null);
+  useEffect(() => {
+    if (!client || !vocabularyId) return undefined;
+    let alive = true;
+    client.projects
+      .list()
+      .then((projects) => {
+        if (!alive) return;
+        const id = soleProjectLinking(projects, vocabularyId);
+        setAssistantProject(id ? (projects || []).find((p) => p.id === id) || null : null);
+      })
+      .catch(() => {
+        // Discovery of the project failed, so the pane is simply not offered.
+        if (alive) setAssistantProject(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [client, vocabularyId]);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  // What the screen pointed at, as {ref, label}. It clears when it is sent.
+  const [assistantFocus, setAssistantFocus] = useState(null);
+  const assistantAvailable = useAssistantAvailable(client, assistantProject?.id, IGT_ASSISTANT.app);
+  const askAboutEntry = () => {
+    if (!selectedItem) return;
+    // The reference is the one `find_entry` accepts back: the form, with its
+    // homograph number after a "#". The label is what the screen shows, which
+    // writes the number out rather than subscripting it.
+    const n = numbers.get(selectedItem.id);
+    setAssistantFocus({
+      ref: n ? `${selectedItem.form}#${n}` : selectedItem.form,
+      label: itemLabel(selectedItem, numbers),
+    });
+  };
+
   const homographs = useMemo(
     () => (selectedItem ? homographGroup(items, selectedItem.id) : []),
     [items, selectedItem],
@@ -854,6 +918,22 @@ export const VocabularyItems = ({
 
         {/* ---- right pane: the entry, its concordance, its comments ---- */}
         <div className="min-w-0 flex-1">
+          {assistantAvailable && (!assistantOpen || selectedItem) && (
+            <div className="mb-3 flex items-center justify-end gap-2">
+              {assistantOpen && selectedItem && (
+                <Button type="button" variant="ghost" size="sm" onClick={askAboutEntry}>
+                  Ask about{' '}
+                  <FormLabel form={selectedItem.form} index={numbers.get(selectedItem.id)} />
+                </Button>
+              )}
+              <DocumentAssistantButton
+                open={assistantOpen}
+                onOpenChange={setAssistantOpen}
+                available={assistantAvailable}
+                title="Ask the assistant about this vocabulary"
+              />
+            </div>
+          )}
           {!selectedId ? (
             <div className="flex min-h-[24rem] items-center justify-center rounded-lg border border-dashed bg-card/50">
               <p className="text-sm text-muted-foreground">
@@ -991,6 +1071,35 @@ export const VocabularyItems = ({
           client={client}
           onApplied={handleImported}
         />
+
+        {/* The panel is STICKY here, not a viewport-bounded inner scroller as
+            it is beside a document. This screen's left pane is already
+            `sticky top-4` with a measured height and the page itself scrolls,
+            so the panel joins that arrangement at the same height. Turning the
+            page into an inner scroller would move the scrollport the entry
+            list's own measurement and sticky offset are written against. */}
+        {assistantAvailable && assistantOpen && (
+          <div
+            className="sticky top-4 flex shrink-0 self-start"
+            style={paneMaxH ? { height: paneMaxH } : undefined}
+          >
+            <DocumentAssistant
+              open={assistantOpen}
+              onOpenChange={setAssistantOpen}
+              lexiconId={vocabularyId}
+              lexiconName={vocabulary?.name}
+              focus={assistantFocus}
+              onClearFocus={() => setAssistantFocus(null)}
+              onApplied={handleImported}
+              projectId={assistantProject?.id}
+              projectName={assistantProject?.name}
+              client={client}
+              userId={user?.id}
+              canWrite={canEditProject(assistantProject, user)}
+              adapter={IGT_ASSISTANT}
+            />
+          </div>
+        )}
 
         <EntryDialogs
           dialog={dialog}

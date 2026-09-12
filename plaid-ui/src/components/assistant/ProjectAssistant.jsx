@@ -78,6 +78,10 @@ export const ProjectAssistant = ({
   variant = 'tab',
   documentId = null,
   documentName = null,
+  // The other thing a panel can be docked beside: one vocabulary, on the same
+  // terms as a document. Only one of the two is ever set.
+  lexiconId = null,
+  lexiconName = null,
   onApplied,
   // What the user pointed at in the editor, as {ref, label}. It rides on the
   // next message and then clears: nothing is attached that was not chosen.
@@ -89,9 +93,19 @@ export const ProjectAssistant = ({
   onFocusHere,
 }) => {
   const panel = variant === 'panel';
-  // Each document remembers its own thread, so opening the panel on one
-  // document never resumes a conversation about another.
-  const openKey = panel && documentId ? `${projectId}:${documentId}` : projectId;
+  // What this panel is about, in the shape the record stores: the field name is
+  // the kind. Kept as two named fields rather than one `{kind, id}` so that a
+  // conversation saved before vocabularies had a panel still resumes.
+  const about = useMemo(
+    () =>
+      documentId ? { documentId, documentName } : lexiconId ? { lexiconId, lexiconName } : null,
+    [documentId, documentName, lexiconId, lexiconName],
+  );
+  const subjectId = documentId || lexiconId;
+  const subjectName = documentName || lexiconName;
+  // Each subject remembers its own thread, so opening the panel on one document
+  // or vocabulary never resumes a conversation about another.
+  const openKey = panel && subjectId ? `${projectId}:${subjectId}` : projectId;
   // The listener below is mounted once, so it reaches the caller's latest
   // handler through a ref rather than re-subscribing on every render.
   const onAppliedRef = useRef(onApplied);
@@ -304,11 +318,13 @@ export const ProjectAssistant = ({
         setUrlConvRef.current(remembered, { replace: true });
         return;
       }
-      // Opening the panel on a document that has been discussed before picks
-      // that thread back up. A conversation about ANOTHER document never
-      // opens here: it would answer about the wrong text.
-      if (panel && documentId) {
-        const mine = metas.find((m) => m.about?.documentId === documentId);
+      // Opening the panel on something that has been discussed before picks
+      // that thread back up. A conversation about ANOTHER subject never opens
+      // here: it would answer about the wrong thing.
+      if (panel && subjectId) {
+        const mine = metas.find((m) =>
+          documentId ? m.about?.documentId === documentId : m.about?.lexiconId === lexiconId,
+        );
         if (mine) setUrlConvRef.current(mine.id, { replace: true });
       }
     });
@@ -317,7 +333,7 @@ export const ProjectAssistant = ({
       if (a && !a.draft) lastOpen.set(openKey, a.id);
       else lastOpen.delete(openKey);
     };
-  }, [loadList, openKey, panel, documentId]);
+  }, [loadList, openKey, panel, subjectId, documentId, lexiconId]);
 
   // Reflect jobs as they progress and finish, for whichever conversation is
   // shown; a finished job always refreshes the sidebar entry.
@@ -438,7 +454,7 @@ export const ProjectAssistant = ({
     setActive(conv);
     if (urlConvRef.current !== conv.id) setUrlConv(conv.id, { replace: true });
     setConvs(upsert(buildMeta(prevMeta, conv, service)));
-    showJob(startTurn({ store, service, conv, prevMeta, documentId, documentName }));
+    showJob(startTurn({ store, service, conv, prevMeta, about }));
   };
 
   // Send the user's last message again, whether the turn was lost (its
@@ -699,7 +715,7 @@ export const ProjectAssistant = ({
                 <div className="max-w-md text-sm text-muted-foreground">
                   {panel ? (
                     <>
-                      Ask about {documentName || 'this document'}, or about the rest of the project.
+                      Ask about {subjectName || 'this document'}, or about the rest of the project.
                     </>
                   ) : (
                     <>

@@ -251,14 +251,13 @@ export const newJob = (fields) => ({
 });
 
 // Run one turn for `conv`, whose last message is the user's.
-export const startTurn = ({
-  store,
-  service,
-  conv,
-  prevMeta,
-  documentId = null,
-  documentName = null,
-}) => {
+//
+// `about` is what the screen the turn was sent from is about, as the record
+// stores it: `{documentId, documentName}` beside a document, or
+// `{lexiconId, lexiconName}` beside a vocabulary. The field name IS the kind,
+// because it is also how a panel finds the thread to resume, and a conversation
+// written before there were vocabularies has to keep resuming on its document.
+export const startTurn = ({ store, service, conv, prevMeta, about = null }) => {
   const { client, projectId } = store;
   const requestId = newId();
   const j = newJob({
@@ -278,7 +277,7 @@ export const startTurn = ({
     conv,
     service,
     { kind: 'turn', requestId, serviceId: service.serviceId, startedAt: new Date().toISOString() },
-    documentId ? { documentId, documentName } : null,
+    about,
   );
   j.promise = (async () => {
     // The record first: the service reads the message from it, and a tab
@@ -288,9 +287,14 @@ export const startTurn = ({
       client.messages.requestService(
         projectId,
         service.serviceId,
-        // The open document is a DEFAULT for the turn, not a fence: the
-        // service names it in the prompt and leaves every tool in place.
-        { projectId, conversationId: conv.id, ...(documentId ? { documentId } : {}) },
+        // What is open is a DEFAULT for the turn, not a fence: the service
+        // names it in the prompt and leaves every tool in place.
+        {
+          projectId,
+          conversationId: conv.id,
+          ...(about?.documentId ? { documentId: about.documentId } : {}),
+          ...(about?.lexiconId ? { lexiconId: about.lexiconId } : {}),
+        },
         REQUEST_TIMEOUT_MS,
         progressOf(j),
         j.controller.signal,

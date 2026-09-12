@@ -13,7 +13,7 @@ from ..core.service import BaseAssistantService, build_web_config, check_hint, s
 from .citations import resolve_citations
 from .plan import execute_plan, summarize
 from .project import load_project
-from .prompt import build_system_prompt
+from .prompt import build_system_prompt, lexicon_focus_note
 from .tools import Workspace, call_tool, tools_for
 from .trace import TRACER
 
@@ -54,6 +54,16 @@ class AssistantService(BaseAssistantService):
 
     def system_prompt(self, project, web: bool) -> str:
         return build_system_prompt(project, web=web)
+
+    def focus_note_for(self, ws, request_data: dict) -> Optional[str]:
+        # The Entries screen docks the assistant too, and what is in front of
+        # the user there is a vocabulary rather than a text.
+        lexicon_id = request_data.get('lexicon_id')
+        if lexicon_id:
+            name = next((v['name'] for v in ws.project.vocabs if v['id'] == lexicon_id), None)
+            if name:
+                return lexicon_focus_note(name)
+        return super().focus_note_for(ws, request_data)
 
     def document_name(self, ws, document_id: str) -> Optional[str]:
         # The name a printed reference uses, so what the model is told matches
