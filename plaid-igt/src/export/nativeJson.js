@@ -317,7 +317,15 @@ function wordNode(token, orthographyNames, linkIndex, ctx) {
   node.fields = fieldEntries(token.annotations, ctx.emittedSpanIds);
   const vocab = linkIndex.consume(token.id);
   if (vocab) node.vocab = vocab;
-  node.morphemes = (token.morphemes || []).map((m) => morphemeNode(m, linkIndex, ctx));
+  // The archive records what is STORED. A word nobody has segmented shows a
+  // morpheme that is not stored anywhere (derive synthesizes it, see
+  // domain/virtualMorpheme.js) and holds nothing beyond the word: writing it
+  // would put a synthetic id into a format whose ids are correlation keys, and
+  // a round-trip would turn it into a real row that the source never had.
+  // Importing the archive derives it again.
+  node.morphemes = (token.morphemes || [])
+    .filter((m) => !m.virtual)
+    .map((m) => morphemeNode(m, linkIndex, ctx));
   return node;
 }
 

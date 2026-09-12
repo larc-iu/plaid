@@ -69,6 +69,29 @@ const unapprovedStamp = (word) =>
     ? stampInferred(flexSource(word))
     : null;
 
+/**
+ * senseGuid -> the morph type the entry gives it, mirroring the way `entryMeta`
+ * stamps `morphType` on every item an entry becomes. Keyed by each sense's guid
+ * AND by the entry's own, since a one-sense entry is linked by either.
+ *
+ * A morpheme linked to a typed entry has to carry that type in its own
+ * metadata: `derive` reads the entry over the token cache, but the cache is
+ * what unlinked morphemes and consumers that never load the lexicon read, and
+ * a morpheme that leaves it empty is a repair reconcile-on-open performs on the
+ * next open. Writing it here costs nothing, since the morpheme is being created
+ * anyway.
+ */
+const senseMorphTypes = (lexicon) => {
+  const out = new Map();
+  for (const entry of lexicon || []) {
+    const type = entry?.morphType;
+    if (type == null || type === '') continue;
+    if (entry.guid) out.set(entry.guid, type);
+    for (const sense of entry.senses || []) if (sense?.guid) out.set(sense.guid, type);
+  }
+  return out;
+};
+
 /** Display name for an analysis writing system: primary ws gets the bare field name. */
 const fieldName = (base, ws, primaryWs) => (ws === primaryWs ? base : `${base} (${ws})`);
 
@@ -592,6 +615,7 @@ export async function importDocument({
   config,
   doc,
   senseToItem,
+  senseTypes = null,
   orthographyNames,
   index = 0,
   total = 1,
@@ -675,18 +699,24 @@ export async function importDocument({
           ).ids;
 
     // Morpheme tokens: full word extent, 1-based precedence, metadata.form +
-    // morphType. Words FLEx never analyzed get one bare default morpheme
-    // (the IGT invariant reconcileOnOpen would otherwise heal one by one).
+    // morphType. A word FLEx never analyzed gets NOTHING: its morpheme is the
+    // word, which derive synthesizes without storing (domain/virtualMorpheme.js),
+    // and the row this used to write held no field the word did not already
+    // give it.
     check();
     progress('Creating morphemes');
     const morphSpecs = [];
     doc.words.forEach((w, wi) => {
-      const ms = w.morphemes?.length ? w.morphemes : [null];
-      ms.forEach((m, mi) => {
+      (w.morphemes || []).forEach((m, mi) => {
         const metadata = { ...unapprovedStamp(w) };
-        const form = m && (m.forms?.[config.baselineWs] ?? pickEn(m.forms));
+        const form = m.forms?.[config.baselineWs] ?? pickEn(m.forms);
         if (form != null) metadata.form = form;
-        if (m?.morphType != null) metadata.morphType = m.morphType;
+        // The interlinear's own type wins; the entry it links to fills in for
+        // the (common) analysis that names a sense but no morph type.
+        if (m.morphType != null) metadata.morphType = m.morphType;
+        else if (m.senseGuid && senseTypes?.get(m.senseGuid)) {
+          metadata.morphType = senseTypes.get(m.senseGuid);
+        }
         morphSpecs.push({
           wordIndex: wi,
           morpheme: m,
@@ -823,6 +853,9 @@ async function runImportImpl({
     (config.orthographies ?? []).map((o) => [o.ws ?? o.name, o.name]),
   );
 
+  // Built from the parsed lexicon rather than threaded out of importLexicon,
+  // whose return shape (the senseGuid -> item id Map) is contractual.
+  const senseTypes = senseMorphTypes(lexicon);
   const senseToItem = await importLexicon({
     client,
     vocabId,
@@ -860,6 +893,7 @@ async function runImportImpl({
       config,
       doc,
       senseToItem,
+      senseTypes,
       orthographyNames,
       index: i,
       total: build.documents.length,

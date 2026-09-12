@@ -63,6 +63,26 @@ describe('serializeDocumentNative', () => {
     expect('morphType' in m3).toBe(false);
   });
 
+  it('writes no morpheme for a word that has none stored', async () => {
+    // The archive records what is STORED. A word nobody has segmented shows a
+    // morpheme that derive synthesizes (domain/virtualMorpheme.js): serializing
+    // it would put a `virtual:` id into a format whose ids are correlation keys,
+    // and re-importing would turn it into a row the source never had.
+    const { buildRawDoc } = await import('../domain/test-helpers.js');
+    const bare = serializeDocumentNative(
+      new IgtDocument({
+        raw: buildRawDoc({ morphemes: [] }),
+        project: { id: 'proj-1', vocabs: [], config: {} },
+        vocabularies: {},
+      }),
+      {},
+    );
+    const words = bare.sentences[0].words;
+    expect(words.length).toBeGreaterThan(0);
+    for (const w of words) expect(w.morphemes).toEqual([]);
+    expect(JSON.stringify(bare)).not.toContain('virtual:');
+  });
+
   it('inlines the LAST single-token vocab link (what the editor shows); rest go to extras', () => {
     const m1 = out.sentences[0].words[0].morphemes[0];
     expect(m1.vocab).toEqual({ linkId: 'l2', vocabId: 'vocab1', itemId: 'item2' });

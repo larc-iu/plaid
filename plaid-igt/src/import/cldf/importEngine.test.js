@@ -223,7 +223,7 @@ describe('runCldfImport', () => {
     expect(morphemes[1].metadata.morphType).toBe('enclitic');
   });
 
-  it('gives every word a morpheme, so the IGT invariant holds on first open', async () => {
+  it('writes no morpheme for a word the dataset never analyzed', async () => {
     const client = stubClient();
     const build = fixtureBuild();
     // A word the dataset never analyzed.
@@ -235,9 +235,13 @@ describe('runCldfImport', () => {
       morphemes: [],
     });
     await runCldfImport({ client, projectId: 'p1', build });
-    const [, words, morphemes] = tokenCalls(client);
-    expect(morphemes).toHaveLength(words.length + 1); // perro + s, corren, and the bare one
-    expect(morphemes.at(-1).metadata).toEqual({ form: '' });
+    const [, , morphemes] = tokenCalls(client);
+    // perro + s, and corren. The word the dataset never analyzed gets no row:
+    // derive gives it a morpheme reading as the word, which is more than the
+    // empty-form row this used to write.
+    expect(morphemes).toHaveLength(3);
+    // No empty-form row anywhere: what is stored is what the dataset analyzed.
+    expect(morphemes.map((m) => m.metadata.form)).toEqual(['perro', 's', 'corren']);
   });
 
   it('writes annotations into the span layer for their scope', async () => {

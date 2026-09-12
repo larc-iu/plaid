@@ -343,15 +343,16 @@ export async function importDocument({
       (specs) => client.tokens.bulkCreate(specs),
     );
 
-    // Morphemes span the whole word with a 1-based precedence. Every word gets
-    // at least one, which is the invariant reconcileOnOpen would otherwise heal
-    // one at a time on first open.
+    // Morphemes span the whole word with a 1-based precedence. A word the
+    // source never segmented gets NO row: its morpheme is the word, which
+    // derive synthesizes without storing it (domain/virtualMorpheme.js). The
+    // empty-form row this used to write said less than that, since it showed an
+    // empty cell where the word belongs.
     check();
     progress('Creating morphemes');
     const morphSpecs = [];
     doc.words.forEach((w, wi) => {
-      const morphemes = w.morphemes.length ? w.morphemes : [{ form: '', fields: {} }];
-      morphemes.forEach((m, mi) => {
+      (w.morphemes || []).forEach((m, mi) => {
         const metadata = { form: m.form ?? '' };
         if (m.morphType) metadata.morphType = m.morphType;
         morphSpecs.push({

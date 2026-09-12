@@ -75,7 +75,7 @@ const build = {
             },
           ],
         },
-        // bare word: no analysis — should still get one default morpheme
+        // bare word: no analysis, so no morpheme row at all
         {
           begin: 3,
           end: 6,
@@ -758,9 +758,10 @@ describe('runImport', () => {
     expect(words[0].metadata).toEqual({ [`orthog:${TRANS_WS}`]: 'za' });
     expect(words[1].metadata).toBeUndefined();
 
-    // morphemes: full word extent, 1-based precedence, form + morphType;
-    // the bare word gets a default morpheme with no metadata
-    expect(morphemes).toHaveLength(3);
+    // morphemes: full word extent, 1-based precedence, form + morphType. The
+    // word FLEx never analyzed (3-6) gets NO row: its morpheme is the word, and
+    // derive synthesizes that without storing it.
+    expect(morphemes).toHaveLength(2);
     expect(morphemes[0]).toMatchObject({
       tokenLayerId: 'morph1',
       begin: 0,
@@ -768,9 +769,8 @@ describe('runImport', () => {
       precedence: 1,
       metadata: { form: 'за', morphType: 'stem' },
     });
-    expect(morphemes[1]).toMatchObject({ begin: 3, end: 6, precedence: 1 });
-    expect(morphemes[1].metadata).toBeUndefined();
-    expect(morphemes[2]).toMatchObject({
+    expect(morphemes.some((m) => m.begin === 3 && m.end === 6)).toBe(false);
+    expect(morphemes[1]).toMatchObject({
       begin: 7,
       end: 10,
       metadata: { form: 'мах', morphType: 'root' },
@@ -806,10 +806,27 @@ describe('runImport', () => {
     expect(byLayer['sl-wg'][1]).toMatchObject({ value: 'tale?', metadata: stamp });
     expect(byLayer['sl-wp'][1]).toMatchObject({ value: 'n', metadata: stamp });
     expect(byLayer['sl-mg'][1]).toMatchObject({ value: 'tale?', metadata: stamp });
-    expect(morphemes[2].metadata).toMatchObject(stamp);
-    // The word FLEx never analyzed has no analysis to be unapproved, so its
-    // one default morpheme stays bare.
-    expect(morphemes[1].metadata).toBeUndefined();
+    expect(morphemes[1].metadata).toMatchObject(stamp);
+    // The word FLEx never analyzed has no analysis to be unapproved, and now no
+    // row either, so there is nothing here to carry a stamp.
+    expect(morphemes.some((m) => m.begin === 3 && m.end === 6)).toBe(false);
+  });
+
+  // A morpheme that names a sense but no morph type of its own takes the
+  // entry's, written with the morpheme rather than left for reconcile-on-open
+  // to patch on the next open. FLEx interlinear does this constantly: the
+  // lexicon carries the type, the analysis names only the sense.
+  it("takes the entry's morph type when the analysis names a sense but no type", async () => {
+    client = makeFakeClient();
+    const untyped = structuredClone(build);
+    // Sense s1 only, whose entry e1 is a stem.
+    delete untyped.documents[0].words[0].morphemes[0].morphType;
+
+    await runImport({ client, projectId: 'p1', build: untyped, lexicon, config, vocabId: 'v1' });
+
+    const morphemes = client.calls.filter((c) => c.kind === 'tokens.bulkCreate').at(-1).args;
+    const first = morphemes.find((m) => m.begin === 0 && m.end === 2);
+    expect(first.metadata).toMatchObject({ form: 'за', morphType: 'stem' });
   });
 
   // `inferred` means a machine wrote it. An analysis FLEx records no opinion
