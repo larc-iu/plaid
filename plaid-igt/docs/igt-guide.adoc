@@ -664,18 +664,39 @@ A conversation that is still being answered says so in the list, and opening it 
 Conversations are private to you, kept per project, and can be downloaded or copied as Markdown.
 Your server's administrator can read them.
 The tab opens on a new conversation; the list on the left holds the earlier ones, and each has its own link.
+**All projects** widens that list past the project you are in.
+A conversation belongs to the project it was started in, so a row from another project opens that project's own tab.
 
-== Asking about the document you are looking at
+== The panel
 
-The **Assistant** button on the **Analyze** tab opens the same assistant in a panel beside the interlinear grid, so a question can be asked without leaving the text.
-The panel takes its width from the grid, which goes on scrolling sideways, and it can be dragged wider or narrower and hidden again.
-The width is remembered.
+The **Assistant** button in the header opens the same assistant in a panel on the right of the window, on every screen.
+It stays where it is as you move around, so a question can be asked without leaving what you are reading and an answer can be read while you get on with something else.
+The page narrows to make room for it.
+The panel can be dragged wider or narrower and hidden again, and its width and whether it is open are remembered.
+A narrow window has no room for it and it is not offered there.
 
-A question asked there is about the document in front of you: name no document and that is the one it reads, though it can still look at the rest of the project when the question calls for it, to compare or to count.
+One conversation runs per project.
+The panel picks up the last one you had in the project you are in and keeps it as you move from document to document.
+Each question records where it was asked from, so a question about "this sentence" still means the right document when the conversation is read again later.
+
+A question asked on a document is about that document: name no document and that is the one it reads, though it can still look at the rest of the project when the question calls for it, to compare or to count.
 **Ask**, beside **Copy** on a sentence, puts that sentence into the question, and you can take it out again before sending.
+On a vocabulary's **Entries** screen the vocabulary is what a question is about, and **Ask about** puts the open entry into it.
+A vocabulary that more than one project links has no one project to file a conversation under, so nothing there is taken as the subject and the project is yours to choose.
 
-The conversation is an ordinary one.
-It appears in the **Assistant** tab's list with the document's name on it, it can be opened there and carried on, and a plan approved in the panel re-reads the document so the grid shows the result.
+On a screen with no project of its own, the panel keeps the conversation it has.
+Before you have opened a project at all it asks which one to use, because the assistant reads one project at a time.
+
+A plan approved in the panel re-reads what is on screen, so the grid or the entry list shows the result without losing your place.
+
+== How full a conversation is
+
+The panel's header shows how much of the model's limit the last turn used, with the counts behind it on hover.
+A conversation fills up as it grows, because every turn sends the whole thread again.
+Past 85 percent the panel says so, and a new conversation starts with room again.
+Where the model's limit is not known the count is shown without a percentage.
+
+== When no assistant is connected
 
 The assistant is a service that your server's operator runs and picks the model for (`plaid-igt-agent`, installed from a checkout of the source tree).
 When none is connected there is nothing to open, so the tab, the button and **Ask** are not shown.

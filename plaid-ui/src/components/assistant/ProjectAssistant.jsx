@@ -737,7 +737,11 @@ export const ProjectAssistant = ({
           panel ? 'min-h-0' : 'rounded-lg border',
         )}
       >
-        <header className="flex flex-wrap items-center gap-2 border-b px-3 py-2 text-sm">
+        {/* `min-h-14` matches the app header's own height, so the two bars
+            line up where the dock sits beside it. Unconditional rather than a
+            flag: a slightly taller bar costs nothing where there is nothing to
+            line up with. */}
+        <header className="flex min-h-14 flex-wrap items-center gap-2 border-b px-3 py-2 text-sm">
           <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
           {discovering && !services.length ? (
             <span className="text-muted-foreground">Looking for an assistant…</span>
