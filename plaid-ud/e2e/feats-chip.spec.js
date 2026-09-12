@@ -436,5 +436,11 @@ test('screenshot: grid with committed pills', async ({ page }) => {
   }
   await openGrid(page);
   await expect(pillsOf(page, 1).filter({ hasText: 'Case=Nom' })).toHaveCount(1);
-  await page.locator('.sentence-grid').first().screenshot({ path: 'e2e/feats-verify.png' });
+  // Into test-results/, which is gitignored. Written beside the spec it
+  // dirtied the working tree on every run, and `bb release` refuses a dirty
+  // tree, so every release began by explaining a modified screenshot.
+  await page
+    .locator('.sentence-grid')
+    .first()
+    .screenshot({ path: 'test-results/feats-verify.png' });
 });
