@@ -98,6 +98,32 @@ def test_the_help_carries_the_language_itself(ws):
         assert clause in help_text, clause
 
 
+def test_the_commonest_forms_can_be_asked_for_project_wide(ws):
+    """The clipped-read note was set only on the query path, and "form" takes
+    the read path with no document, so the plainest call this tool has
+    ("what are the commonest forms?") raised UnboundLocalError."""
+    from plaid_agent.ud.tools import call_tool
+
+    out = call_tool(ws, 'frequency_list', {'what': 'form'})
+    assert out.startswith('form by frequency') and 'Error' not in out
+
+
+def test_a_clipped_read_is_never_reported_as_the_whole_corpus(ws):
+    """Including when it comes back EMPTY, which is the most misleading of
+    all: this is the tool a session starts from, and it said there was
+    nothing to review."""
+    from plaid_agent.ud.tools import call_tool
+
+    ws.client.query = lambda body: {'return': body.get('return'), 'columns': [], 'results': [], 'count': 0,
+                                    'truncated': True}
+    for tool, args in [('worklist', {'kind': 'unverified'}),
+                       ('worklist', {'kind': 'missing'}),
+                       ('frequency_list', {'what': 'lemma'}),
+                       ('check_consistency', {})]:
+        out = call_tool(ws, tool, args)
+        assert 'come from part of the corpus and not all of it' in out, (tool, out)
+
+
 def test_a_limit_the_model_wrote_into_the_query_is_refused_in_words(ws):
     """Every other refusal here is a sentence the model can act on. This one
     reached int() and came back as a Python message about base 10."""

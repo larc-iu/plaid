@@ -132,6 +132,9 @@ def t_frequency_list(ws: Workspace, what: str = 'lemma', document: str = None,
     if what not in COUNTABLE:
         raise ToolError(f'Unknown column "{what}". One of: ' + ', '.join(COUNTABLE))
     limit = clamp_limit(limit, 30, 200)
+    # Set before the branch: "form" has no document and still takes the read
+    # path below, which never assigns it.
+    clipped = ''
     if what == 'form' or document:
         # The engine does not know a form (a Form span overrides the token's
         # text), and one document is cheap to read outright.
@@ -155,7 +158,9 @@ def t_frequency_list(ws: Workspace, what: str = 'lemma', document: str = None,
         clipped = c.clipped_note(f'{what} values')
         where = ' across the project'
     if not rows:
-        return f'Nothing has a {what} yet{where}.'
+        # With the note: a clipped read that came back empty is the most
+        # misleading of all, and this one says the column is unused.
+        return f'Nothing has a {what} yet{where}.' + (clipped if not document else '')
     total = sum(n for _, n in rows)
     out = [f'{what} by frequency{where}: {len(rows)} distinct value(s), {total} in all.'
            + (clipped if not document else '')]
@@ -290,8 +295,8 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
             where = [c.word('?t'),
                      ['not', ['span', '?s', {'layer': c.p.layer(f)}], c.on('?s')]]
             docs = c.documents_with(where, '?t')
-            total = sum(n for _, n in docs)
             clipped = clipped or c.clipped_note('documents')
+            total = sum(n for _, n in docs)
             out.append(f'{f}: {total} word(s) with none, in {len(docs)} document(s)')
             for did, n in docs[:limit]:
                 out.append(f'    {n:>6}  "{c.doc_name(did)}"')
@@ -327,17 +332,19 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
     for f in fields:
         where = [c.field(f, '?s', metadata=stamp), c.unconfirmed('?s')]
         docs = c.documents_with(where, '?s')
+        # Before the early continue: a clipped read that found nothing for this
+        # field is exactly the one that must say so.
+        clipped = clipped or c.clipped_note('documents')
         total = sum(n for _, n in docs)
         if not total:
             continue
-        clipped = clipped or c.clipped_note('documents')
         out.append(f'{f}: {total} {word} value(s), in {len(docs)} document(s)')
         for did, n in docs[:limit]:
             out.append(f'    {n:>6}  "{c.doc_name(did)}"')
         if len(docs) > limit:
             out.append(f'    … and {len(docs) - limit} more documents')
     if not out:
-        return f'Nothing is waiting for review ({kind}).'
+        return f'Nothing is waiting for review ({kind}).' + clipped
     out.append('')
     out.append('confirm marks these as reviewed; discard_predictions throws the machine ones away.')
     return _truncate('\n'.join(out) + clipped)
