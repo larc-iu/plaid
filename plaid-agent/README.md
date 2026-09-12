@@ -165,6 +165,25 @@ This is the one place where text by strangers enters a turn, so it is fenced:
   still in the transcript on the next turn), but the user always sees what
   was found before anything is proposed, and no plan is applied unapproved.
 
+### Running code (on wherever the worker binary is)
+
+Both assistants have a `run_code` tool: Python the model writes, run over a
+plain-data view of the project, for a question the other reads do not answer
+in one call (a loop over many documents, a join between columns, a tally
+under the model's own conditions). The code runs in a `monty` worker
+subprocess (the `pydantic-monty` package, a dependency): no filesystem, no
+network, a small standard library, and limits on time, memory and output.
+It reaches the project through four host functions only: `documents()`,
+`load(document)`, `query(q)`, and `plan(tool, ...)`, which stages a proposal
+through the same plan tools and guards the model uses directly. No client
+crosses the boundary, so code cannot write; the plan card stays the contract.
+
+The worker binary ships inside the `pydantic-monty-runtime` wheel for the
+platforms it is built for. Where it is missing (an unsupported platform, a
+partial install), the tool is withheld and the prompt does not mention it,
+so nothing else changes. `MONTY_BIN` points the service at a binary that
+lives elsewhere.
+
 ## How it works
 
 `docs/igt/SAMPLE_PROMPT.md` shows the system prompt and the tool list as the
