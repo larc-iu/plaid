@@ -27,6 +27,10 @@ PLAN_MAX_OPS = 3000
 # Ops that name a document and a set of fields rather than spans, and are
 # resolved to spans when the plan is applied.
 SCOPE_KINDS = ('confirm_scope', 'discard_scope')
+# The most documents one review may cover when several are named or all
+# are asked for: each is read to count what is waiting, and read again at
+# approval.
+MAX_SCOPE_DOCS = 100
 
 
 class ToolError(Exception):
@@ -164,11 +168,32 @@ class Workspace:
         """The documents the plan refers to, with the version each was read at,
         so approval can refuse a plan made against data that has moved on."""
         out = []
-        for did in dict.fromkeys(op.get('document_id') for op in self.ops if op.get('document_id')):
+        listed = {d['id']: d for d in self.documents()}
+        touched = []
+        for op in self.ops:
+            for did in sorted(docs_of_op(op)):
+                if did not in touched:
+                    touched.append(did)
+        for did in touched:
             doc = self._docs.get(did)
             if doc is not None:
                 out.append({'id': did, 'name': doc.name, 'version': doc.version})
+            elif did in listed:
+                # Matched by a corpus-wide op without being read: the list
+                # carries its version, which is all the stale check needs.
+                out.append({'id': did, 'name': listed[did].get('name'), 'version': listed[did].get('version')})
         return out
+
+
+def docs_of_op(op: Dict[str, Any]) -> set:
+    """The documents an op reaches: one, a parse's list, or every document a
+    corpus-wide replacement matched."""
+    out = set()
+    if op.get('document_id'):
+        out.add(op['document_id'])
+    out.update(op.get('document_ids') or [])
+    out.update(op.get('documents') or [])
+    return out
 
 
 def op_target(op: Dict[str, Any]):
@@ -183,6 +208,8 @@ def op_target(op: Dict[str, Any]):
         return ('head', op.get('word_id'))
     if kind in SCOPE_KINDS:
         return ('scope', kind, op.get('document_id'))
+    if kind == 'replace_scope':
+        return ('replace', op.get('field'), op.get('pattern'), op.get('replacement'), op.get('document_id'))
     return None
 
 
@@ -331,7 +358,7 @@ def _no_parse_planned(ws: Workspace, doc: UdDoc) -> None:
     """A parse rewrites a document from scratch, so nothing else in the same
     plan may write into it: whichever was planned first, the other is lost."""
     for op in ws.ops:
-        if op.get('kind') == 'run_parse' and doc.id in (op.get('document_ids') or []):
+        if op.get('kind') == 'run_parse' and doc.id in docs_of_op(op):
             raise ToolError(f'This plan already parses "{doc.name}", and a parse rewrites the '
                             f'document from scratch, so this change would be thrown away. Plan '
                             f'the parse on its own, or drop it first (plan_status, drop_planned).')
@@ -367,7 +394,7 @@ def _boundary_can_still_move(ws: Workspace, doc: UdDoc) -> None:
     move; without this, planning them the other way round was accepted, the
     card said the sentences would renumber, and `validate_ops` refused the
     whole thing only once the user had approved it."""
-    if any(op.get('document_id') == doc.id for op in ws.ops):
+    if any(doc.id in docs_of_op(op) for op in ws.ops):
         raise ToolError(f'This plan already changes "{doc.name}", and moving a sentence boundary '
                         f'renumbers the sentences every other reference names, so it has to be a '
                         f'plan of its own. Apply what is planned, then move the boundary '
@@ -395,8 +422,9 @@ def _no_words_annotated(ws: Workspace, token, doc_id: str = None) -> None:
         if op.get('kind') == 'set_words' and set(op.get('existing_word_ids') or []) & doomed:
             raise ToolError('This plan already reshapes this token. Do one or the other '
                             '(plan_status, drop_planned).')
-        # A scope op reaches every word of its document, this token's included.
-        if op.get('kind') in SCOPE_KINDS and op.get('document_id') == doc_id:
+        # A scope op reaches every word of its document, this token's included,
+        # and a corpus-wide replacement reaches every document it matched.
+        if op.get('kind') in SCOPE_KINDS + ('replace_scope',) and doc_id in docs_of_op(op):
             raise ToolError('This plan already reviews every word of this document, and reshaping '
                             'a token deletes some of them. Do one or the other (plan_status, '
                             'drop_planned).')
@@ -595,8 +623,66 @@ def _scope_fields(ws: Workspace, kind: str, doc: UdDoc, fields: List[str]) -> Li
     return fields
 
 
-def t_confirm(ws: Workspace, document: str = None, refs=None, field: str = None) -> str:
+def _scope_documents(ws: Workspace, documents, kind: str, fields: List[str]) -> List[str]:
+    """The document ids a many-document review covers: the ones named, or
+    every document with something waiting when ``documents`` is "all"."""
+    if isinstance(documents, list) and len(documents) == 1 and str(documents[0]).strip().lower() == 'all':
+        documents = 'all'
+    if isinstance(documents, str) and documents.strip().lower() == 'all':
+        from .stats import _corpus
+        c = _corpus(ws)
+        stamps = [{'prov': 'inferred'}] + ([{'prov': 'contributed'}] if kind == 'confirm' else [])
+        ids: List[str] = []
+        for f in fields:
+            if f == 'deprel':
+                continue
+            for stamp in stamps:
+                for did, _n in c.documents_with([c.field(f, '?s', metadata=stamp), c.unconfirmed('?s')], '?s'):
+                    if did not in ids:
+                        ids.append(did)
+        if not ids:
+            raise ToolError('Nothing is waiting for review anywhere in the project.')
+    else:
+        if isinstance(documents, str):
+            documents = [documents]
+        ids = []
+        for d in documents or []:
+            did = ws.resolve_document_id(str(d))
+            if did not in ids:
+                ids.append(did)
+        if not ids:
+            raise ToolError('Name the documents as a list, or "all" for every document with something waiting.')
+    if len(ids) > MAX_SCOPE_DOCS:
+        raise ToolError(f'{len(ids)} documents, more than the {MAX_SCOPE_DOCS} one plan covers. Go in passes: '
+                        f'worklist lists them by document.')
+    return ids
+
+
+def _many(ws: Workspace, documents, field: str, one) -> str:
+    """Run a one-document review tool over several documents, and sum up."""
+    fields = _review_fields(field)
+    kind = 'confirm' if one is t_confirm else 'discard'
+    ids = _scope_documents(ws, documents, kind, fields)
+    planned = 0
+    covered = []
+    for did in ids:
+        before = len(ws.ops)
+        one(ws, document=did, field=field)
+        if len(ws.ops) > before:
+            planned += ws.ops[-1].get('count') or 0
+            covered.append(ws.doc(did).name)
+    if not covered:
+        return f'Nothing is waiting for review in the {len(ids)} document(s) named.'
+    verb = 'confirming' if kind == 'confirm' else 'discarding'
+    return (f'Planned {verb} {planned} value(s) across {len(covered)} document(s), one planned change '
+            f'each: ' + ', '.join(f'"{n}"' for n in covered[:20])
+            + (f', … {len(covered) - 20} more' if len(covered) > 20 else '') + '.')
+
+
+def t_confirm(ws: Workspace, document: str = None, refs=None, field: str = None, documents=None) -> str:
     """Mark machine output and contributors' work as reviewed and correct."""
+    if documents and not document:
+        return _many(ws, documents, field, t_confirm)
     doc = ws.doc(document)
     fields = _review_fields(field)
     if refs:
@@ -622,9 +708,12 @@ def t_confirm(ws: Workspace, document: str = None, refs=None, field: str = None)
             f'That is one planned change covering the whole document.')
 
 
-def t_discard_predictions(ws: Workspace, document: str = None, refs=None, field: str = None) -> str:
+def t_discard_predictions(ws: Workspace, document: str = None, refs=None, field: str = None,
+                          documents=None) -> str:
     """Throw away machine output nobody has confirmed. A person's work and a
     confirmed value are never touched."""
+    if documents and not document:
+        return _many(ws, documents, field, t_discard_predictions)
     doc = ws.doc(document)
     fields = _review_fields(field)
     if refs:
@@ -769,17 +858,36 @@ TOOLS = [
         {'document': _DOC, 'refs': _REFS}, ['document', 'refs']),
     _fn('confirm',
         'PLAN: mark values as reviewed and correct, which is what clears the ~ and ^ marks. With refs, '
-        'only those words; without, everything in the document that is waiting. With field, only that '
-        'column (deprel is allowed here too); without, all of them.',
+        'only those words; without, everything in the document that is waiting, as ONE planned change '
+        'for the whole document. With field, only that column (deprel is allowed here too); without, '
+        'all of them. Give `documents` instead of `document` to cover several at once: a list of '
+        'names, or "all" for every document with something waiting (up to 100).',
         {'document': _DOC, 'refs': _REFS,
+         'documents': {'type': 'array', 'items': {'type': 'string'},
+                       'description': 'Several documents, by id or name; or ["all"].'},
          'field': {'type': 'string', 'enum': list(FIELDS) + ['deprel']}},
-        ['document']),
+        []),
     _fn('discard_predictions',
         'PLAN: throw away machine values nobody has confirmed, so the columns go back to empty. A '
-        'person\'s work and a confirmed value are never touched.',
+        'person\'s work and a confirmed value are never touched. Without refs it covers the whole '
+        'document as one planned change; `documents` covers several, or "all".',
         {'document': _DOC, 'refs': _REFS,
+         'documents': {'type': 'array', 'items': {'type': 'string'},
+                       'description': 'Several documents, by id or name; or ["all"].'},
          'field': {'type': 'string', 'enum': list(FIELDS) + ['deprel']}},
-        ['document']),
+        []),
+    _fn('replace_in_field',
+        'PLAN: substitute inside every value of one column that matches a pattern, across the whole '
+        'project or in one document: rename a lemma everywhere, retag a deprel, fix a feature '
+        'spelling. A literal substring unless regex is true; whole matches the whole value; case is '
+        'ignored unless case_sensitive. Empty values are never filled. The plan holds it as ONE change '
+        'with its count; search shows every match first.',
+        {'field': {'type': 'string', 'enum': list(FIELDS) + ['deprel']},
+         'pattern': {'type': 'string'},
+         'replacement': {'type': 'string', 'description': 'With regex, \\1 refers to a group.'},
+         'regex': {'type': 'boolean'}, 'whole': {'type': 'boolean'},
+         'case_sensitive': {'type': 'boolean'}, 'document': _DOC},
+        ['field', 'pattern', 'replacement']),
     _fn('run_parse',
         'PLAN: have the project\'s parser re-parse whole documents. This REWRITES each document '
         'from scratch (tokens, columns and tree), so it cannot share a plan with any other change '
@@ -1022,7 +1130,7 @@ def t_run_parse(ws: Workspace, documents=None, language: str = None,
     # A parse deletes and recreates a document's tokens, spans and relations.
     # Anything else this plan writes into the same document would be thrown
     # away by it, so the two cannot travel together.
-    clash = {op.get('document_id') for op in ws.ops} & set(ids)
+    clash = set().union(*(docs_of_op(op) for op in ws.ops)) & set(ids) if ws.ops else set()
     if clash:
         names = ', '.join(f'"{ws.doc(i).name}"' for i in clash)
         raise ToolError(f'This plan already changes {names}, and a parse rewrites a document from '
@@ -1054,6 +1162,9 @@ _IMPL['set_words'] = t_set_words
 from .query import t_query, t_query_help  # noqa: E402
 from .restore import t_restore_document  # noqa: E402
 
+from .bulk import t_replace_in_field  # noqa: E402
+
+_IMPL['replace_in_field'] = t_replace_in_field
 _IMPL['split_sentence'] = t_split_sentence
 _IMPL['restore_document'] = t_restore_document
 _IMPL['query'] = t_query

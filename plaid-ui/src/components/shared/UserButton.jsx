@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { User, LogOut } from 'lucide-react';
-import { UserAvatar } from '@ui/components/shared/UserAvatar';
+import { UserAvatar } from './UserAvatar.jsx';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -8,8 +8,12 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-} from '@ui/components/ui/dropdown-menu';
+} from '../ui/dropdown-menu.jsx';
 
+// The account in the header band: who is signed in, and everything about
+// being signed in. Logout lives in here rather than beside it, so the band
+// carries one control for the account instead of two, and the one thing in it
+// that cannot be undone is not a click away from a link.
 export function UserButton({ user, client, onLogout }) {
   return (
     <DropdownMenu>
@@ -33,7 +37,13 @@ export function UserButton({ user, client, onLogout }) {
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={onLogout}>
+        {/* `() => onLogout()` and not `onLogout`: plaid-igt's takes an optional
+            reason to show on the login page, and the click event went in as
+            one. */}
+        <DropdownMenuItem
+          className="text-destructive focus:text-destructive"
+          onClick={() => onLogout()}
+        >
           <LogOut className="h-4 w-4" /> Logout
         </DropdownMenuItem>
       </DropdownMenuContent>

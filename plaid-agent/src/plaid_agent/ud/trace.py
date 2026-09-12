@@ -33,6 +33,16 @@ def _refs(a: Dict[str, Any]) -> str:
     return plural(n, 'word') if n != 1 else q((a.get('refs') or [''])[0])
 
 
+def across(a: Dict[str, Any]) -> str:
+    """The documents a review covers when several are named at once."""
+    docs = a.get('documents')
+    if not docs or a.get('document'):
+        return ''
+    if isinstance(docs, str) or (len(docs) == 1 and str(docs[0]).lower() == 'all'):
+        return ' across every document with something waiting'
+    return f' across {plural(len(docs), "document")}'
+
+
 def describe_step(name: str, a: Dict[str, Any]) -> str:
     """One past-tense line for a finished tool call."""
     # --- reads ---------------------------------------------------------------
@@ -98,7 +108,10 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
     if name == 'confirm':
         field = f' ({a["field"]})' if a.get('field') else ''
         scope = plural(count(a), 'word') if a.get('refs') else 'everything awaiting review'
-        return f'Planned confirming {scope}{field}{in_doc(a)}'
+        return f'Planned confirming {scope}{field}{in_doc(a)}{across(a)}'
+    if name == 'replace_in_field':
+        return (f'Planned replacing {q(a.get("pattern"))} with {q(a.get("replacement"))} in every '
+                f'{a.get("field")}{in_doc(a)}')
     if name == 'set_words':
         forms = a.get('forms') or []
         if len(forms) == 1:
@@ -110,7 +123,7 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
         return f'Planned re-parsing {plural(n, "document")}{over}'
     if name == 'discard_predictions':
         scope = plural(count(a), 'word') if a.get('refs') else 'every unconfirmed machine value'
-        return f'Planned discarding {scope}{in_doc(a)}'
+        return f'Planned discarding {scope}{in_doc(a)}{across(a)}'
 
     # --- bookkeeping ----------------------------------------------------------
     if name == 'discard_plan':
@@ -134,6 +147,7 @@ _PROGRESS = {
     'query_help': lambda a: 'Reading the query language…',
     'merge_sentences': lambda a: 'Joining two sentences…',
     'search': lambda a: f'Searching for "{a.get("pattern", "")}"…',
+    'replace_in_field': lambda a: f'Finding every {a.get("field", "value")} matching "{a.get("pattern", "")}"…',
     'frequency_list': lambda a: 'Counting frequencies…',
     'check_consistency': lambda a: 'Checking the corpus for disagreements…',
     'worklist': lambda a: f'Listing {a.get("kind") or "unfinished"} work…',

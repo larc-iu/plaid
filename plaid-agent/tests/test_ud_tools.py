@@ -197,7 +197,7 @@ def test_a_scope_and_a_reshape_of_the_same_document_cannot_share_a_plan(ws):
     run(ws, 'set_words', document='Viaje', ref='s1.w2-3', forms=['al'])
     assert 'reshapes the token' in run(ws, 'confirm', document='Viaje')
     # The backstop, for a plan that reached the executor anyway.
-    with pytest.raises(ValueError, match='reviews every word'):
+    with pytest.raises(ValueError, match='reshapes a token and'):
         execute_plan(ws.client, ws.ops + [{'kind': 'confirm_scope', 'document_id': 'ud1', 'fields': ['upos']}],
                      source='s', label='l', project=ws.project)
 
@@ -283,7 +283,8 @@ def test_every_declared_tool_is_a_plan_tool_or_is_not(ws):
     names = {t['function']['name'] for t in TOOLS}
     assert WRITE_TOOLS == {'set_field', 'set_head', 'del_relation', 'confirm',
                            'discard_predictions', 'run_parse', 'set_words',
-                           'split_sentence', 'merge_sentences', 'restore_document'}
+                           'split_sentence', 'merge_sentences', 'restore_document',
+                           'replace_in_field'}
     assert 'read_document' in names and 'read_document' not in WRITE_TOOLS
 
 
@@ -730,3 +731,100 @@ def test_a_head_or_an_index_that_is_not_a_number_reads_as_english(ws):
     # A fraction is refused, not truncated onto change 1.
     assert 'whole numbers' in run(ws, 'drop_planned', indexes=[1.5])
     assert len(ws.ops) == 1
+
+
+# --- corpus-wide changes -----------------------------------------------------------
+
+def _engine_rows(ws, spans):
+    """A fake engine answering a replace_in_field query: one span row per
+    (span id, value, document, token id), the way entities come back."""
+    def engine(body):
+        find = body.get('find') or []
+        if body.get('return') == 'entities' and find and find[0] == '?r':
+            return {'return': 'entities', 'results': [[{'id': i, 'value': v, 'document': d, 'source': 'x', 'target': 'y'}]
+                                                       for i, v, d, _t in spans]}
+        if body.get('return') == 'entities':
+            return {'return': 'entities', 'results': [[{'id': i, 'value': v, 'document': d, 'layer': LEMMA, 'tokens': [t]},
+                                                        {'id': t, 'document': d, 'begin': 0, 'end': 1}]
+                                                       for i, v, d, t in spans]}
+        return {'return': 'aggregate', 'results': []}
+    ws.client.query = engine
+
+
+def test_a_field_wide_replacement_is_one_planned_change_resolved_at_approval():
+    from ud_fixtures import FakeClient, document_raw, project_raw
+    other = {**document_raw(), 'id': 'other', 'name': 'Otro', 'version': 9}
+    client = FakeClient(project=project_raw(), documents={'ud1': document_raw(), 'other': other})
+    ws = Workspace(client, load_project(client, PID))
+    _engine_rows(ws, [('sp-l1', 'ir', 'ud1', 'uw-1'), ('sp-l3', 'mar', 'ud1', 'uw-3'), ('sp-x', 'Mar', 'other', 'uw-x')])
+    out = run(ws, 'replace_in_field', field='lemma', pattern='mar', replacement='mare')
+    assert out.startswith('Planned 2 lemma change(s) in 2 document(s), as one planned change.')
+    assert '"Viaje": lemma "mar" → "mare"' in out
+    op = ws.ops[0]
+    assert op['kind'] == 'replace_scope' and op['count'] == 2 and op['documents'] == ['other', 'ud1']
+    assert op['label'] == 'lemma: replace "mar" with "mare" on 2 value(s) in 2 document(s)'
+    assert summarize(ws.ops) == '2 field values'
+    # The document the preview matched without reading is pinned by version too.
+    payload = ws.plan_payload()
+    assert [(d['id'], d['version']) for d in payload['documents']] == [('other', 9), ('ud1', 3)]
+    assert payload['changes'][0]['where'] is None
+    counts = execute_plan(ws.client, payload['ops'], source='s', label='l', project=ws.project)
+    assert counts == {'field values': 2}
+    updates = [a for r, m, a, k in ws.client.batches[0] if m == 'update']
+    assert updates == [('sp-l3', 'mare'), ('sp-x', 'mare')]
+
+
+def test_a_replacement_the_pattern_leaves_unchanged_plans_nothing(ws):
+    # Case is ignored by default, like search, so "MAR" matches "mar"; the
+    # replacement then writes "mar" back, which is no change at all.
+    _engine_rows(ws, [('sp-l3', 'mar', 'ud1', 'uw-3')])
+    out = run(ws, 'replace_in_field', field='lemma', pattern='MAR', replacement='mar')
+    assert out.startswith('Nothing to change: 1 lemma value(s) match')
+    assert ws.ops == []
+    out = run(ws, 'replace_in_field', field='lemma', pattern='mar', replacement='MAR')
+    assert 'Planned 1 lemma change' in out
+
+
+def test_a_closed_vocabulary_refuses_what_a_replacement_would_write(ws):
+    _engine_rows(ws, [('sp-u3', 'NOUN', 'ud1', 'uw-3')])
+    out = run(ws, 'replace_in_field', field='upos', pattern='NOUN', replacement='NOMEN')
+    assert 'not in this project\'s upos vocabulary' in out and ws.ops == []
+
+
+def test_a_deprel_replacement_relabels_the_relations(ws):
+    _engine_rows(ws, [('r-3', 'obl', 'ud1', None)])
+    out = run(ws, 'replace_in_field', field='deprel', pattern='obl', replacement='obl:arg', whole=True)
+    assert 'Planned 1 deprel change' in out
+    assert summarize(ws.ops) == '1 relabeled dependency'
+    counts = execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
+    assert counts == {'relabeled dependencies': 1}
+    calls = [(m, a[:2]) for r, m, a, k in ws.client.batches[0]]
+    assert calls[0] == ('update', ('r-3', 'obl:arg')) and calls[1][0] == 'patch_metadata'
+    assert 'empty label' in run(ws, 'replace_in_field', field='deprel', pattern='obl', replacement='')
+
+
+def test_a_replacement_and_a_reshape_of_a_document_it_reaches_cannot_share_a_plan(ws):
+    _engine_rows(ws, [('sp-l3', 'mar', 'ud1', 'uw-3')])
+    run(ws, 'replace_in_field', field='lemma', pattern='mar', replacement='mare')
+    assert 'changes every matching word' not in run(ws, 'plan_status')
+    assert 'reaches' in run(ws, 'set_words', document='Viaje', ref='s1.w2-3', forms=['al']) or \
+        'reviews every word' in run(ws, 'set_words', document='Viaje', ref='s1.w2-3', forms=['al'])
+    ws.ops.clear()
+    run(ws, 'set_words', document='Viaje', ref='s1.w2-3', forms=['al'])
+    assert 'reshapes a token' in run(ws, 'replace_in_field', field='lemma', pattern='mar', replacement='mare')
+
+
+def test_a_review_over_several_documents_is_one_scope_op_each(ws):
+    out = run(ws, 'confirm', documents=['Viaje', 'ud1'])
+    assert out == 'Planned confirming 1 value(s) across 1 document(s), one planned change each: "Viaje".'
+    assert [op['kind'] for op in ws.ops] == ['confirm_scope']
+    ws.ops.clear()
+
+    def engine(body):
+        return {'return': 'aggregate', 'results': [['ud1', 1]]}
+    ws.client.query = engine
+    assert 'across 1 document(s)' in run(ws, 'discard_predictions', documents=['all'])
+    assert ws.ops[0]['kind'] == 'discard_scope'
+    ws.client.query = lambda body: {'return': 'aggregate', 'results': []}
+    ws.ops.clear()
+    assert 'Nothing is waiting for review anywhere' in run(ws, 'confirm', documents='all')

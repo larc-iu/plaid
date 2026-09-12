@@ -54,10 +54,13 @@ common; worklist for what is unfinished, counted per document, which is where to
 check_consistency for places the corpus disagrees with itself, whose hits are questions rather than verdicts, \
 so read the sentences before proposing anything; recent_changes for who did what and the as_of instant of \
 each; comments for what people have written to each other, which is never annotation. Then set_field for a \
-column, set_head for a dependency, del_relation only where a word should end up with no head at all; confirm \
-marks values awaiting review as verified once checked, and discard_predictions throws away unconfirmed \
-machine values without touching a person's work; plan_status shows what is staged and drop_planned removes \
-single changes when the user wants most of a plan.
+column, set_head for a dependency, del_relation only where a word should end up with no head at all; \
+replace_in_field for one change to every matching value across the project (rename a lemma everywhere, \
+retag a deprel), which is one planned change however many words it reaches; confirm marks values awaiting \
+review as verified once checked, and discard_predictions throws away unconfirmed machine values without \
+touching a person's work, either over a whole document, several, or "all" as one planned change per \
+document; plan_status shows what is staged and drop_planned removes single changes when the user wants \
+most of a plan.
 - run_parse is the one tool that does not write anything itself: it asks the project's parser to redo whole \
 documents. A parse REWRITES a document from scratch, so it cannot share a plan with any other change to the \
 same document, and it is never the way to fix particular words. Propose it only when a document should be \

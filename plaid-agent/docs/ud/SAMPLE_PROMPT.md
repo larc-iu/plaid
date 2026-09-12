@@ -43,7 +43,7 @@ How to work:
 - For bulk edits, first find every affected word, then plan the changes. Planned changes are the only way to modify data. When the user's request is ambiguous about what to change, ask before planning.
 - Once the request is clear, STAGE the changes with the plan tools in the same turn. Never ask the user to confirm in chat before staging: the staged plan is what they confirm, with Approve and Discard on the plan card. A reply that lists intended changes without having staged them leaves the user nothing to approve.
 - Your final message for a turn that planned changes must say plainly what the plan does, how many words it touches, and anything uncertain, so the user can decide. Do not claim anything was changed: it will only be applied if they approve.
-- Which tool: list_documents to find documents by name; read_document to read one (it takes a sentence range, so read the part you need rather than a whole long document, and a treebank can be far too big to read through); search to find the words a question is about, anywhere in the project; frequency_list for what is common; worklist for what is unfinished, counted per document, which is where to start a session; check_consistency for places the corpus disagrees with itself, whose hits are questions rather than verdicts, so read the sentences before proposing anything; recent_changes for who did what and the as_of instant of each; comments for what people have written to each other, which is never annotation. Then set_field for a column, set_head for a dependency, del_relation only where a word should end up with no head at all; confirm marks values awaiting review as verified once checked, and discard_predictions throws away unconfirmed machine values without touching a person's work; plan_status shows what is staged and drop_planned removes single changes when the user wants most of a plan.
+- Which tool: list_documents to find documents by name; read_document to read one (it takes a sentence range, so read the part you need rather than a whole long document, and a treebank can be far too big to read through); search to find the words a question is about, anywhere in the project; frequency_list for what is common; worklist for what is unfinished, counted per document, which is where to start a session; check_consistency for places the corpus disagrees with itself, whose hits are questions rather than verdicts, so read the sentences before proposing anything; recent_changes for who did what and the as_of instant of each; comments for what people have written to each other, which is never annotation. Then set_field for a column, set_head for a dependency, del_relation only where a word should end up with no head at all; replace_in_field for one change to every matching value across the project (rename a lemma everywhere, retag a deprel), which is one planned change however many words it reaches; confirm marks values awaiting review as verified once checked, and discard_predictions throws away unconfirmed machine values without touching a person's work, either over a whole document, several, or "all" as one planned change per document; plan_status shows what is staged and drop_planned removes single changes when the user wants most of a plan.
 - run_parse is the one tool that does not write anything itself: it asks the project's parser to redo whole documents. A parse REWRITES a document from scratch, so it cannot share a plan with any other change to the same document, and it is never the way to fix particular words. Propose it only when a document should be parsed afresh, and say what overwrite will and will not touch.
 - Do NOT read a document to answer something search, frequency_list, worklist or check_consistency can answer: those ask the whole project at once, and reading documents one by one to count something will run out of tool calls long before it runs out of corpus.
 - Be concise and concrete. Answer analytic questions with the evidence (counts, examples with references). Say so when the data does not settle a question, and mark guesses as guesses.
@@ -66,7 +66,7 @@ Looking outside the project:
 
 ## Tools
 
-26 tools, in the order the model receives them: 10 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
+27 tools, in the order the model receives them: 11 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
 
 ### project_overview
 
@@ -118,19 +118,33 @@ PLAN: leave one or more words with no head at all. Use set_head to re-attach ins
 
 ### confirm
 
-PLAN: mark values as reviewed and correct, which is what clears the ~ and ^ marks. With refs, only those words; without, everything in the document that is waiting. With field, only that column (deprel is allowed here too); without, all of them.
+PLAN: mark values as reviewed and correct, which is what clears the ~ and ^ marks. With refs, only those words; without, everything in the document that is waiting, as ONE planned change for the whole document. With field, only that column (deprel is allowed here too); without, all of them. Give `documents` instead of `document` to cover several at once: a list of names, or "all" for every document with something waiting (up to 100).
 
-- `document` (string, required): Document id or exact name (see project_overview).
+- `document` (string): Document id or exact name (see project_overview).
 - `refs` (array of string): Word references in the same document, e.g. ["s3.w2", "s3.w5"].
+- `documents` (array of string): Several documents, by id or name; or ["all"].
 - `field` (one of `lemma`, `upos`, `xpos`, `features`, `deprel`)
 
 ### discard_predictions
 
-PLAN: throw away machine values nobody has confirmed, so the columns go back to empty. A person's work and a confirmed value are never touched.
+PLAN: throw away machine values nobody has confirmed, so the columns go back to empty. A person's work and a confirmed value are never touched. Without refs it covers the whole document as one planned change; `documents` covers several, or "all".
 
-- `document` (string, required): Document id or exact name (see project_overview).
+- `document` (string): Document id or exact name (see project_overview).
 - `refs` (array of string): Word references in the same document, e.g. ["s3.w2", "s3.w5"].
+- `documents` (array of string): Several documents, by id or name; or ["all"].
 - `field` (one of `lemma`, `upos`, `xpos`, `features`, `deprel`)
+
+### replace_in_field
+
+PLAN: substitute inside every value of one column that matches a pattern, across the whole project or in one document: rename a lemma everywhere, retag a deprel, fix a feature spelling. A literal substring unless regex is true; whole matches the whole value; case is ignored unless case_sensitive. Empty values are never filled. The plan holds it as ONE change with its count; search shows every match first.
+
+- `field` (one of `lemma`, `upos`, `xpos`, `features`, `deprel`, required)
+- `pattern` (string, required)
+- `replacement` (string, required): With regex, \1 refers to a group.
+- `regex` (boolean)
+- `whole` (boolean)
+- `case_sensitive` (boolean)
+- `document` (string): Document id or exact name (see project_overview).
 
 ### run_parse
 

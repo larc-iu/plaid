@@ -20,9 +20,11 @@ from .sentences import apply_merge_sentences, apply_split_sentence
 from .shape import apply_set_words, finish_set_words
 
 KINDS = ('set_span', 'set_head', 'del_relation', 'confirm', 'run_parse', 'set_words',
-         'split_sentence', 'merge_sentences', 'restore_document', 'confirm_scope', 'discard_scope')
-# A scope names a document and fields, and is resolved to spans at approval.
-SCOPES = ('confirm_scope', 'discard_scope')
+         'split_sentence', 'merge_sentences', 'restore_document', 'confirm_scope', 'discard_scope',
+         'replace_scope', 'set_deprel')
+# A scope names a document and fields, or a field and a pattern, and is
+# resolved to spans at approval.
+SCOPES = ('confirm_scope', 'discard_scope', 'replace_scope')
 
 # Ops that move where sentences begin, which renumbers every sentence after
 # them. References are positional, so no other op in the plan can be trusted
@@ -47,7 +49,18 @@ REQUIRED = {
     'restore_document': ('document_id', 'as_of'),
     'confirm_scope': ('document_id', 'fields'),
     'discard_scope': ('document_id', 'fields'),
+    'replace_scope': ('field', 'pattern'),
+    'set_deprel': ('relation_id', 'deprel'),
 }
+
+
+def _reach(op: Dict[str, Any]) -> set:
+    out = set()
+    if op.get('document_id'):
+        out.add(op['document_id'])
+    out.update(op.get('document_ids') or [])
+    out.update(op.get('documents') or [])
+    return out
 
 
 def validate_ops(ops: List[Dict[str, Any]]) -> None:
@@ -78,8 +91,8 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
     # reshape there, without naming a word for the check below to catch.
     reshaped_docs = {op.get('document_id') for op in ops if op.get('kind') == 'set_words'}
     for op in ops:
-        if op.get('kind') in SCOPES and op.get('document_id') in reshaped_docs:
-            raise ValueError('this plan both reshapes a token and reviews every word of its '
+        if op.get('kind') in SCOPES and _reach(op) & reshaped_docs:
+            raise ValueError('this plan both reshapes a token and changes every matching word of its '
                              'document, and the reshape deletes some of them')
     if reshaped:
         # `confirm` carries a span_id, not a token_id, so listing the kinds
@@ -115,8 +128,8 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
         if op.get('kind') in RESHAPES_DOCUMENT:
             moved[op.get('document_id')] = moved.get(op.get('document_id'), 0) + 1
     if moved:
-        others = {op.get('document_id') for op in ops
-                  if op.get('kind') not in RESHAPES_DOCUMENT} & set(moved)
+        others = set().union(*(_reach(op) for op in ops
+                               if op.get('kind') not in RESHAPES_DOCUMENT)) & set(moved)
         if others:
             raise ValueError('this plan both moves a sentence boundary in and edits '
                              + ', '.join(sorted(others))
@@ -128,7 +141,7 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
                              + ': each renumbers the sentences the next would name')
     parsed = {d for op in ops if op.get('kind') == 'run_parse' for d in (op.get('document_ids') or [])}
     if parsed:
-        clash = {op.get('document_id') for op in ops if op.get('kind') != 'run_parse'} & parsed
+        clash = set().union(*(_reach(op) for op in ops if op.get('kind') != 'run_parse')) & parsed
         if clash:
             raise ValueError('this plan both parses and edits ' + ', '.join(sorted(clash))
                              + ', and a parse would throw the edits away')
@@ -232,6 +245,10 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str,
         if kind not in SCOPES:
             out.append(op)
             continue
+        if kind == 'replace_scope':
+            from .bulk import resolve_replace
+            out.extend(resolve_replace(client, project, op))
+            continue
         did = op['document_id']
         if did not in docs:
             docs[did] = load_document(client, project, did)
@@ -306,6 +323,10 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
                 else:
                     continue  # nothing to clear
                 counts['field values'] += 1
+            elif kind == 'set_deprel':
+                b.add(lambda i=op['relation_id'], v=op['deprel']: client.relations.update(i, v))
+                b.add(lambda i=op['relation_id']: client.relations.patch_metadata(i, restamp()))
+                counts['relabeled dependencies'] += 1
             elif kind == 'confirm':
                 if op.get('span_id'):
                     b.add(lambda i=op['span_id']: client.spans.patch_metadata(i, CONFIRM))
@@ -435,6 +456,10 @@ def summarize(ops: List[Dict[str, Any]]) -> str:
             c['removed dependency'] += n
         elif kind in ('confirm', 'confirm_scope'):
             c['confirmation'] += n
+        elif kind == 'set_deprel':
+            c['relabeled dependency'] += 1
+        elif kind == 'replace_scope':
+            c['relabeled dependency' if op.get('field') == 'deprel' else 'field value'] += n
         elif kind == 'discard_scope':
             per = op.get('per_field') or {}
             heads = int(per.get('deprel') or 0)
