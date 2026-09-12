@@ -819,7 +819,7 @@ def t_read_document(ws: Workspace, document: str, from_sentence: int = 1, to_sen
     doc = ws.doc(document)
     return render_document(doc, ws.project, start=int(from_sentence or 1),
                            end=int(to_sentence) if to_sentence else None,
-                           ref_name=ws.corpus.ref_name(doc.id))
+                           ref_name=ws.corpus.ref_name(doc.id), budget=MAX_RESULT_CHARS - 100)
 
 
 def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document: Optional[str] = None,

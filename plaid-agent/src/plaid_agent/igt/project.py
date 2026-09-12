@@ -653,10 +653,13 @@ FORMAT_LEGEND = ('Format: [sN] baseline sentence; then sentence fields; then one
 
 
 def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optional[int] = None,
-                    max_sentences: int = 40, ref_name: Optional[str] = None) -> str:
+                    max_sentences: int = 40, ref_name: Optional[str] = None,
+                    budget: Optional[int] = None) -> str:
     """``ref_name`` is how a reference to this document must name it (its id
     where another document shares its name): shown so what is read back is
-    unambiguous."""
+    unambiguous. ``budget`` is the most characters the result may hold:
+    sentences are rendered until it is spent and the header names the ones
+    shown, so the model is never told it got forty and handed nine."""
     n = len(doc.sentences)
     start = max(1, start)
     end = min(n, end if end is not None else start + max_sentences - 1)
@@ -671,9 +674,20 @@ def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optio
         return head + f'\nThe document has only {n} sentences; from_sentence={start} is past the end.'
     if end - start + 1 > max_sentences:
         end = start + max_sentences - 1
-    lines = [head, FORMAT_LEGEND, f'Showing s{start}-s{end}.']
+    rendered: List[str] = []
+    used = len(head) + len(FORMAT_LEGEND) + 250  # the showing line and the trailing note
+    last = start - 1
     for s in doc.sentences[start - 1:end]:
-        lines.append(render_sentence(s, project))
+        text = render_sentence(s, project)
+        if budget is not None and rendered and used + len(text) + 1 > budget:
+            break
+        rendered.append(text)
+        used += len(text) + 1
+        last += 1
+    cut = last < end
+    end = last
+    lines = [head, FORMAT_LEGEND, f'Showing s{start}-s{end}.' + (' The rest did not fit in one call.' if cut else '')]
+    lines += rendered
     if end < n:
         lines.append(f'... {n - end} more sentences (read_document with from_sentence={end + 1} for the next batch).')
     return '\n'.join(lines)

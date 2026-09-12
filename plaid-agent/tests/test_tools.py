@@ -548,3 +548,28 @@ def test_a_large_group_of_like_changes_is_stored_as_one_op_and_applies_whole(mon
     assert payload['summary'] == summarize(payload['ops']) == '3 field values'
     counts = execute_plan(w.client, payload['ops'], source='s', label='l')
     assert counts == {'field values': 3}
+
+
+def test_a_read_that_does_not_fit_says_so_and_where_to_continue(monkeypatch):
+    """The header said s1-s40 while the text was cut off inside sentence nine."""
+    from plaid_agent.igt import tools
+    w = scan_ws(FakeClient())
+    whole = call_tool(w, 'read_document', {'document': 'Text 1'})
+    assert '\n[s2]' in whole, 'the fixture needs two sentences for this'
+    monkeypatch.setattr(tools, 'MAX_RESULT_CHARS', whole.index('\n[s2]') + 300)
+    out = call_tool(w, 'read_document', {'document': 'Text 1'})
+    assert 'Showing s1-s1. The rest did not fit in one call.' in out
+    assert 'read_document with from_sentence=2 for the next batch' in out
+    assert '[s2]' not in out and '[truncated' not in out
+
+
+def test_hits_from_one_document_are_capped_and_the_rest_counted():
+    from plaid_agent.igt.corpus import _hit_lines
+    w = scan_ws(FakeClient())
+    c = w.corpus
+    doc = w.doc('d1')
+    words = [wd for s in doc.sentences for wd in s.words]
+    rows = [[{'id': wd.id, 'document': 'd1', 'value': wd.surface}] for wd in words]
+    lines = _hit_lines(c, rows, 0, 40, per_doc=1)
+    assert len(lines) == 2 and lines[0].startswith('s1.w1 ')
+    assert lines[1] == f'  … {len(words) - 1} more in this document (name the document to see them all)'

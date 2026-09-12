@@ -16,6 +16,7 @@ grouped results: ignored (punctuation) word tokens are excluded from word
 counts, and forms are compared case-insensitively.
 """
 
+import math
 import re
 from collections import Counter, defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -261,14 +262,19 @@ class Corpus:
 
 # --- search ---------------------------------------------------------------------
 
-def _hit_lines(c: Corpus, rows: List[list], token_col: int, limit: int, field=None, extra=None) -> List[str]:
+def _hit_lines(c: Corpus, rows: List[list], token_col: int, limit: int, field=None, extra=None,
+               per_doc: Optional[int] = None) -> List[str]:
     """Render token hits as the scan does: one line per word (deduplicated),
     ``"Doc" sN.wN <word> || <sentence>``, or the sentence line for a
-    sentence field. ``extra`` returns text appended per hit (concordance)."""
+    sentence field. ``extra`` returns text appended per hit (concordance).
+    ``per_doc`` caps the hits shown from any one document, with a line
+    saying how many more it holds."""
     from .project import render_word, word_ref
     out: List[str] = []
     seen = set()
     loaded = set()
+    shown_in: Dict[str, int] = {}
+    skipped_in: Dict[str, int] = {}
     for row in rows:
         ent = row[token_col]
         if not isinstance(ent, dict):
@@ -285,6 +291,10 @@ def _hit_lines(c: Corpus, rows: List[list], token_col: int, limit: int, field=No
         if key in seen:
             continue
         seen.add(key)
+        if per_doc is not None and shown_in.get(doc.id, 0) >= per_doc:
+            skipped_in[doc.id] = skipped_in.get(doc.id, 0) + 1
+            continue
+        shown_in[doc.id] = shown_in.get(doc.id, 0) + 1
         tag = c.tag(doc.id)
         if w is None:
             sp = s.fields.get(field.name) if field else None
@@ -293,7 +303,46 @@ def _hit_lines(c: Corpus, rows: List[list], token_col: int, limit: int, field=No
             out.append(f'{tag}{word_ref(s, w)} {render_word(w, c.p)[len(w.ref) + 1:]} || {s.text}')
         if len(out) >= limit:
             break
+    for doc_id, n in skipped_in.items():
+        out.append(f'  … {n} more in {c.tag(doc_id).strip() or "this document"} (name the document to see them all)')
     return out
+
+
+def _spread_fetch(c: Corpus, where: List[Any], find: List[str], doc_var: str, limit: int,
+                  rows_per_hit: int) -> Tuple[List[list], int, int]:
+    """Entity rows for a corpus-wide search, drawn from several documents.
+
+    Rows ordered by document filled the limit from the first document alone,
+    so forty hits for a common form were forty lines from one text. The
+    engine says how many hits each document has; a handful are picked evenly
+    down that list (not from the top, which is the largest documents), and
+    the rows are fetched from those alone. Returns ``(rows, per_doc, docs)``:
+    the rows, how many hits each document may show, and how many documents
+    have hits at all.
+    """
+    grouped = c.group(where, [f'{doc_var}.doc'])
+    docs = sorted([(r[0], r[-1]) for r in grouped if r[0]], key=lambda x: -x[1])
+    if not docs:
+        return [], limit, 0
+    if len(docs) > RENDER_DOC_BUDGET:
+        chosen = [docs[i * len(docs) // RENDER_DOC_BUDGET] for i in range(RENDER_DOC_BUDGET)]
+    else:
+        chosen = docs
+    per_doc = max(1, math.ceil(limit / len(chosen)))
+    # One small fetch per document: a single fetch with one limit was filled
+    # by the first document alone whenever the pattern was common.
+    rows: List[list] = []
+    for did, _ in chosen:
+        rows += c.entities(where + [['in', f'{doc_var}.doc', [did]]], find, per_doc * rows_per_hit + 1,
+                           [[f'{doc_var}.begin']])
+    return rows, per_doc, len(docs)
+
+
+def _spread_note(shown: List[str], docs: int) -> List[str]:
+    if docs > RENDER_DOC_BUDGET:
+        return [f'  (hits in {docs} documents; a few from each of {RENDER_DOC_BUDGET} of them are shown. '
+                f'Name a document to search it whole.)'] + shown
+    return shown
 
 
 def q_search(ws: Workspace, pattern: str, where_l: str, field, regex: bool, limit: int) -> Tuple[List[str], int]:
@@ -303,23 +352,24 @@ def q_search(ws: Workspace, pattern: str, where_l: str, field, regex: bool, limi
     if where_l == 'baseline':
         where = [c.word('?t', value=spec)]
         total = c.word_count(where)
-        rows = c.entities(where, ['?t'], limit * 2, [['?t.doc'], ['?t.begin']])
-        return _hit_lines(c, rows, 0, limit), total
+        rows, per_doc, docs = _spread_fetch(c, where, ['?t'], '?t', limit, 2)
+        return _spread_note(_hit_lines(c, rows, 0, limit, per_doc=per_doc), docs), total
     if where_l == 'morpheme':
         where = [c.morph_form_clauses('?m', spec)] + c.in_word('?m', '?w')
         total = c.count(where, ['?w'])  # words, as the scan counts
-        rows = c.entities(where, ['?m', '?w'], limit * 3, [['?w.doc'], ['?w.begin']])
-        return _hit_lines(c, rows, 1, limit), total
+        rows, per_doc, docs = _spread_fetch(c, where, ['?m', '?w'], '?w', limit, 3)
+        return _spread_note(_hit_lines(c, rows, 1, limit, per_doc=per_doc), docs), total
     layer = c.scope_layer(field.scope)
     where = [c.span('?s', field.layer_id, value=spec), ['covers', '?s', '?t'], ['token', '?t', {'layer': layer}]]
     if field.scope == 'Morpheme':
         where += c.in_word('?t', '?w')
         total = c.count(where, ['?w'])
-        rows = c.entities(where, ['?s', '?w'], limit * 3, [['?w.doc'], ['?w.begin']])
-        return _hit_lines(c, rows, 1, limit), total
+        rows, per_doc, docs = _spread_fetch(c, where, ['?s', '?w'], '?w', limit, 3)
+        return _spread_note(_hit_lines(c, rows, 1, limit, per_doc=per_doc), docs), total
     total = c.count(where, ['?t'])
-    rows = c.entities(where, ['?s', '?t'], limit * 2, [['?t.doc'], ['?t.begin']])
-    return _hit_lines(c, rows, 1, limit, field=field if field.scope == 'Sentence' else None), total
+    rows, per_doc, docs = _spread_fetch(c, where, ['?s', '?t'], '?t', limit, 2)
+    lines = _hit_lines(c, rows, 1, limit, field=field if field.scope == 'Sentence' else None, per_doc=per_doc)
+    return _spread_note(lines, docs), total
 
 
 # --- shared tallies --------------------------------------------------------------
