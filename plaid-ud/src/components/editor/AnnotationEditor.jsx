@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { History, Info } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { ParseDialog } from './services/ParseDialog.jsx';
-import { VirtualSentenceRow } from './annotation/VirtualSentenceRow.jsx';
+import { SentenceRow } from './annotation/SentenceRow.jsx';
 import { useLayerInfo } from './hooks/useLayerInfo.js';
 import { useSentenceData } from './hooks/useSentenceData.js';
 import { useDocumentHistory } from './hooks/useDocumentHistory.js';
@@ -366,8 +366,7 @@ export const AnnotationEditor = () => {
   }, [processedSentences]);
 
   // Scroll to (and flash) the sentence named by ?sent= once, after the grid
-  // has rendered. Rows are virtualized but their placeholders hold the slot, so
-  // the wrapper is always in the DOM to scroll to.
+  // has rendered.
   useEffect(() => {
     if (reconciling || !sentParam || !processedSentences.length) return;
     // The nonce is what lets the assistant ask for the same sentence twice:
@@ -385,28 +384,21 @@ export const AnnotationEditor = () => {
       return;
     }
     scrolledForRef.current = asked;
-    const timers = [];
+    let flashTimer = null;
     const raf = requestAnimationFrame(() => {
       const selector = `[data-sentence-row="${CSS.escape(String(sentParam))}"]`;
-      const bring = () =>
-        document.querySelector(selector)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      bring();
-      // Every row on the page is still a virtualization placeholder of its
-      // estimated height at this point, and they grow to their real heights as
-      // they mount — which walks the target out from under the first scroll.
-      // Aim again once they have settled.
-      timers.push(setTimeout(bring, 400));
+      document.querySelector(selector)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       setFlashSentId(String(sentParam));
-      timers.push(setTimeout(() => setFlashSentId(null), 2000));
+      flashTimer = setTimeout(() => setFlashSentId(null), 2000);
     });
     return () => {
       cancelAnimationFrame(raf);
-      timers.forEach(clearTimeout);
+      if (flashTimer) clearTimeout(flashTimer);
     };
   }, [reconciling, sentParam, processedSentences, focusNonce, indexById, page, setPage]);
 
   // Bind annotation/relation handlers to the current document. When viewing
-  // historical state we pass `null` so VirtualSentenceRow disables editing.
+  // historical state we pass `null` so SentenceRow disables editing.
   // useCallback keeps their identity stable across the transient saving
   // re-renders (isSaving/error emits), so the memoized sentence/cell subtree
   // isn't re-rendered mid-edit — otherwise focus jitters during the save.
@@ -716,7 +708,7 @@ export const AnnotationEditor = () => {
                           : undefined
                       }
                     >
-                      <VirtualSentenceRow
+                      <SentenceRow
                         sentenceData={sentenceData}
                         onAnnotationUpdate={readOnly ? null : handleAnnotationUpdate}
                         onFeatureDelete={readOnly ? null : handleFeatureDelete}
@@ -738,7 +730,6 @@ export const AnnotationEditor = () => {
                         reviewable={doc?.writer.reviewable}
                         sentenceIndex={index}
                         totalTokensBefore={tokensBefore[index] ?? 0}
-                        estimatedHeight={250} // Estimated height for placeholder
                         vocab={layerInfo?.vocab}
                         colors={layerInfo?.colors}
                         visibleFields={visibleFields}
