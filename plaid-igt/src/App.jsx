@@ -117,12 +117,23 @@ function App() {
 
                 <Route path="/admin" element={<AdminView />} />
                 <Route path="/profile" element={<UserProfile />} />
+                {/* Catch all. INSIDE the protected layout on purpose: a route
+                  the router does not know is usually a typo, a stale bookmark
+                  or a guess at a scheme the app does not use
+                  (`/projects/:id/search`, which is `?tab=search`). Sending
+                  that to /login showed a signed-in reader a password form and
+                  read as "you have been logged out and may have lost your
+                  work". From in here a reader keeps their session and lands on
+                  Projects, and someone genuinely signed out still gets the
+                  login form, from ProtectedRoute. */}
+                <Route path="*" element={<Navigate to="/projects" replace />} />
               </Route>
 
               {/* Settings used to be one long scroll at /settings before it was
               split into General / Text and Vocab / Annotation, and the middle
-              section was briefly /orthography and then /lexicon. Without these, those URLs fall through
-              to the catch-all and bounce a logged-in user to /login. */}
+              section was briefly /orthography and then /lexicon. These keep the
+              specific destination, rather than letting the catch-all above send
+              an old bookmark to Projects. */}
               <Route
                 path="/projects/:projectId/settings"
                 element={<Navigate to="../general" replace relative="path" />}
@@ -140,9 +151,6 @@ function App() {
                 path="/projects/:projectId/tokens"
                 element={<Navigate to="../access" replace relative="path" />}
               />
-
-              {/* Catch all - redirect to login */}
-              <Route path="*" element={<Navigate to="/login" replace />} />
             </Routes>
           </Suspended>
         </ConfirmProvider>
