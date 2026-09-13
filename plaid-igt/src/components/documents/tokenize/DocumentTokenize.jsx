@@ -239,10 +239,8 @@ export function DocumentTokenize() {
                     on token: Open it in Analyze
                   </div>
                   <div>
-                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">
-                      <ChevronUp className="h-3 w-3 inline" />
-                    </kbd>
-                    : Merge sentence with previous
+                    <ChevronUp className="h-3 w-3 inline" /> button above a sentence: Merge it with
+                    the previous sentence
                   </div>
                 </div>
               </div>

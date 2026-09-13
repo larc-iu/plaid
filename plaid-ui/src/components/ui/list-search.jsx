@@ -28,6 +28,9 @@ export const SearchInput = React.forwardRef(
         // A search box is not prose, and half of what is typed into these is a
         // form in the language being documented.
         spellCheck={false}
+        // The box `/` reaches (plaid-igt's shell listens for it): the first
+        // one on the screen.
+        data-search-box=""
         placeholder={placeholder}
         aria-label={placeholder.replace(/…$/, '')}
         value={value}

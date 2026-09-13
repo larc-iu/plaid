@@ -116,6 +116,24 @@ const Shell = () => {
     if (focus) setDockOpen(true);
   }, [focus, setDockOpen]);
 
+  // `/` outside a text box focuses the screen's search box (the first
+  // SearchInput on it), the web's own key for that. Nothing when the screen
+  // has none, and nothing while typing: a slash in a box is a slash.
+  useEffect(() => {
+    const onSlash = (e) => {
+      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+      const t = e.target;
+      if (t?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t?.tagName)) return;
+      const box = document.querySelector('input[data-search-box]');
+      if (!box || box.disabled) return;
+      e.preventDefault();
+      box.focus();
+      box.select();
+    };
+    document.addEventListener('keydown', onSlash);
+    return () => document.removeEventListener('keydown', onSlash);
+  }, []);
+
   const navItem = (to, label, active) => (
     <Link key={to} to={to} className={headerItem(active)}>
       {label}
