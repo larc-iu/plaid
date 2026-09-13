@@ -12,7 +12,7 @@ import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { splitConlluByNewdoc } from '../../utils/conlluParser.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { canEditProject } from '../../utils/permissions.js';
-import { notifySuccess, notifyError, notifyWarning } from '../../utils/feedback.jsx';
+import { notifySuccess, notifyError, notifyWarning, humanizeError } from '../../utils/feedback.jsx';
 import { ProjectTabs } from './ProjectTabs.jsx';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
@@ -330,7 +330,7 @@ export const ProjectImportExport = () => {
         notifySuccess(`Exported ${used.size} document${used.size === 1 ? '' : 's'}.`);
       }
     } catch (err) {
-      notifyError(err.message || 'Export failed.');
+      notifyError(humanizeError(err, 'Export failed.'));
     } finally {
       setExporting(false);
     }

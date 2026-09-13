@@ -14,7 +14,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { ServiceParamForm } from '@ui/components/services/ServiceParamForm.jsx';
 import { ServiceSummary } from '@ui/components/services/ServiceSummary.jsx';
-import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
+import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
 import { canManageProject } from '../../utils/permissions.js';
 import {
   encodeServiceSelection,
@@ -222,7 +222,7 @@ export const ProjectServicesSettings = () => {
       setDraft(p?.config?.[UD_NAMESPACE]?.serviceDefaults || {});
       setDirty(false);
     } catch (error) {
-      notifyError(error.message || 'Failed to load services', 'Services');
+      notifyError(humanizeError(error, 'Failed to load services'), 'Services');
     } finally {
       setLoading(false);
     }
@@ -260,7 +260,7 @@ export const ProjectServicesSettings = () => {
       setDirty(false);
       notifySuccess('Service defaults saved');
     } catch (error) {
-      notifyError(error.message || 'Failed to save service defaults', 'Services');
+      notifyError(humanizeError(error, 'Failed to save service defaults'), 'Services');
     } finally {
       setSaving(false);
     }
@@ -273,7 +273,7 @@ export const ProjectServicesSettings = () => {
       await client.messages.discardService(projectId, serviceId);
       await load();
     } catch (error) {
-      notifyError(error.message || 'Failed to forget service', 'Services');
+      notifyError(humanizeError(error, 'Failed to forget service'), 'Services');
     }
   };
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Check, Copy, ImagePlus } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
+import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
 import { UserAvatar } from '@ui/components/shared/UserAvatar';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { Button } from '@ui/components/ui/button';
@@ -43,7 +43,7 @@ export const UserProfile = () => {
       notifySuccess('Profile picture updated');
     } catch (err) {
       console.error('Error uploading profile picture:', err);
-      notifyError(err.message || 'Failed to upload profile picture');
+      notifyError(humanizeError(err, 'Failed to upload profile picture'));
     } finally {
       setAvatarBusy(false);
     }
@@ -57,7 +57,7 @@ export const UserProfile = () => {
       notifySuccess('Profile picture removed');
     } catch (err) {
       console.error('Error removing profile picture:', err);
-      notifyError(err.message || 'Failed to remove profile picture');
+      notifyError(humanizeError(err, 'Failed to remove profile picture'));
     } finally {
       setAvatarBusy(false);
     }

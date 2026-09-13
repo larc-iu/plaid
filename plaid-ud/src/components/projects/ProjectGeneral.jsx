@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { UD_NAMESPACE, getUdLayerInfo, readProjectLanguage } from '../../utils/udLayerUtils.js';
-import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
+import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
 import { useManagedProject } from './useManagedProject.js';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
@@ -69,7 +69,7 @@ export const ProjectGeneral = ({ onProjectUpdate }) => {
       notifySuccess('Project renamed');
     } catch (err) {
       console.error('Error renaming project:', err);
-      notifyError(err.message || 'Failed to rename the project.');
+      notifyError(humanizeError(err, 'Failed to rename the project.'));
       setName(project?.name ?? '');
     } finally {
       setSavingName(false);
@@ -90,7 +90,7 @@ export const ProjectGeneral = ({ onProjectUpdate }) => {
       notifySuccess('Language saved');
     } catch (err) {
       console.error('Failed to save project language:', err);
-      notifyError(err.message || 'Failed to save the language.');
+      notifyError(humanizeError(err, 'Failed to save the language.'));
     } finally {
       setSavingLanguage(false);
     }
@@ -111,7 +111,7 @@ export const ProjectGeneral = ({ onProjectUpdate }) => {
       notifySuccess('Tokenizer locale saved');
     } catch (err) {
       console.error('Failed to save tokenizer locale:', err);
-      notifyError(err.message || 'Failed to save tokenizer locale.');
+      notifyError(humanizeError(err, 'Failed to save tokenizer locale.'));
     } finally {
       setSavingLocale(false);
     }
@@ -129,7 +129,7 @@ export const ProjectGeneral = ({ onProjectUpdate }) => {
       navigate('/projects');
     } catch (err) {
       console.error('Error deleting project:', err);
-      notifyError('Failed to delete project: ' + (err.message || 'Unknown error'));
+      notifyError(humanizeError(err), 'Failed to delete project');
       setIsDeleting(false);
       setDeleteOpen(false);
     }

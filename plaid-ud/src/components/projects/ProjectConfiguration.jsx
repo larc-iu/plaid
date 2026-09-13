@@ -9,7 +9,7 @@ import {
   getUdLayerInfo,
 } from '../../utils/udLayerUtils.js';
 import { PLAID_NAMESPACE, ROLE_KEY, ROLES, findByRole } from '@larc-iu/plaid-client';
-import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
+import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
 import { canManageProject } from '../../utils/permissions.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { Button } from '@ui/components/ui/button';
@@ -261,7 +261,7 @@ export const ProjectConfiguration = () => {
       navigate(`/projects/${projectId}/documents`);
     } catch (err) {
       console.error('Failed to save configuration:', err);
-      notifyError(err.message || 'Failed to save configuration');
+      notifyError(humanizeError(err, 'Failed to save configuration'));
     } finally {
       setSaving(false);
     }

@@ -19,6 +19,7 @@ import {
   notifyWarning,
   notifyPromise,
   notifyWithAction,
+  humanizeError,
 } from '../../../utils/feedback.jsx';
 import { fullTimestamp } from '../../../utils/formatTime.js';
 
@@ -33,7 +34,7 @@ const restoreError = (err, fallback) => {
   if (/no longer fits/.test(m)) {
     return m.replace(/^HTTP \d+\s*/, '').replace(/\s*at\s+https?:\/\/\S+/, '');
   }
-  return m ? `${fallback} (${m})` : fallback;
+  return m ? `${fallback} (${humanizeError(err)})` : fallback;
 };
 
 // The document's newest history entry: the moment its live state belongs to,

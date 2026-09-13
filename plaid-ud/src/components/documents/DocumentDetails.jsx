@@ -4,7 +4,7 @@ import { Copy, Trash2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { useDocumentEditor } from '../editor/useDocumentEditor.js';
 import { canEditProject } from '../../utils/permissions.js';
-import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
+import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
 import { fullTimestamp, timeAgo } from '../../utils/formatTime.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
@@ -87,7 +87,7 @@ export const DocumentDetails = () => {
       notifySuccess(`Deleted “${label}”`);
       navigate(`/projects/${projectId}/documents`);
     } catch (err) {
-      notifyError(err.message || 'Unknown error', 'Failed to delete document');
+      notifyError(humanizeError(err), 'Failed to delete document');
       console.error('Error deleting document:', err);
     }
   };

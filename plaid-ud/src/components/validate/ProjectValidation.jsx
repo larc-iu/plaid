@@ -7,7 +7,7 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import { useManagedProject } from '../projects/useManagedProject.js';
 import { ProjectTabs } from '../projects/ProjectTabs.jsx';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
-import { notifyError, notifySuccess } from '../../utils/feedback.jsx';
+import { notifyError, notifySuccess, humanizeError } from '../../utils/feedback.jsx';
 import { getUdLayerInfo, UD_NAMESPACE } from '../../utils/udLayerUtils.js';
 import { baseRel } from '../../utils/udVocab.js';
 import { MODES } from '../../utils/udVocabMode.js';
@@ -131,7 +131,7 @@ export const ProjectValidation = () => {
       setReport(out);
     } catch (err) {
       console.error('Validation scan failed:', err);
-      notifyError(err.message || 'Could not read the project.', 'Scan failed');
+      notifyError(humanizeError(err, 'Could not read the project.'), 'Scan failed');
     } finally {
       setBusy(false);
     }
@@ -209,7 +209,7 @@ export const ProjectValidation = () => {
         window.location.reload();
       } catch (err) {
         console.error('Could not add the values:', err);
-        notifyError(err.message || 'Could not add the values.', 'Not saved');
+        notifyError(humanizeError(err, 'Could not add the values.'), 'Not saved');
       } finally {
         setAdding(null);
       }

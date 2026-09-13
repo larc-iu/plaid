@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useAuth } from '../../../contexts/AuthContext.jsx';
-import { notifyError } from '../../../utils/feedback.jsx';
+import { notifyError, humanizeError } from '../../../utils/feedback.jsx';
 
 export const useDocumentHistory = (documentId) => {
   const [auditEntries, setAuditEntries] = useState([]);
@@ -30,7 +30,7 @@ export const useDocumentHistory = (documentId) => {
         logout();
         return;
       }
-      notifyError('Failed to load audit log: ' + (err.message || 'Unknown error'));
+      notifyError(humanizeError(err), 'Failed to load the history');
       console.error('Error fetching audit log:', err);
     } finally {
       setLoadingAudit(false);
@@ -64,7 +64,7 @@ export const useDocumentHistory = (documentId) => {
         // were browsing). Surface the HTTP status. (As-of reads come straight
         // from the audit log — no replica, so no 425/"not caught up" class.)
         const status = err.status ? ` (HTTP ${err.status})` : '';
-        const msg = `Couldn't load the document at that point in time${status}: ${err.message || 'Unknown error'}`;
+        const msg = `Couldn't load the document at that point in time${status}: ${humanizeError(err)}`;
         notifyError(msg, 'Time travel failed');
         console.error('Error fetching historical document:', err);
         return null;

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Check, Copy, Link2, Trash2 } from 'lucide-react';
 import PlaidClient from '@larc-iu/plaid-client';
-import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
+import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { Badge } from '@ui/components/ui/badge';
 import { Button } from '@ui/components/ui/button';
@@ -144,7 +144,7 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage }) =>
       await load();
     } catch (err) {
       console.error('Error creating invite:', err);
-      notifyError(err.message || 'Failed to create invitation link');
+      notifyError(humanizeError(err, 'Failed to create invitation link'));
     } finally {
       setCreating(false);
     }

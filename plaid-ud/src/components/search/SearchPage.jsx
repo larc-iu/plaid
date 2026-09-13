@@ -4,7 +4,7 @@ import { TriangleAlert } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { canManageProject } from '../../utils/permissions.js';
-import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
+import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
 import { ProjectTabs } from '../projects/ProjectTabs.jsx';
 import { parseAndCompile, parseGrs, looksLikeGrs, GrewError } from '../../grew/index.js';
 import { planRewrite, applyRewrite } from '../../grew/rewrite/runner.js';
@@ -221,7 +221,8 @@ export const SearchPage = () => {
       );
       const applied = `${out.sentencesChanged} sentence${out.sentencesChanged === 1 ? '' : 's'} in ${out.docsChanged} document${out.docsChanged === 1 ? '' : 's'}`;
       if (out.failed) {
-        const why = out.failed.status === 409 ? 'it changed since the preview' : out.failed.message;
+        const why =
+          out.failed.status === 409 ? 'it changed since the preview' : humanizeError(out.failed);
         notifyError(`Stopped at ${out.failed.docName}: ${why}. Applied to ${applied}.`);
       } else {
         notifySuccess(`Changed ${applied}.`);
@@ -229,7 +230,7 @@ export const SearchPage = () => {
       // Show what the rules would still change now that these are applied.
       await runPreview();
     } catch (err) {
-      notifyError(err?.message || 'The changes could not be applied.');
+      notifyError(humanizeError(err, 'The changes could not be applied.'));
     } finally {
       setProgress('');
       setApplying(false);

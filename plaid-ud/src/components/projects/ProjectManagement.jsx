@@ -11,7 +11,7 @@ import {
 } from '@larc-iu/plaid-client';
 import { ProjectInvites, MintedLinkModal } from './ProjectInvites';
 import { useAuth } from '../../contexts/AuthContext';
-import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
+import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { canManageProject } from '../../utils/permissions.js';
 import { isEmail, EMAIL_INVALID_MESSAGE } from '../../utils/email';
@@ -117,7 +117,7 @@ export const ProjectManagement = () => {
       setResetCode(inv.code);
     } catch (err) {
       console.error('Error creating reset link:', err);
-      notifyError(err.message || 'Failed to create a password reset link');
+      notifyError(humanizeError(err, 'Failed to create a password reset link'));
     } finally {
       setResetting(false);
     }
@@ -404,7 +404,7 @@ export const ProjectManagement = () => {
       await fetchProject();
     } catch (err) {
       console.error('Error deleting user:', err);
-      notifyError('Failed to delete user: ' + (err.message || 'Unknown error'));
+      notifyError(humanizeError(err), 'Failed to delete user');
     }
   };
 
