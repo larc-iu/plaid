@@ -288,6 +288,7 @@ Each question records where it was asked from, so a question about "this sentenc
 
 The panel's history lists the conversations you have had in the project, with **All projects** to widen the list past it.
 Opening one from there keeps you on the screen you are on.
+**⤢**, beside it, moves the open conversation to the **Assistant** tab and closes the panel.
 
 A question asked on a document is about that document: name no document and that is the one it reads, though it can still look at the rest of the project when the question calls for it, to compare or to count.
 **Ask**, beside **Edit text** under a sentence, puts that sentence into the question, and you can take it out again before sending.
