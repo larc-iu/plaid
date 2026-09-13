@@ -25,6 +25,12 @@ const WORDS = [
   [13, 16],
   [17, 22],
 ];
+// Two sentences, so "which one" is a real question: the `@` test picks the
+// second by what it SAYS and the reference it writes has to be s2.
+const SENTENCE_SPANS = [
+  [0, 13],
+  [13, 24],
+];
 const SECOND_DOCUMENT = 'Chrome Spec Second Document';
 
 let projectId;
@@ -98,7 +104,12 @@ const seedConversation = async (title, text, updatedAt) => {
 // never appear. The sibling spec seeds the same way for the same reason.
 test.beforeAll(async () => {
   ({ userId } = readToken());
-  ({ projectId, documentId } = await seedUdDoc(`Assistant chrome ${Date.now()}`, SENTENCES, WORDS));
+  ({ projectId, documentId } = await seedUdDoc(
+    `Assistant chrome ${Date.now()}`,
+    SENTENCES,
+    WORDS,
+    SENTENCE_SPANS,
+  ));
   // A second document to walk to. It needs no annotation of its own: what the
   // tests read there is the breadcrumb and the panel beside it.
   otherDocumentId = (await client().documents.create(projectId, SECOND_DOCUMENT)).id;
@@ -228,6 +239,38 @@ test('the handle waits at the edge, widens under the pointer, and does not open 
   // And both ways in step out of the way once the panel is open.
   await expect(handle).toHaveCount(0);
   await expect(toggle(page)).toHaveCount(0);
+});
+
+test('`@` offers the sentences of the open document, and Enter takes one', async ({ page }) => {
+  // The reader's half of the reference vocabulary. Ask can only point at the
+  // row you are looking at; `@` names a sentence you are not, and it matches on
+  // what the sentence SAYS, because nobody knows they want s2.
+  await seedAuth(page);
+  await withAssistant(page);
+  await annotate(page, documentId);
+  await expect(page.locator('.sentence-grid').first()).toBeVisible({ timeout: 15000 });
+  await openDock(page);
+
+  const composer = panelOf(page).getByRole('textbox');
+  await composer.fill('about @sings');
+  const list = panelOf(page).getByText('Sentences', { exact: true });
+  await expect(list).toBeVisible();
+  await expect(panelOf(page).getByText('she sings')).toBeVisible();
+
+  // Enter takes the highlighted row. It must NOT send: this composer sends on
+  // Enter, and arbitrating that is the whole risk in the gesture.
+  await composer.press('Enter');
+  // The composer still HOLDING the text is the proof that nothing was sent:
+  // send() clears it.
+  await expect(composer).toHaveValue('about s2 ');
+  await expect(panelOf(page).getByText('Sentences', { exact: true })).toHaveCount(0);
+
+  // Escape closes the list and leaves what was typed alone.
+  await composer.fill('about @s');
+  await expect(panelOf(page).getByText('Sentences', { exact: true })).toBeVisible();
+  await composer.press('Escape');
+  await expect(panelOf(page).getByText('Sentences', { exact: true })).toHaveCount(0);
+  await expect(composer).toHaveValue('about @s');
 });
 
 test('the panel comes back open if that is how it was left', async ({ page }) => {

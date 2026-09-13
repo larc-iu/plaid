@@ -36,7 +36,7 @@ import { createContext, useContext, useEffect, useRef } from 'react';
 // The callbacks are held in a ref and deliberately NOT part of what re-publishes
 // the subject: a screen that passes them inline (which every screen does) would
 // otherwise publish a new subject on every render, and the panel would reset on
-// each one.
+// each one. `mentions` travels the same way, for the same reason.
 //
 // The same context carries the other direction of the same relationship: a
 // screen POINTS at something ("Ask", on a sentence or an entry) and the panel
@@ -72,14 +72,15 @@ export const useAssistantSubject = ({
   contributor = false,
   onApplied,
   onFocusHere,
+  mentions,
 } = {}) => {
   const ctx = useContext(SubjectContext);
   const setSubject = ctx?.setSubject;
   // The screen's latest handlers, reachable without re-publishing. The panel
   // calls through these wrappers, so it always reaches the current ones even
   // though the subject it holds was published when the screen mounted.
-  const handlers = useRef({ onApplied, onFocusHere });
-  handlers.current = { onApplied, onFocusHere };
+  const handlers = useRef({ onApplied, onFocusHere, mentions });
+  handlers.current = { onApplied, onFocusHere, mentions };
 
   useEffect(() => {
     if (!setSubject || !projectId) return undefined;
@@ -93,6 +94,10 @@ export const useAssistantSubject = ({
       contributor,
       onApplied: () => handlers.current.onApplied?.(),
       onFocusHere: (arg) => handlers.current.onFocusHere?.(arg) ?? false,
+      // What this screen can be asked ABOUT by name, for `@` in the composer.
+      // Only the screen has it: the panel knows which document is open, not
+      // what is inside it.
+      mentions: (query) => handlers.current.mentions?.(query) ?? [],
     };
     setSubject(mine);
     return () => {

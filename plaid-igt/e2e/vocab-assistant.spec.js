@@ -128,6 +128,28 @@ test('Ask names the open entry the way find_entry takes it', async ({ page }) =>
   await expect(page.locator('aside').getByText('gam 1', { exact: true })).toBeVisible();
 });
 
+test('`@` offers the entries with the number that tells homographs apart', async ({ page }) => {
+  // The case the gesture exists for. Two entries are spelled "gam" and only a
+  // number separates them, which a reader has no way to know they need: the
+  // list shows both, and what it writes is the reference find_entry takes.
+  await withAssistant(page);
+  await openEntries(page);
+  await page.getByRole('button', { name: 'Assistant', exact: true }).click();
+  const panel = page.locator('aside.border-l');
+  await expect(panel).toBeVisible();
+
+  const composer = panel.getByRole('textbox');
+  await composer.fill('compare @gam');
+  await expect(panel.getByText('Entries', { exact: true })).toBeVisible();
+  await expect(panel.getByText('gam 1', { exact: true })).toBeVisible();
+  await expect(panel.getByText('gam 2', { exact: true })).toBeVisible();
+
+  await composer.press('Enter');
+  // "#" and not a space: it is what the tool takes, and it is what this
+  // screen's own Ask writes.
+  await expect(composer).toHaveValue('compare gam#1 ');
+});
+
 test('a vocabulary two projects link is never filed under one of them', async ({ page }) => {
   // The ruling: a conversation belongs to one project, and filing it under one
   // the user did not choose puts it in an Assistant tab they were never on.

@@ -239,6 +239,38 @@ test('the handle waits at the edge, widens under the pointer, and does not open 
   await expect(toggle(page)).toHaveCount(0);
 });
 
+test('`@` offers the sentences of the open document, and Enter takes one', async ({ page }) => {
+  // The reader's half of the reference vocabulary. Ask can only point at the
+  // row you are looking at; `@` names a sentence you are not, and it matches on
+  // what the sentence SAYS, because nobody knows they want s2.
+  await seedAuth(page);
+  await withAssistant(page);
+  await analyze(page, documentId);
+  await expect(page.locator('.igt-sentence').first()).toBeVisible({ timeout: 15000 });
+  await openDock(page);
+
+  const composer = panelOf(page).getByRole('textbox');
+  await composer.fill('about @humanos');
+  const list = panelOf(page).getByText('Sentences', { exact: true });
+  await expect(list).toBeVisible();
+  await expect(panelOf(page).getByText(/Todos los seres humanos/)).toBeVisible();
+
+  // Enter takes the highlighted row. It must NOT send: this composer sends on
+  // Enter, and arbitrating that is the whole risk in the gesture.
+  await composer.press('Enter');
+  // The composer still HOLDING the text is the proof that nothing was sent:
+  // send() clears it.
+  await expect(composer).toHaveValue('about s1 ');
+  await expect(panelOf(page).getByText('Sentences', { exact: true })).toHaveCount(0);
+
+  // Escape closes the list and leaves what was typed alone.
+  await composer.fill('about @s');
+  await expect(panelOf(page).getByText('Sentences', { exact: true })).toBeVisible();
+  await composer.press('Escape');
+  await expect(panelOf(page).getByText('Sentences', { exact: true })).toHaveCount(0);
+  await expect(composer).toHaveValue('about @s');
+});
+
 test('the panel comes back open if that is how it was left', async ({ page }) => {
   // Remembered per browser, and across a LOAD rather than only within the
   // session: a thread the reader was in the middle of is the likeliest reason

@@ -291,6 +291,10 @@ Opening one from there keeps you on the screen you are on.
 
 A question asked on a document is about that document: name no document and that is the one it reads, though it can still look at the rest of the project when the question calls for it, to compare or to count.
 **Ask**, beside **Edit text** under a sentence, puts that sentence into the question, and you can take it out again before sending.
+
+Typing **@** in the message box names something without leaving the message: the sentences of the document you have open, and the documents of the project.
+Sentences are matched on what they say, so **@** followed by a word finds the sentence that contains it.
+Arrow keys move through the list, Enter takes the one that is highlighted, and Escape closes the list and leaves what you typed.
 An example that names a sentence of the open document scrolls the annotation editor to it rather than opening a new tab.
 
 On a screen with no project of its own, the panel keeps the conversation it has.

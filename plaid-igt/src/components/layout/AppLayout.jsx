@@ -214,6 +214,7 @@ const Shell = () => {
           onClearFocus={clearFocus}
           onApplied={subject?.onApplied}
           onFocusHere={subject?.onFocusHere}
+          onMentions={subject?.mentions}
           picker={
             projectId ? null : (
               <ProjectPicker

@@ -584,6 +584,19 @@ export const VocabularyItems = ({
     name: vocabulary?.name,
     canWrite: canEditProject(assistantProject, user),
     onApplied: handleImported,
+    // What `@` offers in the composer: this vocabulary's entries, by the
+    // reference `find_entry` takes (the form, and its homograph number after a
+    // "#"). The label writes the number out, the way the screen does. This is
+    // the case the gesture exists for: two entries spelled alike are told
+    // apart by a number a reader has no way to know they need.
+    mentions: () => {
+      const entries = items.map((item) => ({
+        value: numbers.get(item.id) ? `${item.form}#${numbers.get(item.id)}` : item.form,
+        label: itemLabel(item, numbers),
+        hint: item.metadata?.gloss || '',
+      }));
+      return entries.length ? [{ group: 'Entries', items: entries }] : [];
+    },
   });
 
   const handleSave = async () => {

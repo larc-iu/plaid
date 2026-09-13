@@ -35,7 +35,7 @@ import { useDocumentHistory } from './hooks/useDocumentHistory.js';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useTabParam, tabTo } from '@/hooks/useTabParam';
 import { useComposeProject } from '@/hooks/useCompose';
-import { isReviewed } from '@larc-iu/plaid-client';
+import { cpSlice, isReviewed } from '@larc-iu/plaid-client';
 import { EdgeRail } from '@ui/components/shared/EdgeRail.jsx';
 import { useAssistantSubject } from '@ui/components/assistant/subject.js';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
@@ -218,6 +218,21 @@ const DocumentEditor = () => {
     contributor: !!project && !!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin }),
     onApplied: reloadForAssistant,
     onFocusHere: focusHere,
+    // What `@` offers in the composer: this document's sentences, by the same
+    // reference Ask writes. The hint is what the sentence SAYS, because that is
+    // what a reader remembers about it rather than its number.
+    mentions: () => {
+      // A token carries `content`, not the running text, so the hint is cut
+      // from the body by the sentence's own offsets. Code points, like every
+      // offset in this app.
+      const body = doc?.body || '';
+      const items = (doc?.sentences || []).map((sentence, i) => ({
+        value: `s${i + 1}`,
+        label: `s${i + 1}`,
+        hint: cpSlice(body, sentence.begin, sentence.end),
+      }));
+      return items.length ? [{ group: 'Sentences', items }] : [];
+    },
   });
 
   // Comments live in their own store, not on IgtDocument: they are social data,

@@ -687,6 +687,11 @@ Opening one from there keeps you on the screen you are on.
 
 A question asked on a document is about that document: name no document and that is the one it reads, though it can still look at the rest of the project when the question calls for it, to compare or to count.
 **Ask**, beside **Copy** on a sentence, puts that sentence into the question, and you can take it out again before sending.
+
+Typing **@** in the message box names something without leaving the message: the sentences of the document you have open, the entries of a vocabulary you are on, and the documents of the project.
+Sentences are matched on what they say, so **@** followed by a word finds the sentence that contains it.
+Arrow keys move through the list, Enter takes the one that is highlighted, and Escape closes the list and leaves what you typed.
+Two entries spelled alike are told apart by their number, which is what **@** writes for you.
 On a vocabulary's **Entries** screen the vocabulary is what a question is about, and **Ask**, beside the tabs, puts the open entry into it.
 A vocabulary that more than one project links has no one project to file a conversation under, so nothing there is taken as the subject and the project is yours to choose.
 

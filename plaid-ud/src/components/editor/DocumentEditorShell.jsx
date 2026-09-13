@@ -225,6 +225,17 @@ export const DocumentEditorShell = () => {
     contributor: !!project && !!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin }),
     onApplied: reload,
     onFocusHere: focusHere,
+    // What `@` offers in the composer: this document's sentences, by the same
+    // reference Ask writes. The hint is what the sentence SAYS, because that is
+    // what a reader remembers about it rather than its number.
+    mentions: () => {
+      const items = (doc?.sentences || []).map((sentence, i) => ({
+        value: `s${i + 1}`,
+        label: `s${i + 1}`,
+        hint: sentence.text,
+      }));
+      return items.length ? [{ group: 'Sentences', items }] : [];
+    },
   });
   // "Ask" under a sentence hands the panel a {ref, label} and opens it. It goes
   // down the outlet to the grid; the panel picks it up in the shell.

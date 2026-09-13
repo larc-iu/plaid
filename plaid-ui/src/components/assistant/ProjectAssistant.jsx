@@ -20,6 +20,9 @@ import {
   ExportMenu,
 } from './ConversationList.jsx';
 import { Turn } from './Turn.jsx';
+import { MentionList } from './MentionList.jsx';
+import { activeMention, filterMentions, insertMention } from './mentions.js';
+import { flattenOptions, normalizeOptions } from '../ui/combobox.jsx';
 import {
   attachJob,
   buildMeta,
@@ -129,6 +132,9 @@ export const ProjectAssistant = ({
   // the panel can scroll there. Returns true when it handled it, and the link
   // is left alone otherwise.
   onFocusHere,
+  // What the screen behind the panel can be asked about BY NAME, for `@` in
+  // the composer: its sentences, or its entries. Only the screen has them.
+  onMentions,
   // Hide the docked panel. Its button lives in THIS header rather than in a
   // row of its own: the panel used to carry a second bar naming the document
   // or vocabulary, which the page's own heading says a few pixels away.
@@ -220,6 +226,15 @@ export const ProjectAssistant = ({
 
   // --- the job in flight for the shown conversation ----------------------
   const [input, setInput] = useState('');
+  // Where the caret is in the composer, which is the other half of knowing
+  // whether an `@` is being typed (see mentions.js).
+  const [caret, setCaret] = useState(0);
+  // The offset of an `@` the reader dismissed with Escape. It stays dismissed
+  // until they start another one, or the list would come back on the next
+  // keystroke.
+  const [mentionOff, setMentionOff] = useState(-1);
+  const [mentionAt, setMentionAt] = useState(null); // the highlighted value
+  const [docNames, setDocNames] = useState(null); // the project's documents, once
   const [busy, setBusy] = useState(null); // null | 'turn' | 'apply'
   const [progress, setProgress] = useState('');
   const [liveSteps, setLiveSteps] = useState([]); // progress messages so far
@@ -283,7 +298,9 @@ export const ProjectAssistant = ({
   };
 
   // Show what we already know about this project while re-checking, so
-  // switching tabs does not blank the assistant picker every time.
+  // switching tabs does not blank the assistant picker every time. The cold
+  // start (a project whose service has not registered yet) is handled by
+  // useAssistantAvailable, which gates the panel, the rail and the tab.
   useEffect(() => {
     const cached = serviceCache.get(projectId);
     setServices(cached || []);
@@ -410,12 +427,21 @@ export const ProjectAssistant = ({
     loadList().then((metas) => {
       if (resumed.current === openKey) return;
       resumed.current = openKey;
-      if (urlConvRef.current) return;
       // Only a conversation of THIS project, whose keys are the only ones this
       // screen reads, and only one that still exists (it may have been deleted
       // meanwhile).
       const mine = metas.filter((m) => !m.projectId || m.projectId === projectId);
-      if (remembered && (jobFor(remembered) || mine.some((m) => m.id === remembered))) {
+      const here = new Set(mine.map((m) => m.id));
+      // A conversation named in the URL is respected, but only if it is this
+      // project's. Walking from one project to another used to leave the one
+      // we came from on screen with a live composer, and sending into it ran
+      // the turn against THIS project while carrying the other one's
+      // transcript, then saved a second, divergent copy under this project's
+      // key: one conversation id, two projects, two different histories. A run
+      // still going where we came from stays reachable through the "running
+      // elsewhere" link, which is what switching away is supposed to leave you.
+      if (urlConvRef.current && here.has(urlConvRef.current)) return;
+      if (remembered && (jobFor(remembered) || here.has(remembered))) {
         setUrlConvRef.current(remembered, { replace: true });
         return;
       }
@@ -424,7 +450,14 @@ export const ProjectAssistant = ({
       // each time would mean going to find what you were in the middle of. The
       // TAB still opens new, the way a chat app does, because its sidebar puts
       // every thread one click away.
-      if (panel && mine.length) setUrlConvRef.current(mine[0].id, { replace: true });
+      if (panel && mine.length) {
+        setUrlConvRef.current(mine[0].id, { replace: true });
+        return;
+      }
+      // Nothing of this project's to show. Clear whatever the last one left,
+      // rather than keeping it live over a project it does not belong to.
+      if (urlConvRef.current) setUrlConvRef.current(null, { replace: true });
+      else if (activeRef.current && !activeRef.current.draft) setActive(newConversation());
     });
     return () => {
       const a = activeRef.current;
@@ -628,7 +661,97 @@ export const ProjectAssistant = ({
       settle(c, index, 'discarded', '(note) The user discarded the plan; nothing was changed.'),
     );
 
+  // --- `@` ------------------------------------------------------------------
+  // A typeahead over the reference spellings the model already reads, so a
+  // reader can name a sentence they are not looking at, or the entry that
+  // needs its homograph number. What it inserts is plain text: the message is
+  // the record (see mentions.js).
+  const mention = canSend ? activeMention(input, caret) : null;
+  const mentionOpen = !!mention && mention.from !== mentionOff;
+
+  // The project's documents, read once and filtered here. There is no
+  // name query on the endpoint, so this takes one page of the server's
+  // largest: a project past that lists its first thousand, and the reader
+  // names the rest the way they always have, by typing.
+  useEffect(() => {
+    setDocNames(null);
+  }, [projectId]);
+  useEffect(() => {
+    if (!mentionOpen || docNames || !client || !projectId) return undefined;
+    let alive = true;
+    client.projects
+      .listDocumentsPage(projectId, { limit: 1000 })
+      .then((page) => alive && setDocNames(page?.entries || []))
+      // Without them the list still offers what the screen knows, which is
+      // the half a reader is most likely to want.
+      .catch(() => alive && setDocNames([]));
+    return () => {
+      alive = false;
+    };
+  }, [mentionOpen, docNames, client, projectId]);
+
+  // What the screen offers first, then the project's documents: a reference to
+  // what is in front of you is the common case.
+  const mentionGroups = useMemo(() => {
+    if (!mentionOpen) return [];
+    const own = onMentions?.(mention.query) || [];
+    const docs = (docNames || []).map((d) => ({ value: d.name, label: d.name }));
+    const all = [...own, ...(docs.length ? [{ group: 'Documents', items: docs }] : [])];
+    return filterMentions(normalizeOptions(all), mention.query);
+  }, [mentionOpen, mention, onMentions, docNames]);
+  const mentionItems = useMemo(() => flattenOptions(mentionGroups), [mentionGroups]);
+
+  // The highlight follows the list: the row it was on may not have survived
+  // the last keystroke.
+  useEffect(() => {
+    if (!mentionItems.length) return;
+    if (!mentionItems.some((m) => m.value === mentionAt)) setMentionAt(mentionItems[0].value);
+  }, [mentionItems, mentionAt]);
+
+  const trackCaret = (e) => setCaret(e.target.selectionStart ?? 0);
+
+  const takeMention = (item) => {
+    const next = insertMention(input, caret, item.value);
+    setInput(next.text);
+    setMentionOff(-1);
+    // After the paint, or the caret is set against the old value and the
+    // browser puts it back at the end.
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(next.caret, next.caret);
+      setCaret(next.caret);
+    });
+  };
+
+  // The list takes the keys it needs BEFORE the composer sees them, which is
+  // the contract the shared Combobox documents at its head and the reason this
+  // is written out rather than left to bubble: Enter sends a message here.
   const onKeyDown = (e) => {
+    if (mentionOpen && mentionItems.length) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const i = mentionItems.findIndex((m) => m.value === mentionAt);
+        const step = e.key === 'ArrowDown' ? 1 : -1;
+        const at = (i + step + mentionItems.length) % mentionItems.length;
+        setMentionAt(mentionItems[at].value);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        const picked = mentionItems.find((m) => m.value === mentionAt) || mentionItems[0];
+        e.preventDefault();
+        takeMention(picked);
+        return;
+      }
+      if (e.key === 'Escape') {
+        // The typed text is left exactly as it is. Escape closes the list, it
+        // does not undo what the reader wrote.
+        e.preventDefault();
+        setMentionOff(mention.from);
+        return;
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       send();
@@ -1040,11 +1163,29 @@ export const ProjectAssistant = ({
               </span>
             </div>
           )}
-          <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-xl border bg-background p-2 focus-within:ring-1 focus-within:ring-ring">
+          {/* `relative`, because the `@` list hangs off the top of this box
+              rather than off the caret: measuring a character position inside a
+              textarea needs a mirror element and breaks on wrap and on resize,
+              and the composer is never far from the caret anyway. */}
+          <div className="relative mx-auto flex max-w-3xl items-end gap-2 rounded-xl border bg-background p-2 focus-within:ring-1 focus-within:ring-ring">
+            {mentionOpen && (
+              <MentionList
+                groups={mentionGroups}
+                activeValue={mentionAt}
+                onPick={takeMention}
+                onHover={setMentionAt}
+                loading={docNames === null}
+              />
+            )}
             <Textarea
               ref={inputRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                setInput(e.target.value);
+                setCaret(e.target.selectionStart ?? 0);
+              }}
+              onKeyUp={trackCaret}
+              onSelect={trackCaret}
               onKeyDown={onKeyDown}
               placeholder={
                 !service
