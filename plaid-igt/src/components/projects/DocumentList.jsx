@@ -22,7 +22,7 @@ import {
 } from '@ui/components/ui/tooltip';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { findBaselineTextLayer } from '@/domain/igtConfig';
-import { timeAgo, fullTimestamp } from '@ui/utils/formatTime';
+import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 
 export const DocumentList = ({
   documents,

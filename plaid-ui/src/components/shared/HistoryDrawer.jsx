@@ -3,7 +3,7 @@ import { X, History, ChevronRight } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
 import { Badge } from '../ui/badge.jsx';
 import { cn } from '../../lib/utils.js';
-import { fullTimestamp } from '../../utils/formatTime.js';
+import { fullTimestamp } from '../../lib/formatTime.js';
 import { readableDescription } from '../../lib/auditText.js';
 
 // The audit log arrives already folded into logical units by the server: a

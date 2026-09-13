@@ -18,7 +18,7 @@ import { DocumentMetadata } from './metadata/DocumentMetadata.jsx';
 import { DocumentBaseline } from './baseline/DocumentBaseline.jsx';
 import { AnalyzeIsland } from './analyze/AnalyzeIsland.jsx';
 import { Suspended } from '@ui/components/shared/Suspended';
-import { fullTimestamp } from '@ui/utils/formatTime';
+import { fullTimestamp } from '@ui/lib/formatTime.js';
 import { lazyNamed } from '@ui/lib/lazyNamed';
 
 // The Media tab (the timeline, waveform, speech detection, and recording

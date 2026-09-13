@@ -10,7 +10,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@ui/components/ui/dropdown-menu';
-import { timeAgo, fullTimestamp } from '@ui/utils/formatTime';
+import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { notifyError } from '@/utils/feedback';
 import { useUserAdmin } from './useUserAdmin';
 import { UserAdminDialogs } from './userAdmin';

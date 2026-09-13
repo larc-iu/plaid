@@ -11,7 +11,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@ui/components/ui/tooltip';
-import { timeAgo, fullTimestamp } from '@ui/utils/formatTime';
+import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { notifyWarning, isPermissionError } from '@/utils/feedback';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { PARENT_KEY } from '@/domain/vocabDictionary';

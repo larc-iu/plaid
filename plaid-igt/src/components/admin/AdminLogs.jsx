@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@ui/components/ui/select';
-import { fullTimestamp } from '@ui/utils/formatTime';
+import { fullTimestamp } from '@ui/lib/formatTime.js';
 import { notifyError } from '@/utils/feedback';
 
 // What the server is doing right now, and what went wrong. Requests and

@@ -13,7 +13,7 @@ import {
 } from '@ui/components/ui/tooltip';
 import { notifyWarning } from '@/utils/feedback';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
-import { timeAgo, fullTimestamp } from '@ui/utils/formatTime';
+import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 
 export const ProjectList = () => {

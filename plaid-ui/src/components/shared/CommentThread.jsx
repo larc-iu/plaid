@@ -4,7 +4,7 @@ import { useConfirm } from './ConfirmProvider.jsx';
 import { Button } from '../ui/button.jsx';
 import { Textarea } from '../ui/textarea.jsx';
 import { SafeMarkdown } from '../ui/markdown.jsx';
-import { timeAgo, fullTimestamp } from '../../utils/formatTime.js';
+import { timeAgo, fullTimestamp } from '../../lib/formatTime.js';
 import { isPending } from '../../domain/CommentStore.js';
 
 // One thread: its comments oldest first, and a box to add to it.

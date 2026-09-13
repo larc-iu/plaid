@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { timeAgo } from '../../utils/formatTime.js';
+import { timeAgo } from '../../lib/formatTime.js';
 import {
   MessageSquare,
   Download,

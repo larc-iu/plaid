@@ -14,7 +14,7 @@
 import { html, svg, nothing } from 'lit-html';
 import { repeat } from 'lit-html/directives/repeat.js';
 import { ThreadIslandBase } from './ThreadIslandBase.js';
-import { timeAgo } from '@ui/utils/formatTime';
+import { timeAgo } from '@ui/lib/formatTime.js';
 import { plainText } from '@ui/domain/commentThreads';
 import './comments-island.css';
 

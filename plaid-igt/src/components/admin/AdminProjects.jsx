@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
 import { DataTable } from '@ui/components/ui/data-table';
-import { timeAgo, fullTimestamp } from '@ui/utils/formatTime';
+import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { isUdProject } from '@ui/domain/udProject';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { findBaselineTextLayer, readInitialized } from '../../domain/igtConfig';

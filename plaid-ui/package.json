@@ -4,7 +4,6 @@
   "version": "0.0.0",
   "type": "module",
   "description": "The screens and primitives plaid-igt, plaid-ud and plaid-dict share.",
-  "main": "src/index.js",
   "scripts": {
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write \"src/**/*.{js,mjs,jsx,css}\"",

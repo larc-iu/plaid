@@ -21,7 +21,7 @@ import {
   notifyWithAction,
   humanizeError,
 } from '../../../utils/feedback.jsx';
-import { fullTimestamp } from '@ui/utils/formatTime.js';
+import { fullTimestamp } from '@ui/lib/formatTime.js';
 
 const historyMessage = (asOf, label) =>
   `Restore to ${fullTimestamp(asOf)}` + (label ? ` (after “${label}”)` : '');
