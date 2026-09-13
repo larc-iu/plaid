@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, X, RefreshCw, Play } from 'lucide-react';
+import { Check, X, RefreshCw } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
 import { notifySuccess, notifyError } from '@/utils/feedback';
@@ -271,11 +271,26 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
     if (!vocabData?.vocabularies?.length) return null;
 
     const enabledVocabs = vocabData.vocabularies.filter((vocab) => vocab.enabled);
-    if (enabledVocabs.length === 0) return null;
+    // Say "none" rather than disappearing. This section used to render nothing
+    // when nothing was linked, which is the one outcome worth reviewing: the
+    // step's on/off column is a bare check mark that toggles on a row click, so
+    // a stray click near the row's edge unlinks a vocabulary with no other
+    // feedback, and the review was then silent about it. A project finished
+    // that way looks right and has an empty lexicon.
+    if (enabledVocabs.length === 0) {
+      return (
+        <div className="rounded-lg border bg-card p-4">
+          <p className="mb-2 font-medium">Vocabulary</p>
+          <p className="text-sm text-muted-foreground">
+            No vocabulary linked. Words and morphemes will have no lexicon to link to.
+          </p>
+        </div>
+      );
+    }
 
     return (
       <div className="rounded-lg border bg-card p-4">
-        <p className="mb-2 font-medium">Enabled Vocabularies</p>
+        <p className="mb-2 font-medium">Vocabulary</p>
         <ul className="list-disc pl-5 text-sm">
           {enabledVocabs.map((vocab) => (
             <li key={vocab.name}>
@@ -419,7 +434,7 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
           </Button>
         )}
         <Button onClick={executeSetup} disabled={isExecuting}>
-          <Play className="h-4 w-4" /> {isNewProject ? 'Create Project' : 'Initialize Project'}
+          {isNewProject ? 'Create Project' : 'Initialize Project'}
         </Button>
       </div>
     </div>

@@ -233,12 +233,16 @@ export const ProjectSetup = () => {
                     Previous
                   </Button>
 
-                  <Button
-                    onClick={handleNext}
-                    disabled={currentStep === steps.length - 1 || !isCurrentStepValid()}
-                  >
-                    Next
-                  </Button>
+                  {/* No Next on the last step. It used to render there,
+                    permanently greyed, in the bottom-right corner five steps
+                    had trained the eye on, while the real commit button sat in
+                    its own row above the footer. The first read of that is
+                    that the wizard is stuck. */}
+                  {currentStep < steps.length - 1 && (
+                    <Button onClick={handleNext} disabled={!isCurrentStepValid()}>
+                      Next
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
