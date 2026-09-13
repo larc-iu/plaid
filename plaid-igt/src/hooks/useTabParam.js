@@ -91,10 +91,3 @@ const writeTab = (current, value, fallback, param, writeFallback) => {
   else next.set(param, value);
   return next;
 };
-
-// The same link for a group whose page carries nothing else in its query
-// string. Prefer the hook's `tabHref`, which keeps whatever else is there.
-export const tabTo = (basePath, value, fallback, param = 'tab', writeFallback = false) => {
-  const q = writeTab(null, value, fallback, param, writeFallback).toString();
-  return q ? `${basePath}?${q}` : basePath;
-};

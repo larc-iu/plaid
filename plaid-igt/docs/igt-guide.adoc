@@ -481,7 +481,7 @@ Bulk Add and Replace leave Entry fields alone, since those hold references and n
 Some lexical units are longer than a word: an idiom, a phrasal verb, a compound name.
 You can link such a **multi-word expression** to a single entry by gathering its words:
 
-1. **Shift+click** each word. Or, from one of a word's cells, press **Shift+→** (or **Shift+←**) to take in its neighbours, holding **Ctrl** as well to skip a word that does not belong.
+1. **Shift+click** each word. Or, from one of a word's cells, press **Shift+→** (or **Shift+←**) to take in its neighbours, holding **Ctrl/Cmd** as well to skip a word that does not belong.
 2. A dashed line shows the words gathered so far. Press **Enter** to link them, or **Esc** to give up.
 3. The popover works as it does for one word: pick an entry, or create one. A new entry gets the words' surface forms joined by spaces, which you can edit to the citation form before creating, and the type _multi-word expression_. (FieldWorks calls this a phrase, and it exports as one.)
 

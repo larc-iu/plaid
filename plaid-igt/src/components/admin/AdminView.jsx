@@ -2,7 +2,7 @@ import { Navigate } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@ui/components/ui/tabs';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
-import { useTabParam, tabTo } from '../../hooks/useTabParam';
+import { useTabParam } from '../../hooks/useTabParam';
 import { AdminUsers } from './AdminUsers';
 import { AdminInvites } from './AdminInvites';
 import { AdminActivity } from './AdminActivity';
@@ -30,7 +30,7 @@ const TABS = [
 
 export const AdminView = () => {
   const { user, client } = useAuth();
-  const [tab, setTab] = useTabParam(TABS, 'users');
+  const [tab, setTab, tabHref] = useTabParam(TABS, 'users');
   useDocumentTitle('Administration');
 
   // Not a permission check the server relies on — every endpoint behind this
@@ -44,31 +44,31 @@ export const AdminView = () => {
       <h1 className="pb-4 text-2xl font-bold">Administration</h1>
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
-          <TabsTrigger value="users" to={tabTo('/admin', 'users', 'users')}>
+          <TabsTrigger value="users" to={tabHref('/admin', 'users')}>
             Users
           </TabsTrigger>
-          <TabsTrigger value="invites" to={tabTo('/admin', 'invites', 'users')}>
+          <TabsTrigger value="invites" to={tabHref('/admin', 'invites')}>
             Invites
           </TabsTrigger>
-          <TabsTrigger value="activity" to={tabTo('/admin', 'activity', 'users')}>
+          <TabsTrigger value="activity" to={tabHref('/admin', 'activity')}>
             Activity
           </TabsTrigger>
-          <TabsTrigger value="projects" to={tabTo('/admin', 'projects', 'users')}>
+          <TabsTrigger value="projects" to={tabHref('/admin', 'projects')}>
             Projects
           </TabsTrigger>
-          <TabsTrigger value="vocabularies" to={tabTo('/admin', 'vocabularies', 'users')}>
+          <TabsTrigger value="vocabularies" to={tabHref('/admin', 'vocabularies')}>
             Vocabularies
           </TabsTrigger>
-          <TabsTrigger value="services" to={tabTo('/admin', 'services', 'users')}>
+          <TabsTrigger value="services" to={tabHref('/admin', 'services')}>
             Services
           </TabsTrigger>
-          <TabsTrigger value="assistant" to={tabTo('/admin', 'assistant', 'users')}>
+          <TabsTrigger value="assistant" to={tabHref('/admin', 'assistant')}>
             Assistant
           </TabsTrigger>
-          <TabsTrigger value="server" to={tabTo('/admin', 'server', 'users')}>
+          <TabsTrigger value="server" to={tabHref('/admin', 'server')}>
             Server
           </TabsTrigger>
-          <TabsTrigger value="logs" to={tabTo('/admin', 'logs', 'users')}>
+          <TabsTrigger value="logs" to={tabHref('/admin', 'logs')}>
             Logs
           </TabsTrigger>
         </TabsList>

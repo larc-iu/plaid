@@ -89,7 +89,7 @@ const Occurrences = ({ res, projectId }) => (
               grp.docName
             ) : (
               // Metadata is the document's default tab, and
-              // tabTo writes the bare path for a default.
+              // a tab link writes the bare path for a default.
               <Link
                 to={`/projects/${projectId}/documents/${grp.docId}`}
                 className="text-foreground hover:underline"

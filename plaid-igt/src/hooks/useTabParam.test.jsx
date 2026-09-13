@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
-import { useTabParam, tabTo } from './useTabParam.js';
+import { useTabParam } from './useTabParam.js';
 
 // Two things a URL has to do here: say what is on screen, and be reproducible.
 //
@@ -94,14 +94,6 @@ describe('useTabParam', () => {
     expect(read().active).toBe('metadata');
     expect(read().search).toBe('');
     await unmount();
-  });
-});
-
-describe('tabTo', () => {
-  it('makes the fallback the bare page, unless the group writes it', () => {
-    expect(tabTo('/p', 'documents', 'documents')).toBe('/p');
-    expect(tabTo('/p', 'search', 'documents')).toBe('/p?tab=search');
-    expect(tabTo('/d', 'metadata', 'metadata', 'tab', true)).toBe('/d?tab=metadata');
   });
 });
 
