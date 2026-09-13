@@ -450,14 +450,20 @@ def t_recent_changes(ws: Workspace, document: str = None, limit: int = 20,
             return (f'Nothing by "{user}" among the {walked} most recent change(s)'
                     + (f' since {since}' if since else '') + '.')
         return 'Nothing has changed here' + (f' since {since}' if since else '') + '.'
-    out = [f'{len(entries)} change(s), newest first. as_of is the instant to restore to.']
+    out = [f'{len(entries)} change(s), newest first. as_of= is the moment right AFTER that change, '
+           'which is what restore_document takes.']
     for e in entries:
         who = (e.get('user') or {}).get('display_name') or (e.get('user') or {}).get('id') or '?'
         docs = ', '.join(f'"{d.get("name")}"' for d in (e.get('documents') or [])) or 'the project'
         what = e.get('message') or ', '.join(
             sorted({(o.get('type') or '').split('/')[0] for o in (e.get('ops') or [])})) or 'changes'
+        # The END of the operation, not its start. A change is a whole
+        # operation of many writes, and restoring to the instant it BEGAN
+        # lands in the middle of it, with some of its writes kept and some
+        # thrown away. IGT has printed end_time since restore landed.
+        after = e.get('end_time') or e.get('time') or ''
         out.append(f'  {e.get("time")}  {who}  {docs}: {what} ({len(e.get("ops") or [])} op(s))')
-        out.append(f'      as_of={e.get("time")}')
+        out.append(f'      as_of={after}')
     return _truncate('\n'.join(out))
 
 

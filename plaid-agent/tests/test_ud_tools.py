@@ -353,6 +353,23 @@ def test_a_span_is_joined_to_its_word_by_covers(ws):
     assert set(where[1][2]) <= {'doc', 'layer', 'metadata', 'value'}
 
 
+def test_recent_changes_prints_the_instant_after_the_change(ws):
+    """A change is a whole operation of many writes. Restoring to the instant
+    it BEGAN lands in the middle of it, with some writes kept and some thrown
+    away, so as_of has to be the end. IGT has printed end_time since restore
+    landed and this printed the start."""
+    ws.client.audit = [
+        {'id': 'g1', 'time': '2026-09-01T10:00:00Z', 'end_time': '2026-09-01T10:00:03Z',
+         'user': {'id': 'a@b.com', 'display_name': 'Luke G'},
+         'message': 'Assistant: 4 field values', 'documents': [{'id': 'ud1', 'name': 'Viaje'}],
+         'ops': [{'type': 'span/update'}]},
+    ]
+    out = run(ws, 'recent_changes')
+    assert 'as_of=2026-09-01T10:00:03Z' in out
+    assert 'as_of=2026-09-01T10:00:00Z' not in out
+    assert 'moment right AFTER that change' in out
+
+
 def test_a_clipped_first_read_is_still_reported_after_a_second_read(ws):
     """The form tools ask twice: the surface of every token without a Form
     span, then every Form span. The flag was read after both queries had run,
