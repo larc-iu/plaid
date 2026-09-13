@@ -27,13 +27,13 @@ const Screen = ({ onApplied, ...props }) => {
 
 const read = (container) => container.querySelector('[data-testid="subject"]').textContent;
 
-// Only the values the panel actually keys on, so a re-render with new callback
-// identities does not read as a new subject.
-const identity = (s) => (s ? `${s.projectId}/${s.kind}/${s.id}/${s.name}/${s.canWrite}` : null);
+// By object IDENTITY. A re-publish builds a NEW subject object, which is the
+// thing the test below has to be able to see; collapsing by the values the
+// panel keys on folded a re-publish carrying the same values into one entry, so
+// that test could not have failed.
 const distinct = (seen) => {
   const out = [];
-  for (const s of seen)
-    if (!out.length || identity(out[out.length - 1]) !== identity(s)) out.push(s);
+  for (const s of seen) if (!out.length || out[out.length - 1] !== s) out.push(s);
   return out;
 };
 
