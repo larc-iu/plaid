@@ -1,5 +1,4 @@
 import { useRef } from 'react';
-import { cn } from '../../lib/utils.js';
 import { ProjectAssistant } from './ProjectAssistant.jsx';
 import { clampWidth } from './panelWidth.js';
 
@@ -59,20 +58,12 @@ const Resizer = ({ width, onResize }) => {
 // `picker` stands in for the chat when there is no project for it to be about
 // yet, which is the state a reader is in on the screen they land on after
 // signing in.
-export const AssistantDock = ({
-  open,
-  width,
-  onResize,
-  onClose,
-  className,
-  picker = null,
-  ...assistant
-}) => {
+export const AssistantDock = ({ open, width, onResize, onClose, picker = null, ...assistant }) => {
   if (!open) return null;
   return (
     <aside
       style={{ width }}
-      className={cn('fixed inset-y-0 right-0 z-30 flex flex-col border-l bg-card', className)}
+      className="fixed inset-y-0 right-0 z-30 flex flex-col border-l bg-card"
     >
       <Resizer width={width} onResize={onResize} />
       <div className="min-h-0 flex-1">

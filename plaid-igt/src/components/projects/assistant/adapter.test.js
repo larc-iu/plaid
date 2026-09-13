@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { parseCitationHref, sentenceHref } from './adapter.js';
+import { missingFromAdapter } from '@ui/components/assistant/adapterContract.js';
+import { IGT_ASSISTANT, parseCitationHref, sentenceHref } from './adapter.js';
 
 // A citation into the open document scrolls the grid instead of opening a
 // second tab. That only delivers as much as the link it replaces if the WORD
@@ -30,5 +31,11 @@ describe('parseCitationHref', () => {
   it('is null for anything that is not a citation link', () => {
     expect(parseCitationHref('')).toBeNull();
     expect(parseCitationHref('#/projects/p1/documents/d1?tab=analyze')).toBeNull();
+  });
+});
+
+describe('IGT_ASSISTANT', () => {
+  it('answers everything the shared half asks of an adapter', () => {
+    expect(missingFromAdapter(IGT_ASSISTANT)).toEqual([]);
   });
 });

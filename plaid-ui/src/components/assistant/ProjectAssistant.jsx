@@ -10,6 +10,7 @@ import { notifyError } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
 import { AssistantMarkdown } from './AssistantMarkdown.jsx';
 import { rewindForRetry, stoppedIn } from './resume.js';
+import { assertAdapter } from './adapterContract.js';
 import { AssistantMark } from './PlaidMarks.jsx';
 import { NEARLY_FULL, fullness, latestUsage, totalSpend, usageLabel, usageTitle } from './usage.js';
 import {
@@ -137,6 +138,11 @@ export const ProjectAssistant = ({
   // or vocabulary, which the page's own heading says a few pixels away.
   onCollapse,
 }) => {
+  // Both surfaces come through here, so this is the one place the app's adapter
+  // has to be whole. Development only, and at render rather than in an effect:
+  // a missing member shows up as a blank or a crash further down, and the
+  // sooner it is named the shorter the hunt.
+  if (import.meta.env.DEV) assertAdapter(adapter);
   const panel = variant === 'panel';
   // Where the reader is, in the shape the SERVICE takes, and the one that
   // travels with each turn. A screen that is about the project at large

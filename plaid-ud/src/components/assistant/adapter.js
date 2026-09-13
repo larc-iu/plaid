@@ -118,9 +118,10 @@ export const UD_ASSISTANT = {
   app: 'ud',
   command: 'plaid-ud-agent',
   intro: 'Ask about the corpus or the annotation, or ask for changes.',
+  // What a plan is rewriting when it changes the text rather than an
+  // annotation of it. This app's word for it, on the tab it is edited on.
+  textName: 'your text',
   convHref: (projectId, id) => `/projects/${projectId}/assistant?conversation=${id}`,
-  documentHref: (projectId, documentId) =>
-    `#/projects/${projectId}/documents/${documentId}/annotate`,
   CITE_RE,
   citationTitle,
   citationHref: sentenceHref,

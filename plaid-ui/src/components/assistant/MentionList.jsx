@@ -12,7 +12,7 @@ import { flattenOptions } from '../ui/combobox.jsx';
 //
 // It draws nothing and takes no keys: the composer owns the highlight and the
 // keyboard, because it is the composer's Enter that has to be arbitrated.
-export const MentionList = ({ groups, activeValue, onPick, onHover, loading, empty }) => {
+export const MentionList = ({ groups, activeValue, onPick, onHover, loading }) => {
   const ref = useRef(null);
 
   // Keep the highlighted row in view when the arrows walk past the edge.
@@ -28,12 +28,10 @@ export const MentionList = ({ groups, activeValue, onPick, onHover, loading, emp
         Looking…
       </div>
     );
-  if (!items.length)
-    return empty ? (
-      <div className="absolute inset-x-0 bottom-full z-20 mb-1 rounded-lg border bg-popover p-2 text-xs text-muted-foreground shadow-md">
-        {empty}
-      </div>
-    ) : null;
+  // Nothing matched: the list closes rather than saying so. `@` is a typeahead
+  // over what is already on screen, and a box announcing "no matches" after
+  // every letter that does not match is in the way of the typing.
+  if (!items.length) return null;
 
   return (
     <div

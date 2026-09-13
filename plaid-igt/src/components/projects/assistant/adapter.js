@@ -161,15 +161,12 @@ export const IGT_ASSISTANT = {
   // annotation of it. This app's word for it, on the tab it is edited on.
   textName: 'your baseline text',
   convHref: (projectId, id) => `/projects/${projectId}?tab=assistant&conversation=${id}`,
-  documentHref: (projectId, documentId) =>
-    `#/projects/${projectId}/documents/${documentId}?tab=analyze`,
   CITE_RE,
   citationTitle,
   citationHref: sentenceHref,
   ExampleCard,
   citationToMarkdown,
   changeHref,
-  changeRef,
   changeTitle,
   changePlace,
   groupOf,

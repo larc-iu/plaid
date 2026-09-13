@@ -2,10 +2,9 @@
 // row linking to the place in the editor.
 //
 // The service locates every change; what `where` looks like, and how it turns
-// into a link, a short reference and a heading, is the app's answer
-// (`adapter.changeHref` / `changeRef` / `changeTitle` / `groupOf`). A plan
-// from before this existed, or a change the service could not locate, falls
-// back to its label whole.
+// into a heading and a named place is the app's answer (`adapter.groupOf` and
+// `adapter.changePlace`, listed in adapterContract.js). A change the service
+// could not locate falls back to its label whole.
 
 export const ROWS_COLLAPSED = 12;
 

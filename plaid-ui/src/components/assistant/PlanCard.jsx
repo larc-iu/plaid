@@ -92,8 +92,8 @@ export const PlanCard = ({
         <p className="mt-1.5 flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-500">
           <PenLine className="h-3.5 w-3.5 shrink-0" />
           {rewrites === 1
-            ? `1 change rewrites ${adapter.textName || 'the text'}.`
-            : `${rewrites} changes rewrite ${adapter.textName || 'the text'}.`}
+            ? `1 change rewrites ${adapter.textName}.`
+            : `${rewrites} changes rewrite ${adapter.textName}.`}
         </p>
       )}
       <div className="mt-1 max-h-80 overflow-auto">
