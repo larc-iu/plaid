@@ -55,9 +55,9 @@ export function MediaHelp() {
         one row per segment, in time order · moving into a row plays it (switch it off above the
         rows) · <Kbd>Enter</Kbd> save the row and move to the next · <Kbd>↑</Kbd> <Kbd>↓</Kbd> the
         row above or below, from the start or end of the text · <Kbd>Esc</Kbd> put the row back ·{' '}
-        <Kbd>Tab</Kbd> next field · the last row adds a segment from the end of the previous one to
-        playback at <Kbd>Enter</Kbd> · the bin removes a segment and leaves its text in the baseline
-        unless you tick the box
+        <Kbd>Alt</Kbd>+<Kbd>↑</Kbd> <Kbd>↓</Kbd> faster / slower · <Kbd>Tab</Kbd> next field · the
+        last row adds a segment from the end of the previous one to playback at <Kbd>Enter</Kbd> ·
+        the bin removes a segment and leaves its text in the baseline unless you tick the box
       </Row>
       <Row label="Times">
         a segment's start and end are boxes of digits · type into the box under the caret ·{' '}

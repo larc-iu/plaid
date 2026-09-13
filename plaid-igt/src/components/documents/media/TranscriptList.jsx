@@ -18,6 +18,7 @@ import { Switch } from '@ui/components/ui/switch';
 import { Textarea } from '@ui/components/ui/textarea';
 import { cn } from '@ui/lib/utils';
 import { notifyError } from '@/utils/feedback';
+import { PLAYBACK_RATE_STEP } from './useMediaOperations';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '../../../domain/useIgtDocument.js';
 import { whenIdle } from '../../../domain/whenIdle.js';
@@ -75,6 +76,19 @@ const TIME_COLUMN =
 
 const isPlayChord = (e) =>
   e.code === 'Space' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey;
+
+// Slower / faster, without the hand leaving the keyboard. Alt, not Ctrl/Cmd:
+// every arrow pairing with Ctrl, Cmd or Shift already means "select text" in
+// the textarea a transcriber types into, and Ctrl+ArrowUp/Down is taken by the
+// browser besides. Alt+Arrow is free in all three places. There is no chord for
+// 1x on purpose: clicking the speed value already does that, and the Media help
+// says so.
+const rateStepOf = (e) => {
+  if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return 0;
+  if (e.key === 'ArrowUp') return 1;
+  if (e.key === 'ArrowDown') return -1;
+  return 0;
+};
 
 // A textarea that grows with its content, so a long utterance is never a
 // one-line slot you scroll inside.
@@ -989,6 +1003,15 @@ export function TranscriptList({ mediaOps, readOnly = false, headerActions = nul
       <div
         ref={listRef}
         className="flex max-h-[45vh] min-h-[6rem] flex-col gap-1.5 overflow-y-auto pr-1"
+        // Caught here rather than in each row's own handler: keydown bubbles,
+        // so one listener covers the text, the speaker and both time boxes of
+        // every row, present and proposed, and adding a row cannot forget it.
+        onKeyDown={(e) => {
+          const step = rateStepOf(e);
+          if (!step) return;
+          e.preventDefault();
+          mediaOps.handlePlaybackRateChange(mediaOps.playbackRate + step * PLAYBACK_RATE_STEP * 5);
+        }}
       >
         {rows.length === 0 && (
           <p className="py-2 text-sm text-muted-foreground">

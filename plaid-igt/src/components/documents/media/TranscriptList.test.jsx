@@ -44,6 +44,8 @@ const makeOps = (over = {}) => ({
   autoPlayOnFocus: true,
   setAutoPlayOnFocus: vi.fn(),
   handleDeleteAlignment: vi.fn(),
+  playbackRate: 1,
+  handlePlaybackRateChange: vi.fn(),
   ...over,
 });
 
@@ -120,6 +122,30 @@ describe('TranscriptList', () => {
     const second = rowTextareas(r.container)[1];
     expect(document.activeElement).toBe(second);
     expect(second.selectionStart).toBe(second.value.length);
+    await r.unmount();
+  });
+
+  it('Alt+ArrowUp/Down changes the playback speed from inside a row', async () => {
+    // The whole point of the transcript loop is that the hand never leaves the
+    // keyboard, and speed was the one control with no key at all.
+    const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+    const ops = makeOps({ playbackRate: 1 });
+    const r = await renderComponent(element(doc, ops));
+    const second = rowTextareas(r.container)[1];
+    await r.step(() => second.focus());
+
+    const faster = press(second, 'ArrowUp', { altKey: true });
+    expect(faster.defaultPrevented).toBe(true);
+    expect(ops.handlePlaybackRateChange).toHaveBeenLastCalledWith(1.25);
+
+    const slower = press(second, 'ArrowDown', { altKey: true });
+    expect(slower.defaultPrevented).toBe(true);
+    expect(ops.handlePlaybackRateChange).toHaveBeenLastCalledWith(0.75);
+
+    // A bare arrow still moves between rows, and a shifted one still selects.
+    ops.handlePlaybackRateChange.mockClear();
+    press(second, 'ArrowUp', { shiftKey: true });
+    expect(ops.handlePlaybackRateChange).not.toHaveBeenCalled();
     await r.unmount();
   });
 
