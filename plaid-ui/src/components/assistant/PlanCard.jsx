@@ -1,9 +1,15 @@
 import { Fragment, useMemo, useState } from 'react';
-import { RotateCcw, Check, X, Loader2, ChevronDown } from 'lucide-react';
+import { RotateCcw, Check, X, Loader2, ChevronDown, PenLine } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
 import { Badge } from '../ui/badge.jsx';
 import { cn } from '../../lib/utils.js';
-import { collapseGroups, groupRows, planRows, ROWS_COLLAPSED } from './planChanges.js';
+import {
+  collapseGroups,
+  groupRows,
+  planRows,
+  ROWS_COLLAPSED,
+  textRewrites,
+} from './planChanges.js';
 
 // A proposed change set, row by row, with its apply controls.
 // A proposed plan: what it does in one line, every change as a row under the
@@ -29,6 +35,11 @@ export const PlanCard = ({
     [allRows, projectId, adapter],
   );
   const [expanded, setExpanded] = useState(allRows.length <= ROWS_COLLAPSED);
+  // Rewriting the text is not the same kind of act as annotating it: an
+  // annotation can be set again, a transcription that has been retyped is
+  // gone. The summary counts a text edit alongside a field value, which reads
+  // as one more line of the same thing, so the card says it separately.
+  const rewrites = useMemo(() => textRewrites(allRows), [allRows]);
   const [asHuman, setAsHuman] = useState(!!recordedAsHuman);
   const humanId = `plan-human-${plan.id}`;
   const shown = expanded ? { groups, hidden: 0 } : collapseGroups(groups);
@@ -75,6 +86,14 @@ export const PlanCard = ({
         <p className="mt-2 text-xs text-muted-foreground">
           Applying did not finish. Applying again is safe: a plan that was already applied is not
           written twice.
+        </p>
+      )}
+      {rewrites > 0 && (
+        <p className="mt-1.5 flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-500">
+          <PenLine className="h-3.5 w-3.5 shrink-0" />
+          {rewrites === 1
+            ? `1 change rewrites ${adapter.textName || 'the text'}.`
+            : `${rewrites} changes rewrite ${adapter.textName || 'the text'}.`}
         </p>
       )}
       <div className="mt-1 max-h-80 overflow-auto">
@@ -194,7 +213,17 @@ export const ChangeRow = ({ row, projectId, adapter }) => {
           )}
         </span>
       </td>
-      <td className="py-0.5">{row.change ?? row.label}</td>
+      <td className="py-0.5">
+        {row.writesText && (
+          <Badge
+            variant="outline"
+            className="mr-1.5 border-amber-600/40 px-1 py-0 align-[1px] text-[10px] font-medium text-amber-600 dark:text-amber-500"
+          >
+            Rewrite
+          </Badge>
+        )}
+        {row.change ?? row.label}
+      </td>
     </tr>
   );
 };

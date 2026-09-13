@@ -18,6 +18,7 @@ past its loading budget) names the document alone.
     None                     nothing to link to yet (a new document)
 ``change`` is the label without its location, or None when the label did
 not have the expected shape (the card then shows the label whole).
+``writes_text`` marks the changes that rewrite the baseline itself.
 """
 
 import re
@@ -39,6 +40,13 @@ _ENTRY_KINDS = {'set_entry_field': 'item_id', 'set_entry_metadata': 'item_id', '
                 'rename_entry': 'item_id', 'merge_entries': 'keep_id'}
 _DOC_KINDS = {'set_doc_metadata', 'rename_document', 'confirm'}
 
+# The ops that rewrite the baseline itself. Everything else a plan can do
+# annotates the text or reshapes its tokens, and can be undone by annotating
+# again; these two change the linguist's own transcription, which no
+# annotation owns. The card marks them so a rewrite cannot arrive with the
+# same visual weight as a gloss (see PlanCard).
+_TEXT_KINDS = {'respell', 'edit_text'}
+
 
 def describe_changes(ws, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [describe_change(ws, op) for op in ops]
@@ -47,7 +55,16 @@ def describe_changes(ws, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def describe_change(ws, op: Dict[str, Any]) -> Dict[str, Any]:
     label = op.get('label') or ''
     where = locate(ws, op)
-    return {'label': label, 'where': where, 'change': split_change(ws, label, where)}
+    return {'label': label, 'where': where, 'change': split_change(ws, label, where),
+            'writes_text': writes_text(op)}
+
+
+def writes_text(op: Dict[str, Any]) -> bool:
+    """Whether this op rewrites baseline text. A compacted group keeps the
+    kind of its members; a corpus-wide op stands for a count per kind."""
+    if op.get('kind') == 'bulk_scope':
+        return any(k in _TEXT_KINDS for k, n in (op.get('counts') or {}).items() if n)
+    return op.get('kind') in _TEXT_KINDS
 
 
 # --- location -------------------------------------------------------------------

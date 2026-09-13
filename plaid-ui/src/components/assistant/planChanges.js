@@ -9,6 +9,9 @@
 
 export const ROWS_COLLAPSED = 12;
 
+/** How many of these changes rewrite the text itself. */
+export const textRewrites = (rows) => (rows || []).filter((r) => r.writesText).length;
+
 // The changes to show, in plan order: the service's located changes when
 // they line up with the ops, else the labels alone.
 export const planRows = (plan) => {
@@ -20,9 +23,19 @@ export const planRows = (plan) => {
       where: c.where || null,
       change: c.change || null,
       label: c.label || '',
+      // A change to the text itself rather than to an annotation of it. The
+      // service decides which ops those are; a plan recorded before it did
+      // says nothing, and those are all long since settled.
+      writesText: !!c.writesText,
     }));
   }
-  return (plan?.labels || []).map((label, i) => ({ index: i, where: null, change: null, label }));
+  return (plan?.labels || []).map((label, i) => ({
+    index: i,
+    where: null,
+    change: null,
+    label,
+    writesText: false,
+  }));
 };
 
 // Rows grouped by the place they change, groups in order of first appearance,
@@ -48,13 +61,22 @@ export const groupRows = (rows, projectId, adapter) => {
 export const collapseGroups = (groups, limit = ROWS_COLLAPSED) => {
   const total = groups.reduce((n, g) => n + g.rows.length, 0);
   if (total <= limit) return { groups, hidden: 0 };
-  let left = limit;
+  // A change to the text itself is never one of the ones folded away. Sitting
+  // as row 40 of a plan headed "1 text edit, 1 field value" is how a rewrite
+  // of someone's own transcription gets approved unread.
+  const keep = new Set();
+  for (const g of groups) for (const r of g.rows) if (r.writesText) keep.add(r);
+  let left = Math.max(0, limit - keep.size);
   const out = [];
   for (const g of groups) {
-    if (left <= 0) break;
-    const rows = g.rows.slice(0, left);
-    left -= rows.length;
-    out.push({ ...g, rows });
+    const rows = g.rows.filter((r) => {
+      if (keep.has(r)) return true;
+      if (left <= 0) return false;
+      left -= 1;
+      return true;
+    });
+    if (rows.length) out.push({ ...g, rows });
   }
-  return { groups: out, hidden: total - limit };
+  const shown = out.reduce((n, g) => n + g.rows.length, 0);
+  return { groups: out, hidden: total - shown };
 };

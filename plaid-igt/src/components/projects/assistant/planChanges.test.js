@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { collapseGroups, groupRows, planRows } from '@ui/components/assistant/planChanges.js';
+import {
+  collapseGroups,
+  groupRows,
+  planRows,
+  textRewrites,
+} from '@ui/components/assistant/planChanges.js';
 import { changeHref, changeRef, changeTitle, IGT_ASSISTANT } from './adapter.js';
 
 const word = {
@@ -57,16 +62,36 @@ describe('planRows', () => {
       ],
     };
     expect(planRows(plan)).toEqual([
-      { index: 0, where: word, change: 'Gloss = "x"', label: 'a' },
-      { index: 1, where: null, change: null, label: 'b' },
+      { index: 0, where: word, change: 'Gloss = "x"', label: 'a', writesText: false },
+      { index: 1, where: null, change: null, label: 'b', writesText: false },
     ]);
   });
 
   it('falls back to the labels for a plan without located changes', () => {
     expect(planRows({ ops: [{}], labels: ['only a label'] })).toEqual([
-      { index: 0, where: null, change: null, label: 'only a label' },
+      { index: 0, where: null, change: null, label: 'only a label', writesText: false },
     ]);
     expect(planRows(null)).toEqual([]);
+  });
+
+  it('carries the mark on a change that rewrites the text', () => {
+    const plan = {
+      ops: [{}, {}],
+      labels: ['a', 'b'],
+      changes: [
+        { label: 'a', where: word, change: 'Gloss = "x"' },
+        {
+          label: 'b',
+          where: sentence,
+          change: 'retype "Ali-di gam akuna." → "Ali-di gam akuna"',
+          writesText: true,
+        },
+      ],
+    };
+    const rows = planRows(plan);
+    expect(rows.map((r) => r.writesText)).toEqual([false, true]);
+    expect(textRewrites(rows)).toBe(1);
+    expect(textRewrites([])).toBe(0);
   });
 });
 
@@ -103,5 +128,19 @@ describe('groupRows and collapseGroups', () => {
     const { groups: cut, hidden } = collapseGroups(groups, 3);
     expect(hidden).toBe(2);
     expect(cut.map((g) => g.rows.map((r) => r.index))).toEqual([[0, 3], [1]]);
+  });
+
+  it('never folds away a change that rewrites the text', () => {
+    // The one that must not be buried is last, so the old first-N rule would
+    // have hidden it behind "Show all".
+    const withRewrite = [
+      ...rows,
+      { index: 5, where: sentence, change: 'retype', label: 'retype', writesText: true },
+    ];
+    const groups = groupRows(withRewrite, 'p', IGT_ASSISTANT);
+    const { groups: cut, hidden } = collapseGroups(groups, 3);
+    // It costs one of the three slots, so the count stays at the limit.
+    expect(cut.map((g) => g.rows.map((r) => r.index))).toEqual([[0, 3, 5]]);
+    expect(hidden).toBe(3);
   });
 });

@@ -88,3 +88,26 @@ def test_phrase_and_document_comment_labels_split_too():
                'label': '"Text 1": comment "nice"'}
     d = describe_change(ws, comment)
     assert d['where']['kind'] == 'document' and d['change'] == 'comment "nice"'
+
+
+def test_a_change_to_the_text_itself_is_marked():
+    """The card gives a rewrite of the linguist's own transcription a mark of
+    its own, so it cannot arrive with the weight of a gloss (S7-F4)."""
+    ws = _plan(('set_field', {'document': 'Text 1', 'refs': 's1.w2', 'field': 'Gloss', 'value': 'fish'}),
+               ('respell', {'document': 'Text 1', 'ref': 's1.w3', 'new_text': 'akun'}),
+               ('retype_sentence', {'document': 'Text 1', 'ref': 's2', 'text': 'Gam-ar'}))
+    gloss, respell, retype = describe_changes(ws, ws.ops)
+    assert gloss['writes_text'] is False
+    assert respell['writes_text'] is True
+    assert retype['writes_text'] is True
+
+
+def test_a_corpus_wide_respell_is_marked_through_its_counts():
+    """A corpus-wide tool stages one `bulk_scope` op standing for many, so the
+    mark has to read the counts rather than the op's own kind."""
+    from plaid_agent.igt.changes import writes_text
+    assert writes_text({'kind': 'bulk_scope', 'counts': {'respell': 3, 'set_morpheme_form': 3}}) is True
+    assert writes_text({'kind': 'bulk_scope', 'counts': {'set_span': 12}}) is False
+    assert writes_text({'kind': 'bulk_scope', 'counts': {'respell': 0}}) is False
+    # A compacted group keeps the kind of its members.
+    assert writes_text({'kind': 'respell', 'compact': True, 'count': 40}) is True

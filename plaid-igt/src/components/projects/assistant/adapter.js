@@ -157,6 +157,9 @@ export const IGT_ASSISTANT = {
   app: 'igt',
   command: 'plaid-igt-agent',
   intro: 'Ask about the corpus or the lexicon, or ask for changes.',
+  // What a plan is rewriting when it changes the text rather than an
+  // annotation of it. This app's word for it, on the tab it is edited on.
+  textName: 'your baseline text',
   convHref: (projectId, id) => `/projects/${projectId}?tab=assistant&conversation=${id}`,
   documentHref: (projectId, documentId) =>
     `#/projects/${projectId}/documents/${documentId}?tab=analyze`,
