@@ -44,22 +44,49 @@ export const useAssistantAvailable = (client, projectId, app) => {
   useEffect(() => {
     if (!client || !projectId) return undefined;
     let alive = true;
+    let timer = null;
     const known = serviceCache.get(projectId);
     if (known) setAvailable(assistantsAmong(known, app).length > 0);
-    client.messages
-      .discoverServices(projectId)
-      .then((found) => {
-        if (!alive) return;
-        serviceCache.set(projectId, found || []);
-        setAvailable(assistantsAmong(found, app).length > 0);
-      })
-      .catch(() => {
-        // Discovery failed rather than came back empty. Keep whatever the
-        // cache said; a network blip should not hide a working assistant.
-        if (alive && !serviceCache.has(projectId)) setAvailable(false);
-      });
+
+    // Ask again, a few times, while the answer is "none". This hook is what
+    // gates the header button, the edge rail and the Assistant tab, so a single
+    // probe decided the whole assistant was absent. On a project created a
+    // moment ago it always is: the probe is answered inside half a second, and
+    // the service registers afterwards. Nothing on screen then said an
+    // assistant existed, and the only way to find out was to navigate off the
+    // project and back, which happens to remount this hook.
+    //
+    // The window is the service's, not a guess: a `--all` service registers on
+    // new projects once per PROJECT_SYNC_INTERVAL_S, 30s
+    // (plaid-client-py/src/plaid_client/service.py:250). These steps total 49s,
+    // so a whole sync fits inside them. Then it stops. This is a cold start,
+    // not a heartbeat.
+    const backoff = [2000, 4000, 8000, 15000, 20000];
+    let attempt = 0;
+    const again = () => {
+      if (alive && attempt < backoff.length) timer = setTimeout(probe, backoff[attempt++]);
+    };
+    const probe = () =>
+      client.messages
+        .discoverServices(projectId)
+        .then((found) => {
+          if (!alive) return;
+          serviceCache.set(projectId, found || []);
+          const ok = assistantsAmong(found, app).length > 0;
+          setAvailable(ok);
+          if (!ok) again();
+        })
+        .catch(() => {
+          // Discovery failed rather than came back empty. Keep whatever the
+          // cache said; a network blip should not hide a working assistant.
+          if (!alive) return;
+          if (!serviceCache.has(projectId)) setAvailable(false);
+          again();
+        });
+    probe();
     return () => {
       alive = false;
+      if (timer) clearTimeout(timer);
     };
   }, [client, projectId, app]);
 
