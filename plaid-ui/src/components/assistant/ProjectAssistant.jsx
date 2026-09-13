@@ -1006,10 +1006,7 @@ export const ProjectAssistant = ({
                       <>Ask about {projectName || 'this project'}.</>
                     )
                   ) : (
-                    <>
-                      {adapter.intro} The assistant reads the project and answers with evidence.
-                      Anything that would change data comes back as a plan for you to approve.
-                    </>
+                    <>{adapter.intro} Changes come back as a plan to approve.</>
                   )}
                 </div>
                 {/* Which assistant answers is settled here, at the start, and

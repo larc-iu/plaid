@@ -65,9 +65,7 @@ export const ProjectPicker = ({ client, onPick, onCollapse }) => {
         ) : error ? (
           <p className="px-1 py-2 text-xs text-destructive">{error}</p>
         ) : projects.length === 0 ? (
-          <p className="px-1 py-2 text-xs text-muted-foreground">
-            The assistant works on one project. Create a project to use it.
-          </p>
+          <p className="px-1 py-2 text-xs text-muted-foreground">No projects yet.</p>
         ) : (
           projects.map((p) => (
             <button
@@ -83,7 +81,7 @@ export const ProjectPicker = ({ client, onPick, onCollapse }) => {
         )}
       </div>
       <p className="border-t px-3 py-2 text-[11px] text-muted-foreground">
-        The assistant reads one project at a time. Opening a project chooses it.
+        Opening a project chooses it.
       </p>
     </div>
   );
