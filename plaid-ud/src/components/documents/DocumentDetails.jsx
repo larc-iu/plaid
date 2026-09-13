@@ -5,7 +5,7 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import { useDocumentEditor } from '../editor/useDocumentEditor.js';
 import { canEditProject } from '../../utils/permissions.js';
 import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
-import { fullTimestamp, timeAgo } from '../../utils/formatTime.js';
+import { fullTimestamp, timeAgo } from '@ui/utils/formatTime.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { Button } from '@ui/components/ui/button';

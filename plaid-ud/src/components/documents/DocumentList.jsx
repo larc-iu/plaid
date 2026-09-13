@@ -6,7 +6,7 @@ import { DocumentForm } from './DocumentForm';
 import { ProjectTabs } from '../projects/ProjectTabs.jsx';
 import { canEditProject, canManageProject } from '../../utils/permissions.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
-import { timeAgo, fullTimestamp } from '../../utils/formatTime.js';
+import { timeAgo, fullTimestamp } from '@ui/utils/formatTime.js';
 import { notifyWarning } from '../../utils/feedback.jsx';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { Button } from '@ui/components/ui/button';

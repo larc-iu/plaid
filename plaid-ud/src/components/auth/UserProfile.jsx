@@ -8,7 +8,7 @@ import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@ui/components/ui/card';
-import { timeAgo } from '../../utils/formatTime.js';
+import { timeAgo } from '@ui/utils/formatTime.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 
 export const UserProfile = () => {
