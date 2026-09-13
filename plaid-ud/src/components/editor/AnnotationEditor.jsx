@@ -13,18 +13,19 @@ import { usePrecedent } from './hooks/usePrecedent.js';
 import { HistoryDrawer, HISTORY_DRAWER_WIDTH } from '@ui/components/shared/HistoryDrawer';
 import { ListPager } from '@ui/components/ui/list-search';
 import { usePagedList, pageKey, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
+import { useWideEnoughToDock } from '@ui/components/assistant/useDock.js';
 import { RestoreDialog } from './annotation/RestoreDialog.jsx';
 import { EditorLegend } from './annotation/EditorLegend.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { formatFindingsForClipboard } from '../../domain/validate.js';
 import { notifyError, notifyWithAction } from '../../utils/feedback.jsx';
-import { canEditProject, canManageProject } from '../../utils/permissions.js';
+import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { readMetadataFields } from '../../utils/udMetadata.js';
 import { makeValidators } from '../../utils/udVocabMode.js';
 import { buildAnchorIndex, anchorCaption } from '../../domain/commentAnchors.js';
 import { precedentKey } from '../../domain/precedent.js';
-import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 
 // Document-wide annotation-row expansion. FEATS defaults to collapsed because its
 // vertically-stacked tags inflate column widths; users expand it via its row header.
@@ -116,6 +117,9 @@ export const AnnotationEditor = () => {
     askAssistant,
     focusNonce = 0,
   } = useDocumentEditor();
+  // Ask hands the shell a reference and the shell opens the assistant panel on
+  // it, so where there is no room for a panel Ask does nothing at all.
+  const roomToDock = useWideEnoughToDock();
   // Deep link from the search page: ?sent=<sentenceTokenId> scrolls to and
   // briefly highlights that sentence once the grid is rendered.
   const [searchParams] = useSearchParams();
@@ -278,6 +282,7 @@ export const AnnotationEditor = () => {
     loadingAudit,
     loadingHistorical,
     hasLoadedAudit,
+    error: historyError,
     fetchHistoricalDocument,
     clearHistoricalDocument,
     fetchAuditLog,
@@ -634,6 +639,7 @@ export const AnnotationEditor = () => {
         onClose={handleCloseHistory}
         auditEntries={auditEntries}
         loading={loadingAudit}
+        error={historyError}
         onSelectEntry={handleSelectHistoryEntry}
         selectedEntry={selectedHistoryEntry}
         // A restore rewrites the whole document, which is exactly what a
@@ -643,8 +649,10 @@ export const AnnotationEditor = () => {
       />
 
       <RestoreDialog
-        opened={!!restoreEntry}
-        onClose={() => setRestoreEntry(null)}
+        open={!!restoreEntry}
+        onOpenChange={(o) => {
+          if (!o) setRestoreEntry(null);
+        }}
         client={getClient()}
         documentId={documentId}
         raw={doc?.raw}
@@ -735,7 +743,9 @@ export const AnnotationEditor = () => {
                         visibleFields={visibleFields}
                         onToggleField={handleToggleField}
                         onAskAssistant={
-                          viewingHistoricalState || !assistantAvailable ? undefined : askAssistant
+                          viewingHistoricalState || !assistantAvailable || !roomToDock
+                            ? undefined
+                            : askAssistant
                         }
                       />
                     </div>
