@@ -31,6 +31,20 @@ SCOPES = ('confirm_scope', 'discard_scope', 'replace_scope')
 # to still mean what it said.
 RESHAPES_DOCUMENT = ('split_sentence', 'merge_sentences')
 
+# Kinds a LATER pass of the executor applies: heads, which need the ids the
+# first batch mints, and the parser, which runs outside the batches. Pass one
+# raises on anything else it does not know, so a kind added to KINDS and
+# forgotten in the dispatch is a refusal rather than an op written as nothing
+# under a label saying it was applied.
+LATER_PASSES = ('set_head', 'del_relation', 'run_parse')
+
+# Kinds a LATER pass of the executor applies: heads, which need the ids the
+# first batch mints, and the parser, which runs outside the batches. Pass one
+# raises on anything else it does not know, so a kind added to KINDS and
+# forgotten in the dispatch is a refusal rather than an op written as nothing
+# under a label saying it was applied.
+LATER_PASSES = ('set_head', 'del_relation', 'run_parse')
+
 # How long the parser may say nothing before the plan gives up on it. This
 # measures SILENCE, not elapsed time: the parser reports progress as it goes,
 # so a long document does not trip it and a parser that has died does.
@@ -346,6 +360,10 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
             elif kind == 'merge_sentences':
                 apply_merge_sentences(client, op, b, stamp)
                 counts['sentence boundaries'] += 1
+            elif kind not in LATER_PASSES:
+                raise ValueError(f'Unknown plan operation kind: {kind}')
+            elif kind not in LATER_PASSES:
+                raise ValueError(f'Unknown plan operation kind: {kind}')
 
         # Second sub-pass: the lemma spans a head is going to need, now that
         # `creating` says which ones the plan already makes. A word with no

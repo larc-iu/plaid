@@ -192,14 +192,81 @@ def test_malformed_plans_are_rejected_before_any_write():
         assert c.batches == [] and c.log == []
 
 
-def test_every_op_kind_is_declared_everywhere_a_kind_is_declared():
+def _dispatched_kinds(fn, module) -> set:
+    """The op kinds a function's if/elif chain tests for.
+
+    Read off the source rather than listed by hand, because a list by hand is
+    the very thing this test exists to catch: the dispatch is the one table
+    with no name, so nothing could compare it with the others.
+    """
+    import ast
+    import inspect
+    import textwrap
+
+    def literals(node):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return {node.value}
+        if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+            return {e.value for e in node.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)}
+        if isinstance(node, ast.Name):   # a named tuple of kinds, e.g. SCOPES
+            got = getattr(module, node.id, None)
+            return set(got) if isinstance(got, (tuple, list, set, frozenset)) else set()
+        return set()
+
+    def tests_a_kind(node):
+        if isinstance(node, ast.Name) and node.id in ('kind', 'k'):
+            return True
+        # op.get('kind')
+        return (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == 'get' and len(node.args) == 1
+                and isinstance(node.args[0], ast.Constant) and node.args[0].value == 'kind')
+
+    out = set()
+    for node in ast.walk(ast.parse(textwrap.dedent(inspect.getsource(fn)))):
+        if isinstance(node, ast.Compare) and tests_a_kind(node.left):
+            for op, cmp in zip(node.ops, node.comparators):
+                if isinstance(op, (ast.Eq, ast.NotEq, ast.In, ast.NotIn)):
+                    out |= literals(cmp)
+    return out
+
+
+def test_every_igt_op_kind_is_declared_everywhere_a_kind_is_declared():
     """Four tables name the kinds: KINDS, the required keys, the prose name the
     approval line uses, and the dispatch in _execute. A kind missing from one
     of them fails at apply time (a KeyError, or an op written as nothing), and
     a kind missing from the summary shows the user an internal identifier in
     the line they approve."""
+    from plaid_agent.igt import plan
     from plaid_agent.igt.plan import KINDS, REQUIRED, SUMMARY_NAMES
     assert set(KINDS) == set(REQUIRED) == set(SUMMARY_NAMES)
+    # bulk_scope never reaches the executor: resolve_scopes turns it into the
+    # per-span ops it stands for.
+    assert _dispatched_kinds(plan._execute, plan) == set(KINDS) - {'bulk_scope'}
+
+
+def test_every_ud_op_kind_is_declared_everywhere_a_kind_is_declared():
+    """The same four tables, in the app the test never covered. One of them
+    (the summary) is a chain rather than a dict here, so it is read the same
+    way as the dispatch."""
+    from plaid_agent.ud import plan
+    from plaid_agent.ud.plan import KINDS, REQUIRED, SCOPES, summarize
+    assert set(KINDS) == set(REQUIRED)
+    assert _dispatched_kinds(summarize, plan) == set(KINDS)
+    # A scope is resolved to per-span ops before the executor sees it.
+    assert _dispatched_kinds(plan._execute, plan) == set(KINDS) - set(SCOPES)
+
+
+def test_a_ud_kind_with_no_dispatch_refuses_instead_of_writing_nothing():
+    """The pass-1 chain had no else, so a kind nobody had wired up was applied
+    as nothing at all, under an operation label saying it had been."""
+    import pytest
+    from plaid_agent.ud.plan import _execute
+    from plaid_agent.core.plan import Stamps
+    from collections import Counter
+    from ud_fixtures import ud_client
+    with pytest.raises(ValueError, match='Unknown plan operation kind'):
+        _execute(ud_client(), [{'kind': 'confirm_scope', 'document_id': 'ud1', 'fields': ['upos']}],
+                 label='l', counts=Counter(), notes=[], stamps=Stamps('verified', 's'))
 
 
 def test_normalize_resolves_op_interactions():
