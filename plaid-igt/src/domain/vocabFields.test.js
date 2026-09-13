@@ -11,6 +11,8 @@ import {
   reservedMetadata,
   fieldLabel,
   humanizeFieldName,
+  newVocabField,
+  normalizeVocabFields as normalizeFields2,
   groupFieldsForForm,
 } from './vocabFields.js';
 
@@ -192,5 +194,17 @@ describe('humanizeFieldName', () => {
     // title cased around it.
     expect(humanizeFieldName('pos (ru)')).toBe('Pos (ru)');
     expect(humanizeFieldName('Scientific name (Latin)')).toBe('Scientific name (Latin)');
+  });
+});
+
+describe('newVocabField', () => {
+  it('is shaped exactly as the config would be read back', () => {
+    // A field added by hand carried only name/inline/immutable, so its "Shown
+    // on" and "Type" cells sat blank beside every other row's until a reload
+    // filled them in, and a blank meant the same thing as the value next to it.
+    const added = newVocabField('  See also  ');
+    expect(added.name).toBe('See also');
+    const readBack = normalizeFields2({ 'See also': {} }).find((f) => f.name === 'See also');
+    expect(added).toEqual(readBack);
   });
 });

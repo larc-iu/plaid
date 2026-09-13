@@ -27,6 +27,7 @@ import {
 import { readVocabFields, IGT_NAMESPACE } from '@/domain/igtConfig';
 import {
   normalizeVocabFields,
+  newVocabField,
   seedDefaultFields,
   fieldsToConfig,
   fieldLabel,
@@ -358,7 +359,7 @@ export const VocabularyDetail = () => {
       return;
     }
 
-    await saveFields([...fields, { name: trimmedName, inline: false, immutable: false }]);
+    await saveFields([...fields, newVocabField(trimmedName)]);
     setNewFieldName('');
   };
 

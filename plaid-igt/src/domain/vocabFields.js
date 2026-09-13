@@ -285,6 +285,24 @@ export const normalizeVocabFields = (vocabFields) => {
 };
 
 /**
+ * A field just added, shaped exactly as `normalizeVocabFields` would read it
+ * back. Built here rather than at the call site so a new row shows what it
+ * will show after a reload: written by hand it arrived with no `scope` and no
+ * `type`, so its "Shown on" and "Type" cells were blank beside every other
+ * row's, and there was nothing on screen to say the blank meant "Every sense".
+ */
+export const newVocabField = (name) => ({
+  name: String(name ?? '').trim(),
+  inline: false,
+  immutable: false,
+  tagset: null,
+  lang: null,
+  type: FIELD_TYPES.TEXT,
+  many: false,
+  scope: FIELD_SCOPES.SENSE,
+});
+
+/**
  * The `{ name: { inline } }` map to seed a brand-new vocab layer with the full
  * core inventory.
  */

@@ -1,13 +1,16 @@
 import { Label } from '@ui/components/ui/label';
-import { Switch } from '@ui/components/ui/switch';
 
 // Step 3: what to export. Scope is a run-time choice, never part of the
-// preset; includeVocabularies IS preset state (it shapes the archive).
+// preset; includeVocabularies IS preset state, so this step SAYS what the
+// preset does rather than offering it again. It used to be a second switch
+// here, identical to the preset editor's and with nothing to say which won,
+// and a per-run override of a preset setting is the ad-hoc configuring that
+// presets exist to replace.
 // historicalOnly locks the scope to the current document: time-travel export
 // fetches the document as-of, but the documents-list endpoint has no as-of.
-// zipNote (the dataset-level formats) replaces the vocabularies toggle with
-// that note: those archives zip at every scope and decide for themselves what
-// to do with the project's vocabularies.
+// zipNote (the dataset-level formats) replaces the vocabularies line with that
+// note: those archives zip at every scope and decide for themselves what to do
+// with the project's vocabularies.
 export const ScopeStep = ({
   scope,
   onScopeChange,
@@ -17,7 +20,6 @@ export const ScopeStep = ({
   selectedDocIds,
   onSelectedDocIdsChange,
   includeVocabularies,
-  onIncludeVocabulariesChange,
   hasVocabularies,
   zipNote = null,
 }) => {
@@ -42,7 +44,7 @@ export const ScopeStep = ({
   };
 
   // Anything but document scope produces a zip (see runExport.js), so the
-  // vocabularies toggle matters whenever the scope is project/documents.
+  // vocabularies setting only shows where there is an archive to put them in.
   const zipExpected = scope !== 'document';
 
   if (historicalOnly) {
@@ -96,11 +98,11 @@ export const ScopeStep = ({
         <p className="border-t pt-3 text-xs text-muted-foreground">{zipNote}</p>
       ) : (
         zipExpected &&
-        hasVocabularies && (
-          <label className="flex cursor-pointer items-center justify-between gap-2 border-t pt-3 text-sm">
-            <span>Include vocabularies as TSV files</span>
-            <Switch checked={!!includeVocabularies} onCheckedChange={onIncludeVocabulariesChange} />
-          </label>
+        hasVocabularies &&
+        !!includeVocabularies && (
+          <p className="border-t pt-3 text-xs text-muted-foreground">
+            The .zip includes this project&rsquo;s vocabularies as TSV files.
+          </p>
         )
       )}
     </div>

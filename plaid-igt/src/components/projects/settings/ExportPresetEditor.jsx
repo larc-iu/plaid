@@ -224,7 +224,7 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
               <span>
                 <span className="font-medium">Include vocabularies as TSV files</span>
                 <span className="block text-xs text-muted-foreground">
-                  Applies to project-wide and multi-document exports, which produce a .zip.
+                  Added to the .zip that a project-wide or multi-document export produces.
                 </span>
               </span>
               <Switch

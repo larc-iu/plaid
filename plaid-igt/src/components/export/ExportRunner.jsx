@@ -54,7 +54,6 @@ export const ExportRunner = ({
   const [selectedId, setSelectedId] = useState(presetId ?? presets[0]?.id ?? null);
   const [scope, setScope] = useState(defaultScope ? 'document' : 'project');
   const [selectedDocIds, setSelectedDocIds] = useState(() => new Set());
-  const [includeVocabularies, setIncludeVocabularies] = useState(null); // null = preset's own
   const [docList, setDocList] = useState(documents);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(null);
@@ -98,8 +97,6 @@ export const ExportRunner = ({
         : scope === 'documents'
           ? { type: 'documents', ids: [...selectedDocIds] }
           : { type: 'project' };
-    const effectivePreset =
-      includeVocabularies == null ? preset : { ...preset, includeVocabularies };
     setRunning(true);
     stopRef.current = false;
     setProgress({ done: 0, total: 0, name: null });
@@ -107,7 +104,7 @@ export const ExportRunner = ({
       const result = await runExport({
         client,
         project,
-        preset: effectivePreset,
+        preset,
         scope: scopeArg,
         asOf,
         onProgress: setProgress,
@@ -224,8 +221,7 @@ export const ExportRunner = ({
                 historicalOnly={!!asOf}
                 selectedDocIds={selectedDocIds}
                 onSelectedDocIdsChange={setSelectedDocIds}
-                includeVocabularies={includeVocabularies ?? preset.includeVocabularies}
-                onIncludeVocabulariesChange={setIncludeVocabularies}
+                includeVocabularies={preset.includeVocabularies}
                 hasVocabularies={(project?.vocabs?.length ?? 0) > 0}
                 zipNote={ZIP_NOTES[preset.format] ?? null}
               />
