@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { listPrefKey, useStickyState } from './useStickyState.js';
 
 // Rows per page. There are two sizes and no others: a call site picks one of
@@ -57,13 +58,51 @@ export const useResetOnChange = (resetKey, reset) => {
   }, [resetKey]);
 };
 
+/** A `?page=` value as the reader writes it: 1-based, so `?page=2` is page 2. */
+const fromParam = (raw) => {
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 1 ? n - 1 : null;
+};
+
 // Paging state for a client-side list. `resetKey` is whatever re-scopes the
 // result set (the search text, the sort): when it changes the reader is looking
 // at a different list, so page 1 is where they mean to be. Keep it a primitive,
 // since it is an effect dependency. `storageKey` (from `pageKey`) remembers the
 // page across visits; without one the paging is per-mount as before.
-export const usePagedList = (items, { pageSize = LIST_PAGE_SIZE, resetKey, storageKey } = {}) => {
-  const [page, setPage] = useStickyState(storageKey ?? null, 0, isPage);
+//
+// `urlParam` puts the page in the query string as well. The URL WINS where it
+// says a page, and the remembered one is what a bare list URL falls back on, so
+// a link carries the page its sender was on while a return visit still lands
+// where that reader left. Page 1 is never written, the way `?tab=` leaves its
+// default off. Turning a page is a push, so Back undoes it.
+//
+// Without this a bare project URL opened EWT's documents on page 12 of 12 with
+// nothing in the address saying so, and the link a colleague received showed
+// them a different page of the same list. The selected lexicon entry sitting
+// beside it has been in the URL (`?item=`) all along.
+export const usePagedList = (
+  items,
+  { pageSize = LIST_PAGE_SIZE, resetKey, storageKey, urlParam } = {},
+) => {
+  const [remembered, setRemembered] = useStickyState(storageKey ?? null, 0, isPage);
+  const [params, setParams] = useSearchParams();
+  const inUrl = urlParam ? fromParam(params.get(urlParam)) : null;
+  const page = inUrl ?? remembered;
+
+  const setPage = useCallback(
+    (next) => {
+      setRemembered(next);
+      if (!urlParam) return;
+      setParams((prev) => {
+        // Copy so the rest of the query (`?tab=`, `?item=`) survives.
+        const out = new URLSearchParams(prev);
+        if (next <= 0) out.delete(urlParam);
+        else out.set(urlParam, String(next + 1));
+        return out;
+      });
+    },
+    [setRemembered, setParams, urlParam],
+  );
 
   useResetOnChange(resetKey, () => setPage(0));
 

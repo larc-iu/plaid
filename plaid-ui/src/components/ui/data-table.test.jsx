@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, all } from '../../test/renderComponent.jsx';
 import { DataTable } from './data-table';
 
@@ -17,16 +18,20 @@ const COLUMNS = [
   { key: 'note', label: 'Note', render: () => '-' },
 ];
 
+// In a router because the page can live in the URL (`pageParam`), so the hook
+// behind it reads the query string whether or not this table asks it to.
 const table = (props = {}) =>
   renderComponent(
-    <DataTable
-      rows={ROWS}
-      columns={COLUMNS}
-      rowKey={(r) => r.id}
-      id="test-people"
-      noun="person"
-      {...props}
-    />,
+    <MemoryRouter>
+      <DataTable
+        rows={ROWS}
+        columns={COLUMNS}
+        rowKey={(r) => r.id}
+        id="test-people"
+        noun="person"
+        {...props}
+      />
+    </MemoryRouter>,
   );
 
 const names = (container) =>

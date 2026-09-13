@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { StrictMode } from 'react';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { renderComponent } from '../test/renderComponent.jsx';
 import { listPrefKey, useStickyState, useStickySort } from './useStickyState.js';
 import { usePagedList, pageKey } from './usePagedList.js';
@@ -22,10 +23,20 @@ const Sorted = ({ storageKey }) => {
   return <button onClick={() => onSort('name')}>{`${sort.key}/${sort.dir}`}</button>;
 };
 
-const Paged = ({ storageKey, resetKey = 'a', count = 500 }) => {
+// In a router because usePagedList can put the page in the query string, so it
+// reads the URL whether or not a given list asks it to. `urlParam` is passed
+// through so the URL half has its own coverage below.
+const Paged = ({ storageKey, resetKey = 'a', count = 500, urlParam, at = '/' }) => (
+  <MemoryRouter initialEntries={[at]}>
+    <PagedInner {...{ storageKey, resetKey, count, urlParam }} />
+  </MemoryRouter>
+);
+
+const PagedInner = ({ storageKey, resetKey, count, urlParam }) => {
   const items = Array.from({ length: count }, (_, i) => i);
-  const paged = usePagedList(items, { resetKey, storageKey });
-  return <button onClick={() => paged.setPage(2)}>{String(paged.page)}</button>;
+  const paged = usePagedList(items, { resetKey, storageKey, urlParam });
+  const { search } = useLocation();
+  return <button onClick={() => paged.setPage(2)}>{`${paged.page}${search}`}</button>;
 };
 
 const text = (c) => c.querySelector('button').textContent;
@@ -159,6 +170,53 @@ describe('usePagedList', () => {
     const second = await renderComponent(<Paged storageKey={undefined} />);
     expect(text(second.container)).toBe('0');
     await second.unmount();
+  });
+
+  // The URL half. A bare project URL used to open EWT's documents on page 12
+  // of 12 with nothing in the address saying so, and the link a colleague was
+  // sent showed them a different page of the same list.
+  it('writes the page to the URL, 1-based, and leaves page 1 off it', async () => {
+    const { container, step, unmount } = await renderComponent(
+      <Paged storageKey="p" urlParam="page" />,
+    );
+    expect(text(container)).toBe('0');
+    await step(() => click(container));
+    expect(text(container)).toBe('2?page=3');
+    await unmount();
+  });
+
+  it('takes the page from the URL over the remembered one', async () => {
+    localStorage.setItem('p', JSON.stringify(4));
+    const { container, unmount } = await renderComponent(
+      <Paged storageKey="p" urlParam="page" at="/?page=2" />,
+    );
+    expect(text(container)).toBe('1?page=2');
+    await unmount();
+  });
+
+  it('falls back on the remembered page when the URL says none', async () => {
+    localStorage.setItem('p', JSON.stringify(4));
+    const { container, unmount } = await renderComponent(<Paged storageKey="p" urlParam="page" />);
+    expect(text(container)).toBe('4');
+    await unmount();
+  });
+
+  it('ignores a page the URL cannot mean', async () => {
+    const { container, unmount } = await renderComponent(
+      <Paged storageKey="p" urlParam="page" at="/?page=nope" />,
+    );
+    expect(text(container)).toBe('0?page=nope');
+    await unmount();
+  });
+
+  it('keeps the rest of the query when it turns a page', async () => {
+    const { container, step, unmount } = await renderComponent(
+      <Paged storageKey="p" urlParam="page" at="/?tab=documents" />,
+    );
+    await step(() => click(container));
+    expect(text(container)).toContain('tab=documents');
+    expect(text(container)).toContain('page=3');
+    await unmount();
   });
 });
 

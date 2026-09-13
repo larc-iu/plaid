@@ -51,6 +51,7 @@ export const DataTable = ({
   id,
   scope,
   rememberPage = false,
+  pageParam,
   defaultSort,
   search,
   noun = 'row',
@@ -99,6 +100,9 @@ export const DataTable = ({
   const paged = usePagedList(sorted, {
     resetKey: `${query}:${sort.key}:${sort.dir}`,
     storageKey: rememberPage && id ? pageKey(id, scope) : undefined,
+    // Named by the caller rather than derived from `id`: two paged tables on
+    // one screen would otherwise turn each other's pages.
+    urlParam: pageParam,
   });
 
   const toggle = (key) =>

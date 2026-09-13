@@ -295,6 +295,7 @@ export const DocumentList = ({
           id="documents"
           scope={projectId}
           rememberPage
+          pageParam="page"
           defaultSort={{ key: 'updated', dir: 'desc' }}
           search={{
             placeholder: 'Search documents…',
