@@ -19,7 +19,7 @@ import {
   DialogTitle,
 } from '@ui/components/ui/dialog';
 import { cn } from '@ui/lib/utils';
-import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
+import { notifyError } from '@/utils/feedback';
 
 export const VocabularyManager = ({
   initialData,
@@ -157,15 +157,16 @@ export const VocabularyManager = ({
     await saveChanges(updatedVocabs);
 
     setNewVocabName('');
-    notifySuccess(`"${trimmedName}" has been added to your vocabularies`, 'Vocabulary Added');
+    // No toast. `saveChanges` awaits the save before adding the row, so the row
+    // appearing IS the confirmation, and a failure raises its own error. In the
+    // setup wizard this toast also landed bottom-right on top of the step's own
+    // Next button and swallowed the click on it.
   };
 
   const handleDeleteCustomVocab = async (vocabId) => {
-    const vocabToDelete = vocabularies.find((v) => v.id === vocabId);
     const updatedVocabs = vocabularies.filter((vocab) => vocab.id !== vocabId);
     await saveChanges(updatedVocabs);
-
-    notifyInfo(`"${vocabToDelete?.name}" has been removed`, 'Vocabulary Removed');
+    // Likewise: the row is gone, which is the whole message.
   };
 
   const handleKeyPress = (event) => {
