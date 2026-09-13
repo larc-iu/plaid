@@ -309,7 +309,7 @@ export function buildCldfDocuments(dataset, options = {}) {
   const contributions = dataset.components?.ContributionTable;
   const warnings = [];
   // Custom columns whose field name is already taken by one bound to a CLDF
-  // term. Collected across the whole dataset and reported once, not per row.
+  // term. One entry per column, reported once.
   const nameClashes = new Map();
 
   // Custom columns that survived the user's choices, split by scope.
@@ -440,6 +440,36 @@ export function buildCldfDocuments(dataset, options = {}) {
     const m = cell(examples, row, 'metaLanguageReference');
     if (m) metaLanguageIds.add(m);
   }
+  // --- field names for the sentence's custom columns ---
+  // A custom column can want the same field name as one bound to a CLDF term.
+  // A project with both `Translation` and `Translation (en)` exports the second
+  // as Translated_Text and the first as Sentence_Translation, and on the way
+  // back both ask to be `Translation`. The loser keeps the name the FILE gives
+  // it, which is a real name from the dataset rather than one invented here.
+  //
+  // DECIDED ONCE, here, not per row. Read per row it answered from whatever
+  // that row happened to fill in, so a row where the bound field was blank let
+  // the custom column take the plain name: one column landed under two field
+  // names in one document, the setup built a span layer for each, and half the
+  // values went to each.
+  const boundSentenceNames = new Set();
+  for (const row of examples?.rows || []) {
+    if (o.translationField && cell(examples, row, 'translatedText')) {
+      boundSentenceNames.add(translationFieldFor(cell(examples, row, 'metaLanguageReference')));
+    }
+    if (o.commentField && cell(examples, row, 'comment')) boundSentenceNames.add(o.commentField);
+  }
+  const sentenceFieldName = new Map();
+  const claimedNames = new Set(boundSentenceNames);
+  for (const c of custom) {
+    if (c.scope !== 'Sentence') continue;
+    const taken = claimedNames.has(c.name) && c.name !== c.column;
+    if (taken) nameClashes.set(c.name, c.column);
+    const name = taken ? c.column : c.name;
+    sentenceFieldName.set(c.column, name);
+    claimedNames.add(name);
+  }
+
   const documents = [];
   let synthesizedBodies = 0;
 
@@ -512,17 +542,7 @@ export function buildCldfDocuments(dataset, options = {}) {
         if (c.scope !== 'Sentence') continue;
         const v = (row[c.column] ?? '').trim();
         if (!v) continue;
-        // A custom column can want the same field name as one already bound to
-        // a CLDF term. A project with both `Translation` and `Translation (en)`
-        // exports the second as Translated_Text and the first as
-        // Sentence_Translation, and on the way back both ask to be
-        // `Translation`. This used to write straight over the bound value, so a
-        // round trip lost exactly the sentences that had both fields filled in.
-        // The loser keeps the name the FILE gives it, which is a real name from
-        // the dataset rather than one invented here.
-        const taken = fields[c.name] !== undefined && c.name !== c.column;
-        if (taken) nameClashes.set(c.name, c.column);
-        fields[taken ? c.column : c.name] = v;
+        fields[sentenceFieldName.get(c.column) ?? c.name] = v;
       }
       sentences.push({
         begin: toCp(beginU16),

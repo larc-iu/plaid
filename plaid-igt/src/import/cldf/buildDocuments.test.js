@@ -878,7 +878,11 @@ describe('buildCldfDocuments name collisions and placeholder languages', () => {
   const csv =
     'ID,Language_ID,Primary_Text,Analyzed_Word,Gloss,Translated_Text,Sentence_Translation\r\n' +
     '1,spa,perros corren.,perro=s\tcorren,dog=PL\t,The dogs run.,A free rendering.\r\n' +
-    '2,spa,gatos duermen.,gato=s\tduermen,cat=PL\tsleep,The cats sleep.,\r\n';
+    '2,spa,gatos duermen.,gato=s\tduermen,cat=PL\tsleep,The cats sleep.,\r\n' +
+    // The row that showed the bug: the bound field is blank here, so a
+    // per-row decision found `Translation` free and let the custom column
+    // take it.
+    '3,spa,aves vuelan.,ave=s\tvuelan,bird=PL\tfly,,Only the free one.\r\n';
 
   // A custom column arrives switched off, so the collision only happens once a
   // curator turns it on, which is exactly what they do to keep the field.
@@ -901,6 +905,18 @@ describe('buildCldfDocuments name collisions and placeholder languages', () => {
     expect(second.fields.Translation).toBe('The cats sleep.');
     expect(second.fields.Sentence_Translation).toBeUndefined();
     expect(warnings.join(' ')).toMatch(/both arrive as "Translation"/);
+  });
+
+  it('gives the custom column one field name on every row, blank bound field or not', () => {
+    const d = dataset(csv, COLUMNS);
+    const { documents, schema } = buildCldfDocuments(d, withColumnOn(d));
+    const third = documents[0].sentences[2];
+    expect(third.fields.Sentence_Translation).toBe('Only the free one.');
+    expect(third.fields.Translation).toBeUndefined();
+    // And so the setup builds one span layer for it, not two.
+    const sentenceFields = schema.fields.filter((f) => f.scope === 'Sentence').map((f) => f.name);
+    expect(sentenceFields.filter((n) => n === 'Sentence_Translation')).toHaveLength(1);
+    expect(sentenceFields).toContain('Translation');
   });
 
   it('does not adopt the placeholder name our own exporter had to write', () => {
