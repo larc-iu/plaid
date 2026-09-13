@@ -13,7 +13,7 @@ batch, and the relations go in the next.
 from collections import Counter
 from typing import Any, Dict, List, Optional
 
-from ..core.plan import CONFIRM, PlanError, Stamps, TrackingBatcher, created_id, expand_ops
+from ..core.plan import CONFIRM, PlanError, Stamps, TrackingBatcher, applying, created_id, expand_ops
 from .project import load_document, word_ref
 from .review import all_words, confirm_targets, discard_targets
 from .sentences import apply_merge_sentences, apply_split_sentence
@@ -210,22 +210,8 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
     ops = resolve_scopes(client, project, ops)
     ops, notes = normalize_ops(ops)
     counts: Counter = Counter()
-    # Only a failure inside `flush` carries `_applied` out with it. Everything
-    # else raised mid-plan (a parser refusing, a word that could not be made)
-    # arrives bare, and reporting 0 there told the user "Nothing was written"
-    # while earlier batches stood committed. The batcher itself is the count.
-    tracker: Dict[str, Any] = {}
-    try:
-        return _execute(client, ops, label=label, counts=counts, notes=notes, stamps=stamps,
-                        tracker=tracker)
-    except PlanError:
-        raise
-    except Exception as e:
-        applied = getattr(e, '_applied', None)
-        if applied is None:
-            b = tracker.get('batcher')
-            applied = b.applied if b is not None else 0
-        raise PlanError(f'{type(e).__name__}: {e}', applied, len(ops)) from e
+    return applying(ops, lambda tracker: _execute(client, ops, label=label, counts=counts,
+                                                  notes=notes, stamps=stamps, tracker=tracker))
 
 
 def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -294,9 +280,7 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
     stamp, restamp = stamps.stamp, stamps.restamp
 
     with client.operation(label):
-        b = TrackingBatcher(client)
-        if tracker is not None:
-            tracker['batcher'] = b
+        b = TrackingBatcher(client, tracker=tracker)
         restores: List[Dict[str, Any]] = []
 
         # --- pass 1: the columns, and any lemma span a head is going to need ---

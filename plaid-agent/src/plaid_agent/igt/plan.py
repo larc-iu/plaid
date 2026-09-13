@@ -65,7 +65,7 @@ from collections import Counter
 from typing import Any, Dict, List
 
 from ..core.plan import (BATCH_OP_BUDGET, CLEAR_PROV, CONFIRM, PlanError, Stamps, STAMP_MODES,  # noqa: F401
-                         TrackingBatcher, created_id, expand_ops)
+                         TrackingBatcher, applying, created_id, expand_ops)
 
 
 KINDS = ('set_span', 'set_analysis', 'set_orthography', 'respell', 'link', 'unlink', 'link_phrase', 'create_entry',
@@ -295,13 +295,9 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
     ops = resolve_scopes(client, project, ops)
     ops, notes = normalize_ops(ops)
     counts: Counter = Counter()
-    try:
-        return _execute(client, ops, label=label, project=project, counts=counts, notes=notes, stamps=stamps)
-    except PlanError:
-        raise
-    except Exception as e:
-        applied = getattr(e, '_applied', None)
-        raise PlanError(f'{type(e).__name__}: {e}', applied if applied is not None else 0, len(ops)) from e
+    return applying(ops, lambda tracker: _execute(client, ops, label=label, project=project,
+                                                  counts=counts, notes=notes, stamps=stamps,
+                                                  tracker=tracker))
 
 
 def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -334,13 +330,13 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str,
     return out
 
 
-def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps) -> Dict[str, int]:
+def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, tracker=None) -> Dict[str, int]:
     new_docs = []
     human = stamps.human
     stamp, restamp = stamps.stamp, stamps.restamp
 
     with client.operation(label):
-        b = TrackingBatcher(client)
+        b = TrackingBatcher(client, tracker=tracker)
         pending_spans = []   # (result idx of the created morpheme, layer_id, value)
         pending_links = []   # ([token_id, ...], new_entry_key)
         entry_idx: Dict[str, int] = {}

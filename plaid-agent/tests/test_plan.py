@@ -247,6 +247,25 @@ def test_plan_error_reports_how_much_was_applied():
     assert ei.value.applied == 800 and ei.value.total == 1200 and 'boom' in str(ei.value)
 
 
+def test_a_failure_after_the_first_batch_says_what_stood():
+    """Five raises in the executor sit after a batch has already committed,
+    and every one of them reported nothing written: the user was told the plan
+    had failed with no changes while the earlier batch stood. UD threaded a
+    tracker for this and IGT did not."""
+    from plaid_agent.igt.plan import PlanError
+    import pytest
+    c = FakeClient()
+    ops = [{'kind': 'set_span', 'layer_id': 'sl-gloss', 'token_id': 'w-1', 'span_id': None, 'value': 'v', 'label': ''},
+           # edit_text is applied after the batches and needs the project.
+           {'kind': 'edit_text', 'document_id': 'd1', 'text_id': 't1', 'sentence_id': 's-1', 'begin': 0,
+            'end': 5, 'old': 'Ali-di', 'new': 'Ali', 'word_ids': [], 'morpheme_ids': [], 'label': ''}]
+    with pytest.raises(PlanError) as ei:
+        execute_plan(c, ops, source='s', label='l', project=None)
+    assert 'edit_text needs the project' in str(ei.value)
+    assert ei.value.applied == 1, 'the span that was written is reported'
+    assert ei.value.total == 2
+
+
 def test_summarize():
     assert summarize([]) == 'no changes'
     assert summarize([{'kind': 'set_span'}, {'kind': 'set_span'}, {'kind': 'respell'}, {'kind': 'set_analysis'}]) == \

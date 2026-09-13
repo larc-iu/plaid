@@ -136,6 +136,25 @@ class Batcher:
         self._weight = 0
 
 
+class Tracker:
+    """Where an executor's batcher registers itself, so a failure that did not
+    come out of ``flush`` can still say how much stood.
+
+    Only a failure inside ``flush`` carries ``_applied`` out with it.
+    Everything else raised mid-plan (a service refusing, an entity that could
+    not be made) arrives bare, and reporting zero there told the user
+    "Nothing was written" while earlier batches stood committed. The batcher
+    itself is the count, and this is how :func:`applying` reaches it.
+    """
+
+    def __init__(self):
+        self.batcher: Optional['TrackingBatcher'] = None
+
+    @property
+    def applied(self) -> int:
+        return self.batcher.applied if self.batcher is not None else 0
+
+
 class TrackingBatcher(Batcher):
     """A :class:`Batcher` that counts what has actually been committed.
 
@@ -146,9 +165,11 @@ class TrackingBatcher(Batcher):
     sub-op counts for every entity it carried.
     """
 
-    def __init__(self, client, budget: int = BATCH_OP_BUDGET):
+    def __init__(self, client, budget: int = BATCH_OP_BUDGET, tracker: Optional[Tracker] = None):
         super().__init__(client, budget)
         self.applied = 0
+        if tracker is not None:
+            tracker.batcher = self
 
     def flush(self) -> None:
         self._drain()
@@ -185,6 +206,25 @@ class PlanError(Exception):
         super().__init__(message)
         self.applied = applied
         self.total = total
+
+
+def applying(ops: List[Dict[str, Any]], run) -> Dict[str, int]:
+    """Run an app's executor and let nothing out of it but :class:`PlanError`,
+    carrying how much of the plan really landed.
+
+    ``run(tracker)`` is the executor; it hands the :class:`Tracker` to its
+    :class:`TrackingBatcher`. Without this an executor's own raise, after
+    batches had already committed, reported nothing written.
+    """
+    tracker = Tracker()
+    try:
+        return run(tracker)
+    except PlanError:
+        raise
+    except Exception as e:  # noqa: BLE001 - every failure becomes one the user can read
+        applied = getattr(e, '_applied', None)
+        raise PlanError(f'{type(e).__name__}: {e}',
+                        applied if applied is not None else tracker.applied, len(ops)) from e
 
 
 class Stamps:
