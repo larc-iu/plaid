@@ -310,6 +310,11 @@ is the string `"news"` or the string `"opinion"`; it does not match one whose
 without its surrounding quotes, so `^[0-9]+$` matches the string `"123"`); for an
 array or object, the serialized JSON (for example `["news","opinion"]`). That
 serialized form is the only way a regex reaches inside a non-scalar value.
+* A plain string beginning with `?` is refused with a 400. Metadata is matched,
+never bound, so a variable there could only ever read as a literal that no row
+equals. To match a value that really does begin with `?` (a gloss like `?PL`),
+wrap it: `{"literal": "?PL"}`, beside `{"regex": ...}`. The wrapper takes a
+single value or a list of them, and means exactly what the bare form means.
 
 Some examples:
 
@@ -318,6 +323,7 @@ Some examples:
 ["span", "?s", {"layer": "POS", "metadata": {"translation": "dog"}}]
 ["span", "?s", {"layer": "POS", "metadata": {"sense": {"regex": "^[0-9]+$"}}}]
 ["document", "?d", {"metadata": {"genre": ["news", "opinion"]}}]
+["span", "?s", {"layer": "Gloss", "metadata": {"gloss": {"literal": "?PL"}}}]
 ----
 
 Matching a metadata value that is itself an array or object is not well

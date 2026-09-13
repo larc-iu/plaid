@@ -851,9 +851,24 @@
                          " does not support a regex (allowed on " (vec (sort regex-keys)) ")")))
   (check-regex-spec! (str ":" (name k)) spec))
 
+(defn- check-literal-spec!
+  "Validate a `{:literal v}` spec (`label` for error messages): the escape
+  hatch for a metadata value that a bare spelling would read as something
+  else, such as one that begins with `?`."
+  [label spec]
+  (let [extra (remove #{:literal} (keys spec))
+        v (:literal spec)]
+    (when (seq extra)
+      (err! :validate (str label " literal spec has unknown key(s) " (vec extra) " (allowed :literal)")))
+    (when (nil? v)
+      (err! :validate (str label " literal must not be null: a metadata key whose value is null "
+                           "is deleted, so no row can hold one")))
+    (when (and (vector? v) (empty? v))
+      (err! :validate (str label " literal list must be non-empty")))))
+
 (defn- validate-metadata!
   "Validate a :metadata constraint value: a map of metadata-key -> value spec
-  (literal, list, or regex map)."
+  (literal, list, regex map, or literal map)."
   [head mv]
   (when-not (map? mv)
     (err! :validate (str ":" (name head) " :metadata must be a map of key -> value")))
@@ -865,18 +880,23 @@
       ;; back empty rather than wrong-looking: the same footgun as a bare form
       ;; on :item, and a 400 for the same reason. Metadata is matched, not
       ;; bound. Asking whether a key is SET at all is a regex that matches
-      ;; anything, which is how the apps count senses.
+      ;; anything, which is how the apps count senses. A value that really does
+      ;; begin with `?` (a gloss like "?PL") goes in {"literal": …}.
       (or (var? spec) (and (string? spec) (str/starts-with? spec "?")))
       (err! :validate (str ":metadata " (pr-str mk) " cannot bind a variable: metadata is matched, "
                            "not bound. Use a literal, a list of literals, or a regex "
                            "{\"regex\": \"…\"} — {\"regex\": \".*\"} matches any row that has "
-                           "the key at all."))
+                           "the key at all. For a value that really does begin with '?', "
+                           "write {\"literal\": " (pr-str (str spec)) "}."))
       (and (vector? spec) (empty? spec))
       (err! :validate (str ":metadata " (pr-str mk) " list must be non-empty"))
       (map? spec)
-      (if (contains? spec :regex)
-        (check-regex-spec! (str ":metadata " (pr-str mk)) spec)
-        (err! :validate (str ":metadata " (pr-str mk) " map value must be a regex {:regex ..}"))))))
+      (cond
+        (contains? spec :regex) (check-regex-spec! (str ":metadata " (pr-str mk)) spec)
+        (contains? spec :literal) (check-literal-spec! (str ":metadata " (pr-str mk)) spec)
+        :else
+        (err! :validate (str ":metadata " (pr-str mk) " map value must be a regex {:regex ..} "
+                             "or a literal {:literal ..}"))))))
 
 (defn- validate-clause!
   [clause]

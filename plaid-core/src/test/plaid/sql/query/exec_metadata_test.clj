@@ -155,3 +155,59 @@
          (ast/expand {"find" ["?s"]
                       "where" [["span" "?s" {"layer" "MetaProj/pos"
                                              "metadata" {"k" {"oops" "1"}}}]]})))))
+
+(deftest metadata-literal-beginning-with-a-question-mark
+  ;; A gloss like "?PL" is a real annotation value. A bare "?PL" reads as a
+  ;; variable and is a 400, so the escape hatch is {"literal": "?PL"} beside
+  ;; {"regex": …}.
+  (let [pid  (h/create-test-project admin-request "MetaLiteral")
+        txtl (id (h/create-text-layer admin-request pid "text"))
+        tokl (id (h/create-token-layer admin-request txtl "words"))
+        sl   (id (h/create-span-layer admin-request tokl "gloss"))
+        d1   (h/create-test-document admin-request pid "doc-1")
+        text (id (h/create-text admin-request txtl d1 "aa bb"))
+        t0 (id (h/create-token admin-request tokl text 0 2))
+        t1 (id (h/create-token admin-request tokl text 3 5))
+        a (id (h/create-span admin-request sl [t0] "X" {"gloss" "?PL"}))
+        _ (id (h/create-span admin-request sl [t1] "Y" {"gloss" "PL"}))]
+    (testing "the wrapper matches the value verbatim"
+      (is (= #{(str a)}
+             (ids (qe/run db "admin@example.com"
+                          {"find" ["?s"]
+                           "where" [["span" "?s" {"layer" sl
+                                                  "metadata" {"gloss" {"literal" "?PL"}}}]]})))))
+    (testing "it is exact, not a prefix"
+      (is (empty? (ids (qe/run db "admin@example.com"
+                               {"find" ["?s"]
+                                "where" [["span" "?s" {"layer" sl
+                                                       "metadata" {"gloss" {"literal" "?SG"}}}]]})))))
+    (testing "a list inside the wrapper is alternation, like a bare list"
+      (is (= 2 (count (ids (qe/run db "admin@example.com"
+                                   {"find" ["?s"]
+                                    "where" [["span" "?s" {"layer" sl
+                                                           "metadata" {"gloss" {"literal" ["?PL" "PL"]}}}]]}))))))
+    (testing "a value with no ? in it still works through the wrapper"
+      (is (= 1 (count (ids (qe/run db "admin@example.com"
+                                   {"find" ["?s"]
+                                    "where" [["span" "?s" {"layer" sl
+                                                           "metadata" {"gloss" {"literal" "PL"}}}]]}))))))))
+
+(deftest metadata-literal-validation
+  (testing "a bare ?-string is still a 400, and the message names the wrapper"
+    (is (thrown-with-msg?
+         clojure.lang.ExceptionInfo #"\{\"literal\": \"\?PL\"\}"
+         (ast/expand {"find" ["?s"]
+                      "where" [["span" "?s" {"layer" "MetaProj/gloss"
+                                             "metadata" {"k" "?PL"}}]]}))))
+  (testing "a null literal is a 400: a null metadata value deletes the key"
+    (is (thrown-with-msg?
+         clojure.lang.ExceptionInfo #"must not be null"
+         (ast/expand {"find" ["?s"]
+                      "where" [["span" "?s" {"layer" "MetaProj/gloss"
+                                             "metadata" {"k" {"literal" nil}}}]]}))))
+  (testing "an unknown key beside :literal is a 400"
+    (is (thrown-with-msg?
+         clojure.lang.ExceptionInfo #"unknown key"
+         (ast/expand {"find" ["?s"]
+                      "where" [["span" "?s" {"layer" "MetaProj/gloss"
+                                             "metadata" {"k" {"literal" "x" "flags" "i"}}}]]})))))

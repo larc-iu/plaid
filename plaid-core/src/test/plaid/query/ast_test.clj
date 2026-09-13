@@ -467,7 +467,19 @@
                  "where" [["vocab" "?v" {"layer" "l" "metadata" {"pos" ["n" "v"]}}]]}))))
   (testing "a literal that merely starts with ? is still a literal elsewhere"
     (is (some? (ast/parse+validate
-                {"find" ["?t"] "where" [["token" "?t" {"layer" "w" "value" "?"}]]})))))
+                {"find" ["?t"] "where" [["token" "?t" {"layer" "w" "value" "?"}]]})))
+    (is (some? (ast/parse+validate
+                {"find" ["?t"] "where" [["token" "?t" {"layer" "w" "value" "?PL"}]]}))))
+  (testing "a metadata value that really begins with ? goes in the literal wrapper"
+    (is (some? (ast/parse+validate
+                {"find" ["?s"]
+                 "where" [["span" "?s" {"layer" "g" "metadata" {"gloss" {"literal" "?PL"}}}]]})))
+    (is (some? (ast/parse+validate
+                {"find" ["?s"]
+                 "where" [["span" "?s" {"layer" "g" "metadata" {"gloss" {"literal" ["?PL" "PL"]}}}]]})))
+    (is (= 400 (code-of #(ast/parse+validate
+                          {"find" ["?s"]
+                           "where" [["span" "?s" {"layer" "g" "metadata" {"gloss" {"literal" []}}}]]}))))))
 
 (deftest field-paths-review-fixes
   (testing "group by a field path is allowed (mirrors aggregate sources)"

@@ -140,12 +140,21 @@
 
 (defn- value-pred
   "The predicate for one text-match spec: a regex spec `{:regex .. :flags}` ->
-  REGEXP against `regex-col`; a vector -> IN; a scalar -> `=` (against `col`, with
-  literals `enc`oded). `regex-col` may differ from `col` so a regex can run on the
-  decoded text (e.g. JSON-extracted value) while equality compares the stored form."
+  REGEXP against `regex-col`; a literal spec `{:literal ..}` -> the same `=` / IN
+  a bare value gets, which is how a metadata value beginning with `?` is written
+  (a bare one reads as a variable and is a 400); a vector -> IN; a scalar -> `=`
+  (against `col`, with literals `enc`oded). `regex-col` may differ from `col` so a
+  regex can run on the decoded text (e.g. JSON-extracted value) while equality
+  compares the stored form."
   [col v enc regex-col]
-  (if (and (map? v) (contains? v :regex))
+  (cond
+    (and (map? v) (contains? v :regex))
     (regex-pred regex-col (:regex v) (boolean (some-> (:flags v) (str/includes? "i"))))
+
+    (and (map? v) (contains? v :literal))
+    (atomic-pred col (:literal v) enc)
+
+    :else
     (atomic-pred col v enc)))
 
 (defn- emit-match! [st col v enc regex-col]
