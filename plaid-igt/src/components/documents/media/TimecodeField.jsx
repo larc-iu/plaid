@@ -14,6 +14,17 @@ import { formatTime, parseTime } from './formatTime.js';
 // Hand-rolled rather than vendored: the only off-the-shelf segmented time
 // input (React Aria's) does wall-clock times with no milliseconds and no
 // durations, so it would need a fork to do this job.
+//
+// The group is ONE tab stop, as a segmented input should be: only the box that
+// was last in owns the tab index, and Left/Right move within. Six boxes each
+// taking a stop meant reaching the start's minutes from the text field was
+// Shift+Tab back through the speaker and five digit boxes, so in practice
+// nobody used the keyboard for it.
+//
+// A click anywhere in the group lands in a box, the nearest one. The boxes are
+// as narrow as their digits and the separators between them are plain text, so
+// aiming at the middle of "0:02.846" and hitting the "." focused nothing at
+// all and the next arrow key scrolled the page.
 
 const SEGMENTS = {
   h: { label: 'hours', width: 2, max: 99, step: 3600, shiftStep: 3600 },
@@ -62,6 +73,9 @@ export const TimecodeField = memo(function TimecodeField({
   const dirtyRef = useRef(false);
   const inFlight = useRef(null);
   const inputs = useRef({});
+  // Which box the group's single tab stop is on. It follows the last box that
+  // was focused, so tabbing away and back returns to where the caret was.
+  const [tabKey, setTabKey] = useState('ms');
   const setParts = (next) => {
     partsRef.current = next;
     setPartsState(next);
@@ -98,6 +112,23 @@ export const TimecodeField = memo(function TimecodeField({
       inFlight.current = null;
     });
     return inFlight.current;
+  };
+
+  // A click on a separator, or on the group's own padding, goes to the box
+  // whose centre is nearest the pointer rather than nowhere.
+  const onGroupMouseDown = (e) => {
+    if (e.target.tagName === 'INPUT' || e.button !== 0) return;
+    let best = null;
+    for (const key of keys) {
+      const el = inputs.current[key];
+      if (!el) continue;
+      const box = el.getBoundingClientRect();
+      const d = Math.abs((box.left + box.right) / 2 - e.clientX);
+      if (!best || d < best.d) best = { key, d };
+    }
+    if (!best) return;
+    e.preventDefault();
+    focusSegment(best.key);
   };
 
   const focusSegment = (key) => {
@@ -200,9 +231,10 @@ export const TimecodeField = memo(function TimecodeField({
       role="group"
       aria-label={label}
       data-value={displayed}
-      className="inline-flex items-baseline font-mono text-[11px] leading-4 tabular-nums text-muted-foreground"
+      className="inline-flex cursor-text items-baseline py-0.5 font-mono text-[11px] leading-4 tabular-nums text-muted-foreground"
       onBlur={onGroupBlur}
       onPaste={onPaste}
+      onMouseDown={onGroupMouseDown}
     >
       {keys.map((key, i) => {
         const seg = SEGMENTS[key];
@@ -221,11 +253,15 @@ export const TimecodeField = memo(function TimecodeField({
               spellCheck={false}
               autoComplete="off"
               style={{ width: `${width}ch` }}
+              tabIndex={key === (keys.includes(tabKey) ? tabKey : keys[0]) ? 0 : -1}
               className={cn(
-                'h-4 rounded-sm border-b border-transparent bg-transparent p-0 text-center',
+                'h-5 rounded-sm border-b border-transparent bg-transparent p-0 text-center',
                 'hover:border-input focus:border-primary focus:text-foreground focus:outline-none',
               )}
-              onFocus={(e) => e.target.select()}
+              onFocus={(e) => {
+                setTabKey(key);
+                e.target.select();
+              }}
               onChange={(e) => setSegment(key, e.target.value)}
               onKeyDown={onKeyDown(key)}
             />

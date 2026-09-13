@@ -8,6 +8,16 @@ const TIMELINE_HEIGHT = 100;
 // pixels. Roughly one text line.
 const WHEEL_LINE_HEIGHT = 16;
 
+// How far the zoom can go, named once: the wheel, the buttons and Fit all read
+// the same bounds. Below MIN_ZOOM a segment is thinner than its own border;
+// above MAX_ZOOM a minute of audio is six thousand pixels.
+export const MIN_ZOOM = 4;
+export const MAX_ZOOM = 100;
+export const clampZoom = (px) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, px));
+// Left short of the container's full width so the last segment's right edge is
+// not flush against the scroll boundary.
+const FIT_MARGIN = 8;
+
 export const useTimelineOperations = (mediaOps) => {
   const doc = mediaOps.doc;
   const mediaElement = mediaOps.mediaElementRef.current;
@@ -68,6 +78,26 @@ export const useTimelineOperations = (mediaOps) => {
     },
     [mediaOps.pixelsPerSecond, mediaOps.currentTime, handlePixelsPerSecondChange],
   );
+
+  // The whole recording across the lane, the way ELAN and Praat fit a file to
+  // the window when they open one. Without it the zoom was a fixed 25 px/s
+  // whatever the recording: a 16-second file sat in the left quarter with its
+  // segment text clipped mid-word, and a 40-minute interview was a 60,000-pixel
+  // lane to wheel across. Returns the zoom it chose, or null when there is
+  // nothing to measure yet.
+  const fitToWidth = useCallback(() => {
+    const container = timelineContainerRef.current;
+    const duration = mediaOps.duration;
+    if (!container || !duration) return null;
+    // A little short of the full width so the last segment's right edge is not
+    // flush against the scroll boundary.
+    const width = container.clientWidth - FIT_MARGIN;
+    if (width <= 0) return null;
+    const next = clampZoom(width / duration);
+    zoomAnchorRef.current = { timeAtPointer: 0, pointerX: 0 };
+    handlePixelsPerSecondChange(next);
+    return next;
+  }, [mediaOps.duration, handlePixelsPerSecondChange]);
 
   // Calculate visible tokens for virtualization
   const getVisibleTokens = useCallback(() => {
@@ -347,8 +377,8 @@ export const useTimelineOperations = (mediaOps) => {
         const zoomFactor = 1.1;
         const newPixelsPerSecond =
           delta > 0
-            ? Math.min(100, oldPixelsPerSecond * zoomFactor)
-            : Math.max(4, oldPixelsPerSecond / zoomFactor);
+            ? clampZoom(oldPixelsPerSecond * zoomFactor)
+            : clampZoom(oldPixelsPerSecond / zoomFactor);
         if (newPixelsPerSecond !== oldPixelsPerSecond) {
           // Zoom anchored at the pointer: remember the time step currently under
           // the cursor and its pixel offset inside the scroll viewport. The
@@ -493,6 +523,7 @@ export const useTimelineOperations = (mediaOps) => {
     handleResizeStart,
     handlePixelsPerSecondChange,
     zoomTo,
+    fitToWidth,
     handleTimelineClick,
     handleSelectionCreate,
     handleAlignmentCreated,

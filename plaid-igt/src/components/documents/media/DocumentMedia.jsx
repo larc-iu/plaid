@@ -8,6 +8,7 @@ import { TranscriptList } from './TranscriptList.jsx';
 import { useServerLimits } from '@/hooks/useServerLimits';
 import { MediaUpload } from './MediaUpload.jsx';
 import { TranscribeDialog } from './TranscribeDialog.jsx';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Button } from '@ui/components/ui/button';
 import { DeleteSegmentsDialog } from './DeleteSegmentsDialog.jsx';
 
@@ -18,6 +19,13 @@ export function DocumentMedia() {
 
   // Use media operations hook
   const mediaOps = useMediaOperations();
+  const [searchParams] = useSearchParams();
+  // The Tokenize tab, with the rest of the query kept.
+  const tokenizeTo = (() => {
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', 'tokenize');
+    return `?${next}`;
+  })();
   const limits = useServerLimits();
 
   // If no media, show upload interface
@@ -73,6 +81,21 @@ export function DocumentMedia() {
               </Button>
             </>
           )
+        }
+        footer={
+          // Where sentences come from, said where the segments are. A
+          // transcript writes every segment onto one line, so the Baseline
+          // tab's "Each line becomes a sentence" is not the rule here, and a
+          // transcriber who does not scan the Tokenize toolbar carries one
+          // sentence of the whole recording into Analyze.
+          mediaOps.alignmentTokens.length > 0 && canWrite ? (
+            <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">
+              <Link to={tokenizeTo} className="underline underline-offset-4">
+                Split at segments
+              </Link>
+              , on the Tokenize tab, makes each of these a sentence.
+            </p>
+          ) : null
         }
       />
       <DeleteSegmentsDialog

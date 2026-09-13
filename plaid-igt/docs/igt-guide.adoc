@@ -182,11 +182,15 @@ The loop button repeats the segment you are on until you pause.
 Deleting a segment from its row removes its times and speaker but leaves its text in the baseline.
 Tick the box in the confirmation to delete the text too, together with every word and annotation on it.
 
+A transcript writes its segments onto one line of the baseline, so **Split at segments** on the Tokenize tab is what makes each of them a sentence.
+The transcript says so under its rows, with a link.
+
 === Timeline
 
 The timeline shows the same segments against the waveform.
 Drag across an empty stretch to add a segment anywhere in the recording, drag a segment's edge to trim it, and click a segment to hear it and edit its row.
 Ctrl/Cmd+wheel zooms the timeline, and the wheel alone pans it.
+The **−** and **+** buttons zoom too, and the **px/s** figure between them fits the whole recording to the width, which is where it starts.
 
 A dragged stretch takes either new text or text already in the baseline.
 Under **Existing text**, the popover shows what is still free between the neighbouring segments, and the segment becomes the words you select there, with a click or Shift+arrows.

@@ -675,7 +675,12 @@ const NewSegmentRow = memo(function NewSegmentRow({
   );
 });
 
-export function TranscriptList({ mediaOps, readOnly = false, headerActions = null }) {
+export function TranscriptList({
+  mediaOps,
+  readOnly = false,
+  headerActions = null,
+  footer = null,
+}) {
   const { doc } = useDocumentCtx();
   useIgtDocument(doc);
 
@@ -1071,6 +1076,7 @@ export function TranscriptList({ mediaOps, readOnly = false, headerActions = nul
           />
         </div>
       )}
+      {footer}
     </div>
   );
 }

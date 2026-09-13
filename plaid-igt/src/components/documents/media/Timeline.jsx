@@ -9,7 +9,7 @@ import {
   TooltipProvider,
 } from '@ui/components/ui/tooltip';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
-import { useTimelineOperations } from './useTimelineOperations.js';
+import { useTimelineOperations, clampZoom, MIN_ZOOM, MAX_ZOOM } from './useTimelineOperations.js';
 import { TimeAlignmentPopover } from './TimeAlignmentPopover.jsx';
 import { formatTime } from './formatTime.js';
 import { assignLanes } from '../../../domain/alignmentTimes.js';
@@ -120,6 +120,18 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
   } = timelineOps;
 
   const onPixelsPerSecondChange = timelineOps.zoomTo;
+  const { fitToWidth } = timelineOps;
+
+  // Fit the recording to the lane once, when its duration first arrives. Not
+  // on every duration change and never after a person has zoomed themselves:
+  // `fittedFor` remembers which recording was fitted, so switching tabs and
+  // coming back does not undo their zoom.
+  const fittedFor = React.useRef(null);
+  React.useEffect(() => {
+    const duration = mediaOps.duration;
+    if (!duration || fittedFor.current === duration) return;
+    if (fitToWidth() !== null) fittedFor.current = duration;
+  }, [mediaOps.duration, fitToWidth]);
 
   // Register autoScrollToTime with mediaOps
   React.useEffect(() => {
@@ -149,33 +161,35 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8"
-                    onClick={() => {
-                      // Zoom out by 1/3, minimum 4px/s
-                      const newZoom = Math.max(4, pixelsPerSecond / (4 / 3));
-                      onPixelsPerSecondChange(newZoom);
-                    }}
-                    disabled={pixelsPerSecond <= 4}
+                    onClick={() => onPixelsPerSecondChange(clampZoom(pixelsPerSecond / (4 / 3)))}
+                    disabled={pixelsPerSecond <= MIN_ZOOM}
                   >
                     <ZoomOut className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Zoom out</TooltipContent>
               </Tooltip>
-              <span className="text-sm text-muted-foreground">
-                {Math.round(pixelsPerSecond)}px/s
-              </span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 text-sm font-normal text-muted-foreground"
+                    onClick={fitToWidth}
+                  >
+                    {Math.round(pixelsPerSecond)}px/s
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Fit the recording to the width</TooltipContent>
+              </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8"
-                    onClick={() => {
-                      // Zoom in by 1/3, max 100px/s
-                      const newZoom = Math.min(100, pixelsPerSecond * (4 / 3));
-                      onPixelsPerSecondChange(newZoom);
-                    }}
-                    disabled={pixelsPerSecond >= 100}
+                    onClick={() => onPixelsPerSecondChange(clampZoom(pixelsPerSecond * (4 / 3)))}
+                    disabled={pixelsPerSecond >= MAX_ZOOM}
                   >
                     <ZoomIn className="h-4 w-4" />
                   </Button>

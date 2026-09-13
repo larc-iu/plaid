@@ -97,3 +97,42 @@ describe('TimecodeField', () => {
     await r.unmount();
   });
 });
+
+// One tab stop and one hit area. Six boxes each taking a stop put the start's
+// minutes six Shift+Tabs behind the text field, and a click aimed at the
+// middle of "0:02.846" that landed on the "." focused nothing at all.
+describe('TimecodeField as one control', () => {
+  it('gives the whole group a single tab stop, which follows the caret', async () => {
+    const r = await renderComponent(
+      <TimecodeField value={65.25} label="Time" onCommit={vi.fn()} />,
+    );
+    const tabbable = () =>
+      all(r.container, 'input')
+        .filter((i) => i.tabIndex === 0)
+        .map((i) => i.getAttribute('aria-label'));
+    expect(tabbable()).toEqual(['Time milliseconds']);
+
+    await r.step(() => box(r.container, 'minutes').focus());
+    expect(tabbable()).toEqual(['Time minutes']);
+    await r.unmount();
+  });
+
+  it('sends a click on a separator to the nearest box', async () => {
+    const r = await renderComponent(
+      <TimecodeField value={65.25} label="Time" onCommit={vi.fn()} />,
+    );
+    const group = r.container.querySelector('[role="group"]');
+    const dot = all(group, 'span').find((el) => el.textContent === '.');
+    expect(dot).toBeTruthy();
+    // happy-dom gives every box a zero-width rect, so the nearest is simply the
+    // first; what this pins is that the click is HANDLED rather than falling
+    // through the group onto nothing.
+    await r.step(() => {
+      const ev = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
+      dot.dispatchEvent(ev);
+      expect(ev.defaultPrevented).toBe(true);
+    });
+    expect(document.activeElement.tagName).toBe('INPUT');
+    await r.unmount();
+  });
+});
