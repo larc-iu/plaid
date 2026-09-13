@@ -989,6 +989,17 @@ export const VocabularyDetail = () => {
             {canManageVocabulary() && (
               <TabsContent value="settings">
                 <div className="flex flex-col gap-6">
+                  {/* The alphabet is set in the dictionary reader, not here, and
+                    nothing in this app said so. A lexicographer found the entry
+                    list in the wrong order, had no idea an alphabet could be
+                    declared at all, and only found the control by opening the
+                    other app. Say where it is. */}
+                  <p className="text-sm text-muted-foreground">
+                    Entries here are listed in your language's default order. To give this
+                    vocabulary an alphabet of its own, so that letters like ẹ and n-graphs like ch
+                    file where the language puts them, open it in the dictionary reader and use its
+                    Set up page. That order applies to the published dictionary.
+                  </p>
                   <div className="rounded-lg border bg-card p-4">
                     <div className="flex flex-col gap-4">
                       <h3 className="text-base font-semibold">Basic Settings</h3>

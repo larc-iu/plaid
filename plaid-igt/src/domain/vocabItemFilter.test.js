@@ -164,3 +164,24 @@ describe('sortVocabItems', () => {
     expect(rows).toEqual(copy);
   });
 });
+
+describe('sortVocabItems and letters outside ASCII', () => {
+  const items = [
+    { id: '1', form: 'ẹja' },
+    { id: '2', form: 'zebra' },
+    { id: '3', form: 'ilé' },
+    { id: '4', form: 'ọkọ' },
+    { id: '5', form: 'apple' },
+  ];
+
+  it('files a marked letter with its letter, not after z', () => {
+    // Comparing the strings with `<` is code-point order, which put ẹ (U+1EB9)
+    // and ọ (U+1ECD) after every ASCII letter: a Yoruba lexicon showed them
+    // below the end of the alphabet.
+    const forms = sortVocabItems(items, { key: 'form', dir: 'asc' }, new Map()).map((i) => i.form);
+    expect(forms.indexOf('ẹja')).toBeLessThan(forms.indexOf('ilé'));
+    expect(forms.indexOf('ọkọ')).toBeLessThan(forms.indexOf('zebra'));
+    expect(forms[0]).toBe('apple');
+    expect(forms.at(-1)).toBe('zebra');
+  });
+});

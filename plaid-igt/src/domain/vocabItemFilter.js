@@ -61,8 +61,19 @@ export function sortVocabItems(items, sort, { numbers, usageCounts } = {}) {
   const byForm = (a, b) => {
     const af = (a.form ?? '').toLowerCase();
     const bf = (b.form ?? '').toLowerCase();
-    if (af < bf) return -1;
-    if (af > bf) return 1;
+    // `localeCompare`, not `<`. Comparing the strings directly is code-point
+    // order, which files every letter outside ASCII after `z`: a Yoruba
+    // lexicon listed `ẹja` and the seven `ọ` words below the end of the
+    // alphabet, nowhere near the letters they belong with.
+    //
+    // This is the locale's order, not the dictionary's own. A stated alphabet
+    // (n-graphs, a custom order) lives in `config.dict` and only plaid-dict
+    // honours it, because the collator that reads it is plaid-dict's; sharing
+    // it would mean moving it into plaid-ui and aliasing @ui in every app.
+    // Locale order is right for the overwhelming majority of scripts and is a
+    // great deal righter than code points.
+    const byText = af.localeCompare(bf, undefined, { numeric: true });
+    if (byText !== 0) return byText;
     // In dotted-number order. Not by id: ids do not sort into creation order
     // within a bulk write. Numeric collation so "a 10" follows "a 9".
     const na = numbers?.get(a.id) ?? '';
