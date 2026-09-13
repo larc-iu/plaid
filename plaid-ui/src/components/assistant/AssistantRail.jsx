@@ -1,10 +1,14 @@
 import { EdgeRail } from '../shared/EdgeRail.jsx';
 import { AssistantMark } from './PlaidMarks.jsx';
 
-// The way into the assistant when its panel is shut: the right-hand rail, the
-// mirror of the history drawer's on the left. Both are EdgeRail, which carries
-// the geometry and the behaviour; what is the assistant's own is the mark and
-// the name.
+// The way into the assistant when its panel is shut: a rail against the right
+// edge of the window, on every screen of every app that mounts the chrome.
+//
+// It is an EdgeRail, which carries the geometry and the behaviour; what is the
+// assistant's own is the mark and the name. The other EdgeRail is plaid-igt's
+// history drawer, on the left edge of a document screen, and the two being one
+// component is the point: a reader who has learnt the one on the left has
+// learnt the one on the right.
 //
 // Named "Open the assistant", the way the history rail is named "Open history",
 // and NOT plain "Assistant": the header carries a chip by that name, and two
