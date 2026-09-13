@@ -934,14 +934,11 @@ export const ProjectAssistant = ({
                   <Plus className="h-4 w-4" />
                 </Button>
                 {!active?.draft && (
-                  // Hides the panel on the way. Without that the same
-                  // conversation renders twice, each copy with its own step
-                  // list, Stop button and composer, and nothing says which one
-                  // is the live one. They are in fact the same thread, so this
-                  // moves it rather than copying it.
+                  // The panel is not offered on the Assistant screen
+                  // (assistantGate), so this moves the thread there rather
+                  // than drawing it twice.
                   <Link
                     to={adapter.convHref(projectId, active.id)}
-                    onClick={() => onCollapse?.()}
                     title="Open in Assistant"
                     className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
                   >

@@ -17,6 +17,10 @@
 //     pads by `showDock`, so the gutter goes with it. The open state itself is
 //     left alone: it is the reader's, and walking past a project without an
 //     assistant is no reason to forget it.
+//   - Nothing is offered on the app's own Assistant screen. The full tab is
+//     already showing the conversation, and a dock beside it drew the same
+//     live turn a second time, each copy with its own step list, Stop button
+//     and composer, and nothing saying which one was the live one.
 
 export const assistantGate = ({
   wide = false,
@@ -24,13 +28,24 @@ export const assistantGate = ({
   projectId = null,
   available = null,
   routeHasProject = false,
+  assistantRoute = false,
 } = {}) => {
   // Offer to pick a project only where none is in scope AND the route is not
   // itself under one. The route test keeps the picker off the new-project
   // wizard and the importers, which publish no subject and have no annotation
   // to ask about.
   const offerPicker = !projectId && !routeHasProject;
-  const showDock = !!(open && wide && (projectId ? available !== false : offerPicker));
-  const showHandle = !!(wide && !showDock && (projectId ? available === true : offerPicker));
+  const showDock = !!(
+    open &&
+    wide &&
+    !assistantRoute &&
+    (projectId ? available !== false : offerPicker)
+  );
+  const showHandle = !!(
+    wide &&
+    !assistantRoute &&
+    !showDock &&
+    (projectId ? available === true : offerPicker)
+  );
   return { showHandle, showDock, showPicker: showDock && !projectId };
 };

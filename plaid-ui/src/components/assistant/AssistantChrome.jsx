@@ -43,6 +43,9 @@ export const AssistantChrome = ({
   // Whether the route is itself under a project, which is what keeps the
   // project picker off the new-project wizard and the importers.
   routeHasProject = false,
+  // Whether the screen on show IS the app's Assistant tab. Each app spells its
+  // own: IGT's is a `?tab=`, UD's a route segment.
+  assistantRoute = false,
   className,
   children,
 }) => {
@@ -82,7 +85,14 @@ export const AssistantChrome = ({
   const project = subject?.projectId ? subject : held;
   const projectId = project?.projectId || null;
   const available = useAssistantAvailable(client, projectId, adapter.app);
-  const gate = assistantGate({ wide, open, projectId, available, routeHasProject });
+  const gate = assistantGate({
+    wide,
+    open,
+    projectId,
+    available,
+    routeHasProject,
+    assistantRoute,
+  });
 
   // What the reader pointed at, as {ref, label}: "Ask", beside a sentence or an
   // entry. Pointing at something opens the panel, because it is how you start

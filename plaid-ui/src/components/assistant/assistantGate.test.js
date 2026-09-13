@@ -54,6 +54,18 @@ describe('assistantGate', () => {
     });
   });
 
+  it('offers nothing on the app’s own Assistant screen', () => {
+    // The tab and the dock both drew the same live turn, each with its own
+    // Stop button, and nothing said which one was the live one.
+    const here = { assistantRoute: true };
+    expect(gate(here)).toEqual({ showHandle: false, showDock: false, showPicker: false });
+    expect(gate({ ...here, open: true })).toEqual({
+      showHandle: false,
+      showDock: false,
+      showPicker: false,
+    });
+  });
+
   it('withholds the picker on a route that is under a project of its own', () => {
     // The new-project wizard and the importers: no subject, no annotation to
     // ask about, and a chat about some other project beside a form for making

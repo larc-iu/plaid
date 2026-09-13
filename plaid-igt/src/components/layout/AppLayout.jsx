@@ -72,6 +72,10 @@ const Shell = () => {
       user={user}
       subject={subject}
       routeHasProject={/^\/projects\/[^/]+/.test(location.pathname)}
+      assistantRoute={
+        /^\/projects\/[^/]+\/?$/.test(location.pathname) &&
+        new URLSearchParams(location.search).get('tab') === 'assistant'
+      }
       className="min-h-screen bg-background text-foreground"
     >
       {({ chip }) => (

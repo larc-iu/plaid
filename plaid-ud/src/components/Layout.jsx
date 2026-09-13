@@ -46,6 +46,7 @@ const Shell = () => {
       user={user}
       subject={subject}
       routeHasProject={/^\/projects\/[^/]+/.test(location.pathname)}
+      assistantRoute={/^\/projects\/[^/]+\/assistant\/?$/.test(location.pathname)}
       className="flex min-h-screen flex-col bg-background text-foreground"
     >
       {({ chip }) => (
