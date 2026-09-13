@@ -4,9 +4,9 @@ orthography copy, apply-analysis-everywhere, and the lexicon / document
 operations (merge, delete, rename). Everything lands in the turn's plan and
 is applied only after approval."""
 
-import re
 from typing import Any, Dict, List, Optional
 
+from ..core.replace import replacer as core_replacer
 from .project import word_ref
 from .tools import (Workspace, ToolError, t_set_analysis, entry_line, check_respell_overlap, span_op,
                     has_own_form, morpheme_form_op, parse_analysis, analysis_op, _meta_patch,
@@ -18,26 +18,8 @@ MAX_BULK = 3000
 
 
 def _replacer(pattern: str, replacement: str, regex: bool, whole: bool, case_sensitive: bool = False):
-    """Case-insensitive by default, like search, so what search found is what
-    the replacement hits. Regex replacement errors (bad backreferences) are
-    reported on the first value rather than crashing mid-plan."""
-    if not pattern:
-        raise ToolError('Give a pattern.')
-    replacement = '' if replacement is None else str(replacement)
-    flags = 0 if case_sensitive else re.IGNORECASE
-    try:
-        rx = re.compile(pattern if regex else re.escape(pattern), flags)
-    except re.error as e:
-        raise ToolError(f'Bad regex: {e}')
-    if whole:
-        return lambda v: replacement if rx.fullmatch(v) else v
-
-    def sub(v):
-        try:
-            return rx.sub(replacement, v)
-        except re.error as e:
-            raise ToolError(f'Bad replacement: {e}')
-    return sub
+    """The substitution, in the tools' own words when it cannot be built."""
+    return core_replacer(pattern, replacement, regex, whole, case_sensitive, ToolError)
 
 
 def _bulk_note(ws: Workspace, n: int, labels: List[str], what: str) -> str:

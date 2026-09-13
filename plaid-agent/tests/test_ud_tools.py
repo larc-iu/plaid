@@ -785,6 +785,22 @@ def test_a_replacement_the_pattern_leaves_unchanged_plans_nothing(ws):
     assert 'Planned 1 lemma change' in out
 
 
+def test_a_literal_replacement_may_hold_a_backslash(ws):
+    """The same cases IGT raised on, kept here so the two apps are compared
+    rather than each tested against itself."""
+    _engine_rows(ws, [('sp-l3', 'mar', 'ud1', 'uw-3')])
+    assert 'Planned 1 lemma change' in run(ws, 'replace_in_field', field='lemma', pattern='mar',
+                                           replacement='back\\slash')
+    assert ws.ops[0]['replacement'] == 'back\\slash'
+    ws.ops.clear()
+    assert 'Planned 1 lemma change' in run(ws, 'replace_in_field', field='lemma', pattern='mar',
+                                           replacement='x\\1y')
+    ws.ops.clear()
+    out = run(ws, 'replace_in_field', field='lemma', pattern='(m)(ar)', replacement=r'\2\1',
+              regex=True, whole=True)
+    assert 'Planned 1 lemma change' in out and '"mar" → "arm"' in out
+
+
 def test_a_closed_vocabulary_refuses_what_a_replacement_would_write(ws):
     _engine_rows(ws, [('sp-u3', 'NOUN', 'ud1', 'uw-3')])
     out = run(ws, 'replace_in_field', field='upos', pattern='NOUN', replacement='NOMEN')

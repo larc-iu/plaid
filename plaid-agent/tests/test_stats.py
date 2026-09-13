@@ -107,6 +107,18 @@ def test_bulk_plans():
     out = call_tool(w, 'replace_in_field', {'field': 'Translation', 'pattern': r'(\w+)\.$', 'replacement': r'\1!', 'regex': True})
     assert w.ops[-1]['value'] == 'Ali saw a fish!'
     assert call_tool(w, 'replace_in_field', {'field': 'Gloss', 'pattern': 'zzz', 'replacement': 'y'}).startswith('Nothing to change')
+    # A literal replacement is text, not a re.sub template: these two raised.
+    w1 = ws()
+    out = call_tool(w1, 'replace_in_field', {'field': 'Gloss', 'pattern': 'Ali', 'replacement': 'back\\slash'})
+    assert w1.ops[-1]['value'] == 'back\\slash', out
+    w1 = ws()
+    call_tool(w1, 'replace_in_field', {'field': 'Gloss', 'pattern': 'Ali', 'replacement': 'x\\1y'})
+    assert w1.ops[-1]['value'] == 'x\\1y'
+    # And a backreference expands even when the pattern matches the whole value.
+    w1 = ws()
+    call_tool(w1, 'replace_in_field', {'field': 'Gloss', 'pattern': r'(A)(li)', 'replacement': r'\2\1',
+                                       'regex': True, 'whole': True})
+    assert w1.ops[-1]['value'] == 'liA'
     out = call_tool(w, 'respell_all', {'pattern': 'a', 'replacement': 'ä'})
     # 4 words (case-insensitive, like search) + the stored morpheme forms of those words
     # (Ali, Gam, ar) + every lexicon headword the pattern hits (Ali, gam, gam), as Bulk Edit does.

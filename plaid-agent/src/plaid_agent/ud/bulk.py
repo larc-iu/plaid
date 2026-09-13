@@ -12,9 +12,9 @@ any size can be searched: what is capped is the number of CHANGES one plan
 may make, which is what the user has to be able to approve.
 """
 
-import re
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from ..core.replace import replacer as core_replacer
 from .corpus import Corpus, rx
 from .project import UdProject
 from .tools import FIELDS, ToolError, Workspace, _check_value
@@ -26,25 +26,8 @@ SAMPLE = 8
 
 def replacer(pattern: str, replacement: str, regex: bool, whole: bool,
              case_sensitive: bool) -> Callable[[str], str]:
-    """Case-insensitive by default, like search, so what search found is what
-    the replacement hits. A regex replacement error (a bad backreference) is
-    reported on the first value rather than crashing mid-plan."""
-    if not pattern:
-        raise ToolError('Give a pattern.')
-    replacement = '' if replacement is None else str(replacement)
-    flags = 0 if case_sensitive else re.IGNORECASE
-    body = pattern if regex else re.escape(pattern)
-    try:
-        compiled = re.compile(f'^(?:{body})$' if whole else body, flags)
-    except re.error as e:
-        raise ToolError(f'That is not a valid regular expression: {e}')
-
-    def apply(value: str) -> str:
-        try:
-            return compiled.sub(replacement if regex else replacement.replace('\\', '\\\\'), value)
-        except re.error as e:
-            raise ToolError(f'The replacement is not valid for that pattern: {e}')
-    return apply
+    """The substitution, in the tools' own words when it cannot be built."""
+    return core_replacer(pattern, replacement, regex, whole, case_sensitive, ToolError)
 
 
 def _where(c: Corpus, field: str, spec: Dict[str, Any], document_id: Optional[str]) -> Tuple[List[Any], List[str]]:
