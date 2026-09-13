@@ -10,6 +10,7 @@
 // vocabDictionary.js, so an entry is called the same thing in both apps.
 
 import { homographOf, lexiconView, STATUS_FIELD } from '@igt/domain/vocabDictionary.js';
+import { foldDiacritics } from './collation.js';
 import { searchableText } from './entryFields.js';
 import { isPublished, statusKeyOf } from './publication.js';
 
@@ -96,6 +97,9 @@ export const buildFormPages = (items, collator = new Intl.Collator(), dict = nul
     .sort(([a], [b]) => collator.compare(a, b))
     .map(([form, roots]) => ({
       form,
+      // Folded here, not in the search: a five thousand headword dictionary
+      // would otherwise fold five thousand forms on every keystroke.
+      folded: foldDiacritics(form),
       headwords: roots.sort(byNumber).map((r) => nodeOf(r, reading)),
     }));
 };
@@ -149,26 +153,57 @@ export const buildSearchIndex = (items, fields) => {
   const index = new Map();
   const key = statusKeyOf(fields);
   for (const it of items || []) {
-    if (isPublished(it, key)) index.set(it.id, searchableText(it, fields));
+    if (!isPublished(it, key)) continue;
+    const text = searchableText(it, fields);
+    // Both spellings, folded once: see searchPages for which one a query gets.
+    index.set(it.id, { text, folded: foldDiacritics(text) });
   }
   return index;
 };
 
 /**
  * The pages a query leaves standing: a page matches when its form matches, or
- * when any entry on it does. Pages whose form STARTS with the query come first,
- * the rest keep the dictionary's own order.
+ * when any entry on it does.
+ *
+ * A query that carries NO marks of its own is matched with the marks folded
+ * away, so `oko` finds `ọkọ`. A query that carries marks is taken at its word,
+ * so a reader who typed `ọkọ` is not also handed `oko`, which in Yoruba is a
+ * different word. Typing the marks is how you ask for precision, and it is the
+ * only signal available.
+ *
+ * Order: the forms that START with what was typed, exactly as typed, then the
+ * ones that start with it once marks are folded, then the rest, each group
+ * keeping the dictionary's own order.
  */
+// An id the index does not hold: an entry that is not published, or a stale id.
+const EMPTY_ENTRY = { text: '', folded: '' };
+
 export const searchPages = (pages, query, index) => {
   const q = String(query ?? '')
     .trim()
     .toLowerCase();
   if (!q) return pages || [];
-  const hit = (node) => (index.get(node.item.id) || '').includes(q) || node.senses.some(hit);
+  const bare = foldDiacritics(q);
+  // Folding changed nothing but case, so the reader typed no marks.
+  const loose = bare === q;
+  const textOf = (id) => index.get(id) || EMPTY_ENTRY;
+
+  const hit = (node) => {
+    const entry = textOf(node.item.id);
+    return (
+      entry.text.includes(q) || (loose && entry.folded.includes(bare)) || node.senses.some(hit)
+    );
+  };
+  const formOf = (p) => (p.form || '').toLowerCase();
+  const foldedOf = (p) => p.folded ?? foldDiacritics(p.form);
   const matched = (pages || []).filter(
-    (p) => p.form.toLowerCase().includes(q) || p.headwords.some(hit),
+    (p) => formOf(p).includes(q) || (loose && foldedOf(p).includes(bare)) || p.headwords.some(hit),
   );
-  const starts = matched.filter((p) => p.form.toLowerCase().startsWith(q));
-  const rest = matched.filter((p) => !p.form.toLowerCase().startsWith(q));
-  return [...starts, ...rest];
+
+  const exact = matched.filter((p) => formOf(p).startsWith(q));
+  const folded = matched.filter(
+    (p) => !formOf(p).startsWith(q) && loose && foldedOf(p).startsWith(bare),
+  );
+  const rest = matched.filter((p) => !exact.includes(p) && !folded.includes(p));
+  return [...exact, ...folded, ...rest];
 };

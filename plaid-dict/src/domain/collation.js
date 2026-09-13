@@ -22,11 +22,28 @@
 // code point, so they gather after Z instead of scattering.
 const UNLISTED = 1e7;
 
-const foldChar = (char) =>
-  char
+/**
+ * A string with its marks folded away and its case dropped, for MATCHING
+ * rather than for ordering.
+ *
+ * Ordering must NOT fold (see suggestAlphabet): in Yoruba a dot below makes a
+ * letter, and folding dropped `ẹ` and `ọ` out of an alphabet. Matching is the
+ * opposite case, and for the same reason — a speaker looking up `ọkọ` on a
+ * keyboard that cannot make the marks types `oko`, and a dictionary that
+ * answers nothing has failed them.
+ *
+ * Only combining marks go. NFKD leaves a letter with no canonical
+ * decomposition alone, so `ł` and `ø` still match only themselves.
+ */
+export const foldDiacritics = (s) =>
+  String(s ?? '')
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase() || char;
+    .toLowerCase();
+
+// A single character, with the original kept when folding leaves nothing: a
+// bare combining mark is its own unit, and splitGraphemes needs something.
+const foldChar = (char) => foldDiacritics(char) || char;
 
 /** The alphabet a person typed, as units: whitespace-separated, deduped. */
 export const parseAlphabet = (text) => [

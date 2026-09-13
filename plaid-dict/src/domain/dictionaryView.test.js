@@ -140,9 +140,10 @@ describe('buildSearchIndex / searchPages', () => {
   const index = buildSearchIndex(items, fields);
   const pages = buildFormPages(items);
 
-  it('indexes only what is published', () => {
+  it('indexes only what is published, in both spellings', () => {
     expect(index.has('draft')).toBe(false);
-    expect(index.get('water')).toContain('madzi');
+    expect(index.get('water').text).toContain('madzi');
+    expect(index.get('water')).toHaveProperty('folded');
   });
 
   it('returns every page untouched for a blank query', () => {
@@ -164,5 +165,113 @@ describe('buildSearchIndex / searchPages', () => {
 
   it('finds nothing for a query nothing carries', () => {
     expect(searchPages(pages, 'zzzz', index)).toEqual([]);
+  });
+});
+
+// The reported failure, in the language it was found in. A lexicographer typed
+// `oko` the way a speaker without a Yoruba keyboard would, got nothing, and
+// said that was the moment they decided not to show the dictionary to a
+// community.
+describe('searchPages and the marks a keyboard cannot make', () => {
+  const fields = normalizeVocabFields({ gloss: { inline: true } });
+  const items = [
+    { id: 'husband', form: 'ọkọ', metadata: { status: 'published', gloss: 'husband' } },
+    { id: 'farm', form: 'oko', metadata: { status: 'published', gloss: 'farm' } },
+    { id: 'child', form: 'ọmọ', metadata: { status: 'published', gloss: 'child' } },
+    { id: 'money', form: 'owó', metadata: { status: 'published', gloss: 'money' } },
+  ];
+  const index = buildSearchIndex(items, fields);
+  const pages = buildFormPages(items);
+  const found = (q) => searchPages(pages, q, index).map((p) => p.form);
+
+  it('finds a marked headword from an unmarked query', () => {
+    expect(found('oko')).toContain('ọkọ');
+  });
+
+  it('takes a query that carries marks at its word', () => {
+    // ọkọ and oko are different words. Someone who typed the marks asked for
+    // one of them, and typing the marks is the only signal of that there is.
+    expect(found('ọkọ')).toEqual(['ọkọ']);
+    expect(found('ọmọ')).toEqual(['ọmọ']);
+  });
+
+  it('ranks the form spelled as typed above the one that only folds to it', () => {
+    // Both match `oko`; the unmarked headword is what was literally asked for.
+    expect(found('oko')[0]).toBe('oko');
+  });
+
+  it('folds a mark in a gloss too, not only in a form', () => {
+    const withAccent = [
+      { id: 'x', form: 'abc', metadata: { status: 'published', gloss: 'jalapeño' } },
+    ];
+    const idx = buildSearchIndex(withAccent, fields);
+    const pgs = buildFormPages(withAccent);
+    expect(searchPages(pgs, 'jalapeno', idx).map((p) => p.form)).toEqual(['abc']);
+  });
+
+  it('leaves a letter with no decomposition alone', () => {
+    // NFKD does not take the stroke off an l, so `l` must not find `ł`.
+    const polish = [{ id: 'p', form: 'łuk', metadata: { status: 'published', gloss: 'bow' } }];
+    const idx = buildSearchIndex(polish, fields);
+    const pgs = buildFormPages(polish);
+    expect(searchPages(pgs, 'luk', idx)).toEqual([]);
+    expect(searchPages(pgs, 'łuk', idx).map((p) => p.form)).toEqual(['łuk']);
+  });
+});
+
+// The nineteen headwords of the Yoruba dictionary the finding came from, four
+// of which differ from each other only in their marks.
+describe('searchPages over a real tone-marked dictionary', () => {
+  const fields = normalizeVocabFields({ gloss: { inline: true } });
+  const FORMS = [
+    'igba',
+    'igbá',
+    'ilé',
+    'jẹ',
+    'lọ',
+    'omi',
+    'owó',
+    'pupa',
+    'ìgbà',
+    'ìgbá',
+    'ìwé',
+    'ẹja',
+    'ọkọ',
+    'ọkọ̀',
+    'ọkọ́',
+    'ọmọ',
+    'ọwọ́',
+    'ọ̀kọ̀',
+    'ọ̀wọ̀',
+  ];
+  const items = FORMS.map((form, i) => ({
+    id: `i${i}`,
+    form,
+    metadata: { status: 'published', gloss: 'x' },
+  }));
+  const index = buildSearchIndex(items, fields);
+  const pages = buildFormPages(items);
+  const find = (q) => searchPages(pages, q, index).map((p) => p.form);
+
+  it('reaches every marked spelling from a bare one', () => {
+    expect(find('oko')).toEqual(['ọkọ', 'ọkọ́', 'ọkọ̀', 'ọ̀kọ̀']);
+    expect(find('owo')).toEqual(['owó', 'ọwọ́', 'ọ̀wọ̀']);
+    expect(find('eja')).toEqual(['ẹja']);
+  });
+
+  it('puts the form spelled exactly as typed first', () => {
+    // igba, igbá, ìgbà and ìgbá are four words that fold together.
+    expect(find('igba')).toEqual(['igba', 'igbá', 'ìgbá', 'ìgbà']);
+  });
+
+  it('narrows to one word when the marks are typed', () => {
+    expect(find('ìgbà')).toEqual(['ìgbà']);
+    expect(find('ọ̀kọ̀')).toEqual(['ọ̀kọ̀']);
+  });
+
+  it('still extends a marked query the way any substring search does', () => {
+    // Not a folding effect: `ọkọ́` literally starts with `ọkọ`, exactly as
+    // `igb` reaches `igba`. Marks make a query precise, not anchored.
+    expect(find('ọkọ')).toEqual(['ọkọ', 'ọkọ́', 'ọkọ̀']);
   });
 });
