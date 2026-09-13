@@ -861,6 +861,16 @@
     (when-not (string? mk)
       (err! :validate (str ":metadata keys must be strings, got: " (pr-str mk))))
     (cond
+      ;; A var here reads as a literal and can never match, so the query comes
+      ;; back empty rather than wrong-looking: the same footgun as a bare form
+      ;; on :item, and a 400 for the same reason. Metadata is matched, not
+      ;; bound. Asking whether a key is SET at all is a regex that matches
+      ;; anything, which is how the apps count senses.
+      (or (var? spec) (and (string? spec) (str/starts-with? spec "?")))
+      (err! :validate (str ":metadata " (pr-str mk) " cannot bind a variable: metadata is matched, "
+                           "not bound. Use a literal, a list of literals, or a regex "
+                           "{\"regex\": \"…\"} — {\"regex\": \".*\"} matches any row that has "
+                           "the key at all."))
       (and (vector? spec) (empty? spec))
       (err! :validate (str ":metadata " (pr-str mk) " list must be non-empty"))
       (map? spec)

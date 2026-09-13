@@ -444,6 +444,31 @@
                                             "where" [["token" "?t" {"layer" "w"}] ["=" "?t.metadata.caseKey" "X"]]}))) 1)]
       (is (= ["metadata" "caseKey"] (ast/field-path fr)) "user key kept verbatim"))))
 
+(deftest metadata-constraint-rejects-a-variable
+  (testing "a var in a :metadata constraint is a 400, not a silent no-match"
+    ;; It used to read as the literal string "?p", which no row can equal, so
+    ;; the query answered 0 instead of failing. Counting vocabulary senses that
+    ;; way said a 23-entry dictionary had none.
+    (is (= 400 (code-of #(ast/parse+validate
+                          {"find" ["?v"]
+                           "where" [["vocab" "?v" {"layer" "l" "metadata" {"parent" "?p"}}]]}))))
+    (is (= 400 (code-of #(ast/parse+validate
+                          {"find" ["?t"]
+                           "where" [["token" "?t" {"layer" "w" "metadata" {"k" (symbol "?x")}}]]})))))
+  (testing "the shapes it does accept still pass, including the has-this-key regex"
+    (is (some? (ast/parse+validate
+                {"find" ["?v"]
+                 "where" [["vocab" "?v" {"layer" "l" "metadata" {"parent" {"regex" ".*"}}}]]})))
+    (is (some? (ast/parse+validate
+                {"find" ["?v"]
+                 "where" [["vocab" "?v" {"layer" "l" "metadata" {"pos" "n"}}]]})))
+    (is (some? (ast/parse+validate
+                {"find" ["?v"]
+                 "where" [["vocab" "?v" {"layer" "l" "metadata" {"pos" ["n" "v"]}}]]}))))
+  (testing "a literal that merely starts with ? is still a literal elsewhere"
+    (is (some? (ast/parse+validate
+                {"find" ["?t"] "where" [["token" "?t" {"layer" "w" "value" "?"}]]})))))
+
 (deftest field-paths-review-fixes
   (testing "group by a field path is allowed (mirrors aggregate sources)"
     (is (some? (ast/expand {"where" [["token" "?t" {"layer" "w"}]]
