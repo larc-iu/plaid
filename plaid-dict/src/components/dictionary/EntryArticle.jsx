@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { FormLabel } from '@igt/components/vocabularies/FormLabel.jsx';
 import { displayForm, entryExamples, entryRefs, entryText } from '@/domain/entryFields';
 
 // A gloss or definition in a language the dictionary names elsewhere gets no
@@ -56,12 +57,7 @@ const References = ({ refs }) => (
                 lang={target.lang}
                 className="underline-offset-4 hover:underline"
               >
-                {target.form}
-                {target.number && (
-                  <span className="ml-1 text-[0.85em] tabular-nums text-muted-foreground">
-                    {target.number}
-                  </span>
-                )}
+                <FormLabel form={target.form} index={target.number} />
               </Link>
             </span>
           ))}
@@ -163,16 +159,13 @@ export const EntryArticle = ({
   exampleLayers,
 }) => {
   const heading = (
-    <>
-      <span className="font-serif text-2xl font-semibold" lang={lang}>
-        {displayForm(node.item)}
-      </span>
-      {node.number && (
-        <span className="ml-2 align-baseline text-base tabular-nums text-muted-foreground">
-          {node.number}
-        </span>
-      )}
-    </>
+    <span lang={lang}>
+      <FormLabel
+        form={displayForm(node.item)}
+        index={node.number}
+        className="font-serif text-2xl font-semibold"
+      />
+    </span>
   );
   return (
     <article className="py-5">
@@ -188,7 +181,11 @@ export const EntryArticle = ({
       {/* An unpublished headword is the heading over its published senses and
           nothing more: the tree's spine is structure, not content. */}
       {node.shown && (
-        <div className="ml-10">
+        <div className="flex gap-3">
+          {/* The senses' number column, empty: the headword's own meaning
+              carries no number, and without the column it sat a gap to the
+              left of the senses under it and read as one more of them. */}
+          <span className="w-10 shrink-0" aria-hidden="true" />
           <Meanings
             item={node.item}
             fields={fields}

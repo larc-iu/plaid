@@ -6,7 +6,16 @@ export default {
   darkMode: ['class'],
   // The dictionary pages read plaid-igt's domain modules, never its components,
   // so no class names come from over there.
-  content: ['./index.html', './src/**/*.{js,jsx}', '../plaid-ui/src/**/*.{js,jsx}'],
+  content: [
+    './index.html',
+    './src/**/*.{js,jsx}',
+    '../plaid-ui/src/**/*.{js,jsx}',
+    // The one plaid-igt COMPONENT the reader mounts (everything else it takes
+    // from that app is domain code, which has no classes). Named file by file
+    // rather than by a `src/**` glob: the editor is a much larger tree, and the
+    // reader is the page a dictionary's readers load.
+    '../plaid-igt/src/components/vocabularies/FormLabel.jsx',
+  ],
   theme: {
     extend: {
       fontFamily: {

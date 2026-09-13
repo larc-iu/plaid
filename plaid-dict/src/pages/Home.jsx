@@ -6,6 +6,7 @@ import { useCatalog } from '@/contexts/CatalogContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { classifyVocabularies, canManage } from '@/domain/dictionaries';
 import { readDictRecord, dictTitle } from '@/domain/dictConfig';
+import { dictionaryAddress, dictionaryPath } from '@/domain/paths';
 import { Button } from '@ui/components/ui/button';
 
 // Several vocabularies routinely share a name, so every row carries its entry
@@ -22,13 +23,15 @@ const DictionaryCard = ({ vocab, user, counts }) => {
     <li className="flex items-center justify-between gap-4 rounded-lg border bg-card p-4">
       <div className="min-w-0">
         <Link
-          to={`/${record.slug}`}
+          to={dictionaryPath(record.slug)}
           className="font-serif text-lg font-semibold underline-offset-4 hover:underline"
         >
           {dictTitle(vocab)}
         </Link>
         <p className="truncate text-sm text-muted-foreground">
-          {[language, entryCount(counts, vocab.id), `/${record.slug}`].filter(Boolean).join(' · ')}
+          {[language, entryCount(counts, vocab.id), dictionaryAddress(record.slug)]
+            .filter(Boolean)
+            .join(' · ')}
         </p>
       </div>
       {canManage(vocab, user) && (

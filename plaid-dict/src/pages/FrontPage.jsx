@@ -118,8 +118,19 @@ export const FrontPage = () => {
           {found.map((page) => (
             <li key={page.form} className="flex items-baseline gap-4 py-2">
               <FormLink slug={slug} form={page.form} lang={objectLang} />
+              {/* Every headword spelled this way, not just the first: two
+                  entries share one page, and showing one gloss said a search
+                  for a homograph had found a single entry. */}
               <span className="min-w-0 flex-1 truncate font-serif text-sm text-muted-foreground">
-                {firstGloss(page.headwords[0], fields, query)}
+                {page.headwords.map((node, i) => (
+                  <span key={node.item.id}>
+                    {i > 0 && ' · '}
+                    {page.headwords.length > 1 && node.number && (
+                      <span className="mr-1 tabular-nums">{node.number}</span>
+                    )}
+                    {firstGloss(node, fields, query)}
+                  </span>
+                ))}
               </span>
             </li>
           ))}

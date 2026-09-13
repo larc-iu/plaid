@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useCatalog } from '@/contexts/CatalogContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { canManage, takenSlugs } from '@/domain/dictionaries';
+import { dictionaryAddress, dictionaryPath } from '@/domain/paths';
 import {
   dictCollator,
   EMPTY_LANGUAGE,
@@ -246,7 +247,7 @@ export const Setup = () => {
       });
       await reload();
       notifySuccess(saved ? 'Saved.' : 'Dictionary set up.');
-      navigate(`/${record.slug}`);
+      navigate(dictionaryPath(record.slug));
     } catch (err) {
       console.error('Failed to save the dictionary record:', err);
       notifyError(err?.message || 'Saving failed.');
@@ -303,7 +304,7 @@ export const Setup = () => {
             id="slug"
             label="Address"
             error={errors.slug}
-            hint={draft.slug ? `/dict/#/${draft.slug}` : null}
+            hint={draft.slug ? dictionaryAddress(draft.slug) : null}
           >
             <Input
               id="slug"
@@ -480,7 +481,7 @@ export const Setup = () => {
           </Button>
           {saved && (
             <Button asChild variant="link" className="px-0">
-              <Link to={`/${saved.slug}`}>
+              <Link to={dictionaryPath(saved.slug)}>
                 Open <ExternalLink className="ml-1 h-3 w-3" />
               </Link>
             </Button>
