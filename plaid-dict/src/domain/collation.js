@@ -14,6 +14,9 @@
 // so "á" files under a listed "a" (and under itself if the alphabet lists "á",
 // which is matched first). One it still cannot place sorts after every letter,
 // in code-point order, under a heading of its own.
+//
+// A position is a GRAPHEME CLUSTER, not a code point, so a letter keeps the
+// combining marks written on it. See splitClusters.
 
 // Every unlisted grapheme ranks after every listed one, and among themselves by
 // code point, so they gather after Z instead of scattering.
@@ -38,14 +41,34 @@ export const parseAlphabet = (text) => [
 /** The units as a person edits them. */
 export const formatAlphabet = (units) => (units || []).join(' ');
 
+// A string as GRAPHEME CLUSTERS, not code points. This is what keeps a
+// combining mark attached to the letter it sits on. Splitting `ọ̀kọ̀` by code
+// point made the bare U+0300 its own unit, which matched no alphabet entry and
+// so ranked UNLISTED + 0x300 = 10000768, outranking every real letter: the word
+// filed after every `ọ`-plus-letter word instead of beside its homonyms, and a
+// search for `ọkọ` never reached it. Yoruba has no precomposed form for
+// dot-below plus tone, so `ọ̀ ọ́ ẹ̀ ẹ́` are all two code points and this hit most
+// of the tone-marked vowels in the language.
+const splitClusters = (s) => {
+  if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+    return [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(s)].map(
+      (part) => part.segment,
+    );
+  }
+  return s.match(/\P{M}\p{M}*|\p{M}+/gu) || [];
+};
+
 /**
  * A form split into the alphabet's units. A position that matches no unit
- * yields one code point, so every form splits into something.
+ * yields one grapheme cluster, so every form splits into something.
  */
 export const splitGraphemes = (form, units) => {
-  const chars = [...String(form ?? '').toLowerCase()];
-  // Longest unit first, counted in code points, so "ch" is tried before "c".
-  const order = [...(units || [])].sort((a, b) => [...b].length - [...a].length);
+  const chars = splitClusters(String(form ?? '').toLowerCase());
+  // Longest unit first, counted in clusters, so "ch" is tried before "c".
+  const order = [...(units || [])].sort(
+    (a, b) => splitClusters(b).length - splitClusters(a).length,
+  );
+  const span = new Map(order.map((unit) => [unit, splitClusters(unit).length]));
   const out = [];
   let at = 0;
   while (at < chars.length) {
@@ -53,7 +76,12 @@ export const splitGraphemes = (form, units) => {
     const unit = order.find((candidate) => rest.startsWith(candidate));
     if (unit) {
       out.push(unit);
-      at += [...unit].length;
+      // Advance whole clusters. A listed `ọ` matching the start of the cluster
+      // `ọ̀` consumes the mark with it, which is the rule a tonal orthography
+      // wants: the tone is not a letter and does not affect the order. The
+      // `localeCompare` tie-break in `alphabetCollator` still separates two
+      // forms that reduce to the same letters.
+      at += span.get(unit) ?? 1;
       continue;
     }
     // No unit as written. Try the character's base form, so an accented letter

@@ -11,6 +11,11 @@ import {
 // Sena's shape: bv and ch are letters, each after the plain one it starts with.
 const sena = parseAlphabet('a b bv c ch d e f g h i j k l m n nh o p r s t u v w y z');
 
+// Yoruba's shape: e/ẹ, o/ọ and s/ṣ are separate letters, and tone marks are not
+// letters at all. Nothing here is precomposed with its tone, so `ọ̀` is U+1ECD
+// plus U+0300 and every unit below is two code points wearing one.
+const yoruba = parseAlphabet('a b d e ẹ f g gb h i j k l m n o ọ p r s ṣ t u w y');
+
 describe('parseAlphabet / formatAlphabet', () => {
   it('reads whitespace-separated units, lowercased and deduped', () => {
     expect(parseAlphabet('  A  b   CH b ')).toEqual(['a', 'b', 'ch']);
@@ -44,6 +49,13 @@ describe('splitGraphemes', () => {
     expect(splitGraphemes('áb', withAcute)).toEqual(['á', 'b']);
   });
 
+  it('keeps a combining tone mark with the letter it sits on', () => {
+    // Split by code point, the bare U+0300 became its own unit, matched no
+    // letter, and ranked above every letter in the alphabet.
+    expect(splitGraphemes('ọ̀kọ̀', yoruba)).toEqual(['ọ', 'k', 'ọ']);
+    expect(splitGraphemes('ẹ́ja', yoruba)).toEqual(['ẹ', 'j', 'a']);
+  });
+
   it('yields one code point for a character it cannot place', () => {
     expect(splitGraphemes("'ala", sena)).toEqual(["'", 'a', 'l', 'a']);
     expect(splitGraphemes('∅kat', sena)[0]).toBe('∅');
@@ -72,6 +84,22 @@ describe('alphabetCollator', () => {
 
   it('gathers what it cannot place after every letter, in code-point order', () => {
     expect(sorted(['zuwa', "'ala", 'abwe', '∅kat'])).toEqual(['abwe', 'zuwa', "'ala", '∅kat']);
+  });
+
+  it('files a tonal homonym set together, whatever its tones', () => {
+    // The four ọkọ words. Split by code point, ọ̀kọ̀ and ọ́kọ́ sorted after owó,
+    // away from the set they belong to, and the index showed them under a
+    // heading of their own.
+    const yb = alphabetCollator(yoruba);
+    expect([...['owó', 'ọ̀kọ̀', 'ọkọ', 'ọkọ́', 'ilé']].sort(yb.compare)).toEqual([
+      'ilé',
+      'owó',
+      'ọkọ',
+      'ọkọ́',
+      'ọ̀kọ̀',
+    ]);
+    expect(yb.letterOf('ọ̀kọ̀')).toBe('Ọ');
+    expect(yb.letterOf('ẹ́ja')).toBe('Ẹ');
   });
 
   it('heads a bucket with the letter, title-cased, never all caps', () => {
