@@ -2821,8 +2821,10 @@ TOOLS = [
         'with its segmentation, glosses, word fields, orthographies, and lexicon links. Up to 40 sentences per '
         'call, fewer when they are long: the header says which were shown and where to continue.',
         {'document': _DOC,
-         'from_sentence': {'type': 'integer', 'description': 'First sentence number to show (default 1).'},
-         'to_sentence': {'type': 'integer', 'description': 'Last sentence number to show.'}},
+         'from_sentence': {'type': ['integer', 'string'],
+                           'description': 'First sentence to show: 3 or "s3" (default 1).'},
+         'to_sentence': {'type': ['integer', 'string'],
+                         'description': 'Last sentence to show: 8 or "s8".'}},
         ['document']),
     _fn('search',
         'Find words, morphemes, field values, or lexicon entries matching a pattern (case-insensitive substring, '

@@ -99,8 +99,8 @@ Read a document as tab-separated CoNLL-U rows: one line per word with its form, 
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `sentences` (array of string): Just these sentences, e.g. ["s34","s64","s104"]. A word reference like "s34.w2" names its sentence. Overrides the range below.
-- `from_sentence` (integer): First sentence, 1-based (default 1).
-- `to_sentence` (integer): Last sentence, inclusive.
+- `from_sentence` (integer or string): First sentence, 1-based: 3 or "s3" (default 1).
+- `to_sentence` (integer or string): Last sentence, inclusive: 8 or "s8".
 
 ### set_field
 
@@ -269,7 +269,7 @@ What is unfinished. kind "unverified" is machine output nobody has confirmed, "c
 - `kind` (one of `unverified`, `contributed`, `missing`)
 - `field` (one of `lemma`, `upos`, `xpos`, `features`, `deprel`): One column; without it, all five including the tree (deprel).
 - `document` (string): Document id or exact name (see project_overview).
-- `limit` (integer): How many rows per column (default 20, max 100).
+- `limit` (integer): How many rows per column (default 20, max 500).
 
 ### recent_changes
 

@@ -98,8 +98,8 @@ The documents by name, a page at a time, optionally filtered by a name substring
 Read a document as compact interlinear text: baseline sentences, sentence fields, and one line per word with its segmentation, glosses, word fields, orthographies, and lexicon links. Up to 40 sentences per call, fewer when they are long: the header says which were shown and where to continue.
 
 - `document` (string, required): Document id or exact name (see project_overview).
-- `from_sentence` (integer): First sentence number to show (default 1).
-- `to_sentence` (integer): Last sentence number to show.
+- `from_sentence` (integer or string): First sentence to show: 3 or "s3" (default 1).
+- `to_sentence` (integer or string): Last sentence to show: 8 or "s8".
 
 ### search
 

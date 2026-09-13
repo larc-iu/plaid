@@ -923,8 +923,10 @@ TOOLS = [
                        'description': 'Just these sentences, e.g. ["s34","s64","s104"]. A word '
                                       'reference like "s34.w2" names its sentence. Overrides the '
                                       'range below.'},
-         'from_sentence': {'type': 'integer', 'description': 'First sentence, 1-based (default 1).'},
-         'to_sentence': {'type': 'integer', 'description': 'Last sentence, inclusive.'}},
+         'from_sentence': {'type': ['integer', 'string'],
+                           'description': 'First sentence, 1-based: 3 or "s3" (default 1).'},
+         'to_sentence': {'type': ['integer', 'string'],
+                         'description': 'Last sentence, inclusive: 8 or "s8".'}},
         ['document']),
     _fn('set_field',
         'PLAN: set one annotation column on one or more words. An empty value clears it. features '
@@ -1092,7 +1094,7 @@ TOOLS += [
                    'description': 'One column; without it, all five including the tree (deprel).'},
          'document': _DOC,
          'limit': {'type': 'integer', 'description': 'How many rows per column (default 20, '
-                                                     'max 100).'}}, []),
+                                                     'max 500).'}}, []),
     _fn('recent_changes',
         'Who changed what, when, and under which operation label. Each entry prints the as_of '
         'instant a restore would use.',

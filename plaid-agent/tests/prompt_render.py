@@ -3,6 +3,8 @@
 
 def typ(s: dict) -> str:
     t = s.get('type')
+    if isinstance(t, list):   # a parameter that takes either, e.g. 3 or "s3"
+        return ' or '.join(t)
     if 'enum' in s:
         return 'one of ' + ', '.join(f'`{v}`' for v in s['enum'])
     if t == 'array':
