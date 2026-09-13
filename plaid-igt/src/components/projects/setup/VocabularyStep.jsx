@@ -36,6 +36,16 @@ export const VocabularyStep = ({ data, onDataChange, client }) => {
           A vocabulary is a shared lexicon. Link words and morphemes to its entries so the same item
           is glossed the same way everywhere, in this project and in others that share it.
         </p>
+        {/* It starts empty and stays empty until someone puts entries in it,
+          which the sentence above does not say. A linguist read it, made one,
+          glossed 45 morphemes, and found nothing in it: the gloss suggestions
+          they were getting came from what they had already typed in this
+          project, not from the lexicon, so it looked like the lexicon was
+          doing the work. Name the three ways in. */}
+        <p className="mt-2 text-sm text-muted-foreground">
+          A new vocabulary starts empty. Fill it from the Vocabularies screen, by linking a word or
+          morpheme to a new entry as you gloss, or with Auto-analyze.
+        </p>
       </div>
 
       {/* Use the reusable manager component */}
