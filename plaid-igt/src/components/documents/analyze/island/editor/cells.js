@@ -194,14 +194,12 @@ export const cells = {
     return [...this.container.querySelectorAll('.igt-field')].filter((el) => !el.disabled);
   },
 
-  // The "tier" of a cell — its kind + field name from data-cell-key
-  // (`wa:<id>:Gloss` -> "wa:Gloss"; `mf:<id>` -> "mf:"). Cells on the same
-  // tier are the same logical row even when band wrapping puts them at
-  // different screen rows.
+  // The "tier" of a cell — its kind + field name ("wa:Gloss", "mf:"). Cells on
+  // the same tier are the same logical row even when band wrapping puts them at
+  // different screen rows. Rendered onto the cell (see cellTier), never read
+  // back out of the key.
   _tierOf(el) {
-    const key = el.dataset?.cellKey ?? '';
-    const parts = key.split(':');
-    return `${parts[0]}:${parts.slice(2).join(':')}`;
+    return el.dataset?.tier ?? '';
   },
 
   // Geometry-based cell navigation: 'next'/'prev' move along the same row (tier),

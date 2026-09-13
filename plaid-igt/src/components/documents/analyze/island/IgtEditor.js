@@ -16,7 +16,12 @@ import { render, html, nothing } from 'lit-html';
 import { defaultGuessSource, VOCAB_ENTRY_SOURCE } from '@/domain/glossGuess';
 import { tagsetEnforces, validateValue } from '@/domain/tagsets';
 import { handleComposeBeforeInput } from '@/lib/composeInput';
-import { PRECEDENT_REFRESH_MIN_MS, provClass, uncontrolledValue } from './editor/shared.js';
+import {
+  cellTier,
+  PRECEDENT_REFRESH_MIN_MS,
+  provClass,
+  uncontrolledValue,
+} from './editor/shared.js';
 import { comments } from './editor/comments.js';
 import { popover } from './editor/popover.js';
 import { linking } from './editor/linking.js';
@@ -544,6 +549,9 @@ export class IgtEditor {
   }) {
     const v = value ?? '';
     const filled = v !== '';
+    // The kind is the first segment of the key and is always one of a fixed
+    // few literals; everything after it may hold a colon (see cellTier).
+    const tier = cellTier(key.split(':', 1)[0], fieldName);
     // What is wrong with what is already in the cell. A closed field refuses
     // to commit these (see _commitField); an open one only flags a stray
     // delimiter. Either way the cell says so rather than looking fine.
@@ -573,6 +581,7 @@ export class IgtEditor {
           ps,
         )} ${extraClass}"
         data-cell-key=${key}
+        data-tier=${tier}
         data-has-tagset=${tagset ? '1' : nothing}
         data-tagset-delims=${tagset?.delimiters || nothing}
         data-tagset-enforces=${tagsetEnforces(tagset) ? '1' : nothing}
@@ -642,6 +651,7 @@ export class IgtEditor {
         p,
       )} ${extraClass}"
       data-cell-key=${key}
+      data-tier=${tier}
       data-has-tagset=${tagset ? '1' : nothing}
       data-tagset-delims=${tagset?.delimiters || nothing}
       data-tagset-enforces=${tagsetEnforces(tagset) ? '1' : nothing}

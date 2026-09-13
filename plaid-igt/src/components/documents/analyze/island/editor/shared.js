@@ -60,6 +60,15 @@ export class UncontrolledValueDirective extends Directive {
 }
 export const uncontrolledValue = directive(UncontrolledValueDirective);
 
+// A cell's TIER: its kind plus the field it holds — the logical row that Enter,
+// Tab and the Ctrl+Enter hop move along, which band wrapping can put on several
+// screen rows. Rendered as an attribute rather than read back out of the cell
+// key, because the id in the middle of a key may itself hold a colon (an
+// unanalyzed word's morpheme is `virtual:<word id>`) and so may a field name.
+// Parsed, every unanalyzed word's morpheme cells landed on a tier of their own,
+// so the hop found no next word and Enter dead-ended at a band edge.
+export const cellTier = (kind, fieldName) => `${kind}:${fieldName ?? ''}`;
+
 export const morphFormOf = (m) =>
   m.metadata && Object.prototype.hasOwnProperty.call(m.metadata, 'form')
     ? (m.metadata.form ?? '')

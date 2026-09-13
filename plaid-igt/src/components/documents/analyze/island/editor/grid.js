@@ -6,6 +6,7 @@ import { allowedGuess } from '@/domain/glossGuess';
 import { morphemeJoiner } from '@/domain/affixMarkers';
 import { KINDS } from '@/domain/precedent';
 import {
+  cellTier,
   morphFormOf,
   numHtml,
   provClass,
@@ -137,6 +138,7 @@ export const grid = {
                 value: token.orthographies?.[name] ?? '',
                 apply: (v) => this.doc.updateOrthography(token.id, name, v),
                 ariaLabel: `${name} for ${token.content}`,
+                fieldName: name,
               })}
             </div>
           `,
@@ -276,6 +278,7 @@ export const grid = {
                 ? 'igt-field--filled'
                 : 'igt-field--empty'} ${provClass('igt-field', prov)}"
               data-cell-key=${`mf:${morph.id}`}
+              data-tier=${cellTier('mf', null)}
               data-word=${word.id}
               data-prec=${morph.precedence ?? 1}
               data-confirm-word=${word.id}

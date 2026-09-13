@@ -493,6 +493,32 @@ describe('a word nobody has analyzed', () => {
     expect(host.contains(document.activeElement)).toBe(true);
   });
 
+  // The Ctrl+Enter sweep hops to the same TIER of the next word, and a tier used
+  // to be read out of the cell key by dropping its middle segment. A virtual
+  // morpheme's id holds a colon, so its cells each landed on a tier of their
+  // own ("ma:w-2:Gloss" rather than "ma:Gloss") and matched nothing: the hop
+  // found no next word and stopped on every word nobody had segmented, which in
+  // a fresh document is all of them.
+  it('is a hop target on the morpheme tier like any other word', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      // w-1 has a real morpheme carrying a machine gloss; w-2 has none.
+      const { doc } = mount({
+        morphemes: [{ id: 'm-1', begin: 0, end: 3, precedence: 1, metadata: {} }],
+      });
+      await doc.updateMorphemeSpan('m-1', 'Gloss', 'DEF', MACHINE);
+      await settle();
+      const c = cell('ma:m-1:Gloss');
+      focus(c);
+      key(c, 'Enter', { ctrlKey: true });
+      vi.advanceTimersByTime(250);
+      await settle();
+      expect(document.activeElement).toBe(cell('ma:virtual:w-2:Gloss'));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('writes the gloss typed into it against the morpheme it just became', async () => {
     const { doc, client } = mount({ morphemes: [] });
     await settle();
