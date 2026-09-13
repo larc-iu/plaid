@@ -17,6 +17,7 @@ Two things about the engine (v0) that shape everything here:
 import re
 from typing import Any, Dict, List, Optional
 
+from ..core.corpus import Clipping
 from ..core.limits import GROUP_LIMIT, ROW_LIMIT
 from .project import UdProject
 from .tools import ToolError, Workspace
@@ -43,13 +44,13 @@ def _err(e: Exception) -> ToolError:
     return ToolError('Query rejected: ' + (m.group(1) if m else msg[:400]))
 
 
-class Corpus:
+class Corpus(Clipping):
     """Query helpers bound to one workspace."""
 
     def __init__(self, ws: Workspace):
+        super().__init__()
         self.ws = ws
         self.p: UdProject = ws.project
-        self.truncated = False
 
     # --- running ---------------------------------------------------------
 
@@ -69,7 +70,7 @@ class Corpus:
         if order_by:
             body['order_by'] = order_by
         res = self.run(body)
-        self.truncated = bool(res.get('truncated'))
+        self.note_truncation(res)
         return res.get('results') or []
 
     def count(self, where: List[Any], find: List[str]) -> int:
@@ -80,22 +81,8 @@ class Corpus:
         because the engine will not order an aggregate."""
         res = self.run({'where': where, 'limit': limit,
                         'return': {'group': group, 'aggregates': [['count']]}})
-        self.truncated = bool(res.get('truncated'))
+        self.note_truncation(res)
         return sorted(res.get('results') or [], key=lambda r: -r[-1])
-
-    def clipped_note(self, what: str = 'values') -> str:
-        """A line to append when the LAST read hit the engine's row limit.
-
-        `group` and `entities` record `truncated` and nothing read it, so a
-        "commonest" list was the top of an arbitrary prefix stated as the top
-        of the corpus. Read it straight after the call: the Corpus is cached
-        for the whole turn, so the flag belongs to the most recent read only.
-        """
-        if not self.truncated:
-            return ''
-        return (f'\n(note) The engine returned as many rows as it will, so these {what} come '
-                f'from part of the corpus and not all of it. Narrowing it to one document or '
-                f'one field gives a complete answer.')
 
     # --- clauses ----------------------------------------------------------
 
@@ -136,14 +123,17 @@ class Corpus:
 
     def _merged_groups(self, first: List[list], second: List[list]) -> List[list]:
         """Two grouped results with the same key shape, summed by key and
-        sorted by count. `truncated` covers both reads."""
-        first_truncated = self.truncated
+        sorted by count.
+
+        Both reads have already run by the time this is called, so the
+        clipping of the FIRST one cannot be recovered here: it is remembered
+        as each read happens (Clipping), and `clipped_note` answers for both.
+        """
         counts: Dict[tuple, int] = {}
         for rows in (first, second):
             for row in rows:
                 key = tuple(row[:-1])
                 counts[key] = counts.get(key, 0) + int(row[-1] or 0)
-        self.truncated = self.truncated or first_truncated
         return sorted([list(k) + [n] for k, n in counts.items()], key=lambda r: -r[-1])
 
     def form_documents(self, spec: Dict[str, Any]) -> List[tuple]:

@@ -21,6 +21,7 @@ import re
 from collections import Counter, defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from ..core.corpus import Clipping
 from ..core.limits import GROUP_LIMIT, ROW_LIMIT
 from .project import is_token_ignored
 from .tools import Workspace, ToolError
@@ -48,16 +49,15 @@ def _err(e: Exception) -> ToolError:
     return ToolError('Query rejected: ' + (m.group(1) if m else msg[:400]))
 
 
-class Corpus:
+class Corpus(Clipping):
     """Query helpers bound to one workspace (its client, project, caches)."""
 
     def __init__(self, ws: Workspace):
+        super().__init__()
         self.ws = ws
         self.p = ws.project
         self.W, self.M, self.S = self.p.word_layer_id, self.p.morpheme_layer_id, self.p.sentence_layer_id
         self._ref_names: Optional[Dict[str, str]] = None
-        self.truncated = False
-        self._clipped = False
 
     # --- running queries ------------------------------------------------------
 
@@ -79,40 +79,15 @@ class Corpus:
         instance for callers that want to say so."""
         res = self.run({'where': where, 'limit': limit,
                         'return': {'group': group, 'aggregates': aggregates or [['count']]}})
-        self._note_truncation(res)
+        self.note_truncation(res)
         return res.get('results') or []
-
-    def _note_truncation(self, res: Dict[str, Any]) -> None:
-        self.truncated = bool(res.get('truncated'))
-        self._clipped = self._clipped or self.truncated
-
-    def forget_clipping(self) -> None:
-        """Forget whether earlier reads were clipped. A corpus-wide tool calls
-        this before its own reads and :meth:`clipped_note` after them."""
-        self._clipped = False
-
-    def clipped_note(self, what: str = 'values') -> str:
-        """A line to append when ANY read since :meth:`forget_clipping` hit the
-        engine's row limit.
-
-        `group` and `entities` record it and nothing read it, so a "commonest"
-        list was the top of an arbitrary prefix stated as the top of the
-        corpus. Asked of every read since the reset, not only the last one:
-        these tools run several queries and the narrow ones come last, so the
-        last read's flag says nothing about the tally the numbers came from.
-        """
-        if not self._clipped:
-            return ''
-        return (f'\n(note) The engine returned as many rows as it will, so these {what} come '
-                f'from part of the corpus and not all of it. Narrowing it to one document or '
-                f'one field gives a complete answer.')
 
     def entities(self, where: List[Any], find: List[str], limit: int, order_by=None) -> List[list]:
         body: Dict[str, Any] = {'find': find, 'where': where, 'return': 'entities', 'limit': min(limit, ROW_LIMIT)}
         if order_by:
             body['order_by'] = order_by
         res = self.run(body)
-        self._note_truncation(res)
+        self.note_truncation(res)
         return res.get('results') or []
 
     # --- clause builders -------------------------------------------------------

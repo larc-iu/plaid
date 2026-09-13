@@ -353,6 +353,36 @@ def test_a_span_is_joined_to_its_word_by_covers(ws):
     assert set(where[1][2]) <= {'doc', 'layer', 'metadata', 'value'}
 
 
+def test_a_clipped_first_read_is_still_reported_after_a_second_read(ws):
+    """The form tools ask twice: the surface of every token without a Form
+    span, then every Form span. The flag was read after both queries had run,
+    so it was the second read's own flag compared with itself and a clipped
+    first half was never reported."""
+    calls = {'n': 0}
+
+    def engine(body):
+        calls['n'] += 1
+        return {'return': 'aggregate', 'results': [['mar', 3]], 'truncated': calls['n'] == 1}
+    ws.client.query = engine
+    out = run(ws, 'frequency_list', what='form')
+    assert calls['n'] >= 2, 'both halves are read'
+    assert 'come from part of the corpus and not all of it' in out
+
+
+def test_one_tool_does_not_inherit_another_tools_clipped_read(ws):
+    """The corpus helper lives as long as the turn, so a sticky flag has to be
+    forgotten between tool calls or every later report carries the warning."""
+    state = {'truncated': True}
+
+    def engine(body):
+        return {'return': body.get('return'), 'columns': [], 'results': [], 'count': 0,
+                'truncated': state['truncated']}
+    ws.client.query = engine
+    assert 'part of the corpus' in run(ws, 'frequency_list', what='lemma')
+    state['truncated'] = False
+    assert 'part of the corpus' not in run(ws, 'frequency_list', what='lemma')
+
+
 def test_an_unconfirmed_value_is_a_negated_clause(ws):
     from plaid_agent.ud.corpus import Corpus
     c = Corpus(ws)

@@ -1213,6 +1213,11 @@ def call_tool(ws: Workspace, name: str, args: Dict[str, Any]) -> str:
     fn = _IMPL.get(name)
     if not fn:
         return f'Unknown tool {name}'
+    # Each tool answers for its OWN reads. The corpus helper lives as long as
+    # the turn, so without this a report would carry the note about a clipped
+    # read that an earlier tool in the same turn had made.
+    if ws._corpus is not None:
+        ws._corpus.forget_clipping()
     try:
         return _truncate(fn(ws, **(args or {})))
     except (ToolError, ValueError) as e:  # ValueError: a reference lookup failed, message is for the model

@@ -223,13 +223,11 @@ def t_check_consistency(ws: Workspace, kind: str = None, limit: int = 25) -> str
     out: List[str] = []
     # Every check here states a count as a fact, so a clipped read has to be
     # said out loud: the engine's row limit makes "the commonest" the top of an
-    # arbitrary prefix.
-    clipped = ''
+    # arbitrary prefix. Asked once at the end, of every read the tool made.
 
     if 'lemma-upos' in kinds:
         rows = c.group([c.word('?t'), c.field('lemma', '?l'), c.on('?l'),
                         c.field('upos', '?u'), c.on('?u')], ['?l.value', '?u.value'])
-        clipped = clipped or c.clipped_note('lemmas')
         by = defaultdict(list)
         for lemma, upos, n in rows:
             if lemma and upos:
@@ -245,7 +243,6 @@ def t_check_consistency(ws: Workspace, kind: str = None, limit: int = 25) -> str
 
     if 'form-lemma' in kinds:
         rows = c.form_lemma_pairs()
-        clipped = clipped or c.clipped_note('forms')
         by = defaultdict(list)
         for form, lemma, n in rows:
             if form and lemma:
@@ -261,7 +258,6 @@ def t_check_consistency(ws: Workspace, kind: str = None, limit: int = 25) -> str
 
     if 'rare-pairs' in kinds:
         pairs = _deprel_upos_pairs(c)
-        clipped = clipped or c.clipped_note('pairs')
         rare = [(d, u, n) for (d, u), n in sorted(pairs.items(), key=lambda kv: kv[1]) if n <= 2]
         out.append('')
         out.append(f'deprel and UPOS pairs seen once or twice: {len(rare)}.')
@@ -270,7 +266,7 @@ def t_check_consistency(ws: Workspace, kind: str = None, limit: int = 25) -> str
             out.append(f'  {d} on {u}: {n}')
         if len(rare) > limit:
             out.append(f'  … and {len(rare) - limit} more')
-    return _truncate('\n'.join(out) + clipped)
+    return _truncate('\n'.join(out) + c.clipped_note('counts'))
 
 
 def _deprel_upos_pairs(c: Corpus) -> Dict[tuple, int]:
@@ -299,8 +295,8 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
     limit = clamp_limit(limit, 20, 100)
     c = _corpus(ws)
     # A per-document count read from a clipped result is the top of a prefix,
-    # and this is the tool a session starts from.
-    clipped = ''
+    # and this is the tool a session starts from. Asked once per branch, of
+    # every read that branch made.
     # deprel is the tree: the column the parser is least reliable on, and the
     # one this tool could not see until it was added here.
     fields = [field] if field else list(FIELDS) + ['deprel']
@@ -338,14 +334,13 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
                 where = [c.word('?t'),
                          ['not', ['span', '?s', {'layer': c.p.layer(f)}], c.on('?s')]]
             docs = c.documents_with(where, '?t')
-            clipped = clipped or c.clipped_note('documents')
             total = sum(n for _, n in docs)
             out.append(f'{f}: {total} word(s) with none, in {len(docs)} document(s)')
             for did, n in docs[:limit]:
                 out.append(f'    {n:>6}  "{c.doc_name(did)}"')
             if len(docs) > limit:
                 out.append(f'    … and {len(docs) - limit} more documents')
-        return _truncate(('\n'.join(out) + clipped) or 'Nothing is missing.')
+        return _truncate(('\n'.join(out) + c.clipped_note('documents')) or 'Nothing is missing.')
 
     stamp = {'prov': 'contributed'} if kind == 'contributed' else {'prov': 'inferred'}
     word = 'a contributor\'s unreviewed' if kind == 'contributed' else 'unconfirmed machine'
@@ -381,9 +376,6 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
         else:
             where = [c.field(f, '?s', metadata=stamp), c.unconfirmed('?s')]
             docs = c.documents_with(where, '?s')
-        # Before the early continue: a clipped read that found nothing for this
-        # field is exactly the one that must say so.
-        clipped = clipped or c.clipped_note('documents')
         total = sum(n for _, n in docs)
         if not total:
             continue
@@ -392,7 +384,10 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
             out.append(f'    {n:>6}  "{c.doc_name(did)}"')
         if len(docs) > limit:
             out.append(f'    … and {len(docs) - limit} more documents')
+    clipped = c.clipped_note('documents')
     if not out:
+        # A clipped read that found nothing is exactly the one that must say
+        # so: "nothing is waiting" for a corpus that may be full of it.
         return f'Nothing is waiting for review ({kind}).' + clipped
     out.append('')
     out.append('confirm marks these as reviewed; discard_predictions throws the machine ones away.')
