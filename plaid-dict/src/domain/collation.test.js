@@ -116,8 +116,27 @@ describe('alphabetCollator', () => {
 });
 
 describe('suggestAlphabet', () => {
-  it('offers one unit per distinct first letter, folded and ordered', () => {
-    expect(suggestAlphabet(['zuwa', 'abwe', 'ábwe', 'Kat', 'kat'])).toEqual(['a', 'k', 'z']);
+  it('offers one unit per distinct first grapheme, as written and ordered', () => {
+    expect(suggestAlphabet(['zuwa', 'abwe', 'ábwe', 'Kat', 'kat'])).toEqual(['a', 'á', 'k', 'z']);
+  });
+
+  it('keeps a marked letter instead of folding it away', () => {
+    // Folding proposed `e i j l o p` for this Yoruba set, quietly deleting two
+    // of the language's letters. A compiler can delete a suggestion; they
+    // cannot easily notice one that was never made.
+    expect(suggestAlphabet(['ẹja', 'ilé', 'jẹ', 'lọ', 'omi', 'ọkọ', 'pupa'])).toEqual([
+      'e\u0323'.normalize('NFC'),
+      'i',
+      'j',
+      'l',
+      'o',
+      'o\u0323'.normalize('NFC'),
+      'p',
+    ]);
+  });
+
+  it('keeps a combining mark with its letter rather than proposing the mark', () => {
+    expect(suggestAlphabet(['ọ̀kọ̀'])).toEqual(['ọ̀']);
   });
 
   it('is empty for no forms', () => {

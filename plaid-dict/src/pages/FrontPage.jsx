@@ -49,6 +49,13 @@ export const FrontPage = () => {
 
   const searching = query.trim() !== '';
   const found = useMemo(() => searchPages(pages, query, searchIndex), [pages, query, searchIndex]);
+  // A page is a spelling, and a spelling can carry more than one headword: the
+  // four `ọkọ` of a Yoruba dictionary share one page, in homograph order. So
+  // counting pages and calling them headwords undercounts by exactly the
+  // homonyms, which are the entries a compiler most wants to see are there.
+  const headwordsIn = (ps) => ps.reduce((n, page) => n + page.headwords.length, 0);
+  const shown = headwordsIn(found);
+  const all = headwordsIn(pages);
 
   if (missing) {
     return (
@@ -100,8 +107,8 @@ export const FrontPage = () => {
       )}
 
       <p className="mb-4 text-sm text-muted-foreground">
-        {found.length.toLocaleString()} {found.length === 1 ? 'headword' : 'headwords'}
-        {searching && ` of ${pages.length.toLocaleString()}`}
+        {shown.toLocaleString()} {shown === 1 ? 'headword' : 'headwords'}
+        {searching && ` of ${all.toLocaleString()}`}
       </p>
 
       {/* A search ranks its hits, so it lists them in that order with what

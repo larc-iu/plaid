@@ -142,14 +142,25 @@ export const alphabetCollator = (units) => {
 /**
  * The alphabet units a dictionary's own headwords need, in the order the
  * fallback collator puts them: what the setup form offers as a starting point,
- * one unit per distinct first letter. N-graphs are the compiler's to add,
- * since nothing in the data says "ch" is a letter rather than c then h.
+ * one unit per distinct first grapheme, AS WRITTEN. N-graphs are the compiler's
+ * to add, since nothing in the data says "ch" is a letter rather than c then h,
+ * and marked letters are theirs to remove, for the mirror reason.
+ *
+ * This used to fold the mark away, which read as the safe default and was not.
+ * Nothing in the data separates a letter-forming mark from a tone mark: a dot
+ * below makes a letter in Yoruba and marks tone in Vietnamese. So the choice is
+ * only which way to be wrong, and the two are not symmetric. Folding dropped
+ * `ẹ` and `ọ` out of a Yoruba alphabet altogether, filing `ẹja` under E and
+ * seven words under O with nothing on screen to say so. Offering them costs one
+ * visible row the compiler deletes. Deleting it is safe now that an unlisted
+ * mark files with its base letter (see splitGraphemes); before that fix it was
+ * the deletion that broke the order.
  */
 export const suggestAlphabet = (forms, collator = new Intl.Collator()) => {
   const units = new Set();
   for (const form of forms || []) {
-    const first = [...String(form ?? '')][0];
-    if (first) units.add(foldChar(first));
+    const first = splitClusters(String(form ?? '').toLowerCase())[0];
+    if (first) units.add(first);
   }
   return [...units].sort(collator.compare);
 };
