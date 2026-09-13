@@ -274,7 +274,9 @@ The heading of each example opens that sentence in the annotation editor.
 
 == The panel
 
-The **Assistant** button in the header opens the same assistant in a panel beside whatever you are looking at, on every screen.
+The **Assistant** button in the header opens the same assistant in a panel beside whatever you are looking at.
+It is there wherever there is a project for it to be about, and on the general screens, where it asks which project to use.
+The screens for making a project and for importing one have neither, so it is not offered there.
 A handle on the right edge of the window, halfway down, opens it too: it widens under the pointer to show the assistant's mark, and it is the same gesture as the history rail on the left edge of a document.
 The panel stays where it is as you move around, so a question can be asked without leaving what you are reading and an answer can be read while you get on with something else.
 The page narrows to make room for it.

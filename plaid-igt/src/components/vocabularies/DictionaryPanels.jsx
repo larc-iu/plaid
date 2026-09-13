@@ -196,25 +196,23 @@ export const EntryPlace = ({
               }}
               placeholder="Find the entry"
             />
-            {/* Only the open entry can be raised: a row dropped on Move to
-                other entry is choosing among the entries that exist. */}
-            {pickFor === item.id && (
-              <button
-                type="button"
-                className="flex items-center gap-1 rounded px-1 py-0.5 text-left text-xs text-primary hover:bg-accent"
-                onClick={() => {
-                  setPickFor(null);
-                  onRaiseHeadword(item.id);
-                }}
-              >
-                <Plus className="h-3 w-3" /> Add headword
-                <span className="text-muted-foreground">
-                  a new entry over this one, with the same form
-                </span>
-              </button>
-            )}
           </PopoverContent>
         </Popover>
+        {/* Beside Set parent rather than inside its popover. It was in there,
+            and a lexicographer looking for exactly this gesture read the row,
+            found Set parent and Add sense, and concluded the app could not do
+            it. Only the open entry can be raised: a row dropped on Move to
+            other entry is choosing among the entries that already exist. */}
+        {canManage && (
+          <button
+            type="button"
+            title="A new entry over this one, with the same form. This one becomes its first sense."
+            className="inline-flex items-center gap-1 text-primary hover:underline"
+            onClick={() => onRaiseHeadword(item.id)}
+          >
+            <Plus className="h-3 w-3" /> Add headword
+          </button>
+        )}
         {canManage && (
           <Link
             to={newSenseTo(item.id)}

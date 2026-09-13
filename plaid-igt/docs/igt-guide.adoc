@@ -673,7 +673,9 @@ A conversation belongs to the project it was started in, so a row from another p
 
 == The panel
 
-The **Assistant** button in the header opens the same assistant in a panel beside whatever you are looking at, on every screen.
+The **Assistant** button in the header opens the same assistant in a panel beside whatever you are looking at.
+It is there wherever there is a project for it to be about, and on the general screens, where it asks which project to use.
+The screens for making a project and for importing one have neither, so it is not offered there.
 A handle on the right edge of the window, halfway down, opens it too: it widens under the pointer to show the assistant's mark, and it is the same gesture as the history rail on the left edge of a document.
 The panel stays where it is as you move around, so a question can be asked without leaving what you are reading and an answer can be read while you get on with something else.
 The page narrows to make room for it.
@@ -812,12 +814,14 @@ Five formats are supported:
 Its **Word line** setting prints the words as written, segmented into morphemes, or both, one above the other.
 Both is the four-line hand-in a field methods course asks for: the words as written, the words segmented, the morpheme glosses, the free translation.
 Printing a morpheme gloss line over words as written leaves the hyphens on the two lines with nothing to correspond to, and the preset says so.
+Three more settings shape the page: **Number sentences** puts a running number before each one, **Document header** prints the document's name and metadata above its text, and **Include vocabularies as TSV files** adds the project's lexicons to the `.zip` that a project-wide or multi-document export produces.
 * **FieldWorks (FLEx)**: the texts as FieldWorks' interlinear XML (`.flextext`) together with the project's vocabularies as a LIFT lexicon (`.lift`), zipped with a note on the order to import them in. Leave the lexicon out to get the `.flextext` on its own.
 * **CLDF TextCorpus** (`.zip`): a Cross-Linguistic Data Formats dataset, one CSV per component table with a `cldf-metadata.json` describing them.
 CLDF aligns morphemes by their position in a tab-separated cell, and has no column for some of what a project holds.
 Whatever the preset is set to, a CLDF export leaves behind the vocabulary links between words and their entries, the provenance marks that tell machine work from a person's, morpheme types other than the clitics the joints still show, and the difference between a word left unanalyzed and a word analyzed as a single morpheme.
 The preset lists these under the columns it is dropping, so the loss is on screen before the export runs.
 * **ELAN** (`.eaf`): one annotation file per document, bundled into a `.zip` with its recording when it has one.
+**Segment words into morphemes** decides whether the tier tree reaches below the word, **Show affix markers on morphemes** writes them as `-ka` rather than `ka`, **One tier set per speaker** gives each speaker their own tiers, and **Include media files** puts the recording in the `.zip`.
 * **Plaid IGT JSON** (`.zip`): a lossless archive you can import again later.
 
 A FLEx preset also carries the writing-system tags FieldWorks will see: one for the baseline text, one for each alternate orthography, and one for glosses and translations.
@@ -850,6 +854,7 @@ Results come in two views:
 
 Every change in Plaid IGT is recorded in an **audit log**, with a meaningful message and the identity of the person who made it.
 Past states of any document can be viewed, read-only.
+Comments are the exception: they are kept beside the data rather than in it, so they neither appear in the log nor change what a past state shows.
 
 Open a document's **history** from the rail at the left edge of the editor.
 Each entry is one action as you performed it, such as "Merge morphemes" or "Tokenize", even when it was made up of several underlying changes.
