@@ -172,7 +172,9 @@ export const chrome = {
                   data-running=${this._autoAnalyzeStatus?.running ? 'true' : nothing}
                   title=${this._autoAnalyzeStatus?.running
                     ? `Auto-analyze, ${this._autoAnalyzeStatus.label}`
-                    : 'Analyze the document automatically: copy previous analyses, have a service propose segmentation and glosses, and link to the lexicon. Proposals show in violet until you confirm them.'}
+                    : /* A phrase, like every other button here. The steps it
+                         can run are the dialog's own checkboxes. */
+                      'Analyze the document automatically'}
                   @click=${(e) => {
                     e.stopPropagation();
                     this._openAutoAnalyze();

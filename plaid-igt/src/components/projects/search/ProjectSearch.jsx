@@ -242,7 +242,6 @@ export const ProjectSearch = ({ project, projectId, client }) => {
             {result.totalValues.toLocaleString()} distinct value
             {result.totalValues === 1 ? '' : 's'} · {result.totalHits.toLocaleString()} total
             occurrence{result.totalHits === 1 ? '' : 's'}
-            {result.totalValues > result.rows.length ? ` (showing top ${result.rows.length})` : ''}
           </p>
           {result.rows.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">No matches.</p>
@@ -258,6 +257,16 @@ export const ProjectSearch = ({ project, projectId, client }) => {
               // are, how many occurrences, and that the list is capped.
               showCount={false}
             />
+          )}
+          {/* Under the table, where the pager is. The pager counts the rows it
+              was handed ("1-100 of 200"), which read as the corpus having 200
+              distinct forms when the line above said 11,130. */}
+          {result.totalValues > result.rows.length && (
+            <ListHint>
+              Another {(result.totalValues - result.rows.length).toLocaleString()} value
+              {result.totalValues - result.rows.length === 1 ? '' : 's'} are not shown. Refine your
+              search to see them.
+            </ListHint>
           )}
         </div>
       )}

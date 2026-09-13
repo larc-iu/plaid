@@ -659,13 +659,15 @@ export const VocabularyDetail = () => {
         <div className="overflow-x-auto rounded-md border">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-muted/50 text-left text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                <th className="px-3 py-2">Field</th>
-                <th className="px-3 py-2">Inline</th>
-                <th className="px-3 py-2">Type</th>
-                <th className="px-3 py-2">Shown on</th>
-                <th className="px-3 py-2">Language</th>
-                {showTagsetCol && <th className="px-3 py-2">Tagset</th>}
+              {/* The same header as every other table here. It used to be
+                  uppercased, the one shouting table in the app. */}
+              <tr className="bg-muted/50">
+                <th className="px-3 py-2 text-left font-medium">Field</th>
+                <th className="px-3 py-2 text-left font-medium">Inline</th>
+                <th className="px-3 py-2 text-left font-medium">Type</th>
+                <th className="px-3 py-2 text-left font-medium">Shown on</th>
+                <th className="px-3 py-2 text-left font-medium">Language</th>
+                {showTagsetCol && <th className="px-3 py-2 text-left font-medium">Tagset</th>}
                 <th className="w-24 px-3 py-2" />
               </tr>
             </thead>
@@ -681,11 +683,11 @@ export const VocabularyDetail = () => {
                       <span className="flex items-center gap-2">
                         <span>{fieldLabel(field)}</span>
                         {field.immutable ? (
-                          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
                             Required
                           </span>
                         ) : isBuiltInField(field.name) ? (
-                          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
                             Built in
                           </span>
                         ) : null}

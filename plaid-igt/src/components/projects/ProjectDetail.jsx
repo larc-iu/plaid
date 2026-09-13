@@ -334,7 +334,7 @@ export const ProjectDetail = () => {
             <Download className="h-4 w-4" /> Export
           </TabsTrigger>
           {canManage && (
-            <TabsTrigger value="settings" to={`/projects/${projectId}/access`}>
+            <TabsTrigger value="settings" to={`/projects/${projectId}/general`}>
               <Settings className="h-4 w-4" /> Settings
             </TabsTrigger>
           )}
