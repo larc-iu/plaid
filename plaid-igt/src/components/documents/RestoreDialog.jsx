@@ -60,7 +60,11 @@ const changeLines = (s, layers) => {
   if (!s) return [];
   const lines = [];
   if (s.name) lines.push('The document name');
-  if (changed(s.texts)) lines.push('The text');
+  // Not just "The text": a word is a slice of the body, so restoring the text
+  // changes what the words read while their own rows are untouched and counted
+  // nowhere below. An equal-length respell is the whole of such a restore, and
+  // this line was all a reader got for ten words coming back.
+  if (changed(s.texts)) lines.push('The text, and the words read from it');
   for (const e of s.tokens?.byLayer || []) {
     const n = changed(e);
     if (!n) continue;

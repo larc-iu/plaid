@@ -4,6 +4,7 @@ import { Button } from '../ui/button.jsx';
 import { Badge } from '../ui/badge.jsx';
 import { cn } from '../../lib/utils.js';
 import { fullTimestamp } from '../../utils/formatTime.js';
+import { readableDescription } from '../../lib/auditText.js';
 
 // The audit log arrives already folded into logical units by the server: a
 // labeled operation ("Merge morphemes"), else an atomic batch, else a lone
@@ -13,7 +14,12 @@ import { fullTimestamp } from '../../utils/formatTime.js';
 //
 // Rows size to their content (no fixed-height virtualization): a lone write
 // is two short lines, a multi-op unit adds a count badge and can expand.
-const unitLabel = (entry) => entry.message || entry.ops?.[0]?.description || 'No description';
+//
+// Through `readableDescription`, as the Activity feed's rows are: a raw
+// description naming two layer ids ran to three lines here and crowded out the
+// entries a reader is looking for.
+const unitLabel = (entry) =>
+  entry.message || readableDescription(entry.ops?.[0]?.description) || 'No description';
 
 const actor = (user, apiToken) =>
   user ? ` · by ${user.displayName}${apiToken ? ` (via ${apiToken.name})` : ''}` : '';
@@ -54,7 +60,8 @@ export const HistoryDrawer = ({
   // selecting one of its member ops views the state right after that op.
   const selectUnit = (entry) =>
     onSelectEntry({ id: entry.id, time: entry.endTime || entry.time, label: unitLabel(entry) });
-  const selectOp = (op) => onSelectEntry({ id: op.id, time: op.time, label: op.description });
+  const selectOp = (op) =>
+    onSelectEntry({ id: op.id, time: op.time, label: readableDescription(op.description) });
 
   const renderOp = (entry, op, isLast) => {
     const isSelected = selectedEntry?.id === op.id;
@@ -68,7 +75,7 @@ export const HistoryDrawer = ({
         )}
         onClick={() => selectOp(op)}
       >
-        <p className="line-clamp-2 text-sm leading-snug">{op.description}</p>
+        <p className="line-clamp-2 text-sm leading-snug">{readableDescription(op.description)}</p>
         <p className="mt-0.5 text-xs text-muted-foreground">
           {fullTimestamp(op.time)}
           {actor(op.user, null)}

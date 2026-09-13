@@ -35,3 +35,24 @@ describe('readableDescription', () => {
     expect(readableDescription(null)).toBe(null);
   });
 });
+
+describe('readableDescription, ids in the middle', () => {
+  it('drops every id clause, not just one at the end', () => {
+    // The longest line in a fresh project's feed, and three lines deep in the
+    // history rail beside "Tokenize" and "Save baseline text".
+    expect(
+      readableDescription(
+        'Create text in layer 01a09938-baf8-717f-92f9-51ab6040eb47 for document ' +
+          '01a0993c-b129-7ce4-bc58-0b3512a0bb35 with 0 metadata keys',
+      ),
+    ).toBe('Create text with 0 metadata keys');
+  });
+
+  it('still handles one at the end, and leaves the name in front of it', () => {
+    expect(
+      readableDescription(
+        'Create document "NotesC" in project 01a09938-baba-736b-bca2-f1af827135b7',
+      ),
+    ).toBe('Create document "NotesC"');
+  });
+});

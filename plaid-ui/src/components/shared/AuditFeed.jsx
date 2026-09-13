@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '../ui/button.jsx';
 import { ListHint } from '../ui/list-search.jsx';
@@ -19,6 +19,9 @@ import { readableDescription } from '../../lib/auditText.js';
 // server's and older rows have to be asked for rather than appearing.
 
 const CHUNK = 200;
+
+// Documents named on one row of the Where column before the rest are counted.
+const WHERE_DOCS = 3;
 
 // A unit's label, best available: the operation group's own message ("Confirm
 // word analysis"), else the first operation's description, else its type.
@@ -119,15 +122,33 @@ export const AuditFeed = ({
       className: 'text-muted-foreground',
       render: (e) => {
         const project = e.projects?.[0];
-        const document = e.documents?.[0];
-        if (document && project) {
-          const href = documentHref(document, project);
-          return href ? (
-            <Link to={href} className="hover:underline">
-              {document.name}
-            </Link>
-          ) : (
-            document.name
+        // EVERY document, not the first. One corpus-wide respell touched three
+        // and the feed named one, so a maintainer asking what changed in the
+        // other two was told nothing had. Three at most on the row, the rest
+        // counted, all of them in the title.
+        const documents = e.documents || [];
+        if (documents.length && project) {
+          const shown = documents.slice(0, WHERE_DOCS);
+          const rest = documents.length - shown.length;
+          return (
+            <span title={rest > 0 ? documents.map((d) => d.name).join(', ') : undefined}>
+              {shown.map((document, i) => {
+                const href = documentHref(document, project);
+                return (
+                  <Fragment key={document.id}>
+                    {i > 0 && ', '}
+                    {href ? (
+                      <Link to={href} className="hover:underline">
+                        {document.name}
+                      </Link>
+                    ) : (
+                      document.name
+                    )}
+                  </Fragment>
+                );
+              })}
+              {rest > 0 && ` +${rest} more`}
+            </span>
           );
         }
         if (project) {
