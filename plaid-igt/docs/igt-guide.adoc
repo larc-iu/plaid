@@ -176,6 +176,7 @@ A segment can never run into its neighbours.
 Times are shown to the millisecond everywhere.
 
 The speed slider runs from 0.25× to 5×, and clicking the value returns to 1×.
+From a transcript row, **Alt+↑** and **Alt+↓** change the speed without reaching for the slider.
 The loop button repeats the segment you are on until you pause.
 
 Deleting a segment from its row removes its times and speaker but leaves its text in the baseline.
@@ -807,6 +808,9 @@ Five formats are supported:
 * **Plain text**: an aligned, human-readable interlinear rendering.
 * **FieldWorks (FLEx)**: the texts as FieldWorks' interlinear XML (`.flextext`) together with the project's vocabularies as a LIFT lexicon (`.lift`), zipped with a note on the order to import them in. Leave the lexicon out to get the `.flextext` on its own.
 * **CLDF TextCorpus** (`.zip`): a Cross-Linguistic Data Formats dataset, one CSV per component table with a `cldf-metadata.json` describing them.
+CLDF aligns morphemes by their position in a tab-separated cell, and has no column for some of what a project holds.
+Whatever the preset is set to, a CLDF export leaves behind the vocabulary links between words and their entries, the provenance marks that tell machine work from a person's, morpheme types other than the clitics the joints still show, and the difference between a word left unanalyzed and a word analyzed as a single morpheme.
+The preset lists these under the columns it is dropping, so the loss is on screen before the export runs.
 * **ELAN** (`.eaf`): one annotation file per document, bundled into a `.zip` with its recording when it has one.
 * **Plaid IGT JSON** (`.zip`): a lossless archive you can import again later.
 
@@ -1001,6 +1005,7 @@ Every shortcut that takes Ctrl also takes Cmd on a Mac.
 | **Space** | Play or pause the recording, when you are not typing in a box.
 | **Shift+Space** | Play or pause the segment you are in, or the selected stretch of the timeline.
 | **Shift+←** / **Shift+→** | Move playback one second back or forward.
+| **Alt+↑** / **Alt+↓** (transcript) | Play faster or slower, a quarter of normal speed at a time.
 | **Enter** / **Esc** (transcript row) | Save the row and move to the next, or put the row back the way it was.
 | **↑** / **↓** (transcript row) | Move to the row above or below, from the start or end of the text.
 | **Enter** (proposed row) | Make a segment of the proposal, with the text you typed. Moving on saves it too.

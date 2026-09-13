@@ -609,6 +609,21 @@ describe('cldfLossSummary', () => {
     ).toContain('Gloss (word)');
   });
 
+  it('names what the format cannot carry, whatever the preset says', () => {
+    // A round trip came back with 1,062 vocabulary links and 1,062 provenance
+    // marks gone, and nothing on screen had said they would be. No option can
+    // turn these back on, so they are reported separately from the per-field
+    // buckets rather than left to be found by diffing an import.
+    const summary = cldfLossSummary(LAYERS, OPTIONS);
+    expect(summary.inherent.join(' ')).toMatch(/vocabulary links/i);
+    expect(summary.inherent.join(' ')).toMatch(/provenance/i);
+    expect(summary.inherent.join(' ')).toMatch(/unanalyzed/i);
+    // It does not depend on the preset.
+    expect(cldfLossSummary(LAYERS, { ...OPTIONS, glossField: null }).inherent).toEqual(
+      summary.inherent,
+    );
+  });
+
   it('reports a tier that is neither bound nor carried as dropped', () => {
     const summary = cldfLossSummary(LAYERS, {
       ...OPTIONS,

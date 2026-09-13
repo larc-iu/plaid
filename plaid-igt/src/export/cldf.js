@@ -311,8 +311,21 @@ export function cldfLossSummary(layers, options) {
   bucket(layers?.wordFields, 'word', o.extras.word);
   bucket(layers?.morphFields, 'morpheme', o.extras.morpheme);
   bucket(layers?.orthographies, 'orthography', o.extras.orthographies);
-  return { mapped, custom, dropped };
+  return { mapped, custom, dropped, inherent: INHERENT_LOSSES };
 }
+
+// What the FORMAT cannot carry, whatever the preset is set to. CLDF aligns
+// morphemes by their position in a tab-separated cell and has no column for any
+// of this, so no option can turn it back on. It is listed because the panel
+// beside it lists per-field losses and reads, otherwise, as the whole story: a
+// round trip through CLDF came back with 1,062 vocabulary links and 1,062
+// provenance marks gone and nothing on screen had said they would be.
+export const INHERENT_LOSSES = [
+  'Vocabulary links from words and morphemes to their entries',
+  'Provenance marks: machine-made and confirmed values arrive looking hand-made',
+  'Morpheme types, except the clitics the joints in the aligned cell still carry',
+  'Which words are unanalyzed: a word with no analysis exports as one whole-word morpheme',
+];
 
 // ---- the dataset ------------------------------------------------------------
 

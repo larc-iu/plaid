@@ -264,6 +264,18 @@ export const CldfOptions = ({ options, layers, languages, projectId, onChange })
             tone="text-destructive"
           />
         </div>
+        {/* Separate from the three lists above, which are about THIS preset's
+          settings. These hold however it is set. */}
+        <div className="border-t pt-2">
+          <p className="text-xs font-medium">CLDF cannot carry, whatever you choose</p>
+          <ul className="mt-1 flex flex-col gap-0.5">
+            {summary.inherent.map((item) => (
+              <li key={item} className="text-xs text-muted-foreground">
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </div>
   );
