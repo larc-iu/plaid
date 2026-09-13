@@ -398,8 +398,9 @@ test("the panel resumes the project's newest thread and holds it while the reade
   await expect(panel.getByText('the newer question')).toBeVisible();
 
   // To another document. The SAME thread, not one about the new document and
-  // not a fresh one.
-  await gotoDocument(page, otherDocumentId);
+  // not a fresh one. It has no sentences of its own, so what says it has
+  // arrived is its heading.
+  await page.goto(`/#/projects/${projectId}/documents/${otherDocumentId}?tab=analyze`);
   await expect(page.getByRole('heading', { name: 'Chrome Spec Second Document' })).toBeVisible();
   await expect(panel.getByText('the newer question')).toBeVisible();
   await expect(panel.getByText('the older question')).toHaveCount(0);
