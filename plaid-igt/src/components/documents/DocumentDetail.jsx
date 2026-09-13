@@ -155,7 +155,7 @@ const DocumentEditor = () => {
   // Every tab writes itself, Metadata included: here a bare URL means "no tab
   // chosen", which is what the landing effect below reads, so Metadata cannot
   // also be the bare URL without becoming unshareable.
-  const [activeTab, setActiveTab] = useTabParam(TABS, DEFAULT_TAB, 'tab', true);
+  const [activeTab, setActiveTab] = useTabParam(TABS, DEFAULT_TAB, { writeFallback: true });
   const [loadError, setLoadError] = useState('');
 
   // Base path for the tab links (each tab is `?tab=`, the default is the bare

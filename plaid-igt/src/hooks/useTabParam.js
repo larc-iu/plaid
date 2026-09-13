@@ -10,11 +10,15 @@ import { useSearchParams } from 'react-router-dom';
 // through). The fallback is never written to the URL, which keeps the plain
 // page link clean.
 //
-// `writeFallback` turns that off, for a group where the bare page does NOT mean
-// the fallback tab. The document editor is the one: no param there means "no
-// tab chosen", which is what lets it land on Analyze for a tokenized document,
-// so Metadata has to write itself like any other tab or its own address is a
-// URL that opens Analyze.
+// The options, all of them rare:
+//
+// `param` is the query key, for a second group on one page (`op`, `pane`).
+//
+// `writeFallback` turns off "the fallback is the bare page", for a group where
+// the bare page does NOT mean the fallback tab. The document editor is the one:
+// no param there means "no tab chosen", which is what lets it land on Analyze
+// for a tokenized document, so Metadata has to write itself like any other tab
+// or its own address is a URL that opens Analyze.
 //
 // `aliases` maps a spelling someone would reasonably type onto the slug that
 // group actually uses. A tab labelled Validation lives at `?tab=validate` and
@@ -22,10 +26,20 @@ import { useSearchParams } from 'react-router-dom';
 // and it used to land on Documents. An alias resolves AND rewrites, so the
 // address ends up saying the slug the app writes itself.
 //
+// `ready` is false while `tabs` can still GROW. A group whose membership
+// depends on data (the vocabulary's tabs, which need the viewer's rights)
+// starts short, and correcting the URL against the short list threw away a
+// perfectly good `?tab=settings` before it became legal. Nothing else can
+// know that from in here, so the caller says.
+//
 // The setter takes the same options as `setSearchParams`. Pass
 // `{ replace: true }` for a switch the user did not ask for, such as an
 // automatic landing tab, so it does not add a history entry to back out of.
-export const useTabParam = (tabs, fallback, param = 'tab', writeFallback = false, aliases) => {
+export const useTabParam = (
+  tabs,
+  fallback,
+  { param = 'tab', writeFallback = false, aliases, ready = true } = {},
+) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const raw = searchParams.get(param);
   const named = tabs.includes(raw) ? raw : (aliases?.[raw] ?? null);
@@ -50,12 +64,12 @@ export const useTabParam = (tabs, fallback, param = 'tab', writeFallback = false
   // address kept saying `?tab=validation` while the Documents tab was on
   // screen, and the wrong half is the half that gets copied to a colleague.
   useEffect(() => {
-    if (raw === null || tabs.includes(raw)) return;
+    if (!ready || raw === null || tabs.includes(raw)) return;
     setActive(aliases?.[raw] ?? fallback, { replace: true });
     // `aliases` is a literal at most call sites, so it is compared by its
     // answer for THIS value rather than by identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [raw, tabs, fallback, setActive, aliases?.[raw]]);
+  }, [ready, raw, tabs, fallback, setActive, aliases?.[raw]]);
 
   return [active, setActive];
 };

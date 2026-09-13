@@ -152,13 +152,9 @@ export const ProjectDetail = () => {
   );
   // Documents/Search live in `?tab=`, so a reload or a shared link reopens the
   // tab the user was on.
-  const [contentTab, setContentTab] = useTabParam(
-    CONTENT_TABS,
-    'documents',
-    'tab',
-    false,
-    TAB_ALIASES,
-  );
+  const [contentTab, setContentTab] = useTabParam(CONTENT_TABS, 'documents', {
+    aliases: TAB_ALIASES,
+  });
   const assistantAvailable = useAssistantAvailable(client, projectId, IGT_ASSISTANT.app);
   // The shell's panel is about this PROJECT while the reader is on any of its
   // screens. No subject of its own: what a reader is looking at here is the

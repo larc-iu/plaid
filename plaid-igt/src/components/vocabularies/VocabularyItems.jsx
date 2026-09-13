@@ -136,7 +136,9 @@ export const VocabularyItems = ({
   const newSenseTo = (parentId) => ({ search: itemQuery(NEW_ID, parentId) });
   // The right pane's tab (`?pane=`): the entry itself, its concordance, or
   // its comments. The entry is the default and keeps the URL clean.
-  const [pane, setPane] = useTabParam(['entry', 'concordance', 'comments'], 'entry', 'pane');
+  const [pane, setPane] = useTabParam(['entry', 'concordance', 'comments'], 'entry', {
+    param: 'pane',
+  });
   const paneTo = (name) => {
     const next = new URLSearchParams(searchParams);
     if (name === 'entry') next.delete('pane');

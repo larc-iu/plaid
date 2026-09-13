@@ -19,9 +19,10 @@ const Probe = ({
   fallback = 'documents',
   writeFallback = false,
   aliases,
+  ready = true,
   onReady,
 }) => {
-  const [active, setActive] = useTabParam(tabs, fallback, 'tab', writeFallback, aliases);
+  const [active, setActive] = useTabParam(tabs, fallback, { writeFallback, aliases, ready });
   const { search } = useLocation();
   onReady({ active, setActive, search });
   return <span data-active={active} />;
@@ -97,5 +98,31 @@ describe('tabTo', () => {
     expect(tabTo('/p', 'documents', 'documents')).toBe('/p');
     expect(tabTo('/p', 'search', 'documents')).toBe('/p?tab=search');
     expect(tabTo('/d', 'metadata', 'metadata', 'tab', true)).toBe('/d?tab=metadata');
+  });
+});
+
+describe('useTabParam while the tab list can still grow', () => {
+  it('leaves a value alone until the caller says the list is settled', async () => {
+    // The vocabulary screen's tabs depend on the viewer's rights, so before the
+    // load `settings` is not among them. Correcting against the short list threw
+    // a bookmarked `?tab=settings` away before it was ever legal.
+    const { read, unmount } = await mount('/v?tab=settings', {
+      tabs: ['items', 'comments'],
+      fallback: 'items',
+      ready: false,
+    });
+    expect(read().search).toBe('?tab=settings');
+    expect(read().active).toBe('items');
+    await unmount();
+  });
+
+  it('takes the value once the list has grown to include it', async () => {
+    const { read, unmount } = await mount('/v?tab=settings', {
+      tabs: ['items', 'comments', 'settings'],
+      fallback: 'items',
+    });
+    expect(read().active).toBe('settings');
+    expect(read().search).toBe('?tab=settings');
+    await unmount();
   });
 });

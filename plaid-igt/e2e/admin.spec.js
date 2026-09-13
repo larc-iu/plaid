@@ -160,10 +160,18 @@ test('an assistant conversation opens whoever had it', async ({ page }) => {
   const rows = page.locator('tbody tr');
   await expect(page.getByPlaceholder('Search conversations…')).toBeVisible({ timeout: 20000 });
 
-  const count = await rows.count();
   // The only coverage of item 13.3, the admin conversation index, so a skip
   // here leaves that feature untested and says it passed.
-  expect(count, 'the dev database must hold an assistant conversation').toBeGreaterThan(0);
+  //
+  // Polled, not counted once: the toolbar and its search box render before the
+  // rows do, and `count()` does not retry, so taking it the moment the
+  // placeholder appeared read zero about one run in four.
+  await expect
+    .poll(() => rows.count(), {
+      timeout: 20000,
+      message: 'the dev database must hold an assistant conversation',
+    })
+    .toBeGreaterThan(0);
 
   const title = (await rows.first().locator('td').first().innerText()).trim();
   await rows.first().locator('button').first().click();

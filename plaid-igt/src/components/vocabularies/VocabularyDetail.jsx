@@ -236,6 +236,10 @@ export const VocabularyDetail = () => {
       ? ['items', 'comments', 'maintainers', 'settings']
       : ['items', 'comments'],
     isNewVocabulary ? 'settings' : 'items',
+    // Not ready while the vocabulary is still loading: `canManageVocabulary`
+    // answers false until it knows, so the list starts at two tabs and a
+    // bookmarked `?tab=settings` would be corrected away before it was legal.
+    { ready: !loading },
   );
 
   // Lightweight update function that only updates vocabulary data without loading state

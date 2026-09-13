@@ -154,7 +154,7 @@ test('a reference field is a picker whose value is a link to the entry', async (
   const chip = page.getByRole('link', { name: new RegExp(`kat${stamp}`) }).first();
   await expect(chip).toBeVisible();
   await page.getByRole('button', { name: 'Remove' }).first().click();
-  const picker = page.getByPlaceholder(/Find an entry for variant of/);
+  const picker = page.getByPlaceholder(/Find an entry for Variant Of/);
   await expect(picker).toBeVisible();
   await picker.fill('lion');
   await page.getByRole('option').filter({ hasText: 'lion' }).click();

@@ -37,7 +37,7 @@ const OP_IDS = OPERATIONS.map((o) => o.id);
 // shared link lands on the same one.
 export const ProjectBulkEdit = ({ project, projectId, client }) => {
   const layerInfo = useMemo(() => getIgtLayerInfo(project), [project]);
-  const [op, setOp] = useTabParam(OP_IDS, 'respell', 'op');
+  const [op, setOp] = useTabParam(OP_IDS, 'respell', { param: 'op' });
 
   if (!layerInfo.primaryTokenLayer) {
     return (
