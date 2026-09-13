@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { rewindForRetry, unansweredTurn } from './resume.js';
+import { rewindForRetry, stoppedIn, unansweredTurn } from './resume.js';
 
 const conv = (messages, display) => ({ id: 'c1', messages, display });
 
@@ -93,5 +93,26 @@ describe('rewindForRetry', () => {
   it('returns null when there is nothing the user said to retry', () => {
     expect(rewindForRetry(conv([], []))).toBe(null);
     expect(rewindForRetry(null)).toBe(null);
+  });
+});
+
+describe('stoppedIn', () => {
+  const stopped = { convId: 'c1', steps: ['Read Text 1', 'Counted 12 words'] };
+
+  it('gives back what the stopped turn had done, in its own conversation', () => {
+    expect(stoppedIn(stopped, 'c1')).toBe(stopped);
+  });
+
+  it('says nothing in another conversation', () => {
+    // The panel keeps one thread per project, and the reader can switch
+    // threads from its header: an unscoped list put a stopped turn's steps
+    // under whatever was on screen next.
+    expect(stoppedIn(stopped, 'c2')).toBeNull();
+  });
+
+  it('says nothing when nothing was stopped, or nothing is open', () => {
+    expect(stoppedIn(null, 'c1')).toBeNull();
+    expect(stoppedIn(stopped, null)).toBeNull();
+    expect(stoppedIn({ convId: null, steps: [] }, null)).toBeNull();
   });
 });

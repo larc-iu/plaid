@@ -9,7 +9,7 @@ import { cn } from '../../lib/utils.js';
 import { notifyError } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
 import { AssistantMarkdown } from './AssistantMarkdown.jsx';
-import { rewindForRetry } from './resume.js';
+import { rewindForRetry, stoppedIn } from './resume.js';
 import { AssistantMark } from './PlaidMarks.jsx';
 import { NEARLY_FULL, fullness, latestUsage, totalSpend, usageLabel, usageTitle } from './usage.js';
 import {
@@ -227,14 +227,11 @@ export const ProjectAssistant = ({
   const [liveSteps, setLiveSteps] = useState([]); // progress messages so far
   const [partial, setPartial] = useState(''); // the reply so far, while it is written
   const [stopping, setStopping] = useState(false);
-  // The conversation whose last turn the user stopped by hand, so the banner
-  // that follows can say so rather than reporting a failure that did not happen.
-  const [userStopped, setUserStopped] = useState(null);
-  // What that turn had already done when it was stopped. The live list lives
-  // inside the `busy` block and goes with it, so stopping used to clear the
-  // screen of everything the turn had got through, which is the one thing a
-  // reader wants at that moment.
-  const [stoppedSteps, setStoppedSteps] = useState([]);
+  // The turn the reader stopped by hand and what it had already got through,
+  // as {convId, steps}: the banner that follows says so rather than reporting a
+  // failure that did not happen, and the steps stay on screen. Held WITH its
+  // conversation, see `stoppedIn` in resume.js.
+  const [stopped, setStopped] = useState(null);
   // How long the current turn has been going. A turn that sits on "Writing…"
   // for eleven minutes is indistinguishable from a dead one without this.
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -350,9 +347,11 @@ export const ProjectAssistant = ({
     return () => clearInterval(id);
   }, [busy]);
 
+  // Reflect a job on screen. It does NOT clear the stop record: this runs on
+  // every progress event, including the one `stopJob` fires the instant the
+  // reader presses Stop, so clearing here wiped what had just been recorded.
+  // A new piece of work clears it (see send and approve).
   const showJob = (j) => {
-    setUserStopped(null);
-    setStoppedSteps([]);
     setBusy(j.kind);
     setProgress(j.progress);
     setLiveSteps(j.steps);
@@ -589,6 +588,7 @@ export const ProjectAssistant = ({
   const send = (textOverride) => {
     const typed = (textOverride ?? input).trim();
     if (!typed || !canSend) return;
+    setStopped(null);
     // The chip is the reference the question is about, said the way the
     // assistant addresses one. A question that already names it is left alone.
     const text = focus && !typed.includes(focus.ref) ? `${focus.ref}: ${typed}` : typed;
@@ -633,14 +633,14 @@ export const ProjectAssistant = ({
     // Remember that the silence after this was asked for. Without it the retry
     // banner below tells the user "No answer came back for this message", which
     // blames the model for the user's own click.
-    setUserStopped(activeRef.current?.id ?? null);
-    setStoppedSteps(liveSteps);
+    setStopped({ convId: activeRef.current?.id ?? null, steps: liveSteps });
     return stopJob(client, projectId, jobFor(activeRef.current?.id));
   };
 
   const approve = (plan, { asHuman = false } = {}) => {
     const conv = activeRef.current;
     if (!conv || !canSend) return;
+    setStopped(null);
     showJob(
       startApply({
         store,
@@ -794,6 +794,7 @@ export const ProjectAssistant = ({
   const idle = !busy && !jobFor(active?.id);
   const lastKind = display.at(-1)?.kind;
   const canRetryTurn = idle && (lastKind === 'user' || lastKind === 'error');
+  const stoppedHere = stoppedIn(stopped, active?.id);
   const applyingPlanId = busy === 'apply' ? jobFor(active?.id)?.planId || null : null;
 
   return (
@@ -1054,9 +1055,9 @@ export const ProjectAssistant = ({
                 onDiscard={() => discard(i)}
               />
             ))}
-            {canRetryTurn && stoppedSteps.length > 0 && (
+            {canRetryTurn && stoppedHere && stoppedHere.steps.length > 0 && (
               <div className="flex flex-col gap-1 text-sm text-muted-foreground">
-                {stoppedSteps.map((m, i) => (
+                {stoppedHere.steps.map((m, i) => (
                   <div key={i} className="flex items-center gap-2 pl-6 text-xs">
                     <Check className="h-3 w-3" /> {m}
                   </div>
@@ -1068,7 +1069,7 @@ export const ProjectAssistant = ({
                 <span className="flex-1">
                   {lastKind === 'error'
                     ? 'That turn did not finish.'
-                    : userStopped && userStopped === active?.id
+                    : stoppedHere
                       ? 'You stopped this turn.'
                       : 'No answer came back for this message.'}
                 </span>

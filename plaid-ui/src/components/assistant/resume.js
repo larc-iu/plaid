@@ -8,6 +8,18 @@
 
 export const unansweredTurn = (conv) => conv?.display.at(-1)?.kind === 'user';
 
+// What a turn the reader STOPPED had already got through, if it was this
+// conversation's. The live step list lives inside the panel's `busy` block and
+// goes with it, so stopping would otherwise clear the screen of everything the
+// turn had done, which is the one thing a reader wants at that moment.
+//
+// Held with its conversation, the way every other per-conversation fact in the
+// panel is: the panel keeps one thread per project, but the reader can switch
+// threads from its header, and an unscoped list put a stopped turn's steps
+// under whatever conversation was on screen next.
+export const stoppedIn = (stopped, convId) =>
+  stopped && convId && stopped.convId === convId ? stopped : null;
+
 // Rewind to just before the user's last message, so sending it again rebuilds
 // the same request. Returns null when there is nothing to retry.
 export const rewindForRetry = (conv) => {
