@@ -51,8 +51,8 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const logout = () => {
-    authService.logout();
+  const logout = (reason = null) => {
+    authService.logout(reason);
     setUser(null);
   };
 

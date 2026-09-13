@@ -14,7 +14,10 @@ import {
 // being signed in. Logout lives in here rather than beside it, so the band
 // carries one control for the account instead of two, and the one thing in it
 // that cannot be undone is not a click away from a link.
-export function UserButton({ user, client, onLogout }) {
+//
+// `profileHref` is where the account page is. Both apps put it at /profile,
+// which is the default; an app that has none passes its own.
+export function UserButton({ user, client, onLogout, profileHref = '/profile' }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
@@ -32,12 +35,12 @@ export function UserButton({ user, client, onLogout }) {
         {/* A real anchor, not an onClick: Profile is a destination, so
             middle-click and cmd-click open it in a new tab like any link. */}
         <DropdownMenuItem asChild>
-          <Link to="/profile">
+          <Link to={profileHref}>
             <User className="h-4 w-4" /> Profile
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        {/* `() => onLogout()` and not `onLogout`: plaid-igt's takes an optional
+        {/* `() => onLogout()` and not `onLogout`: logout takes an optional
             reason to show on the login page, and the click event went in as
             one. */}
         <DropdownMenuItem
