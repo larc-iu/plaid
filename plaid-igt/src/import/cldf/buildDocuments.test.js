@@ -861,3 +861,58 @@ describe('groupingChoices', () => {
     ]);
   });
 });
+
+describe('buildCldfDocuments name collisions and placeholder languages', () => {
+  const COLUMNS = [
+    col('ID', 'id'),
+    col('Language_ID', 'languageReference'),
+    col('Primary_Text', 'primaryText'),
+    listCol('Analyzed_Word', 'analyzedWord'),
+    listCol('Gloss', 'gloss'),
+    col('Translated_Text', 'translatedText'),
+    col('Sentence_Translation'),
+  ];
+  // A project with BOTH `Translation` and `Translation (en)` exports the second
+  // as Translated_Text and the first as Sentence_Translation. Both then ask to
+  // come back as `Translation`.
+  const csv =
+    'ID,Language_ID,Primary_Text,Analyzed_Word,Gloss,Translated_Text,Sentence_Translation\r\n' +
+    '1,spa,perros corren.,perro=s\tcorren,dog=PL\t,The dogs run.,A free rendering.\r\n' +
+    '2,spa,gatos duermen.,gato=s\tduermen,cat=PL\tsleep,The cats sleep.,\r\n';
+
+  // A custom column arrives switched off, so the collision only happens once a
+  // curator turns it on, which is exactly what they do to keep the field.
+  const withColumnOn = (d) => ({
+    customColumns: {
+      ...deriveImportOptions(d).customColumns,
+      Sentence_Translation: { scope: 'Sentence', name: 'Translation', enabled: true },
+    },
+  });
+
+  it('keeps both fields instead of writing one over the other', () => {
+    const d = dataset(csv, COLUMNS);
+    const { documents, warnings } = buildCldfDocuments(d, withColumnOn(d));
+    const [first, second] = documents[0].sentences;
+    // The bound term keeps the plain name.
+    expect(first.fields.Translation).toBe('The dogs run.');
+    // The custom column keeps the name the file gave it, rather than vanishing.
+    expect(first.fields.Sentence_Translation).toBe('A free rendering.');
+    // A sentence with only the bound value is untouched.
+    expect(second.fields.Translation).toBe('The cats sleep.');
+    expect(second.fields.Sentence_Translation).toBeUndefined();
+    expect(warnings.join(' ')).toMatch(/both arrive as "Translation"/);
+  });
+
+  it('does not adopt the placeholder name our own exporter had to write', () => {
+    const languages = [
+      {
+        url: 'languages.csv',
+        'dc:conformsTo': `${TERMS}LanguageTable`,
+        tableSchema: { columns: [col('ID', 'id'), col('Name', 'name')] },
+      },
+    ];
+    const files = { 'languages.csv': 'ID,Name\r\nspa,Unidentified object language\r\n' };
+    const { languages: picked } = buildCldfDocuments(dataset(csv, COLUMNS, languages, files));
+    expect(picked.object.name).toBe('');
+  });
+});

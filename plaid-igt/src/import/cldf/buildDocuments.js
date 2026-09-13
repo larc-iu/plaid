@@ -308,6 +308,9 @@ export function buildCldfDocuments(dataset, options = {}) {
   const examples = dataset.components?.ExampleTable;
   const contributions = dataset.components?.ContributionTable;
   const warnings = [];
+  // Custom columns whose field name is already taken by one bound to a CLDF
+  // term. Collected across the whole dataset and reported once, not per row.
+  const nameClashes = new Map();
 
   // Custom columns that survived the user's choices, split by scope.
   const custom = Object.entries(o.customColumns || {})
@@ -508,7 +511,18 @@ export function buildCldfDocuments(dataset, options = {}) {
       for (const c of custom) {
         if (c.scope !== 'Sentence') continue;
         const v = (row[c.column] ?? '').trim();
-        if (v) fields[c.name] = v;
+        if (!v) continue;
+        // A custom column can want the same field name as one already bound to
+        // a CLDF term. A project with both `Translation` and `Translation (en)`
+        // exports the second as Translated_Text and the first as
+        // Sentence_Translation, and on the way back both ask to be
+        // `Translation`. This used to write straight over the bound value, so a
+        // round trip lost exactly the sentences that had both fields filled in.
+        // The loser keeps the name the FILE gives it, which is a real name from
+        // the dataset rather than one invented here.
+        const taken = fields[c.name] !== undefined && c.name !== c.column;
+        if (taken) nameClashes.set(c.name, c.column);
+        fields[taken ? c.column : c.name] = v;
       }
       sentences.push({
         begin: toCp(beginU16),
@@ -735,13 +749,30 @@ export function buildCldfDocuments(dataset, options = {}) {
         for (const name of Object.keys(m.fields)) addField(name, 'Morpheme');
     }
   }
+  for (const [wanted, kept] of nameClashes) {
+    warnings.push(
+      `Two fields both arrive as "${wanted}": one bound to a CLDF term and one carried as ` +
+        `"${kept}". The second keeps the column's own name so no values are overwritten. ` +
+        `Rename it after importing if you want it called something else.`,
+    );
+  }
   const orthographies = custom.filter((c) => c.scope === 'Orthography').map((c) => c.name);
   const documentMetadata = [...new Set(documents.flatMap((d) => Object.keys(d.metadata)))].map(
     (name) => ({ name }),
   );
 
   // --- project language identity ---
-  const pick = (ids) => (ids.size === 1 ? languageById.get([...ids][0]) : null);
+  // Our own exporter has to put SOMETHING in a LanguageTable Name, so a project
+  // that never named its languages goes out as "Unidentified object language".
+  // Reading that back in as the project's language name turns a blank a curator
+  // has not filled in yet into placeholder text they now have to notice and
+  // clear. A round trip should leave a blank blank.
+  const PLACEHOLDER_NAMES = new Set(['Unidentified object language', 'Meta language']);
+  const pick = (ids) => {
+    const lang = ids.size === 1 ? languageById.get([...ids][0]) : null;
+    if (lang && PLACEHOLDER_NAMES.has(lang.name)) return { ...lang, name: '' };
+    return lang;
+  };
   const languages = {
     object: pick(objectLanguageIds) || null,
     meta: pick(primaryMetaLanguageIds) || null,
