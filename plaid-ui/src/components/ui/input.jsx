@@ -1,3 +1,4 @@
+// Modified from shadcn: it takes a `compose` prop and a composed ref.
 import * as React from 'react';
 import { cn } from '../../lib/utils.js';
 import { useComposeRef } from '../../hooks/useComposeRef.js';

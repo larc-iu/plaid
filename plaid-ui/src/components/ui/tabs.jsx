@@ -1,3 +1,5 @@
+// Modified from shadcn: a trigger given `to` renders a real anchor, and the
+// root drops Radix's duplicate onValueChange.
 import * as React from 'react';
 import { useHref } from 'react-router-dom';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
