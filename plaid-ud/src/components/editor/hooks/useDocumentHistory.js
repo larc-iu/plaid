@@ -8,6 +8,10 @@ export const useDocumentHistory = (documentId) => {
   const [loadingAudit, setLoadingAudit] = useState(false);
   const [loadingHistorical, setLoadingHistorical] = useState(false);
   const [hasLoadedAudit, setHasLoadedAudit] = useState(false);
+  // Why the entry list is empty. Only the audit fetch sets it: a failed time
+  // travel leaves the entries a reader is browsing on screen and says so in a
+  // toast, and the drawer hides the list whenever this is set.
+  const [error, setError] = useState('');
   const { getClient, logout } = useAuth();
 
   // Fetch audit log entries
@@ -25,11 +29,13 @@ export const useDocumentHistory = (documentId) => {
       const auditData = await client.documents.audit(documentId);
       setAuditEntries(auditData || []);
       setHasLoadedAudit(true);
+      setError('');
     } catch (err) {
       if (err.status === 401) {
         logout();
         return;
       }
+      setError(humanizeError(err, 'The history could not be read.'));
       notifyError(humanizeError(err), 'Failed to load the history');
       console.error('Error fetching audit log:', err);
     } finally {
@@ -86,6 +92,7 @@ export const useDocumentHistory = (documentId) => {
     loadingAudit,
     loadingHistorical,
     hasLoadedAudit,
+    error,
     fetchHistoricalDocument,
     clearHistoricalDocument,
     fetchAuditLog,

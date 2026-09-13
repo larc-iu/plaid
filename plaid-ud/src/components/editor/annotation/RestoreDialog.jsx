@@ -50,7 +50,15 @@ const latestState = async (client, documentId) => {
   };
 };
 
-export const RestoreDialog = ({ opened, onClose, client, documentId, raw, entry, onRestored }) => {
+export const RestoreDialog = ({
+  open,
+  onOpenChange,
+  client,
+  documentId,
+  raw,
+  entry,
+  onRestored,
+}) => {
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -61,7 +69,7 @@ export const RestoreDialog = ({ opened, onClose, client, documentId, raw, entry,
   onRestoredRef.current = onRestored;
 
   useEffect(() => {
-    if (!opened || !asOf) return undefined;
+    if (!open || !asOf) return undefined;
     let cancelled = false;
     setPreview(null);
     setError('');
@@ -76,7 +84,7 @@ export const RestoreDialog = ({ opened, onClose, client, documentId, raw, entry,
     return () => {
       cancelled = true;
     };
-  }, [opened, asOf, client, documentId]);
+  }, [open, asOf, client, documentId]);
 
   const layers = indexLayers(raw);
   const lines = changeLines(preview, layers);
@@ -84,7 +92,7 @@ export const RestoreDialog = ({ opened, onClose, client, documentId, raw, entry,
 
   const close = () => {
     if (busy) return;
-    onClose();
+    onOpenChange(false);
   };
 
   // Back to the state from just before the restore: itself a restore, to the
@@ -133,7 +141,7 @@ export const RestoreDialog = ({ opened, onClose, client, documentId, raw, entry,
       } else {
         notifySuccess(message, title);
       }
-      onClose();
+      onOpenChange(false);
       await onRestored?.();
     } catch (err) {
       console.error('Restore failed:', err);
@@ -145,7 +153,7 @@ export const RestoreDialog = ({ opened, onClose, client, documentId, raw, entry,
   };
 
   return (
-    <Dialog open={opened} onOpenChange={(o) => !o && close()}>
+    <Dialog open={open} onOpenChange={(o) => (o ? onOpenChange(true) : close())}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Restore to {asOf ? fullTimestamp(asOf) : ''}</DialogTitle>
