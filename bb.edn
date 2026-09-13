@@ -19,6 +19,11 @@
    :task (do (pl/run-tests!)
              (pl/build-artifacts! (pl/parse-build-args *command-line-args*)))}
 
+  sample-prompts
+  {:doc "Regenerate both assistants' prompt snapshots (plaid-agent/docs/igt/SAMPLE_PROMPT.md and docs/ud/SAMPLE_PROMPT.md) from the real prompt builders and tool tables. Run it in the same change as any tool or prompt edit: the test gate fails while a snapshot is stale. Prereq: a mamba env with the assistant importable (e.g. `mamba activate plaid-agent`)."
+   :requires ([pipeline :as pl])
+   :task (pl/write-sample-prompts!)}
+
   docs
   {:doc "Build the documentation site locally into _site/ (mirrors .github/workflows/docs.yml — index/manual/query/dev + the UD & IGT guides via Asciidoctor, plus the JS/Py API references best-effort via node). No publishing; open _site/index.html to preview. Prereq: `gem install asciidoctor coderay`."
    :requires ([pipeline :as pl])

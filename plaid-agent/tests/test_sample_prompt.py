@@ -5,8 +5,7 @@ file keeps describing the tool as it was. Item 15.4 asks for them to be
 regenerated in the same change as any tool edit, and nothing enforced that, so
 UD's snapshot fell four tools behind and IGT's one description behind.
 
-    python tests/ud_sample_prompt.py
-    python tests/sample_prompt.py
+    bb sample-prompts
 """
 
 import io
@@ -15,7 +14,8 @@ import os
 import sample_prompt
 import ud_sample_prompt
 
-REGENERATE = 'Run `python tests/{}.py` in the same change as the tool edit.'
+REGENERATE = ('The {} prompt snapshot is out of date. Run `bb sample-prompts` (from the repo root, '
+              'with the assistant importable) in the same change as the tool or prompt edit.')
 
 
 def _current(module) -> str:
@@ -26,10 +26,10 @@ def _current(module) -> str:
 def test_the_ud_snapshot_is_current():
     assert os.path.exists(ud_sample_prompt.OUT)
     assert _current(ud_sample_prompt) == ud_sample_prompt.render(), \
-        REGENERATE.format('ud_sample_prompt')
+        REGENERATE.format('UD')
 
 
 def test_the_igt_snapshot_is_current():
     assert os.path.exists(sample_prompt.OUT)
     assert _current(sample_prompt) == sample_prompt.render(), \
-        REGENERATE.format('sample_prompt')
+        REGENERATE.format('IGT')

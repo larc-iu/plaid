@@ -4,7 +4,7 @@ The system prompt and the tool list are built by the real code over the small
 project the tests use (``ud_fixtures.py``), with web lookup on so every tool
 appears. The file is a snapshot for browsing, not a source of truth:
 
-    python tests/ud_sample_prompt.py
+    bb sample-prompts
 """
 
 import os
@@ -30,7 +30,7 @@ for browsing and may lag behind the code: the prompt is built in
 `src/plaid_agent/ud/prompt.py` and the tools are declared in
 `src/plaid_agent/ud/tools.py`. Regenerate it with
 
-    python tests/ud_sample_prompt.py
+    bb sample-prompts
 
 Every model call carries the system prompt, the transcript so far (the browser
 keeps it between turns), and the whole tool list. The model answers with text
@@ -42,10 +42,20 @@ which goes back to the user to approve or discard.
 
 
 def render() -> str:
-    # Every tool appears, whether or not this machine can run code.
-    from plaid_agent.core import sandbox
-    sandbox.available = lambda: None
     """The snapshot as text, so a test can hold the file to it."""
+    # Every tool appears, whether or not this machine can run code, and the
+    # answer is put back afterwards: this is called from a test, and leaving
+    # the sandbox permanently "available" changed what every later test saw.
+    from plaid_agent.core import sandbox
+    was = sandbox.available
+    sandbox.available = lambda: None
+    try:
+        return _render()
+    finally:
+        sandbox.available = was
+
+
+def _render() -> str:
     client = ud_client()
     ws = Workspace(client, load_project(client, PID))
     ws.web = object()  # so the web tools are declared
