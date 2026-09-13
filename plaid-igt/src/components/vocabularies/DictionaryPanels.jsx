@@ -109,7 +109,7 @@ export const ItemRefField = ({
           numbers={numbers}
           exclude={exclude}
           onPick={(x) => set([...ids, x])}
-          placeholder={`Find an entry for ${humanizeFieldName(field.name).toLowerCase()}…`}
+          placeholder={`Find an entry for ${humanizeFieldName(field.name)}…`}
         />
       )}
     </div>

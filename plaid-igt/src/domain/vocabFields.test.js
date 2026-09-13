@@ -10,6 +10,7 @@ import {
   editableMetadata,
   reservedMetadata,
   fieldLabel,
+  humanizeFieldName,
   groupFieldsForForm,
 } from './vocabFields.js';
 
@@ -169,5 +170,27 @@ describe('labels and form groups', () => {
     expect(g.status?.name).toBe('status');
     // Without a status field named, status is an ordinary custom field.
     expect(groupFieldsForForm(fields).custom.map((f) => f.name)).toContain('status');
+  });
+});
+
+describe('humanizeFieldName', () => {
+  it('makes a machine key readable', () => {
+    expect(humanizeFieldName('morphType')).toBe('Morph Type');
+    expect(humanizeFieldName('lexemeForm')).toBe('Lexeme Form');
+    expect(humanizeFieldName('source_id')).toBe('Source Id');
+    expect(humanizeFieldName('pos')).toBe('POS');
+  });
+
+  it('leaves a name a person typed exactly as they typed it', () => {
+    // Field names here are user-authored. Title casing `See also` to `See Also`
+    // disagreed with the stored key, the Fields table and the placeholder built
+    // from the same string: three casings for one name the user chose once.
+    expect(humanizeFieldName('See also')).toBe('See also');
+    expect(humanizeFieldName('Part of speech')).toBe('Part of speech');
+    expect(humanizeFieldName('scientific name')).toBe('scientific name');
+    // ...but a trailing language suffix is machine made, so the base is still
+    // title cased around it.
+    expect(humanizeFieldName('pos (ru)')).toBe('Pos (ru)');
+    expect(humanizeFieldName('Scientific name (Latin)')).toBe('Scientific name (Latin)');
   });
 });

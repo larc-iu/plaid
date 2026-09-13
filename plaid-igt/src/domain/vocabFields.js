@@ -60,9 +60,21 @@ const FIELD_LABELS = {
  * Turn a raw field key into a human-friendly label: known overrides first, then
  * a generic camelCase/snake_case → Title Case split. e.g. "morphType" →
  * "Morph Type", "lexemeForm" → "Lexeme Form", "source_id" → "Source Id".
+ *
+ * A name with a space in it was typed by a person, not generated, so it is
+ * returned exactly as they wrote it. This function exists to make a machine key
+ * readable, and a field someone named `See also` is already readable: title
+ * casing it to `See Also` silently disagrees with the name they chose, with the
+ * stored key, and with the placeholder built from the same string. Field names
+ * here are user-authored, which is what makes the transform visible as a defect
+ * rather than a convenience.
  */
 export const humanizeFieldName = (name) => {
   if (FIELD_LABELS[name]) return FIELD_LABELS[name];
+  const raw = String(name ?? '');
+  // The base, i.e. without a trailing "(ru)" language suffix, which IS machine
+  // made and must still be title cased ("pos (ru)" → "Pos (ru)").
+  if (/\s/.test(raw.replace(/\s*\([^)]*\)\s*$/, ''))) return raw;
   const words = String(name ?? '')
     .replace(/[_-]+/g, ' ')
     .replace(/([a-z\d])([A-Z])/g, '$1 $2')
