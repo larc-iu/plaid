@@ -44,8 +44,8 @@ columns and to the dependency tree. What it has to know that IGT does not:
 - a dependency is a relation between two LEMMA spans, and the root is a
   self-relation. A word with no lemma gets one before it can take a head.
 
-`docs/ud/SAMPLE_PROMPT.md` is what the model sees. Regenerate it with
-`python tests/ud_sample_prompt.py`.
+`docs/ud/SAMPLE_PROMPT.md` is what the model sees. `bb sample-prompts` (from
+the repo root) regenerates it and IGT's together.
 
 ## The IGT assistant
 
@@ -187,8 +187,9 @@ lives elsewhere.
 ## How it works
 
 `docs/igt/SAMPLE_PROMPT.md` shows the system prompt and the tool list as the
-model receives them, rendered over the test fixture project. Regenerate it
-with `python tests/sample_prompt.py` when it has gone stale.
+model receives them, rendered over the test fixture project. `bb
+sample-prompts` (from the repo root) regenerates it and UD's together; the
+test suite fails while either is stale.
 
 The modules below are `igt/` unless they say otherwise.
 
