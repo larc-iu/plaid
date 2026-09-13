@@ -275,7 +275,7 @@ The heading of each example opens that sentence in the annotation editor.
 == The panel
 
 A handle on the right edge of the window, halfway down, opens the same assistant in a panel beside whatever you are looking at.
-It widens under the pointer to show the assistant's mark; clicking it opens the panel.
+It widens under the pointer to show the assistant's mark, and clicking it opens the panel.
 It is the same gesture as the history rail on the left edge of a document, and it is there on every screen.
 The panel stays where it is as you move around, so a question can be asked without leaving what you are reading and an answer can be read while you get on with something else.
 The page narrows to make room for it.

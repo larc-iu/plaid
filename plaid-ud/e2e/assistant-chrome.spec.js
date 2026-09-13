@@ -1,6 +1,7 @@
 import PlaidClient from '@larc-iu/plaid-client';
 import { randomUUID } from 'node:crypto';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { seedUdDoc } from './seedUdDoc.js';
 
 // The assistant panel as part of the app's chrome rather than one screen's.
 //
@@ -16,6 +17,15 @@ import { test, expect, seedAuth, readToken } from './fixtures.js';
 // one discovery GET, the same trick as e2e/assistant-panel.spec.js.
 
 const CORE = 'http://localhost:8085';
+const SENTENCES = 'the dog runs. she sings.';
+const WORDS = [
+  [0, 3],
+  [4, 7],
+  [8, 12],
+  [13, 16],
+  [17, 22],
+];
+const SECOND_DOCUMENT = 'Chrome Spec Second Document';
 
 let projectId;
 let documentId;
@@ -82,21 +92,21 @@ const seedConversation = async (title, text, updatedAt) => {
   return id;
 };
 
+// A project of its own, with ONE TOKENIZED DOCUMENT. Not the shared "E2E UD
+// Fixture": its Doc 1 carries a text body and no tokens (fixtureProject.js
+// never tokenizes it), so the annotation grid every test here waits for could
+// never appear. The sibling spec seeds the same way for the same reason.
 test.beforeAll(async () => {
   ({ userId } = readToken());
-  const c = client();
-  const project = (await c.projects.list()).find((p) => p.name === 'E2E UD Fixture');
-  if (!project) throw new Error('run node e2e/fixtureProject.js first');
-  projectId = project.id;
-  const docs = await c.projects.listDocuments(projectId);
-  documentId = docs.find((d) => d.name === 'Doc 1').id;
-  // A second document to walk to. Reused by name across runs.
-  const name = 'Chrome Spec Second Document';
-  otherDocumentId = (
-    docs.find((d) => d.name === name) || (await c.documents.create(projectId, name))
-  ).id;
+  ({ projectId, documentId } = await seedUdDoc(`Assistant chrome ${Date.now()}`, SENTENCES, WORDS));
+  // A second document to walk to. It needs no annotation of its own: what the
+  // tests read there is the breadcrumb and the panel beside it.
+  otherDocumentId = (await client().documents.create(projectId, SECOND_DOCUMENT)).id;
 });
 
+// A seeded project left on the dev core is not inert: search.spec.js takes the
+// first configured project that has tokens, so leftovers make it query a
+// treebank with no dependency relations in it and fail.
 test.afterAll(async () => {
   const c = client();
   for (const id of seeded) {
@@ -104,10 +114,8 @@ test.afterAll(async () => {
       await c.userData.delete(userId, convKey(kind, id)).catch(() => {});
     }
   }
-  if (otherDocumentId) {
-    await c.documents
-      .delete(otherDocumentId)
-      .catch((e) => console.error('cleanup failed:', e.message));
+  if (projectId) {
+    await c.projects.delete(projectId).catch((e) => console.error('cleanup failed:', e.message));
   }
 });
 
@@ -137,7 +145,7 @@ test('the panel keeps its conversation across a navigation', async ({ page }) =>
 
   // To another document in the same project.
   await annotate(page, otherDocumentId);
-  await expect(crumbs(page)).toContainText('Chrome Spec Second Document');
+  await expect(crumbs(page)).toContainText(SECOND_DOCUMENT);
   await expect(panelOf(page)).toBeVisible();
   await expect(panelOf(page).getByRole('textbox')).toHaveValue('half a question about');
 
@@ -343,7 +351,7 @@ test("the panel resumes the project's newest thread and holds it while the reade
   // To another document. The SAME thread, not one about the new document and
   // not a fresh one.
   await annotate(page, otherDocumentId);
-  await expect(crumbs(page)).toContainText('Chrome Spec Second Document');
+  await expect(crumbs(page)).toContainText(SECOND_DOCUMENT);
   await expect(panel.getByText('the newer question')).toBeVisible();
   await expect(panel.getByText('the older question')).toHaveCount(0);
 

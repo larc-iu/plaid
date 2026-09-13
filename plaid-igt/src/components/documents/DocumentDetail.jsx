@@ -615,7 +615,7 @@ const DocumentEditor = () => {
       />
 
       {/* History rail trigger (left edge). The assistant's rail is the same
-          component on the right edge — see EdgeRail. */}
+          component on the right edge (see EdgeRail). */}
       {!history.open && (
         <EdgeRail
           side="left"
