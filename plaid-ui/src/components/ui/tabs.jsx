@@ -36,16 +36,60 @@ const Tabs = React.forwardRef(({ value, onValueChange, ...props }, ref) => {
 });
 Tabs.displayName = TabsPrimitive.Root.displayName;
 
-const TabsList = React.forwardRef(({ className, ...props }, ref) => (
-  <TabsPrimitive.List
-    ref={ref}
-    className={cn(
-      'inline-flex h-9 items-center justify-center gap-1 border-b text-muted-foreground',
-      className,
-    )}
-    {...props}
-  />
-));
+// A tab strip that does not fit SCROLLS, and keeps the tab you are on in
+// sight. It used to be an inline-flex row of nowrap triggers with nowhere to
+// go: below about 950px the eight project tabs were simply clipped, and the
+// one you were standing on could be off the right-hand edge, so the screen
+// gave no clue which of them you were looking at.
+const TabsList = React.forwardRef(({ className, ...props }, ref) => {
+  const inner = React.useRef(null);
+  React.useImperativeHandle(ref, () => inner.current);
+
+  // Radix flips `data-state` on the triggers rather than re-rendering this, so
+  // watch the attribute instead of reacting to a prop. `block: 'nearest'` keeps
+  // it from scrolling the page vertically on the way.
+  React.useEffect(() => {
+    const list = inner.current;
+    if (!list) return undefined;
+    const reveal = () => {
+      const active = list.querySelector('[data-state="active"]');
+      if (!active) return;
+      // Instant, not smooth: landing on a screen should not animate its tab
+      // strip sideways, and an animation here would also be the only thing
+      // moving on first paint. (Chrome does not run smooth scrolls in a
+      // background tab either, so the default is the honest choice.)
+      active.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+    };
+    // After a frame as well as now: on the first mount the triggers are often
+    // not in the DOM yet, and the tab that is already active is BORN with
+    // data-state="active" rather than mutating into it, so waiting for a
+    // mutation alone leaves the first paint scrolled to the left.
+    const frame = requestAnimationFrame(reveal);
+    reveal();
+    const observer = new MutationObserver(reveal);
+    observer.observe(list, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['data-state'],
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, []);
+
+  return (
+    <TabsPrimitive.List
+      ref={inner}
+      className={cn(
+        'inline-flex h-9 max-w-full items-center justify-center gap-1 overflow-x-auto border-b text-muted-foreground',
+        className,
+      )}
+      {...props}
+    />
+  );
+});
 TabsList.displayName = TabsPrimitive.List.displayName;
 
 const triggerClasses = (className) =>
