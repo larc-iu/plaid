@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { Activity, FileText, Search, Replace, ShieldCheck, Download, Settings } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@ui/components/ui/tabs';
@@ -26,7 +26,8 @@ const ProjectExport = lazyNamed(() => import('./ProjectExport.jsx'), 'ProjectExp
 import { readInitialized, readImportState, importRouteFor } from '@/domain/igtConfig';
 import { isReviewed } from '@larc-iu/plaid-client';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-import { useTabParam, tabTo } from '@/hooks/useTabParam';
+import { useTabParam } from '@/hooks/useTabParam';
+import { contentTabsFor, TAB_ALIASES } from '@/domain/projectTabs';
 import { cn } from '@ui/lib/utils';
 import { useComposeProject } from '@/hooks/useCompose';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
@@ -37,23 +38,6 @@ import { IGT_ASSISTANT } from './assistant/adapter.js';
 // The settings sections live behind these path suffixes; keeping them in the
 // URL means deep links and the back button still land on the right section.
 const SETTINGS_SECTIONS = ['general', 'text-and-vocab', 'annotation', 'access', 'services'];
-
-// The content tabs, which ride in `?tab=` on the project page (Bulk Edit is
-// maintainers-only; Assistant is open to everyone, since the assistant acts
-// under the user's own permissions). Settings is the last tab in the bar but
-// is path-backed (see above) because its sections are pages of their own.
-const CONTENT_TABS = ['documents', 'search', 'bulk', 'validate', 'activity', 'assistant'];
-// The spellings a person types from reading the tab bar, mapped onto the slugs
-// this group uses. `?tab=validation` used to render Documents.
-// Export and Settings are deliberately NOT here: they are path-backed, because
-// a preset's editor and a settings section are pages of their own, so aliasing
-// `?tab=export` onto a tab would send someone somewhere other than the page
-// they named.
-const TAB_ALIASES = {
-  validation: 'validate',
-  'bulk-edit': 'bulk',
-  bulkedit: 'bulk',
-};
 
 // Title-bar labels for the settings sections (match ProjectSettingsPanel).
 const SECTION_TITLES = {
@@ -152,8 +136,12 @@ export const ProjectDetail = () => {
   );
   // Documents/Search live in `?tab=`, so a reload or a shared link reopens the
   // tab the user was on.
-  const [contentTab, setContentTab] = useTabParam(CONTENT_TABS, 'documents', {
+  // `ready` while the project is still loading would correct a good link:
+  // `canManage` answers false until it lands, so the list can still grow.
+  const contentTabs = useMemo(() => contentTabsFor(canManage), [canManage]);
+  const [contentTab, setContentTab, tabHref] = useTabParam(contentTabs, 'documents', {
     aliases: TAB_ALIASES,
+    ready: !!project,
   });
   const assistantAvailable = useAssistantAvailable(client, projectId, IGT_ASSISTANT.app);
   // The shell's panel is about this PROJECT while the reader is on any of its
@@ -166,13 +154,7 @@ export const ProjectDetail = () => {
     canWrite,
     contributor: !!project && !!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin }),
   });
-  const activeTab = onExport
-    ? 'export'
-    : onSettings && canManage
-      ? 'settings'
-      : ['bulk', 'validate', 'activity'].includes(contentTab) && !canManage
-        ? 'documents'
-        : contentTab;
+  const activeTab = onExport ? 'export' : onSettings && canManage ? 'settings' : contentTab;
 
   // A non-maintainer who lands on a settings URL has nothing to manage; bounce
   // them back to the document view rather than show an empty Settings panel.
@@ -292,42 +274,31 @@ export const ProjectDetail = () => {
             // Leaving Settings means dropping the section suffix from the URL.
             // Path and query move together in one navigation, since a separate
             // query update would race with this one.
-            navigate(
-              v === 'documents' ? `/projects/${projectId}` : `/projects/${projectId}?tab=${v}`,
-            );
+            navigate(tabHref(`/projects/${projectId}`, v));
           } else {
             setContentTab(v);
           }
         }}
       >
         <TabsList className="mb-2">
-          <TabsTrigger
-            value="documents"
-            to={tabTo(`/projects/${projectId}`, 'documents', 'documents')}
-          >
+          <TabsTrigger value="documents" to={tabHref(`/projects/${projectId}`, 'documents')}>
             <FileText className="h-4 w-4" /> Documents
           </TabsTrigger>
-          <TabsTrigger value="search" to={tabTo(`/projects/${projectId}`, 'search', 'documents')}>
+          <TabsTrigger value="search" to={tabHref(`/projects/${projectId}`, 'search')}>
             <Search className="h-4 w-4" /> Search
           </TabsTrigger>
           {canManage && (
-            <TabsTrigger value="bulk" to={tabTo(`/projects/${projectId}`, 'bulk', 'documents')}>
+            <TabsTrigger value="bulk" to={tabHref(`/projects/${projectId}`, 'bulk')}>
               <Replace className="h-4 w-4" /> Bulk Edit
             </TabsTrigger>
           )}
           {canManage && (
-            <TabsTrigger
-              value="validate"
-              to={tabTo(`/projects/${projectId}`, 'validate', 'documents')}
-            >
+            <TabsTrigger value="validate" to={tabHref(`/projects/${projectId}`, 'validate')}>
               <ShieldCheck className="h-4 w-4" /> Validation
             </TabsTrigger>
           )}
           {canManage && (
-            <TabsTrigger
-              value="activity"
-              to={tabTo(`/projects/${projectId}`, 'activity', 'documents')}
-            >
+            <TabsTrigger value="activity" to={tabHref(`/projects/${projectId}`, 'activity')}>
               <Activity className="h-4 w-4" /> Activity
             </TabsTrigger>
           )}
@@ -336,10 +307,7 @@ export const ProjectDetail = () => {
               conversation opens whether or not one is running: this hides the
               invitation, not the conversations. */}
           {(assistantAvailable || activeTab === 'assistant') && (
-            <TabsTrigger
-              value="assistant"
-              to={tabTo(`/projects/${projectId}`, 'assistant', 'documents')}
-            >
+            <TabsTrigger value="assistant" to={tabHref(`/projects/${projectId}`, 'assistant')}>
               <AssistantMark className="h-4 w-4" /> Assistant
             </TabsTrigger>
           )}
