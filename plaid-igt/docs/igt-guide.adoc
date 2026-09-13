@@ -62,7 +62,7 @@ Your name at the top right opens your account, with your profile and **Logout**.
 The editor has a few levels you move between:
 
 * **Projects**: the list of all projects you can access. This is your home screen after login.
-* **Documents**: the texts inside one project. Beside the document list sit the project's own tabs: **Search**, **Assistant**, and **Export** for everyone, and **Bulk Edit**, **Validation**, and **Settings** for maintainers.
+* **Documents**: the texts inside one project. Beside the document list sit the project's own tabs: **Search**, **Assistant**, and **Export** for everyone, and **Bulk Edit**, **Validation**, **Activity**, and **Settings** for maintainers.
 * **A document's tabs**: **Metadata**, **Baseline**, **Media**, **Tokenize**, **Analyze**, **Comments**, and **Export**, switched at the top of an open document.
 
 The **Vocabularies** link in the header leads to the shared lexicons (see <<_vocabularies>>), and **Guide** opens this document.
@@ -148,7 +148,8 @@ Media is optional, and a document with none is simply a text.
 Common audio and video formats are accepted (MP3, WAV, M4A, MP4, WebM, and others), and an upload shows its progress.
 
 A large recording can be sent as audio instead of itself.
-Choosing one offers **Convert to audio**, which converts it in the browser to mono MP3 at 16 kHz, about 14 MB an hour, and uploads that.
+Choosing one offers to convert it to MP3, naming the size that would produce.
+The conversion runs in the browser, mono at 16 kHz, about 14 MB an hour, and that is what is uploaded.
 The timing is unchanged, so segments and alignments are the same either way, but the picture is dropped and the sound is no longer good enough for phonetic measurement.
 A server refuses a file over its own size limit, and the offer says so before the upload starts rather than after it.
 
@@ -790,7 +791,7 @@ Each tier is written into a field the project already has, chosen from a list, a
 A tier with no annotations is left out.
 Recordings are chosen in the same step as the `.eaf` files, and everything chosen is listed together with what will happen to it: which `.eaf` each recording belongs to, and which of them matches none.
 A recording is matched to the `.eaf` that names it, and a document whose recording you did not choose is imported without it.
-One too large for the server says so and says what converting would produce, and **Convert to audio** converts it in the browser before the run (see <<_media>>), so the import does not finish without it.
+One too large for the server says so and says what converting would produce, and it can be converted to MP3 in the browser before the run (see <<_media>>), so the import does not finish without it.
 A file imported into this project before is named before the run, with a link to its document and a choice: keep that document, replace it (which deletes it and everything added to it since), or add a copy beside it, named with a number.
 A recording chosen beside a kept file is added to its document when that document has no recording yet.
 The rest of the project is untouched, and nothing is locked while the import runs.

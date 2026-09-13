@@ -63,7 +63,7 @@ The editor has three levels you move between:
 * **Documents**: the texts inside one project.
 * **A document's own tabs**: `Text Editor`, `Annotate`, `Export`, `Comments` and `Details`, switched at the top of an open document.
 
-Project-wide tabs sit alongside the document list inside each project: `Search`, `Assistant`, `Validation`, `Activity`, `Project Settings` and `Import & Export`. The last three are for maintainers, and `Assistant` appears only when one is running. The assistant is also a panel you can open beside any screen (see <<_the_panel>>).
+Project-wide tabs sit alongside the document list inside each project: `Search`, `Assistant`, `Validation`, `Activity`, `Project Settings` and `Import & Export`. `Validation`, `Activity` and `Project Settings` are for maintainers, and `Assistant` appears only when one is running. The assistant is also a panel you can open beside any screen (see <<_the_panel>>).
 
 = Projects
 
@@ -128,7 +128,9 @@ There are two ways to turn saved text into tokens, and both are runs (see <<_ser
 * **Parse** does the whole job at once. Where your project has a parsing service connected, for example the bundled Stanza parser, it fills in the entire document: sentences, tokens, words, every annotation, and the dependency tree. This gives you a first draft to correct by hand, and is the fastest way to get started.
 
 Each button opens a dialog naming the method it will use and the options that method offers.
-Tokenizing replaces the existing tokens for the document, so it is normally a one-time step per document.
+A document that already has tokens cannot be tokenized again. **Tokenize** says to clear the tokens first, and **Clear tokens** beside it does that, after asking.
+Clearing takes the annotations on those tokens with them, and cannot be undone.
+Where the tokens are shared with another Plaid app on the project, the confirmation says whose annotations go too.
 
 == Working with Tokens
 
@@ -149,6 +151,10 @@ You can also select a span of text directly to create a new token from it.
 
 The **Annotate** tab is where the real work happens.
 It shows each sentence as a row of editable cells above an interactive dependency tree.
+
+Sentences come 25 to a page, with a pager above and below them.
+A document reopens on the page you left it on, and anything that reaches a particular sentence (a search result, a review sweep, a link from the assistant) turns to its page first.
+Sentence numbers belong to the document, not the page, so sentence 40 is sentence 40 wherever it is shown.
 
 == Tag and Lemma Editing
 
@@ -179,7 +185,7 @@ Below the grid, each sentence's dependency tree is drawn as arcs between words.
 * **Draw an arc**: press and drag from one word to another. The word you start on becomes the **head**, and the word you release on becomes its **dependent**.
 * **Mark the root**: drag from the **ROOT** bar to a word.
 * **Rename a relation**: click an arc's label to edit its dependency relation (`nsubj`, `obj`, …), again with autocomplete.
-* **Keyboard**: from the grid, **Ctrl/Cmd+D** jumps focus into the tree's labels. See <<_keyboard_shortcuts>> for the rest.
+* **Keyboard**: from the grid, **Ctrl/Cmd+D** jumps focus into the tree's labels. **Tab** and **Shift+Tab** walk between them, and from inside an open label they commit it and open the next. See <<_keyboard_shortcuts>> for the rest.
 
 == Metadata
 
@@ -387,7 +393,7 @@ A project's maintainers can tailor the annotation scheme from the project's sett
 
 A vocabulary offers its values and accepts anything else. That is the default, and for most projects it is the right one: a value nobody expected is usually worth seeing rather than refusing.
 
-Where a project wants the list to be binding, **Refuse values outside this list** on that vocabulary makes it so. What that means differs by field, and each says so beneath the switch:
+Where a project wants the list to be binding, the switch beneath it makes it so. It reads **Refuse tags outside this list** for UPOS and XPOS, **Refuse relations outside this list** for dependency relations, and **Refuse features outside this list** for the feature inventory. What refusing means differs by field:
 
 * **UPOS** and **XPOS**: the tag must be on the list.
 * **Dependency relations**: the BASE relation must be on the list. A subtype is judged by its base, so `nsubj:pass` is allowed wherever `nsubj` is, and a project does not have to list every subtype its language uses.
@@ -516,7 +522,8 @@ The editor carries a short version of this under **Gestures and marks**, above t
 | **Drag** from one word to another | Draw a relation, or re-point an existing one.
 | **Click** a label | Edit it.
 | **Ctrl/Cmd+D** | Jump from the grid into the relation labels.
-| **←** / **→** | Move between labels. **Enter** edits the one you are on, **↓** drops back into the grid.
+| **←** / **→**, or **Tab** / **Shift+Tab** | Move between labels. **Enter** edits the one you are on, **↓** drops back into the grid.
+| **Tab** / **Shift+Tab** in an open label | Commit it and open the next or previous label.
 | **Esc** | Leave the labels, or cancel an edit.
 | **Shift+Delete** | Delete the relation whose label you are editing.
 |===
