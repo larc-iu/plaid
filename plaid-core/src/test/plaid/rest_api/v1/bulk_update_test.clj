@@ -2,9 +2,11 @@
   "PATCH /spans/bulk, /relations/bulk and /tokens/bulk: many values and
   metadata patches in one operation, across the documents of one project."
   (:require [clojure.test :refer :all]
-            [plaid.fixtures :refer [with-db with-mount-states with-rest-handler admin-request
-                                    assert-status assert-created assert-ok assert-bad-request
-                                    assert-forbidden assert-not-found
+            [clojure.data.json :as json]
+            [plaid.sql.token :as tok]
+            [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler admin-request
+                                    api-call assert-status assert-created assert-ok assert-bad-request
+                                    assert-forbidden assert-not-found assert-no-content
                                     with-admin with-test-users user1-request with-clean-db]]
             [plaid.test-helpers :refer :all]))
 
@@ -33,6 +35,18 @@
 
 (defn- version [doc-id]
   (-> (get-document admin-request doc-id) :body :document/version))
+
+(defn- document-versions
+  "The response's X-Document-Versions header as {doc-id-string version}."
+  [response]
+  (some-> (get-in response [:headers "X-Document-Versions"]) json/read-str))
+
+(defn- bulk-update-spans-at
+  "PATCH /spans/bulk with an explicit ?document-version=."
+  [user-request-fn doc-version items]
+  (api-call user-request-fn {:method :patch
+                             :path (str "/api/v1/spans/bulk?document-version=" doc-version)
+                             :body items}))
 
 (deftest spans-value-and-metadata-in-one-request
   (let [{:keys [d1]} (setup)
@@ -105,3 +119,74 @@
     (is (= "cd" (-> (get-token admin-request (:t1 d2)) :body :metadata (get "form"))))
     (is (= (inc v1) (version (:doc d1))))
     (assert-not-found (bulk-update-tokens admin-request [{:id (random-uuid) :metadata {"a" "b"}}]))))
+
+(deftest every-bumped-document-version-comes-back
+  (testing "one document"
+    (let [{:keys [d1]} (setup)
+          res (bulk-update-spans admin-request [{:id (:s1 d1) :value "X"}])]
+      (assert-ok res)
+      (is (= {(str (:doc d1)) (version (:doc d1))} (document-versions res)))))
+  (testing "two documents: both versions, not just the first"
+    (let [{:keys [d1 d2]} (setup)
+          res (bulk-update-spans admin-request [{:id (:s1 d1) :value "X"}
+                                                {:id (:s1 d2) :value "Y"}])]
+      (assert-ok res)
+      (is (= {(str (:doc d1)) (version (:doc d1))
+              (str (:doc d2)) (version (:doc d2))}
+             (document-versions res))
+          "a client that learns only one version writes the other one stale"))))
+
+(deftest document-version-guards-a-single-document-bulk
+  (let [{:keys [d1]} (setup)
+        v (version (:doc d1))]
+    (testing "the current version is accepted"
+      (assert-ok (bulk-update-spans-at admin-request v [{:id (:s1 d1) :value "X"}])))
+    (testing "a stale version is a 409"
+      (assert-status 409 (bulk-update-spans-at admin-request v [{:id (:s1 d1) :value "Y"}]))
+      (is (= "X" (-> (get-span admin-request (:s1 d1)) :body :span/value)) "nothing was written"))))
+
+(deftest document-version-is-refused-across-documents
+  (let [{:keys [d1 d2]} (setup)
+        res (bulk-update-spans-at admin-request (version (:doc d1))
+                                  [{:id (:s1 d1) :value "X"} {:id (:s1 d2) :value "Y"}])]
+    (assert-bad-request res)
+    (is (re-find #"document-version" (-> res :body :error))
+        "the message names the parameter it refuses")
+    (is (= "A" (-> (get-span admin-request (:s1 d1)) :body :span/value)) "nothing was written")))
+
+(deftest a-locked-document-refuses-the-whole-update
+  (let [{:keys [proj d1 d2]} (setup)
+        _ (assert-no-content (add-project-writer admin-request proj "user1@example.com"))
+        _ (assert-ok (acquire-lock user1-request (:doc d2)))
+        res (bulk-update-spans admin-request [{:id (:s1 d1) :value "X"} {:id (:s1 d2) :value "Y"}])]
+    (assert-status 423 res)
+    (is (= "A" (-> (get-span admin-request (:s1 d1)) :body :span/value)) "nothing was written")
+    (release-lock user1-request (:doc d2))))
+
+(deftest spans-of-two-projects-are-refused
+  (let [a (setup)
+        b (setup)
+        res (bulk-update-spans admin-request [{:id (:s1 (:d1 a)) :value "X"}
+                                              {:id (:s1 (:d1 b)) :value "Y"}])]
+    (assert-bad-request res)
+    (is (= "A" (-> (get-span admin-request (:s1 (:d1 a))) :body :span/value)) "nothing was written")))
+
+(deftest an-unknown-id-in-first-position-is-a-404
+  (let [{:keys [proj d1]} (setup)
+        _ (assert-no-content (add-project-writer admin-request proj "user1@example.com"))
+        res (bulk-update-spans user1-request [{:id (random-uuid) :value "X"}
+                                              {:id (:s1 d1) :value "Y"}])]
+    (assert-not-found res)
+    (is (= "A" (-> (get-span admin-request (:s1 d1)) :body :span/value)) "nothing was written")))
+
+(deftest a-token-has-no-value-to-update
+  (let [{:keys [d1]} (setup)]
+    (testing "the route drops a stray value and applies the metadata"
+      (assert-ok (api-call admin-request {:method :patch
+                                          :path "/api/v1/tokens/bulk"
+                                          :body [{:id (:t1 d1) :value "x" :metadata {"a" "b"}}]}))
+      (is (= "b" (-> (get-token admin-request (:t1 d1)) :body :metadata (get "a")))))
+    (testing "a direct caller is refused: a token has no value column to write"
+      (let [res (tok/bulk-update db [{:id (:t1 d1) :value "x"}] "admin@example.com")]
+        (is (false? (:success res)))
+        (is (= 400 (:code res)))))))

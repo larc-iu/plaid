@@ -143,6 +143,14 @@
   (when (some? s)
     (json/read-str s :key-fn keyword)))
 
+(defn validate-atomic-value!
+  "A span's or relation's primary value is an atomic JSON scalar. `noun` is
+  the capitalized entity name for the error message."
+  [noun value]
+  (when-not (or (nil? value) (string? value) (number? value) (boolean? value))
+    (throw (ex-info (str noun " value must be atomic (string, number, boolean, or null)")
+                    {:value value :code 400}))))
+
 (defn parse-config
   "Read a :config column (JSON string) back into a Clojure map.
   Accepts nil/empty as {}. Keys are kept as STRINGS — config holds

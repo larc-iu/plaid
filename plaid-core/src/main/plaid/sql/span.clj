@@ -9,10 +9,10 @@
   delete-by-id!) so audit_writes captures them; FK ON DELETE CASCADE
   then sweeps the now-orphaned span_tokens rows."
   (:require [taoensso.timbre :as log]
+            [plaid.sql.bulk :as bulk]
             [plaid.sql.common :as psc]
-            [plaid.sql.operation :as op :refer [submit-operation!]]
+            [plaid.sql.operation :refer [submit-operation!]]
             [plaid.sql.metadata :as metadata]
-            [plaid.server.locks :as locks]
             [clojure.string])
   (:refer-clojure :exclude [get merge format]))
 
@@ -92,9 +92,7 @@
 
 (defn- validate-atomic-value!
   [value]
-  (when-not (or (nil? value) (string? value) (number? value) (boolean? value))
-    (throw (ex-info "Span value must be atomic (string, number, boolean, or null)"
-                    {:value value :code 400}))))
+  (psc/validate-atomic-value! "Span" value))
 
 (defn- fetch-tokens-by-ids
   "Return a vector of token rows matching `token-ids`, preserving the
@@ -348,64 +346,21 @@
 ;; Bulk update
 ;; ============================================================
 
+(def bulk-update-spec
+  "The `plaid.sql.bulk/bulk-update!` spec for spans."
+  {:table :spans
+   :entity-type "span"
+   :layer-table :span_layers
+   :layer-key :span_layer_id
+   :op-type :span/bulk-update
+   :noun "span"
+   :values? true})
+
 (defn bulk-update
   "Update the value of, and/or patch the metadata on, many spans in ONE
-  operation. `items` is a vector of maps, each with `:id` and either or
-  both of `:value` (set when the key is PRESENT, so nil means JSON null)
-  and `:metadata` (a patch with `plaid.sql.metadata/patch-metadata!`
-  semantics: a nil value deletes that key).
-
-  The spans may lie in several documents of one project: every document
-  touched has its version bumped and its lock checked, and the operation
-  header names a document only when there is exactly one, so the OCC
-  middleware and document-scoped events see it as a single-document op.
-
-  Unknown ids are refused (404) rather than dropped: an update that
-  silently skips a span the caller named would leave the caller believing
-  it landed. Returns the number of items applied."
+  operation. See `plaid.sql.bulk/bulk-update!` for the contract."
   [db items user-id]
-  (let [ids (mapv :id items)
-        pre-rows (psc/fetch-ids db :spans ids)
-        pre-doc-ids (distinct (map :document_id pre-rows))
-        first-row (first pre-rows)]
-    (submit-operation!
-     [tx db {:type :span/bulk-update
-             :project (when first-row
-                        (:project_id (psc/fetch-by-id db :span_layers (:span_layer_id first-row))))
-             :document (when (= 1 (count pre-doc-ids)) (first pre-doc-ids))
-             :description (str "Bulk update " (count items) " spans")
-             :user user-id}]
-     (when (empty? items)
-       (throw (ex-info "Span list is empty" {:code 400})))
-     (when (not= (count ids) (count (distinct ids)))
-       (throw (ex-info "A span may appear only once in a bulk update" {:code 400})))
-     (let [rows (psc/fetch-ids tx :spans ids)
-           by-id (into {} (map (juxt :id identity)) rows)
-           missing (remove by-id ids)]
-       (when (seq missing)
-         (throw (ex-info (str "Spans not found: " (clojure.string/join ", " missing))
-                         {:code 404 :ids (vec missing)})))
-       (let [projects (->> rows (map :span_layer_id) distinct
-                           (map #(:project_id (psc/fetch-by-id tx :span_layers %))) distinct)]
-         (when (not= 1 (count projects))
-           (throw (ex-info "Spans must all belong to one project" {:code 400}))))
-       (doseq [it items :when (contains? it :value)]
-         (validate-atomic-value! (:value it)))
-       (let [doc-ids (distinct (map :document_id rows))]
-         (when (> (count doc-ids) 1)
-           (let [result (locks/check-document-locks (vec doc-ids) user-id)]
-             (when (not= :ok result)
-               (throw (ex-info (str "Document " (:document-id result) " is locked by " (:user-id result))
-                               {:code 423 :document-id (:document-id result) :locked-by (:user-id result)})))))
-         (let [value-pairs (vec (for [it items :when (contains? it :value)]
-                                  [(:id it) {:value (psc/write-json (:value it))}]))]
-           (when (seq value-pairs)
-             (psc/bulk-update-by-id! tx :spans value-pairs)))
-         (doseq [it items :when (seq (:metadata it))]
-           (metadata/patch-metadata! tx "span" (:id it) (:metadata it)))
-         (when (> (count doc-ids) 1)
-           (op/bump-document-versions! tx doc-ids))
-         (count items))))))
+  (bulk/bulk-update! db items user-id bulk-update-spec))
 
 ;; ============================================================
 ;; Bulk create

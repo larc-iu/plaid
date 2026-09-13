@@ -57,14 +57,20 @@
       :else nil)))
 
 (defn bulk-update-get-project-id
-  "For a bulk update, whose entries carry an id rather than a layer."
+  "For a bulk update, whose entries carry an id rather than a layer. Reads
+  the first entry that resolves, not simply the first: an unknown id at
+  the head of the list would otherwise leave the project unresolved and
+  answer 403 where the update's own 404 is the caller's real answer."
+  [{db :db params :parameters}]
+  (some #(s/project-id db (:id %)) (:body params)))
+
+(defn bulk-update-get-document-id
+  "The document the OCC middleware checks `?document-version=` against. A
+  bulk update reaching more than one document refuses the parameter
+  outright (`plaid.sql.bulk/bulk-update!`)."
   [{db :db params :parameters}]
   (when-let [id (-> params :body first :id)]
-    (s/project-id db id)))
-
-(defn bulk-update-get-document-id [{db :db params :parameters}]
-  (when-let [id (-> params :body first :id)]
-    (s/get-doc-id-of-token db (first (:span/tokens (s/get db id))))))
+    (:span/document (s/get db id))))
 
 (def span-routes
 
@@ -135,19 +141,18 @@
                                     {:status 201 :body {:ids (:extra result)}}
                                     db doc-id)
                                    {:status (or (:code result) 500) :body {:error (:error result)}})))}
-             :patch {:summary "Update many spans in a single operation. Provide an array of objects whose keys are:\n<body>id</body>, the span's id\n<body>value</body>, optional: the new value (present with null to set null)\n<body>metadata</body>, optional: a metadata patch (a null value deletes that key)\nThe spans may lie in several documents of one project; every document touched has its version bumped. An unknown id refuses the whole update."
+             :patch {:summary "Update many spans in a single operation. Provide an array of objects whose keys are:\n<body>id</body>, the span's id\n<body>value</body>, optional: the new value (present with null to set null)\n<body>metadata</body>, optional: a metadata patch (a null value deletes that key)\nThe spans may lie in several documents of one project; every document touched has its version bumped and its new version is returned in X-Document-Versions. An unknown id refuses the whole update. <query>document-version</query> names one document, so it is refused when the entries reach more than one."
                      :middleware [[pra/wrap-writer-required bulk-update-get-project-id]
                                   [prm/wrap-document-version bulk-update-get-document-id]
                                   metadata/wrap-inline-metadata-shape-guard]
                      :parameters {:query [:map [:document-version {:optional true} :int]]
                                   :body [:sequential [:map [:id :uuid] [:value {:optional true} [:or string? number? boolean? nil?]] [:metadata {:optional true} [:map-of string? any?]]]]}
-                     :handler (fn [{{items :body} :parameters db :db user-id :user/id :as request}]
-                                (let [doc-id (bulk-update-get-document-id request)
-                                      {:keys [success code error extra]} (s/bulk-update db items user-id)]
+                     :handler (fn [{{items :body} :parameters db :db user-id :user/id}]
+                                (let [{:keys [success code error extra]} (s/bulk-update db items user-id)]
                                   (if success
-                                    (prm/assoc-document-version-in-header
-                                     {:status 200 :body {:count extra}}
-                                     db doc-id)
+                                    (prm/assoc-document-versions-in-header
+                                     {:status 200 :body {:count (:count extra)}}
+                                     db (:documents extra))
                                     {:status (or code 500) :body {:error (or error "Internal server error")}})))}
              :delete {:summary "Delete multiple spans in a single operation. Provide an array of IDs."
                       :middleware [[pra/wrap-writer-required bulk-get-project-id]

@@ -36,18 +36,31 @@
           {:status 400 :body {:error (or (ex-message e) "Malformed request body.")}}
           (throw e))))))
 
-(defn assoc-document-version-in-header
-  "Set X-Document-Versions on the response. Matches the v2 header name +
-  shape (JSON map of doc-id → version), but version is now the integer
-  `documents.version` column instead of the v2 audit-id UUID. Same code
-  path on the client; only the value type changes."
-  [response db doc-id]
-  (if (and doc-id (>= (:status response) 200) (< (:status response) 300))
-    (if-let [v (:document/version (doc/get db doc-id))]
-      (assoc-in response [:headers "X-Document-Versions"]
-                (json/write-str {doc-id v}))
-      response)
+(defn assoc-document-versions-in-header
+  "Set X-Document-Versions on the response to the current version of every
+  document in `doc-ids`. Matches the v2 header name + shape (JSON map of
+  doc-id → version), but version is now the integer `documents.version`
+  column instead of the v2 audit-id UUID. Same code path on the client;
+  only the value type changes.
+
+  A bulk write reaches the documents of one project, and a client that
+  learned only one of their versions goes on to write the rest with a
+  stale one, which its own strict mode then refuses."
+  [response db doc-ids]
+  (if (and (seq doc-ids) (>= (:status response) 200) (< (:status response) 300))
+    (let [versions (into {} (keep (fn [doc-id]
+                                    (when-let [v (:document/version (doc/get db doc-id))]
+                                      [doc-id v])))
+                         doc-ids)]
+      (if (seq versions)
+        (assoc-in response [:headers "X-Document-Versions"] (json/write-str versions))
+        response))
     response))
+
+(defn assoc-document-version-in-header
+  "Set X-Document-Versions on the response to one document's version."
+  [response db doc-id]
+  (assoc-document-versions-in-header response db (when doc-id [doc-id])))
 
 (defn wrap-request-extras
   "Inject `:db` (the HikariCP DataSource) and `:secret-key` onto every request.
