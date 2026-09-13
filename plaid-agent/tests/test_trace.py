@@ -7,13 +7,36 @@ show up in the tab as a bare function name.
 
 from plaid_agent.igt.tools import TOOLS, WRITE_TOOLS
 from plaid_agent.core.trace import DOCUMENT, PLAN, READ, summarize_steps, trace_step
-from plaid_agent.igt.trace import TRACER, describe_step, step_kind
+from plaid_agent.igt.trace import TRACER, describe_step, progress_label, step_kind
 
 
 def test_every_tool_has_a_line_of_its_own():
     missing = [t['function']['name'] for t in TOOLS
                if describe_step(t['function']['name'], {}) == t['function']['name'].replace('_', ' ')]
     assert missing == [], f'no trace description for: {missing}'
+
+
+def test_every_tool_has_a_progress_line_of_its_own():
+    """The same guarantee as above, for the PRESENT tense.
+
+    The list the panel ticks through while a turn runs comes from
+    ``progress_label``, not ``describe_step``, and it had its own fallback to a
+    bare function name. Three meta tools reached it, so a linguist watching a
+    turn saw ``discard_plan…`` and ``plan_status…`` in among "Looking at the
+    project…" and "Running code…". The past-tense test above could not catch
+    it, because those tools do have past-tense lines.
+    """
+    missing = [t['function']['name'] for t in TOOLS
+               if progress_label(t['function']['name'], {}) == f"{t['function']['name']}…"]
+    assert missing == [], f'no progress line for: {missing}'
+
+
+def test_ud_tools_have_progress_lines_too():
+    from plaid_agent.ud.tools import TOOLS as UD_TOOLS
+    from plaid_agent.ud.trace import progress_label as ud_progress
+    missing = [t['function']['name'] for t in UD_TOOLS
+               if ud_progress(t['function']['name'], {}) == f"{t['function']['name']}…"]
+    assert missing == [], f'no progress line for: {missing}'
 
 
 def test_write_tools_are_the_ones_that_say_plan():

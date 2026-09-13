@@ -244,6 +244,9 @@ _PROGRESS = {
     'query': lambda a: 'Running a query…',
     'web_search': lambda a: f'Searching the web for "{a.get("query", "")}"…',
     'read_url': lambda a: f'Reading {a.get("url", "")}…',
+    'plan_status': lambda a: 'Reviewing the plan so far…',
+    'discard_plan': lambda a: 'Discarding the plan so far…',
+    'drop_planned': lambda a: 'Dropping planned changes…',
 }
 
 
