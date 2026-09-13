@@ -43,6 +43,15 @@ const nonEmpty = (obj) => obj != null && Object.keys(obj).length > 0;
 // Attach `metadata` only when non-empty ("absent = empty" per the spec).
 const withMetadata = (node, metadata) => (nonEmpty(metadata) ? { ...node, metadata } : node);
 
+// See the note where this is used, on vocabulary items.
+const IMPORT_KEYS = ['nativeImportId'];
+const withoutImportKeys = (metadata) => {
+  if (!metadata || !IMPORT_KEYS.some((k) => k in metadata)) return metadata;
+  const out = { ...metadata };
+  for (const k of IMPORT_KEYS) delete out[k];
+  return out;
+};
+
 // ---- project.json -----------------------------------------------------------
 
 const igtLayers = (project) => {
@@ -159,8 +168,15 @@ export function serializeVocabularyNative(vocab, { comments = [], onWarning = nu
       ...(scope === 'entry' ? { scope } : {}),
     }),
   );
+  // `nativeImportId` is bookkeeping this app stamps on an entry it created from
+  // an archive: it dedupes a resumed import and points back at the source.
+  // It is not the project's data, and carrying it out again made the archive
+  // non-idempotent, since importing and re-exporting added a key to all 598
+  // entries that had not been there the first time. Dedup does not need it in
+  // the file: an archive entry is matched by its `id` above, which is the
+  // entry's own, and the importer stamps a fresh one on whatever it creates.
   const items = (vocab?.items || []).map((it) =>
-    withMetadata({ id: it.id, form: it.form }, it.metadata),
+    withMetadata({ id: it.id, form: it.form }, withoutImportKeys(it.metadata)),
   );
   // The vocabulary's tagsets, verbatim like the project's: null when unset.
   const tagsets = vocab?.config?.[IGT_NAMESPACE]?.tagsets ?? null;

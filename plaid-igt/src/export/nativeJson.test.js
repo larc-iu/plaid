@@ -548,3 +548,25 @@ describe('serializeVocabularyNative, the dictionary side of a field', () => {
     expect(out.fields.find((f) => f.name === 'gloss')).toEqual({ name: 'gloss', inline: true });
   });
 });
+
+describe('archive bookkeeping', () => {
+  it("leaves this app's import key out of the file, so a round trip is idempotent", () => {
+    const vocab = {
+      id: 'v1',
+      name: 'Lexicon',
+      items: [
+        {
+          id: 'i1',
+          form: 'dog',
+          metadata: { gloss: 'dog', nativeImportId: 'from-an-older-archive' },
+        },
+        { id: 'i2', form: 'cat', metadata: { gloss: 'cat' } },
+      ],
+    };
+    const out = serializeVocabularyNative(vocab);
+    expect(out.items[0].metadata).toEqual({ gloss: 'dog' });
+    expect(out.items[1].metadata).toEqual({ gloss: 'cat' });
+    // The entry is still identified, which is what dedup matches on.
+    expect(out.items.map((i) => i.id)).toEqual(['i1', 'i2']);
+  });
+});
