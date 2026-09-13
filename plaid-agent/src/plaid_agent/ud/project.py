@@ -420,10 +420,6 @@ def resolve(doc: UdDoc, ref: str):
     raise ValueError(f'{ref}: sentence s{si} has no multi-word token spanning words {a} to {b}')
 
 
-def token_ref(s: Sentence, t: Token) -> str:
-    return f's{s.index}.{t.ref_range}'
-
-
 # --- rendering ---------------------------------------------------------------
 
 COLUMNS = ('ID', 'FORM', 'LEMMA', 'UPOS', 'XPOS', 'FEATS', 'HEAD', 'DEPREL')

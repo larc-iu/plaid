@@ -3,8 +3,8 @@
 The counting, the summary line and the item shape are in
 :mod:`plaid_agent.core.trace`. What a call DID is here, next to the tool table
 in :mod:`.tools`, so a new tool is described where it is declared. A tool with
-no line of its own falls back to its name, and ``test_ud_trace.py`` fails if
-any declared tool reaches that fallback.
+no line of its own falls back to its name, and ``tests/test_ud_trace.py`` fails
+if any declared tool reaches that fallback.
 """
 
 from typing import Any, Dict
@@ -26,11 +26,6 @@ def step_kind(name: str) -> str:
     if name in _META_TOOLS:
         return META
     return READ
-
-
-def _refs(a: Dict[str, Any]) -> str:
-    n = count(a)
-    return plural(n, 'word') if n != 1 else q((a.get('refs') or [''])[0])
 
 
 def across(a: Dict[str, Any]) -> str:

@@ -1,13 +1,12 @@
-"""The UD prompt, trace and citations, and the service that ties them together."""
+"""The UD prompt and citations, and the service that ties them together."""
 
 import pytest
 
-from plaid_agent.core.trace import DOCUMENT, PLAN, READ, summarize_steps, trace_step
 from plaid_agent.ud.citations import parse_refs, resolve_citations
 from plaid_agent.ud.project import load_project
 from plaid_agent.ud.prompt import build_system_prompt
-from plaid_agent.ud.tools import TOOLS, Workspace, call_tool
-from plaid_agent.ud.trace import TRACER, describe_step, step_kind
+from plaid_agent.ud.tools import Workspace, call_tool
+from plaid_agent.ud.trace import TRACER
 from ud_fixtures import PID, ud_client
 
 
@@ -40,43 +39,6 @@ def test_the_web_half_is_added_only_when_asked(ws):
     out = build_system_prompt(ws.project, web=True)
     assert 'CANNOT also plan changes' in out and 'written by strangers' in out
     assert 'UD guidelines' in out
-
-
-# --- the trace ------------------------------------------------------------------
-
-def test_every_declared_tool_has_a_line_of_its_own():
-    """A tool described only by its own name has been added without a word for
-    it, which the user then reads in the trace."""
-    nameless = []
-    for t in TOOLS:
-        name = t['function']['name']
-        if describe_step(name, {}) == name.replace('_', ' '):
-            nameless.append(name)
-    assert not nameless, 'no trace line for: ' + ', '.join(nameless)
-
-
-def test_a_step_is_classified_by_what_it_was_for():
-    assert step_kind('read_document') == DOCUMENT
-    assert step_kind('set_head') == PLAN
-    assert step_kind('confirm') == PLAN
-
-
-def test_the_trace_reads_as_past_tense_lines():
-    assert describe_step('set_head', {'ref': 's1.w2', 'head': 4, 'deprel': 'case'}) \
-        == 'Planned s1.w2 as case of word 4'
-    assert describe_step('set_head', {'ref': 's1.w1', 'head': 0}) \
-        == 'Planned s1.w1 as the sentence root'
-    assert describe_step('set_field', {'field': 'lemma', 'value': 'ir', 'refs': ['s1.w1'],
-                                       'document': 'Viaje'}) \
-        == 'Planned lemma = “ir” on 1 word in “Viaje”'
-    assert describe_step('confirm', {'document': 'Viaje'}) \
-        == 'Planned confirming everything awaiting review in “Viaje”'
-
-
-def test_the_summary_counts_documents_and_plans_apart():
-    steps = [trace_step(TRACER, 'a', 'read_document', {'document': 'Viaje'}),
-             trace_step(TRACER, 'b', 'set_head', {'ref': 's1.w2', 'head': 1, 'deprel': 'det'})]
-    assert summarize_steps(steps) == 'read 1 document · 1 planned change · 2 steps'
 
 
 # --- citations -------------------------------------------------------------------

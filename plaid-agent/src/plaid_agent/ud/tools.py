@@ -1121,7 +1121,10 @@ def t_add_comment(ws: Workspace, document: str = None, body: str = None, ref: st
     if len(body) > 10000:
         raise ToolError('A comment holds at most 10000 characters.')
     doc = ws.doc(document)
-    _no_restore_planned(ws)
+    # The same three refusals every other edit to a document owes. This had
+    # one of them, so a comment could be anchored on a sentence token that a
+    # parse or a boundary move in the same plan deletes.
+    _guards(ws, doc)
     if ref:
         thing = resolve(doc, str(ref))
         if not isinstance(thing, Sentence):
@@ -1261,13 +1264,24 @@ def t_run_parse(ws: Workspace, documents=None, language: str = None,
     else:
         chosen = online[0]
 
-    ids = [ws.resolve_document_id(d) for d in documents]
+    ids = []
+    for d in documents:
+        did = ws.resolve_document_id(d)
+        if did not in ids:
+            ids.append(did)   # named twice is parsed once
+    if len(ids) > MAX_SCOPE_DOCS:
+        raise ToolError(f'{len(ids)} documents, more than the {MAX_SCOPE_DOCS} one plan covers. '
+                        f'Go in passes.')
+    # Names come from the document LIST, which is already in hand: reading
+    # every named document just to write its name into a label cost a full
+    # fetch per document, which on a corpus-sized parse is most of the call.
+    listed = {d['id']: (d.get('name') or d['id']) for d in ws.documents()}
     # A parse deletes and recreates a document's tokens, spans and relations.
     # Anything else this plan writes into the same document would be thrown
     # away by it, so the two cannot travel together.
     clash = set().union(*(docs_of_op(op) for op in ws.ops)) & set(ids) if ws.ops else set()
     if clash:
-        names = ', '.join(f'"{ws.doc(i).name}"' for i in clash)
+        names = ', '.join(f'"{listed.get(i, i)}"' for i in clash)
         raise ToolError(f'This plan already changes {names}, and a parse rewrites a document from '
                         f'scratch, so those changes would be thrown away. Plan the parse on its own, '
                         f'or drop the other changes first (plan_status, drop_planned).')
@@ -1275,7 +1289,7 @@ def t_run_parse(ws: Workspace, documents=None, language: str = None,
     if not lang:
         raise ToolError('Give language: the project does not record one, and the parser needs to '
                         'know which models to load.')
-    names = [ws.doc(i).name for i in ids]
+    names = [listed.get(i, i) for i in ids]
     ws.add_op({'kind': 'run_parse', 'document_ids': ids, 'service_id': chosen.get('service_id'),
                'project_id': ws.project.id, 'language': lang, 'overwrite': bool(overwrite),
                'label': (f'parse {len(ids)} document(s) with {chosen.get("service_name")} ({lang})'
@@ -1283,8 +1297,9 @@ def t_run_parse(ws: Workspace, documents=None, language: str = None,
                'ref': None})
     warn = (' It will overwrite annotations a person made or confirmed.' if overwrite
             else ' Sentences a person made or confirmed are left alone.')
+    shown = ', '.join(f'"{n}"' for n in names[:20]) + (f', … {len(names) - 20} more' if len(names) > 20 else '')
     return (f'Planned a parse of {len(ids)} document(s) with {chosen.get("service_name")} '
-            f'in {lang}: ' + ', '.join(f'"{n}"' for n in names) + '.' + warn
+            f'in {lang}: ' + shown + '.' + warn
             + ' A parse rewrites a document, so it is the only kind of change in this plan.')
 
 

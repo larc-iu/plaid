@@ -452,6 +452,28 @@ def test_run_parse_plans_the_whole_document(ws, monkeypatch):
     assert op['service_id'] == 'stanza-parser' and op['project_id'] == PID
 
 
+def test_run_parse_names_documents_without_reading_them(ws, monkeypatch):
+    """The label was built by loading every named document, which on a
+    corpus-sized parse is a full fetch each for a string the document list
+    already holds. A document named twice is also parsed once."""
+    monkeypatch.setattr('plaid_agent.ud.tools.parse_services', lambda w: _parsers('stanza-parser'))
+    out = call_tool(ws, 'run_parse', {'documents': ['Viaje', 'ud1', 'Viaje']})
+    assert 'Planned a parse of 1 document(s)' in out and '"Viaje"' in out
+    assert ws.ops[0]['document_ids'] == ['ud1']
+    assert not [e for e in ws.client.log if e[:2] == ('documents', 'get')], 'no document was read'
+
+
+def test_run_parse_refuses_more_documents_than_one_plan_covers(ws, monkeypatch):
+    from plaid_agent.ud.tools import MAX_SCOPE_DOCS
+    monkeypatch.setattr('plaid_agent.ud.tools.parse_services', lambda w: _parsers('stanza-parser'))
+    monkeypatch.setattr('plaid_agent.ud.tools.Workspace.resolve_document_id',
+                        lambda self, d: str(d))
+    many = [f'doc-{i}' for i in range(MAX_SCOPE_DOCS + 1)]
+    assert f'more than the {MAX_SCOPE_DOCS} one plan covers' in call_tool(
+        ws, 'run_parse', {'documents': many, 'language': 'es'})
+    assert not ws.ops
+
+
 def test_a_parse_and_an_edit_of_the_same_document_cannot_share_a_plan(ws, monkeypatch):
     """A parse rewrites the document, so the edit would be thrown away. Both
     orders are refused, and validate_ops is the backstop for either."""
@@ -939,6 +961,19 @@ def test_the_code_tool_is_withheld_where_code_cannot_run(ws, monkeypatch):
     names = {t['function']['name'] for t in tools.tools_for(ws)}
     assert 'run_code' not in names and 'code_help' not in names
     assert 'Code cannot run on this assistant' in run(ws, 'run_code', code='1')
+
+
+def test_a_comment_owes_the_same_refusals_as_every_other_edit(ws, monkeypatch):
+    """A comment is anchored on a sentence TOKEN, so a parse or a boundary
+    move in the same plan deletes the thing it hangs on. This had one of the
+    three guards its siblings share."""
+    monkeypatch.setattr('plaid_agent.ud.tools.parse_services',
+                        lambda w: [{'service_id': 'p', 'service_name': 'P', 'online': True,
+                                    'tasks': ['parse']}])
+    run(ws, 'run_parse', documents=['Viaje'])
+    out = run(ws, 'add_comment', document='Viaje', ref='s1', body='Is "al" right here?')
+    assert 'would be thrown away' in out
+    assert len(ws.ops) == 1
 
 
 def test_the_worklist_sees_unconfirmed_dependencies(ws):

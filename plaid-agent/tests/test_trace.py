@@ -31,14 +31,6 @@ def test_every_tool_has_a_progress_line_of_its_own():
     assert missing == [], f'no progress line for: {missing}'
 
 
-def test_ud_tools_have_progress_lines_too():
-    from plaid_agent.ud.tools import TOOLS as UD_TOOLS
-    from plaid_agent.ud.trace import progress_label as ud_progress
-    missing = [t['function']['name'] for t in UD_TOOLS
-               if ud_progress(t['function']['name'], {}) == f"{t['function']['name']}…"]
-    assert missing == [], f'no progress line for: {missing}'
-
-
 def test_write_tools_are_the_ones_that_say_plan():
     assert WRITE_TOOLS == {t['function']['name'] for t in TOOLS
                            if t['function']['description'].startswith('PLAN:')}

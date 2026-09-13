@@ -516,7 +516,16 @@ def stale_documents(client, documents: list) -> list:
     plan's ids and offsets were read from data that is no longer there."""
     out = []
     for d in documents:
-        if not isinstance(d, dict) or not d.get('id') or d.get('version') is None:
+        # A record with no id or no version cannot be checked, and skipping it
+        # applied the plan anyway: the one case this exists to catch is the
+        # one where the check could not run.
+        if not isinstance(d, dict) or not d.get('id'):
+            out.append('the plan names a document it cannot identify, so nothing can be checked '
+                       'against it')
+            continue
+        if d.get('version') is None:
+            out.append(f'document "{d.get("name") or d["id"]}" was recorded without a version, so '
+                       f'whether it has changed since the plan was made cannot be told')
             continue
         try:
             now = client.documents.get(d['id'])

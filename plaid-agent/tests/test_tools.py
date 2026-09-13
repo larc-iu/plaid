@@ -345,7 +345,12 @@ def test_stale_documents_refuse_a_plan_made_against_older_data():
     c = FakeClient()
     assert stale_documents(c, [{'id': 'd1', 'name': 'Text 1', 'version': 7}]) == []
     assert stale_documents(c, [{'id': 'd1', 'name': 'Text 1', 'version': 6}]) == ['document "Text 1" has changed since the plan was made']
-    assert stale_documents(c, [{'id': 'd1', 'version': None}, 'junk']) == []
+    # A record that cannot be checked refuses the plan rather than being waved
+    # through: the one case this exists to catch is the one where the check
+    # could not run.
+    out = stale_documents(c, [{'id': 'd1', 'version': None}, 'junk'])
+    assert len(out) == 2
+    assert 'recorded without a version' in out[0] and 'cannot identify' in out[1]
     out = stale_documents(c, [{'id': 'nope', 'name': 'Gone', 'version': 1}])
     assert len(out) == 1 and 'could not be read' in out[0]
 

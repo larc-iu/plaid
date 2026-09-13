@@ -24,6 +24,10 @@ import threading
 from typing import Any, Callable, Dict, List, Optional
 
 OUTPUT_MAX = 12000                 # characters of output handed back, like every tool result
+# The tool always runs in the turn's own worker, so TURN_EXEC_SECONDS is the
+# budget that actually applies and the one the help and the timeout message
+# name. EXEC_SECONDS bounds a run in a FRESH worker, which is `run` without a
+# session: no tool takes that path, the tests do.
 EXEC_SECONDS = 120.0               # interpreter time; time spent in host functions is not counted
 WALL_SECONDS = 900.0               # the host-side backstop for one call, host functions included
 MEMORY_BYTES = 1024 * 1024 * 1024
@@ -141,8 +145,13 @@ def run(code: str, api: Dict[str, Callable], on_progress: Optional[Callable[[str
         if session is not None:
             session.close()  # the worker is gone; the next call gets a new one, and starts over
         if getattr(e, 'timed_out', False):
-            raise CodeError(f'The code ran for more than {WALL_SECONDS / 60:.0f} minutes and was stopped. '
-                            f'Narrow it: fewer documents, or a query() for the counting.' + _partial(printed))
+            # Two limits can end a run and the message used to name only the
+            # larger, which is not the one that trips first.
+            raise CodeError(
+                f'The code was stopped. One turn\'s run_code calls share {TURN_EXEC_SECONDS / 60:.0f} '
+                f'minutes of computation between them, and one call may take {WALL_SECONDS / 60:.0f} '
+                f'minutes including the time its reads wait on the server. Narrow it: fewer documents, '
+                f'or a query() for the counting.' + _partial(printed))
         raise CodeError('The sandbox stopped while running this code. Try again with less at once.'
                         + _partial(printed))
     out = (printed.output or '').rstrip('\n')
@@ -183,16 +192,16 @@ The project reaches the code through four functions, and nothing else:
 Names persist between run_code calls in one turn (a tally built by one call can be read by the next);
 the next turn starts clean.
 Print what you want to see; the value of the last expression is returned too. Output is capped at
-{output_max} characters, so summarize in the code rather than printing everything. One run may take up
-to {exec_seconds:.0f} seconds of computation; loading a document is a call to the server and does not
-count, but a walk over a very large corpus is slow, so use query() for counting where it can count.
-Errors come back as text; fix the code and run again.
+{output_max} characters, so summarize in the code rather than printing everything. A turn's run_code
+calls share one budget of {turn_seconds:.0f} seconds of computation between them; loading a document is
+a call to the server and does not count against it, but a walk over a very large corpus is slow, so use
+query() for counting where it can count. Errors come back as text; fix the code and run again.
 '''
 
 
 def help_text(app_half: str) -> str:
     return HELP.format(modules=', '.join(MODULES), output_max=OUTPUT_MAX,
-                       exec_seconds=EXEC_SECONDS) + app_half
+                       turn_seconds=TURN_EXEC_SECONDS) + app_half
 
 
 def schemas(subject: str) -> List[Dict[str, Any]]:

@@ -45,3 +45,12 @@ def test_output_is_capped():
 def test_nothing_printed_and_no_value_says_so():
     assert 'printed nothing' in sandbox.run('x = 1', {})
 
+
+
+def test_the_help_names_the_budget_that_actually_applies():
+    """The tool always runs in the turn's own worker, so the 600 s budget is
+    the one that bites. The help promised 120 s, which is the fresh-worker
+    path no tool takes."""
+    text = sandbox.help_text('')
+    assert f'{sandbox.TURN_EXEC_SECONDS:.0f} seconds of computation' in text
+    assert f'{sandbox.EXEC_SECONDS:.0f} seconds of computation' not in text

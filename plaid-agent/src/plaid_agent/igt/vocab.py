@@ -214,7 +214,12 @@ def with_parent(metadata: Optional[dict], parent_id: Optional[str], order) -> di
 
 
 def example_refs(item: Optional[dict]) -> List[dict]:
-    """Promoted example references on an item, {document, token} only."""
+    """Promoted example references on an item, {document, token} only.
+
+    Called by nothing here. It is part of the 1:1 port of the app's
+    vocabDictionary.js (`exampleRefs`), which the mirror test holds function
+    for function, so it stays whether or not a tool has a use for it yet.
+    """
     v = ((item or {}).get('metadata') or {}).get(EXAMPLES_KEY)
     return [e for e in v if isinstance(e, dict) and _is_id(e.get('document')) and _is_id(e.get('token'))] \
         if isinstance(v, list) else []

@@ -389,17 +389,6 @@ class Unanalyzed:
         return out
 
 
-def linked_word_ids(c: Corpus) -> Dict[str, str]:
-    """Word id -> surface for every word linked itself or through a morpheme."""
-    out: Dict[str, str] = {}
-    for wid, value, _n in c.group([c.word('?w'), ['vocab-link', '?w', '?v']], ['?w', '?w.value']):
-        out[wid] = value
-    if c.M:
-        for wid, value, _n in c.group(c.in_word('?m', '?w') + [['vocab-link', '?m', '?v']], ['?w', '?w.value']):
-            out[wid] = value
-    return out
-
-
 # --- frequency_list ---------------------------------------------------------------
 
 def q_frequency_list(ws: Workspace, what_l: str, field, limit: int, min_count: int):
