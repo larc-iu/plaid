@@ -10,7 +10,10 @@ import {
   PROVENANCE_KEYS,
   writerPolicy,
 } from '@larc-iu/plaid-client';
-import { canManageProject } from '@ui/domain/permissions.js';
+// By its real path rather than through `@ui`: this file is loaded by the
+// `node --test` suite, where no alias exists. It is the same file the alias
+// resolves to, and it imports nothing itself, which is what lets node load it.
+import { canManageProject } from '../../../plaid-ui/src/domain/permissions.js';
 import { isProvKey } from '../utils/provenanceUi.js';
 import {
   getUdLayerInfo,
