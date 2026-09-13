@@ -225,6 +225,9 @@ export const ProjectAssistant = ({
   const [liveSteps, setLiveSteps] = useState([]); // progress messages so far
   const [partial, setPartial] = useState(''); // the reply so far, while it is written
   const [stopping, setStopping] = useState(false);
+  // The conversation whose last turn the user stopped by hand, so the banner
+  // that follows can say so rather than reporting a failure that did not happen.
+  const [userStopped, setUserStopped] = useState(null);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const openSeq = useRef(0); // the latest open() request, so a stale read is ignored
@@ -327,6 +330,7 @@ export const ProjectAssistant = ({
   }, [allProjects, client]);
 
   const showJob = (j) => {
+    setUserStopped(null);
     setBusy(j.kind);
     setProgress(j.progress);
     setLiveSteps(j.steps);
@@ -592,7 +596,13 @@ export const ProjectAssistant = ({
   // Stop a turn: the service is asked to stop, and does so between steps.
   // Only turns can be stopped: an apply's writes are already under way, and
   // abandoning one would hide what landed.
-  const stopTurn = () => stopJob(client, projectId, jobFor(activeRef.current?.id));
+  const stopTurn = () => {
+    // Remember that the silence after this was asked for. Without it the retry
+    // banner below tells the user "No answer came back for this message", which
+    // blames the model for the user's own click.
+    setUserStopped(activeRef.current?.id ?? null);
+    return stopJob(client, projectId, jobFor(activeRef.current?.id));
+  };
 
   const approve = (plan, { asHuman = false } = {}) => {
     const conv = activeRef.current;
@@ -922,7 +932,9 @@ export const ProjectAssistant = ({
                 <span className="flex-1">
                   {lastKind === 'error'
                     ? 'That turn did not finish.'
-                    : 'No answer came back for this message.'}
+                    : userStopped && userStopped === active?.id
+                      ? 'You stopped this turn.'
+                      : 'No answer came back for this message.'}
                 </span>
                 <Button
                   type="button"
