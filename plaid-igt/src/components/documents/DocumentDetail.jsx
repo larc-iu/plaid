@@ -4,9 +4,9 @@ import { useStrictClient } from './contexts/StrictModeContext.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { DocumentProvider } from './contexts/DocumentContext.jsx';
 import { IgtDocument } from '../../domain/IgtDocument.js';
-import { formatFindingsForClipboard } from '../../domain/validate.js';
+import { reportIntegrityFindings, dismissIntegrityFindings } from '@ui/lib/integrityToast.js';
 import { readInitialized, readImportState, importRouteFor } from '@/domain/igtConfig';
-import { notifyError, toast, humanizeError } from '@/utils/feedback';
+import { notifyError, humanizeError } from '@/utils/feedback';
 import { History, FileText, Type, Mic, Play, Table, Download, MessageSquare } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@ui/components/ui/tabs';
 import { Button } from '@ui/components/ui/button';
@@ -67,39 +67,6 @@ const WIDE_TABS = new Set(['analyze', 'media']);
 // The tab bar's inventory, in display order, and the tab a document opens on.
 const TABS = ['metadata', 'baseline', 'media', 'tokenize', 'analyze', 'comments', 'export'];
 const DEFAULT_TAB = 'metadata';
-
-// Surface validateIgtDocument findings: full detail to the console (grouped),
-// plus ONE consolidated "Data integrity issue detected" toast with a
-// [Copy details] action that drops the lot onto the clipboard for a bug report.
-// Findings are things we could NOT auto-repair, which is exactly why they are
-// worth interrupting for. Repairs that SUCCEEDED say nothing: see the reconcile
-// effect below.
-const INTEGRITY_TOAST_ID = 'igt-integrity-findings';
-const reportIntegrityFindings = (findings, documentId) => {
-  if (!findings?.length) return;
-  console.group(`[plaid-igt] Document integrity findings (${findings.length})`);
-  findings.forEach((f) =>
-    (f.severity === 'error' ? console.error : console.warn)(`[${f.code}] ${f.message}`, f.context),
-  );
-  console.groupEnd();
-
-  const errors = findings.filter((f) => f.severity === 'error');
-  const headline = errors.length ? errors : findings;
-  const reason =
-    headline.length === 1
-      ? headline[0].message
-      : `${headline.length} issues found. See the browser console for details.`;
-  const detail = formatFindingsForClipboard(findings, { documentId });
-  toast.warning('Data integrity issue detected', {
-    id: INTEGRITY_TOAST_ID,
-    description: reason,
-    duration: Infinity,
-    action: {
-      label: 'Copy details',
-      onClick: () => navigator.clipboard?.writeText(detail).catch(() => {}),
-    },
-  });
-};
 
 const DocumentEditor = () => {
   const { projectId, documentId } = useParams();
@@ -432,7 +399,7 @@ const DocumentEditor = () => {
           console.info(`Reconcile: ${parts.join('; ')}`);
         }
         // Integrity findings (things we could NOT auto-repair) — console + toast.
-        reportIntegrityFindings(findings, doc.id);
+        reportIntegrityFindings(findings, { documentId: doc.id });
       } catch (e) {
         console.error('Reconcile failed:', e);
       } finally {
@@ -457,7 +424,7 @@ const DocumentEditor = () => {
   // The integrity toast is sticky (duration Infinity) so it isn't missed, but
   // it is about THIS document: drop it when the user leaves for another
   // document or page instead of letting it follow them around the app.
-  useEffect(() => () => toast.dismiss(INTEGRITY_TOAST_ID), [documentId]);
+  useEffect(() => () => dismissIntegrityFindings(), [documentId]);
 
   // The built-in analysis helpers (copy prior analyses + auto-link) no longer
   // run automatically — they were disruptive mid-editing. They run on demand

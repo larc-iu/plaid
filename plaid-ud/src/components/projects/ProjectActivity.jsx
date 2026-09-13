@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
 import { ActivityPanel } from '@ui/components/shared/ActivityPanel';
+import { useProjectRoster } from '@ui/hooks/useProjectRoster.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { useManagedProject } from './useManagedProject.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
@@ -16,43 +16,9 @@ export const ProjectActivity = () => {
   const { project, projectId, loading, canConfigure } = useManagedProject();
   const { getClient } = useAuth();
   const client = getClient();
-  const [names, setNames] = useState({});
+  const roster = useProjectRoster(client, project);
 
   useDocumentTitle('Activity', project?.name);
-
-  const memberIds = useMemo(
-    () =>
-      [
-        ...new Set([
-          ...(project?.readers || []),
-          ...(project?.writers || []),
-          ...(project?.maintainers || []),
-        ]),
-      ].sort(),
-    [project],
-  );
-
-  useEffect(() => {
-    if (!client || memberIds.length === 0) return undefined;
-    let alive = true;
-    // One directory read rather than a lookup per member. This tab is
-    // maintainer-only, which is exactly who the directory is open to.
-    client.users
-      .list()
-      .then((all) => {
-        if (!alive) return;
-        setNames(Object.fromEntries((all || []).map((u) => [u.id, u.displayName || u.id])));
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [client, memberIds.length]);
-
-  const roster = useMemo(
-    () => memberIds.map((id) => ({ id, displayName: names[id] || id })),
-    [memberIds, names],
-  );
 
   if (loading) return <p className="p-4 text-sm text-muted-foreground">Loading…</p>;
   if (!project || !canConfigure) return null;

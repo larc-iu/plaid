@@ -1,45 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
 import { ActivityPanel } from '@ui/components/shared/ActivityPanel';
+import { useProjectRoster } from '@ui/hooks/useProjectRoster.js';
 
 // The project-scoped half of the activity view. Its roster is the project's
 // own members, so "no changes in this window" names the people who were given
-// access and have not used it, which is the question an instructor asks.
+// access and have not used it.
 export const ProjectActivity = ({ client, project, projectId }) => {
-  const [names, setNames] = useState({});
-
-  const memberIds = useMemo(
-    () =>
-      [
-        ...new Set([
-          ...(project?.readers || []),
-          ...(project?.writers || []),
-          ...(project?.maintainers || []),
-        ]),
-      ].sort(),
-    [project],
-  );
-
-  useEffect(() => {
-    if (memberIds.length === 0) return undefined;
-    let alive = true;
-    // One directory read rather than a lookup per member. This tab is
-    // maintainer-only, which is exactly who the directory is open to.
-    client.users
-      .list()
-      .then((all) => {
-        if (!alive) return;
-        setNames(Object.fromEntries((all || []).map((u) => [u.id, u.displayName || u.id])));
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [client, memberIds.length]);
-
-  const roster = useMemo(
-    () => memberIds.map((id) => ({ id, displayName: names[id] || id })),
-    [memberIds, names],
-  );
-
+  const roster = useProjectRoster(client, project);
   return <ActivityPanel client={client} projectId={projectId} roster={roster} />;
 };

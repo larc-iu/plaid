@@ -90,15 +90,3 @@ export function validateConlluDocument(layerInfo) {
 
   return findings;
 }
-
-// Format findings for the clipboard "Copy details" action: one line each,
-// machine-pasteable into a bug report.
-export function formatFindingsForClipboard(findings, { documentId } = {}) {
-  const header = documentId
-    ? `Document integrity findings (document ${documentId})`
-    : 'Document integrity findings';
-  const lines = (findings || []).map(
-    (f) => `[${f.severity}] ${f.code}: ${f.message} ${JSON.stringify(f.context || {})}`,
-  );
-  return [header, ...lines].join('\n');
-}

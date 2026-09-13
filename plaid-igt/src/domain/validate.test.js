@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { validateIgtDocument, formatFindingsForClipboard } from './validate.js';
+import { validateIgtDocument } from './validate.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 import { buildRawDoc, resetIds } from './test-helpers.js';
 
@@ -58,25 +58,6 @@ describe('validateIgtDocument', () => {
     const overlaps = findings.filter((x) => x.code === 'alignment-time-overlap');
     expect(overlaps).toHaveLength(1);
     expect(overlaps[0]).toMatchObject({ severity: 'warning', context: { ids: ['a2', 'a3'] } });
-  });
-});
-
-describe('formatFindingsForClipboard', () => {
-  it('renders one line per finding with the document id header', () => {
-    const text = formatFindingsForClipboard(
-      [
-        {
-          severity: 'error',
-          code: 'span-duplicate',
-          message: 'two spans',
-          context: { tokens: ['t1'] },
-        },
-      ],
-      { documentId: 'doc-1' },
-    );
-    expect(text).toContain('doc-1');
-    expect(text).toContain('[error] span-duplicate: two spans');
-    expect(text).toContain('"tokens":["t1"]');
   });
 });
 

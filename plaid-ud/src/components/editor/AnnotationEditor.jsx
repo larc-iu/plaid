@@ -17,7 +17,7 @@ import { useWideEnoughToDock } from '@ui/components/assistant/useDock.js';
 import { RestoreDialog } from './annotation/RestoreDialog.jsx';
 import { EditorLegend } from './annotation/EditorLegend.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { formatFindingsForClipboard } from '../../domain/validate.js';
+import { formatFindingsForClipboard } from '@ui/lib/integrityToast.js';
 import { notifyError, notifyWithAction } from '../../utils/feedback.jsx';
 import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
