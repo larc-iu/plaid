@@ -19,7 +19,8 @@ vocabulary as it is created (the last is the rule plaid-dict asks too),
 ``splitEntryLevel`` is Add headword, ``groupRankedByHeadword`` is the link
 popover's list, and ``exampleKey`` keys a rendering cache. Most of
 vocabFields.js is the entry FORM (labels, controls, grouping) and is absent for
-the same reason. ``test_every_app_function_is_ported_or_exempted`` holds the
+the same reason, as is ``newVocabField``, which shapes one row of the Settings
+field table between adding a field and the reload that reads it back. ``test_every_app_function_is_ported_or_exempted`` holds the
 full list both ways, and anything missing from it is a bug.
 
 Reserved item keys, which are never fields:

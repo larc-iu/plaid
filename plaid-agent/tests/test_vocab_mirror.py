@@ -223,6 +223,7 @@ SURFACE_EXEMPT = {
     'humanizeFieldName': 'the entry form',
     'isBuiltInField': 'the Settings field table',
     'reservedMetadata': 'the entry form',
+    'newVocabField': 'the Settings field table: one row before its first reload',
     'seedDefaultFields': 'a new vocabulary',
     'vocabFieldTagset': 'the Settings field table',
     'vocabGovernedFields': 'the Settings field table',
