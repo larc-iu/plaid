@@ -248,6 +248,22 @@ describe('the pulse on a single accept', () => {
     await settle();
   });
 
+  it('Shift+Enter moves back and adopts nothing', async () => {
+    // Plain Enter is the one adopting key. In FLEx the same chord means "move
+    // on without approving", and a hand trained there was writing the guesses
+    // it meant to skip.
+    mount();
+    const c = cell('wa:w-2:POS');
+    expect(c.dataset.guessValue).toBeTruthy();
+    c.focus();
+    key(c, 'Enter', { shiftKey: true });
+    expect(c.value).toBe('');
+    expect(c.dataset.guessConfirmed).toBeUndefined();
+    expect(c.closest('.igt-cell').classList.contains('igt-confirmed')).toBe(false);
+    expect(document.activeElement).not.toBe(c);
+    await settle();
+  });
+
   it('leaves a cell alone when Enter had no guess to adopt', async () => {
     const doc = mount();
     await doc.updateTokenSpan('w-2', 'POS', 'V', {});

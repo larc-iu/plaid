@@ -139,6 +139,11 @@ export const grid = {
                 apply: (v) => this.doc.updateOrthography(token.id, name, v),
                 ariaLabel: `${name} for ${token.content}`,
                 fieldName: name,
+                // Ctrl/Cmd+Enter and Ctrl/Cmd+Backspace mean the same thing
+                // in every cell of a word's column, this one included; without
+                // this they degraded to a plain Enter and the browser's
+                // delete-word here.
+                confirmWord: token.id,
               })}
             </div>
           `,

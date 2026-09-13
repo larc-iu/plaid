@@ -267,9 +267,9 @@ export const alternatives = {
   // Guess confirmation: Enter on an empty cell showing a guess adopts the
   // guess into the input value (marked confirmed so the blur-commit attaches
   // provenance) and then proceeds with normal navigation, whose focus change
-  // blurs and commits. Tab deliberately does NOT adopt (user decision
-  // 2026-08-26): tabbing across a row to reach a cell must never write the
-  // guesses it passes over. Typing replaces the guess (it's just a
+  // blurs and commits. Tab and Shift+Enter deliberately do NOT adopt (user
+  // decisions 2026-08-26 and 2026-09-13): moving across a row to reach a cell
+  // must never write the guesses it passes over. Typing replaces the guess (it's just a
   // placeholder); plain blur leaves the cell empty — guesses are never written
   // implicitly.
   _maybeConfirmGuess(el) {

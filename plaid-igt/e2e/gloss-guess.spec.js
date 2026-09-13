@@ -202,7 +202,7 @@ test('A1-10: word-scope fields guess the same way', async ({ page }) => {
   ).not.toHaveClass(/igt-field--guess/);
 });
 
-test('A1-06/09: Escape leaves a guessed cell empty; Shift+Enter adopts and moves back', async ({
+test('A1-06/09: Escape leaves a guessed cell empty; Shift+Enter moves back and adopts nothing', async ({
   page,
 }) => {
   const d = await mkdoc(`${LOS} ${LOS} ${LOS}`);
@@ -220,14 +220,15 @@ test('A1-06/09: Escape leaves a guessed cell empty; Shift+Enter adopts and moves
   await expect(c2).toHaveValue('');
   await page.waitForTimeout(400);
   expect(seen).toEqual([]);
-  // Shift+Enter adopts the guess (Enter semantics) and moves to the previous cell.
+  // Shift+Enter moves to the previous cell and leaves the guess a guess: plain
+  // Enter is the one key that adopts (ruling 2026-09-13).
   await c2.click();
   await page.keyboard.press('Shift+Enter');
-  await expect(c2).toHaveValue('DET.PL');
-  await expect(c2).toHaveClass(/igt-field--verified/);
   await expect(c1).toBeFocused();
-  await page.waitForLoadState('networkidle');
-  expect(seen).toEqual(['POST /api/v1/spans']);
+  await expect(c2).toHaveValue('');
+  await expect(c2).toHaveClass(/igt-field--guess/);
+  await page.waitForTimeout(400);
+  expect(seen).toEqual([]);
 });
 
 test('A1-07: a tie yields no guess; breaking the tie brings it back', async ({ page }) => {

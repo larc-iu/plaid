@@ -4,6 +4,16 @@ import { ZERO_MORPH } from '@/domain/zeroMorph';
 import { activeComposeTable, composePendingOn } from '@/lib/composeInput';
 import { morphFormOf } from './shared.js';
 
+// The physical keys behind the three Alt chords, for when the character has
+// been rewritten by the OS (see the Alt+0 branch).
+const ALT_CODES = {
+  Digit0: '0',
+  Numpad0: '0',
+  Minus: '-',
+  NumpadSubtract: '-',
+  Equal: '=',
+};
+
 // The morpheme form field: split, merge, and delete from the keyboard, paste
 // that splits, and the commit of a form.
 export const morphForm = {
@@ -101,7 +111,13 @@ export const morphForm = {
       // read as a command), and it earns a chord of its own rather than only
       // the `\0/` code because a zero is roughly one morpheme in eight in real
       // data, common enough that a student meets it on their first text.
-      if (e.key === '0' && e.altKey && !e.ctrlKey && !e.metaKey) {
+      // Matched on the physical key as well as the character: macOS rewrites
+      // e.key under Option (Option+0 is º, Option+- is –, Option+= is ≠), so
+      // matching the character alone left all three chords dead on a Mac, and
+      // with `-` always a split there was no way to type a hyphen at all.
+      // e.key stays in the test for layouts where the character sits on
+      // another physical key.
+      if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === '0' || ALT_CODES[e.code] === '0')) {
         e.preventDefault();
         this._insertLiteral(el, ZERO_MORPH);
         return;
@@ -112,8 +128,9 @@ export const morphForm = {
       // A half-typed backslash code owns these keys first: 22 codes END in one
       // (`\i-` ɨ, `\l-` ɬ, `\u-` ʉ) and 18 BEGIN with one (the `\-5`..`\-1`
       // tone bars). Falling through lets beforeinput compose them.
-      if ((e.key === '-' || e.key === '=') && !e.ctrlKey && !e.metaKey && !composePendingOn(el)) {
-        const joiner = e.key;
+      const joiner =
+        e.key === '-' || e.key === '=' ? e.key : e.altKey ? (ALT_CODES[e.code] ?? null) : null;
+      if (joiner && !e.ctrlKey && !e.metaKey && !composePendingOn(el)) {
         if (e.altKey) {
           // Alt+- / Alt+= inserts the literal character (reduplication forms,
           // forms that contain a hyphen) rather than splitting the morpheme.
@@ -160,7 +177,10 @@ export const morphForm = {
         return;
       }
 
-      if (e.key === 'Backspace') {
+      // Plain Backspace only: Ctrl+Backspace, Cmd+Backspace and Option+Backspace
+      // are the platform's delete-word and delete-to-line-start, and a
+      // structural merge must never ride on one of those.
+      if (e.key === 'Backspace' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const atStart = (el.selectionStart ?? 0) === 0 && (el.selectionEnd ?? 0) === 0;
         const idx = siblings.findIndex((m) => m.id === morph.id);
         // Delete an emptied non-first morpheme.

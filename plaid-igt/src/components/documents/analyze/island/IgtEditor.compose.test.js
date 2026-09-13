@@ -157,6 +157,17 @@ describe('the zero morph', () => {
     expect(c.value).toBe('∅');
   });
 
+  it('Alt+0 works as a Mac delivers it, with the character rewritten to º', () => {
+    // Option rewrites e.key, so the chord is matched on the physical key too.
+    mount();
+    const c = cell('mf:m-1');
+    c.focus();
+    c.value = '';
+    c.setSelectionRange(0, 0);
+    press(c, 'º', { altKey: true, code: 'Digit0' });
+    expect(c.value).toBe('∅');
+  });
+
   it('is also reachable as a code', () => {
     mount();
     const c = cell('mf:m-1');
@@ -177,5 +188,33 @@ describe('the zero morph', () => {
     c.blur();
     await settle();
     expect(formsOf(doc)).toEqual(['∅']);
+  });
+});
+
+describe('a literal hyphen or equals sign', () => {
+  it('Alt+- and Alt+= insert the character instead of splitting', async () => {
+    const { doc } = mount();
+    const c = cell('mf:m-1');
+    c.focus();
+    c.value = '';
+    c.setSelectionRange(0, 0);
+    press(c, '-', { altKey: true, code: 'Minus' });
+    press(c, '=', { altKey: true, code: 'Equal' });
+    await settle();
+    expect(c.value).toBe('-=');
+    expect(doc.sentences[0].tokens[0].morphemes).toHaveLength(1);
+  });
+
+  it('works as a Mac delivers it, with the character rewritten to – and ≠', async () => {
+    const { doc } = mount();
+    const c = cell('mf:m-1');
+    c.focus();
+    c.value = '';
+    c.setSelectionRange(0, 0);
+    press(c, '–', { altKey: true, code: 'Minus' });
+    press(c, '≠', { altKey: true, code: 'Equal' });
+    await settle();
+    expect(c.value).toBe('-=');
+    expect(doc.sentences[0].tokens[0].morphemes).toHaveLength(1);
   });
 });

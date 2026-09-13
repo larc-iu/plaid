@@ -139,11 +139,16 @@ export const cells = {
     // it alone so the chip hop wins over cell navigation.
     if ((e.ctrlKey || e.metaKey) && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) return;
     if (this._maybeArrowOutOfCell(e)) return;
-    if (e.key === 'Enter') this._maybeConfirmGuess(e.target);
+    // Plain Enter is the ONE key that adopts a guess (user decision
+    // 2026-08-26, reaffirmed 2026-09-13). Shift+Enter is a step backwards, and
+    // nobody backing out of a cell means to commit what it shows; in FLEx the
+    // same chord is "move on without approving", so a hand trained there was
+    // writing guesses it meant to skip.
+    if (e.key === 'Enter' && !e.shiftKey) this._maybeConfirmGuess(e.target);
     if (e.key === 'Enter') {
       // Commit and advance to the next cell in the same tier (the "fill a row
-      // across" glossing workflow). Shift+Enter goes back. Falls back to blur
-      // (which commits) when there's no next cell.
+      // across" glossing workflow). Shift+Enter goes back, adopting nothing.
+      // Falls back to blur (which commits) when there's no next cell.
       e.preventDefault();
       if (!this._navMove(e.target, e.shiftKey ? 'prev' : 'next')) e.target.blur();
     } else if (e.key === 'Tab') {

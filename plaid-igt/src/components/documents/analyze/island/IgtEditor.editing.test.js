@@ -824,3 +824,58 @@ describe('a focus target handed to a mutation', () => {
     expect(document.activeElement).toBe(cell('ma:m-2:Gloss'));
   });
 });
+
+describe('the whole-word chords in an orthography cell', () => {
+  it('Ctrl+Enter accepts the word from there too', async () => {
+    // The orthography cells were the one part of a word's column without the
+    // chord, so Ctrl+Enter there degraded to a plain Enter.
+    const { doc } = mount();
+    await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', MACHINE);
+    await settle();
+    const spy = vi.spyOn(doc, 'confirmWordAnalysis').mockResolvedValue(true);
+    const c = cell('or:w-1:IPA');
+    expect(c).toBeTruthy();
+    focus(c);
+    const e = key(c, 'Enter', { ctrlKey: true });
+    await settle();
+    expect(e.defaultPrevented).toBe(true);
+    expect(spy).toHaveBeenCalledWith('w-1', expect.any(Array));
+  });
+});
+
+describe('Backspace at the start of a morpheme form', () => {
+  const TWO = [
+    // Morphemes share their word's extent and differ by precedence and form.
+    { id: 'm-1', text: 'text-1', begin: 0, end: 3, precedence: 1, metadata: { form: 'th' } },
+    { id: 'm-2', text: 'text-1', begin: 0, end: 3, precedence: 2, metadata: { form: 'e' } },
+  ];
+
+  it('merges into the previous morpheme when plain', async () => {
+    const { doc } = mount({ morphemes: TWO });
+    const spy = vi.spyOn(doc, 'mergeMorphemes').mockResolvedValue(true);
+    const c = cell('mf:m-2');
+    focus(c);
+    c.setSelectionRange(0, 0);
+    const e = key(c, 'Backspace');
+    await settle();
+    expect(e.defaultPrevented).toBe(true);
+    expect(spy).toHaveBeenCalledWith('m-2');
+  });
+
+  it('is left to the browser under Alt, Ctrl or Cmd', async () => {
+    // Option+Backspace is delete-word on a Mac and Ctrl+Backspace is
+    // delete-word elsewhere; a structural merge must not ride on either.
+    const { doc } = mount({ morphemes: TWO });
+    const spy = vi.spyOn(doc, 'mergeMorphemes').mockResolvedValue(true);
+    const c = cell('mf:m-2');
+    focus(c);
+    type(c, 'atx'); // edited, so the whole-word discard stands down too
+    c.setSelectionRange(0, 0);
+    for (const init of [{ altKey: true }, { ctrlKey: true }, { metaKey: true }]) {
+      const e = key(c, 'Backspace', init);
+      await settle();
+      expect(e.defaultPrevented).toBe(false);
+    }
+    expect(spy).not.toHaveBeenCalled();
+  });
+});
