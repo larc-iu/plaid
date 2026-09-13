@@ -1,5 +1,6 @@
 (ns plaid.rest-api.v1.middleware
-  (:require [plaid.sql.common :as psc]
+  (:require [plaid.server.log-buffer :as log-buffer]
+            [plaid.sql.common :as psc]
             [plaid.sql.document :as doc]
             [plaid.sql.operation :as op]
             [taoensso.timbre :as log]
@@ -104,29 +105,96 @@
     (seq? x) (doall (map redact-sensitive x))
     :else x))
 
-(defn wrap-logging [handler]
+(defn- redact-query-string
+  "Percent-encoded query string with any sensitive parameter's value
+  replaced. The one that matters is `token`: EventSource cannot send an
+  Authorization header, so a stream request carries its JWT in the query,
+  and the access line is read by everyone who can read the log."
+  [qs]
+  (when-not (str/blank? qs)
+    (->> (str/split qs #"&")
+         (map (fn [pair]
+                (let [[k v] (str/split pair #"=" 2)]
+                  (if (and v (redact-key? k)) (str k "=<redacted>") pair))))
+         (str/join "&"))))
+
+(defn- access-record
+  "The structured form of one access line, for the admin Logs screen. Holds
+  what the text line holds plus the fields that only fit in a table."
+  [request identity status elapsed thrown]
+  {:method (method-name (:request-method request))
+   :path   (:uri request)
+   :query  (redact-query-string (:query-string request))
+   :status (when (integer? status) status)
+   :ms     elapsed
+   :user   (:user identity)
+   :ip     (:remote-addr request)
+   :token  (:token identity)
+   :error  (when thrown (.getName (class thrown)))})
+
+(defn- access-line
+  "One line per request, in the order an operator reads it: what was asked
+  for, how it went, and who asked. `user=-` is an unauthenticated request,
+  and `token=` appears only when a named API token signed it."
+  [{:keys [method path query ms user ip token]} status-text]
+  (str method " " path (when query (str "?" query))
+       " " status-text
+       " " ms "ms"
+       " user=" (or user "-")
+       " ip=" (or ip "-")
+       (when token (str " token=" token))))
+
+(defn- skip-logging?
+  "`/health` is served by an outer middleware and won't normally reach this
+  point, but include it so a future reorder doesn't surprise us with
+  health-check spam. The OpenAPI document and the docs UI are noise for the
+  same reason: nobody debugs an instance by watching its own docs load.
+
+  Reading the log is not logged either, and that one is load-bearing rather
+  than tidy. The admin Logs screen can poll, and on an otherwise idle
+  instance its own reads would be the only traffic there is, filling the
+  buffer with the act of watching it and evicting whatever the operator
+  opened the screen to find."
+  [uri]
+  (or (= uri "/api/v1/openapi.json")
+      (= uri "/health")
+      (str/starts-with? uri "/api/v1/docs")
+      (str/starts-with? uri "/api/v1/admin/logs")))
+
+(defn wrap-access-log
+  "One line per request, and one structured record for the admin Logs screen.
+
+  OUTERMOST in the stack, on purpose. A request refused by authentication
+  (401) or by coercion (400) never reaches any inner middleware, and those
+  are exactly the requests an operator goes looking for. Logging from the
+  inside meant they left no trace but the occasional warning from whatever
+  refused them.
+
+  The cost of sitting out there is that the account is not on the request
+  yet, so authentication hands it back through the volatile under
+  `log-buffer/identity-key`. A request refused BEFORE authentication runs at
+  all (a body that fails coercion, say) therefore has no account to name, and
+  reads as `user=-` even where the caller held a good token. The address is
+  still there, and the alternative was the request not being logged.
+
+  Level tracks the outcome, so a default-level (info) log surfaces failures
+  without the granular per-request debug dumps: a thrown handler or a 5xx is
+  an error, a 4xx is a warning, everything else is info. The same facts ride
+  along in Timbre's context, which is what sorts the entry into the request
+  buffer rather than the event one. Logged once, read two ways: nothing can
+  appear on that screen that was not logged."
+  [handler]
   (fn [request]
-    (let [req-id (hash request)
-          uri (:uri request)
-          ;; /health is served by an outer middleware and won't normally
-          ;; reach this point, but include it in the skip set so a future
-          ;; reorder doesn't surprise us with health-check spam.
-          skip? (or (= uri "/api/v1/openapi.json")
-                    (= uri "/health")
-                    (str/starts-with? uri "/api/v1/docs"))
-          start (System/currentTimeMillis)]
-      (when-not skip?
-        (log/debug (str "Received request " req-id ": "
-                        (redact-sensitive
-                         (select-keys request
-                                      [:remote-addr :user/id :form-params
-                                       :parameters :scheme :request-method :uri])))))
-      ;; try/finally so the INFO access log fires even if the handler
-      ;; throws. On exception we log the exception class in place of a
-      ;; numeric status — better than the request silently disappearing
-      ;; from the access log.
-      (let [response (volatile! nil)
-            thrown   (volatile! nil)]
+    (if (skip-logging? (:uri request))
+      (handler request)
+      (let [identity (volatile! nil)
+            request (assoc request log-buffer/identity-key identity)
+            start (System/currentTimeMillis)
+            response (volatile! nil)
+            thrown (volatile! nil)]
+        ;; try/finally so the access line fires even if the handler throws. On
+        ;; exception we log the exception class in place of a numeric status,
+        ;; which beats the request silently disappearing from the log.
         (try
           (vreset! response (handler request))
           (catch Throwable t
@@ -136,27 +204,38 @@
                   status (cond
                            @thrown (str ":throw " (.getName (class @thrown)))
                            (some? @response) (:status @response)
-                           :else "???")]
-              (when-not skip?
-                ;; One access line per request. Level tracks the outcome so a
-                ;; default-level (info) log surfaces failures without the
-                ;; granular per-request debug dumps: a thrown handler or 5xx is
-                ;; an error, a 4xx is a warning, everything else is info.
-                (let [line (str (method-name (:request-method request))
-                                " " uri
-                                " " status
-                                " " elapsed "ms")]
-                  (cond
-                    @thrown                                  (log/error line)
-                    (and (integer? status) (>= status 500))  (log/error line)
-                    (and (integer? status) (>= status 400))  (log/warn line)
-                    :else                                     (log/info line)))
-                (when @response
-                  (log/debug (str "Sending response to request " req-id ": "
-                                  (redact-sensitive @response))))))))
+                           :else "???")
+                  record (access-record request @identity status elapsed @thrown)]
+              (log/with-context+ {log-buffer/context-key record}
+                (cond
+                  @thrown                                  (log/error (access-line record status))
+                  (and (integer? status) (>= status 500))  (log/error (access-line record status))
+                  (and (integer? status) (>= status 400))  (log/warn (access-line record status))
+                  :else                                     (log/info (access-line record status)))))))
         (if @thrown
           (throw @thrown)
           @response)))))
+
+(defn wrap-request-debug
+  "Full request and response shapes, with sensitive values redacted, at debug
+  level only. Runs inside coercion so `:parameters` is populated by the time
+  it reads them, which is the whole reason it is not part of
+  `wrap-access-log`."
+  [handler]
+  (fn [request]
+    (if (or (not (log/may-log? :debug)) (skip-logging? (:uri request)))
+      (handler request)
+      (let [req-id (hash request)]
+        (log/debug (str "Received request " req-id ": "
+                        (redact-sensitive
+                         (select-keys request
+                                      [:remote-addr :user/id :form-params
+                                       :parameters :scheme :request-method :uri]))))
+        (let [response (handler request)]
+          (when response
+            (log/debug (str "Sending response to request " req-id ": "
+                            (redact-sensitive response))))
+          response)))))
 
 (defn- percent-decode-preserving-plus
   "URL-decode `s` (turn `%3A` → `:`, `%2B` → `+`, etc.) while leaving a

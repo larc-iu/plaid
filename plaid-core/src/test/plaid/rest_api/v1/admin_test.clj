@@ -4,16 +4,34 @@
   the handful of writes only ever unblock."
   (:require [clojure.string :as str]
             [clojure.test :refer :all]
+            [ring.mock.request :as mock]
             [plaid.fixtures :refer [with-db with-mount-states with-rest-handler
                                     admin-request api-call assert-ok assert-forbidden
                                     with-admin with-test-users user1-request user2-request
                                     with-clean-db]]
             [plaid.rest-api.v1.rate-limit :as rl]
             [plaid.server.locks :as locks]
+            [plaid.server.log-buffer :as log-buffer]
             [plaid.test-helpers :refer :all]))
 
-(use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
+(defn- with-log-buffer
+  "Tests never run `configure-logging!`, so the appender the Logs endpoint
+  reads has to be put on by hand. Same appender the server installs."
+  [f]
+  (log-buffer/install!)
+  (f))
+
+(use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users
+  with-log-buffer)
 (use-fixtures :each with-clean-db)
+
+(defn- bad-token-request
+  "A request signed with a token the server will refuse, so the JWT
+  middleware logs something that is not an access line."
+  [method path]
+  (-> (mock/request method path)
+      (mock/header "accept" "application/edn")
+      (mock/header "Authorization" "Bearer not-a-token")))
 
 (defn- admin-get
   ([path] (admin-get admin-request path))
@@ -111,10 +129,79 @@
 
 (deftest log-tail-says-so-when-there-is-no-file
   (testing "No configured log file is reported, not treated as an error"
-    (let [r (admin-get "/logs")]
+    (let [r (admin-get "/logs/file")]
       (assert-ok r)
       (is (= [] (:lines (:body r))))
-      (is (string? (:error (:body r)))))))
+      (is (string? (:error (:body r))))))
+  (testing "And the live buffer is served regardless"
+    (log-buffer/clear!)
+    (admin-get "/server")
+    (let [body (:body (admin-get "/logs"))]
+      (is (nil? (:file body)))
+      (is (= ["/api/v1/admin/server"] (map :path (:entries (:requests body))))))))
+
+(deftest reading-the-log-is-not-itself-logged
+  (log-buffer/clear!)
+  (testing "A screen polling the log would otherwise be the only thing in it"
+    (dotimes [_ 3] (admin-get "/logs"))
+    (admin-get "/logs/file")
+    (is (empty? (:entries (:requests (:body (admin-get "/logs"))))))))
+
+(deftest live-log-names-who-made-each-request
+  (log-buffer/clear!)
+  (let [_ (create-test-project admin-request "LogProj")
+        _ (api-call user1-request {:method :get :path "/api/v1/projects"})
+        _ (api-call user1-request {:method :get
+                                   :path "/api/v1/projects/00000000-0000-7000-8000-000000000000"})
+        body (:body (admin-get "/logs?limit=500"))
+        entries (:entries (:requests body))]
+
+    (testing "Every buffered request carries the account that made it"
+      (is (seq entries))
+      (is (every? (comp string? :user) entries))
+      (is (contains? (set (map :user entries)) "user1@example.com")))
+
+    (testing "Newest first, with method, path, status and duration"
+      ;; The request doing the reading is logged once its response is out the
+      ;; door, so the newest entry is the one before it.
+      (let [newest (first entries)]
+        (is (= "GET" (:method newest)))
+        (is (= "/api/v1/projects/00000000-0000-7000-8000-000000000000" (:path newest)))
+        (is (= 403 (:status newest)))
+        (is (int? (:ms newest)))))
+
+    (testing "One account's work is one filter away"
+      (let [theirs (:entries (:requests (:body (admin-get "/logs?user=user1@example.com"))))]
+        (is (= 2 (count theirs)))
+        (is (every? #(= "user1@example.com" (:user %)) theirs))))
+
+    (testing "So is everything that failed"
+      (let [failed (:requests (:body (admin-get "/logs?status=failures")))]
+        (is (= 1 (:matched failed)))
+        (is (= 403 (:status (first (:entries failed)))))))
+
+    (testing "Stats describe the filtered set"
+      (let [stats (:stats (:requests (:body (admin-get "/logs?user=user1@example.com"))))]
+        (is (= 2 (:count stats)))
+        (is (= 1 (:failures stats)))))))
+
+(deftest live-log-keeps-events-out-of-the-request-flood
+  (log-buffer/clear!)
+  ;; A rejected token is logged by the JWT middleware, not by the access log,
+  ;; so it lands in the event buffer while its 401 lands in the request one.
+  (api-call bad-token-request {:method :get :path "/api/v1/projects"})
+  (let [body (:body (admin-get "/logs"))]
+    (testing "The rejection is an event"
+      (is (some #(str/includes? (:message %) "JWT validation failed")
+                (:entries (:events body)))))
+    (testing "And its 401 is still a request, with nobody's name on it"
+      (let [refused (first (filter #(= 401 (:status %)) (:entries (:requests body))))]
+        (is (some? refused))
+        (is (nil? (:user refused)))
+        (is (= "/api/v1/projects" (:path refused)))))
+    (testing "No access line landed in the event buffer"
+      (is (not-any? #(str/includes? (:message %) "user=")
+                    (:entries (:events body)))))))
 
 ;; ============================================================
 ;; Private user data across accounts

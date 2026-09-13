@@ -12,6 +12,7 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [mount.core :refer [defstate args]]
+            [plaid.server.log-buffer :as log-buffer]
             [taoensso.timbre :as log]
             [taoensso.timbre.appenders.community.rolling :as rolling])
   (:import (org.tomlj Toml TomlArray TomlTable)))
@@ -282,11 +283,17 @@
                               :locale :jvm-default
                               :timezone :jvm-default}
              :output-fn log-output-fn
-             :appenders (if file
-                          {:println {:enabled? false}
-                           :rolling (rolling/rolling-appender {:path file :pattern :daily})}
-                          {:println {:enabled? true}
-                           :rolling {:enabled? false}})}))))
+             :appenders (merge
+                         ;; Always on, whatever the destination. It is what the
+                         ;; admin Logs screen reads, and in the deployment the
+                         ;; manual recommends (stdout to journald) there is no
+                         ;; file for that screen to tail.
+                         {:buffer log-buffer/appender}
+                         (if file
+                           {:println {:enabled? false}
+                            :rolling (rolling/rolling-appender {:path file :pattern :daily})}
+                           {:println {:enabled? true}
+                            :rolling {:enabled? false}}))}))))
 
 (defstate config
   :start (let [{:keys [config]} (args)

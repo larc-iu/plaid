@@ -159,7 +159,12 @@
                   {:data {:coercion coercion
                           :muuntaja muuntaja-instance
                           :swagger {:id ::api}
-                          :middleware [#_exception/exception-middleware ;; CLAUDE: DO NOT UNCOMMENT THIS
+                          :middleware [;; Outermost, so that every request gets an access
+                                       ;; line: a 401 from authentication and a 400
+                                       ;; from coercion are refused before anything
+                                       ;; below them runs.
+                                       prm/wrap-access-log
+                                       #_exception/exception-middleware ;; CLAUDE: DO NOT UNCOMMENT THIS
                                        rrc/coerce-exceptions-middleware
                                        parameters/parameters-middleware
                                        muuntaja/format-negotiate-middleware
@@ -181,7 +186,9 @@
                                        multipart/multipart-middleware
                                        [prm/wrap-request-extras db secret-key]
                                        pra/wrap-read-jwt
-                                       prm/wrap-logging
+                                       ;; Inside coercion so the shapes it dumps are the
+                                       ;; coerced ones. Silent unless the level is debug.
+                                       prm/wrap-request-debug
                                        ;; Inside wrap-read-jwt: needs the
                                        ;; :api-token/id it sets on the request.
                                        prm/wrap-api-token-id

@@ -2716,17 +2716,47 @@ class AdminResource(_Resource):
         return self._request('DELETE', '/api/v1/admin/rate-limits',
                              query_params={'ip': ip, 'user-id': user_id})
 
-    def logs(self, *, lines: int | None = None) -> Any:
-        """The tail of the configured log file.
+    def logs(self, *, limit: int | None = None, q: str | None = None,
+             level: str | None = None, status: str | None = None,
+             user: str | None = None, method: str | None = None) -> Any:
+        """What the server has logged, structured and filtered.
 
-        Returns an ``error`` string instead of lines when no log file is
-        configured or it does not exist yet — the server also logs to stdout,
+        Read from an in-memory buffer kept whether or not a log file is
+        configured. ``requests`` is one entry per HTTP request (method, path,
+        status, duration, and who made it), ``events`` is everything else,
+        with a stack trace where there was one. They are buffered separately
+        so a burst of requests cannot evict an error. Both come newest first,
+        ``matched`` counts what passed the filters, and request ``stats``
+        describe the filtered set. Covers Plaid's own log stream since the
+        last restart: for library messages and older history, see
+        :meth:`log_file`.
+
+        Args:
+            limit: Max entries per kind (default 200, max 2000)
+            q: Substring of any field, case-insensitive
+            level: Minimum level for events, e.g. ``"warn"``
+            status: ``"2xx"``..``"5xx"``, an exact code, or ``"failures"``
+            user: Only requests made by this account
+            method: Only requests with this HTTP method
+        """
+        return self._request('GET', '/api/v1/admin/logs',
+                             query_params={'limit': limit, 'q': q,
+                                           'level': level, 'status': status,
+                                           'user': user, 'method': method})
+
+    def log_file(self, *, lines: int | None = None) -> Any:
+        """The tail of the configured log file, as text lines.
+
+        The only place third-party library messages (connection pool, SQLite
+        driver, HTTP server) and anything from before the last restart can be
+        read. Returns an ``error`` string instead of lines when no log file is
+        configured or it does not exist yet. The server also logs to stdout,
         where a file is not required.
 
         Args:
             lines: How many lines (default 200, max 2000)
         """
-        return self._request('GET', '/api/v1/admin/logs',
+        return self._request('GET', '/api/v1/admin/logs/file',
                              query_params={'lines': lines})
 
     def user_data(self, *, prefix: str | None = None, pattern: str | None = None,

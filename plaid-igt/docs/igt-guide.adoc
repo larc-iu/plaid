@@ -176,7 +176,7 @@ A segment can never run into its neighbours.
 Times are shown to the millisecond everywhere.
 
 The speed slider runs from 0.25× to 5×, and clicking the value returns to 1×.
-From a transcript row, **Alt+↑** and **Alt+↓** change the speed without reaching for the slider.
+From a transcript row, **Shift+↑** and **Shift+↓** change the speed without reaching for the slider, and **Alt+↑** and **Alt+↓** move to the row above or below from anywhere in the row.
 The loop button repeats the segment you are on until you pause.
 
 Deleting a segment from its row removes its times and speaker but leaves its text in the baseline.
@@ -939,6 +939,12 @@ Conversations are otherwise private to the person who had them, and they are rea
 **Server** reports the version, how long it has been up, the size of the database and what is in it, the backups on disk, the media directory, which documents are open for editing, and which addresses are being refused at login.
 Three things can be done from it, and each only ever unblocks something: take a backup now, release a document someone left open, and clear a login block for someone who mistyped their password too many times.
 
+**Logs** is what the server has been doing since it last started.
+Requests are one table, with the account behind each one, and everything else is another, with warnings, errors and their stack traces.
+Search, a status class and a level narrow both, clicking an account narrows to that person's work, and any column can be sorted, so the slowest requests are one click away.
+**Live** keeps the page up to date while a problem is happening.
+Where the server writes to a log file, the tail of the file is at the bottom of the tab.
+
 = Typing Special Characters
 
 Most language data needs characters a keyboard does not have.
@@ -982,7 +988,16 @@ TIP: If you type a lot of one language, a system keyboard such as SIL Keyman is 
 
 = Keyboard Shortcuts
 
-Every shortcut that takes Ctrl also takes Cmd on a Mac.
+Every shortcut that takes Ctrl also takes Cmd on a Mac, and Alt is the Option key there.
+
+== Anywhere
+
+[cols="1,3"]
+|===
+| Shortcut | Action
+
+| **/** | Focus the search box on the screen, when it has one and you are not typing in a box.
+|===
 
 == Analyze grid
 
@@ -990,22 +1005,27 @@ Every shortcut that takes Ctrl also takes Cmd on a Mac.
 |===
 | Shortcut | Action
 
-| **Enter** / **Tab** | Move to the next cell in the row, accepting the faint guess if the cell shows one. **Shift+Enter** / **Shift+Tab** go back.
+| **Enter** | Move to the next cell in the row, accepting the faint guess if the cell shows one. Enter is the only key that accepts a guess.
+| **Tab** / **Shift+Tab** | Move to the next or previous cell in the row, leaving a guess as it is. **Shift+Enter** moves back the same way.
 | **↑** / **↓** | Move between rows. **←** / **→** move along the row from the ends of a value.
-| **Esc** | Cancel the edit, or close an open popover or menu.
-| **Alt+↓** | List every value the project has given this form, with counts, and pick one.
+| **Esc** | Cancel the edit and leave the cell. With a value list open, close the list first.
+| **Alt+↓** | List every value the project has given this form, with counts. **↑** / **↓** move through the list, **Enter** takes the highlighted value, **Esc** closes the list. A field held to a tagset opens its list on its own.
+| **Enter** (sentence field) | Save the value and stay. **Shift+Enter** starts a new line, and **Tab** moves to the same field of the next sentence.
 | **-** | In a morpheme form, split the morpheme at the cursor.
 | **=** | In a morpheme form, split at the cursor as a clitic boundary. The outer piece is typed as a proclitic or enclitic, so the boundary renders as `=`.
-| **Backspace** | At the start of a morpheme form, merge it into the previous one.
+| **Backspace** | At the start of a morpheme form, merge it into the previous one. In an emptied morpheme form, delete the morpheme.
 | **Alt+-** / **Alt+=** | Type a literal hyphen or equals sign in a morpheme form.
 | **Alt+0** | In a morpheme form, type the zero morph ∅.
 | **\** + a two-letter code | Type a character the keyboard lacks, anywhere language data is typed: `\sw` gives ə. See <<_typing_special_characters>>.
-| **Ctrl/Cmd+Enter** | Confirm the current word's whole analysis and jump to the next.
-| **Ctrl/Cmd+Backspace** | Discard the current word's unverified proposal (its machine-made morphemes, glosses, and links) and jump to the next. Anything a person made or confirmed stays.
-| **Ctrl/Cmd+Shift+↑** / **↓** | Jump to the previous or next word that still has unverified proposals.
-| **Ctrl/Cmd+↑** / **↓** | Move between machine-made vocabulary links. On one, **Enter** confirms it and **Backspace** removes it.
+| **Ctrl/Cmd+Enter** | Confirm the current word's whole analysis and jump to the next word. On a sentence field, confirm its proposed value and jump to the next sentence.
+| **Ctrl/Cmd+Backspace** | Discard the current word's unverified proposal (its machine-made morphemes, glosses, and links) and jump to the next. Anything a person made or confirmed stays. On a sentence field, discard its proposed value. **Delete** does the same as Backspace.
+| **Ctrl/Cmd+Shift+↑** / **↓** | Jump to the previous or next word or sentence field that still has unverified proposals.
+| **Ctrl/Cmd+↑** / **↓** | Move between vocabulary links awaiting your review. On one, **Enter** confirms it and **Backspace** removes it.
 | **Shift+click** a word | Gather it into a multi-word expression (again to take it out). **Shift+←** / **Shift+→** from a word's cells do the same along the sentence, and **Ctrl** as well skips a word.
 | **Enter** (while gathering) | Link the gathered words to one entry. **Esc** drops them.
+| **Enter** / **Space** (row label) | Open the menu that picks which rows show. **Esc** closes it.
+| **↑** / **↓** (entry popover) | Move through the entries. **Enter** links or unlinks the highlighted one, **Ctrl/Cmd+Enter** creates the entry as typed, **Esc** closes the popover.
+| **Ctrl/Cmd+Enter** (comment popover) | Post the comment. **Esc** closes the popover.
 |===
 
 == Tokenize tab
@@ -1019,8 +1039,9 @@ Every shortcut that takes Ctrl also takes Cmd on a Mac.
 | **Right-click** a word | Delete it.
 | **Ctrl/Cmd+click** a word | Split its sentence there, undoing a merge.
 | **Alt+click** a word | Open it on the Analyze tab.
-| **↑** on a sentence | Merge it with the previous sentence.
 |===
+
+The arrow button above a sentence merges it with the previous one.
 
 == Media tab
 
@@ -1029,14 +1050,16 @@ Every shortcut that takes Ctrl also takes Cmd on a Mac.
 | Shortcut | Action
 
 | **Space** | Play or pause the recording, when you are not typing in a box.
-| **Shift+Space** | Play or pause the segment you are in, or the selected stretch of the timeline.
-| **Shift+←** / **Shift+→** | Move playback one second back or forward.
-| **Alt+↑** / **Alt+↓** (transcript) | Play faster or slower, a quarter of normal speed at a time.
+| **Shift+Space** | Play or pause the segment you are in, or the selected stretch of the timeline. In a time box too.
+| **Shift+←** / **Shift+→** | Move playback one second back or forward, in a row or out of one.
+| **Shift+↑** / **Shift+↓** (transcript) | Play faster or slower, a quarter of normal speed at a time.
+| **Alt+↑** / **Alt+↓** (transcript) | Move to the row above or below, from anywhere in the row.
 | **Enter** / **Esc** (transcript row) | Save the row and move to the next, or put the row back the way it was.
 | **↑** / **↓** (transcript row) | Move to the row above or below, from the start or end of the text.
 | **Enter** (proposed row) | Make a segment of the proposal, with the text you typed. Moving on saves it too.
 | **Tab** (transcript row) | Move to the next field in the row.
-| **↑** / **↓** (segment time) | Step the digit box under the caret: milliseconds by 10, or 100 with Shift. **←** / **→** move between boxes.
+| **↑** / **↓** (segment time) | Step the digit box under the caret: milliseconds by 10, or 100 with Shift. **←** / **→** move between boxes, **Backspace** zeroes the box.
 | **Ctrl/Cmd+Enter** / **Esc** (new-segment popover) | Save the segment, or cancel it.
+| **Esc** (timeline) | Clear the selected stretch.
 | **Ctrl/Cmd+wheel** / **wheel** (timeline) | Zoom, or pan.
 |===

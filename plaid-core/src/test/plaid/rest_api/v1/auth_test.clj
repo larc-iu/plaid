@@ -54,7 +54,7 @@
   [f]
   (let [lines (atom [])
         ;; Force a debug min-level for the duration of capture so we
-        ;; pick up the wrap-logging request-shape line.
+        ;; pick up the wrap-request-debug request-shape line.
         appender-key ::test-capture]
     (log/merge-config!
      {:min-level :debug

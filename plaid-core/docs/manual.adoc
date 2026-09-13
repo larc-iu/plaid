@@ -1621,6 +1621,25 @@ One link with fifteen uses is a class.
 A student who forgets a password gets a password-reset link from the administrator, minted in the same place.
 The IGT guide's link:igt-guide.html#_sharing_and_permissions[Sharing and Permissions] section covers the roles.
 
+== Reading the log
+
+Plaid writes one line per request, plus a line for anything that went wrong:
+
+[source,text]
+----
+POST /api/v1/documents 201 34ms user=ada@example.edu ip=10.0.0.14
+GET /api/v1/projects/019ecd83-7617-7501/audit 403 2ms user=sam@example.edu ip=10.0.0.31
+POST /api/v1/login 401 220ms user=- ip=203.0.113.9
+----
+
+`user=` names the account the request was authenticated as, `user=-` one that was not (a refused token, a failed login, or anything Plaid rejected before checking credentials).
+A request signed with a named API token carries `token=<id>` as well, which is how to tell a person from their script.
+
+Everything an administrator needs from it is also on the **Logs** tab of the IGT app's admin area, which does not require a log file and works the same way under journald.
+It reads a buffer the server keeps in memory: requests in one half, with a column per field and a filter for an account, a status class or a search, and everything else in the other half, so a bulk import cannot push an error out of sight.
+It holds what has been logged since the last restart, at info and above.
+Where `[logging] file` is set, the tail of the file itself is on the same tab, and that is the only place to read messages from the libraries Plaid runs on and anything from before the restart.
+
 == Settings worth a look
 
 * `[auth] jwt_ttl_seconds`: how long a login lasts. The default is thirty days; a shared lab machine may want a day.

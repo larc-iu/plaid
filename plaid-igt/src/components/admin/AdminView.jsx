@@ -11,6 +11,7 @@ import { AdminVocabularies } from './AdminVocabularies';
 import { AdminServices } from './AdminServices';
 import { AdminAssistant } from './AdminAssistant';
 import { AdminServer } from './AdminServer';
+import { AdminLogs } from './AdminLogs';
 
 // The whole-server view, for whoever runs this instance. Everything a project
 // maintainer needs lives on the project; what is here is the part that spans
@@ -24,6 +25,7 @@ const TABS = [
   'services',
   'assistant',
   'server',
+  'logs',
 ];
 
 export const AdminView = () => {
@@ -66,6 +68,9 @@ export const AdminView = () => {
           <TabsTrigger value="server" to={tabTo('/admin', 'server', 'users')}>
             Server
           </TabsTrigger>
+          <TabsTrigger value="logs" to={tabTo('/admin', 'logs', 'users')}>
+            Logs
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="users">
@@ -91,6 +96,9 @@ export const AdminView = () => {
         </TabsContent>
         <TabsContent value="server">
           <AdminServer client={client} />
+        </TabsContent>
+        <TabsContent value="logs">
+          <AdminLogs client={client} />
         </TabsContent>
       </Tabs>
     </div>

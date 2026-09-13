@@ -568,12 +568,85 @@ interface AdminBundle {
     userId?: string;
   }): Promise<{ result: string }>;
   logs(opts?: {
+    limit?: number;
+    q?: string;
+    level?: string;
+    status?: string;
+    user?: string;
+    method?: string;
+  }): Promise<LiveLog>;
+  logFile(opts?: {
     lines?: number;
   }): Promise<{ file: string | null; lines: string[]; error?: string }>;
   userData(opts?: AdminUserDataOptions): Promise<AdminUserDataEntry[]>;
   userDataPage(
     opts?: AdminUserDataOptions & { limit?: number; cursor?: string },
   ): Promise<Page<AdminUserDataEntry>>;
+}
+
+/** One HTTP request as the log buffer holds it. */
+interface LoggedRequest {
+  /** Epoch milliseconds. */
+  ts: number;
+  method: string;
+  path: string;
+  /** Query string with sensitive values replaced, or null. */
+  query: string | null;
+  /** Null when the handler threw before producing one. */
+  status: number | null;
+  ms: number;
+  /** Null for a request nobody was authenticated for. */
+  user: string | null;
+  ip: string | null;
+  /** Set when a named API token signed the request. */
+  token: string | null;
+  /** Exception class, when the handler threw. */
+  error: string | null;
+}
+
+/** One log event that was not a request. */
+interface LoggedEvent {
+  ts: number;
+  level: string;
+  ns: string;
+  message: string;
+  trace?: string;
+}
+
+/**
+ * The live log. Requests and events are buffered separately, so a burst of
+ * requests cannot evict an error.
+ */
+interface LiveLog {
+  requests: {
+    entries: LoggedRequest[];
+    /** How many passed the filters, which may exceed what `entries` holds. */
+    matched: number;
+    /** How many are buffered in total. */
+    held: number;
+    capacity: number;
+    stats: {
+      count: number;
+      failures: number;
+      serverErrors: number;
+      p50: number | null;
+      p95: number | null;
+      max: number | null;
+      perMinute: number | null;
+      oldest: number | null;
+      newest: number | null;
+    };
+  };
+  events: {
+    entries: LoggedEvent[];
+    matched: number;
+    held: number;
+    capacity: number;
+    /** Counts per level of what the search matched, before the level filter. */
+    byLevel: Record<string, number>;
+  };
+  /** Absolute path of the configured log file, or null when logging to stdout. */
+  file: string | null;
 }
 
 /** Narrowings for the cross-account private-data listing. */

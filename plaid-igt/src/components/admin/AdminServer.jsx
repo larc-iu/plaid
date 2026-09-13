@@ -50,23 +50,20 @@ export const AdminServer = ({ client }) => {
   const [report, setReport] = useState(null);
   const [locks, setLocks] = useState([]);
   const [rateLimits, setRateLimits] = useState(null);
-  const [logs, setLogs] = useState(null);
   const [loading, setLoading] = useState(true);
   const [backingUp, setBackingUp] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [srv, lk, rl, lg] = await Promise.all([
+      const [srv, lk, rl] = await Promise.all([
         client.admin.server(),
         client.admin.locks(),
         client.admin.rateLimits(),
-        client.admin.logs({ lines: 200 }),
       ]);
       setReport(srv);
       setLocks(lk.entries || []);
       setRateLimits(rl);
-      setLogs(lg);
     } catch (err) {
       console.error('Error loading server report:', err);
       notifyError(err.message || 'Failed to load the server report', 'Error');
@@ -349,16 +346,6 @@ export const AdminServer = ({ client }) => {
           }
         />
       </div>
-
-      <Section title="Log">
-        {logs?.error ? (
-          <p className="text-sm text-muted-foreground">{logs.error}</p>
-        ) : (
-          <pre className="max-h-96 overflow-auto rounded bg-muted p-2 text-xs leading-relaxed">
-            {(logs?.lines || []).join('\n')}
-          </pre>
-        )}
-      </Section>
     </div>
   );
 };

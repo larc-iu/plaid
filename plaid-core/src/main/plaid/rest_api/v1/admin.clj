@@ -21,6 +21,7 @@
             [plaid.server.backup :as backup]
             [plaid.server.config :refer [config]]
             [plaid.server.locks :as locks]
+            [plaid.server.log-buffer :as log-buffer]
             [plaid.server.version :as version]
             [plaid.sql.common :as psc]
             [plaid.sql.user-data :as user-data])
@@ -130,7 +131,10 @@
 ;; Log tail
 ;; ============================================================
 
-(def ^:private max-log-lines 2000)
+(def ^:private max-log-lines
+  "Cap on what one read of the log returns, whether that is lines of the file
+  or entries of a buffer."
+  2000)
 
 (defn- tail-lines
   "The last `n` lines of `file`, read backwards from the end so the cost is
@@ -148,6 +152,12 @@
         (->> (str/split-lines (String. buf "UTF-8"))
              (take-last n)
              vec)))))
+
+(defn- log-file-path
+  "Absolute path of the configured log file, or nil when logging goes to
+  stdout. The Logs screen asks so it knows whether a raw tail is on offer."
+  []
+  (some-> (-> config :plaid.logging/config :file) io/file .getAbsolutePath))
 
 (defn- log-report [n]
   (let [path (-> config :plaid.logging/config :file)
@@ -268,10 +278,44 @@
                                                        :include-values? (true? include-values))))))}}]
 
    ["/logs"
-    {:get {:summary (str "The tail of the configured log file. Returns an <code>error</code> "
-                         "string instead of lines when no log file is configured or it does "
-                         "not exist yet — the server also logs to stdout, where a file is not "
-                         "required.")
+    {:get {:summary (str "What this process has logged, structured and filtered, from an "
+                         "in-memory buffer that is kept whether or not a log file is "
+                         "configured. Two buffers: <code>requests</code> is one entry per HTTP "
+                         "request (method, path, status, duration, and who made it), "
+                         "<code>events</code> is everything else, with a stack trace where "
+                         "there was one. They are separate so a burst of requests cannot evict "
+                         "the error you are looking for. Both come newest first. "
+                         "<code>matched</code> counts what passed the filters and "
+                         "<code>held</code> what is buffered, so a capped list can say what it "
+                         "is a slice of. Request <code>stats</code> describe the filtered set, "
+                         "not the whole buffer. Covers Plaid's own log stream at info and "
+                         "above, since the last restart. Debug lines, third-party library "
+                         "messages and older history are in "
+                         "the log file or the journal, see <code>/admin/logs/file</code>. A read "
+                         "of this endpoint is not itself logged, so that a screen polling it "
+                         "cannot fill the buffer with the act of watching it.")
+           :parameters {:query [:map
+                                [:limit {:optional true} int?]
+                                [:q {:optional true} string?]
+                                [:level {:optional true} string?]
+                                [:status {:optional true} string?]
+                                [:user {:optional true} string?]
+                                [:method {:optional true} string?]]}
+           :handler (fn [{{{:keys [limit q level status user method]} :query} :parameters}]
+                      (let [limit (min (or limit 200) max-log-lines)]
+                        {:status 200
+                         :body {:requests (log-buffer/requests {:q q :status status :user user
+                                                                :method method :limit limit})
+                                :events (log-buffer/events {:q q :level level :limit limit})
+                                :file (log-file-path)}}))}}]
+
+   ["/logs/file"
+    {:get {:summary (str "The tail of the configured log file, as text lines. The only place "
+                         "third-party library messages (connection pool, SQLite driver, HTTP "
+                         "server) and anything from before the last restart can be read. "
+                         "Returns an <code>error</code> string instead of lines when no log "
+                         "file is configured or it does not exist yet. The server also logs "
+                         "to stdout, where a file is not required.")
            :parameters {:query [:map [:lines {:optional true} int?]]}
            :handler (fn [{{{:keys [lines]} :query} :parameters}]
                       {:status 200

@@ -30,6 +30,7 @@ const TABS = [
   'services',
   'assistant',
   'server',
+  'logs',
 ];
 
 const openTab = async (page, tab) => {
@@ -202,4 +203,33 @@ test('the activity feed reads newest first and can be searched', async ({ page }
 
   await search.fill('');
   await expect(feedRows().first()).toBeVisible();
+});
+
+test('the log names the account behind each request, and this page itself stays out of it', async ({
+  page,
+}) => {
+  // Two things that only show against a live server: the access line carries
+  // the account (it carried nothing at all until the buffer was built), and
+  // reading the log is not logged, so a screen left on Live cannot fill the
+  // buffer with itself.
+  await openTab(page, 'logs');
+  const rows = page.locator('tbody tr');
+  await expect(rows.first()).toBeVisible({ timeout: 20000 });
+
+  const requests = page.locator('table').last().locator('tbody tr');
+  // The button's accessible name is the account it shows, and `exact` because
+  // an email is a substring of plenty of other text on the page.
+  const accounts = page.getByRole('button', { name: readToken().userId, exact: true });
+  expect(
+    await accounts.count(),
+    'the requests this test just made should be attributed',
+  ).toBeGreaterThan(0);
+
+  const paths = await requests.locator('td:nth-child(4)').allTextContents();
+  expect(paths.length).toBeGreaterThan(0);
+  expect(paths.some((p) => p.includes('/admin/logs'))).toBe(false);
+
+  // Picking an account off a row narrows to it, and says so.
+  await accounts.first().click();
+  await expect(page.getByRole('button', { name: 'Clear account filter' })).toBeVisible();
 });

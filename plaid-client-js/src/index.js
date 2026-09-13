@@ -1301,15 +1301,39 @@ class PlaidClient {
           queryParams: { ip, "user-id": userId },
         }),
       /**
-       * The tail of the configured log file. Resolves with an `error` string
-       * instead of lines when no log file is configured or it does not exist
-       * yet. Admin only.
+       * What the server has logged, structured and filtered, from an in-memory
+       * buffer kept whether or not a log file is configured. `requests` is one
+       * entry per HTTP request (method, path, status, duration, and who made
+       * it), `events` is everything else, with a stack trace where there was
+       * one. They are buffered separately so a burst of requests cannot evict
+       * an error. Both come newest first, `matched` counts what passed the
+       * filters, and request `stats` describe the filtered set. Covers Plaid's
+       * own log stream since the last restart: for library messages and older
+       * history, see `logFile`. Admin only.
+       * @param {object} [opts]
+       * @param {number} [opts.limit] - Max entries per kind (default 200, max 2000)
+       * @param {string} [opts.q] - Substring of any field, case-insensitive
+       * @param {string} [opts.level] - Minimum level for events, e.g. "warn"
+       * @param {string} [opts.status] - "2xx".."5xx", an exact code, or "failures"
+       * @param {string} [opts.user] - Only requests made by this account
+       * @param {string} [opts.method] - Only requests with this HTTP method
+       * @returns {Promise<{requests: object, events: object, file: (string|null)}>}
+       */
+      logs: ({ limit, q, level, status, user, method } = {}) =>
+        this._request("GET", "/api/v1/admin/logs", {
+          queryParams: { limit, q, level, status, user, method },
+        }),
+      /**
+       * The tail of the configured log file, as text lines. The only place
+       * third-party library messages and anything from before the last restart
+       * can be read. Resolves with an `error` string instead of lines when no
+       * log file is configured or it does not exist yet. Admin only.
        * @param {object} [opts]
        * @param {number} [opts.lines] - How many lines (default 200, max 2000)
        * @returns {Promise<{file: (string|null), lines: string[], error?: string}>}
        */
-      logs: ({ lines } = {}) =>
-        this._request("GET", "/api/v1/admin/logs", {
+      logFile: ({ lines } = {}) =>
+        this._request("GET", "/api/v1/admin/logs/file", {
           queryParams: { lines },
         }),
       /**

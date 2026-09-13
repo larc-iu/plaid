@@ -4,6 +4,7 @@
             [buddy.sign.jwt :as jwt]
             [plaid.rest-api.v1.rate-limit :as rl]
             [plaid.server.config :refer [config]]
+            [plaid.server.log-buffer :as log-buffer]
             [plaid.sql.api-token :as api-token]
             [plaid.sql.common :as psc]
             [plaid.sql.operation :as op]
@@ -156,6 +157,12 @@
                             ;; out a legitimate user moments after they
                             ;; finally get in.
                             (rl/clear! request user-id)
+                            ;; Name the account on the access line. Only here,
+                            ;; on the success branch: a failed login must not
+                            ;; put the id somebody typed next to `user=`, which
+                            ;; reads as an account that authenticated.
+                            (some-> ^clojure.lang.Volatile (get request log-buffer/identity-key)
+                                    (vreset! {:user id}))
                             {:status 200
                              :body {:token token}})
                           (do (rl/record-failure! request user-id)
@@ -264,6 +271,12 @@
                                             (if (and auth-header (.startsWith auth-header "Bearer "))
                                               "header" "query")
                                             ")"))
+                            ;; Hand the validated identity back out to the
+                            ;; access log, which runs outside this middleware
+                            ;; so that the requests refused below still get a
+                            ;; line. See `log-buffer/identity-key`.
+                            (some-> ^clojure.lang.Volatile (get request log-buffer/identity-key)
+                                    (vreset! {:user (:user/id token-data) :token api-token-id}))
                             (handler (cond-> (assoc request
                                                     :jwt-data token-data
                                                     :user/id (:user/id token-data)
