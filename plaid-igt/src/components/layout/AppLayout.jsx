@@ -194,6 +194,7 @@ const Shell = () => {
               <ProjectPicker
                 client={client}
                 onPick={(p) => setHeld({ projectId: p.id, projectName: p.name })}
+                onCollapse={() => setDockOpen(false)}
               />
             )
           }

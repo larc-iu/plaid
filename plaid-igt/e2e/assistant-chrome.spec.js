@@ -565,6 +565,13 @@ test('the panel is reachable on the screen a reader lands on, and asks which pro
   await expect(panel).toBeVisible();
   await expect(panel.getByText('Choose a project')).toBeVisible();
 
+  // And it can be shut from here, the way the chat can, before any project is
+  // chosen. A panel with no way out is not "available", it is in the way.
+  await panel.getByTitle('Hide the assistant').click();
+  await expect(panel).toHaveCount(0);
+  await toggle(page).click();
+  await expect(panel.getByText('Choose a project')).toBeVisible();
+
   // Choosing one is what gives the panel something to be about, without
   // leaving the screen the reader is on.
   await panel.getByRole('button', { name: 'E2E IGT Fixture' }).click();

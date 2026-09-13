@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, PanelRightClose } from 'lucide-react';
 import { humanizeError } from '../../lib/errors.js';
+import { Button } from '../ui/button.jsx';
 import { AssistantMark } from './PlaidMarks.jsx';
 
 // What the dock shows before any project has been in scope: the reader has just
@@ -12,7 +13,11 @@ import { AssistantMark } from './PlaidMarks.jsx';
 // records, the agent's workspace), so a project is the one thing it cannot do
 // without, and asking for it is a better answer than a chat with 2 of its 64
 // tools.
-export const ProjectPicker = ({ client, onPick }) => {
+//
+// `onCollapse` is the same hide button the chat's header carries, in the same
+// place. The panel is shut from its own header on every screen, and this is
+// the header on the screen a reader lands on.
+export const ProjectPicker = ({ client, onPick, onCollapse }) => {
   const [projects, setProjects] = useState(null);
   const [error, setError] = useState('');
 
@@ -39,6 +44,18 @@ export const ProjectPicker = ({ client, onPick }) => {
       <header className="flex items-center gap-2 border-b px-3 py-2 text-sm">
         <AssistantMark className="h-4 w-4 shrink-0" />
         <span className="text-muted-foreground">Choose a project</span>
+        {onCollapse && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="ml-auto"
+            onClick={onCollapse}
+            title="Hide the assistant"
+          >
+            <PanelRightClose className="h-4 w-4" />
+          </Button>
+        )}
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {projects === null ? (
