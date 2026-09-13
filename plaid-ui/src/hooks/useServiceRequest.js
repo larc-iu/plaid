@@ -11,8 +11,6 @@ export const useServiceRequest = (client) => {
   const [availableServices, setAvailableServices] = useState([]);
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [processStatus, setProcessStatus] = useState(null);
-  const [processError, setProcessError] = useState(null);
   // null until the service says otherwise: "we don't know yet" is not 0%, and
   // a determinate bar pinned at 0 reads as a hang.
   const [progressPercent, setProgressPercent] = useState(null);
@@ -53,8 +51,6 @@ export const useServiceRequest = (client) => {
   }, []);
 
   const begin = useCallback(() => {
-    setProcessStatus('started');
-    setProcessError(null);
     setIsProcessing(true);
     setProgressPercent(null);
     setProgressMessage('Starting the service…');
@@ -68,7 +64,6 @@ export const useServiceRequest = (client) => {
   // plain name, the way the banner and the run record already name it.
   const succeed = useCallback((result, copy) => {
     const stopped = result?.stopped === true;
-    setProcessStatus(stopped ? 'stopped' : 'success');
     setProgressPercent(stopped ? null : 100);
     setProgressMessage(stopped ? 'Stopped.' : 'Finished.');
     if (stopped) {
@@ -93,14 +88,10 @@ export const useServiceRequest = (client) => {
   // detection) says so instead of promising a reload that finds nothing.
   const fail = useCallback((error, copy) => {
     if (error?.pending) {
-      setProcessError('Lost contact with the service.');
-      setProcessStatus('lost');
       setProgressMessage('Lost contact with the service.');
       notifyWarning(copy.lostMessage, copy.stoppedTitle || copy.errorTitle);
       return;
     }
-    setProcessError(error.message || copy.errorMessage);
-    setProcessStatus('error');
     setProgressMessage(`Error: ${error.message || copy.errorMessage}`);
     notifyError(error.message || copy.errorMessage, copy.errorTitle);
   }, []);
@@ -210,14 +201,6 @@ export const useServiceRequest = (client) => {
     }
   }, [client]);
 
-  // Clear processing status
-  const clearProcessStatus = useCallback(() => {
-    setProcessStatus(null);
-    setProcessError(null);
-    setProgressPercent(null);
-    setProgressMessage('');
-  }, []);
-
   return {
     // Service discovery
     availableServices,
@@ -226,8 +209,6 @@ export const useServiceRequest = (client) => {
 
     // Processing status
     isProcessing,
-    processStatus,
-    processError,
     progressPercent,
     progressMessage,
 
@@ -235,7 +216,6 @@ export const useServiceRequest = (client) => {
     requestService,
     attachToRequest,
     cancelRequest,
-    clearProcessStatus,
 
     // Computed flags. Discovery also returns previously-seen OFFLINE services
     // (for the Services settings tab); only online ones can take work.
