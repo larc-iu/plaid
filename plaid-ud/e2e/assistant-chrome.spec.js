@@ -2,6 +2,7 @@ import PlaidClient from '@larc-iu/plaid-client';
 import { randomUUID } from 'node:crypto';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
 import { seedUdDoc } from './seedUdDoc.js';
+import { assistantHarness } from '../../plaid-ui/e2e/assistantChrome.js';
 
 // The assistant panel as part of the app's chrome rather than one screen's.
 //
@@ -13,8 +14,10 @@ import { seedUdDoc } from './seedUdDoc.js';
 // What a document screen owes the panel (its height, "Ask", the gutter it
 // takes) is e2e/assistant-panel.spec.js.
 //
-// No model and no service: an assistant is made to look online by answering the
-// one discovery GET, the same trick as e2e/assistant-panel.spec.js.
+// The stub service, the seeded conversations and the four locators are the
+// shared harness in plaid-ui/e2e/assistantChrome.js, which plaid-igt's copy of
+// this spec drives the same panel with. No model and no service: an assistant
+// is made to look online by answering the one discovery GET.
 
 const CORE = 'http://localhost:8085';
 const SENTENCES = 'the dog runs. she sings.';
@@ -39,64 +42,27 @@ let otherDocumentId;
 let userId;
 const seeded = []; // conversation ids to delete
 
-const ASSISTANT = [
-  {
-    serviceId: 'ud:assist:test',
-    serviceName: 'UD Assistant (test)',
-    description: 'A stand-in for the specs.',
-    extras: { model: 'test/model', app: 'ud', tasks: ['assist'] },
-    tasks: ['assist'],
-    online: true,
-  },
-];
-
-const withAssistant = (page, services = ASSISTANT) =>
-  page.route('**/api/v1/projects/*/services', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(services) }),
-  );
-
 const client = () => new PlaidClient(CORE, readToken().token);
 
-const convKey = (kind, id) => `ud:assistant:${projectId}:${kind}:${id}`;
+const chrome = assistantHarness({
+  app: 'ud',
+  expect,
+  client,
+  userId: () => userId,
+  projectId: () => projectId,
+  documentPath: (id) => `/#/projects/${projectId}/documents/${id}/annotate`,
+  contentSelector: '.sentence-grid',
+});
+const { withAssistant, panelOf, toggle, rail, openDock, gotoDocument, dropConversations } = chrome;
 
-// A conversation is a record in the user's own key/value store that the service
-// writes, so one can be seeded straight in and the panel driven from there. No
-// model and no service needed.
-const seedConversation = async (title, text, updatedAt) => {
+// Every seeded conversation is remembered so afterAll can take it away again.
+const seedConversation = (title, text, updatedAt) => {
   const id = randomUUID();
   seeded.push(id);
-  const c = client();
-  await c.userData.put(userId, convKey('conv', id), {
-    messages: [
-      { role: 'user', content: text },
-      { role: 'assistant', content: 'Noted.' },
-    ],
-    display: [
-      { kind: 'user', text },
-      {
-        kind: 'assistant',
-        text: `Reply to ${title}`,
-        plan: null,
-        citations: [],
-        status: null,
-        model: 'e2e/model',
-        steps: [],
-        stepsSummary: '',
-      },
-    ],
-  });
-  await c.userData.put(userId, convKey('meta', id), {
-    id,
-    title,
-    createdAt: updatedAt,
-    updatedAt,
-    serviceId: 'ud:assist:test',
-    model: 'test/model',
-    turns: 1,
-    pending: null,
-  });
-  return id;
+  return chrome.seedConversation({ id, title, text, updatedAt });
 };
+
+const crumbs = (page) => page.getByRole('navigation', { name: 'Breadcrumb' });
 
 // A project of its own, with ONE TOKENIZED DOCUMENT. Not the shared "E2E UD
 // Fixture": its Doc 1 carries a text body and no tokens (fixtureProject.js
@@ -119,27 +85,13 @@ test.beforeAll(async () => {
 // first configured project that has tokens, so leftovers make it query a
 // treebank with no dependency relations in it and fail.
 test.afterAll(async () => {
-  const c = client();
-  for (const id of seeded) {
-    for (const kind of ['conv', 'meta']) {
-      await c.userData.delete(userId, convKey(kind, id)).catch(() => {});
-    }
-  }
+  await dropConversations(seeded, [projectId]);
   if (projectId) {
-    await c.projects.delete(projectId).catch((e) => console.error('cleanup failed:', e.message));
+    await client()
+      .projects.delete(projectId)
+      .catch((e) => console.error('cleanup failed:', e.message));
   }
 });
-
-const panelOf = (page) => page.locator('aside.border-l');
-const toggle = (page) => page.getByRole('button', { name: 'Assistant', exact: true });
-const rail = (page) => page.getByRole('button', { name: 'Open the assistant' });
-const annotate = (page, id) => page.goto(`/#/projects/${projectId}/documents/${id}/annotate`);
-const crumbs = (page) => page.getByRole('navigation', { name: 'Breadcrumb' });
-
-const openDock = async (page) => {
-  await toggle(page).click();
-  await expect(panelOf(page)).toBeVisible();
-};
 
 test('the panel keeps its conversation across a navigation', async ({ page }) => {
   // The whole point. A half-typed message is the cheapest observable proof
@@ -148,15 +100,14 @@ test('the panel keeps its conversation across a navigation', async ({ page }) =>
   // stubbed beyond discovery, so this needs no service to answer.
   await seedAuth(page);
   await withAssistant(page);
-  await annotate(page, documentId);
-  await expect(page.locator('.sentence-grid').first()).toBeVisible({ timeout: 15000 });
+  await gotoDocument(page, documentId);
   await openDock(page);
 
   const composer = panelOf(page).getByRole('textbox');
   await composer.fill('half a question about');
 
   // To another document in the same project.
-  await annotate(page, otherDocumentId);
+  await page.goto(`/#/projects/${projectId}/documents/${otherDocumentId}/annotate`);
   await expect(crumbs(page)).toContainText(SECOND_DOCUMENT);
   await expect(panelOf(page)).toBeVisible();
   await expect(panelOf(page).getByRole('textbox')).toHaveValue('half a question about');
@@ -174,8 +125,7 @@ test('the panel holds its project on a screen that has none', async ({ page }) =
   // it has rather than emptying itself or closing.
   await seedAuth(page);
   await withAssistant(page);
-  await annotate(page, documentId);
-  await expect(page.locator('.sentence-grid').first()).toBeVisible({ timeout: 15000 });
+  await gotoDocument(page, documentId);
   await openDock(page);
   await panelOf(page).getByRole('textbox').fill('still here');
 
@@ -191,8 +141,7 @@ test('the panel stays shut across a navigation once it is shut', async ({ page }
   // screen, or on the next visit.
   await seedAuth(page);
   await withAssistant(page);
-  await annotate(page, documentId);
-  await expect(page.locator('.sentence-grid').first()).toBeVisible({ timeout: 15000 });
+  await gotoDocument(page, documentId);
   await openDock(page);
   await panelOf(page).getByTitle('Hide the assistant').click();
   await expect(panelOf(page)).toHaveCount(0);
@@ -203,22 +152,20 @@ test('the panel stays shut across a navigation once it is shut', async ({ page }
   await expect(toggle(page)).toBeVisible();
 
   // Reloading the app does not bring it back either.
-  await annotate(page, documentId);
-  await expect(page.locator('.sentence-grid').first()).toBeVisible({ timeout: 15000 });
+  await gotoDocument(page, documentId);
   await expect(panelOf(page)).toHaveCount(0);
 });
 
 test('the handle waits at the edge, widens under the pointer, and does not open on hover', async ({
   page,
 }) => {
-  // The affordance the panel is reached by, and the reason it can start shut.
-  // It mirrors the history rail on the LEFT edge of the document screen: a
-  // sliver that widens to show its mark. Hover must NOT open the panel, or it
-  // would open itself every time the cursor drifted out to a scrollbar.
+  // The affordance the panel is reached by, and the reason it can start shut:
+  // a sliver against the right edge that widens to show its mark. Hover must
+  // NOT open the panel, or it would open itself every time the cursor drifted
+  // out to a scrollbar.
   await seedAuth(page);
   await withAssistant(page);
-  await annotate(page, documentId);
-  await expect(page.locator('.sentence-grid').first()).toBeVisible({ timeout: 15000 });
+  await gotoDocument(page, documentId);
 
   const handle = rail(page);
   await expect(handle).toBeVisible();
@@ -247,8 +194,7 @@ test('`@` offers the sentences of the open document, and Enter takes one', async
   // what the sentence SAYS, because nobody knows they want s2.
   await seedAuth(page);
   await withAssistant(page);
-  await annotate(page, documentId);
-  await expect(page.locator('.sentence-grid').first()).toBeVisible({ timeout: 15000 });
+  await gotoDocument(page, documentId);
   await openDock(page);
 
   const composer = panelOf(page).getByRole('textbox');
@@ -280,8 +226,7 @@ test('the panel comes back open if that is how it was left', async ({ page }) =>
   // gets it shut, which is what the first assertion stands on.
   await seedAuth(page);
   await withAssistant(page);
-  await annotate(page, documentId);
-  await expect(page.locator('.sentence-grid').first()).toBeVisible({ timeout: 15000 });
+  await gotoDocument(page, documentId);
   await expect(panelOf(page)).toHaveCount(0);
 
   await openDock(page);
@@ -321,17 +266,41 @@ test('the control is offered on every screen after signing in', async ({ page })
   await expect(toggle(page)).toBeVisible();
 });
 
+test('the panel is not offered on the Assistant tab, which is the same thread', async ({
+  page,
+}) => {
+  // Both would draw the same live turn, each with its own step list, Stop
+  // button and composer, and nothing would say which one was the live one.
+  await seedAuth(page);
+  await withAssistant(page);
+  await gotoDocument(page, documentId);
+  await openDock(page);
+
+  await page.goto(`/#/projects/${projectId}/assistant`);
+  await expect(page.getByRole('tab', { name: 'Assistant' })).toBeVisible();
+  await expect(panelOf(page)).toHaveCount(0);
+  await expect(toggle(page)).toHaveCount(0);
+  await expect(rail(page)).toHaveCount(0);
+
+  // Off that tab and the panel is back, still open: the reader never shut it.
+  await page.goto(`/#/projects/${projectId}/search`);
+  await expect(page.getByRole('tab', { name: 'Search' })).toBeVisible();
+  await expect(panelOf(page)).toBeVisible();
+});
+
 test('a window too narrow for a side panel is not offered one', async ({ page }) => {
   await seedAuth(page);
   await withAssistant(page);
-  await annotate(page, documentId);
-  await expect(page.locator('.sentence-grid').first()).toBeVisible({ timeout: 15000 });
+  await gotoDocument(page, documentId);
   await openDock(page);
 
   await page.setViewportSize({ width: 800, height: 800 });
   // Taking a third of 800px leaves neither the annotation nor the chat usable.
   await expect(panelOf(page)).toHaveCount(0);
   await expect(toggle(page)).toHaveCount(0);
+  // Including the grid's own "Ask": it hands the shell a reference and the
+  // shell opens the panel on it, so here it would do nothing at all.
+  await expect(page.getByRole('button', { name: 'Ask' })).toHaveCount(0);
 
   // Widening gives it back, still open: the reader never closed it.
   await page.setViewportSize({ width: 1400, height: 800 });
@@ -344,8 +313,7 @@ test('toasts do not land on top of the panel', async ({ page }) => {
   // left by it.
   await seedAuth(page);
   await withAssistant(page);
-  await annotate(page, documentId);
-  await expect(page.locator('.sentence-grid').first()).toBeVisible({ timeout: 15000 });
+  await gotoDocument(page, documentId);
   await openDock(page);
 
   const width = await page.evaluate(() =>
@@ -391,8 +359,7 @@ test("the panel resumes the project's newest thread and holds it while the reade
   );
   expect(older).not.toBe(newer);
 
-  await annotate(page, documentId);
-  await expect(page.locator('.sentence-grid').first()).toBeVisible({ timeout: 15000 });
+  await gotoDocument(page, documentId);
   await openDock(page);
 
   // The newest, not a blank one: the panel comes back on every screen and on
@@ -402,7 +369,7 @@ test("the panel resumes the project's newest thread and holds it while the reade
 
   // To another document. The SAME thread, not one about the new document and
   // not a fresh one.
-  await annotate(page, otherDocumentId);
+  await page.goto(`/#/projects/${projectId}/documents/${otherDocumentId}/annotate`);
   await expect(crumbs(page)).toContainText(SECOND_DOCUMENT);
   await expect(panel.getByText('the newer question')).toBeVisible();
   await expect(panel.getByText('the older question')).toHaveCount(0);
@@ -426,8 +393,7 @@ test('the panel opens a past conversation without leaving the screen', async ({ 
     '2021-01-01T00:00:00.000Z',
   );
 
-  await annotate(page, documentId);
-  await expect(page.locator('.sentence-grid').first()).toBeVisible({ timeout: 15000 });
+  await gotoDocument(page, documentId);
   await openDock(page);
   const panel = panelOf(page);
   // From a blank conversation, so what the panel shows next can only have come

@@ -1,6 +1,7 @@
 import PlaidClient from '@larc-iu/plaid-client';
 import { randomUUID } from 'node:crypto';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { assistantHarness } from '../../plaid-ui/e2e/assistantChrome.js';
 
 // The assistant panel as part of the app's chrome rather than one screen's.
 //
@@ -9,8 +10,10 @@ import { test, expect, seedAuth, readToken } from './fixtures.js';
 // navigation and keeps the conversation the reader was having. Everything else
 // here is a consequence of that being true.
 //
-// No model and no service: an assistant is made to look online by answering the
-// one discovery GET, the same trick as e2e/assistant-panel.spec.js.
+// The stub service, the seeded conversations and the four locators are the
+// shared harness in plaid-ui/e2e/assistantChrome.js, which plaid-ud's copy of
+// this spec drives the same panel with. No model and no service: an assistant
+// is made to look online by answering the one discovery GET.
 
 const CORE = 'http://localhost:8085';
 
@@ -22,63 +25,24 @@ let userId;
 let otherProjectId;
 const seeded = []; // conversation ids to delete
 
-const ASSISTANT = [
-  {
-    serviceId: 'igt:assist:test',
-    serviceName: 'IGT Assistant (test)',
-    description: 'A stand-in for the specs.',
-    extras: { model: 'test/model', app: 'igt', tasks: ['assist'] },
-    tasks: ['assist'],
-    online: true,
-  },
-];
-
-const withAssistant = (page, services = ASSISTANT) =>
-  page.route('**/api/v1/projects/*/services', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(services) }),
-  );
-
 const client = () => new PlaidClient(CORE, readToken().token);
 
-const convKey = (kind, id) => `igt:assistant:${projectId}:${kind}:${id}`;
+const chrome = assistantHarness({
+  app: 'igt',
+  expect,
+  client,
+  userId: () => userId,
+  projectId: () => projectId,
+  documentPath: (id) => `/#/projects/${projectId}/documents/${id}?tab=analyze`,
+  contentSelector: '.igt-sentence',
+});
+const { withAssistant, panelOf, toggle, rail, openDock, gotoDocument, dropConversations } = chrome;
 
-// A conversation is a record in the user's own key/value store that the service
-// writes, so one can be seeded straight in and the panel driven from there. No
-// model and no service needed, the same as e2e/assistant.spec.js.
-const seedConversation = async (title, text, updatedAt) => {
+// Every seeded conversation is remembered so afterAll can take it away again.
+const seedConversation = (title, text, updatedAt, inProject) => {
   const id = randomUUID();
   seeded.push(id);
-  const c = client();
-  await c.userData.put(userId, convKey('conv', id), {
-    messages: [
-      { role: 'user', content: text },
-      { role: 'assistant', content: 'Noted.' },
-    ],
-    display: [
-      { kind: 'user', text },
-      {
-        kind: 'assistant',
-        text: `Reply to ${title}`,
-        plan: null,
-        citations: [],
-        status: null,
-        model: 'e2e/model',
-        steps: [],
-        stepsSummary: '',
-      },
-    ],
-  });
-  await c.userData.put(userId, convKey('meta', id), {
-    id,
-    title,
-    createdAt: updatedAt,
-    updatedAt,
-    serviceId: 'igt:assist:test',
-    model: 'test/model',
-    turns: 1,
-    pending: null,
-  });
-  return id;
+  return chrome.seedConversation({ id, title, text, updatedAt, inProject });
 };
 
 test.beforeAll(async () => {
@@ -102,13 +66,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   const c = client();
-  for (const id of seeded) {
-    for (const project of [projectId, otherProjectId].filter(Boolean)) {
-      for (const kind of ['conv', 'meta']) {
-        await c.userData.delete(userId, `igt:assistant:${project}:${kind}:${id}`).catch(() => {});
-      }
-    }
-  }
+  await dropConversations(seeded, [projectId, otherProjectId]);
   // A seeded project that outlives its spec breaks other specs that take "the
   // first configured project".
   if (otherProjectId) {
@@ -128,16 +86,6 @@ test.afterAll(async () => {
   }
 });
 
-const panelOf = (page) => page.locator('aside.border-l');
-const toggle = (page) => page.getByRole('button', { name: 'Assistant', exact: true });
-const rail = (page) => page.getByRole('button', { name: 'Open the assistant' });
-const analyze = (page, id) => page.goto(`/#/projects/${projectId}/documents/${id}?tab=analyze`);
-
-const openDock = async (page) => {
-  await toggle(page).click();
-  await expect(panelOf(page)).toBeVisible();
-};
-
 test('the panel keeps its conversation across a navigation', async ({ page }) => {
   // The whole point. A half-typed message is the cheapest observable proof
   // that the panel was not torn down and rebuilt: its composer is component
@@ -145,15 +93,14 @@ test('the panel keeps its conversation across a navigation', async ({ page }) =>
   // stubbed beyond discovery, so this needs no service to answer.
   await seedAuth(page);
   await withAssistant(page);
-  await analyze(page, documentId);
-  await expect(page.locator('.igt-sentence').first()).toBeVisible();
+  await gotoDocument(page, documentId);
   await openDock(page);
 
   const composer = panelOf(page).getByRole('textbox');
   await composer.fill('half a question about');
 
   // To another document in the same project.
-  await analyze(page, otherDocumentId);
+  await page.goto(`/#/projects/${projectId}/documents/${otherDocumentId}?tab=analyze`);
   await expect(page.getByRole('heading', { name: 'Chrome Spec Second Document' })).toBeVisible();
   await expect(panelOf(page)).toBeVisible();
   await expect(panelOf(page).getByRole('textbox')).toHaveValue('half a question about');
@@ -171,8 +118,7 @@ test('the panel holds its project on a screen that has none', async ({ page }) =
   // keeps the one it has rather than emptying itself or closing.
   await seedAuth(page);
   await withAssistant(page);
-  await analyze(page, documentId);
-  await expect(page.locator('.igt-sentence').first()).toBeVisible();
+  await gotoDocument(page, documentId);
   await openDock(page);
   const composer = panelOf(page).getByRole('textbox');
   await composer.fill('still here');
@@ -189,8 +135,7 @@ test('the panel stays shut across a navigation once it is shut', async ({ page }
   // screen, or on the next visit.
   await seedAuth(page);
   await withAssistant(page);
-  await analyze(page, documentId);
-  await expect(page.locator('.igt-sentence').first()).toBeVisible();
+  await gotoDocument(page, documentId);
   await openDock(page);
   await panelOf(page).getByTitle('Hide the assistant').click();
   await expect(panelOf(page)).toHaveCount(0);
@@ -201,8 +146,7 @@ test('the panel stays shut across a navigation once it is shut', async ({ page }
   await expect(toggle(page)).toBeVisible();
 
   // Reloading the app does not bring it back either.
-  await analyze(page, documentId);
-  await expect(page.locator('.igt-sentence').first()).toBeVisible();
+  await gotoDocument(page, documentId);
   await expect(panelOf(page)).toHaveCount(0);
 });
 
@@ -215,8 +159,7 @@ test('the handle waits at the edge, widens under the pointer, and does not open 
   // would open itself every time the cursor drifted out to a scrollbar.
   await seedAuth(page);
   await withAssistant(page);
-  await analyze(page, documentId);
-  await expect(page.locator('.igt-sentence').first()).toBeVisible({ timeout: 15000 });
+  await gotoDocument(page, documentId);
 
   const handle = rail(page);
   await expect(handle).toBeVisible();
@@ -245,8 +188,7 @@ test('`@` offers the sentences of the open document, and Enter takes one', async
   // what the sentence SAYS, because nobody knows they want s2.
   await seedAuth(page);
   await withAssistant(page);
-  await analyze(page, documentId);
-  await expect(page.locator('.igt-sentence').first()).toBeVisible({ timeout: 15000 });
+  await gotoDocument(page, documentId);
   await openDock(page);
 
   const composer = panelOf(page).getByRole('textbox');
@@ -278,8 +220,7 @@ test('the panel comes back open if that is how it was left', async ({ page }) =>
   // gets it shut, which is what the first assertion stands on.
   await seedAuth(page);
   await withAssistant(page);
-  await analyze(page, documentId);
-  await expect(page.locator('.igt-sentence').first()).toBeVisible({ timeout: 15000 });
+  await gotoDocument(page, documentId);
   await expect(panelOf(page)).toHaveCount(0);
 
   await openDock(page);
@@ -319,6 +260,28 @@ test('the control is offered on every screen after signing in', async ({ page })
   await expect(toggle(page)).toBeVisible();
 });
 
+test('the panel is not offered on the Assistant tab, which is the same thread', async ({
+  page,
+}) => {
+  // Both would draw the same live turn, each with its own step list, Stop
+  // button and composer, and nothing would say which one was the live one.
+  await seedAuth(page);
+  await withAssistant(page);
+  await gotoDocument(page, documentId);
+  await openDock(page);
+
+  await page.goto(`/#/projects/${projectId}?tab=assistant`);
+  await expect(page.getByRole('complementary').first()).toBeVisible();
+  await expect(panelOf(page)).toHaveCount(0);
+  await expect(toggle(page)).toHaveCount(0);
+  await expect(rail(page)).toHaveCount(0);
+
+  // Off that tab and the panel is back, still open: the reader never shut it.
+  await page.goto(`/#/projects/${projectId}`);
+  await expect(page.getByRole('heading', { name: 'E2E IGT Fixture' })).toBeVisible();
+  await expect(panelOf(page)).toBeVisible();
+});
+
 test('the picker is not offered where there is no annotation to ask about', async ({ page }) => {
   // The new-project wizard and the importers sit under /projects/ and have no
   // project, so nothing publishes a subject there. Offering to pick one would
@@ -336,8 +299,7 @@ test('the page never scrolls sideways to make room for the panel', async ({ page
   // on top of the annotation, which is the one thing it must never do.
   await seedAuth(page);
   await withAssistant(page);
-  await analyze(page, documentId);
-  await expect(page.locator('.igt-sentence').first()).toBeVisible();
+  await gotoDocument(page, documentId);
   await openDock(page);
 
   const box = await panelOf(page).boundingBox();
@@ -354,8 +316,7 @@ test('the page never scrolls sideways to make room for the panel', async ({ page
 test('a window too narrow for a side panel is not offered one', async ({ page }) => {
   await seedAuth(page);
   await withAssistant(page);
-  await analyze(page, documentId);
-  await expect(page.locator('.igt-sentence').first()).toBeVisible();
+  await gotoDocument(page, documentId);
   await openDock(page);
 
   await page.setViewportSize({ width: 800, height: 800 });
@@ -384,8 +345,7 @@ test('toasts do not land on top of the panel', async ({ page }) => {
   // left by it.
   await seedAuth(page);
   await withAssistant(page);
-  await analyze(page, documentId);
-  await expect(page.locator('.igt-sentence').first()).toBeVisible();
+  await gotoDocument(page, documentId);
   await openDock(page);
 
   const width = await page.evaluate(() =>
@@ -429,8 +389,7 @@ test("the panel resumes the project's newest thread and holds it while the reade
   );
   expect(older).not.toBe(newer);
 
-  await analyze(page, documentId);
-  await expect(page.locator('.igt-sentence').first()).toBeVisible();
+  await gotoDocument(page, documentId);
   await openDock(page);
 
   // The newest, not a blank one: the panel comes back on every screen and on
@@ -440,7 +399,7 @@ test("the panel resumes the project's newest thread and holds it while the reade
 
   // To another document. The SAME thread, not one about the new document and
   // not a fresh one.
-  await analyze(page, otherDocumentId);
+  await gotoDocument(page, otherDocumentId);
   await expect(page.getByRole('heading', { name: 'Chrome Spec Second Document' })).toBeVisible();
   await expect(panel.getByText('the newer question')).toBeVisible();
   await expect(panel.getByText('the older question')).toHaveCount(0);
@@ -466,28 +425,17 @@ test('the tab can list conversations from every project, and links them there', 
     'asked in this project',
     '2030-01-01T00:00:00.000Z',
   );
-  const elsewhereId = randomUUID();
-  seeded.push(elsewhereId);
   // `projects.create` answers with the id, not the whole project, so the name
   // this asserts on is the one it was given.
   const otherName = `Chrome Other Project ${Date.now()}`;
   const other = await client().projects.create(otherName);
   otherProjectId = other.id;
-  const c = client();
-  await c.userData.put(userId, `igt:assistant:${other.id}:conv:${elsewhereId}`, {
-    messages: [],
-    display: [{ kind: 'user', text: 'asked in the other project' }],
-  });
-  await c.userData.put(userId, `igt:assistant:${other.id}:meta:${elsewhereId}`, {
-    id: elsewhereId,
-    title: 'chrome thread elsewhere',
-    createdAt: '2029-01-01T00:00:00.000Z',
-    updatedAt: '2029-01-01T00:00:00.000Z',
-    serviceId: 'igt:assist:test',
-    model: 'test/model',
-    turns: 1,
-    pending: null,
-  });
+  const elsewhereId = await seedConversation(
+    'chrome thread elsewhere',
+    'asked in the other project',
+    '2029-01-01T00:00:00.000Z',
+    other.id,
+  );
 
   await page.goto(`/#/projects/${projectId}?tab=assistant`);
   const sidebar = page.getByRole('complementary').first();
@@ -524,8 +472,7 @@ test('the panel opens a past conversation without leaving the screen', async ({ 
     '2021-01-01T00:00:00.000Z',
   );
 
-  await analyze(page, documentId);
-  await expect(page.locator('.igt-sentence').first()).toBeVisible();
+  await gotoDocument(page, documentId);
   await openDock(page);
   const panel = panelOf(page);
   // From a blank conversation, so what the panel shows next can only have come
@@ -553,8 +500,7 @@ test('a turn running in another project is not mistaken for one here', async ({ 
   // belong in. It is counted instead, with the way back to it.
   await seedAuth(page);
   await withAssistant(page);
-  await analyze(page, documentId);
-  await expect(page.locator('.igt-sentence').first()).toBeVisible();
+  await gotoDocument(page, documentId);
   await openDock(page);
   const panel = panelOf(page);
 
