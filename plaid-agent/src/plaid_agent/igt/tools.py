@@ -519,6 +519,14 @@ def op_target(op: Dict[str, Any]):
         return ('mwe_link', op.get('link_id')) if op.get('token_ids') else ('link', op.get('token_id_hint'))
     if k == 'link_phrase':
         return ('mwe', tuple(op.get('token_ids') or []))
+    if k == 'confirm':
+        # The exact material it confirms. Confirming the same thing twice in a
+        # turn (the model retrying, two tools reaching the same document) used
+        # to stage two ops, and the reply counted both, so the card promised
+        # twice the confirmations it would make. Two confirmations that cover
+        # DIFFERENT material have different id lists and both stand.
+        return ('confirm', op.get('doc'), tuple(op.get('span_ids') or []),
+                tuple(op.get('token_ids') or []), tuple(op.get('link_ids') or []))
     if k == 'restore_document':
         return ('restore', op.get('document_id'))
     if k == 'set_entry_field':
@@ -2397,6 +2405,12 @@ def t_confirm(ws: Workspace, document: Optional[str] = None, refs=None, field: O
         raise ToolError('refs need a document')
     if isinstance(documents, list) and len(documents) == 1 and str(documents[0]).strip().lower() == 'all':
         documents = 'all'
+    # Only the WORD "all" means the whole project. The branch below tested the
+    # type alone, so documents="Text 3" staged a review of every document that
+    # had anything waiting, which is the plan the explicit-all ruling exists to
+    # stop being staged by accident. A bare name is one document, as in UD.
+    if isinstance(documents, str) and documents.strip().lower() != 'all':
+        documents = [documents]
     if not document and not documents:
         raise ToolError('Name a document, or documents: a list of names, or ["all"] for every document with '
                         'annotations awaiting review.')
@@ -2414,9 +2428,16 @@ def t_confirm(ws: Workspace, document: Optional[str] = None, refs=None, field: O
                                     f'{MAX_CONFIRM_DOCS} one plan covers; confirm document by document, or narrow with field.')
                 docs = [ws.doc(i) for i in ids]
         else:
-            docs = [ws.doc(str(d)) for d in documents]
-            if len(docs) > MAX_CONFIRM_DOCS:
-                raise ToolError(f'{len(docs)} documents, more than the {MAX_CONFIRM_DOCS} one plan covers.')
+            # By id, so a list that names one document twice (by name and by
+            # id, or by two spellings of the name) reviews it once.
+            ids = []
+            for d in documents:
+                did = ws.resolve_document_id(str(d))
+                if did not in ids:
+                    ids.append(did)
+            if len(ids) > MAX_CONFIRM_DOCS:
+                raise ToolError(f'{len(ids)} documents, more than the {MAX_CONFIRM_DOCS} one plan covers.')
+            docs = [ws.doc(did) for did in ids]
         for doc in docs:
             op = _document_confirm_op(ws, doc, f)
             if op:

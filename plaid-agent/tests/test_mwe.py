@@ -163,7 +163,11 @@ def test_confirm_counts_a_machine_expression_once():
     call_tool(w, 'confirm', {'document': 'd1'})
     assert w.ops[-1]['link_ids'] == [MWE_LINK] and w.ops[-1]['label'] == 'Text 1: confirm 1 link'
     w2 = ws(machine_mwe=True)
-    call_tool(w2, 'confirm', {'document': 'd1', 'refs': ['s1.w2', 's1.w3']})
-    assert [o['link_ids'] for o in w2.ops] == [[MWE_LINK], [MWE_LINK]]  # one op per ref, the same link
+    out2 = call_tool(w2, 'confirm', {'document': 'd1', 'refs': ['s1.w2', 's1.w3']})
+    # Both members of the expression carry the SAME link, so one op per ref was
+    # the same confirmation twice: two rows on the card and "2 annotations" for
+    # one link. Ops that confirm identical material are one op.
+    assert [o['link_ids'] for o in w2.ops] == [[MWE_LINK]]
+    assert 'the plan now holds 1' in out2
     out = call_tool(w2, 'worklist', {'kind': 'unverified'})
     assert out.startswith('2 words with annotations awaiting review') and '\tgam\t' in out and '\takuna\t' in out

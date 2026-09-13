@@ -62,6 +62,49 @@ def test_confirm_without_a_document_covers_the_project():
     assert w3.ops[0]['span_ids'] == ['sp-g1'] and w3.ops[0]['link_ids'] == []
 
 
+def test_a_document_name_in_documents_is_one_document_and_not_the_project():
+    """The branch tested that `documents` was a string, never what the string
+    said, so documents="Text 2" staged a review of every document with
+    anything waiting. Explicit "all" is the only thing that means the
+    project."""
+    from fixtures import document_raw
+    c = ExtClient(documents={'d1': contributed_document_raw(),
+                             'd2': {**document_raw(), 'id': 'd2', 'name': 'Text 2'}})
+    w = scan_ws(c)
+    out = call_tool(w, 'confirm', {'documents': 'Text 2'})
+    assert 'Nothing to confirm' in out or [op['doc'] for op in w.ops] == ['d2']
+    assert 'd1' not in [op.get('doc') for op in w.ops]
+    # The word itself, in either spelling, still covers the project.
+    w2 = scan_ws(c)
+    call_tool(w2, 'confirm', {'documents': 'ALL '})
+    assert [op['doc'] for op in w2.ops] == ['d1']
+
+
+def test_one_document_named_twice_is_reviewed_once():
+    from fixtures import document_raw
+    c = ExtClient(documents={'d1': contributed_document_raw(),
+                             'd2': {**document_raw(), 'id': 'd2', 'name': 'Text 2'}})
+    w = scan_ws(c)
+    out = call_tool(w, 'confirm', {'documents': ['Text 1', 'd1']})
+    assert [op['doc'] for op in w.ops] == ['d1']
+    assert '3 annotations' in out, 'counted once, not twice'
+
+
+def test_confirming_the_same_thing_twice_in_a_turn_stages_it_once():
+    """Two confirmations of the same material used to be two ops, and the
+    reply counted both, so the card promised twice what it would do."""
+    w = ws()
+    call_tool(w, 'confirm', {'document': 'd1', 'refs': ['s1.w1']})
+    out = call_tool(w, 'confirm', {'document': 'd1', 'refs': ['s1.w1']})
+    assert len(w.ops) == 1
+    assert 'the plan now holds 1' in out and 'superseded' in out
+    # A confirmation of DIFFERENT material is its own change.
+    w2 = ws()
+    call_tool(w2, 'confirm', {'document': 'd1', 'refs': ['s1.w1'], 'field': 'Gloss'})
+    call_tool(w2, 'confirm', {'document': 'd1', 'refs': ['s1.w1'], 'field': 'Morph Gloss'})
+    assert len(w2.ops) == 2
+
+
 def test_prompt_says_a_contributors_approval_is_a_contribution():
     from plaid_agent.igt.prompt import build_system_prompt
     p = build_system_prompt(ws().project)
