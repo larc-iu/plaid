@@ -302,6 +302,29 @@ def test_reads_mark_unverified_machine_material():
     assert '~' not in plain.replace('A trailing ~ marks', '')
 
 
+def test_the_plan_refuses_to_grow_past_what_a_record_holds(monkeypatch):
+    """The cap UD has had since the record budget was measured. Without it a
+    corpus-wide edit staged thousands of ops, the record could not hold them,
+    and the turn came back with no plan after the model had announced one."""
+    from plaid_agent.igt import tools
+    monkeypatch.setattr(tools, 'PLAN_MAX_OPS', 3)
+    w = ws()
+    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1', 's1.w2'], 'field': 'Gloss', 'value': 'X'})
+    out = call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w3', 's2.w1'], 'field': 'Gloss', 'value': 'Y'})
+    # A sentence, not a traceback, and it says what to do about it.
+    assert 'more than the 3 one plan may hold' in out
+    assert 'approve what is planned' in out
+    assert len(w.ops) == 2  # nothing half staged
+    # One more still fits, and lands.
+    assert call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w3'], 'field': 'Gloss',
+                                      'value': 'Y'}).startswith('Planned 1')
+    assert len(w.ops) == 3
+    # The 4th is refused one at a time as well as in a batch.
+    assert 'more than the 3 one plan may hold' in call_tool(
+        w, 'set_field', {'document': 'd1', 'refs': ['s2.w1'], 'field': 'Gloss', 'value': 'Y'})
+    assert len(w.ops) == 3
+
+
 def test_plan_payload_records_the_documents_it_touches_with_versions():
     w = ws()
     assert w.plan_payload() is None

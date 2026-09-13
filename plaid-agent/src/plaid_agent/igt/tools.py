@@ -22,12 +22,18 @@ import unicodedata
 
 from plaid_client.provenance import prov_state, MACHINE
 
+from ..core.limits import MAX_RESULT_CHARS
+from ..core.plan import PLAN_MAX_OPS, PlanFull, reserve as core_reserve
+
 from .project import (IgtProject, IgtDoc, Sentence, Word, Morpheme, Link, load_document, resolve, document_lines,
                       render_document, render_overview, render_word, mwe_ref, REVIEWABLE,
                       segmentation, joiner, word_ref, is_unicode_punctuation)
 
-MAX_RESULT_CHARS = 12000
 MAX_DOCS_PER_SEARCH = 1000
+
+# What counts as one change here, appended to the plan-is-full refusal.
+PLAN_NOTE = ('A corpus-wide replace or respell counts as one change, and so does a whole '
+             "document's confirm, however many values it covers.")
 
 # Parsed documents, shared across turns and users of this process, keyed by
 # (document id, version): every write inside a document bumps its version,
@@ -337,11 +343,23 @@ class Workspace:
                     self.ops[i] = op
                     self.replaced += 1
                     return
+        self.reserve(1)
         self.ops.append(op)
 
     def add_ops(self, ops: List[Dict[str, Any]]) -> None:
+        # Asked for the whole batch first, so a tool with more changes than
+        # the plan can hold refuses before it has staged any of them.
+        self.reserve(len(ops))
         for op in ops:
             self.add_op(op)
+
+    def reserve(self, n: int) -> None:
+        """Refuse BEFORE staging what would push the plan past what a record
+        can hold, so a tool never leaves half of its changes behind."""
+        try:
+            core_reserve(len(self.ops), n, PLAN_NOTE, PLAN_MAX_OPS)
+        except PlanFull as e:
+            raise ToolError(str(e)) from None
 
     def planned_span_value(self, layer_id: str, token_id: str, current: str) -> str:
         """The value a span will have once the plan runs (a planned op wins

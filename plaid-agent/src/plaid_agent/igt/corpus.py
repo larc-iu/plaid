@@ -21,11 +21,10 @@ import re
 from collections import Counter, defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from ..core.limits import GROUP_LIMIT, ROW_LIMIT
 from .project import is_token_ignored
 from .tools import Workspace, ToolError
 
-GROUP_LIMIT = 100000       # the engine's backstop for group rows
-ROW_LIMIT = 100000         # the engine's hard cap for ids/entities
 LABEL_DOC_BUDGET = 10      # documents a bulk tool may load just to write positional labels
 RENDER_DOC_BUDGET = 8      # documents a read tool loads to render the hits it shows
 MORE_DOCS_NOTE = '  … more hits in other documents (name a document, or narrow the pattern)'

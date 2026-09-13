@@ -10,6 +10,7 @@ tag's own text.
 import re
 from typing import Any, Dict, List
 
+from ..core.limits import CITE_DOC_BUDGET, MAX_CITATIONS, MAX_FOCUS
 from .project import COLUMNS, UdDoc, parse_ref, resolve
 from .tools import ToolError, Workspace
 
@@ -22,10 +23,6 @@ ATTR_RE = re.compile(r'''([A-Za-z_][\w-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<
 BRACE_RE = re.compile(r'\{\{?\s*(?P<doc>[^{}\n]+?)\s+(?P<ref>' + REF + r')\s*\}\}?')
 # A bare reference is unambiguous only when the turn read exactly one document.
 BARE_RE = re.compile(r'(?<![\w{.])(?P<ref>s\d+\.w\d+(?:-\d+)?)\b')
-
-MAX_CITATIONS = 40
-MAX_FOCUS = 20          # marked words in one citation
-CITE_DOC_BUDGET = 8     # documents one reply's citations may fetch that the turn did not read
 
 # One part of a ref="…" list: a whole reference, or only the piece that differs
 # from the one before it ("s3.w2,w5"). The `w` is optional on a continuation,

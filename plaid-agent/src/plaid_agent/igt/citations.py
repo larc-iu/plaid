@@ -20,6 +20,7 @@ apart from the reference after it.
 import re
 from typing import Any, Dict, List
 
+from ..core.limits import CITE_DOC_BUDGET, MAX_CITATIONS, MAX_FOCUS
 from .project import Sentence, Word, joiner, parse_ref, resolve, segmentation
 from .tools import Workspace, ToolError
 
@@ -31,9 +32,6 @@ ATTR_RE = re.compile(r'''([A-Za-z_][\w-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<
 BRACE_RE = re.compile(r'\{\{?\s*(?P<doc>[^{}\n]+?)\s+(?P<ref>' + REF + r')\s*\}\}?')
 # A bare reference ("s32.w16") is unambiguous only when the turn read one document.
 BARE_RE = re.compile(r'(?<![\w{.])(?P<ref>' + REF + r')\b')
-MAX_CITATIONS = 40
-MAX_FOCUS = 20  # highlighted items in one citation
-CITE_DOC_BUDGET = 8  # documents the citations in one reply may fetch that the turn did not read
 
 # One part of a ref="…" list: a whole reference, or only the piece that
 # differs from the one before it ("s3.w2,w5", "s3.w2.m1,m3").

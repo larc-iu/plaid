@@ -35,6 +35,32 @@ BATCH_OP_BUDGET = 800  # the server caps one atomic batch at 1000 ops
 BULK_CHUNK = 1000      # entities one bulk update request carries
 _UNSET = object()
 
+# The most ops one plan may hold. A plan is stored in the conversation record,
+# which has a budget and a hard cap on the server, so this is a storage limit
+# rather than a matter of taste: past it the turn comes back with no plan at
+# all, after the model has already announced one. Anything that reaches a
+# whole document or the whole corpus is stored as a single scope op and costs
+# one, so the cap bites only on ops that name their targets one by one.
+PLAN_MAX_OPS = 3000
+
+
+class PlanFull(Exception):
+    """Staging these ops would push the plan past :data:`PLAN_MAX_OPS`."""
+
+
+def reserve(staged: int, n: int, note: str = '', cap: int = PLAN_MAX_OPS) -> None:
+    """Refuse BEFORE staging what would not fit, so a tool never leaves half
+    of its changes behind. ``note`` is the app's own sentence about what
+    counts as one change.
+
+    Raises :class:`PlanFull`, which each app turns into its own tool error.
+    """
+    if staged + n > cap:
+        raise PlanFull(
+            f'That would bring the plan to {staged + n} changes, more than the {cap} one plan may '
+            f'hold. Let the user approve what is planned and go on in another turn, or narrow it.'
+            + (f' {note}' if note else ''))
+
 
 class Batcher:
     """Queue client calls into atomic batches of at most ``budget`` ops,

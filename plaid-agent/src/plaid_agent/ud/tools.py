@@ -14,16 +14,16 @@ import re
 import uuid
 from typing import Any, Dict, List, Optional
 
+from ..core.limits import MAX_RESULT_CHARS
+from ..core.plan import PLAN_MAX_OPS, PlanFull, reserve as core_reserve
 from .project import (MISSING, Sentence, Token, UdDoc, UdProject, Word, load_document, parse_ref,
                       render_document, render_sentence, resolve, word_ref)
 from .review import (REVIEW_FIELDS, all_words, confirm_targets, counts_phrase, discard_targets,
                      per_field)
 
-MAX_RESULT_CHARS = 12000
-# The most per-span changes one plan may hold. Stored compactly (see
-# core.plan.compact_ops) this many fit the conversation record with room for
-# the transcript; a whole document's review goes as a scope op and costs one.
-PLAN_MAX_OPS = 3000
+# What counts as one change here, appended to the plan-is-full refusal.
+PLAN_NOTE = ("A whole document's review (confirm or discard_predictions without refs) counts as one "
+             "change however many values it covers.")
 # Ops that name a document and a set of fields rather than spans, and are
 # resolved to spans when the plan is applied.
 SCOPE_KINDS = ('confirm_scope', 'discard_scope')
@@ -142,12 +142,10 @@ class Workspace:
     def reserve(self, n: int) -> None:
         """Refuse BEFORE staging what would push the plan past what a record
         can hold, so a tool never leaves half of its changes behind."""
-        if len(self.ops) + n > PLAN_MAX_OPS:
-            raise ToolError(f'That would bring the plan to {len(self.ops) + n} changes, more than the '
-                            f'{PLAN_MAX_OPS} one plan may hold. Let the user approve what is planned and '
-                            f'go on in another turn, or narrow it. A whole document\'s review (confirm or '
-                            f'discard_predictions without refs) counts as one change however many values '
-                            f'it covers.')
+        try:
+            core_reserve(len(self.ops), n, PLAN_NOTE, PLAN_MAX_OPS)
+        except PlanFull as e:
+            raise ToolError(str(e)) from None
 
     def planned_value(self, layer_id: str, token_id: str, current: str) -> str:
         """The value a span will have once the plan runs, so a second tool in

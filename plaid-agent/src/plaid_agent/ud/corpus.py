@@ -17,11 +17,10 @@ Two things about the engine (v0) that shape everything here:
 import re
 from typing import Any, Dict, List, Optional
 
+from ..core.limits import GROUP_LIMIT, ROW_LIMIT
 from .project import UdProject
 from .tools import ToolError, Workspace
 
-GROUP_LIMIT = 100000    # the engine's backstop for group rows
-ROW_LIMIT = 100000      # the engine's hard cap for ids and entities
 DOCS_PER_SEARCH = 12    # documents one search will load to print its hits
 
 

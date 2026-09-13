@@ -1,0 +1,28 @@
+"""The numbers both apps are held to.
+
+Each of these was written twice, once per app, and a number with two homes
+drifts: one app was raised and the other was not, and the difference showed up
+as a tool behaving differently for no reason anyone could name. A number that
+is about the HARNESS (what a tool result may cost, what the engine will
+return, how much one reply may fetch) belongs here. A number that is about
+what an app annotates stays in the app.
+"""
+
+# The most characters one tool result may be. Past it the result is cut and
+# says so, because a model that is handed a hundred kilobytes of rows loses
+# the thread of the question it asked.
+MAX_RESULT_CHARS = 12000
+
+# What the query engine will return before it stops. `group` is the backstop
+# for grouped rows and `row` the hard cap for ids and entities. Both are high
+# on purpose: an aggregate comes back unordered, so the whole group set has to
+# arrive for the top of it to be the real top.
+GROUP_LIMIT = 100000
+ROW_LIMIT = 100000
+
+# What one reply's citations may cost. A citation is resolved against the
+# documents the turn already read; past that it fetches, so the fetching is
+# what needs a budget.
+MAX_CITATIONS = 40       # citations resolved in one reply
+MAX_FOCUS = 20           # marked items in one citation
+CITE_DOC_BUDGET = 8      # documents one reply's citations may fetch that the turn did not read
