@@ -249,18 +249,25 @@ export function defaultCldfOptions(layers) {
   const wordGloss = glossField ? null : pick(layers?.wordFields, /gloss/i);
   const translationField = pick(layers?.sentFields, /translat|free|gls/i);
   const commentField = pick(layers?.sentFields, /note|comment/i);
-  const chosen = new Set([glossField, wordGloss, translationField, commentField]);
+  // A field is identified by (scope, name), never by name alone. The setup
+  // wizard gives a project a word `Gloss` AND a morpheme `Gloss` by default, so
+  // a flat name set excluded the word one as "already bound" when only the
+  // morpheme one was, and it then fell out of `extras.word` too: neither bound
+  // nor carried, dropped from the export in silence. Exclude per scope instead.
+  const boundSent = new Set([translationField, commentField]);
+  const boundGloss = glossField ?? wordGloss;
+  const notGloss = (scope) => (n) => !(glossScope === scope && n === boundGloss);
   return {
     ...DEFAULT_CLDF_OPTIONS,
-    glossField: glossField ?? wordGloss,
+    glossField: boundGloss,
     glossScope,
     translationField,
     commentField,
     primaryText: BASELINE,
     extras: {
-      sentence: (layers?.sentFields || []).filter((n) => !chosen.has(n)),
-      word: (layers?.wordFields || []).filter((n) => !chosen.has(n)),
-      morpheme: (layers?.morphFields || []).filter((n) => !chosen.has(n)),
+      sentence: (layers?.sentFields || []).filter((n) => !boundSent.has(n)),
+      word: (layers?.wordFields || []).filter(notGloss('word')),
+      morpheme: (layers?.morphFields || []).filter(notGloss('morpheme')),
       orthographies: [...(layers?.orthographies || [])],
     },
   };
@@ -283,8 +290,17 @@ export function cldfLossSummary(layers, options) {
   if (o.commentField) mapped.push(`${o.commentField} → Comment`);
   if (o.primaryText !== BASELINE) mapped.push(`${o.primaryText} → Primary_Text`);
 
-  const bound = new Set([o.glossField, o.translationField, o.commentField]);
+  // Scope-aware, for the same reason `defaultCldfOptions` is: a flat name set
+  // let a word `Gloss` match the BOUND morpheme `Gloss` and hit `continue`
+  // before it could reach either bucket, so the panel whose whole job is to
+  // make the loss visible could not see this loss and reported "Dropped (0)".
+  const boundIn = (kind) => {
+    if (kind === 'sentence') return new Set([o.translationField, o.commentField]);
+    if (kind === o.glossScope) return new Set([o.glossField]);
+    return new Set();
+  };
   const bucket = (names, kind, extras) => {
+    const bound = boundIn(kind);
     for (const name of names || []) {
       if (bound.has(name)) continue;
       if (o.primaryText === name) continue;

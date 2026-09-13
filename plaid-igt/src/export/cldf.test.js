@@ -563,6 +563,16 @@ describe('defaultCldfOptions', () => {
     expect(o.extras.word).toEqual(['POS']);
   });
 
+  it('keeps a word Gloss when a morpheme Gloss of the same name is bound', () => {
+    // What the setup wizard actually builds: the same field name at two scopes.
+    // A flat name set treated the word Gloss as already bound and dropped it
+    // from extras.word too, so 668 values left the export in silence.
+    const o = defaultCldfOptions({ ...LAYERS, wordFields: ['Gloss', 'POS'] });
+    expect(o).toMatchObject({ glossField: 'Gloss', glossScope: 'morpheme' });
+    expect(o.extras.word).toEqual(['Gloss', 'POS']);
+    expect(o.extras.morpheme).toEqual([]);
+  });
+
   it('survives a project with no annotation layers at all', () => {
     const o = defaultCldfOptions({});
     expect(o.glossField).toBeNull();
@@ -580,6 +590,23 @@ describe('cldfLossSummary', () => {
     ]);
     expect(summary.custom).toEqual(['POS (word)', 'Translit (orthography)']);
     expect(summary.dropped).toEqual([]);
+  });
+
+  it('can see a word Gloss that shares its name with the bound morpheme Gloss', () => {
+    const layers = { ...LAYERS, wordFields: ['Gloss', 'POS'] };
+    // Carried: it belongs in `custom`, named with its scope.
+    expect(
+      cldfLossSummary(layers, { ...OPTIONS, extras: { ...OPTIONS.extras, word: ['Gloss', 'POS'] } })
+        .custom,
+    ).toContain('Gloss (word)');
+    // Not carried: it must show up as dropped rather than vanish from both
+    // buckets, which is what made the panel report "Dropped (0)" over a loss.
+    expect(
+      cldfLossSummary(layers, {
+        ...OPTIONS,
+        extras: { sentence: [], word: [], morpheme: [], orthographies: [] },
+      }).dropped,
+    ).toContain('Gloss (word)');
   });
 
   it('reports a tier that is neither bound nor carried as dropped', () => {
