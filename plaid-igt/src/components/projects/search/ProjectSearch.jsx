@@ -207,11 +207,18 @@ export const ProjectSearch = ({ project, projectId, client }) => {
                     )}
                   </Link>
                 ))}
-                {g.rows.length === 0 && (
+                {g.capped ? (
                   <p className="px-4 py-2 text-xs text-muted-foreground">
-                    Hits in this document could not be located (it may have changed since the
-                    search). Open it to look.
+                    Too many hits in this document to show them all. Narrow the search to see the
+                    rest.
                   </p>
+                ) : (
+                  g.rows.length === 0 && (
+                    <p className="px-4 py-2 text-xs text-muted-foreground">
+                      Hits in this document could not be located (it may have changed since the
+                      search). Open it to look.
+                    </p>
+                  )
                 )}
               </div>
             </div>

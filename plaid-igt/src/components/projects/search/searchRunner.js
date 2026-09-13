@@ -125,20 +125,16 @@ export function buildContextRows(doc, domain, hitIds) {
 
 export async function runHitsSearch(client, project, layerInfo, domain, queryText, matchType) {
   const spec = buildMatchSpec(queryText, matchType);
-  const [idResults, docResults] = await Promise.all([
-    runAll(client, hitsQueries(domain, spec)),
-    runAll(client, hitsByDocQueries(domain, spec)),
-  ]);
-
-  const hitIds = new Set();
-  for (const r of idResults) for (const rowv of r?.results || []) hitIds.add(String(rowv[0]));
-  const truncated = idResults.some((r) => r?.truncated);
+  // The counts first: they say which documents are worth loading, and they are
+  // grouped aggregates, so they are exact where the id list is capped.
+  const docResults = await runAll(client, hitsByDocQueries(domain, spec));
 
   const docCounts = new Map();
   for (const r of docResults) {
     for (const [docId, n] of r?.results || [])
       docCounts.set(String(docId), (docCounts.get(String(docId)) || 0) + n);
   }
+  const truncated = docResults.some((r) => r?.truncated);
   const totalHits = [...docCounts.values()].reduce((a, b) => a + b, 0);
   const docsByCount = [...docCounts.entries()].sort((a, b) => b[1] - a[1]);
   const toLoad = docsByCount.slice(0, MAX_DOCS);
@@ -146,23 +142,35 @@ export async function runHitsSearch(client, project, layerInfo, domain, queryTex
   // The lexicon once, shared by every document: a link's entry (its type,
   // for one) is resolved through the vocabulary's items.
   const { vocabularies } = await loadProjectVocabularies(client, project);
-  const docs = await Promise.all(
+  // A document and its own hit ids together: the ids are asked for per
+  // document so one document's hits cannot be crowded out of the answer by
+  // another's (see hitsQueries).
+  const loaded = await Promise.all(
     toLoad.map(async ([docId]) => {
-      const raw = await client.documents.get(docId, true);
-      return new IgtDocument({
+      const [raw, idResults] = await Promise.all([
+        client.documents.get(docId, true),
+        runAll(client, hitsQueries(domain, spec, docId)),
+      ]);
+      const hitIds = new Set();
+      for (const r of idResults) for (const rowv of r?.results || []) hitIds.add(String(rowv[0]));
+      const doc = new IgtDocument({
         raw,
         project,
         vocabularies: rebaseVocabLinks(vocabularies),
         client,
         projectId: project.id,
       });
+      return { doc, hitIds, capped: idResults.some((r) => r?.truncated) };
     }),
   );
 
-  const groups = docs.map((doc, i) => ({
+  const groups = loaded.map(({ doc, hitIds, capped }, i) => ({
     docId: toLoad[i][0],
     docName: doc.document?.name || '(untitled)',
     docHits: toLoad[i][1],
+    // More hits in this one document than a single query returns, so its rows
+    // stop short of its count. The group says so rather than the count lying.
+    capped,
     rows: buildContextRows(doc, domain, hitIds),
   }));
 

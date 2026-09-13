@@ -1,7 +1,7 @@
 // Pure query builders for the project Search tab. Each domain (words,
 // morphemes, annotation fields, lexicon) maps a (queryText, matchType) pair
 // onto plaid query-language bodies. Three query shapes per search:
-//   hits      — matching entity ids (capped)
+//   hits      — matching entity ids, for ONE document (capped per document)
 //   hitsByDoc — [docId, n] so we know which documents to load
 //   freq      — [value, n] frequency rows
 // All layer references are ids, so every query is inherently scoped to the
@@ -76,13 +76,23 @@ export function searchDomains(layerInfo, vocabs) {
 
 const HIT_LIMIT = 500;
 
-// Hit-id queries. Lexicon returns ONE QUERY PER VOCAB (merge results).
-export function hitsQueries(domain, spec) {
+// Hit-id queries FOR ONE DOCUMENT. Lexicon returns ONE QUERY PER VOCAB (merge
+// results).
+//
+// Scoped to a document because `limit` is per query: asked project-wide, a
+// search with more than HIT_LIMIT hits came back with the first 500 ids and
+// nothing to say which documents they were for, while the grouped counts
+// (below) stayed exact. A document whose hits all fell past the cap then drew
+// a group headed "24 hits" whose body read "could not be located (it may have
+// changed since the search)". Nothing had changed; the ids were never asked
+// for. Per document the cap is per document, so a group is empty only when
+// that one document really has more than HIT_LIMIT hits.
+export function hitsQueries(domain, spec, docId) {
   if (domain.kind === 'token') {
     return [
       {
         find: ['?t'],
-        where: [['token', '?t', { layer: domain.layerId, value: spec }]],
+        where: [['token', '?t', { layer: domain.layerId, value: spec, doc: docId }]],
         limit: HIT_LIMIT,
       },
     ];
@@ -93,7 +103,7 @@ export function hitsQueries(domain, spec) {
     return [
       {
         find: ['?t'],
-        where: [['token', '?t', { layer: domain.layerId, metadata: { form: spec } }]],
+        where: [['token', '?t', { layer: domain.layerId, metadata: { form: spec }, doc: docId }]],
         limit: HIT_LIMIT,
       },
     ];
@@ -102,17 +112,19 @@ export function hitsQueries(domain, spec) {
     return [
       {
         find: ['?s'],
-        where: [['span', '?s', { layer: domain.layerId, value: spec }]],
+        where: [['span', '?s', { layer: domain.layerId, value: spec, doc: docId }]],
         limit: HIT_LIMIT,
       },
     ];
   }
-  // lexicon: tokens linked to matching items
+  // lexicon: tokens linked to matching items. `vocab-link` takes no
+  // constraints of its own, so the document is pinned on the token.
   return domain.vocabIds.map((vid) => ({
     find: ['?t'],
     where: [
       ['vocab', '?v', { layer: vid, form: spec }],
       ['vocab-link', '?t', '?v'],
+      ['token', '?t', { doc: docId }],
     ],
     limit: HIT_LIMIT,
   }));

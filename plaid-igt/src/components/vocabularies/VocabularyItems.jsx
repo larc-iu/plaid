@@ -1012,7 +1012,7 @@ export const VocabularyItems = ({
                         item={selectedItem}
                         client={client}
                         linkedTokenIds={
-                          conc.concPlan && !conc.concPlan.truncated ? conc.concPlan.hitIds : null
+                          conc.concPlan && !conc.concPlan.hitIdsCapped ? conc.concPlan.hitIds : null
                         }
                         canManage={canManage}
                         onRemove={handleRemoveExample}
