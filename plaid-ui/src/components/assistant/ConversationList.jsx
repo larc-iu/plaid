@@ -92,6 +92,9 @@ export const AllProjectsSwitch = ({ checked, onCheckedChange, className }) => (
 // conversation is in the URL and so shareable, and a button in the panel,
 // where the URL belongs to the screen behind it. `onPick` is what tells the
 // two apart.
+//
+// `onDelete` is handed the WHOLE row, because a row from another project is
+// deleted under that project's keys and only the row knows which.
 export const ConversationRows = ({
   rows,
   activeId,
@@ -138,7 +141,7 @@ export const ConversationRows = ({
         {!m.draft && (
           <button
             type="button"
-            onClick={() => onDelete(m.id)}
+            onClick={() => onDelete(m)}
             title="Delete conversation"
             className="mt-0.5 rounded p-0.5 text-muted-foreground opacity-0 hover:text-destructive focus:opacity-100 group-hover:opacity-100"
           >

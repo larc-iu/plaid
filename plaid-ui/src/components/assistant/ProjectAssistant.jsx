@@ -27,9 +27,8 @@ import { formatElapsed } from '../../hooks/useRunProgress.js';
 import {
   attachJob,
   buildMeta,
-  convKey,
+  deleteConversation,
   jobFor,
-  metaKey,
   readMetas,
   newConversation,
   persistConv,
@@ -531,8 +530,8 @@ export const ProjectAssistant = ({
     [store],
   );
 
-  const remove = async (id) => {
-    const j = jobFor(id);
+  const remove = async (m) => {
+    const j = jobFor(m.id);
     if (j) {
       notifyError(
         j.done
@@ -544,14 +543,9 @@ export const ProjectAssistant = ({
       return;
     }
     try {
-      // Both keys, or neither: a transcript left behind without its sidebar
-      // entry could never be reached again.
-      await Promise.all([
-        client.userData.delete(userId, convKey(adapter.app, projectId, id)),
-        client.userData.delete(userId, metaKey(adapter.app, projectId, id)),
-      ]);
-      setConvs((prev) => prev.filter((m) => m.id !== id));
-      if (activeRef.current?.id === id) {
+      await deleteConversation(store, m);
+      setConvs((prev) => prev.filter((row) => row.id !== m.id));
+      if (activeRef.current?.id === m.id) {
         openSeq.current++;
         setActive(newConversation());
         setUrlConv(null, { replace: true });

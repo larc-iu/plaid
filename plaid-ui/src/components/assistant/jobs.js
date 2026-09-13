@@ -183,6 +183,23 @@ export const readConv = async (store, id) => {
   };
 };
 
+// Delete one conversation: both keys, or neither. A transcript left behind
+// without its sidebar entry could never be reached again.
+//
+// The keys are built from the ROW's OWN project, falling back to the one on
+// screen for a conversation just started here (its entry carries no project
+// until it has been read back off its key). With the list widened past this
+// project, deleting a foreign row asked for a key under the project on screen,
+// which is a key that has never existed: a 404 every time, and the row stayed.
+export const deleteConversation = (store, meta) => {
+  const { client, userId, app } = store;
+  const projectId = meta.projectId || store.projectId;
+  return Promise.all([
+    client.userData.delete(userId, convKey(app, projectId, meta.id)),
+    client.userData.delete(userId, metaKey(app, projectId, meta.id)),
+  ]);
+};
+
 // A plan's outcome decided here (a discard): the status on its card, plus a
 // note in the model transcript (user role) so the next turn knows.
 export const settle = (conv, index, status, note) => ({
