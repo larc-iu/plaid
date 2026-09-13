@@ -7,13 +7,29 @@ import { PlanCard } from './PlanCard.jsx';
 import { AssistantMark } from './PlaidMarks.jsx';
 
 // One turn of a conversation as drawn: the reply with its citations, the
-// example cards a citation opens, and the tool trace behind an answer.
-// What a citation is called, where it links and how its card looks are the
-// app's (`adapter`, see plaid-igt's assistant/adapter.js).
+// example cards a citation opens, the plan it proposed, and the tool trace
+// behind the answer. What a citation is called, where it links and how its card
+// looks are the app's (`adapter`, see plaid-igt's assistant/adapter.js).
+
+// A plain left click on a link into the document BESIDE the panel scrolls it
+// there rather than opening a second browser tab. ONE delegated handler over
+// the whole turn catches every link in it: the example card's, each inline
+// citation's (which markdown builds and we never see), and each row of a plan,
+// which used to be the odd one out and always opened a new tab. A modified
+// click is left to the browser, so cmd-, middle- and shift-click still do what
+// they do everywhere else, and a link this app cannot place is left alone.
+const focusInstead = (adapter, onFocusHere) => (e) => {
+  if (!onFocusHere || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+  const a = e.target.closest?.('a[href]');
+  if (!a) return;
+  const at = adapter.parseCitationHref?.(a.getAttribute('href'));
+  if (at && onFocusHere(at)) e.preventDefault();
+};
+
 // Reply text with its citations: block cards in place, links inline, and the
 // inline-only citations' cards after the text. A citation the service could not
 // resolve is flattened to its plain reference rather than shown as markup.
-export const CitedMarkdown = ({ text, citations, projectId, adapter, onFocusHere }) => {
+export const CitedMarkdown = ({ text, citations, projectId, adapter }) => {
   const { ExampleCard } = adapter;
   const byKey = new Map((citations || []).map((c) => [c.key, c]));
   const segments = [];
@@ -42,19 +58,8 @@ export const CitedMarkdown = ({ text, citations, projectId, adapter, onFocusHere
         if (!shown.has(m) && !inline.includes(c)) inline.push(c);
       },
     });
-  // A citation into the document beside this panel scrolls it rather than
-  // opening a second browser tab. One delegated handler catches the card's own
-  // link and every inline one, which markdown builds and we never see.
-  const onClick = (e) => {
-    if (!onFocusHere || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-    const a = e.target.closest?.('a[href]');
-    if (!a) return;
-    const at = adapter.parseCitationHref?.(a.getAttribute('href'));
-    if (at && onFocusHere(at)) e.preventDefault();
-  };
-
   return (
-    <div onClick={onClick}>
+    <div>
       {segments.map((seg, i) =>
         seg.card ? (
           <ExampleCard key={i} c={seg.card} projectId={projectId} />
@@ -125,7 +130,7 @@ export const Turn = ({
     );
   }
   return (
-    <div className="flex gap-3">
+    <div className="flex gap-3" onClick={focusInstead(adapter, onFocusHere)}>
       <AssistantMark ring className="mt-1 h-7 w-7 shrink-0" />
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         {fromAnotherModel && (
@@ -142,7 +147,6 @@ export const Turn = ({
             citations={item.citations}
             projectId={projectId}
             adapter={adapter}
-            onFocusHere={onFocusHere}
           />
         ) : (
           !item.plan && (

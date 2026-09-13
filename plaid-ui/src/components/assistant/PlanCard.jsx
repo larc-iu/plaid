@@ -108,12 +108,7 @@ export const PlanCard = ({
                     className="pt-2 text-left font-medium text-foreground"
                   >
                     {g.href ? (
-                      <a
-                        href={g.href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="hover:underline"
-                      >
+                      <a href={g.href} className="hover:underline">
                         {g.title}
                       </a>
                     ) : (
@@ -187,6 +182,13 @@ export const PlanCard = ({
 // One change: where it lands, as a link into the editor, and what changes.
 // The app says what that place is called and where it opens
 // (`adapter.changePlace`); a change with no location shows its label alone.
+//
+// An ordinary anchor, no `target`. A row pointing into the document the panel
+// is docked beside scrolls it in place, and every other row navigates the way
+// any link does, which is what the delegated handler on the turn around this
+// card arranges (Turn.jsx). Opening a new browser tab for every row was the
+// panel's one link that behaved differently from the rest of the app, and it
+// left the thread behind on a navigation the panel is built to survive.
 export const ChangeRow = ({ row, projectId, adapter }) => {
   const place = adapter.changePlace(projectId, row.where);
   return (
@@ -198,8 +200,6 @@ export const ChangeRow = ({ row, projectId, adapter }) => {
               {place.href ? (
                 <a
                   href={place.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
                   title={place.title}
                   className="font-medium text-foreground hover:underline"
                 >
