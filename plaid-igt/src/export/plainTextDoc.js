@@ -26,17 +26,48 @@ const cpLen = (s) => [...(s ?? '')].length;
  * order, matching the Copy-as-IGT tier convention); then one free line per
  * selected sentence field with a non-empty value.
  */
+/**
+ * Which object line(s) a selection asks for. `wordLine` is 'segmented' (the
+ * default), 'surface', or 'both'; `segmentMorphemes: false` from a preset
+ * written before there was a choice still means 'surface'.
+ *
+ * 'both' is the classic four-line hand-in: the word as written, the word
+ * segmented, the morpheme glosses, the free translation. There was no way to
+ * get it before, because the toggle SWAPPED the object line rather than adding
+ * one, so a segmented export never showed the original spelling anywhere.
+ */
+export const wordLineOf = (selection) => {
+  if (selection?.wordLine) return selection.wordLine;
+  return selection?.segmentMorphemes === false ? 'surface' : 'segmented';
+};
+
+/**
+ * True when the selection would print a gloss line segmented by hyphens over an
+ * object line that has none. Leipzig rule 1 wants the two to correspond, so a
+ * hand-in like `Eve / house-DAT` is malformed. The preset panel says so rather
+ * than the export emitting it quietly.
+ */
+export const breaksMorphemeAlignment = (selection) =>
+  wordLineOf(selection) === 'surface' && (selection?.morphFields || []).length > 0;
+
 export function sentenceTierLines(sentence, selection) {
   const tokens = sentence?.tokens || [];
-  const segment = selection?.segmentMorphemes !== false;
+  const mode = wordLineOf(selection);
 
-  const forms = tokens.map((t) => {
+  const surface = tokens.map((t) => t.content ?? '');
+  const segmented = tokens.map((t) => {
     const morphemes = t.morphemes || [];
-    return segment && morphemes.length
+    return morphemes.length
       ? joinMorphemeTexts(morphemes, morphemes.map(morphFormOf))
       : (t.content ?? '');
   });
-  const lines = [{ kind: 'cells', label: null, cells: forms }];
+  const lines = [];
+  if (mode === 'surface' || mode === 'both') {
+    lines.push({ kind: 'cells', label: null, cells: surface });
+  }
+  if (mode === 'segmented' || mode === 'both') {
+    lines.push({ kind: 'cells', label: null, cells: segmented });
+  }
 
   for (const name of selection?.orthographies || []) {
     lines.push({

@@ -1,5 +1,7 @@
 import { Label } from '@ui/components/ui/label';
 import { Switch } from '@ui/components/ui/switch';
+import { AlertTriangle } from 'lucide-react';
+import { breaksMorphemeAlignment, wordLineOf } from '@/export/plainTextDoc';
 
 // One checkbox group per discovered tier bucket (rendered only when the
 // project actually has layers in that bucket).
@@ -60,11 +62,28 @@ export const PlainTextOptions = ({ options, layers, onChange }) => {
       />
       <div className="flex flex-col gap-2 border-t pt-3">
         {layers.hasMorphemes && (
-          <Toggle
-            label="Segment words into morphemes"
-            checked={options.segmentMorphemes !== false}
-            onChange={(v) => set({ segmentMorphemes: v })}
-          />
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="plaintext-word-line">Word line</Label>
+            <select
+              id="plaintext-word-line"
+              className="h-8 rounded-md border bg-background px-2 text-sm"
+              value={wordLineOf(options)}
+              onChange={(e) => set({ wordLine: e.target.value, segmentMorphemes: undefined })}
+            >
+              <option value="segmented">Segmented into morphemes</option>
+              <option value="surface">As written</option>
+              <option value="both">Both, as written above segmented</option>
+            </select>
+            {breaksMorphemeAlignment(options) && (
+              <p className="flex items-start gap-1.5 text-xs text-amber-600">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>
+                  The gloss line is segmented and this word line is not, so the hyphens on the two
+                  lines will not correspond. Choose Segmented or Both.
+                </span>
+              </p>
+            )}
+          </div>
         )}
         <Toggle
           label="Number sentences"

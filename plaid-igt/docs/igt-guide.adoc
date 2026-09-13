@@ -806,6 +806,9 @@ Anyone can run one from there or from a document's Export tab, choosing a scope:
 Five formats are supported:
 
 * **Plain text**: an aligned, human-readable interlinear rendering.
+Its **Word line** setting prints the words as written, segmented into morphemes, or both, one above the other.
+Both is the four-line hand-in a field methods course asks for: the words as written, the words segmented, the morpheme glosses, the free translation.
+Printing a morpheme gloss line over words as written leaves the hyphens on the two lines with nothing to correspond to, and the preset says so.
 * **FieldWorks (FLEx)**: the texts as FieldWorks' interlinear XML (`.flextext`) together with the project's vocabularies as a LIFT lexicon (`.lift`), zipped with a note on the order to import them in. Leave the lexicon out to get the `.flextext` on its own.
 * **CLDF TextCorpus** (`.zip`): a Cross-Linguistic Data Formats dataset, one CSV per component table with a `cldf-metadata.json` describing them.
 CLDF aligns morphemes by their position in a tab-separated cell, and has no column for some of what a project holds.

@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { sentenceTierLines, formatSentencePlain, serializeDocumentPlain } from './plainTextDoc.js';
+import {
+  sentenceTierLines,
+  formatSentencePlain,
+  serializeDocumentPlain,
+  wordLineOf,
+  breaksMorphemeAlignment,
+} from './plainTextDoc.js';
 import { makeFixtureDoc, makeSentence, FULL_SELECTION } from './testFixtures.js';
 
 describe('sentenceTierLines', () => {
@@ -144,5 +150,56 @@ describe('serializeDocumentPlain', () => {
         speakers: false,
       }).startsWith('(1)\n'),
     ).toBe(true);
+  });
+});
+
+describe('the object line', () => {
+  const sentence = {
+    tokens: [
+      {
+        content: 'Eve',
+        morphemes: [
+          { metadata: { form: 'ev' }, annotations: { Gloss: { value: 'house' } } },
+          {
+            metadata: { form: 'e' },
+            morphType: 'suffix',
+            annotations: { Gloss: { value: 'DAT' } },
+          },
+        ],
+      },
+    ],
+    annotations: {},
+  };
+  const cells = (sel) =>
+    sentenceTierLines(sentence, sel)
+      .filter((l) => l.kind === 'cells')
+      .map((l) => l.cells.join(' '));
+
+  it('prints the word as written and segmented together, the four-line hand-in', () => {
+    // There was no way to get both: the toggle SWAPPED the object line, so a
+    // segmented export had the original spelling nowhere in the file.
+    expect(cells({ wordLine: 'both', morphFields: ['Gloss'] })).toEqual([
+      'Eve',
+      'ev-e',
+      'house-DAT',
+    ]);
+  });
+
+  it('prints one or the other when asked', () => {
+    expect(cells({ wordLine: 'segmented', morphFields: ['Gloss'] })).toEqual(['ev-e', 'house-DAT']);
+    expect(cells({ wordLine: 'surface', morphFields: [] })).toEqual(['Eve']);
+  });
+
+  it('reads a preset written before there was a choice', () => {
+    expect(wordLineOf({ segmentMorphemes: false })).toBe('surface');
+    expect(wordLineOf({ segmentMorphemes: true })).toBe('segmented');
+    expect(wordLineOf({})).toBe('segmented');
+  });
+
+  it('spots a gloss line whose hyphens the word line cannot match', () => {
+    // `Eve / house-DAT` is malformed by Leipzig rule 1.
+    expect(breaksMorphemeAlignment({ wordLine: 'surface', morphFields: ['Gloss'] })).toBe(true);
+    expect(breaksMorphemeAlignment({ wordLine: 'surface', morphFields: [] })).toBe(false);
+    expect(breaksMorphemeAlignment({ wordLine: 'both', morphFields: ['Gloss'] })).toBe(false);
   });
 });

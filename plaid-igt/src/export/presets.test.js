@@ -43,7 +43,7 @@ describe('newPreset', () => {
       wordFields: LAYERS.wordFields,
       morphFields: LAYERS.morphFields,
       sentFields: LAYERS.sentFields,
-      segmentMorphemes: true,
+      wordLine: 'segmented',
       numberSentences: true,
       includeHeader: true,
     });

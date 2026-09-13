@@ -144,7 +144,7 @@ export function newPreset(format, layers, name = 'New preset', languages = null)
       wordFields: [...layers.wordFields],
       morphFields: [...layers.morphFields],
       sentFields: [...layers.sentFields],
-      segmentMorphemes: true,
+      wordLine: 'segmented',
       numberSentences: true,
       includeHeader: true,
     },
