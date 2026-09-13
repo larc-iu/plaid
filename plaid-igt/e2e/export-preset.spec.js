@@ -89,10 +89,12 @@ test('creates a preset in a format chosen from the dropdown', async ({ page }) =
   await page.locator('#new-preset-name').fill(name);
   await page.getByRole('button', { name: 'Create', exact: true }).click();
 
-  // It lands in the list, under the format that was picked and not the default.
-  const row = page.locator('a', { hasText: name });
-  await expect(row).toBeVisible();
-  await expect(row).toContainText('ELAN annotation file (.eaf)');
+  // Creating opens the new preset, under the format that was picked and not
+  // the default. (Asserting a row in the LIST is a race: the list renders the
+  // new preset for a frame and the navigation then leaves it.)
+  await expect(page.getByRole('heading', { name, level: 2 })).toBeVisible();
+  await expect(page).toHaveURL(/\/export\/[^/]+$/);
+  await expect(page.getByText('ELAN annotation file (.eaf)').first()).toBeVisible();
 
   // And it is really stored, not just rendered.
   const project = await client.projects.get(projectId);
@@ -115,7 +117,7 @@ test('changing the format twice keeps the last choice, not the first', async ({ 
   await page.locator('#new-preset-name').fill(name);
   await page.getByRole('button', { name: 'Create', exact: true }).click();
 
-  await expect(page.locator('a', { hasText: name })).toBeVisible();
+  await expect(page.getByRole('heading', { name, level: 2 })).toBeVisible();
   const project = await client.projects.get(projectId);
   const stored = (project.config?.igt?.export?.presets || []).find((p) => p.name === name);
   expect(stored.format).toBe('cldf');

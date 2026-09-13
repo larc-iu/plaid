@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { Info, Pencil, Save, X } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Label } from '@ui/components/ui/label';
@@ -10,8 +10,12 @@ export function DocumentBaseline() {
   const { doc, readOnly } = useDocumentCtx();
   const ops = useBaselineOperations();
 
-  // Local state for text input to prevent cursor jumping
-  const [localText, setLocalText] = useState('');
+  // The textarea is controlled by the hook's `editedText` alone. It used to
+  // carry a second copy here and an effect writing one into the other on every
+  // keystroke, which is the shape that produces "Maximum update depth
+  // exceeded" and did, five times over, when a whole transcript arrived in one
+  // change. `setEditedText` is plain state in a hook this component calls, so
+  // there is no round trip for the caret to jump across.
   const textareaRef = useRef(null);
 
   // Auto-grow the textarea with its content, capped so it doesn't run
@@ -23,13 +27,10 @@ export function DocumentBaseline() {
     el.style.height = `${Math.min(el.scrollHeight, 480)}px`;
   };
 
-  // Sync local text buffer with the hook's editedText when editing starts
+  // Fit the box to the text the editor opens with.
   useEffect(() => {
-    if (ops.isEditing) {
-      setLocalText(ops.editedText);
-      requestAnimationFrame(autoGrow);
-    }
-  }, [ops.isEditing, ops.editedText]);
+    if (ops.isEditing) requestAnimationFrame(autoGrow);
+  }, [ops.isEditing]);
 
   // A document with no text yet opens straight into the editor: typing the
   // text is the only thing to do here, and a button in front of an empty box
@@ -41,9 +42,7 @@ export function DocumentBaseline() {
   }, []);
 
   const handleTextChange = (e) => {
-    const newText = e.target.value;
-    setLocalText(newText);
-    ops.updateEditedText(newText);
+    ops.updateEditedText(e.target.value);
     autoGrow();
   };
 
@@ -75,7 +74,7 @@ export function DocumentBaseline() {
                   ref={textareaRef}
                   id="baseline-text"
                   compose
-                  value={localText}
+                  value={ops.editedText}
                   onChange={handleTextChange}
                   placeholder="Type or paste the text"
                   spellCheck={false}

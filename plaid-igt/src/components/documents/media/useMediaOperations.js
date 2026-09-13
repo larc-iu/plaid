@@ -268,6 +268,13 @@ export const useMediaOperations = () => {
     // the `[volume]` effect below won't re-run just because the ref changed.
     if (element) {
       element.volume = volumeRef.current;
+      // `defaultPlaybackRate` as well as `playbackRate`: the media load
+      // algorithm resets `playbackRate` to the default when `src` is applied,
+      // and never touches `volume`, which is why a remounted player came back
+      // at 1× while the slider still read 0.50×. It recovered from
+      // `loadedmetadata`, so this assignment was doing nothing whenever that
+      // event did fire and nothing at all whenever it did not.
+      element.defaultPlaybackRate = playbackRateRef.current;
       element.playbackRate = playbackRateRef.current;
     }
   }, []);
@@ -407,7 +414,10 @@ export const useMediaOperations = () => {
     const value = clampRate(rate);
     playbackRateRef.current = value;
     setPlaybackRate(value);
-    if (mediaElementRef.current) mediaElementRef.current.playbackRate = value;
+    if (mediaElementRef.current) {
+      mediaElementRef.current.defaultPlaybackRate = value;
+      mediaElementRef.current.playbackRate = value;
+    }
     writeStored(RATE_KEY, value);
   }, []);
 
@@ -709,7 +719,10 @@ export const useMediaOperations = () => {
 
   useEffect(() => {
     playbackRateRef.current = playbackRate;
-    if (mediaElementRef.current) mediaElementRef.current.playbackRate = playbackRate;
+    if (mediaElementRef.current) {
+      mediaElementRef.current.defaultPlaybackRate = playbackRate;
+      mediaElementRef.current.playbackRate = playbackRate;
+    }
   }, [playbackRate]);
 
   // Hotkeys, ignoring events from form fields.
