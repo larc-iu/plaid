@@ -362,10 +362,20 @@ test('a window too narrow for a side panel is not offered one', async ({ page })
   // Taking a third of 800px leaves neither the annotation nor the chat usable.
   await expect(panelOf(page)).toHaveCount(0);
   await expect(toggle(page)).toHaveCount(0);
+  // Including the grid's own "Ask": it hands the shell a reference and the
+  // shell opens the panel on it, so here it would do nothing at all. Reloaded,
+  // because the island draws its rows from its own state and does not repaint
+  // on a resize.
+  await page.reload();
+  await expect(page.locator('.igt-sentence').first()).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('button.igt-ask')).toHaveCount(0);
 
   // Widening gives it back, still open: the reader never closed it.
   await page.setViewportSize({ width: 1400, height: 800 });
+  await page.reload();
+  await expect(page.locator('.igt-sentence').first()).toBeVisible({ timeout: 15000 });
   await expect(panelOf(page)).toBeVisible();
+  await expect(page.locator('button.igt-ask').first()).toBeVisible();
 });
 
 test('toasts do not land on top of the panel', async ({ page }) => {

@@ -14,6 +14,18 @@ export const MIN_WIDTH = 320;
 export const MAX_WIDTH = 720;
 export const DEFAULT_WIDTH = 400;
 
+// Below this the window is too narrow to give a side panel any width and leave
+// the annotation readable, so the panel is not offered at all. Matches
+// Tailwind's `lg`, which is where the app's own screens stop being wide.
+export const DOCK_MIN_WINDOW = 1024;
+
+// Whether the window has room for the dock. `useWideEnoughToDock` in useDock.js
+// is the React half; this is the answer for everything else, which is what the
+// lit interlinear island needs: it draws its own "Ask", and an Ask in a window
+// this narrow sets a focus that nothing can open.
+export const wideEnoughToDock = () =>
+  typeof window === 'undefined' || window.innerWidth >= DOCK_MIN_WINDOW;
+
 // Math.max/min pass NaN straight through, and a NaN width paints nothing at
 // all, so anything that is not a real number falls back to the default.
 export const clampWidth = (w) =>

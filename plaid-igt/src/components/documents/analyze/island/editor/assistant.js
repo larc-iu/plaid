@@ -1,4 +1,5 @@
 import { html } from 'lit-html';
+import { wideEnoughToDock } from '@ui/components/assistant/panelWidth.js';
 
 // The assistant's mark, for lit. The React copy and its reasoning are in
 // plaid-ui/src/components/assistant/PlaidMarks.jsx: keep the two in step,
@@ -33,13 +34,16 @@ const assistantMark = (index) => {
 // Asking the assistant about one sentence.
 //
 // The island cannot reach the docked panel directly (the panel is React, on
-// the page around this), so the gesture goes out as a window event and
-// DocumentDetail turns it into the panel's chip. Same bridge the auto-analyze
-// opener uses.
+// the page around this), so the gesture goes out as a window event. The SHELL
+// listens for it, because the panel it has to open lives there. Same bridge the
+// auto-analyze opener uses.
 //
-// The control is only rendered when an assistant is online; `assistantOnline`
-// is set on the element by AnalyzeIsland, and lit will not repaint a property
-// it thinks unchanged, so it is a property and not an attribute.
+// The control is only rendered when an assistant is online AND the window has
+// room for the panel: Ask hands the shell a reference and the shell opens the
+// panel on it, so in a narrower window pressing Ask does nothing at all.
+// `assistantOnline` is set on the element by AnalyzeIsland, and lit will not
+// repaint a property it thinks unchanged, so it is a property and not an
+// attribute.
 
 export const assistant = {
   // Availability is discovered after the island mounts, so it arrives late and
@@ -69,7 +73,7 @@ export const assistant = {
     this._consumeFocusRequest();
   },
 
-  _askAssistant(sentence, index) {
+  _askAssistant(index) {
     window.dispatchEvent(
       new CustomEvent('igt:ask-assistant', {
         detail: {
@@ -77,14 +81,15 @@ export const assistant = {
           // prints: sentences count from 1.
           ref: `s${index + 1}`,
           label: 'Sentence',
-          sentenceId: sentence.id,
         },
       }),
     );
   },
 
+  // `sentence` is the row this draws for; only its number is needed, and the
+  // call site in chrome.js hands over both.
   _assistantControl(sentence, index) {
-    if (!this.assistantOnline) return null;
+    if (!this.assistantOnline || !wideEnoughToDock()) return null;
     return html`
       <button
         type="button"
@@ -92,7 +97,7 @@ export const assistant = {
         title="Ask the assistant about this sentence"
         @click=${(e) => {
           e.stopPropagation();
-          this._askAssistant(sentence, index);
+          this._askAssistant(index);
         }}
       >
         ${assistantMark(index)} Ask
