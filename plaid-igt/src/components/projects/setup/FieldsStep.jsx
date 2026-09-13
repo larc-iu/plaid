@@ -57,6 +57,15 @@ export const FieldsStep = ({ data, onDataChange }) => {
           </Badge>{' '}
           scope fields apply to entire sentences.
         </div>
+        {/* The Language column had no label, tooltip, placeholder or help, and
+            the only mention of it was in the guide's Exporting section, 500
+            lines away under a heading nobody opens while setting up. Seven
+            fields went out blank. */}
+        <p className="mt-2 text-sm text-muted-foreground">
+          Every field listed here is created. <strong>Language</strong> is the writing-system tag
+          FieldWorks will see, such as <code>en</code> or <code>tur</code>; leave it blank unless
+          you export to FLEx.
+        </p>
       </div>
 
       {/* Use the reusable manager component */}

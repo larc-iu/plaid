@@ -11,6 +11,7 @@ import {
   ChevronDown,
   AlertTriangle,
 } from 'lucide-react';
+import { Checkbox } from '@ui/components/ui/checkbox';
 import { Input } from '@ui/components/ui/input';
 import { Button } from '@ui/components/ui/button';
 import {
@@ -253,11 +254,17 @@ export const DocumentMetadataManager = ({
                   onMouseLeave={() => setHoveredField(null)}
                 >
                   <td className="px-3 py-2">
-                    {record.enabled ? (
-                      <Check className="h-[18px] w-[18px] text-green-600" />
-                    ) : (
-                      <X className="h-[18px] w-[18px] text-muted-foreground" />
-                    )}
+                    {/* A checkbox, not a tick-or-cross glyph, and the same
+                        control the vocabulary list uses. A glyph reads as a
+                        status and not something to click, so the row was the
+                        only affordance and the only feedback was a mark
+                        changing shape at the far left. The row still toggles. */}
+                    <Checkbox
+                      checked={record.enabled}
+                      aria-label={`${record.enabled ? 'Disable' : 'Enable'} ${record.name}`}
+                      onClick={(event) => event.stopPropagation()}
+                      onCheckedChange={(on) => handleFieldToggle(record.name, !!on)}
+                    />
                   </td>
                   <td className="px-3 py-2">
                     <span className={record.enabled ? undefined : 'italic text-muted-foreground'}>
@@ -364,9 +371,9 @@ export const DocumentMetadataManager = ({
           </table>
         </div>
 
-        {/* Add Custom Field */}
+        {/* Add a field */}
         <div className={showTitle ? 'p-4' : 'mt-4'}>
-          <p className="mb-4 text-sm font-medium">Add Custom Field</p>
+          <p className="mb-4 text-sm font-medium">Add a field</p>
           <div className="flex items-center gap-2">
             <Input
               placeholder="Enter custom field name"

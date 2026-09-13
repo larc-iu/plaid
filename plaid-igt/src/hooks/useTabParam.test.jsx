@@ -14,8 +14,14 @@ import { useTabParam, tabTo } from './useTabParam.js';
 
 const TABS = ['documents', 'search', 'validate'];
 
-const Probe = ({ tabs = TABS, fallback = 'documents', writeFallback = false, onReady }) => {
-  const [active, setActive] = useTabParam(tabs, fallback, 'tab', writeFallback);
+const Probe = ({
+  tabs = TABS,
+  fallback = 'documents',
+  writeFallback = false,
+  aliases,
+  onReady,
+}) => {
+  const [active, setActive] = useTabParam(tabs, fallback, 'tab', writeFallback, aliases);
   const { search } = useLocation();
   onReady({ active, setActive, search });
   return <span data-active={active} />;
@@ -43,6 +49,17 @@ describe('useTabParam', () => {
     const { read, unmount } = await mount('/p?tab=validation');
     expect(read().active).toBe('documents');
     expect(read().search).toBe('');
+    await unmount();
+  });
+
+  it('resolves a spelling read off the tab bar, and rewrites it to the slug', async () => {
+    // The tab is labelled Validation and lives at `?tab=validate`, so typing
+    // the label is the ordinary way to arrive, and it landed on Documents.
+    const { read, unmount } = await mount('/p?tab=validation', {
+      aliases: { validation: 'validate' },
+    });
+    expect(read().active).toBe('validate');
+    expect(read().search).toBe('?tab=validate');
     await unmount();
   });
 

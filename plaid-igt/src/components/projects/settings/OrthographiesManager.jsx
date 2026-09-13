@@ -246,8 +246,11 @@ export const OrthographiesManager = ({
                 </Badge>
               )}
             </div>
+            {/* Always visible, not on hover. Hidden until the pointer arrived,
+                a row read as a fixed fact rather than something you could
+                reorder or remove, and a keyboard never found them at all. */}
             {!orth.isBaseline && (
-              <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+              <div className="flex items-center gap-1">
                 <Button
                   size="icon"
                   variant="ghost"

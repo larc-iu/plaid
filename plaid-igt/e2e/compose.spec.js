@@ -203,8 +203,8 @@ test('a code added in Settings works in the grid', async ({ page }) => {
   await charField.click();
   await page.keyboard.type('ɓ');
   await expect(charField).toBeFocused();
-  await page.getByRole('button', { name: 'Save codes' }).click();
-  await expect(page.getByRole('button', { name: 'Save codes' })).toBeDisabled();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
 
   await openAnalyze(page, projectId, documentId);
   const cell = await freshCell(page);
@@ -221,8 +221,8 @@ test('a code added in Settings works in the grid', async ({ page }) => {
   await page.waitForLoadState('networkidle');
   await page.getByLabel('Search codes').fill("b'");
   await page.getByRole('button', { name: "Remove code b'" }).click();
-  await page.getByRole('button', { name: 'Save codes' }).click();
-  await expect(page.getByRole('button', { name: 'Save codes' })).toBeDisabled();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
 });
 
 test('a built-in code can be changed and reset', async ({ page }) => {
@@ -244,8 +244,8 @@ test('a built-in code can be changed and reset', async ({ page }) => {
   await expect(charField).toBeFocused();
   await expect(charField).toHaveValue('Ə');
   await expect(row.getByText('Changed')).toBeVisible();
-  await page.getByRole('button', { name: 'Save codes' }).click();
-  await expect(page.getByRole('button', { name: 'Save codes' })).toBeDisabled();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
 
   await openAnalyze(page, projectId, documentId);
   const cell = await freshCell(page);
@@ -257,8 +257,8 @@ test('a built-in code can be changed and reset', async ({ page }) => {
   await page.waitForLoadState('networkidle');
   await page.getByLabel('Search codes').fill('sw');
   await page.getByRole('button', { name: 'Reset code sw' }).click();
-  await page.getByRole('button', { name: 'Save codes' }).click();
-  await expect(page.getByRole('button', { name: 'Save codes' })).toBeDisabled();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
 
   await openAnalyze(page, projectId, documentId);
   const back = await freshCell(page);

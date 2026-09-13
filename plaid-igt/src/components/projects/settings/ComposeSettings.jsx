@@ -263,7 +263,7 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
 
         <div>
           <Button onClick={save} disabled={!canSave}>
-            {saving ? 'Saving…' : 'Save codes'}
+            {saving ? 'Saving…' : 'Save'}
           </Button>
         </div>
       </div>

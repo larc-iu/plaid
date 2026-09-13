@@ -378,8 +378,21 @@ export const compareValues = (a, b) => collator.compare(a, b) || (a < b ? -1 : a
  * which nothing shows and nothing depends on, so it is left alone. The
  * editor's picker ranks by use instead and never sees this.
  */
+/**
+ * A tagset's values as a picker lists them: alphabetical, which is the only
+ * order a hand-typed inventory of three hundred glosses has.
+ *
+ * `ordered` keeps the stored order instead, for the few tagsets the app writes
+ * itself where the order MEANS something. Status is the one: draft, reviewed,
+ * published is a workflow, and alphabetical listed it draft, published,
+ * reviewed, which reads as a workflow that goes backwards. Nothing in the
+ * tagset editor reorders values, so a tagset a person made has no order worth
+ * keeping and does not set this.
+ */
 export const sortedValues = (tagset) =>
-  [...(tagset?.values || [])].sort((x, y) => compareValues(x.value, y.value));
+  tagset?.ordered
+    ? [...(tagset?.values || [])]
+    : [...(tagset?.values || [])].sort((x, y) => compareValues(x.value, y.value));
 
 /**
  * Everything wrong with `value` under `tagset`, as

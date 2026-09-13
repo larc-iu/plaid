@@ -134,19 +134,18 @@ export const GeneralSettings = ({ project, projectId, client, onProjectUpdate })
       />
 
       <div>
+        {/* The heading, the item and the button all read "Delete Project"
+            once, three times over. The heading names the section, the line
+            says what happens, and the button is the verb. */}
         <h2 className="text-lg font-semibold text-destructive">Danger Zone</h2>
-        <p className="mb-4 mt-1 text-sm text-muted-foreground">
-          These actions are irreversible. Please proceed with caution.
-        </p>
+        <p className="mb-4 mt-1 text-sm text-muted-foreground">Nothing here can be undone.</p>
 
         <div className="flex flex-col gap-1">
-          <p className="text-sm font-medium">Delete Project</p>
-          <p className="mb-3 text-xs text-muted-foreground">
-            Permanently delete this project and all of its documents, annotations, and associated
-            data. This action cannot be undone.
+          <p className="mb-3 text-sm text-muted-foreground">
+            Deleting this project takes its documents, annotations and configuration with it.
           </p>
           <Button variant="destructive" className="self-start" onClick={handleDeleteClick}>
-            <Trash2 className="h-4 w-4" /> Delete Project
+            <Trash2 className="h-4 w-4" /> Delete
           </Button>
         </div>
       </div>
@@ -154,7 +153,7 @@ export const GeneralSettings = ({ project, projectId, client, onProjectUpdate })
       <Dialog open={deleteModalOpened} onOpenChange={setDeleteModalOpened}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Delete Project</DialogTitle>
+            <DialogTitle>Delete “{project.name}”?</DialogTitle>
           </DialogHeader>
 
           <div className="flex flex-col gap-4">
@@ -162,11 +161,9 @@ export const GeneralSettings = ({ project, projectId, client, onProjectUpdate })
               <div className="flex items-start gap-2">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
                 <div className="text-sm">
-                  <p className="font-medium text-destructive">This action is irreversible</p>
+                  <p className="font-medium text-destructive">This cannot be undone</p>
                   <p className="mt-1 text-muted-foreground">
-                    You are about to permanently delete the project{' '}
-                    <strong>"{project.name}"</strong> and all of its associated data including
-                    documents, annotations, and configuration.
+                    Every document, annotation and setting in this project goes with it.
                   </p>
                 </div>
               </div>
@@ -174,8 +171,7 @@ export const GeneralSettings = ({ project, projectId, client, onProjectUpdate })
 
             <div className="flex flex-col gap-1.5">
               <p className="text-sm">
-                To confirm deletion, please type the project name <strong>{project.name}</strong>{' '}
-                below:
+                Type the project's name to confirm: <strong>{project.name}</strong>
               </p>
               <Input
                 value={confirmationText}
@@ -201,7 +197,7 @@ export const GeneralSettings = ({ project, projectId, client, onProjectUpdate })
               onClick={handleDeleteProject}
               disabled={!isConfirmationValid || isDeleting}
             >
-              <Trash2 className="h-4 w-4" /> {isDeleting ? 'Deleting...' : 'Delete Project'}
+              <Trash2 className="h-4 w-4" /> {isDeleting ? 'Deleting…' : 'Delete'}
             </Button>
           </DialogFooter>
         </DialogContent>

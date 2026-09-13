@@ -10,6 +10,9 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { Input } from '@ui/components/ui/input';
+import { Checkbox } from '@ui/components/ui/checkbox';
+import { SearchInput, ListCount, ListPager } from '@ui/components/ui/list-search';
+import { usePagedList } from '@ui/hooks/usePagedList';
 import { Button } from '@ui/components/ui/button';
 import {
   Dialog,
@@ -31,6 +34,7 @@ export const VocabularyManager = ({
 }) => {
   const [vocabularies, setVocabularies] = useState([]);
   const [newVocabName, setNewVocabName] = useState('');
+  const [query, setQuery] = useState('');
   const [hoveredVocab, setHoveredVocab] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -196,6 +200,29 @@ export const VocabularyManager = ({
     await saveChanges(newVocabs);
   };
 
+  // The table's rows, ABOVE the early returns below: `usePagedList` is a hook,
+  // so it cannot sit behind a loading branch.
+  const tableData = vocabularies.map((vocab, index) => ({
+    ...vocab,
+    tableId: `${vocab.name}-${index}`, // Unique ID for table
+  }));
+  // Vocab names aren't unique server-side; two "Lexicon"s are otherwise
+  // indistinguishable here, so tag duplicates with the tail of their id.
+  const nameCounts = new Map();
+  for (const v of tableData) nameCounts.set(v.name, (nameCounts.get(v.name) || 0) + 1);
+
+  // Searched and paged, as every other browsable list in the app is. Every
+  // vocabulary on the server lands here, and on a shared server that is a
+  // hundred rows, dozens of them named "Lexicon", with the Add field and the
+  // wizard's Next button below all of it. Picking a colleague's lexicon out of
+  // that was not realistically possible.
+  const q = query.trim().toLowerCase();
+  const shown = q ? tableData.filter((v) => (v.name || '').toLowerCase().includes(q)) : tableData;
+  const paged = usePagedList(shown, { resetKey: q });
+  // Reordering is by position in the WHOLE list, so it is offered only on the
+  // unfiltered first page, where what moves is what you see move.
+  const canReorder = !q && paged.pageCount === 1;
+
   // Don't render until initialized
   if (!isInitialized || loading) {
     return (
@@ -220,23 +247,24 @@ export const VocabularyManager = ({
     );
   }
 
-  // Prepare data for the table
-  const tableData = vocabularies.map((vocab, index) => ({
-    ...vocab,
-    tableId: `${vocab.name}-${index}`, // Unique ID for table
-  }));
-  // Vocab names aren't unique server-side; two "Lexicon"s are otherwise
-  // indistinguishable here, so tag duplicates with the tail of their id.
-  const nameCounts = new Map();
-  for (const v of tableData) nameCounts.set(v.name, (nameCounts.get(v.name) || 0) + 1);
-
   return (
     <div className="flex flex-col gap-8">
       {/* Vocabularies Table */}
       <div>
         {showTitle && <p className="mb-4 text-sm font-medium">Available Vocabularies</p>}
 
+        <div className="mb-2 flex flex-wrap items-center gap-3">
+          <SearchInput
+            className="min-w-56 flex-1"
+            placeholder="Search vocabularies…"
+            value={query}
+            onChange={setQuery}
+          />
+          <ListCount shown={shown.length} total={tableData.length} noun="vocabulary" />
+        </div>
+
         <div className="overflow-hidden rounded-md border">
+          <ListPager {...paged} />
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-muted/50">
@@ -245,7 +273,7 @@ export const VocabularyManager = ({
               </tr>
             </thead>
             <tbody>
-              {tableData.map((record) => (
+              {paged.pageItems.map((record) => (
                 <tr
                   key={record.tableId}
                   className="cursor-pointer border-t hover:bg-muted/50"
@@ -254,25 +282,17 @@ export const VocabularyManager = ({
                   onClick={() => handleVocabToggle(record.id, !record.enabled)}
                 >
                   <td className="px-3 py-2">
-                    {/* The whole row toggles on click; this real button is the
-                        keyboard / screen-reader path to the same action. */}
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={record.enabled}
+                    {/* A checkbox, not a tick-or-cross glyph. A glyph reads as
+                        a status and not a control, so the first thing anyone
+                        did was click it to find out, with the whole row as the
+                        hit target and the only feedback a mark changing shape
+                        at the far left. The row still toggles. */}
+                    <Checkbox
+                      checked={record.enabled}
                       aria-label={`${record.enabled ? 'Unlink' : 'Link'} ${record.name}`}
-                      className="flex rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        handleVocabToggle(record.id, !record.enabled);
-                      }}
-                    >
-                      {record.enabled ? (
-                        <Check className="h-[18px] w-[18px] text-green-600" aria-hidden="true" />
-                      ) : (
-                        <X className="h-[18px] w-[18px] text-gray-400" aria-hidden="true" />
-                      )}
-                    </button>
+                      onClick={(event) => event.stopPropagation()}
+                      onCheckedChange={(on) => handleVocabToggle(record.id, !!on)}
+                    />
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex items-center justify-between gap-2">
@@ -291,7 +311,7 @@ export const VocabularyManager = ({
                         {/* Only show move buttons in setup mode, and only for
                             vocabs that are actually being linked — ordering an
                             unlinked row is meaningless. */}
-                        {!isSettings && record.enabled && (
+                        {!isSettings && record.enabled && canReorder && (
                           <>
                             <Button
                               size="icon"
@@ -371,6 +391,7 @@ export const VocabularyManager = ({
               ))}
             </tbody>
           </table>
+          <ListPager {...paged} />
         </div>
 
         {/* Add Custom Vocab - only in setup mode */}

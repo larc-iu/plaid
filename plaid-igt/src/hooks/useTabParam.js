@@ -16,13 +16,20 @@ import { useSearchParams } from 'react-router-dom';
 // so Metadata has to write itself like any other tab or its own address is a
 // URL that opens Analyze.
 //
+// `aliases` maps a spelling someone would reasonably type onto the slug that
+// group actually uses. A tab labelled Validation lives at `?tab=validate` and
+// Bulk Edit at `?tab=bulk`, so typing the label is the ordinary way to arrive,
+// and it used to land on Documents. An alias resolves AND rewrites, so the
+// address ends up saying the slug the app writes itself.
+//
 // The setter takes the same options as `setSearchParams`. Pass
 // `{ replace: true }` for a switch the user did not ask for, such as an
 // automatic landing tab, so it does not add a history entry to back out of.
-export const useTabParam = (tabs, fallback, param = 'tab', writeFallback = false) => {
+export const useTabParam = (tabs, fallback, param = 'tab', writeFallback = false, aliases) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const raw = searchParams.get(param);
-  const active = tabs.includes(raw) ? raw : fallback;
+  const named = tabs.includes(raw) ? raw : (aliases?.[raw] ?? null);
+  const active = named ?? fallback;
 
   const setActive = useCallback(
     (value, options) => {
@@ -38,14 +45,17 @@ export const useTabParam = (tabs, fallback, param = 'tab', writeFallback = false
     [setSearchParams, fallback, param, writeFallback],
   );
 
-  // A value that names no tab is dropped from the URL, in place. Without this
-  // the address kept saying `?tab=validation` while the Documents tab was on
+  // A value that is not already the slug is rewritten in place: to the tab it
+  // is an alias for, or, when it names nothing, dropped. Without this the
+  // address kept saying `?tab=validation` while the Documents tab was on
   // screen, and the wrong half is the half that gets copied to a colleague.
-  // The real slugs are short (`validate`, `bulk`), so guessing one from a tab's
-  // label is the ordinary way to arrive here.
   useEffect(() => {
-    if (raw !== null && !tabs.includes(raw)) setActive(fallback, { replace: true });
-  }, [raw, tabs, fallback, setActive]);
+    if (raw === null || tabs.includes(raw)) return;
+    setActive(aliases?.[raw] ?? fallback, { replace: true });
+    // `aliases` is a literal at most call sites, so it is compared by its
+    // answer for THIS value rather than by identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [raw, tabs, fallback, setActive, aliases?.[raw]]);
 
   return [active, setActive];
 };

@@ -115,7 +115,7 @@ const LanguageGroup = ({ prefix, title, description, lang, onChange, coordinates
               id={`${prefix}-lat`}
               className="h-8"
               value={lang.latitude ?? ''}
-              placeholder="-17.8"
+              placeholder="e.g. -17.8"
               onChange={(e) => set({ latitude: e.target.value })}
             />
           </Field>
@@ -124,7 +124,7 @@ const LanguageGroup = ({ prefix, title, description, lang, onChange, coordinates
               id={`${prefix}-lon`}
               className="h-8"
               value={lang.longitude ?? ''}
-              placeholder="35.0"
+              placeholder="e.g. 35.0"
               onChange={(e) => set({ longitude: e.target.value })}
             />
           </Field>
@@ -296,7 +296,7 @@ export const Setup = () => {
             <Input
               id="title"
               value={draft.title}
-              placeholder="Sena Dictionary"
+              placeholder="e.g. Sena Dictionary"
               onChange={(e) => set({ title: e.target.value })}
             />
           </Field>
@@ -309,7 +309,7 @@ export const Setup = () => {
             <Input
               id="slug"
               value={draft.slug}
-              placeholder="sena"
+              placeholder="e.g. sena"
               onChange={(e) => set({ slug: e.target.value.trim().toLowerCase() })}
             />
           </Field>
@@ -321,7 +321,7 @@ export const Setup = () => {
             title="Object language"
             description="The language of the headwords."
             lang={draft.languages.object}
-            examples={{ name: 'e.g. Sena', glottocode: 'sena1266', iso: 'seh' }}
+            examples={{ name: 'e.g. Sena', glottocode: 'e.g. sena1266', iso: 'e.g. seh' }}
             coordinates
             onChange={(object) => set({ languages: { ...draft.languages, object } })}
           />
@@ -330,7 +330,7 @@ export const Setup = () => {
             title="Meta language"
             description="The language of the definitions."
             lang={draft.languages.meta}
-            examples={{ name: 'e.g. Portuguese', glottocode: 'port1283', iso: 'por' }}
+            examples={{ name: 'e.g. Portuguese', glottocode: 'e.g. port1283', iso: 'e.g. por' }}
             onChange={(meta) => set({ languages: { ...draft.languages, meta } })}
           />
         </section>

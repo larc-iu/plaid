@@ -38,6 +38,9 @@ export const STATUS_VALUES = ['draft', 'reviewed', 'published'];
 export const statusTagset = () => ({
   delimiters: '',
   mode: 'closed',
+  // The order is the workflow, so the picker keeps it rather than sorting it
+  // into draft, published, reviewed. See `sortedValues`.
+  ordered: true,
   values: STATUS_VALUES.map((value) => ({ value })),
 });
 
@@ -80,6 +83,9 @@ export const statusFieldSeed = ({ fieldsConfig, tagsets }) => {
   const list = existing
     ? {
         ...existing,
+        // A Status tagset seeded before `ordered` existed gains it here, so an
+        // older project's picker reads as the workflow too.
+        ordered: true,
         values: [
           ...(existing.values || []),
           ...STATUS_VALUES.filter((v) => !(existing.values || []).some((t) => t?.value === v)).map(

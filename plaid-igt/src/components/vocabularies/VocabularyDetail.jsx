@@ -1020,7 +1020,7 @@ export const VocabularyDetail = () => {
                           onClick={handleSave}
                           disabled={!editedName.trim() || editedName === vocabulary?.name}
                         >
-                          Save Name
+                          Save
                         </Button>
                       </div>
                     </div>

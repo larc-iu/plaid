@@ -43,6 +43,17 @@ const SETTINGS_SECTIONS = ['general', 'text-and-vocab', 'annotation', 'access', 
 // under the user's own permissions). Settings is the last tab in the bar but
 // is path-backed (see above) because its sections are pages of their own.
 const CONTENT_TABS = ['documents', 'search', 'bulk', 'validate', 'activity', 'assistant'];
+// The spellings a person types from reading the tab bar, mapped onto the slugs
+// this group uses. `?tab=validation` used to render Documents.
+// Export and Settings are deliberately NOT here: they are path-backed, because
+// a preset's editor and a settings section are pages of their own, so aliasing
+// `?tab=export` onto a tab would send someone somewhere other than the page
+// they named.
+const TAB_ALIASES = {
+  validation: 'validate',
+  'bulk-edit': 'bulk',
+  bulkedit: 'bulk',
+};
 
 // Title-bar labels for the settings sections (match ProjectSettingsPanel).
 const SECTION_TITLES = {
@@ -141,7 +152,13 @@ export const ProjectDetail = () => {
   );
   // Documents/Search live in `?tab=`, so a reload or a shared link reopens the
   // tab the user was on.
-  const [contentTab, setContentTab] = useTabParam(CONTENT_TABS, 'documents');
+  const [contentTab, setContentTab] = useTabParam(
+    CONTENT_TABS,
+    'documents',
+    'tab',
+    false,
+    TAB_ALIASES,
+  );
   const assistantAvailable = useAssistantAvailable(client, projectId, IGT_ASSISTANT.app);
   // The shell's panel is about this PROJECT while the reader is on any of its
   // screens. No subject of its own: what a reader is looking at here is the

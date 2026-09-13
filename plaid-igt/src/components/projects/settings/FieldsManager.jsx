@@ -415,7 +415,11 @@ export const FieldsManager = ({
               <tr>
                 <th className="w-[15%] px-3 py-2 text-left font-medium">Scope</th>
                 <th className="px-3 py-2 text-left font-medium">Field Name</th>
-                <th className="w-[14%] px-3 py-2 text-left font-medium">Language</th>
+                <th className="w-[14%] px-3 py-2 text-left font-medium">
+                  <span title="The writing-system tag FieldWorks will see for this field, such as en or tur. Leave it blank unless you export to FLEx.">
+                    Language
+                  </span>
+                </th>
                 {tagsetNames.length > 0 && (
                   <th className="w-[22%] px-3 py-2 text-left font-medium">Tagset</th>
                 )}
@@ -449,6 +453,7 @@ export const FieldsManager = ({
                       value={langDrafts[record.key] ?? record.lang ?? ''}
                       aria-label={`Language of ${record.name}`}
                       list="field-language-tags"
+                      placeholder="en"
                       className="h-8 w-24"
                       onChange={(e) =>
                         setLangDrafts((d) => ({ ...d, [record.key]: e.target.value }))
@@ -487,7 +492,10 @@ export const FieldsManager = ({
                     </td>
                   )}
                   <td className="w-px whitespace-nowrap border-t px-3 py-2 align-middle">
-                    <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                    {/* Always visible, not on hover. Hidden until the pointer arrived, a
+    row read as a fixed fact rather than something you could reorder
+    or remove, and a keyboard never found them at all. */}
+                    <div className="flex items-center gap-1">
                       <Button
                         size="icon"
                         variant="ghost"

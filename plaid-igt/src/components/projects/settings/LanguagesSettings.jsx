@@ -164,7 +164,7 @@ export const LanguagesSettings = ({ project, projectId, client, onProjectUpdate 
           />
         </div>
         <Button className="self-start" onClick={save} disabled={!dirty || saving}>
-          {saving ? 'Saving…' : 'Save languages'}
+          {saving ? 'Saving…' : 'Save'}
         </Button>
       </div>
     </div>

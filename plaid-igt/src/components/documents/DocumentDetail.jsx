@@ -768,6 +768,21 @@ const DocumentEditor = () => {
                         <Download className="h-4 w-4" /> Export
                       </TabsTrigger>
                     </TabsList>
+                    {/* Not a tab: history is a drawer, and it keeps whatever
+                        tab you are on. But the rail at the window edge is an
+                        unlabelled grey strip whose icon appears on hover, and
+                        the tab bar is where a person looks for a document's
+                        views, so there is a named way in here too. The
+                        assistant has both in the same way. */}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      onClick={handleOpenHistory}
+                      disabled={history.open}
+                    >
+                      <History className="h-4 w-4" /> History
+                    </Button>
                   </div>
                 </div>
 

@@ -25,6 +25,7 @@ import {
   seedCandidates,
   unreachableValues,
 } from './tagsets.js';
+import { statusTagset, STATUS_VALUES } from './vocabDictionary.js';
 
 const leipzig = {
   delimiters: '.:>',
@@ -540,5 +541,16 @@ describe('analysisViolations', () => {
   it('tolerates a bare or empty analysis', () => {
     expect(analysisViolations(null, tagsetFor)).toEqual([]);
     expect(analysisViolations({}, tagsetFor)).toEqual([]);
+  });
+});
+
+describe('sortedValues', () => {
+  it('sorts a hand-made inventory, and keeps an ordered one as written', () => {
+    // Status is draft, reviewed, published: a workflow. Alphabetical listed it
+    // draft, published, reviewed, which reads as one that goes backwards.
+    const made = { values: [{ value: 'PL' }, { value: 'ERG' }, { value: 'ABS' }] };
+    expect(sortedValues(made).map((v) => v.value)).toEqual(['ABS', 'ERG', 'PL']);
+    expect(sortedValues(statusTagset()).map((v) => v.value)).toEqual(STATUS_VALUES);
+    expect(STATUS_VALUES).toEqual(['draft', 'reviewed', 'published']);
   });
 });

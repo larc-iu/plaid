@@ -33,8 +33,8 @@ export const VocabularyStep = ({ data, onDataChange, client }) => {
       {/* Explanatory header */}
       <div>
         <p className="text-sm">
-          A vocabulary is a shared lexicon. Link words and morphemes to its entries so the same item
-          is glossed the same way everywhere, in this project and in others that share it.
+          A vocabulary is a shared lexicon. Link words and morphemes to its entries so the same
+          entry is glossed the same way everywhere, in this project and in others that share it.
         </p>
         {/* It starts empty and stays empty until someone puts entries in it,
           which the sentence above does not say. A linguist read it, made one,

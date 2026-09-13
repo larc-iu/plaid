@@ -14,6 +14,13 @@ export const OrthographiesStep = ({ data, onDataChange }) => {
           The <strong>Baseline</strong> is the text as you type it. Add other ways of writing each
           word beside it, such as an IPA transcription, another script, or a normalized spelling.
         </p>
+        {/* This list has no on/off column, because a row IS the orthography.
+            Without saying so, a listed IPA read as something that might or
+            might not be switched on, and it arrived as an empty row in the
+            Analyze grid and a checked-but-empty line in an export preset. */}
+        <p className="mt-2 text-sm text-muted-foreground">
+          Every orthography listed here is created. Remove the ones you do not want.
+        </p>
       </div>
 
       {/* Use the reusable manager component */}
