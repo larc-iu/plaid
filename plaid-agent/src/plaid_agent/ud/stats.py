@@ -12,6 +12,7 @@ from .corpus import DOCS_PER_SEARCH, Corpus, rx
 from .project import Sentence, UdDoc, Word, kwic, word_ref
 from .tools import FIELDS, ToolError, Workspace, _truncate
 from ..core.args import clamp_limit
+from ..core.limits import READ_LIMITS
 
 SEARCHABLE = FIELDS + ('form', 'deprel')
 COUNTABLE = ('form', 'lemma', 'upos', 'xpos', 'features', 'feature-bundles', 'deprel')
@@ -95,7 +96,7 @@ def t_search(ws: Workspace, field: str = None, pattern: str = None, document: st
         raise ToolError(f'Unknown field "{field}". One of: ' + ', '.join(SEARCHABLE))
     if not pattern:
         raise ToolError('Give a pattern to search for.')
-    limit = clamp_limit(limit, 30, 200)
+    limit = clamp_limit(limit, *READ_LIMITS['search'])
     import re as _re
     spec = rx(pattern, regex=regex, whole=whole, case_sensitive=bool(case_sensitive))
     try:
@@ -168,7 +169,7 @@ def t_frequency_list(ws: Workspace, what: str = 'lemma', document: str = None,
     """The commonest values of one column."""
     if what not in COUNTABLE:
         raise ToolError(f'Unknown column "{what}". One of: ' + ', '.join(COUNTABLE))
-    limit = clamp_limit(limit, 30, 200)
+    limit = clamp_limit(limit, *READ_LIMITS['frequency_list'])
     column = 'features' if what == 'feature-bundles' else what
     clipped = ''
     if document:
@@ -292,7 +293,7 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
     """What is unfinished, by document, so a session has somewhere to start."""
     if kind not in WORKLIST_KINDS:
         raise ToolError(f'Unknown kind "{kind}". One of: ' + ', '.join(WORKLIST_KINDS))
-    limit = clamp_limit(limit, 20, 100)
+    limit = clamp_limit(limit, *READ_LIMITS['worklist'])
     c = _corpus(ws)
     # A per-document count read from a clipped result is the top of a prefix,
     # and this is the tool a session starts from. Asked once per branch, of
@@ -411,7 +412,7 @@ def t_recent_changes(ws: Workspace, document: str = None, limit: int = 20,
     twenty lines was most of the cost of this tool.
     """
     import re as _re
-    limit = clamp_limit(limit, 20, 100)
+    limit = clamp_limit(limit, *READ_LIMITS['recent_changes'])
     ws.on_progress('Reading the change history…')
     u = (user or '').casefold()
 
@@ -471,7 +472,7 @@ def t_comments(ws: Workspace, document: str = None, ref: str = None, limit: int 
     """What people have written to each other on a sentence or a document.
     These are notes between annotators, never annotation."""
     from .project import Sentence as _S
-    limit = clamp_limit(limit, 30, 100)
+    limit = clamp_limit(limit, *READ_LIMITS['comments'])
     doc = ws.doc(document)
     kw = {'document_id': doc.id}
     if ref:

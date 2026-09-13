@@ -7,7 +7,7 @@ for browsing and may lag behind the code: the prompt is built in
 `src/plaid_agent/ud/prompt.py` and the tools are declared in
 `src/plaid_agent/ud/tools.py`. Regenerate it with
 
-    python tests/ud_sample_prompt.py
+    bb sample-prompts
 
 Every model call carries the system prompt, the transcript so far (the browser
 keeps it between turns), and the whole tool list. The model answers with text

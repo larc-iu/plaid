@@ -32,6 +32,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client import ROLES, find_by_role
 
+from ..core.project import find_layer, word_ref  # noqa: F401  (re-exported: the tools import it from here)
 from ..core.provenance import review_mark
 
 UD = 'ud'
@@ -288,14 +289,6 @@ class UdDoc:
         return None
 
 
-def _find_layer(text_layers, token_layer_id):
-    for tl in text_layers or []:
-        for tk in tl.get('token_layers') or []:
-            if tk['id'] == token_layer_id:
-                return tl, tk
-    return None, None
-
-
 def _spans_by_token(token_layer, span_layers: Dict[str, str]) -> Dict[str, Dict[str, Span]]:
     """token id -> {field name: Span}, over the project's five span layers."""
     by_id = {lid: name for name, lid in span_layers.items()}
@@ -326,9 +319,9 @@ def load_document(client, project: UdProject, document_id: str) -> UdDoc:
 
 
 def parse_document(raw: dict, project: UdProject) -> UdDoc:
-    tl, word_layer = _find_layer(raw.get('text_layers'), project.word_layer_id)
-    _, token_layer = _find_layer(raw.get('text_layers'), project.token_layer_id)
-    _, sent_layer = _find_layer(raw.get('text_layers'), project.sentence_layer_id)
+    tl, word_layer = find_layer(raw.get('text_layers'), project.word_layer_id)
+    _, token_layer = find_layer(raw.get('text_layers'), project.token_layer_id)
+    _, sent_layer = find_layer(raw.get('text_layers'), project.sentence_layer_id)
     text = (tl or {}).get('text') or {}
     body = text.get('body') or ''
     chars = list(body)
@@ -425,10 +418,6 @@ def resolve(doc: UdDoc, ref: str):
         if t.words and t.words[0].index == a and t.words[-1].index == b:
             return t
     raise ValueError(f'{ref}: sentence s{si} has no multi-word token spanning words {a} to {b}')
-
-
-def word_ref(s: Sentence, w: Word) -> str:
-    return f's{s.index}.w{w.index}'
 
 
 def token_ref(s: Sentence, t: Token) -> str:

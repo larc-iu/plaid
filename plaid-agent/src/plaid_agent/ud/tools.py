@@ -15,8 +15,9 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from ..core.args import clamp_limit, read_int, sentence_number
-from ..core.limits import MAX_RESULT_CHARS
+from ..core.limits import MAX_RESULT_CHARS, READ_LIMITS
 from ..core.plan import PLAN_MAX_OPS, PlanFull, reserve as core_reserve
+from ..core.tools import fn, tools_for as core_tools_for
 from .project import (MISSING, Sentence, Token, UdDoc, UdProject, Word, load_document, parse_ref,
                       render_document, render_sentence, resolve, word_ref)
 from .review import (REVIEW_FIELDS, all_words, confirm_targets, counts_phrase, discard_targets,
@@ -312,7 +313,7 @@ def t_list_documents(ws: Workspace, pattern: str = None, limit: int = 50, offset
         docs = [d for d in docs if pattern.lower() in (d.get('name') or '').lower()]
     if not docs:
         return 'No documents matched.' if pattern else 'The project has no documents.'
-    limit = clamp_limit(limit, 50, 200)
+    limit = clamp_limit(limit, *READ_LIMITS['list_documents'])
     offset = read_int(offset, 'offset', 0, minimum=0)
     page = docs[offset:offset + limit]
     out = [f'{len(docs)} document(s)' + (f' matching "{pattern}"' if pattern else '')
@@ -891,10 +892,7 @@ def t_drop_planned(ws: Workspace, indexes=None) -> str:
 
 # --- the tool table -------------------------------------------------------------
 
-def _fn(name, description, properties, required):
-    return {'type': 'function', 'function': {
-        'name': name, 'description': description,
-        'parameters': {'type': 'object', 'properties': properties, 'required': required}}}
+_fn = fn
 
 
 _DOC = {'type': 'string', 'description': 'Document id or exact name (see project_overview).'}
@@ -1199,13 +1197,8 @@ WRITE_TOOLS = {t['function']['name'] for t in TOOLS if t['function']['descriptio
 
 
 def tools_for(ws: Workspace) -> List[Dict[str, Any]]:
-    """The tools a turn on this workspace may call. The web tools exist only
-    where the operator configured a search backend, so a model that cannot
-    look anything up is never told that it can."""
-    hidden = set() if ws.web is not None else set(WEB_TOOLS)
-    if _sandbox.available() is not None:
-        hidden |= set(CODE_TOOLS)
-    return [t for t in TOOLS if t['function']['name'] not in hidden]
+    """The tools a turn on this workspace may call."""
+    return core_tools_for(ws, TOOLS, WEB_TOOLS, CODE_TOOLS)
 
 
 def call_tool(ws: Workspace, name: str, args: Dict[str, Any]) -> str:

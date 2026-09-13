@@ -20,6 +20,24 @@ MAX_RESULT_CHARS = 12000
 GROUP_LIMIT = 100000
 ROW_LIMIT = 100000
 
+# How many rows a read tool shows by default, and the most it will show when
+# asked: (default, cap) for every tool BOTH apps offer. Written once per app
+# they drifted apart for no reason anyone could name, so one tool answered with
+# a hundred rows in one app and thirty in the other.
+#
+# The rule for the pair: the smaller default, the larger cap. Context is the
+# scarce thing, so a tool asked for nothing in particular gives the short
+# answer; and nothing is taken away, because the model can always ask for more.
+READ_LIMITS = {
+    'list_documents': (50, 500),
+    'search': (30, 200),
+    'frequency_list': (30, 1000),
+    'worklist': (20, 500),
+    'comments': (30, 200),
+    'recent_changes': (20, 100),
+    'query': (50, 500),
+}
+
 # What one reply's citations may cost. A citation is resolved against the
 # documents the turn already read; past that it fetches, so the fetching is
 # what needs a budget.

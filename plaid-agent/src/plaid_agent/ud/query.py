@@ -12,6 +12,7 @@ nothing, so the help says it in as many words.
 from typing import Any, Dict, List
 
 from ..core.args import clamp_limit
+from ..core.limits import READ_LIMITS
 from ..core.query import (HELP, QueryRefused, cell, documents_in, parse_query, render,
                           resolve_layer, rewrite, run)
 from .project import word_ref
@@ -122,7 +123,7 @@ def t_query(ws: Workspace, query: Any = None, limit: int = 50) -> str:
     """Run a Plaid query over this project (read-only). See query_help."""
     try:
         q = parse_query(query)
-        limit = clamp_limit(limit, 50, 500)
+        limit = clamp_limit(limit, *READ_LIMITS['query'])
         idx = _layer_index(ws)
         docs = {(d.get('name') or '').casefold(): d['id'] for d in ws.documents()}
         q = rewrite(q, idx, _display(idx), docs)

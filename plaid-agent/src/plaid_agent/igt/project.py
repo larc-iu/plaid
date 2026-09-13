@@ -17,6 +17,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 
+from ..core.project import find_layer, word_ref  # noqa: F401  (re-exported: the tools import it from here)
 from ..core.provenance import CONTRIBUTED, REVIEWABLE, UNVERIFIED, mark as _mark, review_mark  # noqa: F401
 from typing import Dict, List, Optional, Tuple
 
@@ -410,14 +411,6 @@ class IgtDoc:
         return self._index.get(entity_id)
 
 
-def _find_layer(text_layers, token_layer_id):
-    for tl in text_layers or []:
-        for tk in tl.get('token_layers') or []:
-            if tk['id'] == token_layer_id:
-                return tl, tk
-    return None, None
-
-
 def _spans_by_token(token_layer, project: IgtProject):
     """token id -> {field name: Span} over the layer's scoped fields."""
     out: Dict[str, Dict[str, Span]] = {}
@@ -458,11 +451,11 @@ def load_document(client, project: IgtProject, document_id: str) -> IgtDoc:
 
 
 def parse_document(raw: dict, project: IgtProject) -> IgtDoc:
-    tl, word_layer = _find_layer(raw.get('text_layers'), project.word_layer_id)
-    _, sent_layer = _find_layer(raw.get('text_layers'), project.sentence_layer_id)
+    tl, word_layer = find_layer(raw.get('text_layers'), project.word_layer_id)
+    _, sent_layer = find_layer(raw.get('text_layers'), project.sentence_layer_id)
     morph_layer = None
     if project.morpheme_layer_id:
-        _, morph_layer = _find_layer(raw.get('text_layers'), project.morpheme_layer_id)
+        _, morph_layer = find_layer(raw.get('text_layers'), project.morpheme_layer_id)
     text = (tl or {}).get('text') or {}
     body = text.get('body') or ''
     chars = list(body)
@@ -562,10 +555,6 @@ def resolve(doc: IgtDoc, ref: str):
     if not 1 <= mi <= len(w.morphemes):
         raise ValueError(f'{ref}: word s{si}.w{wi} "{w.surface}" has {len(w.morphemes)} morphemes')
     return w.morphemes[mi - 1]
-
-
-def word_ref(s: Sentence, w: Word) -> str:
-    return f's{s.index}.w{w.index}'
 
 
 # --- rendering ---------------------------------------------------------------

@@ -15,6 +15,7 @@ from .project import IgtDoc, Sentence, Word, REVIEWABLE, mwe_form, render_word, 
 from .tools import Workspace, ToolError, _matcher, _truncate, entry_line
 from .vocab import descendants_of, validate_vocab_refs
 from ..core.args import clamp_limit, read_int
+from ..core.limits import READ_LIMITS
 
 
 def _pct(n, d):
@@ -208,7 +209,7 @@ def t_frequency_list(ws: Workspace, what: str = 'wordform', document: Optional[s
                      limit: int = 100, min_count: int = 1) -> str:
     """Counts with document dispersion for wordforms, morpheme forms, or a
     field's values."""
-    limit = clamp_limit(limit, 100, 1000)
+    limit = clamp_limit(limit, *READ_LIMITS['frequency_list'])
     min_count = read_int(min_count, 'min_count', 1, minimum=1)
     what_l = (what or 'wordform').lower()
     counts: Counter = Counter()
@@ -335,7 +336,7 @@ def t_worklist(ws: Workspace, kind: str = 'unglossed', field: Optional[str] = No
     if user and kind != 'contributed':
         raise ToolError('user= goes with kind="contributed"')
     project = ws.project
-    limit = clamp_limit(limit, 50, 500)
+    limit = clamp_limit(limit, *READ_LIMITS['worklist'])
     docs = _docs(ws, document) if ws.use_scan(document) else []
     f = None
     if kind == 'unglossed':

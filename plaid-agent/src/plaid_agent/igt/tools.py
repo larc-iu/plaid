@@ -23,8 +23,9 @@ import unicodedata
 from plaid_client.provenance import prov_state, MACHINE
 
 from ..core.args import clamp_limit, read_int, sentence_number
-from ..core.limits import MAX_RESULT_CHARS
+from ..core.limits import MAX_RESULT_CHARS, READ_LIMITS
 from ..core.plan import PLAN_MAX_OPS, PlanFull, reserve as core_reserve
+from ..core.tools import fn, tools_for as core_tools_for
 
 from .project import (IgtProject, IgtDoc, Sentence, Word, Morpheme, Link, load_document, resolve, document_lines,
                       render_document, render_overview, render_word, mwe_ref, REVIEWABLE,
@@ -843,7 +844,7 @@ def t_list_documents(ws: Workspace, pattern: Optional[str] = None, metadata_fiel
         want = (value or '').casefold()
         docs = [d for d in docs if str((metas.get(d['id']) or {}).get(name, '') or '').casefold() == want
                 or (not want and not (metas.get(d['id']) or {}).get(name))]
-    limit = clamp_limit(limit, 100, 500)
+    limit = clamp_limit(limit, *READ_LIMITS['list_documents'])
     offset = read_int(offset, 'offset', 0, minimum=0)
     page = docs[offset:offset + limit]
     head = f'{len(docs)} document{"s" if len(docs) != 1 else ""}' + (' matching' if pattern or metadata_field else '') \
@@ -866,7 +867,7 @@ def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document
     if not pattern:
         raise ToolError('Give a pattern (to list items LACKING a value, use worklist).')
     match = _matcher(pattern, bool(regex), bool(case_sensitive))
-    limit = clamp_limit(limit, 40, 200)
+    limit = clamp_limit(limit, *READ_LIMITS['search'])
     where_name = (where or 'baseline').strip()
     if where_name.lower().startswith('field:'):
         where_name = where_name[6:].strip()
@@ -1394,7 +1395,7 @@ def t_recent_changes(ws: Workspace, document: Optional[str] = None, limit: int =
     name or email. Without `since`, recent windows are read first and
     widened until `limit` entries are in hand."""
     import datetime
-    limit = clamp_limit(limit, 20, 100)
+    limit = clamp_limit(limit, *READ_LIMITS['recent_changes'])
     ws.on_progress('Reading the change history…')
     u = (user or '').casefold()
 
@@ -2603,7 +2604,7 @@ def t_comments(ws: Workspace, document: Optional[str] = None, ref: Optional[str]
     """The comments people have left: on one thing (document + ref, and
     field for one of its values), in one document, or in the whole project;
     oldest first, the newest `limit` shown."""
-    limit = clamp_limit(limit, 50, MAX_COMMENTS)
+    limit = clamp_limit(limit, *READ_LIMITS['comments'])
     ws.on_progress('Reading the comments…')
     doc = ws.doc(document) if document else None
     if ref and doc is None:
@@ -2785,10 +2786,7 @@ def t_drop_planned(ws: Workspace, indexes) -> str:
 
 # --- schema + dispatch ----------------------------------------------------------
 
-def _fn(name, description, properties, required):
-    return {'type': 'function', 'function': {
-        'name': name, 'description': description,
-        'parameters': {'type': 'object', 'properties': properties, 'required': required}}}
+_fn = fn
 
 
 _DOC = {'type': 'string', 'description': 'Document id or exact name (see project_overview).'}
@@ -2835,7 +2833,7 @@ TOOLS = [
                                                     '"lexicon" (entries), or a field name (e.g. "Gloss", "Translation").'},
          'document': _DOC,
          'regex': {'type': 'boolean', 'description': 'Treat pattern as a regular expression.'}, 'case_sensitive': {'type': 'boolean', 'description': 'Match case too (off by default: "ar" finds "Ar").'},
-         'limit': {'type': 'integer', 'description': 'Max hits to return (default 40, max 200).'}},
+         'limit': {'type': 'integer', 'description': 'Max hits to return (default 30, max 200).'}},
         ['pattern']),
     _fn('read_lexicon',
         'List lexicon entries (form, morph type, and their fields such as gloss), optionally filtered by a '
@@ -2954,7 +2952,7 @@ TOOLS = [
         'The comments people have left (not annotation data: notes to each other). Whole project, one document, '
         'or one item (document + ref, plus field for a comment on one of its values). Oldest first.',
         {'document': _DOC, 'ref': {'type': 'string', 'description': 'sN, sN.wN, or sN.wN.mN.'},
-         'field': {'type': 'string'}, 'limit': {'type': 'integer', 'description': 'Newest entries to show (default 50).'}},
+         'field': {'type': 'string'}, 'limit': {'type': 'integer', 'description': 'Newest entries to show (default 30, max 200).'}},
         []),
     _fn('add_comment',
         'PLAN: post a comment under the user\'s name on a document (no ref), a sentence, a word, a morpheme, or, '
@@ -3100,7 +3098,7 @@ TOOLS += [
     _fn('frequency_list',
         'Ranked counts with document dispersion for wordforms (default), morpheme forms, or a field\'s values.',
         {'what': {'type': 'string', 'description': '"wordform" (default), "morpheme", or a field name.'},
-         'document': _DOC, 'limit': {'type': 'integer', 'description': 'Rows (default 100, max 1000).'},
+         'document': _DOC, 'limit': {'type': 'integer', 'description': 'Rows (default 30, max 1000).'},
          'min_count': {'type': 'integer'}}, []),
     _fn('worklist',
         'The unfinished work, grouped by form and ordered by frequency: kind="unlinked" (no lexicon link), '
@@ -3276,21 +3274,7 @@ TOOLS += [
 _IMPL.update({'query_help': t_query_help, 'query': t_query})
 
 # Offered only when the operator configured a search backend (see tools_for).
-TOOLS += [
-    _fn('web_search',
-        'Search the WEB (not this project) for background the project cannot answer: what a gloss '
-        'abbreviation conventionally means, how a construction is described in related languages, a '
-        'reference for a claim. Returns titles, links and snippets. Use the project tools for '
-        'anything about this corpus.',
-        {'query': {'type': 'string'},
-         'limit': {'type': 'integer', 'description': 'Results to return (default 5, max 10).'}},
-        ['query']),
-    _fn('read_url',
-        'Read one web page in full. Only a link that web_search returned in this conversation, or one '
-        'the user pasted, can be opened. HTML and plain text only: a PDF cannot be read, and you must '
-        'say so rather than guess at its contents.',
-        {'url': {'type': 'string'}}, ['url']),
-]
+TOOLS += webtools.schemas('this corpus and its lexicons')
 _IMPL.update({'web_search': t_web_search, 'read_url': t_read_url})
 WEB_TOOLS = ('web_search', 'read_url')
 
@@ -3300,13 +3284,8 @@ WRITE_TOOLS = {t['function']['name'] for t in TOOLS if t['function']['descriptio
 
 
 def tools_for(ws: Workspace) -> List[Dict[str, Any]]:
-    """The tools a turn on this workspace may call. The web tools exist only
-    where the operator configured a search backend, so a model that cannot
-    look anything up is never told that it can."""
-    hidden = set() if ws.web is not None else set(WEB_TOOLS)
-    if _sandbox.available() is not None:
-        hidden |= set(CODE_TOOLS)
-    return [t for t in TOOLS if t['function']['name'] not in hidden]
+    """The tools a turn on this workspace may call."""
+    return core_tools_for(ws, TOOLS, WEB_TOOLS, CODE_TOOLS)
 
 
 # Offered only where the monty worker binary is present (see tools_for): a

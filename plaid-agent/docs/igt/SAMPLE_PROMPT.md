@@ -7,7 +7,7 @@ browsing and may lag behind the code: the prompt is built in
 `src/plaid_agent/igt/prompt.py` and the tools are declared in
 `src/plaid_agent/igt/tools.py`. Regenerate it with
 
-    python tests/sample_prompt.py
+    bb sample-prompts
 
 Every model call carries the system prompt, the transcript so far (the browser
 keeps it between turns), and the whole tool list. The model answers with text
@@ -110,7 +110,7 @@ Find words, morphemes, field values, or lexicon entries matching a pattern (case
 - `document` (string): Document id or exact name (see project_overview).
 - `regex` (boolean): Treat pattern as a regular expression.
 - `case_sensitive` (boolean): Match case too (off by default: "ar" finds "Ar").
-- `limit` (integer): Max hits to return (default 40, max 200).
+- `limit` (integer): Max hits to return (default 30, max 200).
 
 ### read_lexicon
 
@@ -273,7 +273,7 @@ The comments people have left (not annotation data: notes to each other). Whole 
 - `document` (string): Document id or exact name (see project_overview).
 - `ref` (string): sN, sN.wN, or sN.wN.mN.
 - `field` (string)
-- `limit` (integer): Newest entries to show (default 50).
+- `limit` (integer): Newest entries to show (default 30, max 200).
 
 ### add_comment
 
@@ -427,7 +427,7 @@ Ranked counts with document dispersion for wordforms (default), morpheme forms, 
 
 - `what` (string): "wordform" (default), "morpheme", or a field name.
 - `document` (string): Document id or exact name (see project_overview).
-- `limit` (integer): Rows (default 100, max 1000).
+- `limit` (integer): Rows (default 30, max 1000).
 - `min_count` (integer)
 
 ### worklist
@@ -622,7 +622,7 @@ Run a read-only query in Plaid's query language over this project (structure acr
 
 ### web_search
 
-Search the WEB (not this project) for background the project cannot answer: what a gloss abbreviation conventionally means, how a construction is described in related languages, a reference for a claim. Returns titles, links and snippets. Use the project tools for anything about this corpus.
+Search the WEB (not this project) for background the project cannot answer: what a term conventionally means, how a construction is described in related languages, a reference for a claim. Returns titles, links and snippets. Use the project tools for anything about this corpus and its lexicons.
 
 *Offered only when the operator started the service with `--web-search`.*
 

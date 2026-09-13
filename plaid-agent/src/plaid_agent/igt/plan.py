@@ -693,14 +693,14 @@ def _apply_text_edit(client, project, op: Dict[str, Any]) -> None:
     the sentence boundaries its line starts call for and word tokens for
     whatever text in it is untokenized, as the editor's baseline save plus
     its tokenizer would."""
-    from .project import _find_layer
+    from .project import find_layer
     from .tools import split_words
     doc_id, text_id, new = op['document_id'], op.get('text_id'), op['new']
     if not text_id:
         _seed_text(client, project, doc_id, new)
         return
     raw = client.documents.get(doc_id, include_body=True)
-    tl, _ = _find_layer(raw.get('text_layers'), project.word_layer_id)
+    tl, _ = find_layer(raw.get('text_layers'), project.word_layer_id)
     body = ((tl or {}).get('text') or {}).get('body') or ''
     b, e = op['begin'], op['end']
     if body[b:e] != op['old']:
@@ -710,8 +710,8 @@ def _apply_text_edit(client, project, op: Dict[str, Any]) -> None:
     region_end = b + len(new)
 
     raw = client.documents.get(doc_id, include_body=True)
-    _, sent_layer = _find_layer(raw.get('text_layers'), project.sentence_layer_id)
-    _, word_layer = _find_layer(raw.get('text_layers'), project.word_layer_id)
+    _, sent_layer = find_layer(raw.get('text_layers'), project.sentence_layer_id)
+    _, word_layer = find_layer(raw.get('text_layers'), project.word_layer_id)
     sents = sorted((t['begin'], t['end'], t['id']) for t in (sent_layer or {}).get('tokens') or [])
     if not sents and new_body:
         r = client.tokens.create(project.sentence_layer_id, text_id, 0, len(new_body))
