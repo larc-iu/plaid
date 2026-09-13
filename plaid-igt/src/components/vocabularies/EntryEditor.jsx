@@ -151,22 +151,6 @@ export const EntryEditor = ({
             <FormLabel form={selectedItem?.form ?? ''} index={numbers.get(selectedItem?.id)} />
           )}
         </h3>
-        {formGroups.status && (
-          <div className="ml-auto mr-3 flex items-center gap-2">
-            <Label htmlFor={`${uid}-status`} className="text-xs font-medium text-muted-foreground">
-              Status
-            </Label>
-            <TagsetField
-              id={`${uid}-status`}
-              field={formGroups.status}
-              value={draft.fields[statusKey] || ''}
-              tagset={tagsetFor(statusKey)}
-              className="h-7 w-32 text-xs"
-              disabled={!canManage}
-              onChange={(v) => setFields({ ...draft.fields, [statusKey]: v })}
-            />
-          </div>
-        )}
         {!isNew && selectedItem && (
           <div className="text-right text-xs text-muted-foreground">
             <span>
@@ -235,6 +219,32 @@ export const EntryEditor = ({
               }}
             />
           </div>
+          {/* Status belongs here, with everything else Save governs. It used to
+            sit up in the header beside the headword and the usage count, both
+            of which are read-only, so it read as a status chip that saves
+            itself the moment you pick one. It does not: it dirties the draft
+            like any other field, and navigating away without pressing Save
+            dropped the choice silently. Every other editable value on this
+            panel is below the divider. */}
+          {formGroups.status && (
+            <div className="flex min-w-0 flex-col gap-1">
+              <Label
+                htmlFor={`${uid}-status`}
+                className="text-xs font-medium text-muted-foreground"
+              >
+                Status
+              </Label>
+              <TagsetField
+                id={`${uid}-status`}
+                field={formGroups.status}
+                value={draft.fields[statusKey] || ''}
+                tagset={tagsetFor(statusKey)}
+                className="h-8"
+                disabled={!canManage}
+                onChange={(v) => setFields({ ...draft.fields, [statusKey]: v })}
+              />
+            </div>
+          )}
           {formGroups.builtIn.map((f) => renderField(f, draft.fields, setFields, !canManage))}
         </FormGroup>
         {formGroups.custom.length > 0 && (
