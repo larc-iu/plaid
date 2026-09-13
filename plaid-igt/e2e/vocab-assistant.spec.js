@@ -84,14 +84,14 @@ const openEntries = async (page) => {
 test('no assistant online means no control on the Entries screen', async ({ page }) => {
   await withAssistant(page, []);
   await openEntries(page);
-  await expect(page.getByRole('button', { name: 'Assistant' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Assistant', exact: true })).toHaveCount(0);
 });
 
 test('the panel docks beside the entry list and its composer is on screen', async ({ page }) => {
   await withAssistant(page);
   await openEntries(page);
 
-  const open = page.getByRole('button', { name: 'Assistant' });
+  const open = page.getByRole('button', { name: 'Assistant', exact: true });
   await expect(open).toBeVisible({ timeout: 8000 });
   await open.click();
 
@@ -113,7 +113,7 @@ test('the panel docks beside the entry list and its composer is on screen', asyn
 test('Ask names the open entry the way find_entry takes it', async ({ page }) => {
   await withAssistant(page);
   await openEntries(page);
-  await page.getByRole('button', { name: 'Assistant' }).click();
+  await page.getByRole('button', { name: 'Assistant', exact: true }).click();
 
   // Open the first of the two entries spelled "gam".
   await page.getByRole('link', { name: /^gam/ }).first().click();

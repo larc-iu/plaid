@@ -121,6 +121,7 @@ test.afterAll(async () => {
 
 const panelOf = (page) => page.locator('aside.border-l');
 const toggle = (page) => page.getByRole('button', { name: 'Assistant', exact: true });
+const rail = (page) => page.getByRole('button', { name: 'Open the assistant' });
 const annotate = (page, id) => page.goto(`/#/projects/${projectId}/documents/${id}/annotate`);
 const crumbs = (page) => page.getByRole('navigation', { name: 'Breadcrumb' });
 
@@ -208,44 +209,52 @@ test('the handle waits at the edge, widens under the pointer, and does not open 
   await annotate(page, documentId);
   await expect(page.locator('.sentence-grid').first()).toBeVisible({ timeout: 15000 });
 
-  const rail = toggle(page);
-  await expect(rail).toBeVisible();
+  const handle = rail(page);
+  await expect(handle).toBeVisible();
   const viewport = page.viewportSize();
-  const idle = await rail.boundingBox();
+  const idle = await handle.boundingBox();
   // Against the right edge, and vertically centred.
   expect(idle.x + idle.width).toBeGreaterThan(viewport.width - 2);
   expect(Math.abs(idle.y + idle.height / 2 - viewport.height / 2)).toBeLessThan(2);
   expect(idle.width).toBeLessThan(20);
 
-  await rail.hover();
-  await expect.poll(async () => (await rail.boundingBox()).width).toBeGreaterThan(idle.width * 2);
+  await handle.hover();
+  await expect.poll(async () => (await handle.boundingBox()).width).toBeGreaterThan(idle.width * 2);
   // Widened, but the panel is still shut: hovering is not opening.
   await expect(panelOf(page)).toHaveCount(0);
 
-  await rail.click();
+  await handle.click();
   await expect(panelOf(page)).toBeVisible();
-  // And it steps out of the way once the panel it opens is open.
-  await expect(rail).toHaveCount(0);
+  // And both ways in step out of the way once the panel is open.
+  await expect(handle).toHaveCount(0);
+  await expect(toggle(page)).toHaveCount(0);
 });
 
-test('the panel is shut on every load, whatever the reader last did', async ({ page }) => {
-  // It used to be remembered, so a reader who had opened it once met a third of
-  // their window taken by a chat on every visit, before they had asked
-  // anything. The handle at the right edge is how it opens now, and the
-  // annotation is what a reader came for.
+test('the panel comes back open if that is how it was left', async ({ page }) => {
+  // Remembered per browser, and across a LOAD rather than only within the
+  // session: a thread the reader was in the middle of is the likeliest reason
+  // they came back to the app at all. A reader who has never opened it still
+  // gets it shut, which is what the first assertion stands on.
   await seedAuth(page);
   await withAssistant(page);
   await annotate(page, documentId);
   await expect(page.locator('.sentence-grid').first()).toBeVisible({ timeout: 15000 });
-  await openDock(page);
-  await panelOf(page).getByRole('textbox').fill('open when I left');
-
-  await page.reload();
-  await expect(toggle(page)).toBeVisible();
   await expect(panelOf(page)).toHaveCount(0);
-  // And opening it again is one gesture, with the thread still there.
+
   await openDock(page);
+  await page.reload();
+  await expect(page.locator('.sentence-grid').first()).toBeVisible({ timeout: 15000 });
   await expect(panelOf(page)).toBeVisible();
+  // Open, so neither way in is offered.
+  await expect(toggle(page)).toHaveCount(0);
+  await expect(rail(page)).toHaveCount(0);
+
+  // And shut stays shut across one too.
+  await panelOf(page).getByTitle('Hide the assistant').click();
+  await expect(panelOf(page)).toHaveCount(0);
+  await page.reload();
+  await expect(page.locator('.sentence-grid').first()).toBeVisible({ timeout: 15000 });
+  await expect(panelOf(page)).toHaveCount(0);
 });
 
 test('the control is offered on every screen after signing in', async ({ page }) => {

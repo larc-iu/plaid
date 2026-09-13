@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { PlaidMark } from '@ui/components/assistant/PlaidMarks.jsx';
+import { AssistantMark, PlaidMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { UserButton } from '@ui/components/shared/UserButton';
+import { Button } from '@ui/components/ui/button';
 import { headerItem } from '@ui/components/shared/headerItem.js';
 import { AssistantDock } from '@ui/components/assistant/AssistantDock.jsx';
 import { AssistantRail } from '@ui/components/assistant/AssistantRail.jsx';
@@ -10,6 +11,7 @@ import { ProjectPicker } from '@ui/components/assistant/ProjectPicker.jsx';
 import { AssistantSubjectProvider } from '@ui/components/assistant/AssistantSubject.jsx';
 import { useAssistantFocus, useAssistantScope } from '@ui/components/assistant/subject.js';
 import { useDockWidth } from '@ui/components/assistant/useDock.js';
+import { readDockOpen, saveDockOpen } from '@ui/components/assistant/panelWidth.js';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
 import { UD_ASSISTANT } from './assistant/adapter.js';
 import { adminUrl } from '../domain/siblingApps.js';
@@ -44,12 +46,15 @@ const Shell = () => {
   };
 
   // --- the dock -------------------------------------------------------------
-  // Shut on every load, and opened from the handle at the right edge. It is NOT
-  // remembered across a load (see panelWidth.js); within the session it stays
-  // where the reader left it, which is what navigating with a thread open
-  // needs.
-  const [open, setDockOpen] = useState(false);
+  // Where the reader left it, within the session and across a load: a thread
+  // they were in the middle of is the likeliest reason they came back. A reader
+  // who has never opened it gets it shut (see panelWidth.js).
+  const [open, setOpen] = useState(readDockOpen);
   const { width, resize, shown, wide } = useDockWidth(open);
+  const setDockOpen = useCallback((next) => {
+    setOpen(next);
+    saveDockOpen(next);
+  }, []);
 
   // Published for anything painted outside this tree that must not sit under
   // the dock. The toaster is mounted at the root, above the router, so it
@@ -119,6 +124,26 @@ const Shell = () => {
           </Link>
           {user && (
             <div className="flex items-center gap-2">
+              {/* Named, in the place app-level controls live, and offered on
+                  every screen: the rail at the right edge is the same gesture in
+                  the place the panel comes from, but it is a sliver that says
+                  nothing until it is hovered, and the assistant should not have
+                  to be hunted for. Same gate as the rail: a project for it to be
+                  about, an assistant actually online there, and a window wide
+                  enough to give the panel room. */}
+              {wide && !shown && (projectId ? available : offerPicker) && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => setDockOpen(true)}
+                  title="Assistant"
+                >
+                  <AssistantMark className="h-4 w-4" />
+                  Assistant
+                </Button>
+              )}
               {/* The server's admin area is plaid-igt's. The release jar always
                   ships both apps on one server, so there is exactly one, and a
                   second here would be a second answer to the same question.

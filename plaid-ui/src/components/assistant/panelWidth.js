@@ -1,13 +1,6 @@
-// How wide the docked assistant is, and where that is remembered. A per-browser
-// convenience: getting it back wrong costs one drag, so a browser that refuses
-// storage is fine, it just forgets.
-//
-// Whether it is OPEN is deliberately not remembered. The panel starts shut on
-// every load and the handle at the right edge (AssistantRail) is how it opens.
-// Remembering it meant a reader who had used the assistant once met a third of
-// their window taken by a chat every time they came back, before they had asked
-// anything. Within a session it stays as they left it, which is what makes it
-// chrome; across a load, the annotation is what a reader came for.
+// How wide the docked assistant is and whether it is open, and where those are
+// remembered. Both are per-browser conveniences: getting one back wrong costs a
+// click or a drag, so a browser that refuses storage is fine, it just forgets.
 
 import { appPrefix } from '../../lib/uiConfig.js';
 
@@ -16,6 +9,7 @@ import { appPrefix } from '../../lib/uiConfig.js';
 // it in the other. Lazy, because `appPrefix` throws before `configureUi` runs
 // and this module is imported at load.
 const widthKey = () => `${appPrefix()}_assistant_panel_width`;
+const openKey = () => `${appPrefix()}_assistant_panel_open`;
 export const MIN_WIDTH = 320;
 export const MAX_WIDTH = 720;
 export const DEFAULT_WIDTH = 400;
@@ -38,6 +32,27 @@ export const readWidth = () => {
 export const saveWidth = (w) => {
   try {
     localStorage.setItem(widthKey(), String(w));
+  } catch {
+    // See readWidth.
+  }
+};
+
+// Whether the dock was open when this browser last had it. Closed by default:
+// the first thing a NEW reader sees should be their data, not a chat panel
+// taking a third of the window. A reader who opened it meant to, though, and a
+// thread they were in the middle of is the thing they are most likely coming
+// back for.
+export const readDockOpen = () => {
+  try {
+    return localStorage.getItem(openKey()) === '1';
+  } catch {
+    return false;
+  }
+};
+
+export const saveDockOpen = (open) => {
+  try {
+    localStorage.setItem(openKey(), open ? '1' : '0');
   } catch {
     // See readWidth.
   }

@@ -6,12 +6,13 @@ import { AssistantMark } from './PlaidMarks.jsx';
 // the geometry and the behaviour; what is the assistant's own is the mark and
 // the name.
 //
-// The accessible name is plain "Assistant", which is what it was when this was
-// a button in the header band.
+// Named "Open the assistant", the way the history rail is named "Open history",
+// and NOT plain "Assistant": the header carries a chip by that name, and two
+// buttons with one name is ambiguous for a screen reader and for a locator.
 export const AssistantRail = ({ onOpen }) => (
   <EdgeRail
     side="right"
-    label="Assistant"
+    label="Open the assistant"
     title="Open the assistant"
     onClick={onOpen}
     className="z-30"
