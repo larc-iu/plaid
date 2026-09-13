@@ -50,6 +50,8 @@ export class IgtEditor {
     for (const m of [
       '_onFieldFocus',
       '_onMorphFormFocus',
+      '_onCellMouseDown',
+      '_onCellMouseUp',
       '_onFieldInput',
       '_predictionKeydown',
       '_basicKeydown',
@@ -649,6 +651,8 @@ export class IgtEditor {
       ?disabled=${this.readOnly}
       ${uncontrolledValue(v)}
       @focus=${this._onFieldFocus}
+      @mousedown=${this._onCellMouseDown}
+      @mouseup=${this._onCellMouseUp}
       @input=${this._onFieldInput}
       @keydown=${this._basicKeydown}
       @blur=${(e) => this._commitField(e, apply, tagset)}

@@ -40,6 +40,44 @@ export const cells = {
   // 0 (empty left morpheme) — review M3. Just record the pristine value.
   _onMorphFormFocus(e) {
     e.target.dataset.orig = e.target.value;
+    // Select, like an annotation cell does. A morpheme cell starts out holding
+    // the whole word and the entire job is retyping it segmented, so landing a
+    // caret inside the value means the next keystroke corrupts it: clicking
+    // mid-way into `Eve` and typing `ev-e` stored `Eev` + `eve` as the
+    // morphemes of `Eve`, saved without complaint.
+    try {
+      e.target.select();
+    } catch {
+      /* not selectable */
+    }
+  },
+
+  // A click into an unfocused cell must REPLACE its value, not caret into it.
+  // The `select()` in the two focus handlers above is correct, and the browser
+  // then undoes it: focus fires during mousedown, and mousedown's own default
+  // action places the caret and collapses the selection. Keyboard navigation
+  // produces no mouseup, which is why Tab and Enter always selected (via
+  // _navMove) and only the mouse did not. So re-select on the mouseup that
+  // completes the focusing click.
+  //
+  // Single-line cells only. A sentence textarea holds a free translation
+  // someone edits one word of, where select-all-on-click would be wrong.
+  _onCellMouseDown(e) {
+    // A property, not an attribute: lit owns this element's attributes.
+    e.currentTarget.igtFocusClick = document.activeElement !== e.currentTarget;
+  },
+
+  _onCellMouseUp(e) {
+    const el = e.currentTarget;
+    if (!el.igtFocusClick) return;
+    el.igtFocusClick = false;
+    // A drag that selected a range was deliberate. Leave it alone.
+    if (el.selectionStart !== el.selectionEnd) return;
+    try {
+      el.select();
+    } catch {
+      /* not selectable */
+    }
   },
 
   _onFieldInput(e) {

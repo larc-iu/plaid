@@ -288,6 +288,8 @@ export const grid = {
               ?disabled=${this.readOnly}
               ${uncontrolledValue(value)}
               @focus=${this._onMorphFormFocus}
+              @mousedown=${this._onCellMouseDown}
+              @mouseup=${this._onCellMouseUp}
               @input=${this._onFieldInput}
               @keydown=${this._morphFormKeydown(morph, word, siblings)}
               @paste=${this._onMorphPaste(morph, word)}
