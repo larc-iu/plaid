@@ -125,27 +125,57 @@ describe('TranscriptList', () => {
     await r.unmount();
   });
 
-  it('Alt+ArrowUp/Down changes the playback speed from inside a row', async () => {
+  it('Shift+ArrowUp/Down changes the playback speed from inside a row', async () => {
     // The whole point of the transcript loop is that the hand never leaves the
-    // keyboard, and speed was the one control with no key at all.
+    // keyboard, and speed was the one control with no key at all. Shift, like
+    // the tab's other transport keys; Alt+Up/Down is the row move.
     const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
     const ops = makeOps({ playbackRate: 1 });
     const r = await renderComponent(element(doc, ops));
     const second = rowTextareas(r.container)[1];
     await r.step(() => second.focus());
 
-    const faster = press(second, 'ArrowUp', { altKey: true });
+    const faster = press(second, 'ArrowUp', { shiftKey: true });
     expect(faster.defaultPrevented).toBe(true);
     expect(ops.handlePlaybackRateChange).toHaveBeenLastCalledWith(1.25);
 
-    const slower = press(second, 'ArrowDown', { altKey: true });
+    const slower = press(second, 'ArrowDown', { shiftKey: true });
     expect(slower.defaultPrevented).toBe(true);
     expect(ops.handlePlaybackRateChange).toHaveBeenLastCalledWith(0.75);
 
-    // A bare arrow still moves between rows, and a shifted one still selects.
+    // Ctrl/Cmd+Arrow is the platform's, and Alt+Arrow is a row move.
     ops.handlePlaybackRateChange.mockClear();
-    press(second, 'ArrowUp', { shiftKey: true });
+    press(second, 'ArrowUp', { ctrlKey: true });
+    press(second, 'ArrowUp', { metaKey: true });
     expect(ops.handlePlaybackRateChange).not.toHaveBeenCalled();
+    await r.unmount();
+  });
+
+  it('Alt+ArrowUp/Down move between rows from anywhere in the row', async () => {
+    // The bare arrows leave a row only from the ends of its text; Alt+Arrow is
+    // the row move whatever the caret is doing, and from a time box too.
+    const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+    const ops = makeOps();
+    const r = await renderComponent(element(doc, ops));
+    const [first, second] = rowTextareas(r.container);
+    await r.step(() => {
+      first.focus();
+      first.setSelectionRange(1, 1); // mid-text
+    });
+    await r.step(async () => {
+      press(first, 'ArrowDown', { altKey: true });
+      await settle();
+    });
+    expect(document.activeElement).toBe(second);
+    expect(ops.handlePlaybackRateChange).not.toHaveBeenCalled();
+
+    const ms = timeBox(r.container, 2, 'start', 'milliseconds');
+    await r.step(() => ms.focus());
+    await r.step(async () => {
+      press(ms, 'ArrowUp', { altKey: true });
+      await settle();
+    });
+    expect(document.activeElement).toBe(first);
     await r.unmount();
   });
 

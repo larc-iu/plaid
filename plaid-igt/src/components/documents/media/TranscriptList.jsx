@@ -77,16 +77,27 @@ const TIME_COLUMN =
 const isPlayChord = (e) =>
   e.code === 'Space' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey;
 
-// Slower / faster, without the hand leaving the keyboard. Alt, not Ctrl/Cmd:
-// every arrow pairing with Ctrl, Cmd or Shift already means "select text" in
-// the textarea a transcriber types into, and Ctrl+ArrowUp/Down is taken by the
-// browser besides. Alt+Arrow is free in all three places. There is no chord for
-// 1x on purpose: clicking the speed value already does that, and the Media help
-// says so.
+// Slower / faster, without the hand leaving the keyboard. Shift, because on
+// this tab Shift is the transport modifier (Shift+Space plays, Shift+Left/Right
+// seek), and Ctrl+ArrowUp/Down is taken by the platform besides. Inside the
+// textarea it costs select-to-start/end, the same price Shift+Left/Right
+// already pays. There is no chord for 1x on purpose: clicking the speed value
+// already does that, and the Media help says so.
 const rateStepOf = (e) => {
-  if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return 0;
+  if (!e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return 0;
   if (e.key === 'ArrowUp') return 1;
   if (e.key === 'ArrowDown') return -1;
+  return 0;
+};
+
+// The row above or below, from anywhere in the row: Alt+Up/Down, the key Praat
+// and ELAN both give to "the previous / next unit". The bare arrows do the same
+// only from the text's ends (leavingBy), where they are not the caret's.
+// -1 up, 1 down, 0 to leave the key alone.
+const unitStepOf = (e) => {
+  if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return 0;
+  if (e.key === 'ArrowUp') return -1;
+  if (e.key === 'ArrowDown') return 1;
   return 0;
 };
 
@@ -204,7 +215,7 @@ const SegmentRow = memo(function SegmentRow({
   const playToggle = () => onPlayToggle(token);
 
   const onTextKeyDown = async (e) => {
-    const step = leavingBy(e);
+    const step = leavingBy(e) || unitStepOf(e);
     if (isPlayChord(e)) {
       e.preventDefault();
       playToggle();
@@ -225,12 +236,17 @@ const SegmentRow = memo(function SegmentRow({
   };
 
   const onSpeakerKeyDown = async (e) => {
+    const step = unitStepOf(e);
     if (isPlayChord(e)) {
       e.preventDefault();
       playToggle();
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (await commit()) textRef.current?.focus({ preventScroll: true });
+    } else if (step) {
+      e.preventDefault();
+      const timeBegin = timeBeginOf(token);
+      if (await commit()) onStep(timeBegin, step);
     } else if (e.key === 'Escape') {
       e.preventDefault();
       revert();
@@ -250,6 +266,7 @@ const SegmentRow = memo(function SegmentRow({
   return (
     <div
       data-segment-id={token.id}
+      data-row-time={timeBeginOf(token)}
       className={cn(
         'grid grid-cols-[auto_minmax(6rem,8rem)_1fr_auto] items-start gap-2 rounded-md border px-2 py-1.5',
         active && 'border-primary/60 bg-primary/5',
@@ -475,7 +492,7 @@ const ProposalRow = memo(function ProposalRow({
   };
 
   const onKeyDown = (e) => {
-    const step = leavingBy(e);
+    const step = leavingBy(e) || unitStepOf(e);
     if (isPlayChord(e)) {
       e.preventDefault();
       onPlayToggle(proposal);
@@ -497,6 +514,7 @@ const ProposalRow = memo(function ProposalRow({
     <div
       data-segment-id={proposal.id}
       data-vad-proposal-row={proposal.id}
+      data-row-time={proposal.timeBegin}
       className={cn(
         'grid grid-cols-[auto_minmax(6rem,8rem)_1fr_auto] items-start gap-2 rounded-md border border-dashed px-2 py-1.5',
         active && 'bg-muted/60',
@@ -612,16 +630,18 @@ const NewSegmentRow = memo(function NewSegmentRow({
       e.preventDefault();
       submit();
     } else if (
-      e.key === 'ArrowUp' &&
       onStep &&
-      !e.ctrlKey &&
-      !e.metaKey &&
-      !e.altKey &&
-      !e.shiftKey &&
-      e.target.selectionStart === 0 &&
-      e.target.selectionEnd === 0
+      (unitStepOf(e) < 0 ||
+        (e.key === 'ArrowUp' &&
+          !e.ctrlKey &&
+          !e.metaKey &&
+          !e.altKey &&
+          !e.shiftKey &&
+          e.target.selectionStart === 0 &&
+          e.target.selectionEnd === 0))
     ) {
-      // This row is after every segment, so up from its start is the last one.
+      // This row is after every segment, so up from its start is the last one,
+      // and Alt+Up from anywhere in it.
       e.preventDefault();
       onStep(Infinity, -1);
     } else if (e.key === 'Escape') {
@@ -631,7 +651,10 @@ const NewSegmentRow = memo(function NewSegmentRow({
   };
 
   return (
-    <div className="grid grid-cols-[auto_minmax(6rem,8rem)_1fr_auto] items-start gap-2 rounded-md border border-dashed px-2 py-1.5">
+    <div
+      data-row-time="Infinity"
+      className="grid grid-cols-[auto_minmax(6rem,8rem)_1fr_auto] items-start gap-2 rounded-md border border-dashed px-2 py-1.5"
+    >
       <div className={TIME_COLUMN}>
         <span>{formatTime(prevEnd)}</span>
         <span>{ready ? formatTime(currentTime) : '…'}</span>
@@ -1011,7 +1034,18 @@ export function TranscriptList({
         // Caught here rather than in each row's own handler: keydown bubbles,
         // so one listener covers the text, the speaker and both time boxes of
         // every row, present and proposed, and adding a row cannot forget it.
+        // The row move is the same, for the boxes whose own handler did not
+        // claim it (a text box commits first, so it claims its own).
         onKeyDown={(e) => {
+          if (e.defaultPrevented) return;
+          const unit = unitStepOf(e);
+          if (unit) {
+            const row = e.target.closest?.('[data-row-time]');
+            if (!row) return;
+            e.preventDefault();
+            handleStep(Number(row.dataset.rowTime), unit);
+            return;
+          }
           const step = rateStepOf(e);
           if (!step) return;
           e.preventDefault();

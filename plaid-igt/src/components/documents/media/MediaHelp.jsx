@@ -48,21 +48,25 @@ export function MediaHelp() {
       <Row label="Playback">
         <Kbd>Space</Kbd> play / pause, outside a text box · <Kbd>⇧</Kbd>+<Kbd>Space</Kbd> pause /
         resume the segment you are in, or the selected stretch (from its start when playback is
-        elsewhere) · <Kbd>⇧</Kbd>+<Kbd>←</Kbd> <Kbd>→</Kbd> back / forward 1 s · speed 0.25× to 5×,
-        click the value for 1× · loop repeats the segment until you pause
+        elsewhere) · <Kbd>⇧</Kbd>+<Kbd>←</Kbd> <Kbd>→</Kbd> back / forward 1 s · <Kbd>⇧</Kbd>+
+        <Kbd>↑</Kbd> <Kbd>↓</Kbd> faster / slower, in the transcript · speed 0.25× to 5×, click the
+        value for 1× · loop repeats the segment until you pause · <Kbd>Esc</Kbd> clears the selected
+        stretch
       </Row>
       <Row label="Transcript">
         one row per segment, in time order · moving into a row plays it (switch it off above the
         rows) · <Kbd>Enter</Kbd> save the row and move to the next · <Kbd>↑</Kbd> <Kbd>↓</Kbd> the
-        row above or below, from the start or end of the text · <Kbd>Esc</Kbd> put the row back ·{' '}
-        <Kbd>Alt</Kbd>+<Kbd>↑</Kbd> <Kbd>↓</Kbd> faster / slower · <Kbd>Tab</Kbd> next field · the
-        last row adds a segment from the end of the previous one to playback at <Kbd>Enter</Kbd> ·
-        the bin removes a segment and leaves its text in the baseline unless you tick the box
+        row above or below, from the start or end of the text · <Kbd>Alt</Kbd>+<Kbd>↑</Kbd>{' '}
+        <Kbd>↓</Kbd> the same from anywhere in the row · <Kbd>Esc</Kbd> put the row back ·{' '}
+        <Kbd>Tab</Kbd> next field · the last row adds a segment from the end of the previous one to
+        playback at <Kbd>Enter</Kbd> · the bin removes a segment and leaves its text in the baseline
+        unless you tick the box
       </Row>
       <Row label="Times">
         a segment's start and end are boxes of digits · type into the box under the caret ·{' '}
         <Kbd>←</Kbd> <Kbd>→</Kbd> move between boxes · <Kbd>↑</Kbd> <Kbd>↓</Kbd> step the box
-        (milliseconds by 10, <Kbd>⇧</Kbd>+ by 100) · <Kbd>Enter</Kbd> or leaving the time saves ·{' '}
+        (milliseconds by 10, <Kbd>⇧</Kbd>+ by 100) · <Kbd>⌫</Kbd> zeroes the box · <Kbd>⇧</Kbd>+
+        <Kbd>Space</Kbd> plays the segment · <Kbd>Enter</Kbd> or leaving the time saves ·{' '}
         <Kbd>Esc</Kbd> puts it back · a segment cannot run into its neighbours
       </Row>
       <Row label="Timeline">

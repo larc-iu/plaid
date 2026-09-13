@@ -47,7 +47,10 @@ export function DocumentMedia() {
   return (
     // pb-24: room under the transcript for a popover anchored near the bottom
     // of the timeline, which would otherwise have nowhere to open into.
-    <div className="flex flex-col gap-6 pb-24">
+    // data-media-keys: the boxes under here take the tab's seek chords (see
+    // useMediaOperations); a box outside it, in a dialog or the assistant,
+    // keeps Shift+Arrow for selecting.
+    <div className="flex flex-col gap-6 pb-24" data-media-keys="">
       {/* Media Player. Speech detection sits in its header: it acts on the
           recording, and its proposals surface on the timeline and transcript. */}
       <MediaPlayer mediaOps={mediaOps} readOnly={readOnly} canWrite={canWrite} />

@@ -164,6 +164,9 @@ export const TimeAlignmentPopover = ({
         // scroll inside. Without this the Save button falls below the fold.
         collisionPadding={8}
         className="flex max-h-[var(--radix-popover-content-available-height)] w-[400px] flex-col overflow-y-auto"
+        // Portaled out of the tab's root, so it opts into the seek chords
+        // itself; the existing-text box below opts back out (aria-readonly).
+        data-media-keys=""
         onInteractOutside={(e) => {
           // A click elsewhere closes an untouched popover and leaves one with
           // typing or a selection in it alone, so a stray click never eats work.

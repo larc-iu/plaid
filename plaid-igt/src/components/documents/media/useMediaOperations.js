@@ -13,8 +13,21 @@ import { useVadProposals, VAD_METADATA_KEY } from './useVadProposals.js';
 import { DETECT_SPEECH_BUILTIN } from './detectSpeechBuiltin.js';
 import { writeRunRecord, clearRunRecord } from '@ui/domain/runRecord.js';
 
-// Hotkeys ignore key events from form fields.
+// Hotkeys ignore key events from form fields, with one exception: the tab's
+// own boxes (transcript rows, time boxes, the alignment popover) sit under a
+// `data-media-keys` root and take the seek chords, so a transcriber can re-hear
+// a stretch without leaving the row. A dialog, and the assistant composer
+// (always mounted, on every tab), are text boxes like any other. A box that
+// exists to be selected in (aria-readonly) keeps its keys even under the root.
 const TAGS_TO_IGNORE = ['INPUT', 'TEXTAREA', 'SELECT'];
+const isTextTarget = (t) => TAGS_TO_IGNORE.includes(t?.tagName) || !!t?.isContentEditable;
+const takesMediaKeys = (t) =>
+  !!t?.closest?.('[data-media-keys]') && t.getAttribute('aria-readonly') !== 'true';
+// Space on a focused button, link or toggle is that control's own activation.
+const isActivatable = (t) =>
+  !!t?.closest?.(
+    'button, a, [role="button"], [role="checkbox"], [role="switch"], [role="tab"], [role="menuitem"], [role="option"]',
+  );
 
 const DETECT_BUILTINS = [DETECT_SPEECH_BUILTIN];
 
@@ -733,16 +746,17 @@ export const useMediaOperations = () => {
       // for the same reason as Shift+Space: Ctrl+Arrow is Mission Control on a
       // Mac and Cmd+Arrow is line start/end in every text box, while Shift is
       // the one modifier every platform leaves alone. Inside a row this costs
-      // extending a selection by one character, and nothing else. A box that
-      // exists to be selected in (the popover's existing-text box, marked
-      // aria-readonly) is the exception: the keys keep their meaning there.
+      // extending a selection by one character, and nothing else. Only the
+      // tab's own boxes pay that (see takesMediaKeys): this listener is on the
+      // document, and a Shift+Arrow typed into a dialog or the assistant was
+      // seeking the recording instead of selecting.
       if (
         e.shiftKey &&
         !e.ctrlKey &&
         !e.metaKey &&
         !e.altKey &&
         (e.key === 'ArrowLeft' || e.key === 'ArrowRight') &&
-        e.target?.getAttribute?.('aria-readonly') !== 'true'
+        (!isTextTarget(e.target) || takesMediaKeys(e.target))
       ) {
         e.preventDefault();
         seekBy(e.key === 'ArrowLeft' ? -1 : 1);
@@ -759,7 +773,8 @@ export const useMediaOperations = () => {
         !e.ctrlKey &&
         !e.metaKey &&
         !e.altKey &&
-        !TAGS_TO_IGNORE.includes(e.target?.tagName)
+        !isTextTarget(e.target) &&
+        !isActivatable(e.target)
       ) {
         e.preventDefault();
         const el = mediaElementRef.current;
@@ -769,14 +784,18 @@ export const useMediaOperations = () => {
         else el.play().catch(() => {});
         return;
       }
-      if (TAGS_TO_IGNORE.includes(e.target?.tagName)) return;
+      if (isTextTarget(e.target) || isActivatable(e.target)) return;
+      // Bare keys from here on: a chord with a modifier is somebody else's
+      // (Ctrl+Space is input-source switching on a Mac, Alt+Space a window
+      // menu), and it must not toggle playback on the way through.
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
       // ESC key to clear selection
       if (e.key === 'Escape') {
         if (selection) {
           setSelection(null);
           setPopoverOpened(false);
         }
-      } else if (e.key === ' ') {
+      } else if (e.code === 'Space') {
         // Space key to toggle playback
         e.preventDefault();
         if (mediaElementRef.current) {

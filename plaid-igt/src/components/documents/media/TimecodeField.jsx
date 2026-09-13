@@ -179,8 +179,12 @@ export const TimecodeField = memo(function TimecodeField({
 
   const onKeyDown = (key) => (e) => {
     const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
-    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+    if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && plain) {
+      // Up and Down step the box, Shift for the bigger step. Claimed here and
+      // stopped, so the transcript's speed chord (Shift+Up/Down) does not fire
+      // on the same press; Alt+Up/Down is left to bubble, it is the row move.
       e.preventDefault();
+      e.stopPropagation();
       nudge(key, e.key === 'ArrowUp' ? 1 : -1, e.shiftKey);
     } else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && plain && !e.shiftKey) {
       // Plain arrows move between boxes; Shift+Arrow is the tab's seek and is

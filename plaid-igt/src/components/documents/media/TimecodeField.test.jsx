@@ -82,6 +82,20 @@ describe('TimecodeField', () => {
     await r.unmount();
   });
 
+  it('leaves a modified Up or Down alone', async () => {
+    // Alt+Arrow is the transcript's row move and Ctrl/Cmd+Arrow the
+    // platform's; neither may also nudge the time on its way through.
+    const r = await renderComponent(<TimecodeField value={3} label="Time" onCommit={vi.fn()} />);
+    const ms = box(r.container, 'milliseconds');
+    await r.step(() => ms.focus());
+    for (const init of [{ altKey: true }, { ctrlKey: true }, { metaKey: true }]) {
+      const e = press(ms, 'ArrowUp', init);
+      expect(e.defaultPrevented).toBe(false);
+    }
+    expect(shown(r.container)).toBe('0:03.000');
+    await r.unmount();
+  });
+
   it('a refused save puts the boxes back', async () => {
     const onCommit = vi.fn(async () => false);
     const r = await renderComponent(<TimecodeField value={3} label="Time" onCommit={onCommit} />);
