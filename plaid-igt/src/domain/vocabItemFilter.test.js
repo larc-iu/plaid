@@ -184,4 +184,26 @@ describe('sortVocabItems and letters outside ASCII', () => {
     expect(forms[0]).toBe('apple');
     expect(forms.at(-1)).toBe('zebra');
   });
+
+  it('files a decomposed form where its precomposed twin goes', () => {
+    // `ẹ` written `e` + U+0323 sorts where `ẹja` does. The sort has always got
+    // this right, because a collator folds canonical equivalence itself. The
+    // search box below did not, which is the half that broke.
+    const mixed = [
+      { id: '1', form: 'ẹja' },
+      { id: '2', form: 'egun' },
+      { id: '3', form: 'ẹran' },
+    ];
+    const forms = sortVocabItems(mixed, { key: 'form', dir: 'asc' }).map((i) => i.form);
+    expect(forms).toEqual(['egun', 'ẹja', 'ẹran']);
+  });
+
+  it('finds a decomposed form from a precomposed query, and back', () => {
+    const mixed = [
+      { id: '1', form: 'ẹja' },
+      { id: '2', form: 'ẹran' },
+    ];
+    expect(filterVocabItems(mixed, { query: 'ẹja' }).map((i) => i.id)).toEqual(['1']);
+    expect(filterVocabItems(mixed, { query: 'ẹran' }).map((i) => i.id)).toEqual(['2']);
+  });
 });

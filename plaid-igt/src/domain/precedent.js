@@ -35,6 +35,8 @@
 // only the open document's links are state-exact. Value rows are exact.
 
 import { PROV, PROV_STATES, ROLES, isMachine } from '@larc-iu/plaid-client';
+import { nfc } from '@ui/domain/collation';
+
 import { trimIgnoredEdges } from './igtConfig.js';
 import { isMweType } from './mwe.js';
 import { isZeroMorph } from './zeroMorph.js';
@@ -50,7 +52,11 @@ export const SLOT_LINK = 'link';
 // any kind did (autoLink's byKind fallback).
 const ANY = 'any';
 
-const keyOf = (kind, form, slot) => `${kind}\u0000${form}\u0000${slot}`;
+// The form goes in NFC, which is the one place it has to: a compose code binds
+// a bare combining mark, so a dot below typed in the grid is a code point of
+// its own, while the same word imported from FLEx arrives precomposed. Both
+// writes and reads come through here, so one call covers every consumer.
+const keyOf = (kind, form, slot) => `${kind}\u0000${nfc(form)}\u0000${slot}`;
 
 const morphFormOf = (m) => {
   const meta = m?.metadata;

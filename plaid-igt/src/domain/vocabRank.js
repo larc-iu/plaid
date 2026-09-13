@@ -11,6 +11,11 @@
 // A typed search overrides all of that: it ranks against the typed text
 // only, precedent is ignored, and fuzzy-only "matches" are dropped (typing
 // narrows).
+//
+// Forms and the query are compared through `collationKey`, so a mark typed as
+// a compose code matches the same word imported precomposed.
+
+import { collationKey } from '@ui/domain/collation';
 
 export const TIERS = Object.freeze({
   PRECEDENT: -1,
@@ -51,16 +56,16 @@ export function levenshtein(a, b) {
  */
 export function rankVocabItems(items, { form, search = '', precedent = null }) {
   const searching = !!search;
-  const q = (searching ? search : form || '').toLowerCase();
+  const q = collationKey(searching ? search : form || '');
   const prec = searching ? null : precedent;
   const tierOf = (it) => {
-    const f = (it.form || '').toLowerCase();
+    const f = collationKey(it.form);
     if (!searching && prec?.get(it.id)) return TIERS.PRECEDENT;
     if (!q) return TIERS.FUZZY;
     if (f === q) return TIERS.EXACT;
     if (f.startsWith(q)) return TIERS.PREFIX;
     if (f.includes(q)) return TIERS.SUBSTRING;
-    if ((it._detail || '').toLowerCase().includes(q)) return TIERS.DETAIL;
+    if (collationKey(it._detail).includes(q)) return TIERS.DETAIL;
     return TIERS.FUZZY;
   };
   let ranked = items.map((it) => {
@@ -71,8 +76,7 @@ export function rankVocabItems(items, { form, search = '', precedent = null }) {
   ranked.sort((a, b) => {
     if (a._tier !== b._tier) return a._tier - b._tier;
     if (a._tier === TIERS.PRECEDENT && a._prec !== b._prec) return b._prec - a._prec;
-    const d =
-      levenshtein(q, (a.form || '').toLowerCase()) - levenshtein(q, (b.form || '').toLowerCase());
+    const d = levenshtein(q, collationKey(a.form)) - levenshtein(q, collationKey(b.form));
     if (d !== 0) return d;
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });

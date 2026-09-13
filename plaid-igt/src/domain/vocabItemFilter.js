@@ -6,6 +6,8 @@
 // at all, which is how a lexicon's gaps are found (every entry without a gloss,
 // say) once it is too long to scroll.
 
+import { compareText, textIncludes } from '@ui/domain/collation';
+
 import { morphTypeLabel } from './affixMarkers.js';
 
 /** The `field` meaning "every column". Not the empty string: a Select item
@@ -43,10 +45,10 @@ export function filterVocabItems(
   const scoped = field && field !== ANY_FIELD ? field : null;
   const gaps = scoped && emptyOnly;
   const list = gaps ? items.filter((it) => fieldEmpty(it, scoped)) : items;
-  const q = query.trim().toLowerCase();
+  const q = query.trim();
   if (!q) return list;
   const columns = gaps ? ['form'] : scoped ? [scoped] : ['form', ...fieldNames];
-  return list.filter((it) => columns.some((f) => textOf(it, f).toLowerCase().includes(q)));
+  return list.filter((it) => columns.some((f) => textIncludes(textOf(it, f), q)));
 }
 
 /**
@@ -59,36 +61,22 @@ export function filterVocabItems(
 export function sortVocabItems(items, sort, { numbers, usageCounts } = {}) {
   const dir = sort?.dir === 'desc' ? -1 : 1;
   const byForm = (a, b) => {
-    const af = (a.form ?? '').toLowerCase();
-    const bf = (b.form ?? '').toLowerCase();
-    // `localeCompare`, not `<`. Comparing the strings directly is code-point
-    // order, which files every letter outside ASCII after `z`: a Yoruba
-    // lexicon listed `ẹja` and the seven `ọ` words below the end of the
-    // alphabet, nowhere near the letters they belong with.
-    //
-    // This is the locale's order, not the dictionary's own. A stated alphabet
-    // (n-graphs, a custom order) lives in `config.dict` and only plaid-dict
-    // honours it, because the collator that reads it is plaid-dict's; sharing
-    // it would mean moving it into plaid-ui and aliasing @ui in every app.
-    // Locale order is right for the overwhelming majority of scripts and is a
-    // great deal righter than code points.
-    const byText = af.localeCompare(bf, undefined, { numeric: true });
+    // `compareText`, not `<`: NFC first, then the locale's order. See
+    // @ui/domain/collation for what each half is for. The search box reads the
+    // same key, so the list cannot order one way and filter another.
+    const byText = compareText(a.form, b.form);
     if (byText !== 0) return byText;
     // In dotted-number order. Not by id: ids do not sort into creation order
     // within a bulk write. Numeric collation so "a 10" follows "a 9".
-    const na = numbers?.get(a.id) ?? '';
-    const nb = numbers?.get(b.id) ?? '';
-    return String(na).localeCompare(String(nb), undefined, { numeric: true });
+    return compareText(numbers?.get(a.id) ?? '', numbers?.get(b.id) ?? '');
   };
   const column = {
     form: (a, b) => byForm(a, b) * dir,
     gloss: (a, b) => {
-      const ag = fieldText(a, 'gloss').toLowerCase();
-      const bg = fieldText(b, 'gloss').toLowerCase();
+      const ag = fieldText(a, 'gloss');
+      const bg = fieldText(b, 'gloss');
       if (!ag !== !bg) return ag ? -1 : 1;
-      if (ag < bg) return -1 * dir;
-      if (ag > bg) return 1 * dir;
-      return 0;
+      return compareText(ag, bg) * dir;
     },
     uses: (a, b) => ((usageCounts?.[a.id] ?? 0) - (usageCounts?.[b.id] ?? 0)) * dir,
   };

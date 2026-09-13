@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Input } from '@ui/components/ui/input';
 import { Popover, PopoverAnchor, PopoverContent } from '@ui/components/ui/popover';
 import { cn } from '@ui/lib/utils';
+import { collationKey } from '@ui/domain/collation';
 import { FormLabel } from './FormLabel';
 
 // Find one entry of a vocabulary by typing part of its form or gloss, and
@@ -36,14 +37,14 @@ export const ItemPicker = ({
   const [active, setActive] = useState(0);
 
   const matches = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = collationKey(query.trim());
     if (!q) return [];
     const starts = [];
     const rest = [];
     for (const it of items || []) {
       if (exclude?.has(it.id)) continue;
-      const form = (it.form ?? '').toLowerCase();
-      const gloss = String(it.metadata?.gloss ?? '').toLowerCase();
+      const form = collationKey(it.form);
+      const gloss = collationKey(it.metadata?.gloss);
       if (form.startsWith(q)) starts.push(it);
       else if (form.includes(q) || gloss.includes(q)) rest.push(it);
       if (starts.length >= LIMIT) break;

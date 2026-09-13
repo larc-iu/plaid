@@ -139,6 +139,41 @@ describe('buildItemIndex', () => {
   });
 });
 
+describe('a form written either way is one form', () => {
+  // `ẹ` is U+1EB9 precomposed, or `e` plus the combining dot below U+0323.
+  // A compose code binds the bare mark, so the grid makes the second, while a
+  // FLEx import forces the first. Nothing on screen tells them apart.
+  const PRE = 'ẹja';
+  const DEC = 'ẹja';
+  const vocabs = { v1: { id: 'v1', items: [{ id: 'i-fish', form: PRE }] } };
+
+  it('keys the index in NFC, whichever spelling the entry carries', () => {
+    const idx = buildItemIndex({ v1: { id: 'v1', items: [{ id: 'i-fish', form: DEC }] } });
+    expect(idx.exact.get(PRE)).toEqual(['i-fish']);
+  });
+
+  it('links a decomposed token to a precomposed entry', () => {
+    const proposals = computeAutoLinkProposals({
+      sentences: sentence([word('w1', DEC)]),
+      vocabularies: vocabs,
+      precedent: createTally(),
+    });
+    expect(proposals).toEqual([{ tokenId: 'w1', vocabItemId: 'i-fish', form: DEC, kind: 'word' }]);
+  });
+
+  it('pools precedent for both spellings under one key', () => {
+    const precedent = precedentOf(res([['i-prec', null, PRE, 'morpheme', null, 2]]));
+    const proposals = computeAutoLinkProposals({
+      sentences: sentence([word('w1', 'whole', null, [morph('m1', DEC)])]),
+      vocabularies: {},
+      precedent,
+    });
+    expect(proposals).toEqual([
+      { tokenId: 'm1', vocabItemId: 'i-prec', form: DEC, kind: 'morpheme' },
+    ]);
+  });
+});
+
 describe('auto-link trims edge punctuation off word forms by the ignore rule', () => {
   const cfg = { type: 'unicodePunctuation', whitelist: [] };
   const vocabularies = { v1: { id: 'v1', items: [{ id: 'i-der', form: 'derechos' }] } };

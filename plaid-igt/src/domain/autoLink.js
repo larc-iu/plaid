@@ -35,6 +35,8 @@
 // backed provider) can feed IgtDocument.bulkLinkVocab the same way.
 
 import { PROV_STATES } from '@larc-iu/plaid-client';
+import { nfc, collationKey } from '@ui/domain/collation';
+
 import { lexiconView } from './vocabDictionary.js';
 
 import { trimIgnoredEdges, isTokenIgnored } from './igtConfig.js';
@@ -57,6 +59,9 @@ const morphFormOf = (m) => {
 const precedentFor = (tally, form, kind) =>
   pickMajority(precedentCounts(tally, kind, form, SLOT_LINK), { tieBreak: 'smallest' });
 
+// Keys go in NFC on both sides, so a dot below typed as a compose code matches
+// the same word imported precomposed from FLEx.
+//
 // form -> [itemIds] over the loaded vocab tables (exact), plus a casefolded
 // variant for the fallback tier, plus the set of bound-form item ids (affix
 // or clitic morphType) that word tokens must not take, and the set of
@@ -79,8 +84,8 @@ export function buildItemIndex(vocabularies) {
     const view = lexiconView(vocab.items || []);
     for (const it of vocab.items || []) {
       if (!it.form) continue;
-      add(exact, it.form, it.id);
-      add(folded, it.form.toLowerCase(), it.id);
+      add(exact, nfc(it.form), it.id);
+      add(folded, collationKey(it.form), it.id);
       const type = view.morphTypeOf(it.id);
       if (isBoundType(type)) bound.add(it.id);
       if (isMweType(type)) phrase.add(it.id);
@@ -134,9 +139,9 @@ function resolveForm(form, kind, precedent, items) {
   const pick = (ids) => smallestId((ids || []).filter((id) => ok(id)));
   const p = ok(precedentFor(precedent, form, kind));
   if (p) return p;
-  const exact = pick(items.exact.get(form));
+  const exact = pick(items.exact.get(nfc(form)));
   if (exact) return exact;
-  const lower = form.toLowerCase();
+  const lower = collationKey(form);
   const pf = ok(precedentFor(precedent, lower, kind));
   if (pf) return pf;
   return pick(items.folded.get(lower));
@@ -235,8 +240,8 @@ function buildPhraseIndex(vocabularies) {
       if (!it.form || !isMweType(view.morphTypeOf(it.id))) continue;
       const form = joinMweForm(it.form.split(/\s+/));
       if (wordCount(form) < 2) continue;
-      add(exact, form, it.id);
-      add(folded, form.toLowerCase(), it.id);
+      add(exact, nfc(form), it.id);
+      add(folded, collationKey(form), it.id);
       longest = Math.max(longest, wordCount(form));
       const parent = view.tree.parentOf.get(it.id);
       if (parent) parentOf.set(it.id, parent);
@@ -264,8 +269,8 @@ function buildMwePrecedent(sentences, ignoredCfg) {
         m.memberIdx.map((i) => trimIgnoredEdges(s.tokens[i]?.content ?? '', ignoredCfg)),
       );
       if (wordCount(form) < 2) continue;
-      count(exact, form, m.item.id);
-      count(folded, form.toLowerCase(), m.item.id);
+      count(exact, nfc(form), m.item.id);
+      count(folded, collationKey(form), m.item.id);
       longest = Math.max(longest, wordCount(form));
     }
   }
@@ -278,10 +283,11 @@ export function computeMweProposals({ sentences, vocabularies, ignoredCfg = null
   const longest = Math.max(phrases.longest, precedent.longest);
   if (longest < 2) return [];
   const resolve = (form) => {
-    const lower = form.toLowerCase();
+    const exact = nfc(form);
+    const lower = collationKey(form);
     return (
-      pickMajority(precedent.exact.get(form), { tieBreak: 'smallest' }) ||
-      smallestId(phrases.exact.get(form)) ||
+      pickMajority(precedent.exact.get(exact), { tieBreak: 'smallest' }) ||
+      smallestId(phrases.exact.get(exact)) ||
       pickMajority(precedent.folded.get(lower), { tieBreak: 'smallest' }) ||
       smallestId(phrases.folded.get(lower))
     );
