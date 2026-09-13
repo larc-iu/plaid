@@ -10,8 +10,8 @@ import {
 } from '../../utils/udLayerUtils.js';
 import { PLAID_NAMESPACE, ROLE_KEY, ROLES, findByRole } from '@larc-iu/plaid-client';
 import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
-import { canManageProject } from '../../utils/permissions.js';
-import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { canManageProject } from '@ui/domain/permissions.js';
+import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';

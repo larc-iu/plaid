@@ -32,7 +32,7 @@ import { useWriteLock } from '@ui/hooks/useWriteLock.js';
 import { useResumedRun } from '@ui/hooks/useResumedRun.js';
 import { RunBanner } from '@ui/components/services/RunBanner.jsx';
 import { useDocumentHistory } from './hooks/useDocumentHistory.js';
-import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { useTabParam } from '@/hooks/useTabParam';
 import { useComposeProject } from '@/hooks/useCompose';
 import { cpSlice, isReviewed } from '@larc-iu/plaid-client';

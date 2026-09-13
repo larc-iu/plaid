@@ -6,7 +6,7 @@ import { Badge } from '@ui/components/ui/badge';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { useManagedProject } from '../projects/useManagedProject.js';
 import { ProjectTabs } from '../projects/ProjectTabs.jsx';
-import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { notifyError, notifySuccess, humanizeError } from '../../utils/feedback.jsx';
 import { getUdLayerInfo, UD_NAMESPACE } from '../../utils/udLayerUtils.js';
 import { baseRel } from '../../utils/udVocab.js';

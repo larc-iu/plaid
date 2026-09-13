@@ -13,7 +13,7 @@ import {
 } from '@ui/components/ui/tooltip';
 import { timeAgo, fullTimestamp } from '@ui/utils/formatTime';
 import { notifyWarning, isPermissionError } from '@/utils/feedback';
-import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { PARENT_KEY } from '@/domain/vocabDictionary';
 
 export const VocabularyList = () => {

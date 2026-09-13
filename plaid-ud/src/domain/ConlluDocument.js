@@ -10,7 +10,7 @@ import {
   PROVENANCE_KEYS,
   writerPolicy,
 } from '@larc-iu/plaid-client';
-import { canManageProject } from '../utils/permissions.js';
+import { canManageProject } from '@ui/domain/permissions.js';
 import { isProvKey } from '../utils/provenanceUi.js';
 import {
   getUdLayerInfo,

@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Info, Layers, FileText, Languages, List, BookOpen, Check } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { cn } from '@ui/lib/utils';
-import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 
 // Step components
 import { BasicInfoStep } from './setup/BasicInfoStep';

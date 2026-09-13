@@ -1,12 +1,12 @@
-// The three things this package cannot know on its own, told to it once by the
-// app that mounts it. Call `configureUi` from the app's entry point, before
+// The things this package cannot know on its own, told to it once by the app
+// that mounts it. Call `configureUi` from the app's entry point, before
 // anything renders.
 //
-// Module-level state rather than a context, deliberately: both values are read
-// from places that are not components (a localStorage key builder, a native
-// DOM listener), there is exactly one app per bundle, and neither ever changes
-// while an app runs. A provider would put a React boundary around facts that
-// have nothing to do with the tree.
+// Module-level state rather than a context, deliberately: they are read from
+// places that are not components (a localStorage key builder, a native DOM
+// listener), there is exactly one app per bundle, and none of them ever
+// changes while an app runs. A provider would put a React boundary around
+// facts that have nothing to do with the tree.
 
 const DEFAULTS = {
   // Prefixes every localStorage key this package writes. Two apps on one
@@ -34,6 +34,11 @@ const DEFAULTS = {
   // of the bucket is this app's. No default, for the same reason `appPrefix`
   // has none: reading the wrong app's settings is silent and wrong.
   configNamespace: null,
+  // What the app is called on screen: 'Plaid IGT', 'Plaid UD'. The tab title
+  // ends with it. No default, for the same reason the two above have none: a
+  // wrong app name is silent, and a second module instance is exactly what
+  // this catches.
+  appName: null,
 };
 
 let config = { ...DEFAULTS };
@@ -56,6 +61,14 @@ export const appPrefix = () => {
 
 /** The app's compose attacher, or null. */
 export const composeAttacher = () => config.attachCompose;
+
+/** What the app is called on screen. Throws if the app never named itself. */
+export const appName = () => {
+  if (!config.appName) {
+    throw new Error('plaid-ui: no appName. Call configureUi({appName}) from the app entry.');
+  }
+  return config.appName;
+};
 
 /** The app's namespace in a config bucket. Throws if the app never named one. */
 export const configNamespace = () => {

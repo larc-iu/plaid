@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityPanel } from '@ui/components/shared/ActivityPanel';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { useManagedProject } from './useManagedProject.js';
-import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { ProjectTabs } from './ProjectTabs.jsx';
 
 // Who has been working on this project, and on what. Maintainers only, like

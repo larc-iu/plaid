@@ -14,7 +14,12 @@ import './index.css';
 // forgotten, and `igt` is its half of a project's config bucket. The composer
 // stays here because it reads the open project's own bound codes, and the
 // package just hands it the fields that opt in.
-configureUi({ appPrefix: 'plaid_igt', configNamespace: 'igt', attachCompose });
+configureUi({
+  appPrefix: 'plaid_igt',
+  configNamespace: 'igt',
+  appName: 'Plaid IGT',
+  attachCompose,
+});
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

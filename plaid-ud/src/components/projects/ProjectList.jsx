@@ -5,7 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { ProjectForm } from './ProjectForm';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { timeAgo, fullTimestamp } from '@ui/utils/formatTime.js';
-import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { Button } from '@ui/components/ui/button';
 import { Card } from '@ui/components/ui/card';
 import { DataTable } from '@ui/components/ui/data-table';

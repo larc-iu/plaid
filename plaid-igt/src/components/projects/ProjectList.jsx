@@ -14,7 +14,7 @@ import {
 import { notifyWarning } from '@/utils/feedback';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { timeAgo, fullTimestamp } from '@ui/utils/formatTime';
-import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 
 export const ProjectList = () => {
   useDocumentTitle('Projects');

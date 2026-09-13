@@ -25,7 +25,7 @@ const ProjectActivity = lazyNamed(() => import('./ProjectActivity.jsx'), 'Projec
 const ProjectExport = lazyNamed(() => import('./ProjectExport.jsx'), 'ProjectExport');
 import { readInitialized, readImportState, importRouteFor } from '@/domain/igtConfig';
 import { isReviewed } from '@larc-iu/plaid-client';
-import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { useTabParam } from '@/hooks/useTabParam';
 import { contentTabsFor, TAB_ALIASES } from '@/domain/projectTabs';
 import { cn } from '@ui/lib/utils';

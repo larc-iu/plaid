@@ -4,7 +4,7 @@ import { CommentsBrowser } from '@ui/components/shared/CommentsBrowser';
 import { useDocumentEditor } from '../editor/useDocumentEditor.js';
 import { useConlluDocument } from '../../domain/useConlluDocument.js';
 import { buildAnchorIndex } from '../../domain/commentAnchors.js';
-import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 
 // The document's Comments tab: every thread in it, the document's own pinned
 // first, each one a sentence you can jump to.

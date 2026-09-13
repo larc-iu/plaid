@@ -32,13 +32,19 @@ making it shared means giving it a flag for "the IGT case", it is two screens.
 
 ## What it does not know
 
-Two facts the package cannot work out for itself, told to it once from the app's
-entry point via `configureUi` (see `src/lib/uiConfig.js`):
+Facts the package cannot work out for itself, told to it once from the app's
+entry point via `configureUi` (see `src/lib/uiConfig.js`). The first three are
+REQUIRED and throw when read without one, so a forgotten `configureUi` or a
+second instance of the module is loud rather than silently wrong:
 
 - **`appPrefix`**: every localStorage key this package writes is prefixed with
   it, so a sort order remembered for one app's document list does not decide how
   another's opens. plaid-igt passes `plaid_igt`, which is the prefix its keys
   have always carried.
+- **`configNamespace`**: `igt` / `ud` / `dict`, the app's half of a project's
+  `config` bucket, for reading the service defaults a maintainer set per spot.
+- **`appName`**: what the app is called on screen, `Plaid IGT` / `Plaid UD`.
+  `useDocumentTitle` ends every tab title with it.
 - **`attachCompose`**: optional. `Input` and `Textarea` take a `compose` prop
   that turns on a character composer; the composer itself reads a project's own
   bound codes, so it lives in the app. An app that registers nothing leaves the

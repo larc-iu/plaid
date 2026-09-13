@@ -4,11 +4,11 @@ import { Info, Plus } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { DocumentForm } from './DocumentForm';
 import { ProjectTabs } from '../projects/ProjectTabs.jsx';
-import { canEditProject, canManageProject } from '../../utils/permissions.js';
+import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { timeAgo, fullTimestamp } from '@ui/utils/formatTime.js';
 import { notifyWarning } from '../../utils/feedback.jsx';
-import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { Button } from '@ui/components/ui/button';
 import { DataTable } from '@ui/components/ui/data-table';
 import {

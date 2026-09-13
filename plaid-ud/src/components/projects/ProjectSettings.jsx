@@ -3,11 +3,11 @@ import { useParams, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { ProjectCustomization } from './ProjectCustomization.jsx';
 import { ProjectManagement } from './ProjectManagement.jsx';
-import { ProjectAccessTokens } from './ProjectAccessTokens.jsx';
+import { ProjectAccessTokens } from '@ui/components/shared/ProjectAccessTokens.jsx';
 import { ProjectGeneral } from './ProjectGeneral.jsx';
 import { ProjectServicesSettings } from './ProjectServicesSettings.jsx';
 import { ProjectTabs } from './ProjectTabs.jsx';
-import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { cn } from '@ui/lib/utils';
 
 // The five settings sections, in order, with the label each wears in the nav

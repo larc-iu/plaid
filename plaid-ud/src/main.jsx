@@ -12,7 +12,7 @@ import App from './App.jsx';
 // apps decide how each other's lists open, and reads this app's half of a
 // project's config bucket under `configNamespace`. This app binds no compose
 // codes.
-configureUi({ appPrefix: 'plaid_ud', configNamespace: 'ud' });
+configureUi({ appPrefix: 'plaid_ud', configNamespace: 'ud', appName: 'Plaid UD' });
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

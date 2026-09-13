@@ -15,7 +15,7 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import { ServiceParamForm } from '@ui/components/services/ServiceParamForm.jsx';
 import { ServiceSummary } from '@ui/components/services/ServiceSummary.jsx';
 import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
-import { canManageProject } from '../../utils/permissions.js';
+import { canManageProject } from '@ui/domain/permissions.js';
 import {
   encodeServiceSelection,
   encodeBuiltinSelection,

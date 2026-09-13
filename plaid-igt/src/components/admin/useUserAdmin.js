@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { notifySuccess, notifyError } from '@/utils/feedback';
-import { isEmail, EMAIL_INVALID_MESSAGE } from '@/utils/email';
+import { isEmail, EMAIL_INVALID_MESSAGE } from '@ui/lib/email.js';
 
 // Account administration, shared by the two screens that do it: the Access tab
 // of a project (where an admin creates the account they are about to grant a

@@ -9,7 +9,7 @@ import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@ui/components/ui/card';
 import { timeAgo } from '@ui/utils/formatTime.js';
-import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 
 export const UserProfile = () => {
   useDocumentTitle('Profile');

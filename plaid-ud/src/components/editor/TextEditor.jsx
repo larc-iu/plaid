@@ -10,12 +10,12 @@ import {
   foreignAnnotationLossForWord,
 } from '../../utils/udLayerUtils.js';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
-import { canEditProject } from '../../utils/permissions.js';
+import { canEditProject } from '@ui/domain/permissions.js';
 import { TokenVisualizer } from './TokenVisualizer.jsx';
 import { useDocumentEditor } from './useDocumentEditor.js';
 import { ParseDialog } from './services/ParseDialog.jsx';
 import { TokenizeDialog } from './services/TokenizeDialog.jsx';
-import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 
 export const TextEditor = () => {
   // Project, document, the breadcrumbs/tab strip and the version-counter

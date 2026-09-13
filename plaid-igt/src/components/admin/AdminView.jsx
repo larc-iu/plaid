@@ -1,7 +1,7 @@
 import { Navigate } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@ui/components/ui/tabs';
 import { useAuth } from '../../contexts/AuthContext';
-import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { useTabParam, tabTo } from '../../hooks/useTabParam';
 import { AdminUsers } from './AdminUsers';
 import { AdminInvites } from './AdminInvites';

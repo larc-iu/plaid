@@ -6,7 +6,7 @@ import {
   PROVENANCE_KEYS,
   writerPolicy,
 } from '@larc-iu/plaid-client';
-import { canManageProject } from '../utils/permissions.js';
+import { canManageProject } from '@ui/domain/permissions.js';
 import { newHalfMetadata, survivorPatch } from './tokenReshape.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 import { readSpeakers, IGT_NAMESPACE } from './igtConfig.js';

@@ -31,7 +31,7 @@ import { deriveSetupData, runElanImport } from '../../import/elan/importEngine';
 import { useResumeImport } from '@/hooks/useResumeImport';
 import { useProjectImportRun } from '@/hooks/useProjectImportRun';
 
-import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { partitionPicked, useElanBatch } from './elan/useElanBatch';
 import { ElanBuildSummary, ElanTierReview, SchemaMismatch } from './elan/ElanTierReview.jsx';
 import { ElanDocumentsPanel } from './elan/ElanDocumentsPanel.jsx';

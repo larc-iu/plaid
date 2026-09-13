@@ -14,7 +14,7 @@ import { RunBanner } from '@ui/components/services/RunBanner.jsx';
 import { useEditorServices } from './hooks/useEditorServices.js';
 import { isReviewed } from '@larc-iu/plaid-client';
 import { UD_ASSISTANT } from '../assistant/adapter.js';
-import { canEditProject, canManageProject } from '../../utils/permissions.js';
+import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
 
 // Parent route of the four document tabs (/edit, /annotate, /export, /details).
 // It owns the project + ConlluDocument load and renders the breadcrumbs and the

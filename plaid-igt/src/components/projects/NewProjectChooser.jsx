@@ -4,7 +4,7 @@
 
 import { Link } from 'react-router-dom';
 import { PenLine, FileUp, Archive, Table2, AudioLines, ChevronRight } from 'lucide-react';
-import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 
 const OPTIONS = [
   {

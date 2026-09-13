@@ -11,10 +11,10 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { splitConlluByNewdoc } from '../../utils/conlluParser.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
-import { canEditProject } from '../../utils/permissions.js';
+import { canEditProject } from '@ui/domain/permissions.js';
 import { notifySuccess, notifyError, notifyWarning, humanizeError } from '../../utils/feedback.jsx';
 import { ProjectTabs } from './ProjectTabs.jsx';
-import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 
 // ---- helpers --------------------------------------------------------------
 

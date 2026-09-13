@@ -59,9 +59,9 @@ import { VocabularyMaintainers } from './VocabularyMaintainers';
 import { VocabularyCommentsTab } from './VocabularyCommentsTab';
 import { CommentStore } from '@ui/domain/CommentStore';
 import { useCommentStore } from '@ui/domain/useCommentStore';
-import { canEditProject } from '@/utils/permissions';
+import { canEditProject } from '@ui/domain/permissions.js';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
-import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { useTabParam } from '@/hooks/useTabParam';
 
 // Radix Select has no empty-string item value, so "no tagset" needs a sentinel.

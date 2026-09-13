@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { isReviewed } from '@larc-iu/plaid-client';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { canEditProject, canManageProject } from '../../utils/permissions.js';
+import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { Tabs, TabsList, TabsTrigger } from '@ui/components/ui/tabs';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';

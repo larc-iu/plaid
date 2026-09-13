@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { TriangleAlert } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
-import { canManageProject } from '../../utils/permissions.js';
+import { canManageProject } from '@ui/domain/permissions.js';
 import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
 import { ProjectTabs } from '../projects/ProjectTabs.jsx';
 import { parseAndCompile, parseGrs, looksLikeGrs, GrewError } from '../../grew/index.js';
@@ -16,7 +16,7 @@ import { QuickSearch } from './QuickSearch.jsx';
 import { CountBy } from './CountBy.jsx';
 import { refinePattern } from './refine.js';
 import { RewritePreview } from './RewritePreview.jsx';
-import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 
 // Ask for everything the query API will return. The server hard-caps an
 // entities query at 100k rows and has no offset/cursor, so this is effectively

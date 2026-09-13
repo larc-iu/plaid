@@ -53,7 +53,7 @@ import { discoverExportLayers } from '../../export/exportLayers';
 import { nodeLabel } from '../../import/elan/schema';
 import { suggestFieldNames } from '../../import/elan/tierNaming';
 import { defaultFieldName } from '../../import/elan/buildDocuments';
-import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { partitionPicked, useElanBatch } from './elan/useElanBatch';
 import { ElanBuildSummary, ElanTierReview, SchemaMismatch } from './elan/ElanTierReview.jsx';
 import { SCOPE_OF_ROLE } from '@/import/elan/schema';

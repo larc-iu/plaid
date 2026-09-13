@@ -1,7 +1,7 @@
 // Per-project access, derived from the project's permission arrays
 // (`maintainers` / `writers` / `readers`, all user-id lists) plus the user's
 // global `isAdmin` flag. Single source of truth so every screen agrees on what
-// a given user may do. Ported from plaid-ud.
+// a given user may do.
 //
 //   - Editing documents/annotations/text requires WRITE access
 //     (maintainer, writer, or admin).

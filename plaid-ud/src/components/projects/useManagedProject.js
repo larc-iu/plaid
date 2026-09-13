@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { notifyError } from '../../utils/feedback.jsx';
-import { canManageProject } from '../../utils/permissions.js';
+import { canManageProject } from '@ui/domain/permissions.js';
 
 // Shared loader + guard for manager-only project settings tabs (UD
 // Customization, General): fetch the project, expose a refetch for after

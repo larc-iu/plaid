@@ -1,12 +1,13 @@
 import { Link } from 'react-router-dom';
-import { Button } from '@ui/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@ui/components/ui/card';
+
+import { Button } from '../ui/button.jsx';
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/card.jsx';
 
 // "Access Tokens": a pointer to named API tokens, which are managed per-user on
 // the profile page. Programmatic access from an external service uses a named
 // token, which is individually revocable and attributed by name in the audit
 // log. The content is project-agnostic, so it fetches nothing.
-export const ProjectAccessTokens = () => (
+export const ProjectAccessTokens = ({ profileHref = '/profile' }) => (
   <Card>
     <CardHeader>
       <CardTitle className="text-lg">API access</CardTitle>
@@ -17,7 +18,7 @@ export const ProjectAccessTokens = () => (
         be revoked on its own, and its name appears in the audit history.
       </p>
       <Button asChild variant="outline">
-        <Link to="/profile">Manage API tokens</Link>
+        <Link to={profileHref}>Manage API tokens</Link>
       </Button>
       <p className="text-xs text-muted-foreground">
         Use a token to initialize a Python <code>PlaidClient</code> instance.

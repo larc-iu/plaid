@@ -1,9 +1,9 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { lazyNamed } from '@ui/lib/lazyNamed.js';
 import { Suspended } from '@ui/components/shared/Suspended.jsx';
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Layout } from './components/Layout';
-import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import { createProtectedRoute } from '@ui/components/shared/ProtectedRoute.jsx';
 import { LoginForm } from './components/auth/LoginForm';
 import { RedeemInvite } from './components/auth/RedeemInvite';
 import { UserProfile } from './components/auth/UserProfile';
@@ -51,6 +51,10 @@ const ExportEditor = lazyNamed(
   () => import('./components/editor/ExportEditor.jsx'),
   'ExportEditor',
 );
+
+// Bound here, at module scope: App is what renders the AuthProvider, so there
+// is no auth state above it to read.
+const ProtectedRoute = createProtectedRoute(useAuth);
 
 function App() {
   return (

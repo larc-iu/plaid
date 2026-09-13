@@ -9,7 +9,7 @@ import {
 } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { canEditProject } from '@/utils/permissions';
+import { canEditProject } from '@ui/domain/permissions.js';
 import { AlertTriangle } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@ui/components/ui/tabs';
 import { Button } from '@ui/components/ui/button';

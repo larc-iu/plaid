@@ -1,6 +1,6 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './contexts/AuthContext';
-import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { createProtectedRoute } from '@ui/components/shared/ProtectedRoute.jsx';
 import { LoginForm } from './components/auth/LoginForm';
 import { RedeemInvite } from './components/auth/RedeemInvite';
 import { ProjectList } from './components/projects/ProjectList';
@@ -47,6 +47,10 @@ const VocabularyDetail = lazyNamed(
   () => import('./components/vocabularies/VocabularyDetail'),
   'VocabularyDetail',
 );
+
+// Bound here, at module scope: App is what renders the AuthProvider, so there
+// is no auth state above it to read.
+const ProtectedRoute = createProtectedRoute(useAuth);
 
 function App() {
   return (
