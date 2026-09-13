@@ -23,10 +23,17 @@ import {
   SelectValue,
 } from '@ui/components/ui/select';
 
+// What each level grants, said where the choice is made. plaid-igt says the
+// same three lines on the same two screens; the levels are the server's, so
+// they must not read differently depending on which app you are in.
 const GRANT_ROLES = [
-  { value: 'reader', label: 'Reader' },
-  { value: 'writer', label: 'Writer' },
-  { value: 'maintainer', label: 'Maintainer' },
+  { value: 'reader', label: 'Reader', hint: 'Reads the treebank. Cannot comment.' },
+  { value: 'writer', label: 'Writer', hint: 'Also edits documents and their annotation.' },
+  {
+    value: 'maintainer',
+    label: 'Maintainer',
+    hint: 'Also changes settings and members, and deletes the project.',
+  },
 ];
 
 const STATUS_VARIANT = {
@@ -226,7 +233,8 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage }) =>
           <h3 className="text-lg font-semibold">Invitation links</h3>
           <p className="text-sm text-muted-foreground">
             Send someone a link instead of a password. They choose their own credentials and join{' '}
-            {projectName || 'this project'} automatically.
+            {projectName || 'this project'} automatically. A link is not addressed to anyone:
+            whoever opens it joins, including whoever it was forwarded to.
           </p>
         </div>
         <Button size="sm" onClick={() => setCreateOpen(true)}>
@@ -264,7 +272,7 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage }) =>
               </SelectTrigger>
               <SelectContent>
                 {GRANT_ROLES.map((r) => (
-                  <SelectItem key={r.value} value={r.value}>
+                  <SelectItem key={r.value} value={r.value} hint={r.hint}>
                     {r.label}
                   </SelectItem>
                 ))}
@@ -303,7 +311,9 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage }) =>
               value={note}
               onChange={(e) => setNote(e.target.value)}
             />
-            <p className="text-xs text-muted-foreground">Only you see this.</p>
+            <p className="text-xs text-muted-foreground">
+              Only you see this. It is the only place to record who the link was meant for.
+            </p>
           </div>
 
           <DialogFooter>

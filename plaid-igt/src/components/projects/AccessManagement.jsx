@@ -37,11 +37,19 @@ import {
 // Mirrors plaid-ud's ProjectManagement. The full user roster isn't fetched
 // (doesn't scale + is admin-gated); instead "Members" come from the project's
 // ACL and new grants come from a server-side `?q=` search.
+// What each level grants, said where the choice is made. This screen decides
+// what a class of fifteen can do and named the levels and nothing else, so the
+// only way to learn that a Reader cannot leave a comment was to give someone
+// Reader access and hear about it from them.
 const ROLE_OPTIONS = [
-  { value: 'none', label: 'No access' },
-  { value: 'reader', label: 'Reader' },
-  { value: 'writer', label: 'Writer' },
-  { value: 'maintainer', label: 'Maintainer' },
+  { value: 'none', label: 'No access', hint: 'Cannot open the project.' },
+  { value: 'reader', label: 'Reader', hint: 'Reads the texts and the lexicon. Cannot comment.' },
+  { value: 'writer', label: 'Writer', hint: 'Also edits documents and links vocabulary.' },
+  {
+    value: 'maintainer',
+    label: 'Maintainer',
+    hint: 'Also changes settings and members, and deletes the project.',
+  },
 ];
 const GRANT_ROLES = ['reader', 'writer', 'maintainer'];
 // Most access first, so the Project role column groups the way someone
@@ -213,7 +221,7 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
           </SelectTrigger>
           <SelectContent>
             {ROLE_OPTIONS.map((o) => (
-              <SelectItem key={o.value} value={o.value}>
+              <SelectItem key={o.value} value={o.value} hint={o.hint}>
                 {o.label}
               </SelectItem>
             ))}

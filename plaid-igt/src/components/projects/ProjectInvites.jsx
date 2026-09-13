@@ -37,6 +37,15 @@ const GRANT_ROLES = ['reader', 'writer', 'maintainer'];
 const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
 const EMPTY_FORM = { role: 'writer', maxUses: '1', ttlDays: '14', note: '' };
 
+// The same lines the Access screen puts under its role picker, said here too:
+// this is the other place the choice is made, and it is made for people who
+// have no account yet.
+const ROLE_HINTS = {
+  reader: 'Reads the texts and the lexicon. Cannot comment.',
+  writer: 'Also edits documents and links vocabulary.',
+  maintainer: 'Also changes settings and members, and deletes the project.',
+};
+
 const STATUS_VARIANT = {
   active: 'default',
   used: 'secondary',
@@ -235,7 +244,8 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage }) =>
           <h2 className="text-lg font-semibold">Invitation links</h2>
           <p className="text-sm text-muted-foreground">
             Send someone a link instead of a password. They choose their own credentials and join{' '}
-            {projectName ? <strong>{projectName}</strong> : 'this project'} automatically.
+            {projectName ? <strong>{projectName}</strong> : 'this project'} automatically. A link is
+            not addressed to anyone: whoever opens it joins, including whoever it was forwarded to.
           </p>
         </div>
         <Button size="sm" onClick={() => setCreateOpen(true)}>
@@ -278,7 +288,7 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage }) =>
                 </SelectTrigger>
                 <SelectContent>
                   {GRANT_ROLES.map((r) => (
-                    <SelectItem key={r} value={r}>
+                    <SelectItem key={r} value={r} hint={ROLE_HINTS[r]}>
                       {cap(r)}
                     </SelectItem>
                   ))}
@@ -296,7 +306,8 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage }) =>
                   onChange={(e) => setForm({ ...form, maxUses: e.target.value })}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Raise this to share one link with a whole class.
+                  Raise this to share one link with a whole class. Every use is a different person
+                  choosing their own account.
                 </p>
               </div>
               <div className="flex flex-1 flex-col gap-1.5">
@@ -319,7 +330,8 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage }) =>
                 onChange={(e) => setForm({ ...form, note: e.target.value })}
               />
               <p className="text-xs text-muted-foreground">
-                Only you see this. It is how you will recognize the link later.
+                Only you see this. It is how you will recognize the link later, and the only place
+                to record who it was meant for.
               </p>
             </div>
           </div>

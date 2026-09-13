@@ -162,6 +162,15 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
           onEnter={preview}
         />
         {error && <p className="text-sm text-destructive">Check your regex: {error}</p>}
+        {/* The lexicon's Replace has a fourth match, "is empty", and this one
+            does not: a field has no value on a word until something writes
+            one, so filling every blank means visiting every word rather than
+            matching what is there. Said here because this is where people
+            look for it first. */}
+        <p className="text-xs text-muted-foreground">
+          Replaces values that are already there. To fill in the words a field is missing on, find
+          them under Validation.
+        </p>
         <div className="flex items-center">
           <Button
             className="ml-auto"

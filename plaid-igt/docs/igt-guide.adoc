@@ -300,6 +300,11 @@ Four states are distinguished in the grid:
 * A **contributed** value shows in **amber italic**. It was entered by someone whose work the project reviews (see <<_access>>), and it waits for a verifier to confirm or discard it.
 * A **guess** is a faint gray placeholder in an empty cell. It is not in the document at all until you take it with Enter.
 The small form beneath a word or morpheme is the lexicon entry it is linked to, and nothing beneath it means it has no link.
+
+Marks say what is still waiting to be looked at, not what has been signed off.
+A value you typed is plain from the moment you type it, and so is one you confirmed, so there is no separate "I have checked this" state and no document-level one either.
+Deciding in advance that someone's work is provisional is what **Review work** on the Access screen does.
+Recording after the fact that a text is settled is a job for a document metadata field of your own, which you can then sort and filter the document list by.
 A guess on a **pale teal** background comes from that entry rather than from elsewhere in the project.
 A guess on plain background comes from what the same form was given elsewhere in the project.
 
@@ -372,6 +377,8 @@ See <<_headwords_and_senses>>.
 It lets you map the columns onto the entry fields, then reviews each row against the entries that already exist before anything is created, so a homonym stays separate and an existing entry is never overwritten unless you say so.
 **Replace** finds text in one field of every entry, the form included, and replaces it: as plain text, as a whole value, or as a regular expression.
 A fourth kind, **is empty**, matches the entries that have no value in the field and sets one, which is how a status is given to a lexicon imported without any.
+It has no counterpart in Bulk Edit: an annotation field has no value on a word until something writes one, so filling every blank means visiting every word rather than matching what is there.
+Use **Validation** to find the words a field is missing on, or ask the assistant.
 Each entry it would change is listed with its old and new value, and only the ticked ones are written.
 A value the field's tagset refuses is listed but never written.
 **Export** downloads the table as a tab-separated file that opens in any spreadsheet.
@@ -881,9 +888,11 @@ Restoring is for a project's maintainers.
 
 Projects are shared by adding members, each with a role:
 
-* **Reader**: can view everything but make no edits.
+* **Reader**: can view everything but make no edits, comments included.
 * **Writer**: can edit documents and link vocabulary.
 * **Maintainer**: can also change project settings, manage members, and delete the project.
+
+A Reader not being able to comment is the one that catches people out, so the role picker on the Access screen says it too, under each level.
 
 Add and manage members under the project's **Settings**, in **Access**.
 Members are found by their email address.
@@ -892,6 +901,8 @@ When you only have Reader access, the editor shows everything, but a banner says
 **Invitation links** let people join without an administrator creating each account.
 A maintainer mints a link that grants a role on the project, good for a set number of uses and a set number of days.
 Whoever opens it chooses their own password and lands in the project.
+A link is not addressed to anyone, so whoever it reaches can use it, and a link raised to fifteen uses for a class admits whoever those fifteen people forward it to.
+The private **Label** on a link is where to record who it was meant for; nothing checks that.
 A link can be revoked at any time, and it stops working on its own if the person who made it loses the authority it grants.
 
 An **administrator** can also create accounts directly from the same Access section, and can mint a password-reset link for someone who is locked out.
