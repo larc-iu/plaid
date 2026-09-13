@@ -185,16 +185,30 @@ export const VocabularyManager = ({
     return vocabularies.some((vocab) => vocab.name.toLowerCase() === trimmedName.toLowerCase());
   };
 
+  // What the arrows order is the LINKED vocabularies among themselves, since
+  // those are the only rows that carry them, so a move swaps a row with the
+  // next linked row wherever that sits rather than with whatever happens to be
+  // next in the whole list. That also makes the arrows independent of the
+  // search and the page: they used to step through the full array, which on
+  // page 2 of a searched list would have moved a row past neighbours nobody
+  // could see.
+  const linkedNeighbour = (vocabId, direction) => {
+    const at = vocabularies.findIndex((v) => v.id === vocabId);
+    if (at === -1) return -1;
+    const step = direction === 'up' ? -1 : 1;
+    for (let i = at + step; i >= 0 && i < vocabularies.length; i += step) {
+      if (vocabularies[i].enabled) return i;
+    }
+    return -1;
+  };
+
   const handleMoveVocab = async (vocabId, direction) => {
     const currentIndex = vocabularies.findIndex((vocab) => vocab.id === vocabId);
-    if (currentIndex === -1) return;
-
-    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-    if (newIndex < 0 || newIndex >= vocabularies.length) return;
+    const newIndex = linkedNeighbour(vocabId, direction);
+    if (currentIndex === -1 || newIndex === -1) return;
 
     const newVocabs = [...vocabularies];
-    const [movedVocab] = newVocabs.splice(currentIndex, 1);
-    newVocabs.splice(newIndex, 0, movedVocab);
+    [newVocabs[currentIndex], newVocabs[newIndex]] = [newVocabs[newIndex], newVocabs[currentIndex]];
 
     await saveChanges(newVocabs);
   };
@@ -218,9 +232,6 @@ export const VocabularyManager = ({
   const q = query.trim().toLowerCase();
   const shown = q ? tableData.filter((v) => (v.name || '').toLowerCase().includes(q)) : tableData;
   const paged = usePagedList(shown, { resetKey: q });
-  // Reordering is by position in the WHOLE list, so it is offered only on the
-  // unfiltered first page, where what moves is what you see move.
-  const canReorder = !q && paged.pageCount === 1;
 
   // Don't render until initialized
   if (!isInitialized || loading) {
@@ -312,7 +323,7 @@ export const VocabularyManager = ({
                         {/* Only show move buttons in setup mode, and only for
                             vocabs that are actually being linked — ordering an
                             unlinked row is meaningless. */}
-                        {!isSettings && record.enabled && canReorder && (
+                        {!isSettings && record.enabled && (
                           <>
                             <Button
                               size="icon"
@@ -325,7 +336,7 @@ export const VocabularyManager = ({
                                 event.stopPropagation();
                                 handleMoveVocab(record.id, 'up');
                               }}
-                              disabled={tableData.findIndex((item) => item.id === record.id) === 0}
+                              disabled={linkedNeighbour(record.id, 'up') === -1}
                             >
                               <ChevronUp className="h-3 w-3" />
                             </Button>
@@ -340,10 +351,7 @@ export const VocabularyManager = ({
                                 event.stopPropagation();
                                 handleMoveVocab(record.id, 'down');
                               }}
-                              disabled={
-                                tableData.findIndex((item) => item.id === record.id) ===
-                                tableData.length - 1
-                              }
+                              disabled={linkedNeighbour(record.id, 'down') === -1}
                             >
                               <ChevronDown className="h-3 w-3" />
                             </Button>
