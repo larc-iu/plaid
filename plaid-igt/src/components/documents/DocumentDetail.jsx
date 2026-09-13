@@ -36,6 +36,7 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useTabParam, tabTo } from '@/hooks/useTabParam';
 import { useComposeProject } from '@/hooks/useCompose';
 import { isReviewed } from '@larc-iu/plaid-client';
+import { EdgeRail } from '@ui/components/shared/EdgeRail.jsx';
 import { useAssistantSubject } from '@ui/components/assistant/subject.js';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
@@ -613,16 +614,18 @@ const DocumentEditor = () => {
         }}
       />
 
-      {/* History rail trigger (left edge) */}
+      {/* History rail trigger (left edge). The assistant's rail is the same
+          component on the right edge — see EdgeRail. */}
       {!history.open && (
-        <button
-          type="button"
+        <EdgeRail
+          side="left"
+          label="Open history"
+          title="Open history"
           onClick={handleOpenHistory}
-          aria-label="Open history"
-          className="group fixed left-0 top-1/2 z-[1000] flex h-28 w-1.5 -translate-y-1/2 items-center justify-center rounded-r-md bg-neutral-400 transition-all hover:w-10 hover:bg-neutral-600"
+          className="z-[1000]"
         >
           <History className="h-4 w-4 text-white opacity-0 transition-opacity group-hover:opacity-100" />
-        </button>
+        </EdgeRail>
       )}
 
       {/* The PAGE scrolls, whether or not the assistant is open. The panel is
