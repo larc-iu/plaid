@@ -597,6 +597,20 @@
   padding-right: 8px;
   padding-left: 8px;
   border-left: 3px solid transparent;
+  cursor: pointer;
+}
+/* The label opens the Rows menu, which is where a row's scope is written out
+   ("Gloss  morpheme") and where rows are hidden. It is already a button to a
+   screen reader and its title says the scope, but on screen it was plain text,
+   so a grid with a word Gloss and a morpheme Gloss in it read as two rows with
+   the same name and no way to tell them apart short of the colour bar. */
+.igt-row-label:hover {
+  background: var(--igt-gray-100);
+  color: var(--igt-gray-900);
+}
+.igt-row-label:focus-visible {
+  outline: 2px solid var(--igt-blue);
+  outline-offset: -2px;
 }
 /* Long field/orthography names (e.g. "lez-Qaaa-AZ-x-Tran-lat") must not spill
    into the token grid — truncate with an ellipsis; the row's title attr keeps
