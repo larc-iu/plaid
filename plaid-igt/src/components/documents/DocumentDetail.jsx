@@ -152,7 +152,10 @@ const DocumentEditor = () => {
   // The active tab lives in ?tab=, so a reload, a bookmark, and the back button
   // all keep the tab the user was on, and a search/concordance click-through
   // can open the document straight onto Analyze.
-  const [activeTab, setActiveTab] = useTabParam(TABS, DEFAULT_TAB);
+  // Every tab writes itself, Metadata included: here a bare URL means "no tab
+  // chosen", which is what the landing effect below reads, so Metadata cannot
+  // also be the bare URL without becoming unshareable.
+  const [activeTab, setActiveTab] = useTabParam(TABS, DEFAULT_TAB, 'tab', true);
   const [loadError, setLoadError] = useState('');
 
   // Base path for the tab links (each tab is `?tab=`, the default is the bare
@@ -717,22 +720,40 @@ const DocumentEditor = () => {
                   <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
                     {crumbs}
                     <TabsList>
-                      <TabsTrigger value="metadata" to={tabTo(docPath, 'metadata', DEFAULT_TAB)}>
+                      <TabsTrigger
+                        value="metadata"
+                        to={tabTo(docPath, 'metadata', DEFAULT_TAB, 'tab', true)}
+                      >
                         <FileText className="h-4 w-4" /> Metadata
                       </TabsTrigger>
-                      <TabsTrigger value="baseline" to={tabTo(docPath, 'baseline', DEFAULT_TAB)}>
+                      <TabsTrigger
+                        value="baseline"
+                        to={tabTo(docPath, 'baseline', DEFAULT_TAB, 'tab', true)}
+                      >
                         <Type className="h-4 w-4" /> Baseline
                       </TabsTrigger>
-                      <TabsTrigger value="media" to={tabTo(docPath, 'media', DEFAULT_TAB)}>
+                      <TabsTrigger
+                        value="media"
+                        to={tabTo(docPath, 'media', DEFAULT_TAB, 'tab', true)}
+                      >
                         <Mic className="h-4 w-4" /> Media
                       </TabsTrigger>
-                      <TabsTrigger value="tokenize" to={tabTo(docPath, 'tokenize', DEFAULT_TAB)}>
+                      <TabsTrigger
+                        value="tokenize"
+                        to={tabTo(docPath, 'tokenize', DEFAULT_TAB, 'tab', true)}
+                      >
                         <Play className="h-4 w-4" /> Tokenize
                       </TabsTrigger>
-                      <TabsTrigger value="analyze" to={tabTo(docPath, 'analyze', DEFAULT_TAB)}>
+                      <TabsTrigger
+                        value="analyze"
+                        to={tabTo(docPath, 'analyze', DEFAULT_TAB, 'tab', true)}
+                      >
                         <Table className="h-4 w-4" /> Analyze
                       </TabsTrigger>
-                      <TabsTrigger value="comments" to={tabTo(docPath, 'comments', DEFAULT_TAB)}>
+                      <TabsTrigger
+                        value="comments"
+                        to={tabTo(docPath, 'comments', DEFAULT_TAB, 'tab', true)}
+                      >
                         <MessageSquare className="h-4 w-4" /> Comments
                         {commentCount > 0 && (
                           <span className="ml-1 rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
@@ -740,7 +761,10 @@ const DocumentEditor = () => {
                           </span>
                         )}
                       </TabsTrigger>
-                      <TabsTrigger value="export" to={tabTo(docPath, 'export', DEFAULT_TAB)}>
+                      <TabsTrigger
+                        value="export"
+                        to={tabTo(docPath, 'export', DEFAULT_TAB, 'tab', true)}
+                      >
                         <Download className="h-4 w-4" /> Export
                       </TabsTrigger>
                     </TabsList>
