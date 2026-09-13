@@ -913,9 +913,6 @@ export const VocabularyDetail = () => {
   }
 
   return (
-    // Centred and capped, until the assistant is docked on the Entries tab:
-    // then the row spans the window so the panel sits against its right edge
-    // instead of leaving a column of nothing beside it.
     <div className="mx-auto max-w-7xl px-4 py-8">
       <div className="flex flex-col gap-6">
         <nav className="flex items-center gap-2 text-sm text-muted-foreground">

@@ -8,6 +8,7 @@ import {
   useReducer,
 } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { isReviewed } from '@larc-iu/plaid-client';
 import { useAuth } from '@/contexts/AuthContext';
 import { canEditProject } from '@ui/domain/permissions.js';
 import { AlertTriangle } from 'lucide-react';
@@ -74,7 +75,8 @@ import { EntryEditor } from './EntryEditor';
 import { ConcordancePanel } from './ConcordancePanel';
 import { EntryDialogs } from './EntryDialogs';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
-import { useAssistantSubject } from '@ui/components/assistant/subject.js';
+import { useAskAssistant, useAssistantSubject } from '@ui/components/assistant/subject.js';
+import { useWideEnoughToDock } from '@ui/components/assistant/useDock.js';
 import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 
@@ -265,25 +267,25 @@ export const VocabularyItems = ({
     };
   }, [client, vocabularyId]);
   const assistantAvailable = useAssistantAvailable(client, assistantProject?.id, IGT_ASSISTANT.app);
+  // Ask sets a focus and the SHELL opens the panel on it, so in a window with
+  // no room for a panel the button did nothing at all when pressed.
+  const wideEnoughForAssistant = useWideEnoughToDock();
 
+  const askAssistant = useAskAssistant();
   const askAboutEntry = () => {
     if (!selectedItem) return;
     // The reference is the one `find_entry` accepts back: the form, with its
     // homograph number after a "#". The label is what the screen shows, which
     // writes the number out rather than subscripting it.
     //
-    // Sent over the same window event the interlinear island's own Ask uses.
-    // The panel is the shell's now, so this both opens it and hands it the
-    // chip, and neither is this screen's to do directly.
+    // Straight through the provider this screen is already under. The window
+    // event is the island's escape hatch, for vanilla code that has no hook to
+    // call, and it had no business in React.
     const n = numbers.get(selectedItem.id);
-    window.dispatchEvent(
-      new CustomEvent('igt:ask-assistant', {
-        detail: {
-          ref: n ? `${selectedItem.form}#${n}` : selectedItem.form,
-          label: itemLabel(selectedItem, numbers),
-        },
-      }),
-    );
+    askAssistant({
+      ref: n ? `${selectedItem.form}#${n}` : selectedItem.form,
+      label: itemLabel(selectedItem, numbers),
+    });
   };
 
   const homographs = useMemo(
@@ -581,6 +583,10 @@ export const VocabularyItems = ({
     id: vocabularyId,
     name: vocabulary?.name,
     canWrite: canEditProject(assistantProject, user),
+    contributor:
+      !!assistantProject &&
+      !!user &&
+      isReviewed(assistantProject, user.id, { isAdmin: !!user.isAdmin }),
     onApplied: handleImported,
     // What `@` offers in the composer: this vocabulary's entries, by the
     // reference `find_entry` takes (the form, and its homograph number after a
@@ -986,7 +992,7 @@ export const VocabularyItems = ({
                     )}
                   </TabsTrigger>
                 </TabsList>
-                {assistantAvailable && selectedItem && (
+                {assistantAvailable && wideEnoughForAssistant && selectedItem && (
                   <Button
                     type="button"
                     variant="ghost"
