@@ -23,6 +23,7 @@ import { Turn } from './Turn.jsx';
 import { MentionList } from './MentionList.jsx';
 import { activeMention, filterMentions, insertMention } from './mentions.js';
 import { flattenOptions, normalizeOptions } from '../ui/combobox.jsx';
+import { formatElapsed } from '../../hooks/useRunProgress.js';
 import {
   attachJob,
   buildMeta,
@@ -243,6 +244,14 @@ export const ProjectAssistant = ({
   // The conversation whose last turn the user stopped by hand, so the banner
   // that follows can say so rather than reporting a failure that did not happen.
   const [userStopped, setUserStopped] = useState(null);
+  // What that turn had already done when it was stopped. The live list lives
+  // inside the `busy` block and goes with it, so stopping used to clear the
+  // screen of everything the turn had got through, which is the one thing a
+  // reader wants at that moment.
+  const [stoppedSteps, setStoppedSteps] = useState([]);
+  // How long the current turn has been going. A turn that sits on "Writing…"
+  // for eleven minutes is indistinguishable from a dead one without this.
+  const [elapsedMs, setElapsedMs] = useState(0);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const openSeq = useRef(0); // the latest open() request, so a stale read is ignored
@@ -346,8 +355,18 @@ export const ProjectAssistant = ({
     };
   }, [allProjects, client]);
 
+  // Half-second tick, the same cadence and format the service runs use.
+  useEffect(() => {
+    if (!busy) return undefined;
+    const t0 = Date.now();
+    setElapsedMs(0);
+    const id = setInterval(() => setElapsedMs(Date.now() - t0), 500);
+    return () => clearInterval(id);
+  }, [busy]);
+
   const showJob = (j) => {
     setUserStopped(null);
+    setStoppedSteps([]);
     setBusy(j.kind);
     setProgress(j.progress);
     setLiveSteps(j.steps);
@@ -634,6 +653,7 @@ export const ProjectAssistant = ({
     // banner below tells the user "No answer came back for this message", which
     // blames the model for the user's own click.
     setUserStopped(activeRef.current?.id ?? null);
+    setStoppedSteps(liveSteps);
     return stopJob(client, projectId, jobFor(activeRef.current?.id));
   };
 
@@ -1050,6 +1070,15 @@ export const ProjectAssistant = ({
                 onDiscard={() => discard(i)}
               />
             ))}
+            {canRetryTurn && stoppedSteps.length > 0 && (
+              <div className="flex flex-col gap-1 text-sm text-muted-foreground">
+                {stoppedSteps.map((m, i) => (
+                  <div key={i} className="flex items-center gap-2 pl-6 text-xs">
+                    <Check className="h-3 w-3" /> {m}
+                  </div>
+                ))}
+              </div>
+            )}
             {canRetryTurn && (
               <div className="flex items-center gap-3 rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">
                 <span className="flex-1">
@@ -1097,6 +1126,9 @@ export const ProjectAssistant = ({
                   <span className="animate-pulse">
                     {progress || (busy === 'apply' ? 'Applying changes…' : 'Thinking…')}
                   </span>
+                  {/* The only moving part when the service goes quiet, and the
+                    difference between "this is slow" and "this is dead". */}
+                  <span className="tabular-nums text-xs">{formatElapsed(elapsedMs)}</span>
                   {busy === 'turn' && (
                     <Button
                       type="button"
