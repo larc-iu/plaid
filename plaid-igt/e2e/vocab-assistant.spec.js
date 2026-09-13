@@ -135,6 +135,9 @@ test('Ask is not offered in a window with no room for the panel', async ({ page 
   await page.setViewportSize({ width: 900, height: 800 });
   await openEntries(page);
   await page.getByRole('link', { name: /^gam/ }).first().click();
+  // The entry really is open: without this the assertion below would pass on a
+  // screen that simply had not loaded.
+  await expect(page.getByRole('tab', { name: 'Concordance' })).toBeVisible({ timeout: 8000 });
   await expect(page.getByRole('button', { name: 'Ask', exact: true })).toHaveCount(0);
 });
 
