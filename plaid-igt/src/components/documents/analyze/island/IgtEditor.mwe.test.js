@@ -223,6 +223,18 @@ describe('gathering words into a multi-word expression', () => {
     expect(document.activeElement).toBe(cell);
   });
 
+  it('Cmd+Shift+→ skips a word too', () => {
+    // Ctrl+Arrow is Mission Control on a Mac, so Cmd is the only key that can
+    // carry this one there.
+    mount();
+    const cell = host.querySelector('[data-cell-key="wa:w-1:POS"]');
+    cell.focus();
+    key(cell, 'ArrowRight', { shiftKey: true });
+    key(cell, 'ArrowRight', { shiftKey: true, metaKey: true });
+    key(cell, 'ArrowRight', { shiftKey: true });
+    expect(selectedForms()).toEqual(['w-1', 'w-2', 'w-4']);
+  });
+
   it('inside a value Shift+→ is still text selection', () => {
     mount();
     const cell = host.querySelector('[data-cell-key="wa:w-1:POS"]');

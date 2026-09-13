@@ -173,8 +173,7 @@ export const mwe = {
       else notifyInfo('Add another word first: Shift+click it, or Shift+→ from a cell');
       return true;
     }
-    if ((e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || !e.shiftKey || e.altKey || e.metaKey)
-      return false;
+    if ((e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || !e.shiftKey || e.altKey) return false;
     const el = e.target;
     const wordId = el?.closest?.('[data-word-col]')?.dataset.wordCol ?? sel?.cursorId;
     if (!wordId) return false;
@@ -190,7 +189,10 @@ export const mwe = {
     }
     e.preventDefault();
     e.stopPropagation();
-    this._mweStep(wordId, e.key === 'ArrowRight' ? 1 : -1, { skip: e.ctrlKey });
+    // Cmd as well as Ctrl, like every other chord here. Inside a value this
+    // takes Cmd+Shift+Arrow only at the edge the caret is already on, where
+    // the native select-to-line-end has nothing to select.
+    this._mweStep(wordId, e.key === 'ArrowRight' ? 1 : -1, { skip: e.ctrlKey || e.metaKey });
     return true;
   },
 
