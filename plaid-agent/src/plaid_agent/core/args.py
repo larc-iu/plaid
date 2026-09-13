@@ -4,9 +4,12 @@ A tool's arguments arrive from the model, so "20 or so" is as likely as 20.
 Every refusal a tool makes is a sentence the model can act on, and `int()`
 raising is the one that is not: it answers with a Python message about base 10
 from a module whose whole contract is the opposite.
+
+So no tool calls `int()` on an argument. It calls one of these, which say what
+was wrong in the same voice as every other refusal.
 """
 
-from typing import Any
+from typing import Any, Optional
 
 
 def clamp_limit(raw: Any, default: int, cap: int, name: str = 'limit') -> int:
@@ -15,10 +18,50 @@ def clamp_limit(raw: Any, default: int, cap: int, name: str = 'limit') -> int:
     Raises :class:`ValueError` with a readable sentence when it is not a
     number, which `call_tool` hands back to the model as the tool's answer.
     """
+    return read_int(raw, name, default, minimum=1, maximum=cap)
+
+
+def read_int(raw: Any, name: str, default: Optional[int] = None,
+             minimum: Optional[int] = None, maximum: Optional[int] = None) -> Any:
+    """``raw`` as an int, ``default`` when it is absent, clamped into
+    ``[minimum, maximum]`` where those are given.
+
+    The sibling of :func:`clamp_limit` for a number with no cap of its own: a
+    position, an offset, a count the tool bounds for itself. Raises
+    :class:`ValueError` with a readable sentence when it is not a number.
+    """
     if raw is None or raw == '':
         return default
+    if isinstance(raw, bool):  # True would otherwise read as 1
+        raise ValueError(f'"{name}" has to be a number, not {raw!r}.')
     try:
         n = int(raw)
     except (TypeError, ValueError):
         raise ValueError(f'"{name}" has to be a number, not {raw!r}.') from None
-    return max(1, min(n, cap))
+    if minimum is not None:
+        n = max(minimum, n)
+    if maximum is not None:
+        n = min(maximum, n)
+    return n
+
+
+def sentence_number(raw: Any, name: str = 'sentence') -> Optional[int]:
+    """A sentence number written any way a read prints it: ``34``, ``"34"``,
+    ``"s34"``, or ``"s34.w2"`` (the word's sentence).
+
+    The model reads references out of a rendered document and writes them
+    back, so a number argument is as likely to arrive as "s34". Raises
+    :class:`ValueError` with a readable sentence for anything else.
+    """
+    if raw is None or raw == '':
+        return None
+    if isinstance(raw, bool):
+        raise ValueError(f'"{raw}" does not name a sentence. Use a number or a reference like "s34".')
+    if isinstance(raw, int):
+        return raw
+    head = str(raw).strip().split('.')[0]
+    if head[:1].lower() == 's':
+        head = head[1:]
+    if not head.isdigit():
+        raise ValueError(f'"{raw}" does not name a sentence. Use a number or a reference like "s34".')
+    return int(head)

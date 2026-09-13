@@ -22,6 +22,7 @@ import unicodedata
 
 from plaid_client.provenance import prov_state, MACHINE
 
+from ..core.args import clamp_limit, read_int, sentence_number
 from ..core.limits import MAX_RESULT_CHARS
 from ..core.plan import PLAN_MAX_OPS, PlanFull, reserve as core_reserve
 
@@ -842,8 +843,8 @@ def t_list_documents(ws: Workspace, pattern: Optional[str] = None, metadata_fiel
         want = (value or '').casefold()
         docs = [d for d in docs if str((metas.get(d['id']) or {}).get(name, '') or '').casefold() == want
                 or (not want and not (metas.get(d['id']) or {}).get(name))]
-    limit = max(1, min(int(limit or 100), 500))
-    offset = max(0, int(offset or 0))
+    limit = clamp_limit(limit, 100, 500)
+    offset = read_int(offset, 'offset', 0, minimum=0)
     page = docs[offset:offset + limit]
     head = f'{len(docs)} document{"s" if len(docs) != 1 else ""}' + (' matching' if pattern or metadata_field else '') \
         + (f', showing {offset + 1}-{offset + len(page)}' if len(docs) > len(page) else '') + ':'
@@ -855,8 +856,8 @@ def t_list_documents(ws: Workspace, pattern: Optional[str] = None, metadata_fiel
 
 def t_read_document(ws: Workspace, document: str, from_sentence: int = 1, to_sentence: Optional[int] = None) -> str:
     doc = ws.doc(document)
-    return render_document(doc, ws.project, start=int(from_sentence or 1),
-                           end=int(to_sentence) if to_sentence else None,
+    return render_document(doc, ws.project, start=sentence_number(from_sentence, 'from_sentence') or 1,
+                           end=sentence_number(to_sentence, 'to_sentence'),
                            ref_name=ws.corpus.ref_name(doc.id), budget=MAX_RESULT_CHARS - 100)
 
 
@@ -865,7 +866,7 @@ def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document
     if not pattern:
         raise ToolError('Give a pattern (to list items LACKING a value, use worklist).')
     match = _matcher(pattern, bool(regex), bool(case_sensitive))
-    limit = max(1, min(int(limit or 40), 200))
+    limit = clamp_limit(limit, 40, 200)
     where_name = (where or 'baseline').strip()
     if where_name.lower().startswith('field:'):
         where_name = where_name[6:].strip()
@@ -932,7 +933,7 @@ def t_read_lexicon(ws: Workspace, lexicon: Optional[str] = None, pattern: Option
     if not vocabs:
         return 'This project has no lexicon.'
     match = _matcher(pattern, False) if pattern else (lambda s: True)
-    limit = max(1, min(int(limit or 80), 500))
+    limit = clamp_limit(limit, 80, 500)
     lines = []
     for v in vocabs:
         view = ws.view(v)
@@ -990,7 +991,7 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
     questions (what precedes/follows X, does X vary by context)."""
     if not pattern:
         raise ToolError('Give a pattern.')
-    limit = max(1, min(int(limit or 60), 300))
+    limit = clamp_limit(limit, 60, 300)
     where_l = (where or 'morpheme').lower()
     field = None
     if where_l not in ('baseline', 'morpheme'):
@@ -1191,7 +1192,7 @@ def t_lexicon_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Op
         lines.extend(f'  {r}' for r in view.ref_summary(target))
         lines.extend(_dictionary_lines(ws, view, target))
     word_links, morph_links, mwes, exs = 0, 0, 0, []
-    examples = max(0, min(int(examples or 3), 20))
+    examples = read_int(examples, 'examples', 3, minimum=0, maximum=20)
     if not ws.prefer_scan:
         from .corpus import q_entry_usage
         word_links, morph_links, mwes, exs = q_entry_usage(ws, target['id'], examples)
@@ -1393,7 +1394,7 @@ def t_recent_changes(ws: Workspace, document: Optional[str] = None, limit: int =
     name or email. Without `since`, recent windows are read first and
     widened until `limit` entries are in hand."""
     import datetime
-    limit = max(1, min(int(limit or 20), 100))
+    limit = clamp_limit(limit, 20, 100)
     ws.on_progress('Reading the change history…')
     u = (user or '').casefold()
 
@@ -2586,7 +2587,7 @@ def t_comments(ws: Workspace, document: Optional[str] = None, ref: Optional[str]
     """The comments people have left: on one thing (document + ref, and
     field for one of its values), in one document, or in the whole project;
     oldest first, the newest `limit` shown."""
-    limit = max(1, min(int(limit or 50), MAX_COMMENTS))
+    limit = clamp_limit(limit, 50, MAX_COMMENTS)
     ws.on_progress('Reading the comments…')
     doc = ws.doc(document) if document else None
     if ref and doc is None:

@@ -14,7 +14,7 @@ from plaid_client.provenance import prov_state, CONTRIBUTED_STATE, PROV_SOURCE_K
 from .project import IgtDoc, Sentence, Word, REVIEWABLE, mwe_form, render_word, segmentation, word_ref
 from .tools import Workspace, ToolError, _matcher, _truncate, entry_line
 from .vocab import descendants_of, validate_vocab_refs
-from ..core.args import clamp_limit
+from ..core.args import clamp_limit, read_int
 
 
 def _pct(n, d):
@@ -209,6 +209,7 @@ def t_frequency_list(ws: Workspace, what: str = 'wordform', document: Optional[s
     """Counts with document dispersion for wordforms, morpheme forms, or a
     field's values."""
     limit = clamp_limit(limit, 100, 1000)
+    min_count = read_int(min_count, 'min_count', 1, minimum=1)
     what_l = (what or 'wordform').lower()
     counts: Counter = Counter()
     spread: Dict[str, set] = defaultdict(set)
@@ -259,7 +260,7 @@ def t_frequency_list(ws: Workspace, what: str = 'wordform', document: Optional[s
                             spread[sp.value].add(d.id)
                         else:
                             empty += 1
-    items = [(k, n) for k, n in counts.most_common() if n >= max(1, int(min_count or 1))]
+    items = [(k, n) for k, n in counts.most_common() if n >= min_count]
     return _frequency_lines(items, spread, empty, field, what_l, limit)
 
 

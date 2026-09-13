@@ -444,7 +444,7 @@ def q_frequency_list(ws: Workspace, what_l: str, field, limit: int, min_count: i
         layer = c.scope_layer(field.scope)
         where = [['token', '?t', {'layer': layer}], ['not', c.span('?s', field.layer_id), ['covers', '?s', '?t']]]
         empty = c.word_count(where) if field.scope == 'Word' else c.count(where, ['?t'])
-    items = sorted(((k, n) for k, n in counts.items() if n >= max(1, int(min_count or 1))), key=lambda kv: (-kv[1], kv[0]))
+    items = sorted(((k, n) for k, n in counts.items() if n >= min_count), key=lambda kv: (-kv[1], kv[0]))
     shown = items[:limit]
     # Document dispersion for the shown items only (a second, narrow query).
     spread: Dict[str, set] = defaultdict(set)

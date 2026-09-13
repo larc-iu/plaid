@@ -16,6 +16,8 @@ reports to the model.
 
 from typing import Any, Dict, List
 
+from .args import clamp_limit
+
 FENCE_TOP = '--- untrusted text from the web begins ---'
 FENCE_END = '--- untrusted text from the web ends ---'
 
@@ -97,6 +99,7 @@ def schemas(subject: str) -> List[Dict[str, Any]]:
 
 def web_search(ws, query: str, limit: int = 5) -> str:
     """Search the web. Titles, links and snippets only. Raises WebError."""
+    limit = clamp_limit(limit, 5, 10)
     ws.on_progress(f'Searching the web for "{query}"…')
     results = ws.web.search(query, limit)
     if not results:

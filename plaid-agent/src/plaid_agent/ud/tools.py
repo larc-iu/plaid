@@ -14,6 +14,7 @@ import re
 import uuid
 from typing import Any, Dict, List, Optional
 
+from ..core.args import clamp_limit, read_int, sentence_number
 from ..core.limits import MAX_RESULT_CHARS
 from ..core.plan import PLAN_MAX_OPS, PlanFull, reserve as core_reserve
 from .project import (MISSING, Sentence, Token, UdDoc, UdProject, Word, load_document, parse_ref,
@@ -311,8 +312,8 @@ def t_list_documents(ws: Workspace, pattern: str = None, limit: int = 50, offset
         docs = [d for d in docs if pattern.lower() in (d.get('name') or '').lower()]
     if not docs:
         return 'No documents matched.' if pattern else 'The project has no documents.'
-    limit = max(1, min(int(limit or 50), 200))
-    offset = max(0, int(offset or 0))
+    limit = clamp_limit(limit, 50, 200)
+    offset = read_int(offset, 'offset', 0, minimum=0)
     page = docs[offset:offset + limit]
     out = [f'{len(docs)} document(s)' + (f' matching "{pattern}"' if pattern else '')
            + (f', showing {offset + 1} to {offset + len(page)}' if len(docs) > len(page) else '') + ':']
@@ -330,15 +331,8 @@ def _sentence_numbers(sentences) -> List[int]:
     sentence), in any mix."""
     out: List[int] = []
     for item in (sentences if isinstance(sentences, list) else [sentences]):
-        text = str(item).strip()
-        head = text.split('.')[0]
-        if head[:1].lower() == 's':
-            head = head[1:]
-        if not head.isdigit():
-            raise ToolError(f'"{item}" does not name a sentence. Use a number or a reference '
-                            f'like "s34".')
-        n = int(head)
-        if n not in out:
+        n = sentence_number(item, 'sentences')
+        if n is not None and n not in out:
             out.append(n)
     return out
 
@@ -352,8 +346,8 @@ def t_read_document(ws: Workspace, document: str = None, from_sentence: int = No
     if sentences:
         picked = _sentence_numbers(sentences)[:MAX_SENTENCES_PER_READ]
         return _truncate(render_document(doc, indexes=picked, budget=budget))
-    lo = max(1, int(from_sentence or 1))
-    hi = int(to_sentence) if to_sentence else min(len(doc.sentences), lo + MAX_SENTENCES_PER_READ - 1)
+    lo = max(1, sentence_number(from_sentence, 'from_sentence') or 1)
+    hi = sentence_number(to_sentence, 'to_sentence') or min(len(doc.sentences), lo + MAX_SENTENCES_PER_READ - 1)
     if hi - lo + 1 > MAX_SENTENCES_PER_READ:
         hi = lo + MAX_SENTENCES_PER_READ - 1
     return _truncate(render_document(doc, from_sentence=lo, to_sentence=hi, budget=budget))
