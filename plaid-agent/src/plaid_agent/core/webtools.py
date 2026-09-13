@@ -125,6 +125,5 @@ def read_url(ws, url: str) -> str:
     # The TITLE is the page's text as much as the body is, so it goes inside
     # the fence as well. Only the URL, which `check_url` has already vouched
     # for, is stated outside it.
-    head = final
     body = f'Title: {title}\n\n{text}' if title else text
-    return '\n'.join([f'Web page: {head}. {WARNING}', '', fenced(body)])
+    return '\n'.join([f'Web page: {final}. {WARNING}', '', fenced(body)])

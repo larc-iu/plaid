@@ -44,14 +44,3 @@ def test_output_is_capped():
 def test_nothing_printed_and_no_value_says_so():
     assert 'printed nothing' in sandbox.run('x = 1', {})
 
-
-def test_the_tool_is_withheld_where_code_cannot_run(monkeypatch):
-    from plaid_agent.ud import tools
-    monkeypatch.setattr(sandbox, 'available', lambda: 'no worker here')
-    from ud_fixtures import PID, ud_client
-    from plaid_agent.ud.project import load_project
-    client = ud_client()
-    ws = tools.Workspace(client, load_project(client, PID))
-    names = {t['function']['name'] for t in tools.tools_for(ws)}
-    assert 'run_code' not in names and 'code_help' not in names
-    assert 'Code cannot run on this assistant' in tools.call_tool(ws, 'run_code', {'code': '1'})

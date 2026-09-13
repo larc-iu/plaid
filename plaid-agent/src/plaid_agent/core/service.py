@@ -21,9 +21,9 @@ Request data:
                      open. It is a DEFAULT, not a fence: the model is told what is
                      open so an unqualified question is about that, and every tool
                      that reads the rest of the project stays available.
-                     A `kind` of "document" is the case every app has. An app with
-                     other kinds of screen answers for them in `place`, and says how
-                     to treat one in `focus_note_for`.
+                     An app answers `place` for the kinds of screen it docks the
+                     assistant beside, with what to call one and what the model
+                     should be told about it.
     approve          instead of a turn: {plan_id, as_human, contributed_by} for a plan
                      in the conversation the user approved (as_human: record the writes
                      as human-made instead of verified machine-made. Contributed_by: the
@@ -118,36 +118,29 @@ class BaseAssistantService(BaseService):
     reference_shape = 'a bare reference'
 
     def place(self, ws, where: Optional[dict]) -> Optional[tuple]:
-        """``(noun, name)`` for what the user has open, or None.
+        """``(noun, name, note)`` for what the user has open, or None.
+
+        One hook, not three. It used to be `place` for the noun and the name,
+        `focus_note_for` for the line in the prompt, and `document_name` for
+        what to call a document, each calling the next, and only one app
+        overrode the first two. Answering all three questions at once is what
+        an app actually knows: it is looking at one `where` and it knows what
+        that is, what to call it, and what the model should be told about it.
 
         The noun is the app's own word for the kind of thing, and it is written
-        into the model's transcript, so the app answers for every kind but a
-        document. Every app has documents, so that one is answered here.
+        into the model's transcript in front of the user's question, so it has
+        to be the word the app puts on screen. The note is added to the system
+        prompt. An app with no docked screens keeps the default and neither
+        the stamp nor the note appears.
+
+        :meth:`document_place` builds the triple for the case every app has.
         """
-        where = where or {}
-        if where.get('kind') != 'document':
-            return None
-        name = self.document_name(ws, where.get('id'))
-        return ('document', name) if name else None
-
-    def focus_note_for(self, ws, request_data: dict) -> Optional[str]:
-        """The line that tells the model what the user is looking at, or None.
-
-        A document is the case every app has, so it lives here. An app that also
-        docks the assistant beside something else overrides this, reads the
-        ``where`` kind it owns, and calls back here for documents. That is what
-        keeps this file naming no app of its own.
-        """
-        found = self.place(ws, request_data.get('where'))
-        if not found or found[0] != 'document':
-            return None
-        return focus_note(found[1], self.reference_shape)
-
-    def document_name(self, ws, document_id: str) -> Optional[str]:
-        """What to call the document the user has open, in the language the
-        tools use. An app whose assistant has no document view keeps the
-        default and the focus note is left off."""
         return None
+
+    def document_place(self, name: Optional[str]) -> Optional[tuple]:
+        """The triple for a document, given what the app calls it. The name is
+        the app's, because it has to be a name a tool will accept back."""
+        return ('document', name, focus_note(name, self.reference_shape)) if name else None
 
     def citations(self, ws, text: str) -> List[Dict[str, Any]]:
         """The references in a reply, resolved to whatever the tab shows as a
@@ -320,15 +313,15 @@ class BaseAssistantService(BaseService):
         # hold questions asked from several places, and the system note below
         # only ever describes the LAST of them. Without the stamp the model
         # reads turn 1's "this sentence" as being about turn 5's document.
-        transcript = stamped(transcript, self.place(ws, (request_data or {}).get('where')))
+        where = self.place(ws, (request_data or {}).get('where'))
+        transcript = stamped(transcript, where[:2] if where else None)
         if self.web_cfg is not None:
             ws.web = session_for(self.web_cfg, transcript)
         system = self.system_prompt(project, web=ws.web is not None)
         # Asked from inside a screen that is about one thing: say which, so an
         # unqualified question is about it. Nothing is taken away.
-        focus = self.focus_note_for(ws, request_data or {})
-        if focus:
-            system = f'{system}\n\n{focus}'
+        if where and where[2]:
+            system = f'{system}\n\n{where[2]}'
         try:
             turn = run_turn(self.cfg, self.kit, ws, system,
                             transcript, on_progress, cancelled=cancelled, on_text=on_text)

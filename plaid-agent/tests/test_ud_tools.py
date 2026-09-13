@@ -929,6 +929,18 @@ def test_every_document_with_an_unconfirmed_head_is_found():
     assert 'relation' in kinds, 'the heads are looked for on the relation layer'
 
 
+def test_the_code_tool_is_withheld_where_code_cannot_run(ws, monkeypatch):
+    """A model is never told it can run code on a machine with no worker
+    binary. This lived under tests/core/, importing an app from the one
+    directory that must not know about any."""
+    from plaid_agent.core import sandbox
+    from plaid_agent.ud import tools
+    monkeypatch.setattr(sandbox, 'available', lambda: 'no worker here')
+    names = {t['function']['name'] for t in tools.tools_for(ws)}
+    assert 'run_code' not in names and 'code_help' not in names
+    assert 'Code cannot run on this assistant' in run(ws, 'run_code', code='1')
+
+
 def test_the_worklist_sees_unconfirmed_dependencies(ws):
     """The four span columns were the only ones the worklist walked, so a
     document whose parser output was confirmed except for the tree said

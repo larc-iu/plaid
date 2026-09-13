@@ -59,9 +59,9 @@ def sentence_number(raw: Any, name: str = 'sentence') -> Optional[int]:
         raise ValueError(f'"{raw}" does not name a sentence. Use a number or a reference like "s34".')
     if isinstance(raw, int):
         return raw
-    head = str(raw).strip().split('.')[0]
-    if head[:1].lower() == 's':
-        head = head[1:]
-    if not head.isdigit():
+    first = str(raw).strip().split('.')[0]
+    if first[:1].lower() == 's':
+        first = first[1:]
+    if not first.isdigit():
         raise ValueError(f'"{raw}" does not name a sentence. Use a number or a reference like "s34".')
-    return int(head)
+    return int(first)

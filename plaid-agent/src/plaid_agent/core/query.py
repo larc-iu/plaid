@@ -200,12 +200,12 @@ def render(res: Any, q: Dict[str, Any], limit: int, refs: Dict[str, str],
             lines.append(f'  … {len(rows) - limit} more groups')
         return '\n'.join(lines)
     total = res.get('count', len(rows))
-    head = f'{total} row{"s" if total != 1 else ""}' \
+    header = f'{total} row{"s" if total != 1 else ""}' \
         + (' (truncated by the engine limit)' if res.get('truncated') else '') \
         + (f', showing {limit}' if len(rows) > limit else '') + ': ' + '\t'.join(cols)
     if q.get('return') == 'ids':
-        return '\n'.join([head] + ['  ' + '\t'.join(str(c) for c in r) for r in rows[:limit]])
-    return '\n'.join([head] + ['  ' + '\t'.join(cell(c, refs, layer_names) for c in r)
+        return '\n'.join([header] + ['  ' + '\t'.join(str(c) for c in r) for r in rows[:limit]])
+    return '\n'.join([header] + ['  ' + '\t'.join(cell(c, refs, layer_names) for c in r)
                                for r in rows[:limit]])
 
 

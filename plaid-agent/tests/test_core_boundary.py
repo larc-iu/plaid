@@ -15,7 +15,12 @@ import re
 
 CORE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src', 'plaid_agent', 'core')
 
-APP_WORDS = re.compile(r'\b(igt|interlinear|morpheme|gloss(?:ed|es|ing)?|lexicon|conllu|deprel|upos)\b', re.I)
+# One app's word creeping into core is how it stops being shared. Both
+# apps' vocabularies are listed: UD's were missing, so "lemma", "feats"
+# and the rest could have been written here with nothing to say so.
+APP_WORDS = re.compile(
+    r'\b(igt|interlinear|morpheme|gloss(?:ed|es|ing)?|lexicon'
+    r'|conllu|deprel|upos|lemma|treebank|dependency|feats|head)\b', re.I)
 
 
 def _core_files():
@@ -63,10 +68,13 @@ def test_the_focus_note_names_the_document_and_still_allows_the_corpus():
     assert 'corpus as a whole' in note and 'compare' in note
 
 
-def test_an_app_with_no_document_view_gets_no_focus_note():
+def test_an_app_with_no_docked_screens_names_no_place():
+    """One hook answers all three questions (what is open, what to call it,
+    what the model should be told), and an app that docks the assistant
+    nowhere answers none of them."""
     from plaid_agent.core.service import BaseAssistantService
 
-    assert BaseAssistantService.document_name(None, None, 'any-id') is None
+    assert BaseAssistantService.place(None, None, {'kind': 'document', 'id': 'any-id'}) is None
 
 
 def test_the_lexicon_focus_note_names_the_vocabulary_and_keeps_the_corpus_in_play():
@@ -108,23 +116,23 @@ def test_the_kind_picks_the_note_and_documents_are_the_default_case():
     two places at once and needed a precedence rule between them; one kind
     cannot, which is the whole reason for the shape."""
     svc, ws = _igt_service()
-    assert 'vocabulary "Verbs"' in svc.focus_note_for(ws, {'where': {'kind': 'lexicon', 'id': 'v1'}})
-    assert '"Text 1"' in svc.focus_note_for(ws, {'where': {'kind': 'document', 'id': 'd1'}})
-    assert svc.focus_note_for(ws, {}) is None
+    assert 'vocabulary "Verbs"' in svc.place(ws, {'kind': 'lexicon', 'id': 'v1'})[2]
+    assert '"Text 1"' in svc.place(ws, {'kind': 'document', 'id': 'd1'})[2]
+    assert svc.place(ws, None) is None
     # A vocabulary that is not this project's names NOTHING. The panel said the
     # user is in a vocabulary, so naming a document instead would be a lie
     # about where they are, and silence is the honest answer.
-    assert svc.focus_note_for(ws, {'where': {'kind': 'lexicon', 'id': 'nope'}}) is None
+    assert svc.place(ws, {'kind': 'lexicon', 'id': 'nope'}) is None
     # A kind no app claims is also silence, not a guess.
-    assert svc.focus_note_for(ws, {'where': {'kind': 'export', 'id': 'x'}}) is None
+    assert svc.place(ws, {'kind': 'export', 'id': 'x'}) is None
 
 
 def test_the_place_noun_is_the_app_word_for_it():
     """The noun is written in front of the user's own question, so it has to be
     what the app calls the thing on screen."""
     svc, ws = _igt_service()
-    assert svc.place(ws, {'kind': 'lexicon', 'id': 'v1'}) == ('vocabulary', 'Verbs')
-    assert svc.place(ws, {'kind': 'document', 'id': 'd1'}) == ('document', 'Text 1')
+    assert svc.place(ws, {'kind': 'lexicon', 'id': 'v1'})[:2] == ('vocabulary', 'Verbs')
+    assert svc.place(ws, {'kind': 'document', 'id': 'd1'})[:2] == ('document', 'Text 1')
     assert svc.place(ws, None) is None
 
 

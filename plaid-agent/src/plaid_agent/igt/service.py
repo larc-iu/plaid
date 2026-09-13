@@ -56,27 +56,21 @@ class AssistantService(BaseAssistantService):
         return build_system_prompt(project, web=web)
 
     def place(self, ws, where: Optional[dict]) -> Optional[tuple]:
+        where = where or {}
         # The Entries screen docks the assistant too, and what is in front of
         # the user there is a vocabulary rather than a text. "Vocabulary" is
         # the word the app puts on screen, and the stamp goes in front of the
         # user's own question, so it is the word the model should read there.
-        if (where or {}).get('kind') == 'lexicon':
+        # How to treat one also differs from how to treat a document, so the
+        # note is its own.
+        if where.get('kind') == 'lexicon':
             name = next((v['name'] for v in ws.project.vocabs if v['id'] == where.get('id')), None)
-            return ('vocabulary', name) if name else None
-        return super().place(ws, where)
-
-    def focus_note_for(self, ws, request_data: dict) -> Optional[str]:
-        # How to treat a vocabulary differs from how to treat a document, so
-        # the note is this app's even though `place` answered what it is.
-        found = self.place(ws, request_data.get('where'))
-        if found and found[0] == 'vocabulary':
-            return lexicon_focus_note(found[1])
-        return super().focus_note_for(ws, request_data)
-
-    def document_name(self, ws, document_id: str) -> Optional[str]:
-        # The name a printed reference uses, so what the model is told matches
-        # what a tool will accept back.
-        return ws.corpus.ref_name(document_id)
+            return ('vocabulary', name, lexicon_focus_note(name)) if name else None
+        if where.get('kind') == 'document':
+            # The name a printed reference uses, so what the model is told
+            # matches what a tool will accept back.
+            return self.document_place(ws.corpus.ref_name(where.get('id')))
+        return None
 
     def citations(self, ws, text: str) -> List[Dict[str, Any]]:
         return resolve_citations(ws, text)

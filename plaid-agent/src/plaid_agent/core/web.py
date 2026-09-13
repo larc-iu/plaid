@@ -16,7 +16,7 @@ tighter than anywhere else in the service:
 
 HTML is reduced to its text with the standard library rather than a
 readability package: the result feeds a model, which copes with a nav menu at
-the top, and this stays a three-dependency package that ships in the jar.
+the top, and this package still needs only three things installed to ship in the jar.
 PDFs are not read. Most linguistics references are PDFs, so the tool says so
 plainly instead of letting the model guess at a title.
 """
