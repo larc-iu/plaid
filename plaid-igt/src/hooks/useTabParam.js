@@ -42,21 +42,31 @@ export const useTabParam = (
 ) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const raw = searchParams.get(param);
-  const named = tabs.includes(raw) ? raw : (aliases?.[raw] ?? null);
+  // An alias only counts when what it names is a tab of this group. A group
+  // that narrows by the reader's rights does not carry every slug its aliases
+  // point at, and without this check `?tab=validation` resolved to a tab with
+  // no trigger, which Radix renders as an empty body.
+  const aliased = aliases?.[raw];
+  const named = tabs.includes(raw) ? raw : tabs.includes(aliased) ? aliased : null;
   const active = named ?? fallback;
 
   const setActive = useCallback(
     (value, options) => {
-      setSearchParams((prev) => {
-        // Copy so the other params on the page (`?item=`, `?focusSentence=`)
-        // survive a tab switch.
-        const next = new URLSearchParams(prev);
-        if (!value || (value === fallback && !writeFallback)) next.delete(param);
-        else next.set(param, value);
-        return next;
-      }, options);
+      setSearchParams((prev) => writeTab(prev, value, fallback, param, writeFallback), options);
     },
     [setSearchParams, fallback, param, writeFallback],
+  );
+
+  // The href for one tab of this group, for a trigger that is also a link.
+  // It keeps the rest of the query string, exactly as the setter does, so
+  // middle-clicking a tab opens the search the reader was looking at rather
+  // than a bare list.
+  const tabHref = useCallback(
+    (basePath, value) => {
+      const q = writeTab(searchParams, value, fallback, param, writeFallback).toString();
+      return q ? `${basePath}?${q}` : basePath;
+    },
+    [searchParams, fallback, param, writeFallback],
   );
 
   // A value that is not already the slug is rewritten in place: to the tab it
@@ -65,17 +75,26 @@ export const useTabParam = (
   // screen, and the wrong half is the half that gets copied to a colleague.
   useEffect(() => {
     if (!ready || raw === null || tabs.includes(raw)) return;
-    setActive(aliases?.[raw] ?? fallback, { replace: true });
-    // `aliases` is a literal at most call sites, so it is compared by its
-    // answer for THIS value rather than by identity.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, raw, tabs, fallback, setActive, aliases?.[raw]]);
+    setActive(named ?? fallback, { replace: true });
+  }, [ready, raw, tabs, named, fallback, setActive]);
 
-  return [active, setActive];
+  return [active, setActive, tabHref];
 };
 
-// The link for one tab of a group whose selection lives in the query string.
-// The fallback tab is the bare page, matching what the setter writes, unless
-// the group writes its fallback too (see `writeFallback`).
-export const tabTo = (basePath, value, fallback, param = 'tab', writeFallback = false) =>
-  value === fallback && !writeFallback ? basePath : `${basePath}?${param}=${value}`;
+// The query string for one tab of a group, keeping every other param.
+// `?item=`, `?focusSentence=` and a project search's `?q=&match=&in=&mode=`
+// all survive a tab switch, and the fallback tab is the bare page unless the
+// group writes its fallback too (see `writeFallback`).
+const writeTab = (current, value, fallback, param, writeFallback) => {
+  const next = new URLSearchParams(current);
+  if (!value || (value === fallback && !writeFallback)) next.delete(param);
+  else next.set(param, value);
+  return next;
+};
+
+// The same link for a group whose page carries nothing else in its query
+// string. Prefer the hook's `tabHref`, which keeps whatever else is there.
+export const tabTo = (basePath, value, fallback, param = 'tab', writeFallback = false) => {
+  const q = writeTab(null, value, fallback, param, writeFallback).toString();
+  return q ? `${basePath}?${q}` : basePath;
+};

@@ -7,7 +7,7 @@ import {
   useCallback,
   useReducer,
 } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { canEditProject } from '@/utils/permissions';
 import { AlertTriangle } from 'lucide-react';
@@ -136,16 +136,12 @@ export const VocabularyItems = ({
   const newSenseTo = (parentId) => ({ search: itemQuery(NEW_ID, parentId) });
   // The right pane's tab (`?pane=`): the entry itself, its concordance, or
   // its comments. The entry is the default and keeps the URL clean.
-  const [pane, setPane] = useTabParam(['entry', 'concordance', 'comments'], 'entry', {
+  const [pane, setPane, paneHref] = useTabParam(['entry', 'concordance', 'comments'], 'entry', {
     param: 'pane',
   });
-  const paneTo = (name) => {
-    const next = new URLSearchParams(searchParams);
-    if (name === 'entry') next.delete('pane');
-    else next.set('pane', name);
-    const q = next.toString();
-    return { search: q ? `?${q}` : '' };
-  };
+  // The pane links keep the open entry, so a middle-click opens the same one.
+  const { pathname } = useLocation();
+  const paneTo = (name) => paneHref(pathname, name);
   const navigate = useNavigate();
   const confirm = useConfirm();
   const goItem = (id, options, parent = null) =>

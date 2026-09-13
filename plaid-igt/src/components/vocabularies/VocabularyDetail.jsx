@@ -62,7 +62,7 @@ import { useCommentStore } from '@ui/domain/useCommentStore';
 import { canEditProject } from '@/utils/permissions';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-import { useTabParam, tabTo } from '@/hooks/useTabParam';
+import { useTabParam } from '@/hooks/useTabParam';
 
 // Radix Select has no empty-string item value, so "no tagset" needs a sentinel.
 const NO_TAGSET = '__none__';
@@ -231,7 +231,7 @@ export const VocabularyDetail = () => {
   // tab bar at all, so its fallback never reaches the URL.
   // Base path for the tab links (the item list is the bare vocabulary URL).
   const vocabPath = `/vocabularies/${vocabularyId}`;
-  const [activeTab, setActiveTab] = useTabParam(
+  const [activeTab, setActiveTab, tabHref] = useTabParam(
     canManageVocabulary()
       ? ['items', 'comments', 'maintainers', 'settings']
       : ['items', 'comments'],
@@ -935,10 +935,10 @@ export const VocabularyDetail = () => {
         {!isNewVocabulary && !isEditing && (
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList>
-              <TabsTrigger value="items" to={tabTo(vocabPath, 'items', 'items')}>
+              <TabsTrigger value="items" to={tabHref(vocabPath, 'items')}>
                 <BookText className="h-4 w-4" /> Entries
               </TabsTrigger>
-              <TabsTrigger value="comments" to={tabTo(vocabPath, 'comments', 'items')}>
+              <TabsTrigger value="comments" to={tabHref(vocabPath, 'comments')}>
                 <MessageSquare className="h-4 w-4" /> Comments
                 {(comments?.count ?? 0) > 0 && (
                   <span className="ml-1 rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
@@ -947,12 +947,12 @@ export const VocabularyDetail = () => {
                 )}
               </TabsTrigger>
               {canManageVocabulary() && (
-                <TabsTrigger value="maintainers" to={tabTo(vocabPath, 'maintainers', 'items')}>
+                <TabsTrigger value="maintainers" to={tabHref(vocabPath, 'maintainers')}>
                   <Users className="h-4 w-4" /> Maintainers
                 </TabsTrigger>
               )}
               {canManageVocabulary() && (
-                <TabsTrigger value="settings" to={tabTo(vocabPath, 'settings', 'items')}>
+                <TabsTrigger value="settings" to={tabHref(vocabPath, 'settings')}>
                   <Settings className="h-4 w-4" /> Settings
                 </TabsTrigger>
               )}

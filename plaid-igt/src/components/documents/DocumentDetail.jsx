@@ -33,7 +33,7 @@ import { useResumedRun } from '@ui/hooks/useResumedRun.js';
 import { RunBanner } from '@ui/components/services/RunBanner.jsx';
 import { useDocumentHistory } from './hooks/useDocumentHistory.js';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-import { useTabParam, tabTo } from '@/hooks/useTabParam';
+import { useTabParam } from '@/hooks/useTabParam';
 import { useComposeProject } from '@/hooks/useCompose';
 import { cpSlice, isReviewed } from '@larc-iu/plaid-client';
 import { EdgeRail } from '@ui/components/shared/EdgeRail.jsx';
@@ -155,7 +155,9 @@ const DocumentEditor = () => {
   // Every tab writes itself, Metadata included: here a bare URL means "no tab
   // chosen", which is what the landing effect below reads, so Metadata cannot
   // also be the bare URL without becoming unshareable.
-  const [activeTab, setActiveTab] = useTabParam(TABS, DEFAULT_TAB, { writeFallback: true });
+  const [activeTab, setActiveTab, tabHref] = useTabParam(TABS, DEFAULT_TAB, {
+    writeFallback: true,
+  });
   const [loadError, setLoadError] = useState('');
 
   // Base path for the tab links (each tab is `?tab=`, the default is the bare
@@ -720,40 +722,22 @@ const DocumentEditor = () => {
                   <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
                     {crumbs}
                     <TabsList>
-                      <TabsTrigger
-                        value="metadata"
-                        to={tabTo(docPath, 'metadata', DEFAULT_TAB, 'tab', true)}
-                      >
+                      <TabsTrigger value="metadata" to={tabHref(docPath, 'metadata')}>
                         <FileText className="h-4 w-4" /> Metadata
                       </TabsTrigger>
-                      <TabsTrigger
-                        value="baseline"
-                        to={tabTo(docPath, 'baseline', DEFAULT_TAB, 'tab', true)}
-                      >
+                      <TabsTrigger value="baseline" to={tabHref(docPath, 'baseline')}>
                         <Type className="h-4 w-4" /> Baseline
                       </TabsTrigger>
-                      <TabsTrigger
-                        value="media"
-                        to={tabTo(docPath, 'media', DEFAULT_TAB, 'tab', true)}
-                      >
+                      <TabsTrigger value="media" to={tabHref(docPath, 'media')}>
                         <Mic className="h-4 w-4" /> Media
                       </TabsTrigger>
-                      <TabsTrigger
-                        value="tokenize"
-                        to={tabTo(docPath, 'tokenize', DEFAULT_TAB, 'tab', true)}
-                      >
+                      <TabsTrigger value="tokenize" to={tabHref(docPath, 'tokenize')}>
                         <Play className="h-4 w-4" /> Tokenize
                       </TabsTrigger>
-                      <TabsTrigger
-                        value="analyze"
-                        to={tabTo(docPath, 'analyze', DEFAULT_TAB, 'tab', true)}
-                      >
+                      <TabsTrigger value="analyze" to={tabHref(docPath, 'analyze')}>
                         <Table className="h-4 w-4" /> Analyze
                       </TabsTrigger>
-                      <TabsTrigger
-                        value="comments"
-                        to={tabTo(docPath, 'comments', DEFAULT_TAB, 'tab', true)}
-                      >
+                      <TabsTrigger value="comments" to={tabHref(docPath, 'comments')}>
                         <MessageSquare className="h-4 w-4" /> Comments
                         {commentCount > 0 && (
                           <span className="ml-1 rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
@@ -761,10 +745,7 @@ const DocumentEditor = () => {
                           </span>
                         )}
                       </TabsTrigger>
-                      <TabsTrigger
-                        value="export"
-                        to={tabTo(docPath, 'export', DEFAULT_TAB, 'tab', true)}
-                      >
+                      <TabsTrigger value="export" to={tabHref(docPath, 'export')}>
                         <Download className="h-4 w-4" /> Export
                       </TabsTrigger>
                     </TabsList>

@@ -22,9 +22,13 @@ const Probe = ({
   ready = true,
   onReady,
 }) => {
-  const [active, setActive] = useTabParam(tabs, fallback, { writeFallback, aliases, ready });
+  const [active, setActive, tabHref] = useTabParam(tabs, fallback, {
+    writeFallback,
+    aliases,
+    ready,
+  });
   const { search } = useLocation();
-  onReady({ active, setActive, search });
+  onReady({ active, setActive, search, tabHref });
   return <span data-active={active} />;
 };
 
@@ -98,6 +102,43 @@ describe('tabTo', () => {
     expect(tabTo('/p', 'documents', 'documents')).toBe('/p');
     expect(tabTo('/p', 'search', 'documents')).toBe('/p?tab=search');
     expect(tabTo('/d', 'metadata', 'metadata', 'tab', true)).toBe('/d?tab=metadata');
+  });
+});
+
+describe('tabHref', () => {
+  it('keeps the rest of the query string, so a middle-click opens what is on screen', async () => {
+    // A project search lives in `?q=&match=`, and the tab links dropped it:
+    // opening Documents in a new browser tab threw the search away, while
+    // clicking the same trigger kept it.
+    const { read, unmount } = await mount('/p?tab=search&q=perro&match=exact');
+    expect(read().tabHref('/p', 'validate')).toBe('/p?tab=validate&q=perro&match=exact');
+    // The fallback still writes the bare page, plus whatever else is there.
+    expect(read().tabHref('/p', 'documents')).toBe('/p?q=perro&match=exact');
+    await unmount();
+  });
+
+  it('writes the fallback too where the group does', async () => {
+    const { read, unmount } = await mount('/d?focusSentence=s7', {
+      tabs: ['metadata', 'analyze'],
+      fallback: 'metadata',
+      writeFallback: true,
+    });
+    expect(read().tabHref('/d', 'metadata')).toBe('/d?focusSentence=s7&tab=metadata');
+    await unmount();
+  });
+});
+
+describe('an alias whose tab the reader does not have', () => {
+  it('is dropped rather than resolved to a tab with no trigger', async () => {
+    // `?tab=bulk-edit` for a reader: Bulk Edit is maintainers-only, so the
+    // narrowed list does not carry `bulk` and the alias names nothing here.
+    const { read, unmount } = await mount('/p?tab=bulk-edit', {
+      tabs: ['documents', 'search'],
+      aliases: { 'bulk-edit': 'bulk' },
+    });
+    expect(read().active).toBe('documents');
+    expect(read().search).toBe('');
+    await unmount();
   });
 });
 
