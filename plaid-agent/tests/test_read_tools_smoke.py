@@ -36,8 +36,14 @@ UD_ARGS = {'document': 'Viaje', 'pattern': 'a', 'field': 'lemma', 'what': 'lemma
 
 SKIP = ('web_search', 'read_url')   # the network is not the tools' contract
 
+# Arguments a tool needs to do anything, where its schema requires none. Without
+# them the tool refuses every call, which the sweep accepts as an answer and
+# which leaves its body unrun (see test_every_read_tool_answered_at_least_once).
+EXTRA = {'igt': {'analyses_of': {'forms': ['gam']}, 'lexicon_entry': {'entry_form': 'gam#1'}},
+         'ud': {}}
 
-def _cases(tools, write_tools, values, in_document: bool):
+
+def _cases(tools, write_tools, values, in_document: bool, extra=None):
     """(name, args) per read tool, once per enum value, with or without a
     document. A tool that does not take one is listed once either way."""
     out, seen = [], set()
@@ -48,7 +54,7 @@ def _cases(tools, write_tools, values, in_document: bool):
             continue
         params = f.get('parameters') or {}
         props = params.get('properties') or {}
-        base = {}
+        base = dict((extra or {}).get(name) or {})
         for k in params.get('required') or []:
             assert k in values, f'{name} requires "{k}" and this test has no value for it'
             base[k] = values[k]
@@ -67,12 +73,21 @@ def _cases(tools, write_tools, values, in_document: bool):
     return out
 
 
-def _run(impl, ws, name, args):
+# Which tools actually ANSWERED, per app. A refusal is a legitimate answer to
+# one call, so it cannot fail a case on its own; but a tool that refuses every
+# call the sweep makes has not been exercised at all, and the whole suite of
+# 106 cases could have gone green having run no tool body. The last test here
+# holds every read tool to answering at least once.
+ANSWERED: dict = {'igt': set(), 'ud': set()}
+
+
+def _run(app, impl, ws, name, args):
     try:
         answer = impl[name](ws, **args)
     except REFUSALS:
-        return          # a refusal is an answer
+        return          # a refusal is an answer to THIS call
     assert isinstance(answer, str), f'{name} answered with {type(answer).__name__}'
+    ANSWERED[app].add(name)
 
 
 def _empty_engine(client):
@@ -122,30 +137,30 @@ def _ids(cases):
             for n, a in cases]
 
 
-IGT_IN_DOC = _cases(IGT_TOOLS, IGT_WRITES, IGT_ARGS, in_document=True)
-IGT_PROJECT = _cases(IGT_TOOLS, IGT_WRITES, IGT_ARGS, in_document=False)
-UD_IN_DOC = _cases(UD_TOOLS, UD_WRITES, UD_ARGS, in_document=True)
-UD_PROJECT = _cases(UD_TOOLS, UD_WRITES, UD_ARGS, in_document=False)
+IGT_IN_DOC = _cases(IGT_TOOLS, IGT_WRITES, IGT_ARGS, in_document=True, extra=EXTRA['igt'])
+IGT_PROJECT = _cases(IGT_TOOLS, IGT_WRITES, IGT_ARGS, in_document=False, extra=EXTRA['igt'])
+UD_IN_DOC = _cases(UD_TOOLS, UD_WRITES, UD_ARGS, in_document=True, extra=EXTRA['ud'])
+UD_PROJECT = _cases(UD_TOOLS, UD_WRITES, UD_ARGS, in_document=False, extra=EXTRA['ud'])
 
 
 @pytest.mark.parametrize('name,args', IGT_IN_DOC, ids=_ids(IGT_IN_DOC))
 def test_igt_read_tools_in_one_document(name, args):
-    _run(IGT_IMPL, _igt(scan=True), name, args)
+    _run('igt', IGT_IMPL, _igt(scan=True), name, args)
 
 
 @pytest.mark.parametrize('name,args', IGT_PROJECT, ids=_ids(IGT_PROJECT))
 def test_igt_read_tools_project_wide(name, args):
-    _run(IGT_IMPL, _igt(scan=False), name, args)
+    _run('igt', IGT_IMPL, _igt(scan=False), name, args)
 
 
 @pytest.mark.parametrize('name,args', UD_IN_DOC, ids=_ids(UD_IN_DOC))
 def test_ud_read_tools_in_one_document(name, args):
-    _run(UD_IMPL, _ud(scan=True), name, args)
+    _run('ud', UD_IMPL, _ud(scan=True), name, args)
 
 
 @pytest.mark.parametrize('name,args', UD_PROJECT, ids=_ids(UD_PROJECT))
 def test_ud_read_tools_project_wide(name, args):
-    _run(UD_IMPL, _ud(scan=False), name, args)
+    _run('ud', UD_IMPL, _ud(scan=False), name, args)
 
 
 def test_the_sweep_actually_covers_the_read_tools():
@@ -155,3 +170,30 @@ def test_the_sweep_actually_covers_the_read_tools():
         reads = {t['function']['name'] for t in tools} - set(writes) - set(SKIP)
         assert {n for n, _ in cases} == reads
         assert len(cases) >= least
+
+
+# A tool that cannot answer in this fixture, with the reason. Keep it short:
+# every name here is a tool body the sweep does not actually run.
+NEVER_ANSWERS = {
+    # run_code and code_help: the sandbox worker binary is not on every machine.
+    # drop_planned: there is nothing to drop from an empty plan, and staging one
+    # here would make this a test about the plan tools.
+    'igt': {'run_code', 'code_help', 'drop_planned'},
+    'ud': {'run_code', 'code_help', 'drop_planned'},
+}
+
+
+def test_every_read_tool_answered_at_least_once():
+    """Without this the sweep is green when every case refuses.
+
+    The cases go through the implementations rather than through call_tool, so
+    an exception fails them; but a REFUSAL is caught, and a tool that refuses
+    everything the sweep asks has had none of its body run. That is the shape
+    the sweep exists to catch, so it is asserted rather than assumed.
+    """
+    for app, cases, tools, writes in (('igt', IGT_PROJECT + IGT_IN_DOC, IGT_TOOLS, IGT_WRITES),
+                                      ('ud', UD_PROJECT + UD_IN_DOC, UD_TOOLS, UD_WRITES)):
+        reads = {t['function']['name'] for t in tools} - set(writes) - set(SKIP)
+        silent = reads - ANSWERED[app] - NEVER_ANSWERS[app]
+        assert not silent, (f'{app}: these read tools refused every call the sweep made, so none of '
+                            f'their bodies ran: {sorted(silent)}')

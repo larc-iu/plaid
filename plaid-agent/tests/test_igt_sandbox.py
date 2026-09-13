@@ -3,11 +3,12 @@
 import pytest
 
 from fixtures import FakeClient, scan_ws
+from live import require_sandbox
 from plaid_agent.core import sandbox
 from plaid_agent.igt.sandbox import view
 from plaid_agent.igt.tools import call_tool
 
-pytestmark = pytest.mark.skipif(sandbox.available() is not None, reason=sandbox.available() or '')
+pytestmark = require_sandbox()
 
 
 def test_the_view_has_words_morphemes_fields_and_links():

@@ -2,9 +2,10 @@
 
 import pytest
 
+from live import require_sandbox
 from plaid_agent.core import sandbox
 
-pytestmark = pytest.mark.skipif(sandbox.available() is not None, reason=sandbox.available() or '')
+pytestmark = require_sandbox()
 
 
 def test_code_sees_the_host_functions_and_returns_what_it_prints_and_its_value():

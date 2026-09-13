@@ -25,6 +25,22 @@ def _skip_or_fail(why: str) -> None:
     pytest.skip(why)
 
 
+# The same shape for the OTHER hard dependency a suite can be missing.
+# pydantic-monty is a hard dependency of the package, so a missing worker
+# binary is a broken install rather than a normal condition, and three whole
+# modules disappear without a word when it is. The skip stays the default (a
+# contributor's machine may genuinely not have it) and
+# PLAID_AGENT_REQUIRE_SANDBOX=1 turns it into a failure.
+def require_sandbox():
+    """The module-level ``pytestmark`` for tests that need the code sandbox."""
+    from plaid_agent.core import sandbox
+    why = sandbox.available()
+    if why and os.environ.get('PLAID_AGENT_REQUIRE_SANDBOX'):
+        raise AssertionError(f'the code sandbox cannot run: {why} '
+                             '(PLAID_AGENT_REQUIRE_SANDBOX is set)')
+    return pytest.mark.skipif(why is not None, reason=why or '')
+
+
 def reachable() -> bool:
     try:
         urllib.request.urlopen(URL + '/api/v1/login', timeout=2)

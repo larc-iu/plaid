@@ -530,10 +530,9 @@ def test_list_documents_pages_and_filters_and_overview_caps():
     assert 'No document metadata field "Genre"' in call_tool(w, 'list_documents', {'metadata_field': 'Genre', 'value': 'x'})
 
 
-def test_parsed_documents_are_cached_across_workspaces_by_version():
+def test_parsed_documents_are_cached_across_workspaces_by_version(fresh_document_cache):
     from plaid_agent.igt import tools as T
     from fixtures import document_raw
-    T._DOC_CACHE.clear()
     c = FakeClient()
     c.no_doc_cache = False
     c._documents['d1']['version'] = 3
@@ -550,7 +549,6 @@ def test_parsed_documents_are_cached_across_workspaces_by_version():
     w = scan_ws(c)
     fresh = w.doc('d1')
     assert fresh is not d and fresh.version == 4 and T._DOC_CACHE[('d1', 4)] is fresh
-    T._DOC_CACHE.clear()
 
 
 def test_a_large_group_of_like_changes_is_stored_as_one_op_and_applies_whole(monkeypatch):

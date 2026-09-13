@@ -1,11 +1,17 @@
 import pytest
 
 
-@pytest.fixture(autouse=True)
-def _fresh_document_cache():
-    """The parsed-document cache is keyed by (id, version), exact on a real
-    server; fake fixtures reuse ids with different content, so start empty."""
+@pytest.fixture
+def fresh_document_cache():
+    """An empty parsed-document cache, before and after.
+
+    The cache is keyed by (id, version), exact on a real server. The fake
+    client opts out of it entirely (``no_doc_cache``, because fixtures reuse
+    document ids with different content), so only a test that opts back IN
+    needs this. It used to be autouse and ran for every test in the suite,
+    which put one app's internals in the conftest every app shares.
+    """
     from plaid_agent.igt import tools
     tools._DOC_CACHE.clear()
-    yield
+    yield tools._DOC_CACHE
     tools._DOC_CACHE.clear()
