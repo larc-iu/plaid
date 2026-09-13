@@ -36,7 +36,18 @@ export function DeprelEditor({
   onTab,
 }) {
   const [value, setValue] = useState(relation.value || 'dep');
+  // `pristine` = focused but not yet typed: the list shows the full vocabulary
+  // in its natural order and nothing is auto-highlighted. It answers that
+  // question and no other.
   const [pristine, setPristine] = useState(true);
+  // Did the annotator actually put something into this editor, by typing or by
+  // picking? `pristine` cannot answer that: it also drives the list, and every
+  // focus reopens the list whether or not anything has been typed. Reading
+  // `pristine` for provenance meant that a re-entry into the input after typing
+  // read as "never touched", so a deliberate re-entry of the machine's own
+  // label stopped confirming it. The editor mounts once per edit, so `false`
+  // here is the arrival, and no later focus may forget what was typed.
+  const typedRef = useRef(false);
   const doneRef = useRef(false);
 
   // Whether leaving the editor writes anything: a different label, or the same
@@ -161,6 +172,7 @@ export function DeprelEditor({
       onChange={(v) => {
         setValue(v);
         setPristine(false);
+        typedRef.current = true;
       }}
       onFocus={(e) => {
         setPristine(true);
@@ -169,7 +181,7 @@ export function DeprelEditor({
       // The second argument tells the caller whether the human actually typed /
       // picked (vs. just opened and left): re-entering the machine's own label
       // is a confirmation, but merely passing through the editor is not.
-      onBlur={() => once(() => commitOr(value, !pristine))}
+      onBlur={() => once(() => commitOr(value, typedRef.current))}
       // Clicking an option commits it, and a click is always a deliberate pick.
       onSubmit={(v) => once(() => commitOr(v, true))}
       onKeyDown={(e, combo) => {
@@ -185,7 +197,7 @@ export function DeprelEditor({
           // list rather than inferred from a later event, which is the whole
           // point of the combobox handing its state to the key handler.
           const picked = combo.activeValue;
-          once(() => (picked != null ? commitOr(picked, true) : commitOr(value, !pristine)));
+          once(() => (picked != null ? commitOr(picked, true) : commitOr(value, typedRef.current)));
         } else if (e.key === 'Escape') {
           e.preventDefault();
           e.stopPropagation();
@@ -198,7 +210,7 @@ export function DeprelEditor({
           e.preventDefault();
           e.stopPropagation();
           once(() => {
-            if (isCommitting(value, !pristine)) {
+            if (isCommitting(value, typedRef.current)) {
               const refusal = validate?.(value);
               if (refusal) {
                 notifyWarning(refusal, 'Not in the list');
@@ -206,7 +218,7 @@ export function DeprelEditor({
                 return;
               }
             }
-            onTab(value, e.shiftKey, !pristine);
+            onTab(value, e.shiftKey, typedRef.current);
           });
         }
       }}
