@@ -201,6 +201,7 @@ interface RelationsBundle {
   ): Promise<any>;
   bulkCreate(body: any[], auditMessage?: string): Promise<{ ids: string[] }>;
   bulkDelete(body: any[], auditMessage?: string): Promise<void>;
+  bulkUpdate(body: any[], auditMessage?: string): Promise<{ count: number }>;
 }
 
 interface SpanLayersBundle {
@@ -250,6 +251,7 @@ interface SpansBundle {
   update(spanId: string, value: any, auditMessage?: string): Promise<any>;
   bulkCreate(body: any[], auditMessage?: string): Promise<{ ids: string[] }>;
   bulkDelete(body: any[], auditMessage?: string): Promise<void>;
+  bulkUpdate(body: any[], auditMessage?: string): Promise<{ count: number }>;
   setMetadata(spanId: string, body: any, auditMessage?: string): Promise<any>;
   deleteMetadata(spanId: string, auditMessage?: string): Promise<any>;
   patchMetadata(spanId: string, body: any, auditMessage?: string): Promise<any>;
@@ -1026,6 +1028,7 @@ interface TokensBundle {
   ): Promise<any>;
   bulkCreate(body: any[], auditMessage?: string): Promise<{ ids: string[] }>;
   bulkDelete(body: any[], auditMessage?: string): Promise<void>;
+  bulkUpdate(body: any[], auditMessage?: string): Promise<{ count: number }>;
   split(tokenId: string, position: number, auditMessage?: string): Promise<any>;
   merge(
     tokenId: string,

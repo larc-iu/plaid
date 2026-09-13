@@ -447,11 +447,14 @@ class RelationsResource(_Resource):
                 objects. ``value`` is set only when the key is present (``None``
                 sends JSON null); ``metadata`` is a patch, a ``None`` value
                 deleting that key. The relations may lie in several documents of
-                one project; every document touched has its version bumped. An
-                unknown id refuses the whole update.
+                one project. Every document touched has its version bumped, and
+                every new version comes back in ``X-Document-Versions``. A
+                ``document-version`` precondition is accepted only when every
+                entry lies in one document. An unknown id refuses the whole
+                update.
 
         Returns:
-            ``{"count": n}`` — how many relations were updated.
+            ``{"count": n}``, how many relations were updated.
         """
         return self._request('PATCH', '/api/v1/relations/bulk', body=body, audit_message=audit_message)
 
@@ -647,11 +650,14 @@ class SpansResource(_Resource):
                 objects. ``value`` is set only when the key is present (``None``
                 sends JSON null); ``metadata`` is a patch, a ``None`` value
                 deleting that key. The spans may lie in several documents of
-                one project; every document touched has its version bumped. An
-                unknown id refuses the whole update.
+                one project. Every document touched has its version bumped, and
+                every new version comes back in ``X-Document-Versions``. A
+                ``document-version`` precondition is accepted only when every
+                entry lies in one document. An unknown id refuses the whole
+                update.
 
         Returns:
-            ``{"count": n}`` — how many spans were updated.
+            ``{"count": n}``, how many spans were updated.
         """
         return self._request('PATCH', '/api/v1/spans/bulk', body=body, audit_message=audit_message)
 
@@ -2567,12 +2573,14 @@ class TokensResource(_Resource):
         Args:
             body: A list of ``{"id": ..., "metadata": {...}}`` objects; each
                 ``metadata`` is a patch, a ``None`` value deleting that key. The
-                tokens may lie in several documents of one project; every document
-                touched has its version bumped. An unknown id refuses the whole
-                update.
+                tokens may lie in several documents of one project. Every document
+                touched has its version bumped, and every new version comes back
+                in ``X-Document-Versions``. A ``document-version`` precondition is
+                accepted only when every entry lies in one document. An unknown id
+                refuses the whole update.
 
         Returns:
-            ``{"count": n}`` — how many tokens were updated.
+            ``{"count": n}``, how many tokens were updated.
         """
         return self._request('PATCH', '/api/v1/tokens/bulk', body=body, audit_message=audit_message)
 

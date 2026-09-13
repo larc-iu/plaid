@@ -477,7 +477,7 @@ class PlaidClient {
         }),
       /**
        * Update many relations in a single operation: set values and/or patch metadata.
-       * @param {Array} body - Objects of the shape `{id, value?, metadata?}`. `value` is set only when the key is present (null sends JSON null); `metadata` is a patch, a null value deleting that key. The relations may lie in several documents of one project; every document touched has its version bumped. An unknown id refuses the whole update.
+       * @param {Array} body - Objects of the shape `{id, value?, metadata?}`. `value` is set only when the key is present (null sends JSON null); `metadata` is a patch, a null value deleting that key. The relations may lie in several documents of one project; every document touched has its version bumped and every new version comes back in `X-Document-Versions`. A `document-version` precondition is accepted only when every entry lies in one document. An unknown id refuses the whole update.
        * @returns {Promise<{count: number}>} How many relations were updated.
        */
       bulkUpdate: (body, auditMessage) =>
@@ -637,7 +637,7 @@ class PlaidClient {
         this._request("DELETE", "/api/v1/spans/bulk", { auditMessage, body }),
       /**
        * Update many spans in a single operation: set values and/or patch metadata.
-       * @param {Array} body - Objects of the shape `{id, value?, metadata?}`. `value` is set only when the key is present (null sends JSON null); `metadata` is a patch, a null value deleting that key. The spans may lie in several documents of one project; every document touched has its version bumped. An unknown id refuses the whole update.
+       * @param {Array} body - Objects of the shape `{id, value?, metadata?}`. `value` is set only when the key is present (null sends JSON null); `metadata` is a patch, a null value deleting that key. The spans may lie in several documents of one project; every document touched has its version bumped and every new version comes back in `X-Document-Versions`. A `document-version` precondition is accepted only when every entry lies in one document. An unknown id refuses the whole update.
        * @returns {Promise<{count: number}>} How many spans were updated.
        */
       bulkUpdate: (body, auditMessage) =>
@@ -2423,7 +2423,7 @@ class PlaidClient {
         this._request("DELETE", "/api/v1/tokens/bulk", { auditMessage, body }),
       /**
        * Update many tokens in a single operation: patch metadata.
-       * @param {Array} body - Objects of the shape `{id, metadata}`. `metadata` is a patch, a null value deleting that key. The tokens may lie in several documents of one project; every document touched has its version bumped. An unknown id refuses the whole update.
+       * @param {Array} body - Objects of the shape `{id, metadata}`. `metadata` is a patch, a null value deleting that key. The tokens may lie in several documents of one project; every document touched has its version bumped and every new version comes back in `X-Document-Versions`. A `document-version` precondition is accepted only when every entry lies in one document. An unknown id refuses the whole update.
        * @returns {Promise<{count: number}>} How many tokens were updated.
        */
       bulkUpdate: (body, auditMessage) =>
