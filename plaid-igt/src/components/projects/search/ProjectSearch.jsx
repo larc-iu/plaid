@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Link } from 'react-router-dom';
 import { FileText } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
@@ -28,12 +29,45 @@ export const ProjectSearch = ({ project, projectId, client }) => {
     [layerInfo, project.vocabs],
   );
 
-  const [queryText, setQueryText] = useState('');
-  const [matchType, setMatchType] = useState('contains');
-  const [domainId, setDomainId] = useState(domains[0]?.id ?? 'words');
-  const [mode, setMode] = useState('hits'); // 'hits' | 'freq'
+  // The search that RAN lives in the URL; the boxes hold what is being typed.
+  // Leaving for the Documents tab and coming back used to give an empty box,
+  // `contains`, `Words`, `Hits` and no results, so checking one hit in the
+  // editor meant retyping the query, while the document list's sort and page
+  // beside it came back every time. It also makes a search shareable.
+  const [params, setParams] = useSearchParams();
+  const ran = {
+    q: params.get('q') || '',
+    match: params.get('match') || 'contains',
+    in: params.get('in') || domains[0]?.id || 'words',
+    mode: params.get('mode') === 'freq' ? 'freq' : 'hits',
+  };
+
+  const [queryText, setQueryText] = useState(ran.q);
+  const [matchType, setMatchType] = useState(ran.match);
+  const [domainId, setDomainId] = useState(ran.in);
+  const [mode, setMode] = useState(ran.mode);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
+
+  // Write what a run used, replacing rather than pushing: a search is where
+  // you already are, not somewhere you went, so Back leaves the tab.
+  const remember = (q, match, inDomain, m) =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        for (const [k, v] of [
+          ['q', q],
+          ['match', match],
+          ['in', inDomain],
+          ['mode', m === 'freq' ? 'freq' : ''],
+        ]) {
+          if (v) next.set(k, v);
+          else next.delete(k);
+        }
+        return next;
+      },
+      { replace: true },
+    );
 
   // A frequency row is [value, count]. Value orders by the locale rather than
   // case-folded, since these are forms in the language being documented.
@@ -55,6 +89,7 @@ export const ProjectSearch = ({ project, projectId, client }) => {
   const runSearch = async (nextMode = mode) => {
     if (!queryText.trim() || !domain || busy) return;
     setBusy(true);
+    remember(queryText.trim(), matchType, domainId, nextMode);
     try {
       const r =
         nextMode === 'freq'
@@ -81,6 +116,17 @@ export const ProjectSearch = ({ project, projectId, client }) => {
     setMode(m);
     if (result && queryText.trim()) runSearch(m);
   };
+
+  // Arriving with a search in the URL runs it: a filled box over no results is
+  // half of coming back. Once, guarded by a ref rather than by `result`, so a
+  // search that legitimately found nothing is not run again on every render.
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current || !ran.q || !domains.length) return;
+    restored.current = true;
+    runSearch(ran.mode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ran.q, domains.length]);
 
   const grouped = useMemo(() => {
     if (!domains.length) return [];
