@@ -40,9 +40,10 @@ export function useUserSearch({ client, excludeIds }) {
         if (!cancelled) {
           setResults(entries.filter((u) => !known.has(u.id)));
           setDenied(false);
-          // Measured before the known ids are dropped: that filter is why the
-          // rows on screen can number fewer than the page the server sent.
-          setCapped(entries.length >= USER_SEARCH_LIMIT);
+          // A cursor back means the directory had more than the cap allowed.
+          // Read it rather than counting the entries: the known ids are
+          // dropped after the fetch, so a capped page can come back short.
+          setCapped(Boolean(page.nextCursor));
         }
       } catch (err) {
         if (!cancelled) {

@@ -58,13 +58,17 @@ export const UserSearch = ({ client, search, renderAction }) => {
                 {renderAction(u)}
               </div>
             ))}
-            {capped && (
-              <ListHint className="pt-2">
-                Showing the first {USER_SEARCH_LIMIT} matches. Keep typing to narrow the list.
-              </ListHint>
-            )}
           </div>
         ))
+      )}
+
+      {/* Outside the branch above: a capped search whose whole page was
+          filtered out as people already on the list shows the empty message,
+          and that is the case most in need of saying the list was cut. */}
+      {!denied && active && !loading && capped && (
+        <ListHint className="pt-2">
+          Showing the first {USER_SEARCH_LIMIT} matches. Keep typing to narrow the list.
+        </ListHint>
       )}
     </div>
   );
