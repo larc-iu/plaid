@@ -532,6 +532,7 @@ export class IgtEditor {
     sentence = false,
     ariaLabel,
     guess = null,
+    guessTarget = null,
     prov = null,
     provOrigin: origin = null,
     confirmWord = null,
@@ -627,6 +628,12 @@ export class IgtEditor {
     const guessCls = g
       ? `igt-field--guess${g.source === VOCAB_ENTRY_SOURCE ? ' igt-field--guess-entry' : ''}`
       : '';
+    // A guess also carries WHAT a whole-word accept would write it to, because
+    // the cell key cannot be read back for it: a key is a display key, and both
+    // halves may hold a colon — an unanalyzed word's morpheme is `virtual:<word
+    // id>`, and a field is named by whoever made the layer. Splitting one on
+    // ':' named a token that does not exist, and the domain skipped the
+    // adoption in silence (see _wordGuessAdoptions).
     const input = html`<input
       class="igt-field ${filled ? 'igt-field--filled' : 'igt-field--empty'} ${guessCls} ${nAlts > 1
         ? 'igt-field--alts'
@@ -640,6 +647,8 @@ export class IgtEditor {
       data-tagset-enforces=${tagsetEnforces(tagset) ? '1' : nothing}
       data-guess-value=${g ? g.value : nothing}
       data-guess-source=${g ? g.source : nothing}
+      data-guess-target=${g && guessTarget ? guessTarget : nothing}
+      data-guess-field=${g && fieldName ? fieldName : nothing}
       data-confirm-word=${confirmWord ?? nothing}
       aria-label=${ariaLabel ?? nothing}
       title=${title}

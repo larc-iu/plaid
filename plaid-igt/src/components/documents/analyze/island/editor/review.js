@@ -120,19 +120,21 @@ export const review = {
   // adoption records for confirmWordAnalysis. Read off the rendered cells
   // (they already carry the guess in data-guess-*) rather than recomputed, so
   // "everything proposed on this word" is exactly what the grid is showing.
-  // Guesses only render on empty, enabled annotation cells, so `wa:`/`ma:`
-  // cell keys are the whole of it: orthographies and morpheme forms never
-  // carry one, and sentence fields are their own gesture.
+  // The token and field come from the guess's own attributes, never from the
+  // cell key: a key is a display key and both halves may hold a colon (see
+  // _field). Only a word or morpheme annotation cell carries them, which is
+  // the whole of what a guess renders on -- orthographies and morpheme forms
+  // never show one, and sentence fields are their own gesture.
   _wordGuessAdoptions(wordId) {
     const col = this.container.querySelector(`[data-word-col="${wordId}"]`);
     if (!col) return [];
     const out = [];
     for (const el of col.querySelectorAll('.igt-field[data-guess-value]')) {
       if (el.disabled || el.value !== '') continue;
-      const [kind, targetId, ...rest] = (el.dataset.cellKey || '').split(':');
-      const field = rest.join(':');
+      const targetId = el.dataset.guessTarget;
+      const field = el.dataset.guessField;
       const value = el.dataset.guessValue;
-      if ((kind !== 'wa' && kind !== 'ma') || !targetId || !field || !value) continue;
+      if (!targetId || !field || !value) continue;
       out.push({
         targetId,
         field,

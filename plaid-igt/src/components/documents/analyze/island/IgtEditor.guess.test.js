@@ -269,3 +269,68 @@ describe('the pulse on a single accept', () => {
     await settle();
   });
 });
+
+// Ctrl+Enter reads what to write off the cells showing a guess. It used to read
+// the TOKEN and FIELD out of the cell key by splitting on ':', which holds only
+// while neither half contains one — and an unanalyzed word's morpheme is
+// `virtual:<word id>`, so `ma:virtual:w-3:Gloss` resolved to the token
+// "virtual" in a field called "w-3:Gloss". The domain found no such token,
+// skipped the adoption, and answered true: the word pulsed, nothing was
+// written, and the guess stayed grey in the cell. Unanalyzed words are where
+// gloss guesses mostly appear, so this was most of the gesture.
+describe('Ctrl+Enter on a word nobody has segmented', () => {
+  // 'the cat the': w-1 carries a real morpheme glossed DEF, so w-3 — the same
+  // form, unanalyzed — shows DEF as a guess on its virtual morpheme.
+  function mountVirtual() {
+    const raw = buildRawDoc({
+      body: 'the cat the',
+      words: [
+        { id: 'w-1', begin: 0, end: 3 },
+        { id: 'w-2', begin: 4, end: 7 },
+        { id: 'w-3', begin: 8, end: 11 },
+      ],
+      morphemes: [{ id: 'm-1', begin: 0, end: 3, precedence: 1, metadata: {} }],
+    });
+    raw.textLayers[0].tokenLayers
+      .flatMap((tl) => tl.spanLayers || [])
+      .find((sl) => sl.id === 'msl-0').spans = [{ id: 'g-1', tokens: ['m-1'], value: 'DEF' }];
+    const client = makeFakeClient();
+    client.query = async () => ({ results: [] });
+    const doc = new IgtDocument({
+      raw,
+      project: { id: 'proj-1', vocabs: [], config: { plaid: {} } },
+      vocabularies: {},
+      client,
+      projectId: 'proj-1',
+    });
+    client.documents.get = async () => doc.raw;
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    editor = new IgtEditor(host, doc, {});
+    return client;
+  }
+
+  it('writes the guess to the morpheme it makes real', async () => {
+    const client = mountVirtual();
+    await new Promise((r) => setTimeout(r, 0));
+    const c = cell('ma:virtual:w-3:Gloss');
+    expect(c.placeholder).toBe('DEF');
+    c.focus();
+    c.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Enter',
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0));
+
+    // The virtual morpheme became a token, and the guess became a span on it.
+    const made = client.calls.find((c2) => c2.kind === 'tokens.bulkCreate');
+    expect(made).toBeTruthy();
+    const span = client.calls.find((c2) => c2.kind === 'spans.create');
+    expect(span.args[0]).toBe('msl-0');
+    expect(span.args[2]).toBe('DEF');
+  });
+});

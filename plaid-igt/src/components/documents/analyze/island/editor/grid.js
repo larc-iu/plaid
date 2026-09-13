@@ -156,7 +156,9 @@ export const grid = {
                 value: token.annotations?.[name]?.value ?? '',
                 apply: (v, meta) => this.doc.updateTokenSpan(token.id, name, v, meta),
                 ariaLabel: `${name} for ${token.content}`,
+                fieldName: name,
                 tagset: this._tagsetFor('word', name),
+                guessTarget: token.id,
                 guess: allowedGuess(
                   ctx.guess?.guessFor(
                     'word',
@@ -320,7 +322,9 @@ export const grid = {
                 apply: (v, meta) => this.doc.updateMorphemeSpan(morph.id, name, v, meta),
                 extraClass: 'igt-morph-field',
                 ariaLabel: `${name} for morpheme${value ? ` ${value}` : ''}`,
+                fieldName: name,
                 tagset: this._tagsetFor('morpheme', name),
+                guessTarget: morph.id,
                 guess: allowedGuess(
                   ctx.guess?.guessFor('morpheme', value, name, { vocabItem: morph.vocabItem }) ??
                     null,
