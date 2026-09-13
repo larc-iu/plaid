@@ -11,7 +11,6 @@ import {
   ChevronDown,
   AlertTriangle,
 } from 'lucide-react';
-import { Checkbox } from '@ui/components/ui/checkbox';
 import { Input } from '@ui/components/ui/input';
 import { Button } from '@ui/components/ui/button';
 import {
@@ -259,11 +258,13 @@ export const DocumentMetadataManager = ({
                         status and not something to click, so the row was the
                         only affordance and the only feedback was a mark
                         changing shape at the far left. The row still toggles. */}
-                    <Checkbox
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 cursor-pointer accent-primary"
                       checked={record.enabled}
                       aria-label={`${record.enabled ? 'Disable' : 'Enable'} ${record.name}`}
                       onClick={(event) => event.stopPropagation()}
-                      onCheckedChange={(on) => handleFieldToggle(record.name, !!on)}
+                      onChange={(event) => handleFieldToggle(record.name, event.target.checked)}
                     />
                   </td>
                   <td className="px-3 py-2">

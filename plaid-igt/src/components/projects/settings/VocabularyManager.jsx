@@ -10,7 +10,6 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { Input } from '@ui/components/ui/input';
-import { Checkbox } from '@ui/components/ui/checkbox';
 import { SearchInput, ListCount, ListPager } from '@ui/components/ui/list-search';
 import { usePagedList } from '@ui/hooks/usePagedList';
 import { Button } from '@ui/components/ui/button';
@@ -287,11 +286,13 @@ export const VocabularyManager = ({
                         did was click it to find out, with the whole row as the
                         hit target and the only feedback a mark changing shape
                         at the far left. The row still toggles. */}
-                    <Checkbox
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 cursor-pointer accent-primary"
                       checked={record.enabled}
                       aria-label={`${record.enabled ? 'Unlink' : 'Link'} ${record.name}`}
                       onClick={(event) => event.stopPropagation()}
-                      onCheckedChange={(on) => handleVocabToggle(record.id, !!on)}
+                      onChange={(event) => handleVocabToggle(record.id, event.target.checked)}
                     />
                   </td>
                   <td className="px-3 py-2">
