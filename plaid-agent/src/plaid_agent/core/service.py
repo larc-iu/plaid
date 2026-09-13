@@ -57,7 +57,7 @@ from plaid_client import BaseService, TASKS, service_source
 
 from .agent import ModelConfig, Toolkit, TurnCancelled, context_window, ping_model, run_turn
 from .conversation import (ConversationStore, MissingConversation, assistant_item, build_meta, error_item,
-                           find_plan, prune, settle_plan)
+                           find_plan, prune, record_budget, settle_plan)
 from .plan import PlanError
 from .web import BACKENDS, WebConfig, session_for, ping as ping_search
 
@@ -359,7 +359,8 @@ class BaseAssistantService(BaseService):
                 usage['window'] = window
         item = assistant_item(turn.text, ws.plan_payload(), self.citations(ws, turn.text),
                               turn.steps, turn.summary, model, usage)
-        done = prune({'messages': transcript + turn.messages, 'display': conv['display'] + [item]})
+        done = prune({'messages': transcript + turn.messages, 'display': conv['display'] + [item]},
+                     record_budget(client))
         try:
             self._write(store, conv_id, done, build_meta(meta, conv_id, done, self.service_id, model), request_id)
         except Exception as e:  # noqa: BLE001 - the answer is in hand; say so rather than lose it

@@ -31,10 +31,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client.http import PlaidAPIError
 
-# A single stored value may weigh a megabyte (plaid-core's user_data). A
-# turn's tool results are almost all of a conversation's weight and the part
-# it can spare: the reply that drew conclusions from them stays, and so does
-# every question and every plan. Past the budget the oldest tool results are
+# What one stored record may weigh, when the server does not say. A turn's
+# tool results are almost all of a conversation's weight and the part it can
+# spare: the reply that drew conclusions from them stays, and so does every
+# question and every plan. Past the budget the oldest tool results are
 # dropped, in order, until it fits.
 #
 # This is a budget in BYTES, for the store. It bounds what the next turn sends
@@ -42,6 +42,9 @@ from plaid_client.http import PlaidAPIError
 # the same 700KB is comfortable for one model and beyond another. What a turn
 # actually sent, against the window it was sent into, is reported per reply
 # (`assistant_item`'s `usage`).
+#
+# The real cap is the server's and it publishes it (`record_budget`); this is
+# the fallback for a server too old to report one.
 CONVERSATION_BUDGET = 700_000
 DROPPED = '[This result was dropped to keep the conversation within its size limit.]'
 TITLE_MAX = 60
@@ -196,11 +199,32 @@ def settle_plan(conv: Dict[str, Any], index: int, status: Optional[str], note: O
 # --- size ---------------------------------------------------------------------
 
 def _bytes(value: Any) -> int:
-    return len(json.dumps(value, ensure_ascii=False).encode('utf-8'))
+    """The bytes the SERVER will count for this value, not the bytes Python
+    would write.
+
+    The store measures `clojure.data.json`'s output, which escapes every
+    non-ASCII character as ``\\uXXXX`` and every ``/`` as ``\\/``, and writes
+    no space after a comma or a colon. Counted the Python way a Cyrillic
+    conversation weighed a third of what the server saw: it sat under its
+    budget, prune never fired, and the save came back 413.
+    """
+    text = json.dumps(value, ensure_ascii=True, separators=(',', ':'))
+    return len(text.encode('utf-8')) + text.count('/')
 
 
 def conversation_bytes(conv: Dict[str, Any]) -> int:
     return _bytes({'messages': conv.get('messages') or [], 'display': conv.get('display') or []})
+
+
+def record_budget(client, default: int = CONVERSATION_BUDGET) -> int:
+    """The cap the server enforces on one stored value, which it publishes at
+    ``GET /info``. A server that does not report one gets the fallback, which
+    is what the budget was before anybody asked."""
+    try:
+        reported = (client.server.limits() or {}).get('user_data_value_bytes')
+    except Exception:  # noqa: BLE001 - an unreachable or older server just has no figure
+        return default
+    return int(reported) if isinstance(reported, int) and reported > 0 else default
 
 
 def prune(conv: Dict[str, Any], budget: int = CONVERSATION_BUDGET) -> Dict[str, Any]:

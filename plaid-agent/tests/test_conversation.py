@@ -45,6 +45,43 @@ def test_prune_never_counts_an_already_dropped_result_twice():
     assert [m['content'] for m in out['messages']] == [DROPPED, DROPPED]
 
 
+def test_a_record_is_measured_the_way_the_server_measures_it():
+    """The store counts clojure.data.json's output, which escapes every
+    non-ASCII character as \\uXXXX. Counted as UTF-8 a Cyrillic conversation
+    weighed a third of what the server saw: it sat under its budget, prune
+    never fired, and the save came back 413."""
+    cyrillic = 'предложение' * 20_000   # 2 bytes per character as UTF-8, 6 escaped
+    conv = _conv(messages=[{'role': 'tool', 'tool_call_id': 'c1', 'content': cyrillic}])
+    n = conversation_bytes(conv)
+    assert n > len(cyrillic.encode('utf-8')) * 2.5, 'escaped, not UTF-8'
+    assert n > CONVERSATION_BUDGET
+    out = prune(conv)
+    assert out['messages'][0]['content'] == DROPPED
+    # A slash costs two bytes there and one here, so it is counted as two.
+    assert conversation_bytes(_conv(messages=['a/b'])) == conversation_bytes(_conv(messages=['a\\b']))
+
+
+def test_the_record_budget_is_the_cap_the_server_publishes():
+    from plaid_agent.core.conversation import record_budget
+
+    class Server:
+        def __init__(self, limits):
+            self._limits = limits
+
+        def limits(self):
+            return self._limits
+
+    class C:
+        def __init__(self, limits):
+            self.server = Server(limits)
+
+    assert record_budget(C({'user_data_value_bytes': 250_000})) == 250_000
+    # Not reported, reported as nonsense, or no /info at all: the fallback.
+    assert record_budget(C({})) == CONVERSATION_BUDGET
+    assert record_budget(C({'user_data_value_bytes': 'lots'})) == CONVERSATION_BUDGET
+    assert record_budget(FakeClient()) == CONVERSATION_BUDGET
+
+
 def test_title_and_meta():
     assert title_from('  what   is\nthis ') == 'what is this'
     assert len(title_from('w' * 100)) == 60 and title_from('w' * 100).endswith('…')
