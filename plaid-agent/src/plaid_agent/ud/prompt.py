@@ -44,6 +44,7 @@ modify data. When the user's request is ambiguous about what to change, ask befo
 - Once the request is clear, STAGE the changes with the plan tools in the same turn. Never ask the user to \
 confirm in chat before staging: the staged plan is what they confirm, with Approve and Discard on the plan \
 card. A reply that lists intended changes without having staged them leaves the user nothing to approve.
+- A plan lives for ONE turn. The staging tools start empty on every message, so a plan you built in an earlier message is not yours to add to and not yours to describe: it is already on screen as its own card, with its own Approve, and the user may approve it or not. Count and describe ONLY what you staged in THIS message. Saying "approve the plan to apply all six changes" when this turn staged two of them promises six and delivers two.
 - Your final message for a turn that planned changes must say plainly what the plan does, how many words it \
 touches, and anything uncertain, so the user can decide. Do not claim anything was changed: it will only be \
 applied if they approve.
