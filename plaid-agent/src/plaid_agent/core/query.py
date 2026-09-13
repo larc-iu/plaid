@@ -98,7 +98,15 @@ def rewrite(node: Any, idx: Dict[str, List[tuple]], display: Callable[[str], str
                 out[k] = resolve_layer(v, idx, display)
             elif k == 'doc' and docs is not None and isinstance(v, str) and not v.startswith('?') \
                     and not UUID_RE.match(v):
-                out[k] = docs.get(v.casefold(), v)
+                # A name nothing answers to is said out loud. Passed through as
+                # written it matched no document, and the query came back with
+                # zero rows and no reason, which reads as an answer about the
+                # data rather than about the name.
+                got = docs.get(v.casefold())
+                if got is None:
+                    raise QueryRefused(f'No document named "{v}". Use its exact name or its id '
+                                       '(list_documents shows both).')
+                out[k] = got
             else:
                 out[k] = rewrite(v, idx, display, docs)
         return out

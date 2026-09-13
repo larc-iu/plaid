@@ -180,8 +180,17 @@ def test_query_rewrites_layer_names_and_scopes_to_the_project():
     assert seen['where'][0][2]['layer'] == 'sl-mgloss' and seen['where'][1][1]['layer'] == 'tk-word'
     assert seen['where'][1][2][1]['layer'] == 'sl-gloss'
     assert out == '1 row: s\n  "Text 1" s1.w1.m2 Morph Gloss = "ERG"'
-    assert 'No layer named "Nope"' in call_tool(w, 'query', {'query': {'where': [['span', '?s', {'layer': 'Nope'}]]}})
+    assert 'No layer named "Nope"' in call_tool(
+        w, 'query', {'query': {'find': ['?s'], 'where': [['span', '?s', {'layer': 'Nope'}]]}})
     assert 'must be a JSON object' in call_tool(w, 'query', {'query': 'not json'})
+    # Shared with UD since the two forks became one: a query with nothing to
+    # return, and a document name nothing answers to, are both said in words
+    # rather than sent to the engine to come back as zero rows.
+    assert 'needs "find"' in call_tool(w, 'query', {'query': {'where': [['span', '?s', {'layer': 'Gloss'}]]}})
+    assert 'No document named "Text 9"' in call_tool(
+        w, 'query', {'query': {'find': ['?s'], 'where': [['span', '?s', {'layer': 'Gloss', 'doc': 'Text 9'}]]}})
+    assert 'has to be a number' in call_tool(
+        w, 'query', {'query': {'find': ['?s'], 'where': [['span', '?s', {}]]}, 'limit': 'lots'})
     help_text = call_tool(w, 'query_help', {})
     assert 'Morpheme-scope fields (span layers on morpheme tokens): Morph Gloss' in help_text
     assert 'lexicons (vocab layers): Lexicon' in help_text and '["covers", ?span, ?token]' in help_text

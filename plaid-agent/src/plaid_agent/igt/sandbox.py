@@ -10,7 +10,7 @@ from typing import Any, Callable, Dict
 from plaid_client.provenance import prov_state
 
 from ..core import sandbox
-from ..core.query import QueryRefused, parse_query, run as run_query
+from ..core.query import QueryRefused, parse_query, rewrite, run as run_query
 from .project import IgtDoc, word_ref
 from .tools import ToolError, Workspace, WRITE_TOOLS, call_tool
 
@@ -87,7 +87,7 @@ def view(doc: IgtDoc) -> Dict[str, Any]:
 
 
 def api(ws: Workspace) -> Dict[str, Callable]:
-    from .query import _layer_index, _rewrite
+    from .query import _layer_index, _display
 
     def documents():
         return [{'id': d['id'], 'name': d.get('name') or ''} for d in ws.documents()]
@@ -103,7 +103,7 @@ def api(ws: Workspace) -> Dict[str, Callable]:
             parsed = parse_query(q)
             idx = _layer_index(ws)
             docs = {(d.get('name') or '').casefold(): d['id'] for d in ws.documents()}
-            return run_query(ws.client, _rewrite(parsed, idx, docs), ws.project.id)
+            return run_query(ws.client, rewrite(parsed, idx, _display(idx), docs), ws.project.id)
         except (QueryRefused, ToolError) as e:
             raise ValueError(str(e))
 
