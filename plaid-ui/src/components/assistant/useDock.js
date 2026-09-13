@@ -23,14 +23,15 @@ export const useWideEnoughToDock = () => {
   return wide;
 };
 
-// How much room the dock is taking, for the shell to pad by. Zero when it is
-// closed or the window is too narrow.
-export const useDockWidth = (open) => {
+// How wide the dock would be, and whether the window has room for it at all.
+// Whether it is actually shown is `assistantGate`'s answer, not this one: it
+// also depends on the project in scope having an assistant online.
+export const useDockWidth = () => {
   const wide = useWideEnoughToDock();
   const [width, setWidth] = useState(readWidth);
   const resize = useCallback((w) => {
     setWidth(w);
     saveWidth(w);
   }, []);
-  return { width, resize, shown: open && wide, wide };
+  return { width, resize, wide };
 };

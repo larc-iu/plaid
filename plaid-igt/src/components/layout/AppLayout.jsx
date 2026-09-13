@@ -1,22 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { UserButton } from '@ui/components/shared/UserButton';
 import { useAuth } from '../../contexts/AuthContext';
-import { Button } from '@ui/components/ui/button';
 import { headerItem } from '@ui/components/shared/headerItem.js';
-import { AssistantDock } from '@ui/components/assistant/AssistantDock.jsx';
-import { AssistantRail } from '@ui/components/assistant/AssistantRail.jsx';
-import { AssistantMark, PlaidMark } from '@ui/components/assistant/PlaidMarks.jsx';
-import { ProjectPicker } from '@ui/components/assistant/ProjectPicker.jsx';
-import { useDockWidth } from '@ui/components/assistant/useDock.js';
-import { readDockOpen, saveDockOpen } from '@ui/components/assistant/panelWidth.js';
+import { AssistantChrome } from '@ui/components/assistant/AssistantChrome.jsx';
+import { PlaidMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { AssistantSubjectProvider } from '@ui/components/assistant/AssistantSubject.jsx';
-import {
-  useAskAssistant,
-  useAssistantFocus,
-  useAssistantScope,
-} from '@ui/components/assistant/subject.js';
-import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
+import { useAskAssistant, useAssistantScope } from '@ui/components/assistant/subject.js';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 
 // shadcn shell frame, and the one place the assistant panel is mounted.
@@ -28,74 +18,14 @@ import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 // shell's survival across a navigation was incidental, and a panel living in it
 // could not hold a conversation from one screen to the next.
 //
-// The panel's project comes from whatever screen published a subject, and the
-// LAST one seen is kept when the reader walks onto a screen that has none
-// (/vocabularies, /admin, /profile). The assistant is per project all the way
-// down (discovery, the conversation records, the agent's workspace), so
-// "always available" can only mean the panel keeps the thread it has rather
-// than becoming a project-less chat, which would be a chat with 2 of its 64
-// tools.
+// The panel itself, the chip, the rail and the gutter are `AssistantChrome` in
+// plaid-ui: plaid-ud's shell mounts the same component. What stays here is what
+// is IGT's, which is the window bridge the lit island's "Ask" crosses.
 
 const Shell = () => {
   const { user, client, logout } = useAuth();
   const location = useLocation();
   const subject = useAssistantScope();
-
-  // --- the dock -------------------------------------------------------------
-  // Where the reader left it, within the session and across a load: a thread
-  // they were in the middle of is the likeliest reason they came back. A reader
-  // who has never opened it gets it shut (see panelWidth.js).
-  const [open, setOpen] = useState(readDockOpen);
-  const { width, resize, shown, wide } = useDockWidth(open);
-  const setDockOpen = useCallback((next) => {
-    setOpen(next);
-    saveDockOpen(next);
-  }, []);
-
-  // Published for anything painted outside this tree that must not sit under
-  // the dock. The toaster is mounted at the root, above the router, so it
-  // cannot read this from React (see index.css).
-  useEffect(() => {
-    const px = shown ? `${width}px` : '0px';
-    document.documentElement.style.setProperty('--plaid-dock-width', px);
-    return () => document.documentElement.style.removeProperty('--plaid-dock-width');
-  }, [shown, width]);
-
-  // The project the panel is about. A screen with no project of its own leaves
-  // the thread where it was rather than closing it, and one chosen in the
-  // picker below is held the same way. A picked project carries no permissions
-  // with it, so plans cannot be applied until the reader opens the project
-  // itself, which is where those facts are read: it is a floor, not a fence,
-  // and the server is the one that decides either way.
-  //
-  // What the reader may DO travels with the project, not with the screen. Both
-  // are facts about the project, and reading them off the current subject meant
-  // a thread could apply a plan while its own project screen was open and not
-  // while the reader was on the vocabulary list, which is the same thread and
-  // the same permission.
-  const [held, setHeld] = useState(null);
-  useEffect(() => {
-    if (!subject?.projectId) return;
-    setHeld({
-      projectId: subject.projectId,
-      projectName: subject.projectName,
-      canWrite: subject.canWrite,
-      contributor: subject.contributor,
-    });
-  }, [subject?.projectId, subject?.projectName, subject?.canWrite, subject?.contributor]);
-  const project = subject?.projectId ? subject : held;
-  const projectId = project?.projectId || null;
-  const projectName = project?.projectName || null;
-  const available = useAssistantAvailable(client, projectId, IGT_ASSISTANT.app);
-  // Whether to offer the picker: only where no project is in scope AND the
-  // route is not itself under a project. The route test is what keeps the
-  // picker off the new-project wizard and the importers, which publish no
-  // subject and have no annotation to ask about. It is NOT there for the first
-  // paint of a document screen: `projectId` on those comes from the route
-  // params, so it is published by the first effect and there is nothing to
-  // flicker. (Only `projectName` waits on the document load.)
-  const routeHasProject = /^\/projects\/[^/]+/.test(location.pathname);
-  const offerPicker = !projectId && !routeHasProject;
 
   // What the reader pointed at, as {ref, label}. The interlinear grid is a lit
   // island, so its "Ask" reaches React as a window event, and the shell listens
@@ -103,7 +33,6 @@ const Shell = () => {
   // be able to open it. Past that bridge it is the ordinary channel a React
   // screen uses (`useAskAssistant`), which plaid-ud's editor calls directly.
   const ask = useAskAssistant();
-  const { focus, clearFocus } = useAssistantFocus();
   useEffect(() => {
     const onAsk = (e) => {
       if (e.detail) ask(e.detail);
@@ -111,10 +40,6 @@ const Shell = () => {
     window.addEventListener('igt:ask-assistant', onAsk);
     return () => window.removeEventListener('igt:ask-assistant', onAsk);
   }, [ask]);
-  // Pointing at something opens the panel: it is how you start asking.
-  useEffect(() => {
-    if (focus) setDockOpen(true);
-  }, [focus, setDockOpen]);
 
   // `/` outside a text box focuses the screen's search box (the first
   // SearchInput on it), the web's own key for that. Nothing when the screen
@@ -141,110 +66,57 @@ const Shell = () => {
   );
 
   return (
-    <div
+    <AssistantChrome
+      adapter={IGT_ASSISTANT}
+      client={client}
+      user={user}
+      subject={subject}
+      routeHasProject={/^\/projects\/[^/]+/.test(location.pathname)}
       className="min-h-screen bg-background text-foreground"
-      style={{ paddingRight: shown ? width : undefined }}
     >
-      <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4">
-          <Link to="/projects" className="flex items-center gap-2 font-bold">
-            <PlaidMark className="h-[18px] w-[18px] shrink-0" />
-            Plaid IGT
-          </Link>
-          <nav className="flex items-center gap-1">
-            {navItem('/projects', 'Projects', location.pathname.startsWith('/projects'))}
-            {navItem(
-              '/vocabularies',
-              'Vocabularies',
-              location.pathname.startsWith('/vocabularies'),
-            )}
-            {/* The user guide is published with the docs site, not bundled here. */}
-            <a
-              href="https://larc-iu.github.io/plaid/igt-guide.html"
-              target="_blank"
-              rel="noreferrer"
-              className={headerItem()}
-            >
-              Guide
-            </a>
-          </nav>
-          <div className="ml-auto flex items-center gap-2">
-            {/* Named, in the place app-level controls live, and offered on
-                every screen: the rail at the right edge is the same gesture in
-                the place the panel comes from, but it is a sliver that says
-                nothing until it is hovered, and the assistant should not have
-                to be hunted for. Same gate as the rail: a project for it to be
-                about, an assistant actually online there, and a window wide
-                enough to give the panel room. */}
-            {wide && !shown && (projectId ? available : offerPicker) && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="gap-1.5"
-                onClick={() => setDockOpen(true)}
-                title="Assistant"
-              >
-                <AssistantMark className="h-4 w-4" />
-                Assistant
-              </Button>
-            )}
-            {/* Administration is the server's, not this project's or this
-                screen's, so it sits with the account rather than in the nav
-                beside Projects and Vocabularies. plaid-ud says it in the same
-                place, where it has to be an anchor into this app. */}
-            {user?.isAdmin && navItem('/admin', 'Admin', location.pathname.startsWith('/admin'))}
-            {user && <UserButton user={user} client={client} onLogout={logout} />}
-          </div>
-        </div>
-      </header>
-      <main>
-        <Outlet />
-      </main>
-      {/* The way in when the panel is shut. Offered wherever there is a project
-          for it to be about, which includes the one the panel is holding, and
-          only when an assistant is actually online there: a handle that opens
-          an empty panel is worse than no handle. `available` is null until that
-          is known, which is also not offered, and it answers from a per-project
-          cache so a navigation does not flicker it away and back. Not offered
-          in a window too narrow to give the panel width. */}
-      {wide && !shown && (projectId ? available : offerPicker) && (
-        <AssistantRail onOpen={() => setDockOpen(true)} />
+      {({ chip }) => (
+        <>
+          <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+            <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4">
+              <Link to="/projects" className="flex items-center gap-2 font-bold">
+                <PlaidMark className="h-[18px] w-[18px] shrink-0" />
+                Plaid IGT
+              </Link>
+              <nav className="flex items-center gap-1">
+                {navItem('/projects', 'Projects', location.pathname.startsWith('/projects'))}
+                {navItem(
+                  '/vocabularies',
+                  'Vocabularies',
+                  location.pathname.startsWith('/vocabularies'),
+                )}
+                {/* The user guide is published with the docs site, not bundled here. */}
+                <a
+                  href="https://larc-iu.github.io/plaid/igt-guide.html"
+                  target="_blank"
+                  rel="noreferrer"
+                  className={headerItem()}
+                >
+                  Guide
+                </a>
+              </nav>
+              <div className="ml-auto flex items-center gap-2">
+                {chip}
+                {/* Administration is the server's, not this project's or this
+                    screen's, so it sits with the account rather than in the nav
+                    beside Projects and Vocabularies. plaid-ud says it in the same
+                    place, where it has to be an anchor into this app. */}
+                {user?.isAdmin &&
+                  navItem('/admin', 'Admin', location.pathname.startsWith('/admin'))}
+                {user && <UserButton user={user} client={client} onLogout={logout} />}
+              </div>
+            </div>
+          </header>
+          <main>
+            <Outlet />
+          </main>
+        </>
       )}
-      {shown && (projectId ? available !== false : offerPicker) && (
-        <AssistantDock
-          open
-          width={width}
-          onResize={resize}
-          onClose={() => setDockOpen(false)}
-          projectId={projectId}
-          projectName={projectName}
-          client={client}
-          userId={user?.id}
-          canWrite={!!project?.canWrite}
-          contributor={!!project?.contributor}
-          adapter={IGT_ASSISTANT}
-          documentId={subject?.kind === 'document' ? subject.id : null}
-          documentName={subject?.kind === 'document' ? subject.name : null}
-          lexiconId={subject?.kind === 'lexicon' ? subject.id : null}
-          lexiconName={subject?.kind === 'lexicon' ? subject.name : null}
-          focus={focus}
-          onClearFocus={clearFocus}
-          onApplied={subject?.onApplied}
-          onFocusHere={subject?.onFocusHere}
-          onMentions={subject?.mentions}
-          picker={
-            projectId ? null : (
-              <ProjectPicker
-                client={client}
-                onPick={(p) => setHeld({ projectId: p.id, projectName: p.name })}
-                onCollapse={() => setDockOpen(false)}
-              />
-            )
-          }
-        />
-      )}
-    </div>
+    </AssistantChrome>
   );
 };
 

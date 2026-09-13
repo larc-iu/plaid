@@ -299,14 +299,21 @@ export const newJob = (fields) => ({
   ...fields,
 });
 
-// Run one turn for `conv`, whose last message is the user's.
+// Where the conversation BEGAN, as the sidebar entry stores it: the field name
+// IS the kind, so `{documentId, documentName}` beside a document and
+// `{lexiconId, lexiconName}` beside a vocabulary. Written once, on the first
+// turn, from the live `where` that turn carried.
 //
-// `about` is what the screen the turn was sent from is about, as the record
-// stores it: `{documentId, documentName}` beside a document, or
-// `{lexiconId, lexiconName}` beside a vocabulary. The field name IS the kind,
-// because it is also how a panel finds the thread to resume, and a conversation
-// written before there were vocabularies has to keep resuming on its document.
-export const startTurn = ({ store, service, conv, prevMeta, about = null, where = null }) => {
+// Spelled from the kind rather than switched on, so the record layer names no
+// app's own vocabulary and an app that grows a third kind of screen needs
+// nothing here.
+export const aboutOf = (where) =>
+  where?.kind && where.id
+    ? { [`${where.kind}Id`]: where.id, [`${where.kind}Name`]: where.name ?? null }
+    : null;
+
+// Run one turn for `conv`, whose last message is the user's.
+export const startTurn = ({ store, service, conv, prevMeta, where = null }) => {
   const { client, projectId } = store;
   const requestId = newId();
   const j = newJob({
@@ -326,7 +333,7 @@ export const startTurn = ({ store, service, conv, prevMeta, about = null, where 
     conv,
     service,
     { kind: 'turn', requestId, serviceId: service.serviceId, startedAt: new Date().toISOString() },
-    about,
+    aboutOf(where),
   );
   j.promise = (async () => {
     // The record first: the service reads the message from it, and a tab

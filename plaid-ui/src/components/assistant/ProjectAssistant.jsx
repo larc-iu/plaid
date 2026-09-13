@@ -118,12 +118,9 @@ export const ProjectAssistant = ({
   // 'tab' is the whole screen; 'panel' is the same conversation in the shell's
   // dock, with the chrome the tab owns left out (see AssistantDock).
   variant = 'tab',
-  documentId = null,
-  documentName = null,
-  // The other thing a panel can be docked beside: one vocabulary, on the same
-  // terms as a document. Only one of the two is ever set.
-  lexiconId = null,
-  lexiconName = null,
+  // What the screen behind the panel is showing, exactly as it published it
+  // (see subject.js). Null in the tab, which is about the project at large.
+  subject = null,
   onApplied,
   // What the user pointed at in the editor, as {ref, label}. It rides on the
   // next message and then clears: nothing is attached that was not chosen.
@@ -142,28 +139,18 @@ export const ProjectAssistant = ({
   onCollapse,
 }) => {
   const panel = variant === 'panel';
-  // What this panel is about, in the shape the record stores: the field name is
-  // the kind. Kept as two named fields rather than one `{kind, id}` so that a
-  // conversation saved before vocabularies had a panel still resumes.
-  const about = useMemo(
-    () =>
-      documentId ? { documentId, documentName } : lexiconId ? { lexiconId, lexiconName } : null,
-    [documentId, documentName, lexiconId, lexiconName],
-  );
-  // The same thing in the shape the SERVICE takes, and the one that travels
-  // with each turn. `about` is where the conversation began and is written
-  // once; `where` is where the reader is now, and a thread can hold turns
-  // asked from several places.
+  // Where the reader is, in the shape the SERVICE takes, and the one that
+  // travels with each turn. A screen that is about the project at large
+  // publishes no kind, and then a turn names no place. What the RECORD stores
+  // as where the conversation began is derived from this once, in jobs.js.
+  const subjectKind = subject?.kind || null;
+  const subjectId = subject?.id || null;
+  const subjectName = subjectKind ? subject?.name || null : null;
   const where = useMemo(
     () =>
-      documentId
-        ? { kind: 'document', id: documentId, name: documentName }
-        : lexiconId
-          ? { kind: 'lexicon', id: lexiconId, name: lexiconName }
-          : null,
-    [documentId, documentName, lexiconId, lexiconName],
+      subjectKind && subjectId ? { kind: subjectKind, id: subjectId, name: subjectName } : null,
+    [subjectKind, subjectId, subjectName],
   );
-  const subjectName = documentName || lexiconName;
   // ONE thread per project, wherever the reader is inside it. Each subject used
   // to remember its own, which was right while the panel belonged to the screen
   // that opened it: it appeared beside one document and resuming a thread about
@@ -630,7 +617,7 @@ export const ProjectAssistant = ({
     setActive(conv);
     if (urlConvRef.current !== conv.id) setUrlConv(conv.id, { replace: true });
     setConvs(upsert(buildMeta(prevMeta, conv, service)));
-    showJob(startTurn({ store, service, conv, prevMeta, about, where }));
+    showJob(startTurn({ store, service, conv, prevMeta, where }));
   };
 
   // Send the user's last message again, whether the turn was lost (its
