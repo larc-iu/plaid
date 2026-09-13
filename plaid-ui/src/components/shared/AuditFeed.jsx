@@ -5,6 +5,7 @@ import { ListHint } from '../ui/list-search.jsx';
 import { DataTable } from '../ui/data-table.jsx';
 import { timeAgo, fullTimestamp } from '../../utils/formatTime.js';
 import { notifyError } from '../../lib/notify.js';
+import { readableDescription } from '../../lib/auditText.js';
 
 // A paged audit feed. `fetchPage({cursor, limit})` returns the server's
 // `{entries, nextCursor}` newest-first, and this holds what has been loaded so
@@ -24,7 +25,7 @@ const CHUNK = 200;
 const entryLabel = (entry) => {
   if (entry.message) return entry.message;
   const head = entry.ops?.[0];
-  return head?.description || head?.type || 'Change';
+  return readableDescription(head?.description) || head?.type || 'Change';
 };
 
 const placeOf = (entry) => entry.documents?.[0] || entry.projects?.[0] || null;
