@@ -1504,6 +1504,7 @@ def t_set_analysis(ws: Workspace, document: str, ref: Optional[str] = None, morp
     if not ws.project.morpheme_layer_id:
         raise ToolError('This project has no morpheme layer.')
     doc = ws.doc(document)
+    reshape_guards(ws, doc)
     items = list(analyses or [])
     if ref or morphemes:
         items.insert(0, {'ref': ref, 'morphemes': morphemes})
@@ -1554,7 +1555,7 @@ def _reshaped_words(ws: Workspace) -> set:
     return out
 
 
-def refuse_shape_and_analysis(ws: Workspace, word_id: str, ref: str, *, analysing: bool) -> None:
+def refuse_shape_and_analysis(ws: Workspace, word_id, ref: str, *, analysing: bool) -> None:
     """A word's boundaries and its morpheme chain cannot both change in one plan.
 
     A reshape deletes the word's morphemes by the ids it read before the plan
@@ -1565,12 +1566,13 @@ def refuse_shape_and_analysis(ws: Workspace, word_id: str, ref: str, *, analysin
     know about, for the server to cascade-split into nonsense, which is the
     very thing a reshape deletes them to prevent.
     """
+    ids = {word_id} if isinstance(word_id, str) else set(word_id or ())
     if analysing:
-        if word_id in _reshaped_words(ws):
+        if ids & _reshaped_words(ws):
             raise ToolError(f'{ref} is split, merged, deleted or retyped in this plan, so its analysis cannot '
                             'also change: a boundary change deletes the word\'s morphemes. discard_plan to '
                             'start over, or plan the two in separate turns.')
-    elif any(op.get('kind') in _ANALYSIS_KINDS and op.get('word_id') == word_id for op in ws.ops):
+    elif any(op.get('kind') in _ANALYSIS_KINDS and op.get('word_id') in ids for op in ws.ops):
         raise ToolError(f'{ref} has an analysis change in this plan, so its boundaries cannot also change: a '
                         'boundary change deletes the morphemes that analysis writes. discard_plan to start '
                         'over, or plan the two in separate turns.')
@@ -1687,6 +1689,19 @@ def check_respell_overlap(ws: Workspace, text_id: str, begin: int, end: int, whe
             raise ToolError(f'{where}: a sentence before or at this point is retyped or appended in this plan; '
                             'respell it in a separate plan')
     no_scope_reaches(ws, next((d.id for d in ws._docs.values() if d.text_id == text_id), None), where)
+
+
+def reshape_guards(ws: Workspace, doc, where: Optional[str] = None) -> None:
+    """The refusals every tool that reshapes text or words owes, whichever
+    tool stages it.
+
+    Kept in one place because the hole they leave is invisible: four of the
+    nine kinds plan.RESHAPES names reached a document without passing through
+    here, so a sentence split or an analysis could join a plan holding a
+    corpus-wide change that reaches the same document, and the two met for the
+    first time inside the batch, after the user had approved it.
+    """
+    no_scope_reaches(ws, doc.id, where or ws.doc_label(doc.id))
 
 
 def no_scope_reaches(ws: Workspace, doc_id: Optional[str], where: str) -> None:
@@ -2470,6 +2485,7 @@ def t_discard_analysis(ws: Workspace, document: str, refs) -> str:
     discard gesture): its machine links, values, and morphemes go; human and
     verified pieces stay."""
     doc = ws.doc(document)
+    reshape_guards(ws, doc)
     words: List[tuple] = []
     for ref in _refs(refs):
         obj = resolve(doc, ref)

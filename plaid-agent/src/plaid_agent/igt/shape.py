@@ -11,10 +11,8 @@ word takes its analysis, values, and links with it while the text stays."""
 from typing import Any, Dict, List, Optional
 
 from .project import Sentence, Word, resolve, word_ref
-from .tools import (Workspace, ToolError, _refs, _need, split_sentences, split_words,
+from .tools import (Workspace, ToolError, _refs, _need, reshape_guards, split_sentences, split_words,
                     refuse_shape_and_analysis)
-
-SHAPE_KINDS = ('split_word', 'merge_words', 'delete_word', 'split_sentence', 'merge_sentences')
 
 
 def _shaped_ids(ws: Workspace, merges_only: bool) -> set:
@@ -36,7 +34,7 @@ def _shaped_ids(ws: Workspace, merges_only: bool) -> set:
     return out
 
 
-def _guard(ws: Workspace, obj, ref: str, merging: bool = False) -> None:
+def _guard(ws: Workspace, obj, ref: str, merging: bool = False, word_ids=None) -> None:
     """A word or sentence takes part in at most one merge per plan, and a
     merge takes no word or sentence another shape op changes. A repeated
     split or delete of one item simply replaces the earlier op (last wins).
@@ -46,7 +44,7 @@ def _guard(ws: Workspace, obj, ref: str, merging: bool = False) -> None:
     """
     if obj.id in _shaped_ids(ws, merges_only=not merging):
         raise ToolError(f'{ref} is already split, merged, or deleted in this plan; discard_plan to start over')
-    refuse_shape_and_analysis(ws, obj.id, ref, analysing=False)
+    refuse_shape_and_analysis(ws, word_ids if word_ids is not None else obj.id, ref, analysing=False)
 
 
 def _dedup_spans(units) -> List[Dict[str, Any]]:
@@ -108,8 +106,7 @@ def _collapsed_mwes(words: List[Word]) -> list:
 def t_split_word(ws: Workspace, document: str, ref: str, at) -> str:
     """PLAN: split one word into two at a character position."""
     doc = ws.doc(document)
-    from .tools import no_scope_reaches
-    no_scope_reaches(ws, doc.id, ws.doc_label(doc.id))
+    reshape_guards(ws, doc)
     w = _need(resolve(doc, ref), Word, ref)
     _guard(ws, w, ref)
     if isinstance(at, str) and not at.strip().isdigit():
@@ -140,8 +137,7 @@ def t_split_word(ws: Workspace, document: str, ref: str, at) -> str:
 def t_merge_words(ws: Workspace, document: str, refs) -> str:
     """PLAN: merge consecutive words of one sentence into one."""
     doc = ws.doc(document)
-    from .tools import no_scope_reaches
-    no_scope_reaches(ws, doc.id, ws.doc_label(doc.id))
+    reshape_guards(ws, doc)
     refs = _refs(refs)
     if len(refs) < 2:
         raise ToolError('Give at least two word references in one sentence, e.g. ["s3.w2", "s3.w3"]')
@@ -189,8 +185,7 @@ def t_merge_words(ws: Workspace, document: str, refs) -> str:
 def t_delete_word(ws: Workspace, document: str, refs) -> str:
     """PLAN: delete word tokens (the text stays. Analysis, values, and links go)."""
     doc = ws.doc(document)
-    from .tools import no_scope_reaches
-    no_scope_reaches(ws, doc.id, ws.doc_label(doc.id))
+    reshape_guards(ws, doc)
     staged: List[Dict[str, Any]] = []
     words = [(ref, _need(resolve(doc, ref), Word, ref)) for ref in _refs(refs)]
     going = {w.id for _, w in words}
@@ -222,6 +217,7 @@ def t_delete_word(ws: Workspace, document: str, refs) -> str:
 def t_split_sentence(ws: Workspace, document: str, ref: str, before_word: int) -> str:
     """PLAN: start a new sentence at a word of an existing one."""
     doc = ws.doc(document)
+    reshape_guards(ws, doc)
     s = _need(resolve(doc, ref), Sentence, ref)
     _guard(ws, s, ref)
     try:
@@ -242,6 +238,7 @@ def t_split_sentence(ws: Workspace, document: str, ref: str, before_word: int) -
 def t_merge_sentences(ws: Workspace, document: str, ref: str) -> str:
     """PLAN: merge a sentence into the one before it."""
     doc = ws.doc(document)
+    reshape_guards(ws, doc)
     s = _need(resolve(doc, ref), Sentence, ref)
     if s.index < 2:
         raise ToolError(f'{ref} is the first sentence; name the sentence to merge into the one before it')
@@ -283,6 +280,7 @@ def _clean_text(text: str) -> str:
 def t_append_text(ws: Workspace, document: str, text: str) -> str:
     """PLAN: add sentences at the end of a document."""
     doc = ws.doc(document)
+    reshape_guards(ws, doc)
     text = _clean_text(text)
     at = len(doc.body)
     _guard_text_edit(ws, doc.text_id, at, at, f'{ws.doc_label(doc.id)}: append')
@@ -299,8 +297,7 @@ def t_append_text(ws: Workspace, document: str, text: str) -> str:
 def t_retype_sentence(ws: Workspace, document: str, ref: str, text: str) -> str:
     """PLAN: replace one sentence's baseline text."""
     doc = ws.doc(document)
-    from .tools import no_scope_reaches
-    no_scope_reaches(ws, doc.id, ws.doc_label(doc.id))
+    reshape_guards(ws, doc)
     s = _need(resolve(doc, ref), Sentence, ref)
     text = _clean_text(text)
     b, e = s.begin, s.end
@@ -311,7 +308,11 @@ def t_retype_sentence(ws: Workspace, document: str, ref: str, text: str) -> str:
     old = doc.body[b:e]
     if old == text:
         return ws.planned_note(0)
-    _guard(ws, s, ref)
+    # The word ids, not the sentence's: a retype deletes every word of the
+    # sentence, and the analysis guard compares word ids. Handed a sentence id
+    # it could never fire, so set_analysis then retype staged both and
+    # approval silently dropped one of them.
+    _guard(ws, s, ref, word_ids=[w.id for w in s.words])
     _guard_text_edit(ws, doc.text_id, b, e, f'{ws.doc_label(doc.id)} {ref}')
     n = len(split_sentences(text))
     ws.add_op({'kind': 'edit_text', 'document_id': doc.id, 'text_id': doc.text_id, 'sentence_id': s.id,

@@ -201,11 +201,10 @@ def scope_reaches(ws: Workspace, doc_id: Optional[str]) -> bool:
 def _clear_of_reshapes(ws: Workspace, docs: List[str]) -> None:
     """A corpus-wide replacement reaches every document it matched, so a plan
     that already reshapes text or words in one of them cannot take it."""
+    from .plan import RESHAPES
     reach = set(docs)
     for op in ws.ops:
-        if op.get('kind') in ('respell', 'edit_text', 'split_word', 'merge_words', 'delete_word',
-                              'split_sentence', 'merge_sentences', 'set_analysis', 'discard_analysis') \
-                and (op.get('doc') in reach or not op.get('doc')):
+        if op.get('kind') in RESHAPES and (op.get('doc') in reach or not op.get('doc')):
             raise ToolError('This plan already reshapes text or words in a document this replacement '
                             'reaches. Apply one, then plan the other (plan_status, drop_planned).')
 

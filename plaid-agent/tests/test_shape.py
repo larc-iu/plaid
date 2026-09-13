@@ -167,6 +167,56 @@ def test_one_plan_changes_a_word_s_boundaries_or_its_analysis_never_both():
     assert 'cannot also change' in call_tool(w, 'discard_analysis', {'document': 'd1', 'refs': ['s1']})
 
 
+def test_a_retype_and_an_analysis_of_its_words_cannot_share_a_plan():
+    """A retype deletes every word of the sentence, so an analysis of one of
+    them is planned against ids that will not exist. The guard compares word
+    ids and the retype handed it the SENTENCE's id, so it could never fire:
+    the analysis-then-retype order staged both, and approval dropped one of
+    them with a note the user had not agreed to."""
+    w = ws()
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [{'form': 'Al'}, {'form': 'i'}]})
+    out = call_tool(w, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali gam akuna.'})
+    assert 'cannot also change' in out
+    assert len(w.ops) == 1
+    # The other order already refused, and still does.
+    w2 = ws()
+    call_tool(w2, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali gam akuna.'})
+    assert 'cannot also change' in call_tool(
+        w2, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [{'form': 'Al'}, {'form': 'i'}]})
+    assert len(w2.ops) == 1
+    # A sentence the retype does not touch is still free.
+    w3 = ws()
+    call_tool(w3, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali gam akuna.'})
+    assert call_tool(w3, 'set_analysis', {'document': 'd1', 'ref': 's2.w1',
+                                          'morphemes': [{'form': 'Gam'}]}).startswith('Planned')
+
+
+def test_every_reshaping_tool_refuses_a_plan_a_corpus_wide_change_reaches():
+    """Nine kinds count as a reshape when a corpus-wide change looks for one,
+    and only five of the tools looked the other way. A sentence split or an
+    analysis could join such a plan, and the two met for the first time inside
+    the batch, after approval."""
+    scope = {'kind': 'bulk_scope', 'tool': 'replace_in_field', 'args': {}, 'counts': {},
+             'count': 1, 'documents': ['d1'], 'label': 'a corpus-wide change'}
+    for name, args in [
+        ('split_word', {'document': 'd1', 'ref': 's1.w1', 'at': 2}),
+        ('merge_words', {'document': 'd1', 'refs': ['s1.w1', 's1.w2']}),
+        ('delete_word', {'document': 'd1', 'refs': ['s1.w1']}),
+        ('split_sentence', {'document': 'd1', 'ref': 's1', 'before_word': 2}),
+        ('merge_sentences', {'document': 'd1', 'ref': 's2'}),
+        ('set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [{'form': 'Ali'}]}),
+        ('discard_analysis', {'document': 'd1', 'refs': ['s1.w1']}),
+        ('retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali gam.'}),
+        ('append_text', {'document': 'd1', 'text': 'Gam.'}),
+    ]:
+        w = ws()
+        w.doc('d1')          # the scope op names it, so the document must be known
+        w.ops.append(dict(scope))
+        out = call_tool(w, name, args)
+        assert 'corpus-wide change that reaches this document' in out, (name, out)
+        assert len(w.ops) == 1, name
+
+
 def test_append_and_retype_plan_ops_and_guards():
     w = ws()
     out = call_tool(w, 'append_text', {'document': 'd1', 'text': 'Gam akuna.\n\n  Ali gam.\n'})
