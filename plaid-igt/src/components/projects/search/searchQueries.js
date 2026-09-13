@@ -12,10 +12,15 @@
 // contains = escaped substring regex, case-insensitive;
 // regex = the user's pattern verbatim (server-side Java regex), case-sensitive.
 
+// The case behaviour differs between these and it changes what comes back, so
+// the label says it rather than leaving it to be discovered: `contains` folds
+// case (buildMatchSpec gives it the `i` flag), the other two do not. Searching
+// `the` found 17 matches under one and 3 under the other with nothing on screen
+// to explain the gap, and on Bulk Edit that gap is a write.
 export const MATCH_TYPES = [
-  { id: 'contains', label: 'contains' },
-  { id: 'exact', label: 'is exactly' },
-  { id: 'regex', label: 'matches regex' },
+  { id: 'contains', label: 'contains (any case)' },
+  { id: 'exact', label: 'is exactly (same case)' },
+  { id: 'regex', label: 'matches regex (same case)' },
 ];
 
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
