@@ -274,11 +274,14 @@ The heading of each example opens that sentence in the annotation editor.
 
 == The panel
 
-The **Assistant** button in the header opens the same assistant in a panel on the right of the window, on every screen.
-It stays where it is as you move around, so a question can be asked without leaving what you are reading and an answer can be read while you get on with something else.
+A handle on the right edge of the window, halfway down, opens the same assistant in a panel beside whatever you are looking at.
+It widens under the pointer to show the assistant's mark; clicking it opens the panel.
+It is the same gesture as the history rail on the left edge of a document, and it is there on every screen.
+The panel stays where it is as you move around, so a question can be asked without leaving what you are reading and an answer can be read while you get on with something else.
 The page narrows to make room for it.
-The panel can be dragged wider or narrower and hidden again, and its width and whether it is open are remembered.
-A narrow window has no room for it and it is not offered there.
+The panel can be dragged wider or narrower and hidden again, and its width is remembered.
+It starts closed every time you open the app, whatever you last did with it: the annotation is what you came for, and the handle is one click away.
+A narrow window has no room for it and neither the handle nor the panel is offered there.
 
 One conversation runs per project.
 The panel picks up the last one you had in the project you are in and keeps it as you move from document to document.
@@ -299,7 +302,7 @@ A plan approved in the panel re-reads the document, so the annotation shows the 
 == When no assistant is connected
 
 The assistant is a service that your server's operator runs and picks the model for (`plaid-ud-agent`, installed from a checkout of the source tree).
-When none is connected there is nothing to open, so the tab, the button and **Ask** are not shown.
+When none is connected there is nothing to open, so the tab, the handle and **Ask** are not shown.
 Conversations already saved are unaffected and open from their own links.
 
 = Additional Features

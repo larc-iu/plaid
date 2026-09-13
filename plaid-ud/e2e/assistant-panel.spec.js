@@ -209,9 +209,11 @@ test.describe('when one is online', () => {
     const widened = (await panel.boundingBox()).width;
     expect(widened).toBeGreaterThan(before + 40);
 
-    // It comes back open, too: whether it is open is remembered with its width.
+    // The WIDTH is remembered; whether it was open is not, so this opens it
+    // again from the handle and reads the width it comes back at.
     await page.reload();
-    await expect(panelOf(page)).toBeVisible();
+    await expect(panelOf(page)).toHaveCount(0);
+    await toggle(page).click();
     const after = (await panelOf(page).boundingBox()).width;
     expect(Math.abs(after - widened)).toBeLessThan(3);
   });

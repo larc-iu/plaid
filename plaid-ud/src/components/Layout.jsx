@@ -1,16 +1,15 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { AssistantMark, PlaidMark } from '@ui/components/assistant/PlaidMarks.jsx';
+import { PlaidMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { UserButton } from '@ui/components/shared/UserButton';
-import { Button } from '@ui/components/ui/button';
 import { headerItem } from '@ui/components/shared/headerItem.js';
 import { AssistantDock } from '@ui/components/assistant/AssistantDock.jsx';
+import { AssistantRail } from '@ui/components/assistant/AssistantRail.jsx';
 import { ProjectPicker } from '@ui/components/assistant/ProjectPicker.jsx';
 import { AssistantSubjectProvider } from '@ui/components/assistant/AssistantSubject.jsx';
 import { useAssistantFocus, useAssistantScope } from '@ui/components/assistant/subject.js';
 import { useDockWidth } from '@ui/components/assistant/useDock.js';
-import { readDockOpen, saveDockOpen } from '@ui/components/assistant/panelWidth.js';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
 import { UD_ASSISTANT } from './assistant/adapter.js';
 import { adminUrl } from '../domain/siblingApps.js';
@@ -45,12 +44,12 @@ const Shell = () => {
   };
 
   // --- the dock -------------------------------------------------------------
-  const [open, setOpen] = useState(readDockOpen);
+  // Shut on every load, and opened from the handle at the right edge. It is NOT
+  // remembered across a load (see panelWidth.js); within the session it stays
+  // where the reader left it, which is what navigating with a thread open
+  // needs.
+  const [open, setDockOpen] = useState(false);
   const { width, resize, shown, wide } = useDockWidth(open);
-  const setDockOpen = useCallback((next) => {
-    setOpen(next);
-    saveDockOpen(next);
-  }, []);
 
   // Published for anything painted outside this tree that must not sit under
   // the dock. The toaster is mounted at the root, above the router, so it
@@ -120,27 +119,6 @@ const Shell = () => {
           </Link>
           {user && (
             <div className="flex items-center gap-2">
-              {/* Offered wherever there is a project for it to be about, which
-                  includes the one the panel is holding, and only when an
-                  assistant is actually online there: a control that opens an
-                  empty panel is worse than no control. `available` is null
-                  until that is known, which is also not offered, and it answers
-                  from a per-project cache so a navigation does not flicker it
-                  away and back. Not offered in a window too narrow to give it
-                  width. */}
-              {wide && !shown && (projectId ? available : offerPicker) && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5"
-                  onClick={() => setDockOpen(true)}
-                  title="Assistant"
-                >
-                  <AssistantMark className="h-4 w-4" />
-                  Assistant
-                </Button>
-              )}
               {/* The server's admin area is plaid-igt's. The release jar always
                   ships both apps on one server, so there is exactly one, and a
                   second here would be a second answer to the same question.
@@ -172,6 +150,16 @@ const Shell = () => {
         </div>
       </main>
 
+      {/* The way in when the panel is shut. Offered wherever there is a project
+          for it to be about, which includes the one the panel is holding, and
+          only when an assistant is actually online there: a handle that opens
+          an empty panel is worse than no handle. `available` is null until that
+          is known, which is also not offered, and it answers from a per-project
+          cache so a navigation does not flicker it away and back. Not offered
+          in a window too narrow to give the panel width. */}
+      {wide && !shown && (projectId ? available : offerPicker) && (
+        <AssistantRail onOpen={() => setDockOpen(true)} />
+      )}
       {shown && (projectId ? available !== false : offerPicker) && (
         <AssistantDock
           open

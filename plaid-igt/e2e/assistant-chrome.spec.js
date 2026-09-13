@@ -205,6 +205,58 @@ test('the panel stays shut across a navigation once it is shut', async ({ page }
   await expect(panelOf(page)).toHaveCount(0);
 });
 
+test('the handle waits at the edge, widens under the pointer, and does not open on hover', async ({
+  page,
+}) => {
+  // The affordance the panel is reached by, and the reason it can start shut.
+  // It mirrors the history rail on the LEFT edge of the document screen: a
+  // sliver that widens to show its mark. Hover must NOT open the panel, or it
+  // would open itself every time the cursor drifted out to a scrollbar.
+  await seedAuth(page);
+  await withAssistant(page);
+  await analyze(page, documentId);
+  await expect(page.locator('.igt-sentence').first()).toBeVisible({ timeout: 15000 });
+
+  const rail = toggle(page);
+  await expect(rail).toBeVisible();
+  const viewport = page.viewportSize();
+  const idle = await rail.boundingBox();
+  // Against the right edge, and vertically centred.
+  expect(idle.x + idle.width).toBeGreaterThan(viewport.width - 2);
+  expect(Math.abs(idle.y + idle.height / 2 - viewport.height / 2)).toBeLessThan(2);
+  expect(idle.width).toBeLessThan(20);
+
+  await rail.hover();
+  await expect.poll(async () => (await rail.boundingBox()).width).toBeGreaterThan(idle.width * 2);
+  // Widened, but the panel is still shut: hovering is not opening.
+  await expect(panelOf(page)).toHaveCount(0);
+
+  await rail.click();
+  await expect(panelOf(page)).toBeVisible();
+  // And it steps out of the way once the panel it opens is open.
+  await expect(rail).toHaveCount(0);
+});
+
+test('the panel is shut on every load, whatever the reader last did', async ({ page }) => {
+  // It used to be remembered, so a reader who had opened it once met a third of
+  // their window taken by a chat on every visit, before they had asked
+  // anything. The handle at the right edge is how it opens now, and the
+  // annotation is what a reader came for.
+  await seedAuth(page);
+  await withAssistant(page);
+  await analyze(page, documentId);
+  await expect(page.locator('.igt-sentence').first()).toBeVisible({ timeout: 15000 });
+  await openDock(page);
+  await panelOf(page).getByRole('textbox').fill('open when I left');
+
+  await page.reload();
+  await expect(toggle(page)).toBeVisible();
+  await expect(panelOf(page)).toHaveCount(0);
+  // And opening it again is one gesture, with the thread still there.
+  await openDock(page);
+  await expect(panelOf(page)).toBeVisible();
+});
+
 test('the control is offered on every screen after signing in', async ({ page }) => {
   // "Always available" means the control does not come and go with the route.
   // On a screen with no project in scope it opens the picker instead of the
