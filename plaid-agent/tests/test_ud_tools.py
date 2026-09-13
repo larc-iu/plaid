@@ -830,6 +830,42 @@ def test_a_review_over_several_documents_is_one_scope_op_each(ws):
     assert 'Nothing is waiting for review anywhere' in run(ws, 'confirm', documents='all')
 
 
+@pytest.mark.parametrize('tool', ['confirm', 'discard_predictions'])
+def test_refs_and_documents_together_are_refused(ws, tool):
+    """refs are positional inside ONE document. Given both, the refs were
+    dropped and the card offered whole documents: the model asked about one
+    word and the user was shown a review of everything."""
+    out = run(ws, tool, documents=['Viaje'], refs=['s1.w4'])
+    assert out == 'Error: refs need a document'
+    assert ws.ops == []
+    # refs alone, with nowhere to read them, is the same request.
+    assert run(ws, tool, refs=['s1.w4']) == 'Error: refs need a document'
+    assert ws.ops == []
+
+
+def test_every_document_with_an_unconfirmed_head_is_found():
+    """A head is a relation, not a span, and the loop that finds documents
+    skipped it. So confirm(documents=["all"], field="deprel") always answered
+    that nothing was waiting, whatever the trees held."""
+    from ud_fixtures import FakeClient, document_raw, project_raw
+    raw = document_raw()
+    rel = next(r for sl in raw['text_layers'][0]['token_layers'][2]['span_layers'] if sl['id'] == LEMMA
+               for rl in sl['relation_layers'] for r in rl['relations'] if r['id'] == 'r-3')
+    rel['metadata'] = {'prov': 'inferred', 'provSource': 'service:ud:parse'}
+    client = FakeClient(project=project_raw(), documents={'ud1': raw})
+    w = Workspace(client, load_project(client, PID))
+    asked = []
+
+    def engine(body):
+        asked.append(body)
+        return {'return': 'aggregate', 'results': [['ud1', 1]]}
+    client.query = engine
+    assert 'across 1 document(s)' in run(w, 'confirm', documents=['all'], field='deprel')
+    assert w.ops[0]['kind'] == 'confirm_scope' and w.ops[0]['fields'] == ['deprel']
+    kinds = [c[0] for body in asked for c in body['where'] if isinstance(c, list)]
+    assert 'relation' in kinds, 'the heads are looked for on the relation layer'
+
+
 def test_the_worklist_sees_unconfirmed_dependencies(ws):
     """The four span columns were the only ones the worklist walked, so a
     document whose parser output was confirmed except for the tree said

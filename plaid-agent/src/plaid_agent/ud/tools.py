@@ -691,6 +691,13 @@ def _scope_fields(ws: Workspace, kind: str, doc: UdDoc, fields: List[str]) -> Li
     return fields
 
 
+def _refs_need_a_document(document, refs) -> None:
+    """A reference is positional inside one document, so refs without a
+    document to read them against are a request that cannot be answered."""
+    if refs and not document:
+        raise ToolError('refs need a document')
+
+
 def _scope_documents(ws: Workspace, documents, kind: str, fields: List[str]) -> List[str]:
     """The document ids a many-document review covers: the ones named, or
     every document with something waiting when ``documents`` is "all"."""
@@ -702,10 +709,15 @@ def _scope_documents(ws: Workspace, documents, kind: str, fields: List[str]) -> 
         stamps = [{'prov': 'inferred'}] + ([{'prov': 'contributed'}] if kind == 'confirm' else [])
         ids: List[str] = []
         for f in fields:
-            if f == 'deprel':
-                continue
             for stamp in stamps:
-                for did, _n in c.documents_with([c.field(f, '?s', metadata=stamp), c.unconfirmed('?s')], '?s'):
+                # A head is a relation, not a span, so it is found on its own
+                # layer. Skipping it meant confirm(documents=["all"],
+                # field="deprel") always answered that nothing was waiting.
+                if f == 'deprel':
+                    where = [c.dep('?s', metadata=stamp), c.unconfirmed_relation('?s')]
+                else:
+                    where = [c.field(f, '?s', metadata=stamp), c.unconfirmed('?s')]
+                for did, _n in c.documents_with(where, '?s'):
                     if did not in ids:
                         ids.append(did)
         if not ids:
@@ -749,6 +761,11 @@ def _many(ws: Workspace, documents, field: str, one) -> str:
 
 def t_confirm(ws: Workspace, document: str = None, refs=None, field: str = None, documents=None) -> str:
     """Mark machine output and contributors' work as reviewed and correct."""
+    # refs name words INSIDE one document, so a request that gives refs and
+    # several documents means two different things at once. IGT refuses it;
+    # here the refs were silently dropped and the card offered whole documents
+    # when the model had asked for one word.
+    _refs_need_a_document(document, refs)
     if documents and not document:
         return _many(ws, documents, field, t_confirm)
     if not document:
@@ -783,6 +800,11 @@ def t_discard_predictions(ws: Workspace, document: str = None, refs=None, field:
                           documents=None) -> str:
     """Throw away machine output nobody has confirmed. A person's work and a
     confirmed value are never touched."""
+    # refs name words INSIDE one document, so a request that gives refs and
+    # several documents means two different things at once. IGT refuses it;
+    # here the refs were silently dropped and the card offered whole documents
+    # when the model had asked for one word.
+    _refs_need_a_document(document, refs)
     if documents and not document:
         return _many(ws, documents, field, t_discard_predictions)
     if not document:

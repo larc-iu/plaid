@@ -117,6 +117,10 @@ class Corpus:
         """A value a machine made that nobody has confirmed."""
         return ['not', ['span', span_var, {'metadata': {'provConfirmed': True}}]]
 
+    def unconfirmed_relation(self, var: str = '?r') -> list:
+        """The same, for a head: a dependency is a relation, not a span."""
+        return ['not', ['relation', var, {'metadata': {'provConfirmed': True}}]]
+
     # --- forms ----------------------------------------------------------
     #
     # A word's FORM is its token's surface text, unless a Form span overrides
