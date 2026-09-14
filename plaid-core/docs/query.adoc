@@ -1099,25 +1099,32 @@ const result = await client.query({
 
 These run against a Universal Dependencies project with a token hierarchy
 `Sentences › Words › Morphemes`, a `UPOS` span layer, and a `Dependency Relations`
-relation layer. Layers are addressed by path; swap in ids for real code.
+relation layer. Unlike the short examples above, these carry real layer ids, the
+only form the engine accepts (see <<Layer addressing>>). Read them off the
+project: `client.projects.get(project_id)` returns the layer tree with an `id` on
+every layer.
 
 [,python]
 ----
-P = "My UD Project"
+PROJECT   = "5b7ce985-9f11-4f2e-a1c0-6d1186cbd822"
+SENTENCES = "0194e8a1-2c77-7d6b-9e30-4b1a5f0c8e11"   # token layer
+MORPHEMES = "0194e8a1-2c77-7d6b-9e30-4b1a5f0c8e13"   # token layer
+UPOS      = "0194e8a1-2c77-7d6b-9e30-4b1a5f0c8e21"   # span layer
+DEPRELS   = "0194e8a1-2c77-7d6b-9e30-4b1a5f0c8e31"   # relation layer
 
 # how many NOUNs?  -> {"return": "count", "count": 38, "truncated": false}
 client.query({
     "find": ["?s"],
-    "where": [["span", "?s", {"layer": f"{P}/UPOS", "value": "NOUN"}]],
+    "where": [["span", "?s", {"layer": UPOS, "value": "NOUN"}]],
     "return": "count",
 })
 
 # determiner immediately followed by a noun, as full entities
 client.query({
     "find": ["?d", "?n"],
-    "where": [["seq", {"layer": f"{P}/Morphemes"},
-               ["span", {"layer": f"{P}/UPOS", "value": "DET"}, "as", "?d"],
-               ["span", {"layer": f"{P}/UPOS", "value": "NOUN"}, "as", "?n"]]],
+    "where": [["seq", {"layer": MORPHEMES},
+               ["span", {"layer": UPOS, "value": "DET"}, "as", "?d"],
+               ["span", {"layer": UPOS, "value": "NOUN"}, "as", "?n"]]],
     "return": "entities",
     "limit": 20,
 })
@@ -1126,11 +1133,10 @@ client.query({
 client.query({
     "find": ["?r"],
     "where": [
-        ["relation", "?r", {"layer": f"{P}/Dependency Relations",
-                            "value": "nsubj", "target": "?dep"}],
+        ["relation", "?r", {"layer": DEPRELS, "value": "nsubj", "target": "?dep"}],
         ["covers", "?dep", "?td"],
         ["within", "?td", "?s"],
-        ["token", "?s", {"layer": f"{P}/Sentences"}],
+        ["token", "?s", {"layer": SENTENCES}],
         ["first-in", "?td", "?s"],
     ],
 })
@@ -1153,7 +1159,7 @@ client.query({
 # restrict to one project by ID
 client.query({
     "find": ["?s"],
-    "where": [["span", "?s", {"layer": "UPOS", "value": "NOUN"}]],
-    "scope": {"project_ids": ["5b7ce985-...-6d1186cbd822"]},
+    "where": [["span", "?s", {"layer": UPOS, "value": "NOUN"}]],
+    "scope": {"project_ids": [PROJECT]},
 })
 ----
