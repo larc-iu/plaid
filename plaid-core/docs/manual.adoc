@@ -1186,17 +1186,22 @@ Finally, you may also submit multiple requests in **batch**es.
 Batches are **atomic** meaning that we guarantee that either they will all succeed or all fail.
 This is a very useful guarantee whenever you have sophisticated data integrity requirements that must be orchestrated using more than one request.
 
+A batch is an object rather than a mode of the client.
+`batched` hands your block a batch carrying the same resources as the client (`b.documents`, `b.tokens`, and the rest), and a write made on that batch is queued instead of sent.
+The queue is submitted as one request when the block ends, and dropped if the block raises.
+A write made on the *client* while a batch is open is never part of it and goes over the wire at once, so code that knows nothing of your batch cannot land inside it.
+
 Here is an example of how to submit a batch using the JavaScript client:
 
 [,js]
 ----
-client.beginBatch();
-client.documents.update(documentIdOne, "New Name for Doc 1");
-client.documents.update(documentIdTwo, "New Name for Doc 2");
 try {
-    const result = await client.submitBatch();
+    const results = await client.batched(async (b) => {
+        b.documents.update(documentIdOne, "New Name for Doc 1");
+        b.documents.update(documentIdTwo, "New Name for Doc 2");
+    });
     console.log("Batch success!")
-    for (const response of result) {
+    for (const response of results) {
         console.log(response);
     }
 } catch (e) {
@@ -1204,23 +1209,42 @@ try {
 }
 ----
 
-Or in Python:
+Or in Python, where the results land on the batch because a context manager cannot return a value:
 
 [,python]
 ----
-client.begin_batch()
-client.documents.update(document_id_one, "New Name for Doc 1")
-client.documents.update(document_id_one, "New Name for Doc 2")
 try:
-    result = client.submit_batch()
+    with client.batched() as b:
+        b.documents.update(document_id_one, "New Name for Doc 1")
+        b.documents.update(document_id_two, "New Name for Doc 2")
     print("Batch success!")
-    for response in result:
+    for response in b.results:
         print(response)
 except Exception as e:
     print(f"Batch failed: {e}")
 ----
 
-Owing to some implementation details, no other writes may be executed while a batch is being processed, so only use them where necessary.
+Where the queue is not built inside a single block, open the batch yourself with `batch()` and send it with `submit()`, or drop it with `abort()`:
+
+[,js]
+----
+const b = client.batch();
+b.documents.update(documentIdOne, "New Name for Doc 1");
+b.documents.update(documentIdTwo, "New Name for Doc 2");
+const results = await b.submit();
+----
+
+[,python]
+----
+b = client.batch()
+b.documents.update(document_id_one, "New Name for Doc 1")
+b.documents.update(document_id_two, "New Name for Doc 2")
+results = b.submit()
+----
+
+Either way you get one result per queued write, in the order the writes were queued.
+A read made on a batch—any GET, and `query`—is answered from the server there and then rather than queued, so a read may be made on the batch or on the client as you please.
+The server runs a batch as one transaction holding its single write lock for the whole of it, and no other write can proceed meanwhile, so keep a batch to the work that has to be atomic.
 
 === Bulk updates
 
