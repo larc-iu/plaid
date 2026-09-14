@@ -39,6 +39,7 @@ export const AssistantChrome = ({
   // What the screen on show published, or null. Passed WHOLE: splitting it
   // into a document id, a document name, a lexicon id and a lexicon name meant
   // the shell knew one app's kinds and the panel put them back together again.
+  // Its callbacks (onApplied, onFocusHere, mentions) ride along on it.
   subject = null,
   // Whether the route is itself under a project, which is what keeps the
   // project picker off the new-project wizard and the importers.
@@ -149,9 +150,6 @@ export const AssistantChrome = ({
           subject={subject}
           focus={focus}
           onClearFocus={clearFocus}
-          onApplied={subject?.onApplied}
-          onFocusHere={subject?.onFocusHere}
-          onMentions={subject?.mentions}
           picker={
             gate.showPicker ? (
               <ProjectPicker

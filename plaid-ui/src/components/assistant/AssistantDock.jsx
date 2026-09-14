@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { ProjectAssistant } from './ProjectAssistant.jsx';
+import { AssistantPanel } from './AssistantPanel.jsx';
 import { clampWidth } from './panelWidth.js';
 
 // The assistant as part of the app's chrome: one panel on the right, mounted by
@@ -67,7 +67,7 @@ export const AssistantDock = ({ open, width, onResize, onClose, picker = null, .
     >
       <Resizer width={width} onResize={onResize} />
       <div className="min-h-0 flex-1">
-        {picker || <ProjectAssistant {...assistant} variant="panel" onCollapse={onClose} />}
+        {picker || <AssistantPanel {...assistant} onHide={onClose} />}
       </div>
     </aside>
   );
