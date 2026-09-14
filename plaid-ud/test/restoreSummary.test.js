@@ -3,7 +3,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { changeLines, indexLayers, skippedLines } from '../src/domain/restoreSummary.js';
+import {
+  changeLines,
+  historyMessage,
+  indexLayers,
+  restoreError,
+  skippedLines,
+} from '../src/domain/restoreSummary.js';
 
 // A UD document's layers, plus one token layer belonging to another app that
 // shares the substrate (IGT's morphemes) to check the fallback naming.
@@ -97,7 +103,7 @@ test('zero-change layers are left out', () => {
   assert.deepEqual(lines, []);
 });
 
-test('the name, the text, vocabulary links and metadata each get a line, in order', () => {
+test('the name, the text, tokens read from it, vocabulary links and metadata, in order', () => {
   const lines = changeLines(
     {
       name: 'Renamed',
@@ -108,9 +114,12 @@ test('the name, the text, vocabulary links and metadata each get a line, in orde
     },
     layers,
   );
+  // The text line names the tokens that read from it: a token is a slice of
+  // the body, so a restored text changes what they read while their own rows
+  // are untouched and counted nowhere else in the list.
   assert.deepEqual(lines, [
     'The document name',
-    'The text',
+    'The text, and the words read from it',
     '2 sentences',
     '2 vocabulary links',
     'Metadata',
@@ -138,4 +147,28 @@ test('skipped items are reported by kind, singular and plural', () => {
     ],
   );
   assert.deepEqual(skippedLines(undefined), []);
+});
+
+test('a restore refused because a layer changed is passed through, stripped', () => {
+  const err = new Error(
+    'HTTP 409 The state of layer l1 no longer fits it at http://localhost:8085/api/v1/documents/d1/restore',
+  );
+  assert.equal(
+    restoreError(err, 'The restore was not applied.'),
+    'The state of layer l1 no longer fits it',
+  );
+});
+
+test('any other failure reads as it does everywhere', () => {
+  assert.equal(
+    restoreError({ status: 423 }, 'The restore was not applied.'),
+    'This document is being edited right now (by another user or a service). Try again in a moment.',
+  );
+  assert.equal(restoreError(null, 'The restore was not applied.'), 'The restore was not applied.');
+});
+
+test('the audit message names the moment, and the entry it follows', () => {
+  const at = '2026-09-14T12:00:00.000Z';
+  assert.match(historyMessage(at, null), /^Restore to \S/);
+  assert.ok(historyMessage(at, 'Tokenize').endsWith('(after \u201cTokenize\u201d)'));
 });

@@ -12,110 +12,16 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@ui/components/ui/dialog';
+import { notifySuccess, notifyWarning, notifyError, notifyPromise } from '@/utils/feedback';
 import {
-  notifySuccess,
-  notifyWarning,
-  notifyError,
-  notifyPromise,
-  humanizeError,
-} from '@/utils/feedback';
-import { ROLES } from '@larc-iu/plaid-client';
-
-const plural = (n, word, words = `${word}s`) => `${n.toLocaleString()} ${n === 1 ? word : words}`;
-const formatTime = (t) => new Date(t).toLocaleString();
-const changed = (c) => (c?.inserted ?? 0) + (c?.updated ?? 0) + (c?.deleted ?? 0);
-
-const TOKEN_ROLE_WORDS = {
-  [ROLES.SENTENCE]: ['sentence', 'sentences'],
-  [ROLES.WORD]: ['word', 'words'],
-  [ROLES.MORPHEME]: ['morpheme', 'morphemes'],
-  [ROLES.TIME_ALIGNMENT]: ['time alignment', 'time alignments'],
-};
-
-const SKIPPED_WORDS = {
-  text: ['text', 'texts'],
-  token: ['token', 'tokens'],
-  span: ['annotation', 'annotations'],
-  relation: ['relation', 'relations'],
-  'vocab-link': ['vocabulary link', 'vocabulary links'],
-};
-
-// Every layer of the raw document by id, with what to call it.
-const indexLayers = (raw) => {
-  const out = {};
-  for (const tl of raw?.textLayers || []) {
-    for (const tkl of tl.tokenLayers || []) {
-      out[tkl.id] = { name: tkl.name, role: tkl.config?.plaid?.role };
-      for (const sl of tkl.spanLayers || []) {
-        out[sl.id] = { name: sl.name };
-        for (const rl of sl.relationLayers || []) out[rl.id] = { name: rl.name };
-      }
-    }
-  }
-  return out;
-};
-
-// The lines of the confirm step, one per kind of change.
-const changeLines = (s, layers) => {
-  if (!s) return [];
-  const lines = [];
-  if (s.name) lines.push('The document name');
-  // Not just "The text": a word is a slice of the body, so restoring the text
-  // changes what the words read while their own rows are untouched and counted
-  // nowhere below. An equal-length respell is the whole of such a restore, and
-  // this line was all a reader got for ten words coming back.
-  if (changed(s.texts)) lines.push('The text, and the words read from it');
-  for (const e of s.tokens?.byLayer || []) {
-    const n = changed(e);
-    if (!n) continue;
-    const layer = layers[e.layerId];
-    const words = TOKEN_ROLE_WORDS[layer?.role];
-    lines.push(
-      words ? plural(n, ...words) : `${plural(n, 'token')} in ${layer?.name ?? 'a layer'}`,
-    );
-  }
-  for (const e of s.spans?.byLayer || []) {
-    const n = changed(e);
-    if (n) lines.push(`${plural(n, 'annotation')} in ${layers[e.layerId]?.name ?? 'a field'}`);
-  }
-  for (const e of s.relations?.byLayer || []) {
-    const n = changed(e);
-    if (n) lines.push(`${plural(n, 'relation')} in ${layers[e.layerId]?.name ?? 'a layer'}`);
-  }
-  if (changed(s.vocabLinks)) lines.push(plural(changed(s.vocabLinks), 'vocabulary link'));
-  if (s.documentMetadata) lines.push('Metadata');
-  return lines;
-};
-
-const skippedLines = (skipped) =>
-  (skipped || []).map(
-    (k) => `${plural(k.count, ...(SKIPPED_WORDS[k.kind] || ['item', 'items']))} cannot come back.`,
-  );
-
-const historyMessage = (asOf, label) =>
-  `Restore to ${formatTime(asOf)}` + (label ? ` (after “${label}”)` : '');
-
-// A 409 from the restore is the server saying the old state no longer fits
-// a layer as it is now; anything else is the usual story.
-const restoreError = (err, fallback) => {
-  const m = String(err?.message || '');
-  if (/no longer fits/.test(m))
-    return m.replace(/^HTTP \d+\s*/, '').replace(/\s*at\s+https?:\/\/\S+/, '');
-  return humanizeError(err, fallback);
-};
-
-// The document's newest history entry: the moment its live state belongs
-// to and what that entry is called, or null for a document with no history.
-// Read before a restore so the state before it can be brought back.
-const latestState = async (client, documentId) => {
-  const entries = await client.documents.audit(documentId);
-  const last = entries?.[entries.length - 1];
-  if (!last) return null;
-  return {
-    time: last.endTime || last.time,
-    label: last.message || last.ops?.[0]?.description || null,
-  };
-};
+  changeLines,
+  historyMessage,
+  indexLayers,
+  latestState,
+  restoreError,
+  skippedLines,
+} from '@/domain/restoreSummary.js';
+import { fullTimestamp } from '@ui/lib/formatTime.js';
 
 export const RestoreDialog = ({
   open,
@@ -200,7 +106,7 @@ export const RestoreDialog = ({
       if (res?.skipped?.length) {
         notifyWarning(skippedLines(res.skipped).join(' '), 'Restored, with gaps', action);
       } else {
-        notifySuccess(`Restored to ${formatTime(asOf)}.`, 'Restored', action);
+        notifySuccess(`Restored to ${fullTimestamp(asOf)}.`, 'Restored', action);
       }
       onOpenChange(false);
       await onRestored?.();
@@ -217,7 +123,7 @@ export const RestoreDialog = ({
     <Dialog open={open} onOpenChange={(o) => (o ? onOpenChange(true) : close())}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Restore to {asOf ? formatTime(asOf) : ''}</DialogTitle>
+          <DialogTitle>Restore to {asOf ? fullTimestamp(asOf) : ''}</DialogTitle>
         </DialogHeader>
         {entry?.label && <p className="text-sm text-muted-foreground">{entry.label}</p>}
         {error && <p className="text-sm text-destructive">{error}</p>}

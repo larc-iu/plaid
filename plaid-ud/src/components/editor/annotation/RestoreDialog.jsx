@@ -12,43 +12,22 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@ui/components/ui/dialog';
-import { changeLines, indexLayers, skippedLines } from '../../../domain/restoreSummary.js';
+import {
+  changeLines,
+  historyMessage,
+  indexLayers,
+  latestState,
+  restoreError,
+  skippedLines,
+} from '../../../domain/restoreSummary.js';
 import {
   notifySuccess,
   notifyError,
   notifyWarning,
   notifyPromise,
   notifyWithAction,
-  humanizeError,
 } from '../../../utils/feedback.jsx';
 import { fullTimestamp } from '@ui/lib/formatTime.js';
-
-const historyMessage = (asOf, label) =>
-  `Restore to ${fullTimestamp(asOf)}` + (label ? ` (after “${label}”)` : '');
-
-// A 409 from the restore is the server saying the old state no longer fits a
-// layer as it is now, and it says which one — worth passing through verbatim.
-// Anything else gets the usual treatment.
-const restoreError = (err, fallback) => {
-  const m = String(err?.message || '');
-  if (/no longer fits/.test(m)) {
-    return m.replace(/^HTTP \d+\s*/, '').replace(/\s*at\s+https?:\/\/\S+/, '');
-  }
-  return m ? `${fallback} (${humanizeError(err)})` : fallback;
-};
-
-// The document's newest history entry: the moment its live state belongs to,
-// and what that entry is called. Read BEFORE a restore so the state from just
-// before it can be brought back.
-const latestState = async (client, documentId) => {
-  const entries = await client.documents.audit(documentId);
-  const last = entries?.[entries.length - 1];
-  if (!last) return null;
-  return {
-    time: last.endTime || last.time,
-    label: last.message || last.ops?.[0]?.description || null,
-  };
-};
 
 export const RestoreDialog = ({
   open,
