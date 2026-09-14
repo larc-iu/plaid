@@ -1253,7 +1253,19 @@
     (let [allowed (entity-clauses head)
           unknown (remove allowed (keys (or cmap {})))]
       (when (seq unknown)
-        (err! :validate (str "Unknown constraint key(s) " (vec unknown) " in seq :" (clojure.core/name head) " element"))))))
+        (err! :validate (str "Unknown constraint key(s) " (vec unknown) " in seq :" (clojure.core/name head) " element"))))
+    ;; The seq config owns the document, and the token layer the sequence walks.
+    ;; `atom->clauses` writes both onto every desugared token bind, so an element
+    ;; that carried its own would be overwritten (a :token element) or contradicted
+    ;; (a :span element pinned to another document). Refuse both rather than
+    ;; returning nothing or silently ignoring what was written.
+    (when (contains? cmap :doc)
+      (err! :validate (str "A seq element takes no :doc. The document belongs to the seq config: "
+                           "[\"seq\", {\"layer\": …, \"doc\": …}, …]")))
+    (when (and (= head :token) (contains? cmap :layer))
+      (err! :validate (str "A seq :token element takes no :layer. The token layer the sequence walks "
+                           "belongs to the seq config: [\"seq\", {\"layer\": …}, …]. "
+                           "(A :span element's :layer is its own span layer and is kept.)")))))
 
 (defn- cartesian
   "All combinations choosing one item from each collection, as vectors in order."

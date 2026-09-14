@@ -197,6 +197,24 @@
       (is (some (fn [c] (and (= :token (first c)) (= "d1" (:doc (nth c 2))))) w)
           "the desugared :token clause carries :doc \"d1\""))))
 
+(deftest seq-element-layer-and-doc-belong-to-the-config
+  (testing "a :token element's :layer was silently replaced by the seq layer"
+    (is (= 400 (code-of #(branches {"find" ["?t"]
+                                    "where" [["seq" {"layer" "w"}
+                                              ["token" {"layer" "other"} "as" "?t"]]]})))))
+  (testing "a :doc on an element is refused on both element kinds"
+    (is (= 400 (code-of #(branches {"find" ["?t"]
+                                    "where" [["seq" {"layer" "w"}
+                                              ["token" {"doc" "d1"} "as" "?t"]]]}))))
+    (is (= 400 (code-of #(branches {"find" ["?s"]
+                                    "where" [["seq" {"layer" "w"}
+                                              ["span" {"layer" "pos" "doc" "d1"} "as" "?s"]]]})))))
+  (testing "a :span element keeps its own span layer"
+    (let [w (:where (first (branches {"find" ["?s"]
+                                      "where" [["seq" {"layer" "w"}
+                                                ["span" {"layer" "pos"} "as" "?s"]]]})))]
+      (is (some #(= % [:span (symbol "?s") {:layer "pos"}]) w)))))
+
 (deftest return-shapes
   (testing ":return defaults to :ids and accepts :entities / :count"
     (is (= :ids (:return (ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {}]]}))))
