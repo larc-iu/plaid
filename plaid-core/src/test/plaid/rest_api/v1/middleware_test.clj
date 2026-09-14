@@ -1,10 +1,14 @@
 (ns plaid.rest-api.v1.middleware-test
   (:require [clojure.test :refer :all]
             [clojure.data.json :as json]
+            [clojure.string]
+            [ring.mock.request :as mock]
+            [taoensso.timbre :as log]
             [plaid.fixtures :refer [with-db
                                     with-mount-states with-rest-handler admin-request api-call
                                     assert-status assert-created assert-ok assert-no-content
                                     with-admin with-test-users with-clean-db]]
+            [plaid.rest-api.v1.middleware :as mw]
             [plaid.test-helpers :refer :all]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
@@ -341,3 +345,68 @@
           live-version (-> doc-res :body :document/version)]
       (is (= live-version (get outer-versions doc))
           "Merged header must reflect the latest committed doc version"))))
+
+;; ============================================================
+;; Debug-log redaction
+;; ============================================================
+
+(defn- capture-debug-lines
+  "Run `f` with Timbre at debug and every line collected. Returns the lines.
+  `log/*config*` is bound rather than set so the console stays where it is
+  for every other namespace's output."
+  [f]
+  (let [lines (atom [])]
+    (binding [log/*config* (merge log/*config*
+                                  {:min-level :debug
+                                   :appenders {:println {:enabled? false}
+                                               :capture {:enabled? true
+                                                         :min-level :debug
+                                                         :fn (fn [{:keys [msg_]}]
+                                                               (swap! lines conj (str (force msg_))))}}})]
+      (f))
+    @lines))
+
+(deftest invite-codes-do-not-reach-the-debug-log
+  ;; An invite code is a credential: it creates an account, or sets a
+  ;; password on an existing one. It rode in the clear through
+  ;; wrap-request-debug, in the body of the request that redeems one and in
+  ;; the 201 body that mints one.
+  (testing "the key is redacted wherever it sits in a shape"
+    (let [redacted (mw/redact-sensitive {:code "ABCD-EFGH"
+                                         :status-code 404
+                                         :nested [{:invite/code "IJKL-MNOP"}]})]
+      (is (= "<redacted>" (:code redacted)))
+      (is (= "<redacted>" (-> redacted :nested first :invite/code)))
+      (is (= 404 (:status-code redacted))
+          "an HTTP status is not a credential")))
+
+  (testing "a minted code is nowhere in the lines the mint request logged"
+    (let [code (atom nil)
+          lines (capture-debug-lines
+                 (fn []
+                   (let [resp (api-call admin-request {:method :post
+                                                       :path "/api/v1/invites"
+                                                       :body {:note "redaction test"}})]
+                     (assert-created resp)
+                     (reset! code (-> resp :body :code)))))]
+      (is (string? @code))
+      (is (some #(clojure.string/includes? % "/api/v1/invites") lines)
+          "the request dump ran, so the assertion below means something")
+      (is (not-any? #(clojure.string/includes? % @code) lines)
+          "the code must appear in the response and nowhere in the log")
+      (is (some #(clojure.string/includes? % "<redacted>") lines))))
+
+  (testing "and neither is the code a lookup sends back in"
+    (let [resp (api-call admin-request {:method :post
+                                        :path "/api/v1/invites"
+                                        :body {:note "redaction test"}})
+          code (-> resp :body :code)
+          lines (capture-debug-lines
+                 (fn []
+                   (assert-ok (api-call (fn [method path]
+                                          (-> (mock/request method path)
+                                              (mock/header "accept" "application/edn")))
+                                        {:method :post
+                                         :path "/api/v1/invites/lookup"
+                                         :body {:code code}}))))]
+      (is (not-any? #(clojure.string/includes? % code) lines)))))

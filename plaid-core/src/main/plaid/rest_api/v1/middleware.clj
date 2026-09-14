@@ -83,8 +83,14 @@
   so namespaced variants like `:user/password`, `:plaid.auth/token`
   and `:secret-key` (injected onto every request by
   `wrap-request-extras`) all hit. Prior to #116 the matcher used a
-  literal set, so namespaced keys leaked through."
-  #{"password" "token" "authorization" "secret-key"})
+  literal set, so namespaced keys leaked through.
+
+  `code` is here for the invite and password-reset codes: one appears in
+  the body of `POST /invites/{lookup,redeem}` and one in the 201 body that
+  mints it, and a code is a credential that creates an account or sets a
+  password on one. The match is on the whole local name, so `status-code`
+  is untouched."
+  #{"password" "token" "authorization" "secret-key" "code"})
 
 (defn- redact-key?
   "True if key `k` should have its value replaced with <redacted>.
