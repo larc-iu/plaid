@@ -13,6 +13,7 @@
 
 import './igt-editor.css';
 import { render, html, nothing } from 'lit-html';
+import { wideEnoughToDock } from '@ui/components/assistant/panelWidth.js';
 import { defaultGuessSource, VOCAB_ENTRY_SOURCE } from '@/domain/glossGuess';
 import { tagsetEnforces, validateValue } from '@/domain/tagsets';
 import { handleComposeBeforeInput } from '@/lib/composeInput';
@@ -74,6 +75,10 @@ export class IgtEditor {
     // Whether a sentence offers "Ask". Discovered after mount, so it also has
     // a setter (see editor/assistant.js).
     this.assistantOnline = assistantOnline;
+    // And whether the window has room for the panel that Ask opens. Read once
+    // here so the first paint is right, and kept current by a resize listener
+    // below, which is the only thing that repaints this island for the window.
+    this._dockFits = wideEnoughToDock();
     // Transient comment-popover state: which comment is being edited, its
     // draft, and the composer's draft. Cleared on every open.
     this._cmtEditingId = null;
@@ -187,6 +192,8 @@ export class IgtEditor {
     window.addEventListener('beforeunload', this._onBeforeUnload);
     this._onAssistantFocus = this._onAssistantFocus.bind(this);
     window.addEventListener('igt:focus-sentence', this._onAssistantFocus);
+    this._onDockWidth = this._onDockWidth.bind(this);
+    window.addEventListener('resize', this._onDockWidth);
     window.addEventListener('scroll', this._onWinChange, true);
     window.addEventListener('resize', this._onWinChange);
     // Project-wide precedent (_ensurePrecedent) is fetched once and then held
@@ -362,6 +369,7 @@ export class IgtEditor {
     window.removeEventListener('resize', this._onWinChange);
     window.removeEventListener('beforeunload', this._onBeforeUnload);
     window.removeEventListener('igt:focus-sentence', this._onAssistantFocus);
+    window.removeEventListener('resize', this._onDockWidth);
     document.removeEventListener('visibilitychange', this._onVisibility);
     this.container.removeEventListener('keydown', this._predictionKeydown);
     this.container.removeEventListener('keydown', this._flushBeatOnInput, true);

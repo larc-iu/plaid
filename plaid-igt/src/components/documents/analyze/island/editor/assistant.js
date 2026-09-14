@@ -43,7 +43,8 @@ const assistantMark = (index) => {
 // panel on it, so in a narrower window pressing Ask does nothing at all.
 // `assistantOnline` is set on the element by AnalyzeIsland, and lit will not
 // repaint a property it thinks unchanged, so it is a property and not an
-// attribute.
+// attribute. Whether the window has the room is `_dockFits`, kept current by
+// the resize listener below.
 
 export const assistant = {
   // Availability is discovered after the island mounts, so it arrives late and
@@ -52,6 +53,21 @@ export const assistant = {
     const next = !!online;
     if (this.assistantOnline === next) return;
     this.assistantOnline = next;
+    this._render(true);
+  },
+
+  // The window crossed the width at which a side panel fits, so the Ask
+  // controls appear or go. Nothing else repaints this island when the window
+  // changes, so until this ran the buttons stayed as they were until the next
+  // edit: an Ask below the threshold sets a focus nothing can open, and above
+  // it a reader who has just widened the window has no Ask to press.
+  //
+  // Only on a CROSSING. A drag emits a resize event per frame and the whole
+  // grid is rebuilt on `_render(true)`.
+  _onDockWidth() {
+    const fits = wideEnoughToDock();
+    if (fits === this._dockFits) return;
+    this._dockFits = fits;
     this._render(true);
   },
 
@@ -89,7 +105,7 @@ export const assistant = {
   // `sentence` is the row this draws for; only its number is needed, and the
   // call site in chrome.js hands over both.
   _assistantControl(sentence, index) {
-    if (!this.assistantOnline || !wideEnoughToDock()) return null;
+    if (!this.assistantOnline || !this._dockFits) return null;
     return html`
       <button
         type="button"
