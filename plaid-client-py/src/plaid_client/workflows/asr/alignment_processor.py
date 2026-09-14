@@ -8,9 +8,7 @@ sentence partitioning.
 
 import os
 import requests
-import tempfile
-import re
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Optional
 
 from plaid_client.provenance import stamp_inferred, is_protected
 from plaid_client.service import requester_message

@@ -7,7 +7,7 @@ along with the Alignment dataclass for representing transcription results.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 
 @dataclass

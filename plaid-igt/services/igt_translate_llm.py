@@ -34,7 +34,7 @@ from typing import Dict, Optional
 from plaid_client import BaseService, TASKS, Param, service_source
 from plaid_client.service import check_unchanged, requester_message
 from plaid_client.workflows.llm import ChatModel, add_model_arguments, setup_service
-from plaid_client.provenance import stamp_inferred, prov_state, MACHINE, HUMAN
+from plaid_client.provenance import stamp_inferred, prov_state, MACHINE
 from plaid_client.workflows.igt import derive
 
 DEFAULT_SERVICE_ID = 'llm-translator'

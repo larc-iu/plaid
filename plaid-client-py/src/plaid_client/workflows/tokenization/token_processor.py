@@ -7,7 +7,7 @@ batch operations.
 """
 
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Optional
 
 from plaid_client.provenance import stamp_inferred, is_protected
 from plaid_client.service import check_unchanged
