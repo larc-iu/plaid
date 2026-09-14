@@ -185,6 +185,53 @@ describe('AdminLogs', () => {
     await second.unmount();
   });
 
+  // Every narrowing is a server read, so a filter changed while one is in
+  // flight has to issue its own. Dropped, the screen sits on the rows of a
+  // filter the reader has already moved off, with no request and no spinner.
+  it('asks again for a filter changed during a read, and the newest answer wins', async () => {
+    const pending = [];
+    const client = fakeClient({
+      logs: vi.fn((args) => {
+        let resolve;
+        const promise = new Promise((r) => (resolve = r));
+        pending.push({ args, resolve });
+        return promise;
+      }),
+    });
+    const { container, step, unmount } = await mount(client);
+    await step(async () => pending[0].resolve(log()));
+    expect(client.admin.logs).toHaveBeenCalledTimes(1);
+
+    const account = all(table(container, 'Requests'), 'tbody button').find(
+      (b) => b.textContent === 'ada@example.com',
+    );
+    await step(async () => account.click());
+    expect(client.admin.logs).toHaveBeenCalledTimes(2);
+
+    // Cleared again before that read comes back.
+    const clear = container.querySelector('button[aria-label="Clear account filter"]');
+    await step(async () => clear.click());
+    expect(client.admin.logs).toHaveBeenCalledTimes(3);
+    expect(pending[2].args.user).toBeUndefined();
+
+    const newest = log({
+      requests: {
+        ...log().requests,
+        entries: [{ ...REQUESTS[0], path: '/api/v1/newest' }],
+        matched: 1,
+      },
+    });
+    await step(async () => pending[2].resolve(newest));
+    // The read the reader moved off answers last, and does not take the
+    // screen back.
+    await step(async () => pending[1].resolve(log()));
+
+    const paths = rowCells(table(container, 'Requests')).flat();
+    expect(paths).toContain('/api/v1/newest');
+    expect(paths).not.toContain('/api/v1/projects');
+    await unmount();
+  });
+
   it('replaces the rows on a refresh rather than adding to them', async () => {
     const client = fakeClient();
     const { container, step, unmount } = await mount(client);

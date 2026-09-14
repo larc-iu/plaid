@@ -106,7 +106,12 @@ export const AdminLogs = ({ client }) => {
 
   const [fileOpen, setFileOpen] = useState(false);
   const [file, setFile] = useState(null);
-  const inFlight = useRef(false);
+  // How many reads are open, and the ticket the newest one took. A read whose
+  // ticket is no longer the newest is a filter the reader has already moved
+  // off, so its rows are dropped rather than drawn over the ones they asked
+  // for.
+  const inFlight = useRef(0);
+  const generation = useRef(0);
 
   // The search box types faster than the server should be asked.
   useEffect(() => {
@@ -116,8 +121,11 @@ export const AdminLogs = ({ client }) => {
 
   const load = useCallback(
     async ({ quiet } = {}) => {
-      if (inFlight.current) return;
-      inFlight.current = true;
+      // The live poll steps aside for a read already going. A filter change
+      // never does: the newest filter has to be the one that asks.
+      if (quiet && inFlight.current) return;
+      const ticket = (generation.current += 1);
+      inFlight.current += 1;
       if (!quiet) setLoading(true);
       try {
         const next = await client.admin.logs({
@@ -127,16 +135,18 @@ export const AdminLogs = ({ client }) => {
           level: level === 'all' ? undefined : level,
           user: user || undefined,
         });
+        if (ticket !== generation.current) return;
         setLog({
           ...next,
           requests: { ...next.requests, entries: keyed(next.requests?.entries) },
           events: { ...next.events, entries: keyed(next.events?.entries) },
         });
       } catch (err) {
+        if (ticket !== generation.current) return;
         if (!quiet) notifyError(err.message || 'Failed to read the log', 'Error');
       } finally {
-        inFlight.current = false;
-        setLoading(false);
+        inFlight.current -= 1;
+        if (ticket === generation.current) setLoading(false);
       }
     },
     [client, search, status, level, user],
