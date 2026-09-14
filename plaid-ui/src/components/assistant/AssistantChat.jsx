@@ -1,23 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Send, RotateCcw, Check, X, Loader2, PanelRightClose } from 'lucide-react';
+import { RotateCcw, Check, X, Loader2, PanelRightClose } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '../ui/button.jsx';
-import { Textarea } from '../ui/textarea.jsx';
 import { cn } from '../../lib/utils.js';
 import { notifyError } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
+import { AssistantComposer } from './AssistantComposer.jsx';
 import { AssistantMarkdown } from './AssistantMarkdown.jsx';
 import { rewindForRetry, stoppedIn } from './resume.js';
 import { assertAdapter } from './adapterContract.js';
 import { AssistantMark } from './PlaidMarks.jsx';
 import { NEARLY_FULL, fullness, latestUsage, totalSpend, usageLabel, usageTitle } from './usage.js';
-import { AssistantPicker } from './ConversationList.jsx';
 import { Turn } from './Turn.jsx';
-import { MentionList } from './MentionList.jsx';
 import { formatElapsed } from '../../hooks/useRunProgress.js';
 import { useAssistantChoice } from './useAssistantChoice.js';
 import { useConversationList } from './useConversationList.js';
-import { useMentions } from './useMentions.js';
 import { useResumeConversation } from './useResumeConversation.js';
 import {
   attachJob,
@@ -45,6 +42,10 @@ import {
 // a history popover, a way to hide it -- comes in as the four render props
 // below, each handed the same bag of what the chat knows. AssistantTab and
 // AssistantPanel are the two surfaces.
+//
+// The foot of it is AssistantComposer: the box a message is typed into, the `@`
+// list over it, and everything said just above it. It owns the keyboard, this
+// owns the message.
 //
 // The record is the conversation. It lives in the user's key/value store
 // (client.userData) under `igt:assistant:<project>:...`: one small `meta`
@@ -399,7 +400,6 @@ export const AssistantChat = ({
   // How full this thread is, from the newest reply that reported it.
   const usage = useMemo(() => latestUsage(active?.display), [active?.display]);
   const spend = useMemo(() => totalSpend(active?.display), [active?.display]);
-  const nearlyFull = (fullness(usage) ?? 0) >= NEARLY_FULL;
 
   const canSend = !!service && !busy;
 
@@ -477,24 +477,6 @@ export const AssistantChat = ({
     update((c) =>
       settle(c, index, 'discarded', '(note) The user discarded the plan; nothing was changed.'),
     );
-
-  const mentions = useMentions({
-    client,
-    projectId,
-    enabled: canSend,
-    text: input,
-    setText: setInput,
-    inputRef,
-    offer: subject?.mentions,
-  });
-
-  const onKeyDown = (e) => {
-    if (mentions.handleKeyDown(e)) return;
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      send();
-    }
-  };
 
   const display = active?.display || [];
   // A step's output, looked up by the tool call it belongs to. The transcript
@@ -732,99 +714,22 @@ export const AssistantChat = ({
           </div>
         </div>
 
-        <div className={cn('border-t', compact ? 'px-3 py-2' : 'px-4 py-3')}>
-          {/* The conversation's own assistant is gone. Rather than answer in a
-              different voice without saying so, name the replacement, and let
-              the user choose it where there is more than one. */}
-          {choice.wentOffline && service && (
-            <div className="mx-auto mb-2 flex max-w-3xl flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span>
-                The assistant this conversation started with is offline. Replies now come from{' '}
-                <span className="font-medium text-foreground">{service.serviceName}</span>.
-              </span>
-              {choice.canChoose && (
-                <AssistantPicker
-                  assistants={choice.assistants}
-                  stranded={choice.stranded}
-                  value={service.serviceId}
-                  onChange={choice.choose}
-                  disabled={!!busy}
-                />
-              )}
-            </div>
-          )}
-          {/* Nothing manages the window for the reader, so a thread that runs
-              long eventually fails a turn outright. Said here, where the next
-              message is about to be typed, and with the remedy named: the new
-              conversation button is a few pixels away in the header. */}
-          {nearlyFull && (
-            <p className="mx-auto mb-2 max-w-3xl text-xs text-amber-600 dark:text-amber-500">
-              This conversation is {Math.round(fullness(usage) * 100)}% full. Start a new one before
-              it stops fitting.
-            </p>
-          )}
-          {focus && (
-            <div className="mx-auto mb-2 flex max-w-3xl items-center gap-1">
-              <span className="inline-flex items-center gap-1.5 rounded-full border bg-muted/50 py-1 pl-2.5 pr-1 text-xs">
-                <span className="font-medium">{focus.label}</span>
-                <span className="text-muted-foreground">{focus.ref}</span>
-                <button
-                  type="button"
-                  onClick={() => onClearFocus?.()}
-                  title="Remove"
-                  className="rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            </div>
-          )}
-          {/* `relative`, because the `@` list hangs off the top of this box
-              rather than off the caret: measuring a character position inside a
-              textarea needs a mirror element and breaks on wrap and on resize,
-              and the composer is never far from the caret anyway. */}
-          <div className="relative mx-auto flex max-w-3xl items-end gap-2 rounded-xl border bg-background p-2 focus-within:ring-1 focus-within:ring-ring">
-            {mentions.open && (
-              <MentionList
-                groups={mentions.groups}
-                activeValue={mentions.activeValue}
-                onPick={mentions.pick}
-                onHover={mentions.setActiveValue}
-                loading={mentions.loading}
-              />
-            )}
-            <Textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => {
-                setInput(e.target.value);
-                mentions.noteCaret(e.target.selectionStart);
-              }}
-              onKeyUp={mentions.trackCaret}
-              onSelect={mentions.trackCaret}
-              onKeyDown={onKeyDown}
-              placeholder={
-                !service
-                  ? 'No assistant online'
-                  : pendingPlan
-                    ? 'Approve or discard the plan above, or keep talking'
-                    : 'Message the assistant… (Enter to send, Shift+Enter for a new line)'
-              }
-              disabled={!canSend}
-              rows={2}
-              className="min-h-[2.5rem] flex-1 resize-none border-0 bg-transparent p-1 shadow-none focus-visible:ring-0"
-            />
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => send()}
-              disabled={!canSend || !input.trim()}
-              title="Send"
-            >
-              <Send className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
+        <AssistantComposer
+          client={client}
+          projectId={projectId}
+          choice={choice}
+          text={input}
+          setText={setInput}
+          inputRef={inputRef}
+          canSend={canSend}
+          pendingPlan={pendingPlan}
+          usage={usage}
+          focus={focus}
+          onClearFocus={onClearFocus}
+          mentionOffer={subject?.mentions}
+          onSend={send}
+          compact={compact}
+        />
       </section>
     </>
   );
