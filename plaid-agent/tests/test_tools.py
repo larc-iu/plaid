@@ -518,9 +518,10 @@ def test_prompt_teaches_cite_tags_and_the_old_braces_still_resolve():
 
 def test_list_documents_pages_and_filters_and_overview_caps():
     from fixtures import document_raw
-    from plaid_agent.igt.project import MAX_OVERVIEW_DOCS
+    from plaid_agent.core.limits import OVERVIEW_DOCS
     docs = {}
-    for i in range(MAX_OVERVIEW_DOCS + 5):
+    total = 105   # more than the overview names, and enough for a "Text 10x" page
+    for i in range(total):
         raw = document_raw()
         raw['id'] = f'd{i}'
         raw['name'] = f'Text {i:03d}'
@@ -529,8 +530,8 @@ def test_list_documents_pages_and_filters_and_overview_caps():
     c = FakeClient(documents=docs)
     w = scan_ws(c)
     ov = call_tool(w, 'project_overview', {})
-    assert f'Documents ({MAX_OVERVIEW_DOCS + 5}): first {MAX_OVERVIEW_DOCS} by name; list_documents' in ov
-    assert 'Text 099' in ov and 'Text 104' not in ov
+    assert f'Documents ({total}): first {OVERVIEW_DOCS} by name; list_documents' in ov
+    assert f'Text {OVERVIEW_DOCS - 1:03d}' in ov and f'Text {OVERVIEW_DOCS:03d}' not in ov
     out = call_tool(w, 'list_documents', {'pattern': 'Text 10', 'limit': 2})
     assert out.startswith('5 documents matching, showing 1-2:') and 'Text 100' in out and 'list_documents(offset=2)' in out
     out = call_tool(w, 'list_documents', {'pattern': 'Text 10', 'limit': 2, 'offset': 4})
@@ -623,7 +624,7 @@ def test_a_replacement_past_the_cap_is_one_predicate_op_resolved_at_approval(mon
     stored as one op and found again at approval."""
     from plaid_agent.igt import bulk
     from plaid_agent.igt.plan import execute_plan, summarize
-    monkeypatch.setattr(bulk, 'MAX_BULK', 2)
+    monkeypatch.setattr(bulk, 'PLAN_MAX_OPS', 2)
     w = scan_ws(FakeClient())
     w.prefer_scan = False
     spans = [('s1', 'Ali', 'd1', 'w-1'), ('s2', 'ali-x', 'd1', 'w-2'), ('s3', 'ALI', 'd1', 'w-3')]
@@ -641,7 +642,7 @@ def test_a_replacement_past_the_cap_is_one_predicate_op_resolved_at_approval(mon
     updates = [a for r, m, a, k in w.client.batches[0] if m == 'update']
     assert updates == [('s1', 'Bob'), ('s2', 'Bob-x'), ('s3', 'Bob')]
     # Under the cap, the same call stages per-span ops, as the scan path does.
-    monkeypatch.setattr(bulk, 'MAX_BULK', 3000)
+    monkeypatch.setattr(bulk, 'PLAN_MAX_OPS', 3000)
     w.ops.clear()
     call_tool(w, 'replace_in_field', {'field': 'Gloss', 'pattern': 'ali', 'replacement': 'Bob'})
     assert [op['kind'] for op in w.ops] == ['set_span'] * 3
@@ -651,7 +652,7 @@ def test_a_replacement_past_the_cap_is_one_predicate_op_resolved_at_approval(mon
 def test_a_respelling_past_the_cap_is_one_op_that_a_reshape_cannot_join(monkeypatch):
     from plaid_agent.igt import bulk
     from plaid_agent.igt.plan import execute_plan, summarize, validate_ops
-    monkeypatch.setattr(bulk, 'MAX_BULK', 1)
+    monkeypatch.setattr(bulk, 'PLAN_MAX_OPS', 1)
     w = scan_ws(FakeClient())
     w.prefer_scan = False
 

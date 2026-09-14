@@ -19,7 +19,10 @@ from ..core.tools import ToolError
 from .workspace import Workspace
 
 LABEL_DOC_BUDGET = 10      # documents a bulk tool may load just to write positional labels
-RENDER_DOC_BUDGET = 8      # documents a read tool loads to render the hits it shows
+# Documents a corpus read loads to show its hits. UD sets the same budget
+# higher: a hit there is one KWIC line, where one here is a block of aligned
+# lines, so more documents fit in the same answer.
+RENDER_DOC_BUDGET = 8
 
 
 class Corpus(BaseCorpus):

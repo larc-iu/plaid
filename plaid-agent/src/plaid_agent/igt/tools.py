@@ -16,6 +16,7 @@ from plaid_client.provenance import prov_state, MACHINE
 
 from ..core import opkind
 from ..core.args import clamp_limit, whole
+from ..core.limits import MAX_SCOPE_DOCS
 from ..core.limits import READ_LIMITS
 from ..core.tools import ToolError, truncate
 
@@ -547,9 +548,6 @@ def _what(obj) -> str:
     return obj.text if isinstance(obj, Sentence) else (obj.surface if isinstance(obj, Word) else obj.form)
 
 
-MAX_CONFIRM_DOCS = 100
-
-
 def _document_confirm_op(ws: Workspace, doc: IgtDoc, f) -> Optional[Dict[str, Any]]:
     pieces = _empty_pieces()
     for s in doc.sentences:
@@ -591,9 +589,9 @@ def t_confirm(ws: Workspace, document: Optional[str] = None, refs=None, field: O
             else:
                 from .queries import q_review_docs
                 ids = q_review_docs(ws, f)
-                if len(ids) > MAX_CONFIRM_DOCS:
+                if len(ids) > MAX_SCOPE_DOCS:
                     raise ToolError(f'{len(ids)} documents have annotations awaiting review, more than the '
-                                    f'{MAX_CONFIRM_DOCS} one plan covers; confirm document by document, or narrow with field.')
+                                    f'{MAX_SCOPE_DOCS} one plan covers; confirm document by document, or narrow with field.')
                 docs = [ws.doc(i) for i in ids]
         else:
             # By id, so a list that names one document twice (by name and by
@@ -603,8 +601,8 @@ def t_confirm(ws: Workspace, document: Optional[str] = None, refs=None, field: O
                 did = ws.resolve_document_id(str(d))
                 if did not in ids:
                     ids.append(did)
-            if len(ids) > MAX_CONFIRM_DOCS:
-                raise ToolError(f'{len(ids)} documents, more than the {MAX_CONFIRM_DOCS} one plan covers.')
+            if len(ids) > MAX_SCOPE_DOCS:
+                raise ToolError(f'{len(ids)} documents, more than the {MAX_SCOPE_DOCS} one plan covers.')
             docs = [ws.doc(did) for did in ids]
         for doc in docs:
             op = _document_confirm_op(ws, doc, f)
@@ -716,9 +714,6 @@ def t_set_morpheme(ws: Workspace, document: str, ref: str, form: Optional[str] =
 
 
 # --- comments -------------------------------------------------------------------
-
-MAX_COMMENTS = 200
-
 
 def _anchor(ws: Workspace, doc: IgtDoc, ref: Optional[str], field: Optional[str]) -> tuple:
     """(entity_type, entity_id, caption, what) for a comment on the document,

@@ -6,20 +6,19 @@ is applied only after approval."""
 
 from typing import Any, Dict, List, Optional
 
+from ..core.limits import SAMPLE_LINES
+from ..core.plan import PLAN_MAX_OPS
 from ..core.replace import replacer as core_replacer
 from .plan import SCOPES
 from .project import word_ref
 from ..core.tools import ToolError
-from .lexicon import _meta_patch, _refuse_doomed, _refuse_removing_survivor
+from .lexicon import _meta_patch, _refuse_doomed_entry, _refuse_removing_survivor
 from .tools import (t_set_analysis, check_respell_overlap, span_op, has_own_form, morpheme_form_op,
                     parse_analysis, analysis_op, no_scope_reaches, refuse_shape_and_analysis)
 from .lexview import entry_line
 from .workspace import Workspace, op_target
 from .vocab import plan_delete_refs, plan_merge_refs, ref_ids
 from .stats import _analyzed, _docs
-
-MAX_BULK = 3000
-
 
 def _replacer(pattern: str, replacement: str, regex: bool, whole: bool, case_sensitive: bool = False):
     """The substitution, in the tools' own words when it cannot be built."""
@@ -30,12 +29,13 @@ def _bulk_note(ws: Workspace, n: int, labels: List[str], what: str) -> str:
     if not n:
         return f'Nothing to change: no {what} matched.'
     head = ws.planned_note(n)
-    return head + '\n  ' + '\n  '.join(labels[:8]) + (f'\n  … {n - 8} more (plan_status lists them all)' if n > 8 else '')
+    return head + '\n  ' + '\n  '.join(labels[:SAMPLE_LINES]) \
+        + (f'\n  … {n - SAMPLE_LINES} more (plan_status lists them all)' if n > SAMPLE_LINES else '')
 
 
 def _check_cap(n: int):
-    if n > MAX_BULK:
-        raise ToolError(f'That would change {n} items, more than the {MAX_BULK} one plan may hold. '
+    if n > PLAN_MAX_OPS:
+        raise ToolError(f'That would change {n} items, more than the {PLAN_MAX_OPS} one plan may hold. '
                         f'Narrow it (a document, a stricter pattern) and go in passes.')
 
 
@@ -54,7 +54,7 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
         args = {'field': field, 'pattern': pattern, 'replacement': replacement, 'regex': bool(regex),
                 'whole': bool(whole), 'case_sensitive': bool(case_sensitive)}
         f = ws.project.field(field)
-        return _stage(ws, 'replace_in_field', args, _scoped_replace(ws, args, REPLACE_MAX), 'set_span',
+        return _stage(ws, 'replace_in_field', args, _scoped_replace(ws, args, CANDIDATE_MAX), 'set_span',
                       f'{f.name} values')
     if _names_morpheme_forms(ws, field):
         for doc in _docs(ws, document):
@@ -103,13 +103,16 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
 # --- corpus-wide changes as ONE op ----------------------------------------------
 #
 # Each corpus-wide tool's query path is a function of (workspace, args, cap)
-# that returns the per-span ops it would stage. Under MAX_BULK those ops are
+# that returns the per-span ops it would stage. Under PLAN_MAX_OPS those ops are
 # staged as they are, in step with the scan path. Past it, the plan holds ONE
 # `bulk_scope` op naming the tool and its arguments, and the same function
 # runs again at approval (igt.plan.resolve_scopes), with every document the
 # preview matched pinned by version so what is found then is what was counted.
 
-REPLACE_MAX = 20000  # candidates one pass may consider; past it, narrow and go in passes
+# Candidates one pass may consider; past it, narrow and go in passes. Not
+# the same number as UD's REPLACE_MAX, which counts the CHANGES one plan
+# makes: most candidates here turn out to need no change at all.
+CANDIDATE_MAX = 20000
 
 
 def _scoped_replace(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str, Any]]:
@@ -179,7 +182,7 @@ def _stage(ws: Workspace, tool: str, args: Dict[str, Any], staged: List[Dict[str
            what: str) -> str:
     """Stage what a corpus-wide tool computed: op by op under the cap, as one
     bulk_scope op past it."""
-    if len(staged) <= MAX_BULK:
+    if len(staged) <= PLAN_MAX_OPS:
         ws.add_ops(staged)
         return _bulk_note(ws, len(staged), [op['label'] for op in staged], what)
     docs = sorted({op['doc'] for op in staged if op.get('doc')})
@@ -192,7 +195,8 @@ def _stage(ws: Workspace, tool: str, args: Dict[str, Any], staged: List[Dict[str
                'label': f'{tool}: {len(staged)} changes in {len(docs)} documents ('
                         + ', '.join(f'{k}={v}' for k, v in args.items() if v not in (None, '', False)) + ')'})
     return (ws.planned_note(1) + f'\n  One change covering {len(staged)} changes to {what} in {len(docs)} documents. '
-            f'For example:\n  ' + '\n  '.join(op['label'] for op in staged[:8]) + f'\n  … {len(staged) - 8} more')
+            f'For example:\n  ' + '\n  '.join(op['label'] for op in staged[:SAMPLE_LINES])
+            + f'\n  … {len(staged) - SAMPLE_LINES} more')
 
 
 def scope_reaches(ws: Workspace, doc_id: Optional[str]) -> bool:
@@ -238,7 +242,7 @@ def t_respell_all(ws: Workspace, pattern: str, replacement: str, regex: bool = F
     if not ws.use_scan(document):
         args = {'pattern': pattern, 'replacement': replacement, 'regex': bool(regex), 'whole': bool(whole),
                 'case_sensitive': bool(case_sensitive), 'morpheme_forms': bool(morpheme_forms), 'lexicon': bool(lexicon)}
-        staged = _scoped_respell(ws, args, REPLACE_MAX)
+        staged = _scoped_respell(ws, args, CANDIDATE_MAX)
         kinds = [op['kind'] for op in staged]
         out = _stage(ws, 'respell_all', args, staged, 'respell', 'words')
         if staged:
@@ -296,7 +300,7 @@ def t_copy_to_orthography(ws: Workspace, orthography: str, source: str = 'baseli
     staged: List[Dict[str, Any]] = []
     if not ws.use_scan(document):
         args = {'orthography': orthography, 'source': source or 'baseline', 'overwrite': bool(overwrite)}
-        return _stage(ws, 'copy_to_orthography', args, _scoped_copy(ws, args, REPLACE_MAX), 'set_orthography', 'words')
+        return _stage(ws, 'copy_to_orthography', args, _scoped_copy(ws, args, CANDIDATE_MAX), 'set_orthography', 'words')
     for doc in _docs(ws, document):
         for s in doc.sentences:
             for w in s.words:
@@ -328,7 +332,7 @@ def t_set_field_for_form(ws: Workspace, form: str, field: str, value: str, only_
     staged: List[Dict[str, Any]] = []
     if not ws.use_scan(document):
         args = {'form': form, 'field': field, 'value': value, 'only_empty': bool(only_empty)}
-        return _stage(ws, 'set_field_for_form', args, _scoped_set_for_form(ws, args, REPLACE_MAX), 'set_span',
+        return _stage(ws, 'set_field_for_form', args, _scoped_set_for_form(ws, args, CANDIDATE_MAX), 'set_span',
                       f'occurrences of "{form}"' + (' without a value' if only_empty else ''))
     for doc in _docs(ws, document):
         for s in doc.sentences:
@@ -406,7 +410,7 @@ def _set_analysis_for_form_q(ws: Workspace, form: str, morphemes: list, skip_ana
     if not ws.project.morpheme_layer_id:
         raise ToolError('This project has no morpheme layer.')
     out = parse_analysis(ws, morphemes)
-    words, chains, spans = q_analysis_targets(ws, form, skip_analyzed, MAX_BULK)
+    words, chains, spans = q_analysis_targets(ws, form, skip_analyzed, PLAN_MAX_OPS)
     _check_cap(len(words))
     budget = _docs_of([[w] for w in words])
     staged = []
@@ -442,7 +446,7 @@ def _existing(ws: Workspace, form, lexicon, entry_id, gloss=None, what: str = 'b
     kind, target = ws.find_entry(form, lexicon, entry_id, gloss)
     if kind == 'new':
         raise ToolError('That entry is new in this plan; approve the plan first, then merge or rename it.')
-    _refuse_doomed(ws, target, what)
+    _refuse_doomed_entry(ws, target, what)
     return target
 
 

@@ -248,12 +248,12 @@ def test_a_failing_tool_call_leaves_no_partial_plan():
     w = ws()
     # the cap: 10 items would change, cap it at 2 for the test
     import plaid_agent.igt.bulk as bulk
-    old = bulk.MAX_BULK
-    bulk.MAX_BULK = 2
+    old = bulk.PLAN_MAX_OPS
+    bulk.PLAN_MAX_OPS = 2
     try:
         assert 'more than the 2' in call_tool(w, 'respell_all', {'pattern': 'a', 'replacement': 'ä'})
     finally:
-        bulk.MAX_BULK = old
+        bulk.PLAN_MAX_OPS = old
     assert w.ops == []
     # a bad ref in a multi-ref call
     assert 'not a morpheme' in call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1.m2', 's1.w2'], 'field': 'Morph Gloss', 'value': 'x'})

@@ -15,7 +15,8 @@ from typing import Any, Dict, List, Optional
 
 from ..core import opkind
 from ..core.args import clamp_limit, read_int, sentence_number, whole
-from ..core.limits import MAX_RESULT_CHARS, READ_LIMITS
+from ..core.limits import (MAX_RESULT_CHARS, MAX_SCOPE_DOCS, MAX_SENTENCES_PER_READ, OVERVIEW_DOCS,
+                          READ_LIMITS)
 from ..core.workspace import BaseWorkspace
 from ..core.tools import ToolError, truncate
 from .plan import (COMPACT, EXCLUSIVE_KINDS, KIND,  # noqa: F401 - COMPACT is re-exported for the tests
@@ -35,7 +36,6 @@ SCOPE_KINDS = opkind.shaped(KIND, opkind.SCOPE)
 # The most documents one review may cover when several are named or all
 # are asked for: each is read to count what is waiting, and read again at
 # approval.
-MAX_SCOPE_DOCS = 100
 
 
 
@@ -225,10 +225,10 @@ def t_project_overview(ws: Workspace) -> str:
     except Exception:  # noqa: BLE001 - the overview is worth having without the size
         pass
     out.append(f'Documents ({len(docs)}):')
-    for d in docs[:50]:
+    for d in docs[:OVERVIEW_DOCS]:
         out.append(f'  "{d.get("name")}"')
-    if len(docs) > 50:
-        out.append(f'  ... and {len(docs) - 50} more (list_documents pages through them)')
+    if len(docs) > OVERVIEW_DOCS:
+        out.append(f'  ... and {len(docs) - OVERVIEW_DOCS} more (list_documents pages through them)')
     return '\n'.join(out)
 
 
@@ -246,9 +246,6 @@ def t_list_documents(ws: Workspace, pattern: str = None, limit: int = 50, offset
     for d in page:
         out.append(f'  "{d.get("name")}"')
     return '\n'.join(out)
-
-
-MAX_SENTENCES_PER_READ = 40
 
 
 def _sentence_numbers(sentences) -> List[int]:

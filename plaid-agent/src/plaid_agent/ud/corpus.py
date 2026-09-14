@@ -20,7 +20,10 @@ from ..core.limits import GROUP_LIMIT
 from .project import UdProject
 from .tools import Workspace
 
-DOCS_PER_SEARCH = 12    # documents one search will load to print its hits
+# Documents a corpus read loads to show its hits. IGT sets the same budget
+# lower: a hit there renders as a block of aligned lines rather than one KWIC
+# line, so fewer documents fit in the same answer.
+RENDER_DOC_BUDGET = 12
 
 
 class Corpus(BaseCorpus):

@@ -15,6 +15,7 @@ may make, which is what the user has to be able to approve.
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..core import opkind
+from ..core.limits import SAMPLE_LINES
 from ..core.replace import replacer as core_replacer
 from .corpus import Corpus, rx
 from .plan import DOCUMENT_SHAPE, EXCLUSIVE_KINDS, KIND, SENTENCE_SHAPE, WORD_SHAPE
@@ -23,7 +24,6 @@ from .tools import FIELDS, ToolError, Workspace, _check_value
 
 REPLACE_FIELDS = FIELDS + ('deprel',)
 REPLACE_MAX = 5000   # changes one plan may make; past it, narrow and go in passes
-SAMPLE = 8
 
 
 def replacer(pattern: str, replacement: str, regex: bool, whole: bool,
@@ -144,14 +144,14 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
     _clear_of_reshapes(ws, docs)
     names = {d['id']: d.get('name') or d['id'] for d in ws.documents()}
     sample = [f'"{names.get(ch["document_id"], ch["document_id"])}": {field} "{ch["old"]}" → "{ch["new"]}"'
-              for ch in found[:SAMPLE]]
+              for ch in found[:SAMPLE_LINES]]
     where = f' in "{names.get(document_id)}"' if document_id else f' in {len(docs)} document(s)'
     ws.add_op({'kind': 'replace_scope', 'field': field, 'pattern': pattern, 'replacement': replacement,
                'regex': bool(regex), 'whole': bool(whole), 'case_sensitive': bool(case_sensitive),
                'document_id': document_id, 'documents': docs, 'count': len(found), 'ref': None,
                'label': f'{field}: replace "{pattern}" with "{replacement}" on {len(found)} value(s){where}'})
     return (f'Planned {len(found)} {field} change(s){where}, as one planned change. For example:\n  '
-            + '\n  '.join(sample) + (f'\n  … {len(found) - SAMPLE} more' if len(found) > SAMPLE else '')
+            + '\n  '.join(sample) + (f'\n  … {len(found) - SAMPLE_LINES} more' if len(found) > SAMPLE_LINES else '')
             + '\nsearch shows every match with its reference.')
 
 

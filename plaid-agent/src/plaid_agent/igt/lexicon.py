@@ -156,7 +156,7 @@ def t_set_entry_field(ws: Workspace, field: str, value: str, entry_form: Optiona
                       entry_gloss: Optional[str] = None) -> str:
     kind, target = ws.find_entry(entry_form, lexicon, entry_id, entry_gloss)
     if kind == 'existing':
-        _refuse_doomed(ws, target, 'take a value')
+        _refuse_doomed_entry(ws, target, 'take a value')
     vocab = (next((v for v in ws.project.vocabs if v['id'] == ws.new_entries[target]['vocab_id']), None)
              if kind == 'new' else ws.vocab_of_item(target['id']))
     f = lexicon_field(vocab, field) if vocab else {**_FREE_FIELD, 'name': field}
@@ -218,11 +218,11 @@ def _dict_entry(ws: Workspace, entry_form, lexicon, entry_id, entry_gloss, what:
     # is the list vocab_of_item scans, so the lookup lands.
     vocab = ws.vocab_of_item(target['id'])
     view = ws.view(vocab)
-    _refuse_doomed(ws, target, what)
+    _refuse_doomed_entry(ws, target, what)
     return vocab, view, target
 
 
-def _refuse_doomed(ws: Workspace, item: dict, what: str):
+def _refuse_doomed_entry(ws: Workspace, item: dict, what: str):
     """A delete already planned takes the entry's senses and references with
     it, so anything hung on it afterwards would be written and then dropped.
 

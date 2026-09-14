@@ -808,7 +808,7 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str,
         return ops
     if project is None:
         raise ValueError('a corpus-wide change needs the project to read the corpus with')
-    from .bulk import REPLACE_MAX, SCOPED
+    from .bulk import CANDIDATE_MAX, SCOPED
     from ..core.tools import ToolError
     from .workspace import Workspace, op_target
     ws = Workspace(client, project)
@@ -824,7 +824,7 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str,
         if fn is None:
             raise ValueError(f'unknown corpus-wide tool {op.get("tool")!r}')
         try:
-            out.extend(o for o in fn(ws, dict(op.get('args') or {}), REPLACE_MAX) if op_target(o) not in explicit)
+            out.extend(o for o in fn(ws, dict(op.get('args') or {}), CANDIDATE_MAX) if op_target(o) not in explicit)
         except ToolError as e:
             raise ValueError(str(e)) from e
     return out

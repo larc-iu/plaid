@@ -8,7 +8,7 @@ import math
 from collections import defaultdict
 from typing import Any, Dict, List
 
-from .corpus import DOCS_PER_SEARCH, Corpus, rx
+from .corpus import RENDER_DOC_BUDGET, Corpus, rx
 from .project import Sentence, UdDoc, Word, kwic, word_ref
 from ..core.tools import ToolError, truncate
 from .tools import FIELDS, Workspace
@@ -42,8 +42,8 @@ def _spread(docs: List[tuple], limit: int) -> List[tuple]:
     # with the most hits are the largest documents, which cost the most to
     # load (the twelve largest in EWT took nine seconds) and are one kind of
     # text. Spaced picks load in a fifth of the time and range over sizes.
-    if len(docs) > DOCS_PER_SEARCH:
-        chosen = [docs[i * len(docs) // DOCS_PER_SEARCH] for i in range(DOCS_PER_SEARCH)]
+    if len(docs) > RENDER_DOC_BUDGET:
+        chosen = [docs[i * len(docs) // RENDER_DOC_BUDGET] for i in range(RENDER_DOC_BUDGET)]
     else:
         chosen = list(docs)
     per_doc = max(1, math.ceil(limit / len(chosen)))

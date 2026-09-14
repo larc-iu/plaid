@@ -17,6 +17,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 
+from ..core.limits import MAX_SENTENCES_PER_READ, OVERVIEW_DOCS
 from ..core.project import find_layer, word_ref  # noqa: F401  (re-exported: the tools import it from here)
 from ..core.provenance import CONTRIBUTED, REVIEWABLE, UNVERIFIED, mark as _mark, review_mark  # noqa: F401
 from typing import Dict, List, Optional, Tuple
@@ -642,7 +643,7 @@ FORMAT_LEGEND = ('Format: [sN] baseline sentence; then sentence fields; then one
 
 
 def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optional[int] = None,
-                    max_sentences: int = 40, ref_name: Optional[str] = None,
+                    max_sentences: int = MAX_SENTENCES_PER_READ, ref_name: Optional[str] = None,
                     budget: Optional[int] = None) -> str:
     """``ref_name`` is how a reference to this document must name it (its id
     where another document shares its name): shown so what is read back is
@@ -680,9 +681,6 @@ def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optio
     if end < n:
         lines.append(f'... {n - end} more sentences (read_document with from_sentence={end + 1} for the next batch).')
     return '\n'.join(lines)
-
-
-MAX_OVERVIEW_DOCS = 100
 
 
 def tagset_lines(project: IgtProject, max_values: Optional[int] = None) -> List[str]:
@@ -739,9 +737,9 @@ def render_overview(project: IgtProject, documents: List[dict]) -> str:
                                            for v in project.vocabs) or '(none)'))
     if project.document_metadata:
         lines.append('Document metadata fields: ' + ', '.join(project.document_metadata))
-    lines.append(f'Documents ({len(documents)}):' + (f' first {MAX_OVERVIEW_DOCS} by name; list_documents pages and filters the rest'
-                                                     if len(documents) > MAX_OVERVIEW_DOCS else ''))
-    lines.extend(document_lines(sorted(documents, key=lambda d: (d.get('name') or '').lower())[:MAX_OVERVIEW_DOCS]))
+    lines.append(f'Documents ({len(documents)}):' + (f' first {OVERVIEW_DOCS} by name; list_documents pages and filters the rest'
+                                                     if len(documents) > OVERVIEW_DOCS else ''))
+    lines.extend(document_lines(sorted(documents, key=lambda d: (d.get('name') or '').lower())[:OVERVIEW_DOCS]))
     return '\n'.join(lines)
 
 

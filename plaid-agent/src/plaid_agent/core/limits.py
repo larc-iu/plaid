@@ -44,3 +44,21 @@ READ_LIMITS = {
 MAX_CITATIONS = 40       # citations resolved in one reply
 MAX_FOCUS = 20           # marked items in one citation
 CITE_DOC_BUDGET = 8      # documents one reply's citations may fetch that the turn did not read
+
+# Documents one change over a scope may name. Past it the model goes in
+# passes, because the plan is stored in the conversation record and the
+# documents it pins are stored with it.
+MAX_SCOPE_DOCS = 100
+
+# Sentences one read_document call renders. The render also has a character
+# budget and says which sentences it actually showed, so this is the ceiling
+# rather than the promise.
+MAX_SENTENCES_PER_READ = 40
+
+# Documents the project overview names. The rest are in list_documents, which
+# pages and filters, and the overview says so.
+OVERVIEW_DOCS = 50
+
+# Example lines a bulk answer shows before "… n more". Enough to see what the
+# pattern did, few enough to leave room for the answer around it.
+SAMPLE_LINES = 8
