@@ -17,7 +17,7 @@ from plaid_client.provenance import prov_state, MACHINE
 from ..core import opkind
 from ..core.args import clamp_limit
 from ..core.limits import READ_LIMITS
-from ..core.tools import ToolError  # noqa: F401 - re-exported
+from ..core.tools import ToolError
 
 from .plan import ANALYSIS, KIND, TEXT_SHAPE, WORD_SHAPE
 from .project import (IgtDoc, Sentence, Word, Morpheme, Link, resolve, mwe_ref, REVIEWABLE,
