@@ -32,14 +32,20 @@ WEB_READ_REFUSAL = (
 class BaseWorkspace:
     """What one turn holds while its tools run.
 
-    An app answers four things: ``KIND``, its op-kind registry; ``PLAN_NOTE``,
+    An app answers five things: ``KIND``, its op-kind registry; ``PLAN_NOTE``,
     what counts as one change here, appended to the plan-is-full refusal;
+    ``SPAN_KIND``, the kind that sets one value on one token;
     :meth:`make_corpus`, its query helper; and :meth:`guard_op`, the refusals
     only it owes when something is staged.
     """
 
     KIND: Dict[str, opkind.OpKind] = {}
     PLAN_NOTE = ''
+    # The app's kind for "one value on one token", which is the only kind
+    # :meth:`planned_value` reads. An op of it carries ``layer_id``,
+    # ``token_id`` and ``value``. Named by the app rather than here, so no kind
+    # of any app's is written into the base.
+    SPAN_KIND = ''
 
     def __init__(self, client, project, on_progress=None):
         self.client = client
@@ -216,8 +222,10 @@ class BaseWorkspace:
         """The value a span will have once the plan runs (a planned op wins
         over the stored value), so a second tool in the same turn reads what
         the first one planned."""
+        if not self.SPAN_KIND:
+            raise NotImplementedError('this app has declared no kind that sets a value on a token')
         for op in self.ops:
-            if op.get('kind') == 'set_span' and op.get('layer_id') == layer_id \
+            if op.get('kind') == self.SPAN_KIND and op.get('layer_id') == layer_id \
                     and op.get('token_id') == token_id:
                 return op.get('value') or ''
         return current
