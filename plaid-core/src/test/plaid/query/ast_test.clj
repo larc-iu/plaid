@@ -554,6 +554,30 @@
                  (catch clojure.lang.ExceptionInfo ex ex))]
       (is (re-find #"never positively bound" (ex-message e))))))
 
+(deftest relationship-clause-kinds-come-from-one-table
+  (testing "every relationship head infers both argument kinds"
+    (doseq [[head [ka kb]] {"covers" [:span :token]
+                            "precedes" [:token :token]
+                            "precedes*" [:token :token]
+                            "source" [:relation :span]
+                            "target" [:relation :span]
+                            "within" [:token :token]
+                            "first-in" [:token :token]
+                            "overlaps" [:span :span]
+                            "contains" [:span :span]
+                            "coextensive" [:span :span]
+                            "vocab-link" [:token :vocab]
+                            "link-token" [:link :token]
+                            "link-item" [:link :vocab]}]
+      (let [k (::ast/var-kinds (ast/parse+validate {"find" ["?a"] "where" [[head "?a" "?b"]]}))]
+        (is (= ka (k (symbol "?a"))) (str head " first argument"))
+        (is (= kb (k (symbol "?b"))) (str head " second argument")))))
+  (testing ":related* infers its two span vars past the trailing constraint map"
+    (let [k (::ast/var-kinds (ast/parse+validate {"find" ["?a"]
+                                                  "where" [["related*" "?a" "?b" {"layer" "dep"}]]}))]
+      (is (= :span (k (symbol "?a"))))
+      (is (= :span (k (symbol "?b")))))))
+
 (deftest field-paths-review-fixes
   (testing "group by a field path is allowed (mirrors aggregate sources)"
     (is (some? (ast/expand {"where" [["token" "?t" {"layer" "w"}]]

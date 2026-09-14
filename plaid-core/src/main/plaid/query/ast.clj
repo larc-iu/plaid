@@ -142,21 +142,30 @@
 (def ^:private var-slots
   (into #{:source :target :layer :item} (map second) (keys layer-slot->kind)))
 
-;; Relationship clauses and their arity (number of var args after the head).
+;; Relationship clauses and the KIND of each var argument, in order. Arity is the
+;; count, and `clause-kinds` reads the kinds straight off this table — one home,
+;; so a clause added here cannot be missed by kind inference (which used to
+;; degrade to a 500 when it was).
 (def ^:private rel-clauses
-  {:covers     2     ; [:covers ?span ?token]
-   :precedes   2     ; [:precedes ?t1 ?t2]      immediate
-   :precedes*  2     ; [:precedes* ?t1 ?t2]     transitive
-   :source     2     ; [:source ?rel ?span]
-   :target     2     ; [:target ?rel ?span]
-   :within     2     ; [:within ?child ?parent] offset containment
-   :first-in   2     ; [:first-in ?token ?container]
-   :overlaps    2    ; [:overlaps ?a ?b]     spans share a covered token
-   :contains    2    ; [:contains ?a ?b]     span ?a covers every token ?b does
-   :coextensive 2    ; [:coextensive ?a ?b]  spans cover the same tokens
-   :vocab-link 2     ; [:vocab-link ?token ?vocab]   the token is linked to the item (no link entity)
-   :link-token 2     ; [:link-token ?link ?token]    the link covers that token
-   :link-item  2})   ; [:link-item ?link ?vocab]     the link points at that item
+  {:covers      [:span :token]           ; the span covers that token
+   :precedes    [:token :token]          ; immediate
+   :precedes*   [:token :token]          ; transitive
+   :source      [:relation :span]
+   :target      [:relation :span]
+   :within      [:token :token]          ; [:within ?child ?parent] offset containment
+   :first-in    [:token :token]          ; [:first-in ?token ?container]
+   :overlaps    [:span :span]            ; spans share a covered token
+   :contains    [:span :span]            ; span ?a covers every token ?b does
+   :coextensive [:span :span]            ; spans cover the same tokens
+   :vocab-link  [:token :vocab]          ; the token is linked to the item (no link entity)
+   :link-token  [:link :token]           ; the link covers that token
+   :link-item   [:link :vocab]})         ; the link points at that item
+
+;; `:related*` is a relationship over the same two span vars but takes a trailing
+;; constraint map, so it validates in its own branch. Its argument kinds live
+;; here beside the rest.
+(def ^:private rel-arg-kinds
+  (assoc rel-clauses :related* [:span :span]))
 
 ;; Clause heads accepted by the grammar but not implemented until a later
 ;; milestone. Rejected by validate with a "not yet supported" message rather
@@ -709,20 +718,11 @@
                     (if (and (map? x) (var? (:var x))) (assoc-kind kk (:var x) :scalar) kk)))
                 kinds scalar-keys))
 
-      (= head :covers)     (-> kinds (assoc-kind (first args) :span)  (assoc-kind (second args) :token))
-      (= head :precedes)   (-> kinds (assoc-kind (first args) :token) (assoc-kind (second args) :token))
-      (= head :precedes*)  (-> kinds (assoc-kind (first args) :token) (assoc-kind (second args) :token))
-      (= head :within)     (-> kinds (assoc-kind (first args) :token) (assoc-kind (second args) :token))
-      (= head :first-in)   (-> kinds (assoc-kind (first args) :token) (assoc-kind (second args) :token))
-      (= head :overlaps)    (-> kinds (assoc-kind (first args) :span) (assoc-kind (second args) :span))
-      (= head :contains)    (-> kinds (assoc-kind (first args) :span) (assoc-kind (second args) :span))
-      (= head :coextensive) (-> kinds (assoc-kind (first args) :span) (assoc-kind (second args) :span))
-      (= head :related*)    (-> kinds (assoc-kind (first args) :span) (assoc-kind (second args) :span))
-      (= head :source)     (-> kinds (assoc-kind (first args) :relation) (assoc-kind (second args) :span))
-      (= head :target)     (-> kinds (assoc-kind (first args) :relation) (assoc-kind (second args) :span))
-      (= head :vocab-link) (-> kinds (assoc-kind (first args) :token) (assoc-kind (second args) :vocab))
-      (= head :link-token) (-> kinds (assoc-kind (first args) :link) (assoc-kind (second args) :token))
-      (= head :link-item)  (-> kinds (assoc-kind (first args) :link) (assoc-kind (second args) :vocab))
+      ;; a relationship clause binds each argument to the kind `rel-arg-kinds`
+      ;; declares for that position (a trailing constraint map, as :related* has,
+      ;; falls off the end of the zip)
+      (contains? rel-arg-kinds head)
+      (reduce (fn [kk [v k]] (assoc-kind kk v k)) kinds (map vector args (rel-arg-kinds head)))
 
       ;; a layer-constraint clause binds its var to the head's layer kind, and each
       ;; structural-slot var to its parent layer kind (assoc-kind detects conflicts
@@ -751,8 +751,9 @@
         (-> (if (var? v) [v] [])
             (into (keep #(let [x (get cmap %)] (when (var? x) x)) [:source :target :layer :item]))
             (into (keep #(let [x (get cmap %)] (when (and (map? x) (var? (:var x))) (:var x))) scalar-keys))))
-      (contains? rel-clauses head) (filterv var? args)
-      (= head :related*) (filterv var? args)   ; two span vars (the trailing map filters out)
+      ;; a relationship clause's args are its vars (a trailing constraint map, as
+      ;; :related* has, filters out)
+      (contains? rel-arg-kinds head) (filterv var? args)
       (contains? layer-clauses head)
       (let [[v cmap] args]
         (-> (if (var? v) [v] [])
@@ -1007,7 +1008,7 @@
                                        " (this constraint takes a literal or list, not a map value)"))))))))
 
       (contains? rel-clauses head)
-      (let [arity (rel-clauses head)]
+      (let [arity (count (rel-clauses head))]
         (when-not (= (count args) arity)
           (err! :validate (str "Clause :" (name head) " takes " arity " vars, got " (count args))))
         (when-not (every? var? args)
