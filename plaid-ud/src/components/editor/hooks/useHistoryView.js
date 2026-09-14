@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useDocumentHistory } from './useDocumentHistory.js';
 
 // Time travel: the history drawer, the entry being viewed, and the restore it
@@ -14,6 +14,12 @@ export function useHistoryView({ documentId, getClient, reload }) {
   const [viewingHistoricalState, setViewingHistoricalState] = useState(false);
   // The history entry a restore is being confirmed for.
   const [restoreEntry, setRestoreEntry] = useState(null);
+  // Which selection the screen is answering. An as-of read is a round trip a
+  // reader can outrun by clicking another entry, or by coming back to the
+  // current state: whatever the overtaken read has to say is about a screen
+  // nobody is looking at, so it must neither open a historical view that was
+  // left nor roll back a selection made after it.
+  const selection = useRef(0);
 
   const {
     auditEntries,
@@ -36,6 +42,7 @@ export function useHistoryView({ documentId, getClient, reload }) {
   };
 
   const selectHistoryEntry = async (entry) => {
+    const mine = ++selection.current;
     if (!entry) {
       // Return to current state
       setSelectedHistoryEntry(null);
@@ -55,6 +62,7 @@ export function useHistoryView({ documentId, getClient, reload }) {
 
     // Fetch historical document in background
     const historicalDoc = await fetchHistoricalDocument(entry.time);
+    if (mine !== selection.current) return; // another entry, or the live doc, was asked for since
     if (historicalDoc) {
       setViewingHistoricalState(true);
     } else {

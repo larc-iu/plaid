@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useAuth } from '../../../contexts/AuthContext.jsx';
 import { notifyError, humanizeError } from '../../../utils/feedback.jsx';
 
@@ -12,6 +12,12 @@ export const useDocumentHistory = (documentId) => {
   // travel leaves the entries a reader is browsing on screen and says so in a
   // toast, and the drawer hides the list whenever this is set.
   const [error, setError] = useState('');
+  // Which as-of read the document on screen belongs to. Two reads can be out at
+  // once (a reader clicking down a list of entries), they can land in either
+  // order, and the state one of them is answering is only ever the last one
+  // asked for. The caller has its own guard for the SELECTION, which this one
+  // knows nothing about: this is about the document itself.
+  const latestRead = useRef(0);
   const { getClient, logout } = useAuth();
 
   // Fetch audit log entries
@@ -48,6 +54,7 @@ export const useDocumentHistory = (documentId) => {
     async (timestamp) => {
       if (!documentId || !timestamp) return null;
 
+      const mine = ++latestRead.current;
       try {
         setLoadingHistorical(true);
         const client = getClient();
@@ -57,7 +64,7 @@ export const useDocumentHistory = (documentId) => {
         }
 
         const historicalDoc = await client.documents.get(documentId, true, timestamp);
-        setHistoricalDocument(historicalDoc);
+        if (mine === latestRead.current) setHistoricalDocument(historicalDoc);
         return historicalDoc;
       } catch (err) {
         if (err.status === 401) {
@@ -81,8 +88,11 @@ export const useDocumentHistory = (documentId) => {
     [documentId, getClient, logout],
   );
 
-  // Clear historical document (return to current state)
+  // Clear historical document (return to current state). A read still out
+  // belongs to the screen the reader has just left, so it is disowned here too
+  // rather than landing on the live document a moment later.
   const clearHistoricalDocument = useCallback(() => {
+    latestRead.current++;
     setHistoricalDocument(null);
   }, []);
 

@@ -116,6 +116,69 @@ describe('the history view', () => {
     await view.unmount();
   });
 
+  // The as-of read is a round trip, and a reader clicking down the list can
+  // outrun it. What these two hold is the ORDER of what lands, which the tests
+  // above cannot see: each of them asks for one thing at a time, so the screen
+  // is right at the end whether or not anything guards the sequence. (The
+  // DOCUMENT half of the same race is useDocumentHistory's, and is tested
+  // there: this hook's seam hands back one document per call.)
+  describe('when a read is overtaken', () => {
+    // Two entries clicked in a row, the earlier one slower and FAILING. Its
+    // rollback would put back the selection as it was when it started, which
+    // is not the one the reader is looking at.
+    it('a failed earlier entry does not roll back the later selection', async () => {
+      const lands = {};
+      history.fetchHistoricalDocument.mockImplementation(
+        (time) => new Promise((resolve) => (lands[time] = resolve)),
+      );
+      await mount();
+
+      let first, second;
+      await view.step(() => {
+        first = api.selectHistoryEntry(ENTRY_A);
+      });
+      await view.step(() => {
+        second = api.selectHistoryEntry(ENTRY_B);
+      });
+      await view.step(async () => {
+        lands[ENTRY_B.time]({ id: 'doc-1' });
+        await second;
+      });
+      await view.step(async () => {
+        lands[ENTRY_A.time](null);
+        await first;
+      });
+      expect(api.selectedHistoryEntry).toBe(ENTRY_B);
+      expect(api.viewingHistoricalState).toBe(true);
+      await view.unmount();
+    });
+
+    // And the reader who gives up on a slow entry and closes the drawer stays
+    // where they went: a historical view they left must not open behind them.
+    it('returning to the current state cancels a read still out', async () => {
+      let land;
+      history.fetchHistoricalDocument.mockImplementation(
+        () => new Promise((resolve) => (land = resolve)),
+      );
+      await mount();
+
+      let selecting;
+      await view.step(() => {
+        selecting = api.selectHistoryEntry(ENTRY_A);
+      });
+      await view.step(() => api.selectHistoryEntry(null));
+      expect(api.selectedHistoryEntry).toBe(null);
+
+      await view.step(async () => {
+        land({ id: 'doc-1' });
+        await selecting;
+      });
+      expect(api.viewingHistoricalState).toBe(false);
+      expect(api.selectedHistoryEntry).toBe(null);
+      await view.unmount();
+    });
+  });
+
   it('re-reads the live document on the way back to the current state', async () => {
     history.fetchHistoricalDocument.mockResolvedValue({ id: 'doc-1' });
     await mount();
