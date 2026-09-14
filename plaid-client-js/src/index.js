@@ -1021,10 +1021,12 @@ class PlaidClient {
        * Remove a profile picture. Your own, or anyone's if you are an admin.
        * @param {string} id - The user ID
        */
+      // No flag: the upload beside this one is multipart and cannot be
+      // batched, but a DELETE carries no blob, so the batch transport takes
+      // it. It is an ordinary audited write and queues like any other.
       deleteAvatar: (id, auditMessage) =>
         this._request("DELETE", `/api/v1/users/${id}/avatar`, {
           auditMessage,
-          noBatch: true,
         }),
     };
 
@@ -1660,10 +1662,14 @@ class PlaidClient {
        * Delete media file for a document
        * @param {string} documentId - The document ID
        */
+      // No flag: the upload above is multipart and cannot be batched, but a
+      // DELETE carries no blob, so the batch transport takes it. It is a write
+      // of the document's own data and queues like any other. Note that the
+      // file removal happens outside the server's transaction, so a batch that
+      // aborts after this op does not bring the file back.
       deleteMedia: (documentId, auditMessage) =>
         this._request("DELETE", `/api/v1/documents/${documentId}/media`, {
           auditMessage,
-          noBatch: true,
         }),
       /**
        * Replace all metadata for a document.

@@ -44,11 +44,14 @@ logger = logging.getLogger(__name__)
 # marks the batch's one expected document-version onto the first QUEUED write,
 # and a call that went over the wire on its own is not that write.
 #
-# ``no_batch`` is not part of that judgment. It marks the few calls the batch
-# transport cannot carry at all (a batch inside a batch, a multipart upload, the
-# media and avatar blobs, the user-data store) and raises so the caller finds
-# out. Never put it on a read: it turns a swallowed read into a thrown one,
-# which is what the chrome hit when an unrelated import was running.
+# ``no_batch`` is not part of that judgment. It marks the five calls the batch
+# transport cannot carry at all (a batch inside a batch, the multipart media and
+# avatar uploads, the user-data store's put and delete) and raises so the caller
+# finds out. Never put it on a read: it turns a swallowed read into a thrown
+# one, which is what the chrome hit when an unrelated import was running. A
+# blobless DELETE beside an upload is not one of them: it carries nothing the
+# transport cannot express, so it takes its class from the three above like
+# anything else.
 # ---------------------------------------------------------------------------
 
 # Default per-request timeout (seconds). Applied to every request unless the

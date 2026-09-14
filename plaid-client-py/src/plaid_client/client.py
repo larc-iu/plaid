@@ -942,8 +942,11 @@ class UsersResource(_Resource):
         Args:
             id: The user ID
         """
+        # No flag: the upload above is multipart and cannot be batched, but a
+        # DELETE carries no blob, so the batch transport takes it. It is an
+        # ordinary audited write and queues like any other.
         return self._request('DELETE', f'/api/v1/users/{id}/avatar',
-                             no_batch=True, audit_message=audit_message)
+                             audit_message=audit_message)
 
     def avatar_url(self, id: str, avatar_hash: str | None = None) -> str:
         """URL for a user's profile picture, with the session token in the
@@ -1566,8 +1569,13 @@ class DocumentsResource(_Resource):
         Args:
             document_id: The document ID
         """
+        # No flag: the upload above is multipart and cannot be batched, but a
+        # DELETE carries no blob, so the batch transport takes it. It is a
+        # write of the document's own data and queues like any other. Note that
+        # the file removal happens outside the server's transaction, so a batch
+        # that aborts after this op does not bring the file back.
         return self._request('DELETE', f'/api/v1/documents/{document_id}/media',
-                             no_batch=True, audit_message=audit_message)
+                             audit_message=audit_message)
 
     def get(self, document_id: str, *, include_body: bool | None = None,
             as_of: str | None = None, layers=None) -> Any:

@@ -12,19 +12,108 @@ and server-side runs against the batch's transaction connection, where
 ``/query`` 500s and rolls back every write.
 
 So: no read is ever queued, and neither is an out-of-band signal. The first test
-discovers every method on the client and proves it. The second names the
-signals, which are shaped like writes and cannot be found by their verb.
+finds every method on the client by reflection, calls it with a batch open, and
+compares the reads that answered from the wire against READS below. The second
+names the signals, which are shaped like writes and cannot be found by their
+verb.
 """
 
 import inspect
 import os
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from plaid_client.client import PlaidClient
+from plaid_client.http import PlaidAPIError
 from plaid_client.services import (cancel_service_request, discover_services,
                                    _report_event)
+
+# Every read the client exposes, as ``resource.method``. ADD A NEW READ HERE:
+# the test calls every method by reflection and compares what actually went over
+# the wire against this list, so a read missing from it fails exactly as loudly
+# as one that joined the batch.
+READS = [
+    'admin.locks',
+    'admin.log_file',
+    'admin.logs',
+    'admin.rate_limits',
+    'admin.server',
+    'admin.user_data',
+    'admin.user_data_page',
+    'api_tokens.iter_pages',
+    'api_tokens.list',
+    'api_tokens.list_page',
+    'audit.iter_pages',
+    'audit.list',
+    'audit.list_page',
+    'audit.tally',
+    'comments.counts',
+    'comments.counts_in_vocab',
+    'comments.get',
+    'comments.iter_pages',
+    'comments.list',
+    'comments.list_in_vocab',
+    'comments.list_in_vocab_page',
+    'comments.list_page',
+    'documents.audit',
+    'documents.audit_page',
+    'documents.check_lock',
+    'documents.get',
+    'documents.get_media',
+    'invites.iter_pages',
+    'invites.list',
+    'invites.list_page',
+    'messages.discover_services',
+    'operation_groups.get',
+    'projects.audit',
+    'projects.audit_page',
+    'projects.get',
+    'projects.iter_documents',
+    'projects.iter_pages',
+    'projects.list',
+    'projects.list_documents',
+    'projects.list_documents_page',
+    'projects.list_page',
+    'projects.my_last_edits',
+    'relation_layers.get',
+    'relations.get',
+    'server.health',
+    'server.info',
+    'span_layers.get',
+    'spans.get',
+    'text_layers.get',
+    'texts.get',
+    'token_layers.get',
+    'tokens.get',
+    'user_data.get',
+    'user_data.list',
+    'users.audit',
+    'users.audit_page',
+    'users.get',
+    'users.get_avatar',
+    'users.iter_pages',
+    'users.list',
+    'users.list_page',
+    'vocab_items.get',
+    'vocab_layers.get',
+    'vocab_layers.iter_pages',
+    'vocab_layers.list',
+    'vocab_layers.list_page',
+    'vocab_links.get',
+]
+
+# The only methods the probe skips. Each opens a stream or runs a loop rather
+# than making one request, so calling it with fake arguments would hang or run
+# past the request layer. Everything else on the client is probed.
+_STREAM_METHODS = {
+    'messages.listen',
+    'messages.serve',
+    'messages.request_service',
+    'messages.attach_service_request',
+}
 
 
 class _Resp:
@@ -58,20 +147,12 @@ def _stub_session(client):
     return sent
 
 
-# Resources carrying the REST surface. ``messages`` is covered by the
-# out-of-band test below (its methods open streams rather than make plain
-# requests).
-_SKIP_RESOURCES = {'messages'}
-# Methods whose probe would run past the request layer into real work.
-_SKIP_METHODS = {'locked', 'avatar_url'}
-
-
-def test_no_read_is_ever_queued_into_an_open_batch():
+def test_every_read_goes_over_the_wire_and_reads_names_them_all():
     client = PlaidClient('http://x', 'tok')
     sent = _stub_session(client)
     client.begin_batch()
 
-    over_the_wire = []
+    over_the_wire = set()
     queued_reads = []
 
     def probe(label, fn):
@@ -94,18 +175,19 @@ def test_no_read_is_ever_queued_into_an_open_batch():
                 queued_reads.append(f"{label} -> {op['path']}")
         for req in sent[sent_before:]:
             if req['method'] == 'GET':
-                over_the_wire.append(label)
+                over_the_wire.add(label)
 
     try:
+        # Reflection, so a whole new resource is probed the day it is added
+        # rather than the day someone remembers to name it here.
         for name, res in list(vars(client).items()):
             if not type(res).__name__.endswith('Resource'):
                 continue
-            if name in _SKIP_RESOURCES:
-                continue
             for mname, fn in inspect.getmembers(res, inspect.ismethod):
-                if mname.startswith('_') or mname in _SKIP_METHODS:
+                label = f'{name}.{mname}'
+                if mname.startswith('_') or label in _STREAM_METHODS:
                     continue
-                probe(f'{name}.{mname}', fn)
+                probe(label, fn)
         probe('query', client.query)
     finally:
         client.abort_batch()
@@ -113,11 +195,19 @@ def test_no_read_is_ever_queued_into_an_open_batch():
     assert not queued_reads, (
         'these reads joined the batch instead of going over the wire:\n  '
         + '\n  '.join(queued_reads))
-    # The count is the table: every read method on the client answered from the
-    # wire with a batch open. It only ever goes up.
-    assert len(over_the_wire) >= 60, (
-        f'expected every read (66 of them) to go over the wire, saw '
-        f'{len(over_the_wire)}: {over_the_wire}')
+
+    observed = sorted(over_the_wire)
+    unlisted = [n for n in observed if n not in READS]
+    assert not unlisted, (
+        'these reads are missing from READS at the top of this file. Add every '
+        'new read to it:\n  ' + '\n  '.join(unlisted))
+    # ``server.limits`` is deliberately absent: it returns ``server.info()``,
+    # which memoizes its one request, so by the time it is probed there is
+    # nothing left to send.
+    missing = [n for n in READS if n not in observed]
+    assert not missing, (
+        'READS names these, but they sent no GET with a batch open:\n  '
+        + '\n  '.join(missing))
 
 
 def test_a_read_or_a_signal_shaped_like_a_write_goes_over_the_wire():
@@ -170,8 +260,39 @@ def test_a_write_of_project_data_still_queues():
     client.tokens.create('tl1', 't1', 0, 5)
     client.spans.update('s1', 'NOUN')
     client.relations.delete('r1')
+    # Blobless DELETEs beside a multipart upload. The upload cannot be batched;
+    # these carry nothing the transport cannot express.
+    client.documents.delete_media('d1')
+    client.users.delete_avatar('u1')
 
     assert sent == [], 'a queued write must not reach the wire'
     assert [op['method'] for op in client.batch_operations] == \
-        ['POST', 'PATCH', 'DELETE']
+        ['POST', 'PATCH', 'DELETE', 'DELETE', 'DELETE']
     client.abort_batch()
+
+
+def test_only_the_calls_the_batch_transport_cannot_carry_refuse_a_batch():
+    client = PlaidClient('http://x', 'tok')
+    sent = _stub_session(client)
+    client.begin_batch()
+
+    # A batch inside a batch, the two multipart uploads, and the user-data
+    # store. Nothing else may raise here: ``no_batch`` on a read turns a
+    # swallowed read into a thrown one, and on a write it refuses work a batch
+    # could have done.
+    refuse = [
+        ('submit a batch', lambda: client.batch.submit([])),
+        ('upload media', lambda: client.documents.upload_media('d1', b'f')),
+        ('upload an avatar', lambda: client.users.set_avatar('u1', b'f')),
+        ('write user data', lambda: client.user_data.put('u1', 'k', 1)),
+        ('delete user data', lambda: client.user_data.delete('u1', 'k')),
+    ]
+
+    try:
+        for label, fn in refuse:
+            with pytest.raises(PlaidAPIError, match='cannot be used in batch mode'):
+                fn()
+        assert sent == [], 'a refused call must not reach the wire'
+        assert client.batch_operations == []
+    finally:
+        client.abort_batch()
