@@ -208,6 +208,26 @@ def test_validate_refuses_a_restore_beside_anything_else():
         validate_ops(ops)
 
 
+def test_the_kinds_tagged_exclusive_are_the_ones_that_own_their_plan():
+    """`run_parse` carried ok.EXCLUSIVE ("the only one in its plan") while the
+    rule it lives by refuses only ops touching the SAME documents, and nothing
+    in UD read the tag, so the declaration and the behaviour disagreed in
+    silence. Both halves are checked here: every tagged kind really refuses a
+    second op, and the untagged parse really takes one."""
+    from plaid_agent.ud.plan import EXCLUSIVE_KINDS, KIND
+
+    other = {'kind': 'set_span', 'document_id': 'dX', 'layer_id': 'L', 'token_id': 'w1', 'value': 'x'}
+    assert EXCLUSIVE_KINDS, 'a restore is one'
+    for name in EXCLUSIVE_KINDS:
+        op = {'kind': name, **{k: 'x' for k in KIND[name].required}}
+        for ops in ([op, other], [other, op]):
+            with pytest.raises(ValueError, match='only op in its plan'):
+                validate_ops(ops)
+    assert 'run_parse' not in EXCLUSIVE_KINDS
+    validate_ops([{'kind': 'run_parse', 'document_ids': ['d1'], 'service_id': 's',
+                   'project_id': 'p', 'language': 'es'}, other])
+
+
 def test_the_restore_summary_reads_as_english():
     """The dry run's counts become the phrase the user approves, so a count of
     one must not say "1 dependencies" and three must not say "3 dependencys"."""

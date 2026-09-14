@@ -17,7 +17,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from ..core import opkind
 from ..core.replace import replacer as core_replacer
 from .corpus import Corpus, rx
-from .plan import KIND, SENTENCE_SHAPE, WORD_SHAPE
+from .plan import DOCUMENT_SHAPE, EXCLUSIVE_KINDS, KIND, SENTENCE_SHAPE, WORD_SHAPE
 from .project import UdProject
 from .tools import FIELDS, ToolError, Workspace, _check_value
 
@@ -169,11 +169,11 @@ def _clear_of_reshapes(ws: Workspace, docs: List[str]) -> None:
     """The refusals a corpus-wide change owes, over every document it reaches:
     the same ones `_guards` makes for one document, by id."""
     from .tools import docs_of_op
-    rewriting = set(opkind.shaped(KIND, SENTENCE_SHAPE, WORD_SHAPE, opkind.EXCLUSIVE))
+    rewriting = set(opkind.shaped(KIND, SENTENCE_SHAPE, WORD_SHAPE, DOCUMENT_SHAPE, opkind.EXCLUSIVE))
     reach = set(docs)
     for op in ws.ops:
         kind = op.get('kind')
-        if kind == 'restore_document':
+        if kind in EXCLUSIVE_KINDS:
             raise ToolError('This plan restores a document, and a restore must be a plan of its own '
                             '(plan_status, drop_planned).')
         if kind in rewriting and docs_of_op(op) & reach:

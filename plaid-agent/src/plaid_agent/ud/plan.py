@@ -36,6 +36,10 @@ from .review import all_words, confirm_targets, discard_targets
 # the plan can be trusted to still mean what it said.
 SENTENCE_SHAPE = 'sentence_shape'
 WORD_SHAPE = 'word_shape'      # a token's words are deleted and remade
+# The documents this op names are rewritten from scratch, and no others. Not
+# ok.EXCLUSIVE: a plan may write to one document and parse another, so what it
+# refuses is per document rather than per plan.
+DOCUMENT_SHAPE = 'document_shape'
 
 # The passes of the executor past the first. Heads need the ids the first
 # batch mints; the parser runs outside the batches entirely.
@@ -276,7 +280,7 @@ KIND = ok.registry([
            compact_each=('span_id', 'relation_id', 'ref'), compact_label=_confirm_label),
     OpKind('run_parse', ('parsed document', 'parsed documents'), stage=PARSE, apply=_apply_run_parse,
            required=('document_ids', 'service_id', 'project_id', 'language'),
-           shape=ok.EXCLUSIVE, summary=_run_parse_summary),
+           shape=DOCUMENT_SHAPE, summary=_run_parse_summary),
     OpKind('set_words', ('reshaped token', 'reshaped tokens'), apply=_apply_set_words, shape=WORD_SHAPE,
            required=('token_id', 'text_id', 'forms', 'word_layer_id', 'form_layer_id', 'lemma_layer_id'),
            deletes_tokens=lambda op: list(op.get('existing_word_ids') or [])),
@@ -311,6 +315,10 @@ REQUIRED = ok.required(KIND)
 SCOPES = ok.shaped(KIND, ok.SCOPE)
 RESHAPES_DOCUMENT = ok.shaped(KIND, SENTENCE_SHAPE)
 RESHAPES_TOKEN = ok.shaped(KIND, WORD_SHAPE)
+# Kinds that rewrite the documents they name from scratch, and kinds that own
+# their whole plan. A restore is the second; a parse is only the first.
+REWRITES_DOCUMENT = ok.shaped(KIND, DOCUMENT_SHAPE)
+EXCLUSIVE_KINDS = ok.shaped(KIND, ok.EXCLUSIVE)
 # Kinds a LATER pass of the executor applies: relations, which need the ids
 # the first batch mints, and the parser, which runs outside the batches.
 LATER_PASSES = ok.staged(KIND, IDS, PARSE)
@@ -337,11 +345,12 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
                 raise ValueError(f'op {i} ({kind}): missing {key}')
         if kind == 'confirm' and not (op.get('span_id') or op.get('relation_id')):
             raise ValueError(f'op {i} (confirm): needs a span_id or a relation_id')
-        # A restore rewrites every layer of the document, so anything else in the
-        # plan would address what it is about to replace. A parse does the same.
-        if kind == 'restore_document' and len(ops) > 1:
-            raise ValueError(f'op {i + 1} (restore_document): a restore must be the only '
-                             f'op in its plan')
+        # A restore rewrites every layer of the document, so anything else in
+        # the plan would address what it is about to replace. Read off the
+        # registry's tag, so a second kind that owns its plan is refused by
+        # declaring itself rather than by being named here.
+        if spec.shape == ok.EXCLUSIVE and len(ops) > 1:
+            raise ValueError(f'op {i + 1} ({kind}): a {spec.noun[0]} must be the only op in its plan')
     # A parse rewrites a document from scratch, so anything else this plan
     # writes into the same document would be thrown away by it. The tools
     # refuse the combination as it is built. This is the backstop, because a
@@ -401,9 +410,10 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
             raise ValueError('a plan moves at most one sentence boundary per document, and this '
                              'one moves several in ' + ', '.join(crowded)
                              + ': each renumbers the sentences the next would name')
-    parsed = {d for op in ops if op.get('kind') == 'run_parse' for d in (op.get('document_ids') or [])}
+    parsed = set().union(*(_reach(op) for op in ops if op.get('kind') in REWRITES_DOCUMENT))
     if parsed:
-        clash = set().union(*(_reach(op) for op in ops if op.get('kind') != 'run_parse')) & parsed
+        clash = set().union(*(_reach(op) for op in ops
+                              if op.get('kind') not in REWRITES_DOCUMENT)) & parsed
         if clash:
             raise ValueError('this plan both parses and edits ' + ', '.join(sorted(clash))
                              + ', and a parse would throw the edits away')

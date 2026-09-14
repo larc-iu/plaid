@@ -19,7 +19,8 @@ from ..core.args import clamp_limit, read_int, sentence_number
 from ..core.limits import MAX_RESULT_CHARS, READ_LIMITS
 from ..core.plan import PLAN_MAX_OPS, PlanFull, reserve as core_reserve
 from ..core.tools import fn, tools_for as core_tools_for
-from .plan import COMPACT, KIND  # noqa: F401 - COMPACT is re-exported for the tests
+from .plan import (COMPACT, EXCLUSIVE_KINDS, KIND,  # noqa: F401 - COMPACT is re-exported for the tests
+                   REWRITES_DOCUMENT)
 from .project import (MISSING, Sentence, Token, UdDoc, UdProject, Word, load_document, parse_ref,
                       render_document, render_sentence, resolve, word_ref)
 from .review import (REVIEW_FIELDS, all_words, confirm_targets, counts_phrase, discard_targets,
@@ -318,9 +319,11 @@ def t_read_document(ws: Workspace, document: str = None, from_sentence: int = No
 
 def _no_parse_planned(ws: Workspace, doc: UdDoc) -> None:
     """A parse rewrites a document from scratch, so nothing else in the same
-    plan may write into it: whichever was planned first, the other is lost."""
+    plan may write into it: whichever was planned first, the other is lost.
+    Per document, which is why a parse is not tagged EXCLUSIVE: a plan may
+    write to one document and parse another."""
     for op in ws.ops:
-        if op.get('kind') == 'run_parse' and doc.id in docs_of_op(op):
+        if op.get('kind') in REWRITES_DOCUMENT and doc.id in docs_of_op(op):
             raise ToolError(f'This plan already parses "{doc.name}", and a parse rewrites the '
                             f'document from scratch, so this change would be thrown away. Plan '
                             f'the parse on its own, or drop it first (plan_status, drop_planned).')
@@ -328,10 +331,12 @@ def _no_parse_planned(ws: Workspace, doc: UdDoc) -> None:
 
 def _no_restore_planned(ws: Workspace) -> None:
     """A restore rewrites every layer of its document, so nothing may join its
-    plan. The check looks FORWARD as well as back: refusing only when a
-    restore is planned second would let an edit slip in after one."""
+    plan. The set is the registry's EXCLUSIVE tag rather than a kind name, so
+    a second kind that owns its plan is refused by declaring itself. The check
+    looks FORWARD as well as back: refusing only when the exclusive op is
+    planned second would let an edit slip in after one."""
     for op in ws.ops:
-        if op.get('kind') == 'restore_document':
+        if op.get('kind') in EXCLUSIVE_KINDS:
             raise ToolError('This plan restores a document, and a restore rewrites every layer of '
                             'it, so nothing else can share the plan. Apply it on its own, then '
                             'plan the rest against what it restored (plan_status, drop_planned).')
