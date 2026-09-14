@@ -105,12 +105,12 @@ export const AnnotationEditor = () => {
 
   // The history drawer, the entry being viewed, and the restore it can lead to.
   const {
-    isHistoryDrawerOpen,
+    drawerOpen,
     openHistory,
     closeHistory,
-    selectedHistoryEntry,
-    selectHistoryEntry,
-    viewingHistoricalState,
+    selectedEntry,
+    selectEntry,
+    isViewingHistorical,
     historicalDocument,
     auditEntries,
     loadingAudit,
@@ -258,9 +258,9 @@ export const AnnotationEditor = () => {
   // breadcrumbs and tab strip live in DocumentEditorShell now, so tell it to
   // move with us — and put it back when we leave the tab.
   useEffect(() => {
-    setChromeOffset(isHistoryDrawerOpen ? HISTORY_DRAWER_WIDTH : 0);
+    setChromeOffset(drawerOpen ? HISTORY_DRAWER_WIDTH : 0);
     return () => setChromeOffset(0);
-  }, [isHistoryDrawerOpen, setChromeOffset]);
+  }, [drawerOpen, setChromeOffset]);
 
   // doc-level operation errors surface as toasts (see ConlluDocument.setError);
   // a hard document-load failure is DocumentEditorShell's banner, not ours.
@@ -269,12 +269,12 @@ export const AnnotationEditor = () => {
   // path (useSentenceData still accepts a raw document and delegates to
   // ConlluDocument internally). Handlers are passed `null` in that mode, so
   // mutations stay disabled.
-  const activeDocument = viewingHistoricalState ? historicalDocument : doc?.raw;
+  const activeDocument = isViewingHistorical ? historicalDocument : doc?.raw;
 
   // Read-only mode is on when the user lacks write access to the project OR
-  // when time-travelling. Key the historical case on `selectedHistoryEntry`, not
-  // `viewingHistoricalState`: the entry is set the instant you click (and the
-  // banner appears), but `viewingHistoricalState` only flips AFTER the async
+  // when time-travelling. Key the historical case on `selectedEntry`, not
+  // `isViewingHistorical`: the entry is set the instant you click (and the
+  // banner appears), but `isViewingHistorical` only flips AFTER the async
   // as-of fetch resolves. Using it would leave a window where the banner says
   // "historical" yet the live current-doc handlers are still wired — letting
   // edits land on the current document (and 409 on save).
@@ -284,14 +284,14 @@ export const AnnotationEditor = () => {
   // would discard anything typed underneath it. The run's OWN controls are
   // gated on `canEdit` instead, or the button carrying its progress would
   // vanish the moment the run started.
-  const readOnly = !canEdit || !!selectedHistoryEntry || !!writeLockHeld;
+  const readOnly = !canEdit || !!selectedEntry || !!writeLockHeld;
 
   const historicalLayerInfo = useLayerInfo(historicalDocument);
-  const layerInfo = viewingHistoricalState ? historicalLayerInfo : doc?.layerInfo;
+  const layerInfo = isViewingHistorical ? historicalLayerInfo : doc?.layerInfo;
   const historicalSentences = useSentenceData(historicalDocument);
   const processedSentences = useMemo(
-    () => (viewingHistoricalState ? historicalSentences : doc?.sentences || []),
-    [viewingHistoricalState, historicalSentences, doc?.sentences],
+    () => (isViewingHistorical ? historicalSentences : doc?.sentences || []),
+    [isViewingHistorical, historicalSentences, doc?.sentences],
   );
 
   // One page of sentences in the DOM. Everything a sentence is addressed by
@@ -439,12 +439,12 @@ export const AnnotationEditor = () => {
       onConfirmTokens: readOnly ? null : handleConfirmTokens,
       onDiscardTokens: readOnly ? null : handleDiscardTokens,
       onSentenceMetadata: readOnly ? null : handleSentenceMetadata,
-      onEditText: viewingHistoricalState ? null : handleEditText,
+      onEditText: isViewingHistorical ? null : handleEditText,
       onPrecedent: readOnly ? undefined : handlePrecedent,
       onAskAssistant:
-        viewingHistoricalState || !assistantAvailable || !roomToDock ? undefined : askAssistant,
+        isViewingHistorical || !assistantAvailable || !roomToDock ? undefined : askAssistant,
       onToggleField: handleToggleField,
-      comments: viewingHistoricalState ? null : comments,
+      comments: isViewingHistorical ? null : comments,
       canComment,
       canDeleteAnyComment,
       vocab: layerInfo?.vocab,
@@ -467,7 +467,7 @@ export const AnnotationEditor = () => {
       handleConfirmTokens,
       handleDiscardTokens,
       handleSentenceMetadata,
-      viewingHistoricalState,
+      isViewingHistorical,
       handleEditText,
       handlePrecedent,
       assistantAvailable,
@@ -495,7 +495,7 @@ export const AnnotationEditor = () => {
     revealSentence,
   });
 
-  const hasText = !viewingHistoricalState && Boolean(activeDocument?.textLayers?.[0]?.text);
+  const hasText = !isViewingHistorical && Boolean(activeDocument?.textLayers?.[0]?.text);
 
   // Single shared toolbar: History on the left, the run controls on the right.
   // Parse is the same run the Text Editor's button opens, so a parse started
@@ -510,13 +510,13 @@ export const AnnotationEditor = () => {
       </Button>
 
       <div className="flex items-center gap-3">
-        {selectedHistoryEntry && <Button onClick={closeHistory}>Return to current</Button>}
+        {selectedEntry && <Button onClick={closeHistory}>Return to current</Button>}
 
         {/* No Assistant button here: the panel is app chrome now and its
             control is in the header, on every screen. "Ask" under a sentence
             still opens it, pointed at that sentence. */}
 
-        {hasText && canEdit && !selectedHistoryEntry && (
+        {hasText && canEdit && !selectedEntry && (
           <ParseDialog
             parse={services.parse}
             isDiscovering={services.isDiscovering}
@@ -532,10 +532,8 @@ export const AnnotationEditor = () => {
   // state. The message names the reason so it isn't mysterious. For time travel
   // this is the sole indicator (the toolbar chip was removed), so it carries the
   // timestamp and the loading state too, and shows as soon as an entry is picked.
-  const historicalTime = selectedHistoryEntry
-    ? new Date(selectedHistoryEntry.time).toLocaleString()
-    : null;
-  const readOnlyBanner = selectedHistoryEntry ? (
+  const historicalTime = selectedEntry ? new Date(selectedEntry.time).toLocaleString() : null;
+  const readOnlyBanner = selectedEntry ? (
     <div className="mt-4 flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-900">
       {loadingHistorical ? (
         <>
@@ -600,13 +598,13 @@ export const AnnotationEditor = () => {
   return (
     <div className="min-h-screen w-full">
       <HistoryDrawer
-        isOpen={isHistoryDrawerOpen}
+        isOpen={drawerOpen}
         onClose={closeHistory}
         auditEntries={auditEntries}
         loading={loadingAudit}
         error={historyError}
-        onSelectEntry={selectHistoryEntry}
-        selectedEntry={selectedHistoryEntry}
+        onSelectEntry={selectEntry}
+        selectedEntry={selectedEntry}
         // A restore rewrites the whole document, which is exactly what a
         // running service is doing.
         canRestore={canManageProject(project, user) && !writeLockHeld}
@@ -628,7 +626,7 @@ export const AnnotationEditor = () => {
       {/* Main content area - pushed right (not overlaid) when the drawer is open */}
       <div
         className="min-h-screen transition-[margin-left] duration-300 ease-out"
-        style={{ marginLeft: isHistoryDrawerOpen ? HISTORY_DRAWER_WIDTH : 0 }}
+        style={{ marginLeft: drawerOpen ? HISTORY_DRAWER_WIDTH : 0 }}
       >
         {/* Only the BODY waits here — the breadcrumbs and tab strip are the
             shell's and stay on screen throughout. */}
@@ -658,7 +656,7 @@ export const AnnotationEditor = () => {
 
             {processedSentences.length === 0 ? (
               <p className="py-10 text-center text-muted-foreground">
-                {viewingHistoricalState
+                {isViewingHistorical
                   ? 'This state has no tokens.'
                   : 'No sentences. Tokenize the document in the Text Editor.'}
               </p>

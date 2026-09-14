@@ -8,10 +8,17 @@ import { useDocumentHistory } from './useDocumentHistory.js';
 //
 // `getClient` and `reload` come from the screen, because both of them are about
 // the LIVE document rather than the historical one.
+//
+// The members are spelled as plaid-igt's hook of the same name spells them
+// (`drawerOpen`, `selectedEntry` / `selectEntry`, `isViewingHistorical`), since
+// it is the same concept on the other app's editor. The two differ in how the
+// past state is held and nowhere else: igt swaps its shared document for the
+// snapshot at an `asOf`, and this one reads a separate `historicalDocument`
+// beside the live one.
 export function useHistoryView({ documentId, getClient, reload }) {
-  const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState(false);
-  const [selectedHistoryEntry, setSelectedHistoryEntry] = useState(null);
-  const [viewingHistoricalState, setViewingHistoricalState] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [selectedEntry, setSelectedEntry] = useState(null);
+  const [isViewingHistorical, setIsViewingHistorical] = useState(false);
   // The history entry a restore is being confirmed for.
   const [restoreEntry, setRestoreEntry] = useState(null);
   // Which selection the screen is answering. An as-of read is a round trip a
@@ -34,19 +41,19 @@ export function useHistoryView({ documentId, getClient, reload }) {
   } = useDocumentHistory(documentId);
 
   const openHistory = () => {
-    setIsHistoryDrawerOpen(true);
+    setDrawerOpen(true);
     // Fetch audit log only when drawer is first opened
     if (!hasLoadedAudit) {
       fetchAuditLog();
     }
   };
 
-  const selectHistoryEntry = async (entry) => {
+  const selectEntry = async (entry) => {
     const mine = ++selection.current;
     if (!entry) {
       // Return to current state
-      setSelectedHistoryEntry(null);
-      setViewingHistoricalState(false);
+      setSelectedEntry(null);
+      setIsViewingHistorical(false);
       clearHistoricalDocument();
       // The as-of GET poisoned the client's strict-mode document-version tracker
       // with the OLD (historical) version. Refresh it from the live doc so the
@@ -57,27 +64,27 @@ export function useHistoryView({ documentId, getClient, reload }) {
     }
 
     // Set selected entry immediately for instant feedback
-    const previousEntry = selectedHistoryEntry;
-    setSelectedHistoryEntry(entry);
+    const previousEntry = selectedEntry;
+    setSelectedEntry(entry);
 
     // Fetch historical document in background
     const historicalDoc = await fetchHistoricalDocument(entry.time);
     if (mine !== selection.current) return; // another entry, or the live doc, was asked for since
     if (historicalDoc) {
-      setViewingHistoricalState(true);
+      setIsViewingHistorical(true);
     } else {
       // Time travel failed (the hook already toasts). Roll the selection back
       // so the drawer doesn't show a phantom-selected entry whose state never
       // loaded — keep showing whatever we were actually viewing before.
-      setSelectedHistoryEntry(previousEntry);
+      setSelectedEntry(previousEntry);
     }
   };
 
   const closeHistory = () => {
-    setIsHistoryDrawerOpen(false);
+    setDrawerOpen(false);
     // Auto-return to current state when closing drawer
-    if (selectedHistoryEntry) {
-      selectHistoryEntry(null);
+    if (selectedEntry) {
+      selectEntry(null);
     }
   };
 
@@ -85,17 +92,17 @@ export function useHistoryView({ documentId, getClient, reload }) {
   // us and the history has a new entry. Leave the historical view, then reload
   // both. Called from the toast's Undo too, long after the dialog has closed.
   const handleRestored = async () => {
-    if (selectedHistoryEntry) await selectHistoryEntry(null);
+    if (selectedEntry) await selectEntry(null);
     await Promise.all([reload(), fetchAuditLog()]);
   };
 
   return {
-    isHistoryDrawerOpen,
+    drawerOpen,
     openHistory,
     closeHistory,
-    selectedHistoryEntry,
-    selectHistoryEntry,
-    viewingHistoricalState,
+    selectedEntry,
+    selectEntry,
+    isViewingHistorical,
     historicalDocument,
     auditEntries,
     loadingAudit,
