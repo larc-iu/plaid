@@ -750,7 +750,7 @@ def _anchor(ws: Workspace, doc: IgtDoc, ref: Optional[str], field: Optional[str]
 
 
 def t_comments(ws: Workspace, document: Optional[str] = None, ref: Optional[str] = None,
-               field: Optional[str] = None, limit: int = 50) -> str:
+               field: Optional[str] = None, limit: Optional[int] = None) -> str:
     """The comments people have left: on one thing (document + ref, and
     field for one of its values), in one document, or in the whole project;
     oldest first, the newest `limit` shown."""

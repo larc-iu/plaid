@@ -85,7 +85,7 @@ REGEX_NOTE = ('(note) The engine matched this pattern in {docs}, but nothing in 
 
 
 def t_search(ws: Workspace, field: str = None, pattern: str = None, document: str = None,
-             whole: bool = False, regex: bool = False, limit: int = 30, case_sensitive: bool = False) -> str:
+             whole: bool = False, regex: bool = False, limit: int = None, case_sensitive: bool = False) -> str:
     """Words whose field matches, each in its context."""
     if field not in SEARCHABLE:
         raise ToolError(f'Unknown field "{field}". One of: ' + ', '.join(SEARCHABLE))
@@ -160,7 +160,7 @@ def _split_features(rows: List[tuple]) -> List[tuple]:
 
 
 def t_frequency_list(ws: Workspace, what: str = 'lemma', document: str = None,
-                     limit: int = 30) -> str:
+                     limit: int = None) -> str:
     """The commonest values of one column."""
     if what not in COUNTABLE:
         raise ToolError(f'Unknown column "{what}". One of: ' + ', '.join(COUNTABLE))
@@ -284,7 +284,7 @@ WORKLIST_KINDS = ('unverified', 'contributed', 'missing')
 
 
 def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
-               document: str = None, limit: int = 20) -> str:
+               document: str = None, limit: int = None) -> str:
     """What is unfinished, by document, so a session has somewhere to start."""
     if kind not in WORKLIST_KINDS:
         raise ToolError(f'Unknown kind "{kind}". One of: ' + ', '.join(WORKLIST_KINDS))
@@ -396,7 +396,7 @@ AUDIT_PAGE = 200      # entries per page, newest first
 AUDIT_MAX_PAGES = 10  # how far back a filtered read will walk
 
 
-def t_recent_changes(ws: Workspace, document: str = None, limit: int = 20,
+def t_recent_changes(ws: Workspace, document: str = None, limit: int = None,
                      since: str = None, user: str = None) -> str:
     """Who changed what, when, under which operation label. The assistant's
     own applied plans appear here like anyone else's work.
@@ -463,7 +463,7 @@ def t_recent_changes(ws: Workspace, document: str = None, limit: int = 20,
     return truncate('\n'.join(out))
 
 
-def t_comments(ws: Workspace, document: str = None, ref: str = None, limit: int = 30) -> str:
+def t_comments(ws: Workspace, document: str = None, ref: str = None, limit: int = None) -> str:
     """What people have written to each other on a sentence or a document.
     These are notes between annotators, never annotation."""
     from .project import Sentence as _S

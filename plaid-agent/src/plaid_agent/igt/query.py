@@ -135,6 +135,6 @@ def _ref_index(ws: Workspace, doc_ids: List[str]) -> Dict[str, str]:
     return refs
 
 
-def t_query(ws: Workspace, query: Any = None, limit: int = 50) -> str:
+def t_query(ws: Workspace, query: Any = None, limit: Any = None) -> str:
     """Run a Plaid query over this project (read-only). See query_help."""
     return query_tool(ws, query, limit, _layer_index, _display, _ref_index)

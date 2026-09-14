@@ -14,7 +14,7 @@ from typing import Any, Dict, List
 from ..core import sandbox as _sandbox
 from ..core import webtools
 from ..core.webtools import t_read_url, t_web_search
-from ..core.tools import fn, run_tool, tools_for as core_tools_for
+from ..core.tools import fn, limit_arg, run_tool, tools_for as core_tools_for
 
 from .bulk import t_replace_in_field
 from .query import t_query, t_query_help
@@ -52,7 +52,8 @@ TOOLS = [
         'suggestion, and its documents. Call this first.', {}, []),
     _fn('list_documents',
         'The documents by name, a page at a time, optionally filtered by a name substring.',
-        {'pattern': {'type': 'string'}, 'limit': {'type': 'integer'}, 'offset': {'type': 'integer'}},
+        {'pattern': {'type': 'string'}, 'limit': limit_arg('list_documents', 'Documents to show'),
+         'offset': {'type': 'integer'}},
         []),
     _fn('read_document',
         'Read a document as tab-separated CoNLL-U rows: one line per word with its form, lemma, UPOS, '
@@ -180,7 +181,7 @@ TOOLS = [
         'name. Call query_help first.',
         {'query': {'type': 'object', 'description': 'The query object: find, where, return, limit, '
                                                     'order_by. See query_help.'},
-         'limit': {'type': 'integer', 'description': 'Rows to show (default 50, max 500).'}},
+         'limit': limit_arg('query', 'Rows to show')},
         ['query']),
     _fn('restore_document',
         'PLAN: put a document back as it was at a moment in its history, every layer of it. The '
@@ -206,7 +207,7 @@ TOOLS += [
         {'field': {'type': 'string', 'enum': list(SEARCHABLE)},
          'pattern': {'type': 'string', 'description': 'A literal substring unless regex is true.'},
          'document': _DOC, 'whole': {'type': 'boolean', 'description': 'Match the whole value only.'},
-         'regex': {'type': 'boolean'}, 'limit': {'type': 'integer'},
+         'regex': {'type': 'boolean'}, 'limit': limit_arg('search', 'Max hits to return'),
          'case_sensitive': {'type': 'boolean', 'description': 'Match case too (off: "the" finds "The"). '
                                                               'The same switch replace_in_field takes.'}},
         ['field', 'pattern']),
@@ -215,7 +216,7 @@ TOOLS += [
         '"features" counts each Feature=Value on its own; "feature-bundles" counts whole FEATS strings '
         'as stored.',
         {'what': {'type': 'string', 'enum': list(COUNTABLE)}, 'document': _DOC,
-         'limit': {'type': 'integer'}}, ['what']),
+         'limit': limit_arg('frequency_list', 'Rows')}, ['what']),
     _fn('check_consistency',
         'Places where the corpus disagrees with itself: one lemma under several UPOS, one form under '
         'several lemmas, deprel and UPOS pairs seen once or twice. Every hit is a question, not a '
@@ -232,19 +233,18 @@ TOOLS += [
          'field': {'type': 'string', 'enum': list(FIELDS) + ['deprel'],
                    'description': 'One column; without it, all five including the tree (deprel).'},
          'document': _DOC,
-         'limit': {'type': 'integer', 'description': 'How many rows per column (default 20, '
-                                                     'max 500).'}}, []),
+         'limit': limit_arg('worklist', 'How many rows per column')}, []),
     _fn('recent_changes',
         'Who changed what, when, and under which operation label. Each entry prints the as_of '
         'instant a restore would use.',
-        {'document': _DOC, 'limit': {'type': 'integer'},
+        {'document': _DOC, 'limit': limit_arg('recent_changes', 'Entries to show'),
          'since': {'type': 'string', 'description': 'A date (YYYY-MM-DD) or timestamp.'},
          'user': {'type': 'string', 'description': 'Match the actor\'s name or email.'}}, []),
     _fn('comments',
         'What people have written to each other on a document or one of its sentences. These are '
         'notes between annotators, never annotation.',
         {'document': _DOC, 'ref': {'type': 'string', 'description': 'One sentence, e.g. "s3".'},
-         'limit': {'type': 'integer'}}, ['document']),
+         'limit': limit_arg('comments', 'Newest entries to show')}, ['document']),
     _fn('add_comment',
         'PLAN: leave a note for the annotators on a sentence or on the document, under the user\'s '
         'name. A note, never annotation: use it for a question or an observation the data cannot '

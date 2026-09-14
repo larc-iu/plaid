@@ -252,7 +252,7 @@ def t_project_overview(ws: Workspace) -> str:
     return '\n'.join(out)
 
 
-def t_list_documents(ws: Workspace, pattern: str = None, limit: int = 50, offset: int = 0) -> str:
+def t_list_documents(ws: Workspace, pattern: str = None, limit: int = None, offset: int = 0) -> str:
     docs = ws.documents()
     if pattern:
         docs = [d for d in docs if pattern.lower() in (d.get('name') or '').lower()]

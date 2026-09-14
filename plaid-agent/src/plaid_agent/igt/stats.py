@@ -208,7 +208,7 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
 # --- frequency_list -----------------------------------------------------------------
 
 def t_frequency_list(ws: Workspace, what: str = 'wordform', document: Optional[str] = None,
-                     limit: int = 100, min_count: int = 1) -> str:
+                     limit: Optional[int] = None, min_count: int = 1) -> str:
     """Counts with document dispersion for wordforms, morpheme forms, or a
     field's values."""
     limit = clamp_limit(limit, *READ_LIMITS['frequency_list'])
@@ -325,7 +325,7 @@ def _awaits_review(votes: List[tuple], kind: str, user: Optional[str]) -> bool:
 
 
 def t_worklist(ws: Workspace, kind: str = 'unglossed', field: Optional[str] = None, level: Optional[str] = None,
-               document: Optional[str] = None, limit: int = 50, user: Optional[str] = None) -> str:
+               document: Optional[str] = None, limit: Optional[int] = None, user: Optional[str] = None) -> str:
     """The unfinished work grouped by form, most frequent first: forms that are
     unlinked, lack a field value, have no analysis at all, or carry
     annotations awaiting review (machine-made and unconfirmed, or a

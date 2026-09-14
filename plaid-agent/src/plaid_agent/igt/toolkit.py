@@ -14,7 +14,7 @@ from typing import Any, Dict, List
 from ..core import sandbox as _sandbox
 from ..core import webtools
 from ..core.webtools import t_read_url, t_web_search
-from ..core.tools import fn, run_tool, tools_for as core_tools_for
+from ..core.tools import fn, limit_arg, run_tool, tools_for as core_tools_for
 
 from .bulk import (t_copy_to_orthography, t_delete_entry, t_merge_entries, t_rename_document,
                    t_rename_entry, t_replace_in_field, t_respell_all, t_set_analysis_for_form,
@@ -74,7 +74,8 @@ TOOLS = [
         'The documents by name, a page at a time, optionally filtered by a name substring and/or a document metadata '
         'value (metadata_field + value; an empty value lists documents lacking it).',
         {'pattern': {'type': 'string'}, 'metadata_field': {'type': 'string'}, 'value': {'type': 'string'},
-         'limit': {'type': 'integer'}, 'offset': {'type': 'integer'}}, []),
+         'limit': limit_arg('list_documents', 'Documents to show'),
+         'offset': {'type': 'integer'}}, []),
     _fn('read_document',
         'Read a document as compact interlinear text: baseline sentences, sentence fields, and one line per word '
         'with its segmentation, glosses, word fields, orthographies, and lexicon links. Up to 40 sentences per '
@@ -94,7 +95,7 @@ TOOLS = [
                                                     '"lexicon" (entries), or a field name (e.g. "Gloss", "Translation").'},
          'document': _DOC,
          'regex': {'type': 'boolean', 'description': 'Treat pattern as a regular expression.'}, 'case_sensitive': {'type': 'boolean', 'description': 'Match case too (off by default: "ar" finds "Ar").'},
-         'limit': {'type': 'integer', 'description': 'Max hits to return (default 30, max 200).'}},
+         'limit': limit_arg('search', 'Max hits to return')},
         ['pattern']),
     _fn('read_lexicon',
         'List lexicon entries (form, morph type, and their fields such as gloss), optionally filtered by a '
@@ -206,14 +207,14 @@ TOOLS = [
     _fn('recent_changes',
         'The newest entries of the change history: who changed what and when, including plans this assistant applied. '
         'Each line ends with as_of=<instant>, the moment right after that change, which restore_document takes.',
-        {'document': _DOC, 'limit': {'type': 'integer', 'description': 'Entries to show (default 20, max 100).'},
+        {'document': _DOC, 'limit': limit_arg('recent_changes', 'Entries to show'),
          'since': {'type': 'string', 'description': 'Only changes at or after this date (YYYY-MM-DD) or timestamp.'},
          'user': {'type': 'string', 'description': 'Only changes by this person (name or email substring).'}}, []),
     _fn('comments',
         'The comments people have left (not annotation data: notes to each other). Whole project, one document, '
         'or one item (document + ref, plus field for a comment on one of its values). Oldest first.',
         {'document': _DOC, 'ref': {'type': 'string', 'description': 'sN, sN.wN, or sN.wN.mN.'},
-         'field': {'type': 'string'}, 'limit': {'type': 'integer', 'description': 'Newest entries to show (default 30, max 200).'}},
+         'field': {'type': 'string'}, 'limit': limit_arg('comments', 'Newest entries to show')},
         []),
     _fn('add_comment',
         'PLAN: post a comment under the user\'s name on a document (no ref), a sentence, a word, a morpheme, or, '
@@ -339,7 +340,7 @@ TOOLS += [
     _fn('frequency_list',
         'Ranked counts with document dispersion for wordforms (default), morpheme forms, or a field\'s values.',
         {'what': {'type': 'string', 'description': '"wordform" (default), "morpheme", or a field name.'},
-         'document': _DOC, 'limit': {'type': 'integer', 'description': 'Rows (default 30, max 1000).'},
+         'document': _DOC, 'limit': limit_arg('frequency_list', 'Rows'),
          'min_count': {'type': 'integer'}}, []),
     _fn('worklist',
         'The unfinished work, grouped by form and ordered by frequency: kind="unlinked" (no lexicon link), '
@@ -352,7 +353,7 @@ TOOLS += [
          'field': {'type': 'string'},
          'level': {'type': 'string', 'enum': ['word', 'morpheme'], 'description': 'For unlinked: which level to list (default morpheme when there is a morpheme layer). For unglossed the field\'s scope decides.'},
          'user': {'type': 'string', 'description': 'For contributed: only this contributor (their user id, an email).'},
-         'document': _DOC, 'limit': {'type': 'integer'}}, []),
+         'document': _DOC, 'limit': limit_arg('worklist', 'Rows to show')}, []),
     _fn('check_lexicon',
         'Lexicon hygiene report, worst first with counts. section: "unused" (entries never linked), "fields" (missing '
         'gloss/pos), "homographs" (same form; groups with the same gloss first), "near" (forms one character apart), '
@@ -477,7 +478,7 @@ TOOLS += [
         'negation, aggregates). Name layers by their names from query_help. Prefer the specialised tools when they '
         'fit; this is the escape hatch for questions they cannot express.',
         {'query': {'type': 'object', 'description': 'The query object: find, where, return, limit, order_by.'},
-         'limit': {'type': 'integer', 'description': 'Rows to show (default 50, max 500).'}},
+         'limit': limit_arg('query', 'Rows to show')},
         ['query']),
 ]
 _IMPL.update({'query_help': t_query_help, 'query': t_query})

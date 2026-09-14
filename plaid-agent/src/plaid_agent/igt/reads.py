@@ -30,9 +30,9 @@ def t_project_overview(ws: Workspace) -> str:
 
 
 def t_list_documents(ws: Workspace, pattern: Optional[str] = None, metadata_field: Optional[str] = None,
-                     value: Optional[str] = None, limit: int = 100, offset: int = 0) -> str:
+                     value: Optional[str] = None, limit: Optional[int] = None, offset: int = 0) -> str:
     """The documents, filtered by a name pattern and/or a metadata value, a
-    page at a time (the overview shows only the first hundred)."""
+    page at a time (the overview shows only the first ``OVERVIEW_DOCS``)."""
     docs = sorted(ws.documents(), key=lambda d: (d.get('name') or '').lower())
     if pattern:
         m = _matcher(pattern, False)
@@ -65,7 +65,7 @@ def t_read_document(ws: Workspace, document: str, from_sentence: int = 1, to_sen
 
 
 def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document: Optional[str] = None,
-             regex: bool = False, limit: int = 40, case_sensitive: bool = False) -> str:
+             regex: bool = False, limit: Optional[int] = None, case_sensitive: bool = False) -> str:
     if not pattern:
         raise ToolError('Give a pattern (to list items LACKING a value, use worklist).')
     match = _matcher(pattern, bool(regex), bool(case_sensitive))
@@ -603,7 +603,7 @@ def _audit_entries(ws: Workspace, document: Optional[str], start: Optional[str],
     return [e for e in entries or [] if keep(e)]
 
 
-def t_recent_changes(ws: Workspace, document: Optional[str] = None, limit: int = 20,
+def t_recent_changes(ws: Workspace, document: Optional[str] = None, limit: Optional[int] = None,
                      since: Optional[str] = None, user: Optional[str] = None) -> str:
     """The newest entries of the audit log: who changed what, when, under
     which operation label (the assistant's own applied plans included).

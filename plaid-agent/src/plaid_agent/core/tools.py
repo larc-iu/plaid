@@ -10,7 +10,7 @@ import inspect
 import traceback
 from typing import Any, Callable, Dict, List, Optional
 
-from .limits import MAX_RESULT_CHARS
+from .limits import MAX_RESULT_CHARS, READ_LIMITS
 
 
 class ToolError(Exception):
@@ -79,6 +79,18 @@ def fn(name: str, description: str, properties: Dict[str, Any], required: List[s
     return {'type': 'function', 'function': {
         'name': name, 'description': description,
         'parameters': {'type': 'object', 'properties': properties, 'required': required}}}
+
+
+def limit_arg(tool: str, what: str = 'Rows') -> Dict[str, Any]:
+    """The ``limit`` parameter of a read both apps offer, with the numbers the
+    tool really uses.
+
+    Written out by hand it was a third copy of :data:`core.limits.READ_LIMITS`
+    (the table, the signature's own default, and this sentence), and the three
+    disagreed: a schema said 30 where the tool answered with a hundred rows.
+    """
+    default, cap = READ_LIMITS[tool]
+    return {'type': 'integer', 'description': f'{what} (default {default}, max {cap}).'}
 
 
 def tools_for(ws, tools: List[Dict[str, Any]], web_tools, code_tools) -> List[Dict[str, Any]]:

@@ -90,7 +90,7 @@ No parameters.
 The documents by name, a page at a time, optionally filtered by a name substring.
 
 - `pattern` (string)
-- `limit` (integer)
+- `limit` (integer): Documents to show (default 50, max 500).
 - `offset` (integer)
 
 ### read_document
@@ -244,7 +244,7 @@ Words whose column matches a pattern, each shown in its context with the hit in 
 - `document` (string): Document id or exact name (see project_overview).
 - `whole` (boolean): Match the whole value only.
 - `regex` (boolean)
-- `limit` (integer)
+- `limit` (integer): Max hits to return (default 30, max 200).
 - `case_sensitive` (boolean): Match case too (off: "the" finds "The"). The same switch replace_in_field takes.
 
 ### frequency_list
@@ -253,7 +253,7 @@ The commonest values of one column, with counts. Across the project, or inside o
 
 - `what` (one of `form`, `lemma`, `upos`, `xpos`, `features`, `feature-bundles`, `deprel`, required)
 - `document` (string): Document id or exact name (see project_overview).
-- `limit` (integer)
+- `limit` (integer): Rows (default 30, max 1000).
 
 ### check_consistency
 
@@ -276,7 +276,7 @@ What is unfinished. kind "unverified" is machine output nobody has confirmed, "c
 Who changed what, when, and under which operation label. Each entry prints the as_of instant a restore would use.
 
 - `document` (string): Document id or exact name (see project_overview).
-- `limit` (integer)
+- `limit` (integer): Entries to show (default 20, max 100).
 - `since` (string): A date (YYYY-MM-DD) or timestamp.
 - `user` (string): Match the actor's name or email.
 
@@ -286,7 +286,7 @@ What people have written to each other on a document or one of its sentences. Th
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `ref` (string): One sentence, e.g. "s3".
-- `limit` (integer)
+- `limit` (integer): Newest entries to show (default 30, max 200).
 
 ### add_comment
 

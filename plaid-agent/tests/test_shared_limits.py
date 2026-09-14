@@ -62,15 +62,90 @@ def test_a_number_the_apps_set_apart_says_so_where_it_is_set(name):
         assert 'same budget' in head[-400:], f'{app}/{name} does not say why it differs from the other app'
 
 
-SHARED = ['MAX_SCOPE_DOCS', 'MAX_SENTENCES_PER_READ', 'OVERVIEW_DOCS', 'SAMPLE_LINES',
-          'MAX_RESULT_CHARS', 'ROW_LIMIT', 'GROUP_LIMIT', 'READ_LIMITS']
+# What each read needs before it will get as far as reading its limit. The
+# tools are READ_LIMITS' own, so a new entry there joins this sweep and has to
+# say how to call it in both apps.
+CALLABLE = {
+    'igt': {'list_documents': {}, 'search': {'pattern': 'gam'}, 'frequency_list': {},
+            'worklist': {}, 'comments': {}, 'recent_changes': {}},
+    # UD's corpus-wide branches go through the query engine, which the fake
+    # client does not answer, so each of those is asked of one document.
+    'ud': {'list_documents': {}, 'search': {'field': 'lemma', 'pattern': 'mar', 'document': 'Viaje'},
+           'frequency_list': {'what': 'lemma', 'document': 'Viaje'}, 'worklist': {'document': 'Viaje'},
+           'comments': {'document': 'Viaje'}, 'recent_changes': {}},
+}
+# A read the fake client cannot answer, with why. Its signature is swept below
+# like every other.
+NOT_CALLED = {'query': 'the fixture project has no query engine, so the tool refuses before it reads a limit'}
 
 
-@pytest.mark.parametrize('name', SHARED)
-def test_the_shared_numbers_are_core_s_own_object(name):
-    """Imported, not copied: a `from ... import X` that was later edited in
-    place is the same two homes with an extra step."""
-    assert hasattr(limits, name)
+def _ws_and_call(app):
+    import sys
+    sys.path.insert(0, 'tests')
+    if app == 'igt':
+        from fixtures import project_raw, document_raw, lexicon_raw
+        from fixtures_ext import ExtClient
+        from plaid_agent.igt.project import load_project
+        from plaid_agent.igt.toolkit import call_tool
+        from plaid_agent.igt.workspace import Workspace
+        c = ExtClient(project=project_raw(), documents={'d1': document_raw()}, lexicon=lexicon_raw())
+        w = Workspace(c, load_project(c, 'p1'))
+        w.prefer_scan = True
+        return w, call_tool
+    from ud_fixtures import PID, ExtClient, project_raw, document_raw
+    from plaid_agent.ud.project import load_project
+    from plaid_agent.ud.toolkit import call_tool
+    from plaid_agent.ud.tools import Workspace
+    c = ExtClient(project=project_raw(), documents={'ud1': document_raw()})
+    return Workspace(c, load_project(c, PID)), call_tool
+
+
+def _impl(app, tool):
+    mod = __import__(f'plaid_agent.{app}.toolkit', fromlist=['_IMPL'])
+    return mod._IMPL[tool]
+
+
+@pytest.mark.parametrize('app', ['igt', 'ud'])
+@pytest.mark.parametrize('tool', sorted(limits.READ_LIMITS))
+def test_a_read_asked_for_nothing_shows_what_the_shared_table_says(app, tool):
+    """`clamp_limit` reaches the table's default only when the tool was given
+    NO limit, and five IGT signatures supplied their own: the same question
+    answered with a hundred rows in one app and thirty in the other, with the
+    schema announcing thirty in both. The signature says None now, so the
+    table is the only home for the number.
+    """
+    import importlib
+    import inspect
+    default, cap = limits.READ_LIMITS[tool]
+    fn = _impl(app, tool)
+    assert inspect.signature(fn).parameters['limit'].default is None, \
+        f'{app}.{tool} supplies its own default, so the shared one is never read'
+    if tool in NOT_CALLED:
+        return
+    ws, call = _ws_and_call(app)
+    mod = importlib.import_module(fn.__module__)
+    real, seen = mod.clamp_limit, []
+
+    def spy(raw, d, c, name='limit'):
+        out = real(raw, d, c, name)
+        if name == 'limit':
+            seen.append(out)
+        return out
+
+    mod.clamp_limit = spy
+    try:
+        answer = call(ws, tool, dict(CALLABLE[app][tool]))
+    finally:
+        mod.clamp_limit = real
+    assert not answer.startswith('Error:'), f'{app}.{tool}: {answer[:120]}'
+    assert seen, f'{app}.{tool} never read a limit, so this proves nothing'
+    assert seen[0] == default, f'{app}.{tool} shows {seen[0]} rows where the table says {default}'
+
+
+def test_the_sweep_covers_every_shared_read():
+    """A tool left out of both tables above would be swept by neither."""
+    for app, table in CALLABLE.items():
+        assert set(table) | set(NOT_CALLED) == set(limits.READ_LIMITS), app
 
 
 def test_both_apps_cap_a_scope_and_a_read_at_the_same_number():

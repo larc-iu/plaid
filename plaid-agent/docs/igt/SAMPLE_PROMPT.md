@@ -91,7 +91,7 @@ The documents by name, a page at a time, optionally filtered by a name substring
 - `pattern` (string)
 - `metadata_field` (string)
 - `value` (string)
-- `limit` (integer)
+- `limit` (integer): Documents to show (default 50, max 500).
 - `offset` (integer)
 
 ### read_document
@@ -440,7 +440,7 @@ The unfinished work, grouped by form and ordered by frequency: kind="unlinked" (
 - `level` (one of `word`, `morpheme`): For unlinked: which level to list (default morpheme when there is a morpheme layer). For unglossed the field's scope decides.
 - `user` (string): For contributed: only this contributor (their user id, an email).
 - `document` (string): Document id or exact name (see project_overview).
-- `limit` (integer)
+- `limit` (integer): Rows to show (default 20, max 500).
 
 ### check_lexicon
 
