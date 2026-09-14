@@ -19,6 +19,7 @@ vi.mock('../../lib/notify.js', () => ({
 const { notifySuccess, notifyError } = await import('../../lib/notify.js');
 const { MemoryRouter } = await import('react-router-dom');
 const { renderComponent, byText } = await import('../../test/renderComponent.jsx');
+const { documentsBundle } = await import('../../test/fakeClient.js');
 const { AssistantChat } = await import('./AssistantChat.jsx');
 const { AssistantPanel } = await import('./AssistantPanel.jsx');
 const { AssistantTab } = await import('./AssistantTab.jsx');
@@ -104,7 +105,7 @@ const fakeClient = () => {
     },
     projects: {
       list: vi.fn().mockResolvedValue([]),
-      listDocumentsPage: vi.fn().mockResolvedValue({ entries: [] }),
+      ...documentsBundle(),
     },
   };
 };

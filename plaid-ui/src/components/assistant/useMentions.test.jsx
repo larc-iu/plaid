@@ -2,16 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useState } from 'react';
 import { renderComponent } from '../../test/renderComponent.jsx';
 import { useMentions } from './useMentions.js';
+import { mentionsClient as fakeClient } from '../../test/fakeClient.js';
 
 // `@` in the composer. The pure arithmetic is mentions.test.js; this is the
 // half that holds state: when the list is open, what feeds it, and which keys
 // it takes before the composer sees them.
-
-const fakeClient = (documents = []) => ({
-  projects: {
-    listDocumentsPage: vi.fn().mockResolvedValue({ entries: documents }),
-  },
-});
 
 const key = (k) => {
   let taken = false;

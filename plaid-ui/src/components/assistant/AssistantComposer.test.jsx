@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useRef, useState } from 'react';
 import { renderComponent, all } from '../../test/renderComponent.jsx';
 import { AssistantComposer } from './AssistantComposer.jsx';
+import { mentionsClient as fakeClient } from '../../test/fakeClient.js';
 
 // The composer mounted, because what it has to get right is the keyboard. The
 // `@` list takes Enter before the Enter that sends, Escape closes the list and
@@ -21,10 +22,6 @@ const choiceOf = (over = {}) => ({
   canChoose: false,
   wentOffline: false,
   ...over,
-});
-
-const fakeClient = (documents = []) => ({
-  projects: { listDocumentsPage: vi.fn().mockResolvedValue({ entries: documents }) },
 });
 
 const SENTENCES = () => [
