@@ -158,3 +158,30 @@ def test_the_compaction_spec_has_one_name_in_both_apps():
     assert set(igt_spec(scan_ws(FakeClient()))) == {n for n, k in IGT_KIND.items() if k.compact_each}
     readme = (pathlib.Path(__file__).resolve().parent.parent / 'README.md').read_text()
     assert 'compact_spec' in readme and '`COMPACT`' not in readme
+
+
+def test_a_change_made_by_name_beats_a_scope_by_the_kind_s_own_declaration():
+    """At approval a scope drops what the model already named. The two sets it
+    compared were four kind names written into the resolver, so a kind added
+    later wrote over a change the user had read on the card. Each kind names
+    the stored entity it writes to instead."""
+    from plaid_agent.ud import plan as ud_plan
+    from plaid_agent.ud.plan import KIND, entity_of
+    assert entity_of({'kind': 'set_head', 'relation_id': 'r1'}) \
+        == entity_of({'kind': 'set_deprel', 'relation_id': 'r1'}) \
+        == entity_of({'kind': 'del_relation', 'relation_id': 'r1'}) == ('relation', 'r1')
+    assert entity_of({'kind': 'set_head', 'word_id': 'w1'}) is None   # it makes the relation
+    assert entity_of({'kind': 'set_span', 'layer_id': 'L', 'token_id': 't'}) == ('span', 'L', 't')
+    assert entity_of({'kind': 'add_comment'}) is None
+    declared = {n for n, k in KIND.items() if k.extra.get('entity')}
+    assert declared == {'set_span', 'set_head', 'del_relation', 'set_deprel'}
+
+    # A new kind writing the same relation is seen as writing it.
+    relabel = OpKind('relabel', ('relabel', 'relabels'), apply=lambda ctx, op: 1,
+                     extra={'entity': KIND['set_deprel'].extra['entity']})
+    saved = ud_plan.KIND
+    try:
+        ud_plan.KIND = dict(saved, relabel=relabel)
+        assert ud_plan.entity_of({'kind': 'relabel', 'relation_id': 'r1'}) == ('relation', 'r1')
+    finally:
+        ud_plan.KIND = saved

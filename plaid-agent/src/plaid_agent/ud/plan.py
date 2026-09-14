@@ -247,25 +247,41 @@ def _confirm_label(first, members) -> str:
     return f'confirm {len(members)} values ({_refs_phrase(members)})'
 
 
+# --- what a kind writes to, whatever kind it is --------------------------------------
+# A change the model made BY NAME beats one a scope finds at approval, so the
+# resolver has to ask whether the two touch the same thing. That question
+# crosses kinds (a scope's set_deprel against a set_head the model staged), so
+# it cannot be `OpKind.target`, which is about superseding within one kind's
+# own vocabulary. Each kind that writes to a stored span or relation names it
+# the same way here, and `entity_of` is the only reader.
+
+def _span_entity(op):
+    return ('span', op.get('layer_id'), op.get('token_id'))
+
+
+def _relation_entity(op):
+    return ('relation', op['relation_id']) if op.get('relation_id') else None
+
+
 # --- the registry -------------------------------------------------------------------
 
 KIND = ok.registry([
     OpKind('set_span', _FIELD_VALUE, required=('layer_id', 'token_id'), apply=_apply_set_span,
            target=lambda op: ('span', op.get('layer_id'), op.get('token_id')),
-           token_keys=('token_id',),
+           token_keys=('token_id',), extra={'entity': _span_entity},
            deletes=lambda op: ([op['span_id']] if op.get('span_id') and (op.get('value') or '') == '' else []),
            compact_each=('token_id', 'span_id', 'ref'), compact_label=_set_span_label,
            summary=_set_span_summary),
     OpKind('set_head', ('dependency', 'dependencies'), stage=IDS, apply=_apply_set_head,
            required=('word_id', 'head_id', 'lemma_layer_id', 'relation_layer_id', 'deprel'),
            target=lambda op: ('head', op.get('word_id')),
-           token_keys=('word_id', 'head_id'),
+           token_keys=('word_id', 'head_id'), extra={'entity': _relation_entity},
            deletes=lambda op: [op.get('relation_id')],
            compact_each=('word_id', 'head_id', 'word_form', 'head_form', 'lemma_span_id',
                          'head_lemma_span_id', 'relation_id', 'ref'), compact_label=_set_head_label),
     OpKind('del_relation', _REMOVED_DEP, stage=IDS, apply=_apply_del_relation,
            required=('relation_id',), target=lambda op: ('head', op.get('word_id')),
-           token_keys=('word_id',),
+           token_keys=('word_id',), extra={'entity': _relation_entity},
            deletes=lambda op: [op['relation_id']],
            compact_each=('word_id', 'relation_id', 'ref'), compact_label=_del_relation_label),
     # A confirmation writes to the span or the relation it names, so one whose
@@ -308,7 +324,8 @@ KIND = ok.registry([
            target=lambda op: ('replace', op.get('field'), op.get('pattern'),
                               op.get('replacement'), op.get('document_id')),
            extra={'clears': lambda op: not (op.get('replacement') or '')}),
-    OpKind('set_deprel', _RELABELED, required=('relation_id', 'deprel'), apply=_apply_set_deprel),
+    OpKind('set_deprel', _RELABELED, required=('relation_id', 'deprel'), apply=_apply_set_deprel,
+           extra={'entity': _relation_entity}),
     OpKind('add_comment', ('comment', 'comments'), required=('entity_type', 'entity_id', 'body'),
            apply=apply_add_comment),
 ])
@@ -334,6 +351,14 @@ def docs_of_op(op: Dict[str, Any]) -> set:
     out.update(op.get('document_ids') or [])
     out.update(op.get('documents') or [])
     return out
+
+
+def entity_of(op: Dict[str, Any]):
+    """The stored span or relation an op writes to, named the same way
+    whichever kind writes it, or None where it names none."""
+    spec = KIND.get(op.get('kind'))
+    fn = spec.extra.get('entity') if spec is not None else None
+    return fn(op) if fn else None
 
 
 def scope_clears(op: Dict[str, Any]) -> bool:
@@ -505,18 +530,16 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]):
     # whichever came first: the scope's preview read stored values, not
     # planned ones, and last-wins by position would let it override a
     # set_field the user read on the card.
-    spans = {(op.get('layer_id'), op.get('token_id')) for op in ops if op.get('kind') == 'set_span'}
-    relations = {op.get('relation_id') for op in ops if op.get('kind') in ('set_head', 'del_relation')
-                 and op.get('relation_id')}
     named = [op for op in ops if op.get('kind') not in SCOPES]
+    named_entities = {entity_of(op) for op in named} - {None}
     named_gone = ok.removed_ids(KIND, named, only_certain=True)
 
     def named_too(o) -> bool:
         """The model made this same change by name, on the same span or the
-        same relation."""
-        if o.get('kind') == 'set_span':
-            return (o.get('layer_id'), o.get('token_id')) in spans
-        return o.get('kind') in ('set_deprel', 'del_relation') and o.get('relation_id') in relations
+        same relation. Which entity each kind names is the kind's own
+        declaration, so this held for four kinds named here and none of the
+        ones added since."""
+        return entity_of(o) in named_entities
 
     def clashes(o) -> str:
         """Why this change the scope found cannot stand beside what the model
