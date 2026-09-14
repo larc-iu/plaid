@@ -470,6 +470,52 @@ test('re-typing the machine value (UPOS) verifies it; tabbing through does not',
   expect(r.server.metadata.provConfirmed).toBe(true);
 });
 
+// The FEATS column is a chip input, so the same gesture that corrects a
+// feature also re-types one. Writing the pair that is already there confirms
+// the span holding it instead of adding a second chip; walking past the cell
+// writes nothing.
+test('re-typing a machine feature verifies it and adds no second chip', async ({ page }) => {
+  await S.client.spans.update(S.featDog, 'Number=Sing');
+  await S.client.spans.patchMetadata(S.featDog, { ...MACHINE, provConfirmed: null });
+  const c = await openAnnotate(page);
+  const input = page.locator(`[id="${S.morphIds[1]}-feats"]`);
+  const pills = page.locator('.features-container', { has: input }).locator('.feature-tag');
+  await expect(pills).toHaveCount(1);
+
+  // Pass through without typing: no write.
+  await input.focus();
+  await page.keyboard.press('Tab');
+  await page.waitForTimeout(600);
+  expect((await S.client.spans.get(S.featDog)).metadata.provConfirmed).toBeUndefined();
+  expect(apiSummary(c)).toEqual([]);
+
+  // Type the pair that is already on the word.
+  await input.focus();
+  await input.pressSequentially('Number=Sing', { delay: 20 });
+  await input.press('Enter');
+  await page.waitForTimeout(1200);
+  const span = await S.client.spans.get(S.featDog);
+  dump('feat-retype-same', {
+    server: { value: span.value, metadata: span.metadata },
+    api: apiSummary(c),
+    errors: c.errors.map((e) => e.text),
+  });
+  expect(span.value).toBe('Number=Sing');
+  expect(span.metadata.provConfirmed).toBe(true);
+  expect(span.metadata.prov).toBe('inferred');
+  // One chip on screen and one span on the server: a confirmation, not an add.
+  await expect(pills).toHaveCount(1);
+  await expect(input).toHaveValue('');
+  const featureSpans = (await S.client.documents.get(S.documentId, true)).textLayers
+    .flatMap((tl) => tl.tokenLayers || [])
+    .flatMap((tokl) => tokl.spanLayers || [])
+    .filter((sl) => sl.name === 'Features')
+    .flatMap((sl) => sl.spans || [])
+    .filter((s) => (s.tokens || []).some((t) => (t?.id ?? t) === S.morphIds[1]));
+  expect(featureSpans.map((s) => s.value)).toEqual(['Number=Sing']);
+  await expect(page.locator('.feature-text--machine')).toHaveCount(0);
+});
+
 test('re-typing the machine deprel label verifies the relation', async ({ page }) => {
   await S.client.relations.patchMetadata(S.relNsubj, { ...MACHINE, provConfirmed: null });
   const c = await openAnnotate(page);

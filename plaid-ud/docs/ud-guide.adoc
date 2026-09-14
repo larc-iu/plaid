@@ -234,6 +234,10 @@ Hovering a cell or a relation names its state and its producer.
 Any edit you make to a marked cell or relation confirms it and clears the mark.
 If your own work is reviewed, the mark stays on what you enter until a maintainer or another trusted member confirms it, and accepting a prediction records it as your contribution rather than confirming it.
 
+Typing a value again is an edit, even where the value does not change.
+In a **Features** cell that means writing the same `Key=Value` pair, which confirms the feature rather than adding a second one.
+Passing through a cell with **Tab** or an arrow key, and leaving one with **Escape**, confirm nothing.
+
 If a prediction is already correct, you don't have to retype it:
 
 * **Ctrl+Enter** (or **Cmd+Enter**) accepts everything proposed on the word and moves to the next word, so a sentence can be reviewed with one hand.

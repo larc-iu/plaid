@@ -111,6 +111,10 @@ const provClient = () => {
   client.spans.delete = (id) => {
     calls.push(['spans.delete', id]);
   };
+  client.spans.create = (layerId, tokens, value, metadata) => {
+    calls.push(['spans.create', layerId, tokens, value, metadata]);
+    return { id: `new-${value}` };
+  };
   return client;
 };
 
@@ -147,6 +151,52 @@ test('editing a human annotation stays a plain update (no metadata write)', asyn
     client.calls.map((c) => c[0]),
     ['spans.update'],
   );
+});
+
+// A FEATS cell is a chip input, so "re-typing the value that is already there"
+// is a second write of the same Key=Value. It confirms the span that holds it
+// rather than adding a second chip: the token's feature set is keyed by the
+// half before the '=', and a write of an existing key lands on that span.
+test('re-typing a feature already on the word confirms it and adds no second span', async () => {
+  const raw = rawDocFromConllu(INPUT, 'mut-doc');
+  const client = provClient();
+  const doc = new ConlluDocument({ raw, client: withOps(client) });
+
+  const feat = doc.layerInfo.featuresLayer.spans.find((s) => s.value === 'Gender=Masc');
+  feat.metadata = { prov: 'inferred', provSource: 'service:stanza-parser' };
+  const before = doc.layerInfo.featuresLayer.spans.length;
+
+  assert.equal(await doc.updateAnnotation(feat.tokens[0], 'features', 'Gender=Masc'), true);
+  assert.deepEqual(
+    client.calls.map((c) => c[0]),
+    ['spans.update', 'spans.patchMetadata', 'submitBatch'],
+  );
+  assert.deepEqual(client.calls[1][2], { provConfirmed: true });
+  assert.equal(doc.layerInfo.featuresLayer.spans.length, before);
+  const after = doc.layerInfo.featuresLayer.spans.find((s) => s.id === feat.id);
+  assert.equal(after.value, 'Gender=Masc');
+  assert.equal(after.metadata.provConfirmed, true);
+  assert.equal(after.metadata.provSource, 'service:stanza-parser');
+});
+
+test('typing a feature the word does not have creates a span and confirms nothing', async () => {
+  const raw = rawDocFromConllu(INPUT, 'mut-doc');
+  const client = provClient();
+  const doc = new ConlluDocument({ raw, client: withOps(client) });
+
+  const feat = doc.layerInfo.featuresLayer.spans.find((s) => s.value === 'Gender=Masc');
+  feat.metadata = { prov: 'inferred', provSource: 'service:stanza-parser' };
+
+  assert.equal(await doc.updateAnnotation(feat.tokens[0], 'features', 'Case=Nom'), true);
+  assert.deepEqual(
+    client.calls.map((c) => c[0]),
+    ['spans.create'],
+  );
+  assert.equal(
+    doc.layerInfo.featuresLayer.spans.find((s) => s.id === feat.id).metadata.provConfirmed,
+    undefined,
+  );
+  assert.ok(doc.layerInfo.featuresLayer.spans.some((s) => s.value === 'Case=Nom'));
 });
 
 test('editing a machine-made relation verifies it too', async () => {
