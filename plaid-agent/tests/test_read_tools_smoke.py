@@ -119,11 +119,12 @@ def _igt(scan: bool):
 
 
 def _ud(scan: bool):
-    from fixtures_ext import ExtClient
-    from ud_fixtures import project_raw, document_raw
+    # This app's ExtClient, whose audit log names this project's document: the
+    # other app's named a document the UD project does not have, so the history
+    # tools answered "nothing has changed" and the sweep took it for an answer.
+    from ud_fixtures import ExtClient, project_raw, document_raw
     from plaid_agent.ud.project import load_project
     from plaid_agent.ud.tools import Workspace
-    # ExtClient for the comments table, as on the IGT side.
     c = ExtClient(project=project_raw(), documents={'ud1': document_raw()},
                   comments=[{'id': 'c1', 'document_id': 'ud1', 'entity_type': 'document', 'entity_id': 'ud1',
                              'body': 'a note', 'created_at': '2026-09-01T10:00:00Z',
@@ -162,6 +163,18 @@ def test_ud_read_tools_in_one_document(name, args):
 @pytest.mark.parametrize('name,args', UD_PROJECT, ids=_ids(UD_PROJECT))
 def test_ud_read_tools_project_wide(name, args):
     _run('ud', UD_IMPL, _ud(scan=False), name, args)
+
+
+@pytest.mark.parametrize('app,name', [('igt', 'Text 1'), ('ud', 'Viaje')])
+def test_the_history_a_sweep_case_reads_actually_holds_a_change(app, name):
+    """A sweep case takes any string for an answer, and "nothing has changed
+    here" is a string. UD's fixture client carried the other app's audit log,
+    which named a document this project does not have, so recent_changes ran
+    its empty branch in every one of those cases and nothing said so.
+    """
+    ws, impl = (_igt(scan=True), IGT_IMPL) if app == 'igt' else (_ud(scan=True), UD_IMPL)
+    out = impl['recent_changes'](ws, document=name)
+    assert 'Luke G' in out and 'Assistant: 2 field values' in out and name in out
 
 
 def test_the_sweep_actually_covers_the_read_tools():

@@ -5,7 +5,7 @@ full-width rule and the range line are exercised by every test that reads the
 fixture rather than by one test that remembers to.
 """
 
-from core.fake_client import BaseFakeClient
+from core.fake_client import BaseFakeClient, ExtFakeClient
 
 PID = 'up1'
 TEXT_LAYER, SENT_LAYER, TOK_LAYER, WORD_LAYER = 'u-tl', 'u-sent', 'u-tok', 'u-word'
@@ -129,6 +129,13 @@ class FakeClient(BaseFakeClient):
         super().__init__(project or project_raw(),
                          documents if documents is not None else {'ud1': document_raw()},
                          audit if audit is not None else audit_raw())
+
+
+class ExtClient(ExtFakeClient, FakeClient):
+    """This app's fake client, with the comments resource, the audit window
+    and the restore dry run the newer tools call. Its audit log is this
+    project's, so a tool that reads one document's history reads entries that
+    name that document."""
 
 
 def ud_client(**kw):
