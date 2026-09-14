@@ -12,9 +12,6 @@ import { provTitle } from './shared.js';
 export const chrome = {
   _template() {
     const doc = this.doc;
-    if (doc.error) {
-      // surfaced inline above the grid; toasts handled at the React layer later
-    }
     const info = doc.layerInfo;
     if (!info.primaryTokenLayer) {
       return html` <div class="igt-island__empty igt-island__empty--warn">

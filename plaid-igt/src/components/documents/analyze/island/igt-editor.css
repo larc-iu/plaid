@@ -115,13 +115,6 @@
 }
 
 /* ---- save-status pill ---- */
-.igt-statusbar {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  min-height: 22px;
-  margin-bottom: 4px;
-}
 .igt-status {
   font-size: 12px;
   font-weight: 500;
@@ -690,9 +683,6 @@
   white-space: nowrap;
   cursor: default;
 }
-.igt-token-form--clickable {
-  cursor: pointer;
-}
 /* Machine-made word tokens (tokenizer-service provenance): same violet /
    dashed vocabulary as machine cells and chips; a contributor's, amber. */
 .igt-token-form--machine {
@@ -1229,10 +1219,6 @@
 .igt-vocab-pop__item:focus-visible {
   outline: 2px solid var(--igt-blue);
   outline-offset: -1px;
-}
-.igt-vocab-pop__vname {
-  font-size: 10px;
-  color: var(--igt-gray-500);
 }
 .igt-vocab-pop__x {
   font-size: 10px;

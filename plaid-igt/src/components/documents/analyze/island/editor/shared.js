@@ -24,7 +24,7 @@ export const PRECEDENT_REFRESH_MIN_MS = 60_000;
 // stored value has moved on underneath (a whole-word accept wrote the guess
 // this very cell was showing; a reload brought in another writer's edit).
 // The baseline moves with it, so Escape and the change check stay honest.
-export class UncontrolledValueDirective extends Directive {
+class UncontrolledValueDirective extends Directive {
   constructor(partInfo) {
     super(partInfo);
     if (partInfo.type !== PartType.ELEMENT) {
