@@ -11,6 +11,7 @@ import { useSentenceData } from './hooks/useSentenceData.js';
 import { useDocumentHistory } from './hooks/useDocumentHistory.js';
 import { useDocumentEditor } from './useDocumentEditor.js';
 import { useReviewGestures } from './hooks/useReviewGestures.js';
+import { useSentenceDeepLink } from './hooks/useSentenceDeepLink.js';
 import { usePrecedent } from './hooks/usePrecedent.js';
 import { HistoryDrawer, HISTORY_DRAWER_WIDTH } from '@ui/components/shared/HistoryDrawer';
 import { ListPager } from '@ui/components/ui/list-search';
@@ -99,8 +100,6 @@ export const AnnotationEditor = () => {
   // briefly highlights that sentence once the grid is rendered.
   const [searchParams] = useSearchParams();
   const sentParam = searchParams.get('sent');
-  const [flashSentId, setFlashSentId] = useState(null);
-  const scrolledForRef = useRef(null);
   // History viewer state
   const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState(false);
   const [selectedHistoryEntry, setSelectedHistoryEntry] = useState(null);
@@ -355,35 +354,15 @@ export const AnnotationEditor = () => {
 
   // Scroll to (and flash) the sentence named by ?sent= once, after the grid
   // has rendered.
-  useEffect(() => {
-    if (reconciling || !sentParam || !processedSentences.length) return;
-    // The nonce is what lets the assistant ask for the same sentence twice:
-    // without it a repeat click changes nothing and the guard swallows it.
-    const asked = `${sentParam}:${focusNonce}`;
-    if (scrolledForRef.current === asked) return;
-    const index = indexById.get(String(sentParam));
-    if (index == null) return;
-    // Turn to its page first and let the effect run again: the row only exists
-    // once that page has rendered. Not marked as done, so the second pass does
-    // the scrolling.
-    const target = Math.floor(index / TALL_LIST_PAGE_SIZE);
-    if (target !== page) {
-      setPage(target);
-      return;
-    }
-    scrolledForRef.current = asked;
-    let flashTimer = null;
-    const raf = requestAnimationFrame(() => {
-      const selector = `[data-sentence-row="${CSS.escape(String(sentParam))}"]`;
-      document.querySelector(selector)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      setFlashSentId(String(sentParam));
-      flashTimer = setTimeout(() => setFlashSentId(null), 2000);
-    });
-    return () => {
-      cancelAnimationFrame(raf);
-      if (flashTimer) clearTimeout(flashTimer);
-    };
-  }, [reconciling, sentParam, processedSentences, focusNonce, indexById, page, setPage]);
+  const flashSentId = useSentenceDeepLink({
+    sentParam,
+    focusNonce,
+    ready: !reconciling,
+    indexById,
+    pageSize: TALL_LIST_PAGE_SIZE,
+    page,
+    setPage,
+  });
 
   // Bind annotation/relation handlers to the current document. When viewing
   // historical state we pass `null` so SentenceRow disables editing.
