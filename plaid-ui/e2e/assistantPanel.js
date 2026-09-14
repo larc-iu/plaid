@@ -38,6 +38,15 @@ export const assistantPanelHarness = ({
   // The OTHER app's assistant, online on this very project. UD and IGT share
   // projects, so that is the ordinary state of a shared one, not a contrivance.
   const foreign = assistantStub(OTHER[app], { serviceName: 'Assistant from the other app' });
+  // Two of this app's own, which is what turns the model's name into a picker.
+  const two = [
+    ...stub,
+    ...assistantStub(app, {
+      serviceId: `${app}:assist:other`,
+      serviceName: `${app.toUpperCase()} Assistant (other)`,
+      extras: { model: 'other/model', app, tasks: ['assist'] },
+    }),
+  ];
 
   // The one call that decides whether an assistant exists. An empty list is how
   // "none running" looks to the app.
@@ -58,7 +67,7 @@ export const assistantPanelHarness = ({
     await expect(page.locator(contentSelector).first()).toBeVisible({ timeout: 15000 });
   };
 
-  return { stub, foreign, withAssistant, panelOf, toggle, openDocument, contentSelector };
+  return { stub, foreign, two, withAssistant, panelOf, toggle, openDocument, contentSelector };
 };
 
 // The tests themselves, for the app-agnostic half.
@@ -82,8 +91,12 @@ export const assistantPanelTests = ({
   // Anything else this app hides when no assistant is online. Runs last, so it
   // may navigate.
   alsoHidden = async () => {},
+  // One of the prompts this app's full Assistant tab offers to start with. The
+  // dock must not build it.
+  starterPrompt,
 }) => {
-  const { stub, foreign, withAssistant, panelOf, toggle, openDocument, contentSelector } = harness;
+  const { stub, foreign, two, withAssistant, panelOf, toggle, openDocument, contentSelector } =
+    harness;
 
   const open = async (page, services = stub) => {
     await seedAuth(page);
@@ -176,6 +189,91 @@ export const assistantPanelTests = ({
       // Removing the chip leaves the conversation alone.
       await panel.getByRole('button', { name: 'Remove' }).click();
       await expect(panel).not.toContainText('Sentence');
+    });
+
+    test('the panel picks which assistant answers, while the thread is new', async ({ page }) => {
+      await open(page, two);
+      await toggle(page).click();
+      await expect(panelOf(page)).toBeVisible();
+
+      // The model's name IS the picker while the conversation is new.
+      const picker = panelOf(page).getByRole('combobox', { name: 'Assistant' });
+      await expect(picker).toHaveText('test/model');
+      await picker.click();
+      await page.getByRole('option', { name: 'other/model' }).click();
+      await expect(picker).toHaveText('other/model');
+    });
+
+    test('the panel names the one assistant rather than offering a choice of one', async ({
+      page,
+    }) => {
+      await open(page);
+      await toggle(page).click();
+      await expect(panelOf(page)).toBeVisible();
+      await expect(panelOf(page).getByText('test/model')).toBeVisible();
+      await expect(panelOf(page).getByRole('combobox', { name: 'Assistant' })).toHaveCount(0);
+    });
+
+    test('the PAGE scrolls, open or shut', async ({ page }) => {
+      // The panel is fixed and the shell pads a gutter for it, so opening it
+      // does not change what scrolls. It used to: the editor row was bounded to
+      // the viewport and became its own scrollport, which is what every sticky
+      // offset and every measured height in the app then had to agree with.
+      await open(page);
+      const scrolls = () =>
+        page.evaluate(() => document.documentElement.scrollHeight > window.innerHeight + 1);
+      await page.setViewportSize(SHORT_VIEWPORT);
+      await expect.poll(scrolls).toBe(true);
+
+      await toggle(page).click();
+      await expect(panelOf(page)).toBeVisible();
+      expect(await scrolls()).toBe(true);
+
+      await page.getByRole('button', { name: 'Hide the assistant' }).click();
+      await expect(panelOf(page)).toHaveCount(0);
+      await expect.poll(scrolls).toBe(true);
+    });
+
+    test('a width survives a reload', async ({ page }) => {
+      await open(page);
+      await toggle(page).click();
+      const before = (await panelOf(page).boundingBox()).width;
+
+      const grip = page.getByRole('separator', { name: 'Resize the assistant' });
+      const g = await grip.boundingBox();
+      await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(g.x - 90, g.y + g.height / 2, { steps: 8 });
+      await page.mouse.up();
+
+      const widened = (await panelOf(page).boundingBox()).width;
+      expect(widened).toBeGreaterThan(before + 40);
+
+      // Both the width and the open state are remembered, so it comes back open
+      // at the width it was dragged to.
+      await page.reload();
+      await expect(panelOf(page)).toBeVisible();
+      const after = (await panelOf(page).boundingBox()).width;
+      expect(Math.abs(after - widened)).toBeLessThan(3);
+    });
+
+    test("the panel does not build the tab's chrome", async ({ page }) => {
+      await open(page);
+      await toggle(page).click();
+      const dock = panelOf(page);
+      await expect(dock).toBeVisible();
+
+      // These were once hidden with CSS, which still built every conversation
+      // row and every starter prompt inside a 400px panel. They are not
+      // rendered at all now, so the assertion is on the DOM and not on what is
+      // visible: `toContainText` reads hidden text too, which is how it was
+      // missed by hand.
+      await expect(dock.locator('text=Conversations are private')).toHaveCount(0);
+      await expect(dock.getByText(starterPrompt)).toHaveCount(0);
+
+      // What it does carry: the conversation, and a way to the full tab.
+      await expect(dock.getByRole('textbox')).toBeVisible();
+      await expect(dock.getByRole('button', { name: 'New conversation' })).toBeVisible();
     });
 
     test('Ask keeps the reader where they were', async ({ page }) => {

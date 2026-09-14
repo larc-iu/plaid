@@ -10,11 +10,11 @@ import { assistantPanelHarness, assistantPanelTests } from '../../plaid-ui/e2e/a
 // implementing the request protocol in a test, and would test the server rather
 // than this.
 //
-// The dock is one component in plaid-ui, so the six tests that are about IT are
-// there too (`assistantPanelTests`), driven with this app's screens. What stays
-// here is what this app's editor makes different. The panel as APP chrome (it
-// survives a navigation, it keeps one thread per project, it is reachable
-// everywhere) is e2e/assistant-chrome.spec.js.
+// The dock is one component in plaid-ui, so every test about IT is there too
+// (`assistantPanelTests`), driven with this app's screens. What stays here is
+// the seeding: a project with one tokenized document of its own. The panel as
+// APP chrome (it survives a navigation, it keeps one thread per project, it is
+// reachable everywhere) is e2e/assistant-chrome.spec.js.
 
 const S = {};
 
@@ -49,7 +49,6 @@ const panel = assistantPanelHarness({
   documentPath: () => `/#/projects/${S.projectId}/documents/${S.documentId}/annotate`,
   contentSelector: '.sentence-grid',
 });
-const { withAssistant, panelOf, toggle, openDocument } = panel;
 
 const askButton = (page) => page.getByRole('button', { name: 'Ask', exact: true });
 
@@ -74,73 +73,5 @@ assistantPanelTests({
     await expect(page.getByRole('tab', { name: 'Documents' })).toBeVisible();
     await expect(page.getByRole('tab', { name: 'Assistant' })).toHaveCount(0);
   },
-});
-
-test.describe('with an assistant online', () => {
-  test.beforeEach(async ({ page }) => {
-    await seedAuth(page);
-    await withAssistant(page);
-  });
-
-  test('the PAGE scrolls, open or shut', async ({ page }) => {
-    // The panel is fixed and the shell pads a gutter for it, so opening it does
-    // not change what scrolls. It used to: the editor row was bounded to the
-    // viewport and became its own scrollport, which is what every sticky offset
-    // and every measured height in the app then had to agree with.
-    await openDocument(page);
-    const scrolls = () =>
-      page.evaluate(() => document.documentElement.scrollHeight > window.innerHeight + 1);
-    await page.setViewportSize({ width: 1400, height: 420 });
-    await expect.poll(scrolls).toBe(true);
-
-    await toggle(page).click();
-    await expect(panelOf(page)).toBeVisible();
-    expect(await scrolls()).toBe(true);
-
-    await page.getByRole('button', { name: 'Hide the assistant' }).click();
-    await expect(panelOf(page)).toHaveCount(0);
-    await expect.poll(scrolls).toBe(true);
-  });
-
-  test('a width survives a reload', async ({ page }) => {
-    await openDocument(page);
-    await toggle(page).click();
-    const before = (await panelOf(page).boundingBox()).width;
-
-    const grip = page.getByRole('separator', { name: 'Resize the assistant' });
-    const g = await grip.boundingBox();
-    await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(g.x - 90, g.y + g.height / 2, { steps: 8 });
-    await page.mouse.up();
-
-    const widened = (await panelOf(page).boundingBox()).width;
-    expect(widened).toBeGreaterThan(before + 40);
-
-    // Both the width and the open state are remembered, so it comes back open
-    // at the width it was dragged to.
-    await page.reload();
-    await expect(panelOf(page)).toBeVisible();
-    const after = (await panelOf(page).boundingBox()).width;
-    expect(Math.abs(after - widened)).toBeLessThan(3);
-  });
-
-  test("the panel does not build the tab's chrome", async ({ page }) => {
-    await openDocument(page);
-    await toggle(page).click();
-    const dock = panelOf(page);
-    await expect(dock).toBeVisible();
-
-    // These were once hidden with CSS, which still built every conversation row
-    // and every starter prompt inside a 400px panel. They are not rendered at
-    // all now, so the assertion is on the DOM and not on what is visible:
-    // `toContainText` reads hidden text too, which is how it was missed by
-    // hand.
-    await expect(dock.locator('text=Conversations are private')).toHaveCount(0);
-    await expect(dock.getByText('Summarize the parts of speech')).toHaveCount(0);
-
-    // What it does carry: the conversation, and a way to the full tab.
-    await expect(dock.getByRole('textbox')).toBeVisible();
-    await expect(dock.getByRole('button', { name: 'New conversation' })).toBeVisible();
-  });
+  starterPrompt: 'Summarize the parts of speech used across the corpus.',
 });

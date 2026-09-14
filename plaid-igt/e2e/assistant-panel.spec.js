@@ -1,6 +1,5 @@
 import { test, expect, seedAuth } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
-import { assistantStub } from '../../plaid-ui/e2e/assistantChrome.js';
 import { assistantPanelHarness, assistantPanelTests } from '../../plaid-ui/e2e/assistantPanel.js';
 
 // The assistant docked beside the interlinear grid, on the Analyze tab.
@@ -8,12 +7,12 @@ import { assistantPanelHarness, assistantPanelTests } from '../../plaid-ui/e2e/a
 // No model, and no service: an assistant is made to look online by answering
 // the one discovery GET. What is held still is what a turn does not touch.
 //
-// The dock is one component in plaid-ui, so the six tests that are about IT are
-// there too (`assistantPanelTests`), driven with this app's screens. What stays
-// here is what this app's grid and its assistants make different. The panel as
-// APP chrome (it survives a navigation, it keeps one thread per project) is
-// e2e/assistant-chrome.spec.js, and the tab itself (plans, Approve, Discard,
-// Retry) is e2e/assistant.spec.js.
+// The dock is one component in plaid-ui, so every test about IT is there too
+// (`assistantPanelTests`), driven with this app's screens. What stays here is
+// the one thing that has no plaid-ud counterpart: this app's tab strip is
+// sticky and plaid-ud's is not. The panel as APP chrome (it survives a
+// navigation, it keeps one thread per project) is e2e/assistant-chrome.spec.js,
+// and the tab itself (plans, Approve, Discard, Retry) is e2e/assistant.spec.js.
 
 const DOCUMENT_NAME = 'Sample IGT Document';
 
@@ -30,7 +29,7 @@ const panel = assistantPanelHarness({
   documentPath: () => `/#/projects/${projectId}/documents/${documentId}?tab=analyze`,
   contentSelector: '.igt-sentence',
 });
-const { stub, withAssistant, panelOf, toggle, openDocument } = panel;
+const { withAssistant, panelOf, toggle, openDocument } = panel;
 
 assistantPanelTests({
   test,
@@ -62,39 +61,7 @@ assistantPanelTests({
       };
     },
   },
-});
-
-test('the panel picks which assistant answers, while the thread is new', async ({ page }) => {
-  const two = [
-    ...stub,
-    ...assistantStub('igt', {
-      serviceId: 'igt:assist:other',
-      serviceName: 'IGT Assistant (other)',
-      extras: { model: 'other/model', app: 'igt', tasks: ['assist'] },
-    }),
-  ];
-  await seedAuth(page);
-  await withAssistant(page, two);
-  await openDocument(page);
-  await toggle(page).click();
-  await expect(panelOf(page)).toBeVisible();
-
-  // The model's name IS the picker while the conversation is new.
-  const picker = panelOf(page).getByRole('combobox', { name: 'Assistant' });
-  await expect(picker).toHaveText('test/model');
-  await picker.click();
-  await page.getByRole('option', { name: 'other/model' }).click();
-  await expect(picker).toHaveText('other/model');
-});
-
-test('the panel names the one assistant rather than offering a choice of one', async ({ page }) => {
-  await seedAuth(page);
-  await withAssistant(page);
-  await openDocument(page);
-  await toggle(page).click();
-  await expect(panelOf(page)).toBeVisible();
-  await expect(panelOf(page).getByText('test/model')).toBeVisible();
-  await expect(panelOf(page).getByRole('combobox', { name: 'Assistant' })).toHaveCount(0);
+  starterPrompt: 'Which words in this project are still unglossed?',
 });
 
 test('the tab strip stays pinned under the app header with the panel docked', async ({ page }) => {
