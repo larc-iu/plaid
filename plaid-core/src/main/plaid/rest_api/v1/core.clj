@@ -47,11 +47,13 @@
                    :string {:default reitit.coercion.malli/string-transformer-provider}
                    :response {:default reitit.coercion.malli/default-transformer-provider}}
      ;; Keys `reitit.coercion/encode-error` may build. `:value` is the whole
-     ;; submitted body — on POST /users that includes the password — and
-     ;; `:schema` is the route's shape. Nothing puts either on the wire
-     ;; (`prm/wrap-coercion-error` reads `:humanized` and drops the rest), so
-     ;; neither is built in the first place.
-    :error-keys #{:type :coercion :in :errors :humanized}
+     ;; submitted body — on POST /users that includes the password — `:schema`
+     ;; is the route's shape, and `:errors` is every failing leaf with its own
+     ;; value. Nothing puts any of them on the wire (`prm/wrap-coercion-error`
+     ;; reads `:humanized` and drops the rest), so none is built in the first
+     ;; place. `:humanized` is built from the raw explain data, not from
+     ;; `:errors`.
+    :error-keys #{:type :coercion :in :humanized}
      ;; support lite syntax?
     :lite true
      ;; schema identity function (default: close all map schemas)
