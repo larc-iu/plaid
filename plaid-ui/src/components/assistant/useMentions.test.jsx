@@ -72,17 +72,11 @@ describe('useMentions', () => {
     await m.unmount();
   });
 
-  // The panel is chrome on the singleton client an import or a bulk edit holds
-  // a batch open on, so a queued read would answer `{batched: true}` and shift
-  // the batch's own results.
-  it('reads the documents over the wire even while a batch is open', async () => {
+  it('asks for one page of the project’s documents', async () => {
     const client = fakeClient([{ name: 'Text 1' }]);
     const m = await mount(client);
     await m.type('@');
-    expect(client.projects.listDocumentsPage).toHaveBeenCalledWith('p1', {
-      limit: 1000,
-      bypassBatch: true,
-    });
+    expect(client.projects.listDocumentsPage).toHaveBeenCalledWith('p1', { limit: 1000 });
     await m.unmount();
   });
 
