@@ -19,8 +19,8 @@ import { useWideEnoughToDock } from '@ui/components/assistant/useDock.js';
 import { RestoreDialog } from './annotation/RestoreDialog.jsx';
 import { EditorLegend } from './annotation/EditorLegend.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { formatFindingsForClipboard } from '@ui/lib/integrityToast.js';
-import { notifyError, notifyWithAction } from '../../utils/feedback.jsx';
+import { reportIntegrityFindings, dismissIntegrityFindings } from '@ui/lib/integrityToast.js';
+import { notifyError } from '../../utils/feedback.jsx';
 import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { readMetadataFields } from '../../utils/udMetadata.js';
@@ -69,33 +69,6 @@ const reportReconcileFailure = (err) => {
     `Could not auto-repair this document. Try reloading.${reason ? ` (${reason})` : ''}`,
     'Repair failed',
   );
-};
-
-// Surface validateConlluDocument findings: full detail to the console (grouped),
-// plus ONE consolidated "Data integrity issue detected" toast with a Copy
-// details button. Findings are things we could NOT auto-repair, which is why
-// they interrupt; repairs that SUCCEEDED say nothing (see runReconcile).
-const reportIntegrityFindings = (findings, documentId) => {
-  if (!findings?.length) return;
-  console.group(`[plaid-ud] Document integrity findings (${findings.length})`);
-  findings.forEach((f) =>
-    (f.severity === 'error' ? console.error : console.warn)(`[${f.code}] ${f.message}`, f.context),
-  );
-  console.groupEnd();
-
-  const errors = findings.filter((f) => f.severity === 'error');
-  const headline = errors.length ? errors : findings;
-  const reason =
-    headline.length === 1
-      ? headline[0].message
-      : `${headline.length} issues found. The browser console has the details.`;
-  const detail = formatFindingsForClipboard(findings, { documentId });
-  notifyWithAction(reason, 'Data integrity issue detected', {
-    label: 'Copy details',
-    onClick: () => navigator.clipboard?.writeText(detail).catch(() => {}),
-    kind: errors.length ? 'error' : 'warning',
-    duration: Infinity,
-  });
 };
 
 export const AnnotationEditor = () => {
@@ -218,7 +191,10 @@ export const AnnotationEditor = () => {
       if (parts.length) {
         console.info(`Reconcile-on-open: ${parts.join('; ')}`);
       }
-      reportIntegrityFindings(findings, doc.id);
+      // What the repair could NOT heal, which is why it interrupts: a repair
+      // that worked says nothing. The notice is the shared one, so it reads the
+      // same here as in plaid-igt and one document replaces its own.
+      reportIntegrityFindings(findings, { documentId: doc.id });
     } catch (e) {
       reportReconcileFailure(e);
     }
@@ -257,6 +233,11 @@ export const AnnotationEditor = () => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentId, doc]);
+
+  // The integrity notice never expires, because an unrepaired document is a
+  // standing fact. It is about ONE document, so leaving this one takes it with
+  // us rather than letting it follow the reader around the app.
+  useEffect(() => () => dismissIntegrityFindings(), [documentId]);
 
   // Lock the shell's tab strip for as long as the body is a spinner. The gate
   // below keeps edits out of THIS tab while a repair is writing; without this
