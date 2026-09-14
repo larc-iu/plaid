@@ -242,12 +242,26 @@ describe('the timeline and the player', () => {
   });
 
   it('a timeline click reaches the element on the commit that mounted it', async () => {
-    const h = await mountBoth(true);
-    const el = h.container.querySelector('[data-testid="player"]');
-    expect(el.currentTime).toBe(0);
+    // The element has to ARRIVE while the timeline is already on screen, and
+    // the seek has to be the next thing that happens. Mounted from the first
+    // render, and reached through the pointer, this was green under a full
+    // revert of the fix it names: a mousedown is a state change, so the
+    // re-render it causes fills a ref in before the mouseup seeks.
+    const h = await mountBoth(false);
     // A recording with no duration has no positions to click on.
     await h.step(() => h.api.mediaOps.handleDurationChange(60));
+    expect(h.container.querySelector('[data-testid="player"]')).toBeNull();
 
+    await h.setInputs({ args: [true] });
+    const el = h.container.querySelector('[data-testid="player"]');
+    expect(el.currentTime).toBe(0);
+
+    // Nothing has re-rendered since the commit that mounted it, which is the
+    // state a ref read during render can never leave.
+    await h.step(() => h.api.timelineOps.handleTimelineClick(3));
+    expect(el.currentTime).toBe(3);
+
+    // And through the pointer, which is how a reader gets there.
     await mouse(h, 'mousedown', 50);
     await mouse(h, 'mouseup', 50.5);
     // 25 px/s is the tab's starting zoom, so 50 px in is two seconds.
