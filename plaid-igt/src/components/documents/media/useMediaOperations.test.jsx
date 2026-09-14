@@ -5,6 +5,7 @@ import {
   fakeClient,
   fakeWriteLock,
 } from '@/test/mountDocumentHook.jsx';
+import { fakeRaf } from '@/test/fakeRaf.js';
 import { useMediaOperations } from './useMediaOperations.js';
 
 // The media tab's operations hook, at the one seam where it can fall behind
@@ -252,6 +253,48 @@ describe('useMediaOperations: the playback keys', () => {
     expect(el.play).toHaveBeenCalledTimes(2);
     expect(refusals.map((r) => r.handled)).toEqual([true, true]);
     await h.unmount();
+  });
+});
+
+describe('useMediaOperations: playing one stretch', () => {
+  const playing = async (h, el) => {
+    await h.step(() => h.api.setMediaElement(el));
+    await h.step(() => h.api.handlePlayingChange(true));
+    await h.step(() => h.api.playRange({ start: 1, end: 2 }));
+  };
+
+  it('stops at the end of the stretch, and loops back to its start when asked', async () => {
+    const raf = fakeRaf().install();
+    const h = await mountMedia();
+    const el = fakeMediaElement([]);
+    await playing(h, el);
+    expect(el.currentTime).toBe(1);
+    expect(raf.pending).toBe(1);
+
+    // Still inside the stretch: nothing happens, and the loop goes on.
+    el.currentTime = 1.5;
+    await h.step(() => raf.pump());
+    expect(el.pause).not.toHaveBeenCalled();
+    expect(raf.pending).toBe(1);
+
+    el.currentTime = 2.01;
+    await h.step(() => raf.pump());
+    expect(el.pause).toHaveBeenCalledTimes(1);
+    expect(el.currentTime).toBe(2);
+    expect(h.api.playingSelection).toBeNull();
+    expect(raf.pending).toBe(0);
+
+    // With looping on, the end of the stretch is its start again.
+    await h.step(() => h.api.setLoopSegment(true));
+    await h.step(() => h.api.playRange({ start: 1, end: 2 }));
+    el.currentTime = 2.01;
+    await h.step(() => raf.pump());
+    expect(el.pause).toHaveBeenCalledTimes(1);
+    expect(el.currentTime).toBe(1);
+    expect(raf.pending).toBe(1);
+
+    await h.unmount();
+    expect(raf.pending).toBe(0);
   });
 });
 
