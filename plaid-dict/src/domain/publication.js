@@ -69,8 +69,8 @@ export const publishAll = async (client, items, { vocabularyId, name, onProgress
     }
     for (let i = 0; i < pending.length; i += BATCH_CHUNK) {
       const part = pending.slice(i, i + BATCH_CHUNK);
-      await client.batched(async () => {
-        for (const it of part) client.vocabItems.patchMetadata(it.id, { [key]: PUBLISHED });
+      await client.batched(async (b) => {
+        for (const it of part) b.vocabItems.patchMetadata(it.id, { [key]: PUBLISHED });
       });
       done += part.length;
       onProgress?.({ done, total: pending.length });

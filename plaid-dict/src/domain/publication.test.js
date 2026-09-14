@@ -35,9 +35,11 @@ describe('publishAll', () => {
         this.operations.push(message);
         return fn();
       },
+      // The batch the block writes on: the same bundle, queuing into `patched`.
+      // A write made on the client itself is not part of a batch.
       async batched(fn) {
         const before = patched.length;
-        await fn();
+        await fn({ vocabItems: this.vocabItems });
         chunks.push(patched.length - before);
       },
       vocabItems: {
