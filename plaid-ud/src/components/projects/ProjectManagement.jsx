@@ -1,16 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { MoreVertical, Plus } from 'lucide-react';
-import {
-  PLAID_NAMESPACE,
-  REVIEW_KEY,
-  isReviewed,
-  projectRole,
-  readReview,
-  withReviewedUser,
-} from '@larc-iu/plaid-client';
 import { ProjectInvites } from '@ui/components/shared/ProjectInvites.jsx';
+import { ProjectMembers } from '@ui/components/shared/ProjectMembers.jsx';
 import { MintedLinkDialog } from '@ui/components/shared/MintedLinkDialog.jsx';
+import { aclMemberIds, setProjectRoleReporting } from '@ui/domain/projectRoles.js';
 import { useAuth } from '../../contexts/AuthContext';
 import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
@@ -46,7 +40,7 @@ import { MAINTAINER_HINT, NO_ACCESS_HINT } from '@ui/domain/permissions.js';
 // can do: naming the levels and nothing else left "a Reader cannot comment"
 // to be learned by granting someone Reader and hearing about it.
 const PERMISSION_OPTIONS = [
-  { value: 'none', label: 'None', hint: NO_ACCESS_HINT },
+  { value: 'none', label: 'No access', hint: NO_ACCESS_HINT },
   { value: 'reader', label: 'Reader', hint: 'Reads the treebank. Cannot comment.' },
   { value: 'writer', label: 'Writer', hint: 'Also edits documents and their annotation.' },
   { value: 'maintainer', label: 'Maintainer', hint: MAINTAINER_HINT },
@@ -65,21 +59,12 @@ const EMPTY_USER_FORM = {
   isAdmin: false,
 };
 
-// The role someone was explicitly granted, as this screen spells it: the client
-// says `null` for a non-member and the Select needs a value.
-const roleOf = (project, userId) => projectRole(project, userId) ?? 'none';
-
 export const ProjectManagement = () => {
   const { projectId } = useParams();
   const { user, getClient } = useAuth();
   const confirm = useConfirm();
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  // Project members (users with a role here), resolved from the ACL — admins
-  // excluded (they reach everything implicitly, so they're not "members").
-  const [members, setMembers] = useState([]);
-  const [membersLoading, setMembersLoading] = useState(true);
 
   // Search-to-add. The roster isn't fetched wholesale; we query the server.
   const [search, setSearch] = useState('');
@@ -167,55 +152,6 @@ export const ProjectManagement = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
-  // Resolve the ACL member ids to user objects (for display names + admin flag).
-  // The member set is project-sized, not instance-sized, so per-id GETs are fine.
-  // Everyone here was EXPLICITLY granted a role — including admins who were
-  // explicitly added (they get an "Admin" badge). Admins with only implicit
-  // global access are never in the ACL arrays, so they don't show up.
-  // Keyed on WHO is on the ACL, not on the project object: a refetch that
-  // changed only config (the review mark) or the name must neither re-resolve
-  // nor blank the table. Roles are read off the project at render (see
-  // `rows`), so a role change shows the moment the project refreshes. The
-  // spinner shows only before the first resolve; a later one (someone added
-  // or removed) swaps the rows in place.
-  const aclKey = [
-    ...new Set([
-      ...(project?.maintainers || []),
-      ...(project?.writers || []),
-      ...(project?.readers || []),
-    ]),
-  ].join('\n');
-  const projectLoaded = !!project;
-  const membersRef = useRef(members);
-  membersRef.current = members;
-  useEffect(() => {
-    if (!projectLoaded) return;
-    let cancelled = false;
-    (async () => {
-      if (membersRef.current.length === 0) setMembersLoading(true);
-      const client = getClient();
-      const ids = aclKey ? aclKey.split('\n') : [];
-      try {
-        const resolved = await Promise.all(
-          ids.map((id) =>
-            client.users.get(id).catch(() => ({ id, displayName: id, isAdmin: false })),
-          ),
-        );
-        resolved.sort((a, b) => (a.displayName || '').localeCompare(b.displayName || ''));
-        if (!cancelled) setMembers(resolved);
-      } catch (err) {
-        console.error('Error resolving members:', err);
-        if (!cancelled) setMembers([]);
-      } finally {
-        if (!cancelled) setMembersLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [aclKey, projectLoaded, getClient]);
-  const rows = members.map((m) => ({ ...m, role: roleOf(project, m.id) }));
-
   // Search the directory (server-side ?q=). Runs once the box is touched, so an
   // empty query browses everyone (first page); typing filters. Members already
   // on the project are dropped from the results.
@@ -230,7 +166,7 @@ export const ProjectManagement = () => {
           q: debouncedSearch || undefined,
           limit: SEARCH_LIMIT,
         });
-        const memberIds = new Set(members.map((m) => m.id));
+        const memberIds = new Set(aclMemberIds(project));
         const results = (page.entries || []).filter((u) => !memberIds.has(u.id));
         // A cursor back means the directory had more than the cap allowed.
         // Read it rather than counting results: members are filtered out
@@ -252,59 +188,18 @@ export const ProjectManagement = () => {
     return () => {
       cancelled = true;
     };
-  }, [debouncedSearch, searchActive, members, getClient]);
+  }, [debouncedSearch, searchActive, project, getClient]);
 
-  // Add / change / remove a project role for a user.
-  const setRole = async (userId, newLevel) => {
-    try {
-      const client = getClient();
-      const current = roleOf(project, userId);
-      if (current === newLevel) return;
-
-      if (current === 'maintainer') await client.projects.removeMaintainer(projectId, userId);
-      else if (current === 'writer') await client.projects.removeWriter(projectId, userId);
-      else if (current === 'reader') await client.projects.removeReader(projectId, userId);
-
-      if (newLevel === 'maintainer') await client.projects.addMaintainer(projectId, userId);
-      else if (newLevel === 'writer') await client.projects.addWriter(projectId, userId);
-      else if (newLevel === 'reader') await client.projects.addReader(projectId, userId);
-
-      notifySuccess('Permissions updated');
-      await fetchProject(); // re-resolves members + refreshes search filter
-    } catch (err) {
-      console.error('Error updating permissions:', err);
-      notifyError('Failed to update permissions');
-    }
-  };
-
-  // Whose work is reviewed (the cross-app `plaid.review` norm, provenance
-  // convention): a marked member's annotations are recorded as contributed
-  // until a verifier confirms them. Independent of the role: any member can be
-  // marked. A project may also mark whole roles (another app's setting); such
-  // members show as reviewed and cannot be unmarked one by one here.
-  // { id, on } while a toggle is in flight, so the box shows the new state
-  // at once instead of snapping back until the project refreshes.
-  const [updatingReview, setUpdatingReview] = useState(null);
-  const reviewedByRole = (m) => {
-    const { users, roles } = readReview(project?.config);
-    return (
-      !users.includes(m.id) && roles.includes(projectRole(project, m.id, { isAdmin: m.isAdmin }))
-    );
-  };
-  const setReviewed = async (userId, on) => {
-    try {
-      setUpdatingReview({ id: userId, on });
-      const client = getClient();
-      const next = withReviewedUser(project?.config?.[PLAID_NAMESPACE]?.[REVIEW_KEY], userId, on);
-      await client.projects.setConfig(projectId, PLAID_NAMESPACE, REVIEW_KEY, next);
-      await fetchProject();
-    } catch (err) {
-      console.error('Error updating review:', err);
-      notifyError('Failed to update review');
-    } finally {
-      setUpdatingReview(null);
-    }
-  };
+  const grant = (userId, newRole) =>
+    setProjectRoleReporting({
+      client: getClient(),
+      project,
+      projectId,
+      userId,
+      newRole,
+      currentUserId: user?.id,
+      onDataUpdate: fetchProject,
+    });
 
   // Handle user creation
   const handleCreateUser = async (e) => {
@@ -482,117 +377,40 @@ export const ProjectManagement = () => {
         </div>
       )}
 
-      {/* Current members */}
-      <Card>
-        <CardHeader className="flex-row items-center justify-between space-y-0">
-          <CardTitle className="text-lg">Members</CardTitle>
-          <span className="text-sm text-muted-foreground">{members.length} with access</span>
-        </CardHeader>
-        <CardContent>
-          {membersLoading ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : members.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No one has been granted access yet. Use “Add a user” below.
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-xs text-muted-foreground">
-                    <th className="py-2 pr-3 font-medium">User</th>
-                    <th className="px-3 py-2 font-medium">Project role</th>
-                    <th
-                      className="px-3 py-2 font-medium"
-                      title="Their annotations are marked as contributed until a verifier confirms them"
+      <ProjectMembers
+        project={project}
+        projectId={projectId}
+        client={getClient()}
+        currentUser={user}
+        onDataUpdate={fetchProject}
+        roleOptions={PERMISSION_OPTIONS}
+        renderActions={
+          isAdmin
+            ? (m) => (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      aria-label="User actions"
                     >
-                      Review work
-                    </th>
-                    {isAdmin && <th className="w-12 py-2" />}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((m) => (
-                    <tr key={m.id} className="border-b">
-                      <td className="py-2 pr-3">{userCell(m)}</td>
-                      <td className="px-3 py-2">
-                        <Select
-                          value={m.role}
-                          onValueChange={(v) => setRole(m.id, v)}
-                          disabled={m.id === user.id}
-                        >
-                          <SelectTrigger
-                            className="h-8 w-36"
-                            aria-label={`${m.displayName} project role`}
-                          >
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {PERMISSION_OPTIONS.map((o) => (
-                              <SelectItem key={o.value} value={o.value} hint={o.hint}>
-                                {o.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {m.id === user.id && (
-                          <p className="mt-0.5 text-xs text-muted-foreground">Your own access</p>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 cursor-pointer accent-primary disabled:cursor-not-allowed"
-                          aria-label={`Review ${m.displayName}'s work`}
-                          checked={
-                            updatingReview?.id === m.id
-                              ? updatingReview.on
-                              : isReviewed(project, m.id, { isAdmin: m.isAdmin })
-                          }
-                          disabled={updatingReview?.id === m.id || reviewedByRole(m)}
-                          title={
-                            reviewedByRole(m)
-                              ? `Every ${projectRole(project, m.id, { isAdmin: m.isAdmin })} is reviewed in this project`
-                              : undefined
-                          }
-                          onChange={(e) => setReviewed(m.id, e.target.checked)}
-                        />
-                      </td>
-                      {isAdmin && (
-                        <td className="py-2">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                aria-label="User actions"
-                              >
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => startEditingUser(m)}>
-                                Edit user
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                disabled={resetting}
-                                onClick={() => handleResetLink(m)}
-                              >
-                                Create password reset link
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => startEditingUser(m)}>
+                      Edit user
+                    </DropdownMenuItem>
+                    <DropdownMenuItem disabled={resetting} onClick={() => handleResetLink(m)}>
+                      Create password reset link
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )
+            : null
+        }
+      />
 
       <ProjectInvites
         projectId={projectId}
@@ -644,7 +462,7 @@ export const ProjectManagement = () => {
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Add as</DropdownMenuLabel>
                         {GRANT_ROLES.map((role) => (
-                          <DropdownMenuItem key={role} onClick={() => setRole(u.id, role)}>
+                          <DropdownMenuItem key={role} onClick={() => grant(u.id, role)}>
                             {role.charAt(0).toUpperCase() + role.slice(1)}
                           </DropdownMenuItem>
                         ))}

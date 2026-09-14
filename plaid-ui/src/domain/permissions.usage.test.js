@@ -42,10 +42,12 @@ const sources = (dir) =>
 // Every screen where a project role is CHOSEN. A role offered without a line
 // saying what it grants leaves "a Reader cannot comment" to be learned by
 // granting someone Reader and hearing about it.
+// The Members table and the Invites screen are one shared component each now,
+// and both take their options from the app: these two files are where all four
+// grants are written out.
 const ROLE_PICKERS = [
   'plaid-igt/src/components/projects/AccessManagement.jsx',
   'plaid-ud/src/components/projects/ProjectManagement.jsx',
-  'plaid-ud/src/components/projects/ProjectInvites.jsx',
 ];
 
 // Every `{...}` in `text` with its braces balanced, so an option object is seen

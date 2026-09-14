@@ -34,6 +34,11 @@ const sources = (dir) =>
 // A line of code, or a line of prose about it.
 const isComment = (line) => /^\s*(\/\/|\/?\*)/.test(line);
 
+// A module specifier is a path inside this package, not a route in an app:
+// `../assistant/PlaidMarks.jsx` is a sibling directory that happens to be
+// spelled like one of the segments below.
+const isSpecifier = (line) => /^\s*(import\b|export\b.*\bfrom\b|\}\s*from\b)/.test(line);
+
 const offenders = (pattern, { skip = [] } = {}) => {
   const found = [];
   for (const file of sources(src)) {
@@ -41,7 +46,7 @@ const offenders = (pattern, { skip = [] } = {}) => {
     fs.readFileSync(file, 'utf8')
       .split('\n')
       .forEach((line, i) => {
-        if (isComment(line) || !pattern.test(line)) return;
+        if (isComment(line) || isSpecifier(line) || !pattern.test(line)) return;
         found.push(`${path.relative(src, file)}:${i + 1}`);
       });
   }
