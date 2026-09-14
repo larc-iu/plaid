@@ -64,8 +64,11 @@ def reserve(staged: int, n: int, note: str = '', cap: int = PLAN_MAX_OPS) -> Non
 
 class Batcher:
     """Queue client calls into atomic batches of at most ``budget`` ops,
-    flushing as the budget fills. ``add`` returns a GLOBAL result index valid
-    after the next ``flush``; ``results`` accumulates across flushes.
+    flushing as the budget fills. ``add`` takes ``fn(batch)`` and calls it with
+    the open batch, which is what every write inside it must be made on: a
+    write made on the client goes over the wire at once, outside the
+    transaction. ``add`` returns a GLOBAL result index valid after the next
+    ``flush``; ``results`` accumulates across flushes.
 
     ``update`` queues a value and/or a metadata patch on one entity. At the
     next flush the queued updates go into the same atomic batch as ONE bulk
@@ -83,14 +86,13 @@ class Batcher:
         self.results: List[Any] = []
         self._pending = 0   # sub-ops in the open batch (result indexes)
         self._weight = 0    # what the open batch stands for, against the budget
-        self._open = False
+        self._batch = None  # the open batch, or None between flushes
         self._bulk: Dict[str, Dict[str, Dict[str, Any]]] = {}
 
     def add(self, fn, weight: int = 1) -> int:
-        if not self._open:
-            self.client.begin_batch()
-            self._open = True
-        fn()
+        if self._batch is None:
+            self._batch = self.client.batch()
+        fn(self._batch)
         idx = len(self.results) + self._pending
         self._pending += 1
         self._weight += weight
@@ -117,20 +119,14 @@ class Batcher:
             entries = list(items.values())
             for i in range(0, len(entries), BULK_CHUNK):
                 chunk = entries[i:i + BULK_CHUNK]
-                self.add(lambda r=resource, c=chunk: getattr(self.client, r).bulk_update(c), weight=len(chunk))
+                self.add(lambda batch, r=resource, c=chunk: getattr(batch, r).bulk_update(c), weight=len(chunk))
 
     def flush(self) -> None:
         self._drain()
-        if not self._open:
+        batch, self._batch = self._batch, None
+        if batch is None:
             return
-        try:
-            res = self.client.submit_batch()
-        except BaseException:
-            if self.client.is_batch_mode():
-                self.client.abort_batch()
-            raise
-        finally:
-            self._open = False
+        res = batch.submit()
         self.results.extend(res or [])
         self._pending = 0
         self._weight = 0
@@ -351,8 +347,8 @@ def expand_ops(ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 def apply_add_comment(ctx, op) -> int:
     """A comment, unaudited like every comment and under the requester's name."""
-    ctx.b.add(lambda o=op: ctx.client.comments.create(o['entity_type'], o['entity_id'], o['body'],
-                                                      anchor_label=o.get('anchor_label') or None))
+    ctx.b.add(lambda batch, o=op: batch.comments.create(o['entity_type'], o['entity_id'], o['body'],
+                                                        anchor_label=o.get('anchor_label') or None))
     return 1
 
 

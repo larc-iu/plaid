@@ -121,7 +121,7 @@ def t_merge_sentences(ws: Workspace, document: str = None, ref: str = None) -> s
             f'Sentences after them renumber.')
 
 
-def apply_split_sentence(client, op: Dict[str, Any], b, stamp) -> None:
+def apply_split_sentence(op: Dict[str, Any], b, stamp) -> None:
     """The split and the relations it orphans, in ONE batch.
 
     Together, because between the two the document holds a relation spanning
@@ -129,10 +129,10 @@ def apply_split_sentence(client, op: Dict[str, Any], b, stamp) -> None:
     whether or not this plan finished. Neither op refers to an id the other
     makes, which is what lets them share a batch at all.
     """
-    b.add(lambda o=op: client.tokens.split(o['sentence_id'], o['char_pos']))
+    b.add(lambda batch, o=op: batch.tokens.split(o['sentence_id'], o['char_pos']))
     for rel_id in op.get('relation_ids') or []:
-        b.add(lambda i=rel_id: client.relations.delete(i))
+        b.add(lambda batch, i=rel_id: batch.relations.delete(i))
 
 
-def apply_merge_sentences(client, op: Dict[str, Any], b, stamp) -> None:
-    b.add(lambda o=op: client.tokens.merge(o['previous_id'], o['sentence_id']))
+def apply_merge_sentences(op: Dict[str, Any], b, stamp) -> None:
+    b.add(lambda batch, o=op: batch.tokens.merge(o['previous_id'], o['sentence_id']))

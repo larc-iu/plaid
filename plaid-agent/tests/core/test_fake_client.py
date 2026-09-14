@@ -37,12 +37,13 @@ def test_it_answers_the_resources_every_assistant_reads():
 
 def test_a_write_is_recorded_and_a_batch_answers_per_op():
     c = _client()
-    c.begin_batch()
-    assert c.is_batch_mode()
-    c.spans.create('L', ['t'], 'v')
-    c.tokens.bulk_create([{'begin': 0}, {'begin': 1}])
-    out = c.submit_batch()
+    b = c.batch()
+    b.spans.create('L', ['t'], 'v')
+    b.tokens.bulk_create([{'begin': 0}, {'begin': 1}])
+    assert c.log == []  # queued, not sent
+    out = b.submit()
     assert [e[:2] for e in c.batches[0]] == [('spans', 'create'), ('tokens', 'bulk_create')]
+    assert [e[:2] for e in c.log] == [('spans', 'create'), ('tokens', 'bulk_create')]
     assert out[0]['body']['id'] == 'new-spans-0'
     assert out[1]['body']['ids'] == ['new-tokens-1-0', 'new-tokens-1-1']
     # A bulk update is recorded as the per-item writes it stands for.
@@ -53,6 +54,28 @@ def test_a_write_is_recorded_and_a_batch_answers_per_op():
     with c.operation('a label'):
         pass
     assert c.operations == ['a label']
+
+
+def test_a_write_on_the_client_is_never_touched_by_an_open_batch():
+    c = _client()
+    b = c.batch()
+    b.spans.create('L', ['t'], 'queued')
+    c.spans.create('L', ['t'], 'now')
+    assert [e[2][2] for e in c.log] == ['now']
+    b.submit()
+    assert [e[2][2] for e in c.log] == ['now', 'queued']
+
+
+def test_an_aborted_batch_sends_nothing():
+    c = _client()
+    with pytest.raises(RuntimeError):
+        with c.batched() as b:
+            b.spans.create('L', ['t'], 'v')
+            raise RuntimeError('boom')
+    assert c.log == [] and c.batches == []
+    with c.batched() as b:
+        b.spans.create('L', ['t'], 'v')
+    assert len(c.batches) == 1 and b.results[0]['body']['id'] == 'new-spans-0'
 
 
 def test_the_user_data_store_matches_the_real_client_surface():

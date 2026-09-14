@@ -137,7 +137,7 @@ class Context:
         if not entity_id or (resource, entity_id) in self.gone:
             return
         self.gone.add((resource, entity_id))
-        self.b.add(lambda i=entity_id: getattr(self.client, resource).delete(i))
+        self.b.add(lambda batch, i=entity_id: getattr(batch, resource).delete(i))
 
 
 # --- what each kind does -----------------------------------------------------------
@@ -149,7 +149,7 @@ def _apply_set_span(ctx: Context, op) -> int:
     elif span_id:
         ctx.b.update('spans', span_id, value=value, metadata=ctx.restamp())
     elif value != '':
-        ctx.b.add(lambda o=op, v=value: ctx.client.spans.create(o['layer_id'], [o['token_id']], v, ctx.stamp()))
+        ctx.b.add(lambda batch, o=op, v=value: batch.spans.create(o['layer_id'], [o['token_id']], v, ctx.stamp()))
     else:
         return 0  # nothing to clear
     return 1
@@ -160,7 +160,7 @@ def _apply_set_analysis(ctx: Context, op) -> int:
     morphemes = op.get('morphemes') or []
     layer, text_id = op['morpheme_layer_id'], op['text_id']
     begin, end = op['begin'], op['end']
-    b, client = ctx.b, ctx.client
+    b = ctx.b
     if existing:
         m0 = existing[0]
         for m in existing[1:]:
@@ -168,14 +168,15 @@ def _apply_set_analysis(ctx: Context, op) -> int:
         for sid in m0.get('span_ids') or []:
             ctx.drop('spans', sid)
         first = morphemes[0]
-        b.add(lambda mid=m0['id'], f=first: client.tokens.patch_metadata(
+        b.add(lambda batch, mid=m0['id'], f=first: batch.tokens.patch_metadata(
             mid, {'form': f['form'], 'morphType': f.get('morph_type'), **ctx.restamp()}))
         # Keep the chain's numbering contiguous from 1 whatever the
         # first morpheme's precedence was before.
-        b.add(lambda mid=m0['id']: client.tokens.update(mid, precedence=1))
+        b.add(lambda batch, mid=m0['id']: batch.tokens.update(mid, precedence=1))
         for fv in first.get('fields') or []:
             if fv.get('value') not in (None, ''):
-                b.add(lambda mid=m0['id'], fv=fv: client.spans.create(fv['layer_id'], [mid], fv['value'], ctx.stamp()))
+                b.add(lambda batch, mid=m0['id'], fv=fv: batch.spans.create(
+                    fv['layer_id'], [mid], fv['value'], ctx.stamp()))
         rest = list(enumerate(morphemes))[1:]
     else:
         rest = list(enumerate(morphemes))
@@ -183,7 +184,7 @@ def _apply_set_analysis(ctx: Context, op) -> int:
         meta = {'form': m['form'], **ctx.stamp()}
         if m.get('morph_type'):
             meta['morphType'] = m['morph_type']
-        idx = b.add(lambda j=j, meta=meta: client.tokens.create(
+        idx = b.add(lambda batch, j=j, meta=meta: batch.tokens.create(
             layer, text_id, begin, end, precedence=j + 1, metadata=meta))
         for fv in m.get('fields') or []:
             if fv.get('value') not in (None, ''):
@@ -205,7 +206,7 @@ def _link(ctx: Context, op, tokens: List[str]) -> int:
     if op.get('existing_link_id'):
         ctx.drop('vocab_links', op['existing_link_id'])
     if op.get('item_id'):
-        ctx.b.add(lambda o=op, t=tokens: ctx.client.vocab_links.create(o['item_id'], t, ctx.stamp()))
+        ctx.b.add(lambda batch, o=op, t=tokens: batch.vocab_links.create(o['item_id'], t, ctx.stamp()))
     elif op.get('new_entry_key'):
         ctx.pending_links.append((tokens, op['new_entry_key']))
     return 1
@@ -230,25 +231,26 @@ def _apply_set_morph_type(ctx: Context, op) -> int:
 
 
 def _apply_create_entry(ctx: Context, op) -> int:
-    ctx.entry_idx[op['key']] = ctx.b.add(lambda o=op: ctx.client.vocab_items.create(
+    ctx.entry_idx[op['key']] = ctx.b.add(lambda batch, o=op: batch.vocab_items.create(
         o['vocab_id'], o['form'], {**(o.get('metadata') or {}), **ctx.stamp()}))
     return 1
 
 
 def _apply_set_entry_field(ctx: Context, op) -> int:
-    ctx.b.add(lambda o=op: ctx.client.vocab_items.patch_metadata(o['item_id'], {o['field']: o.get('value') or None}))
+    ctx.b.add(lambda batch, o=op: batch.vocab_items.patch_metadata(o['item_id'], {o['field']: o.get('value') or None}))
     return 1
 
 
 def _apply_set_entry_metadata(ctx: Context, op) -> int:
     # A patch, so a null clears that key and the rest of the entry's metadata
     # is left alone.
-    ctx.b.add(lambda o=op: ctx.client.vocab_items.patch_metadata(o['item_id'], o['patch']))
+    ctx.b.add(lambda batch, o=op: batch.vocab_items.patch_metadata(o['item_id'], o['patch']))
     return 1
 
 
 def _apply_set_doc_metadata(ctx: Context, op) -> int:
-    ctx.b.add(lambda o=op: ctx.client.documents.patch_metadata(o['document_id'], {o['field']: o.get('value') or None}))
+    ctx.b.add(lambda batch, o=op: batch.documents.patch_metadata(
+        o['document_id'], {o['field']: o.get('value') or None}))
     return 1
 
 
@@ -260,7 +262,7 @@ def _apply_create_document(ctx: Context, op) -> int:
 def _apply_merge_entries(ctx: Context, op) -> int:
     for l in op.get('links') or []:
         ctx.drop('vocab_links', l['link_id'])
-        ctx.b.add(lambda o=op, t=list(l['token_ids']): ctx.client.vocab_links.create(o['keep_id'], t, ctx.stamp()))
+        ctx.b.add(lambda batch, o=op, t=list(l['token_ids']): batch.vocab_links.create(o['keep_id'], t, ctx.stamp()))
     ctx.pending_deletes.append(op['remove_id'])
     return 1
 
@@ -273,12 +275,12 @@ def _apply_delete_entry(ctx: Context, op) -> int:
 
 
 def _apply_rename_entry(ctx: Context, op) -> int:
-    ctx.b.add(lambda o=op: ctx.client.vocab_items.update(o['item_id'], o['form']))
+    ctx.b.add(lambda batch, o=op: batch.vocab_items.update(o['item_id'], o['form']))
     return 1
 
 
 def _apply_rename_document(ctx: Context, op) -> int:
-    ctx.b.add(lambda o=op: ctx.client.documents.update(o['document_id'], o['name']))
+    ctx.b.add(lambda batch, o=op: batch.documents.update(o['document_id'], o['name']))
     return 1
 
 
@@ -289,22 +291,22 @@ def _apply_set_morpheme_form(ctx: Context, op) -> int:
 
 def _apply_split_word(ctx: Context, op) -> int:
     if op.get('morpheme_ids'):
-        ctx.b.add(lambda o=op: ctx.client.tokens.bulk_delete(list(o['morpheme_ids'])))
-    ctx.b.add(lambda o=op: ctx.client.tokens.split(o['word_id'], o['position']))
+        ctx.b.add(lambda batch, o=op: batch.tokens.bulk_delete(list(o['morpheme_ids'])))
+    ctx.b.add(lambda batch, o=op: batch.tokens.split(o['word_id'], o['position']))
     return 1
 
 
 def _merge(ctx: Context, op, key: str, others: List[str]) -> int:
     if op.get('morpheme_ids'):
-        ctx.b.add(lambda o=op: ctx.client.tokens.bulk_delete(list(o['morpheme_ids'])))
+        ctx.b.add(lambda batch, o=op: batch.tokens.bulk_delete(list(o['morpheme_ids'])))
     # Sequential merges into the survivor: the server runs batch ops in order,
     # so each merge sees the widened extent. The dedup ops after them see the
     # reparented spans and links.
     for oid in others:
-        ctx.b.add(lambda o=op, x=oid, k=key: ctx.client.tokens.merge(o[k], x))
+        ctx.b.add(lambda batch, o=op, x=oid, k=key: batch.tokens.merge(o[k], x))
     for sp in op.get('spans') or []:
         if sp.get('value') is not None:
-            ctx.b.add(lambda sp=sp: ctx.client.spans.update(sp['keep_id'], sp['value']))
+            ctx.b.add(lambda batch, sp=sp: batch.spans.update(sp['keep_id'], sp['value']))
         for sid in sp.get('delete_ids') or []:
             ctx.drop('spans', sid)
     for lid in (op.get('links') or {}).get('delete_ids') or []:
@@ -330,7 +332,7 @@ def _apply_delete_word(ctx: Context, op) -> int:
 
 
 def _apply_split_sentence(ctx: Context, op) -> int:
-    ctx.b.add(lambda o=op: ctx.client.tokens.split(o['sentence_id'], o['position']))
+    ctx.b.add(lambda batch, o=op: batch.tokens.split(o['sentence_id'], o['position']))
     return 1
 
 
@@ -343,7 +345,7 @@ def _apply_confirm(ctx: Context, op) -> int:
     for tid in op.get('token_ids') or []:
         ctx.b.update('tokens', tid, metadata=CONFIRM)
     for lid in op.get('link_ids') or []:
-        ctx.b.add(lambda i=lid: ctx.client.vocab_links.patch_metadata(i, CONFIRM))
+        ctx.b.add(lambda batch, i=lid: batch.vocab_links.patch_metadata(i, CONFIRM))
     for sid in op.get('span_ids') or []:
         ctx.b.update('spans', sid, metadata=CONFIRM)
     return (len(op.get('token_ids') or []) + len(op.get('link_ids') or [])
@@ -363,10 +365,10 @@ def _apply_discard_analysis(ctx: Context, op) -> int:
     for mid in op.get('morpheme_ids') or []:
         ctx.drop('tokens', mid)
     if op.get('reset_first_id'):
-        ctx.b.add(lambda i=op['reset_first_id']: ctx.client.tokens.patch_metadata(
+        ctx.b.add(lambda batch, i=op['reset_first_id']: batch.tokens.patch_metadata(
             i, {'form': None, 'morphType': None, **CLEAR_PROV}))
     for r in op.get('renumber') or []:
-        ctx.b.add(lambda r=r: ctx.client.tokens.update(r['id'], precedence=r['precedence']))
+        ctx.b.add(lambda batch, r=r: batch.tokens.update(r['id'], precedence=r['precedence']))
     return 1
 
 
@@ -888,13 +890,13 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
             mid = created_id(b.results[idx] if idx < len(b.results) else None)
             if not mid:
                 raise RuntimeError('a created morpheme came back without an id; its gloss was not written')
-            b.add(lambda l=layer_id, m=mid, v=value: client.spans.create(l, [m], v, stamps.stamp()))
+            b.add(lambda batch, l=layer_id, m=mid, v=value: batch.spans.create(l, [m], v, stamps.stamp()))
         for tokens, key in ctx.pending_links:
             i = ctx.entry_idx.get(key)
             iid = created_id(b.results[i]) if i is not None and i < len(b.results) else None
             if not iid:
                 raise RuntimeError('a created lexicon entry came back without an id; a link to it was not written')
-            b.add(lambda i=iid, t=tokens: client.vocab_links.create(i, t, stamps.stamp()))
+            b.add(lambda batch, i=iid, t=tokens: batch.vocab_links.create(i, t, stamps.stamp()))
         for iid in ctx.pending_deletes:
             ctx.drop('vocab_items', iid)
         b.flush()

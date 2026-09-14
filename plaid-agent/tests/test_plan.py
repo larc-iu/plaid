@@ -7,7 +7,7 @@ from plaid_agent.igt.plan import execute_plan, summarize
 def test_batcher_flushes_on_budget_and_indexes_globally():
     c = FakeClient()
     b = Batcher(c, budget=2)
-    idx = [b.add(lambda i=i: c.spans.create('l', ['t'], str(i))) for i in range(5)]
+    idx = [b.add(lambda batch, i=i: batch.spans.create('l', ['t'], str(i))) for i in range(5)]
     assert idx == [0, 1, 2, 3, 4]
     assert len(c.batches) == 2  # two full batches flushed, one op still open
     b.flush()
@@ -497,14 +497,20 @@ def test_plan_error_reports_how_much_was_applied():
     import pytest
     c = FakeClient()
     calls = {'n': 0}
-    real = c.submit_batch
+    real = c.batch
 
     def flaky():
-        calls['n'] += 1
-        if calls['n'] == 2:
-            raise RuntimeError('boom')
-        return real()
-    c.submit_batch = flaky
+        batch = real()
+        submit = batch.submit
+
+        def once():
+            calls['n'] += 1
+            if calls['n'] == 2:
+                raise RuntimeError('boom')
+            return submit()
+        batch.submit = once
+        return batch
+    c.batch = flaky
     ops = [{'kind': 'set_span', 'layer_id': 'L', 'token_id': f'T{i}', 'span_id': None, 'value': 'v', 'label': ''} for i in range(1200)]
     with pytest.raises(PlanError) as ei:
         execute_plan(c, ops, source='s', label='l')
@@ -690,7 +696,7 @@ def test_updates_fold_into_bulk_sub_ops_by_resource_and_chunk():
         b.update('spans', f's{i}', value='x')
     b.update('spans', 's0', metadata={'k': 1})       # merges with s0's value
     b.update('relations', 'r1', metadata={'k': 2})
-    b.add(lambda: c.spans.create('L', ['t'], 'v'))    # a plain sub-op, before the bulk ones
+    b.add(lambda batch: batch.spans.create('L', ['t'], 'v'))    # a plain sub-op, before the bulk ones
     b.flush()
     assert [(r, len(items)) for r, items in c.bulk_calls] == [('spans', BULK_CHUNK), ('spans', 5), ('relations', 1)]
     assert c.bulk_calls[0][1][0] == {'id': 's0', 'value': 'x', 'metadata': {'k': 1}}

@@ -110,12 +110,12 @@ def _apply_set_span(ctx: Context, op) -> int:
         # `updateAnnotation`) and as an unlemmatized import writes it.
         ctx.b.update('spans', span_id, value=None, metadata=ctx.restamp())
     elif span_id and value == '':
-        ctx.b.add(lambda sid=span_id: ctx.client.spans.delete(sid))
+        ctx.b.add(lambda batch, sid=span_id: batch.spans.delete(sid))
     elif span_id:
         ctx.b.update('spans', span_id, value=value, metadata=ctx.restamp())
     elif value != '':
         ctx.creating[(op['layer_id'], op['token_id'])] = ctx.b.add(
-            lambda o=op, v=value: ctx.client.spans.create(o['layer_id'], [o['token_id']], v, ctx.stamp()))
+            lambda batch, o=op, v=value: batch.spans.create(o['layer_id'], [o['token_id']], v, ctx.stamp()))
     else:
         return 0  # nothing to clear
     return 1
@@ -136,24 +136,24 @@ def _apply_confirm(ctx: Context, op) -> int:
 
 def _apply_set_words(ctx: Context, op) -> int:
     from .shape import apply_set_words
-    apply_set_words(ctx.client, op, ctx.b, ctx.stamp)
+    apply_set_words(op, ctx.b, ctx.stamp)
     return 1
 
 
 def _apply_split_sentence(ctx: Context, op) -> int:
     from .sentences import apply_split_sentence
-    apply_split_sentence(ctx.client, op, ctx.b, ctx.stamp)
+    apply_split_sentence(op, ctx.b, ctx.stamp)
     return 1
 
 
 def _apply_merge_sentences(ctx: Context, op) -> int:
     from .sentences import apply_merge_sentences
-    apply_merge_sentences(ctx.client, op, ctx.b, ctx.stamp)
+    apply_merge_sentences(op, ctx.b, ctx.stamp)
     return 1
 
 
 def _apply_del_relation(ctx: Context, op) -> int:
-    ctx.b.add(lambda i=op['relation_id']: ctx.client.relations.delete(i))
+    ctx.b.add(lambda batch, i=op['relation_id']: batch.relations.delete(i))
     return 1
 
 
@@ -164,8 +164,8 @@ def _apply_set_head(ctx: Context, op) -> int:
     # one, so the word is never headless and never twice headed, whichever way
     # a failure falls.
     if op.get('relation_id'):
-        ctx.b.add(lambda i=op['relation_id']: ctx.client.relations.delete(i))
-    ctx.b.add(lambda o=op, s=src, t=target: ctx.client.relations.create(
+        ctx.b.add(lambda batch, i=op['relation_id']: batch.relations.delete(i))
+    ctx.b.add(lambda batch, o=op, s=src, t=target: batch.relations.create(
         o['relation_layer_id'], s, t, o['deprel'], ctx.stamp() or None))
     return 1
 
@@ -694,7 +694,7 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
                     ctx.lemma_at[wid] = planned
                     continue
                 ctx.lemma_at[wid] = b.add(
-                    lambda o=op, w=wid, f=form: client.spans.create(
+                    lambda batch, o=op, w=wid, f=form: batch.spans.create(
                         o['lemma_layer_id'], [w], f, ctx.stamp()))
 
         # The relations need those spans to exist, so the batch has to land first.
@@ -710,7 +710,7 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
         from .shape import finish_set_words
         for op in ops:
             if op.get('kind') == 'set_words':
-                finish_set_words(client, op, b, b.results, ctx.stamp)
+                finish_set_words(op, b, b.results, ctx.stamp)
         _run(ctx, ops, IDS)
         b.flush()
 

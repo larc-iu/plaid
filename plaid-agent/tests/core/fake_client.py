@@ -51,6 +51,67 @@ class Recorder:
 RESOURCES = ('tokens', 'spans', 'relations', 'vocab_links', 'vocab_items', 'texts')
 
 
+class _Batch:
+    """What ``client.batch()`` returns and ``client.batched()`` yields: a view
+    of the client with the same resources, queuing what is written on it until
+    ``submit`` sends the queue as one atomic request. A write made on the
+    client itself is never touched by an open batch, so it reaches the log at
+    once.
+
+    Everything the batch does not have itself is the client's, which is how a
+    read made on a batch answers from the fixture.
+    """
+
+    def __init__(self, client):
+        self.client = client
+        self.log = []      # what this batch has queued, in order
+        self.results = []
+        self.open = True
+        for name in RESOURCES:
+            setattr(self, name, Recorder(self.log, name, client.bulk_calls))
+
+    def __getattr__(self, name):
+        return getattr(self.client, name)
+
+    def _queueing(self, name):
+        """The client's own resource, rebound to this batch: its writes queue,
+        its reads still reach the fixture."""
+        resource = getattr(self.client, name)
+        if isinstance(resource, Recorder):
+            return Recorder(self.log, name, self.client.bulk_calls)
+        return resource.__class__(self)
+
+    @property
+    def documents(self):
+        return self._queueing('documents')
+
+    @property
+    def comments(self):
+        return self._queueing('comments')
+
+    def submit(self):
+        assert self.open, 'this batch was already submitted or aborted'
+        self.open = False
+        entries, self.log = self.log, []
+        self.client.batches.append(entries)
+        self.client.log.extend(entries)
+        # Result per op, like the server: created things carry an id, and a
+        # bulk create carries `ids`, one per item, in input order.
+        self.results = []
+        for i, e in enumerate(entries):
+            body = {'id': f'new-{e[0]}-{i}'}
+            if e[1].startswith('bulk_create'):
+                n = len(e[2][0]) if e[2] and isinstance(e[2][0], list) else 1
+                body['ids'] = [f'new-{e[0]}-{i}-{k}' for k in range(n)]
+            self.results.append({'status': 201, 'body': body})
+        return self.results
+
+    def abort(self):
+        # Nothing it queued reaches the log.
+        self.open = False
+        self.log = []
+
+
 class BaseFakeClient:
     base_url = 'http://plaid.test'
     token = 't'
@@ -61,7 +122,6 @@ class BaseFakeClient:
         self.doc_reads = []  # (document id, layers asked for) per body read
         self.batches = []  # each: list of log entries submitted together
         self.operations = []
-        self._batch_start = None
         self._project = project
         self._documents = documents
         self.audit = list(audit or [])
@@ -200,30 +260,18 @@ class BaseFakeClient:
         return self._user_data
 
     # batch surface
-    def begin_batch(self):
-        assert self._batch_start is None, 'nested batch'
-        self._batch_start = len(self.log)
+    def batch(self):
+        return _Batch(self)
 
-    def is_batch_mode(self):
-        return self._batch_start is not None
-
-    def abort_batch(self):
-        self._batch_start = None
-
-    def submit_batch(self):
-        entries = self.log[self._batch_start:]
-        self.batches.append(entries)
-        self._batch_start = None
-        # Result per op, like the server: created things carry an id, and a
-        # bulk create carries `ids`, one per item, in input order.
-        out = []
-        for i, e in enumerate(entries):
-            body = {'id': f'new-{e[0]}-{i}'}
-            if e[1].startswith('bulk_create'):
-                n = len(e[2][0]) if e[2] and isinstance(e[2][0], list) else 1
-                body['ids'] = [f'new-{e[0]}-{i}-{k}' for k in range(n)]
-            out.append({'status': 201, 'body': body})
-        return out
+    @contextmanager
+    def batched(self):
+        batch = _Batch(self)
+        try:
+            yield batch
+        except BaseException:
+            batch.abort()
+            raise
+        batch.submit()
 
     @contextmanager
     def operation(self, message):

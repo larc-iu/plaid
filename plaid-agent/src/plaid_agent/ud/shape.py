@@ -80,7 +80,7 @@ def t_set_words(ws: Workspace, document: str = None, ref: str = None, forms=None
     return out
 
 
-def apply_set_words(client, op: Dict[str, Any], b, stamp) -> None:
+def apply_set_words(op: Dict[str, Any], b, stamp) -> None:
     """Batch 1 of the reshape: the words themselves, and the token's own form.
 
     Returns nothing; the created ids are read back in batch 2 (a batch op
@@ -88,8 +88,8 @@ def apply_set_words(client, op: Dict[str, Any], b, stamp) -> None:
     """
     forms, surface = op['forms'], op.get('surface') or ''
     if op.get('existing_word_ids'):
-        b.add(lambda ids=list(op['existing_word_ids']): client.tokens.bulk_delete(ids))
-    idx = b.add(lambda o=op: client.tokens.bulk_create([
+        b.add(lambda batch, ids=list(op['existing_word_ids']): batch.tokens.bulk_delete(ids))
+    idx = b.add(lambda batch, o=op: batch.tokens.bulk_create([
         {'token_layer_id': o['word_layer_id'], 'text': o['text_id'],
          'begin': o['begin'], 'end': o['end'], 'precedence': i}
         for i, _ in enumerate(o['forms'])]))
@@ -97,13 +97,13 @@ def apply_set_words(client, op: Dict[str, Any], b, stamp) -> None:
     # an export knows what to print on the range line. A token back down to one
     # word drops it again.
     if len(forms) > 1:
-        b.add(lambda i=op['token_id'], v=surface: client.tokens.patch_metadata(i, {'form': v}))
+        b.add(lambda batch, i=op['token_id'], v=surface: batch.tokens.patch_metadata(i, {'form': v}))
     else:
-        b.add(lambda i=op['token_id']: client.tokens.patch_metadata(i, {'form': None}))
+        b.add(lambda batch, i=op['token_id']: batch.tokens.patch_metadata(i, {'form': None}))
     op['_created_at'] = idx
 
 
-def finish_set_words(client, op: Dict[str, Any], b, results, stamp) -> None:
+def finish_set_words(op: Dict[str, Any], b, results, stamp) -> None:
     """Batch 2: the Form and Lemma spans on the words batch 1 created."""
     from ..core.plan import created_id
     at = op.get('_created_at')
@@ -124,9 +124,9 @@ def finish_set_words(client, op: Dict[str, Any], b, results, stamp) -> None:
         # one word spelled like its token needs none, and reads fall back to
         # the text. Every word gets a lemma, seeded from its form.
         if len(forms) > 1 or form != surface:
-            b.add(lambda o=op, t=token_id, v=form: client.spans.bulk_create(
+            b.add(lambda batch, o=op, t=token_id, v=form: batch.spans.bulk_create(
                 [{'span_layer_id': o['form_layer_id'], 'tokens': [t], 'value': v,
                   'metadata': stamp() or None}]))
-        b.add(lambda o=op, t=token_id, v=form: client.spans.bulk_create(
+        b.add(lambda batch, o=op, t=token_id, v=form: batch.spans.bulk_create(
             [{'span_layer_id': o['lemma_layer_id'], 'tokens': [t], 'value': v,
               'metadata': stamp() or None}]))
