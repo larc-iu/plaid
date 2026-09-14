@@ -14,6 +14,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { canManageProject } from '@ui/domain/permissions.js';
+import { useLatestCall } from '@ui/hooks/useLatestCall.js';
 import { isEmail, EMAIL_INVALID_MESSAGE } from '@ui/lib/email.js';
 import { Badge } from '@ui/components/ui/badge';
 import { UserAvatar } from '@ui/components/shared/UserAvatar';
@@ -131,19 +132,27 @@ export const ProjectManagement = () => {
     }
   };
 
+  // One route component serves every project id, so walking from A to B starts
+  // a second read without ending the first and A can answer last, putting A's
+  // member table and A's roles under B's heading.
+  const begin = useLatestCall();
+
   const fetchProject = async () => {
+    const isCurrent = begin();
     try {
       setLoading(true);
       const client = getClient();
       const projectData = await client.projects.get(projectId);
+      if (!isCurrent()) return null;
       setProject(projectData);
       return projectData;
     } catch (err) {
+      if (!isCurrent()) return null;
       console.error('Error fetching project:', err);
       notifyError('Failed to load project data');
       return null;
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   };
 
