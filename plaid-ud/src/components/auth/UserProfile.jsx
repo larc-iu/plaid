@@ -120,7 +120,7 @@ export const UserProfile = () => {
       await loadTokens();
     } catch (err) {
       console.error('Error creating API token:', err);
-      setTokensError('Failed to create API token: ' + (err.message || 'Unknown error'));
+      setTokensError(`Failed to create API token: ${humanizeError(err)}`);
     } finally {
       setCreatingToken(false);
     }
@@ -144,7 +144,7 @@ export const UserProfile = () => {
       await loadTokens();
     } catch (err) {
       console.error('Error revoking API token:', err);
-      setTokensError('Failed to revoke API token: ' + (err.message || 'Unknown error'));
+      setTokensError(`Failed to revoke API token: ${humanizeError(err)}`);
     }
   };
 

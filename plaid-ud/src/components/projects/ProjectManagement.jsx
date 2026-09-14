@@ -346,7 +346,7 @@ export const ProjectManagement = () => {
       if (err.status === 409 || (err.message && err.message.includes('409'))) {
         setCreateUserError(`An account for "${newUserForm.email}" already exists.`);
       } else {
-        setCreateUserError('Failed to create user: ' + (err.message || 'Unknown error'));
+        setCreateUserError(`Failed to create user: ${humanizeError(err)}`);
       }
     } finally {
       setCreateUserLoading(false);
@@ -401,7 +401,7 @@ export const ProjectManagement = () => {
       await fetchProject();
     } catch (err) {
       console.error('Error updating user:', err);
-      setEditUserError('Failed to update user: ' + (err.message || 'Unknown error'));
+      setEditUserError(`Failed to update user: ${humanizeError(err)}`);
     }
   };
 

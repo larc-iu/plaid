@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MemoryRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import { renderComponent, texts } from '@ui/test/renderComponent.jsx';
+import { type } from '../../test/keyboard.js';
 
 // Users and Permissions is one route component serving every project id, so
 // walking from A to B keeps it mounted and starts a second read without ending
@@ -8,11 +9,13 @@ import { renderComponent, texts } from '@ui/test/renderComponent.jsx';
 // roles under B's settings, and the role pickers there write to whichever
 // project the reader is on.
 
-vi.mock('../../utils/feedback.jsx', () => ({
-  notifySuccess: vi.fn(),
-  notifyError: vi.fn(),
-  humanizeError: (e) => String(e),
-}));
+// The toasts are stubs, but `humanizeError` is the real one: what an error
+// looks like once it has been through it is the subject of the second test
+// below.
+vi.mock('../../utils/feedback.jsx', async () => {
+  const { humanizeError } = await import('@ui/lib/errors.js');
+  return { notifySuccess: vi.fn(), notifyError: vi.fn(), humanizeError };
+});
 vi.mock('./ProjectInvites', () => ({
   ProjectInvites: () => null,
   MintedLinkModal: () => null,
@@ -101,6 +104,59 @@ describe('the members table when the reader walks to another project', () => {
     const view = await renderComponent(app);
     await view.step(async () => d.settle('A'));
     expect(members(view.container)).toContain('ada');
+    await view.unmount();
+  });
+});
+
+describe('the new-user banner', () => {
+  beforeEach(() => {
+    auth.user = { id: 'u', isAdmin: true };
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    auth.user = { id: 'u', isAdmin: false };
+    vi.restoreAllMocks();
+  });
+
+  it('says what a refused create means rather than quoting the request', async () => {
+    // The banner is rendered verbatim, so a raw client message puts the
+    // request URL and the ids it carried on screen.
+    const d = deferred();
+    d.client.users.create = async () => {
+      throw Object.assign(
+        new Error('HTTP 503 Service Unavailable at http://localhost:8085/api/v1/users'),
+        { status: 503 },
+      );
+    };
+    auth.getClient.mockReturnValue(d.client);
+    const view = await renderComponent(app);
+    await view.step(async () => d.settle('A'));
+
+    const click = (el) => el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await view.step(() =>
+      click(
+        [...view.container.querySelectorAll('button')].find((b) =>
+          /Create user/.test(b.textContent),
+        ),
+      ),
+    );
+
+    const field = (id) => document.body.querySelector(`#${id}`);
+    await view.step(() => type(field('pm-new-email'), 'grace@example.com'));
+    await view.step(() => type(field('pm-new-password'), 'hopper1'));
+    await view.step(() => type(field('pm-new-password-confirm'), 'hopper1'));
+    await view.step(async () => {
+      field('pm-new-email')
+        .closest('form')
+        .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    const banner = document.body.querySelector('[role="alert"]')?.textContent ?? '';
+    expect(banner).toBe(
+      'Failed to create user: Could not reach the server. Check your connection and try again.',
+    );
     await view.unmount();
   });
 });

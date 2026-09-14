@@ -260,7 +260,7 @@ export const ProjectImportExport = () => {
             file: file.name,
             name,
             status: 'rejected',
-            reason: err.message || 'Unknown error',
+            reason: humanizeError(err),
           });
         }
       }
@@ -309,7 +309,7 @@ export const ProjectImportExport = () => {
               zip.file(dedupeName(d.name, used), t);
             }
           } catch (err) {
-            skippedAcc.push({ name: d.name, reason: err.message || 'Failed to load' });
+            skippedAcc.push({ name: d.name, reason: humanizeError(err, 'Failed to load') });
           }
         },
         (done) => setExportProgress({ done, total: docs.length }),
