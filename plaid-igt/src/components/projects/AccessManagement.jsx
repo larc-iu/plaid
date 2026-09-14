@@ -14,28 +14,13 @@ import { useUserAdmin } from '../admin/useUserAdmin';
 import { UserAdminDialogs } from '../admin/userAdmin';
 import { useUserSearch } from '@/hooks/useUserSearch';
 import { UserSearch } from '@/components/shared/UserSearch';
-import { MAINTAINER_HINT, NO_ACCESS_HINT, canManageProject } from '@ui/domain/permissions.js';
+import { canManageProject } from '@ui/domain/permissions.js';
+import { ROLE_HINTS, ROLE_OPTIONS } from '@/domain/roleGrants.js';
 
 // Mirrors plaid-ud's ProjectManagement. The full user roster isn't fetched
 // (doesn't scale + is admin-gated); instead "Members" come from the project's
 // ACL and new grants come from a server-side `?q=` search.
-// What each level grants, said where the choice is made. This screen decides
-// what a class of fifteen can do and named the levels and nothing else, so the
-// only way to learn that a Reader cannot leave a comment was to give someone
-// Reader access and hear about it from them.
-const ROLE_OPTIONS = [
-  { value: 'none', label: 'No access', hint: NO_ACCESS_HINT },
-  { value: 'reader', label: 'Reader', hint: 'Reads the texts and the lexicon. Cannot comment.' },
-  { value: 'writer', label: 'Writer', hint: 'Also edits documents and links vocabulary.' },
-  { value: 'maintainer', label: 'Maintainer', hint: MAINTAINER_HINT },
-];
 const GRANT_ROLES = ['reader', 'writer', 'maintainer'];
-
-// The same lines under the invite screen's role picker: it is the other place
-// the choice is made, and it is made for people who have no account yet.
-const ROLE_HINTS = Object.fromEntries(
-  ROLE_OPTIONS.filter((o) => o.value !== 'none').map((o) => [o.value, o.hint]),
-);
 
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 

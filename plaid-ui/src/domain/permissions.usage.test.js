@@ -43,10 +43,11 @@ const sources = (dir) =>
 // saying what it grants leaves "a Reader cannot comment" to be learned by
 // granting someone Reader and hearing about it.
 // The Members table and the Invites screen are one shared component each now,
-// and both take their options from the app: these two files are where all four
+// and both take their options from the app: these files are where all four
 // grants are written out.
 const ROLE_PICKERS = [
-  'plaid-igt/src/components/projects/AccessManagement.jsx',
+  'plaid-igt/src/domain/roleGrants.js',
+  'plaid-igt/src/components/admin/AdminInvites.jsx',
   'plaid-ud/src/components/projects/ProjectManagement.jsx',
 ];
 
@@ -123,6 +124,28 @@ describe('project role copy', () => {
         const own = ownKeys(block.text);
         if (!/value:\s*'(none|reader|writer|maintainer)'/.test(own)) continue;
         if (!/\bhint:/.test(own)) bare.push(`${rel}:${block.line}`);
+      }
+    }
+    expect(bare).toEqual([]);
+  });
+
+  // The list above is written by hand, and the admin panel's batch-mint dialog
+  // was not on it: it offered all three levels bare for as long as it existed.
+  // So the same question is asked of the shape instead of the file name. A
+  // dropdown MENU of roles is not this (there is no room for a line under an
+  // item, and "Add as…" is read next to the table that explains them); a
+  // SELECT is, and every one of them takes a `hint`.
+  it('hints every role in a picker, wherever the picker is', () => {
+    const bare = [];
+    for (const app of APPS) {
+      for (const file of sources(path.join(repo, app))) {
+        if (/\.test\.jsx?$/.test(file)) continue;
+        const text = fs.readFileSync(file, 'utf8');
+        for (const m of text.matchAll(/GRANT_ROLES\.map\(/g)) {
+          const window = text.slice(m.index, m.index + 300);
+          if (!/<SelectItem/.test(window) || /\bhint[=:]/.test(window)) continue;
+          bare.push(`${path.relative(repo, file)}:${text.slice(0, m.index).split('\n').length}`);
+        }
       }
     }
     expect(bare).toEqual([]);

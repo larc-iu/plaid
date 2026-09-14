@@ -26,6 +26,7 @@ import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { InviteStatusBadge } from '@ui/components/shared/InviteStatusBadge.jsx';
 import { inviteLinkFor, GRANT_ROLES, cap } from '@ui/domain/invites.js';
+import { ROLE_HINTS } from '@/domain/roleGrants.js';
 import { textIncludes } from '@ui/domain/collation.js';
 
 // Every invite on the server, whoever minted it. A project's own tab shows
@@ -334,7 +335,7 @@ export const AdminInvites = ({ client }) => {
                 </SelectTrigger>
                 <SelectContent>
                   {GRANT_ROLES.map((r) => (
-                    <SelectItem key={r} value={r}>
+                    <SelectItem key={r} value={r} hint={ROLE_HINTS[r]}>
                       {cap(r)}
                     </SelectItem>
                   ))}
