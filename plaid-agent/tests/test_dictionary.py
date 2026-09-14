@@ -529,6 +529,65 @@ def test_a_form_naming_an_entry_this_plan_removes_gets_the_plan_aware_refusal():
             in call_tool(w, 'set_entry_field', {'entry_form': 'zimbe', 'field': 'gloss', 'value': 'x'}))
 
 
+def test_a_number_a_planned_delete_moved_is_refused_and_never_followed():
+    """A "#" number is a POSITION, and it is read against the plan's view, which
+    leaves out what the plan deletes. So after deleting the sense shown as
+    "kwatha#1.1", that same suffix named the NEXT sense and the tool wrote to an
+    entry nobody had asked for, silently. The guard existed for the homograph
+    number ("gam#2") and exempted the dotted one.
+    """
+    w = dict_ws()
+    call_tool(w, 'delete_entry', {'entry_id': 'd-boil'})      # shown as "kwatha#1.1"
+    before = list(w.ops)
+    out = call_tool(w, 'set_entry_field', {'entry_form': 'kwatha#1.1', 'field': 'gloss', 'value': 'XX'})
+    assert 'is not a name any more' in out, out
+    assert w.ops == before and not ops_of(w, 'set_entry_field')
+
+    # And the number the survivor used to carry is no name either: it would
+    # have answered "No lexicon entry", inviting the model to create it.
+    out = call_tool(w, 'set_entry_field', {'entry_form': 'kwatha#1.2', 'field': 'gloss', 'value': 'XX'})
+    assert 'is not a name any more' in out, out
+    assert w.ops == before
+
+    # The headword's own number did not move, so it still names it.
+    assert 'Planned' in call_tool(w, 'set_entry_field',
+                                  {'entry_form': 'kwatha#1', 'field': 'gloss', 'value': 'XX'})
+    assert [o['item_id'] for o in ops_of(w, 'set_entry_field')] == ['d-kwatha']
+
+
+def test_a_homograph_number_a_planned_delete_moved_is_refused_too():
+    """The same rule on the first segment, which is where it started: "phika#1"
+    after a planned delete of the first "phika" would name the second."""
+    w = dict_ws(items=ITEMS + [{'id': 'd-phika2', 'form': 'phika', 'metadata': {'gloss': 'boil over'}}])
+    call_tool(w, 'delete_entry', {'entry_id': 'd-phika'})
+    out = call_tool(w, 'set_entry_field', {'entry_form': 'phika#1', 'field': 'gloss', 'value': 'XX'})
+    assert 'is not a name any more' in out, out
+    assert not ops_of(w, 'set_entry_field')
+
+
+def test_reading_an_entry_this_plan_removes_says_so_and_names_it_by_form():
+    """It read the entry against the plan's VIEW, which leaves the entry out,
+    so the header called it by its id and offered that id as the entry_form to
+    pass back, and said nothing about the plan removing it."""
+    w = dict_ws()
+    call_tool(w, 'delete_entry', {'entry_id': 'd-boil'})      # shown as "kwatha#1.1"
+    out = call_tool(w, 'lexicon_entry', {'entry_id': 'd-boil'})
+    assert out.splitlines()[0] == 'Sense 1.1 of headword "kwatha" (id d-boil)'
+    assert out.splitlines()[1] == 'This plan deletes or merges this entry away.'
+    assert 'entry_form' not in out and 'gloss: boil' in out
+
+    # A headword, and the same read reached by form.
+    w = dict_ws()
+    call_tool(w, 'delete_entry', {'entry_form': 'phika'})
+    out = call_tool(w, 'lexicon_entry', {'entry_form': 'phika'})
+    assert out.splitlines()[0] == 'Headword "phika" (id d-phika)'
+    assert 'This plan deletes or merges this entry away.' in out
+
+    # An entry the plan leaves alone still says how to name it back.
+    assert 'entry_form "kwatha#1.1"' in call_tool(w, 'lexicon_entry', {'entry_id': 'd-boil'})
+    assert 'deletes or merges this entry away' not in call_tool(w, 'lexicon_entry', {'entry_id': 'd-boil'})
+
+
 def test_a_form_shared_with_a_doomed_entry_still_names_the_one_that_survives():
     """Resolving against the lexicon as it was is the LAST resort, so a form
     spelled like an entry the plan deletes still reaches the entry that stays."""

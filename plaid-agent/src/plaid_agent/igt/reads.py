@@ -372,7 +372,13 @@ def t_lexicon_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Op
     # a moment ago reads back the same whether the entry was named by id or
     # by form.
     meta = _meta_of(ws, target)
-    view = ws.view_of_item(target['id'])
+    # An entry this plan removes is not in the plan's view, so its form, its
+    # number and the entry_form naming it back all came out as its id. Read
+    # that one against the lexicon as it stands instead. No entry_form is
+    # offered for it: the numbers beside the others have moved, so the one it
+    # carried now names something else, and its id is the way back.
+    doomed = target['id'] in ws.doomed_entries()
+    view = ws.view_of_item(target['id'], removed=doomed)
     if view is not None:
         num = view.number(target['id'])
         if view.is_sense(target['id']):
@@ -381,9 +387,12 @@ def t_lexicon_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Op
             group = homograph_group(view.items, target['id'])
             where = (f'Headword "{target.get("form")}"'
                      + (f' ({num} of {len(group)} spelled that way)' if group else ''))
-        lines = [f'{where} (id {target["id"]}, entry_form "{view.address(target["id"])}")']
+        back = '' if doomed else f', entry_form "{view.address(target["id"])}"'
+        lines = [f'{where} (id {target["id"]}{back})']
     else:
         lines = [f'Entry "{target.get("form")}" (id {target["id"]})']  # a flat lexicon has no headwords
+    if doomed:
+        lines.append('This plan deletes or merges this entry away.')
     ref_names = {f['name'] for f in (view.ref_fields if view is not None else [])}
     hidden = view.hidden_fields(target) if view is not None else set()
     for k, v in meta.items():

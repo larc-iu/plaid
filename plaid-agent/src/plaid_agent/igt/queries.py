@@ -815,9 +815,6 @@ def _docs_of(rows: List[list]) -> set:
     return {e['document'] for r in rows for e in r if isinstance(e, dict) and e.get('document')}
 
 
-REPLACE_MAX = 20000  # matches one replacement may consider (bulk.REPLACE_MAX is the one tools use)
-
-
 def q_replace_matches(ws: Workspace, f, spec: Dict[str, Any], document_id: Optional[str], cap: int) -> List[list]:
     """The (span, token) rows whose value matches ``spec``, ``cap + 1`` at most
     so the caller can tell a capped read from a full one.

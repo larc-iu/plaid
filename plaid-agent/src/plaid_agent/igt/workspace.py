@@ -155,9 +155,9 @@ class Workspace(BaseWorkspace):
         self._views[key] = (items, (self._patch_version, gone), view)
         return view
 
-    def view_of_item(self, item_id: str) -> Optional['LexView']:
+    def view_of_item(self, item_id: str, removed: bool = False) -> Optional['LexView']:
         v = self.vocab_of_item(item_id)
-        return self.view(v) if v else None
+        return self.view(v, removed=removed) if v else None
 
     def entry_name(self, item: dict) -> str:
         """How a refusal names an entry, spelled the way a tool takes it back.
@@ -197,15 +197,26 @@ class Workspace(BaseWorkspace):
         if '#' in form:
             form, _, hn = form.rpartition('#')
             suffix = hn.strip()
-        # A homograph number is a POSITION among the entries spelled alike, and
-        # the view it counts against leaves out what this plan deletes. So
-        # "gam#1" after a planned delete of gam#1 quietly names the other gam.
-        # A number whose referent has moved within the turn is not a name.
-        if suffix is not None and '.' not in suffix and self.doomed_entries():
-            same = [it for v in vocabs for it in self.lexicon(v)
-                    if (it.get('form') or '').lower() == form.lower()
-                    and it['id'] in self.doomed_entries()]
-            if same:
+        # A "#" number is a POSITION: the headword's among the entries spelled
+        # alike, then its own place under that headword. It is read against the
+        # plan's view, which leaves out what this plan deletes, so after a
+        # planned delete the same suffix names the NEXT item along: "gam#1"
+        # names the other gam, and "kwatha#1.1" the sense that was 1.2. Writing
+        # to that is a change to an entry nobody asked for, with nothing said,
+        # so compare what the suffix names now with what it named before the
+        # plan and refuse when they differ. A number whose referent has moved
+        # within the turn is not a name.
+        gone = self.doomed_entries()
+        if suffix is not None and gone:
+            for v in vocabs:
+                names_now = [it['id'] for it in _dict_hits(self.view(v), form, suffix)]
+                named_before = [it['id'] for it in _dict_hits(self.view(v, removed=True), form, suffix)]
+                # It still names only the entry this plan removes. Saying THAT
+                # is more use than saying the numbers moved, so it is left to
+                # the refusal every caller makes about a doomed entry.
+                if names_now == named_before or (not names_now and named_before
+                                                 and all(i in gone for i in named_before)):
+                    continue
                 raise ToolError(
                     f'"{form}#{suffix}" is not a name any more: this plan deletes or merges away an '
                     f'entry spelled "{form}", so the numbers beside the others have moved. '
@@ -249,7 +260,6 @@ class Workspace(BaseWorkspace):
             # Whether the plan may still work on it is the caller's question,
             # asked in one place (`lexicon._refuse_doomed`, and the plan's own
             # delete-clash check for a tool that only names it).
-            gone = self.doomed_entries()
             if gone:
                 was = [it for v in vocabs
                        for it in _hits_in(self, v, form, suffix, has_gloss, deep=bool(g), removed=True)
