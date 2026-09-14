@@ -17,10 +17,8 @@ import { fileURLToPath } from 'node:url';
 // A static read is the right tool: the property is "this prop is present at
 // this call site", which a reader of the source can see and a renderer cannot.
 // It reads BOTH apps, since the hook is shared and a new screen in either can
-// break it.
-//
-// Its natural home is beside `subject.js` in plaid-ui, the way the DataTable
-// usage test sits beside the table.
+// break it, which is why it sits beside `subject.js` here rather than in one
+// of them. It runs under plaid-igt's vitest, like every test in this package.
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
