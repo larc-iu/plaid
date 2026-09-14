@@ -113,7 +113,11 @@ export function discoverServices(client, projectId) {
  * @returns {Promise<void>}
  */
 export function discardService(client, projectId, serviceId) {
-  return client._request('DELETE', `/api/v1/projects/${projectId}/services/${encodeURIComponent(serviceId)}`);
+  // bypassBatch: the registry is not project data. A discard from app chrome
+  // while a batch is open elsewhere would otherwise queue into it.
+  return client._request('DELETE', `/api/v1/projects/${projectId}/services/${encodeURIComponent(serviceId)}`, {
+    bypassBatch: true,
+  });
 }
 
 /**

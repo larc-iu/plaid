@@ -123,9 +123,12 @@ def discard_service(client, project_id, service_id):
     """Forget a previously-seen (offline) service: removes its row from the
     project's persistent registry. Maintainer-only; 409 if the service is
     currently connected (it would just re-register)."""
+    # bypass_batch: the registry is not project data. A discard while a batch
+    # is open elsewhere would otherwise queue into it.
     return client.messages._request(
         'DELETE',
-        f'/api/v1/projects/{project_id}/services/{urllib.parse.quote(service_id, safe="")}')
+        f'/api/v1/projects/{project_id}/services/{urllib.parse.quote(service_id, safe="")}',
+        bypass_batch=True)
 
 
 def _report_event(client, project_id, request_id, body):
