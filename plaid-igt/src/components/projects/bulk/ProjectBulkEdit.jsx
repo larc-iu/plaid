@@ -37,7 +37,7 @@ const OP_IDS = OPERATIONS.map((o) => o.id);
 // shared link lands on the same one.
 export const ProjectBulkEdit = ({ project, projectId, client }) => {
   const layerInfo = useMemo(() => getIgtLayerInfo(project), [project]);
-  const [op, setOp] = useTabParam(OP_IDS, 'respell', { param: 'op' });
+  const [op, setOp, opHref] = useTabParam(OP_IDS, 'respell', { param: 'op' });
 
   if (!layerInfo.primaryTokenLayer) {
     return (
@@ -62,7 +62,7 @@ export const ProjectBulkEdit = ({ project, projectId, client }) => {
             <TabsTrigger
               key={o.id}
               value={o.id}
-              to={`/projects/${projectId}?tab=bulk${o.id === 'respell' ? '' : `&op=${o.id}`}`}
+              to={opHref(`/projects/${projectId}`, o.id)}
               className="w-full justify-start gap-2 rounded-md border-b-0 px-3 py-2 data-[state=active]:bg-muted data-[state=active]:text-foreground"
             >
               <Icon className="h-4 w-4 shrink-0" /> {o.label}
