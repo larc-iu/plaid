@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 
 import PlaidClient from '@larc-iu/plaid-client';
 
-import { authService } from '../../../services/auth';
+import { authService } from '@ui/services/auth.js';
 
 const StrictModeContext = createContext(null);
 

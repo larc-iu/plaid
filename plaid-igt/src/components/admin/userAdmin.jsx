@@ -19,7 +19,7 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from '@ui/components/ui/alert-dialog';
-import { MintedLinkDialog } from '../projects/ProjectInvites';
+import { MintedLinkDialog } from '@ui/components/shared/MintedLinkDialog.jsx';
 
 // The dialogs behind useUserAdmin (its own module): one copy of the create,
 // edit, deactivate, and reset-link screens, wherever accounts are managed.
