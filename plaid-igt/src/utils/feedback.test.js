@@ -24,9 +24,16 @@ describe('notifyError', () => {
       description: 'Failed to create user: name taken',
     });
   });
-  it('falls back to the original when scrubbing empties it', () => {
-    notifyError('HTTP 500');
-    expect(toast.error).toHaveBeenCalledWith('Error', { description: 'HTTP 500' });
+  it('says what a locked document means, not "Locked"', () => {
+    notifyError({ status: 423, message: 'HTTP 423 Locked at http://localhost:5174/api/v1/spans' });
+    expect(toast.error).toHaveBeenCalledWith('Error', {
+      description:
+        'This document is being edited right now (by another user or a service). Try again in a moment.',
+    });
+  });
+  it('reads a status off a bare message too', () => {
+    notifyError('HTTP 423 Locked');
+    expect(toast.error.mock.calls[0][1].description).toMatch(/being edited right now/);
   });
 });
 

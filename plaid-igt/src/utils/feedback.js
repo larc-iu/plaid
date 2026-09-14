@@ -2,6 +2,8 @@ import { toast } from 'sonner';
 
 // The error vocabulary is shared with plaid-ud through plaid-ui, and
 // re-exported here so this file stays the one import every screen uses.
+import { humanizeError } from '@ui/lib/errors.js';
+
 export { humanizeError, isPermissionError, statusOf } from '@ui/lib/errors.js';
 
 // App-wide feedback primitives (sonner-backed). Transient outcomes are toasts.
@@ -11,19 +13,13 @@ export { humanizeError, isPermissionError, statusOf } from '@ui/lib/errors.js';
 export const notifySuccess = (message, title, options) =>
   toast.success(title || message, { ...(title ? { description: message } : {}), ...options });
 
-// Every error toast passes through here, and many callers hand over a raw
-// client `err.message` ("HTTP 400 … at http://host/api/v1/…"). Scrub the
-// transport noise once, centrally, so no toast shows an internal URL.
-const scrubTransport = (message) =>
-  typeof message === 'string'
-    ? message
-        .replace(/\s*at\s+https?:\/\/\S+/gi, '')
-        .replace(/^HTTP \d{3}\s*/i, '')
-        .trim() || message
-    : message;
-
+// Every error toast passes through `humanizeError`, so a status reads as the
+// same sentence in every app and no toast shows an internal URL or a bare id.
+// Callers that hold the error OBJECT should still pass it, so its status is
+// read rather than parsed back out of a message. Running it twice changes
+// nothing.
 export const notifyError = (message, title = 'Error', options) =>
-  toast.error(title, { description: scrubTransport(message), ...options });
+  toast.error(title, { description: humanizeError(message), ...options });
 
 export const notifyInfo = (message, title) =>
   toast(title || message, title ? { description: message } : undefined);
