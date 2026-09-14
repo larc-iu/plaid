@@ -350,6 +350,21 @@ def test_a_recording_with_no_speech_in_it_is_refused_once(monkeypatch):
 
 # --- progress through the long stretches -------------------------------------
 
+def test_the_bar_only_ever_goes_forward(monkeypatch):
+    # The lock step inside the alignment processor reported 2, from when that
+    # call was the first thing a run did. After a transcription the bar ran 70,
+    # then 2, then 75.
+    _media(monkeypatch)
+    module, _ = load_whisper()
+    service = _service(module)
+    helper = servicetest.run(service, REQUEST)
+
+    percents = [pct for pct, _ in helper.beats]
+    assert percents == sorted(percents), helper.beats
+    assert percents[-1] == 100
+    assert (72, 'Acquiring document lock...') in helper.beats
+
+
 def test_the_download_says_how_far_in_it_is(monkeypatch):
     seen = _media(monkeypatch, size=30 << 20, chunks=3)
     module, _ = load_whisper()

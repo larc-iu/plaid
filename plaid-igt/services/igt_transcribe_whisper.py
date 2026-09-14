@@ -273,6 +273,7 @@ class WhisperASRService(BaseService):
                         alignment_token_layer_id, sentence_token_layer_id, response_helper,
                         prov_source=service_source(self.service_id),
                         overwrite=overwrite,
+                        lock_percent=72,
                     )
                 response_helper.progress(100, "ASR processing completed successfully")
                 response_helper.complete({

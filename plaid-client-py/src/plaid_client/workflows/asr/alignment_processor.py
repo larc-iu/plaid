@@ -43,7 +43,8 @@ class AlignmentProcessor:
     def process_alignments(self, client, document_id: str, alignments: List[Alignment],
                           text_layer_id: str, alignment_token_layer_id: str,
                           sentence_token_layer_id: Optional[str], response_helper,
-                          prov_source: Optional[str] = None, overwrite: bool = False) -> int:
+                          prov_source: Optional[str] = None, overwrite: bool = False,
+                          lock_percent: int = 2) -> int:
         """
         Process ASR alignments and update the Plaid document.
 
@@ -66,6 +67,11 @@ class AlignmentProcessor:
                 are stamped machine-made per the provenance convention.
             overwrite: Allow the sentence-partition reset to destroy
                 human-made or human-verified sentence-level annotations.
+            lock_percent: The percent to report the lock step at. The rest of
+                the run reports 75 to 98, so a caller that has already done
+                work of its own passes what it has reached: the default is
+                what this reports standing alone, and left at it after a
+                transcription the bar ran 70, then 2, then 75.
 
         Returns:
             Number of new alignment tokens created
@@ -74,7 +80,7 @@ class AlignmentProcessor:
         # context manager acquires it (refusing with a clear error if another
         # user holds it) and always releases on exit. See
         # PlaidClient.documents.locked.
-        response_helper.progress(2, "Acquiring document lock...")
+        response_helper.progress(lock_percent, "Acquiring document lock...")
         with client.documents.locked(document_id):
             # Convert alignments to transcription format
             transcriptions = [
