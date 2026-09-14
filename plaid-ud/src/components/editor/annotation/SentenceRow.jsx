@@ -1,55 +1,40 @@
-import React, { useState, useRef, useMemo, useCallback } from 'react';
-import { Check, Undo2, PenLine, Tags } from 'lucide-react';
-import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
-import { Button } from '@ui/components/ui/button';
-import { isMachine, needsReview } from '@larc-iu/plaid-client';
+import React, { useMemo, useCallback, useRef } from 'react';
+import { isMachine } from '@larc-iu/plaid-client';
 import { DependencyTree } from './DependencyTree.jsx';
 import { computeArcLayout, buildIndexById } from '../../../utils/arcLayout.js';
 import { useTokenPositions } from '../hooks/useTokenPositions.js';
 import { RowLabelHeader } from './RowLabelHeader.jsx';
+import { SentenceActions } from './SentenceActions.jsx';
 import { TokenColumn } from './TokenColumn.jsx';
-import { SentenceComments } from './SentenceComments.jsx';
-import { SentenceMetadataDialog } from './SentenceMetadataDialog.jsx';
+import { useEditorSession } from './editorSession.js';
 import './SentenceRow.css';
 
-// Fallback when no per-document visibility is supplied (e.g. historical view):
-// show every annotation row. Stable reference so memoized children don't churn.
-const ALL_FIELDS_VISIBLE = { lemma: true, xpos: true, upos: true, feats: true };
-
-// Stable empty reference for the project's declared sentence fields, so a
-// sentence row memoized on its props doesn't churn when there are none.
-const EMPTY_FIELDS = [];
-
+// One sentence: the dependency tree over it, the annotation grid under that,
+// and the row of actions under both. Its props are what only this row can say:
+// which sentence, where it sits in the document, what its comment thread is
+// captioned with. Everything the whole grid shares comes from the session.
 export const SentenceRow = React.memo(
   ({
     sentenceData,
-    onAnnotationUpdate,
-    onFeatureDelete,
-    onRelationCreate,
-    onRelationUpdate,
-    onRelationDelete,
-    onConfirmTokens,
-    onDiscardTokens,
-    onSentenceMetadata,
-    onEditText,
-    comments,
     commentAnchorLabel,
-    canComment,
-    canDeleteAnyComment,
-    validators,
-    descriptions,
-    onPrecedent,
-    sentenceFields = EMPTY_FIELDS,
-    reviewable = needsReview,
-    totalTokensBefore = 0,
-    vocab,
-    colors,
-    visibleFields = ALL_FIELDS_VISIBLE,
-    onToggleField,
-    onAskAssistant,
+    totalTokensBefore,
     // 0-based here; the assistant addresses sentences from 1, as CoNLL-U does.
-    sentenceIndex = 0,
+    sentenceIndex,
   }) => {
+    const {
+      onRelationCreate,
+      onRelationUpdate,
+      onRelationDelete,
+      onEditText,
+      onToggleField,
+      validators,
+      descriptions,
+      vocab,
+      colors,
+      reviewable,
+      visibleFields,
+    } = useEditorSession();
+
     // Token data is already pre-processed in sentenceData
     const tokenData = sentenceData.tokens;
 
@@ -127,9 +112,6 @@ export const SentenceRow = React.memo(
     // Imperative handle into this sentence's dependency tree, for the arrow
     // handoff between the grid and the deprel labels.
     const treeRef = useRef(null);
-
-    // Detect if we're in read-only mode (historical state)
-    const isReadOnly = onAnnotationUpdate === null;
 
     // Calculate tab indices for row-wise navigation across all sentences
     const getTabIndex = useCallback(
@@ -240,30 +222,10 @@ export const SentenceRow = React.memo(
       return ids;
     }, [tokenData, relations, reviewable]);
 
-    const handleConfirmSentence = useCallback(() => {
-      onConfirmTokens?.(tokenData.map((d) => d.token.id));
-    }, [onConfirmTokens, tokenData]);
-
-    const handleDiscardSentence = useCallback(() => {
-      onDiscardTokens?.(tokenData.map((d) => d.token.id));
-    }, [onDiscardTokens, tokenData]);
-
-    // The sentence's own notes: sent_id, whatever the project declares, and
-    // whatever is already stored that it no longer does. They live on the
-    // SENTENCE TOKEN, which is where CoNLL-U's `# k = v` lines have always been
-    // read from and written back to. They open in a dialog of their own, one
-    // sentence at a time.
-    const sentenceToken = sentenceData.sentenceToken;
-    const sentenceMeta = sentenceToken?.metadata;
-    const [metaOpen, setMetaOpen] = useState(false);
-    const handleSentenceMetadata = useCallback(
-      (key, value) => onSentenceMetadata?.(sentenceToken?.id, key, value),
-      [onSentenceMetadata, sentenceToken],
-    );
-
     // Hand over to the Text Editor at this sentence, the mirror of Alt+click on
     // a token there. Undefined when there is no sentence token to land on, so
     // the affordance is simply absent rather than inert.
+    const sentenceToken = sentenceData.sentenceToken;
     const handleEditText = useMemo(
       () => (onEditText && sentenceToken?.id ? () => onEditText(sentenceToken.id) : undefined),
       [onEditText, sentenceToken],
@@ -357,121 +319,23 @@ export const SentenceRow = React.memo(
               data={data}
               index={index}
               columnWidth={columnWidths[index]}
-              getTabIndex={getTabIndex}
-              onAnnotationUpdate={onAnnotationUpdate}
-              onFeatureDelete={onFeatureDelete}
-              onNavigate={onNavigate}
-              onConfirmTokens={onConfirmTokens}
               maxFeatures={maxFeatures}
+              getTabIndex={getTabIndex}
+              onNavigate={onNavigate}
               tokenRefs={tokenRefs}
-              isReadOnly={isReadOnly}
-              vocab={vocab}
-              uposColors={colors?.upos}
-              featureInventory={vocab?.featureInventory}
-              visibleFields={visibleFields}
               relationInferred={inferredRelTokenIds.has(data.token.id)}
-              reviewable={reviewable}
-              validators={validators}
-              descriptions={descriptions}
-              onPrecedent={onPrecedent ? (field) => onPrecedent(field, data) : undefined}
             />
           ))}
         </div>
 
-        {/* Everything the sentence itself offers, BELOW the grid and
-          left-aligned with the first token so it reads as belonging to this
-          sentence. Two kinds, told apart by weight rather than by position:
-          Accept and Discard are outlined and only appear when they have
-          something to do, while the four standing actions are one dimmed
-          icon-and-label treatment apiece (`sentence-action`) because none of
-          them is the thing you came to the sentence to do. The metadata
-          disclosure is one of the four: it used to be a bold SENTENCE heading
-          on its own line, which made housekeeping the loudest thing under the
-          grid. */}
-        {(handleEditText ||
-          comments ||
-          onAskAssistant ||
-          sentenceToken ||
-          (!isReadOnly && (hasInferred || hasMachine))) && (
-          <div className="sentence-confirm">
-            {!isReadOnly && onConfirmTokens && hasInferred && (
-              <Button
-                className="accept-predictions-btn h-6 gap-1 px-2 text-xs"
-                variant="outline"
-                onClick={handleConfirmSentence}
-                title="Accept every proposal in this sentence as it stands. Ctrl/Cmd+Enter does one word."
-              >
-                <Check width={12} height={12} />
-                Accept predictions
-              </Button>
-            )}
-            {!isReadOnly && onDiscardTokens && hasMachine && (
-              <Button
-                className="discard-predictions-btn h-6 gap-1 px-2 text-xs"
-                variant="outline"
-                onClick={handleDiscardSentence}
-                title="Delete every machine annotation in this sentence that nobody has confirmed. Ctrl/Cmd+Backspace does one word."
-              >
-                <Undo2 width={12} height={12} />
-                Discard predictions
-              </Button>
-            )}
-            {sentenceToken && (
-              <Button
-                className="sentence-meta__toggle sentence-action h-6 gap-1 px-2 text-xs"
-                variant="ghost"
-                onClick={() => setMetaOpen(true)}
-                title="Edit this sentence's CoNLL-U comment lines"
-              >
-                <Tags width={12} height={12} />
-                Edit metadata
-              </Button>
-            )}
-            {handleEditText && (
-              <Button
-                className="edit-text-btn sentence-action h-6 gap-1 px-2 text-xs"
-                variant="ghost"
-                onClick={handleEditText}
-                title="Open this sentence in the Text Editor. Alt+click a word does the same."
-              >
-                <PenLine width={12} height={12} />
-                Edit text
-              </Button>
-            )}
-            {onAskAssistant && (
-              <Button
-                className="sentence-action h-6 gap-1 px-2 text-xs"
-                variant="ghost"
-                onClick={() => onAskAssistant({ ref: `s${sentenceIndex + 1}`, label: 'Sentence' })}
-                title="Ask the assistant about this sentence"
-              >
-                <AssistantMark className="h-3.5 w-3.5" />
-                Ask
-              </Button>
-            )}
-            {comments && sentenceToken?.id && (
-              <SentenceComments
-                store={comments}
-                sentenceId={sentenceToken.id}
-                anchorLabel={commentAnchorLabel}
-                canWrite={canComment}
-                canDeleteAny={canDeleteAnyComment}
-              />
-            )}
-          </div>
-        )}
-
-        {sentenceToken && (
-          <SentenceMetadataDialog
-            open={metaOpen}
-            onOpenChange={setMetaOpen}
-            label={`sentence ${sentenceNumber}`}
-            fields={sentenceFields}
-            values={sentenceMeta}
-            readOnly={isReadOnly || !onSentenceMetadata}
-            onCommit={handleSentenceMetadata}
-          />
-        )}
+        <SentenceActions
+          sentenceData={sentenceData}
+          sentenceNumber={sentenceNumber}
+          commentAnchorLabel={commentAnchorLabel}
+          hasInferred={hasInferred}
+          hasMachine={hasMachine}
+          onEditText={handleEditText}
+        />
       </div>
     );
   },

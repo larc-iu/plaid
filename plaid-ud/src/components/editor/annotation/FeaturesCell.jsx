@@ -1,7 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { Combobox } from '@ui/components/ui/combobox';
 import { notifyWarning } from '../../../utils/notify.js';
+import { provMark } from '../../../utils/provenanceUi.js';
 import { NO_OPTIONS, tabTooSoon } from './cellInput.js';
+import { useEditorSession } from './editorSession.js';
 
 // Features cell component with hover-only delete buttons
 // FEATS is a token-field (chip input): the cell IS one slim input, with the
@@ -15,22 +17,17 @@ import { NO_OPTIONS, tabTooSoon } from './cellInput.js';
 // clears it. Left/Right at an empty input with no selection fall through to
 // grid column navigation, like every other cell.
 export const FeaturesCell = React.memo(
-  ({
-    features,
-    featureMarks,
-    validate,
-    spanIds,
-    tokenId,
-    tokenIndex,
-    tabIndex,
-    columnWidth,
-    onAnnotationUpdate,
-    onFeatureDelete,
-    onNavigate,
-    featureInventory,
-    featureDescriptions,
-    isReadOnly,
-  }) => {
+  ({ feats, spanIds, tokenId, tokenIndex, tabIndex, columnWidth, onNavigate }) => {
+    const session = useEditorSession();
+    const { isReadOnly, onAnnotationUpdate, onFeatureDelete } = session;
+    const validate = session.validators?.feats;
+    const featureInventory = session.vocab?.featureInventory;
+    const featureDescriptions = session.descriptions?.feats;
+    // The word's FEATS spans as this cell reads them: the pills it draws, and
+    // how each one came to be there.
+    const features = feats.map((feat) => feat.value);
+    const featureMarks = feats.map((feat) => provMark(feat?.metadata));
+
     const [text, setText] = useState('');
     const [selectedPill, setSelectedPill] = useState(null); // index into features, or null
     const [isEditing, setIsEditing] = useState(false);
@@ -77,7 +74,7 @@ export const FeaturesCell = React.memo(
     };
 
     const removePill = (index) => {
-      const featureSpanInfo = spanIds?.features[index];
+      const featureSpanInfo = spanIds?.[index];
       setSelectedPill(null);
       if (!featureSpanInfo) {
         console.error('No span ID found for feature at index', index);

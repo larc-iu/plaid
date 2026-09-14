@@ -2,8 +2,10 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { History, Info } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
+import { needsReview } from '@larc-iu/plaid-client';
 import { ParseDialog } from './services/ParseDialog.jsx';
 import { SentenceRow } from './annotation/SentenceRow.jsx';
+import { EditorSessionContext } from './annotation/editorSession.js';
 import { useLayerInfo } from './hooks/useLayerInfo.js';
 import { useSentenceData } from './hooks/useSentenceData.js';
 import { useDocumentHistory } from './hooks/useDocumentHistory.js';
@@ -465,6 +467,69 @@ export const AnnotationEditor = () => {
     [project?.config],
   );
 
+  // Everything the grid reads that is the same for every sentence in it. One
+  // object, so a row's own props are the sentence and where it sits, and a cell
+  // four levels down asks for what it needs rather than being handed it. Its
+  // deps are exactly what it holds: a document emits on every save, including
+  // the ones that change no data, and a session rebuilt on one of those would
+  // re-render every cell in the middle of an edit.
+  const session = useMemo(
+    () => ({
+      isReadOnly: readOnly,
+      onAnnotationUpdate: readOnly ? null : handleAnnotationUpdate,
+      onFeatureDelete: readOnly ? null : handleFeatureDelete,
+      onRelationCreate: readOnly ? null : handleRelationCreate,
+      onRelationUpdate: readOnly ? null : handleRelationUpdate,
+      onRelationDelete: readOnly ? null : handleRelationDelete,
+      onConfirmTokens: readOnly ? null : handleConfirmTokens,
+      onDiscardTokens: readOnly ? null : handleDiscardTokens,
+      onSentenceMetadata: readOnly ? null : handleSentenceMetadata,
+      onEditText: viewingHistoricalState ? null : handleEditText,
+      onPrecedent: readOnly ? undefined : handlePrecedent,
+      onAskAssistant:
+        viewingHistoricalState || !assistantAvailable || !roomToDock ? undefined : askAssistant,
+      onToggleField: handleToggleField,
+      comments: viewingHistoricalState ? null : comments,
+      canComment,
+      canDeleteAnyComment,
+      vocab: layerInfo?.vocab,
+      colors: layerInfo?.colors,
+      descriptions: layerInfo?.descriptions,
+      validators,
+      sentenceFields,
+      visibleFields,
+      // A document with no writer of its own reviews machine work, which is
+      // what every reader of this predicate assumed before it was one value.
+      reviewable: doc?.writer.reviewable ?? needsReview,
+    }),
+    [
+      readOnly,
+      handleAnnotationUpdate,
+      handleFeatureDelete,
+      handleRelationCreate,
+      handleRelationUpdate,
+      handleRelationDelete,
+      handleConfirmTokens,
+      handleDiscardTokens,
+      handleSentenceMetadata,
+      viewingHistoricalState,
+      handleEditText,
+      handlePrecedent,
+      assistantAvailable,
+      roomToDock,
+      askAssistant,
+      handleToggleField,
+      comments,
+      canComment,
+      canDeleteAnyComment,
+      layerInfo,
+      validators,
+      sentenceFields,
+      visibleFields,
+      doc,
+    ],
+  );
+
   // The review gestures live here, not on a sentence row: every one of them can
   // cross a sentence boundary, and a row only knows its own sentence.
   const reviewKeyDown = useReviewGestures({
@@ -701,56 +766,32 @@ export const AnnotationEditor = () => {
               // The review gestures listen here, above every sentence, because
               // each of them can cross a sentence boundary.
               <div onKeyDown={reviewKeyDown} ref={listTopRef}>
-                {paged.pageItems.map((sentenceData, offset) => {
-                  // The sentence's place in the DOCUMENT, not on the page.
-                  const index = page * TALL_LIST_PAGE_SIZE + offset;
+                <EditorSessionContext.Provider value={session}>
+                  {paged.pageItems.map((sentenceData, offset) => {
+                    // The sentence's place in the DOCUMENT, not on the page.
+                    const index = page * TALL_LIST_PAGE_SIZE + offset;
 
-                  return (
-                    <div
-                      key={sentenceData.id}
-                      data-sentence-row={sentenceData.id}
-                      className="transition-shadow duration-300"
-                      style={
-                        flashSentId === String(sentenceData.id)
-                          ? { boxShadow: '0 0 0 3px #fcd34d', borderRadius: 6 }
-                          : undefined
-                      }
-                    >
-                      <SentenceRow
-                        sentenceData={sentenceData}
-                        onAnnotationUpdate={readOnly ? null : handleAnnotationUpdate}
-                        onFeatureDelete={readOnly ? null : handleFeatureDelete}
-                        onRelationCreate={readOnly ? null : handleRelationCreate}
-                        onRelationUpdate={readOnly ? null : handleRelationUpdate}
-                        onRelationDelete={readOnly ? null : handleRelationDelete}
-                        onConfirmTokens={readOnly ? null : handleConfirmTokens}
-                        onDiscardTokens={readOnly ? null : handleDiscardTokens}
-                        onSentenceMetadata={readOnly ? null : handleSentenceMetadata}
-                        onEditText={viewingHistoricalState ? null : handleEditText}
-                        validators={validators}
-                        comments={viewingHistoricalState ? null : comments}
-                        commentAnchorLabel={anchorCaption(anchors.get(sentenceData.id))}
-                        canComment={canComment}
-                        canDeleteAnyComment={canDeleteAnyComment}
-                        descriptions={layerInfo?.descriptions}
-                        onPrecedent={readOnly ? undefined : handlePrecedent}
-                        sentenceFields={sentenceFields}
-                        reviewable={doc?.writer.reviewable}
-                        sentenceIndex={index}
-                        totalTokensBefore={tokensBefore[index] ?? 0}
-                        vocab={layerInfo?.vocab}
-                        colors={layerInfo?.colors}
-                        visibleFields={visibleFields}
-                        onToggleField={handleToggleField}
-                        onAskAssistant={
-                          viewingHistoricalState || !assistantAvailable || !roomToDock
-                            ? undefined
-                            : askAssistant
+                    return (
+                      <div
+                        key={sentenceData.id}
+                        data-sentence-row={sentenceData.id}
+                        className="transition-shadow duration-300"
+                        style={
+                          flashSentId === String(sentenceData.id)
+                            ? { boxShadow: '0 0 0 3px #fcd34d', borderRadius: 6 }
+                            : undefined
                         }
-                      />
-                    </div>
-                  );
-                })}
+                      >
+                        <SentenceRow
+                          sentenceData={sentenceData}
+                          commentAnchorLabel={anchorCaption(anchors.get(sentenceData.id))}
+                          sentenceIndex={index}
+                          totalTokensBefore={tokensBefore[index] ?? 0}
+                        />
+                      </div>
+                    );
+                  })}
+                </EditorSessionContext.Provider>
                 <ListPager
                   {...paged}
                   onPage={handlePageFromBottom}

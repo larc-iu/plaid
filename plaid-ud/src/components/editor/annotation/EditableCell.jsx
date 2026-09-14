@@ -6,8 +6,10 @@ import {
   groupSuggestions,
   probLabel,
   provCellTitle,
+  provMark,
 } from '../../../utils/provenanceUi.js';
 import { NO_OPTIONS, tabTooSoon } from './cellInput.js';
+import { useEditorSession } from './editorSession.js';
 
 // Editable cell component for annotation fields
 export const EditableCell = React.memo(
@@ -19,17 +21,25 @@ export const EditableCell = React.memo(
     tokenForm,
     tabIndex,
     columnWidth,
-    onUpdate,
-    onNavigate,
-    isReadOnly,
-    suggestions,
     cellColor,
-    mark,
     provMeta,
-    validate,
-    descriptions,
+    onNavigate,
     onPrecedent,
   }) => {
+    // Everything below is the same for every cell in the document, so it comes
+    // from the session rather than down four levels of props. The three
+    // per-field lookups are keyed by the field's own name, which is how
+    // layerInfo shapes them: a field with no controlled list of its own (LEMMA)
+    // has no entry in any of them, and the cell stays a plain input.
+    const session = useEditorSession();
+    const { isReadOnly, onAnnotationUpdate: onUpdate } = session;
+    const suggestions = session.vocab?.[field];
+    const validate = session.validators?.[field];
+    const descriptions = session.descriptions?.[field];
+    // How this cell's value came to be there, from the same metadata the
+    // tooltip below reads.
+    const mark = provMark(provMeta);
+
     const [localValue, setLocalValue] = useState(value || '');
     // Alt+Down replaces the cell's list with what the project has said before
     // about a word like this one, counts and all. Null means the ordinary list.

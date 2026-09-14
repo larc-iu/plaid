@@ -1,10 +1,11 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Check } from 'lucide-react';
 import { provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { provCellTitle, provMark } from '../../../utils/provenanceUi.js';
 import { resolveColor } from '../../../utils/udVocab.js';
 import { EditableCell } from './EditableCell.jsx';
 import { FeaturesCell } from './FeaturesCell.jsx';
+import { useEditorSession } from './editorSession.js';
 
 // Token Column component
 export const TokenColumn = React.memo(
@@ -12,24 +13,24 @@ export const TokenColumn = React.memo(
     data,
     index,
     columnWidth,
-    getTabIndex,
-    onAnnotationUpdate,
-    onFeatureDelete,
-    onNavigate,
-    onConfirmTokens,
     maxFeatures,
+    getTabIndex,
+    onNavigate,
     tokenRefs,
-    isReadOnly,
-    vocab,
-    uposColors,
-    featureInventory,
-    visibleFields,
     relationInferred,
-    reviewable,
-    validators,
-    descriptions,
-    onPrecedent,
   }) => {
+    const session = useEditorSession();
+    const { isReadOnly, onConfirmTokens, onPrecedent, reviewable, visibleFields } = session;
+    // Alt+Down asks what the project has said before about a word like this
+    // one. Bound to THIS word once: an arrow function made in the render would
+    // be a new prop every time, and the cells below are memoized on theirs.
+    // LEMMA and XPOS are the two fields with a precedent question of their own,
+    // so UPOS is given no gesture rather than one that answers nothing.
+    const askPrecedent = useMemo(
+      () => (onPrecedent ? (field) => onPrecedent(field, data) : undefined),
+      [onPrecedent, data],
+    );
+
     // This word still has machine predictions a human hasn't reviewed (a span on
     // it, or its incoming dependency relation — confirmTokens covers both). When so, a
     // ✓ reveals while you're on THIS word — discoverable at the moment, teaching
@@ -118,12 +119,9 @@ export const TokenColumn = React.memo(
               tokenForm={data.tokenForm}
               tabIndex={getTabIndex(index, 'lemma')}
               columnWidth={columnWidth}
-              onUpdate={onAnnotationUpdate}
-              onNavigate={onNavigate}
-              isReadOnly={isReadOnly}
-              mark={provMark(data.lemma?.metadata)}
-              onPrecedent={onPrecedent}
               provMeta={data.lemma?.metadata}
+              onNavigate={onNavigate}
+              onPrecedent={askPrecedent}
             />
           </div>
         ) : (
@@ -141,15 +139,9 @@ export const TokenColumn = React.memo(
               tokenForm={data.tokenForm}
               tabIndex={getTabIndex(index, 'xpos')}
               columnWidth={columnWidth}
-              onUpdate={onAnnotationUpdate}
-              onNavigate={onNavigate}
-              isReadOnly={isReadOnly}
-              suggestions={vocab?.xpos}
-              mark={provMark(data.xpos?.metadata)}
-              validate={validators?.xpos}
-              descriptions={descriptions?.xpos}
-              onPrecedent={onPrecedent}
               provMeta={data.xpos?.metadata}
+              onNavigate={onNavigate}
+              onPrecedent={askPrecedent}
             />
           </div>
         ) : (
@@ -167,15 +159,11 @@ export const TokenColumn = React.memo(
               tokenForm={data.tokenForm}
               tabIndex={getTabIndex(index, 'upos')}
               columnWidth={columnWidth}
-              onUpdate={onAnnotationUpdate}
-              onNavigate={onNavigate}
-              isReadOnly={isReadOnly}
-              suggestions={vocab?.upos}
-              cellColor={data.upos?.value ? resolveColor(data.upos.value, uposColors) : undefined}
-              mark={provMark(data.upos?.metadata)}
-              validate={validators?.upos}
-              descriptions={descriptions?.upos}
+              cellColor={
+                data.upos?.value ? resolveColor(data.upos.value, session.colors?.upos) : undefined
+              }
               provMeta={data.upos?.metadata}
+              onNavigate={onNavigate}
             />
           </div>
         ) : (
@@ -191,22 +179,13 @@ export const TokenColumn = React.memo(
             style={{ minHeight: `${Math.max(30, maxFeatures * 16 + (isReadOnly ? 8 : 26))}px` }}
           >
             <FeaturesCell
-              features={data.feats.map((feat) => feat.value)}
-              featureMarks={data.feats.map((f) => provMark(f?.metadata))}
-              validate={validators?.feats}
-              spanIds={{
-                features: data.spanIds.features,
-              }}
+              feats={data.feats}
+              spanIds={data.spanIds.features}
               tokenId={data.token.id}
               tokenIndex={index}
               tabIndex={getTabIndex(index, 'feats')}
               columnWidth={columnWidth}
-              onAnnotationUpdate={onAnnotationUpdate}
-              onFeatureDelete={onFeatureDelete}
               onNavigate={onNavigate}
-              featureInventory={featureInventory}
-              featureDescriptions={descriptions?.feats}
-              isReadOnly={isReadOnly}
             />
           </div>
         ) : (
@@ -215,29 +194,9 @@ export const TokenColumn = React.memo(
       </div>
     );
   },
-  (prevProps, nextProps) => {
-    return (
-      prevProps.data === nextProps.data &&
-      prevProps.index === nextProps.index &&
-      prevProps.columnWidth === nextProps.columnWidth &&
-      prevProps.maxFeatures === nextProps.maxFeatures &&
-      prevProps.onAnnotationUpdate === nextProps.onAnnotationUpdate &&
-      prevProps.onFeatureDelete === nextProps.onFeatureDelete &&
-      prevProps.onNavigate === nextProps.onNavigate &&
-      prevProps.getTabIndex === nextProps.getTabIndex &&
-      prevProps.isReadOnly === nextProps.isReadOnly &&
-      prevProps.relationInferred === nextProps.relationInferred &&
-      // Stable per contributor id (doc.writer memoizes the policy).
-      prevProps.reviewable === nextProps.reviewable &&
-      // Stable per layerInfo version, like vocab below.
-      prevProps.validators === nextProps.validators &&
-      prevProps.descriptions === nextProps.descriptions &&
-      prevProps.onPrecedent === nextProps.onPrecedent &&
-      // Stable identity per layerInfo version, so these don't trigger re-renders.
-      prevProps.vocab === nextProps.vocab &&
-      prevProps.uposColors === nextProps.uposColors &&
-      prevProps.featureInventory === nextProps.featureInventory &&
-      prevProps.visibleFields === nextProps.visibleFields
-    );
-  },
+  // Every prop above is either a value or a reference the sentence row holds
+  // steady, so the default shallow comparison is the whole rule. What used to
+  // be a hand-written comparator was a second list of the document-wide props,
+  // which are now read from the session: a context change re-renders its
+  // readers whatever a comparator says, which is what it was for.
 );
