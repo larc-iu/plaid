@@ -130,6 +130,10 @@
     (step "Run the Python test suite (plaid-igt services)")
     ;; The bundled services are plain plaid-client code and run from base.
     (p/shell {:dir "plaid-igt"} (python-exe) "-m" "pytest" "-q" "services/tests")
+    (step "Run the Python test suite (plaid-ud services)")
+    ;; Same: the Stanza parser's handler test stands stanza itself in at import,
+    ;; so it needs no model, no download and no env of its own.
+    (p/shell {:dir "plaid-ud"} (python-exe) "-m" "pytest" "-q" "services/tests")
     ;; The Python client's own suite: BaseService, cancellation, the idle
     ;; deadline, batch bypass and the three workflows. It was never in the gate.
     (step "Run the Python test suite (plaid-client-py)")
