@@ -134,6 +134,39 @@ def test_a_restore_does_not_join_a_plan_that_holds_anything(app):
     assert ws.ops == before
 
 
+def _restoring_ws(app):
+    """A workspace whose server answers a restore dry run, so the tool really
+    stages one (the fixtures above report nothing to restore)."""
+    if app == 'igt':
+        from fixtures import FakeClient, scan_ws
+        return scan_ws(FakeClient()), igt_call, 'Text 1'
+    from ud_fixtures import PID, ud_client
+    from plaid_agent.ud.project import load_project
+    from plaid_agent.ud.tools import Workspace
+    c = ud_client()
+    return Workspace(c, load_project(c, PID)), ud_call, 'Viaje'
+
+
+@pytest.mark.parametrize('app', ['igt', 'ud'])
+def test_a_second_restore_of_one_document_replaces_the_first(app):
+    """The same gesture answered differently in the two apps. Both restore
+    tools asked the funnel WITHOUT the op they were about to stage, so the
+    early question was stricter than the real one: IGT refused a re-planned
+    restore its own registry says SUPERSEDES the first, and UD's registry
+    named no target at all, so a model correcting an as_of it had just planned
+    had to discard the plan to do it."""
+    ws, call, doc = _restoring_ws(app)
+    first = call(ws, 'restore_document', {'document': doc, 'as_of': '2026-09-05T18:45:49Z'})
+    assert not first.startswith('Error:'), first
+    second = call(ws, 'restore_document', {'document': doc, 'as_of': '2026-09-06T09:00:00Z'})
+    assert not second.startswith('Error:'), second
+    assert [op['kind'] for op in ws.ops] == ['restore_document']
+    assert ws.ops[0]['as_of'] == '2026-09-06T09:00:00Z'
+    # And the exclusivity still holds: nothing else joins the plan it owns.
+    out = call(ws, 'add_comment', {'document': doc, 'ref': 's1', 'body': 'a note'})
+    assert out.startswith('Error:') and len(ws.ops) == 1
+
+
 def test_the_sweep_found_the_write_tools():
     """Without this both sweeps are green on an empty tool list."""
     assert len(IGT_TOOLS) >= 30 and len(UD_TOOLS) >= 10

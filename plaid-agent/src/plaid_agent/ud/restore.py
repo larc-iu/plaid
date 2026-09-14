@@ -53,10 +53,12 @@ def t_restore_document(ws: Workspace, document: str = None, as_of: str = None) -
     if not AS_OF.match(as_of):
         raise ToolError('as_of must be an ISO-8601 instant, e.g. 2026-09-05T18:45:49Z. '
                         'recent_changes prints one per change.')
+    doc = ws.doc(document)
     # The funnel asks the same question of the op this tool is about to stage;
     # asked here too, the model is told before the dry run costs a round trip.
-    ws.refuse_exclusive('restore_document')
-    doc = ws.doc(document)
+    # Of the OP, so a second restore of the same document is the supersession
+    # the registry declares rather than a refusal this tool alone made.
+    ws.refuse_exclusive_early({'kind': 'restore_document', 'document_id': doc.id})
     ws.on_progress(f'Checking what a restore of "{doc.name}" would change…')
     try:
         summary = ws.client.documents.restore(doc.id, as_of, dry_run=True)

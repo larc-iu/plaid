@@ -360,8 +360,13 @@ KIND = ok.registry([
     OpKind('merge_sentences', ('sentence merge', 'sentence merges'), apply=_apply_merge_sentences,
            required=('document_id', 'sentence_id', 'previous_id'), shape=SENTENCE_SHAPE,
            deletes=lambda op: list(op.get('relation_ids') or [])),
+    # A second restore of the SAME document replaces the first, the way every
+    # other corrected instruction does: the plan still holds one restore, and
+    # a model that named the wrong as_of can say so without the user having to
+    # discard the plan. IGT declares the same.
     OpKind('restore_document', ('restored document', 'restored documents'), apply=apply_restore_document,
-           required=('document_id', 'as_of'), shape=ok.EXCLUSIVE),
+           required=('document_id', 'as_of'), shape=ok.EXCLUSIVE,
+           target=lambda op: ('restore', op.get('document_id'))),
     # A scope names a document and fields, or a field and a pattern, and is
     # resolved to spans at approval, so the executor never sees one.
     OpKind('confirm_scope', ('confirmation', 'confirmations'), stage=ok.RESOLVED, shape=ok.SCOPE,

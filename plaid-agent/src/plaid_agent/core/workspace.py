@@ -246,6 +246,19 @@ class BaseWorkspace:
         elif any(o.get('kind') in exclusive for o in planned):
             raise ToolError(self.exclusive_message(staging_it=False))
 
+    def refuse_exclusive_early(self, op: Dict[str, Any]) -> None:
+        """:meth:`refuse_exclusive` asked of the op a tool is ABOUT to stage,
+        for a tool with expensive work to do first (a restore asks the server
+        what it would change).
+
+        It asks with the ``replacing`` the funnel will use, so the early
+        answer and the real one cannot differ. Asked without it, an early
+        refusal was stricter than the staging one: it refused a second change
+        of a kind whose registry entry says the second REPLACES the first, so
+        a model correcting what it had just planned had to discard the plan.
+        """
+        self.refuse_exclusive(op.get('kind'), replacing=self.replacing(op))
+
     def exclusive_message(self, staging_it: bool) -> str:
         """What to tell the model about a change that owns its whole plan.
         ``staging_it`` is True when that change is the one being staged and
