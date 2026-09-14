@@ -7,7 +7,7 @@ import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { isUdProject } from '@ui/domain/udProject';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { findBaselineTextLayer, readInitialized } from '../../domain/igtConfig';
-import { udProjectUrl } from '../../domain/siblingApps';
+import { udProjectUrl } from '@ui/domain/siblingApps.js';
 
 // Every project on the server, including the ones this admin has no role in.
 // An admin's project list already returns all of them; what is missing
