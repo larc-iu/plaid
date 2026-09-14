@@ -20,7 +20,7 @@ from ..core.limits import MAX_RESULT_CHARS, READ_LIMITS
 from ..core.plan import PLAN_MAX_OPS, PlanFull, reserve as core_reserve
 from ..core.tools import fn, tools_for as core_tools_for
 from .plan import (COMPACT, EXCLUSIVE_KINDS, KIND,  # noqa: F401 - COMPACT is re-exported for the tests
-                   RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT)
+                   RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT, scope_clears)
 from .project import (MISSING, Sentence, Token, UdDoc, UdProject, Word, load_document, parse_ref,
                       render_document, render_sentence, resolve, word_ref)
 from .review import (REVIEW_FIELDS, all_words, confirm_targets, counts_phrase, discard_targets,
@@ -54,6 +54,10 @@ class Workspace:
         self._docs: Dict[str, UdDoc] = {}
         self.ops: List[Dict[str, Any]] = []
         self.replaced = 0  # ops superseded by a later op on the same target this turn
+        # What the plan certainly deletes, kept in step with `ops` as it grows
+        # so the doomed-target guard is not a scan of the whole plan per op.
+        self._gone: set = set()
+        self._gone_at = 0
         self._corpus = None  # the query helper, made on first corpus-wide read
         # Set when the operator configured web search. None means the web tools
         # are not offered to the model at all.
@@ -136,14 +140,72 @@ class Workspace:
                 'found and what you would change, and let them ask for it. The next turn can plan it '
                 'without looking anything up.')
         key = op_target(op)
+        at = None
         if key is not None:
-            for i, prev in enumerate(self.ops):
-                if op_target(prev) == key:
-                    self.ops[i] = op
-                    self.replaced += 1
-                    return
+            at = next((i for i, prev in enumerate(self.ops) if op_target(prev) == key), None)
+        self.refuse_doomed(op, replacing=at)
+        self.refuse_scope_clash(op, replacing=at)
+        if at is not None:
+            self.ops[at] = op
+            self.replaced += 1
+            self._gone_at = -1
+            return
         self.reserve(1)
         self.ops.append(op)
+        if self._gone_at == len(self.ops) - 1:
+            self._gone |= opkind.removed_ids(KIND, [op], only_certain=True)
+            self._gone_at = len(self.ops)
+
+    def certainly_gone(self) -> set:
+        """What the plan certainly deletes. Rebuilt whenever the plan was
+        changed by something other than :meth:`add_op` (a dropped change, a
+        discarded plan), which the length or the invalidated watermark says."""
+        if self._gone_at != len(self.ops):
+            self._gone = opkind.removed_ids(KIND, self.ops, only_certain=True)
+            self._gone_at = len(self.ops)
+        return self._gone
+
+    def refuse_doomed(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
+        """A change to something this plan certainly deletes, or a delete of
+        something this plan already changes, in either order.
+
+        Every tool that stages anything comes through here, which is the point:
+        the same clash used to be found only when the plan was applied, and the
+        change was dropped from a card the user had already approved.
+
+        ``replacing`` is the index of the op this one supersedes, which is not
+        part of the plan any more.
+        """
+        if replacing is None:
+            planned, gone = self.ops, self.certainly_gone()
+        else:
+            planned, gone = [o for i, o in enumerate(self.ops) if i != replacing], None
+        clash = opkind.delete_clash(KIND, planned, op, gone)
+        if clash:
+            raise ToolError(opkind.clash_message(*clash))
+
+    def refuse_scope_clash(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
+        """Two changes that cover a whole document, reaching one document,
+        where one of them throws values away.
+
+        Neither knows which values it covers until the plan is applied, so the
+        pair cannot be checked by id at all. A confirmation of a document and a
+        discard over the same document used to be staged together, shown on one
+        card, and reconciled only afterwards, by dropping the confirmations.
+        """
+        if op.get('kind') not in SCOPE_KINDS:
+            return
+        reaches = docs_of_op(op)
+        clears = scope_clears(op)
+        for i, prev in enumerate(self.ops):
+            if i == replacing or prev.get('kind') not in SCOPE_KINDS:
+                continue
+            if not (docs_of_op(prev) & reaches) or not (clears or scope_clears(prev)):
+                continue
+            raise ToolError(
+                f'{prev.get("label") or prev.get("kind")} already covers a document this change '
+                'covers, and one of the two throws values away. Keep one of them (plan_status, '
+                'drop_planned), or plan them in separate turns.')
 
     def reserve(self, n: int) -> None:
         """Refuse BEFORE staging what would push the plan past what a record
@@ -741,7 +803,7 @@ def t_confirm(ws: Workspace, document: str = None, refs=None, field: str = None,
         for sentence, w, f, span_id, relation_id in targets:
             ref = word_ref(sentence, w)
             ws.add_op({'kind': 'confirm', 'span_id': span_id, 'relation_id': relation_id,
-                       'document_id': doc.id, 'ref': ref,
+                       'token_id': w.id, 'document_id': doc.id, 'ref': ref,
                        'label': f'confirm the head of {ref}' if f == 'deprel' else f'confirm {f} on {ref}'})
         return f'Planned confirming {len(targets)} value(s).'
     fields = _scope_fields(ws, 'confirm_scope', doc, fields)

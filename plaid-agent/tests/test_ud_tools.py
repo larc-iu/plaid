@@ -122,13 +122,60 @@ def test_a_plan_never_confirms_what_it_deletes(ws):
     and unconfirmed, which is exactly what the confirmation reaches for too.
     Both ops named the same span: the delete goes first, the patch 404s, and
     the batch they share is atomic, so the plan refused itself after the user
-    had approved it."""
+    had approved it.
+
+    A change made by name beats one a whole-document review finds, so the
+    confirmation of that span is never staged at all: the review is a
+    predicate, resolved against the document when the plan is applied."""
     assert 'cleared' in run(ws, 'set_field', document='Viaje', refs=['s1.w4'], field='upos', value='')
     assert 'confirming 1' in run(ws, 'confirm', document='Viaje')
     counts = execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
     calls = [(r, m, a) for r, m, a, k in ws.client.batches[0]]
     assert calls == [('spans', 'delete', ('sp-u3',))]
-    assert 'the plan deletes what it confirms' in ' '.join(counts.get('notes') or [])
+    assert counts == {'field values': 1}
+
+
+def test_a_confirmation_and_a_discard_of_one_document_refuse_each_other(ws):
+    """Both are predicates over the whole document, resolved only when the
+    plan is applied, so which values they have in common is not knowable while
+    the plan is being built. They used to be staged together and shown on one
+    card, and the confirmations were dropped afterwards."""
+    assert 'confirming' in run(ws, 'confirm', document='Viaje')
+    out = run(ws, 'discard_predictions', document='Viaje')
+    assert 'throws values away' in out and 'drop_planned' in out
+    assert [op['kind'] for op in ws.ops] == ['confirm_scope']
+    # And the other way round.
+    ws.ops.clear()
+    assert 'discarding' in run(ws, 'discard_predictions', document='Viaje')
+    assert 'throws values away' in run(ws, 'confirm', document='Viaje')
+    assert [op['kind'] for op in ws.ops] == ['discard_scope']
+    # Named on both sides, where the span IS known: refused by id, both orders.
+    ws.ops.clear()
+    assert 'Planned' in run(ws, 'discard_predictions', document='Viaje', refs=['s1.w4'])
+    assert 'writes to something this plan deletes' in run(
+        ws, 'confirm', document='Viaje', refs=['s1.w4'], field='upos')
+    ws.ops.clear()
+    assert 'Planned' in run(ws, 'confirm', document='Viaje', refs=['s1.w4'], field='upos')
+    assert 'writes to something this plan deletes' in run(
+        ws, 'discard_predictions', document='Viaje', refs=['s1.w4'])
+
+
+def test_a_confirmation_and_a_delete_of_its_word_refuse_each_other(ws):
+    """A confirmation names a span, and the word it sits on is named nowhere
+    else, so a reshape that deletes the word takes the value with it without
+    the plan being able to see it by id."""
+    assert 'Planned' in run(ws, 'confirm', document='Viaje', refs=['s1.w4'], field='upos')
+    out = run(ws, 'set_words', document='Viaje', ref='s1.w4', forms=['de', 'el'])
+    assert 'annotates a word of this token' in out
+    assert [op['kind'] for op in ws.ops] == ['confirm']
+    # The backstop under it, which reads the word off the confirmation itself.
+    import pytest
+    from plaid_agent.ud.plan import validate_ops
+    reshape = {'kind': 'set_words', 'document_id': 'ud1', 'existing_word_ids': ['uw-3'],
+               'forms': ['de', 'el'], 'token_id': 'ut-3', 'text_id': 'tx', 'word_layer_id': 'W',
+               'form_layer_id': 'F', 'lemma_layer_id': 'L'}
+    with pytest.raises(ValueError, match='annotates one of its words'):
+        validate_ops([reshape, ws.ops[0]])
 
 
 def test_a_head_that_is_not_a_number_reads_as_english(ws):
@@ -154,8 +201,8 @@ def test_del_relation_says_when_there_is_no_head_to_remove(ws):
 def test_confirm_finds_the_one_unconfirmed_value(ws):
     out = run(ws, 'confirm', document='Viaje', refs=['s1.w4', 's1.w1'])
     assert out == 'Planned confirming 1 value(s).'
-    assert ws.ops[0] == {'kind': 'confirm', 'span_id': 'sp-u3', 'relation_id': None, 'document_id': 'ud1',
-                         'label': 'confirm upos on s1.w4', 'ref': 's1.w4'}
+    assert ws.ops[0] == {'kind': 'confirm', 'span_id': 'sp-u3', 'relation_id': None, 'token_id': 'uw-3',
+                         'document_id': 'ud1', 'label': 'confirm upos on s1.w4', 'ref': 's1.w4'}
 
 
 def test_confirming_a_whole_document_is_one_scope_op_resolved_at_approval(ws):

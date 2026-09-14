@@ -114,12 +114,13 @@ def test_add_comment_plans_with_the_editors_captions_and_posts_on_approval():
     assert ('comments', 'create', ('token', 'w-2', 'fish or net?'), {'anchor_label': 'gam, sentence 1'}) in c.log
 
 
-def test_a_comment_on_something_the_plan_deletes_is_dropped_rather_than_failing_the_batch():
+def test_a_comment_on_something_the_plan_deletes_refuses_rather_than_failing_the_batch():
     """A comment outlives its anchor once it is written, but it cannot be
     written onto one that is already gone: the server resolves the anchor to
     find whose permissions apply and fails closed when there is none, which
     would refuse the whole batch after the user approved it. Either order:
     the tool stages the comment first or the delete does."""
+    import pytest
     from plaid_agent.igt.plan import normalize_ops
 
     comment = {'kind': 'add_comment', 'entity_type': 'token', 'entity_id': 'w-9', 'body': 'x',
@@ -128,15 +129,27 @@ def test_a_comment_on_something_the_plan_deletes_is_dropped_rather_than_failing_
                 'document_id': 'd1', 'label': 'a comment on a value'}
     delete = {'kind': 'delete_word', 'word_id': 'w-9', 'morpheme_ids': [], 'label': ''}
     clear = {'kind': 'set_span', 'layer_id': 'L', 'token_id': 'm-1', 'span_id': 'sp-1', 'value': '', 'label': ''}
-    for ops in ([comment, delete], [delete, comment]):
-        out, notes = normalize_ops(ops)
-        assert [o['kind'] for o in out] == ['delete_word']
-        assert notes == ['dropped: a comment on w-9 (what it names is deleted or merged away in this plan)']
-    out, notes = normalize_ops([on_value, clear])
-    assert [o['kind'] for o in out] == ['set_span'] and 'a comment on a value' in notes[0]
+    for ops in ([comment, delete], [delete, comment], [on_value, clear]):
+        with pytest.raises(ValueError, match='deleted or merged away'):
+            normalize_ops(ops)
     # A comment on something the plan leaves alone stands.
     out, notes = normalize_ops([comment, clear])
     assert [o['kind'] for o in out] == ['add_comment', 'set_span'] and notes == []
+
+
+def test_a_comment_and_a_delete_of_its_anchor_refuse_each_other_at_staging():
+    """The refusal above is the backstop. The tools refuse the pair while the
+    model can still put the two in separate turns, whichever it stages first."""
+    w = scan_ws(ExtClient())
+    assert 'Planned' in call_tool(w, 'add_comment', {'document': 'd1', 'ref': 's1.w2', 'body': 'fish or net?'})
+    out = call_tool(w, 'delete_word', {'document': 'd1', 'refs': ['s1.w2']})
+    assert 'writes to something this plan deletes' in out
+    assert [o['kind'] for o in w.ops] == ['add_comment']
+    w2 = scan_ws(ExtClient())
+    assert 'Planned' in call_tool(w2, 'delete_word', {'document': 'd1', 'refs': ['s1.w2']})
+    assert 'writes to something this plan deletes' in call_tool(
+        w2, 'add_comment', {'document': 'd1', 'ref': 's1.w2', 'body': 'fish or net?'})
+    assert [o['kind'] for o in w2.ops] == ['delete_word']
 
 
 def test_a_comment_and_a_retype_over_it_are_refused_rather_than_one_being_dropped():

@@ -118,24 +118,58 @@ def test_execute_shape_ops_in_order():
         ('tokens', 'merge', ('s-1', 's-2')), ('spans', 'update', ('sp-t1', 'x | y')), ('spans', 'delete', ('sp-t2',))]
 
 
-def test_ops_on_tokens_a_shape_op_removes_are_dropped_or_filtered():
-    # Dropped rather than refused: the plan was already approved, and the op is
-    # moot either way because what it names is gone by the end.
+def test_ops_on_tokens_a_shape_op_removes_refuse_the_plan_or_are_filtered():
+    # Refused rather than dropped: staging refuses the pair in both orders, so
+    # reaching here means the plan was built some way the guard does not cover,
+    # and a card that promised the change would have been lying.
     dead = [{'kind': 'delete_word', 'word_id': 'w-4', 'morpheme_ids': ['m-4a', 'm-4b'], 'label': ''}]
     for extra in ({'kind': 'set_span', 'layer_id': 'L', 'token_id': 'w-4', 'span_id': None, 'value': 'v', 'label': 'gloss w4'},
                   {'kind': 'set_morpheme_form', 'morpheme_id': 'm-4b', 'form': 'x', 'label': ''}):
-        out, notes = normalize_ops(dead + [extra])
-        assert [o['kind'] for o in out] == ['delete_word']
-        assert notes[0].startswith('dropped:') and 'deleted or merged away' in notes[0]
-    out, notes = normalize_ops([{'kind': 'merge_words', 'word_id': 'w-2', 'other_ids': ['w-3'], 'morpheme_ids': [], 'spans': [], 'links': {}, 'label': ''},
-                                {'kind': 'link', 'token_id': 'w-3', 'item_id': 'vi', 'label': ''}])
-    assert [o['kind'] for o in out] == ['merge_words'] and notes[0].startswith('dropped:')
+        with pytest.raises(ValueError, match='deleted or merged away'):
+            normalize_ops(dead + [extra])
+    with pytest.raises(ValueError, match='deleted or merged away'):
+        normalize_ops([{'kind': 'merge_words', 'word_id': 'w-2', 'other_ids': ['w-3'], 'morpheme_ids': [], 'spans': [], 'links': {}, 'label': ''},
+                       {'kind': 'link', 'token_id': 'w-3', 'item_id': 'vi', 'label': ''}])
     out, notes = normalize_ops(dead + [{'kind': 'confirm', 'span_ids': [], 'token_ids': ['m-4a', 'm-9'], 'link_ids': [], 'label': ''}])
     assert out[1]['token_ids'] == ['m-9'] and notes == []
     # The survivor of a merge may still be written to.
     out, _ = normalize_ops([{'kind': 'merge_words', 'word_id': 'w-2', 'other_ids': ['w-3'], 'morpheme_ids': [], 'spans': [], 'links': {}, 'label': ''},
                             {'kind': 'set_span', 'layer_id': 'L', 'token_id': 'w-2', 'span_id': None, 'value': 'v', 'label': ''}])
     assert len(out) == 2
+
+
+def test_a_change_and_a_certain_delete_of_its_subject_refuse_each_other_at_staging():
+    """Both orders, because refusing only one of them lets the same plan be
+    built by staging its two halves the other way round. The pair used to be
+    staged, shown on a card, approved, and only then resolved by dropping one
+    of the two."""
+    # The change first, then the delete.
+    w = ws()
+    assert 'Planned' in call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'fish'})
+    out = call_tool(w, 'delete_word', {'document': 'd1', 'refs': ['s1.w2']})
+    assert 'writes to something this plan deletes' in out and 'drop_planned' in out
+    assert [o['kind'] for o in w.ops] == ['set_span']
+    # The delete first, then the change.
+    w2 = ws()
+    assert 'Planned' in call_tool(w2, 'delete_word', {'document': 'd1', 'refs': ['s1.w2']})
+    assert 'writes to something this plan deletes' in call_tool(
+        w2, 'set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'fish'})
+    assert [o['kind'] for o in w2.ops] == ['delete_word']
+    # A merge takes the words it names but not the one it merges INTO.
+    w3 = ws()
+    call_tool(w3, 'merge_words', {'document': 'd1', 'refs': ['s1.w2', 's1.w3']})
+    assert 'Planned' in call_tool(w3, 'set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'x'})
+    assert 'writes to something this plan deletes' in call_tool(
+        w3, 'set_field', {'document': 'd1', 'refs': ['s1.w3'], 'field': 'Gloss', 'value': 'x'})
+    # A sentence split deletes nothing, so a comment on it stands.
+    w4 = ws()
+    call_tool(w4, 'split_sentence', {'document': 'd1', 'ref': 's1', 'before_word': 2})
+    assert 'Planned' in call_tool(w4, 'add_comment', {'document': 'd1', 'ref': 's1', 'body': 'check this'})
+    # A text edit's word ids are a guess, so it refuses nothing here (the
+    # comment guard has its own rule) and appended text names no word at all.
+    w5 = ws()
+    call_tool(w5, 'append_text', {'document': 'd1', 'text': 'Gam.'})
+    assert 'Planned' in call_tool(w5, 'set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'x'})
 
 
 def test_one_plan_changes_a_word_s_boundaries_or_its_analysis_never_both():

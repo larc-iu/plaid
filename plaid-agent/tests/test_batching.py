@@ -2,6 +2,8 @@
 set_analysis over several words, and set_morpheme for one morpheme's form
 or type without rewriting its chain."""
 
+import pytest
+
 from fixtures import scan_ws, FakeClient
 
 from plaid_agent.igt.plan import execute_plan, normalize_ops
@@ -66,7 +68,18 @@ def test_set_morpheme_changes_form_or_type_in_place():
     c = w.client
     execute_plan(c, w.ops, source='s', label='l')
     assert ('tokens', 'patch_metadata', ('m-4b', {'form': 'är', 'morphType': None}), {}) in c.log
-    out, notes = normalize_ops(w.ops + [{'kind': 'set_analysis', 'word_id': 'w-4', 'text_id': 't', 'begin': 18, 'end': 24,
-                                         'morpheme_layer_id': 'ml', 'existing': [{'id': 'm-4a', 'span_ids': []}, {'id': 'm-4b', 'span_ids': []}],
-                                         'morphemes': [{'form': 'Gamar', 'fields': []}], 'label': ''}])
-    assert [o['kind'] for o in out] == ['set_analysis'] and len(notes) == 2
+    # A rewrite of the chain deletes every morpheme after the first, so the two
+    # form changes above are writes to something that will not be there. The
+    # tools refuse the pair as it is staged; this is the backstop under that.
+    rewrite = {'kind': 'set_analysis', 'word_id': 'w-4', 'text_id': 't', 'begin': 18, 'end': 24,
+               'morpheme_layer_id': 'ml', 'existing': [{'id': 'm-4a', 'span_ids': []}, {'id': 'm-4b', 'span_ids': []}],
+               'morphemes': [{'form': 'Gamar', 'fields': []}], 'label': ''}
+    with pytest.raises(ValueError, match='deleted or merged away'):
+        normalize_ops(w.ops + [rewrite])
+    assert 'writes to something this plan deletes' in call_tool(
+        w, 'set_analysis', {'document': 'd1', 'ref': 's2.w1', 'morphemes': [{'form': 'Gamar'}]})
+    # The first morpheme of the chain is kept and reused, so a form change on
+    # it is superseded rather than refused.
+    out, notes = normalize_ops([{'kind': 'set_morpheme_form', 'morpheme_id': 'm-4a', 'form': 'G', 'label': 'f1'},
+                                rewrite])
+    assert [o['kind'] for o in out] == ['set_analysis'] and len(notes) == 1

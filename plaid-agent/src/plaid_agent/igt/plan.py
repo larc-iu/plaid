@@ -430,7 +430,9 @@ KIND = ok.registry([
            compact_each=('text_id', 'begin', 'end', 'value', 'doc')),
     OpKind('link', ('lexicon link', 'lexicon links'), required=('token_id',),
            apply=_apply_link, target=lambda op: ('link', op.get('token_id')),
-           at=('token_id',), at_kind=TOKEN, token_keys=('token_id',),
+           # The entry as well as the word: a link to an entry the plan removes
+           # is written and then taken away with it.
+           at=('token_id',), at_kind=TOKEN, token_keys=('token_id', 'item_id'),
            deletes=lambda op: [op.get('existing_link_id')]),
     OpKind('unlink', ('unlink', 'unlinks'), required=('link_id',), apply=_apply_unlink,
            # A multi-word expression's link is its own target: unlinking it
@@ -440,7 +442,7 @@ KIND = ok.registry([
            at=('token_id_hint', 'token_ids'), at_kind=TOKEN, deletes=lambda op: [op['link_id']]),
     OpKind('link_phrase', ('multi-word expression', 'multi-word expressions'), required=('token_ids',),
            apply=_apply_link_phrase, target=lambda op: ('mwe', tuple(op.get('token_ids') or [])),
-           at=('token_ids',), at_kind=TOKEN, token_keys=('token_ids',),
+           at=('token_ids',), at_kind=TOKEN, token_keys=('token_ids', 'item_id'),
            deletes=lambda op: [op.get('existing_link_id')]),
     OpKind('create_entry', ('new lexicon entry', 'new lexicon entries'), required=('vocab_id', 'form', 'key'),
            apply=_apply_create_entry),
@@ -460,11 +462,11 @@ KIND = ok.registry([
            apply=_apply_create_document, target=lambda op: ('create_document', op.get('name'))),
     OpKind('merge_entries', ('merged entry', 'merged entries'), required=('keep_id', 'remove_id'),
            apply=_apply_merge_entries, at=('keep_id',), at_kind=ENTRY,
-           deletes=lambda op: [l['link_id'] for l in op.get('links') or []]),
+           deletes=lambda op: [op['remove_id']] + [l['link_id'] for l in op.get('links') or []]),
     OpKind('delete_entry', ('deleted entry', 'deleted entries'), required=('item_id',),
            apply=_apply_delete_entry, at=('item_id',), at_kind=ENTRY,
            target=lambda op: ('delete_entry', op.get('item_id')),
-           deletes=lambda op: list(op.get('links') or [])),
+           deletes=lambda op: [op['item_id']] + list(op.get('links') or [])),
     OpKind('rename_entry', ('renamed entry', 'renamed entries'), required=('item_id', 'form'),
            apply=_apply_rename_entry, at=('item_id',), at_kind=ENTRY,
            target=lambda op: ('rename_entry', op.get('item_id')),
@@ -514,10 +516,15 @@ KIND = ok.registry([
            apply=_apply_merge_sentences, target=lambda op: ('sentence_shape', op.get('sentence_id')),
            at=('sentence_id',), at_kind=TOKEN, shape=SENTENCE_SHAPE, deletes=_merge_deletes,
            deletes_tokens=lambda op: [op['other_id']]),
+    # The only kind whose deletions are a GUESS: the server diffs the text, so
+    # a word the edit names may survive with its analysis intact. Every guard
+    # treats the ids as gone, but a change naming one is dropped when the plan
+    # is applied rather than refused as it is built.
     OpKind('edit_text', ('text edit', 'text edits'), required=('document_id', 'begin', 'end', 'new'),
            apply=_apply_edit_text, at=('sentence_id',), at_kind=TOKEN, shape=TEXT_SHAPE,
            target=lambda op: ('edit_text', op.get('text_id'), op.get('begin'), op.get('end')),
-           deletes_tokens=lambda op: list(op.get('word_ids') or []) + list(op.get('morpheme_ids') or [])),
+           deletes_tokens=lambda op: list(op.get('word_ids') or []) + list(op.get('morpheme_ids') or []),
+           certain=False),
     OpKind('add_comment', ('comment', 'comments'), required=('entity_type', 'entity_id', 'body'),
            apply=_apply_add_comment, at=('entity_id',), at_kind=TOKEN, token_keys=('entity_id',)),
     OpKind('restore_document', ('document restore', 'document restores'), required=('document_id', 'as_of'),
@@ -608,6 +615,13 @@ def _doomed_ids(ops) -> set:
     return ok.removed_ids(KIND, ops)
 
 
+def _certainly_doomed(ops) -> set:
+    """Ids the plan certainly deletes, as against the ones a text edit only
+    guesses at. Staging refuses a change naming one of these, so reaching
+    here with one means a plan was built some way the guard does not cover."""
+    return ok.removed_ids(KIND, ops, only_certain=True)
+
+
 def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
     """Resolve interactions between ops in one plan: drop links to entries the
     plan deletes or merges away, refuse a merge whose survivor is removed by
@@ -633,19 +647,27 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
     seen_delete = set()
     respell_at: Dict[tuple, int] = {}
     doomed = _doomed_ids(ops)
+    certain = _certainly_doomed(ops)
     dead = _dead_tokens(ops)
     for op in ops:
         k = op.get('kind')
         # A key naming something the plan deletes: the word a change sits on,
-        # the span a comment is anchored to. Refusing here refused a plan the
-        # user had already approved, and the op is moot either way: whatever
-        # it names is gone by the end.
-        if any(_names_doomed(op.get(key), doomed) for key in _TOKEN_KEYS.get(k, ())):
+        # the entry a link points at, the span a comment is anchored to.
+        named = [key for key in _TOKEN_KEYS.get(k, ()) if _names_doomed(op.get(key), doomed)]
+        if named:
+            # A CERTAIN delete is refused as the plan is built, in both orders,
+            # so a card never promises a change that will not happen. Reaching
+            # here with one means the plan was built some way the staging guard
+            # does not cover, and refusing the whole plan says so rather than
+            # applying most of it.
+            if any(_names_doomed(op.get(key), certain) for key in named):
+                raise ValueError(f'{op.get("label") or k}: what it names is deleted or merged away by '
+                                 'another change in this plan')
+            # A text edit's word ids are a GUESS (the server diffs the text and
+            # may keep the word), so the op is dropped rather than refused: it
+            # is moot if the word goes, and the plan was already approved.
             notes.append(f'dropped: {op.get("label") or k} '
                          '(what it names is deleted or merged away in this plan)')
-            continue
-        if k in ('link', 'link_phrase') and op.get('item_id') in removed:
-            notes.append(f'dropped: {op.get("label") or "a link"} (its entry is deleted in this plan)')
             continue
         if k in ('set_morpheme_form', 'set_morph_type') and op['morpheme_id'] in rewritten:
             notes.append(f'dropped: {op.get("label") or "a morpheme change"} (that analysis is rewritten in this plan)')

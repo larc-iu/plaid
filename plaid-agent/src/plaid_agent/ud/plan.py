@@ -263,21 +263,31 @@ def _confirm_label(first, members) -> str:
 KIND = ok.registry([
     OpKind('set_span', _FIELD_VALUE, required=('layer_id', 'token_id'), apply=_apply_set_span,
            target=lambda op: ('span', op.get('layer_id'), op.get('token_id')),
+           token_keys=('token_id',),
            deletes=lambda op: ([op['span_id']] if op.get('span_id') and (op.get('value') or '') == '' else []),
            compact_each=('token_id', 'span_id', 'ref'), compact_label=_set_span_label,
            summary=_set_span_summary),
     OpKind('set_head', ('dependency', 'dependencies'), stage=IDS, apply=_apply_set_head,
            required=('word_id', 'head_id', 'lemma_layer_id', 'relation_layer_id', 'deprel'),
            target=lambda op: ('head', op.get('word_id')),
+           token_keys=('word_id', 'head_id'),
            deletes=lambda op: [op.get('relation_id')],
            compact_each=('word_id', 'head_id', 'word_form', 'head_form', 'lemma_span_id',
                          'head_lemma_span_id', 'relation_id', 'ref'), compact_label=_set_head_label),
     OpKind('del_relation', _REMOVED_DEP, stage=IDS, apply=_apply_del_relation,
            required=('relation_id',), target=lambda op: ('head', op.get('word_id')),
+           token_keys=('word_id',),
            deletes=lambda op: [op['relation_id']],
            compact_each=('word_id', 'relation_id', 'ref'), compact_label=_del_relation_label),
+    # A confirmation writes to the span or the relation it names, so one whose
+    # subject another change in the same plan throws away is refused as the
+    # plan is built rather than dropped from a card the user approved.
+    # `token_id` is the word the value sits on, which a confirmation does not
+    # need to apply itself: it is there so a plan that deletes the word can be
+    # seen to delete the value, which is named nowhere else.
     OpKind('confirm', ('confirmation', 'confirmations'), apply=_apply_confirm,
-           compact_each=('span_id', 'relation_id', 'ref'), compact_label=_confirm_label),
+           token_keys=('span_id', 'relation_id', 'token_id'),
+           compact_each=('span_id', 'relation_id', 'token_id', 'ref'), compact_label=_confirm_label),
     OpKind('run_parse', ('parsed document', 'parsed documents'), stage=PARSE, apply=_apply_run_parse,
            required=('document_ids', 'service_id', 'project_id', 'language'),
            shape=DOCUMENT_SHAPE, summary=_run_parse_summary),
@@ -297,13 +307,18 @@ KIND = ok.registry([
     OpKind('confirm_scope', ('confirmation', 'confirmations'), stage=ok.RESOLVED, shape=ok.SCOPE,
            required=('document_id', 'fields'),
            target=lambda op: ('scope', 'confirm_scope', op.get('document_id'))),
+    # `clears` says a scope throws values away without being able to name
+    # which until it is resolved, so two scopes over one document cannot share
+    # a plan when either of them does.
     OpKind('discard_scope', ('discarded prediction', 'discarded predictions'), stage=ok.RESOLVED,
            shape=ok.SCOPE, required=('document_id', 'fields'), summary=_discard_scope_summary,
-           target=lambda op: ('scope', 'discard_scope', op.get('document_id'))),
+           target=lambda op: ('scope', 'discard_scope', op.get('document_id')),
+           extra={'clears': lambda op: True}),
     OpKind('replace_scope', _FIELD_VALUE, stage=ok.RESOLVED, shape=ok.SCOPE,
            required=('field', 'pattern'), summary=_replace_scope_summary,
            target=lambda op: ('replace', op.get('field'), op.get('pattern'),
-                              op.get('replacement'), op.get('document_id'))),
+                              op.get('replacement'), op.get('document_id')),
+           extra={'clears': lambda op: not (op.get('replacement') or '')}),
     OpKind('set_deprel', _RELABELED, required=('relation_id', 'deprel'), apply=_apply_set_deprel),
     OpKind('add_comment', ('comment', 'comments'), required=('entity_type', 'entity_id', 'body'),
            apply=_apply_add_comment),
@@ -333,6 +348,14 @@ def _reach(op: Dict[str, Any]) -> set:
     out.update(op.get('document_ids') or [])
     out.update(op.get('documents') or [])
     return out
+
+
+def scope_clears(op: Dict[str, Any]) -> bool:
+    """Whether a scope throws values away. It cannot say which until it is
+    resolved, so two scopes over one document are refused when either does."""
+    spec = KIND.get(op.get('kind'))
+    fn = spec.extra.get('clears') if spec is not None else None
+    return bool(fn and fn(op))
 
 
 def validate_ops(ops: List[Dict[str, Any]]) -> None:
@@ -366,12 +389,12 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
             raise ValueError('this plan both reshapes a token and changes every matching word of its '
                              'document, and the reshape deletes some of them')
     if reshaped:
-        # `confirm` carries a span_id, not a token_id, so listing the kinds
-        # that name a word let it through. Ask the op what it names instead.
+        # What each kind writes to is the registry's own declaration, so a new
+        # kind that names a word joins this check by declaring its keys.
         for op in ops:
             if op.get('kind') in RESHAPES_TOKEN:
                 continue
-            if op.get('token_id') in reshaped or op.get('word_id') in reshaped:
+            if ok.written_to(KIND, op) & reshaped:
                 raise ValueError('this plan both reshapes a token and annotates one of its words, '
                                  'and the reshape deletes that word')
     # Two reshapes of the same token delete its words twice and then create
@@ -426,7 +449,7 @@ def _deleted_by_the_plan(ops) -> set:
     A cleared field is the case that arises: the value is machine-made and
     unconfirmed, which is exactly why it is being cleared and exactly what a
     confirmation of the document reaches for."""
-    return ok.removed_ids(KIND, ops)
+    return ok.removed_ids(KIND, ops, only_certain=True)
 
 
 def normalize_ops(ops: List[Dict[str, Any]]):
@@ -437,10 +460,13 @@ def normalize_ops(ops: List[Dict[str, Any]]):
     gone = _deleted_by_the_plan(ops)
     for op in ops:
         kind = op.get('kind')
-        if kind == 'confirm' and (op.get('span_id') or op.get('relation_id')) in gone:
-            notes.append(f'dropped: {op.get("label") or "a confirmation"} '
-                         '(the plan deletes what it confirms)')
-            continue
+        # A change to something this plan deletes. The tools refuse the pair
+        # while it is being staged, in both orders, and a scope drops what an
+        # explicit change already covers, so reaching here means the plan was
+        # built some way neither covers. Refusing the whole plan says so,
+        # where dropping the change left a card promising it.
+        if gone and ok.written_to(KIND, op) & gone:
+            raise ValueError(f'{op.get("label") or kind}: this plan deletes what it writes to')
         if kind == 'set_span':
             key = ('span', op.get('layer_id'), op.get('token_id'))
         elif kind in ('set_head', 'del_relation'):
@@ -453,7 +479,7 @@ def normalize_ops(ops: List[Dict[str, Any]]):
             continue
         last[key] = len(out)
         out.append(op)
-    dropped = len(ops) - len(out) - len(notes)
+    dropped = len(ops) - len(out)
     if dropped:
         notes.append(f'{dropped} change(s) were superseded by a later change to the same thing')
     return out, notes
@@ -492,8 +518,17 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str,
     spans = {(op.get('layer_id'), op.get('token_id')) for op in ops if op.get('kind') == 'set_span'}
     relations = {op.get('relation_id') for op in ops if op.get('kind') in ('set_head', 'del_relation')
                  and op.get('relation_id')}
+    named = [op for op in ops if op.get('kind') not in SCOPES]
+    named_gone = ok.removed_ids(KIND, named, only_certain=True)
 
     def explicit(o):
+        # The same rule seen a second way: a change made by name also beats one
+        # a scope finds when the two would meet as a write and a delete of one
+        # span (confirming a value a set_field clears, discarding one a
+        # confirm names). Left in, that pair refused the plan at the last step,
+        # after the user had approved it.
+        if ok.delete_clash(KIND, named, o, named_gone):
+            return True
         if o.get('kind') == 'set_span':
             return (o.get('layer_id'), o.get('token_id')) in spans
         return o.get('kind') in ('set_deprel', 'del_relation') and o.get('relation_id') in relations
@@ -517,9 +552,11 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str,
         if kind == 'confirm_scope':
             for sentence, w, f, span_id, relation_id in confirm_targets(all_words(doc), fields):
                 ref = word_ref(sentence, w)
-                out.append({'kind': 'confirm', 'span_id': span_id, 'relation_id': relation_id,
-                            'document_id': did, 'ref': ref,
-                            'label': f'confirm the head of {ref}' if f == 'deprel' else f'confirm {f} on {ref}'})
+                o = {'kind': 'confirm', 'span_id': span_id, 'relation_id': relation_id,
+                     'token_id': w.id, 'document_id': did, 'ref': ref,
+                     'label': f'confirm the head of {ref}' if f == 'deprel' else f'confirm {f} on {ref}'}
+                if not explicit(o):
+                    out.append(o)
             continue
         targets, _spared = discard_targets(all_words(doc), fields)
         for sentence, w, f, span, relation_id in targets:

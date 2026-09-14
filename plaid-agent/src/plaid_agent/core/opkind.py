@@ -74,6 +74,10 @@ class OpKind:
     ``deletes``   ``op -> ids``: entities this operation deletes.
     ``deletes_tokens`` ``op -> ids``: the subset of those that are tokens,
                   which other operations address positionally.
+    ``certain``   whether what ``deletes`` and ``deletes_tokens`` name is
+                  certainly gone. False where the ids are a GUESS, so an
+                  operation naming one of them can only be dealt with when the
+                  plan is applied, never refused as the plan is built.
     ``shape``     how it changes the shape of what it touches, so a table of
                   like kinds is read off the registry rather than listed
                   beside it.
@@ -97,6 +101,7 @@ class OpKind:
     token_keys: Tuple[str, ...] = ()
     deletes: Optional[Callable[[Dict[str, Any]], Iterable[str]]] = None
     deletes_tokens: Optional[Callable[[Dict[str, Any]], Iterable[str]]] = None
+    certain: bool = True
     shape: str = ORDINARY
     compact_each: Tuple[str, ...] = ()
     compact_label: Optional[Callable[[Dict[str, Any], List[Dict[str, Any]]], str]] = None
@@ -214,26 +219,82 @@ def _ids(fn, op) -> Iterable[str]:
     return [i for i in (fn(op) or ()) if i]
 
 
-def removed_tokens(reg: Mapping[str, OpKind], ops: Iterable[Dict[str, Any]]) -> set:
+def removed_tokens(reg: Mapping[str, OpKind], ops: Iterable[Dict[str, Any]],
+                   *, only_certain: bool = False) -> set:
     """Tokens the plan deletes. Everything else it plans against one of them
-    is writing to something that will not be there."""
+    is writing to something that will not be there. ``only_certain`` leaves
+    out the kinds whose ids are a guess (see :attr:`OpKind.certain`)."""
     out: set = set()
     for op in ops:
         spec = reg.get(op.get('kind'))
-        if spec is not None and spec.deletes_tokens:
+        if spec is not None and spec.deletes_tokens and (spec.certain or not only_certain):
             out.update(_ids(spec.deletes_tokens, op))
     return out
 
 
-def removed_ids(reg: Mapping[str, OpKind], ops: Iterable[Dict[str, Any]]) -> set:
+def removed_ids(reg: Mapping[str, OpKind], ops: Iterable[Dict[str, Any]],
+                *, only_certain: bool = False) -> set:
     """Everything the plan deletes, tokens included. A patch of one of these
     is a request against something gone, and the batch it shares is atomic."""
-    out = removed_tokens(reg, ops)
+    out = removed_tokens(reg, ops, only_certain=only_certain)
     for op in ops:
         spec = reg.get(op.get('kind'))
-        if spec is not None and spec.deletes:
+        if spec is not None and spec.deletes and (spec.certain or not only_certain):
             out.update(_ids(spec.deletes, op))
     return out
+
+
+def written_to(reg: Mapping[str, OpKind], op: Dict[str, Any]) -> set:
+    """The entities one operation writes to, by the keys its kind declares
+    (:attr:`OpKind.token_keys`). A key may hold one id or a list of them."""
+    spec = reg.get(op.get('kind'))
+    if spec is None or not spec.token_keys:
+        return set()
+    out: set = set()
+    for key in spec.token_keys:
+        value = op.get(key)
+        if isinstance(value, (list, tuple)):
+            out.update(v for v in value if v)
+        elif value:
+            out.add(value)
+    return out
+
+
+def delete_clash(reg: Mapping[str, OpKind], planned: Sequence[Dict[str, Any]],
+                 op: Dict[str, Any], gone: Optional[set] = None):
+    """``(the operation that writes, the operation that deletes)`` where one of
+    ``planned`` and ``op`` certainly deletes something the other writes to,
+    else ``None``.
+
+    Both directions, because refusing only one of them lets the same plan be
+    built by staging its two halves the other way round. ``gone`` is what
+    ``planned`` certainly deletes, for a caller that keeps it as the plan
+    grows.
+    """
+    if gone is None:
+        gone = removed_ids(reg, planned, only_certain=True)
+    if gone:
+        writes = written_to(reg, op) & gone
+        if writes:
+            killer = next((p for p in planned
+                           if removed_ids(reg, [p], only_certain=True) & writes), None)
+            return op, killer
+    mine = removed_ids(reg, [op], only_certain=True)
+    if mine:
+        for prev in planned:
+            if written_to(reg, prev) & mine:
+                return prev, op
+    return None
+
+
+def clash_message(victim: Dict[str, Any], killer: Optional[Dict[str, Any]]) -> str:
+    """What to tell the model when one change in a plan writes to what another
+    deletes. Refused as the plan is built, in either order, so the model can
+    drop one of the two and stage the rest now."""
+    def name(op):
+        return (op or {}).get('label') or (op or {}).get('kind') or 'a change'
+    return (f'{name(victim)} writes to something this plan deletes ({name(killer)}). '
+            'Keep one of the two (plan_status, drop_planned), or plan them in separate turns.')
 
 
 def target_of(reg: Mapping[str, OpKind], op: Dict[str, Any]):

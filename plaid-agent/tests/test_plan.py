@@ -435,15 +435,18 @@ def test_a_ud_kind_with_no_dispatch_refuses_instead_of_writing_nothing():
 
 def test_normalize_resolves_op_interactions():
     from plaid_agent.igt.plan import normalize_ops
+    import pytest
     ops = [{'kind': 'delete_entry', 'item_id': 'X', 'links': [], 'label': ''},
            {'kind': 'delete_entry', 'item_id': 'X', 'links': [], 'label': ''},
-           {'kind': 'link', 'token_id': 't', 'item_id': 'X', 'label': 'link t to X'},
            {'kind': 'respell', 'text_id': 'T', 'begin': 0, 'end': 3, 'value': 'a', 'label': ''},
            {'kind': 'respell', 'text_id': 'T', 'begin': 0, 'end': 3, 'value': 'b', 'label': ''}]
     out, notes = normalize_ops(ops)
     assert [o['kind'] for o in out] == ['delete_entry', 'respell'] and out[1]['value'] == 'b'
-    assert notes == ['dropped: link t to X (its entry is deleted in this plan)']
-    import pytest
+    assert notes == []
+    # A link to an entry the plan deletes is refused while the plan is being
+    # built, in both orders; this is the backstop under that.
+    with pytest.raises(ValueError, match='deleted or merged away'):
+        normalize_ops(ops[:1] + [{'kind': 'link', 'token_id': 't', 'item_id': 'X', 'label': 'link t to X'}])
     with pytest.raises(ValueError, match='overlap'):
         normalize_ops([{'kind': 'respell', 'text_id': 'T', 'begin': 0, 'end': 3, 'value': 'a', 'label': ''},
                        {'kind': 'respell', 'text_id': 'T', 'begin': 2, 'end': 5, 'value': 'b', 'label': ''}])

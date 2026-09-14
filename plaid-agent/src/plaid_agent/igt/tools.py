@@ -84,6 +84,10 @@ class Workspace:
         # those notes reported would go with them.
         self.replaced = 0
         self.reported_replaced = 0
+        # What the plan certainly deletes, kept in step with `ops` as it grows
+        # so the doomed-target guard is not a scan of the whole plan per op.
+        self._gone: set = set()
+        self._gone_at = 0
         self.new_entries: Dict[str, dict] = {}  # key -> {form, vocab_id, metadata}
         self._doc_ids: Dict[str, set] = {}  # document id -> every id the document contains
         # Corpus-wide tools ask the query engine unless told to scan every
@@ -348,14 +352,49 @@ class Workspace:
             raise ToolError('The plan holds a restore, which must be approved on its own; discard_plan first, '
                             'or let the user approve the restore and plan this afterwards.')
         key = op_target(op)
+        at = None
         if key is not None:
-            for i, prev in enumerate(self.ops):
-                if op_target(prev) == key:
-                    self.ops[i] = op
-                    self.replaced += 1
-                    return
+            at = next((i for i, prev in enumerate(self.ops) if op_target(prev) == key), None)
+        self.refuse_doomed(op, replacing=at)
+        if at is not None:
+            self.ops[at] = op
+            self.replaced += 1
+            self._gone_at = -1
+            return
         self.reserve(1)
         self.ops.append(op)
+        if self._gone_at == len(self.ops) - 1:
+            self._gone |= opkind.removed_ids(KIND, [op], only_certain=True)
+            self._gone_at = len(self.ops)
+
+    def certainly_gone(self) -> set:
+        """What the plan certainly deletes. Rebuilt whenever the plan was
+        changed by something other than :meth:`add_op` (a dropped change, a
+        discarded plan), which the length or the invalidated watermark says."""
+        if self._gone_at != len(self.ops):
+            self._gone = opkind.removed_ids(KIND, self.ops, only_certain=True)
+            self._gone_at = len(self.ops)
+        return self._gone
+
+    def refuse_doomed(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
+        """A change to something this plan certainly deletes, or a delete of
+        something this plan already changes, in either order.
+
+        Every tool that stages anything comes through here, which is the point:
+        the same clash used to be found only when the plan was applied, and the
+        change was dropped from a card the user had already approved.
+
+        ``replacing`` is the index of the op this one supersedes, which is not
+        part of the plan any more: a second delete of a word a split already
+        changes replaces that split rather than clashing with it.
+        """
+        if replacing is None:
+            planned, gone = self.ops, self.certainly_gone()
+        else:
+            planned, gone = [o for i, o in enumerate(self.ops) if i != replacing], None
+        clash = opkind.delete_clash(KIND, planned, op, gone)
+        if clash:
+            raise ToolError(opkind.clash_message(*clash))
 
     def add_ops(self, ops: List[Dict[str, Any]]) -> None:
         # Asked for the whole batch first, so a tool with more changes than
