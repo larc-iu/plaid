@@ -5,6 +5,7 @@
 // (`setEntry`), so the composer draft of an entry survives a look at another.
 
 import { html, nothing } from 'lit-html';
+import { humanizeError } from '@/utils/feedback';
 import { ThreadIslandBase } from './ThreadIslandBase.js';
 import './comments-island.css';
 
@@ -43,7 +44,11 @@ export class EntryThreadIsland extends ThreadIslandBase {
     }
     return html`
       <div class="igt-cmts igt-cmts--entry">
-        ${store.error ? html`<p class="igt-cmts__error" role="alert">${store.error}</p>` : nothing}
+        ${store.error
+          ? html`<p class="igt-cmts__error" role="alert">
+              ${humanizeError(store.error, store.error)}
+            </p>`
+          : nothing}
         ${this._threadView({
           entityType: 'vocab-item',
           entityId: this.entityId,
