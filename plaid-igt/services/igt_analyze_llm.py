@@ -236,11 +236,18 @@ def vocab_entries(items, vocab_name) -> List[dict]:
     return entries
 
 
-def load_lexicon(client, project) -> List[dict]:
+def load_lexicon(client, project, on_progress=None) -> List[dict]:
     """Every entry of every vocab linked to the project, with the fields the
-    prompt shows and its project-wide link count (precedent)."""
+    prompt shows and its project-wide link count (precedent).
+
+    Two requests per vocabulary, one of them a query over every link in the
+    project, so a big lexicon is a slow stretch: `on_progress(n, total)` names
+    which vocabulary is being read rather than letting it pass in silence."""
     entries = []
-    for v in project.get('vocabs') or []:
+    vocabs = project.get('vocabs') or []
+    for n, v in enumerate(vocabs):
+        if on_progress:
+            on_progress(n, len(vocabs))
         vl = client.vocab_layers.get(v['id'], include_items=True)
         entries.extend(vocab_entries(vl.get('items') or [], vl.get('name') or v.get('name')))
         try:
@@ -490,7 +497,10 @@ class LLMAnalyzeService(BaseService):
         project = self.client.projects.get(project_id)
         tagset = tagset_for(project, gloss_layer_id)
         system = SYSTEM_PROMPT + ('\n\n' + tagset_paragraph(tagset) if tagset else '')
-        lexicon = load_lexicon(self.client, project)
+        lexicon = load_lexicon(
+            self.client, project,
+            on_progress=lambda n, total: response_helper.progress(
+                5 + int(3 * n / max(total, 1)), f'Reading the lexicon ({n + 1}/{total})...'))
         pool = load_examples(
             self.client, project_id, layers, gloss_field, translation_field, orthography,
             exclude_doc_id=document_id,
@@ -549,7 +559,14 @@ class LLMAnalyzeService(BaseService):
                     # write contract they were selected under and the ids they
                     # point at are out of date, so nothing is written.
                     check_unchanged(self.client, document_id, read_version)
-                    written = write_analyses(self.client, plans, gloss_layer_id, morph_layer_id, source, stamp_detail)
+
+                    def wrote(done, total):
+                        response_helper.progress(
+                            88 + int(11 * done / max(total, 1)),
+                            f'Writing analyses ({done}/{total} batches)...')
+
+                    written = write_analyses(self.client, plans, gloss_layer_id, morph_layer_id,
+                                             source, stamp_detail, on_progress=wrote)
 
             response_helper.progress(100, 'Done')
             response_helper.complete({

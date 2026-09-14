@@ -11,6 +11,8 @@ or with no dependencies::
 
 import os
 import sys
+import threading
+import time
 
 import pytest
 
@@ -1037,3 +1039,43 @@ def test_no_version_to_compare_is_not_a_refusal():
     check_unchanged(client, 'd1', None)
     check_unchanged(client, 'd1', 0)
     assert client.reads == 0
+
+
+# --- a blocking call that would otherwise go quiet ---------------------------
+
+class _BeatHelper:
+    def __init__(self, stop_after=None):
+        self.beats = []
+        self.stop_after = stop_after
+
+    def progress(self, percent, msg='', **extra):
+        self.beats.append((percent, msg))
+        if self.stop_after is not None and len(self.beats) >= self.stop_after:
+            raise ServiceCancelled('stopped')
+
+
+def test_a_blocking_call_keeps_the_requester_hearing_the_same_thing():
+    helper = _BeatHelper()
+    started = threading.Event()
+    with progress_heartbeat(helper, 40, 'Transcribing audio...', interval_s=0.01):
+        while len(helper.beats) < 3:
+            started.wait(0.01)
+    beats = list(helper.beats)
+    assert beats[:3] == [(40, 'Transcribing audio...')] * 3
+    # The beat stops with the block: nothing is reported after it returns.
+    time.sleep(0.05)
+    assert len(helper.beats) == len(beats)
+
+
+def test_a_stop_ends_the_beat_and_leaves_the_work_to_notice_it():
+    helper = _BeatHelper(stop_after=1)
+    with progress_heartbeat(helper, 40, 'Transcribing audio...', interval_s=0.01):
+        time.sleep(0.08)
+    # The beat swallowed its own ServiceCancelled and stopped rather than
+    # carrying on or taking the wrapped call's thread down with it.
+    assert helper.beats == [(40, 'Transcribing audio...')]
+
+
+def test_no_helper_means_no_beat():
+    with progress_heartbeat(None, 40, 'x', interval_s=0.01):
+        pass

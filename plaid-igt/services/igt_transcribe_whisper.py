@@ -11,6 +11,7 @@ import whisper
 from typing import List, Dict, Any
 from plaid_client.workflows.asr import ASRModel, Alignment, AlignmentProcessor
 from plaid_client import BaseService, TASKS, Param, service_source, PROV_DETAIL_KEY
+from plaid_client.service import progress_heartbeat
 
 
 WHISPER_MODEL_SIZES = [
@@ -226,15 +227,30 @@ class WhisperASRService(BaseService):
             else:
                 full_media_url = media_url
             
-            # Download media file
+            # Download media file. A recording is often hundreds of megabytes,
+            # so say how far in it is rather than going quiet until it lands.
             response_helper.progress(10, "Downloading media file...")
-            audio_file = self.alignment_processor.download_media_file(self.client, full_media_url, temp_dir)
-            
-            # Transcribe audio with ASR model
+
+            def downloaded(read, total):
+                share = (read / total) if total else 0
+                response_helper.progress(10 + int(20 * share),
+                                         f"Downloading media file ({read >> 20} MB"
+                                         + (f" of {total >> 20} MB)..." if total else ")..."))
+
+            audio_file = self.alignment_processor.download_media_file(
+                self.client, full_media_url, temp_dir, on_progress=downloaded)
+
+            # Transcribe audio with ASR model. One blocking call with nothing to
+            # poll inside it, and the longest stretch of this service by far: an
+            # hour of audio is an hour of silence on the wire, which the
+            # requester cannot tell from a wedged service, and which outlasts
+            # any deadline it is willing to wait through. The heartbeat keeps
+            # the request alive by saying the same thing at intervals.
             response_helper.progress(30, f"Loading ASR model ({model_size or self.asr_model.model_name})...")
             response_helper.progress(40, "Transcribing audio...")
-            alignments = self.asr_model.transcribe_with_alignments(
-                audio_file, model_size=model_size, language=language)
+            with progress_heartbeat(response_helper, 40, "Transcribing audio..."):
+                alignments = self.asr_model.transcribe_with_alignments(
+                    audio_file, model_size=model_size, language=language)
             
             if not alignments:
                 raise ValueError("No transcription results generated")

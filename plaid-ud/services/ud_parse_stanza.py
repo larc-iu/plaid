@@ -3,6 +3,7 @@ import stanza
 import traceback
 from plaid_client import (BaseService, TASKS, Param, ROLES, find_by_role,
                           stamp_inferred, is_protected, service_source)
+from plaid_client.service import progress_heartbeat
 
 
 def prov_fragment(language):
@@ -330,6 +331,17 @@ class ParseProgress:
         """The writes: a stretch that must finish once begun."""
         return self._helper.critical() if self._helper else contextlib.nullcontext()
 
+    def heartbeat(self, phase, fraction, message):
+        """Keep saying `message` through one blocking call that reports
+        nothing of its own. A model download and a whole-document parse are
+        both single calls that can outlast the requester's patience with
+        silence, and neither can be broken into steps."""
+        if not self._helper:
+            return contextlib.nullcontext()
+        low, high = phase
+        percent = int(low + (high - low) * min(max(fraction, 0.0), 1.0))
+        return progress_heartbeat(self._helper, percent, message)
+
 
 # How many sentences to hand Stanza at once when re-parsing an already
 # tokenized document. Small enough that a long document reports often and can
@@ -464,7 +476,8 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
             # The first parse in a language downloads its models, which is the
             # longest silent stretch this service has. Name it before it starts.
             progress.report(ParseProgress.LOAD, 0.0, f"Loading the {language} models…")
-            pipeline = pipeline_provider.get(language, pretokenized=True)
+            with progress.heartbeat(ParseProgress.LOAD, 0.0, f"Loading the {language} models…"):
+                pipeline = pipeline_provider.get(language, pretokenized=True)
 
             # Parse in groups rather than handing Stanza every sentence at
             # once: the bar then moves through a long document, and `report`
@@ -526,14 +539,16 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
 
             log("Tokenizing + parsing from scratch…")
             progress.report(ParseProgress.LOAD, 0.0, f"Loading the {language} models…")
-            pipeline = pipeline_provider.get(language)
+            with progress.heartbeat(ParseProgress.LOAD, 0.0, f"Loading the {language} models…"):
+                pipeline = pipeline_provider.get(language)
             # Stanza decides the sentence boundaries here, so the body cannot
             # be split into groups without changing where the sentences fall.
             # This is one call and one quiet stretch; the requester's elapsed
             # clock is what carries it, so say what is happening first.
             progress.report(ParseProgress.PARSE, 0.0,
                             f"Parsing {len(body)} characters…")
-            stanza_doc = pipeline(body)
+            with progress.heartbeat(ParseProgress.PARSE, 0.0, f"Parsing {len(body)} characters…"):
+                stanza_doc = pipeline(body)
             sentences_data = stanza_doc.to_dict()
             log(f"Parsed {len(sentences_data)} sentences")
             progress.report(ParseProgress.PARSE, 1.0,

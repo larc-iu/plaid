@@ -304,8 +304,14 @@ class PolyGlossService(BaseService):
                     # write contract they were selected under and the ids they
                     # point at are out of date, so nothing is written.
                     check_unchanged(self.client, document_id, read_version)
+
+                    def wrote(done, total):
+                        response_helper.progress(
+                            88 + int(11 * done / max(total, 1)),
+                            f'Writing analyses ({done}/{total} batches)...')
+
                     written = write_analyses(self.client, plans, gloss_layer_id, morph_layer_id,
-                                             source, stamp_detail)
+                                             source, stamp_detail, on_progress=wrote)
 
             response_helper.progress(100, 'Done')
             response_helper.complete({

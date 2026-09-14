@@ -6,6 +6,7 @@ Run with::
     cd plaid-client-py && python -m pytest tests/ -q
 """
 
+import contextlib
 import os
 import sys
 
@@ -13,7 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from plaid_client.workflows.igt import (
     ParsedWord, parse_interleaved, align_words, analysis_for, clitic_types,
-    derive, word_state, select_targets, is_token_ignored, chunk_plans,
+    derive, word_state, select_targets, is_token_ignored, chunk_plans, write_analyses,
     normalize_tagset, read_tagsets, tagset_for, vocab_tagset_for, governed_fields, mode_rule, value_lines,
 )
 
@@ -284,3 +285,48 @@ def test_tagset_rules_and_value_lines_for_a_prompt():
     assert mode_rule({'mode': 'suggest', 'delimiters': '.:>'}).endswith("joins its parts with '.', ':' or '>'.")
     assert value_lines(leipzig) == ['PL: plural', '1SG']
     assert value_lines(leipzig, max_values=1) == ['PL: plural', '... and 1 more']
+
+
+def test_write_analyses_says_where_it_is_between_batches():
+    """A document of several thousand words is a dozen batches and a minute of
+    writing. The requester heard nothing between "Writing analyses" and "Done",
+    which is exactly how a working run looks like a wedged one."""
+    seen = []
+
+    class _Batch:
+        results = []
+
+    class _Client:
+        def __init__(self):
+            self.tokens = self
+            self.spans = self
+
+        @contextlib.contextmanager
+        def batched(self):
+            yield _Batch()
+
+        def delete(self, *a, **k):
+            pass
+
+        def patch_metadata(self, *a, **k):
+            pass
+
+        def create(self, *a, **k):
+            pass
+
+    plans = [_plan(f'w{i}') for i in range(5)]
+    write_analyses(_Client(), plans, 'gloss-layer', 'morph-layer', 'service:x', {},
+                   on_progress=lambda done, total: seen.append((done, total)))
+    assert seen and seen[0][0] == 0 and seen[-1] == (seen[-1][1], seen[-1][1])
+    assert all(0 <= done <= total for done, total in seen)
+
+
+def _plan(word_id):
+    morph = {'id': f'{word_id}-m0', 'metadata': {}}
+    return {
+        'word': {'text_id': 't1', 'morphs': [morph], 'morph_spans': {morph['id']: []},
+                 'token': {'begin': 0, 'end': 3}},
+        'analysis': {'segments': ['ab', 'c'], 'glosses': ['A', 'C'], 'types': [None, None],
+                     'joiners': ['-'], 'surface_mismatch': False, 'degraded': False},
+        'sentence_id': 's1',
+    }

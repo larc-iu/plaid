@@ -44,15 +44,23 @@ def chunk_plans(plans, budget=BATCH_OP_BUDGET):
     return chunks
 
 
-def write_analyses(client, plans, gloss_layer_id, morph_layer_id, source, detail):
+def write_analyses(client, plans, gloss_layer_id, morph_layer_id, source, detail,
+                   on_progress=None):
     """Write every plan; returns the number of words written. ``source`` is the
     producer id (``service_source(...)``), ``detail`` the provDetail base
-    (model, language, ...) each stamp extends."""
+    (model, language, ...) each stamp extends.
+
+    ``on_progress(done, total)`` is called with the count of chunks written: a
+    document of several thousand words is a dozen batches and a minute or more
+    of writing, which used to pass without a word to the requester."""
     if not plans:
         return 0
     text_id = plans[0]['word']['text_id']
     written = 0
-    for chunk in chunk_plans(plans):
+    chunks = chunk_plans(plans)
+    for n, chunk in enumerate(chunks):
+        if on_progress:
+            on_progress(n, len(chunks))
         # batch 1: clear replaced material, patch the first morpheme, create
         # the rest, gloss the first morpheme.
         created = []  # (op index, gloss)
@@ -107,4 +115,6 @@ def write_analyses(client, plans, gloss_layer_id, morph_layer_id, source, detail
                     client.spans.create(gloss_layer_id, [mid], gloss,
                                         stamp_inferred(source, detail={**detail, 'value': gloss}))
         written += len(chunk)
+    if on_progress:
+        on_progress(len(chunks), len(chunks))
     return written

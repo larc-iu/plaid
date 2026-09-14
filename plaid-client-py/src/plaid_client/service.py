@@ -79,10 +79,13 @@ def progress_heartbeat(response_helper, percent, message, interval_s=20.0):
     A requester gives up after a stretch of SILENCE, not after a long run, so
     one uninterruptible call (loading a model, transcribing an hour of audio,
     parsing a whole document) has to keep talking or it will be given up on
-    while it is working. Wrap only calls that touch neither the client nor the
-    document: the beat runs on its own thread, and its own ``progress`` is a
-    cancellation checkpoint, so a stop ends the beat there and the work's next
-    checkpoint sees the same stop.
+    while it is working.
+
+    Wrap only a call that reports NOTHING itself: the beat runs on its own
+    thread, and two threads reporting on one client is a race worth not having.
+    A call with a progress callback of its own is already talking. The beat's
+    own ``progress`` is a cancellation checkpoint, so a stop ends the beat
+    there, and the work's next checkpoint sees the same stop.
 
     Re-sends the same percent and message, which is what the requester's
     status line already shows: the point is the event, not new words.
