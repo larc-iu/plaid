@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { StrictMode } from 'react';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
 
 // The repair itself is IgtDocument's, so `doc.reconcileOnOpen` is the seam.
@@ -41,6 +42,25 @@ const makeDoc = (result = {}, asOf = null) => ({
   asOf,
   reconcileOnOpen: vi.fn(() => Promise.resolve(result)),
 });
+
+// A document whose repair the test finishes when it chooses, so two passes can
+// be in flight at once and land out of order.
+const pendingDoc = (id) => {
+  let finish;
+  return {
+    doc: {
+      id,
+      asOf: null,
+      reconcileOnOpen: vi.fn(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      ),
+    },
+    finish: (result) => finish(result),
+  };
+};
 
 const base = { documentId: 'doc-1', asOf: null, canWrite: true };
 
@@ -157,6 +177,57 @@ describe('the reconcile gate', () => {
     view = await renderComponent(<Probe {...base} doc={doc} />);
     await settle();
     expect(reportIntegrityFindings).toHaveBeenCalledWith(findings, { documentId: 'doc-1' });
+    await view.unmount();
+  });
+
+  // The two tests below read what the gate did WHILE a repair was in flight.
+  // Reading only the end state cannot tell a cancellation guard from its
+  // absence: without one the editor still settles open on the right document,
+  // and the only trace of the pass that should have been thrown away is a
+  // moment of the wrong screen and a findings toast about a document nobody is
+  // looking at.
+  it('neither reports nor lowers the gate for a pass the reader has left behind', async () => {
+    const first = pendingDoc('doc-1');
+    const second = pendingDoc('doc-2');
+    view = await renderComponent(<Probe {...base} doc={first.doc} />);
+    await view.rerender(<Probe {...base} documentId="doc-2" doc={second.doc} />);
+
+    // The first document's repair lands after the reader has moved on.
+    await view.step(() => first.finish({ findings: [{ severity: 'error', code: 'stale' }] }));
+    await settle();
+    expect(reportIntegrityFindings).not.toHaveBeenCalled();
+    // Still up. The pass that replaced it is running, and an editor that opens
+    // between the two is an editable document mid-repair.
+    expect(api.reconciling).toBe(true);
+
+    await view.step(() => second.finish({ findings: [{ severity: 'error', code: 'live' }] }));
+    await settle();
+    expect(reportIntegrityFindings).toHaveBeenCalledTimes(1);
+    expect(reportIntegrityFindings).toHaveBeenCalledWith([{ severity: 'error', code: 'live' }], {
+      documentId: 'doc-2',
+    });
+    expect(api.reconciling).toBe(false);
+    await view.unmount();
+  });
+
+  it('runs again after a cancelled pass, rather than waiting on it forever', async () => {
+    // StrictMode's double-invoke is this exact sequence: the first pass is set
+    // up, cancelled, and set up again on the same document. A cancelled pass
+    // reports nothing and leaves the gate up, so if the second setup treated
+    // the document as already repaired the editor would sit on a spinner with
+    // no repair in flight, and the findings would never be shown.
+    const { doc, finish } = pendingDoc('doc-1');
+    view = await renderComponent(
+      <StrictMode>
+        <Probe {...base} doc={doc} />
+      </StrictMode>,
+    );
+    expect(doc.reconcileOnOpen).toHaveBeenCalledTimes(2);
+
+    await view.step(() => finish({ findings: [{ severity: 'error', code: 'live' }] }));
+    await settle();
+    expect(reportIntegrityFindings).toHaveBeenCalledTimes(1);
+    expect(api.reconciling).toBe(false);
     await view.unmount();
   });
 

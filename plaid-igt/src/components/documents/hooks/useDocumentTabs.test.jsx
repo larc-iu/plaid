@@ -115,6 +115,24 @@ describe('the document tab', () => {
     await view.unmount();
   });
 
+  it('writes the island’s tab onto the URL as it is now, not as it was', async () => {
+    // The listener is re-subscribed when the setter changes, because the setter
+    // closes over the query string it was made under. A handler left over from
+    // an older one writes the tab onto that older URL, and everything the
+    // address has picked up since (a focused sentence, a search) is dropped.
+    // Nothing about the tab itself is wrong afterwards, so only the rest of the
+    // query string shows it.
+    const view = await mount(['/d?tab=analyze'], { doc: tokenized });
+    await view.step(() => hook.navigate('/d?tab=analyze&focusSentence=s3'));
+    expect(last().search).toBe('?tab=analyze&focusSentence=s3');
+
+    await view.step(() =>
+      window.dispatchEvent(new CustomEvent('igt:navigate-tab', { detail: { tab: 'tokenize' } })),
+    );
+    expect(last().search).toBe('?tab=tokenize&focusSentence=s3');
+    await view.unmount();
+  });
+
   it('ignores an island event that names no tab', async () => {
     const view = await mount(['/d?tab=analyze'], { doc: tokenized });
     await view.step(() =>
