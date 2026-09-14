@@ -1,5 +1,4 @@
 import { useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { CommentsBrowser } from '@ui/components/shared/CommentsBrowser';
 import { useDocumentEditor } from '../editor/useDocumentEditor.js';
 import { useConlluDocument } from '../../domain/useConlluDocument.js';
@@ -15,7 +14,6 @@ import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 export const DocumentComments = () => {
   const { projectId, documentId, doc, project, comments, canComment, canDeleteAnyComment } =
     useDocumentEditor();
-  const navigate = useNavigate();
   useConlluDocument(doc);
 
   useDocumentTitle('Comments', doc?.name, project?.name);
@@ -41,8 +39,8 @@ export const DocumentComments = () => {
         pinnedId={documentId}
         canWrite={canComment}
         canDeleteAny={canDeleteAnyComment}
-        onJumpTo={(sentenceId) =>
-          navigate(`/projects/${projectId}/documents/${documentId}/annotate?sent=${sentenceId}`)
+        jumpHref={(sentenceId) =>
+          `/projects/${projectId}/documents/${documentId}/annotate?sent=${sentenceId}`
         }
         jumpTitle="Show this sentence in the editor"
         emptyText="No comments on this document yet. Add one here, or from a sentence in the editor."

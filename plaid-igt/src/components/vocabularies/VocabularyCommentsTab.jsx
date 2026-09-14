@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { CommentsBrowser } from '@ui/components/shared/CommentsBrowser';
 import { buildEntryAnchorIndex } from '@/domain/commentAnchors';
 import { notifyError } from '@/utils/feedback';
@@ -15,7 +14,6 @@ export const VocabularyCommentsTab = ({
   canWrite,
   canDeleteAny,
 }) => {
-  const navigate = useNavigate();
   const [items, setItems] = useState(null);
 
   useEffect(() => {
@@ -51,7 +49,7 @@ export const VocabularyCommentsTab = ({
       anchors={anchors}
       canWrite={canWrite}
       canDeleteAny={canDeleteAny}
-      onJumpTo={(itemId) => navigate(`/vocabularies/${vocabularyId}?item=${itemId}`)}
+      jumpHref={(itemId) => `/vocabularies/${vocabularyId}?item=${itemId}`}
       jumpTitle="Open the entry"
       emptyText="No entry has comments yet. Open an entry to add one."
       positionLabel="By entry"

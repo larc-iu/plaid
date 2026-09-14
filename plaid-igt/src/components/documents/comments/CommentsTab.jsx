@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useIgtDocument } from '@/domain/useIgtDocument';
 import { buildAnchorIndex } from '@/domain/commentAnchors';
@@ -15,7 +15,6 @@ import { CommentsBrowser } from '@ui/components/shared/CommentsBrowser';
 export const CommentsTab = () => {
   const { doc, comments, canWrite, canManage } = useDocumentCtx();
   const { projectId, documentId } = useParams();
-  const navigate = useNavigate();
   useIgtDocument(doc);
 
   // Anchor labels are derived from the document and only change when its DATA
@@ -34,10 +33,8 @@ export const CommentsTab = () => {
       // Deep-link into the interlinear editor, focused on the sentence the
       // thread hangs off. `focusSentence` is the param DocumentDetail already
       // reads for exactly this.
-      onJumpTo={(sentenceId) =>
-        navigate(
-          `/projects/${projectId}/documents/${documentId}?tab=analyze&focusSentence=${sentenceId}`,
-        )
+      jumpHref={(sentenceId) =>
+        `/projects/${projectId}/documents/${documentId}?tab=analyze&focusSentence=${sentenceId}`
       }
       jumpTitle="Show in the interlinear editor"
       emptyText="Nothing else in this document has comments yet. Add one from the Analyze tab by hovering a word or a sentence."

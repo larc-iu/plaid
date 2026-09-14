@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { ChevronDown, ChevronRight, CornerUpRight } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
 import { SearchInput, ListCount, ListPager } from './list-search.jsx';
@@ -24,7 +25,7 @@ const ThreadRow = ({
   store,
   canWrite,
   canDeleteAny,
-  onJumpTo,
+  jumpHref,
   jumpTitle,
   open,
   onToggle,
@@ -68,16 +69,15 @@ const ThreadRow = ({
             </span>
           )}
         </button>
-        {onJumpTo && jumpId && (
-          <button
-            type="button"
+        {jumpHref && jumpId && (
+          <Link
+            to={jumpHref(jumpId)}
             className="mt-0.5 shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
             title={jumpTitle}
             aria-label={jumpTitle}
-            onClick={() => onJumpTo(jumpId)}
           >
             <CornerUpRight className="h-4 w-4" />
-          </button>
+          </Link>
         )}
       </div>
       {open && (
@@ -104,7 +104,7 @@ export const CommentsBrowser = ({
   pinnedType = 'document',
   canWrite,
   canDeleteAny,
-  onJumpTo,
+  jumpHref,
   jumpTitle,
   emptyText,
   positionLabel = 'In text order',
@@ -198,7 +198,7 @@ export const CommentsBrowser = ({
                 store={store}
                 canWrite={canWrite}
                 canDeleteAny={canDeleteAny}
-                onJumpTo={onJumpTo}
+                jumpHref={jumpHref}
                 jumpTitle={jumpTitle}
                 open={openId === thread.entityId}
                 onToggle={() =>
