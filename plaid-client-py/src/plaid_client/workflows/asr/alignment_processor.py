@@ -350,20 +350,25 @@ class AlignmentProcessor:
                 # `with client.batched()` block exits.
                 response_helper.progress(95, "Submitting batch...")
 
-            # Validate temporal ordering invariant - need to get updated tokens from database
+            # Both invariants are about the document the writes LEFT, so both
+            # read it back. The sentence check used to be handed the document
+            # as it was BEFORE the batch, so it checked the partition the run
+            # had just replaced and could not have seen a partition the run
+            # itself broke. Only the two token layers are read back, not the
+            # whole body: a transcribed recording's body is large and none of
+            # it is being checked.
             response_helper.progress(98, "Validating temporal ordering...")
-            # Re-fetch the document to get updated token positions for validation
-            updated_document = client.documents.get(document_id, include_body=True)
+            layers = [layer_id for layer_id in (alignment_token_layer_id, sentence_token_layer_id)
+                      if layer_id]
+            written_document = client.documents.get(document_id, include_body=True, layers=layers)
             all_updated_tokens = []
-            for tl in updated_document["text_layers"]:
+            for tl in written_document["text_layers"]:
                 for token_layer in tl.get("token_layers", []):
                     if token_layer["id"] == alignment_token_layer_id:
                         all_updated_tokens = token_layer.get("tokens", [])
                         break
             self._validate_temporal_ordering(all_updated_tokens)
-            
-            # Validate sentence partitioning invariant
-            self._validate_sentence_partitioning(client, document, sentence_token_layer_id)
+            self._validate_sentence_partitioning(written_document, sentence_token_layer_id)
         
         return len(new_alignment_tokens)
 
@@ -435,7 +440,7 @@ class AlignmentProcessor:
                 print(f"  Token 2: time={next_time}, pos={next_pos}, text='{next_token.get('text', '')}'")
                 print(f"  Expected: time1 < time2 implies pos1 < pos2, but got pos1 >= pos2")
     
-    def _validate_sentence_partitioning(self, client, document: Dict, sentence_token_layer_id: str):
+    def _validate_sentence_partitioning(self, document: Dict, sentence_token_layer_id: str):
         """
         Validate that sentence tokens maintain proper partitioning invariant
         
