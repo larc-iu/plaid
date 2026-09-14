@@ -44,10 +44,19 @@ test.beforeAll(async () => {
       },
       documentMetadata: { enabledFields: [] },
     },
+    // The id is recorded the moment the project exists, not after the whole
+    // setup returns: a step that fails throws past the assignment below, and an
+    // afterAll that never learned the id leaves the project on the dev core for
+    // good.
+    onProjectCreated: (id) => {
+      projectId = id;
+    },
   });
+  // Both before the throw, for the same reason: a setup that fails partway has
+  // still made them.
+  projectId = setup.projectId ?? projectId;
+  vocabId = setup.resources?.vocabularies?.[0]?.id;
   if (setup.failures.length) throw new Error(setup.failures.join('; '));
-  projectId = setup.projectId;
-  vocabId = setup.resources.vocabularies[0].id;
   const project = await client.projects.get(projectId);
   const textLayer = project.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
   const layer = (role) => textLayer.tokenLayers.find((l) => roleOf(l) === role);

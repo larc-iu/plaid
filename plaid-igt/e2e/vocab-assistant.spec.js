@@ -1,5 +1,6 @@
 import PlaidClient from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { assistantStub } from '../../plaid-ui/e2e/assistantChrome.js';
 
 // The assistant docked beside the entry list, on a vocabulary's Entries screen.
 //
@@ -26,16 +27,10 @@ let projectId;
 let vocabularyId;
 const extraProjects = [];
 
-const ASSISTANT = [
-  {
-    serviceId: 'igt:assist:test',
-    serviceName: 'IGT Assistant (test)',
-    description: 'A stand-in for the specs.',
-    extras: { model: 'test/model', app: 'igt', tasks: ['assist'] },
-    tasks: ['assist'],
-    online: true,
-  },
-];
+// The same stand-in the two assistant specs answer discovery with, from the
+// harness they share: a third copy of it here could drift from what the panel
+// under test reads.
+const ASSISTANT = assistantStub('igt');
 
 const withAssistant = (page, services = ASSISTANT) =>
   page.route('**/api/v1/projects/*/services', (route) =>
@@ -68,6 +63,15 @@ test.afterAll(async () => {
     await c.projects.delete(id).catch((e) => console.error('cleanup failed:', e.message));
   }
   if (vocabularyId) {
+    // The link goes first, by name. Deleting the vocabulary cascades it, but
+    // that delete only LOGS on failure, and a link left on the fixture project
+    // is the exact condition this spec's header says broke it before: the pane
+    // is about a vocabulary exactly one project links.
+    if (projectId) {
+      await c.projects
+        .unlinkVocab(projectId, vocabularyId)
+        .catch((e) => console.error('cleanup failed:', e.message));
+    }
     await c.vocabLayers
       .delete(vocabularyId)
       .catch((e) => console.error('cleanup failed:', e.message));
