@@ -1,5 +1,5 @@
 import { test, expect, seedAuth } from './fixtures.js';
-import { headerAccount, headerBand, headerBandTests } from '../../plaid-ui/e2e/headerBand.js';
+import { headerAccount, headerBandTests } from '../../plaid-ui/e2e/headerBand.js';
 
 // The header band, which is the same band as plaid-igt's: `headerItem` and
 // `UserButton` in plaid-ui draw it, so the two tests that are about it are
