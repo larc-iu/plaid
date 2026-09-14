@@ -530,6 +530,16 @@ export const useMediaOperations = () => {
       return;
     }
 
+    // One service run at a time. `requestService` refuses a second one and
+    // returns nothing, and it used to do so AFTER the baseline had been wiped
+    // to make room for a transcript that was never asked for. Speech detection
+    // by a service is the run this one can collide with: it takes no write
+    // lock, so the lock is not what keeps the two apart.
+    if (isProcessing) {
+      notifyError('Another service run is in progress.', 'Transcribe');
+      return;
+    }
+
     // Block on unmet required service arguments before doing any work.
     const missing = Object.values(transcribeSpot.params.errors);
     if (missing.length) {
@@ -636,6 +646,7 @@ export const useMediaOperations = () => {
     doc,
     project,
     requestService,
+    isProcessing,
     transcribeSpot,
     transcribeRun,
     confirm,
@@ -802,7 +813,9 @@ export const useMediaOperations = () => {
           if (isPlaying) {
             mediaElementRef.current.pause();
           } else {
-            mediaElementRef.current.play();
+            // Swallowed like every other play() here: a rejection is the
+            // browser's autoplay policy, and this one runs from a keystroke.
+            mediaElementRef.current.play().catch(() => {});
           }
         }
       }
