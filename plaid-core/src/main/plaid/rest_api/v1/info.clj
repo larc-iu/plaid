@@ -12,6 +12,7 @@
   (:require [plaid.rest-api.v1.batch :as batch]
             [plaid.rest-api.v1.metadata :as metadata]
             [plaid.server.config :refer [config]]
+            [plaid.server.locks :as locks]
             [plaid.sql.user-data :as user-data]))
 
 (defn- mb->bytes [mb]
@@ -34,7 +35,13 @@
          :metadata-key-count     metadata/max-metadata-key-count
          :metadata-string-length metadata/max-metadata-string-length
          :metadata-total-bytes   metadata/max-metadata-total-bytes
-         :user-data-value-bytes  user-data/max-value-bytes}))
+         :user-data-value-bytes  user-data/max-value-bytes
+         ;; The window a document lock is held for. A client reads the
+         ;; `expires-at` on the acquire response first, since that names the
+         ;; moment; this is what it plans with before it has one, and what it
+         ;; renews against. Read through `locks/lock-expiration-ms` so the
+         ;; number published is the number enforced, default included.
+         :lock-expiration-ms     (locks/lock-expiration-ms)}))
 
 (def info-routes
   [["/info"

@@ -16,11 +16,15 @@
 ;; without a full JVM restart.
 (def ^:const default-lock-expiration-ms 60000)
 
-(defn- lock-expiration-ms
+(defn lock-expiration-ms
   "Resolve the current lock expiration window from the live config
   defstate. Falls back to `default-lock-expiration-ms` if the config
   is unbound (e.g. during a test that doesn't start the config
-  defstate)."
+  defstate).
+
+  Public because `GET /info` publishes the same number: a client that holds
+  a lock has to know when it lapses, and the one it would otherwise assume
+  was hard-coded in both clients."
   []
   (or (get-in config [:plaid.server.locks/config :expiration-ms])
       default-lock-expiration-ms))

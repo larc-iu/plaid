@@ -4,6 +4,8 @@
                                     with-mount-states with-rest-handler admin-request
                                     assert-ok
                                     with-admin with-clean-db]]
+            [plaid.server.config :as config]
+            [plaid.server.locks :as locks]
             [plaid.test-helpers :refer :all]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin)
@@ -26,11 +28,20 @@
       ;; not, so a client reads absence as "unknown" rather than as zero.
       (doseq [k [:batch-operations :metadata-depth :metadata-key-count
                  :metadata-string-length :metadata-total-bytes
-                 :user-data-value-bytes]]
+                 :user-data-value-bytes :lock-expiration-ms]]
         (is (pos-int? (get limits k)) (str k " should be a positive number")))
       (doseq [[k v] limits]
         (is (pos-int? v) (str k " should be a positive number, not " (pr-str v))))
-      (is (not-any? nil? (vals limits)) "an unset limit is omitted, never null"))))
+      (is (not-any? nil? (vals limits)) "an unset limit is omitted, never null")))
+
+  (testing "the lock window is the one the lock table actually enforces"
+    ;; Both clients carried a hard-coded 60000 for this because there was
+    ;; nowhere to read it. It comes from the same call `acquire-lock!` makes,
+    ;; so a server that tunes it publishes what it tunes.
+    (is (= (locks/lock-expiration-ms)
+           (-> (get-info) :body :limits :lock-expiration-ms)))
+    (with-redefs [config/config {:plaid.server.locks/config {:expiration-ms 90000}}]
+      (is (= 90000 (-> (get-info) :body :limits :lock-expiration-ms))))))
 
 (deftest openapi-endpoint
   (testing "GET /openapi.json returns valid spec structure"
