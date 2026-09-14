@@ -8,6 +8,7 @@ import { ProjectGeneral } from './ProjectGeneral.jsx';
 import { ProjectServicesSettings } from './ProjectServicesSettings.jsx';
 import { ProjectTabs } from './ProjectTabs.jsx';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
+import { useLatestCall } from '@ui/hooks/useLatestCall.js';
 import { cn } from '@ui/lib/utils';
 
 // The five settings sections, in order, with the label each wears in the nav
@@ -44,14 +45,17 @@ export const ProjectSettings = () => {
 
   // The full project drives ProjectTabs (breadcrumb + permission gating); the
   // active section's child fetches whatever else it needs.
+  const begin = useLatestCall();
   const loadProject = useCallback(() => {
     const client = getClient();
     if (!client) return;
+    // One settings shell across projects: the project just left can answer last.
+    const isCurrent = begin();
     client.projects
       .get(projectId)
-      .then((p) => setProject(p))
+      .then((p) => isCurrent() && setProject(p))
       .catch(() => {});
-  }, [projectId, getClient]);
+  }, [projectId, getClient, begin]);
 
   useEffect(loadProject, [loadProject]);
 

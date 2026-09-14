@@ -11,6 +11,7 @@ import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { AuditFeed } from '@ui/components/shared/AuditFeed';
 import { textIncludes } from '@ui/domain/collation.js';
 import { projectRole } from '@larc-iu/plaid-client';
+import { useLatestCall } from '@ui/hooks/useLatestCall.js';
 
 // One account: what they can reach, what they have been doing, and what is
 // holding a session open in their name.
@@ -23,7 +24,11 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
   const [tally, setTally] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const begin = useLatestCall();
   const load = useCallback(async () => {
+    // One screen serves every account: the reader opens another from the list
+    // and this one stays mounted, so the slower account can answer last.
+    const isCurrent = begin();
     setLoading(true);
     try {
       const [u, projectList, tokenList, tallyRows] = await Promise.all([
@@ -32,6 +37,7 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
         client.apiTokens.list(userId).catch(() => []),
         client.audit.tally().catch(() => []),
       ]);
+      if (!isCurrent()) return;
       setUser(u);
       setProjects(
         (projectList || [])
@@ -46,12 +52,13 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
       setTokens(tokenList || []);
       setTally((tallyRows || []).find((r) => r.user?.id === userId) || null);
     } catch (err) {
+      if (!isCurrent()) return;
       console.error('Error loading user:', err);
       notifyError(humanizeError(err), 'Could not load the account');
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [client, userId]);
+  }, [client, userId, begin]);
 
   useEffect(() => {
     load();

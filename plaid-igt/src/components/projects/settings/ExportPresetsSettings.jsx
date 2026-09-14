@@ -31,6 +31,7 @@ import {
 } from '@ui/components/ui/alert-dialog';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { discoverExportLayers } from '@/export/exportLayers';
+import { useLatestCall } from '@ui/hooks/useLatestCall.js';
 import { readLanguages } from '@/domain/igtConfig';
 import {
   readExportPresets,
@@ -61,17 +62,21 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
+  const begin = useLatestCall();
   const load = useCallback(async () => {
+    const isCurrent = begin();
     try {
       setHasError(false);
       const p = await client.projects.get(projectId);
+      if (!isCurrent()) return;
       setProject(p);
       setPresets(readExportPresets(p));
     } catch (err) {
+      if (!isCurrent()) return;
       console.error('Failed to load export presets:', err);
       setHasError(true);
     }
-  }, [client, projectId]);
+  }, [client, projectId, begin]);
 
   useEffect(() => {
     load();

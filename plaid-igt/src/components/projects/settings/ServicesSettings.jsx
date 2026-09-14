@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@ui/c
 import { ServiceParamForm } from '@ui/components/services/ServiceParamForm.jsx';
 import { ServiceSummary } from '@ui/components/services/ServiceSummary.jsx';
 import { notifyError, humanizeError } from '@/utils/feedback';
+import { useLatestCall } from '@ui/hooks/useLatestCall.js';
 import { IGT_NAMESPACE, resolveAutoAnalysis } from '@/domain/igtConfig';
 import {
   BUILTIN_TOKENIZE_RULE_BASED,
@@ -305,25 +306,31 @@ export const ServicesSettings = ({ projectId, client }) => {
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
 
+  const begin = useLatestCall();
   const load = useCallback(async () => {
     if (!client) return;
+    // The project can change under this screen, and a discovery is slow enough
+    // that the project just left can answer last.
+    const isCurrent = begin();
     setLoading(true);
     try {
       const [p, svcs] = await Promise.all([
         client.projects.get(projectId),
         client.messages.discoverServices(projectId),
       ]);
+      if (!isCurrent()) return;
       setProject(p);
       setServices(svcs || []);
       setDraft(p?.config?.[IGT_NAMESPACE]?.serviceDefaults || {});
       setAutoDraft(resolveAutoAnalysis(p?.config));
       setDirty(false);
     } catch (error) {
+      if (!isCurrent()) return;
       notifyError(humanizeError(error), 'Could not load the services');
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [projectId, client]);
+  }, [projectId, client, begin]);
 
   useEffect(() => {
     load();

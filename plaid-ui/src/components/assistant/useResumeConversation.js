@@ -47,8 +47,11 @@ export const useResumeConversation = ({
 
   useEffect(() => {
     const remembered = lastOpen.get(projectId);
+    // The list for the project just left can answer after the one just opened,
+    // and it would then resume that project's conversation on this screen.
+    let cancelled = false;
     reload().then((metas) => {
-      if (resumed.current === projectId) return;
+      if (cancelled || resumed.current === projectId) return;
       resumed.current = projectId;
       // Only a conversation of THIS project, whose keys are the only ones this
       // screen reads, and only one that still exists (it may have been deleted
@@ -78,6 +81,7 @@ export const useResumeConversation = ({
       else nothingRef.current?.();
     });
     return () => {
+      cancelled = true;
       const id = openIdRef.current?.();
       if (id) lastOpen.set(projectId, id);
       else lastOpen.delete(projectId);

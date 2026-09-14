@@ -78,7 +78,10 @@ export function useResumedRun(client, doc, acquireWriteLock) {
       } finally {
         if (!stillOut) clearRunRecord(documentId);
         lock.release();
-        lockRef.current = null;
+        // Only if it is still ours: the reader may have opened another
+        // document while this was out, and that one's lock is what the banner
+        // is mirroring now.
+        if (lockRef.current === lock) lockRef.current = null;
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps

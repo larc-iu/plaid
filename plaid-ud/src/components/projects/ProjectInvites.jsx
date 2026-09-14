@@ -7,6 +7,7 @@ import { Badge } from '@ui/components/ui/badge';
 import { Button } from '@ui/components/ui/button';
 import { DataTable } from '@ui/components/shared/data-table';
 import { MAINTAINER_HINT } from '@ui/domain/permissions.js';
+import { useLatestCall } from '@ui/hooks/useLatestCall.js';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import {
@@ -109,18 +110,25 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage }) =>
   const [creating, setCreating] = useState(false);
   const [mintedCode, setMintedCode] = useState(null);
 
+  const begin = useLatestCall();
   const load = useCallback(async () => {
     if (!canManage) return;
+    // The project can change under this screen, and the list for the one just
+    // left can answer last.
+    const isCurrent = begin();
     try {
       setLoading(true);
-      setInvites((await client.invites.list({ projectId })) || []);
+      const rows = (await client.invites.list({ projectId })) || [];
+      if (!isCurrent()) return;
+      setInvites(rows);
     } catch (err) {
+      if (!isCurrent()) return;
       console.error('Error loading invites:', err);
-      notifyError('Failed to load invitation links');
+      notifyError(humanizeError(err), 'Could not load the invitation links');
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [client, projectId, canManage]);
+  }, [client, projectId, canManage, begin]);
 
   useEffect(() => {
     load();

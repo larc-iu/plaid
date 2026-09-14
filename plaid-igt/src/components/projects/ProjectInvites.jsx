@@ -32,6 +32,7 @@ import {
   AlertDialogCancel,
 } from '@ui/components/ui/alert-dialog';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
+import { useLatestCall } from '@ui/hooks/useLatestCall.js';
 import { MAINTAINER_HINT } from '@ui/domain/permissions.js';
 
 const GRANT_ROLES = ['reader', 'writer', 'maintainer'];
@@ -119,18 +120,25 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage }) =>
   const [revokeTarget, setRevokeTarget] = useState(null);
   const [revoking, setRevoking] = useState(false);
 
+  const begin = useLatestCall();
   const load = useCallback(async () => {
     if (!canManage) return;
+    // The project can change under this screen, and the list for the one just
+    // left can answer last.
+    const isCurrent = begin();
     try {
       setLoading(true);
-      setInvites((await client.invites.list({ projectId })) || []);
+      const rows = (await client.invites.list({ projectId })) || [];
+      if (!isCurrent()) return;
+      setInvites(rows);
     } catch (err) {
+      if (!isCurrent()) return;
       console.error('Error loading invites:', err);
-      notifyError('Failed to load invitation links', 'Error');
+      notifyError(humanizeError(err), 'Could not load the invitation links');
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [client, projectId, canManage]);
+  }, [client, projectId, canManage, begin]);
 
   useEffect(() => {
     load();

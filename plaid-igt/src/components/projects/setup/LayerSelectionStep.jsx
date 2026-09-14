@@ -29,25 +29,33 @@ export const LayerSelectionStep = ({ data, onDataChange, projectId, client }) =>
 
   // Fetch project data on mount
   useEffect(() => {
+    let cancelled = false;
     const fetchProjectData = async () => {
       try {
         setLoading(true);
         if (!client) throw new Error('Not authenticated');
 
         const projectData = await client.projects.get(projectId);
+        if (cancelled) return;
         setProject(projectData);
         setError('');
       } catch (err) {
+        if (cancelled) return;
         console.error('Error fetching project:', err);
         setError('Failed to load project data');
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     if (projectId) {
       fetchProjectData();
     }
+    // The project can change under the wizard, and the answer for the one just
+    // left must not fill this step in.
+    return () => {
+      cancelled = true;
+    };
   }, [projectId, client]);
 
   // Seed a sensible default exactly once per project load (guarded by a ref so

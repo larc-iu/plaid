@@ -5,6 +5,7 @@ import { UserAvatar } from './UserAvatar.jsx';
 import { timeAgo, fullTimestamp } from '../../lib/formatTime.js';
 import { notifyError } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
+import { useLatestCall } from '../../hooks/useLatestCall.js';
 import { AuditFeed } from './AuditFeed.jsx';
 import { textIncludes } from '../../domain/collation.js';
 
@@ -62,20 +63,26 @@ export const ActivityPanel = ({ client, projectId, roster, projectHref, document
   const sparkDays = range === 'all' ? 30 : Number(range);
   const [tally, setTally] = useState([]);
   const [loading, setLoading] = useState(true);
+  const begin = useLatestCall();
 
   const load = useCallback(async () => {
+    // One panel serves every project and every window, so the tally for the
+    // project just left can land after the one just opened.
+    const isCurrent = begin();
     setLoading(true);
     try {
-      setTally(
-        (await client.audit.tally({ projectId, startTime: startFor(range), daily: true })) || [],
-      );
+      const rows =
+        (await client.audit.tally({ projectId, startTime: startFor(range), daily: true })) || [];
+      if (!isCurrent()) return;
+      setTally(rows);
     } catch (err) {
+      if (!isCurrent()) return;
       console.error('Error loading activity:', err);
       notifyError(humanizeError(err), 'Could not load the activity');
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [client, projectId, range]);
+  }, [client, projectId, range, begin]);
 
   useEffect(() => {
     load();

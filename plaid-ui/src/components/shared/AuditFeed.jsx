@@ -6,6 +6,7 @@ import { DataTable } from './data-table.jsx';
 import { timeAgo, fullTimestamp } from '../../lib/formatTime.js';
 import { notifyError } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
+import { useLatestCall } from '../../hooks/useLatestCall.js';
 import { readableDescription } from '../../lib/auditText.js';
 import { textIncludes } from '../../domain/collation.js';
 
@@ -55,25 +56,31 @@ export const AuditFeed = ({
   const [cursor, setCursor] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const begin = useLatestCall();
 
   const load = useCallback(async () => {
+    // Re-scoping starts a second read without ending the first, and the feed
+    // for the scope just left can answer last.
+    const isCurrent = begin();
     setLoading(true);
     try {
       const page = await fetchPage({ limit: CHUNK });
+      if (!isCurrent()) return;
       setEntries(page.entries || []);
       setCursor(page.nextCursor || null);
     } catch (err) {
+      if (!isCurrent()) return;
       console.error('Error loading the audit feed:', err);
       notifyError(humanizeError(err), 'Could not load the recent changes');
       setEntries([]);
       setCursor(null);
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
     // `resetKey` is what re-scopes the feed (the window, the project). The
     // fetcher is a fresh closure on every render, so it cannot be the dep.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resetKey]);
+  }, [resetKey, begin]);
 
   useEffect(() => {
     load();

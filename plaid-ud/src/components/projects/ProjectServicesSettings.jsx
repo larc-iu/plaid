@@ -16,6 +16,7 @@ import { ServiceParamForm } from '@ui/components/services/ServiceParamForm.jsx';
 import { ServiceSummary } from '@ui/components/services/ServiceSummary.jsx';
 import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
 import { canManageProject } from '@ui/domain/permissions.js';
+import { useLatestCall } from '@ui/hooks/useLatestCall.js';
 import {
   encodeServiceSelection,
   encodeBuiltinSelection,
@@ -208,25 +209,31 @@ export const ProjectServicesSettings = () => {
 
   const canManage = canManageProject(project, user);
 
+  const begin = useLatestCall();
   const load = useCallback(async () => {
     const client = getClient();
     if (!client) return;
+    // The project can change under this screen, and a discovery is slow enough
+    // that the project just left can answer last.
+    const isCurrent = begin();
     setLoading(true);
     try {
       const [p, svcs] = await Promise.all([
         client.projects.get(projectId),
         client.messages.discoverServices(projectId),
       ]);
+      if (!isCurrent()) return;
       setProject(p);
       setServices(svcs || []);
       setDraft(p?.config?.[UD_NAMESPACE]?.serviceDefaults || {});
       setDirty(false);
     } catch (error) {
+      if (!isCurrent()) return;
       notifyError(humanizeError(error, 'Failed to load services'), 'Services');
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [projectId, getClient]);
+  }, [projectId, getClient, begin]);
 
   useEffect(() => {
     load();
