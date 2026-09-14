@@ -117,9 +117,9 @@ export const AssistantComposer = ({
         {mentions.open && (
           <MentionList
             groups={mentions.groups}
-            activeValue={mentions.activeValue}
+            activeId={mentions.activeId}
             onPick={mentions.pick}
-            onHover={mentions.setActiveValue}
+            onHover={mentions.setActiveId}
             loading={mentions.loading}
           />
         )}

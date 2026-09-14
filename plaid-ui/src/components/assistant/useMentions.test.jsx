@@ -135,17 +135,36 @@ describe('useMentions', () => {
     const client = fakeClient([{ name: 'Text 1' }, { name: 'Text 2' }]);
     const m = await mount(client);
     await m.type('@Text');
-    expect(m.box.mentions.activeValue).toBe('Text 1');
+    expect(m.box.mentions.items[0].id).toBe(m.box.mentions.activeId);
 
     const down = key('ArrowDown');
     await m.step(() => expect(m.box.mentions.handleKeyDown(down)).toBe(true));
     expect(down.wasPrevented()).toBe(true);
-    expect(m.box.mentions.activeValue).toBe('Text 2');
+    expect(m.box.mentions.items[1].id).toBe(m.box.mentions.activeId);
 
     const enter = key('Enter');
     await m.step(() => expect(m.box.mentions.handleKeyDown(enter)).toBe(true));
     expect(enter.wasPrevented()).toBe(true);
     expect(m.box.text).toBe('Text 2 ');
+    await m.unmount();
+  });
+
+  // Core puts no unique constraint on a document name. Tracked by the value it
+  // inserts, two rows spelled alike are one row to the arrows: ArrowDown finds
+  // the first index every time and the highlight never moves off it.
+  it('walks past two documents of the same name', async () => {
+    const client = fakeClient([{ name: 'Text 1' }, { name: 'Text 1' }, { name: 'Text 2' }]);
+    const m = await mount(client);
+    await m.type('@Text');
+    const ids = m.box.mentions.items.map((i) => i.id);
+    expect(new Set(ids).size).toBe(3);
+    expect(m.box.mentions.activeId).toBe(ids[0]);
+
+    for (const at of [1, 2]) {
+      const down = key('ArrowDown');
+      await m.step(() => m.box.mentions.handleKeyDown(down));
+      expect(m.box.mentions.activeId).toBe(ids[at]);
+    }
     await m.unmount();
   });
 

@@ -12,14 +12,14 @@ import { flattenOptions } from '../shared/comboboxOptions.js';
 //
 // It draws nothing and takes no keys: the composer owns the highlight and the
 // keyboard, because it is the composer's Enter that has to be arbitrated.
-export const MentionList = ({ groups, activeValue, onPick, onHover, loading }) => {
+export const MentionList = ({ groups, activeId, onPick, onHover, loading }) => {
   const ref = useRef(null);
 
   // Keep the highlighted row in view when the arrows walk past the edge.
   useEffect(() => {
     const el = ref.current?.querySelector('[data-active="true"]');
     el?.scrollIntoView({ block: 'nearest' });
-  }, [activeValue]);
+  }, [activeId]);
 
   const items = flattenOptions(groups);
   if (loading && !items.length)
@@ -46,9 +46,9 @@ export const MentionList = ({ groups, activeValue, onPick, onHover, loading }) =
             </div>
             {group.items.map((item) => (
               <Row
-                key={item.value}
+                key={item.id}
                 item={item}
-                active={item.value === activeValue}
+                active={item.id === activeId}
                 onPick={onPick}
                 onHover={onHover}
               />
@@ -56,9 +56,9 @@ export const MentionList = ({ groups, activeValue, onPick, onHover, loading }) =
           </div>
         ) : (
           <Row
-            key={group.value}
+            key={group.id}
             item={group}
-            active={group.value === activeValue}
+            active={group.id === activeId}
             onPick={onPick}
             onHover={onHover}
           />
@@ -79,7 +79,7 @@ const Row = ({ item, active, onPick, onHover }) => (
       e.preventDefault();
       onPick(item);
     }}
-    onMouseEnter={() => onHover(item.value)}
+    onMouseEnter={() => onHover(item.id)}
     className={cn(
       'flex w-full items-baseline gap-2 rounded-md px-2 py-1.5 text-left text-sm',
       active ? 'bg-accent text-accent-foreground' : 'hover:bg-muted',

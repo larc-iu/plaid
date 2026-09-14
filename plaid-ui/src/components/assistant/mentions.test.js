@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { activeMention, filterMentions, insertMention } from './mentions.js';
+import { activeMention, filterMentions, insertMention, withMentionIds } from './mentions.js';
 
 // The composer is a textarea that sends on Enter, so everything about `@` has
 // to be decided from the text and the caret alone. These are the cases that
@@ -108,5 +108,42 @@ describe('filterMentions', () => {
       },
     ];
     expect(filterMentions(many, '')[0].items).toHaveLength(50);
+  });
+});
+
+describe('withMentionIds', () => {
+  const twoAlike = [
+    {
+      group: 'Documents',
+      items: [
+        { value: 'Text 1', label: 'Text 1' },
+        { value: 'Text 1', label: 'Text 1' },
+        { value: 'Text 2', label: 'Text 2' },
+      ],
+    },
+  ];
+
+  it('gives two rows of the same name two ids', () => {
+    const ids = withMentionIds(twoAlike)[0].items.map((i) => i.id);
+    expect(new Set(ids).size).toBe(3);
+  });
+
+  it('gives the same row the same id across a narrowing', () => {
+    const stamped = withMentionIds(twoAlike);
+    const before = stamped[0].items.map((i) => i.id);
+    const after = filterMentions(stamped, 'Text 1')[0].items.map((i) => i.id);
+    expect(after).toEqual(before.slice(0, 2));
+  });
+
+  it('separates two groups that offer the same spelling', () => {
+    const ids = withMentionIds([
+      { group: 'Sentences', items: [{ value: 's1', label: 's1' }] },
+      { group: 'Documents', items: [{ value: 's1', label: 's1' }] },
+    ]).flatMap((g) => g.items.map((i) => i.id));
+    expect(new Set(ids).size).toBe(2);
+  });
+
+  it('stamps an ungrouped option too', () => {
+    expect(withMentionIds([{ value: 's1', label: 's1' }])[0].id).toBeTruthy();
   });
 });

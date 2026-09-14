@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { flattenOptions, normalizeOptions } from '../shared/comboboxOptions.js';
-import { activeMention, filterMentions, insertMention } from './mentions.js';
+import { activeMention, filterMentions, insertMention, withMentionIds } from './mentions.js';
 
 // `@` in the composer: a typeahead over the reference spellings the model
 // already reads, so a reader can name a sentence they are not looking at, or
@@ -21,7 +21,7 @@ export const useMentions = ({ client, projectId, enabled, text, setText, inputRe
   // until they start another one, or the list would come back on the next
   // keystroke.
   const [dismissed, setDismissed] = useState(-1);
-  const [activeValue, setActiveValue] = useState(null); // the highlighted value
+  const [activeId, setActiveId] = useState(null); // the highlighted row
   const [documents, setDocuments] = useState(null); // the project's documents, once
 
   const mention = enabled ? activeMention(text, caret) : null;
@@ -60,7 +60,9 @@ export const useMentions = ({ client, projectId, enabled, text, setText, inputRe
     const own = offer?.(mention.query) || [];
     const docs = (documents || []).map((d) => ({ value: d.name, label: d.name }));
     const all = [...own, ...(docs.length ? [{ group: 'Documents', items: docs }] : [])];
-    return filterMentions(normalizeOptions(all), mention.query);
+    // Ids before filtering: a value is not unique (two documents may share a
+    // name), and the row the arrows are on has to be one row.
+    return filterMentions(withMentionIds(normalizeOptions(all)), mention.query);
   }, [open, mention, offer, documents]);
   const items = useMemo(() => flattenOptions(groups), [groups]);
 
@@ -68,8 +70,8 @@ export const useMentions = ({ client, projectId, enabled, text, setText, inputRe
   // the last keystroke.
   useEffect(() => {
     if (!items.length) return;
-    if (!items.some((m) => m.value === activeValue)) setActiveValue(items[0].value);
-  }, [items, activeValue]);
+    if (!items.some((m) => m.id === activeId)) setActiveId(items[0].id);
+  }, [items, activeId]);
 
   const pick = (item) => {
     const next = insertMention(text, caret, item.value);
@@ -94,14 +96,14 @@ export const useMentions = ({ client, projectId, enabled, text, setText, inputRe
     if (!open || !items.length) return false;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
-      const i = items.findIndex((m) => m.value === activeValue);
+      const i = items.findIndex((m) => m.id === activeId);
       const step = e.key === 'ArrowDown' ? 1 : -1;
       const at = (i + step + items.length) % items.length;
-      setActiveValue(items[at].value);
+      setActiveId(items[at].id);
       return true;
     }
     if (e.key === 'Enter' || e.key === 'Tab') {
-      const picked = items.find((m) => m.value === activeValue) || items[0];
+      const picked = items.find((m) => m.id === activeId) || items[0];
       e.preventDefault();
       pick(picked);
       return true;
@@ -120,8 +122,8 @@ export const useMentions = ({ client, projectId, enabled, text, setText, inputRe
     open,
     groups,
     items,
-    activeValue,
-    setActiveValue,
+    activeId,
+    setActiveId,
     loading: documents === null,
     pick,
     handleKeyDown,
