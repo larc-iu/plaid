@@ -151,7 +151,7 @@ export const AdminServer = ({ client }) => {
               ['Port', settings.port],
               ['Log level', settings.logLevel],
               ['Session lifetime', `${Math.round((settings.jwtTtlSeconds || 0) / 86400)} days`],
-              ['Editing lock', `${Math.round((settings.lockExpirationMs || 0) / 1000)}s`],
+              ['Editing lock', `${Math.round(settings.effectiveLockExpirationMs / 1000)}s`],
               ['OpenAPI', settings.openapiExposed ? 'Exposed' : 'Hidden'],
               [
                 'Upload limit',

@@ -46,8 +46,12 @@
                           :formats {"application/json" reitit.coercion.malli/json-transformer-provider}}
                    :string {:default reitit.coercion.malli/string-transformer-provider}
                    :response {:default reitit.coercion.malli/default-transformer-provider}}
-     ;; set of keys to include in error messages
-    :error-keys #{:type :coercion :in :schema :value :errors :humanized #_:transformed}
+     ;; Keys `reitit.coercion/encode-error` may build. `:value` is the whole
+     ;; submitted body — on POST /users that includes the password — and
+     ;; `:schema` is the route's shape. Nothing puts either on the wire
+     ;; (`prm/wrap-coercion-error` reads `:humanized` and drops the rest), so
+     ;; neither is built in the first place.
+    :error-keys #{:type :coercion :in :errors :humanized}
      ;; support lite syntax?
     :lite true
      ;; schema identity function (default: close all map schemas)

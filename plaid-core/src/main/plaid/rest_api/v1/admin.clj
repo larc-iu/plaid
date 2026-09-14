@@ -122,7 +122,11 @@
    :openapi-exposed      (-> config :plaid.api :expose-openapi?)
    :max-json-body-mb     (-> config :plaid.server.http-server :max-json-body-mb)
    :media-max-file-mb    (-> config :plaid.media/config :max-file-size-mb)
-   :lock-expiration-ms   (-> config :plaid.server.locks/config :expiration-ms)
+   ;; Through `locks/lock-expiration-ms`, so the number shown is the number
+   ;; enforced: the config key is absent by default and the window is then
+   ;; 60000, which reading the config directly reported as nil. Same source as
+   ;; `GET /info`.
+   :effective-lock-expiration-ms (locks/lock-expiration-ms)
    :log-level            (-> config :taoensso.timbre/logging-config :min-level)
    :log-file             (-> config :plaid.logging/config :file)
    :cors-allowed-origins (-> config :plaid.server.middleware/cors-config :access-control-allow-origin)

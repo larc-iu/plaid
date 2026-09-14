@@ -60,6 +60,14 @@
         (is (pos? (:documents tables)))
         (is (pos? (:operations tables)))))
 
+    (testing "The lock window reported is the one the lock table enforces"
+      ;; Read through `locks/lock-expiration-ms`, the same call `acquire-lock!`
+      ;; and `GET /info` make. Reading the config key directly reported nil
+      ;; whenever an operator had not set it, which is most of the time.
+      (is (= (locks/lock-expiration-ms)
+             (:effective-lock-expiration-ms (:settings body))))
+      (is (pos-int? (:effective-lock-expiration-ms (:settings body)))))
+
     (testing "No secret is in the report"
       (let [flat (pr-str body)]
         (is (not (re-find #"(?i)secret|password|jwt-secret" flat)))))))
