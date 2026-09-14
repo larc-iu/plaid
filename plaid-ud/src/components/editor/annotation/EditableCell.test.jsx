@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
+import { type, focus, blur } from '../../../test/keyboard.js';
 import { EditableCell } from './EditableCell.jsx';
 import { EditorSessionContext } from './editorSession.js';
 
@@ -42,17 +43,6 @@ const mount = (props, session = {}) => {
     </EditorSessionContext.Provider>,
   ).then((view) => ({ ...view, onAnnotationUpdate }));
 };
-
-// One character at a time, the way a keyboard does it (see DeprelEditor.test).
-const type = (input, text) => {
-  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-  for (let i = 1; i <= text.length; i++) {
-    setter.call(input, text.slice(0, i));
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-  }
-};
-const focus = (input) => input.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
-const blur = (input) => input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
 
 describe('EditableCell and the controlled fields', () => {
   it('leaves LEMMA a plain input when the session carries a lemma vocabulary', async () => {

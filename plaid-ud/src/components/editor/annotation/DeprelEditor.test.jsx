@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
+import { type, focus, blur, press } from '../../../test/keyboard.js';
 import { DeprelEditor } from './DeprelEditor.jsx';
 import { EditorSessionContext } from './editorSession.js';
 
@@ -33,22 +34,6 @@ const mount = ({ session, ...props } = {}) =>
       />
     </EditorSessionContext.Provider>,
   );
-
-// One character at a time, the way a keyboard does it. React suppresses an
-// onChange whose value matches the one it is already tracking, so re-typing a
-// label over itself in a single assignment would fire nothing at all.
-const type = (input, text) => {
-  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-  for (let i = 1; i <= text.length; i++) {
-    setter.call(input, text.slice(0, i));
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-  }
-};
-
-const focus = (input) => input.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
-const blur = (input) => input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
-const press = (input, key, init) =>
-  input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, ...init }));
 
 describe('DeprelEditor', () => {
   it('confirms nothing when the label is only passed through', async () => {

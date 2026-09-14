@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
+import { type, focus, blur, press } from '../../../test/keyboard.js';
 import { readFeatureInventory } from '../../../utils/udVocab.js';
 import { FeaturesCell } from './FeaturesCell.jsx';
 import { EditorSessionContext } from './editorSession.js';
@@ -41,19 +42,6 @@ const mount = (props = {}, session = {}) => {
     </EditorSessionContext.Provider>,
   ).then((view) => ({ ...view, onAnnotationUpdate, onFeatureDelete }));
 };
-
-// One character at a time, the way a keyboard does it (see DeprelEditor.test).
-const type = (input, text) => {
-  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-  for (let i = 1; i <= text.length; i++) {
-    setter.call(input, text.slice(0, i));
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-  }
-};
-const focus = (input) => input.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
-const blur = (input) => input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
-const press = (input, key, init) =>
-  input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, ...init }));
 
 describe('FeaturesCell and the machine value re-typed', () => {
   it('marks the pill of a machine-made feature', async () => {
