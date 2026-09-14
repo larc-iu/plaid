@@ -85,6 +85,37 @@
     (testing "Release without acquiring returns 204 (idempotent)"
       (assert-status 204 (release-lock admin-request doc)))))
 
+(deftest a-locked-document-refuses-an-ordinary-write
+  ;; `plaid.sql.operation/check-locks!` is what makes a document lock mean
+  ;; anything: every operation carrying a :document runs it before the tx
+  ;; opens. Only the bulk path covered it, so deleting check-locks! left the
+  ;; suite green. This drives one single-entity write.
+  (let [proj (create-test-project admin-request "LockOrdinaryWriteProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        tokl (-> (create-token-layer admin-request tl "Tokens") :body :id)
+        sl (-> (create-span-layer admin-request tokl "Spans") :body :id)
+        text (-> (create-text admin-request tl doc "ab cd") :body :id)
+        tok (-> (create-token admin-request tokl text 0 2) :body :id)
+        span (-> (create-span admin-request sl [tok] "A") :body :id)
+        _ (assert-no-content (add-project-writer admin-request proj "user1@example.com"))]
+
+    (testing "user1 holds the lock"
+      (assert-ok (acquire-lock user1-request doc)))
+
+    (testing "admin's PATCH /spans/:id is a 423 and changes nothing"
+      (let [r (update-span admin-request span :value "B")]
+        (assert-status 423 r)
+        (is (re-find #"locked by" (-> r :body :error))
+            "the message says who holds it")
+        (is (= "A" (-> (get-span admin-request span) :body :span/value))
+            "nothing was written")))
+
+    (testing "and it goes through once the lock is released"
+      (assert-status 204 (release-lock user1-request doc))
+      (assert-ok (update-span admin-request span :value "B"))
+      (is (= "B" (-> (get-span admin-request span) :body :span/value))))))
+
 (deftest lock-access-control
   (let [proj (create-test-project admin-request "LockACProj")
         doc (create-test-document admin-request proj "Doc")]
