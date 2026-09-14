@@ -53,6 +53,13 @@ beforeEach(() => {
   history.fetchHistoricalDocument.mockReset();
   history.clearHistoricalDocument.mockReset();
   history.fetchAuditLog.mockReset();
+  // The real one raises the flag itself (useDocumentHistory), and that flag is
+  // the whole of the once-only guard below. A bare vi.fn() left the two ends
+  // unconnected, so the test had to set the flag by hand and could not have
+  // caught the guard being armed by nothing.
+  history.fetchAuditLog.mockImplementation(() => {
+    history.hasLoadedAudit = true;
+  });
   client = { documents: { get: vi.fn(() => Promise.resolve({})) } };
   reload = vi.fn(() => Promise.resolve());
 });
@@ -64,7 +71,6 @@ describe('the history view', () => {
     expect(api.isHistoryDrawerOpen).toBe(true);
     expect(history.fetchAuditLog).toHaveBeenCalledTimes(1);
 
-    history.hasLoadedAudit = true;
     await view.step(() => api.closeHistory());
     await view.step(() => api.openHistory());
     expect(history.fetchAuditLog).toHaveBeenCalledTimes(1);
