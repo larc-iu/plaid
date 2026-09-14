@@ -51,6 +51,12 @@ const uposValues = async () => {
   const upos = words.spanLayers.find((l) => l.name === 'UPOS');
   return (upos.spans || []).map((s) => s.value);
 };
+const featureValues = async () => {
+  const doc = await S.client.documents.get(S.documentId, true);
+  const words = doc.textLayers[0].tokenLayers.find((l) => l.name === 'Words');
+  const features = words.spanLayers.find((l) => l.name === 'Features');
+  return (features.spans || []).map((s) => s.value);
+};
 const deprels = async () => {
   const doc = await S.client.documents.get(S.documentId, true);
   const words = doc.textLayers[0].tokenLayers.find((l) => l.name === 'Words');
@@ -116,6 +122,47 @@ test('a CLOSED vocabulary refuses an off-list tag and keeps what was saved', asy
       .spans.find((s) => s.value === 'NOUN').id,
   );
   await open(S.layers.upos);
+});
+
+// FEATS is the one field whose value has two halves, and a closed inventory
+// governs both: the name has to be in it, and the value in that name's list.
+// The chip input keeps the typed text where a cell restores the saved value,
+// because a chip is added rather than replacing something.
+test('a CLOSED feature inventory refuses both halves and keeps what was typed', async ({
+  page,
+}) => {
+  await S.client.spanLayers.setConfig(S.layers.features, 'ud', 'inventory', [
+    { key: 'Gender', values: ['Masc', 'Fem'] },
+  ]);
+  await close(S.layers.features);
+  await openAnnotate(page);
+
+  const input = page.locator(`[id="${S.morphIds[1]}-feats"]`);
+  await input.click();
+  await input.pressSequentially('Widget=Yes', { delay: 20 });
+  await input.press('Enter');
+
+  await expect(page.getByText("Widget=Yes is not in this project's feature list.")).toBeVisible({
+    timeout: 8000,
+  });
+  await expect(input).toHaveValue('Widget=Yes');
+
+  // A name the inventory does have, with a value it does not.
+  await input.fill('');
+  await input.pressSequentially('Gender=Zzz', { delay: 20 });
+  await input.press('Enter');
+  await expect(page.getByText("Gender=Zzz is not in this project's feature list.")).toBeVisible({
+    timeout: 8000,
+  });
+  await expect(input).toHaveValue('Gender=Zzz');
+
+  // Nothing reached the server, and leaving the cell does not write it either.
+  await page.locator(`[id="${S.morphIds[0]}-upos"]`).click();
+  await page.waitForTimeout(500);
+  expect(await featureValues()).toEqual([]);
+
+  await open(S.layers.features);
+  await S.client.spanLayers.setConfig(S.layers.features, 'ud', 'inventory', []);
 });
 
 test('a CLOSED relation list judges a subtype by its base', async ({ page }) => {
