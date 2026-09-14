@@ -58,8 +58,8 @@ const rejectWith = (error) => async () => {
 
 test("the window comes from the server's own expiresAt", () => {
   // An operator who retunes :plaid.server.locks/config :expiration-ms changes
-  // the only number that matters here, and /info does not publish it. The
-  // acquire response does.
+  // the only number that matters here. /info publishes the window; the acquire
+  // response names the moment, which is what a renewal plans against.
   assert.equal(lockTtlMs(45000, 0), 45000);
   assert.equal(lockTtlMs(120000, 60000), 60000);
 });

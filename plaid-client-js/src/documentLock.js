@@ -29,9 +29,10 @@
 /**
  * How long plaid-core holds a document lock before it expires, in ms.
  * `plaid.server.locks/default-lock-expiration-ms`. An operator can change it
- * with `:plaid.server.locks/config :expiration-ms` and `GET /info` does not
- * publish it, so this is the fallback: what a live lock is actually renewed
- * against is the `expiresAt` the acquire response carries.
+ * with `:plaid.server.locks/config :expiration-ms`, and a server publishes what
+ * it enforces as `lockExpirationMs` in `GET /info`. This is the last resort:
+ * what a live lock is renewed against is the `expiresAt` on the acquire
+ * response, which names the moment rather than the window.
  */
 export const DOCUMENT_LOCK_TTL_MS = 60000;
 

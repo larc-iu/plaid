@@ -32,9 +32,10 @@ logger = logging.getLogger(__name__)
 
 #: How long plaid-core holds a document lock before it expires, in seconds.
 #: ``plaid.server.locks/default-lock-expiration-ms``. An operator can change it
-#: with ``:plaid.server.locks/config :expiration-ms`` and ``GET /info`` does not
-#: publish it, so this is the fallback: what a live lock is actually renewed
-#: against is the ``expires_at`` the acquire response carries.
+#: with ``:plaid.server.locks/config :expiration-ms``, and a server publishes
+#: what it enforces as ``lock_expiration_ms`` in ``GET /info``. This is the
+#: last resort: what a live lock is renewed against is the ``expires_at`` on
+#: the acquire response, which names the moment rather than the window.
 DOCUMENT_LOCK_TTL_S = 60.0
 
 #: Widest lock lifetime we will believe from a server response. Past this the

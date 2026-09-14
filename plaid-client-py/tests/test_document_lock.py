@@ -63,8 +63,8 @@ def _keeper(clock, refresh, ttl_s=DOCUMENT_LOCK_TTL_S, lost=None):
 
 def test_the_window_comes_from_the_servers_own_expires_at():
     # An operator who retunes :plaid.server.locks/config :expiration-ms changes
-    # the only number that matters here, and /info does not publish it. The
-    # acquire response does.
+    # the only number that matters here. /info publishes the window; the acquire
+    # response names the moment, which is what a renewal plans against.
     assert lock_ttl_s(45_000, 0.0) == 45.0
     assert lock_ttl_s(120_000, 60.0) == 60.0
 
