@@ -57,6 +57,20 @@
                                    "(`mamba activate base`) first, or pass --skip-clients")
                               {}))))
 
+;; The assistant package lives in its own mamba env (`plaid-agent`: Python 3.12,
+;; pydantic-monty), and is not importable from base. Anything that runs it
+;; takes this interpreter: PLAID_AGENT_PYTHON if set, else the env's python
+;; under the usual mamba roots, else whatever python-exe finds, which will
+;; fail at the first import with a message that names the package.
+(defn agent-python-exe []
+  (or (System/getenv "PLAID_AGENT_PYTHON")
+      (let [home (System/getProperty "user.home")]
+        (->> [".mambaforge" "mambaforge" "miniforge3" "micromamba" "miniconda3" "anaconda3"]
+             (map #(str home "/" % "/envs/plaid-agent/bin/python"))
+             (filter fs/exists?)
+             first))
+      (python-exe)))
+
 ;; The SPA build (Vite) needs a recent Node; CI uses 24. Node 20 ships npm 10,
 ;; which cannot read the lockfiles npm 11 writes, and that is exactly how the
 ;; v0.2.0-alpha.12 release failed: `npm ci` died on a lockfile the test job had
@@ -102,14 +116,15 @@
   ;; After the JS step, deliberately: the assistant's mirror test runs the
   ;; app's own domain modules through node and SKIPS ITSELF when plaid-igt's
   ;; node_modules are missing, which would make it pass by not running.
-  (let [py (python-exe)]
+  (let [py (agent-python-exe)]
     (step "Run the Python test suite (plaid-agent)")
     ;; The live suites talk to a running server, which a gate does not have.
     (p/shell {:dir "plaid-agent"} py "-m" "pytest" "-q"
              "--ignore=tests/test_live_corpus.py"
              "--ignore=tests/test_live_dictionary.py")
     (step "Run the Python test suite (plaid-igt services)")
-    (p/shell {:dir "plaid-igt"} py "-m" "pytest" "-q" "services/tests")))
+    ;; The bundled services are plain plaid-client code and run from base.
+    (p/shell {:dir "plaid-igt"} (python-exe) "-m" "pytest" "-q" "services/tests")))
 
 ;; The two SAMPLE_PROMPT.md files are snapshots of what the model is actually
 ;; sent, and they rot silently: a tool changes and the file goes on describing
@@ -117,7 +132,7 @@
 ;; one command that puts them right, rather than two scripts to remember.
 (defn write-sample-prompts! []
   (ensure-repo-root!)
-  (let [py (python-exe)]
+  (let [py (agent-python-exe)]
     (step "Regenerate the assistant prompt snapshots")
     (p/shell {:dir "plaid-agent"} py "tests/sample_prompt.py")
     (p/shell {:dir "plaid-agent"} py "tests/ud_sample_prompt.py")))
