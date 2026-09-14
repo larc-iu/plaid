@@ -11,6 +11,7 @@ import { runBuiltinAnalysis } from '@/domain/autoPass';
 import { BUILTIN_LINK_PRECEDENT } from '@/domain/serviceDefaults';
 import { resolveAutoAnalysis } from '@/domain/igtConfig';
 import { writeRunRecord, clearRunRecord } from '@ui/domain/runRecord.js';
+import { reloadAfterRun } from '@ui/lib/runReload.js';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 
 const STEPS_STORAGE_KEY = 'plaid_igt_auto_analyze_steps';
@@ -228,7 +229,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
     const reload = async () => {
       progress.report({ percent: null, message: 'Loading results…' });
       lock.setStatus('Loading results…');
-      await doc._reload();
+      await reloadAfterRun(() => doc._reload());
       // The step is done and collected; nothing left for a reload to rejoin.
       clearRunRecord(doc.id);
     };

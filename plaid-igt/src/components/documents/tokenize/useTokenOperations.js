@@ -11,7 +11,8 @@ import {
   countReTokenizeLoss,
 } from '../../../domain/annotationLoss.js';
 import { BUILTIN_TOKENIZE_RULE_BASED } from '../../../domain/serviceDefaults.js';
-import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
+import { notifySuccess, notifyError, notifyInfo, humanizeError } from '@/utils/feedback';
+import { reloadAfterRun } from '@ui/lib/runReload.js';
 import { writeRunRecord, clearRunRecord } from '@ui/domain/runRecord.js';
 
 // The rule-based tokenizer is always available and declares no options.
@@ -240,7 +241,7 @@ export const useTokenOperations = () => {
       // large one, so it is named rather than left as dead air.
       tokenizeRun.report({ percent: null, message: 'Loading the tokens…' });
       lock.setStatus('Loading the tokens…');
-      await doc._reload();
+      await reloadAfterRun(() => doc._reload());
     } catch (error) {
       // useServiceRequest already shows an error toast (errorTitle/errorMessage);
       // just log here so a failed run doesn't double-toast.
@@ -296,7 +297,7 @@ export const useTokenOperations = () => {
       else notifyInfo('Text is already fully tokenized', 'Complete');
     } catch (error) {
       console.error('Tokenization failed:', error);
-      notifyError(error.message || 'An error occurred during tokenization', 'Tokenization Failed');
+      notifyError(humanizeError(error), 'Tokenization failed');
     } finally {
       setIsTokenizing(false);
       tokenizeRun.finish();

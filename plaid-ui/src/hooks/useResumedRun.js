@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { notifySuccess, notifyWarning, notifyInfo } from '../lib/notify.js';
 import { clearRunRecord, readRunRecord } from '../domain/runRecord.js';
+import { reloadAfterRun } from '../lib/runReload.js';
 import { useServiceRequest } from './useServiceRequest.js';
 
 // Picks a service run back up after the page that started it went away.
@@ -40,7 +41,7 @@ export function useResumedRun(client, doc, acquireWriteLock) {
       try {
         const result = await attachToRequest(record.projectId, record.requestId);
         lock.setStatus('Loading results…');
-        await doc._reload();
+        await reloadAfterRun(() => doc._reload());
         if (result?.stopped === true) {
           // Someone stopped it — from this page's banner, or another of their
           // tabs. Not a finish, and not a failure.
@@ -60,7 +61,7 @@ export function useResumedRun(client, doc, acquireWriteLock) {
         if (error?.status === 404) {
           // Gone: it expired, or it finished and its result was collected by
           // the page that made it. Reload so anything it wrote is on screen.
-          await doc._reload();
+          await reloadAfterRun(() => doc._reload());
         } else if (error?.pending) {
           // Still out there: we stopped waiting, it did not stop working. Keep
           // the record so the next reload rejoins it again. (attachToRequest

@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { notifySuccess, notifyError, notifyInfo, notifyWarning } from '../lib/notify.js';
+import { humanizeError } from '../lib/errors.js';
 
 // One service request, from discovery to result, with the progress contract
 // every run in every app wears.
@@ -17,28 +18,40 @@ export const useServiceRequest = (client) => {
   const [progressMessage, setProgressMessage] = useState('');
   // The request in flight, so it can be cancelled or found again after a reload.
   const inFlight = useRef(null); // { projectId, requestId }
-  // Re-entrancy guard for discovery, read at call time rather than captured.
-  const discovering = useRef(false);
+  // The discovery whose answer is still the one wanted, read at call time
+  // rather than captured. It carries the project id because this hook outlives
+  // a project: one route component serves every document in plaid-ud, so the
+  // screen can be looking at project B while A's discovery is still out.
+  const discovering = useRef(null); // { projectId }
 
-  // Discover available services
+  // Discover available services.
+  //
+  // A second call for the SAME project while one is out is the re-entrancy this
+  // has always skipped. A call for a DIFFERENT project is not: it SUPERSEDES.
+  // Skipping it dropped the new project's services and left the old project's
+  // in the method lists, and the answer that did land was for a project nobody
+  // was looking at any more.
   const discoverServices = useCallback(
     async (projectId) => {
-      if (!projectId || discovering.current) return;
-      discovering.current = true;
+      if (!projectId || discovering.current?.projectId === projectId) return;
+      const call = { projectId };
+      discovering.current = call;
       setIsDiscovering(true);
 
+      let services;
       try {
-        const services = await client.messages.discoverServices(projectId);
-        setAvailableServices(services);
-        return services;
+        services = await client.messages.discoverServices(projectId);
       } catch (error) {
         console.error('[ServiceDiscovery] Failed to discover services:', error);
-        setAvailableServices([]);
-        return [];
-      } finally {
-        discovering.current = false;
-        setIsDiscovering(false);
+        services = [];
       }
+      // Superseded while it was out: the newer call owns the state and the
+      // spinner, and these services belong to a project that has been left.
+      if (discovering.current !== call) return services;
+      discovering.current = null;
+      setAvailableServices(services);
+      setIsDiscovering(false);
+      return services;
     },
     [client],
   );
@@ -92,8 +105,9 @@ export const useServiceRequest = (client) => {
       notifyWarning(copy.lostMessage, copy.stoppedTitle || copy.errorTitle);
       return;
     }
-    setProgressMessage(`Error: ${error.message || copy.errorMessage}`);
-    notifyError(error.message || copy.errorMessage, copy.errorTitle);
+    const said = humanizeError(error, copy.errorMessage);
+    setProgressMessage(`Error: ${said}`);
+    notifyError(said, copy.errorTitle);
   }, []);
 
   // Generic service request with progress tracking.
