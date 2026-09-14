@@ -4,69 +4,279 @@ The mechanics are :mod:`plaid_agent.core.plan`: batching against the server's
 cap, counting what was committed so a failure part-way can say how far it got,
 and the provenance an approval writes. What is here is the ops themselves.
 
+**Every kind is declared once**, in :data:`KIND` below: its required keys, the
+noun the user reads, which pass of the executor applies it, what it writes to,
+what it deletes, whether it reshapes the document, and how like ops fold into
+one stored op. ``KINDS``, ``REQUIRED``, ``SCOPES``, ``RESHAPES_DOCUMENT``,
+``LATER_PASSES``, the summary and the executor's dispatch are all read off it
+(see :mod:`plaid_agent.core.opkind`).
+
 **Two batches, not one.** A batch op cannot refer to an id produced by an
-earlier op in the SAME batch, and a dependency needs its endpoints' lemma
-spans to exist first. So every lemma span a plan has to create goes in one
-batch, and the relations go in the next.
+earlier op in the SAME batch, and a relation needs its endpoints' lemma spans
+to exist first. So every lemma span a plan has to create goes in one batch,
+and the relations go in the next.
 """
 
 from collections import Counter
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
+from ..core import opkind as ok
+from ..core.opkind import OpKind
 from ..core.plan import CONFIRM, PlanError, Stamps, TrackingBatcher, applying, created_id, expand_ops
 from .project import load_document, word_ref
 from .review import all_words, confirm_targets, discard_targets
-from .sentences import apply_merge_sentences, apply_split_sentence
-from .shape import apply_set_words, finish_set_words
 
-KINDS = ('set_span', 'set_head', 'del_relation', 'confirm', 'run_parse', 'set_words',
-         'split_sentence', 'merge_sentences', 'restore_document', 'confirm_scope', 'discard_scope',
-         'replace_scope', 'set_deprel', 'add_comment')
-# A scope names a document and fields, or a field and a pattern, and is
-# resolved to spans at approval.
-SCOPES = ('confirm_scope', 'discard_scope', 'replace_scope')
+# `.shape` and `.sentences` are imported where they are used rather than here:
+# both reach the tools for their refusals, and the tools read this module's
+# registry, so importing them at the top would close the circle.
 
-# Ops that move where sentences begin, which renumbers every sentence after
-# them. References are positional, so no other op in the plan can be trusted
-# to still mean what it said.
-RESHAPES_DOCUMENT = ('split_sentence', 'merge_sentences')
+# A kind's tag for what it does to the shape of a document. RESHAPES_DOCUMENT
+# is every kind tagged SENTENCE_SHAPE: moving where sentences begin renumbers
+# every sentence after them, and references are positional, so no other op in
+# the plan can be trusted to still mean what it said.
+SENTENCE_SHAPE = 'sentence_shape'
+WORD_SHAPE = 'word_shape'      # a token's words are deleted and remade
 
-# Kinds a LATER pass of the executor applies: heads, which need the ids the
-# first batch mints, and the parser, which runs outside the batches. Pass one
-# raises on anything else it does not know, so a kind added to KINDS and
-# forgotten in the dispatch is a refusal rather than an op written as nothing
-# under a label saying it was applied.
-LATER_PASSES = ('set_head', 'del_relation', 'run_parse')
-
-# Kinds a LATER pass of the executor applies: heads, which need the ids the
-# first batch mints, and the parser, which runs outside the batches. Pass one
-# raises on anything else it does not know, so a kind added to KINDS and
-# forgotten in the dispatch is a refusal rather than an op written as nothing
-# under a label saying it was applied.
-LATER_PASSES = ('set_head', 'del_relation', 'run_parse')
+# The passes of the executor past the first. Heads need the ids the first
+# batch mints; the parser runs outside the batches entirely.
+IDS = 'ids'
+PARSE = 'parse'
 
 # How long the parser may say nothing before the plan gives up on it. This
 # measures SILENCE, not elapsed time: the parser reports progress as it goes,
 # so a long document does not trip it and a parser that has died does.
 PARSE_SILENCE_S = 10 * 60
 
-REQUIRED = {
-    'set_span': ('layer_id', 'token_id'),
-    'set_head': ('word_id', 'head_id', 'lemma_layer_id', 'relation_layer_id', 'deprel'),
-    'del_relation': ('relation_id',),
-    'confirm': (),
-    'run_parse': ('document_ids', 'service_id', 'project_id', 'language'),
-    'set_words': ('token_id', 'text_id', 'forms', 'word_layer_id', 'form_layer_id',
-                  'lemma_layer_id'),
-    'split_sentence': ('document_id', 'sentence_id', 'char_pos'),
-    'merge_sentences': ('document_id', 'sentence_id', 'previous_id'),
-    'restore_document': ('document_id', 'as_of'),
-    'confirm_scope': ('document_id', 'fields'),
-    'discard_scope': ('document_id', 'fields'),
-    'replace_scope': ('field', 'pattern'),
-    'set_deprel': ('relation_id', 'deprel'),
-    'add_comment': ('entity_type', 'entity_id', 'body'),
-}
+
+# --- the executor's shared state -------------------------------------------------
+
+class Context:
+    """What one run of the executor carries between its passes."""
+
+    def __init__(self, client, ops, stamps: Stamps, counts: Counter, notes: List[str], b: TrackingBatcher):
+        self.client = client
+        self.ops = ops
+        self.stamps = stamps
+        self.stamp = stamps.stamp
+        self.restamp = stamps.restamp
+        self.counts = counts
+        self.notes = notes
+        self.b = b
+        self.restores: List[Dict[str, Any]] = []
+        # A word's lemma span, by word id, or an int result index for one this
+        # plan is creating.
+        self.lemma_at: Dict[str, Any] = {}
+        # What this plan is ALREADY creating, by (layer, word). A relation
+        # needs a lemma span to hang off, and if the same plan sets that
+        # word's lemma there must not be two: the second create wins the read
+        # and the value the user approved becomes invisible to every tool.
+        # Keyed in the first pass and consulted in the second.
+        self.creating: Dict[tuple, int] = {}
+
+    def lemma_span(self, word_id):
+        at = self.lemma_at.get(word_id)
+        if isinstance(at, int):
+            sid = created_id(self.b.results[at] if at < len(self.b.results) else None)
+            if not sid:
+                raise ValueError(f'could not create the lemma a dependency needs on {word_id}')
+            self.lemma_at[word_id] = sid
+            return sid
+        return at
+
+
+# --- what each kind does -----------------------------------------------------------
+
+def _apply_set_span(ctx: Context, op) -> int:
+    span_id, value = op.get('span_id'), op.get('value') or ''
+    if span_id and value == '' and op.get('field') == 'lemma':
+        # Clearing a UPOS or XPOS cell deletes its span. Lemma is the
+        # exception, and it is not a cosmetic one: dependency relations hang
+        # off lemma spans, so deleting one cascades every arc on that word,
+        # including arcs a person drew and vouched for. A cleared lemma keeps
+        # its null-valued span, exactly as the editor leaves it (ConlluDocument's
+        # `updateAnnotation`) and as an unlemmatized import writes it.
+        ctx.b.update('spans', span_id, value=None, metadata=ctx.restamp())
+    elif span_id and value == '':
+        ctx.b.add(lambda sid=span_id: ctx.client.spans.delete(sid))
+    elif span_id:
+        ctx.b.update('spans', span_id, value=value, metadata=ctx.restamp())
+    elif value != '':
+        ctx.creating[(op['layer_id'], op['token_id'])] = ctx.b.add(
+            lambda o=op, v=value: ctx.client.spans.create(o['layer_id'], [o['token_id']], v, ctx.stamp()))
+    else:
+        return 0  # nothing to clear
+    return 1
+
+
+def _apply_add_comment(ctx: Context, op) -> int:
+    # Unaudited, like every comment; under the requester's name.
+    ctx.b.add(lambda o=op: ctx.client.comments.create(o['entity_type'], o['entity_id'], o['body'],
+                                                      anchor_label=o.get('anchor_label') or None))
+    return 1
+
+
+def _apply_set_deprel(ctx: Context, op) -> int:
+    ctx.b.update('relations', op['relation_id'], value=op['deprel'], metadata=ctx.restamp())
+    return 1
+
+
+def _apply_confirm(ctx: Context, op) -> int:
+    if op.get('span_id'):
+        ctx.b.update('spans', op['span_id'], metadata=CONFIRM)
+    else:
+        ctx.b.update('relations', op['relation_id'], metadata=CONFIRM)
+    return 1
+
+
+def _apply_set_words(ctx: Context, op) -> int:
+    from .shape import apply_set_words
+    apply_set_words(ctx.client, op, ctx.b, ctx.stamp)
+    return 1
+
+
+def _apply_restore_document(ctx: Context, op) -> int:
+    ctx.restores.append(op)  # after the batches: the server's own operation
+    return 1
+
+
+def _apply_split_sentence(ctx: Context, op) -> int:
+    from .sentences import apply_split_sentence
+    apply_split_sentence(ctx.client, op, ctx.b, ctx.stamp)
+    return 1
+
+
+def _apply_merge_sentences(ctx: Context, op) -> int:
+    from .sentences import apply_merge_sentences
+    apply_merge_sentences(ctx.client, op, ctx.b, ctx.stamp)
+    return 1
+
+
+def _apply_del_relation(ctx: Context, op) -> int:
+    ctx.b.add(lambda i=op['relation_id']: ctx.client.relations.delete(i))
+    return 1
+
+
+def _apply_set_head(ctx: Context, op) -> int:
+    target = ctx.lemma_span(op['word_id'])
+    src = ctx.lemma_span(op['head_id'])
+    # One head per word: the old relation goes in the same batch as the new
+    # one, so the word is never headless and never twice headed, whichever way
+    # a failure falls.
+    if op.get('relation_id'):
+        ctx.b.add(lambda i=op['relation_id']: ctx.client.relations.delete(i))
+    ctx.b.add(lambda o=op, s=src, t=target: ctx.client.relations.create(
+        o['relation_layer_id'], s, t, o['deprel'], ctx.stamp() or None))
+    return 1
+
+
+def _apply_run_parse(ctx: Context, op) -> int:
+    n = 0
+    for did in op['document_ids']:
+        _parse(ctx.client, op, did, ctx.notes, ctx.b, len(ctx.ops))
+        n += 1
+    return n
+
+
+# --- what each kind counts as -------------------------------------------------------
+
+_FIELD_VALUE = ('field value', 'field values')
+_CLEARED = ('cleared value', 'cleared values')
+_RELABELED = ('relabeled dependency', 'relabeled dependencies')
+_REMOVED_DEP = ('removed dependency', 'removed dependencies')
+
+
+def _set_span_summary(op, n):
+    return [(_FIELD_VALUE if op.get('value') else _CLEARED, n)]
+
+
+def _replace_scope_summary(op, n):
+    return [(_RELABELED if op.get('field') == 'deprel' else _FIELD_VALUE, n)]
+
+
+def _discard_scope_summary(op, n):
+    per = op.get('per_field') or {}
+    heads = int(per.get('deprel') or 0)
+    out = []
+    if heads:
+        out.append((_REMOVED_DEP, heads))
+    if n - heads:
+        out.append((_CLEARED, n - heads))
+    return out
+
+
+def _split_sentence_summary(op, n):
+    out = [(('sentence split', 'sentence splits'), 1)]
+    # The relations it orphans go with it, and the user should see how many
+    # rather than discover it afterwards.
+    gone = len(op.get('relation_ids') or [])
+    if gone:
+        out.append((_REMOVED_DEP, gone))
+    return out
+
+
+def _run_parse_summary(op, n):
+    return [(('parsed document', 'parsed documents'), len(op.get('document_ids') or []))]
+
+
+# --- the registry -------------------------------------------------------------------
+
+KIND = ok.registry([
+    OpKind('set_span', _FIELD_VALUE, required=('layer_id', 'token_id'), apply=_apply_set_span,
+           target=lambda op: ('span', op.get('layer_id'), op.get('token_id')),
+           deletes=lambda op: ([op['span_id']] if op.get('span_id') and (op.get('value') or '') == '' else []),
+           compact_each=('token_id', 'span_id', 'ref'), summary=_set_span_summary),
+    OpKind('set_head', ('dependency', 'dependencies'), stage=IDS, apply=_apply_set_head,
+           required=('word_id', 'head_id', 'lemma_layer_id', 'relation_layer_id', 'deprel'),
+           target=lambda op: ('head', op.get('word_id')),
+           deletes=lambda op: [op.get('relation_id')],
+           compact_each=('word_id', 'head_id', 'word_form', 'head_form', 'lemma_span_id',
+                         'head_lemma_span_id', 'relation_id', 'ref')),
+    OpKind('del_relation', _REMOVED_DEP, stage=IDS, apply=_apply_del_relation,
+           required=('relation_id',), target=lambda op: ('head', op.get('word_id')),
+           deletes=lambda op: [op['relation_id']],
+           compact_each=('word_id', 'relation_id', 'ref')),
+    OpKind('confirm', ('confirmation', 'confirmations'), apply=_apply_confirm,
+           compact_each=('span_id', 'relation_id', 'ref')),
+    OpKind('run_parse', ('parsed document', 'parsed documents'), stage=PARSE, apply=_apply_run_parse,
+           required=('document_ids', 'service_id', 'project_id', 'language'),
+           shape=ok.EXCLUSIVE, summary=_run_parse_summary),
+    OpKind('set_words', ('reshaped token', 'reshaped tokens'), apply=_apply_set_words, shape=WORD_SHAPE,
+           required=('token_id', 'text_id', 'forms', 'word_layer_id', 'form_layer_id', 'lemma_layer_id'),
+           deletes_tokens=lambda op: list(op.get('existing_word_ids') or [])),
+    OpKind('split_sentence', ('sentence split', 'sentence splits'), apply=_apply_split_sentence,
+           required=('document_id', 'sentence_id', 'char_pos'), shape=SENTENCE_SHAPE,
+           deletes=lambda op: list(op.get('relation_ids') or []), summary=_split_sentence_summary),
+    OpKind('merge_sentences', ('sentence merge', 'sentence merges'), apply=_apply_merge_sentences,
+           required=('document_id', 'sentence_id', 'previous_id'), shape=SENTENCE_SHAPE,
+           deletes=lambda op: list(op.get('relation_ids') or [])),
+    OpKind('restore_document', ('restored document', 'restored documents'), apply=_apply_restore_document,
+           required=('document_id', 'as_of'), shape=ok.EXCLUSIVE),
+    # A scope names a document and fields, or a field and a pattern, and is
+    # resolved to spans at approval, so the executor never sees one.
+    OpKind('confirm_scope', ('confirmation', 'confirmations'), stage=ok.RESOLVED, shape=ok.SCOPE,
+           required=('document_id', 'fields'),
+           target=lambda op: ('scope', 'confirm_scope', op.get('document_id'))),
+    OpKind('discard_scope', ('discarded prediction', 'discarded predictions'), stage=ok.RESOLVED,
+           shape=ok.SCOPE, required=('document_id', 'fields'), summary=_discard_scope_summary,
+           target=lambda op: ('scope', 'discard_scope', op.get('document_id'))),
+    OpKind('replace_scope', _FIELD_VALUE, stage=ok.RESOLVED, shape=ok.SCOPE,
+           required=('field', 'pattern'), summary=_replace_scope_summary,
+           target=lambda op: ('replace', op.get('field'), op.get('pattern'),
+                              op.get('replacement'), op.get('document_id'))),
+    OpKind('set_deprel', _RELABELED, required=('relation_id', 'deprel'), apply=_apply_set_deprel),
+    OpKind('add_comment', ('comment', 'comments'), required=('entity_type', 'entity_id', 'body'),
+           apply=_apply_add_comment),
+])
+
+# Every table below is the registry read a different way.
+KINDS = ok.names(KIND)
+REQUIRED = ok.required(KIND)
+SCOPES = ok.shaped(KIND, ok.SCOPE)
+RESHAPES_DOCUMENT = ok.shaped(KIND, SENTENCE_SHAPE)
+RESHAPES_TOKEN = ok.shaped(KIND, WORD_SHAPE)
+# Kinds a LATER pass of the executor applies: relations, which need the ids
+# the first batch mints, and the parser, which runs outside the batches.
+LATER_PASSES = ok.staged(KIND, IDS, PARSE)
 
 
 def _reach(op: Dict[str, Any]) -> set:
@@ -81,16 +291,15 @@ def _reach(op: Dict[str, Any]) -> set:
 def validate_ops(ops: List[Dict[str, Any]]) -> None:
     """Reject a malformed plan BEFORE anything is written."""
     for i, op in enumerate(ops):
-        kind = op.get('kind') if isinstance(op, dict) else None
-        if kind not in KINDS:
-            raise ValueError(f'op {i}: unknown kind "{kind}"')
-        for key in REQUIRED[kind]:
+        spec = ok.kind_of(KIND, op, index=i)
+        kind = spec.name
+        for key in spec.required:
             if not op.get(key):
                 raise ValueError(f'op {i} ({kind}): missing {key}')
         if kind == 'confirm' and not (op.get('span_id') or op.get('relation_id')):
             raise ValueError(f'op {i} (confirm): needs a span_id or a relation_id')
         # A restore rewrites every layer of the document, so anything else in the
-        # plan would address what it is about to replace.
+        # plan would address what it is about to replace. A parse does the same.
         if kind == 'restore_document' and len(ops) > 1:
             raise ValueError(f'op {i + 1} (restore_document): a restore must be the only '
                              f'op in its plan')
@@ -100,11 +309,10 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
     # plan that silently lost half its changes is the worst outcome here.
     # Reshaping a token deletes and remakes its words, so an op that names one
     # of those words would be writing to something that will not exist.
-    reshaped = {w for op in ops if op.get('kind') == 'set_words'
-                for w in (op.get('existing_word_ids') or [])}
+    reshaped = ok.removed_tokens(KIND, ops)
     # A scope reaches every word of its document, so it clashes with any
     # reshape there, without naming a word for the check below to catch.
-    reshaped_docs = {op.get('document_id') for op in ops if op.get('kind') == 'set_words'}
+    reshaped_docs = {op.get('document_id') for op in ops if op.get('kind') in RESHAPES_TOKEN}
     for op in ops:
         if op.get('kind') in SCOPES and _reach(op) & reshaped_docs:
             raise ValueError('this plan both reshapes a token and changes every matching word of its '
@@ -113,7 +321,7 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
         # `confirm` carries a span_id, not a token_id, so listing the kinds
         # that name a word let it through. Ask the op what it names instead.
         for op in ops:
-            if op.get('kind') == 'set_words':
+            if op.get('kind') in RESHAPES_TOKEN:
                 continue
             if op.get('token_id') in reshaped or op.get('word_id') in reshaped:
                 raise ValueError('this plan both reshapes a token and annotates one of its words, '
@@ -123,7 +331,7 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
     # outright. Either way it is not what was approved.
     seen_reshapes = set()
     for op in ops:
-        if op.get('kind') != 'set_words':
+        if op.get('kind') not in RESHAPES_TOKEN:
             continue
         words = frozenset(op.get('existing_word_ids') or [])
         if words & seen_reshapes:
@@ -169,18 +377,7 @@ def _deleted_by_the_plan(ops) -> set:
     A cleared field is the case that arises: the value is machine-made and
     unconfirmed, which is exactly why it is being cleared and exactly what a
     confirmation of the document reaches for."""
-    gone = set()
-    for op in ops:
-        kind = op.get('kind')
-        if kind == 'set_span' and op.get('span_id') and (op.get('value') or '') == '':
-            gone.add(op['span_id'])
-        elif kind == 'del_relation':
-            gone.add(op['relation_id'])
-        elif kind == 'set_head' and op.get('relation_id'):
-            gone.add(op['relation_id'])
-        elif kind in RESHAPES_DOCUMENT:
-            gone.update(op.get('relation_ids') or [])
-    return gone
+    return ok.removed_ids(KIND, ops)
 
 
 def normalize_ops(ops: List[Dict[str, Any]]):
@@ -290,84 +487,33 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str,
     return out
 
 
+def _run(ctx: Context, ops, stage: str) -> None:
+    """One pass of the executor: every op whose kind belongs to ``stage``."""
+    for op in ops:
+        spec = KIND[op['kind']]
+        if spec.stage != stage:
+            continue
+        n = spec.apply(ctx, op)
+        ctx.counts[spec.noun[1]] += 1 if n is None else n
+
+
 def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None) -> Dict[str, int]:
-    stamp, restamp = stamps.stamp, stamps.restamp
-
+    # An unknown plan operation kind, or one that should have been resolved
+    # away, refuses before any pass runs rather than being written as nothing
+    # under a label saying it was applied.
+    ok.check_applicable(KIND, ops, first=0)
     with client.operation(label):
-        b = TrackingBatcher(client, tracker=tracker)
-        restores: List[Dict[str, Any]] = []
+        ctx = Context(client, ops, stamps, counts, notes, TrackingBatcher(client, tracker=tracker))
+        b = ctx.b
 
-        # --- pass 1: the columns, and any lemma span a head is going to need ---
-        # A word with no lemma yet gets one valued with its FORM. The app does
-        # the same when a person draws an arc onto an unannotated word, except
-        # that it uses the token's surface text, which is wrong for a part of a
-        # multi-word token ("al" for both halves of a + el). The form is right
-        # in every case the surface is, and right in the case it is not.
-        lemma_at: Dict[str, Any] = {}   # word id -> span id, or an int result index
-        # What this plan is ALREADY creating, by (layer, word). A head needs a
-        # lemma span to hang off, and if the same plan sets that word's lemma
-        # there must not be two: the second create wins the read and the value
-        # the user approved becomes invisible to every tool. Keyed here in the
-        # first sub-pass and consulted in the second.
-        creating: Dict[tuple, int] = {}
-        for op in ops:
-            kind = op.get('kind')
-            if kind == 'set_span':
-                span_id, value = op.get('span_id'), op.get('value') or ''
-                if span_id and value == '' and op.get('field') == 'lemma':
-                    # Clearing a UPOS or XPOS cell deletes its span. Lemma is the
-                    # exception, and it is not a cosmetic one: dependency
-                    # relations hang off lemma spans, so deleting one cascades
-                    # every arc on that word, including arcs a person drew and
-                    # vouched for. A cleared lemma keeps its null-valued span,
-                    # exactly as the editor leaves it (ConlluDocument's
-                    # `updateAnnotation`) and as an unlemmatized import writes it.
-                    b.update('spans', span_id, value=None, metadata=restamp())
-                elif span_id and value == '':
-                    b.add(lambda sid=span_id: client.spans.delete(sid))
-                elif span_id:
-                    b.update('spans', span_id, value=value, metadata=restamp())
-                elif value != '':
-                    creating[(op['layer_id'], op['token_id'])] = b.add(
-                        lambda o=op, v=value: client.spans.create(
-                            o['layer_id'], [o['token_id']], v, stamp()))
-                else:
-                    continue  # nothing to clear
-                counts['field values'] += 1
-            elif kind == 'add_comment':
-                # Unaudited, like every comment; under the requester's name.
-                b.add(lambda o=op: client.comments.create(o['entity_type'], o['entity_id'], o['body'],
-                                                          anchor_label=o.get('anchor_label') or None))
-                counts['comments'] += 1
-            elif kind == 'set_deprel':
-                b.update('relations', op['relation_id'], value=op['deprel'], metadata=restamp())
-                counts['relabeled dependencies'] += 1
-            elif kind == 'confirm':
-                if op.get('span_id'):
-                    b.update('spans', op['span_id'], metadata=CONFIRM)
-                else:
-                    b.update('relations', op['relation_id'], metadata=CONFIRM)
-                counts['confirmations'] += 1
-            elif kind == 'set_words':
-                apply_set_words(client, op, b, stamp)
-                counts['reshaped tokens'] += 1
-            elif kind == 'restore_document':
-                restores.append(op)  # after the batches: the server's own operation
-                counts['restored documents'] += 1
-            elif kind == 'split_sentence':
-                apply_split_sentence(client, op, b, stamp)
-                counts['sentence boundaries'] += 1
-            elif kind == 'merge_sentences':
-                apply_merge_sentences(client, op, b, stamp)
-                counts['sentence boundaries'] += 1
-            elif kind not in LATER_PASSES:
-                raise ValueError(f'Unknown plan operation kind: {kind}')
-            elif kind not in LATER_PASSES:
-                raise ValueError(f'Unknown plan operation kind: {kind}')
+        # --- pass 1: the columns, and any lemma span a relation is going to need ---
+        # Every kind the executor sees that is not waiting on a minted id. A
+        # kind nobody wired up refuses here, in the pass every plan runs.
+        _run(ctx, ops, ok.BATCH)
 
-        # Second sub-pass: the lemma spans a head is going to need, now that
-        # `creating` says which ones the plan already makes. A word with no
-        # lemma at all gets one valued with its FORM. The app does the same
+        # Second sub-pass: the lemma spans a relation is going to need, now
+        # that `creating` says which ones the plan already makes. A word with
+        # no lemma at all gets one valued with its FORM. The app does the same
         # when a person draws an arc onto an unannotated word, except that it
         # uses the token's surface text, which is wrong for a part of a
         # multi-word token ("al" for both halves of a + el). The form is right
@@ -377,73 +523,44 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
                 continue
             for wid, form, existing in ((op['word_id'], op.get('word_form') or '', op.get('lemma_span_id')),
                                         (op['head_id'], op.get('head_form') or '', op.get('head_lemma_span_id'))):
-                if wid in lemma_at:
+                if wid in ctx.lemma_at:
                     continue
                 if existing:
-                    lemma_at[wid] = existing
+                    ctx.lemma_at[wid] = existing
                     continue
-                planned = creating.get((op['lemma_layer_id'], wid))
+                planned = ctx.creating.get((op['lemma_layer_id'], wid))
                 if planned is not None:
                     # The user approved a lemma for this word in this very
                     # plan. Hang the relation off THAT span rather than making
                     # a second one seeded from the form.
-                    lemma_at[wid] = planned
+                    ctx.lemma_at[wid] = planned
                     continue
-                lemma_at[wid] = b.add(
+                ctx.lemma_at[wid] = b.add(
                     lambda o=op, w=wid, f=form: client.spans.create(
-                        o['lemma_layer_id'], [w], f, stamp()))
+                        o['lemma_layer_id'], [w], f, ctx.stamp()))
 
         # The relations need those spans to exist, so the batch has to land first.
         b.flush()
 
         # The server's own restore, after the batches and never with them: it
         # is one operation of its own and a plan holds at most one.
-        for op in restores:
+        for op in ctx.restores:
             client.documents.restore(op['document_id'], op['as_of'])
             b.applied += 1
 
-        def lemma_span(word_id):
-            at = lemma_at.get(word_id)
-            if isinstance(at, int):
-                sid = created_id(b.results[at] if at < len(b.results) else None)
-                if not sid:
-                    raise ValueError(f'could not create the lemma a dependency needs on {word_id}')
-                lemma_at[word_id] = sid
-                return sid
-            return at
-
         # --- pass 2: what needed the first batch's ids ---
+        from .shape import finish_set_words
         for op in ops:
             if op.get('kind') == 'set_words':
-                finish_set_words(client, op, b, b.results, stamp)
-        for op in ops:
-            kind = op.get('kind')
-            if kind == 'del_relation':
-                b.add(lambda i=op['relation_id']: client.relations.delete(i))
-                counts['dependencies'] += 1
-            elif kind == 'set_head':
-                target = lemma_span(op['word_id'])
-                src = lemma_span(op['head_id'])
-                # One head per word: the old relation goes in the same batch as
-                # the new one, so the word is never headless and never twice
-                # headed, whichever way a failure falls.
-                if op.get('relation_id'):
-                    b.add(lambda i=op['relation_id']: client.relations.delete(i))
-                b.add(lambda o=op, s=src, t=target: client.relations.create(
-                    o['relation_layer_id'], s, t, o['deprel'], stamp() or None))
-                counts['dependencies'] += 1
+                finish_set_words(client, op, b, b.results, ctx.stamp)
+        _run(ctx, ops, IDS)
         b.flush()
 
         # --- pass 3: the parser ---
         # Last, and outside the batches, because it is not a write of ours at
         # all: it is another service rewriting whole documents, under its own
         # document lock, for as long as that takes.
-        for op in ops:
-            if op.get('kind') != 'run_parse':
-                continue
-            for did in op['document_ids']:
-                _parse(client, op, did, notes, b, len(ops))
-                counts['parsed documents'] += 1
+        _run(ctx, ops, PARSE)
 
     result = dict(counts)
     if notes:
@@ -454,7 +571,9 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
 # --- summary --------------------------------------------------------------------
 
 def _plural(name: str, n: int) -> str:
-    """"dependency" -> "dependencies", not "dependencys"."""
+    """"dependency" -> "dependencies", not "dependencys". The plan's own
+    nouns carry their plural with them; this is for counts read off a
+    server summary, where the noun is picked at run time (see `.restore`)."""
     if n == 1:
         return name
     return name[:-1] + 'ies' if name.endswith('y') else name + 's'
@@ -462,50 +581,7 @@ def _plural(name: str, n: int) -> str:
 
 def summarize(ops: List[Dict[str, Any]]) -> str:
     """A plan in one phrase, for the audit label and the applied message."""
-    c = Counter()
-    for op in ops:
-        kind = op.get('kind')
-        # A stored group stands for `count` changes; a scope for what it found.
-        n = int(op.get('count') or 1) if (op.get('compact') or kind in SCOPES) else 1
-        if kind == 'set_span':
-            c['field value' if op.get('value') else 'cleared value'] += n
-        elif kind == 'set_head':
-            c['dependency'] += n
-        elif kind == 'del_relation':
-            c['removed dependency'] += n
-        elif kind in ('confirm', 'confirm_scope'):
-            c['confirmation'] += n
-        elif kind == 'set_deprel':
-            c['relabeled dependency'] += 1
-        elif kind == 'add_comment':
-            c['comment'] += 1
-        elif kind == 'replace_scope':
-            c['relabeled dependency' if op.get('field') == 'deprel' else 'field value'] += n
-        elif kind == 'discard_scope':
-            per = op.get('per_field') or {}
-            heads = int(per.get('deprel') or 0)
-            if heads:
-                c['removed dependency'] += heads
-            if n - heads:
-                c['cleared value'] += n - heads
-        elif kind == 'run_parse':
-            c['parsed document'] += len(op.get('document_ids') or [])
-        elif kind == 'set_words':
-            c['reshaped token'] += 1
-        elif kind == 'split_sentence':
-            c['sentence split'] += 1
-            # The relations it orphans go with it, and the user should see how
-            # many rather than discover it afterwards.
-            gone = len(op.get('relation_ids') or [])
-            if gone:
-                c['removed dependency'] += gone
-        elif kind == 'merge_sentences':
-            c['sentence merge'] += 1
-        elif kind == 'restore_document':
-            c['restored document'] += 1
-    if not c:
-        return 'no changes'
-    return ', '.join(f'{n} {_plural(name, n)}' for name, n in c.most_common())
+    return ok.summarize(KIND, ops, ok.stored_count, common_first=True)
 
 
 def _parse(client, op, document_id: str, notes: List[str], b, total: int) -> None:
@@ -527,4 +603,3 @@ def _parse(client, op, document_id: str, notes: List[str], b, total: int) -> Non
         notes.append(f'the parser stopped reporting on {document_id}; it may still be running')
     except Exception as e:  # noqa: BLE001 - whatever the service said, the user needs it
         raise PlanError(f'the parser refused {document_id}: {e}', b.applied, total) from e
-

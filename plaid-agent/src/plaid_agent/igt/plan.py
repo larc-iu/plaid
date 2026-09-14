@@ -727,6 +727,10 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str,
 
 
 def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, tracker=None) -> Dict[str, int]:
+    # An unknown kind, or one that should have been resolved away, refuses
+    # before the first batch opens rather than being written as nothing under
+    # a label saying it was applied.
+    ok.check_applicable(KIND, ops)
     with client.operation(label):
         ctx = Context(client, project, stamps, counts, notes, TrackingBatcher(client, tracker=tracker))
         b = ctx.b
@@ -735,12 +739,8 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
         for _tid in _bulk_gone(ops):
             ctx.gone.add(('tokens', _tid))
 
-        for i, op in enumerate(ops):
-            # An unknown kind refuses here rather than being written as
-            # nothing under a label saying it was applied.
-            spec = ok.kind_of(KIND, op, index=i + 1)
-            if spec.apply is None:
-                raise ValueError(f'op {i + 1} ({spec.name}): this kind is resolved before the plan is applied')
+        for op in ops:
+            spec = KIND[op['kind']]
             n = spec.apply(ctx, op)
             counts[spec.noun[1]] += 1 if n is None else n
 

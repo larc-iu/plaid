@@ -119,6 +119,18 @@ def registry(kinds: Iterable[OpKind]) -> Dict[str, OpKind]:
     return out
 
 
+def check_applicable(reg: Mapping[str, OpKind], ops: Iterable[Dict[str, Any]], first: int = 1) -> None:
+    """Refuse, BEFORE any pass of the executor runs, a plan carrying a kind
+    nobody declared or one that should have been resolved away.
+
+    Either would otherwise be applied as nothing at all, under an operation
+    label saying it was applied, which is the worst outcome a plan has."""
+    for i, op in enumerate(ops, start=first):
+        spec = kind_of(reg, op, index=i)
+        if spec.apply is None:
+            raise UnknownKind(f'op {i} ({spec.name}): this kind is resolved before the plan is applied')
+
+
 def kind_of(reg: Mapping[str, OpKind], op: Any, index: Optional[int] = None) -> OpKind:
     """The declaration for one operation. Raises :class:`UnknownKind` when
     there is none: a kind nobody wired up must refuse, never be applied as

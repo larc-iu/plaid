@@ -14,10 +14,12 @@ import re
 import uuid
 from typing import Any, Dict, List, Optional
 
+from ..core import opkind
 from ..core.args import clamp_limit, read_int, sentence_number
 from ..core.limits import MAX_RESULT_CHARS, READ_LIMITS
 from ..core.plan import PLAN_MAX_OPS, PlanFull, reserve as core_reserve
 from ..core.tools import fn, tools_for as core_tools_for
+from .plan import KIND
 from .project import (MISSING, Sentence, Token, UdDoc, UdProject, Word, load_document, parse_ref,
                       render_document, render_sentence, resolve, word_ref)
 from .review import (REVIEW_FIELDS, all_words, confirm_targets, counts_phrase, discard_targets,
@@ -26,9 +28,10 @@ from .review import (REVIEW_FIELDS, all_words, confirm_targets, counts_phrase, d
 # What counts as one change here, appended to the plan-is-full refusal.
 PLAN_NOTE = ("A whole document's review (confirm or discard_predictions without refs) counts as one "
              "change however many values it covers.")
-# Ops that name a document and a set of fields rather than spans, and are
-# resolved to spans when the plan is applied.
-SCOPE_KINDS = ('confirm_scope', 'discard_scope')
+# Ops that stand for everything a predicate matches (a document and a set of
+# fields, or a field and a pattern) and are resolved to spans when the plan is
+# applied. Read off the registry, so a new one joins by being declared.
+SCOPE_KINDS = opkind.shaped(KIND, opkind.SCOPE)
 # The most documents one review may cover when several are named or all
 # are asked for: each is read to count what is waiting, and read again at
 # approval.
@@ -206,20 +209,10 @@ def docs_of_op(op: Dict[str, Any]) -> set:
 
 
 def op_target(op: Dict[str, Any]):
-    """What an op writes, for deduping within one turn. None when an op is not
-    the kind that can supersede another (a comment, a structural change)."""
-    kind = op.get('kind')
-    if kind == 'set_span':
-        return ('span', op.get('layer_id'), op.get('token_id'))
-    if kind == 'set_head':
-        return ('head', op.get('word_id'))
-    if kind == 'del_relation':
-        return ('head', op.get('word_id'))
-    if kind in SCOPE_KINDS:
-        return ('scope', kind, op.get('document_id'))
-    if kind == 'replace_scope':
-        return ('replace', op.get('field'), op.get('pattern'), op.get('replacement'), op.get('document_id'))
-    return None
+    """What an op writes, for deduping within one turn. Each kind declares its
+    own; an op that can supersede nothing (a comment, a structural change) has
+    none."""
+    return opkind.target_of(KIND, op)
 
 
 def _refs_phrase(members, limit: int = 8) -> str:
@@ -246,13 +239,15 @@ def _confirm_label(first, members) -> str:
 
 
 # How the like ops of one plan fold into one stored op (core.plan.compact_ops).
-COMPACT = {
-    'set_span': {'each': ('token_id', 'span_id', 'ref'), 'label': _set_span_label},
-    'set_head': {'each': ('word_id', 'head_id', 'word_form', 'head_form', 'lemma_span_id',
-                          'head_lemma_span_id', 'relation_id', 'ref'), 'label': _set_head_label},
-    'del_relation': {'each': ('word_id', 'relation_id', 'ref'), 'label': _del_relation_label},
-    'confirm': {'each': ('span_id', 'relation_id', 'ref'), 'label': _confirm_label},
+# Which of a kind's keys vary per member is declared with the kind; the line
+# each group shows is here, in the words the rest of this module uses.
+_GROUP_LABELS = {
+    'set_span': _set_span_label,
+    'set_head': _set_head_label,
+    'del_relation': _del_relation_label,
+    'confirm': _confirm_label,
 }
+COMPACT = opkind.compact_spec(KIND, label=lambda first, members: _GROUP_LABELS[first['kind']](first, members))
 
 
 def _truncate(s: str) -> str:
@@ -426,7 +421,7 @@ def _no_words_annotated(ws: Workspace, token, doc_id: str = None) -> None:
                             '(plan_status, drop_planned).')
         # A scope op reaches every word of its document, this token's included,
         # and a corpus-wide replacement reaches every document it matched.
-        if op.get('kind') in SCOPE_KINDS + ('replace_scope',) and doc_id in docs_of_op(op):
+        if op.get('kind') in SCOPE_KINDS and doc_id in docs_of_op(op):
             raise ToolError('This plan already reviews every word of this document, and reshaping '
                             'a token deletes some of them. Do one or the other (plan_status, '
                             'drop_planned).')

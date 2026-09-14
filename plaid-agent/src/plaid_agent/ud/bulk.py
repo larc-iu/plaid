@@ -14,8 +14,10 @@ may make, which is what the user has to be able to approve.
 
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from ..core import opkind
 from ..core.replace import replacer as core_replacer
 from .corpus import Corpus, rx
+from .plan import KIND, SENTENCE_SHAPE, WORD_SHAPE
 from .project import UdProject
 from .tools import FIELDS, ToolError, Workspace, _check_value
 
@@ -154,18 +156,28 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
             + '\nsearch shows every match with its reference.')
 
 
+# What an op that rewrites a whole document does, in the words the refusal
+# uses. The SET is the registry's (every kind that reshapes a document or a
+# token, and the parser, which replaces both), so a new one is never left out;
+# only its phrase is written here.
+_REWRITES = {'run_parse': 'parses', 'set_words': 'reshapes a token in',
+             'split_sentence': 'moves a sentence boundary in',
+             'merge_sentences': 'moves a sentence boundary in'}
+
+
 def _clear_of_reshapes(ws: Workspace, docs: List[str]) -> None:
     """The refusals a corpus-wide change owes, over every document it reaches:
     the same ones `_guards` makes for one document, by id."""
     from .tools import docs_of_op
+    rewriting = set(opkind.shaped(KIND, SENTENCE_SHAPE, WORD_SHAPE, opkind.EXCLUSIVE))
     reach = set(docs)
     for op in ws.ops:
         kind = op.get('kind')
         if kind == 'restore_document':
             raise ToolError('This plan restores a document, and a restore must be a plan of its own '
                             '(plan_status, drop_planned).')
-        if kind in ('run_parse', 'split_sentence', 'merge_sentences', 'set_words') and docs_of_op(op) & reach:
-            what = {'run_parse': 'parses', 'set_words': 'reshapes a token in'}.get(kind, 'moves a sentence boundary in')
+        if kind in rewriting and docs_of_op(op) & reach:
+            what = _REWRITES.get(kind, 'rewrites')
             raise ToolError(f'This plan already {what} a document this replacement reaches, and that '
                             f'rewrites what the replacement would change. Apply one, then plan the other '
                             f'(plan_status, drop_planned).')

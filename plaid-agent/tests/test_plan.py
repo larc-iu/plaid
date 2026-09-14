@@ -251,16 +251,95 @@ def test_an_unknown_igt_kind_refuses_instead_of_writing_nothing():
                  counts=Counter(), notes=[], stamps=Stamps('verified', 's'))
 
 
+def test_every_ud_kind_has_an_apply_and_every_apply_is_registered():
+    """The same two sets in the other app. UD applies its kinds in three
+    passes, so the stage is part of the declaration too, and a kind that
+    belongs to no pass is a kind the executor would silently skip."""
+    from plaid_agent.core import opkind
+    from plaid_agent.ud import plan
+
+    for name, spec in plan.KIND.items():
+        if spec.stage == opkind.RESOLVED:
+            assert spec.apply is None, f'{name} never reaches the executor'
+        else:
+            assert callable(spec.apply), f'{name} has no apply function'
+            assert spec.stage in (opkind.BATCH, plan.IDS, plan.PARSE), f'{name} belongs to no pass'
+    registered = {spec.apply for spec in plan.KIND.values() if spec.apply}
+    orphans = _apply_functions(plan) - registered
+    assert not orphans, f'appliers no kind names: {sorted(f.__name__ for f in orphans)}'
+
+
+def test_every_ud_table_is_the_registry_read_back():
+    from plaid_agent.core import opkind
+    from plaid_agent.ud import plan
+    from plaid_agent.ud.plan import KINDS, LATER_PASSES, REQUIRED, RESHAPES_DOCUMENT, SCOPES
+    from plaid_agent.ud.tools import COMPACT, SCOPE_KINDS
+
+    assert set(KINDS) == set(REQUIRED) == set(plan.KIND)
+    assert set(SCOPES) <= set(KINDS) and set(RESHAPES_DOCUMENT) <= set(KINDS)
+    assert set(LATER_PASSES) <= set(KINDS)
+    # The tools' view of a scope is the plan's: one table, not two that drifted
+    # (replace_scope had to be spelled out beside SCOPE_KINDS at every site).
+    assert set(SCOPE_KINDS) == set(SCOPES)
+    # Every kind that folds into a stored group has a line to show for one.
+    assert set(COMPACT) == {n for n, s in plan.KIND.items() if s.compact_each}
+    for name, s in COMPACT.items():
+        op = {'kind': name, 'field': 'lemma', 'value': 'x', 'deprel': 'nsubj', 'ref': 's1.w1'}
+        assert s['label'](op, [op, op]), name
+    # The plural comes off the kind's own noun, so no count says "dependencys".
+    assert opkind.summarize(plan.KIND, [{'kind': 'del_relation'}, {'kind': 'del_relation'}]) == \
+        '2 removed dependencies'
+
+
+def test_the_applied_counts_use_the_same_nouns_as_the_approval_line():
+    """Six of the twenty-eight counts an IGT plan reported disagreed with the
+    noun the user had approved (links against lexicon links, restored
+    documents against document restores), and UD counted a removed dependency
+    and a new one under one key. Both now come off the kind's own noun."""
+    from plaid_agent.core.plan import Stamps
+    from plaid_agent.igt import plan as igt_plan
+    from plaid_agent.ud import plan as ud_plan
+    from ud_fixtures import ud_client
+    from collections import Counter
+
+    def keys(module, client, ops, **kw):
+        counts: Counter = Counter()
+        module._execute(client, ops, label='l', counts=counts, notes=[],
+                        stamps=Stamps('verified', 's'), **kw)
+        return set(counts) - {'notes'}
+
+    igt = keys(igt_plan, FakeClient(), [
+        {'kind': 'link', 'token_id': 'w-1', 'item_id': 'vi-erg', 'label': ''},
+        {'kind': 'unlink', 'link_id': 'l-2', 'label': ''},
+        {'kind': 'create_entry', 'vocab_id': 'v', 'form': 'x', 'key': 'k', 'label': ''},
+        {'kind': 'confirm', 'span_ids': ['sp-a'], 'label': ''}], project=None)
+    assert igt <= set(_plural_nouns(igt_plan)) and igt == {
+        'lexicon links', 'unlinks', 'new lexicon entries', 'confirmations'}
+
+    ud = keys(ud_plan, ud_client(), [
+        {'kind': 'del_relation', 'relation_id': 'r1', 'word_id': 'w1', 'label': ''},
+        {'kind': 'set_deprel', 'relation_id': 'r2', 'deprel': 'obj', 'label': ''}])
+    assert ud <= set(_plural_nouns(ud_plan)) and ud == {'removed dependencies', 'relabeled dependencies'}
+
+
+def _plural_nouns(module):
+    return [spec.noun[1] for spec in module.KIND.values()]
+
+
 def test_a_ud_kind_with_no_dispatch_refuses_instead_of_writing_nothing():
     """The pass-1 chain had no else, so a kind nobody had wired up was applied
-    as nothing at all, under an operation label saying it had been."""
+    as nothing at all, under an operation label saying it had been. Now the
+    executor asks the registry before it opens a batch."""
     import pytest
     from plaid_agent.ud.plan import _execute
     from plaid_agent.core.plan import Stamps
     from collections import Counter
     from ud_fixtures import ud_client
-    with pytest.raises(ValueError, match='Unknown plan operation kind'):
+    with pytest.raises(ValueError, match='resolved before the plan is applied'):
         _execute(ud_client(), [{'kind': 'confirm_scope', 'document_id': 'ud1', 'fields': ['upos']}],
+                 label='l', counts=Counter(), notes=[], stamps=Stamps('verified', 's'))
+    with pytest.raises(ValueError, match='unknown kind'):
+        _execute(ud_client(), [{'kind': 'not_a_kind'}],
                  label='l', counts=Counter(), notes=[], stamps=Stamps('verified', 's'))
 
 
