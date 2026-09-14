@@ -20,7 +20,8 @@ import { useWideEnoughToDock } from '@ui/components/assistant/useDock.js';
 import { RestoreDialog } from './annotation/RestoreDialog.jsx';
 import { EditorLegend } from './annotation/EditorLegend.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { reportIntegrityFindings, dismissIntegrityFindings } from '@ui/lib/integrityToast.js';
+// Raised here, dismissed by DocumentEditorShell: the notice outlives this tab.
+import { reportIntegrityFindings } from '@ui/lib/integrityToast.js';
 import { notifyError } from '../../utils/feedback.jsx';
 import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
@@ -244,11 +245,6 @@ export const AnnotationEditor = () => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentId, doc]);
-
-  // The integrity notice never expires, because an unrepaired document is a
-  // standing fact. It is about ONE document, so leaving this one takes it with
-  // us rather than letting it follow the reader around the app.
-  useEffect(() => () => dismissIntegrityFindings(), [documentId]);
 
   // Lock the shell's tab strip for as long as the body is a spinner. The gate
   // below keeps edits out of THIS tab while a repair is writing; without this

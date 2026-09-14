@@ -15,6 +15,7 @@ import { useEditorServices } from './hooks/useEditorServices.js';
 import { isReviewed } from '@larc-iu/plaid-client';
 import { UD_ASSISTANT } from '../assistant/adapter.js';
 import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
+import { dismissIntegrityFindings } from '@ui/lib/integrityToast.js';
 
 // Parent route of the four document tabs (/edit, /annotate, /export, /details).
 // It owns the project + ConlluDocument load and renders the breadcrumbs and the
@@ -164,6 +165,14 @@ export const DocumentEditorShell = () => {
       console.error('Error refreshing document:', err);
     }
   }, [projectId, doc, getClient, logout]);
+
+  // The integrity notice the Annotate tab raises never expires, because an
+  // unrepaired document is a standing fact. It is about one DOCUMENT, not about
+  // one tab: it belongs to the shell, which survives a tab switch, so the
+  // notice and its Copy details button are still there when the reader walks to
+  // the Text Editor to act on it. Leaving the document, or opening another one,
+  // takes it with us.
+  useEffect(() => () => dismissIntegrityFindings(), [documentId]);
 
   // A save in flight lives only in this tab, so a reload or a tab close drops
   // it silently. Warn while `_withSaving` holds the gate (the browser shows its
