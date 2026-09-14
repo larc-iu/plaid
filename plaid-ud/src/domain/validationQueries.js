@@ -10,6 +10,7 @@
 // Each query returns the field's whole value inventory as `[value, count]`
 // pairs. The diff against the project's list happens on this side, so nothing
 // loads a document until someone clicks a value and asks where it is.
+import { normalizeFeature } from '../utils/feats.js';
 
 // The REGEXP UDF matches on `contains`, so "." means "has at least one
 // character": every span in the layer, whatever its value.
@@ -118,12 +119,11 @@ export function seedCandidates(counts, vocab, covers) {
 export function featureSeedCandidates(counts, inventoryMap) {
   const byKey = new Map();
   for (const [raw, count] of counts || []) {
-    const value = String(raw ?? '');
-    const eq = value.indexOf('=');
-    if (eq < 1) continue;
-    const key = value.slice(0, eq);
-    const val = value.slice(eq + 1);
-    if (!val) continue;
+    // The same reading of a pair the writers use, so a stored `Gender = Masc`
+    // is counted under Gender rather than offered as a key of its own.
+    const feature = normalizeFeature(raw);
+    if (!feature) continue;
+    const { key, value: val } = feature;
     const known = inventoryMap?.get(key);
     // A key with values listed is policed; a key listed with NO values accepts
     // anything, so nothing under it is a candidate.

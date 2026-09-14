@@ -200,6 +200,47 @@ test('a new value for a key the word already has overwrites that span', async ()
   assert.deepEqual(onWord.map((s) => s.value).sort(), ['Gender=Fem', 'Number=Sing']);
 });
 
+// And the name is read with its whitespace trimmed off, wherever the writer
+// put it. A typed `Gender =Fem` used to key on the name `Gender `, which
+// matched no span, so the word ended up carrying two genders.
+test('a pair typed with a stray space lands on the span that holds its name', async () => {
+  const raw = rawDocFromConllu(INPUT, 'mut-doc');
+  const client = provClient();
+  const doc = new ConlluDocument({ raw, client: withOps(client) });
+
+  const feat = doc.layerInfo.featuresLayer.spans.find((s) => s.value === 'Gender=Masc');
+  const before = doc.layerInfo.featuresLayer.spans.length;
+
+  assert.equal(await doc.updateAnnotation(feat.tokens[0], 'features', 'Gender =Fem'), true);
+  // The trimmed pair is what is written, not the text as typed.
+  assert.deepEqual(client.calls, [['spans.update', feat.id, 'Gender=Fem']]);
+  assert.equal(doc.layerInfo.featuresLayer.spans.length, before);
+  assert.equal(doc.layerInfo.featuresLayer.spans.find((s) => s.id === feat.id).value, 'Gender=Fem');
+  const onWord = doc.layerInfo.featuresLayer.spans.filter((s) => s.tokens.includes(feat.tokens[0]));
+  assert.deepEqual(onWord.map((s) => s.value).sort(), ['Gender=Fem', 'Number=Sing']);
+});
+
+// The guard sits on the write, not only in the cell, so every path that reaches
+// updateAnnotation is held to it.
+test('a feature the CoNLL-U column could not spell is not written', async () => {
+  const raw = rawDocFromConllu(INPUT, 'mut-doc');
+  const client = provClient();
+  const doc = new ConlluDocument({ raw, client: withOps(client) });
+
+  const feat = doc.layerInfo.featuresLayer.spans.find((s) => s.value === 'Gender=Masc');
+  const before = doc.layerInfo.featuresLayer.spans.length;
+
+  assert.equal(await doc.updateAnnotation(feat.tokens[0], 'features', 'Gender=Fem Masc'), false);
+  assert.match(doc.error, /spaces/);
+  assert.deepEqual(client.calls, []);
+
+  doc.clearError();
+  assert.equal(await doc.updateAnnotation(feat.tokens[0], 'features', 'Gender'), false);
+  assert.match(doc.error, /Key=Value/);
+  assert.deepEqual(client.calls, []);
+  assert.equal(doc.layerInfo.featuresLayer.spans.length, before);
+});
+
 test('typing a feature the word does not have creates a span and confirms nothing', async () => {
   const raw = rawDocFromConllu(INPUT, 'mut-doc');
   const client = provClient();

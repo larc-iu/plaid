@@ -162,6 +162,26 @@ for (const [what, input] of Object.entries(CASES)) {
   });
 }
 
+// The importer reads a FEATS pair through the same one reader the cell and the
+// document write use (src/utils/feats.js), so an off-spec `Gender = Masc` in a
+// file is stored under the name a typed pair would be, and an entry with no
+// value at all is nothing to store.
+test('the importer trims a FEATS pair and drops one with no value', async () => {
+  const input = conllu([
+    '# text = perro',
+    '1\tperro\tperro\tNOUN\t_\tGender = Masc|Number=|Definite=Def\t0\troot\t_\t_',
+  ]);
+  const info = getUdLayerInfo(rawDocFromConllu(input, 'm'));
+  const client = recordingClient();
+  await ConlluDocument.importFromConllu(client, 'p1', 'm', input, info);
+
+  const written = client.calls.spans
+    .flat()
+    .filter((op) => op.spanLayerId === info.featuresLayer.id)
+    .map((op) => op.value);
+  assert.deepEqual(written, ['Gender=Masc', 'Definite=Def']);
+});
+
 test('an unlemmatized treebank keeps its dependency relations', () => {
   const input = CASES['an UNLEMMATIZED treebank, where every tree still has to survive'];
   const out = new ConlluDocument({ raw: rawDocFromConllu(input, 'u') }).toConllu();

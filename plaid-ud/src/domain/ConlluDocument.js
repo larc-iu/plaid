@@ -27,6 +27,7 @@ import { importConlluDocument } from './conlluImport.js';
 import { buildSentenceRows } from './sentenceRows.js';
 import { buildConllu } from './conlluSerialize.js';
 import { basicTokenize } from '../utils/basicTokenize.js';
+import { normalizeFeature, featureRefusal } from '../utils/feats.js';
 import { notifyError } from '../utils/notify.js';
 
 const cloneRaw = (raw) => JSON.parse(JSON.stringify(raw));
@@ -983,18 +984,33 @@ export class ConlluDocument {
       return false;
     }
 
+    // FEATS is the one field whose value has structure, and every write of one
+    // lands here, so the pair is read once for all of them (src/utils/feats.js).
+    let feature = null;
+    if (field === 'features') {
+      feature = normalizeFeature(value);
+      if (!feature) {
+        this.setError('A feature is written Key=Value.');
+        return false;
+      }
+      const refusal = featureRefusal(feature.pair);
+      if (refusal) {
+        this.setError(refusal);
+        return false;
+      }
+    }
+
     return this._withSaving(`Failed to update ${field}`, async () => {
       if (field === 'features') {
-        // Features are "Key=Value". Adding a key that already exists on this
-        // token overwrites the existing value rather than creating a duplicate.
-        const key = String(value).split('=')[0];
+        // Adding a name the token already carries overwrites that value rather
+        // than creating a duplicate, so the write is keyed by the name alone.
+        const { key, pair } = feature;
         const featSpans = targetLayer?.spans || [];
         const existingFeat = featSpans.find(
           (span) =>
             Array.isArray(span.tokens) &&
             span.tokens.includes(tokenId) &&
-            typeof span.value === 'string' &&
-            span.value.split('=')[0] === key,
+            normalizeFeature(span.value)?.key === key,
         );
         if (existingFeat) {
           // A person's edit carries the writer's stamp (see the existing-span
@@ -1007,7 +1023,7 @@ export class ConlluDocument {
             );
             const spanIndex = layerDoc?.spans?.findIndex((span) => span.id === existingFeat.id);
             if (layerDoc?.spans && spanIndex != null && spanIndex !== -1) {
-              layerDoc.spans[spanIndex].value = value;
+              layerDoc.spans[spanIndex].value = pair;
               if (verifyFeat) {
                 layerDoc.spans[spanIndex].metadata = mergeMetadata(
                   layerDoc.spans[spanIndex].metadata,
@@ -1018,11 +1034,11 @@ export class ConlluDocument {
           });
           if (verifyFeat) {
             await this._client.batched(async () => {
-              this._client.spans.update(existingFeat.id, value);
+              this._client.spans.update(existingFeat.id, pair);
               this._client.spans.patchMetadata(existingFeat.id, verifyFeat);
             });
           } else {
-            await this._client.spans.update(existingFeat.id, value);
+            await this._client.spans.update(existingFeat.id, pair);
           }
           return;
         }
@@ -1033,7 +1049,7 @@ export class ConlluDocument {
         const spanResult = await this._client.spans.create(
           targetLayer.id,
           [tokenId],
-          value,
+          pair,
           stamp || undefined,
         );
         const newSpanId = spanResult?.id || spanResult;
@@ -1047,7 +1063,7 @@ export class ConlluDocument {
             featuresLayerDoc.spans.push({
               id: newSpanId,
               tokens: [tokenId],
-              value,
+              value: pair,
               ...(stamp ? { metadata: stamp } : {}),
             });
           }

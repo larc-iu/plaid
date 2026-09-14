@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Combobox } from '@ui/components/shared/combobox';
+import { featureRefusal, normalizeFeature } from '../../../utils/feats.js';
 import { notifyWarning } from '../../../utils/notify.js';
 import { provMark } from '../../../utils/provenanceUi.js';
 import { NO_OPTIONS, tabTooSoon } from './cellInput.js';
@@ -54,20 +55,27 @@ export const FeaturesCell = React.memo(
     // kept. Both returning false meant Enter kept the text the ruling says to
     // keep and clicking away wiped it, with the same warning either way.
     const commit = (raw) => {
-      const t = (raw ?? text).trim();
-      const i = t.indexOf('=');
-      if (i <= 0 || i === t.length - 1) return false; // need non-empty Key=Value
+      // One reading of the pair for the cell, the document and the importer
+      // alike (utils/feats.js), both halves trimmed.
+      const feature = normalizeFeature(raw ?? text);
+      if (!feature) return false; // need non-empty Key=Value
+      // The typed text is KEPT on a refusal, unlike in a cell: a chip is added
+      // rather than replacing something, so there is nothing to restore and the
+      // annotator can correct what they typed.
+      const spaced = featureRefusal(feature.pair);
+      if (spaced) {
+        notifyWarning(spaced, 'Spaces in a feature');
+        return 'refused';
+      }
       // A CLOSED inventory governs both halves: the key must be in it and the
-      // value in that key's list. The typed text is KEPT here, unlike a cell:
-      // a chip is added rather than replacing something, so there is nothing
-      // to restore and the annotator can correct what they typed.
-      const refusal = validate?.(t);
+      // value in that key's list.
+      const refusal = validate?.(feature.pair);
       if (refusal) {
         notifyWarning(refusal, 'Not in the inventory');
         return 'refused';
       }
       setText('');
-      onAnnotationUpdate(tokenId, 'features', t).catch((error) => {
+      onAnnotationUpdate(tokenId, 'features', feature.pair).catch((error) => {
         console.error('Failed to add feature:', error);
       });
       return true;

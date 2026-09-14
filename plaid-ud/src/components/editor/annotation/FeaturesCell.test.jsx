@@ -86,6 +86,42 @@ describe('FeaturesCell and the machine value re-typed', () => {
     await unmount();
   });
 
+  // A space either side of the '=' is a typo, not a second feature name: the
+  // pair is trimmed to the one the word already carries, so the span holding
+  // `Gender` is the one written (test/feats.test.js and the document tests).
+  it('trims the pair before writing it', async () => {
+    const { container, step, onAnnotationUpdate, unmount } = await mount();
+    const input = all(container, 'input')[0];
+
+    await step(async () => focus(input));
+    await step(async () => type(input, ' Gender = Masc '));
+    await step(async () => press(input, 'Enter'));
+
+    expect(onAnnotationUpdate).toHaveBeenCalledWith('t1', 'features', 'Gender=Masc');
+    await unmount();
+  });
+
+  // A space INSIDE a half is not a typo the cell can fix: CoNLL-U cannot write
+  // it, and only the annotator knows what was meant. Refused like an off-list
+  // pair, and the text stays for them to correct.
+  it('refuses a pair with a space inside it and keeps what was typed', async () => {
+    const { container, step, onAnnotationUpdate, unmount } = await mount();
+    const input = all(container, 'input')[0];
+
+    await step(async () => focus(input));
+    await step(async () => type(input, 'Gender=Fem Masc'));
+    await step(async () => press(input, 'Enter'));
+
+    expect(onAnnotationUpdate).not.toHaveBeenCalled();
+    expect(input.value).toBe('Gender=Fem Masc');
+
+    // And the blur on the way out does not write it either, nor wipe it.
+    await step(async () => blur(input));
+    expect(onAnnotationUpdate).not.toHaveBeenCalled();
+    expect(input.value).toBe('Gender=Fem Masc');
+    await unmount();
+  });
+
   it('writes nothing when the cell is only passed through', async () => {
     const { container, step, onAnnotationUpdate, unmount } = await mount();
     const input = all(container, 'input')[0];

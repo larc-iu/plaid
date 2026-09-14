@@ -1,6 +1,7 @@
 import { cpSlice } from '@larc-iu/plaid-client';
 // By its real path rather than through `@ui`, for the same reason
 // ConlluDocument.js gives: the `node --test` suite has no alias.
+import { normalizeFeature } from '../utils/feats.js';
 import { isProvKey } from '../utils/provenanceUi.js';
 import { getUdLayerInfo, missingUdLayerLabels } from '../utils/udLayerUtils.js';
 import { parseCoNLLU, buildConlluHierarchy } from '../utils/conlluParser.js';
@@ -218,9 +219,20 @@ export async function importConlluDocument(
         xposOps.push({ spanLayerId: xposLayer.id, tokens: [morphemeId], value: row.xpos });
       }
       if (featuresLayer && Array.isArray(row.feats)) {
-        row.feats.forEach((f) =>
-          featOps.push({ spanLayerId: featuresLayer.id, tokens: [morphemeId], value: f }),
-        );
+        // Through the one reader, so an off-spec `Gender = Fem` in the file
+        // lands under the same name a typed one does. A pair the reader cannot
+        // complete (`Gender=`, or an empty entry from `A=1||B=2`) is nothing to
+        // store. What the file says otherwise stands: an import records a
+        // corpus, and the Validation tab is where what it recorded is judged.
+        row.feats.forEach((f) => {
+          const feature = normalizeFeature(f);
+          if (!feature) return;
+          featOps.push({
+            spanLayerId: featuresLayer.id,
+            tokens: [morphemeId],
+            value: feature.pair,
+          });
+        });
       }
     });
 
