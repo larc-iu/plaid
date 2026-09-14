@@ -18,7 +18,7 @@ from ..core.args import clamp_limit, read_int, sentence_number, whole
 from ..core.limits import (MAX_RESULT_CHARS, MAX_SCOPE_DOCS, MAX_SENTENCES_PER_READ, OVERVIEW_DOCS,
                           READ_LIMITS)
 from ..core.workspace import BaseWorkspace
-from ..core.tools import ToolError, truncate
+from ..core.tools import ToolError, server_refused, truncate
 from .plan import (COMPACT, KIND,  # noqa: F401 - COMPACT is re-exported for the tests
                    RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT, docs_of_op, scope_clears)
 from .project import (Sentence, Token, UdDoc, UdProject, Word, load_document, render_document,
@@ -780,8 +780,8 @@ def parse_services(ws: Workspace) -> List[dict]:
     from plaid_client.services import discover_services
     try:
         seen = discover_services(ws.client, ws.project.id) or []
-    except Exception as e:  # noqa: BLE001 - the model reads the server's complaint
-        raise ToolError(f'The project\'s services could not be read: {e}')
+    except Exception as e:  # noqa: BLE001 - the model reads the server's reason
+        raise server_refused('The project\'s services', e)
     return [s for s in seen if s.get('online') and 'parse' in (s.get('tasks') or [])]
 
 

@@ -223,6 +223,12 @@ def applying(ops: List[Dict[str, Any]], run) -> Dict[str, int]:
         raise
     except Exception as e:  # noqa: BLE001 - every failure becomes one the user can read
         applied = getattr(e, '_applied', None)
+        # The one message in the package that keeps a Python class name. This
+        # one reaches the USER, after batches have already committed, and an
+        # exception carrying no message of its own would otherwise leave them
+        # a sentence with a blank in it. The counts beside it are what they
+        # act on; the class name is for the operator reading the same line in
+        # the log.
         raise PlanError(f'{type(e).__name__}: {e}',
                         applied if applied is not None else tracker.applied, len(ops)) from e
 

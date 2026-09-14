@@ -14,7 +14,7 @@ from typing import Dict, List, Optional
 
 from ..core.args import clamp_limit, read_int, sentence_number
 from ..core.limits import MAX_RESULT_CHARS, READ_LIMITS
-from ..core.tools import ToolError, truncate
+from ..core.tools import ToolError, server_refused, truncate
 
 from .project import (Word, Morpheme, document_lines, joiner, render_document, render_overview,
                       render_word, segmentation, word_ref)
@@ -590,11 +590,16 @@ AUDIT_WINDOWS_DAYS = (7, 30, 180, 730, None)
 
 def _audit_entries(ws: Workspace, document: Optional[str], start: Optional[str], keep) -> list:
     """The audit entries at or after ``start`` that ``keep`` accepts."""
-    if document:
-        did = ws.resolve_document_id(document)
-        entries = ws.client.documents.audit(did, start_time=start)
-    else:
-        entries = ws.client.projects.audit(ws.project.id, start_time=start)
+    try:
+        if document:
+            did = ws.resolve_document_id(document)
+            entries = ws.client.documents.audit(did, start_time=start)
+        else:
+            entries = ws.client.projects.audit(ws.project.id, start_time=start)
+    except ToolError:
+        raise
+    except Exception as e:  # noqa: BLE001 - the model reads the server's reason
+        raise server_refused('The change history', e) from None
     return [e for e in entries or [] if keep(e)]
 
 

@@ -234,7 +234,7 @@ def fetch(url: str, cfg: WebConfig, client=None) -> tuple:
                             break
                     text = body.decode(r.encoding or 'utf-8', errors='replace')
             except httpx.HTTPError as e:
-                raise WebError(f'{seen} could not be read ({type(e).__name__}: {e}).')
+                raise WebError(f'{seen} could not be read: ' + (' '.join(str(e).split())[:200] or 'the request failed.'))
             # A page longer than the cap is cut mid-document, so say so rather
             # than let the model read a half page as a whole one.
             note = '\n\n[This page is longer than the tool reads; only the beginning was fetched.]' if capped else ''
@@ -329,7 +329,8 @@ def search(query: str, limit: int, cfg: WebConfig, client=None) -> List[Result]:
     except httpx.HTTPStatusError as e:
         raise WebError(f'The search provider answered {e.response.status_code}.')
     except httpx.HTTPError as e:
-        raise WebError(f'The search provider could not be reached ({type(e).__name__}: {e}).')
+        raise WebError('The search provider could not be reached: '
+               + (' '.join(str(e).split())[:200] or 'the request failed.'))
     finally:
         if owned:
             client.close()

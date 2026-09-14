@@ -139,7 +139,37 @@ def test_tool_errors_come_back_as_text():
     w = ws()
     assert call_tool(w, 'nope', {}) == 'Unknown tool nope'
     assert call_tool(w, 'set_field', {'document': 'd1'}).startswith('Error:')
-    assert call_tool(w, 'search', {'pattern': '(', 'regex': True}).startswith('Error: Bad regex')
+    # The same sentence both apps use, wherever a pattern is compiled.
+    out = call_tool(w, 'search', {'pattern': '(', 'regex': True})
+    assert out.startswith('Error: That is not a valid regular expression:')
+
+
+def test_an_argument_a_tool_does_not_take_names_the_tool_and_its_parameters():
+    """Binding answered with Python's own words and the INTERNAL function's
+    name: "t_create_entry() got an unexpected keyword argument 'gloss'"."""
+    out = call_tool(ws(), 'create_entry', {'form': 'ndiwo', 'gloss': 'relish'})
+    assert out.startswith('Error: create_entry cannot be called with those arguments. It takes: ')
+    assert 'form' in out and 'fields' in out
+    for leak in ('t_create_entry', 'keyword argument', 'positional'):
+        assert leak not in out, out
+
+
+def test_an_unexpected_failure_is_a_sentence_and_not_a_type_name():
+    """A tool that breaks answered with the exception's class name, which is
+    nothing the model can act on and invites it to retry the same call."""
+    from plaid_agent.igt import toolkit
+
+    def boom(ws, **kw):
+        raise RuntimeError('a dict key')
+
+    w = ws()
+    toolkit._IMPL['boom'] = boom
+    try:
+        out = call_tool(w, 'boom', {})
+    finally:
+        del toolkit._IMPL['boom']
+    assert out.startswith('Error: boom failed, which is a fault in the tool')
+    assert 'RuntimeError' not in out and 'a dict key' not in out
 
 
 def test_search_without_pattern_points_to_worklist():

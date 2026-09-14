@@ -14,7 +14,7 @@ from typing import Any, Dict, List
 from ..core import sandbox as _sandbox
 from ..core import webtools
 from ..core.webtools import t_read_url, t_web_search
-from ..core.tools import ToolError, fn, tools_for as core_tools_for, truncate
+from ..core.tools import fn, run_tool, tools_for as core_tools_for
 
 from .bulk import t_replace_in_field
 from .query import t_query, t_query_help
@@ -296,26 +296,11 @@ def call_tool(ws: Workspace, name: str, args: Dict[str, Any]) -> str:
     fn = _IMPL.get(name)
     if not fn:
         return f'Unknown tool {name}'
-    # Each tool answers for its OWN reads. The corpus helper lives as long as
-    # the turn, so without this a report would carry the note about a clipped
-    # read that an earlier tool in the same turn had made.
-    ws.forget_clipping()
-    try:
-        out = truncate(fn(ws, **(args or {})))
-        # A change this turn planned over one an earlier call planned is worth
-        # a sentence: the model asked for two and is getting one. Said here
-        # rather than in each tool, so a tool cannot be written without it.
-        if name in WRITE_TOOLS:
-            out += ws.superseded_note()
-        return out
-    except (ToolError, ValueError) as e:  # ValueError: a reference lookup failed, message is for the model
-        return f'Error: {e}'
-    except (TypeError, AttributeError) as e:
-        return f'Error: an argument has the wrong type ({e}); check the tool\'s parameter types'
-    except Exception as e:  # noqa: BLE001 - the model gets the failure as text; the log gets the trace
-        import traceback
-        traceback.print_exc()
-        return f'Error: {type(e).__name__}: {e}'
+    # A change this turn planned over one an earlier call planned is worth a
+    # sentence: the model asked for two and is getting one. Said here rather
+    # than in each tool, so a tool cannot be written without it.
+    after = (lambda out: out + ws.superseded_note()) if name in WRITE_TOOLS else None
+    return run_tool(ws, name, fn, args, after=after)
 
 
 _IMPL['run_parse'] = t_run_parse

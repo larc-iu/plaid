@@ -18,7 +18,7 @@ from ..core import opkind
 from ..core.args import clamp_limit, whole
 from ..core.limits import MAX_SCOPE_DOCS
 from ..core.limits import READ_LIMITS
-from ..core.tools import ToolError, truncate
+from ..core.tools import ToolError, server_refused, truncate
 
 from .plan import ANALYSIS, KIND, TEXT_SHAPE, WORD_SHAPE, reshaped_subjects
 from .project import (IgtDoc, Sentence, Word, Morpheme, Link, resolve, mwe_ref, REVIEWABLE,
@@ -761,14 +761,18 @@ def t_comments(ws: Workspace, document: Optional[str] = None, ref: Optional[str]
         raise ToolError('ref needs a document')
     if doc is not None and ref:
         etype, eid, caption, _ = _anchor(ws, doc, ref, field)
-        rows = ws.client.comments.list(ws.project.id, entity_type=etype, entity_id=eid)
+        kw = {'entity_type': etype, 'entity_id': eid}
         head = f'on {ws.doc_label(doc.id)} {ref}' + (f' {field}' if field else '')
     elif doc is not None:
-        rows = ws.client.comments.list(ws.project.id, document_id=doc.id)
+        kw = {'document_id': doc.id}
         head = f'in {ws.doc_label(doc.id)}'
     else:
-        rows = ws.client.comments.list(ws.project.id)
+        kw = {}
         head = 'in the project'
+    try:
+        rows = ws.client.comments.list(ws.project.id, **kw)
+    except Exception as e:  # noqa: BLE001 - the model reads the server's reason
+        raise server_refused('The comments', e) from None
     rows = sorted(rows or [], key=lambda c: c.get('created_at') or '')
     total = len(rows)
     rows = rows[-limit:]

@@ -10,7 +10,7 @@ from typing import Any, Dict, List
 
 from .corpus import RENDER_DOC_BUDGET, Corpus, rx
 from .project import Sentence, UdDoc, Word, kwic, word_ref
-from ..core.tools import ToolError, truncate
+from ..core.tools import ToolError, server_refused, truncate
 from .tools import FIELDS, Workspace
 from ..core.args import clamp_limit
 from ..core.limits import READ_LIMITS
@@ -431,8 +431,8 @@ def t_recent_changes(ws: Workspace, document: str = None, limit: int = 20,
     while len(entries) < limit and pages < AUDIT_MAX_PAGES:
         try:
             page = source.audit_page(target, order='desc', limit=AUDIT_PAGE, cursor=cursor, **kw)
-        except Exception as e:  # noqa: BLE001 - the model reads the server's complaint
-            raise ToolError(f'The change history could not be read: {e}')
+        except Exception as e:  # noqa: BLE001 - the model reads the server's reason
+            raise server_refused('The change history', e)
         got = (page or {}).get('entries') or []
         walked += len(got)
         entries += [e for e in got if keep(e)]
@@ -477,8 +477,8 @@ def t_comments(ws: Workspace, document: str = None, ref: str = None, limit: int 
         kw = {'entity_id': thing.id}  # the app anchors a sentence's comments on its token
     try:
         got = ws.client.comments.list(ws.project.id, **kw) or []
-    except Exception as e:  # noqa: BLE001 - the model reads the server's complaint
-        raise ToolError(f'The comments could not be read: {e}')
+    except Exception as e:  # noqa: BLE001 - the model reads the server's reason
+        raise server_refused('The comments', e)
     if not got:
         return f'No comments on {ref}.' if ref else f'No comments in "{doc.name}".'
     # A comment names the entity it is anchored to. Turn that back into the

@@ -14,7 +14,7 @@ from typing import Any, Dict, List
 from ..core import sandbox as _sandbox
 from ..core import webtools
 from ..core.webtools import t_read_url, t_web_search
-from ..core.tools import ToolError, fn, tools_for as core_tools_for, truncate
+from ..core.tools import fn, run_tool, tools_for as core_tools_for
 
 from .bulk import (t_copy_to_orthography, t_delete_entry, t_merge_entries, t_rename_document,
                    t_rename_entry, t_replace_in_field, t_respell_all, t_set_analysis_for_form,
@@ -324,20 +324,7 @@ def call_tool(ws: Workspace, name: str, args: Dict[str, Any]) -> str:
     fn = _IMPL.get(name)
     if not fn:
         return f'Unknown tool {name}'
-    # Each tool answers for its OWN reads. The corpus helper lives as long as
-    # the turn, so without this a report would carry the note about a clipped
-    # read that an earlier tool in the same turn had made.
-    ws.forget_clipping()
-    try:
-        return truncate(fn(ws, **(args or {})))
-    except (ToolError, ValueError) as e:  # ValueError: a name/reference lookup failed, message is for the model
-        return f'Error: {e}'
-    except (TypeError, AttributeError) as e:
-        return f'Error: an argument has the wrong type ({e}); check the tool\'s parameter types'
-    except Exception as e:  # noqa: BLE001 - the model gets the failure as text; the log gets the trace
-        import traceback
-        traceback.print_exc()
-        return f'Error: {type(e).__name__}: {e}'
+    return run_tool(ws, name, fn, args)
 
 
 _ENTRY = {'entry_form': {'type': 'string'}, 'lexicon': {'type': 'string'}, 'entry_id': {'type': 'string'},

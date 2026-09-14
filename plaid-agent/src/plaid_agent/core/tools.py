@@ -6,7 +6,9 @@ the operator did not configure is not mentioned at all, so a model is never
 told it can look something up or run code when it cannot.
 """
 
-from typing import Any, Dict, List
+import inspect
+import traceback
+from typing import Any, Callable, Dict, List, Optional
 
 from .limits import MAX_RESULT_CHARS
 
@@ -27,6 +29,49 @@ def truncate(s: str) -> str:
         return s
     return s[:MAX_RESULT_CHARS] + (f'\n... [truncated: {len(s) - MAX_RESULT_CHARS} more characters; '
                                    f'narrow the request]')
+
+
+def server_refused(what: str, e: Exception) -> ToolError:
+    """A read the server would not answer, said as one sentence.
+
+    The exception's own text carries the server's reason, which is worth
+    keeping, but it also carries a URL, a Python repr, and sometimes several
+    lines of them. Bounded to one line here, so every "could not be read" in
+    either app reads the same and none of them hands the model a traceback.
+    """
+    reason = ' '.join(str(e).split())[:200]
+    return ToolError(f'{what} could not be read' + (f': {reason}' if reason else '.'))
+
+
+def run_tool(ws, name: str, fn_: Callable, args: Optional[Dict[str, Any]],
+             after: Optional[Callable[[str], str]] = None) -> str:
+    """Run one tool and answer with text, whatever happens.
+
+    Every failure reaches the model as a sentence in the tools' own
+    vocabulary. Python's is never part of one: an argument the tool does not
+    take is answered with the tool's NAME and its parameter names (the
+    binding error says the internal function's name and Python's word for the
+    problem), and an unexpected failure is answered by saying so, with the
+    traceback going to the operator's log where it is of use.
+
+    ``after`` is what the app appends to a successful answer.
+    """
+    ws.forget_clipping()
+    try:
+        bound = inspect.signature(fn_).bind(ws, **(args or {}))
+    except TypeError:
+        params = [p for p in inspect.signature(fn_).parameters if p != 'ws']
+        return (f'Error: {name} cannot be called with those arguments. It takes: '
+                + ', '.join(params) + '.')
+    try:
+        out = truncate(fn_(*bound.args, **bound.kwargs))
+        return after(out) if after else out
+    except (ToolError, ValueError) as e:  # ValueError: a name or reference lookup failed
+        return f'Error: {e}'
+    except Exception:  # noqa: BLE001 - the model gets a sentence; the log gets the trace
+        traceback.print_exc()
+        return (f'Error: {name} failed, which is a fault in the tool rather than in the request. '
+                'Tell the user, and try another way of asking rather than the same call again.')
 
 
 def fn(name: str, description: str, properties: Dict[str, Any], required: List[str]) -> Dict[str, Any]:

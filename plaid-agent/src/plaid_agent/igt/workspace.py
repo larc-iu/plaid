@@ -455,7 +455,7 @@ def _matcher(pattern: str, regex: bool, case_sensitive: bool = False):
         try:
             rx = re.compile(pattern, 0 if case_sensitive else re.IGNORECASE)
         except re.error as e:
-            raise ToolError(f'Bad regex: {e}')
+            raise ToolError(f'That is not a valid regular expression: {e}')
         return lambda s: bool(rx.search(s or ''))
     if case_sensitive:
         return lambda s: (pattern or '') in (s or '')
