@@ -14,6 +14,7 @@ from typing import Any, Dict, List
 from ..core import sandbox as _sandbox
 from ..core import webtools
 from ..core.webtools import t_read_url, t_web_search
+from ..core.limits import OVERVIEW_DOCS
 from ..core.tools import fn, limit_arg, run_tool, tools_for as core_tools_for
 
 from .bulk import (t_copy_to_orthography, t_delete_entry, t_merge_entries, t_rename_document,
@@ -69,7 +70,8 @@ _MORPHEMES = {'type': 'array', 'items': {'type': 'object', 'properties': {
 TOOLS = [
     _fn('project_overview',
         'The project: its annotation fields by scope (Word / Morpheme / Sentence), orthographies, lexicons, and the '
-        'list of documents. Call this first.', {}, []),
+        f'list of documents, the first {OVERVIEW_DOCS} by name (list_documents pages and filters the rest). '
+        'Call this first.', {}, []),
     _fn('list_documents',
         'The documents by name, a page at a time, optionally filtered by a name substring and/or a document metadata '
         'value (metadata_field + value; an empty value lists documents lacking it).',

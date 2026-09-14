@@ -144,6 +144,14 @@ def test_a_confirmation_of_a_document_leaves_out_what_the_plan_deletes():
 
 
 def test_prompt_says_a_contributors_approval_is_a_contribution():
+    """The plan contract owes the rule, and confirm owes the reader where to
+    find the work it covers. The pointer used to be restated in the prompt's
+    which-tool paragraph beside confirm's own description, and now is not."""
     from plaid_agent.igt.prompt import build_system_prompt
+    from plaid_agent.igt.toolkit import TOOLS
     p = build_system_prompt(ws().project)
-    assert 'contribution awaiting a reviewer' in p and 'kind="contributed"' in p
+    assert 'contribution awaiting a reviewer' in p
+    confirm = next(t['function']['description'] for t in TOOLS
+                   if t['function']['name'] == 'confirm')
+    assert "contributors' work" in confirm
+    assert 'worklist kind=' in confirm and '"contributed"' in confirm

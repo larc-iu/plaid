@@ -82,12 +82,10 @@ own definition, examples that match a compound condition, or anything gathered a
 of documents. If you have called read_document or search three times for one question, switch to run_code. \
 Do not use it for what {outright} answer outright, and inside it use query() for a count the \
 engine can make.
-- What the code sees: documents() lists {"id", "name"}; {rows}; query(q) runs a query \
-object as query_help describes; plan(tool, ...) stages a change through a plan tool by name. The template:
-{template}
-  Print a summary (counts, a few refs with their sentence text), never every row: output is capped. \
-Loading every document of a large corpus takes about a minute, which is fine for one call. code_help has \
-worked examples.
+- What the code sees: documents(), load(document), query(q) and plan(tool, ...), and nothing else. code_help \
+gives their shapes, a template to start from, and worked examples. Print a summary (counts, a few refs with \
+their sentence text), never every row: output is capped. Loading every document of a large corpus takes about \
+a minute, which is fine for one call.
 - Code can stage changes through plan(...) and nothing else: the same guards apply, and nothing is written \
 until the user approves the plan card.
 '''
@@ -179,14 +177,18 @@ def cite_evidence(*, refs: str, shown_as: str, never_paste: str, example: str, a
                                   'never_paste': never_paste, 'example': example})
 
 
-def code_section(*, triggers: str, outright: str, rows: str, template: str) -> str:
+def code_section(*, triggers: str, outright: str) -> str:
     """The run_code half of a system prompt, in the app's own terms.
 
-    ``triggers`` are the questions of this app's own that call for code,
-    ``outright`` the tools that already answer without it, ``rows`` what
-    ``load()`` returns, and ``template`` the loop over it. Everything else
+    ``triggers`` are the questions of this app's own that call for code and
+    ``outright`` the tools that already answer without it. Everything else
     (the stopping rule, the output budget, that code may only write through
     plan) is the sandbox's and reads the same in every app.
+
+    What ``load()`` returns and a template to start from used to be here, in
+    every prompt of every turn, for a tool that in this deployment's whole
+    history of conversations was never once called. ``code_help`` returns both
+    already, to the model that asks: the prompt names the four functions so it
+    knows what is there, and nothing more.
     """
-    return filled(CODE, {'triggers': triggers, 'outright': outright,
-                         'rows': rows, 'template': template})
+    return filled(CODE, {'triggers': triggers, 'outright': outright})

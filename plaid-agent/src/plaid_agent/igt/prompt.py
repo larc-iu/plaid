@@ -40,32 +40,13 @@ so a trailing period is already not a word. If the text is genuinely wrong or bl
 decide.
 {one_turn}
 {final_message}
-- Which tool: list_documents to find documents by name or metadata (the overview shows the first {overview_docs}); \
-worklist for what is unfinished (by frequency); corpus_stats and frequency_list for numbers; \
-search for finding items, concordance for context around a form or gloss, sequence_search for constructions; \
-analyses_of before proposing any analysis (pass forms=[...] for every word of a sentence at once, and plan the \
-sentence with one set_analysis call using analyses=[...]); set_morpheme to change one morpheme's form or type \
-without touching the rest of its chain; check_consistency, check_lexicon, check_integrity for quality reports; \
-for project-wide edits use replace_in_field, respell_all, set_analysis_for_form, copy_to_orthography rather than \
-many single set_field calls; confirm marks annotations awaiting review as verified once checked: machine-made \
-ones (another service's output; trailing ~ in reads; worklist kind="unverified") and contributors' work \
-(trailing ^; worklist kind="contributed", user= for one person), and documents=["all"] covers every document \
-with something waiting, as one planned change per document; discard_analysis deletes a word's unverified machine analysis (never a person's); a multi-word \
-expression (mwe= in reads) is one lexicon link shared by several words: link_phrase makes one, unlink_phrase \
-removes one, and a word's own link (link_entry / unlink_entry) is separate from it; a lexicon's entries form \
-a tree (a HEADWORD is an entry with nothing above it, a SENSE one under another). An entry_form takes the number shown beside it, where one segment is a headword and two or more a \
-sense: "kwatha" or "kwatha#1" the headword, "kwatha#1.2" a sense of it, "gam#2" the second headword spelled \
-that way, "gam#2.1.3" a subsense of that one. Fields can refer to other entries, and usage examples are \
-marked: add_sense, move_sense, order_homographs, \
-make_sense_of, free_sense, promote_example and remove_example work on that structure, which is never a field; \
-comments shows what people \
-have written to each other and add_comment leaves a note (not annotation); recent_changes prints an as_of \
-instant per change and restore_document puts a document back to one (maintainers, a plan of its own); \
-drop_planned removes single planned changes when the user wants most of a plan; \
-split_word, merge_words, delete_word, split_sentence, merge_sentences change the segmentation of the text (a word \
-split or merge deletes the affected morpheme analyses); append_text adds sentences to a document and \
-retype_sentence fixes a sentence's transcript (respell for one word's spelling). When \
-none of these can express a question, read query_help and write a query.
+- Which tool: every tool carries its own description, which says what it does and what it takes. Read those \
+rather than guessing, and take from here only what no single description can say. Read analyses_of before \
+proposing any analysis. Reach for a project-wide tool (replace_in_field, respell_all, set_analysis_for_form, \
+copy_to_orthography) rather than many single calls. A lexicon's entries form a TREE: a HEADWORD is an entry with \
+nothing above it, a SENSE one under another, and the tools that move entries around work on that structure, \
+never on a field. In what the reads print, a trailing ~ marks a value a machine made and a trailing ^ one a \
+contributor made. When no tool can express a question, read query_help and write a query.
 {read_budget}
 {be_concise}
 {cite_evidence}
@@ -102,22 +83,9 @@ SYSTEM = shared.filled(_SYSTEM, {
         never_paste='interlinear lines or tables of glosses', example=_CITE_EXAMPLE),
 })
 
-_CODE_ROWS = '''load(document) returns {"name", "sentences": \
-[{"ref": "s3", "text", "fields": {name: value}, "words": [{"ref": "s3.w2", "surface", "orthographies", \
-"fields": {name: value}, "link", "mwes", "review": {field: "human"|"machine"|"contributed"|"verified"}, \
-"morphemes": [{"ref": "s3.w2.m1", "form", "type", "fields", "link", "review"}]}]}]}, with the project's own \
-field names and "" for a missing value'''
-
-_CODE_TEMPLATE = '''    for d in documents():
-        for s in load(d["id"])["sentences"]:
-            for w in s["words"]:
-                for m in w["morphemes"]:
-                    ...'''
-
 CODE = shared.code_section(
     triggers='two fields at once, a condition on a word and its morphemes together',
-    outright='search, concordance, frequency_list, worklist or check_consistency',
-    rows=_CODE_ROWS, template=_CODE_TEMPLATE)
+    outright='search, concordance, frequency_list, worklist or check_consistency')
 
 WEB = webtools.prompt(
     'what a gloss abbreviation conventionally means, how a construction is described in related '

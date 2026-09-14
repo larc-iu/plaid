@@ -8,6 +8,7 @@ both unless there is a reason recorded here for the two to differ.
 """
 
 import ast
+import json
 import collections
 import pathlib
 
@@ -169,9 +170,15 @@ def test_the_prompt_says_how_many_documents_the_overview_really_shows():
     from fixtures import FakeClient
     from plaid_agent.igt.project import load_project
     from plaid_agent.igt.prompt import build_system_prompt
+    from plaid_agent.igt.toolkit import TOOLS
     out = build_system_prompt(load_project(FakeClient(), 'p1'))
-    assert f'the overview shows the first {limits.OVERVIEW_DOCS}' in out
-    assert '{overview_docs}' not in out
+    # The cap moved out of the system prompt and onto project_overview itself,
+    # which is the tool that enforces it. What matters is that the model is
+    # told the number somewhere it will read, not which half of the request
+    # carries it.
+    seen = out + ' '.join(t['function']['description'] for t in TOOLS)
+    assert f'the first {limits.OVERVIEW_DOCS} by name' in seen
+    assert '{overview_docs}' not in seen
 
 
 def test_the_bulk_cap_is_the_plan_cap():
