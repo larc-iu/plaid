@@ -43,6 +43,24 @@ test('feature assignment: literal, copy, concatenation, slicing, FEATS keys', ()
   assert.equal(byForm(fresh(), 'dog').xpos, 'NN');
 });
 
+// The graph reads a FEATS pair through the one reader every writer of one uses
+// (src/utils/feats.js), so a span another app left off-spec still matches the
+// name a rule asks for, and a span holding no pair at all is not a feature.
+test('the graph reads a feature pair the way every writer of one does', () => {
+  const doc = new ConlluDocument({ raw: rawDocFromConllu(CONLLU) });
+  const spans = doc.layerInfo.featuresLayer.spans;
+  const sing = spans.find((s) => s.value === 'Number=Sing');
+  sing.value = ' Number = Sing ';
+  spans.push({ id: 'bare-span', tokens: [...sing.tokens], value: 'Note' });
+
+  const dog = byForm(graphFromSentence(doc.sentences[0]), 'dog');
+  assert.equal(dog.feats.get('Number'), 'Sing');
+  assert.equal(dog.feats.has('Note'), false);
+  // And the address book behind it names the span the value came from, so a
+  // rule that changes the pair writes to the span that is already there.
+  assert.equal(dog.spanIds.features.get('Number'), sing.id);
+});
+
 test('del_feat on a column and on a FEATS key', () => {
   const { graph } = rewrite('pattern { N [xpos] } commands { del_feat N.xpos; del_feat N.Number }');
   assert.equal(byForm(graph, 'dog').xpos, undefined);

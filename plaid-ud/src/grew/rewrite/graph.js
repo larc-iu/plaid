@@ -14,6 +14,7 @@
 // conversion happens here on the way in and in diff.js on the way out. So
 // `X []` matches the anchor (as in Grew), `X [upos]` does not, and `shift`
 // needs no special case for the root.
+import { normalizeFeature } from '../../utils/feats.js';
 
 const COLUMNS = { form: 'form', lemma: 'lemma', upos: 'upos', xpos: 'xpos' };
 
@@ -47,12 +48,14 @@ export function graphFromSentence(row) {
     const id = entry.token.id;
     const n = emptyNode(id, order.length);
     for (const f of entry.feats) {
-      const eq = String(f.value).indexOf('=');
-      const key = eq === -1 ? String(f.value) : String(f.value).slice(0, eq);
-      const val = eq === -1 ? '' : String(f.value).slice(eq + 1);
-      n.feats.set(key, val);
-      n.spanIds.features.set(key, f.id);
-      n.spanMeta.features.set(key, f.metadata || null);
+      // The same reading of a pair every writer of one uses (utils/feats.js).
+      // A span holding no complete pair is not a feature: Grew's model is
+      // name and value, and this graph is what a rule matches and writes back.
+      const feature = normalizeFeature(f.value);
+      if (!feature) continue;
+      n.feats.set(feature.key, feature.value);
+      n.spanIds.features.set(feature.key, f.id);
+      n.spanMeta.features.set(feature.key, f.metadata || null);
     }
     n.form = entry.tokenForm ?? '';
     n.lemma = entry.lemma?.value ?? undefined;
