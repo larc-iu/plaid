@@ -1,5 +1,6 @@
 (ns plaid.server.main
   (:require [mount.core :as mount]
+            [plaid.server.boot :as boot]
             [plaid.server.http-server]
             ;; Nightly database backup scheduler. Required here (not from
             ;; http-server or tests) so test JVMs don't register the defstate
@@ -51,4 +52,5 @@
                            (binding [*out* *err*]
                              (println "mount/stop did not complete within 25s; abandoning"))
                            (.interrupt stopper))))))
-  (mount/start-with-args (parse-args args)))
+  (when-let [exit-code (boot/start-cleanly! (parse-args args))]
+    (System/exit exit-code)))
