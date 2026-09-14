@@ -461,11 +461,13 @@ export const EditableCell = React.memo(
               return;
             }
             if (e.key === 'Enter') {
-              // Ctrl/Cmd+Enter is the per-token accept gesture (container
-              // handler): let it bubble and keep focus here. preventDefault
-              // claims the key from the combobox, which would otherwise commit
-              // whatever option is highlighted; the container's handler is on
-              // document and does not read defaultPrevented, so it still runs.
+              // Ctrl/Cmd+Enter is the per-token accept gesture, handled by the
+              // one onKeyDown above the whole sentence list (useReviewGestures):
+              // let it bubble and keep focus here. preventDefault claims the key
+              // from the combobox, which would otherwise commit whatever option
+              // is highlighted, and the gesture does not read defaultPrevented,
+              // so it still runs. What WOULD stop it is stopPropagation: the
+              // gesture only ever sees this event on its way up.
               if (e.ctrlKey || e.metaKey) {
                 e.preventDefault();
                 return;

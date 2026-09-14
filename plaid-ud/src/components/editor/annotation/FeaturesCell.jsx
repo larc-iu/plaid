@@ -121,12 +121,13 @@ export const FeaturesCell = React.memo(
       const dropdownOpen = !empty && combo.open;
 
       if (e.key === 'Enter') {
-        // Ctrl/Cmd+Enter confirms the whole token (container handler). Don't
-        // also commit a half-typed feature: returning without preventDefault
-        // handed the key to the combobox, which auto-highlights as soon as
-        // anything is typed, so reviewing a word with "Ca" in the box wrote
-        // Case=Nom. The container's handler is on document and does not read
-        // defaultPrevented, so it still confirms the token.
+        // Ctrl/Cmd+Enter confirms the whole token, handled by the one onKeyDown
+        // above the whole sentence list (useReviewGestures). Don't also commit a
+        // half-typed feature: returning without preventDefault handed the key to
+        // the combobox, which auto-highlights as soon as anything is typed, so
+        // reviewing a word with "Ca" in the box wrote Case=Nom. The gesture does
+        // not read defaultPrevented, so it still confirms the token. What WOULD
+        // stop it is stopPropagation: it only ever sees this event on its way up.
         if (e.ctrlKey || e.metaKey) {
           e.preventDefault();
           return;
