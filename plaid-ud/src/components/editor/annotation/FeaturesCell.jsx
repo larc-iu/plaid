@@ -132,11 +132,14 @@ export const FeaturesCell = React.memo(
           setSelectedPill(null);
           return;
         }
-        if (!dropdownOpen) {
-          cancelledRef.current = true;
-          setText('');
-          input?.blur();
-        }
+        // Escape cancels the cell whether or not the suggestion list is open,
+        // as in EditableCell, and the combobox closes the list beside it.
+        // Gated on the list, an exact match kept it open, so the first Escape
+        // over a typed pair only closed the list and the Tab after it reached
+        // the blur with nothing cancelled and wrote the pair.
+        cancelledRef.current = true;
+        setText('');
+        input?.blur();
         return;
       }
       if (e.key === 'Backspace' || e.key === 'Delete') {

@@ -516,6 +516,39 @@ test('re-typing a machine feature verifies it and adds no second chip', async ({
   await expect(page.locator('.feature-text--machine')).toHaveCount(0);
 });
 
+// Escape is how you leave a cell without writing, and in a features cell the
+// suggestion list is open over anything the project's inventory knows. It has
+// to cancel there too: closing only the list left the Tab after it committing
+// what had been typed.
+test('Escape over an open suggestion list writes no feature', async ({ page }) => {
+  await S.client.spans.update(S.featDog, 'Number=Sing');
+  await S.client.spans.patchMetadata(S.featDog, { ...MACHINE, provConfirmed: null });
+  const c = await openAnnotate(page);
+  const input = page.locator(`[id="${S.morphIds[1]}-feats"]`);
+  const pills = page.locator('.features-container', { has: input }).locator('.feature-tag');
+  await expect(pills).toHaveCount(1);
+
+  await input.focus();
+  await input.pressSequentially('Number=Plur', { delay: 20 });
+  // The inventory knows the pair, so the list is open over the exact match.
+  await expect(input).toHaveAttribute('aria-expanded', 'true');
+  await input.press('Escape');
+  await page.keyboard.press('Tab');
+  await page.waitForTimeout(1200);
+
+  const span = await S.client.spans.get(S.featDog);
+  dump('feat-escape', {
+    server: { value: span.value, metadata: span.metadata },
+    api: apiSummary(c),
+    errors: c.errors.map((e) => e.text),
+  });
+  expect(span.value).toBe('Number=Sing');
+  expect(span.metadata.provConfirmed).toBeUndefined();
+  expect(apiSummary(c)).toEqual([]);
+  await expect(pills).toHaveCount(1);
+  await expect(input).toHaveValue('');
+});
+
 test('re-typing the machine deprel label verifies the relation', async ({ page }) => {
   await S.client.relations.patchMetadata(S.relNsubj, { ...MACHINE, provConfirmed: null });
   const c = await openAnnotate(page);

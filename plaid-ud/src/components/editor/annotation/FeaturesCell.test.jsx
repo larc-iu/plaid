@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
+import { readFeatureInventory } from '../../../utils/udVocab.js';
 import { FeaturesCell } from './FeaturesCell.jsx';
 import { EditorSessionContext } from './editorSession.js';
 
@@ -14,6 +15,13 @@ import { EditorSessionContext } from './editorSession.js';
 vi.mock('../../../utils/notify.js', () => ({ notifyWarning: vi.fn() }));
 
 const MACHINE = { prov: 'inferred', provSource: 'service:stanza-parser' };
+
+// A project that has named its features. Typing a pair the inventory knows
+// leaves the suggestion list OPEN over the exact match, which is the state the
+// cell has to keep answering for.
+const INVENTORY = readFeatureInventory({
+  ud: { inventory: [{ key: 'Gender', values: ['Masc', 'Fem'] }] },
+});
 
 const mount = (props = {}, session = {}) => {
   const onAnnotationUpdate = vi.fn(() => Promise.resolve());
@@ -96,6 +104,28 @@ describe('FeaturesCell and the machine value re-typed', () => {
 
     await step(async () => focus(input));
     await step(async () => type(input, 'Gender=Masc'));
+    await step(async () => press(input, 'Escape'));
+    await step(async () => blur(input));
+
+    expect(onAnnotationUpdate).not.toHaveBeenCalled();
+    await unmount();
+  });
+
+  // With a configured inventory the list stays open over an exact match, so
+  // Escape has a list to close as well as an edit to cancel. It has to do
+  // both: gated on the list, the first Escape closed it and the Tab after it
+  // reached the blur with nothing cancelled and wrote the pair.
+  it('writes nothing when Escape cancels with the suggestion list open', async () => {
+    const { container, step, onAnnotationUpdate, unmount } = await mount(
+      {},
+      { vocab: { featureInventory: INVENTORY } },
+    );
+    const input = all(container, 'input')[0];
+
+    await step(async () => focus(input));
+    await step(async () => type(input, 'Gender=Masc'));
+    expect(input.getAttribute('aria-expanded')).toBe('true');
+
     await step(async () => press(input, 'Escape'));
     await step(async () => blur(input));
 
