@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
 import { useDocumentTabs } from './useDocumentTabs.js';
@@ -35,6 +35,12 @@ const mount = async (entries, props) => {
   );
   return view;
 };
+
+// Every handler the hook registered for `event`, in the order it registered them.
+const handlersFor = (spy, event) =>
+  spy.mock.calls.filter(([type]) => type === event).map(([, fn]) => fn);
+
+afterEach(() => vi.restoreAllMocks());
 
 describe('the document tab', () => {
   it('lands on Analyze for a tokenized document nobody asked a tab for', async () => {
@@ -119,9 +125,21 @@ describe('the document tab', () => {
   });
 
   it('stops listening once the screen is gone', async () => {
+    // A leaked listener would set the tab on a screen that is already gone, and
+    // the probe's last snapshot cannot show that, so watch the subscription
+    // itself: every handler the hook added has to come off again. The setter
+    // changes with the query string, so there is a pair per subscription.
+    const added = vi.spyOn(window, 'addEventListener');
+    const removed = vi.spyOn(window, 'removeEventListener');
     const view = await mount(['/d?tab=analyze'], { doc: tokenized });
+    const registered = handlersFor(added, 'igt:navigate-tab');
+    expect(registered.length).toBeGreaterThan(0);
+
     await view.unmount();
-    // Nothing left to throw at: the listener went with the screen.
+    const dropped = handlersFor(removed, 'igt:navigate-tab');
+    expect(registered.filter((fn) => !dropped.includes(fn))).toEqual([]);
+
+    // And nothing left to throw at.
     window.dispatchEvent(new CustomEvent('igt:navigate-tab', { detail: { tab: 'tokenize' } }));
     expect(last().activeTab).toBe('analyze');
   });
