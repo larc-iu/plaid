@@ -1,11 +1,11 @@
 """Strict mode stamps ``?document-version=`` on writes. Inside a batch it stamps
 the FIRST QUEUED write only, which gives the whole batch one OCC check.
 
-The bug this guards: the stamp block runs above the batch branch and used to
-mark the batch stamped for any non-GET that reached it, including a call
-carrying ``bypass_batch``. ``query`` is a POST, and app chrome runs one while
-someone else's batch is open, so the batch's one stamp was spent on a route that
-does not check it and the first real write went out unguarded.
+The bug this guards: the stamp used to be spent by any non-GET that reached
+the request layer while a batch was open, including a call that went over the
+wire on its own. ``query`` is a POST, and app chrome runs one while someone
+else's batch is open, so the batch's one stamp was spent on a route that does
+not check it and the first real write went out unguarded.
 """
 
 import os
@@ -59,15 +59,14 @@ def _version_of(url):
 def test_a_bypassing_call_does_not_spend_the_batch_stamp():
     client = _strict_client()
     sent = _stub_session(client)
-    client.begin_batch()
-    try:
-        client.query({'find': ['?t'], 'where': []})
-        client.spans.update('s1', 'NOUN')
-    finally:
-        queued = list(client.batch_operations)
-        client.abort_batch()
+    b = client.batch()
+    b.query({'find': ['?t'], 'where': []})
+    client.spans.update('s0', 'ADJ')
+    b.spans.update('s1', 'NOUN')
+    queued = list(b.operations)
+    b.abort()
 
-    assert len(sent) == 1, 'the query went over the wire on its own'
+    assert len(sent) == 2, "the query and the client's write went over the wire"
     assert [_version_of(op['path']) for op in queued] == ['7'], \
         'the first queued write must carry the document version'
 
@@ -75,14 +74,12 @@ def test_a_bypassing_call_does_not_spend_the_batch_stamp():
 def test_the_first_queued_write_takes_the_stamp_and_the_rest_go_without():
     client = _strict_client()
     _stub_session(client)
-    client.begin_batch()
-    try:
-        client.spans.update('s1', 'NOUN')
-        client.spans.update('s2', 'VERB')
-        client.relations.delete('r1')
-    finally:
-        queued = list(client.batch_operations)
-        client.abort_batch()
+    b = client.batch()
+    b.spans.update('s1', 'NOUN')
+    b.spans.update('s2', 'VERB')
+    b.relations.delete('r1')
+    queued = list(b.operations)
+    b.abort()
 
     assert [_version_of(op['path']) for op in queued] == ['7', None, None]
 

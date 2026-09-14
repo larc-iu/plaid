@@ -18,12 +18,12 @@ const PAYLOAD = {
 };
 
 test('sendMessage puts the payload on the wire verbatim', async () => {
-  // Batch mode captures the fully prepared request body without any network.
+  // A batch captures the fully prepared request body without any network.
   const client = new PlaidClient('http://localhost:0', 'dummy-token');
-  client.beginBatch();
-  client.messages.sendMessage('11111111-2222-3333-4444-555555555555', PAYLOAD);
-  const [op] = client.batchOperations;
-  client.abortBatch();
+  const b = client.batch();
+  b.messages.sendMessage('11111111-2222-3333-4444-555555555555', PAYLOAD);
+  const [op] = b.operations;
+  b.abort();
 
   assert.strictEqual(op.method, 'POST');
   assert.deepStrictEqual(op.body, { body: PAYLOAD });

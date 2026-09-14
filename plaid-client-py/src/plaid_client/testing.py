@@ -151,7 +151,40 @@ def run(service, request, helper=None):
 
 
 class _Batch:
-    def __init__(self):
+    """The batch a handler writes on (``client.batched()`` / ``client.batch()``):
+    the same resources as the fake client, recording into this batch's queue
+    rather than the client's log until it submits."""
+
+    def __init__(self, client):
+        self.client = client
+        self.queued = []
+        self.results = []
+        self.open = True
+        for name in client.RESOURCES:
+            setattr(self, name, Resource(self, name))
+
+    def __getattr__(self, name):
+        return getattr(self.client, name)
+
+    def new_id(self, prefix):
+        return self.client.new_id(prefix)
+
+    def fail_if_asked(self, kind):
+        self.client.fail_if_asked(kind)
+
+    def record(self, kind, payload=None, result=None):
+        self.queued.append((kind, payload))
+        self.results.append(result if result is not None else {'body': {}})
+
+    def submit(self):
+        self.open = False
+        for entry in self.queued:
+            self.client.calls.append(entry)
+        return self.results
+
+    def abort(self):
+        # Nothing it queued reaches the server.
+        self.open = False
         self.queued = []
         self.results = []
 
@@ -215,7 +248,6 @@ class FakeClient:
         self.operations = []
         #: {'tokens.bulk_create': <exception>} -- raised when that call is made.
         self.fails = dict(fails or {})
-        self._batch = None
         self._ids = itertools.count(1)
         self.documents = self._Documents(self)
         for name in self.RESOURCES:
@@ -231,11 +263,7 @@ class FakeClient:
             raise error
 
     def record(self, kind, payload=None, result=None):
-        if self._batch is not None:
-            self._batch.queued.append((kind, payload))
-            self._batch.results.append(result if result is not None else {'body': {}})
-        else:
-            self.calls.append((kind, payload))
+        self.calls.append((kind, payload))
 
     @property
     def kinds(self):
@@ -254,18 +282,18 @@ class FakeClient:
         return self._documents[index]
 
     # -- the client surface --
+    def batch(self):
+        return _Batch(self)
+
     @contextlib.contextmanager
     def batched(self):
-        batch = _Batch()
-        prior, self._batch = self._batch, batch
+        batch = _Batch(self)
         try:
             yield batch
         except BaseException:
-            self._batch = prior          # aborted: nothing it queued reaches the server
+            batch.abort()
             raise
-        self._batch = prior
-        for entry in batch.queued:
-            self.calls.append(entry)
+        batch.submit()
 
     @contextlib.contextmanager
     def operation(self, message):
@@ -285,8 +313,8 @@ class FakeClient:
 
         @contextlib.contextmanager
         def locked(self, document_id):
-            # The lock routes bypass an open batch (the one rule for
-            # out-of-band signals), so they are logged straight through.
+            # The lock routes are out-of-band signals: made on the client, and
+            # logged straight through.
             self._client.calls.append(('lock', document_id))
             try:
                 yield self

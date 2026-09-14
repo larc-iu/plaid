@@ -48,11 +48,11 @@ def _stub_session(client):
 
 def _queue(client, message=None):
     """Queue one write with a per-call message and one without; return paths."""
-    client.begin_batch()
-    client.spans.set_metadata('S1', {'a': 1}, audit_message=message)
-    client.spans.set_metadata('S2', {'b': 2})
-    paths = [op['path'] for op in client.batch_operations]
-    client.abort_batch()
+    b = client.batch()
+    b.spans.set_metadata('S1', {'a': 1}, audit_message=message)
+    b.spans.set_metadata('S2', {'b': 2})
+    paths = [op['path'] for op in b.operations]
+    b.abort()
     return paths
 
 

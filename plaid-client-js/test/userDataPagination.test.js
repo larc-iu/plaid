@@ -47,7 +47,6 @@ test("list follows the cursors and returns every entry flat", async () => {
     assert.equal(call.options.queryParams.pattern, "igt:assistant:*:meta:*");
     assert.equal(call.options.queryParams["include-values"], true);
     assert.equal(call.options.queryParams.limit, 100);
-    assert.equal(call.options.bypassBatch, true);
   }
   assert.equal(calls[0].options.queryParams.cursor, undefined);
   assert.equal(calls[1].options.queryParams.cursor, "cur-1");

@@ -92,14 +92,7 @@ export function serviceErrorMessage(error, serviceName = '', secrets = []) {
  * @returns {Promise<Array>} [{serviceId, serviceName, description, extras, online, lastSeenAt}]
  */
 export function discoverServices(client, projectId) {
-  // bypassBatch: the registry is read by whoever asked, not by whatever batch
-  // happens to be open on this shared client. The assistant's availability
-  // probe polls for 49 seconds after a mount and landed inside a Grew rewrite
-  // or an import, where the answer was `{batched: true}`, cached as the
-  // service list, and every later render threw on it until a reload.
-  return client._request('GET', `/api/v1/projects/${projectId}/services`, {
-    bypassBatch: true,
-  });
+  return client._request('GET', `/api/v1/projects/${projectId}/services`);
 }
 
 /**
@@ -113,10 +106,10 @@ export function discoverServices(client, projectId) {
  * @returns {Promise<void>}
  */
 export function discardService(client, projectId, serviceId) {
-  // bypassBatch: the registry is not project data. A discard from app chrome
-  // while a batch is open elsewhere would otherwise queue into it.
+  // outOfBand: the registry is not project data (see the note at the top of
+  // http.js).
   return client._request('DELETE', `/api/v1/projects/${projectId}/services/${encodeURIComponent(serviceId)}`, {
-    bypassBatch: true,
+    outOfBand: true,
   });
 }
 
@@ -124,10 +117,10 @@ export function discardService(client, projectId, serviceId) {
  * POST a progress, result or error event for an in-flight request; the server
  * relays it to the waiting requester. The Python twin is `_report_event`.
  *
- * bypassBatch: these are out-of-band signals to whoever is waiting, not writes
- * to the project. A service reports them from inside its own
- * `client.batched()` block, where queueing them would hold every one back
- * until submit, deliver none at all if the batch aborts, and take slots in the
+ * outOfBand: these are signals to whoever is waiting, not writes to the
+ * project (see the note at the top of http.js). A service may report them on
+ * the batch it is filling, where queueing them would hold every one back until
+ * submit, deliver none at all if the batch aborts, and take slots in the
  * batch's results. The requester would hear nothing and wait out its idle
  * timeout on work that had already finished.
  *
@@ -141,7 +134,7 @@ export function reportRequestEvent(client, projectId, requestId, body) {
   return client._request(
     'POST',
     `/api/v1/projects/${projectId}/service-requests/${encodeURIComponent(requestId)}/events`,
-    { body, bypassBatch: true },
+    { body, outOfBand: true },
   );
 }
 
@@ -491,13 +484,8 @@ export function createCancelScope(isCancelled) {
  * still ends with whatever the service then reports, on the stream of whoever
  * is awaiting it. Rejects with 404 if unknown or expired, 409 once finished.
  *
- * Goes over the wire even while a batch is open on the client. A DELETE, but
- * not a write: it signals a running service out of band and changes no project
- * data. The Stop button lives in the app's chrome, on the same client an
- * import or a bulk edit is batching on, and a stop that waits for that batch to
- * submit has stopped nothing (and if the batch aborts, it never arrives at
- * all), while the queued DELETE shifts every result index the batch's caller
- * reads back.
+ * outOfBand: a DELETE, but not a write. It signals a running service and
+ * changes no project data (see the note at the top of http.js).
  *
  * @param {Object} client - PlaidClient instance
  * @param {string} projectId - Project UUID
@@ -508,7 +496,7 @@ export function cancelServiceRequest(client, projectId, requestId) {
   return client._request(
     'DELETE',
     `/api/v1/projects/${projectId}/service-requests/${encodeURIComponent(requestId)}`,
-    { bypassBatch: true },
+    { outOfBand: true },
   );
 }
 

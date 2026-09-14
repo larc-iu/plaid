@@ -1,41 +1,41 @@
 import { transformRequest, transformResponse } from "./transforms.js";
 
 // ---------------------------------------------------------------------------
-// Batch mode: which calls join a batch, and which go over the wire anyway.
+// Batches: which calls a batch carries, and which go over the wire anyway.
 //
-// `client.batched()` sets ONE flag on the whole client, and every call made
-// while it is set is queued, whatever code made it. A browser client is shared
-// by an editor, an importer and the app's chrome at once, so the call that
-// lands inside someone else's batch is usually not the one that opened it.
-// Every call reaching this layer is one of three things, and the third column
-// is what a new endpoint has to pick.
+// A batch is an OBJECT (`client.batch()`, or the argument `client.batched(fn)`
+// hands `fn`), a view of the client with the same bundles. A write made on the
+// batch queues; a call made on the client itself always goes over the wire,
+// whatever batches happen to be open. So the editor, the importer and the
+// app's chrome can share one client, and a write by code that knows nothing
+// about a batch can never land inside it. Every call reaching this layer is
+// one of three things, and the third column is what a new endpoint has to
+// pick.
 //
 // 1. A WRITE of project data: an entity, its metadata, a layer, a membership,
-//    a comment. This is what a batch is for, so it QUEUES. It is the default
-//    and needs no flag.
+//    a comment. This is what a batch is for, so on a batch it QUEUES. It is
+//    the default and needs no flag.
 //
-// 2. A READ. Pass `bypassBatch`. A queued read is broken three ways: the
-//    caller gets `{ batched: true }` instead of data, the queued GET takes a
-//    slot in the batch's results array and shifts every positional read after
-//    it, and server-side the sub-request runs against the batch's transaction
-//    connection rather than the pool, where `/query` throws and 500s the whole
-//    batch, rolling back every write in it. Bypassed, the read is answered
-//    from the pool and sees exactly the state it would have seen had the batch
-//    not been open.
+// 2. A READ. Every GET is answered from the wire even when made on a batch:
+//    the caller gets data rather than `{ batched: true }`, it takes no slot in
+//    the batch's results, and server-side it runs against the pool rather than
+//    the batch's transaction connection. A read that travels as a POST
+//    (`query`) says so with `outOfBand`.
 //
 // 3. An OUT-OF-BAND SIGNAL: stopping a service request, reporting a service's
-//    progress or result, taking or dropping a document lock, an admin action
-//    on the server itself. It is shaped like a write but carries no project
-//    data, and its whole value is that it happens NOW. Queued, it happens at
-//    submit, or never if the batch aborts, while its caller reads success.
-//    Pass `bypassBatch` for these too.
+//    progress or result, taking or dropping a document lock, forgetting a
+//    service, an admin action on the server itself. It is shaped like a write
+//    but carries no project data, and its whole value is that it happens NOW.
+//    Pass `outOfBand`: made on a batch it still goes over the wire, and it
+//    never joins an open logical operation. The audit group is a label for
+//    the writes, and a signal that is never audited would mark the group
+//    written and leave the relabel PATCH 404ing on a group nothing ever
+//    created.
 //
-// A bypassed call neither joins the batch nor spends its stamp. Strict mode
-// marks the batch's one expected document-version onto the first QUEUED write,
-// and a call that went over the wire on its own is not that write. It does not
-// join an open logical operation either: the audit group is a label for the
-// writes, and a signal that is never audited would mark the group written and
-// leave the relabel PATCH 404ing on a group nothing ever created.
+// Strict mode stamps the batch's one expected document-version onto the first
+// write queued on it (whole-batch OCC: stamping every op would 409 the second
+// against the bump the first caused). A call that went over the wire on its
+// own carries its own stamp and spends nothing of any batch's.
 //
 // `noBatch` is not part of that judgment. It marks the five calls the batch
 // transport cannot carry at all (a batch inside a batch, the multipart media
@@ -300,12 +300,13 @@ export function xhrSend(
  *   rawBody         - Body value passed directly (no transform). Mutually exclusive with body.
  *   formData        - If true, body is FormData; skip Content-Type header
  *   queryParams     - Object of query param key/values to append
- *   noBatch         - If true, throw when in batch mode. Only for calls the
+ *   noBatch         - If true, throw when made on a batch. Only for calls the
  *                     batch transport cannot carry at all (see the note at the
  *                     top of this file); never for a read.
- *   bypassBatch     - If true, go over the wire even while a batch is open.
- *                     Every read carries it, and so does every out-of-band
- *                     signal (see the note at the top of this file).
+ *   outOfBand       - If true, the call is a signal rather than a write of
+ *                     project data: made on a batch it still goes over the
+ *                     wire, and it never joins an open logical operation (see
+ *                     the note at the top of this file).
  *   skipResponseTransform - Return raw parsed JSON (no transformResponse)
  *   noAuth          - Skip Authorization header
  *   binaryResponse  - Return arrayBuffer instead of JSON/text
@@ -318,21 +319,24 @@ export function xhrSend(
  *                     where the timeout only fires when the upload stalls;
  *                     elsewhere the callback is ignored and fetch is used.
  */
-export async function makeRequest(client, method, path, options = {}) {
-  const {
-    body,
-    rawBody,
-    formData,
-    queryParams,
-    noBatch,
-    bypassBatch,
-    skipResponseTransform,
-    noAuth,
-    binaryResponse,
-    auditMessage,
-    timeout,
-    onUploadProgress,
-  } = options;
+/**
+ * Everything a request is before it goes anywhere: the URL with its query
+ * params and the stamps strict mode, a per-call audit message and an open
+ * logical operation add, plus the transformed body. Shared by the wire path
+ * (`makeRequest`) and the batch path (`queueRequest`), so a queued op is
+ * exactly the request that would have gone out. `batch` is the batch the call
+ * is being queued on, if any: strict mode stamps its document-version onto the
+ * first write queued there and no other.
+ */
+export function prepareRequest(
+  client,
+  method,
+  path,
+  options = {},
+  batch = null,
+) {
+  const { body, rawBody, formData, queryParams, outOfBand, auditMessage } =
+    options;
 
   // A write must not go out on a lock that lapsed. `documents.locked()`
   // records the loss here when its keep-alive cannot renew, and from that
@@ -340,11 +344,7 @@ export async function makeRequest(client, method, path, options = {}) {
   // have landed between the read the work was planned from and the write about
   // to go out. Reads pass, and so do the lock routes themselves, which is how
   // the block still releases on its way out.
-  if (
-    client.documentLockLost &&
-    method !== "GET" &&
-    !path.endsWith("/lock")
-  ) {
+  if (client.documentLockLost && method !== "GET" && !path.endsWith("/lock")) {
     throw client.documentLockLost;
   }
 
@@ -376,27 +376,23 @@ export async function makeRequest(client, method, path, options = {}) {
     requestBody = transformRequest(body);
   }
 
-  // Strict mode: append document-version for non-GET requests.
-  // Inside a batch, stamp ONLY the first queued write: batches run atomically
-  // server-side, so a version check on the first op gives whole-batch OCC
-  // semantics, while stamping every op would 409 the second op against the
-  // version bump the first op itself caused (every queued op captures the
-  // same pre-batch version).
+  // Strict mode: append document-version for non-GET requests. On a batch,
+  // stamp ONLY the first queued write: batches run atomically server-side, so
+  // a version check on the first op gives whole-batch OCC semantics, while
+  // stamping every op would 409 the second op against the version bump the
+  // first op itself caused (every queued op captures the same pre-batch
+  // version).
   if (
     client.strictModeDocumentId &&
     method !== "GET" &&
-    !(client.isBatching && client.batchVersionStamped)
+    !(batch && batch.versionStamped)
   ) {
     const docId = client.strictModeDocumentId;
     if (client.documentVersions[docId]) {
       const docVersion = client.documentVersions[docId];
       const separator = url.includes("?") ? "&" : "?";
       url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
-      // A bypassing call queues nothing, so it must not spend the batch's one
-      // stamp. `query` is a POST and lands here from app chrome while someone
-      // else's batch is open: marking the batch stamped there left the first
-      // real write unversioned and the batch unguarded.
-      if (client.isBatching && !bypassBatch) client.batchVersionStamped = true;
+      if (batch) batch.versionStamped = true;
     }
   }
 
@@ -414,16 +410,11 @@ export async function makeRequest(client, method, path, options = {}) {
   // with the group id; the message rides along too so the server can label
   // the group lazily on whichever tagged write lands first.
   //
-  // A bypassing call is not one of those writes. The out-of-band signals are
-  // shaped like a write and carry no project data (a lock taken or renewed, a
-  // cancelled service request, a service reporting its progress, an admin
-  // control), and `query` is a read that travels as a POST. None of them lands
-  // in the audit log, so a stamp does nothing server-side while `written`
-  // promises a group that will never exist: the relabel PATCH then 404s. Same
-  // rule as the batch and the OCC stamp above, for the same reason: a
-  // bypassing call belongs to whoever made it, not to whatever operation
-  // happens to be open on this shared client.
-  if (client.operationGroup && method !== "GET" && !bypassBatch) {
+  // An out-of-band signal is not one of those writes (see the note at the top
+  // of this file): it never lands in the audit log, so a stamp does nothing
+  // server-side while `written` promises a group that will never exist, and
+  // the relabel PATCH then 404s.
+  if (client.operationGroup && method !== "GET" && !outOfBand) {
     const group = client.operationGroup;
     const separator = url.includes("?") ? "&" : "?";
     url += `${separator}group-id=${encodeURIComponent(group.id)}`;
@@ -432,24 +423,54 @@ export async function makeRequest(client, method, path, options = {}) {
     group.written = true;
   }
 
-  // Batch mode. A `bypassBatch` call is deliberately NOT queued: it belongs to
-  // whoever made it, not to whatever batch happens to be open on this shared
-  // client (a document reconcile, an import). See the three classes at the top
-  // of this file.
-  if (client.isBatching && !bypassBatch) {
-    if (noBatch) {
-      throw new Error(`This endpoint cannot be used in batch mode: ${path}`);
-    }
-    const operation = {
-      path: url.replace(client.baseUrl, ""),
-      method: method.toUpperCase(),
-    };
-    if (requestBody !== undefined) {
-      operation.body = requestBody;
-    }
-    client.batchOperations.push(operation);
-    return { batched: true };
+  return { url, requestBody };
+}
+
+/**
+ * A call made on a batch (see `PlaidClient#batch`). A write of project data is
+ * queued as one operation of the batch and answers `{ batched: true }`; its
+ * result is the matching entry of what `submit()` resolves to. A read, and a
+ * signal marked `outOfBand`, is the client's to make and goes over the wire
+ * now, exactly as if it had been made on the client.
+ */
+export async function queueRequest(batch, method, path, options = {}) {
+  if (method === "GET" || options.outOfBand) {
+    return batch.client._request(method, path, options);
   }
+  if (!batch.open) {
+    throw new Error(`This batch was already submitted or aborted: ${path}`);
+  }
+  if (options.noBatch) {
+    throw new Error(`This endpoint cannot be used in a batch: ${path}`);
+  }
+  const { url, requestBody } = prepareRequest(
+    batch.client,
+    method,
+    path,
+    options,
+    batch,
+  );
+  const operation = {
+    path: url.replace(batch.client.baseUrl, ""),
+    method: method.toUpperCase(),
+  };
+  if (requestBody !== undefined) {
+    operation.body = requestBody;
+  }
+  batch.operations.push(operation);
+  return { batched: true };
+}
+
+export async function makeRequest(client, method, path, options = {}) {
+  const {
+    formData,
+    skipResponseTransform,
+    noAuth,
+    binaryResponse,
+    timeout,
+    onUploadProgress,
+  } = options;
+  const { url, requestBody } = prepareRequest(client, method, path, options);
 
   // Build fetch options
   const headers = {};

@@ -28,12 +28,12 @@ PAYLOAD = {
 
 
 def test_send_message_puts_the_payload_on_the_wire_verbatim():
-    # Batch mode captures the fully prepared request body without any network.
+    # A batch captures the fully prepared request body without any network.
     c = PlaidClient('http://localhost:0', 'dummy-token')
-    c.begin_batch()
-    c.messages.send_message('11111111-2222-3333-4444-555555555555', PAYLOAD)
-    ops = list(c.batch_operations)
-    c.abort_batch()
+    b = c.batch()
+    b.messages.send_message('11111111-2222-3333-4444-555555555555', PAYLOAD)
+    ops = list(b.operations)
+    b.abort()
 
     assert len(ops) == 1
     assert ops[0]['method'] == 'POST'

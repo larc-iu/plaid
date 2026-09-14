@@ -1,6 +1,6 @@
 // Logical operations (audit-log grouping) — network-free paths.
 //
-// Batch mode queues operations instead of sending them, so we can assert the
+// A batch queues operations instead of sending them, so we can assert the
 // `?group-id=` / `group-message` params are stamped on each queued op's path
 // without a live server. The server-side fold is covered by plaid-core's
 // operation-group-test.
@@ -17,11 +17,11 @@ function makeClient() {
 }
 
 function queue(client) {
-  client.beginBatch();
-  client.spans.setMetadata('S1', { a: 1 });
-  client.spans.setMetadata('S2', { b: 2 });
-  const paths = client.batchOperations.map(op => op.path);
-  client.abortBatch();
+  const b = client.batch();
+  b.spans.setMetadata('S1', { a: 1 });
+  b.spans.setMetadata('S2', { b: 2 });
+  const paths = b.operations.map(op => op.path);
+  b.abort();
   return paths;
 }
 
@@ -131,14 +131,21 @@ test('withOperation setMessage refines the label at the end', async () => {
   assert.deepStrictEqual(JSON.parse(calls[0].body), { message: 'Merged 2' });
 });
 
-test('GET requests never carry a group-id', () => {
+test('GET requests never carry a group-id', async () => {
   const client = makeClient();
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    return {
+      ok: true, status: 200,
+      headers: { get: (n) => (String(n).toLowerCase() === 'content-type' ? 'application/json' : null) },
+      json: async () => ({}), text: async () => '',
+    };
+  };
   client.beginOperation('x');
-  client.beginBatch();
-  client.spans.get('S1');
-  const paths = client.batchOperations.map(op => op.path);
-  client.abortBatch();
-  assert.ok(paths.every(p => !p.includes('group-id')));
+  await client.spans.get('S1');
+  assert.strictEqual(calls.length, 1);
+  assert.ok(!calls[0].includes('group-id'));
   assert.strictEqual(client.operationGroup.written, false);
 });
 
@@ -211,10 +218,10 @@ test('group params coexist with strict-mode document-version and a per-call audi
   client.enterStrictMode('D1');
   client.documentVersions['D1'] = 7;
   const id = client.beginOperation('Combined');
-  client.beginBatch();
-  client.spans.setMetadata('S1', { a: 1 }, 'Step {spanId}');
-  const [path] = client.batchOperations.map(op => op.path);
-  client.abortBatch();
+  const b = client.batch();
+  b.spans.setMetadata('S1', { a: 1 }, 'Step {spanId}');
+  const [path] = b.operations.map(op => op.path);
+  b.abort();
   const params = new URL('http://x' + path).searchParams;
   assert.strictEqual(params.get('document-version'), '7');
   assert.strictEqual(params.get('audit-message'), 'Step {spanId}');

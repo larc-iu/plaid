@@ -44,7 +44,6 @@ def test_list_follows_the_cursors_and_returns_every_entry_flat(monkeypatch):
         assert qp['pattern'] == 'igt:assistant:*:meta:*'
         assert qp['include-values'] is True
         assert qp['limit'] == 100
-        assert kwargs['bypass_batch'] is True
     assert 'cursor' not in calls[0][2]['query_params']
     assert calls[1][2]['query_params']['cursor'] == 'cur-1'
 

@@ -25,11 +25,11 @@ def _client():
 
 
 def _queue(client):
-    client.begin_batch()
-    client.spans.set_metadata('S1', {'a': 1})
-    client.spans.set_metadata('S2', {'b': 2})
-    paths = [op['path'] for op in client.batch_operations]
-    client.abort_batch()
+    b = client.batch()
+    b.spans.set_metadata('S1', {'a': 1})
+    b.spans.set_metadata('S2', {'b': 2})
+    paths = [op['path'] for op in b.operations]
+    b.abort()
     return paths
 
 
@@ -244,10 +244,10 @@ def test_group_params_coexist_with_document_version_and_audit_message():
     client.enter_strict_mode('D1')
     client.document_versions['D1'] = '7'
     gid = client.begin_operation('Combined')
-    client.begin_batch()
-    client.spans.set_metadata('S1', {'a': 1}, audit_message='Step {span_id}')
-    path = client.batch_operations[0]['path']
-    client.abort_batch()
+    b = client.batch()
+    b.spans.set_metadata('S1', {'a': 1}, audit_message='Step {span_id}')
+    path = b.operations[0]['path']
+    b.abort()
     params = _params(path)
     assert params['document-version'] == '7'
     assert params['audit-message'] == 'Step {span_id}'

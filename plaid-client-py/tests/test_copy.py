@@ -13,10 +13,10 @@ from plaid_client import PlaidClient
 
 def _queued(fn):
     client = PlaidClient('http://localhost:0', 'dummy-token')
-    client.begin_batch()
-    fn(client)
-    ops = list(client.batch_operations)
-    client.abort_batch()
+    b = client.batch()
+    fn(b)
+    ops = list(b.operations)
+    b.abort()
     return ops
 
 

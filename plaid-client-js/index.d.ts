@@ -257,10 +257,6 @@ interface SpansBundle {
   patchMetadata(spanId: string, body: any, auditMessage?: string): Promise<any>;
 }
 
-interface BatchBundle {
-  submit(body: any[], auditMessage?: string): Promise<any>;
-}
-
 interface TextsBundle {
   setMetadata(textId: string, body: any, auditMessage?: string): Promise<any>;
   deleteMetadata(textId: string, auditMessage?: string): Promise<any>;
@@ -1116,6 +1112,21 @@ export interface OperationGroupsBundle {
   update(id: string, message: string | null): Promise<any>;
 }
 
+/**
+ * A batch: the client's bundles, on which every write of project data queues
+ * until `submit()`. See `PlaidClient.batch()`.
+ */
+export interface PlaidBatch extends PlaidClient {
+  /** The client this batch was opened on. */
+  readonly client: PlaidClient;
+  /** The queued operations, in order. */
+  readonly operations: Array<{ path: string; method: string; body?: any }>;
+  /** Send the queued operations as one atomic request; one result per operation. */
+  submit(): Promise<any[]>;
+  /** Drop the queued operations without sending them. */
+  abort(): void;
+}
+
 export declare class PlaidClient {
   constructor(baseUrl: string, token: string, options?: PlaidClientOptions);
   static login(
@@ -1144,23 +1155,20 @@ export declare class PlaidClient {
   /** Fired once on HTTP 401 (see PlaidClientOptions.onAuthError). */
   onAuthError: ((error: Error) => void) | null;
 
-  // Batch control methods.
+  // Batches.
   //
-  // Batch mode is one flag on the whole client, so it catches every write made
-  // while it is open, including writes made by code that knows nothing about
-  // the batch. Reads are never caught: every read method goes over the wire
-  // while a batch is open and is answered from the state the batch has not
-  // committed yet, so app chrome sharing a client with an importer keeps
-  // working. Neither are the calls that signal something out of band rather
-  // than write project data: stopping a service request, a service reporting
-  // its progress or result, taking and dropping a document lock, and the admin
-  // actions on the server itself.
-  beginBatch(): void;
-  submitBatch(): Promise<any[]>;
-  abortBatch(): void;
-  isBatchMode(): boolean;
-  /** Run `fn` with a batch open, then submit atomically (or abort if `fn` throws). Resolves to the results array. Writes inside `fn` queue; reads go over the wire and see the pre-batch state. */
-  batched(fn: () => void | Promise<void>): Promise<any[]>;
+  // A batch is a view of the client with the same bundles. A write of project
+  // data made on the batch queues; a call made on the client itself always
+  // goes over the wire, whatever batches are open, so a write by code that
+  // knows nothing about a batch can never land inside it. A read, or a signal
+  // that carries no project data (stopping a service request, a service
+  // reporting its progress, taking and dropping a document lock, the admin
+  // actions on the server itself), goes over the wire even when made on the
+  // batch.
+  /** Open a batch. Queue writes on it, then `submit()` them as one atomic request, or `abort()`. Not nestable. */
+  batch(): PlaidBatch;
+  /** Run `fn` with a batch, then submit atomically (or abort if `fn` throws). Resolves to the results array, one entry per queued write. */
+  batched(fn: (batch: PlaidBatch) => void | Promise<void>): Promise<any[]>;
 
   // Strict mode methods
   enterStrictMode(documentId: string): void;
@@ -1186,7 +1194,6 @@ export declare class PlaidClient {
   relations: RelationsBundle;
   spanLayers: SpanLayersBundle;
   spans: SpansBundle;
-  batch: BatchBundle;
   texts: TextsBundle;
   users: UsersBundle;
   apiTokens: ApiTokensBundle;

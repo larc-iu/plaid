@@ -111,41 +111,37 @@ def discover_services(client, project_id):
     ones carry ``online: True``; previously-seen offline ones carry
     ``online: False`` plus a ``last_seen_at`` stamp. Callers that need a
     service they can actually submit work to should filter on ``online``.
-    Goes over the wire even while a batch is open on the client.
     """
-    # bypass_batch: the registry is read by whoever asked, not by whatever
-    # batch happens to be open on this shared client. See the JS twin.
-    return client.messages._request('GET', f'/api/v1/projects/{project_id}/services',
-                                    bypass_batch=True)
+    return client.messages._request('GET', f'/api/v1/projects/{project_id}/services')
 
 
 def discard_service(client, project_id, service_id):
     """Forget a previously-seen (offline) service: removes its row from the
     project's persistent registry. Maintainer-only; 409 if the service is
     currently connected (it would just re-register)."""
-    # bypass_batch: the registry is not project data. A discard while a batch
-    # is open elsewhere would otherwise queue into it.
+    # out_of_band: the registry is not project data (see the note at the top
+    # of http.py).
     return client.messages._request(
         'DELETE',
         f'/api/v1/projects/{project_id}/services/{urllib.parse.quote(service_id, safe="")}',
-        bypass_batch=True)
+        out_of_band=True)
 
 
 def _report_event(client, project_id, request_id, body):
     """POST a progress/result/error event for an in-flight request; the server
     relays it to the waiting requester. The JS twin is ``reportRequestEvent``.
 
-    bypass_batch: these are out-of-band signals to whoever is waiting, not
-    writes to the project. A service reports them from inside its own
-    ``client.batched()`` block, where queueing them would hold every one back
+    out_of_band: these are signals to whoever is waiting, not writes to the
+    project (see the note at the top of http.py). A service may report them
+    on the batch it is filling, where queueing them would hold every one back
     until submit, deliver none at all if the batch aborts, and take slots in
-    the batch's results. The requester would hear nothing and wait out its idle
-    timeout on work that had already finished.
+    the batch's results. The requester would hear nothing and wait out its
+    idle timeout on work that had already finished.
     """
     client.messages._request(
         'POST',
         f'/api/v1/projects/{project_id}/service-requests/{request_id}/events',
-        body=body, bypass_batch=True)
+        body=body, out_of_band=True)
 
 
 def _error_status(error):
@@ -668,17 +664,12 @@ def cancel_service_request(client, project_id, request_id):
     request still ends with whatever the service then reports, on the stream
     of whoever is awaiting it. 404 if unknown or expired, 409 once finished.
 
-    Goes over the wire even while a batch is open on the client. A DELETE, but
-    not a write: it signals a running service out of band and changes no
-    project data. The Stop button lives in the app's chrome, on the same client
-    an import or a bulk edit is batching on, and a stop that waits for that
-    batch to submit has stopped nothing (and if the batch aborts, it never
-    arrives at all), while the queued DELETE shifts every result index the
-    batch's caller reads back.
+    out_of_band: a DELETE, but not a write. It signals a running service and
+    changes no project data (see the note at the top of http.py).
     """
     return client.messages._request(
         'DELETE', f'/api/v1/projects/{project_id}/service-requests/{request_id}',
-        bypass_batch=True)
+        out_of_band=True)
 
 
 def _stream_headers(client):

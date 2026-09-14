@@ -5,6 +5,7 @@
 import { transformRequest, transformResponse } from "./transforms.js";
 import {
   makeRequest,
+  queueRequest,
   extractDocumentVersions,
   parseErrorBody,
   makeHttpError,
@@ -117,6 +118,56 @@ async function anonymousGet(baseUrl, path, options = {}) {
  */
 const MAX_BATCH_OPS = 1000;
 
+/**
+ * A batch is the client with a different `_request` (see `queueRequest`) and
+ * its own copy of the bundles. Everything else resolves to the client through
+ * the prototype: the token and base URL, strict mode and the document versions
+ * it tracks, the open logical operation.
+ */
+function openBatch(client) {
+  const batch = Object.create(client);
+  batch.client = client;
+  batch.operations = [];
+  batch.versionStamped = false;
+  batch.open = true;
+  batch._request = (method, path, options = {}) =>
+    queueRequest(batch, method, path, options);
+  batch.batch = () => {
+    throw new Error("A batch is not nestable: queue on the batch you have");
+  };
+  batch.batched = batch.batch;
+  batch.submit = () => submitBatch(batch);
+  batch.abort = () => {
+    batch.operations = [];
+    batch.open = false;
+  };
+  batch._installResources();
+  return batch;
+}
+
+async function submitBatch(batch) {
+  if (!batch.open) {
+    throw new Error("This batch was already submitted or aborted");
+  }
+  batch.open = false;
+  const ops = batch.operations;
+  batch.operations = [];
+  if (ops.length === 0) return [];
+  const url = `${batch.client.baseUrl}/api/v1/batch`;
+  // The server caps a batch at MAX_BATCH_OPS so one transaction cannot hold
+  // the write lock without bound. A larger batch goes as consecutive
+  // requests, results concatenated in queue order: it could not have been one
+  // transaction anyway, and a repair or bulk edit over a big document must
+  // not fail on its size alone.
+  const results = [];
+  for (let i = 0; i < ops.length; i += MAX_BATCH_OPS) {
+    results.push(
+      ...(await batch.client._postBatch(url, ops.slice(i, i + MAX_BATCH_OPS))),
+    );
+  }
+  return results;
+}
+
 class PlaidClient {
   /**
    * Create a new PlaidClient instance
@@ -142,8 +193,6 @@ class PlaidClient {
         : options.timeout !== undefined
           ? options.timeout
           : DEFAULT_BATCH_TIMEOUT_MS;
-    this.isBatching = false;
-    this.batchOperations = [];
     this.documentVersions = {};
     this.strictModeDocumentId = null;
     // Set to a DocumentLockLost while a `documents.locked()` block's keep-alive
@@ -161,8 +210,16 @@ class PlaidClient {
     this.onAuthError = options.onAuthError || null;
     this._authErrorFired = false;
 
-    // --- API Bundles ---
+    this._installResources();
+  }
 
+  /**
+   * The API bundles (`client.documents`, `client.tokens`, ...). Installed on
+   * the client, and again on every batch it opens (see `batch()`): a batch is
+   * a view of the client with its own `_request`, so the same bundles built
+   * on it queue instead of sending.
+   */
+  _installResources() {
     this.vocabLinks = {
       /**
        * Create a new vocab link between tokens and a vocab item.
@@ -234,7 +291,6 @@ class PlaidClient {
        */
       get: (id, asOf) =>
         this._request("GET", `/api/v1/vocab-links/${id}`, {
-          bypassBatch: true,
           queryParams: { "as-of": asOf },
         }),
       /**
@@ -254,7 +310,6 @@ class PlaidClient {
        */
       get: (id, includeItems, asOf) =>
         this._request("GET", `/api/v1/vocab-layers/${id}`, {
-          bypassBatch: true,
           queryParams: { "include-items": includeItems, "as-of": asOf },
         }),
       /**
@@ -413,7 +468,6 @@ class PlaidClient {
        */
       get: (relationId, asOf) =>
         this._request("GET", `/api/v1/relations/${relationId}`, {
-          bypassBatch: true,
           queryParams: { "as-of": asOf },
         }),
       /**
@@ -532,7 +586,6 @@ class PlaidClient {
        */
       get: (spanLayerId, asOf) =>
         this._request("GET", `/api/v1/span-layers/${spanLayerId}`, {
-          bypassBatch: true,
           queryParams: { "as-of": asOf },
         }),
       /**
@@ -611,7 +664,6 @@ class PlaidClient {
        */
       get: (spanId, asOf) =>
         this._request("GET", `/api/v1/spans/${spanId}`, {
-          bypassBatch: true,
           queryParams: { "as-of": asOf },
         }),
       /**
@@ -698,11 +750,7 @@ class PlaidClient {
        */
       info: () => {
         if (!infoPromise) {
-          // bypassBatch: a read belongs to whoever asked for it, not to
-          // whatever batch happens to be open on this shared client.
-          infoPromise = this._request("GET", "/api/v1/info", {
-            bypassBatch: true,
-          }).catch((err) => {
+          infoPromise = this._request("GET", "/api/v1/info").catch((err) => {
             // A failure must not be cached: a client that starts before the
             // server is up would never see the limits at all.
             infoPromise = null;
@@ -720,20 +768,6 @@ class PlaidClient {
        * @returns {Promise<{ok: boolean, version: string, uptimeMs: number, audit: object}>}
        */
       health: () => PlaidClient.health(this.baseUrl, { timeout: this.timeout }),
-    };
-
-    this.batch = {
-      /**
-       * Execute multiple API operations atomically. If any operation fails, all
-       * changes are rolled back.
-       * @param {Array} body - The request body
-       */
-      submit: (body, auditMessage) =>
-        this._request("POST", "/api/v1/batch", {
-          auditMessage,
-          body,
-          noBatch: true,
-        }),
     };
 
     this.texts = {
@@ -793,7 +827,6 @@ class PlaidClient {
        */
       get: (textId, asOf) =>
         this._request("GET", `/api/v1/texts/${textId}`, {
-          bypassBatch: true,
           queryParams: { "as-of": asOf },
         }),
       /**
@@ -931,7 +964,6 @@ class PlaidClient {
        */
       get: (id, asOf) =>
         this._request("GET", `/api/v1/users/${id}`, {
-          bypassBatch: true,
           queryParams: { "as-of": asOf },
         }),
       /**
@@ -1001,7 +1033,6 @@ class PlaidClient {
        */
       getAvatar: (id) =>
         this._request("GET", `/api/v1/users/${id}/avatar`, {
-          bypassBatch: true,
           binaryResponse: true,
         }),
       /**
@@ -1059,13 +1090,6 @@ class PlaidClient {
        * @param {number} [opts.pageSize=100] - Entries per request (1..1000)
        */
       list: (userId, { prefix, pattern, includeValues, pageSize = 100 } = {}) =>
-        // Every page carries bypassBatch (the pagination helpers set it): a
-        // read belongs to whoever asked for it, not to whatever batch happens
-        // to be open on this shared client. The assistant panel is app chrome
-        // in both SPAs, so it reads this store while an import or a bulk edit
-        // holds a batch open. Queued, the read answered `{batched: true}` (the
-        // sidebar then threw on `.map`) and took a slot in the batch's
-        // results, shifting every index the caller counted on.
         listAll(this, `/api/v1/users/${userId}/data`, {
           pageSize,
           query: { prefix, pattern, "include-values": includeValues },
@@ -1113,11 +1137,9 @@ class PlaidClient {
        * @param {string} key
        */
       get: (userId, key) =>
-        // bypassBatch for the same reason as list() above.
         this._request(
           "GET",
           `/api/v1/users/${userId}/data/${encodeURIComponent(key)}`,
-          { bypassBatch: true },
         ),
       /**
        * Create or replace one private data entry. `value` is any JSON (up to
@@ -1318,8 +1340,7 @@ class PlaidClient {
        * walks the media directory, so open it, do not poll it. Admin only.
        * @returns {Promise<{version: string, jvm: object, database: object, media: object, backup: object, settings: object}>}
        */
-      server: () =>
-        this._request("GET", "/api/v1/admin/server", { bypassBatch: true }),
+      server: () => this._request("GET", "/api/v1/admin/server"),
       /**
        * Take a database backup right now, outside the nightly schedule.
        * Resolves to the backup block with `ok` reporting whether the snapshot
@@ -1327,20 +1348,17 @@ class PlaidClient {
        * people are working. Admin only.
        * @returns {Promise<{ok: boolean, directory: string, backups: Array}>}
        *
-       * Goes over the wire even while a batch is open, as every admin action
-       * on the server itself does: none of them writes project data, and a
-       * backup taken inside somebody's open write transaction is not what the
-       * caller asked for.
+       * outOfBand, as every admin action on the server itself is: none of them
+       * writes project data (see the note at the top of http.js).
        */
       backup: () =>
-        this._request("POST", "/api/v1/admin/backup", { bypassBatch: true }),
+        this._request("POST", "/api/v1/admin/backup", { outOfBand: true }),
       /**
        * Documents currently held by an editing lock, with who holds each and
        * when it expires on its own. Admin only.
        * @returns {Promise<{entries: Array<{documentId: string, userId: string, expiresAt: number}>}>}
        */
-      locks: () =>
-        this._request("GET", "/api/v1/admin/locks", { bypassBatch: true }),
+      locks: () => this._request("GET", "/api/v1/admin/locks"),
       /**
        * Drop the lock on a document whoever holds it. Idempotent. For a client
        * that went away without releasing one. Admin only.
@@ -1348,7 +1366,7 @@ class PlaidClient {
        */
       releaseLock: (documentId) =>
         this._request("DELETE", `/api/v1/admin/locks/${documentId}`, {
-          bypassBatch: true,
+          outOfBand: true,
         }),
       /**
        * Live login and invite rate-limit buckets: the address, the account
@@ -1356,10 +1374,7 @@ class PlaidClient {
        * it is currently blocking. Admin only.
        * @returns {Promise<{windowMs: number, logins: Array, ips: Array, invites: Array}>}
        */
-      rateLimits: () =>
-        this._request("GET", "/api/v1/admin/rate-limits", {
-          bypassBatch: true,
-        }),
+      rateLimits: () => this._request("GET", "/api/v1/admin/rate-limits"),
       /**
        * Forget recorded rate-limit failures. With `ip`, clears that address,
        * narrowed to one account with `userId`. With neither, clears every
@@ -1370,7 +1385,7 @@ class PlaidClient {
        */
       clearRateLimits: ({ ip, userId } = {}) =>
         this._request("DELETE", "/api/v1/admin/rate-limits", {
-          bypassBatch: true,
+          outOfBand: true,
           queryParams: { ip, "user-id": userId },
         }),
       /**
@@ -1394,7 +1409,6 @@ class PlaidClient {
        */
       logs: ({ limit, q, level, status, user, method } = {}) =>
         this._request("GET", "/api/v1/admin/logs", {
-          bypassBatch: true,
           queryParams: { limit, q, level, status, user, method },
         }),
       /**
@@ -1408,7 +1422,6 @@ class PlaidClient {
        */
       logFile: ({ lines } = {}) =>
         this._request("GET", "/api/v1/admin/logs/file", {
-          bypassBatch: true,
           queryParams: { lines },
         }),
       /**
@@ -1536,7 +1549,6 @@ class PlaidClient {
           ? `/api/v1/projects/${projectId}/audit/tally`
           : "/api/v1/audit/tally";
         const result = await this._request("GET", path, {
-          bypassBatch: true,
           queryParams: {
             "start-time": startTime,
             "end-time": endTime,
@@ -1619,7 +1631,6 @@ class PlaidClient {
        */
       get: (tokenLayerId, asOf) =>
         this._request("GET", `/api/v1/token-layers/${tokenLayerId}`, {
-          bypassBatch: true,
           queryParams: { "as-of": asOf },
         }),
       /**
@@ -1650,34 +1661,33 @@ class PlaidClient {
        */
       checkLock: (documentId, asOf) =>
         this._request("GET", `/api/v1/documents/${documentId}/lock`, {
-          bypassBatch: true,
           queryParams: { "as-of": asOf },
         }),
       /**
        * Acquire or refresh a document lock.
        *
-       * Goes over the wire even while a batch is open. The lock is an
-       * out-of-band signal, not project data: a queued acquire is taken only
-       * when the batch submits, which is after every write it was meant to
-       * guard, and until then it answers success to a caller that does not
-       * hold it and cannot see the 423 saying somebody else does.
+       * outOfBand: the lock is a signal, not project data (see the note at
+       * the top of http.js). Queued on a batch it would be taken only at
+       * submit, after every write it was meant to guard, and until then answer
+       * success to a caller that does not hold it and cannot see the 423
+       * saying somebody else does.
        * @param {string} documentId - The document ID
        */
       acquireLock: (documentId, auditMessage) =>
         this._request("POST", `/api/v1/documents/${documentId}/lock`, {
           auditMessage,
-          bypassBatch: true,
+          outOfBand: true,
         }),
       /**
-       * Release a document lock. Goes over the wire even while a batch is
-       * open, for the same reason as acquireLock: queued, the lock is held
-       * until the batch submits, and not released at all if it aborts.
+       * Release a document lock. outOfBand, for the same reason as
+       * acquireLock: queued, the lock would be held until the batch submits,
+       * and not released at all if it aborts.
        * @param {string} documentId - The document ID
        */
       releaseLock: (documentId, auditMessage) =>
         this._request("DELETE", `/api/v1/documents/${documentId}/lock`, {
           auditMessage,
-          bypassBatch: true,
+          outOfBand: true,
         }),
       /**
        * Hold this document's server-enforced lock for the length of `fn`,
@@ -1724,7 +1734,6 @@ class PlaidClient {
        */
       getMedia: (documentId) =>
         this._request("GET", `/api/v1/documents/${documentId}/media`, {
-          bypassBatch: true,
           binaryResponse: true,
         }),
       /**
@@ -1749,8 +1758,8 @@ class PlaidClient {
        * Delete media file for a document
        * @param {string} documentId - The document ID
        */
-      // No flag: the upload above is multipart and cannot be batched, but a
-      // DELETE carries no blob, so the batch transport takes it. It is a write
+      // The upload above is multipart and cannot be batched, but a DELETE
+      // carries no blob, so the batch transport takes it. It is a write
       // of the document's own data and queues like any other. Note that the
       // file removal happens outside the server's transaction, so a batch that
       // aborts after this op does not bring the file back.
@@ -1874,7 +1883,6 @@ class PlaidClient {
        */
       get: (documentId, includeBody, asOf, layers) =>
         this._request("GET", `/api/v1/documents/${documentId}`, {
-          bypassBatch: true,
           queryParams: {
             "include-body": includeBody,
             "as-of": asOf,
@@ -2071,7 +2079,6 @@ class PlaidClient {
        */
       myLastEdits: (projectId) =>
         this._request("GET", `/api/v1/projects/${projectId}/audit/last-edits`, {
-          bypassBatch: true,
           skipResponseTransform: true,
         }),
       /**
@@ -2100,7 +2107,6 @@ class PlaidClient {
        */
       get: (id, asOf) =>
         this._request("GET", `/api/v1/projects/${id}`, {
-          bypassBatch: true,
           queryParams: { "as-of": asOf },
         }),
       /**
@@ -2247,7 +2253,6 @@ class PlaidClient {
        */
       get: (textLayerId, asOf) =>
         this._request("GET", `/api/v1/text-layers/${textLayerId}`, {
-          bypassBatch: true,
           queryParams: { "as-of": asOf },
         }),
       /**
@@ -2363,7 +2368,6 @@ class PlaidClient {
        */
       get: (id, asOf) =>
         this._request("GET", `/api/v1/vocab-items/${id}`, {
-          bypassBatch: true,
           queryParams: { "as-of": asOf },
         }),
       /**
@@ -2449,7 +2453,6 @@ class PlaidClient {
        */
       get: (relationLayerId, asOf) =>
         this._request("GET", `/api/v1/relation-layers/${relationLayerId}`, {
-          bypassBatch: true,
           queryParams: { "as-of": asOf },
         }),
       /**
@@ -2518,7 +2521,6 @@ class PlaidClient {
        */
       get: (tokenId, asOf) =>
         this._request("GET", `/api/v1/tokens/${tokenId}`, {
-          bypassBatch: true,
           queryParams: { "as-of": asOf },
         }),
       /**
@@ -2669,8 +2671,7 @@ class PlaidClient {
       /**
        * Discover the services seen on a project (synchronous GET). Currently
        * connected services carry `online: true`; previously-seen offline ones
-       * carry `online: false` plus a `lastSeenAt` stamp. Goes over the wire
-       * even while a batch is open on the client.
+       * carry `online: false` plus a `lastSeenAt` stamp.
        * @param {string} projectId - The UUID of the project to query
        * @returns {Promise<Array>} Array of discovered service information
        */
@@ -2819,17 +2820,14 @@ class PlaidClient {
      *   For 'count': {return: 'count', count}. Entity cells are full entity objects
      *   (same shape as the GET endpoints).
      */
-    // bypassBatch: a query is a read. `client.batched()` flips one flag on the
-    // whole client, so a query issued by unrelated code while a batch is open
-    // (the IGT island fetching precedent while a document reconciles) used to
-    // be queued into it: the caller got `{batched: true}` instead of results,
-    // and the server ran the query against the batch's tx Connection, which
-    // 500s and rolls back every write in that batch.
+    // outOfBand: a query is a read that travels as a POST (see the note at
+    // the top of http.js). Made on a batch it goes over the wire like any
+    // read, and it never joins a logical operation.
     this.query = (body, auditMessage) =>
       this._request("POST", "/api/v1/query", {
         auditMessage,
         body,
-        bypassBatch: true,
+        outOfBand: true,
       });
 
     // Logical-operation groups (audit-log grouping). There is no create: a
@@ -2840,10 +2838,7 @@ class PlaidClient {
        * Get a logical-operation group (its label + creator).
        * @param {string} id - The group id
        */
-      get: (id) =>
-        this._request("GET", `/api/v1/operation-groups/${id}`, {
-          bypassBatch: true,
-        }),
+      get: (id) => this._request("GET", `/api/v1/operation-groups/${id}`),
       /**
        * Relabel a logical-operation group after the fact. Owner or admin only.
        * @param {string} id - The group id
@@ -2884,8 +2879,7 @@ class PlaidClient {
        * Read one comment.
        * @param {string} id - The comment id
        */
-      get: (id) =>
-        this._request("GET", `/api/v1/comments/${id}`, { bypassBatch: true }),
+      get: (id) => this._request("GET", `/api/v1/comments/${id}`),
       /**
        * Edit a comment's body. Only the comment's AUTHOR may do this - not
        * maintainers, not admins. Sets `edited` on the comment.
@@ -2977,7 +2971,6 @@ class PlaidClient {
        */
       counts: (projectId, { documentId, entityType, entityId } = {}) =>
         this._request("GET", `/api/v1/projects/${projectId}/comments/counts`, {
-          bypassBatch: true,
           queryParams: {
             "document-id": documentId,
             "entity-type": entityType,
@@ -3025,7 +3018,6 @@ class PlaidClient {
           "GET",
           `/api/v1/vocab-layers/${vocabId}/comments/counts`,
           {
-            bypassBatch: true,
             queryParams: { "entity-id": entityId },
             skipResponseTransform: true,
           },
@@ -3154,55 +3146,28 @@ class PlaidClient {
   }
 
   /**
-   * Begin a batch of operations. Subsequent WRITES are queued; reads and
-   * out-of-band signals still go over the wire (see `batched`).
+   * Open a batch: a view of this client with the same bundles, on which every
+   * write of project data queues instead of going out. `submit()` sends the
+   * queued operations as ONE atomic request (larger than the server's cap,
+   * as consecutive requests with the results concatenated in queue order) and
+   * resolves to one result per operation; `abort()` drops them. A call made
+   * on the client itself is never touched by an open batch, and a read or an
+   * out-of-band signal made on the batch goes over the wire now (see the note
+   * at the top of `http.js`).
+   *
+   *   const b = client.batch();
+   *   b.tokens.bulkCreate(sentenceOps);
+   *   b.tokens.bulkCreate(wordOps);
+   *   const [sentRes, wordRes] = await b.submit();
+   *
+   * Server-side a batch runs sequentially in one transaction: a child op sees
+   * parents created earlier in the same batch, and any op's failure rolls the
+   * whole batch back. A batch is not nestable. Prefer `batched()`, which
+   * submits or aborts for you.
+   * @returns {PlaidClient} the batch view
    */
-  beginBatch() {
-    this.isBatching = true;
-    this.batchOperations = [];
-    // Strict mode stamps the expected document-version on the FIRST QUEUED
-    // write of the batch only (see _request), so reset the marker per batch.
-    this.batchVersionStamped = false;
-  }
-
-  /**
-   * Submit all queued batch operations as a single batch request, executed
-   * atomically. If any operation fails, all changes are rolled back.
-   * @returns {Promise<Array>} Array of results corresponding to each operation
-   */
-  async submitBatch() {
-    if (!this.isBatching) {
-      throw new Error("No active batch. Call beginBatch() first.");
-    }
-
-    if (this.batchOperations.length === 0) {
-      this.isBatching = false;
-      return [];
-    }
-
-    try {
-      const url = `${this.baseUrl}/api/v1/batch`;
-      const ops = this.batchOperations.map((op) => ({
-        path: op.path,
-        method: op.method.toUpperCase(),
-        ...(op.body && { body: op.body }),
-      }));
-      // The server caps a batch at MAX_BATCH_OPS so one transaction cannot
-      // hold the write lock without bound. A larger batch goes as consecutive
-      // requests, results concatenated in queue order: it could not have been
-      // one transaction anyway, and a repair or bulk edit over a big document
-      // must not fail on its size alone.
-      const results = [];
-      for (let i = 0; i < ops.length; i += MAX_BATCH_OPS) {
-        results.push(
-          ...(await this._postBatch(url, ops.slice(i, i + MAX_BATCH_OPS))),
-        );
-      }
-      return results;
-    } finally {
-      this.isBatching = false;
-      this.batchOperations = [];
-    }
+  batch() {
+    return openBatch(this);
   }
 
   /** POST one batch request (at most MAX_BATCH_OPS operations); resolves to its transformed results. */
@@ -3264,62 +3229,31 @@ class PlaidClient {
     }
   }
 
-  /** Abort the current batch without executing any operations. */
-  abortBatch() {
-    this.isBatching = false;
-    this.batchOperations = [];
-  }
-
   /**
-   * Check if currently in batch mode.
-   * @returns {boolean}
-   */
-  isBatchMode() {
-    return this.isBatching;
-  }
-
-  /**
-   * Run `fn` with a batch open, then submit all queued ops as ONE atomic
-   * request — or abort the batch if `fn` throws, so a half-open batch can never
-   * silently swallow later non-batch calls. `fn` makes the (queued) client
-   * calls; it must NOT call submitBatch itself. Resolves to the batch results
-   * array (`[]` if `fn` queued nothing).
+   * Run `fn` with a batch, then submit all queued ops as ONE atomic request,
+   * or abort the batch if `fn` throws. `fn` receives the batch and makes its
+   * writes on it; it must NOT call `submit()` itself. Resolves to the batch
+   * results array (`[]` if `fn` queued nothing).
    *
-   *   const [sentRes, wordRes] = await client.batched(async () => {
-   *     client.tokens.bulkCreate(sentenceOps);
-   *     client.tokens.bulkCreate(wordOps);
+   *   const [sentRes, wordRes] = await client.batched(async (b) => {
+   *     b.tokens.bulkCreate(sentenceOps);
+   *     b.tokens.bulkCreate(wordOps);
    *   });
    *
-   * Server-side a batch runs sequentially in one transaction (a child op sees
-   * parents created earlier in the same `fn`; any op's failure rolls the whole
-   * batch back). Not nestable. Named `batched()` because `client.batch` is the
-   * low-level batch resource.
-   *
-   * WRITES are what a batch queues, and batch mode is one flag on the whole
-   * client, so it catches every write made while it is open, including writes
-   * made by code that knows nothing about this batch. READS are never caught:
-   * every read method goes over the wire while a batch is open and is answered
-   * from the state the batch has not committed yet, so a read cannot come back
-   * as a batch marker and cannot take a slot in the results array. Neither are
-   * the calls that signal something out of band rather than write project data:
-   * stopping a service request, a service reporting its progress or result,
-   * taking and dropping a document lock, and the admin actions on the server
-   * itself. See the note at the top of `http.js` for which column a new
-   * endpoint belongs in.
-   * @param {() => (void | Promise<void>)} fn
+   * A write made on `client` inside `fn` is not part of the batch: it goes
+   * over the wire at once, as it would anywhere else. See `batch()`.
+   * @param {(batch: PlaidClient) => (void | Promise<void>)} fn
    * @returns {Promise<Array>}
    */
   async batched(fn) {
-    this.beginBatch();
+    const batch = this.batch();
     try {
-      await fn();
+      await fn(batch);
     } catch (e) {
-      // fn failed: drop the queued ops so the client leaves batch mode and
-      // later plain calls don't queue into a never-submitted batch.
-      if (this.isBatchMode()) this.abortBatch();
+      batch.abort();
       throw e;
     }
-    return this.submitBatch();
+    return batch.submit();
   }
 
   /**

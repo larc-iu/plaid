@@ -16,15 +16,13 @@ import { listAll, listPage, iterPages } from '../src/pagination.js';
 
 // A fake client whose `_request` returns scripted envelopes in sequence. It
 // records every call so we can assert the cursor was threaded correctly.
-// Pass `{ isBatching: true }` to simulate the client being inside a batch.
-function makeFakeClient(pages, { isBatching = false } = {}) {
+function makeFakeClient(pages) {
   let i = 0;
   return {
     calls: [],
-    isBatching,
     async _request(method, path, options = {}) {
       const cursor = options.queryParams ? options.queryParams.cursor : undefined;
-      this.calls.push({ method, path, cursor, bypassBatch: options.bypassBatch });
+      this.calls.push({ method, path, cursor });
       if (i >= pages.length) {
         throw new Error(`unexpected extra request (call #${this.calls.length})`);
       }
@@ -105,19 +103,6 @@ test('listAll returns [] for an empty envelope', async () => {
   assert.equal(client.calls.length, 1);
 });
 
-test('listAll follows its cursors over the wire while a batch is open', async () => {
-  // A page is a read, so it never joins the batch: chrome that lists comments
-  // or documents beside an import gets its pages from the pool, in order,
-  // instead of a batch marker it cannot follow a cursor through.
-  const client = makeFakeClient(threePageSequence(), { isBatching: true });
-
-  const all = await listAll(client, '/api/v1/things');
-
-  assert.deepEqual(all.map((x) => x.id), ['a', 'b', 'c', 'd', 'e']);
-  assert.equal(client.calls.length, 3);
-  assert.ok(client.calls.every((c) => c.bypassBatch === true));
-});
-
 test('iterPages yields each non-empty page in order', async () => {
   const client = makeFakeClient(threePageSequence());
 
@@ -146,45 +131,3 @@ test('iterPages suppresses a trailing empty page', async () => {
   assert.equal(client.calls.length, 2, 'but the cursor was still followed');
 });
 
-test('iterPages yields its pages over the wire while a batch is open', async () => {
-  const client = makeFakeClient(threePageSequence(), { isBatching: true });
-
-  const pages = [];
-  for await (const page of iterPages(client, '/api/v1/things')) {
-    pages.push(page.map((x) => x.id));
-  }
-
-  assert.deepEqual(pages, [['a', 'b'], ['c', 'd'], ['e']]);
-  assert.ok(client.calls.every((c) => c.bypassBatch === true));
-});
-
-// A page read by app chrome belongs to whoever asked for it, not to whatever
-// import or bulk edit holds a batch open on the same client. Queued, it answered
-// `{batched: true}` instead of an envelope AND shifted the batch's own results.
-test('listPage always goes over the wire, batch open or not', async () => {
-  const batching = makeFakeClient([{ entries: [], nextCursor: null }], { isBatching: true });
-  await listPage(batching, '/api/v1/things', { limit: 1000 });
-  assert.equal(batching.calls.length, 1);
-  assert.equal(batching.calls[0].bypassBatch, true);
-
-  const plain = makeFakeClient([{ entries: [], nextCursor: null }]);
-  await listPage(plain, '/api/v1/things');
-  assert.equal(plain.calls[0].bypassBatch, true);
-});
-
-test('listDocumentsPage reads a page during an open batch', async () => {
-  const { PlaidClient } = await import('../src/index.js');
-  const client = new PlaidClient('http://example.test', 'tok');
-  const calls = [];
-  client._request = (method, path, options = {}) => {
-    calls.push({ method, path, options });
-    return Promise.resolve({ entries: [], nextCursor: null });
-  };
-  client.isBatching = true;
-
-  await client.projects.listDocumentsPage('p1', { limit: 1000 });
-
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].options.bypassBatch, true);
-  assert.equal(calls[0].options.queryParams.limit, 1000);
-});

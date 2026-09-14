@@ -11,44 +11,42 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Batch mode: which calls join a batch, and which go over the wire anyway.
+# Batches: which calls a batch carries, and which go over the wire anyway.
 #
-# ``client.batched()`` sets ONE flag on the whole client, and every call made
-# while it is set is queued, whatever code made it. A client is shared by an
-# editor, an importer and the app's chrome at once, so the call that lands
-# inside someone else's batch is usually not the one that opened it. Every call
-# reaching this layer is one of three things, and the third column is what a new
-# endpoint has to pick.
+# A batch is an OBJECT (``client.batch()``, or what ``with client.batched()``
+# yields), a view of the client with the same resources. A write made on the
+# batch queues; a call made on the client itself always goes over the wire,
+# whatever batches happen to be open. So an editor, an importer and a keep-alive
+# can share one client, and a write by code that knows nothing about a batch
+# can never land inside it. Every call reaching this layer is one of three
+# things, and the third column is what a new endpoint has to pick.
 #
 # 1. A WRITE of project data: an entity, its metadata, a layer, a membership,
-#    a comment. This is what a batch is for, so it QUEUES. It is the default
-#    and needs no flag.
+#    a comment. This is what a batch is for, so on a batch it QUEUES. It is
+#    the default and needs no flag.
 #
-# 2. A READ. Pass ``bypass_batch``. A queued read is broken three ways: the
-#    caller gets ``{'batched': True}`` instead of data, the queued GET takes a
-#    slot in the batch's results list and shifts every positional read after
-#    it, and server-side the sub-request runs against the batch's transaction
-#    connection rather than the pool, where ``/query`` throws and 500s the whole
-#    batch, rolling back every write in it. Bypassed, the read is answered from
-#    the pool and sees exactly the state it would have seen had the batch not
-#    been open.
+# 2. A READ. Every GET is answered from the wire even when made on a batch:
+#    the caller gets data rather than ``{'batched': True}``, it takes no slot
+#    in the batch's results, and server-side it runs against the pool rather
+#    than the batch's transaction connection. A read that travels as a POST
+#    (``query``) says so with ``out_of_band``.
 #
 # 3. An OUT-OF-BAND SIGNAL: stopping a service request, reporting a service's
-#    progress or result, taking or dropping a document lock, an admin action on
-#    the server itself. It is shaped like a write but carries no project data,
-#    and its whole value is that it happens NOW. Queued, it happens at submit,
-#    or never if the batch aborts, while its caller reads success. Pass
-#    ``bypass_batch`` for these too.
+#    progress or result, taking or dropping a document lock, forgetting a
+#    service, an admin action on the server itself. It is shaped like a write
+#    but carries no project data, and its whole value is that it happens NOW.
+#    Pass ``out_of_band``: made on a batch it still goes over the wire, and it
+#    never joins an open logical operation. The audit group is a label for the
+#    writes, and a signal that is never audited would mark the group written
+#    and leave the relabel PATCH 404ing on a group nothing ever created.
 #
-# A bypassed call neither joins the batch nor spends its stamp. Strict mode
-# marks the batch's one expected document-version onto the first QUEUED write,
-# and a call that went over the wire on its own is not that write. It does not
-# join an open logical operation either: the audit group is a label for the
-# writes, and a signal that is never audited would mark the group written and
-# leave the relabel PATCH 404ing on a group nothing ever created.
+# Strict mode stamps the batch's one expected document-version onto the first
+# write queued on it (whole-batch OCC: stamping every op would 409 the second
+# against the bump the first caused). A call that went over the wire on its
+# own carries its own stamp and spends nothing of any batch's.
 #
 # ``no_batch`` is not part of that judgment. It marks the five calls the batch
-# transport cannot carry at all (a batch inside a batch, the multipart media and
+# transport cannot carry at all (the multipart media and
 # avatar uploads, the user-data store's put and delete) and raises so the caller
 # finds out. Never put it on a read: it turns a swallowed read into a thrown
 # one, which is what the chrome hit when an unrelated import was running. A
@@ -243,8 +241,7 @@ def list_page(client, path, *, limit=None, cursor=None, query=None):
         query: Extra query params (e.g. ``{"as-of": ...}``).
     """
     qp = _merge_query(query, limit=limit, cursor=cursor)
-    return make_request(client, 'GET', path, query_params=qp or None,
-                        bypass_batch=True)
+    return make_request(client, 'GET', path, query_params=qp or None)
 
 
 def iter_pages(client, path, *, page_size=1000, query=None):
@@ -350,8 +347,115 @@ class _ProgressBody:
         return chunk
 
 
+def prepare_request(client, method, path, *, body=None, raw_body=None, form_data=False,
+                    query_params=None, out_of_band=False, audit_message=None, batch=None):
+    """Everything a request is before it goes anywhere: the URL with its query
+    params and the stamps strict mode, a per-call audit message and an open
+    logical operation add, plus the transformed body. Shared by the wire path
+    (``make_request``) and the batch path (``queue_request``), so a queued op
+    is exactly the request that would have gone out. ``batch`` is the batch the
+    call is being queued on, if any: strict mode stamps its document-version
+    onto the first write queued there and no other.
+
+    Returns ``(url, request_body)``.
+    """
+    url = f'{client.base_url}{path}'
+
+    # A write must not go out on a lock that lapsed. ``documents.locked()``
+    # records the loss here when its keep-alive cannot renew, and from that
+    # moment the block is holding nothing. Reads pass, and so do the lock
+    # routes themselves, which is how the block still releases on its way out.
+    lock_lost = getattr(client, 'document_lock_lost', None)
+    if lock_lost is not None and method != 'GET' and not path.endswith('/lock'):
+        raise lock_lost
+
+    if query_params:
+        filtered = {}
+        for k, v in query_params.items():
+            if v is None:
+                continue
+            if isinstance(v, bool):
+                filtered[k] = 'true' if v else 'false'
+            else:
+                filtered[k] = v
+        if filtered:
+            url += '?' + urlencode(filtered)
+
+    request_body = None
+    if form_data:
+        request_body = body
+    elif raw_body is not None:
+        request_body = raw_body
+    elif body is not None:
+        request_body = transform_request(body)
+
+    # Strict mode: stamp the expected document-version on a write. On a batch,
+    # stamp ONLY the first queued write: batches run atomically server-side,
+    # so a version check on the first op gives whole-batch OCC semantics,
+    # while stamping every op would 409 the second against the version bump
+    # the first op itself caused.
+    if (client.strict_mode_document_id and method != 'GET'
+            and not (batch is not None and batch.version_stamped)):
+        doc_id = client.strict_mode_document_id
+        doc_version = client.document_versions.get(doc_id)
+        if doc_version:
+            separator = '&' if '?' in url else '?'
+            url += f'{separator}document-version={quote(str(doc_version), safe="")}'
+            if batch is not None:
+                batch.version_stamped = True
+
+    # Per-call custom audit-log message. Unlike document-version this has no
+    # OCC self-conflict, so it is stamped on every queued op, not just the
+    # first.
+    if audit_message and method != 'GET':
+        separator = '&' if '?' in url else '?'
+        url += f'{separator}audit-message={quote(str(audit_message), safe="")}'
+
+    # Logical-operation group (see client.begin_operation): stamp every write
+    # with the group id; the message rides along so the server can label the
+    # group lazily on whichever tagged write lands first. An out-of-band
+    # signal is not one of those writes (see the note at the top of this
+    # file): never audited, so a stamp does nothing server-side while
+    # ``written`` promises a group that will never exist.
+    group = getattr(client, '_operation_group', None)
+    if group is not None and method != 'GET' and not out_of_band:
+        separator = '&' if '?' in url else '?'
+        url += f'{separator}group-id={quote(group["id"], safe="")}'
+        if group.get('message'):
+            url += f'&group-message={quote(str(group["message"]), safe="")}'
+        group['written'] = True
+
+    return url, request_body
+
+
+def queue_request(batch, method, path, *, no_batch=False, out_of_band=False, **kwargs):
+    """A call made on a batch (see ``PlaidClient.batch``). A write of project
+    data is queued as one operation of the batch and answers
+    ``{'batched': True}``; its result is the matching entry of what
+    ``submit()`` returns. A read, and a signal marked ``out_of_band``, is the
+    client's to make and goes over the wire now, exactly as if it had been
+    made on the client."""
+    if method == 'GET' or out_of_band:
+        return batch.client._request(method, path, out_of_band=out_of_band, **kwargs)
+    if not batch.open:
+        raise PlaidAPIError(f'This batch was already submitted or aborted: {path}')
+    if no_batch:
+        raise PlaidAPIError(f'This endpoint cannot be used in a batch: {path}')
+    prep = {k: v for k, v in kwargs.items()
+            if k in ('body', 'raw_body', 'form_data', 'query_params', 'audit_message')}
+    url, request_body = prepare_request(batch.client, method, path, batch=batch, **prep)
+    operation = {
+        'path': url.replace(batch.client.base_url, ''),
+        'method': method.upper(),
+    }
+    if request_body is not None:
+        operation['body'] = request_body
+    batch.operations.append(operation)
+    return {'batched': True}
+
+
 def make_request(client, method, path, *, body=None, raw_body=None, form_data=False,
-                 query_params=None, no_batch=False, bypass_batch=False,
+                 query_params=None, no_batch=False, out_of_band=False,
                  skip_response_transform=False,
                  no_auth=False, binary_response=False, audit_message=None,
                  timeout=_UNSET, on_upload_progress=None):
@@ -367,123 +471,27 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
         form_data: If True, body is multipart form data; skip Content-Type
             header.
         query_params: Dict of query param key/values to append.
-        no_batch: If True, raise when in batch mode. Only for calls the batch
-            transport cannot carry at all (see the note at the top of this
-            file); never for a read.
-        bypass_batch: If True, go over the wire even while a batch is open.
-            Every read carries it, and so does every out-of-band signal (see
-            the note at the top of this file).
+        no_batch: If True, raise when made on a batch. Only for calls the
+            batch transport cannot carry at all (see the note at the top of
+            this file); never for a read. Nothing here: a call that reached
+            this function is going over the wire.
+        out_of_band: If True, the call is a signal rather than a write of
+            project data: made on a batch it still goes over the wire, and it
+            never joins an open logical operation (see the note at the top of
+            this file).
         skip_response_transform: Return raw parsed JSON (no transform_response).
         no_auth: Skip Authorization header.
         binary_response: Return raw bytes instead of JSON/text.
         on_upload_progress: For a multipart upload, called with
             ``{'loaded': bytes_sent, 'total': body_bytes}`` as the body goes
-            up (the JS client's ``onUploadProgress``). The body is then
+            up (the JS client's ``on_upload_progress``). The body is then
             encoded up front and streamed from memory, which is what
             ``requests`` does for ``files=`` anyway.
     """
-    url = f'{client.base_url}{path}'
+    url, request_body = prepare_request(
+        client, method, path, body=body, raw_body=raw_body, form_data=form_data,
+        query_params=query_params, out_of_band=out_of_band, audit_message=audit_message)
 
-    # A write must not go out on a lock that lapsed. ``documents.locked()``
-    # records the loss here when its keep-alive cannot renew, and from that
-    # moment the block is holding nothing: an edit by somebody else can already
-    # have landed between the read the work was planned from and the write about
-    # to go out. Reads pass, and so do the lock routes themselves, which is how
-    # the block still releases on its way out.
-    lock_lost = getattr(client, 'document_lock_lost', None)
-    if lock_lost is not None and method != 'GET' and not path.endswith('/lock'):
-        raise lock_lost
-
-    # Append query params
-    if query_params:
-        filtered = {}
-        for k, v in query_params.items():
-            if v is None:
-                continue
-            # Booleans must be lowercase for the server's malli coercion
-            if isinstance(v, bool):
-                filtered[k] = 'true' if v else 'false'
-            else:
-                filtered[k] = v
-        if filtered:
-            url += '?' + urlencode(filtered)
-
-    # Prepare request body
-    request_body = None
-    if form_data:
-        request_body = body
-    elif raw_body is not None:
-        request_body = raw_body
-    elif body is not None:
-        request_body = transform_request(body)
-
-    # Strict mode: append document-version for non-GET requests.
-    # Inside a batch, stamp ONLY the first queued write: batches run atomically
-    # server-side, so a version check on the first op gives whole-batch OCC
-    # semantics, while stamping every op would 409 the second op against the
-    # version bump the first op itself caused (every queued op captures the
-    # same pre-batch version).
-    if (client.strict_mode_document_id and method != 'GET'
-            and not (client.is_batching and getattr(client, 'batch_version_stamped', False))):
-        doc_id = client.strict_mode_document_id
-        doc_version = client.document_versions.get(doc_id)
-        if doc_version:
-            separator = '&' if '?' in url else '?'
-            url += f'{separator}document-version={quote(str(doc_version), safe="")}'
-            # A bypassing call queues nothing, so it must not spend the batch's
-            # one stamp. ``query`` is a POST and lands here from app chrome
-            # while someone else's batch is open: marking the batch stamped
-            # there left the first real write unversioned and the batch
-            # unguarded.
-            if client.is_batching and not bypass_batch:
-                client.batch_version_stamped = True
-
-    # Per-call custom audit-log message (overrides the auto-generated
-    # description of THIS write). Unlike document-version this has no OCC
-    # self-conflict, so it is stamped on every queued batch op, not just the
-    # first. The server templates `{param}` placeholders against the
-    # endpoint's own path/query/body params.
-    if audit_message and method != 'GET':
-        separator = '&' if '?' in url else '?'
-        url += f'{separator}audit-message={quote(str(audit_message), safe="")}'
-
-    # Logical-operation group (see client.begin_operation): stamp every write
-    # with the group id; the message rides along too so the server can label
-    # the group lazily on whichever tagged write lands first.
-    #
-    # A bypassing call is not one of those writes. The out-of-band signals are
-    # shaped like a write and carry no project data (a lock taken or renewed,
-    # a cancelled service request, a service reporting its progress, an admin
-    # control), and ``query`` is a read that travels as a POST. None of them
-    # lands in the audit log, so a stamp does nothing server-side while
-    # ``written`` promises a group that will never exist: the relabel PATCH
-    # then 404s. Same rule as the batch and the OCC stamp above, for the same
-    # reason: a bypassing call belongs to whoever made it, not to whatever
-    # operation happens to be open on this shared client.
-    group = getattr(client, '_operation_group', None)
-    if group is not None and method != 'GET' and not bypass_batch:
-        separator = '&' if '?' in url else '?'
-        url += f'{separator}group-id={quote(group["id"], safe="")}'
-        if group.get('message'):
-            url += f'&group-message={quote(str(group["message"]), safe="")}'
-        group['written'] = True
-
-    # Batch mode. A bypass_batch call is deliberately NOT queued: it belongs to
-    # whoever made it, not to whatever batch happens to be open on this shared
-    # client. See the three classes at the top of this file.
-    if client.is_batching and not bypass_batch:
-        if no_batch:
-            raise PlaidAPIError(f'This endpoint cannot be used in batch mode: {path}')
-        operation = {
-            'path': url.replace(client.base_url, ''),
-            'method': method.upper(),
-        }
-        if request_body is not None:
-            operation['body'] = request_body
-        client.batch_operations.append(operation)
-        return {'batched': True}
-
-    # Build request kwargs
     headers = {}
     if not no_auth:
         headers['Authorization'] = f'Bearer {client.token}'

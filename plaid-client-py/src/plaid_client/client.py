@@ -13,7 +13,7 @@ import requests as req_lib
 
 from plaid_client.document_lock import DocumentLock, LockKeeper, lock_ttl_s
 from plaid_client.http import (
-    PlaidAPIError, make_request, extract_document_versions,
+    PlaidAPIError, make_request, queue_request, extract_document_versions,
     list_all, list_page, iter_pages, build_api_error, retry_while_busy,
     DEFAULT_TIMEOUT_S, DEFAULT_BATCH_TIMEOUT_S,
 )
@@ -39,19 +39,6 @@ _UNSET = object()
 
 def _body_of(**kwargs):
     return {k: v for k, v in kwargs.items() if v is not _UNSET}
-
-
-class _BatchContext:
-    """Carries the submitted results out of a ``with client.batch()`` block.
-
-    A context manager can't return a value, so the block's batch results land on
-    this object's ``.results`` after the block exits cleanly (``[]`` for an empty
-    block or on abort).
-    """
-    __slots__ = ('results',)
-
-    def __init__(self):
-        self.results = []
 
 
 _UNSET_MESSAGE = object()
@@ -97,11 +84,13 @@ def _op_types_param(op_types):
 
 
 class _Resource:
-    def __init__(self, client: PlaidClient):
+    def __init__(self, client):
         self._client = client
 
     def _request(self, method, path, **kwargs):
-        return make_request(self._client, method, path, **kwargs)
+        # The client's, or the batch's (see PlaidBatch): the same resource
+        # built on a batch queues instead of sending.
+        return self._client._request(method, path, **kwargs)
 
 
 class VocabLinksResource(_Resource):
@@ -187,8 +176,7 @@ class VocabLinksResource(_Resource):
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/vocab-links/{id}',
-                             query_params={'as-of': as_of},
-                             bypass_batch=True)
+                             query_params={'as-of': as_of})
 
     def delete(self, id: str, audit_message=None) -> Any:
         """Delete a vocab link.
@@ -209,8 +197,7 @@ class VocabLayersResource(_Resource):
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/vocab-layers/{id}',
-                             query_params={'include-items': include_items, 'as-of': as_of},
-                             bypass_batch=True)
+                             query_params={'include-items': include_items, 'as-of': as_of})
 
     def delete(self, id: str, audit_message=None) -> Any:
         """Delete a vocab layer.
@@ -381,8 +368,7 @@ class RelationsResource(_Resource):
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/relations/{relation_id}',
-                             query_params={'as-of': as_of},
-                             bypass_batch=True)
+                             query_params={'as-of': as_of})
 
     def delete(self, relation_id: str, audit_message=None) -> Any:
         """Delete a relation.
@@ -469,8 +455,7 @@ class SpanLayersResource(_Resource):
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/span-layers/{span_layer_id}',
-                             query_params={'as-of': as_of},
-                             bypass_batch=True)
+                             query_params={'as-of': as_of})
 
     def delete(self, span_layer_id: str, audit_message=None) -> Any:
         """Delete a span layer.
@@ -588,8 +573,7 @@ class SpansResource(_Resource):
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/spans/{span_id}',
-                             query_params={'as-of': as_of},
-                             bypass_batch=True)
+                             query_params={'as-of': as_of})
 
     def delete(self, span_id: str, audit_message=None) -> Any:
         """Delete a span.
@@ -691,8 +675,7 @@ class TextsResource(_Resource):
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/texts/{text_id}',
-                             query_params={'as-of': as_of},
-                             bypass_batch=True)
+                             query_params={'as-of': as_of})
 
     def delete(self, text_id: str, audit_message=None) -> Any:
         """Delete a text and all dependent data.
@@ -815,8 +798,7 @@ class UsersResource(_Resource):
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/users/{id}',
-                             query_params={'as-of': as_of},
-                             bypass_batch=True)
+                             query_params={'as-of': as_of})
 
     def delete(self, id: str, audit_message=None) -> Any:
         """Deactivate a user.
@@ -920,7 +902,7 @@ class UsersResource(_Resource):
             id: The user ID
         """
         return self._request('GET', f'/api/v1/users/{id}/avatar',
-                             bypass_batch=True, binary_response=True)
+                             binary_response=True)
 
     def set_avatar(self, id: str, file, audit_message=None) -> Any:
         """Upload a profile picture. Your own, or anyone's if you are an admin.
@@ -1063,11 +1045,6 @@ class UserDataResource(_Resource):
                 asked for. Raise it when the listing is keys, or the values are
                 known to be small.
         """
-        # Every page carries bypass_batch (the pagination helpers set it): a
-        # read belongs to whoever asked for it, not to whatever batch happens
-        # to be open on this shared client. Raising instead (what no_batch
-        # does) only moves the failure onto a caller that has nothing to do
-        # with the batch.
         return list_all(self._client, f'/api/v1/users/{user_id}/data', page_size=page_size,
                         query={'prefix': prefix, 'pattern': pattern,
                                'include-values': include_values or None})
@@ -1106,9 +1083,7 @@ class UserDataResource(_Resource):
 
     def get(self, user_id: str, key: str) -> Any:
         """Read one entry ({key, updated_at, value}); 404 if absent."""
-        # bypass_batch for the same reason as list() above.
-        return self._request('GET', f'/api/v1/users/{user_id}/data/{quote(key, safe="")}',
-                             bypass_batch=True)
+        return self._request('GET', f'/api/v1/users/{user_id}/data/{quote(key, safe="")}')
 
     def put(self, user_id: str, key: str, value: Any) -> Any:
         """Create or replace one entry. ``value`` is any JSON (up to 1 MB).
@@ -1161,7 +1136,7 @@ class CommentsResource(_Resource):
 
     def get(self, comment_id: str) -> Any:
         """Read one comment."""
-        return self._request('GET', f'/api/v1/comments/{comment_id}', bypass_batch=True)
+        return self._request('GET', f'/api/v1/comments/{comment_id}')
 
     def update(self, comment_id: str, body: str) -> Any:
         """Edit a comment's body.
@@ -1243,8 +1218,7 @@ class CommentsResource(_Resource):
                              query_params={'document-id': document_id,
                                            'entity-type': entity_type,
                                            'entity-id': entity_id},
-                             skip_response_transform=True,
-                             bypass_batch=True)
+                             skip_response_transform=True)
 
     def list_in_vocab(self, vocab_id: str, *, entity_id: str | None = None) -> Any:
         """List the comments on a vocabulary's entries, oldest first.
@@ -1279,8 +1253,7 @@ class CommentsResource(_Resource):
         """
         return self._request('GET', f'/api/v1/vocab-layers/{vocab_id}/comments/counts',
                              query_params={'entity-id': entity_id},
-                             skip_response_transform=True,
-                             bypass_batch=True)
+                             skip_response_transform=True)
 
 
 class InvitesResource(_Resource):
@@ -1396,8 +1369,7 @@ class TokenLayersResource(_Resource):
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/token-layers/{token_layer_id}',
-                             query_params={'as-of': as_of},
-                             bypass_batch=True)
+                             query_params={'as-of': as_of})
 
     def delete(self, token_layer_id: str, audit_message=None) -> Any:
         """Delete a token layer.
@@ -1493,36 +1465,35 @@ class DocumentsResource(_Resource):
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/documents/{document_id}/lock',
-                             query_params={'as-of': as_of},
-                             bypass_batch=True)
+                             query_params={'as-of': as_of})
 
     def acquire_lock(self, document_id: str, audit_message=None) -> Any:
         """Acquire or refresh a document lock.
 
-        Goes over the wire even while a batch is open. The lock is an
-        out-of-band signal, not project data: a queued acquire is taken only
-        when the batch submits, which is after every write it was meant to
-        guard, and until then it answers success to a caller that does not hold
-        it and cannot see the 423 saying somebody else does.
+        out_of_band: the lock is a signal, not project data (see the note at
+        the top of http.py). Queued on a batch it would be taken only at
+        submit, after every write it was meant to guard, and until then answer
+        success to a caller that does not hold it and cannot see the 423
+        saying somebody else does.
 
         Args:
             document_id: The document ID
         """
         return self._request('POST', f'/api/v1/documents/{document_id}/lock',
-                             audit_message=audit_message, bypass_batch=True)
+                             audit_message=audit_message, out_of_band=True)
 
     def release_lock(self, document_id: str, audit_message=None) -> Any:
         """Release a document lock.
 
-        Goes over the wire even while a batch is open, for the same reason as
-        :meth:`acquire_lock`: queued, the lock is held until the batch submits,
-        and not released at all if it aborts.
+        out_of_band, for the same reason as :meth:`acquire_lock`: queued, the
+        lock would be held until the batch submits, and not released at all
+        if it aborts.
 
         Args:
             document_id: The document ID
         """
         return self._request('DELETE', f'/api/v1/documents/{document_id}/lock',
-                             audit_message=audit_message, bypass_batch=True)
+                             audit_message=audit_message, out_of_band=True)
 
     @contextmanager
     def locked(self, document_id: str, *, keep_alive: bool = True):
@@ -1628,7 +1599,7 @@ class DocumentsResource(_Resource):
             document_id: The document ID
         """
         return self._request('GET', f'/api/v1/documents/{document_id}/media',
-                             bypass_batch=True, binary_response=True)
+                             binary_response=True)
 
     def upload_media(self, document_id: str, file, audit_message=None, *,
                      on_progress=None) -> Any:
@@ -1686,8 +1657,7 @@ class DocumentsResource(_Resource):
         """
         return self._request('GET', f'/api/v1/documents/{document_id}',
                              query_params={'include-body': include_body, 'as-of': as_of,
-                                           'layers': _layers_param(layers)},
-                             bypass_batch=True)
+                                           'layers': _layers_param(layers)})
 
     def delete(self, document_id: str, audit_message=None) -> Any:
         """Delete a document and all data contained.
@@ -2100,8 +2070,7 @@ class ProjectsResource(_Resource):
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/projects/{id}',
-                             query_params={'as-of': as_of},
-                             bypass_batch=True)
+                             query_params={'as-of': as_of})
 
     def delete(self, id: str, audit_message=None, timeout=None) -> Any:
         """Delete a project and everything in it. This is irrecoverable.
@@ -2262,8 +2231,7 @@ class ProjectsResource(_Resource):
             project_id: The project ID
         """
         return self._request('GET', f'/api/v1/projects/{project_id}/audit/last-edits',
-                             skip_response_transform=True,
-                             bypass_batch=True)
+                             skip_response_transform=True)
 
     def link_vocab(self, id: str, vocab_id: str, audit_message=None) -> Any:
         """Link a vocabulary to a project.
@@ -2293,8 +2261,7 @@ class TextLayersResource(_Resource):
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/text-layers/{text_layer_id}',
-                             query_params={'as-of': as_of},
-                             bypass_batch=True)
+                             query_params={'as-of': as_of})
 
     def delete(self, text_layer_id: str, audit_message=None) -> Any:
         """Delete a text layer.
@@ -2407,8 +2374,7 @@ class VocabItemsResource(_Resource):
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/vocab-items/{id}',
-                             query_params={'as-of': as_of},
-                             bypass_batch=True)
+                             query_params={'as-of': as_of})
 
     def delete(self, id: str, audit_message=None) -> Any:
         """Delete a vocab item, and every link to it.
@@ -2480,8 +2446,7 @@ class RelationLayersResource(_Resource):
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/relation-layers/{relation_layer_id}',
-                             query_params={'as-of': as_of},
-                             bypass_batch=True)
+                             query_params={'as-of': as_of})
 
     def delete(self, relation_layer_id: str, audit_message=None) -> Any:
         """Delete a relation layer.
@@ -2589,8 +2554,7 @@ class TokensResource(_Resource):
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/tokens/{token_id}',
-                             query_params={'as-of': as_of},
-                             bypass_batch=True)
+                             query_params={'as-of': as_of})
 
     def delete(self, token_id: str, audit_message=None) -> Any:
         """Delete a token and remove it from any spans.
@@ -2743,9 +2707,7 @@ class ServerResource(_Resource):
         bytes. Unauthenticated."""
         cached = getattr(self._client, '_server_info', None)
         if cached is None:
-            # bypass_batch: a read belongs to whoever asked for it, not to
-            # whatever batch happens to be open on this shared client.
-            cached = self._request('GET', '/api/v1/info', bypass_batch=True)
+            cached = self._request('GET', '/api/v1/info')
             # Only a success is cached: a client that starts before the server
             # is up would otherwise never see the limits at all.
             self._client._server_info = cached
@@ -2762,7 +2724,7 @@ class ServerResource(_Resource):
         it answers even when the API is refusing requests. Never cached — the
         point is that it is current.
         """
-        return self._request('GET', '/health', bypass_batch=True)
+        return self._request('GET', '/health')
 
 
 class AdminResource(_Resource):
@@ -2784,7 +2746,7 @@ class AdminResource(_Resource):
         count per table and walks the media directory, so call it when someone
         asks, not on a timer.
         """
-        return self._request('GET', '/api/v1/admin/server', bypass_batch=True)
+        return self._request('GET', '/api/v1/admin/server')
 
     def backup(self) -> Any:
         """Take a database backup right now, outside the nightly schedule.
@@ -2793,17 +2755,15 @@ class AdminResource(_Resource):
         succeeded. Uses VACUUM INTO, which only reads, so it is safe while
         people are working.
 
-        Goes over the wire even while a batch is open, as every admin action on
-        the server itself does: none of them writes project data, and a backup
-        taken inside somebody's open write transaction is not what the caller
-        asked for.
+        out_of_band, as every admin action on the server itself is: none of
+        them writes project data (see the note at the top of http.py).
         """
-        return self._request('POST', '/api/v1/admin/backup', bypass_batch=True)
+        return self._request('POST', '/api/v1/admin/backup', out_of_band=True)
 
     def locks(self) -> Any:
         """Documents currently held by an editing lock, with who holds each
         and when it expires on its own."""
-        return self._request('GET', '/api/v1/admin/locks', bypass_batch=True)
+        return self._request('GET', '/api/v1/admin/locks')
 
     def release_lock(self, document_id: str) -> Any:
         """Drop the lock on a document whoever holds it. Idempotent.
@@ -2815,13 +2775,13 @@ class AdminResource(_Resource):
             document_id: The document to unlock
         """
         return self._request('DELETE', f'/api/v1/admin/locks/{document_id}',
-                             bypass_batch=True)
+                             out_of_band=True)
 
     def rate_limits(self) -> Any:
         """Live login and invite rate-limit buckets: the address, the account
         where there is one, failures inside the window, the limit, and whether
         it is currently blocking."""
-        return self._request('GET', '/api/v1/admin/rate-limits', bypass_batch=True)
+        return self._request('GET', '/api/v1/admin/rate-limits')
 
     def clear_rate_limits(self, *, ip: str | None = None,
                           user_id: str | None = None) -> Any:
@@ -2833,7 +2793,7 @@ class AdminResource(_Resource):
         """
         return self._request('DELETE', '/api/v1/admin/rate-limits',
                              query_params={'ip': ip, 'user-id': user_id},
-                             bypass_batch=True)
+                             out_of_band=True)
 
     def logs(self, *, limit: int | None = None, q: str | None = None,
              level: str | None = None, status: str | None = None,
@@ -2861,8 +2821,7 @@ class AdminResource(_Resource):
         return self._request('GET', '/api/v1/admin/logs',
                              query_params={'limit': limit, 'q': q,
                                            'level': level, 'status': status,
-                                           'user': user, 'method': method},
-                             bypass_batch=True)
+                                           'user': user, 'method': method})
 
     def log_file(self, *, lines: int | None = None) -> Any:
         """The tail of the configured log file, as text lines.
@@ -2877,8 +2836,7 @@ class AdminResource(_Resource):
             lines: How many lines (default 200, max 2000)
         """
         return self._request('GET', '/api/v1/admin/logs/file',
-                             query_params={'lines': lines},
-                             bypass_batch=True)
+                             query_params={'lines': lines})
 
     def user_data(self, *, prefix: str | None = None, pattern: str | None = None,
                   include_values: bool = False) -> Any:
@@ -2992,21 +2950,8 @@ class AuditResource(_Resource):
                 else '/api/v1/audit/tally')
         result = self._request('GET', path,
                                query_params={'start-time': start_time, 'end-time': end_time,
-                                             'daily': daily},
-                               bypass_batch=True)
+                                             'daily': daily})
         return result['entries']
-
-
-class BatchResource(_Resource):
-    def submit(self, body: list, audit_message=None) -> Any:
-        """Execute multiple API operations atomically.
-
-        If any operation fails, all changes are rolled back.
-
-        Args:
-            body: The request body
-        """
-        return self._request('POST', '/api/v1/batch', body=body, no_batch=True, audit_message=audit_message)
 
 
 class OperationGroupsResource(_Resource):
@@ -3021,7 +2966,7 @@ class OperationGroupsResource(_Resource):
         Args:
             id: The group id
         """
-        return self._request('GET', f'/api/v1/operation-groups/{id}', bypass_batch=True)
+        return self._request('GET', f'/api/v1/operation-groups/{id}')
 
     def update(self, id: str, message: str | None) -> Any:
         """Relabel a logical-operation group after the fact. Owner or admin only.
@@ -3031,6 +2976,34 @@ class OperationGroupsResource(_Resource):
             message: The new label
         """
         return self._request('PATCH', f'/api/v1/operation-groups/{id}', body={'message': message})
+
+
+def _install_resources(target):
+    """The API resources (``documents``, ``tokens``, ...), built on ``target``:
+    the client, or a batch opened on it (see PlaidBatch)."""
+    target.vocab_links = VocabLinksResource(target)
+    target.vocab_layers = VocabLayersResource(target)
+    target.relations = RelationsResource(target)
+    target.span_layers = SpanLayersResource(target)
+    target.spans = SpansResource(target)
+    target.texts = TextsResource(target)
+    target.users = UsersResource(target)
+    target.api_tokens = ApiTokensResource(target)
+    target.user_data = UserDataResource(target)
+    target.invites = InvitesResource(target)
+    target.comments = CommentsResource(target)
+    target.token_layers = TokenLayersResource(target)
+    target.documents = DocumentsResource(target)
+    target.messages = MessagesResource(target)
+    target.projects = ProjectsResource(target)
+    target.text_layers = TextLayersResource(target)
+    target.vocab_items = VocabItemsResource(target)
+    target.relation_layers = RelationLayersResource(target)
+    target.tokens = TokensResource(target)
+    target.server = ServerResource(target)
+    target.admin = AdminResource(target)
+    target.audit = AuditResource(target)
+    target.operation_groups = OperationGroupsResource(target)
 
 
 class PlaidClient:
@@ -3058,8 +3031,6 @@ class PlaidClient:
             self.batch_timeout = timeout
         else:
             self.batch_timeout = DEFAULT_BATCH_TIMEOUT_S
-        self.is_batching = False
-        self.batch_operations: list[dict] = []
         self.document_versions: dict[str, str] = {}
         self.strict_mode_document_id: str | None = None
         # Set to a DocumentLockLost while a ``documents.locked()`` block's
@@ -3073,30 +3044,7 @@ class PlaidClient:
         self._operation_group: dict | None = None
         self.session = req_lib.Session()
 
-        self.vocab_links = VocabLinksResource(self)
-        self.vocab_layers = VocabLayersResource(self)
-        self.relations = RelationsResource(self)
-        self.span_layers = SpanLayersResource(self)
-        self.spans = SpansResource(self)
-        self.texts = TextsResource(self)
-        self.users = UsersResource(self)
-        self.api_tokens = ApiTokensResource(self)
-        self.user_data = UserDataResource(self)
-        self.invites = InvitesResource(self)
-        self.comments = CommentsResource(self)
-        self.token_layers = TokenLayersResource(self)
-        self.documents = DocumentsResource(self)
-        self.messages = MessagesResource(self)
-        self.projects = ProjectsResource(self)
-        self.text_layers = TextLayersResource(self)
-        self.vocab_items = VocabItemsResource(self)
-        self.relation_layers = RelationLayersResource(self)
-        self.tokens = TokensResource(self)
-        self.server = ServerResource(self)
-        self.admin = AdminResource(self)
-        self.audit = AuditResource(self)
-        self.batch = BatchResource(self)
-        self.operation_groups = OperationGroupsResource(self)
+        _install_resources(self)
 
     def query(self, body: Any) -> Any:
         """Run a query over every project you can read.
@@ -3138,12 +3086,13 @@ class PlaidClient:
             'count': {return: 'count', count}. Entity cells are full entity
             dicts (same shape as the GET endpoints).
         """
-        # bypass_batch: a query is a read. batched() flips one flag on the whole
-        # client, so a query issued while a batch is open would be queued into
-        # it: the caller gets {'batched': True} instead of results, and the
-        # server runs the query against the batch's tx Connection, which errors
-        # and rolls back every write in that batch.
-        return make_request(self, 'POST', '/api/v1/query', body=body, bypass_batch=True)
+        # out_of_band: a query is a read that travels as a POST (see the note
+        # at the top of http.py). Made on a batch it goes over the wire like
+        # any read, and it never joins a logical operation.
+        return self._request('POST', '/api/v1/query', body=body, out_of_band=True)
+
+    def _request(self, method, path, **kwargs):
+        return make_request(self, method, path, **kwargs)
 
     def enter_strict_mode(self, document_id: str) -> None:
         """Enter strict mode for a specific document.
@@ -3265,43 +3214,34 @@ class PlaidClient:
         finally:
             self.end_operation()
 
-    def begin_batch(self) -> None:
-        """Begin a batch of operations.
+    def batch(self) -> 'PlaidBatch':
+        """Open a batch: a view of this client with the same resources, on
+        which every write of project data queues instead of going out.
+        ``submit()`` sends the queued operations as ONE atomic request (larger
+        than the server's cap, as consecutive requests with the results
+        concatenated in queue order) and returns one result per operation;
+        ``abort()`` drops them. A call made on the client itself is never
+        touched by an open batch, and a read or an out-of-band signal made on
+        the batch goes over the wire now (see the note at the top of
+        ``http.py``)::
 
-        Subsequent WRITES are queued; reads and out-of-band signals still go
-        over the wire (see :meth:`batched`).
+            b = client.batch()
+            b.tokens.bulk_create(sentence_ops)
+            b.tokens.bulk_create(word_ops)
+            sentence_results, word_results = b.submit()
+
+        Server-side a batch runs sequentially in one transaction: a child op
+        sees parents created earlier in the same batch, and any op's failure
+        rolls the whole batch back. A batch is not nestable. Prefer
+        :meth:`batched`, which submits or aborts for you.
         """
-        self.is_batching = True
-        self.batch_operations = []
-        # Strict mode stamps the expected document-version on the FIRST QUEUED
-        # write of the batch only (see http.make_request), so reset the marker
-        # per batch.
-        self.batch_version_stamped = False
+        return PlaidBatch(self)
 
-    def submit_batch(self) -> list[Any]:
-        """Submit all queued batch operations as a single batch request.
-
-        If any operation fails, all changes are rolled back.
-
-        Returns:
-            List of results corresponding to each operation
-        """
-        if not self.is_batching:
-            raise PlaidAPIError('No active batch. Call begin_batch() first.')
-
-        if not self.batch_operations:
-            self.is_batching = False
-            return []
-
+    def _post_batch(self, ops: list[dict]) -> list[Any]:
+        """POST queued operations (see PlaidBatch.submit); returns their
+        transformed results in order."""
+        url = f'{self.base_url}/api/v1/batch'
         try:
-            url = f'{self.base_url}/api/v1/batch'
-            ops = []
-            for op in self.batch_operations:
-                entry = {'path': op['path'], 'method': op['method'].upper()}
-                if 'body' in op:
-                    entry['body'] = op['body']
-                ops.append(entry)
-
             headers = {
                 'Authorization': f'Bearer {self.token}',
                 'Content-Type': 'application/json',
@@ -3349,68 +3289,32 @@ class PlaidClient:
             raise PlaidAPIError(f'Network error: {e} at {self.base_url}/api/v1/batch',
                                 url=f'{self.base_url}/api/v1/batch', method='POST',
                                 original_error=e)
-        finally:
-            self.is_batching = False
-            self.batch_operations = []
-
-    def abort_batch(self) -> None:
-        """Abort the current batch without executing any operations."""
-        self.is_batching = False
-        self.batch_operations = []
-
-    def is_batch_mode(self) -> bool:
-        """Check if currently in batch mode.
-
-        Returns:
-            Whether the client is currently collecting batch operations.
-        """
-        return self.is_batching
 
     @contextmanager
     def batched(self):
-        """Collect the calls in this block into ONE atomic batch request.
-
-        Begins a batch, runs the block (every mutating call inside is queued
-        instead of sent), then on clean exit submits all queued ops as a single
-        atomic request — or, if the block raises, aborts the batch so a
-        half-open batch can never silently swallow later non-batch calls. The
-        submitted results land on the yielded object's ``.results`` (a context
-        manager can't return a value)::
+        """Run the block with a batch, then submit all queued ops as ONE atomic
+        request, or abort the batch if the block raises. The block makes its
+        writes on the yielded batch; the results land on its ``.results`` (a
+        context manager can't return a value)::
 
             with client.batched() as b:
-                client.tokens.bulk_create(sentence_ops)
-                client.tokens.bulk_create(word_ops)
+                b.tokens.bulk_create(sentence_ops)
+                b.tokens.bulk_create(word_ops)
             sentence_results, word_results = b.results
 
-        An empty block submits nothing and leaves ``.results == []``. Server-side
-        a batch runs sequentially in one transaction, so a child op sees parents
-        created earlier in the same block, and any op's failure rolls the whole
-        batch back. Not nestable (begin/submit is per-client state).
-
-        WRITES are what a batch queues, and batch mode is one flag on the whole
-        client, so it catches every write made while it is open, including
-        writes made by code that knows nothing about this batch. READS are
-        never caught: every read method goes over the wire while a batch is
-        open and is answered from the state the batch has not committed yet, so
-        a read cannot come back as a batch marker and cannot take a slot in the
-        results list. Neither are the calls that signal something out of band
-        rather than write project data: stopping a service request, a service
-        reporting its progress or result, taking and dropping a document lock,
-        and the admin actions on the server itself. See the note at the top of
-        ``http.py`` for which column a new endpoint belongs in.
+        An empty block submits nothing and leaves ``.results == []``. A write
+        made on ``client`` inside the block is not part of the batch: it goes
+        over the wire at once, as it would anywhere else. See :meth:`batch`.
         """
-        self.begin_batch()
-        ctx = _BatchContext()
+        batch = self.batch()
         try:
-            yield ctx
+            yield batch
         except BaseException:
-            # Block failed (or was cancelled): drop the queued ops so the client
-            # leaves batch mode and later plain calls don't queue into it.
-            if self.is_batch_mode():
-                self.abort_batch()
+            # The block failed (or was cancelled): drop the queued ops.
+            batch.abort()
             raise
         else:
-            ctx.results = self.submit_batch()
+            batch.submit()
 
     def close(self) -> None:
         """Close the underlying HTTP session."""
@@ -3560,3 +3464,52 @@ class PlaidClient:
         data = response.json()
         token = data.get('token', '')
         return cls(base_url, token, timeout=timeout)
+
+
+class PlaidBatch:
+    """One batch of writes, opened by :meth:`PlaidClient.batch`.
+
+    The same resources as the client (``documents``, ``tokens``, ...), built
+    on this object, so a write made through them queues instead of going out.
+    Everything else (the token and base URL, strict mode and the document
+    versions it tracks, the open logical operation, ``query``) is the client's
+    and resolves to it.
+    """
+
+    def __init__(self, client: PlaidClient):
+        self.client = client
+        self.operations: list[dict] = []
+        # Strict mode stamps the expected document-version on the FIRST queued
+        # write only (see http.prepare_request).
+        self.version_stamped = False
+        self.open = True
+        self.results: list[Any] = []
+        _install_resources(self)
+
+    def __getattr__(self, name):
+        # Only reached for what the batch does not have itself.
+        return getattr(self.client, name)
+
+    def _request(self, method, path, **kwargs):
+        return queue_request(self, method, path, **kwargs)
+
+    def batch(self):
+        raise PlaidAPIError('A batch is not nestable: queue on the batch you have')
+
+    def batched(self):
+        raise PlaidAPIError('A batch is not nestable: queue on the batch you have')
+
+    def submit(self) -> list[Any]:
+        """Send the queued operations as one atomic request and return one
+        result per operation, in order (also kept on ``.results``)."""
+        if not self.open:
+            raise PlaidAPIError('This batch was already submitted or aborted')
+        self.open = False
+        ops, self.operations = self.operations, []
+        self.results = self.client._post_batch(ops) if ops else []
+        return self.results
+
+    def abort(self) -> None:
+        """Drop the queued operations without sending them."""
+        self.operations = []
+        self.open = False

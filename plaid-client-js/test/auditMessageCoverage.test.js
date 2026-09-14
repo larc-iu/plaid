@@ -19,7 +19,7 @@ const ARGS_BEFORE_AUDIT_MESSAGE = {
 // CRUD bundles whose writes hit document state. `messages`/services are
 // real-time/registry (not audit-logged) and use streaming transports.
 const BUNDLES = [
-  'vocabLinks', 'vocabLayers', 'relations', 'spanLayers', 'spans', 'batch',
+  'vocabLinks', 'vocabLayers', 'relations', 'spanLayers', 'spans',
   'texts', 'users', 'apiTokens', 'tokenLayers', 'documents', 'projects',
   'textLayers', 'vocabItems', 'relationLayers', 'tokens',
 ];

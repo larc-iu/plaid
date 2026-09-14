@@ -1,6 +1,6 @@
 // Tests for the per-call custom audit-log message — network-free paths.
 //
-// Batch mode queues operations instead of sending them, so we can assert the
+// A batch queues operations instead of sending them, so we can assert the
 // `?audit-message=` query param is appended to a queued op's path without a
 // live server. Server-side templating of `{param}` placeholders is covered by
 // plaid-core's audit-message-test. (Scoping a message over MANY writes is the
@@ -16,11 +16,11 @@ function makeClient() {
 
 // Queue one write (with a per-call message) and one without; return paths.
 function queue(client, message) {
-  client.beginBatch();
-  client.spans.setMetadata('S1', { a: 1 }, message);
-  client.spans.setMetadata('S2', { b: 2 });
-  const paths = client.batchOperations.map(op => op.path);
-  client.abortBatch();
+  const b = client.batch();
+  b.spans.setMetadata('S1', { a: 1 }, message);
+  b.spans.setMetadata('S2', { b: 2 });
+  const paths = b.operations.map(op => op.path);
+  b.abort();
   return paths;
 }
 

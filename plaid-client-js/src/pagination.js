@@ -11,10 +11,9 @@
  * headers, base URL, and response transforms all apply exactly as for any
  * other request.
  *
- * A page is a read, so every request these helpers make carries `bypassBatch`
- * (see the three classes at the top of http.js). That is what lets them work
- * while a batch is open on the same client: each page is answered from the
- * pool, in order, against the state the batch has not committed yet.
+ * A page is a read, so it goes over the wire even when the helper is handed a
+ * batch (see the note at the top of http.js): each page is answered from the
+ * pool, in order, against the state no batch has committed yet.
  */
 
 // Merge caller query params with paging params, dropping undefined/null so we
@@ -57,7 +56,6 @@ export async function listAll(client, path, { pageSize = 1000, query = {} } = {}
   do {
     const response = await client._request('GET', path, {
       queryParams: buildQueryParams(query, pageSize, cursor),
-      bypassBatch: true,
     });
     all.push(...entriesOf(response, path));
     prevCursor = cursor;
@@ -87,7 +85,6 @@ export async function listAll(client, path, { pageSize = 1000, query = {} } = {}
 export async function listPage(client, path, { limit, cursor, query = {} } = {}) {
   return client._request('GET', path, {
     queryParams: buildQueryParams(query, limit, cursor),
-    bypassBatch: true,
   });
 }
 
@@ -108,7 +105,6 @@ export async function* iterPages(client, path, { pageSize = 1000, query = {} } =
   do {
     const response = await client._request('GET', path, {
       queryParams: buildQueryParams(query, pageSize, cursor),
-      bypassBatch: true,
     });
     const entries = entriesOf(response, path);
     // Suppress the trailing empty page that the server emits when a collection's

@@ -26,13 +26,7 @@ from plaid_client.http import list_all, iter_pages
 
 class _FakeClient:
     """Minimal stand-in; the request layer is monkeypatched, so this only needs
-    to exist as the ``client`` argument.
-
-    ``is_batching`` mirrors the real client's batch-mode flag, which the
-    auto-paginating helpers check up front."""
-
-    def __init__(self, is_batching=False):
-        self.is_batching = is_batching
+    to exist as the ``client`` argument."""
 
 
 def _script_make_request(pages, calls):
@@ -43,8 +37,7 @@ def _script_make_request(pages, calls):
 
     def fake(client, method, path, *, query_params=None, **kwargs):
         cursor = query_params.get('cursor') if query_params else None
-        calls.append({'method': method, 'path': path, 'cursor': cursor,
-                      'bypass_batch': kwargs.get('bypass_batch')})
+        calls.append({'method': method, 'path': path, 'cursor': cursor})
         i = state['i']
         if i >= len(pages):
             raise AssertionError(f'unexpected extra request (call #{len(calls)})')
@@ -143,20 +136,6 @@ def test_list_all_empty_envelope_returns_empty(monkeypatch):
     assert len(calls) == 1
 
 
-def test_list_all_follows_cursors_over_the_wire_while_batching(monkeypatch):
-    # A page is a read, so it never joins the batch: chrome that lists comments
-    # or documents beside an import gets its pages from the pool, in order,
-    # instead of a batch marker it cannot follow a cursor through.
-    calls = []
-    _patch(monkeypatch, _three_page_sequence(), calls)
-
-    result = list_all(_FakeClient(is_batching=True), '/api/v1/things')
-
-    assert [x['id'] for x in result] == ['a', 'b', 'c', 'd', 'e']
-    assert len(calls) == 3
-    assert all(c['bypass_batch'] is True for c in calls)
-
-
 def test_iter_pages_yields_each_non_empty_page(monkeypatch):
     calls = []
     _patch(monkeypatch, _three_page_sequence(), calls)
@@ -179,48 +158,6 @@ def test_iter_pages_suppresses_trailing_empty_page(monkeypatch):
 
     assert pages == [['a', 'b']]
     assert len(calls) == 2
-
-
-def test_iter_pages_yields_over_the_wire_while_batching(monkeypatch):
-    calls = []
-    _patch(monkeypatch, _three_page_sequence(), calls)
-
-    pages = [[x['id'] for x in page]
-             for page in iter_pages(_FakeClient(is_batching=True), '/api/v1/things')]
-
-    assert pages == [['a', 'b'], ['c', 'd'], ['e']]
-    assert all(c['bypass_batch'] is True for c in calls)
-
-
-def test_list_page_always_goes_over_the_wire(monkeypatch):
-    # A page read by app chrome belongs to whoever asked for it, not to whatever
-    # import or bulk edit holds a batch open on the same client. Queued, it
-    # answered {'batched': True} instead of an envelope AND took a slot in the
-    # batch's own results list.
-    calls = []
-    _patch(monkeypatch, [{'entries': [], 'next_cursor': None},
-                         {'entries': [], 'next_cursor': None}], calls)
-
-    http.list_page(_FakeClient(is_batching=True), '/api/v1/things', limit=1000)
-    http.list_page(_FakeClient(), '/api/v1/things')
-
-    assert len(calls) == 2
-    assert all(c['bypass_batch'] is True for c in calls)
-
-
-def test_list_documents_page_reads_during_an_open_batch(monkeypatch):
-    from plaid_client.client import PlaidClient
-
-    calls = []
-    _patch(monkeypatch, [{'entries': [], 'next_cursor': None}], calls)
-    client = PlaidClient('http://example.test', 'tok')
-    client.is_batching = True
-
-    client.projects.list_documents_page('p1', limit=1000)
-
-    assert len(calls) == 1
-    assert calls[0]['path'] == '/api/v1/projects/p1/documents'
-    assert calls[0]['bypass_batch'] is True
 
 
 def _run_standalone():

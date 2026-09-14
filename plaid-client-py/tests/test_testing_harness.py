@@ -37,8 +37,8 @@ class _Service(BaseService):
 
     def process_request(self, request_data, response_helper):
         response_helper.progress(50, 'Working...')
-        with self.client.batched():
-            self.client.tokens.bulk_create([{'begin': 0, 'end': 1}])
+        with self.client.batched() as b:
+            b.tokens.bulk_create([{'begin': 0, 'end': 1}])
             if request_data.get('fail'):
                 raise ValueError('the model said no')
         response_helper.complete({'ok': True})

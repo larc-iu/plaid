@@ -1,5 +1,5 @@
 // documents.copy builds one POST carrying the new name and, when it is
-// turned off, the media flag. Batch mode queues the request, so the path
+// turned off, the media flag. A batch queues the request, so the path
 // and body can be checked without a server.
 
 import { test } from 'node:test';
@@ -8,10 +8,10 @@ import { PlaidClient } from '../src/index.js';
 
 function queued(fn) {
   const client = new PlaidClient('http://localhost:0', 'dummy-token');
-  client.beginBatch();
-  fn(client);
-  const ops = client.batchOperations.slice();
-  client.abortBatch();
+  const b = client.batch();
+  fn(b);
+  const ops = b.operations.slice();
+  b.abort();
   return ops;
 }
 
