@@ -44,11 +44,11 @@ Requirements (on top of plaid-client): litellm.
 
 import argparse
 import difflib
-import os
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from plaid_client import BaseService, TASKS, Param, service_source
 from plaid_client.service import check_unchanged, requester_message
+from plaid_client.workflows.llm import ChatModel, add_model_arguments, setup_service
 from plaid_client.workflows.igt import (
     derive, select_targets, word_state, parse_interleaved, align_words, analysis_for, write_analyses,
     tagset_for, mode_rule, value_lines,
@@ -116,39 +116,6 @@ def tagset_paragraph(tagset, max_values=TAGSET_BUDGET) -> str:
     return (head + ' Use these tags, with these spellings, for what they cover. A tag that is not listed is '
             'shown to the linguist for review, so write one only where no listed tag means the same thing.\n'
             'Tags (tag: meaning):\n' + '\n'.join('  ' + line for line in lines))
-
-
-# --- model -----------------------------------------------------------------
-
-class ChatModel:
-    def __init__(self, model, api_base=None, api_key=None, temperature=0.0, max_tokens=None):
-        self.model = model
-        self.api_base = api_base
-        self.api_key = api_key
-        self.temperature = temperature
-        self.max_tokens = max_tokens
-
-    def describe(self):
-        d = {'model': self.model}
-        if self.api_base:
-            d['api_base'] = self.api_base
-        return d
-
-    def complete(self, system: str, user: str) -> str:
-        kwargs: Dict[str, Any] = {
-            'model': self.model,
-            'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': user}],
-            'temperature': self.temperature,
-        }
-        if self.api_base:
-            kwargs['api_base'] = self.api_base
-        if self.api_key:
-            kwargs['api_key'] = self.api_key
-        if self.max_tokens:
-            kwargs['max_tokens'] = self.max_tokens
-        import litellm  # only the running service needs it; the pure helpers are testable without
-        resp = litellm.completion(**kwargs)
-        return (resp.choices[0].message.content or '').strip()
 
 
 def first_gloss_line(text: str) -> str:
@@ -420,28 +387,10 @@ class LLMAnalyzeService(BaseService):
 
     # -- CLI --
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:
-        parser.add_argument('--model', required=True,
-                            help='litellm model id, e.g. openai/gpt-4o-mini, anthropic/..., ollama/llama3.1')
-        parser.add_argument('--api-base', default=None, help='Provider base URL (OpenAI-compatible servers, proxies)')
-        parser.add_argument('--api-key', default=None, help="Provider API key (else the provider's env var)")
-        parser.add_argument('--temperature', type=float, default=0.0)
-        parser.add_argument('--max-tokens', type=int, default=None)
-        parser.add_argument('--service-id', default=None,
-                            help=f'Registered service id (default {DEFAULT_SERVICE_ID}); set one per model to run several')
-        parser.add_argument('--service-name', default=None, help='Display name (default "LLM glossing (<model>)")')
+        add_model_arguments(parser, default_service_id=DEFAULT_SERVICE_ID)
 
     def setup(self, args) -> None:
-        self.model = ChatModel(args.model, api_base=args.api_base, api_key=args.api_key,
-                               temperature=args.temperature, max_tokens=args.max_tokens)
-        # Keys never reach a requester: a provider quotes the key it refused
-        # back in its own error text, and that text names the failed sentence.
-        self.REQUEST_SECRETS = tuple(
-            v for v in ([args.api_key] + [v for k, v in os.environ.items()
-                                          if k.endswith('API_KEY')]) if v)
-        if args.service_id:
-            self.service_id = args.service_id
-        self.service_name = args.service_name or f'LLM glossing ({args.model})'
-        print(f'Model: {args.model}' + (f' via {args.api_base}' if args.api_base else ''))
+        setup_service(self, args)
 
     # -- request --
     def process_request(self, request_data: dict, response_helper) -> None:
@@ -530,7 +479,14 @@ class LLMAnalyzeService(BaseService):
                 failed.append({'sentence_id': s['id'],
                                'reason': f'model error: {requester_message(exc, secrets=self.REQUEST_SECRETS)}'})
                 continue
-            outputs = parse_interleaved(first_gloss_line(reply))
+            if reply.truncated:
+                # The model ran out of room mid-line. What it did reach still
+                # aligns, so the words it glossed are written and the rest are
+                # reported: the sentence is named as one the run could not
+                # finish rather than quietly left half done.
+                failed.append({'sentence_id': s['id'],
+                               'reason': 'the reply was cut off at the token limit'})
+            outputs = parse_interleaved(first_gloss_line(reply.text))
             if not outputs:
                 failed.append({'sentence_id': s['id'], 'reason': 'no glossed line in the reply'})
                 continue
@@ -545,6 +501,7 @@ class LLMAnalyzeService(BaseService):
                 if w['state'] != 'unanalyzed':
                     replaced += 1
 
+        print(self.model.usage_line())
         response_helper.progress(88, 'Writing analyses...')
         source = service_source(self.service_id)
         # The report of the work is inside `critical()` with the work itself: a
