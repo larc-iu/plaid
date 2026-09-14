@@ -24,11 +24,10 @@ import threading
 from typing import Any, Callable, Dict, List, Optional
 
 OUTPUT_MAX = 12000                 # characters of output handed back, like every tool result
-# The tool always runs in the turn's own worker, so TURN_EXEC_SECONDS is the
-# budget that actually applies and the one the help and the timeout message
-# name. EXEC_SECONDS bounds a run in a FRESH worker, which is `run` without a
-# session: no tool takes that path, the tests do.
-EXEC_SECONDS = 120.0               # interpreter time; time spent in host functions is not counted
+# Every run happens in the turn's own worker, so TURN_EXEC_SECONDS is the only
+# interpreter budget there is, and the one the help and the timeout message
+# name. There used to be a second one for a fresh worker per call, which no
+# tool ever asked for.
 WALL_SECONDS = 900.0               # the host-side backstop for one call, host functions included
 MEMORY_BYTES = 1024 * 1024 * 1024
 MAX_SUSPENSIONS = 500_000          # host calls one run may make: a walk over a large corpus is thousands
@@ -66,7 +65,8 @@ def available() -> Optional[str]:
 
 def _pool():
     """One pool of workers per process, opened on first use and closed at
-    exit. A checkout per call, so no state leaks from one run to the next."""
+    exit. A turn checks one out and gives it back when the turn ends, so no
+    state leaks from one turn to the next."""
     with _lock:
         if _state['pool'] is None:
             from pydantic_monty import Monty
@@ -116,12 +116,11 @@ def _explain(e) -> str:
 
 
 def run(code: str, api: Dict[str, Callable], on_progress: Optional[Callable[[str], None]] = None,
-        session: Optional[Session] = None) -> str:
-    """Run ``code`` with ``api`` as its host functions. Returns what it
-    printed and the value of its last expression, capped. Raises
-    :class:`CodeError` with the reason when it did not finish. With a
-    ``session``, the code runs in that turn's worker and its names persist
-    to the next call; without one, in a fresh worker released at once."""
+        *, session: Session) -> str:
+    """Run ``code`` with ``api`` as its host functions, in ``session``: the
+    turn's own worker, so names persist from one call to the next. Returns
+    what it printed and the value of its last expression, capped. Raises
+    :class:`CodeError` with the reason when it did not finish."""
     reason = available()
     if reason:
         raise CodeError(f'Code cannot run on this assistant: {reason}.')
@@ -131,19 +130,12 @@ def run(code: str, api: Dict[str, Callable], on_progress: Optional[Callable[[str
     printed = CollectString(max_bytes=4 * 1024 * 1024)
     if on_progress:
         on_progress('Running code…')
-    limits = {'max_duration_secs': EXEC_SECONDS, 'max_memory': MEMORY_BYTES,
-              'max_suspensions': MAX_SUSPENSIONS}
     try:
-        if session is not None:
-            value = session.get().feed_run(code, external_lookup=dict(api), print_callback=printed)
-        else:
-            with _pool().checkout(limits=limits) as fresh:
-                value = fresh.feed_run(code, external_lookup=dict(api), print_callback=printed)
+        value = session.get().feed_run(code, external_lookup=dict(api), print_callback=printed)
     except MontyRuntimeError as e:
         raise CodeError(_explain(e) + _partial(printed))
     except MontyCrashedError as e:
-        if session is not None:
-            session.close()  # the worker is gone; the next call gets a new one, and starts over
+        session.close()  # the worker is gone; the next call gets a new one, and starts over
         if getattr(e, 'timed_out', False):
             # Two limits can end a run and the message used to name only the
             # larger, which is not the one that trips first.
