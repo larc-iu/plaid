@@ -10,8 +10,10 @@ import { useEditorSession } from './editorSession.js';
 // FEATS is a token-field (chip input): the cell IS one slim input, with the
 // feature pills stacked above it. Arriving (Tab / arrows / click) focuses the
 // input directly, so adding is just typing — suggestions offer inventory keys
-// ("Case=") until '=' is typed, then that key's values; everything stays soft
-// (off-list features allowed), and committing an existing key overwrites it
+// ("Case=") until '=' is typed, then that key's values; a pair the inventory
+// does not have is allowed unless the project has CLOSED it (`validators.feats`
+// refuses it then, and the typed text stays), and committing an existing key
+// overwrites it
 // (domain semantics in updateAnnotation). Keyboard deletion is the classic
 // chip-input gesture: Backspace at an empty input selects the last pill,
 // Left/Right move the selection, Backspace/Delete remove it, typing or Escape
