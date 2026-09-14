@@ -1,18 +1,14 @@
 import { toast } from 'sonner';
 import { humanizeError } from './errors.js';
 
-// The package's own toast primitives, for the screens that live here.
+// The package's own toast primitives, for the screens that live here, and for
+// plaid-igt, whose `utils/feedback.js` re-exports them.
 //
-// Both apps have their own copy of this (`plaid-igt/src/utils/feedback.js`,
-// `plaid-ud/src/utils/notify.js`) and a shared component cannot reach either:
-// an app path is not importable from the package, and threading an `onError`
-// prop through every screen that will move here (the comments browser, the
-// service-run dialog, the assistant tab) is worse than one small module.
-//
-// They do not converge into one for a duller reason: plaid-ud's copy is
-// imported by its domain layer, which its `node --test` suite loads directly,
-// and node cannot resolve the `@ui` alias. All three route their error
-// description through `errors.js`, which is what keeps them identical.
+// plaid-ud keeps a copy (`src/utils/notify.js`) for one reason: its domain
+// layer imports it, its `node --test` suite loads that directly, and there
+// neither the `@ui` alias nor this file's own `sonner` import resolves. Both
+// route their error description through `errors.js`, which is what keeps the
+// wording identical.
 
 export const notifySuccess = (message, title, options) =>
   toast.success(title || message, { ...(title ? { description: message } : {}), ...options });

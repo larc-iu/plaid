@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 // actions go through the shared ConfirmProvider (`useConfirm`), mounted once in
 // main.jsx. The toast functions live in notify.js (JSX-free, importable from
 // node); re-exported here so components keep one import site.
-export { notifySuccess, notifyError, notifyWarning } from './notify.js';
+export { notifySuccess, notifyError, notifyInfo, notifyWarning } from './notify.js';
 
 // The error vocabulary is shared with plaid-igt through plaid-ui, and
 // re-exported here so this file stays the one import a screen needs: a screen

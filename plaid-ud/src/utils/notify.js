@@ -32,3 +32,7 @@ export const notifyError = (message, title = 'Error', options) =>
 // A loud, non-error notice (e.g. an automatic repair the user should review).
 export const notifyWarning = (message, title = 'Warning', options) =>
   toast.warning(title, { description: message, ...options });
+
+// Neither good news nor bad: a run someone stopped, a state that simply is.
+export const notifyInfo = (message, title, options) =>
+  toast(title || message, { ...(title ? { description: message } : {}), ...options });
