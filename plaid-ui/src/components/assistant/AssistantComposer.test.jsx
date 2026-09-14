@@ -4,8 +4,9 @@ import { renderComponent, all } from '../../test/renderComponent.jsx';
 import { AssistantComposer } from './AssistantComposer.jsx';
 
 // The composer mounted, because what it has to get right is the keyboard. The
-// `@` list takes Enter before the Enter that sends, and Escape closes the list
-// and leaves the typed text alone. The hook under it is covered on its own
+// `@` list takes Enter before the Enter that sends, Escape closes the list and
+// leaves the typed text alone, and Shift+Enter is the newline the placeholder
+// promises rather than a send. The hook under it is covered on its own
 // (useMentions.test.jsx) and takes every key as an argument, so only a mount
 // can show that the composer hands them over in that order.
 
@@ -75,9 +76,11 @@ const mount = async ({
       box.selectionEnd = value.length;
       box.dispatchEvent(new Event('input', { bubbles: true }));
     });
-  const press = (key) =>
+  const press = (key, init = {}) =>
     view.step(async () => {
-      box.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+      box.dispatchEvent(
+        new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }),
+      );
       // The pick that Enter makes puts the caret back after a paint.
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
@@ -93,6 +96,15 @@ describe('AssistantComposer', () => {
     await m.type('gloss it');
     await m.press('Enter');
     expect(m.onSend).toHaveBeenCalledTimes(1);
+    await m.unmount();
+  });
+
+  it('leaves Shift+Enter to the newline the placeholder promises', async () => {
+    const m = await mount();
+    await m.type('first line');
+    await m.press('Enter', { shiftKey: true });
+    expect(m.onSend).not.toHaveBeenCalled();
+    expect(m.box.value).toBe('first line');
     await m.unmount();
   });
 
