@@ -19,7 +19,7 @@ from ..core.args import clamp_limit, whole
 from ..core.limits import READ_LIMITS
 from ..core.tools import ToolError, truncate
 
-from .plan import ANALYSIS, KIND, TEXT_SHAPE, WORD_SHAPE
+from .plan import ANALYSIS, KIND, TEXT_SHAPE, WORD_SHAPE, reshaped_subjects
 from .project import (IgtDoc, Sentence, Word, Morpheme, Link, resolve, mwe_ref, REVIEWABLE,
                       segmentation, split_sentences, split_words, word_ref)
 from .lexview import morph_type
@@ -101,21 +101,15 @@ def t_set_analysis(ws: Workspace, document: str, ref: Optional[str] = None, morp
 # A word's BOUNDARIES change (a split, a merge, a delete, a text edit over it)
 # or its MORPHEME CHAIN does. Never both in one plan. Both sets are the
 # registry's shape tags, so a new kind of either joins them by being declared.
-_WORD_SHAPE_KINDS = opkind.shaped(KIND, WORD_SHAPE)
 _ANALYSIS_KINDS = opkind.shaped(KIND, ANALYSIS)
 
 
 def _reshaped_words(ws: Workspace) -> set:
-    out = set()
-    for op in ws.ops:
-        k = op.get('kind')
-        if k in _WORD_SHAPE_KINDS:
-            out.add(op['word_id'])
-        if k == 'merge_words':
-            out.update(op.get('other_ids') or [])
-        elif k == 'edit_text':
-            out.update(op.get('word_ids') or [])
-    return out
+    """Words a planned op re-cuts: what a word-shape op splits, merges or
+    deletes (the keys its kind declares), and what a text edit names as gone.
+    The second set carries the edit's morphemes too, which no caller's word
+    ids can collide with."""
+    return reshaped_subjects(ws.ops, WORD_SHAPE) | _text_edit_names(ws)
 
 
 def refuse_shape_and_analysis(ws: Workspace, word_id, ref: str, *, analysing: bool) -> None:

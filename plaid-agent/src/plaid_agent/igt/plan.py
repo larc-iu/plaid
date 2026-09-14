@@ -482,11 +482,13 @@ KIND = ok.registry([
            apply=_apply_create_document, target=lambda op: ('create_document', op.get('name'))),
     OpKind('merge_entries', ('merged entry', 'merged entries'), required=('keep_id', 'remove_id'),
            apply=_apply_merge_entries, at=('keep_id',), at_kind=ENTRY,
-           deletes=lambda op: [op['remove_id']] + [l['link_id'] for l in op.get('links') or []]),
+           deletes=lambda op: [op['remove_id']] + [l['link_id'] for l in op.get('links') or []],
+           extra={'removes_entry': ('remove_id',)}),
     OpKind('delete_entry', ('deleted entry', 'deleted entries'), required=('item_id',),
            apply=_apply_delete_entry, at=('item_id',), at_kind=ENTRY,
            target=lambda op: ('delete_entry', op.get('item_id')),
-           deletes=lambda op: [op['item_id']] + list(op.get('links') or [])),
+           deletes=lambda op: [op['item_id']] + list(op.get('links') or []),
+           extra={'removes_entry': ('item_id',)}),
     OpKind('rename_entry', ('renamed entry', 'renamed entries'), required=('item_id', 'form'),
            apply=_apply_rename_entry, at=('item_id',), at_kind=ENTRY, token_keys=('item_id',),
            target=lambda op: ('rename_entry', op.get('item_id')),
@@ -522,25 +524,27 @@ KIND = ok.registry([
            apply=_apply_split_word, target=lambda op: ('word_shape', op.get('word_id')),
            at=('word_id',), at_kind=TOKEN, token_keys=('word_id',), shape=WORD_SHAPE,
            deletes_tokens=lambda op: list(op.get('morpheme_ids') or []),
-           extra={'bulk_deleted': ('morpheme_ids',)}),
+           extra={'bulk_deleted': ('morpheme_ids',), 'reshapes': ('word_id',)}),
     OpKind('merge_words', ('word merge', 'word merges'), required=('word_id', 'other_ids'),
            apply=_apply_merge_words, target=lambda op: ('word_shape', op.get('word_id')),
            shape=WORD_SHAPE, deletes=_merge_deletes,
            deletes_tokens=lambda op: list(op.get('morpheme_ids') or []) + list(op.get('other_ids') or []),
-           extra={'bulk_deleted': ('morpheme_ids',)}),
+           extra={'bulk_deleted': ('morpheme_ids',), 'reshapes': ('word_id', 'other_ids'), 'merge': True}),
     OpKind('delete_word', ('deleted word', 'deleted words'), required=('word_id',),
            apply=_apply_delete_word, target=lambda op: ('word_shape', op.get('word_id')),
            at=('word_id',), at_kind=TOKEN, shape=WORD_SHAPE,
            deletes=lambda op: list(op.get('link_ids') or []),
            deletes_tokens=lambda op: list(op.get('morpheme_ids') or []) + [op['word_id']],
-           extra={'bulk_deleted': ('morpheme_ids',)}),
+           extra={'bulk_deleted': ('morpheme_ids',), 'reshapes': ('word_id',)}),
     OpKind('split_sentence', ('split sentence', 'split sentences'), required=('sentence_id', 'position'),
            apply=_apply_split_sentence, target=lambda op: ('sentence_shape', op.get('sentence_id')),
-           at=('sentence_id',), at_kind=TOKEN, token_keys=('sentence_id',), shape=SENTENCE_SHAPE),
+           at=('sentence_id',), at_kind=TOKEN, token_keys=('sentence_id',), shape=SENTENCE_SHAPE,
+           extra={'reshapes': ('sentence_id',)}),
     OpKind('merge_sentences', ('sentence merge', 'sentence merges'), required=('sentence_id', 'other_id'),
            apply=_apply_merge_sentences, target=lambda op: ('sentence_shape', op.get('sentence_id')),
            at=('sentence_id',), at_kind=TOKEN, shape=SENTENCE_SHAPE, deletes=_merge_deletes,
-           deletes_tokens=lambda op: [op['other_id']]),
+           deletes_tokens=lambda op: [op['other_id']],
+           extra={'reshapes': ('sentence_id', 'other_id'), 'merge': True}),
     # The only kind whose deletions are a GUESS: the server diffs the text, so
     # a word the edit names may survive with its analysis intact. Every guard
     # treats the ids as gone, but a change naming one is dropped when the plan
@@ -549,7 +553,10 @@ KIND = ok.registry([
            apply=_apply_edit_text, at=('sentence_id',), at_kind=TOKEN, shape=TEXT_SHAPE,
            target=lambda op: ('edit_text', op.get('text_id'), op.get('begin'), op.get('end')),
            deletes_tokens=lambda op: list(op.get('word_ids') or []) + list(op.get('morpheme_ids') or []),
-           certain=False),
+           # Only the sentence: the WORDS a text edit names are a guess, so a
+           # split or a merge of one is dropped at approval rather than refused
+           # here (see `certain`).
+           certain=False, extra={'reshapes': ('sentence_id',)}),
     OpKind('add_comment', ('comment', 'comments'), required=('entity_type', 'entity_id', 'body'),
            apply=apply_add_comment, at=('entity_id',), at_kind=TOKEN, token_keys=('entity_id',)),
     OpKind('restore_document', ('document restore', 'document restores'), required=('document_id', 'as_of'),
@@ -571,6 +578,44 @@ RESHAPES = ok.shaped(KIND, WORD_SHAPE, SENTENCE_SHAPE, TEXT_SHAPE, ANALYSIS)
 # a second one of either joins by being declared.
 SCOPES = ok.shaped(KIND, ok.SCOPE)
 EXCLUSIVE_KINDS = ok.shaped(KIND, ok.EXCLUSIVE)
+# The kinds that write to a morpheme by id, so a plan that rewrites the chain
+# those morphemes belong to knows which of its other ops are now moot.
+MORPHEME_WRITERS = tuple(name for name, keys in ok.token_keys(KIND).items() if 'morpheme_id' in keys)
+
+
+def reshaped_subjects(ops: List[Dict[str, Any]], *shapes: str, merges_only: bool = False) -> set:
+    """The words and sentences the plan's shape ops re-cut, by the keys each
+    kind declares (``extra['reshapes']``).
+
+    ``shapes`` narrows it to kinds of one shape; ``merges_only`` to the kinds
+    that fold two things into one. Both are the registry's own tags, so a new
+    shape kind joins every rule built on this by being declared rather than by
+    being added to a list beside each of them.
+    """
+    out: set = set()
+    for op in ops:
+        spec = KIND.get(op.get('kind'))
+        if spec is None or (shapes and spec.shape not in shapes):
+            continue
+        if merges_only and not spec.extra.get('merge'):
+            continue
+        for key in spec.extra.get('reshapes') or ():
+            value = op.get(key)
+            out.update(value if isinstance(value, (list, tuple)) else ([value] if value else []))
+    return out
+
+
+def removed_entries(ops: List[Dict[str, Any]]) -> frozenset:
+    """Lexicon entries the plan deletes or merges away. One reader, because
+    the tools refuse a write to one of these and the executor refuses a merge
+    into one, and the two have to mean the same set."""
+    out: set = set()
+    for op in ops:
+        spec = KIND.get(op.get('kind'))
+        for key in ((spec.extra.get('removes_entry') if spec else None) or ()):
+            if op.get(key):
+                out.add(op[key])
+    return frozenset(out)
 
 
 def validate_ops(ops: List[Dict[str, Any]]) -> None:
@@ -645,8 +690,7 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
     another op, dedupe entry deletes, collapse repeated respells of one range
     (last wins) and refuse overlapping ones. Returns (ops, notes)."""
     notes: List[str] = []
-    removed = {op['remove_id'] for op in ops if op.get('kind') == 'merge_entries'} | \
-        {op['item_id'] for op in ops if op.get('kind') == 'delete_entry'}
+    removed = removed_entries(ops)
     # Morphemes another op rewrites wholesale (set_analysis replaces the chain,
     # discard_analysis deletes or resets it): a form patch on them is moot.
     rewritten = set()
@@ -689,7 +733,7 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
             notes.append(f'dropped: {op.get("label") or k} '
                          '(what it names is deleted or merged away in this plan)')
             continue
-        if k in ('set_morpheme_form', 'set_morph_type') and op['morpheme_id'] in rewritten:
+        if k in MORPHEME_WRITERS and op['morpheme_id'] in rewritten:
             notes.append(f'dropped: {op.get("label") or "a morpheme change"} (that analysis is rewritten in this plan)')
             continue
         if k == 'confirm' and (doomed or dead):

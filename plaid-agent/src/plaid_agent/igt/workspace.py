@@ -23,7 +23,7 @@ from ..core import opkind
 from ..core.tools import ToolError
 from ..core.workspace import BaseWorkspace
 
-from .plan import EXCLUSIVE_KINDS, KIND
+from .plan import EXCLUSIVE_KINDS, KIND, removed_entries
 from .project import IgtProject, IgtDoc, Morpheme, Sentence, Word, load_document, resolve
 from .lexview import LexView, _dict_hits, entry_line
 from .vocab import RESERVED_ITEM_KEYS, fields_for_item
@@ -129,8 +129,7 @@ class Workspace(BaseWorkspace):
 
     def doomed_entries(self) -> frozenset:
         """The entries this plan removes, by delete or by merge."""
-        return frozenset({op['item_id'] for op in self.ops if op.get('kind') == 'delete_entry'}
-                         | {op['remove_id'] for op in self.ops if op.get('kind') == 'merge_entries'})
+        return removed_entries(self.ops)
 
     def view(self, vocab: dict, removed: bool = False) -> 'LexView':
         """A lexicon with the plan's pending metadata applied and the entries it

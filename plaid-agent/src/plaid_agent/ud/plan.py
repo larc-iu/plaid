@@ -455,11 +455,12 @@ def normalize_ops(ops: List[Dict[str, Any]]):
         # where dropping the change left a card promising it.
         if gone and ok.written_to(KIND, op) & gone:
             raise ValueError(f'{op.get("label") or kind}: this plan deletes what it writes to')
-        if kind == 'set_span':
-            key = ('span', op.get('layer_id'), op.get('token_id'))
-        elif kind in ('set_head', 'del_relation'):
-            key = ('head', op.get('word_id'))
-        else:
+        # What an op writes to is the registry's own declaration, the same one
+        # the workspace supersedes by while the plan is built. Written here as
+        # well, the two drifted: a kind declared with a target was deduped
+        # while staging and not here.
+        key = ok.target_of(KIND, op)
+        if key is None:
             out.append(op)
             continue
         if key in last:

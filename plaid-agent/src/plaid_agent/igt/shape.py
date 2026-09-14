@@ -12,28 +12,10 @@ from typing import Any, Dict, List, Optional
 
 from ..core.args import whole
 from ..core.tools import ToolError
+from .plan import reshaped_subjects
 from .project import Sentence, Word, resolve, split_sentences, split_words, word_ref
 from .tools import (reshape_guards, refuse_comment_and_text_edit, refuse_shape_and_analysis)
 from .workspace import Workspace, _need, _refs
-
-
-def _shaped_ids(ws: Workspace, merges_only: bool) -> set:
-    """Word and sentence ids a shape op in the plan already changes."""
-    out = set()
-    for op in ws.ops:
-        k = op.get('kind')
-        if k in ('split_word', 'delete_word') and not merges_only:
-            out.add(op['word_id'])
-        elif k == 'merge_words':
-            out.add(op['word_id'])
-            out.update(op.get('other_ids') or [])
-        elif k in ('split_sentence', 'edit_text') and not merges_only:
-            if op.get('sentence_id'):
-                out.add(op['sentence_id'])
-        elif k == 'merge_sentences':
-            out.add(op['sentence_id'])
-            out.add(op['other_id'])
-    return out
 
 
 def _guard(ws: Workspace, obj, ref: str, merging: bool = False, word_ids=None) -> None:
@@ -44,7 +26,7 @@ def _guard(ws: Workspace, obj, ref: str, merging: bool = False, word_ids=None) -
     A word whose analysis this plan rewrites is not reshaped either, whichever
     came first: see :func:`refuse_shape_and_analysis`.
     """
-    if obj.id in _shaped_ids(ws, merges_only=not merging):
+    if obj.id in reshaped_subjects(ws.ops, merges_only=not merging):
         raise ToolError(f'{ref} is already split, merged, or deleted in this plan; discard_plan to start over')
     refuse_shape_and_analysis(ws, word_ids if word_ids is not None else obj.id, ref, analysing=False)
 
