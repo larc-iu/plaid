@@ -12,7 +12,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // A worker that reports no percent is normal (a model pass emits messages, an
 // import emits fractions), so `percent: null` means unknown and is not an error.
 export function useRunProgress() {
-  const [run, setRun] = useState(null); // { steps, startedAt } while running
+  const [run, setRun] = useState(null); // { id, steps, startedAt } while running
+  // Which run this is, counting from the first. What tells one run from the
+  // next on a screen that has several: see `useMirroredProgress`.
+  const runs = useRef(0);
   const [stepIndex, setStepIndex] = useState(0);
   const [percent, setPercent] = useState(null);
   const [message, setMessage] = useState('');
@@ -29,7 +32,8 @@ export function useRunProgress() {
   }, [startedAt]);
 
   const start = useCallback((steps = ['']) => {
-    setRun({ steps, startedAt: Date.now() });
+    runs.current += 1;
+    setRun({ id: runs.current, steps, startedAt: Date.now() });
     setStepIndex(0);
     setPercent(null);
     setMessage(steps[0] || '');
@@ -73,6 +77,7 @@ export function useRunProgress() {
 
   return {
     running: !!run,
+    runId: run?.id ?? null,
     steps,
     stepIndex,
     stepCount,
@@ -98,14 +103,28 @@ export function formatElapsed(ms) {
 // Feed a useServiceRequest's live progress into a run. The hook reports
 // percent/message as SSE events land, and this mirrors them without the
 // caller wiring an effect per spot.
+//
+// The source keeps the last run's percent and message until the next run's
+// `begin()` replaces them, and a screen with two spots has a mirror per spot
+// reading that one source. So a spot whose mirror had passed nothing on yet
+// (Transcribe, after a detect-speech run) opened by passing on the FINISHED
+// run's last line, and showed "Finished." under a bar that had just started.
+// A value that was already there when this run began belongs to the run
+// before it, whichever spot ran it.
 export function useMirroredProgress(progress, { percent, message, active }) {
   const report = progress.report;
-  const seen = useRef('');
+  const runId = progress.runId;
+  const seen = useRef({ runId: null, key: '' });
   useEffect(() => {
     if (!active) return;
     const key = `${percent}|${message}`;
-    if (seen.current === key) return;
-    seen.current = key;
+    if (seen.current.runId !== runId) {
+      // First sight of this run: adopt what is there without passing it on.
+      seen.current = { runId, key };
+      return;
+    }
+    if (seen.current.key === key) return;
+    seen.current.key = key;
     report({ percent: Number.isFinite(percent) ? percent : null, message });
-  }, [active, percent, message, report]);
+  }, [active, percent, message, report, runId]);
 }

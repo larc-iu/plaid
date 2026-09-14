@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { renderComponent } from '../test/renderComponent.jsx';
-import { useRunProgress, formatElapsed } from './useRunProgress.js';
+import { useRunProgress, useMirroredProgress, formatElapsed } from './useRunProgress.js';
 
 // These are the rules that keep a working run from reading as a hung one.
 
@@ -85,6 +85,84 @@ describe('useRunProgress', () => {
       vi.advanceTimersByTime(5000);
     });
     expect(run().elapsedMs).toBe(settled);
+  });
+});
+
+// Two spots on one screen, both mirroring the one `useServiceRequest`, which is
+// exactly IGT's Media tab: detect speech and transcribe. The source keeps the
+// finished run's percent and message until the next run calls `begin()`, so the
+// spot that had mirrored nothing yet opened by showing the OTHER run's last
+// line under a bar that had just started.
+async function mountTwoSpots() {
+  const seen = { current: null };
+  const Probe = ({ percent = null, message = '' }) => {
+    const detect = useRunProgress();
+    const transcribe = useRunProgress();
+    useMirroredProgress(detect, { percent, message, active: detect.running });
+    useMirroredProgress(transcribe, { percent, message, active: transcribe.running });
+    seen.current = { detect, transcribe };
+    return null;
+  };
+  const r = await renderComponent(<Probe />);
+  return {
+    ...r,
+    spots: () => seen.current,
+    // What the shared source is saying right now.
+    async source(percent, message) {
+      await r.rerender(<Probe percent={percent} message={message} />);
+    },
+  };
+}
+
+describe('mirroring one service channel onto several spots', () => {
+  it('does not open a run with the previous run\u2019s last line', async () => {
+    const m = await mountTwoSpots();
+    await m.step(() => m.spots().detect.start(['Detect speech']));
+    await m.source(100, 'Finished.');
+    expect(m.spots().detect.message).toBe('Finished.');
+
+    await m.step(() => m.spots().detect.finish());
+    // The source still says what detect left it saying.
+    await m.step(() => m.spots().transcribe.start(['Transcribe']));
+    expect(m.spots().transcribe.message).toBe('Transcribe');
+    expect(m.spots().transcribe.percent).toBe(null);
+
+    // And the new run's own first word does get through.
+    await m.source(null, 'Starting the service\u2026');
+    expect(m.spots().transcribe.message).toBe('Starting the service\u2026');
+    await m.unmount();
+  });
+
+  it('passes on every update a run makes of its own', async () => {
+    const m = await mountTwoSpots();
+    await m.step(() => m.spots().transcribe.start(['Transcribe']));
+    await m.source(null, 'Starting the service\u2026');
+    await m.source(20, 'Transcribing\u2026');
+    expect(m.spots().transcribe.percent).toBe(20);
+    expect(m.spots().transcribe.message).toBe('Transcribing\u2026');
+    await m.source(80, 'Transcribing\u2026');
+    expect(m.spots().transcribe.percent).toBe(80);
+    await m.unmount();
+  });
+
+  it('mirrors onto the spot that is running and no other', async () => {
+    const m = await mountTwoSpots();
+    await m.step(() => m.spots().detect.start(['Detect speech']));
+    await m.source(40, 'Detecting\u2026');
+    expect(m.spots().detect.message).toBe('Detecting\u2026');
+    expect(m.spots().transcribe.running).toBe(false);
+    expect(m.spots().transcribe.message).toBe('Working\u2026');
+    await m.unmount();
+  });
+
+  it('starts clean on a second run of the same spot', async () => {
+    const m = await mountTwoSpots();
+    await m.step(() => m.spots().transcribe.start(['Transcribe']));
+    await m.source(100, 'Finished.');
+    await m.step(() => m.spots().transcribe.finish());
+    await m.step(() => m.spots().transcribe.start(['Transcribe']));
+    expect(m.spots().transcribe.message).toBe('Transcribe');
+    await m.unmount();
   });
 });
 
