@@ -246,12 +246,12 @@ class TokenProcessor:
         tokens_deleted = len(tokens_to_delete)
 
         if words_to_create or sentences_to_create or sentence_ids_to_delete or tokens_to_delete:
-            with client.batched():
+            with client.batched() as b:
 
                 # TODO(annotation-preservation): when the new sentence partition is a strict
                 # REFINEMENT of the existing one (every new boundary falls inside the SAME old
                 # sentence — i.e. we're only ADDING cut points, never moving or removing them),
-                # we could iteratively `client.tokens.split(sentence_id, position)` to add the
+                # we could iteratively `b.tokens.split(sentence_id, position)` to add the
                 # cut points instead of doing a full bulk_delete + bulk_create reset. `split`
                 # preserves the original sentence's spans and vocab-links on the left half and
                 # leaves the right half un-annotated, which is much better than the current
@@ -273,7 +273,7 @@ class TokenProcessor:
                     self._warn_about_sentence_annotation_loss(
                         sentence_layer, sentence_ids_to_delete
                     )
-                    client.tokens.bulk_delete(sentence_ids_to_delete)
+                    b.tokens.bulk_delete(sentence_ids_to_delete)
 
                 # Delete tokens that were split (word-layer tokens, :non-overlapping — single
                 # delete is fine here; cascades to dependent morpheme tokens server-side).
@@ -290,7 +290,7 @@ class TokenProcessor:
                     # document. bulk_delete also tolerates an id that is
                     # already gone, where a single delete 404s and takes the
                     # whole batch down with it.
-                    client.tokens.bulk_delete(tokens_to_delete)
+                    b.tokens.bulk_delete(tokens_to_delete)
 
                 # Provenance: stamp everything this (machine) run creates.
                 prov_fragment = stamp_inferred(prov_source) if prov_source else None
@@ -309,7 +309,7 @@ class TokenProcessor:
                             op["metadata"] = dict(prov_fragment)
                         sent_operations.append(op)
 
-                    client.tokens.bulk_create(sent_operations)
+                    b.tokens.bulk_create(sent_operations)
                     sentences_created = len(sent_operations)
 
                 # Create word tokens
@@ -326,7 +326,7 @@ class TokenProcessor:
                             op["metadata"] = dict(prov_fragment)
                         token_operations.append(op)
 
-                    client.tokens.bulk_create(token_operations)
+                    b.tokens.bulk_create(token_operations)
                     response_helper.progress(90, f"Created {len(token_operations)} tokens...")
             
                 response_helper.progress(95, "Committing changes...")

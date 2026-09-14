@@ -39,9 +39,39 @@ class _Helper:
         yield
 
 
+class _Batch:
+    """What ``batched()`` yields: the client's resources bound to this batch,
+    so a write made on it queues until ``submit`` and a read still reaches the
+    fixture. Everything the batch does not have itself is the client's."""
+
+    def __init__(self, client):
+        self.client = client
+        self.queued = []
+        self.results = []
+        self.documents = client._Documents(self)
+        self.tokens = client._Tokens(self)
+        self.texts = client._Texts(self)
+
+    def __getattr__(self, name):
+        return getattr(self.client, name)
+
+    def _record(self, call):
+        self.queued.append(call)
+
+    def submit(self):
+        queued, self.queued = self.queued, []
+        self.client.calls.extend(queued)
+        self.results = [{'body': {'id': f'new-{i}'}} for i in range(len(queued))]
+        return self.results
+
+    def abort(self):
+        self.queued = []
+
+
 class _FakeClient:
-    """A client that models the one thing a test of this code must get right:
-    a batch that ABORTS on an exception writes nothing at all."""
+    """A client that models the two things a test of this code must get right:
+    a batch that ABORTS on an exception writes nothing at all, and a write made
+    on the CLIENT goes out at once whatever batches are open."""
 
     def __init__(self, documents):
         self._documents = list(documents)
@@ -49,24 +79,25 @@ class _FakeClient:
         self.base_url = 'http://plaid.test'
         self.calls = []
         self.reads = []
-        self._queued = None
         self.documents = self._Documents(self)
         self.tokens = self._Tokens(self)
         self.texts = self._Texts(self)
 
     def _record(self, call):
-        (self._queued if self._queued is not None else self.calls).append(call)
+        self.calls.append(call)
+
+    def batch(self):
+        return _Batch(self)
 
     @contextlib.contextmanager
     def batched(self):
-        self._queued = []
+        batch = _Batch(self)
         try:
-            yield self
+            yield batch
         except BaseException:
-            self._queued = None          # aborted: nothing reaches the server
+            batch.abort()                # aborted: nothing reaches the server
             raise
-        queued, self._queued = self._queued, None
-        self.calls.extend(queued)
+        batch.submit()
 
     class _Documents:
         def __init__(self, client):

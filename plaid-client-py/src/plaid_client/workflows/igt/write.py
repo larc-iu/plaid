@@ -71,18 +71,18 @@ def write_analyses(client, plans, gloss_layer_id, morph_layer_id, source, detail
                 m0 = w['morphs'][0]
                 base = stamp_inferred(source, detail=detail)
                 for m in w['morphs'][1:]:
-                    client.tokens.delete(m['id'])  # cascades its spans + links
+                    b.tokens.delete(m['id'])  # cascades its spans + links
                     idx += 1
                 for sl_id, sp in w['morph_spans'].get(m0['id'], []):
                     if sl_id == gloss_layer_id:
-                        client.spans.delete(sp['id'])
+                        b.spans.delete(sp['id'])
                         idx += 1
                 m0_stamp = dict(base)
                 m0_stamp['provDetail'] = {**detail, 'form': a['segments'][0],
                                           'boundaries': ''.join(a['joiners']),
                                           **({'surfaceMismatch': True} if a['surface_mismatch'] else {}),
                                           **({'degraded': True} if a['degraded'] else {})}
-                client.tokens.patch_metadata(m0['id'], {
+                b.tokens.patch_metadata(m0['id'], {
                     'form': a['segments'][0], 'morphType': a['types'][0], **m0_stamp})
                 idx += 1
                 for j in range(1, len(a['segments'])):
@@ -90,14 +90,14 @@ def write_analyses(client, plans, gloss_layer_id, morph_layer_id, source, detail
                             **stamp_inferred(source, detail={**detail, 'form': a['segments'][j]})}
                     if a['types'][j]:
                         meta['morphType'] = a['types'][j]
-                    client.tokens.create(morph_layer_id, text_id,
-                                         w['token']['begin'], w['token']['end'],
-                                         precedence=j + 1, metadata=meta)
+                    b.tokens.create(morph_layer_id, text_id,
+                                    w['token']['begin'], w['token']['end'],
+                                    precedence=j + 1, metadata=meta)
                     created.append((idx, a['glosses'][j]))
                     idx += 1
                 if a['glosses'][0]:
-                    client.spans.create(gloss_layer_id, [m0['id']], a['glosses'][0],
-                                        stamp_inferred(source, detail={**detail, 'value': a['glosses'][0]}))
+                    b.spans.create(gloss_layer_id, [m0['id']], a['glosses'][0],
+                                   stamp_inferred(source, detail={**detail, 'value': a['glosses'][0]}))
                     idx += 1
         results = b.results
         # batch 2: glosses for the created morphemes (ids known now).
@@ -110,10 +110,10 @@ def write_analyses(client, plans, gloss_layer_id, morph_layer_id, source, detail
             if mid:
                 todo.append((mid, gloss))
         if todo:
-            with client.batched():
+            with client.batched() as b2:
                 for mid, gloss in todo:
-                    client.spans.create(gloss_layer_id, [mid], gloss,
-                                        stamp_inferred(source, detail={**detail, 'value': gloss}))
+                    b2.spans.create(gloss_layer_id, [mid], gloss,
+                                    stamp_inferred(source, detail={**detail, 'value': gloss}))
         written += len(chunk)
     if on_progress:
         on_progress(len(chunks), len(chunks))

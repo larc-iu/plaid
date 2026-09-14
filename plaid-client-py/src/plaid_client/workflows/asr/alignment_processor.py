@@ -300,7 +300,7 @@ class AlignmentProcessor:
             
             # Begin atomic batch operation
             response_helper.progress(88, "Committing changes...")
-            with client.batched():
+            with client.batched() as b:
 
                 # Build explicit insert ops rather than passing the full new_text
                 # string. Passing a string would make the server run an editscript
@@ -328,12 +328,12 @@ class AlignmentProcessor:
                         "value": mod['new_text'],
                     })
                     running_offset += len(mod['new_text'])
-                client.texts.update(text_id, edit_ops)
+                b.texts.update(text_id, edit_ops)
             
                 # Create alignment tokens
                 if new_alignment_tokens:
                     response_helper.progress(90, f"Creating {len(new_alignment_tokens)} alignment tokens...")
-                    client.tokens.bulk_create(new_alignment_tokens)
+                    b.tokens.bulk_create(new_alignment_tokens)
 
                 # NOTE: Do NOT update existing alignment-token positions here. The
                 # server-side text-edit cascade (apply-text-edit + compensate-after-cascade)
@@ -345,7 +345,7 @@ class AlignmentProcessor:
                 if sentence_token_layer_id:
                     response_helper.progress(92, "Updating sentence partitioning...")
                     self._update_sentence_partitioning(
-                        client, document, text_id, sentence_token_layer_id,
+                        b, document, text_id, sentence_token_layer_id,
                         existing_alignment_tokens, new_alignment_tokens, current_text, new_text, text_modifications,
                         overwrite=overwrite
                     )
@@ -487,7 +487,7 @@ class AlignmentProcessor:
         except Exception as e:
             print(f"Error during sentence validation: {e}")
     
-    def _update_sentence_partitioning(self, client, document: Dict, text_id: str, sentence_token_layer_id: str,
+    def _update_sentence_partitioning(self, batch, document: Dict, text_id: str, sentence_token_layer_id: str,
                                      existing_alignment_tokens: List[Dict], new_alignment_tokens: List[Dict],
                                      original_text: str, updated_text: str, text_modifications: List[Dict],
                                      overwrite: bool = False):
@@ -504,9 +504,10 @@ class AlignmentProcessor:
         2. Build a NEW complete partition of [0, len(updated_text)) using the
            combined alignment tokens (existing positions reindexed for the inserted
            text + the new alignment tokens) as anchors.
-        3. In the current batch: bulk_delete all existing + bulk_create the new
-           partition. Both must run inside the SAME batch so the layer is empty
-           in-tx when bulk_create runs (it rejects against a non-empty layer).
+        3. On the batch it is handed: bulk_delete all existing + bulk_create the
+           new partition. Both must be queued on the SAME batch so the layer is
+           empty in-tx when bulk_create runs (it rejects against a non-empty
+           layer).
         """
         if not sentence_token_layer_id:
             print("No sentence token layer provided, skipping sentence partitioning")
@@ -560,7 +561,7 @@ class AlignmentProcessor:
         if text_length <= 0:
             # Empty text — partition must be empty too. Clear if anything exists.
             if existing_sentence_tokens:
-                client.tokens.bulk_delete([s["id"] for s in existing_sentence_tokens if "id" in s])
+                batch.tokens.bulk_delete([s["id"] for s in existing_sentence_tokens if "id" in s])
             return
 
         # Reindex existing alignment tokens to their post-insertion positions
@@ -624,7 +625,7 @@ class AlignmentProcessor:
         #   2. For each old boundary that has a corresponding new boundary at the
         #      same (post-cascade) offset, leave that sentence's identity alone.
         #   3. For each new boundary inside an existing sentence, call
-        #      `client.tokens.split(sentence_id, position)` — this preserves the
+        #      `batch.tokens.split(sentence_id, position)` — this preserves the
         #      original sentence's annotations on the LEFT half.
         #   4. For any remaining mismatches, fall back to full reset on only the
         #      affected sub-range.
@@ -637,8 +638,8 @@ class AlignmentProcessor:
         # empty in-tx when bulk_create runs).
         existing_ids = [s["id"] for s in existing_sentence_tokens if "id" in s]
         if existing_ids:
-            client.tokens.bulk_delete(existing_ids)
-        client.tokens.bulk_create(new_sentences)
+            batch.tokens.bulk_delete(existing_ids)
+        batch.tokens.bulk_create(new_sentences)
 
     def _normalize_partition(self, sentences: List[Dict], text_id: str, sentence_token_layer_id: str,
                               text_length: int) -> List[Dict]:

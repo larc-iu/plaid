@@ -293,32 +293,56 @@ def test_write_analyses_says_where_it_is_between_batches():
     which is exactly how a working run looks like a wedged one."""
     seen = []
 
+    class _Resource:
+        def __init__(self, log, name):
+            self._log, self._name = log, name
+
+        def __getattr__(self, method):
+            def call(*a, **k):
+                self._log.append((self._name, method))
+            return call
+
     class _Batch:
-        results = []
+        """A write made on the batch queues; its results land when it submits."""
+
+        def __init__(self):
+            self.queued = []
+            self.results = []
+            self.tokens = _Resource(self.queued, 'tokens')
+            self.spans = _Resource(self.queued, 'spans')
+
+        def submit(self):
+            self.results = [{'body': {'id': f'new-{i}'}} for i in range(len(self.queued))]
+            return self.results
 
     class _Client:
+        """A write made on the client goes out at once, whatever batches are
+        open, so anything written here rather than on the batch never reached
+        the transaction."""
+
         def __init__(self):
-            self.tokens = self
-            self.spans = self
+            self.direct = []
+            self.batches = []
+            self.tokens = _Resource(self.direct, 'tokens')
+            self.spans = _Resource(self.direct, 'spans')
 
         @contextlib.contextmanager
         def batched(self):
-            yield _Batch()
-
-        def delete(self, *a, **k):
-            pass
-
-        def patch_metadata(self, *a, **k):
-            pass
-
-        def create(self, *a, **k):
-            pass
+            batch = _Batch()
+            self.batches.append(batch)
+            yield batch
+            batch.submit()
 
     plans = [_plan(f'w{i}') for i in range(5)]
-    write_analyses(_Client(), plans, 'gloss-layer', 'morph-layer', 'service:x', {},
+    client = _Client()
+    write_analyses(client, plans, 'gloss-layer', 'morph-layer', 'service:x', {},
                    on_progress=lambda done, total: seen.append((done, total)))
     assert seen and seen[0][0] == 0 and seen[-1] == (seen[-1][1], seen[-1][1])
     assert all(0 <= done <= total for done, total in seen)
+    assert client.direct == []  # every write went on the batch
+    # Batch 1 creates the morphemes, batch 2 glosses the ones it made.
+    assert ('tokens', 'create') in client.batches[0].queued
+    assert client.batches[1].queued == [('spans', 'create')] * 5
 
 
 def _plan(word_id):

@@ -40,9 +40,40 @@ class _Helper:
         yield
 
 
+class _Batch:
+    """What ``batched()`` yields: the client's resources bound to this batch,
+    so a write made on it queues until ``submit``. Everything the batch does
+    not have itself is the client's."""
+
+    def __init__(self, client):
+        self.client = client
+        self.queued = []
+        self.results = []
+        self.documents = client._Documents(self)
+        self.tokens = client._Tokens(self)
+
+    def __getattr__(self, name):
+        return getattr(self.client, name)
+
+    def _record(self, call):
+        self.queued.append(call)
+
+    def submit(self):
+        queued, self.queued = self.queued, []
+        self.client.calls.extend(queued)
+        self.client.batches.append(queued)
+        self.results = [{'body': {'id': f'new-{i}'}} for i in range(len(queued))]
+        return self.results
+
+    def abort(self):
+        self.queued = []
+
+
 class _FakeClient:
     """Enough of PlaidClient to drive TokenProcessor: a document to read back,
-    and a log of every write it is asked to make."""
+    and a log of every write it is asked to make. A write made on the CLIENT
+    goes out at once whatever batches are open; one made on a batch queues
+    until it submits, and an aborted batch writes nothing."""
 
     def __init__(self, document):
         self.document = document
@@ -52,41 +83,50 @@ class _FakeClient:
         self.documents = self._Documents(self)
         self.tokens = self._Tokens(self)
 
+    def _record(self, call):
+        self.calls.append(call)
+
+    def batch(self):
+        return _Batch(self)
+
     @contextlib.contextmanager
     def batched(self):
-        opened = len(self.calls)
-        self.batches.append(None)
-        yield self
-        self.batches[-1] = self.calls[opened:]
+        batch = _Batch(self)
+        try:
+            yield batch
+        except BaseException:
+            batch.abort()
+            raise
+        batch.submit()
 
     class _Documents:
-        def __init__(self, client):
-            self._client = client
+        def __init__(self, owner):
+            self._owner = owner
 
         def get(self, document_id, include_body=None):
-            return self._client.document
+            return self._owner.document
 
         @contextlib.contextmanager
         def locked(self, document_id):
-            self._client.locked_documents.append(document_id)
-            self._client.calls.append(('lock', document_id))
+            self._owner.locked_documents.append(document_id)
+            self._owner._record(('lock', document_id))
             try:
                 yield
             finally:
-                self._client.calls.append(('unlock', document_id))
+                self._owner._record(('unlock', document_id))
 
     class _Tokens:
-        def __init__(self, client):
-            self._client = client
+        def __init__(self, owner):
+            self._owner = owner
 
         def bulk_create(self, ops):
-            self._client.calls.append(('bulk_create', list(ops)))
+            self._owner._record(('bulk_create', list(ops)))
 
         def bulk_delete(self, ids):
-            self._client.calls.append(('bulk_delete', list(ids)))
+            self._owner._record(('bulk_delete', list(ids)))
 
         def delete(self, token_id):
-            self._client.calls.append(('delete', token_id))
+            self._owner._record(('delete', token_id))
 
 
 def _document(body, *, sentences=(), words=(), sentence_spans=(), sentence_links=()):
