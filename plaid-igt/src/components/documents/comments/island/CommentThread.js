@@ -40,6 +40,11 @@ function initials(name) {
 // someone types. Toggling the button directly from the input event keeps it
 // honest without a render, and keeps the knowledge here in the view rather
 // than in both hosts.
+//
+// The binding this fights with is `live()` for that reason: lit writes an
+// attribute only when it differs from the one IT last committed, so after a
+// post cleared the draft (empty before, empty after) it would leave the button
+// as the keystroke had left it — enabled over an empty composer.
 const onComposerInput = (report, isReady) => (e) => {
   report(e.target.value);
   const btn = e.target
@@ -110,7 +115,7 @@ function commentRow(comment, ctx) {
           <button
             class="igt-cmt__btn igt-cmt__btn--primary"
             type="button"
-            ?disabled=${!editDraft.trim() || editDraft.trim() === comment.body}
+            ?disabled=${live(!editDraft.trim() || editDraft.trim() === comment.body)}
             @click=${on.saveEdit}
           >
             Save
@@ -249,7 +254,7 @@ export function commentThread(opts) {
                 <button
                   class="igt-cmt__btn igt-cmt__btn--primary"
                   type="button"
-                  ?disabled=${!composerDraft.trim()}
+                  ?disabled=${live(!composerDraft.trim())}
                   @click=${on.submit}
                 >
                   Comment

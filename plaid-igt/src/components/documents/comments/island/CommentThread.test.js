@@ -205,6 +205,24 @@ describe('commentThread interaction', () => {
     expect(btn.disabled).toBe(true);
   });
 
+  it('disables the submit button again once the posted draft is cleared', () => {
+    // Regression: the input handler toggles the button by hand, and lit writes
+    // an attribute only when it differs from the one it last committed. Empty
+    // before the keystroke and empty after the post, so the binding agreed with
+    // itself and the button stayed enabled over an empty composer.
+    const on = noopHandlers();
+    draw({ comments: [], canWrite: true, composerDraft: '', on });
+
+    const ta = host.querySelector('.igt-cmt__composer textarea');
+    ta.value = 'something';
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(host.querySelector('.igt-cmt__btn--primary').disabled).toBe(false);
+
+    // What a host does on submit: clear its draft and render again.
+    draw({ comments: [], canWrite: true, composerDraft: '', on });
+    expect(host.querySelector('.igt-cmt__btn--primary').disabled).toBe(true);
+  });
+
   it('enables Save only once the edited body actually differs', () => {
     const on = noopHandlers();
     const c = comment({ body: 'original' });
