@@ -85,15 +85,9 @@
           "walked pages reassemble exactly the full single-page roster")
       (is (>= (count walked) 6) "covers every user (admin + 5 created)"))))
 
-(defn- raw-status
-  "Hit the rest-handler directly and return only the status code. Used to
-  exercise the malli coercion / cursor-decode failure paths, whose error
-  response body is a raw map (not a parseable EDN string)."
-  [path]
-  (:status (rest-handler (admin-request :get path))))
-
 (deftest pagination-validation
-  (testing "limit > max-limit is rejected by malli coercion"
-    (is (= 400 (raw-status "/api/v1/users?limit=5000"))))
-  (testing "a malformed cursor yields a clean 400, not a 500"
-    (is (= 400 (raw-status "/api/v1/users?cursor=garbage!!!")))))
+  (let [get-status (fn [path] (:status (api-call admin-request {:method :get :path path})))]
+    (testing "limit > max-limit is rejected by malli coercion"
+      (is (= 400 (get-status "/api/v1/users?limit=5000"))))
+    (testing "a malformed cursor yields a clean 400, not a 500"
+      (is (= 400 (get-status "/api/v1/users?cursor=garbage!!!"))))))

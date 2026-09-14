@@ -8,7 +8,6 @@
             [reitit.ring.middleware.parameters :as parameters]
             [reitit.ring.middleware.exception :as exception]
             [reitit.ring.middleware.multipart :as multipart]
-            [reitit.ring.coercion :as rrc]
             [muuntaja.core :as m]
             [malli.util :as mu]
             [plaid.server.config :refer [config]]
@@ -63,6 +62,26 @@
     :default-values true
      ;; malli options
     :options nil}))
+
+(def ^:private wrap-authentication-first
+  "Run `wrap-login-required` outside request coercion on every route that
+  declares it.
+
+  Reitit applies router-level middleware outermost, so a route's own
+  `wrap-login-required` runs INSIDE `coerce-request-middleware`. An
+  unauthenticated caller who sent a body of the wrong shape therefore got
+  a coercion 400 naming the route's fields, which is a schema read without
+  a token. Authentication decides first: 401 beats 400.
+
+  The route tree stays the one place that says which subtrees need a
+  login. This finds that declaration in the compiled route data and hoists
+  the same check, so a route added anywhere with `wrap-login-required` is
+  covered without touching this vector."
+  {:name ::authentication-first
+   :compile (fn [route-data _]
+              (when (some #(identical? pra/wrap-login-required %) (:middleware route-data))
+                {:name ::authentication-first
+                 :wrap pra/wrap-login-required}))})
 
 (defn routes []
   ;; #119 — OpenAPI / Swagger UI exposure is gated by config. Default is
@@ -160,10 +179,14 @@
                           :muuntaja muuntaja-instance
                           :swagger {:id ::api}
                           :middleware [#_exception/exception-middleware ;; CLAUDE: DO NOT UNCOMMENT THIS
-                                       rrc/coerce-exceptions-middleware
                                        parameters/parameters-middleware
                                        muuntaja/format-negotiate-middleware
                                        muuntaja/format-response-middleware
+                                       ;; Outside both coercion middlewares, inside
+                                       ;; response-encode: turns reitit's raw ex-data
+                                       ;; map into the `{:error ...}` body every other
+                                       ;; error uses. See its docstring.
+                                       prm/wrap-coercion-error
                                        ;; Between response-encode (outer) and
                                        ;; request-decode (inner): catches a
                                        ;; :muuntaja/decode throw and returns a
@@ -172,6 +195,11 @@
                                        prm/wrap-malformed-json-400
                                        muuntaja/format-request-middleware
                                        coercion/coerce-response-middleware
+                                       ;; Outside coercion: a caller with no token gets
+                                       ;; 401 and learns nothing about the schema.
+                                       [prm/wrap-request-extras db secret-key]
+                                       pra/wrap-read-jwt
+                                       wrap-authentication-first
                                        ;; Run BEFORE coerce-request-middleware so v2-format UUID
                                        ;; values for ?document-version= return a clear 400 rather
                                        ;; than malli's generic coercion error (or worse, the v2-
@@ -179,8 +207,6 @@
                                        prm/wrap-reject-uuid-document-version
                                        coercion/coerce-request-middleware
                                        multipart/multipart-middleware
-                                       [prm/wrap-request-extras db secret-key]
-                                       pra/wrap-read-jwt
                                        ;; Inside coercion so the shapes it dumps are the
                                        ;; coerced ones. Silent unless the level is debug.
                                        prm/wrap-request-debug

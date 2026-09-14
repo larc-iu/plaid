@@ -86,17 +86,11 @@
                                 :path (str "/api/v1/projects/" proj "/readers/user1@example.com")}))
       (assert-ok (list-documents user1-request proj)))))
 
-(defn- raw-status
-  "Hit the rest-handler directly and return only the status code. Used to
-  exercise the malli coercion / bad-cursor failure paths, whose error
-  response body is a raw Clojure map (not a parseable EDN string)."
-  [path]
-  (:status (rest-handler (admin-request :get path))))
-
 (deftest documents-pagination-validation
   (let [proj (create-test-project admin-request "DocPagValidationProj")
-        base (str "/api/v1/projects/" proj "/documents")]
+        base (str "/api/v1/projects/" proj "/documents")
+        get-status (fn [path] (:status (fix/api-call admin-request {:method :get :path path})))]
     (testing "limit > max-limit is rejected by malli coercion"
-      (is (= 400 (raw-status (str base "?limit=5000")))))
+      (is (= 400 (get-status (str base "?limit=5000")))))
     (testing "a malformed cursor yields a clean 400, not a 500"
-      (is (= 400 (raw-status (str base "?cursor=garbage!!!")))))))
+      (is (= 400 (get-status (str base "?cursor=garbage!!!")))))))

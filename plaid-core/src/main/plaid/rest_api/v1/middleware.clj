@@ -1,5 +1,6 @@
 (ns plaid.rest-api.v1.middleware
   (:require [plaid.server.log-buffer :as log-buffer]
+            [reitit.coercion :as reitit-coercion]
             [plaid.sql.common :as psc]
             [plaid.sql.operation :as op]
             [taoensso.timbre :as log]
@@ -7,6 +8,75 @@
             [clojure.data.json :as json])
   (:import (java.time Instant)
            (java.time.format DateTimeParseException)))
+
+(defn- humanized->messages
+  "Flatten malli's `humanize` output into `field: reason` strings.
+
+  `humanize` nests exactly as the schema does: a map schema yields a map
+  of key to reason, a nested map yields a nested map, and a leaf yields
+  either a string or a collection of strings. Only key names and reasons
+  are read, never a value."
+  [humanized path]
+  (cond
+    (map? humanized)
+    (mapcat (fn [[k v]] (humanized->messages v (conj path k))) humanized)
+
+    (sequential? humanized)
+    (mapcat #(humanized->messages % path) humanized)
+
+    (nil? humanized)
+    nil
+
+    :else
+    [(if (seq path)
+       (str (str/join "." (map name path)) ": " humanized)
+       (str humanized))]))
+
+(defn- coercion-error-message
+  "A one-line, value-free description of a coercion failure.
+
+  `:value` is deliberately never read: on `POST /users` it is the request
+  body, password included."
+  [prefix data]
+  (let [;; `:humanized` is not on the thrown ex-data. The coercion builds it
+        ;; only in `encode-error`, which is also where `:value` would come
+        ;; back, so read the one key and drop the rest.
+        humanized (:humanized (reitit-coercion/encode-error data))
+        messages (seq (distinct (humanized->messages humanized [])))]
+    (if messages
+      (str prefix " " (str/join ", " messages))
+      prefix)))
+
+(defn wrap-coercion-error
+  "Answer a reitit coercion failure with the `{:error ...}` body every
+  other error uses.
+
+  Reitit's own `coerce-exceptions-middleware` returns the raw ex-data map
+  as the response body. Nothing encodes it (that middleware sits outside
+  muuntaja) so the client gets a printed Clojure map under
+  `application/octet-stream`, carrying the full schema, every error path
+  and the offending value. Clients parse `{\"error\": ...}` and cannot
+  read that at all.
+
+  Placement matters: OUTSIDE both coercion middlewares (so it catches
+  what they throw) and INSIDE `format-response-middleware` (so the map
+  returned here is encoded to the negotiated format). See the middleware
+  vector in `plaid.rest-api.v1.core/rest-handler`."
+  [handler]
+  (fn [request]
+    (try
+      (handler request)
+      (catch clojure.lang.ExceptionInfo e
+        (case (:type (ex-data e))
+          :reitit.coercion/request-coercion
+          {:status 400
+           :body {:error (coercion-error-message "Request validation failed." (ex-data e))}}
+
+          :reitit.coercion/response-coercion
+          {:status 500
+           :body {:error (coercion-error-message "Response validation failed." (ex-data e))}}
+
+          (throw e))))))
 
 (defn wrap-malformed-json-400
   "Map a request-body decode failure (muuntaja/Jackson can't parse the

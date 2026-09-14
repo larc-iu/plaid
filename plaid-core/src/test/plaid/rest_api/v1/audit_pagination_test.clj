@@ -80,19 +80,13 @@
         (is (> (count all-ids) 150)
             "reassembled set covers every op")))))
 
-(defn- raw-status
-  "Hit the rest-handler directly and return only the status code. Used to
-  exercise the malli coercion failure path, whose error response body is
-  a raw Clojure map (not a parseable string)."
-  [path]
-  (:status (rest-handler (admin-request :get path))))
-
 (deftest pagination-validation
   (let [proj (create-test-project admin-request "AuditPagValidationProj")
-        base (str "/api/v1/projects/" proj "/audit")]
+        base (str "/api/v1/projects/" proj "/audit")
+        get-status (fn [path] (:status (fix/api-call admin-request {:method :get :path path})))]
     (testing "limit > max-limit is rejected by malli coercion"
-      (is (= 400 (raw-status (str base "?limit=5000")))))
+      (is (= 400 (get-status (str base "?limit=5000")))))
     (testing "limit <= 0 is rejected"
-      (is (= 400 (raw-status (str base "?limit=0")))))
+      (is (= 400 (get-status (str base "?limit=0")))))
     (testing "a malformed cursor yields a clean 400, not a 500"
-      (is (= 400 (raw-status (str base "?cursor=not-a-real-cursor!!!")))))))
+      (is (= 400 (get-status (str base "?cursor=not-a-real-cursor!!!")))))))
