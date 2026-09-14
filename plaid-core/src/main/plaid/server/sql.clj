@@ -80,6 +80,12 @@
     (catch Exception e
       (log/warn e "WAL checkpoint failed during shutdown"))))
 
+(defonce ^{:private true
+           :doc "The in-flight background ANALYZE, so :stop can wait for it
+                 instead of closing the pool out from under it."}
+  planner-stats-thread
+  (atom nil))
+
 (defn- refresh-planner-stats!
   "Run a sampled ANALYZE so SQLite plans against the database as it is
    now, then drop the pool's open connections so every later one loads
@@ -87,20 +93,43 @@
    statistics mislead: a table analysed when it held a few rows keeps
    being planned as tiny, and the planner scans it rather than probe its
    primary key, which cost seconds per document read on a million-row
-   entity_metadata. Sampling caps the work at a few hundred rows per
-   index, so this is cheap even on a large database."
+   entity_metadata.
+
+   ON A BACKGROUND THREAD, because the sampling is not as cheap as it
+   looks. `analysis_limit` caps the rows read per index, but ANALYZE still
+   walks every index in the file, and on a large database those are
+   scattered random reads: 108-133 seconds, measured on a 3GB database
+   across three restarts. Blocking :start on that makes every restart an
+   outage of that length. Stale statistics make reads slow, not wrong, so
+   answering for a minute or two on last boot's statistics beats not
+   answering at all."
   [datasource]
-  (try
-    (let [t0 (System/nanoTime)]
-      (with-open [conn (.getConnection datasource)
-                  stmt (.createStatement conn)]
-        (.execute stmt "PRAGMA analysis_limit=400;")
-        (.execute stmt "ANALYZE;"))
-      (.softEvictConnections (.getHikariPoolMXBean datasource))
-      (log/info (format "Planner statistics refreshed in %dms"
-                        (quot (- (System/nanoTime) t0) 1000000))))
-    (catch Exception e
-      (log/warn e "ANALYZE failed at startup; SQLite plans with the statistics it has"))))
+  (reset! planner-stats-thread
+          (doto (Thread.
+                 (fn []
+                   (try
+                     (let [t0 (System/nanoTime)]
+                       (with-open [conn (.getConnection datasource)
+                                   stmt (.createStatement conn)]
+                         (.execute stmt "PRAGMA analysis_limit=400;")
+                         (.execute stmt "ANALYZE;"))
+                       (.softEvictConnections (.getHikariPoolMXBean datasource))
+                       (log/info (format "Planner statistics refreshed in the background in %dms"
+                                         (quot (- (System/nanoTime) t0) 1000000))))
+                     (catch Exception e
+                       (log/warn e "ANALYZE failed at startup; SQLite plans with the statistics it has"))))
+                 "plaid-planner-stats")
+            (.setDaemon true)
+            (.start))))
+
+(defn- await-planner-stats!
+  "Join the background ANALYZE before the pool closes. Bounded: a shutdown
+   waits on this, and a refusal to finish is not a reason to hang. Missing
+   the join costs a logged warning from the thread, nothing more."
+  []
+  (when-let [^Thread t @planner-stats-thread]
+    (try (.join t 5000) (catch InterruptedException _ (.interrupt (Thread/currentThread))))
+    (reset! planner-stats-thread nil)))
 
 (defn- coerce-slow-query-threshold-ms
   "Coerce the operator-supplied :slow-query-threshold-ms config value to
@@ -218,7 +247,6 @@
                                  (constantly threshold-ms))
                ds (psd/build-datasource db-path pool-cfg)]
            (run-migrations! ds)
-           (refresh-planner-stats! ds)
            (when (and (empty? (pxu/get-all ds))
                       (not (System/getenv "SKIP_ACCOUNT_CREATION_PROMPT")))
              (make-admin-user ds))
@@ -226,8 +254,12 @@
            ;; offsets from UTF-16 to Unicode code points. Idempotent + a
            ;; verified no-op when there is no astral text.
            (codepoint-offsets/ensure-converted! ds)
+           ;; Last, so the one write-lock holder on the startup path (the
+           ;; migration above) is done before ANALYZE wants it.
+           (refresh-planner-stats! ds)
            ds)
   :stop (do
+          (await-planner-stats!)
           (when datasource
             (checkpoint-wal! datasource)
             (.close datasource))
