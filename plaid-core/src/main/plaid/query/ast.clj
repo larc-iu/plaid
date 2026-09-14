@@ -604,6 +604,12 @@
                                               ;; project-ids must be a list if present (else effective-scope's empty?/seq throws a 500)
                                               (when (and (contains? sc :project-ids) (not (sequential? (:project-ids sc))))
                                                 (err! :parse (str ":scope :project-ids must be a list, got: " (pr-str (:project-ids sc)))))
+                                              ;; and a non-empty one: `effective-scope` reads an empty list as
+                                              ;; "no scope given" and widens to every readable project, which is
+                                              ;; the opposite of what an author narrowing scope asked for. Every
+                                              ;; other list in the language must be non-empty for the same reason.
+                                              (when (and (contains? sc :project-ids) (empty? (:project-ids sc)))
+                                                (err! :parse ":scope :project-ids must be a non-empty list of project ids (omit :scope to search every project you can read)"))
                                               sc)))
       (contains? m :limit)  (assoc :limit (:limit m))
       (contains? m :order-by) (assoc :order-by (let [ob (:order-by m)]

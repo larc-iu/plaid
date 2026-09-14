@@ -571,6 +571,14 @@
   (testing "a non-list :scope :project-ids is rejected"
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}]] "scope" {"project-ids" 5}}))))))
 
+(deftest empty-scope-project-ids-is-rejected
+  (testing "an empty :project-ids list is a 400, not a silent widening to every readable project"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"]
+                                              "where" [["span" "?s" {"layer" "p"}]]
+                                              "scope" {"project-ids" []}})))))
+  (testing "omitting :scope entirely still means every readable project"
+    (is (nil? (:scope (ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}]]}))))))
+
 (deftest related-arity-error-reports-its-message
   (testing "a non-var :related* argument is a 400 carrying the written message"
     (let [e (try (ast/parse+validate {"find" ["?a"]
