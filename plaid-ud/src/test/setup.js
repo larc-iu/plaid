@@ -4,4 +4,4 @@
 // its sort somewhere nobody chose.
 import { configureUi } from '@ui/lib/uiConfig.js';
 
-configureUi({ appPrefix: 'plaid_ud', configNamespace: 'ud' });
+configureUi({ appPrefix: 'plaid_ud', configNamespace: 'ud', appName: 'Plaid UD' });
