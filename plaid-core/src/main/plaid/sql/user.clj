@@ -439,18 +439,16 @@
 
 (defn- projects-where-user-is-sole-maintainer
   "Return project ids for which `eid` is the ONLY user holding the
-  'maintainer' role. Used by `delete` to reject the FK-cascade-driven
+  'maintainer' role. Used by `deactivate` to reject the FK-cascade-driven
   loss of the last maintainer — without this guard, the cascade would
-  silently leave a project unrecoverable."
+  silently leave a project unrecoverable.
+
+  The question is asked here about every project at once, and by
+  `plaid.sql.project`'s role writes about the one project they touch. One
+  query answers both (`requiring-resolve` for the same namespace-cycle
+  reason as the cascade helpers above)."
   [tx eid]
-  (->> (psc/q tx
-              ["SELECT project_id
-                FROM project_users
-                WHERE role = 'maintainer'
-                GROUP BY project_id
-                HAVING COUNT(*) = 1
-                   AND MAX(user_id) = ?" eid])
-       (mapv :project_id)))
+  ((requiring-resolve 'plaid.sql.project/sole-maintainer-project-ids) tx eid nil))
 
 (defn- revoke-all-api-tokens!
   "Soft-revoke every active API token owned by `user-id`, inside the

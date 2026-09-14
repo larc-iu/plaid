@@ -681,6 +681,55 @@
             post-image (assoc proj-row :vocabs post-vocabs)]
         (psc/record-audit-write! tx :projects project-id :update pre-image post-image)))))
 
+(defn sole-maintainer-project-ids
+  "Project ids on which `user-id` is the ONLY user holding the maintainer
+  role, narrowed to `project-id` when one is given (nil = every project they
+  maintain).
+
+  The single place that question is answered. `assert-maintainer-remains!`
+  asks it about the one project a role write touches; `plaid.sql.user`'s
+  deactivation asks it about all of them at once, because deactivation strips
+  every membership in one go and the operator should see the whole list."
+  [tx user-id project-id]
+  (->> (psc/q tx (cond-> {:select [:project_id]
+                          :from [:project_users]
+                          :where [:= :role "maintainer"]
+                          :group-by [:project_id]
+                          :having [:and
+                                   [:= [:count :*] 1]
+                                   [:= [:max :user_id] user-id]]}
+                   project-id (assoc :where [:and
+                                             [:= :role "maintainer"]
+                                             [:= :project_id project-id]])))
+       (mapv :project_id)))
+
+(defn- role-held
+  "The role `user-id` holds in the `acl` snapshot, nil for none. Roles are
+  mutually exclusive, so there is at most one."
+  [acl user-id]
+  (some (fn [[role ids]]
+          (when (some #{user-id} ids) role))
+        [["maintainer" (:maintainers acl)]
+         ["writer" (:writers acl)]
+         ["reader" (:readers acl)]]))
+
+(defn- assert-maintainer-remains!
+  "Refuse a project_users write that would leave `project-id` with no
+  maintainer. `next-role` is the role `user-id` holds once the write lands,
+  nil when they hold none.
+
+  A project with zero maintainers is unrecoverable through the REST API,
+  since only a maintainer can grant roles, so this is a data-loss guard
+  rather than a courtesy. Both writers of project_users call it, which is
+  the point: `POST /projects/:id/readers/<only maintainer>` demotes exactly
+  as `DELETE /projects/:id/maintainers/<them>` does, and only the second one
+  used to be refused."
+  [tx project-id user-id next-role]
+  (when (and (not= next-role "maintainer")
+             (seq (sole-maintainer-project-ids tx user-id project-id)))
+    (throw (ex-info (str "Cannot remove the last maintainer of project " project-id)
+                    {:code 400 :project-id project-id :user-id user-id}))))
+
 (defn add-role!
   "Grant `role` on `project-id` to `user-id`, clearing any role they already
   hold there (roles are mutually exclusive). Emits the synthetic project ACL
@@ -692,6 +741,7 @@
   leave the account existing without its grant if that second op failed."
   [tx project-id user-id role]
   (assert-user-and-project! tx project-id user-id)
+  (assert-maintainer-remains! tx project-id user-id role)
   ;; Snapshot the role-set BEFORE we mutate so the synthetic audit row
   ;; carries an accurate pre-image (e.g. user was a reader, now they're
   ;; a writer — both states are visible).
@@ -715,19 +765,11 @@
 (defn- remove-role!
   [tx project-id user-id role]
   (assert-user-and-project! tx project-id user-id)
-  (let [pre-acl (fetch-project-acl-snapshot tx project-id)]
-    ;; Task #100 V4: refuse to strip the last maintainer. A project with
-    ;; zero maintainers is unrecoverable through the REST API (only
-    ;; maintainers can add roles), so this is a real data-loss guard, not
-    ;; cosmetic. Only checked on the "maintainer" role — readers/writers
-    ;; can hit zero freely. The check sits here (vs. at the REST layer)
-    ;; so it applies uniformly to every code path that reaches
-    ;; remove-role!.
-    (when (and (= role "maintainer")
-               (some #{user-id} (:maintainers pre-acl))
-               (= 1 (count (:maintainers pre-acl))))
-      (throw (ex-info (str "Cannot remove the last maintainer of project " project-id)
-                      {:code 400 :project-id project-id :user-id user-id})))
+  (let [pre-acl (fetch-project-acl-snapshot tx project-id)
+        held (role-held pre-acl user-id)]
+    ;; The DELETE names the role, so removing a role the user does not hold
+    ;; leaves the one they do hold alone: that is the role to check against.
+    (assert-maintainer-remains! tx project-id user-id (when (not= held role) held))
     (psc/remove-join! tx :project_users
                       {:project_id project-id
                        :user_id user-id

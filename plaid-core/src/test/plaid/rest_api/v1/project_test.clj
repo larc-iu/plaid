@@ -147,6 +147,36 @@
           (is (empty? (:project/readers proj)))
           (is (empty? (:project/writers proj))))))))
 
+(deftest last-maintainer-survives-every-role-write
+  ;; A grant clears whatever role the user already held, so
+  ;; `POST /projects/:id/readers/<the only maintainer>` took the last
+  ;; maintainer away exactly as `DELETE /projects/:id/maintainers/<them>`
+  ;; does, and only the second one was refused. Both go through one assert
+  ;; now, so every writer of project_users is covered.
+  (let [pid (create-test-project user1-request "SoleMaintainerProject")
+        maintainers #(set (:project/maintainers (prj/get fix/db pid)))]
+    (testing "the creator is the project's only maintainer"
+      (is (= #{"user1@example.com"} (maintainers))))
+
+    (testing "demoting them with a grant is refused"
+      (assert-bad-request (add-reader admin-request pid "user1@example.com"))
+      (assert-bad-request (add-writer admin-request pid "user1@example.com"))
+      (is (= #{"user1@example.com"} (maintainers))))
+
+    (testing "removing the role outright is refused"
+      (assert-bad-request (remove-maintainer admin-request pid "user1@example.com"))
+      (is (= #{"user1@example.com"} (maintainers))))
+
+    (testing "removing a role they do not hold touches nothing"
+      (assert-no-content (remove-reader admin-request pid "user1@example.com"))
+      (is (= #{"user1@example.com"} (maintainers))))
+
+    (testing "with a second maintainer in place the demotion goes through"
+      (assert-no-content (add-maintainer admin-request pid "user2@example.com"))
+      (assert-no-content (add-reader admin-request pid "user1@example.com"))
+      (is (= #{"user2@example.com"} (maintainers)))
+      (is (contains? (set (:project/readers (prj/get fix/db pid))) "user1@example.com")))))
+
 (deftest project-crud-operations
   (testing "Project creation and retrieval"
     (testing "Create project succeeds"
