@@ -6,6 +6,7 @@
             [next.jdbc :as jdbc]
             [plaid.server.log-buffer :as log-buffer]
             [plaid.sql.common :as psc]
+            [plaid.sql.datasource :as psd]
             [plaid.sql.operation :as op]
             [taoensso.timbre :as log])
   (:import [java.sql SQLException]))
@@ -124,11 +125,11 @@
             deferred-events (atom [])]
         (try
           (let [result
-                ;; psc/with-tx* rather than jdbc/with-transaction directly: it
+                ;; psd/with-tx* rather than jdbc/with-transaction directly: it
                 ;; checks the connection out itself so a BEGIN that loses the
                 ;; write lock can't return a half-configured connection to the
-                ;; pool. See plaid.sql.common/heal-autocommit!.
-                (psc/with-tx [tx db]
+                ;; pool. See plaid.sql.datasource/heal-autocommit!.
+                (psd/with-tx [tx db]
                   (binding [op/*current-batch-id* batch-id
                             op/*deferred-events* deferred-events
                             psc/*batch-validated-document-versions* (atom {})]
@@ -176,7 +177,7 @@
           ;; can retry, instead of a generic 500 that looks like a bug.
           ;; MUST precede the generic Exception catch.
           (catch SQLException e
-            (if (psc/sqlite-busy? e)
+            (if (psd/sqlite-busy? e)
               (do (log/warn e "Batch" batch-id "could not acquire write lock (busy/locked)")
                   {:status 503 :body {:error "Database busy, please retry"}})
               (do (log/error e "Unexpected batch SQL error" batch-id)
@@ -186,7 +187,7 @@
             ;; failed BEGIN's rollback attempt in a plain ex-info carrying the
             ;; real busy underneath, so check the chain here too rather than
             ;; reporting a retryable contention failure as a 500.
-            (if (psc/sqlite-busy? e)
+            (if (psd/sqlite-busy? e)
               (do (log/warn e "Batch" batch-id "could not acquire write lock (busy/locked)")
                   {:status 503 :body {:error "Database busy, please retry"}})
               (do (log/error e "Unexpected batch error" batch-id)

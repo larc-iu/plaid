@@ -8,7 +8,7 @@
             [migratus.core :as migratus]
             [next.jdbc :as jdbc]
             [plaid.server.sql :as server-sql]
-            [plaid.sql.common :as psc])
+            [plaid.sql.datasource :as psd])
   (:import (java.io File)))
 
 (defn- temp-db-path []
@@ -31,7 +31,7 @@
 
 (defn- run-scenario [stop-fn]
   (let [db-path (temp-db-path)
-        ds (psc/build-datasource db-path)]
+        ds (psd/build-datasource db-path)]
     (try
       (migratus/migrate {:store :database
                          :migration-dir "migrations"

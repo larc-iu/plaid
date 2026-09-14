@@ -13,6 +13,7 @@
   serializes concurrent batches naturally."
   (:require [clojure.string]
             [plaid.sql.common :as psc]
+            [plaid.sql.datasource :as psd]
             [plaid.server.events :as events]
             [plaid.server.locks :as locks]
             [taoensso.timbre :as log])
@@ -339,7 +340,7 @@
           ;; this atom off psc/*op*). Unioned into the audit event's
           ;; :audit/documents post-commit — see ->v2-shape.
           affected-docs (atom #{})
-          extra (psc/with-tx [tx db]
+          extra (psd/with-tx [tx db]
                   ;; ts stamped here — while holding the RESERVED write
                   ;; lock — so it is strictly monotonic with COMMIT order.
                   ;; Stamping it before with-tx (as we used to) let a
@@ -455,8 +456,8 @@
       ;; Walk the cause/suppressed chain (not just the top exception) so a
       ;; busy masked by a "cannot rollback - no transaction is active"
       ;; rollback failure is still surfaced as a retryable 503 instead of
-      ;; an opaque 500. See `psc/sqlite-busy?`.
-      (if (psc/sqlite-busy? e)
+      ;; an opaque 500. See `psd/sqlite-busy?`.
+      (if (psd/sqlite-busy? e)
         (do
           (log/warn e "Database busy/locked after busy_timeout:" (ex-message e))
           {:success false :error "Database busy, please retry" :code 503})
@@ -471,7 +472,7 @@
     (catch Exception e
       ;; A non-SQLException can still WRAP a busy (e.g. a rollback-failure
       ;; wrapper) — check the chain before falling back to 500.
-      (if (psc/sqlite-busy? e)
+      (if (psd/sqlite-busy? e)
         (do
           (log/warn e "Database busy/locked after busy_timeout:" (ex-message e))
           {:success false :error "Database busy, please retry" :code 503})

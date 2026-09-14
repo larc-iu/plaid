@@ -14,6 +14,7 @@
   call these via REPL — the inserts commit through WAL so the running
   server sees them on the next query."
   (:require [plaid.sql.common :as psc]
+            [plaid.sql.datasource :as psd]
             [plaid.server.config :as cfg]
             [clojure.string :as str]
             [next.jdbc :as jdbc])
@@ -47,7 +48,7 @@
                                 (instance? java.sql.Connection val))
                         val)))
                   (catch Throwable _ nil))]
-    (or running (psc/build-datasource (db-path)))))
+    (or running (psd/build-datasource (db-path)))))
 
 ;; ---------- ID helpers ----------
 

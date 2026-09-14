@@ -6,7 +6,7 @@
   (:require [clojure.test :refer :all]
             [migratus.core :as migratus]
             [next.jdbc :as jdbc]
-            [plaid.sql.common :as psc])
+            [plaid.sql.datasource :as psd])
   (:import (java.io File)))
 
 (defn- temp-db-path []
@@ -29,7 +29,7 @@
 
 (deftest migrate-twice-against-populated-db
   (let [db-path (temp-db-path)
-        ds (psc/build-datasource db-path)]
+        ds (psd/build-datasource db-path)]
     (try
       ;; First migrate: fresh DB → all migrations applied.
       (is (nil? (migratus/migrate (migr-cfg ds)))

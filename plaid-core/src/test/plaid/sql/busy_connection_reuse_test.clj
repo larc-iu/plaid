@@ -11,11 +11,12 @@
   Left alone, every later borrow of that connection issues no BEGIN at all —
   writes commit one statement at a time and the closing `.commit` throws
   `cannot commit - no transaction is active`. The caller gets a fast, load-
-  independent failure for writes that are already durable. `psc/heal-autocommit!`
+  independent failure for writes that are already durable. `psd/heal-autocommit!`
   is what keeps that from happening; these tests pin both halves of it."
   (:require [clojure.test :refer :all]
             [next.jdbc :as jdbc]
-            [plaid.sql.common :as psc])
+            [plaid.sql.common :as psc]
+            [plaid.sql.datasource :as psd])
   (:import (java.io File)
            (java.sql DriverManager)))
 
@@ -33,7 +34,7 @@
     (when (.exists parent) (.delete parent))))
 
 (defn- write! [ds v]
-  (psc/with-tx [tx ds] (jdbc/execute! tx ["insert into t (v) values (?)" v])))
+  (psd/with-tx [tx ds] (jdbc/execute! tx ["insert into t (v) values (?)" v])))
 
 (defn- values [ds]
   (mapv :v (psc/q ds {:select :v :from :t :order-by [:id]})))
@@ -43,7 +44,7 @@
         ;; Pool of one, so the connection the blocked write poisons is
         ;; necessarily the one every later write draws. A short busy_timeout
         ;; keeps the test fast; the mechanism is timeout-independent.
-        ds (psc/build-datasource db-path {:busy-timeout-ms 300 :max-pool-size 1})]
+        ds (psd/build-datasource db-path {:busy-timeout-ms 300 :max-pool-size 1})]
     (try
       (with-open [c (.getConnection ds)]
         (jdbc/execute! c ["create table t (id integer primary key, v text)"]))
@@ -55,7 +56,7 @@
           (.execute "INSERT INTO t (v) VALUES ('blocker')"))
         (testing "a write that can't get the lock fails, and fails AS a busy"
           (let [e (is (thrown? Exception (write! ds "blocked")))]
-            (is (psc/sqlite-busy? e)
+            (is (psd/sqlite-busy? e)
                 "must stay recognizable as contention so the REST layer says 503, not 500")))
         (testing "the blocked write left nothing behind"
           ;; Read on the raw connection: it owns the uncommitted blocker row.
@@ -72,7 +73,7 @@
 
       (testing "and is still transactional — a body that throws writes nothing"
         (is (thrown? clojure.lang.ExceptionInfo
-                     (psc/with-tx [tx ds]
+                     (psd/with-tx [tx ds]
                        (jdbc/execute! tx ["insert into t (v) values ('doomed')"])
                        (throw (ex-info "boom" {})))))
         (is (= ["after" "after2"] (values ds))
@@ -83,19 +84,19 @@
 
 (deftest heal-autocommit-leaves-a-healthy-connection-alone
   (let [db-path (temp-db-path)
-        ds (psc/build-datasource db-path {:max-pool-size 1})]
+        ds (psd/build-datasource db-path {:max-pool-size 1})]
     (try
       (with-open [c (.getConnection ds)]
         (jdbc/execute! c ["create table t (id integer primary key, v text)"])
         (testing "a no-op on a connection that is already in autocommit"
           (is (.getAutoCommit c))
-          (psc/heal-autocommit! c)
+          (psd/heal-autocommit! c)
           (is (.getAutoCommit c))))
       (testing "an open transaction is DISCARDED, never committed"
         (with-open [c (.getConnection ds)]
           (.setAutoCommit c false)
           (jdbc/execute! c ["insert into t (v) values ('uncommitted')"])
-          (psc/heal-autocommit! c)
+          (psd/heal-autocommit! c)
           (is (.getAutoCommit c) "flag restored for the next borrower")))
       (is (= [] (values ds)) "heal-autocommit! must not turn a rollback into a commit")
       (finally

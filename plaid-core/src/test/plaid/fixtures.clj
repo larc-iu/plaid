@@ -2,7 +2,7 @@
   (:require [clojure.test :refer :all]
             [migratus.core :as migratus]
             [next.jdbc :as jdbc]
-            [plaid.sql.common :as psc]
+            [plaid.sql.datasource :as psd]
             [plaid.sql.user :as pxu]
             [ring.middleware.defaults :refer [wrap-defaults]]
             [ring.mock.request :as mock]
@@ -22,7 +22,7 @@
     (.getAbsolutePath f)))
 
 (defonce ^:private shared-ds
-  (let [ds (psc/build-datasource shared-db-file)]
+  (let [ds (psd/build-datasource shared-db-file)]
     (migratus/migrate {:store :database
                        :migration-dir "migrations"
                        :db {:datasource ds}})

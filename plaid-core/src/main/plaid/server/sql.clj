@@ -7,6 +7,7 @@
             [plaid.migrate.codepoint-offsets :as codepoint-offsets]
             [plaid.server.config :refer [config]]
             [plaid.sql.common :as psc]
+            [plaid.sql.datasource :as psd]
             [plaid.sql.user :as pxu]
             [taoensso.timbre :as log]))
 
@@ -194,7 +195,7 @@
                _ (when (nil? @instance-lock)
                    (reset! instance-lock (acquire-instance-lock! db-path)))
                ;; Pool/PRAGMA tuning under :plaid.sql.common/pool — see
-               ;; `psc/default-pool-config` for keys + defaults. Absent
+               ;; `psd/default-pool-config` for keys + defaults. Absent
                ;; config falls through to the defaults; passing nil is
                ;; explicitly supported by `build-datasource`.
                pool-cfg (:plaid.sql.common/pool config)
@@ -215,7 +216,7 @@
                                    (var-get #'psc/*slow-query-threshold-ms*))
                _ (alter-var-root #'psc/*slow-query-threshold-ms*
                                  (constantly threshold-ms))
-               ds (psc/build-datasource db-path pool-cfg)]
+               ds (psd/build-datasource db-path pool-cfg)]
            (run-migrations! ds)
            (refresh-planner-stats! ds)
            (when (and (empty? (pxu/get-all ds))

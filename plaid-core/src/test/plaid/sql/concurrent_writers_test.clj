@@ -7,7 +7,7 @@
             [migratus.core :as migratus]
             [next.jdbc :as jdbc]
             [next.jdbc.result-set :as rs]
-            [plaid.sql.common :as psc]
+            [plaid.sql.datasource :as psd]
             [plaid.sql.project :as project]
             [plaid.sql.user :as user])
   (:import (java.io File)
@@ -32,7 +32,7 @@
         ;; queueing on the SQLite write lock) without being so small
         ;; that Hikari connectionTimeout fires before BEGIN IMMEDIATE
         ;; can grab the lock.
-        ds (psc/build-datasource db-path {:max-pool-size 20})
+        ds (psd/build-datasource db-path {:max-pool-size 20})
         n 20]
     (try
       (migratus/migrate {:store :database
@@ -83,7 +83,7 @@
 
 (deftest twenty-concurrent-same-row-updates
   (let [db-path (temp-db-path)
-        ds (psc/build-datasource db-path {:max-pool-size 20})
+        ds (psd/build-datasource db-path {:max-pool-size 20})
         n 20]
     (try
       (migratus/migrate {:store :database
