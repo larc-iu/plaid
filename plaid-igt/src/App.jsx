@@ -1,7 +1,7 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { createProtectedRoute } from '@ui/components/shared/ProtectedRoute.jsx';
-import { LoginForm } from './components/auth/LoginForm';
+import { LoginForm } from '@ui/components/auth/LoginForm.jsx';
 import { RedeemInvite } from '@ui/components/auth/RedeemInvite.jsx';
 import { ProjectList } from './components/projects/ProjectList';
 import { ProjectDetail } from './components/projects/ProjectDetail';
@@ -60,7 +60,10 @@ function App() {
           <Suspended>
             <Routes>
               {/* Public routes */}
-              <Route path="/login" element={<LoginForm />} />
+              <Route
+                path="/login"
+                element={<LoginForm tagline="Plaid Annotation Interface" homePath="/projects" />}
+              />
               {/* Unauthenticated by necessity: whoever follows an invite link
                 has no account yet, or has lost the password to the one they
                 have. The code rides in the hash fragment, so it never reaches

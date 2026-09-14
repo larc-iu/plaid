@@ -1,16 +1,21 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
-import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
-import { Button } from '@ui/components/ui/button';
-import { Input } from '@ui/components/ui/input';
-import { Label } from '@ui/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@ui/components/ui/card';
-import { PlaidMark } from '@ui/components/assistant/PlaidMarks.jsx';
+import { useAuth } from '../../contexts/useAuth.js';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
+import { appName } from '../../lib/uiConfig.js';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
+import { PlaidMark } from '../assistant/PlaidMarks.jsx';
 
-// This screen renders outside the Layout shell, so it carries its own
-// root for the scoped preflight subset (see src/index.css).
-export const LoginForm = () => {
+/**
+ * The sign-in screen. `tagline` is the one line under the app's name, and
+ * `homePath` is where a signed-in reader lands, both of them the app's own.
+ *
+ * Preflight is global, so this wrapper is simply the screen's own root.
+ */
+export const LoginForm = ({ tagline, homePath }) => {
   useDocumentTitle('Sign In');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -44,7 +49,7 @@ export const LoginForm = () => {
         } catch {
           /* storage unavailable */
         }
-        navigate('/projects');
+        navigate(homePath);
       } else {
         setError(result.error || 'Email or password is incorrect.');
       }
@@ -60,8 +65,8 @@ export const LoginForm = () => {
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center">
           <PlaidMark className="mb-1 h-10 w-10" />
-          <CardTitle className="text-2xl">Plaid UD Login</CardTitle>
-          <CardDescription>Universal Dependencies Tree Editor</CardDescription>
+          <CardTitle className="text-2xl">{appName()} Login</CardTitle>
+          <CardDescription>{tagline}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
