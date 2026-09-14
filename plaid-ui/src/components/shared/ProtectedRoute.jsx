@@ -10,8 +10,12 @@ import { Navigate } from 'react-router-dom';
 //
 // It cannot be a prop or a call inside App: App is what renders the
 // AuthProvider, so there is no auth above it to read.
-export const createProtectedRoute = (useAuth) => {
-  const ProtectedRoute = ({ children, loginPath = '/login' }) => {
+//
+// `loginPath` is the app's too. A default here would be one app's routing
+// table living in the package, which is how a shared screen ends up sending
+// half its readers somewhere that is not theirs.
+export const createProtectedRoute = (useAuth, { loginPath }) => {
+  const ProtectedRoute = ({ children }) => {
     const { isAuthenticated, loading } = useAuth();
 
     if (loading) {

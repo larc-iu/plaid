@@ -50,7 +50,7 @@ const VocabularyDetail = lazyNamed(
 
 // Bound here, at module scope: App is what renders the AuthProvider, so there
 // is no auth state above it to read.
-const ProtectedRoute = createProtectedRoute(useAuth);
+const ProtectedRoute = createProtectedRoute(useAuth, { loginPath: '/login' });
 
 function App() {
   return (

@@ -6,5 +6,14 @@ import { useProjectRoster } from '@ui/hooks/useProjectRoster.js';
 // access and have not used it.
 export const ProjectActivity = ({ client, project, projectId }) => {
   const roster = useProjectRoster(client, project);
-  return <ActivityPanel client={client} projectId={projectId} roster={roster} />;
+  return (
+    <ActivityPanel
+      client={client}
+      projectId={projectId}
+      roster={roster}
+      // A document opens on its editor here; the package knows no app's routes.
+      projectHref={(project) => `/projects/${project.id}`}
+      documentHref={(document, project) => `/projects/${project.id}/documents/${document.id}`}
+    />
+  );
 };

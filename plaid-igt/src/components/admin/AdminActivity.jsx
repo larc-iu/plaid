@@ -20,5 +20,12 @@ export const AdminActivity = ({ client }) => {
     };
   }, [client]);
 
-  return <ActivityPanel client={client} roster={roster} />;
+  return (
+    <ActivityPanel
+      client={client}
+      roster={roster}
+      projectHref={(project) => `/projects/${project.id}`}
+      documentHref={(document, project) => `/projects/${project.id}/documents/${document.id}`}
+    />
+  );
 };

@@ -63,7 +63,7 @@ export const ProjectSettings = () => {
     management: <ProjectManagement />,
     customization: <ProjectCustomization />,
     services: <ProjectServicesSettings />,
-    tokens: <ProjectAccessTokens />,
+    tokens: <ProjectAccessTokens profileHref="/profile" />,
     general: <ProjectGeneral onProjectUpdate={loadProject} />,
   }[active];
 

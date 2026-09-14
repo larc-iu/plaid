@@ -76,7 +76,12 @@ const Shell = () => {
                   {/* Profile and Logout are both in here now. Two bare text
                       buttons beside the name made the account three controls wide
                       and left Logout one stray click from Profile. */}
-                  <UserButton user={user} client={client} onLogout={handleLogout} />
+                  <UserButton
+                    user={user}
+                    client={client}
+                    onLogout={handleLogout}
+                    profileHref="/profile"
+                  />
                 </div>
               )}
             </div>

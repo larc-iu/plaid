@@ -49,8 +49,8 @@ export const AuditFeed = ({
   resetKey,
   id,
   scope,
-  projectHref = (project) => `/projects/${project.id}`,
-  documentHref = (document, project) => `/projects/${project.id}/documents/${document.id}`,
+  projectHref,
+  documentHref,
 }) => {
   const [entries, setEntries] = useState([]);
   const [cursor, setCursor] = useState(null);

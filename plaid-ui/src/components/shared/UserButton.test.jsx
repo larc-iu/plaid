@@ -27,8 +27,8 @@ const logoutItem = () =>
   [...document.querySelectorAll('[role="menuitem"]')].find((n) => /Logout/.test(n.textContent));
 
 describe('UserButton', () => {
-  it('points Profile at /profile by default', async () => {
-    const r = await open();
+  it('points Profile where the app says, since a route is not the package\u2019s', async () => {
+    const r = await open({ profileHref: '/profile' });
     expect(profileLink()?.getAttribute('href')).toBe('/profile');
     await r.unmount();
   });

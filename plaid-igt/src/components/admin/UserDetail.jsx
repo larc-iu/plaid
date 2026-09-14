@@ -204,6 +204,8 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
             title="Recent activity"
             id="user-activity"
             resetKey={userId}
+            projectHref={(project) => `/projects/${project.id}`}
+            documentHref={(document, project) => `/projects/${project.id}/documents/${document.id}`}
             empty="Nothing recorded."
             fetchPage={({ limit, cursor }) =>
               client.users.auditPage(userId, { limit, cursor, order: 'desc' })

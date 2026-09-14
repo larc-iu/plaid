@@ -111,7 +111,14 @@ const Shell = () => {
                     place, where it has to be an anchor into this app. */}
                 {user?.isAdmin &&
                   navItem('/admin', 'Admin', location.pathname.startsWith('/admin'))}
-                {user && <UserButton user={user} client={client} onLogout={logout} />}
+                {user && (
+                  <UserButton
+                    user={user}
+                    client={client}
+                    onLogout={logout}
+                    profileHref="/profile"
+                  />
+                )}
               </div>
             </div>
           </header>

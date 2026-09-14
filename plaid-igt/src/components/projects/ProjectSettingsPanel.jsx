@@ -65,7 +65,7 @@ export const ProjectSettingsPanel = ({
               client={client}
               onDataUpdate={onProjectUpdate}
             />
-            <ProjectAccessTokens />
+            <ProjectAccessTokens profileHref="/profile" />
           </div>
         </TabsContent>
         <TabsContent value="services" className="mt-0">
