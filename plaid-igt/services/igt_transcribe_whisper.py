@@ -154,23 +154,16 @@ class WhisperASRService(BaseService):
         self.asr_model = None
         self.alignment_processor = None
 
-    def create_argument_parser(self) -> argparse.ArgumentParser:
-        """Create argument parser for ASR service"""
-        parser = argparse.ArgumentParser(description='Whisper ASR Service for Plaid')
-        
-        # Add common arguments
-        self.setup_parser_common_args(parser)
-        
-        # Add ASR-specific arguments. The default matches the `model_size`
-        # parameter's default so the preloaded model is the one UI requests use.
+    def add_arguments(self, parser: argparse.ArgumentParser) -> None:
+        """Operator arguments, on top of the ones every service takes."""
+        # The default matches the `model_size` parameter's default so the
+        # preloaded model is the one UI requests use.
         parser.add_argument('--model', default='base',
-                          choices=['tiny', 'base', 'small', 'medium', 'large'],
-                          help='Whisper model size to preload as the default (default: base)')
+                            choices=['tiny', 'base', 'small', 'medium', 'large'],
+                            help='Whisper model size to preload as the default (default: base)')
         parser.add_argument('--no-keep-loaded', action='store_true',
-                          help='Unload model from memory after each transcription')
-        
-        return parser
-    
+                            help='Unload model from memory after each transcription')
+
     def setup(self, args) -> None:
         """Setup ASR-specific configuration"""
 

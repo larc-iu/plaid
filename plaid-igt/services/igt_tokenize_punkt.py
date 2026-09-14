@@ -5,7 +5,6 @@ Simplified tokenization service using the tokenization framework.
 This demonstrates how easy it is to create new tokenization services.
 """
 
-import argparse
 import nltk
 from typing import List, Dict, Any, Tuple
 from plaid_client import BaseService, TASKS, Param, service_source
@@ -105,15 +104,6 @@ class NLTKTokenizerService(BaseService):
         )
         self.tokenizer_model = NLTKPunktTokenizer()
         self.token_processor = TokenProcessor()
-    
-    def create_argument_parser(self) -> argparse.ArgumentParser:
-        """Create argument parser for tokenization service"""
-        parser = argparse.ArgumentParser(description='NLTK Punkt Tokenizer Service for Plaid')
-        
-        # Add common arguments
-        self.setup_parser_common_args(parser)
-        
-        return parser
     
     def setup(self, args) -> None:
         """Setup tokenization-specific configuration"""
