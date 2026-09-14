@@ -502,6 +502,43 @@ def test_a_refusal_names_the_entry_the_way_a_tool_takes_it_back():
     assert '"kwatha#1.1" is deleted or merged away' in out and 'd-boil' not in out
 
 
+def test_a_form_naming_an_entry_this_plan_removes_gets_the_plan_aware_refusal():
+    """Every tool that names an existing entry refuses a doomed one, but the
+    lookup ran against the plan's VIEW, which leaves the doomed entry out, so a
+    form naming one came back as no entry at all: the model was told to use
+    create_entry to add what it had just deleted. The form resolves against the
+    lexicon as it was now, and the plan is checked after.
+
+    Both wordings are still needed, so both are pinned: one for an entry this
+    plan removes, the other for a form that names nothing.
+    """
+    for tool, args in (('set_entry_field', {'field': 'gloss', 'value': 'stew'}),
+                       ('rename_entry', {'new_form': 'phiika'}),
+                       ('add_sense', {'fields': {'gloss': 'stew'}})):
+        w = dict_ws()
+        call_tool(w, 'delete_entry', {'entry_form': 'phika'})
+        before = list(w.ops)
+        out = call_tool(w, tool, {'entry_form': 'phika', **args})
+        assert '"phika" is deleted or merged away by this same plan' in out, (tool, out)
+        assert 'create_entry' not in out and w.ops == before, tool
+
+    # A form that names nothing still says so, and still says what to do.
+    w = dict_ws()
+    call_tool(w, 'delete_entry', {'entry_form': 'phika'})
+    assert ('No lexicon entry "zimbe". Use read_lexicon to look, or create_entry to add one.'
+            in call_tool(w, 'set_entry_field', {'entry_form': 'zimbe', 'field': 'gloss', 'value': 'x'}))
+
+
+def test_a_form_shared_with_a_doomed_entry_still_names_the_one_that_survives():
+    """Resolving against the lexicon as it was is the LAST resort, so a form
+    spelled like an entry the plan deletes still reaches the entry that stays."""
+    w = dict_ws(items=ITEMS + [{'id': 'd-phika2', 'form': 'phika', 'metadata': {'gloss': 'boil over'}}])
+    call_tool(w, 'delete_entry', {'entry_id': 'd-phika'})
+    out = call_tool(w, 'set_entry_field', {'entry_form': 'phika', 'field': 'gloss', 'value': 'simmer'})
+    assert 'Planned' in out, out
+    assert [o['item_id'] for o in ops_of(w, 'set_entry_field')] == ['d-phika2']
+
+
 def test_a_respelling_does_not_rename_an_entry_the_plan_removes():
     w = dict_ws()
     call_tool(w, 'delete_entry', {'entry_form': 'phika'})

@@ -55,7 +55,7 @@ class Workspace(BaseWorkspace):
     def __init__(self, client, project: IgtProject, on_progress=None):
         super().__init__(client, project, on_progress)
         self._lexicons: Dict[str, List[dict]] = {}
-        self._views: Dict[str, tuple] = {}
+        self._views: Dict[tuple, tuple] = {}
         # The metadata an entry will carry once the plan runs, so a second
         # structural tool in one turn reads the tree the first is building.
         self.item_patches: Dict[str, dict] = {}
@@ -133,13 +133,18 @@ class Workspace(BaseWorkspace):
         return frozenset({op['item_id'] for op in self.ops if op.get('kind') == 'delete_entry'}
                          | {op['remove_id'] for op in self.ops if op.get('kind') == 'merge_entries'})
 
-    def view(self, vocab: dict) -> 'LexView':
+    def view(self, vocab: dict, removed: bool = False) -> 'LexView':
         """A lexicon with the plan's pending metadata applied and the entries it
         removes left out, with the sense tree over what is left: what the
-        lexicon screens would show once the plan is approved."""
-        key = vocab['id']
+        lexicon screens would show once the plan is approved.
+
+        With ``removed`` the entries the plan removes are kept, which is the
+        lexicon a tool has to resolve a form against before it can say that
+        this plan removes what the form names.
+        """
+        key = (vocab['id'], removed)
         items = self.lexicon(vocab)
-        gone = self.doomed_entries()
+        gone = frozenset() if removed else self.doomed_entries()
         got = self._views.get(key)
         if got and got[0] is items and got[1] == (self._patch_version, gone):
             return got[2]
@@ -164,7 +169,7 @@ class Workspace(BaseWorkspace):
         v = self.vocab_of_item(item['id'])
         if v is None:
             return f'"{item.get("form") or item["id"]}"'
-        return LexView(v, self.lexicon(v)).label(item['id'])
+        return self.view(v, removed=True).label(item['id'])
 
     def find_entry(self, form: Optional[str], lexicon: Optional[str], entry_id: Optional[str],
                    gloss: Optional[str] = None):
@@ -236,6 +241,23 @@ class Workspace(BaseWorkspace):
         if len(hits) + len(news) == 1:
             return ('existing', hits[0][1]) if hits else ('new', news[0][0])
         if not hits and not news:
+            # The lookup ran against the plan's view, which leaves out what the
+            # plan removes, so a form naming only a doomed entry came back as no
+            # entry at all and the caller's refusal about a doomed entry never
+            # fired: the model was told to create what it had just deleted.
+            # Resolve it against the lexicon as it was and hand that entry back.
+            # Whether the plan may still work on it is the caller's question,
+            # asked in one place (`lexicon._refuse_doomed`, and the plan's own
+            # delete-clash check for a tool that only names it).
+            gone = self.doomed_entries()
+            if gone:
+                was = [it for v in vocabs
+                       for it in _hits_in(self, v, form, suffix, has_gloss, deep=bool(g), removed=True)
+                       if it['id'] in gone]
+                # Several entries spelled alike and all of them doomed: no one
+                # of them is what the form names, so the refusal stays as it is.
+                if len(was) == 1:
+                    return 'existing', was[0]
             hint = ''
             if suffix is not None and any(self.view(v).tree_has_form(form) for v in vocabs):
                 hint = (f' Headword "{form}" has no sense {suffix}; lexicon_entry shows the senses '
@@ -418,9 +440,9 @@ def _matcher(pattern: str, regex: bool, case_sensitive: bool = False):
 
 
 def _hits_in(ws: Workspace, v: dict, form: str, suffix: Optional[str], has_gloss,
-             deep: bool = False) -> List[dict]:
+             deep: bool = False, removed: bool = False) -> List[dict]:
     """The entries a form names in one lexicon, by that lexicon's own rules."""
-    view = ws.view(v)
+    view = ws.view(v, removed=removed)
     return [it for it in _dict_hits(view, form, suffix, deep) if has_gloss(it.get('metadata'), view)]
 
 
