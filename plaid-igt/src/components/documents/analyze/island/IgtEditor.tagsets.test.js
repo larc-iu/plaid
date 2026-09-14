@@ -174,6 +174,17 @@ describe('part-aware completion', () => {
     expect(altsValues()).toEqual(['NOM']);
   });
 
+  it('narrows on either spelling of a letter', () => {
+    // `ẹ` is one character here and `e` plus a combining dot below there,
+    // depending on the keyboard or the import a value came from. Compared as
+    // typed, a tagset written one way could not be reached from the other.
+    mount({ ...LEIPZIG, delimiters: '', values: [{ value: 'bẹ' }, { value: 'PL' }] });
+    const cell = glossCell();
+    focus(cell);
+    type(cell, 'bẹ');
+    expect(altsValues()).toEqual(['bẹ']);
+  });
+
   it('replaces only that part on a pick, and leaves the caret after it', () => {
     mount();
     const cell = glossCell();

@@ -1,4 +1,5 @@
 import { render, html, nothing } from 'lit-html';
+import { collationKey } from '@ui/domain/collation.js';
 import { TAGSET_SOURCE } from '@/domain/glossGuess';
 import { isValueAllowed, replacePartAtCaret } from '@/domain/tagsets';
 
@@ -227,8 +228,11 @@ export const alternatives = {
 
   _altsTemplate(items, cellKey) {
     const a = this._alts;
-    const f = (a.filter || '').toLowerCase();
-    const visible = f ? items.filter((it) => it.value.toLowerCase().startsWith(f)) : items;
+    // Either spelling narrows the list: `ẹ` can be one character or `e` plus a
+    // combining dot, and which one a value carries depends on the keyboard or
+    // the import it came from. Same key the search boxes compare through.
+    const f = collationKey(a.filter || '');
+    const visible = f ? items.filter((it) => collationKey(it.value).startsWith(f)) : items;
     a.visible = visible;
     if (a.active >= visible.length) a.active = 0;
     const pos = this._altsPos;
