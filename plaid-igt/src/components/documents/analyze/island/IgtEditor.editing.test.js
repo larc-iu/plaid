@@ -555,6 +555,32 @@ describe('pasting a morpheme chain', () => {
     expect(document.activeElement.dataset.prec).toBe('2');
     expect(spy).not.toHaveBeenCalled();
   });
+
+  it('leaves the source cell disabled when the document turned read-only', async () => {
+    // The cell is disabled by hand for the flight, and lit binds `disabled`
+    // too. An Auto-analyze run takes the document read-only while it writes,
+    // so lit writes disabled on every cell mid-flight; re-enabling this one
+    // afterwards left a single editable cell in a read-only grid, and its
+    // commits are dropped without a word.
+    const { doc } = mount();
+    let finish;
+    vi.spyOn(doc, 'splitMorphemeMulti').mockImplementation(
+      () => new Promise((resolve) => (finish = resolve)),
+    );
+    const f = cell('mf:m-1');
+    focus(f);
+    f.setSelectionRange(0, 3);
+    const paste = new Event('paste', { bubbles: true, cancelable: true });
+    paste.clipboardData = { getData: () => 'a-b' };
+    f.dispatchEvent(paste);
+    await settle(1);
+
+    editor.setReadOnly(true);
+    finish(true);
+    await settle();
+
+    expect(cell('mf:m-1').disabled).toBe(true);
+  });
 });
 
 describe('a refused value', () => {

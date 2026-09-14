@@ -98,8 +98,15 @@ export const morphForm = {
       const el = e.target;
 
       // Restore the optimistic DOM if a structural op was dropped/failed.
+      //
+      // `disabled` goes back to what READ-ONLY says, never to false: lit binds
+      // it too, and it only writes an attribute that differs from the one it
+      // last committed. A run that takes the document read-only mid-flight
+      // (Auto-analyze does) makes lit write disabled once, and a hand-written
+      // false after that is the last word — leaving one editable cell in a
+      // read-only grid, whose commits the guards then drop in silence.
       const restore = (origValue) => {
-        el.disabled = false;
+        el.disabled = this.readOnly;
         if (origValue != null) el.value = origValue;
         delete el.dataset.suppressCommit;
         this._pendingFocus = null;
@@ -194,7 +201,7 @@ export const morphForm = {
             cursor: 'end',
           };
           const ok = await this._run(() => this.doc.deleteMorpheme(morph.id));
-          el.disabled = false;
+          el.disabled = this.readOnly; // what lit last wrote, not false (see restore)
           if (!ok) restore(null);
           return;
         }
@@ -211,7 +218,7 @@ export const morphForm = {
             cursor: prevLen,
           };
           const ok = await this._run(() => this.doc.mergeMorphemes(morph.id));
-          el.disabled = false;
+          el.disabled = this.readOnly; // what lit last wrote, not false (see restore)
           if (!ok) restore(null);
           return;
         }
@@ -351,7 +358,7 @@ export const morphForm = {
       const ok = await this._run(() =>
         this.doc.splitMorphemeMulti(morph.id, segments, { joiners }),
       );
-      el.disabled = false;
+      el.disabled = this.readOnly; // what lit last wrote, not false (see restore)
       if (!ok) {
         el.value = orig;
         delete el.dataset.suppressCommit;
