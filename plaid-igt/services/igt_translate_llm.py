@@ -322,15 +322,15 @@ class LLMTranslateService(BaseService):
                     # they point at are out of date, so nothing is written.
                     check_unchanged(self.client, document_id, read_version)
                     for start in range(0, len(plans), WRITE_CHUNK // 2):
-                        with self.client.batched():
+                        with self.client.batched() as b:
                             for s, span, text in plans[start:start + WRITE_CHUNK // 2]:
                                 stamp = stamp_inferred(source, detail={**base_detail, 'value': text})
                                 if span:
-                                    self.client.spans.update(span['id'], text)
-                                    self.client.spans.set_metadata(span['id'], stamp)
+                                    b.spans.update(span['id'], text)
+                                    b.spans.set_metadata(span['id'], stamp)
                                     replaced += 1
                                 else:
-                                    self.client.spans.create(tr_layer_id, [s['id']], text, stamp)
+                                    b.spans.create(tr_layer_id, [s['id']], text, stamp)
 
             response_helper.progress(100, 'Done')
             response_helper.complete({

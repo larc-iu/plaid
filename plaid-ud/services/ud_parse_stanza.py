@@ -670,13 +670,13 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
             order = []  # which kind sits at each index in the batch results
             with client.batched() as token_batch:
                 if sentence_ops:
-                    client.tokens.bulk_create(sentence_ops)
+                    token_batch.tokens.bulk_create(sentence_ops)
                     order.append("sentences")
                 if word_ops:
-                    client.tokens.bulk_create(word_ops)
+                    token_batch.tokens.bulk_create(word_ops)
                     order.append("words")
                 if morpheme_ops:
-                    client.tokens.bulk_create(morpheme_ops)
+                    token_batch.tokens.bulk_create(morpheme_ops)
                     order.append("morphemes")
                 log(f"  Submitting token batch ({len(order)} ops)…")
             token_results = token_batch.results
@@ -769,19 +769,19 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
             span_order = []
             with client.batched() as span_batch:
                 if form_spans:
-                    client.spans.bulk_create(form_spans)
+                    span_batch.spans.bulk_create(form_spans)
                     span_order.append("form")
                 if lemma_spans:
-                    client.spans.bulk_create(lemma_spans)
+                    span_batch.spans.bulk_create(lemma_spans)
                     span_order.append("lemma")
                 if upos_spans:
-                    client.spans.bulk_create(upos_spans)
+                    span_batch.spans.bulk_create(upos_spans)
                     span_order.append("upos")
                 if xpos_spans:
-                    client.spans.bulk_create(xpos_spans)
+                    span_batch.spans.bulk_create(xpos_spans)
                     span_order.append("xpos")
                 if feature_spans:
-                    client.spans.bulk_create(feature_spans)
+                    span_batch.spans.bulk_create(feature_spans)
                     span_order.append("features")
                 log(f"  Submitting span batch ({len(span_order)} ops)…")
             span_results = span_batch.results
