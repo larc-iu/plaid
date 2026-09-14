@@ -159,13 +159,12 @@
         (assert-status 400 res)))
 
     (testing "Non-integer begin/end - coercion catches this at middleware level"
-      (is (thrown? java.lang.IllegalArgumentException
-                   (api-call admin-request {:method :post
-                                            :path "/api/v1/tokens"
-                                            :body {:token-layer-id tkl
-                                                   :text text-id
-                                                   :begin "0"
-                                                   :end "5"}}))))
+      (assert-bad-request (api-call admin-request {:method :post
+                                                   :path "/api/v1/tokens"
+                                                   :body {:token-layer-id tkl
+                                                          :text text-id
+                                                          :begin "0"
+                                                          :end "5"}})))
 
     (testing "Negative begin index"
       (let [res (create-token admin-request tkl text-id -1 5)]
@@ -176,14 +175,13 @@
         (assert-status 400 res)))
 
     (testing "Non-integer precedence - coercion catches this at middleware level"
-      (is (thrown? java.lang.IllegalArgumentException
-                   (api-call admin-request {:method :post
-                                            :path "/api/v1/tokens"
-                                            :body {:token-layer-id tkl
-                                                   :text text-id
-                                                   :begin 0
-                                                   :end 5
-                                                   :precedence "high"}}))))
+      (assert-bad-request (api-call admin-request {:method :post
+                                                   :path "/api/v1/tokens"
+                                                   :body {:token-layer-id tkl
+                                                          :text text-id
+                                                          :begin 0
+                                                          :end 5
+                                                          :precedence "high"}})))
 
     (testing "Zero-length token (begin equals end)"
       (let [res (create-token admin-request tkl text-id 5 5)]

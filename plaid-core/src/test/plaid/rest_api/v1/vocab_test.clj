@@ -1014,22 +1014,22 @@
       (assert-created vocab-res)
 
       ;; Invalid vocab layer operations
-      (is (thrown? java.lang.IllegalArgumentException (api-call admin-request {:method :post
-                                                                               :path "/api/v1/vocab-layers"
-                                                                               :body {}}))) ; Missing name
+      (assert-bad-request (api-call admin-request {:method :post
+                                                   :path "/api/v1/vocab-layers"
+                                                   :body {}})) ; Missing name
 
       (assert-bad-request (api-call admin-request {:method :post
                                                    :path "/api/v1/vocab-layers"
                                                    :body {:name ""}})) ; Empty name
 
       ;; Invalid vocab item operations
-      (is (thrown? java.lang.IllegalArgumentException (api-call admin-request {:method :post
-                                                                               :path "/api/v1/vocab-items"
-                                                                               :body {:vocab-layer-id vocab-id}}))) ; Missing form
+      (assert-bad-request (api-call admin-request {:method :post
+                                                   :path "/api/v1/vocab-items"
+                                                   :body {:vocab-layer-id vocab-id}})) ; Missing form
 
-      (is (thrown? java.lang.IllegalArgumentException (api-call admin-request {:method :post
-                                                                               :path "/api/v1/vocab-items"
-                                                                               :body {:form "test"}}))) ; Missing vocab-layer-id
+      (assert-bad-request (api-call admin-request {:method :post
+                                                   :path "/api/v1/vocab-items"
+                                                   :body {:form "test"}})) ; Missing vocab-layer-id
 
       (let [fake-vocab-id (java.util.UUID/randomUUID)]
         ;; Missing parent vocab-layer on create returns 400 (per the
@@ -1045,13 +1045,13 @@
             item-id (-> item-res :body :id)]
         (assert-created item-res)
 
-        (is (thrown? java.lang.IllegalArgumentException (api-call admin-request {:method :post
-                                                                                 :path "/api/v1/vocab-links"
-                                                                                 :body {:vocab-item item-id}}))) ; Missing tokens
+        (assert-bad-request (api-call admin-request {:method :post
+                                                     :path "/api/v1/vocab-links"
+                                                     :body {:vocab-item item-id}})) ; Missing tokens
 
-        (is (thrown? java.lang.IllegalArgumentException (api-call admin-request {:method :post
-                                                                                 :path "/api/v1/vocab-links"
-                                                                                 :body {:tokens []}}))) ; Missing vocab-item-id
+        (assert-bad-request (api-call admin-request {:method :post
+                                                     :path "/api/v1/vocab-links"
+                                                     :body {:tokens []}})) ; Missing vocab-item-id
 
         (assert-bad-request (api-call admin-request {:method :post
                                                      :path "/api/v1/vocab-links"
