@@ -8,7 +8,7 @@ import { SentenceRow } from './annotation/SentenceRow.jsx';
 import { EditorSessionContext } from './annotation/editorSession.js';
 import { useLayerInfo } from './hooks/useLayerInfo.js';
 import { useSentenceData } from './hooks/useSentenceData.js';
-import { useDocumentHistory } from './hooks/useDocumentHistory.js';
+import { useHistoryView } from './hooks/useHistoryView.js';
 import { useDocumentEditor } from './useDocumentEditor.js';
 import { useReviewGestures } from './hooks/useReviewGestures.js';
 import { useSentenceDeepLink } from './hooks/useSentenceDeepLink.js';
@@ -100,14 +100,26 @@ export const AnnotationEditor = () => {
   // briefly highlights that sentence once the grid is rendered.
   const [searchParams] = useSearchParams();
   const sentParam = searchParams.get('sent');
-  // History viewer state
-  const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState(false);
-  const [selectedHistoryEntry, setSelectedHistoryEntry] = useState(null);
-  const [viewingHistoricalState, setViewingHistoricalState] = useState(false);
-  // The history entry a restore is being confirmed for.
-  const [restoreEntry, setRestoreEntry] = useState(null);
-
   const { getClient, user } = useAuth();
+
+  // The history drawer, the entry being viewed, and the restore it can lead to.
+  const {
+    isHistoryDrawerOpen,
+    openHistory,
+    closeHistory,
+    selectedHistoryEntry,
+    selectHistoryEntry,
+    viewingHistoricalState,
+    historicalDocument,
+    auditEntries,
+    loadingAudit,
+    loadingHistorical,
+    historyError,
+    restoreEntry,
+    setRestoreEntry,
+    handleRestored,
+  } = useHistoryView({ documentId, getClient, reload });
+
   // Reconcile-on-open is a WRITE (it can seed syntactic-words + delete
   // relations), so it must run at most once per document — otherwise StrictMode's
   // double-invoke of the mount effect would seed duplicates. Track the last
@@ -256,19 +268,6 @@ export const AnnotationEditor = () => {
 
   // doc-level operation errors surface as toasts (see ConlluDocument.setError);
   // a hard document-load failure is DocumentEditorShell's banner, not ours.
-
-  // History functionality
-  const {
-    auditEntries,
-    historicalDocument,
-    loadingAudit,
-    loadingHistorical,
-    hasLoadedAudit,
-    error: historyError,
-    fetchHistoricalDocument,
-    clearHistoricalDocument,
-    fetchAuditLog,
-  } = useDocumentHistory(documentId);
 
   // When viewing historical state we fall back to the legacy raw-doc render
   // path (useSentenceData still accepts a raw document and delegates to
@@ -500,61 +499,6 @@ export const AnnotationEditor = () => {
     revealSentence,
   });
 
-  // History drawer handlers
-  const handleOpenHistory = () => {
-    setIsHistoryDrawerOpen(true);
-    // Fetch audit log only when drawer is first opened
-    if (!hasLoadedAudit) {
-      fetchAuditLog();
-    }
-  };
-
-  const handleCloseHistory = () => {
-    setIsHistoryDrawerOpen(false);
-    // Auto-return to current state when closing drawer
-    if (selectedHistoryEntry) {
-      handleSelectHistoryEntry(null);
-    }
-  };
-
-  const handleSelectHistoryEntry = async (entry) => {
-    if (!entry) {
-      // Return to current state
-      setSelectedHistoryEntry(null);
-      setViewingHistoricalState(false);
-      clearHistoricalDocument();
-      // The as-of GET poisoned the client's strict-mode document-version tracker
-      // with the OLD (historical) version. Refresh it from the live doc so the
-      // next edit doesn't fail OCC with a spurious 409.
-      const client = getClient();
-      if (client) client.documents.get(documentId).catch(() => {});
-      return;
-    }
-
-    // Set selected entry immediately for instant feedback
-    const previousEntry = selectedHistoryEntry;
-    setSelectedHistoryEntry(entry);
-
-    // Fetch historical document in background
-    const historicalDoc = await fetchHistoricalDocument(entry.time);
-    if (historicalDoc) {
-      setViewingHistoricalState(true);
-    } else {
-      // Time travel failed (the hook already toasts). Roll the selection back
-      // so the drawer doesn't show a phantom-selected entry whose state never
-      // loaded — keep showing whatever we were actually viewing before.
-      setSelectedHistoryEntry(previousEntry);
-    }
-  };
-
-  // After a restore (or an undo of one) the live document has changed under
-  // us and the history has a new entry. Leave the historical view, then reload
-  // both. Called from the toast's Undo too, long after the dialog has closed.
-  const handleRestored = async () => {
-    if (selectedHistoryEntry) await handleSelectHistoryEntry(null);
-    await Promise.all([reload(), fetchAuditLog()]);
-  };
-
   const hasText = !viewingHistoricalState && Boolean(activeDocument?.textLayers?.[0]?.text);
 
   // Single shared toolbar: History on the left, the run controls on the right.
@@ -564,13 +508,13 @@ export const AnnotationEditor = () => {
   // moment that run took the lock.
   const toolbar = (
     <div className="mt-4 flex items-center justify-between gap-3">
-      <Button variant="secondary" className="gap-2" onClick={handleOpenHistory}>
+      <Button variant="secondary" className="gap-2" onClick={openHistory}>
         <History className="h-4 w-4" />
         History
       </Button>
 
       <div className="flex items-center gap-3">
-        {selectedHistoryEntry && <Button onClick={handleCloseHistory}>Return to current</Button>}
+        {selectedHistoryEntry && <Button onClick={closeHistory}>Return to current</Button>}
 
         {/* No Assistant button here: the panel is app chrome now and its
             control is in the header, on every screen. "Ask" under a sentence
@@ -661,11 +605,11 @@ export const AnnotationEditor = () => {
     <div className="min-h-screen w-full">
       <HistoryDrawer
         isOpen={isHistoryDrawerOpen}
-        onClose={handleCloseHistory}
+        onClose={closeHistory}
         auditEntries={auditEntries}
         loading={loadingAudit}
         error={historyError}
-        onSelectEntry={handleSelectHistoryEntry}
+        onSelectEntry={selectHistoryEntry}
         selectedEntry={selectedHistoryEntry}
         // A restore rewrites the whole document, which is exactly what a
         // running service is doing.
