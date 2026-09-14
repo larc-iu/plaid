@@ -148,6 +148,17 @@ export function useVadProposals({
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
+  // Back to whatever is actually on screen, for a run that ended without
+  // proposals of its own. Read through the setter rather than from `analysis`:
+  // a run started before the last one landed closed over an older value, and
+  // reported idle over proposals a linguist was looking at.
+  const settleToWhatIsThere = useCallback(() => {
+    setAnalysis((current) => {
+      setStatus(current ? 'ready' : 'idle');
+      return current;
+    });
+  }, []);
+
   // The built-in: decode, run the model, keep the probabilities.
   const detect = useCallback(async () => {
     if (!mediaBlob) return;
@@ -164,20 +175,29 @@ export function useVadProposals({
         onProgress: setProgress,
         signal: controller.signal,
       });
+      // Stopped, replaced, or nothing found: the tab keeps whatever is on it.
       if (controller.signal.aborted || !result) {
-        setStatus(analysis ? 'ready' : 'idle');
+        settleToWhatIsThere();
         return;
       }
       setAnalysis(result);
       setStatus('ready');
     } catch (e) {
       console.error('Speech detection failed:', e);
+      // A run another run replaced does not get to speak: the tab belongs to
+      // the one that replaced it, whichever of them lands first.
+      if (abortRef.current !== controller) return;
+      // A run the reader stopped does not either. Tearing a worker down
+      // mid-run can come back as an error rather than as a cancellation, and
+      // that is not a failure anybody needs to hear about.
+      if (controller.signal.aborted) {
+        settleToWhatIsThere();
+        return;
+      }
       setError(e?.message ?? String(e));
       setStatus('error');
     }
-    // `analysis` is read only to decide what to fall back to on cancel.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mediaBlob]);
+  }, [mediaBlob, settleToWhatIsThere]);
 
   // A `detect-speech` service's regions, taken as proposals like the model's.
   // Times are seconds; a region without a usable pair is dropped rather than

@@ -127,6 +127,28 @@ describe('the timeline waveform', () => {
     await view.unmount();
   });
 
+  it('keeps the envelope of the recording on screen when an abandoned decode lands', async () => {
+    // Two fetches of one recording, so both passes share the envelope cache's
+    // key (byte length and duration). The samples differ only so the test can
+    // tell which pass's envelope was kept.
+    const first = { size: 5000, arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) };
+    const second = { size: 5000, arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) };
+    const view = await renderComponent(<Probe blob={first} />);
+    await view.rerender(<Probe blob={second} />);
+
+    await view.step(() => decodes[1].finish(decoded([7, 8, 9])));
+    await settle(view);
+    await view.step(() => decodes[0].finish(decoded([1, 2, 3])));
+    await settle(view);
+
+    // A scroll or a zoom on the recording that is up. It must be drawn from
+    // its own amplitudes, not from the ones the abandoned decode left behind.
+    await view.rerender(<Probe blob={second} timelineWidth={600} />);
+    await settle(view);
+    expect(seq).toEqual(['drawn:7,8,9']);
+    await view.unmount();
+  });
+
   it('leaves the spinner to the draw that replaced it', async () => {
     // A cancelled draw clearing `loading` flashes an empty timeline between two
     // recordings, which is exactly what the flag is there to cover.

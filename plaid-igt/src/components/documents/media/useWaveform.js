@@ -126,7 +126,12 @@ export function useWaveform({ mediaBlob, duration, timelineWidth, scrollLeft, co
                 })(),
               };
             }
-            envelopeRef.current = { blob: mediaBlob, ...(await decodeRef.current.promise) };
+            const envelope = await decodeRef.current.promise;
+            // The recording on screen may have changed while this decode ran.
+            // Its envelope is not the one being drawn from, and leaving it here
+            // makes the ref name a recording nobody is looking at.
+            if (cancelled) return;
+            envelopeRef.current = { blob: mediaBlob, ...envelope };
           }
         }
         if (cancelled) return;

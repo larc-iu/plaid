@@ -37,18 +37,25 @@ const idsOf = (vad) => vad.proposals.map((p) => p.id).join(' ');
 let runs;
 const nextRun = () => {
   let finish;
-  const promise = new Promise((resolve) => {
+  let fail;
+  const promise = new Promise((resolve, reject) => {
     finish = resolve;
+    fail = reject;
   });
-  runs.push({ promise, finish });
+  // Nothing waits on the rejection but the hook, and an unhandled one fails the
+  // run.
+  promise.catch(() => {});
+  runs.push({ promise, finish, fail });
   return promise;
 };
 
 let api;
 let seq;
 
-// `seq` is every DISTINCT set of proposals the tab has rendered, in order, not
-// just the one it ends on.
+// `seq` is every DISTINCT thing the dialog has shown, in order, not just what
+// it ends on: the status is half of what it says, and a run that landed after
+// the one it lost to used to set it back to idle over proposals that were on
+// screen.
 const Probe = () => {
   const vad = useVadProposals({
     mediaBlob: BLOB,
@@ -59,7 +66,7 @@ const Probe = () => {
   });
   api = vad;
   useEffect(() => {
-    const shown = idsOf(vad);
+    const shown = `${vad.status}:${idsOf(vad)}`;
     if (seq[seq.length - 1] !== shown) seq.push(shown);
   });
   return null;
@@ -98,9 +105,79 @@ describe('a detection run that is not the one on screen', () => {
     await settle(view);
 
     // One set of proposals, ever: the ones the second run found. The abandoned
-    // run's are never on screen, not even for a render.
-    expect(seq).toEqual(['', 'vad-5.000-6.250']);
+    // run's are never on screen, not even for a render, and it does not get to
+    // say the tab is idle on its way out.
+    expect(seq).toEqual(['idle:', 'running:', 'ready:vad-5.000-6.250']);
+    expect(api.status).toBe('ready');
     expect(api.hasAnalysis).toBe(true);
+    await view.unmount();
+  });
+
+  it('cannot speak over a run that is still going', async () => {
+    // The replaced run fails while the one that replaced it is still working.
+    // Tearing its worker down mid-run is how that happens. The dialog stays on
+    // the run in flight rather than dropping to idle underneath it.
+    const view = await renderComponent(<Probe />);
+    await view.step(() => {
+      api.detect();
+    });
+    await view.step(() => {
+      api.detect();
+    });
+    await view.step(() => runs[0].fail(new Error('worker gone')));
+    await settle(view);
+    expect(api.status).toBe('running');
+    expect(api.error).toBe(null);
+
+    await view.step(() => runs[1].finish({ probs: SECOND, lengthSamples: 10 }));
+    await settle(view);
+    expect(seq).toEqual(['idle:', 'running:', 'ready:vad-5.000-6.250']);
+    await view.unmount();
+  });
+
+  it('leaves the tab on the proposals it already had when a rerun is stopped', async () => {
+    // Detect, then Detect again, then Stop. The earlier run's proposals are
+    // still on screen the whole way, so the tab is ready, not idle. The run
+    // being stopped was built before the first one landed, so it can only tell
+    // them apart by asking for the proposals as they are now.
+    const view = await renderComponent(<Probe />);
+    await view.step(() => {
+      api.detect();
+    });
+    await view.step(() => runs[0].finish({ probs: FIRST, lengthSamples: 10 }));
+    await settle(view);
+    expect(api.status).toBe('ready');
+
+    await view.step(() => {
+      api.detect();
+    });
+    await view.step(() => api.cancel());
+    await view.step(() => runs[1].finish(null));
+    await settle(view);
+
+    expect(api.status).toBe('ready');
+    expect(idsOf(api)).toBe('vad-0.100-1.000');
+    await view.unmount();
+  });
+
+  it('says nothing when a stopped run comes back as an error', async () => {
+    const view = await renderComponent(<Probe />);
+    await view.step(() => {
+      api.detect();
+    });
+    await view.step(() => runs[0].finish({ probs: FIRST, lengthSamples: 10 }));
+    await settle(view);
+
+    await view.step(() => {
+      api.detect();
+    });
+    await view.step(() => api.cancel());
+    await view.step(() => runs[1].fail(new Error('worker gone')));
+    await settle(view);
+
+    expect(api.status).toBe('ready');
+    expect(api.error).toBe(null);
+    expect(idsOf(api)).toBe('vad-0.100-1.000');
     await view.unmount();
   });
 
@@ -113,9 +190,8 @@ describe('a detection run that is not the one on screen', () => {
     await view.step(() => runs[0].finish({ probs: FIRST, lengthSamples: 10 }));
     await settle(view);
 
-    expect(seq).toEqual(['']);
+    expect(seq).toEqual(['idle:', 'running:', 'idle:']);
     expect(api.hasAnalysis).toBe(false);
-    expect(api.status).toBe('idle');
     await view.unmount();
   });
 });
