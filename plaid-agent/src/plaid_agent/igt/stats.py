@@ -1,5 +1,5 @@
 """Corpus-wide reads: numbers, worklists, lexicon and integrity reports, and
-sequence search. Project-wide they run on the query engine (see corpus.py);
+sequence search. Project-wide they run on the query engine (see queries.py);
 with ``document=`` they scan that one document, which is also the reference
 implementation the query path is tested against. check_integrity always
 scans (it inspects raw text)."""
@@ -137,7 +137,7 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
         def total(ids):
             return _sum_numbers([rows[i] for i in ids], project, [d for d in docs if d.id in ids])
     else:
-        from .corpus import q_corpus_numbers
+        from .queries import q_corpus_numbers
         names = ws.corpus.doc_names()
         n_docs = len(names)
         if by is None:
@@ -221,7 +221,7 @@ def t_frequency_list(ws: Workspace, what: str = 'wordform', document: Optional[s
     if what_l not in ('wordform', 'word', 'morpheme'):
         field = ws.project.field(what)
     if not ws.use_scan(document):
-        from .corpus import q_frequency_list
+        from .queries import q_frequency_list
         items, spread, empty = q_frequency_list(ws, what_l, field, limit, min_count)
         return _frequency_lines(items, spread, empty, field, what_l, limit,
                                 ws.corpus.clipped_note(_freq_noun(field, what_l)))
@@ -355,7 +355,7 @@ def t_worklist(ws: Workspace, kind: str = 'unglossed', field: Optional[str] = No
     if f and f.scope == 'Sentence':
         lvl = 'sentence'
     if not ws.use_scan(document):
-        from .corpus import q_worklist
+        from .queries import q_worklist
         counts, examples = q_worklist(ws, kind, f, lvl, user)
         return _worklist_lines(kind, f, lvl, limit, counts, examples, user,
                                ws.corpus.clipped_note(f'{lvl}s'))
@@ -491,7 +491,7 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
     gloss_items: Dict[str, set] = defaultdict(set)            # corpus gloss -> items
     stale: Counter = Counter()                                # (linked form, entry form) -> links
     if not ws.prefer_scan:
-        from .corpus import q_lexicon_usage
+        from .queries import q_lexicon_usage
         uses, use_docs, corpus_gloss, gloss_items, stale = q_lexicon_usage(ws, vocabs, items)
         docs = []
     for d in docs:
@@ -763,7 +763,7 @@ def t_sequence_search(ws: Workspace, sequence: list, adjacent: bool = True, docu
         out.append(f'{tag}s{s.index} {shown}' + ''.join(
             f'\n    w{i} ' + render_word(s.words[i - 1], ws.project)[len(s.words[i - 1].ref) + 1:] for i in matches))
     if not ws.use_scan(document):
-        from .corpus import q_sequence
+        from .queries import q_sequence
         found, total = q_sequence(ws, sequence, bool(adjacent), bool(regex), limit)
         clipped = ws.corpus.clipped_note('matches')
         for d, s, word_ids in found:

@@ -594,7 +594,7 @@ def test_a_read_that_does_not_fit_says_so_and_where_to_continue(monkeypatch):
 
 
 def test_hits_from_one_document_are_capped_and_the_rest_counted():
-    from plaid_agent.igt.corpus import _hit_lines
+    from plaid_agent.igt.queries import _hit_lines
     w = scan_ws(FakeClient())
     c = w.corpus
     doc = w.doc('d1')

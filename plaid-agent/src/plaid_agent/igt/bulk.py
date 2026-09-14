@@ -113,7 +113,7 @@ REPLACE_MAX = 20000  # candidates one pass may consider; past it, narrow and go 
 
 
 def _scoped_replace(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str, Any]]:
-    from .corpus import q_replace_in_field, rx
+    from .queries import q_replace_in_field, rx
     f = ws.project.field(a['field'])
     rep = _replacer(a['pattern'], a.get('replacement') or '', bool(a.get('regex')), bool(a.get('whole')),
                     bool(a.get('case_sensitive')))
@@ -139,7 +139,7 @@ def _lexicon_renames(ws: Workspace, rep) -> List[Dict[str, Any]]:
 
 
 def _scoped_respell(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str, Any]]:
-    from .corpus import q_respell_all, rx
+    from .queries import q_respell_all, rx
     rep = _replacer(a['pattern'], a.get('replacement') or '', bool(a.get('regex')), bool(a.get('whole')),
                     bool(a.get('case_sensitive')))
     spec = rx(a['pattern'], regex=bool(a.get('regex')), whole=bool(a.get('whole')),
@@ -154,7 +154,7 @@ def _scoped_respell(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str
 
 
 def _scoped_copy(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str, Any]]:
-    from .corpus import q_copy_to_orthography
+    from .queries import q_copy_to_orthography
     target = ws.project.orthography(a['orthography'])
     src = None if (a.get('source') or 'baseline').lower() == 'baseline' else ws.project.orthography(a['source'])
     staged = q_copy_to_orthography(ws, target, src, bool(a.get('overwrite')), cap)
@@ -165,7 +165,7 @@ def _scoped_copy(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str, A
 
 
 def _scoped_set_for_form(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str, Any]]:
-    from .corpus import q_set_field_for_form
+    from .queries import q_set_field_for_form
     f = ws.project.field(a['field'])
     return q_set_field_for_form(ws, a['form'], f, '' if a.get('value') is None else str(a['value']),
                                 bool(a.get('only_empty', True)), cap)
@@ -407,7 +407,7 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
 def _set_analysis_for_form_q(ws: Workspace, form: str, morphemes: list, skip_analyzed: bool) -> str:
     """The query path: word occurrences and their morpheme chains by query,
     then one set_analysis op per word."""
-    from .corpus import q_analysis_targets, _docs_of
+    from .queries import q_analysis_targets, _docs_of
     if not ws.project.morpheme_layer_id:
         raise ToolError('This project has no morpheme layer.')
     out = parse_analysis(ws, morphemes)
@@ -468,7 +468,7 @@ def links_to_in(doc, item_id: str) -> List[Dict[str, Any]]:
 
 def _links_to(ws: Workspace, item_id: str) -> List[Dict[str, Any]]:
     if not ws.prefer_scan:
-        from .corpus import q_entry_links
+        from .queries import q_entry_links
         return q_entry_links(ws, item_id)
     out = []
     for doc in ws.all_docs():

@@ -91,7 +91,7 @@ def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document
     if where_l not in ('baseline', 'morpheme'):
         field = ws.project.field(where_name)
     if not ws.use_scan(document):
-        from .corpus import q_search
+        from .queries import q_search
         out, total = q_search(ws, pattern, where_l, field, bool(regex), limit, bool(case_sensitive))
         return _finish(out, total, limit, 'hits')
     docs = [ws.doc(document)] if document else ws.all_docs()
@@ -202,7 +202,7 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
         if field.scope == 'Sentence':
             raise ToolError('concordance works on words and morphemes; use search for sentence fields')
     if not ws.use_scan(document):
-        from .corpus import q_concordance_hits
+        from .queries import q_concordance_hits
         hits, total = q_concordance_hits(ws, pattern, where_l, field, bool(regex), limit, bool(case_sensitive))
     else:
         # Whole-form match by default (a concordance of "ar" must not include
@@ -296,7 +296,7 @@ def t_analyses_of(ws: Workspace, form: Optional[str] = None, document: Optional[
 
 def _analyses_of_one(ws: Workspace, form: str, document: Optional[str]) -> str:
     if not ws.use_scan(document):
-        from .corpus import q_analyses_of
+        from .queries import q_analyses_of
         return q_analyses_of(ws, form)
     key = form.casefold()
     docs = [ws.doc(document)] if document else ws.all_docs()
@@ -397,7 +397,7 @@ def t_lexicon_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Op
     word_links, morph_links, mwes, exs = 0, 0, 0, []
     examples = read_int(examples, 'examples', 3, minimum=0, maximum=20)
     if not ws.prefer_scan:
-        from .corpus import q_entry_usage
+        from .queries import q_entry_usage
         word_links, morph_links, mwes, exs = q_entry_usage(ws, target['id'], examples)
     seen_mwes = set()
     for doc in (ws.all_docs() if ws.prefer_scan else []):
@@ -494,7 +494,7 @@ def t_check_consistency(ws: Workspace, field: str, document: Optional[str] = Non
     (or linked but empty)."""
     f = ws.project.field(field)
     if not ws.use_scan(document):
-        from .corpus import q_consistency
+        from .queries import q_consistency
         values, by_form, (unlinked_n, unlinked), (linked_empty_n, linked_empty) = q_consistency(ws, f)
         return _consistency_lines(ws, f, values, by_form, unlinked_n, unlinked, linked_empty_n, linked_empty,
                                   ws.corpus.clipped_note(f'{f.name} values'))

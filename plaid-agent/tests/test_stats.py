@@ -367,7 +367,7 @@ def test_set_analysis_for_form_shows_the_guards_the_real_plan(monkeypatch):
     t_set_analysis makes looked at an empty plan: a word already being split,
     a corpus-wide change reaching the document, a restore. Both paths now
     refuse, and a refusal leaves the plan as it was."""
-    from plaid_agent.igt import corpus as igt_corpus
+    from plaid_agent.igt import queries as igt_queries
 
     analysis = {'form': 'GAM', 'morphemes': [{'form': 'gam', 'fields': {'Morph Gloss': 'fish'}}]}
 
@@ -391,7 +391,7 @@ def test_set_analysis_for_form_shows_the_guards_the_real_plan(monkeypatch):
     w = ws()
     w.prefer_scan = False
     w.doc('d1')
-    monkeypatch.setattr(igt_corpus, 'q_analysis_targets', lambda ws_, form, skip, cap: (
+    monkeypatch.setattr(igt_queries, 'q_analysis_targets', lambda ws_, form, skip, cap: (
         [{'id': 'w-2', 'document': 'd1', 'text': 't1', 'begin': 7, 'end': 10, 'value': 'gam'}], {}, {}))
     w.ops.append({'kind': 'bulk_scope', 'tool': 'replace_in_field', 'args': {}, 'counts': {},
                   'count': 1, 'documents': ['d1'], 'label': 'a corpus-wide change'})

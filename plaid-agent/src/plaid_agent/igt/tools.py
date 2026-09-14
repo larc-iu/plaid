@@ -591,7 +591,7 @@ def t_confirm(ws: Workspace, document: Optional[str] = None, refs=None, field: O
             if ws.prefer_scan:
                 docs = ws.all_docs()
             else:
-                from .corpus import q_review_docs
+                from .queries import q_review_docs
                 ids = q_review_docs(ws, f)
                 if len(ids) > MAX_CONFIRM_DOCS:
                     raise ToolError(f'{len(ids)} documents have annotations awaiting review, more than the '
