@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@ui/components/ui/button';
 import { Slider } from '@ui/components/ui/slider';
 import {
@@ -63,12 +63,18 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
   // keeps every frame.
   const shownTime = useThrottledValue(currentTime, RUNNING_TIME_MS, { bypass: !isPlaying });
 
-  // Expose media element reference to parent
-  useEffect(() => {
-    if (mediaRef.current && onMediaElementReady) {
-      onMediaElementReady(mediaRef.current);
-    }
-  }, [onMediaElementReady]);
+  // Hand the element to the tab as a ref callback rather than from an effect.
+  // An effect runs after the render that mounted the element, and whatever it
+  // tells the tab arrives too late for that render: the timeline drew its
+  // first frame with no element at all. A ref callback runs at commit, and
+  // runs again with null when the element goes.
+  const attachMedia = useCallback(
+    (element) => {
+      mediaRef.current = element;
+      onMediaElementReady?.(element);
+    },
+    [onMediaElementReady],
+  );
 
   const togglePlayback = async () => {
     if (mediaRef.current) {
@@ -190,7 +196,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
 
           {/* Media Element - Use video element for everything since it can play both video and audio */}
           <video
-            ref={mediaRef}
+            ref={attachMedia}
             src={mediaUrl}
             controls={false} // We provide custom controls
             style={{

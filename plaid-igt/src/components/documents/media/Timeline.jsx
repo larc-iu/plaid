@@ -113,7 +113,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
     handleAlignmentCreated,
     timelineRef,
     needleRef,
-    timelineContainerRef,
+    attachTimelineContainer,
     setTimelineScrollLeft,
     autoScrollToTime,
     TIMELINE_HEIGHT,
@@ -201,7 +201,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
 
           {/* Timeline Visualization */}
           <div
-            ref={timelineContainerRef}
+            ref={attachTimelineContainer}
             style={{
               overflowX: 'auto',
               border: '1px solid hsl(var(--border))',

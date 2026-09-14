@@ -100,6 +100,14 @@ export const useMediaOperations = () => {
   const mediaElementRef = useRef(null);
   const autoScrollToTimeRef = useRef(null);
 
+  // The player's element, in state as well as in the ref. The ref is for the
+  // imperative work here (seek, play, pause), which always runs after the
+  // element has registered. The state is for everything downstream: the
+  // timeline derives its needle and its click target from the element, and a
+  // ref re-renders nothing, so the timeline was blind to the element until
+  // some unrelated change happened to re-render it.
+  const [mediaElement, setMediaElementState] = useState(null);
+
   // Local media UI state.
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -273,9 +281,11 @@ export const useMediaOperations = () => {
     active: detectRun.running && !detectSpot.service,
   });
 
-  // Media playback operations
+  // Media playback operations. This is the player's ref callback, so it runs
+  // at commit with the element, and again with null when the element goes.
   const setMediaElement = useCallback((element) => {
     mediaElementRef.current = element;
+    setMediaElementState(element);
     // Apply the current volume to a freshly-registered element. This covers the
     // element mounting after the initial 0.8 (or a later value) was set, since
     // the `[volume]` effect below won't re-run just because the ref changed.
@@ -886,6 +896,7 @@ export const useMediaOperations = () => {
     alignmentTokens,
 
     // Media state
+    mediaElement,
     currentTime,
     setCurrentTime,
     duration,

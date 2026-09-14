@@ -20,7 +20,11 @@ const FIT_MARGIN = 8;
 
 export const useTimelineOperations = (mediaOps) => {
   const doc = mediaOps.doc;
-  const mediaElement = mediaOps.mediaElementRef.current;
+  // The element as state, not as `mediaElementRef.current`. A ref read during
+  // render re-renders nothing when it fills in, so the needle loop and the
+  // click target were both dead until something else happened to re-render
+  // the timeline.
+  const mediaElement = mediaOps.mediaElement;
 
   // Local timeline state
   const [isDragging, setIsDragging] = useState(false);
@@ -30,7 +34,6 @@ export const useTimelineOperations = (mediaOps) => {
   // Resize state management
   const [isResizing, setIsResizing] = useState(false);
   const [resizingToken, setResizingToken] = useState(null);
-  const [resizingHandle, setResizingHandle] = useState(null); // 'left' or 'right'
   const [tempTokenBounds, setTempTokenBounds] = useState(null);
 
   // Virtualization state
@@ -40,7 +43,20 @@ export const useTimelineOperations = (mediaOps) => {
   const timelineRef = useRef(null);
   const needleRef = useRef(null);
   const timelineContainerRef = useRef(null);
+  // The scrolling box in state as well, for the one thing that has to happen
+  // WHEN it arrives rather than whenever it is next read: the wheel listener
+  // goes on the node itself, so the effect that adds it has to re-run then.
+  const [timelineContainer, setTimelineContainer] = useState(null);
+  const attachTimelineContainer = useCallback((node) => {
+    timelineContainerRef.current = node;
+    setTimelineContainer(node);
+  }, []);
   const animationFrameRef = useRef(null);
+  // A resize in progress: the token, which edge, and the bounds the last move
+  // computed. In a ref because the move and the release are separate native
+  // events, and the release must commit what the last move worked out rather
+  // than what the handler was created with.
+  const resizeRef = useRef({ token: null, handle: null, bounds: null });
   // Pending zoom-to-pointer anchor. Set by the ctrl+wheel handler, consumed by a
   // layout effect once the new pixelsPerSecond (and thus the timeline width) has
   // committed — see the wheel handler below.
@@ -224,53 +240,53 @@ export const useTimelineOperations = (mediaOps) => {
     event.stopPropagation();
     event.preventDefault();
 
-    setIsResizing(true);
-    setResizingToken(token);
-    setResizingHandle(handle);
-    setTempTokenBounds({
+    const bounds = {
       start: token.metadata?.timeBegin || 0,
       end: token.metadata?.timeEnd || 0,
-    });
+    };
+    resizeRef.current = { token, handle, bounds };
+    setIsResizing(true);
+    setResizingToken(token);
+    setTempTokenBounds(bounds);
   }, []);
 
   const handleResizeMove = useCallback(
     (event) => {
-      if (!isResizing || !resizingToken) return;
+      const { token, handle, bounds } = resizeRef.current;
+      if (!token || !bounds) return;
 
       const currentTime = getTimeFromPosition(event.clientX);
 
-      setTempTokenBounds((prevBounds) => {
-        if (!prevBounds) return prevBounds;
-
-        let newStart = prevBounds.start;
-        let newEnd = prevBounds.end;
-
-        // An edge stops at the recording's ends, 0.1 s short of the segment's
-        // other edge, and at any segment it may not overlap (alignmentTimes).
-        const clamped = clampResize(
-          doc.alignmentTokens || [],
-          resizingToken.id,
-          resizingHandle,
-          currentTime,
-          { duration: mediaOps.duration },
-        );
-        if (resizingHandle === 'left') newStart = clamped;
-        else if (resizingHandle === 'right') newEnd = clamped;
-
-        return { start: newStart, end: newEnd };
+      // An edge stops at the recording's ends, 0.1 s short of the segment's
+      // other edge, and at any segment it may not overlap (alignmentTimes).
+      const clamped = clampResize(doc.alignmentTokens || [], token.id, handle, currentTime, {
+        duration: mediaOps.duration,
       });
+      const next =
+        handle === 'left'
+          ? { start: clamped, end: bounds.end }
+          : handle === 'right'
+            ? { start: bounds.start, end: clamped }
+            : bounds;
+
+      resizeRef.current = { token, handle, bounds: next };
+      setTempTokenBounds(next);
     },
-    [isResizing, resizingToken, resizingHandle, getTimeFromPosition, mediaOps.duration, doc],
+    [getTimeFromPosition, mediaOps.duration, doc],
   );
 
   const handleResizeEnd = useCallback(async () => {
-    if (!isResizing || !resizingToken || !tempTokenBounds) return;
+    const { token, bounds } = resizeRef.current;
+    if (!token || !bounds) return;
+    // Taken out of the ref before the write, so a second release during it is
+    // a no-op rather than a second write of the same bounds.
+    resizeRef.current = { token: null, handle: null, bounds: null };
 
     try {
       // The domain method does the optimistic patch + reload-on-error.
-      await doc.updateAlignmentBounds(resizingToken.id, {
-        timeBegin: tempTokenBounds.start,
-        timeEnd: tempTokenBounds.end,
+      await doc.updateAlignmentBounds(token.id, {
+        timeBegin: bounds.start,
+        timeEnd: bounds.end,
       });
 
       // Clear selection state
@@ -279,10 +295,9 @@ export const useTimelineOperations = (mediaOps) => {
       // Reset resize state
       setIsResizing(false);
       setResizingToken(null);
-      setResizingHandle(null);
       setTempTokenBounds(null);
     }
-  }, [isResizing, resizingToken, tempTokenBounds, doc, handleAlignmentCreated]);
+  }, [doc, handleAlignmentCreated]);
 
   const handleMouseMove = useCallback(
     (event) => {
@@ -362,9 +377,11 @@ export const useTimelineOperations = (mediaOps) => {
     };
   }, [isResizing, handleResizeMove, handleResizeEnd]);
 
-  // Handle wheel events with proper passive listener setup
+  // Handle wheel events with proper passive listener setup. Keyed on the
+  // scrolling box itself, so a box that mounts after this hook first runs gets
+  // the listener when it arrives.
   useEffect(() => {
-    const container = timelineContainerRef.current;
+    const container = timelineContainer;
     if (!container) return;
 
     const handleWheel = (event) => {
@@ -415,7 +432,7 @@ export const useTimelineOperations = (mediaOps) => {
     return () => {
       container.removeEventListener('wheel', handleWheel);
     };
-  }, [mediaOps.pixelsPerSecond, handlePixelsPerSecondChange]);
+  }, [timelineContainer, mediaOps.pixelsPerSecond, handlePixelsPerSecondChange]);
 
   // Apply a pending zoom-to-pointer anchor after the new pixelsPerSecond (and
   // therefore the timeline width) has committed to the DOM. Keeping the time
@@ -449,10 +466,10 @@ export const useTimelineOperations = (mediaOps) => {
         needleRef.current.style.left = `${position}px`;
 
         // Auto-scroll to keep needle in view
-        const timelineContainer = timelineContainerRef.current; // The scrollable Box
-        if (timelineContainer) {
-          const containerWidth = timelineContainer.clientWidth;
-          const scrollLeft = timelineContainer.scrollLeft;
+        const box = timelineContainerRef.current; // The scrollable Box
+        if (box) {
+          const containerWidth = box.clientWidth;
+          const scrollLeft = box.scrollLeft;
           const scrollRight = scrollLeft + containerWidth;
 
           // Add some padding so needle doesn't stick to edge
@@ -461,10 +478,10 @@ export const useTimelineOperations = (mediaOps) => {
           // Check if needle is off-screen and auto-scroll
           if (position < scrollLeft + padding) {
             // Needle going off left side
-            timelineContainer.scrollLeft = Math.max(0, position - padding);
+            box.scrollLeft = Math.max(0, position - padding);
           } else if (position > scrollRight - padding) {
             // Needle going off right side
-            timelineContainer.scrollLeft = position - containerWidth + padding;
+            box.scrollLeft = position - containerWidth + padding;
           }
         }
       }
@@ -528,10 +545,11 @@ export const useTimelineOperations = (mediaOps) => {
     handleSelectionCreate,
     handleAlignmentCreated,
 
-    // Refs
+    // Refs. The scrolling box goes out as its ref CALLBACK: what it is wired
+    // to has to re-render the hook, and a ref object never does.
     timelineRef,
     needleRef,
-    timelineContainerRef,
+    attachTimelineContainer,
 
     // State setters for external use
     setTimelineScrollLeft,
