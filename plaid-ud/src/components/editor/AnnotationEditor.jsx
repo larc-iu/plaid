@@ -287,7 +287,9 @@ export const AnnotationEditor = () => {
   const readOnly = !canEdit || !!selectedEntry || !!writeLockHeld;
 
   const layerInfo = shown?.layerInfo;
-  const processedSentences = useMemo(() => shown?.sentences || [], [shown]);
+  // Keyed on the rows, not the instance: a ConlluDocument mutates in place and
+  // keeps its identity, and only its getters change.
+  const processedSentences = useMemo(() => shown?.sentences || [], [shown?.sentences]);
 
   // One page of sentences in the DOM. Everything a sentence is addressed by
   // stays GLOBAL to the document — its number, its tab order, what the
