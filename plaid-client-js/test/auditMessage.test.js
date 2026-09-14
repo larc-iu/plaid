@@ -30,13 +30,26 @@ test('per-call auditMessage is appended to that op only', () => {
   assert.ok(!without.includes('audit-message'));
 });
 
-test('GET requests never carry an audit-message', () => {
+// A read never joins a batch, so this one is observed on the wire rather than
+// in the queue: the fetch is stubbed and the URL it was given is the assertion.
+test('GET requests never carry an audit-message', async () => {
   const client = makeClient();
-  client.beginBatch();
-  client.spans.get('S1');
-  const paths = client.batchOperations.map(op => op.path);
-  client.abortBatch();
-  assert.ok(paths.every(p => !p.includes('audit-message')));
+  const urls = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    urls.push(String(url));
+    return new Response('{}', {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+  try {
+    await client.spans.get('S1');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  assert.equal(urls.length, 1);
+  assert.ok(!urls[0].includes('audit-message'));
 });
 
 test('special characters are URL-encoded', () => {

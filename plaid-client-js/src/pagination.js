@@ -10,6 +10,11 @@
  * Each helper threads the client through to `client._request`, so auth
  * headers, base URL, and response transforms all apply exactly as for any
  * other request.
+ *
+ * A page is a read, so every request these helpers make carries `bypassBatch`
+ * (see the three classes at the top of http.js). That is what lets them work
+ * while a batch is open on the same client: each page is answered from the
+ * pool, in order, against the state the batch has not committed yet.
  */
 
 // Merge caller query params with paging params, dropping undefined/null so we
@@ -26,11 +31,6 @@ function buildQueryParams(query, limit, cursor) {
  * following `nextCursor` until it is null. This is what `.list()` calls so it
  * stays backward compatible with the pre-pagination (bare-array) contract.
  *
- * NOTE: This auto-paginates and therefore CANNOT be used inside a batch — each
- * page's request needs the previous page's `nextCursor`, which doesn't exist
- * until the batch executes. It throws immediately when `client.isBatching` is
- * true. Use `listPage` for a single page inside a batch.
- *
  * @param {object} client - PlaidClient instance
  * @param {string} path - API path, e.g. '/api/v1/projects'
  * @param {object} [opts]
@@ -39,17 +39,13 @@ function buildQueryParams(query, limit, cursor) {
  * @returns {Promise<Array>} The concatenated entries across all pages
  */
 export async function listAll(client, path, { pageSize = 1000, query = {} } = {}) {
-  if (client.isBatching) {
-    throw new Error(
-      `Cannot auto-paginate ${path} inside a batch: list methods follow cursors across multiple requests, which a batch cannot do. Use listPage() for a single page inside a batch, or call list() outside the batch.`,
-    );
-  }
   const all = [];
   let cursor = null;
   let prevCursor;
   do {
     const response = await client._request('GET', path, {
       queryParams: buildQueryParams(query, pageSize, cursor),
+      bypassBatch: true,
     });
     // Compatibility shim: a non-paginated server (or proxy) may return a bare
     // array. Treat it as a terminal full result with no further paging.
@@ -80,37 +76,24 @@ export async function listAll(client, path, { pageSize = 1000, query = {} } = {}
 /**
  * Fetch a single page and return the raw envelope.
  *
- * `bypassBatch` is for a read that belongs to whoever asked for it rather than
- * to whatever batch happens to be open on the client: chrome that polls or
- * loads beside an import or a bulk edit. Without it the page is queued into
- * the batch, the caller gets `{batched: true}` instead of an envelope, and the
- * queued GET takes a slot in the batch's results array. Left off by default,
- * because a read-your-writes page inside a batch is deliberate in some callers.
- *
  * @param {object} client - PlaidClient instance
  * @param {string} path - API path
  * @param {object} [opts]
  * @param {number} [opts.limit] - Page size (1..1000; server default 100)
  * @param {string} [opts.cursor] - Opaque cursor from a previous page
  * @param {object} [opts.query={}] - Extra query params
- * @param {boolean} [opts.bypassBatch=false] - Go over the wire even while a batch is open
  * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
  */
-export async function listPage(client, path, { limit, cursor, query = {}, bypassBatch } = {}) {
+export async function listPage(client, path, { limit, cursor, query = {} } = {}) {
   return client._request('GET', path, {
     queryParams: buildQueryParams(query, limit, cursor),
-    bypassBatch,
+    bypassBatch: true,
   });
 }
 
 /**
  * Async generator yielding each page's entries array in turn, following
  * `nextCursor` until it is null.
- *
- * NOTE: This auto-paginates and therefore CANNOT be used inside a batch — each
- * page's request needs the previous page's `nextCursor`, which doesn't exist
- * until the batch executes. It throws on first iteration when
- * `client.isBatching` is true. Use `listPage` for a single page inside a batch.
  *
  * @param {object} client - PlaidClient instance
  * @param {string} path - API path
@@ -120,16 +103,12 @@ export async function listPage(client, path, { limit, cursor, query = {}, bypass
  * @yields {Array} The entries array for each page
  */
 export async function* iterPages(client, path, { pageSize = 1000, query = {} } = {}) {
-  if (client.isBatching) {
-    throw new Error(
-      `Cannot auto-paginate ${path} inside a batch: list methods follow cursors across multiple requests, which a batch cannot do. Use listPage() for a single page inside a batch, or call list() outside the batch.`,
-    );
-  }
   let cursor = null;
   let prevCursor;
   do {
     const response = await client._request('GET', path, {
       queryParams: buildQueryParams(query, pageSize, cursor),
+      bypassBatch: true,
     });
     const entries = (response && Array.isArray(response.entries)) ? response.entries : [];
     // Suppress the trailing empty page that the server emits when a collection's

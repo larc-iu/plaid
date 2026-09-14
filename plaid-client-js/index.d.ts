@@ -1101,12 +1101,22 @@ export declare class PlaidClient {
   /** Fired once on HTTP 401 (see PlaidClientOptions.onAuthError). */
   onAuthError: ((error: Error) => void) | null;
 
-  // Batch control methods
+  // Batch control methods.
+  //
+  // Batch mode is one flag on the whole client, so it catches every write made
+  // while it is open, including writes made by code that knows nothing about
+  // the batch. Reads are never caught: every read method goes over the wire
+  // while a batch is open and is answered from the state the batch has not
+  // committed yet, so app chrome sharing a client with an importer keeps
+  // working. Neither are the calls that signal something out of band rather
+  // than write project data: stopping a service request, a service reporting
+  // its progress or result, taking and dropping a document lock, and the admin
+  // actions on the server itself.
   beginBatch(): void;
   submitBatch(): Promise<any[]>;
   abortBatch(): void;
   isBatchMode(): boolean;
-  /** Run `fn` with a batch open, then submit atomically (or abort if `fn` throws). Resolves to the results array. */
+  /** Run `fn` with a batch open, then submit atomically (or abort if `fn` throws). Resolves to the results array. Writes inside `fn` queue; reads go over the wire and see the pre-batch state. */
   batched(fn: () => void | Promise<void>): Promise<any[]>;
 
   // Strict mode methods

@@ -229,6 +229,7 @@ class PlaidClient {
        */
       get: (id, asOf) =>
         this._request("GET", `/api/v1/vocab-links/${id}`, {
+          bypassBatch: true,
           queryParams: { "as-of": asOf },
         }),
       /**
@@ -248,6 +249,7 @@ class PlaidClient {
        */
       get: (id, includeItems, asOf) =>
         this._request("GET", `/api/v1/vocab-layers/${id}`, {
+          bypassBatch: true,
           queryParams: { "include-items": includeItems, "as-of": asOf },
         }),
       /**
@@ -294,7 +296,6 @@ class PlaidClient {
       /**
        * List all vocab layers accessible to user. Transparently follows
        * pagination cursors and returns the full flat array.
-       * Cannot be used inside a batch (auto-paginates across requests); throws if called while batching — use listPage() for a single page in a batch.
        * @param {string} [asOf] - Temporal query timestamp
        */
       list: (asOf) =>
@@ -318,7 +319,6 @@ class PlaidClient {
        * @param {object} [opts]
        * @param {number} [opts.pageSize] - Per-request page size
        * @param {string} [opts.asOf] - Temporal query timestamp
-       * Cannot be used inside a batch (auto-paginates across requests); throws on first iteration if called while batching — use listPage() for a single page in a batch.
        * @returns {AsyncGenerator<Array>}
        */
       iterPages: ({ pageSize, asOf } = {}) =>
@@ -408,6 +408,7 @@ class PlaidClient {
        */
       get: (relationId, asOf) =>
         this._request("GET", `/api/v1/relations/${relationId}`, {
+          bypassBatch: true,
           queryParams: { "as-of": asOf },
         }),
       /**
@@ -526,6 +527,7 @@ class PlaidClient {
        */
       get: (spanLayerId, asOf) =>
         this._request("GET", `/api/v1/span-layers/${spanLayerId}`, {
+          bypassBatch: true,
           queryParams: { "as-of": asOf },
         }),
       /**
@@ -604,6 +606,7 @@ class PlaidClient {
        */
       get: (spanId, asOf) =>
         this._request("GET", `/api/v1/spans/${spanId}`, {
+          bypassBatch: true,
           queryParams: { "as-of": asOf },
         }),
       /**
@@ -785,6 +788,7 @@ class PlaidClient {
        */
       get: (textId, asOf) =>
         this._request("GET", `/api/v1/texts/${textId}`, {
+          bypassBatch: true,
           queryParams: { "as-of": asOf },
         }),
       /**
@@ -816,7 +820,6 @@ class PlaidClient {
       /**
        * List (or search) users. Transparently follows pagination cursors and
        * returns the full flat array. Admin-or-maintainer only.
-       * Cannot be used inside a batch (auto-paginates across requests); throws if called while batching — use listPage() for a single page in a batch.
        * @param {object} [opts]
        * @param {string} [opts.q] - Filter to users whose display name or email contains this text (case-insensitive)
        * @param {string} [opts.asOf] - Temporal query timestamp
@@ -844,7 +847,6 @@ class PlaidClient {
        * @param {string} [opts.q] - Filter to users whose display name or email contains this text (case-insensitive)
        * @param {number} [opts.pageSize] - Per-request page size
        * @param {string} [opts.asOf] - Temporal query timestamp
-       * Cannot be used inside a batch (auto-paginates across requests); throws on first iteration if called while batching — use listPage() for a single page in a batch.
        * @returns {AsyncGenerator<Array>}
        */
       iterPages: ({ q, pageSize, asOf } = {}) =>
@@ -874,7 +876,6 @@ class PlaidClient {
       /**
        * Get audit log for a user's actions. Transparently follows pagination
        * cursors and returns the full flat array.
-       * Cannot be used inside a batch (auto-paginates across requests); throws if called while batching — use listPage() for a single page in a batch.
        * @param {string} userId - The user ID
        * @param {string} [startTime] - Start of time range
        * @param {string} [endTime] - End of time range
@@ -925,6 +926,7 @@ class PlaidClient {
        */
       get: (id, asOf) =>
         this._request("GET", `/api/v1/users/${id}`, {
+          bypassBatch: true,
           queryParams: { "as-of": asOf },
         }),
       /**
@@ -994,7 +996,7 @@ class PlaidClient {
        */
       getAvatar: (id) =>
         this._request("GET", `/api/v1/users/${id}/avatar`, {
-          noBatch: true,
+          bypassBatch: true,
           binaryResponse: true,
         }),
       /**
@@ -1107,7 +1109,6 @@ class PlaidClient {
        * List a user's named API tokens. Never includes the signed token
        * string itself — that is only returned once, by create().
        * Transparently follows pagination cursors and returns the full flat array.
-       * Cannot be used inside a batch (auto-paginates across requests); throws if called while batching — use listPage() for a single page in a batch.
        * @param {string} userId - The user ID who owns the tokens
        */
       list: (userId) => listAll(this, `/api/v1/users/${userId}/tokens`),
@@ -1127,7 +1128,6 @@ class PlaidClient {
        * @param {string} userId - The user ID who owns the tokens
        * @param {object} [opts]
        * @param {number} [opts.pageSize] - Per-request page size
-       * Cannot be used inside a batch (auto-paginates across requests); throws on first iteration if called while batching — use listPage() for a single page in a batch.
        * @returns {AsyncGenerator<Array>}
        */
       iterPages: (userId, { pageSize } = {}) =>
@@ -1163,7 +1163,6 @@ class PlaidClient {
        * maintainer or admin on it. Never includes invite codes — the code is
        * returned once, by create(), and is not recoverable afterward.
        * Transparently follows pagination cursors and returns the full flat array.
-       * Cannot be used inside a batch (auto-paginates across requests); throws if called while batching — use listPage() for a single page in a batch.
        * @param {object} [opts]
        * @param {string} [opts.projectId] - List this project's invites instead of your own
        * @param {boolean} [opts.all] - List every invite on the server (admin only)
@@ -1193,7 +1192,6 @@ class PlaidClient {
        * @param {string} [opts.projectId] - List this project's invites instead of your own
        * @param {boolean} [opts.all] - List every invite on the server (admin only)
        * @param {number} [opts.pageSize] - Per-request page size
-       * Cannot be used inside a batch (auto-paginates across requests); throws on first iteration if called while batching — use listPage() for a single page in a batch.
        * @returns {AsyncGenerator<Array>}
        */
       iterPages: ({ projectId, all, pageSize } = {}) =>
@@ -1268,35 +1266,48 @@ class PlaidClient {
        * walks the media directory, so open it, do not poll it. Admin only.
        * @returns {Promise<{version: string, jvm: object, database: object, media: object, backup: object, settings: object}>}
        */
-      server: () => this._request("GET", "/api/v1/admin/server"),
+      server: () =>
+        this._request("GET", "/api/v1/admin/server", { bypassBatch: true }),
       /**
        * Take a database backup right now, outside the nightly schedule.
        * Resolves to the backup block with `ok` reporting whether the snapshot
        * succeeded. Uses VACUUM INTO, which only reads, so it is safe while
        * people are working. Admin only.
        * @returns {Promise<{ok: boolean, directory: string, backups: Array}>}
+       *
+       * Goes over the wire even while a batch is open, as every admin action
+       * on the server itself does: none of them writes project data, and a
+       * backup taken inside somebody's open write transaction is not what the
+       * caller asked for.
        */
-      backup: () => this._request("POST", "/api/v1/admin/backup"),
+      backup: () =>
+        this._request("POST", "/api/v1/admin/backup", { bypassBatch: true }),
       /**
        * Documents currently held by an editing lock, with who holds each and
        * when it expires on its own. Admin only.
        * @returns {Promise<{entries: Array<{documentId: string, userId: string, expiresAt: number}>}>}
        */
-      locks: () => this._request("GET", "/api/v1/admin/locks"),
+      locks: () =>
+        this._request("GET", "/api/v1/admin/locks", { bypassBatch: true }),
       /**
        * Drop the lock on a document whoever holds it. Idempotent. For a client
        * that went away without releasing one. Admin only.
        * @param {string} documentId - The document ID
        */
       releaseLock: (documentId) =>
-        this._request("DELETE", `/api/v1/admin/locks/${documentId}`),
+        this._request("DELETE", `/api/v1/admin/locks/${documentId}`, {
+          bypassBatch: true,
+        }),
       /**
        * Live login and invite rate-limit buckets: the address, the account
        * where there is one, failures inside the window, the limit, and whether
        * it is currently blocking. Admin only.
        * @returns {Promise<{windowMs: number, logins: Array, ips: Array, invites: Array}>}
        */
-      rateLimits: () => this._request("GET", "/api/v1/admin/rate-limits"),
+      rateLimits: () =>
+        this._request("GET", "/api/v1/admin/rate-limits", {
+          bypassBatch: true,
+        }),
       /**
        * Forget recorded rate-limit failures. With `ip`, clears that address,
        * narrowed to one account with `userId`. With neither, clears every
@@ -1307,6 +1318,7 @@ class PlaidClient {
        */
       clearRateLimits: ({ ip, userId } = {}) =>
         this._request("DELETE", "/api/v1/admin/rate-limits", {
+          bypassBatch: true,
           queryParams: { ip, "user-id": userId },
         }),
       /**
@@ -1330,6 +1342,7 @@ class PlaidClient {
        */
       logs: ({ limit, q, level, status, user, method } = {}) =>
         this._request("GET", "/api/v1/admin/logs", {
+          bypassBatch: true,
           queryParams: { limit, q, level, status, user, method },
         }),
       /**
@@ -1343,6 +1356,7 @@ class PlaidClient {
        */
       logFile: ({ lines } = {}) =>
         this._request("GET", "/api/v1/admin/logs/file", {
+          bypassBatch: true,
           queryParams: { lines },
         }),
       /**
@@ -1356,7 +1370,6 @@ class PlaidClient {
        * ask for a key convention identified by a segment in the middle, e.g.
        * `igt:assistant:*:meta:*`. Values come only with `includeValues`, and
        * are recased like any other body (see `userData.put`).
-       * Cannot be used inside a batch (auto-paginates across requests); throws if called while batching — use userDataPage() for a single page in a batch.
        * @param {object} [opts]
        * @param {string} [opts.prefix] - Only keys starting with this
        * @param {string} [opts.pattern] - Only keys matching this GLOB
@@ -1400,7 +1413,6 @@ class PlaidClient {
        * and op-type filter as the per-project read, with the entity scope
        * dropped. Admin only. Transparently follows pagination cursors and
        * returns the full flat array.
-       * Cannot be used inside a batch (auto-paginates across requests); throws if called while batching — use listPage() for a single page in a batch.
        * @param {object} [opts]
        * @param {string} [opts.startTime] - Only operations at or after this instant
        * @param {string} [opts.endTime] - Only operations at or before this instant
@@ -1438,7 +1450,6 @@ class PlaidClient {
         }),
       /**
        * Async-iterate the instance-wide audit log page by page. Admin only.
-       * Cannot be used inside a batch (auto-paginates across requests); throws on first iteration if called while batching — use listPage() for a single page in a batch.
        * @returns {AsyncGenerator<Array>}
        */
       iterPages: ({ startTime, endTime, opTypes, pageSize } = {}) =>
@@ -1473,6 +1484,7 @@ class PlaidClient {
           ? `/api/v1/projects/${projectId}/audit/tally`
           : "/api/v1/audit/tally";
         const result = await this._request("GET", path, {
+          bypassBatch: true,
           queryParams: {
             "start-time": startTime,
             "end-time": endTime,
@@ -1555,6 +1567,7 @@ class PlaidClient {
        */
       get: (tokenLayerId, asOf) =>
         this._request("GET", `/api/v1/token-layers/${tokenLayerId}`, {
+          bypassBatch: true,
           queryParams: { "as-of": asOf },
         }),
       /**
@@ -1585,23 +1598,34 @@ class PlaidClient {
        */
       checkLock: (documentId, asOf) =>
         this._request("GET", `/api/v1/documents/${documentId}/lock`, {
+          bypassBatch: true,
           queryParams: { "as-of": asOf },
         }),
       /**
-       * Acquire or refresh a document lock
+       * Acquire or refresh a document lock.
+       *
+       * Goes over the wire even while a batch is open. The lock is an
+       * out-of-band signal, not project data: a queued acquire is taken only
+       * when the batch submits, which is after every write it was meant to
+       * guard, and until then it answers success to a caller that does not
+       * hold it and cannot see the 423 saying somebody else does.
        * @param {string} documentId - The document ID
        */
       acquireLock: (documentId, auditMessage) =>
         this._request("POST", `/api/v1/documents/${documentId}/lock`, {
           auditMessage,
+          bypassBatch: true,
         }),
       /**
-       * Release a document lock
+       * Release a document lock. Goes over the wire even while a batch is
+       * open, for the same reason as acquireLock: queued, the lock is held
+       * until the batch submits, and not released at all if it aborts.
        * @param {string} documentId - The document ID
        */
       releaseLock: (documentId, auditMessage) =>
         this._request("DELETE", `/api/v1/documents/${documentId}/lock`, {
           auditMessage,
+          bypassBatch: true,
         }),
       /**
        * Get the media file for a document. Media is not versioned, so there is
@@ -1611,7 +1635,7 @@ class PlaidClient {
        */
       getMedia: (documentId) =>
         this._request("GET", `/api/v1/documents/${documentId}/media`, {
-          noBatch: true,
+          bypassBatch: true,
           binaryResponse: true,
         }),
       /**
@@ -1675,7 +1699,6 @@ class PlaidClient {
       /**
        * Get audit log for a document. Transparently follows pagination cursors
        * and returns the full flat array.
-       * Cannot be used inside a batch (auto-paginates across requests); throws if called while batching — use listPage() for a single page in a batch.
        * @param {string} documentId - The document ID
        * @param {string} [startTime] - Start of time range
        * @param {string} [endTime] - End of time range
@@ -1758,6 +1781,7 @@ class PlaidClient {
        */
       get: (documentId, includeBody, asOf, layers) =>
         this._request("GET", `/api/v1/documents/${documentId}`, {
+          bypassBatch: true,
           queryParams: {
             "include-body": includeBody,
             "as-of": asOf,
@@ -1899,7 +1923,6 @@ class PlaidClient {
       /**
        * Get audit log for a project. Transparently follows pagination cursors
        * and returns the full flat array.
-       * Cannot be used inside a batch (auto-paginates across requests); throws if called while batching — use listPage() for a single page in a batch.
        * @param {string} projectId - The project ID
        * @param {string} [startTime] - Start of time range
        * @param {string} [endTime] - End of time range
@@ -1955,6 +1978,7 @@ class PlaidClient {
        */
       myLastEdits: (projectId) =>
         this._request("GET", `/api/v1/projects/${projectId}/audit/last-edits`, {
+          bypassBatch: true,
           skipResponseTransform: true,
         }),
       /**
@@ -1983,12 +2007,12 @@ class PlaidClient {
        */
       get: (id, asOf) =>
         this._request("GET", `/api/v1/projects/${id}`, {
+          bypassBatch: true,
           queryParams: { "as-of": asOf },
         }),
       /**
        * List all documents in a project. Transparently follows pagination
        * cursors and returns the full flat array.
-       * Cannot be used inside a batch (auto-paginates across requests); throws if called while batching — use listPage() for a single page in a batch.
        *
        * Note: this endpoint does not support temporal (`as-of`) queries; the
        * server rejects `?as-of=` on the documents-list route with a 400.
@@ -2004,11 +2028,10 @@ class PlaidClient {
        * @param {object} [opts]
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
-       * @param {boolean} [opts.bypassBatch] - Go over the wire even while a batch is open
        * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
        */
-      listDocumentsPage: (id, { limit, cursor, bypassBatch } = {}) =>
-        listPage(this, `/api/v1/projects/${id}/documents`, { limit, cursor, bypassBatch }),
+      listDocumentsPage: (id, { limit, cursor } = {}) =>
+        listPage(this, `/api/v1/projects/${id}/documents`, { limit, cursor }),
       /**
        * Async-iterate a project's documents page by page; yields each page's
        * entries array.
@@ -2018,7 +2041,6 @@ class PlaidClient {
        * @param {string} id - The project ID
        * @param {object} [opts]
        * @param {number} [opts.pageSize] - Per-request page size
-       * Cannot be used inside a batch (auto-paginates across requests); throws on first iteration if called while batching — use listPage() for a single page in a batch.
        * @returns {AsyncGenerator<Array>}
        */
       iterDocuments: (id, { pageSize } = {}) =>
@@ -2052,7 +2074,6 @@ class PlaidClient {
       /**
        * List all projects accessible to user. Transparently follows pagination
        * cursors and returns the full flat array.
-       * Cannot be used inside a batch (auto-paginates across requests); throws if called while batching — use listPage() for a single page in a batch.
        * @param {string} [asOf] - Temporal query timestamp
        */
       list: (asOf) =>
@@ -2076,7 +2097,6 @@ class PlaidClient {
        * @param {object} [opts]
        * @param {number} [opts.pageSize] - Per-request page size
        * @param {string} [opts.asOf] - Temporal query timestamp
-       * Cannot be used inside a batch (auto-paginates across requests); throws on first iteration if called while batching — use listPage() for a single page in a batch.
        * @returns {AsyncGenerator<Array>}
        */
       iterPages: ({ pageSize, asOf } = {}) =>
@@ -2134,6 +2154,7 @@ class PlaidClient {
        */
       get: (textLayerId, asOf) =>
         this._request("GET", `/api/v1/text-layers/${textLayerId}`, {
+          bypassBatch: true,
           queryParams: { "as-of": asOf },
         }),
       /**
@@ -2246,6 +2267,7 @@ class PlaidClient {
        */
       get: (id, asOf) =>
         this._request("GET", `/api/v1/vocab-items/${id}`, {
+          bypassBatch: true,
           queryParams: { "as-of": asOf },
         }),
       /**
@@ -2326,6 +2348,7 @@ class PlaidClient {
        */
       get: (relationLayerId, asOf) =>
         this._request("GET", `/api/v1/relation-layers/${relationLayerId}`, {
+          bypassBatch: true,
           queryParams: { "as-of": asOf },
         }),
       /**
@@ -2394,6 +2417,7 @@ class PlaidClient {
        */
       get: (tokenId, asOf) =>
         this._request("GET", `/api/v1/tokens/${tokenId}`, {
+          bypassBatch: true,
           queryParams: { "as-of": asOf },
         }),
       /**
@@ -2715,7 +2739,10 @@ class PlaidClient {
        * Get a logical-operation group (its label + creator).
        * @param {string} id - The group id
        */
-      get: (id) => this._request("GET", `/api/v1/operation-groups/${id}`),
+      get: (id) =>
+        this._request("GET", `/api/v1/operation-groups/${id}`, {
+          bypassBatch: true,
+        }),
       /**
        * Relabel a logical-operation group after the fact. Owner or admin only.
        * @param {string} id - The group id
@@ -2756,7 +2783,8 @@ class PlaidClient {
        * Read one comment.
        * @param {string} id - The comment id
        */
-      get: (id) => this._request("GET", `/api/v1/comments/${id}`),
+      get: (id) =>
+        this._request("GET", `/api/v1/comments/${id}`, { bypassBatch: true }),
       /**
        * Edit a comment's body. Only the comment's AUTHOR may do this - not
        * maintainers, not admins. Sets `edited` on the comment.
@@ -2774,7 +2802,6 @@ class PlaidClient {
       /**
        * List comments in a project, oldest first. Transparently follows
        * pagination cursors and returns the full flat array.
-       * Cannot be used inside a batch (auto-paginates across requests); throws if called while batching - use listPage() for a single page in a batch.
        * @param {string} projectId - The project to read
        * @param {object} [filters] - Narrow the scope
        * @param {string} [filters.documentId] - Every comment anywhere in one document
@@ -2815,7 +2842,6 @@ class PlaidClient {
         }),
       /**
        * Async-iterate a project's comments page by page; yields each page's entries array.
-       * Cannot be used inside a batch (auto-paginates across requests); throws on first iteration if called while batching - use listPage() for a single page in a batch.
        * @param {string} projectId - The project to read
        * @param {object} [opts]
        * @param {number} [opts.pageSize] - Per-request page size
@@ -2850,6 +2876,7 @@ class PlaidClient {
        */
       counts: (projectId, { documentId, entityType, entityId } = {}) =>
         this._request("GET", `/api/v1/projects/${projectId}/comments/counts`, {
+          bypassBatch: true,
           queryParams: {
             "document-id": documentId,
             "entity-type": entityType,
@@ -2861,7 +2888,6 @@ class PlaidClient {
        * List the comments on a vocabulary's entries, oldest first. Requires
        * read access to the vocabulary. Transparently follows pagination
        * cursors and returns the full flat array.
-       * Cannot be used inside a batch (auto-paginates across requests); throws if called while batching - use listInVocabPage() for a single page in a batch.
        * @param {string} vocabId - The vocab layer to read
        * @param {object} [filters]
        * @param {string} [filters.entityId] - One entry's thread
@@ -2898,6 +2924,7 @@ class PlaidClient {
           "GET",
           `/api/v1/vocab-layers/${vocabId}/comments/counts`,
           {
+            bypassBatch: true,
             queryParams: { "entity-id": entityId },
             skipResponseTransform: true,
           },
@@ -3019,7 +3046,10 @@ class PlaidClient {
     }
   }
 
-  /** Begin a batch of operations. Subsequent API calls will be queued. */
+  /**
+   * Begin a batch of operations. Subsequent WRITES are queued; reads and
+   * out-of-band signals still go over the wire (see `batched`).
+   */
   beginBatch() {
     this.isBatching = true;
     this.batchOperations = [];
@@ -3157,6 +3187,18 @@ class PlaidClient {
    * parents created earlier in the same `fn`; any op's failure rolls the whole
    * batch back). Not nestable. Named `batched()` because `client.batch` is the
    * low-level batch resource.
+   *
+   * WRITES are what a batch queues, and batch mode is one flag on the whole
+   * client, so it catches every write made while it is open, including writes
+   * made by code that knows nothing about this batch. READS are never caught:
+   * every read method goes over the wire while a batch is open and is answered
+   * from the state the batch has not committed yet, so a read cannot come back
+   * as a batch marker and cannot take a slot in the results array. Neither are
+   * the calls that signal something out of band rather than write project data:
+   * stopping a service request, a service reporting its progress or result,
+   * taking and dropping a document lock, and the admin actions on the server
+   * itself. See the note at the top of `http.js` for which column a new
+   * endpoint belongs in.
    * @param {() => (void | Promise<void>)} fn
    * @returns {Promise<Array>}
    */

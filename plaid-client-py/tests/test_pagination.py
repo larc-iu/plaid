@@ -111,20 +111,18 @@ def test_list_all_empty_envelope_returns_empty(monkeypatch):
     assert len(calls) == 1
 
 
-def test_list_all_raises_when_batching(monkeypatch):
-    # Auto-pagination follows cursors across multiple requests, which a batch
-    # cannot do, so list_all must fail loudly before issuing any request.
+def test_list_all_follows_cursors_over_the_wire_while_batching(monkeypatch):
+    # A page is a read, so it never joins the batch: chrome that lists comments
+    # or documents beside an import gets its pages from the pool, in order,
+    # instead of a batch marker it cannot follow a cursor through.
     calls = []
-    _patch(monkeypatch, [], calls)
+    _patch(monkeypatch, _three_page_sequence(), calls)
 
-    raised = False
-    try:
-        list_all(_FakeClient(is_batching=True), '/api/v1/things')
-    except RuntimeError as e:
-        raised = True
-        assert 'Cannot auto-paginate /api/v1/things inside a batch' in str(e)
-    assert raised, 'expected RuntimeError when the client is in batch mode'
-    assert len(calls) == 0, 'no request was made'
+    result = list_all(_FakeClient(is_batching=True), '/api/v1/things')
+
+    assert [x['id'] for x in result] == ['a', 'b', 'c', 'd', 'e']
+    assert len(calls) == 3
+    assert all(c['bypass_batch'] is True for c in calls)
 
 
 def test_iter_pages_yields_each_non_empty_page(monkeypatch):
@@ -151,57 +149,34 @@ def test_iter_pages_suppresses_trailing_empty_page(monkeypatch):
     assert len(calls) == 2
 
 
-def test_iter_pages_raises_when_batching(monkeypatch):
+def test_iter_pages_yields_over_the_wire_while_batching(monkeypatch):
     calls = []
-    _patch(monkeypatch, [], calls)
+    _patch(monkeypatch, _three_page_sequence(), calls)
 
-    raised = False
-    try:
-        # The throw surfaces on the first iteration of the generator.
-        list(iter_pages(_FakeClient(is_batching=True), '/api/v1/things'))
-    except RuntimeError as e:
-        raised = True
-        assert 'Cannot auto-paginate /api/v1/things inside a batch' in str(e)
-    assert raised, 'expected RuntimeError when the client is in batch mode'
-    assert len(calls) == 0, 'no request was made'
+    pages = [[x['id'] for x in page]
+             for page in iter_pages(_FakeClient(is_batching=True), '/api/v1/things')]
+
+    assert pages == [['a', 'b'], ['c', 'd'], ['e']]
+    assert all(c['bypass_batch'] is True for c in calls)
 
 
-def test_list_page_works_when_batching(monkeypatch):
-    # list_page is a single request and CAN batch; it must keep working and
-    # pass the {'batched': True} sentinel straight through without raising.
-    calls = []
-    _patch(monkeypatch, [{'batched': True}], calls)
-
-    result = http.list_page(_FakeClient(is_batching=True), '/api/v1/things')
-
-    assert result == {'batched': True}
-    assert len(calls) == 1
-
-
-def test_list_page_carries_bypass_batch(monkeypatch):
+def test_list_page_always_goes_over_the_wire(monkeypatch):
     # A page read by app chrome belongs to whoever asked for it, not to whatever
     # import or bulk edit holds a batch open on the same client. Queued, it
-    # answers {'batched': True} instead of an envelope AND takes a slot in the
+    # answered {'batched': True} instead of an envelope AND took a slot in the
     # batch's own results list.
     calls = []
-    _patch(monkeypatch, [{'entries': [], 'next_cursor': None}], calls)
+    _patch(monkeypatch, [{'entries': [], 'next_cursor': None},
+                         {'entries': [], 'next_cursor': None}], calls)
 
-    http.list_page(_FakeClient(is_batching=True), '/api/v1/things',
-                   limit=1000, bypass_batch=True)
-
-    assert calls[0]['bypass_batch'] is True
-
-
-def test_list_page_leaves_bypass_batch_off_by_default(monkeypatch):
-    calls = []
-    _patch(monkeypatch, [{'entries': [], 'next_cursor': None}], calls)
-
+    http.list_page(_FakeClient(is_batching=True), '/api/v1/things', limit=1000)
     http.list_page(_FakeClient(), '/api/v1/things')
 
-    assert not calls[0]['bypass_batch']
+    assert len(calls) == 2
+    assert all(c['bypass_batch'] is True for c in calls)
 
 
-def test_list_documents_page_forwards_bypass_batch(monkeypatch):
+def test_list_documents_page_reads_during_an_open_batch(monkeypatch):
     from plaid_client.client import PlaidClient
 
     calls = []
@@ -209,7 +184,7 @@ def test_list_documents_page_forwards_bypass_batch(monkeypatch):
     client = PlaidClient('http://example.test', 'tok')
     client.is_batching = True
 
-    client.projects.list_documents_page('p1', limit=1000, bypass_batch=True)
+    client.projects.list_documents_page('p1', limit=1000)
 
     assert len(calls) == 1
     assert calls[0]['path'] == '/api/v1/projects/p1/documents'
@@ -222,14 +197,12 @@ def _run_standalone():
         test_list_all_returns_full_set_across_pages,
         test_list_all_raises_on_non_advancing_cursor,
         test_list_all_empty_envelope_returns_empty,
-        test_list_all_raises_when_batching,
+        test_list_all_follows_cursors_over_the_wire_while_batching,
         test_iter_pages_yields_each_non_empty_page,
         test_iter_pages_suppresses_trailing_empty_page,
-        test_iter_pages_raises_when_batching,
-        test_list_page_works_when_batching,
-        test_list_page_carries_bypass_batch,
-        test_list_page_leaves_bypass_batch_off_by_default,
-        test_list_documents_page_forwards_bypass_batch,
+        test_iter_pages_yields_over_the_wire_while_batching,
+        test_list_page_always_goes_over_the_wire,
+        test_list_documents_page_reads_during_an_open_batch,
     ]
     failures = 0
     for t in tests:

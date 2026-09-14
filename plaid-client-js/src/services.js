@@ -48,6 +48,31 @@ export function discardService(client, projectId, serviceId) {
 }
 
 /**
+ * POST a progress, result or error event for an in-flight request; the server
+ * relays it to the waiting requester. The Python twin is `_report_event`.
+ *
+ * bypassBatch: these are out-of-band signals to whoever is waiting, not writes
+ * to the project. A service reports them from inside its own
+ * `client.batched()` block, where queueing them would hold every one back
+ * until submit, deliver none at all if the batch aborts, and take slots in the
+ * batch's results. The requester would hear nothing and wait out its idle
+ * timeout on work that had already finished.
+ *
+ * @param {Object} client - PlaidClient instance
+ * @param {string} projectId - Project UUID
+ * @param {string} requestId - The request id
+ * @param {Object} body - The event payload
+ * @returns {Promise<any>}
+ */
+export function reportRequestEvent(client, projectId, requestId, body) {
+  return client._request(
+    'POST',
+    `/api/v1/projects/${projectId}/service-requests/${encodeURIComponent(requestId)}/events`,
+    { body, bypassBatch: true },
+  );
+}
+
+/**
  * Register a service and handle incoming work requests.
  *
  * Opens the service's dedicated request channel — which registers it for
@@ -94,12 +119,10 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
   };
 
   const reportEvent = (requestId, body) =>
-    client
-      ._request('POST', `/api/v1/projects/${projectId}/service-requests/${encodeURIComponent(requestId)}/events`, { body })
-      .catch((error) => {
-        // 404 just means the requester already went away; nothing to do.
-        console.warn('Failed to report request event:', error.message || error);
-      });
+    reportRequestEvent(client, projectId, requestId, body).catch((error) => {
+      // 404 just means the requester already went away; nothing to do.
+      console.warn('Failed to report request event:', error.message || error);
+    });
 
   const serviceRegistration = {
     stop: () => {
@@ -330,16 +353,6 @@ export function attachServiceRequest(client, projectId, requestId, timeout = 100
 }
 
 /**
- * Ask the service to stop a request made earlier (by this user). The request
- * still ends with whatever the service then reports, on the stream of whoever
- * is awaiting it. Rejects with 404 if unknown or expired, 409 once finished.
- *
- * @param {Object} client - PlaidClient instance
- * @param {string} projectId - Project UUID
- * @param {string} requestId - The request id
- * @returns {Promise<void>}
- */
-/**
  * Thrown inside a handler when the requester has asked it to stop.
  *
  * Cooperative cancellation: nothing interrupts a handler, so the request ends
@@ -388,8 +401,30 @@ export function createCancelScope(isCancelled) {
   };
 }
 
+/**
+ * Ask the service to stop a request made earlier (by this user). The request
+ * still ends with whatever the service then reports, on the stream of whoever
+ * is awaiting it. Rejects with 404 if unknown or expired, 409 once finished.
+ *
+ * Goes over the wire even while a batch is open on the client. A DELETE, but
+ * not a write: it signals a running service out of band and changes no project
+ * data. The Stop button lives in the app's chrome, on the same client an
+ * import or a bulk edit is batching on, and a stop that waits for that batch to
+ * submit has stopped nothing (and if the batch aborts, it never arrives at
+ * all), while the queued DELETE shifts every result index the batch's caller
+ * reads back.
+ *
+ * @param {Object} client - PlaidClient instance
+ * @param {string} projectId - Project UUID
+ * @param {string} requestId - The request id
+ * @returns {Promise<void>}
+ */
 export function cancelServiceRequest(client, projectId, requestId) {
-  return client._request('DELETE', `/api/v1/projects/${projectId}/service-requests/${encodeURIComponent(requestId)}`);
+  return client._request(
+    'DELETE',
+    `/api/v1/projects/${projectId}/service-requests/${encodeURIComponent(requestId)}`,
+    { bypassBatch: true },
+  );
 }
 
 /**

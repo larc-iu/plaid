@@ -1,5 +1,42 @@
 import { transformRequest, transformResponse } from "./transforms.js";
 
+// ---------------------------------------------------------------------------
+// Batch mode: which calls join a batch, and which go over the wire anyway.
+//
+// `client.batched()` sets ONE flag on the whole client, and every call made
+// while it is set is queued, whatever code made it. A browser client is shared
+// by an editor, an importer and the app's chrome at once, so the call that
+// lands inside someone else's batch is usually not the one that opened it.
+// Every call reaching this layer is one of three things, and the third column
+// is what a new endpoint has to pick.
+//
+// 1. A WRITE of project data: an entity, its metadata, a layer, a membership,
+//    a comment. This is what a batch is for, so it QUEUES. It is the default
+//    and needs no flag.
+//
+// 2. A READ. Pass `bypassBatch`. A queued read is broken three ways: the
+//    caller gets `{ batched: true }` instead of data, the queued GET takes a
+//    slot in the batch's results array and shifts every positional read after
+//    it, and server-side the sub-request runs against the batch's transaction
+//    connection rather than the pool, where `/query` throws and 500s the whole
+//    batch, rolling back every write in it. Bypassed, the read is answered
+//    from the pool and sees exactly the state it would have seen had the batch
+//    not been open.
+//
+// 3. An OUT-OF-BAND SIGNAL: stopping a service request, reporting a service's
+//    progress or result, taking or dropping a document lock, an admin action
+//    on the server itself. It is shaped like a write but carries no project
+//    data, and its whole value is that it happens NOW. Queued, it happens at
+//    submit, or never if the batch aborts, while its caller reads success.
+//    Pass `bypassBatch` for these too.
+//
+// `noBatch` is not part of that judgment. It marks the few calls the batch
+// transport cannot carry at all (a batch inside a batch, a multipart upload,
+// the media and avatar blobs, the user-data store) and raises so the caller
+// finds out. Never put it on a read: it turns a swallowed read into a thrown
+// one, which is what the chrome hit when an unrelated import was running.
+// ---------------------------------------------------------------------------
+
 // Default per-request timeout (ms). Applied to every request unless the client
 // is constructed with a different `timeout` (0 / null disables it). Note: this
 // also bounds media up/downloads — bump it (or disable) for very large files.
@@ -253,14 +290,12 @@ export function xhrSend(
  *   rawBody         - Body value passed directly (no transform). Mutually exclusive with body.
  *   formData        - If true, body is FormData; skip Content-Type header
  *   queryParams     - Object of query param key/values to append
- *   noBatch         - If true, throw when in batch mode
+ *   noBatch         - If true, throw when in batch mode. Only for calls the
+ *                     batch transport cannot carry at all (see the note at the
+ *                     top of this file); never for a read.
  *   bypassBatch     - If true, go over the wire even while a batch is open.
- *                     For READS only: a batch is a write transaction, its
- *                     ops return no value to their caller until submit, and
- *                     the sub-request runs against the tx Connection rather
- *                     than the pool. A read swallowed by an ambient batch is
- *                     therefore useless to the caller AND can fail the whole
- *                     batch (see `query`).
+ *                     Every read carries it, and so does every out-of-band
+ *                     signal (see the note at the top of this file).
  *   skipResponseTransform - Return raw parsed JSON (no transformResponse)
  *   noAuth          - Skip Authorization header
  *   binaryResponse  - Return arrayBuffer instead of JSON/text
@@ -359,10 +394,10 @@ export async function makeRequest(client, method, path, options = {}) {
     group.written = true;
   }
 
-  // Batch mode. A `bypassBatch` read is deliberately NOT queued: it belongs to
-  // whoever called it, not to whatever batch happens to be open on this shared
-  // client (a document reconcile, an import), and it reads the pre-batch state
-  // exactly as it would have if the batch were not running.
+  // Batch mode. A `bypassBatch` call is deliberately NOT queued: it belongs to
+  // whoever made it, not to whatever batch happens to be open on this shared
+  // client (a document reconcile, an import). See the three classes at the top
+  // of this file.
   if (client.isBatching && !bypassBatch) {
     if (noBatch) {
       throw new Error(`This endpoint cannot be used in batch mode: ${path}`);

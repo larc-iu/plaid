@@ -84,16 +84,17 @@ test('listAll returns [] for an empty envelope', async () => {
   assert.equal(client.calls.length, 1);
 });
 
-test('listAll throws when the client is in batch mode (no request made)', async () => {
-  // Auto-pagination follows cursors across multiple requests, which a batch
-  // cannot do, so listAll must fail loudly before issuing any request.
-  const client = makeFakeClient([], { isBatching: true });
+test('listAll follows its cursors over the wire while a batch is open', async () => {
+  // A page is a read, so it never joins the batch: chrome that lists comments
+  // or documents beside an import gets its pages from the pool, in order,
+  // instead of a batch marker it cannot follow a cursor through.
+  const client = makeFakeClient(threePageSequence(), { isBatching: true });
 
-  await assert.rejects(
-    () => listAll(client, '/api/v1/things'),
-    /Cannot auto-paginate \/api\/v1\/things inside a batch/,
-  );
-  assert.equal(client.calls.length, 0, 'no request was queued');
+  const all = await listAll(client, '/api/v1/things');
+
+  assert.deepEqual(all.map((x) => x.id), ['a', 'b', 'c', 'd', 'e']);
+  assert.equal(client.calls.length, 3);
+  assert.ok(client.calls.every((c) => c.bypassBatch === true));
 });
 
 test('iterPages yields each non-empty page in order', async () => {
@@ -124,50 +125,33 @@ test('iterPages suppresses a trailing empty page', async () => {
   assert.equal(client.calls.length, 2, 'but the cursor was still followed');
 });
 
-test('iterPages throws when the client is in batch mode (on first iteration)', async () => {
-  const client = makeFakeClient([], { isBatching: true });
+test('iterPages yields its pages over the wire while a batch is open', async () => {
+  const client = makeFakeClient(threePageSequence(), { isBatching: true });
 
-  await assert.rejects(async () => {
-    // The throw surfaces on the first iteration of the async generator.
-    for await (const _page of iterPages(client, '/api/v1/things')) {
-      // unreachable
-    }
-  }, /Cannot auto-paginate \/api\/v1\/things inside a batch/);
-  assert.equal(client.calls.length, 0, 'no request was queued');
-});
+  const pages = [];
+  for await (const page of iterPages(client, '/api/v1/things')) {
+    pages.push(page.map((x) => x.id));
+  }
 
-test('listPage still issues a single request in batch mode (does not throw)', async () => {
-  // listPage is a single request and CAN batch; it must keep working — the
-  // request layer returns the {batched:true} sentinel, which listPage passes
-  // straight through.
-  const client = makeFakeClient([{ batched: true }], { isBatching: true });
-
-  const result = await listPage(client, '/api/v1/things');
-
-  assert.deepEqual(result, { batched: true });
-  assert.equal(client.calls.length, 1, 'exactly one request queued');
+  assert.deepEqual(pages, [['a', 'b'], ['c', 'd'], ['e']]);
+  assert.ok(client.calls.every((c) => c.bypassBatch === true));
 });
 
 // A page read by app chrome belongs to whoever asked for it, not to whatever
-// import or bulk edit holds a batch open on the same client. Queued, it answers
-// `{batched: true}` instead of an envelope AND shifts the batch's own results.
-test('listPage carries bypassBatch through to the request layer', async () => {
-  const client = makeFakeClient([{ entries: [], nextCursor: null }], { isBatching: true });
+// import or bulk edit holds a batch open on the same client. Queued, it answered
+// `{batched: true}` instead of an envelope AND shifted the batch's own results.
+test('listPage always goes over the wire, batch open or not', async () => {
+  const batching = makeFakeClient([{ entries: [], nextCursor: null }], { isBatching: true });
+  await listPage(batching, '/api/v1/things', { limit: 1000 });
+  assert.equal(batching.calls.length, 1);
+  assert.equal(batching.calls[0].bypassBatch, true);
 
-  await listPage(client, '/api/v1/things', { limit: 1000, bypassBatch: true });
-
-  assert.equal(client.calls[0].bypassBatch, true);
+  const plain = makeFakeClient([{ entries: [], nextCursor: null }]);
+  await listPage(plain, '/api/v1/things');
+  assert.equal(plain.calls[0].bypassBatch, true);
 });
 
-test('listPage leaves bypassBatch off unless it is asked for', async () => {
-  const client = makeFakeClient([{ entries: [], nextCursor: null }]);
-
-  await listPage(client, '/api/v1/things');
-
-  assert.ok(!client.calls[0].bypassBatch);
-});
-
-test('listDocumentsPage forwards bypassBatch', async () => {
+test('listDocumentsPage reads a page during an open batch', async () => {
   const { PlaidClient } = await import('../src/index.js');
   const client = new PlaidClient('http://example.test', 'tok');
   const calls = [];
@@ -177,7 +161,7 @@ test('listDocumentsPage forwards bypassBatch', async () => {
   };
   client.isBatching = true;
 
-  await client.projects.listDocumentsPage('p1', { limit: 1000, bypassBatch: true });
+  await client.projects.listDocumentsPage('p1', { limit: 1000 });
 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].options.bypassBatch, true);

@@ -10,6 +10,43 @@ from plaid_client.transforms import transform_request, transform_response
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Batch mode: which calls join a batch, and which go over the wire anyway.
+#
+# ``client.batched()`` sets ONE flag on the whole client, and every call made
+# while it is set is queued, whatever code made it. A client is shared by an
+# editor, an importer and the app's chrome at once, so the call that lands
+# inside someone else's batch is usually not the one that opened it. Every call
+# reaching this layer is one of three things, and the third column is what a new
+# endpoint has to pick.
+#
+# 1. A WRITE of project data: an entity, its metadata, a layer, a membership,
+#    a comment. This is what a batch is for, so it QUEUES. It is the default
+#    and needs no flag.
+#
+# 2. A READ. Pass ``bypass_batch``. A queued read is broken three ways: the
+#    caller gets ``{'batched': True}`` instead of data, the queued GET takes a
+#    slot in the batch's results list and shifts every positional read after
+#    it, and server-side the sub-request runs against the batch's transaction
+#    connection rather than the pool, where ``/query`` throws and 500s the whole
+#    batch, rolling back every write in it. Bypassed, the read is answered from
+#    the pool and sees exactly the state it would have seen had the batch not
+#    been open.
+#
+# 3. An OUT-OF-BAND SIGNAL: stopping a service request, reporting a service's
+#    progress or result, taking or dropping a document lock, an admin action on
+#    the server itself. It is shaped like a write but carries no project data,
+#    and its whole value is that it happens NOW. Queued, it happens at submit,
+#    or never if the batch aborts, while its caller reads success. Pass
+#    ``bypass_batch`` for these too.
+#
+# ``no_batch`` is not part of that judgment. It marks the few calls the batch
+# transport cannot carry at all (a batch inside a batch, a multipart upload, the
+# media and avatar blobs, the user-data store) and raises so the caller finds
+# out. Never put it on a read: it turns a swallowed read into a thrown one,
+# which is what the chrome hit when an unrelated import was running.
+# ---------------------------------------------------------------------------
+
 # Default per-request timeout (seconds). Applied to every request unless the
 # client is constructed with a different ``timeout`` (None disables it). Note:
 # this also bounds media up/downloads — raise it (or disable) for large files.
@@ -163,8 +200,7 @@ def _merge_query(query, **extra):
     return merged
 
 
-def list_page(client, path, *, limit=None, cursor=None, query=None,
-              bypass_batch=False):
+def list_page(client, path, *, limit=None, cursor=None, query=None):
     """Fetch a single page from a paginated collection endpoint.
 
     Returns the transformed envelope dict ``{"entries": [...],
@@ -172,13 +208,8 @@ def list_page(client, path, *, limit=None, cursor=None, query=None,
     (after the client's response transform, which snake_cases ``next-cursor``
     to ``next_cursor``).
 
-    ``bypass_batch`` is for a read that belongs to whoever asked for it rather
-    than to whatever batch happens to be open on the client: chrome that polls
-    or loads beside an import or a bulk edit. Without it the page is queued
-    into the batch, the caller gets ``{"batched": True}`` instead of an
-    envelope, and the queued GET takes a slot in the batch's results list. Off
-    by default, because a read-your-writes page inside a batch is deliberate in
-    some callers.
+    A page is a read, so it goes over the wire even while a batch is open on
+    the client (see the three classes at the top of this file).
 
     Args:
         client: PlaidClient instance.
@@ -186,11 +217,10 @@ def list_page(client, path, *, limit=None, cursor=None, query=None,
         limit: Page size (1..1000). ``None`` lets the server use its default.
         cursor: Opaque cursor from a previous page's ``next_cursor``.
         query: Extra query params (e.g. ``{"as-of": ...}``).
-        bypass_batch: Go over the wire even while a batch is open.
     """
     qp = _merge_query(query, limit=limit, cursor=cursor)
     return make_request(client, 'GET', path, query_params=qp or None,
-                        bypass_batch=bypass_batch)
+                        bypass_batch=True)
 
 
 def iter_pages(client, path, *, page_size=1000, query=None):
@@ -199,11 +229,9 @@ def iter_pages(client, path, *, page_size=1000, query=None):
     Each yielded value is the list of entries for one page. Iteration stops
     when the server reports ``next_cursor`` of ``None``.
 
-    NOTE: This auto-paginates and therefore CANNOT be used inside a batch — each
-    page's request needs the previous page's ``next_cursor``, which doesn't
-    exist until the batch executes. It raises ``RuntimeError`` immediately when
-    the client is in batch mode. Use ``list_page`` for a single page inside a
-    batch.
+    Every page is a read, so this works while a batch is open on the client:
+    each page goes over the wire, in order, against the state the batch has not
+    committed yet.
 
     Args:
         client: PlaidClient instance.
@@ -211,13 +239,6 @@ def iter_pages(client, path, *, page_size=1000, query=None):
         page_size: Page size requested as ``limit`` (1..1000).
         query: Extra query params (e.g. ``{"as-of": ...}``).
     """
-    if client.is_batching:
-        raise RuntimeError(
-            f'Cannot auto-paginate {path} inside a batch: list methods follow '
-            'cursors across multiple requests, which a batch cannot do. Use '
-            'list_page() for a single page inside a batch, or call the list '
-            'method outside the batch.'
-        )
     cursor = None
     while True:
         page = list_page(client, path, limit=page_size, cursor=cursor, query=query)
@@ -249,11 +270,9 @@ def list_all(client, path, *, page_size=1000, query=None):
     backward-compatible shape the old ``.list()`` methods returned before the
     server moved to a paginated envelope.
 
-    NOTE: This auto-paginates and therefore CANNOT be used inside a batch — each
-    page's request needs the previous page's ``next_cursor``, which doesn't
-    exist until the batch executes. It raises ``RuntimeError`` immediately when
-    the client is in batch mode. Use ``list_page`` for a single page inside a
-    batch.
+    Every page is a read, so this works while a batch is open on the client:
+    each page goes over the wire, in order, against the state the batch has not
+    committed yet.
 
     Args:
         client: PlaidClient instance.
@@ -261,13 +280,6 @@ def list_all(client, path, *, page_size=1000, query=None):
         page_size: Page size requested as ``limit`` (1..1000).
         query: Extra query params (e.g. ``{"as-of": ...}``).
     """
-    if client.is_batching:
-        raise RuntimeError(
-            f'Cannot auto-paginate {path} inside a batch: list methods follow '
-            'cursors across multiple requests, which a batch cannot do. Use '
-            'list_page() for a single page inside a batch, or call the list '
-            'method outside the batch.'
-        )
     results = []
     cursor = None
     prev_cursor = None
@@ -342,13 +354,12 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
         form_data: If True, body is multipart form data; skip Content-Type
             header.
         query_params: Dict of query param key/values to append.
-        no_batch: If True, raise when in batch mode.
+        no_batch: If True, raise when in batch mode. Only for calls the batch
+            transport cannot carry at all (see the note at the top of this
+            file); never for a read.
         bypass_batch: If True, go over the wire even while a batch is open.
-            For READS only: a batch is a write transaction, its ops return no
-            value to their caller until submit, and the sub-request runs
-            against the tx Connection rather than the pool. A read swallowed
-            by an ambient batch is therefore useless to the caller AND can
-            fail the whole batch (see PlaidClient.query).
+            Every read carries it, and so does every out-of-band signal (see
+            the note at the top of this file).
         skip_response_transform: Return raw parsed JSON (no transform_response).
         no_auth: Skip Authorization header.
         binary_response: Return raw bytes instead of JSON/text.
@@ -419,10 +430,9 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
             url += f'&group-message={quote(str(group["message"]), safe="")}'
         group['written'] = True
 
-    # Batch mode. A bypass_batch read is deliberately NOT queued: it belongs to
-    # whoever called it, not to whatever batch happens to be open on this
-    # shared client, and it reads the pre-batch state exactly as it would have
-    # if the batch were not running.
+    # Batch mode. A bypass_batch call is deliberately NOT queued: it belongs to
+    # whoever made it, not to whatever batch happens to be open on this shared
+    # client. See the three classes at the top of this file.
     if client.is_batching and not bypass_batch:
         if no_batch:
             raise PlaidAPIError(f'This endpoint cannot be used in batch mode: {path}')

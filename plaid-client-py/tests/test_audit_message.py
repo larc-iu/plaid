@@ -19,6 +19,33 @@ def _client():
     return PlaidClient('http://localhost:0', 'dummy-token')
 
 
+def _stub_session(client):
+    """Replace the client's HTTP session; return the list its URLs land in."""
+    urls = []
+
+    class _Resp:
+        ok = True
+        status_code = 200
+        headers = {}
+        text = '{}'
+        content = b'{}'
+        reason = 'OK'
+
+        def json(self):
+            return {}
+
+    class _Session:
+        def request(self, **kw):
+            urls.append(kw.get('url', ''))
+            return _Resp()
+
+        def close(self):
+            pass
+
+    client.session = _Session()
+    return urls
+
+
 def _queue(client, message=None):
     """Queue one write with a per-call message and one without; return paths."""
     client.begin_batch()
@@ -36,12 +63,14 @@ def test_per_call_audit_message_applies_to_that_op_only():
 
 
 def test_get_requests_never_carry_audit_message():
+    # A read never joins a batch, so this one is observed on the wire rather
+    # than in the queue: the session is stubbed and the URL it was handed is
+    # the assertion.
     client = _client()
-    client.begin_batch()
+    urls = _stub_session(client)
     client.spans.get('S1')
-    paths = [op['path'] for op in client.batch_operations]
-    client.abort_batch()
-    assert all('audit-message' not in p for p in paths)
+    assert len(urls) == 1
+    assert 'audit-message' not in urls[0]
 
 
 def test_special_characters_are_url_encoded():

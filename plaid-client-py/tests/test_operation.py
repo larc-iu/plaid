@@ -158,13 +158,34 @@ def test_context_manager_set_message_refines_at_end():
 
 
 def test_get_requests_never_carry_group_id():
+    # A read never joins a batch, so the URL is observed on the wire.
     client = _client()
     client.begin_operation('x')
-    client.begin_batch()
+    urls = []
+
+    class _Resp:
+        ok = True
+        status_code = 200
+        headers = {}
+        text = '{}'
+        content = b'{}'
+        reason = 'OK'
+
+        def json(self):
+            return {}
+
+    class _Session:
+        def request(self, **kw):
+            urls.append(kw.get('url', ''))
+            return _Resp()
+
+        def close(self):
+            pass
+
+    client.session = _Session()
     client.spans.get('S1')
-    paths = [op['path'] for op in client.batch_operations]
-    client.abort_batch()
-    assert all('group-id' not in p for p in paths)
+    assert len(urls) == 1
+    assert 'group-id' not in urls[0]
     assert client._operation_group['written'] is False
 
 

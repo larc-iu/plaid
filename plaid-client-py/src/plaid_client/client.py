@@ -185,7 +185,8 @@ class VocabLinksResource(_Resource):
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/vocab-links/{id}',
-                             query_params={'as-of': as_of})
+                             query_params={'as-of': as_of},
+                             bypass_batch=True)
 
     def delete(self, id: str, audit_message=None) -> Any:
         """Delete a vocab link.
@@ -206,7 +207,8 @@ class VocabLayersResource(_Resource):
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/vocab-layers/{id}',
-                             query_params={'include-items': include_items, 'as-of': as_of})
+                             query_params={'include-items': include_items, 'as-of': as_of},
+                             bypass_batch=True)
 
     def delete(self, id: str, audit_message=None) -> Any:
         """Delete a vocab layer.
@@ -255,8 +257,6 @@ class VocabLayersResource(_Resource):
         Transparently follows server-side pagination cursors and returns the
         full flat list.
 
-        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError if called while batching — use list_page() for a single page in a batch.
-
         Args:
             as_of: Temporal query timestamp
         """
@@ -277,8 +277,6 @@ class VocabLayersResource(_Resource):
 
     def iter_pages(self, *, page_size: int = 1000, as_of: str | None = None):
         """Iterate over pages of vocab layers, yielding each page's entries list.
-
-        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError on first iteration if called while batching — use list_page() for a single page in a batch.
 
         Args:
             page_size: Page size (1..1000)
@@ -381,7 +379,8 @@ class RelationsResource(_Resource):
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/relations/{relation_id}',
-                             query_params={'as-of': as_of})
+                             query_params={'as-of': as_of},
+                             bypass_batch=True)
 
     def delete(self, relation_id: str, audit_message=None) -> Any:
         """Delete a relation.
@@ -468,7 +467,8 @@ class SpanLayersResource(_Resource):
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/span-layers/{span_layer_id}',
-                             query_params={'as-of': as_of})
+                             query_params={'as-of': as_of},
+                             bypass_batch=True)
 
     def delete(self, span_layer_id: str, audit_message=None) -> Any:
         """Delete a span layer.
@@ -586,7 +586,8 @@ class SpansResource(_Resource):
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/spans/{span_id}',
-                             query_params={'as-of': as_of})
+                             query_params={'as-of': as_of},
+                             bypass_batch=True)
 
     def delete(self, span_id: str, audit_message=None) -> Any:
         """Delete a span.
@@ -688,7 +689,8 @@ class TextsResource(_Resource):
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/texts/{text_id}',
-                             query_params={'as-of': as_of})
+                             query_params={'as-of': as_of},
+                             bypass_batch=True)
 
     def delete(self, text_id: str, audit_message=None) -> Any:
         """Delete a text and all dependent data.
@@ -755,8 +757,6 @@ class UsersResource(_Resource):
         Transparently follows server-side pagination cursors and returns the
         full flat list.
 
-        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError if called while batching — use list_page() for a single page in a batch.
-
         Args:
             q: Filter to users whose display name or email contains this text (case-insensitive)
             as_of: Temporal query timestamp
@@ -780,8 +780,6 @@ class UsersResource(_Resource):
     def iter_pages(self, *, q: str | None = None, page_size: int = 1000,
                    as_of: str | None = None):
         """Iterate over pages of users, yielding each page's entries list.
-
-        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError on first iteration if called while batching — use list_page() for a single page in a batch.
 
         Args:
             q: Filter to users whose display name or email contains this text (case-insensitive)
@@ -815,7 +813,8 @@ class UsersResource(_Resource):
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/users/{id}',
-                             query_params={'as-of': as_of})
+                             query_params={'as-of': as_of},
+                             bypass_batch=True)
 
     def delete(self, id: str, audit_message=None) -> Any:
         """Deactivate a user.
@@ -874,8 +873,6 @@ class UsersResource(_Resource):
         Transparently follows server-side pagination cursors and returns the
         full flat list of audit entries.
 
-        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError if called while batching — use list_page() for a single page in a batch.
-
         Args:
             user_id: The user ID
             start_time: Start of time range
@@ -921,7 +918,7 @@ class UsersResource(_Resource):
             id: The user ID
         """
         return self._request('GET', f'/api/v1/users/{id}/avatar',
-                             no_batch=True, binary_response=True)
+                             bypass_batch=True, binary_response=True)
 
     def set_avatar(self, id: str, file, audit_message=None) -> Any:
         """Upload a profile picture. Your own, or anyone's if you are an admin.
@@ -975,8 +972,6 @@ class ApiTokensResource(_Resource):
         once, by create(). Transparently follows server-side pagination cursors
         and returns the full flat list.
 
-        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError if called while batching — use list_page() for a single page in a batch.
-
         Args:
             user_id: The user ID who owns the tokens
         """
@@ -996,8 +991,6 @@ class ApiTokensResource(_Resource):
 
     def iter_pages(self, user_id: str, *, page_size: int = 1000):
         """Iterate over pages of a user's API tokens, yielding each page's entries.
-
-        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError on first iteration if called while batching — use list_page() for a single page in a batch.
 
         Args:
             user_id: The user ID who owns the tokens
@@ -1122,7 +1115,7 @@ class CommentsResource(_Resource):
 
     def get(self, comment_id: str) -> Any:
         """Read one comment."""
-        return self._request('GET', f'/api/v1/comments/{comment_id}')
+        return self._request('GET', f'/api/v1/comments/{comment_id}', bypass_batch=True)
 
     def update(self, comment_id: str, body: str) -> Any:
         """Edit a comment's body.
@@ -1143,8 +1136,6 @@ class CommentsResource(_Resource):
 
         Transparently follows server-side pagination cursors and returns the
         full flat list.
-
-        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError if called while batching — use list_page() for a single page in a batch.
 
         Args:
             project_id: The project to read
@@ -1179,8 +1170,6 @@ class CommentsResource(_Resource):
                    entity_id: str | None = None):
         """Iterate over pages of a project's comments, yielding each page's entries.
 
-        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError on first iteration if called while batching — use list_page() for a single page in a batch.
-
         Args:
             project_id: The project to read
             page_size: Page size (1..1000)
@@ -1208,15 +1197,14 @@ class CommentsResource(_Resource):
                              query_params={'document-id': document_id,
                                            'entity-type': entity_type,
                                            'entity-id': entity_id},
-                             skip_response_transform=True)
+                             skip_response_transform=True,
+                             bypass_batch=True)
 
     def list_in_vocab(self, vocab_id: str, *, entity_id: str | None = None) -> Any:
         """List the comments on a vocabulary's entries, oldest first.
 
         Requires read access to the vocabulary. Transparently follows
         server-side pagination cursors and returns the full flat list.
-
-        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError if called while batching — use list_in_vocab_page() for a single page in a batch.
 
         Args:
             vocab_id: The vocab layer to read
@@ -1245,7 +1233,8 @@ class CommentsResource(_Resource):
         """
         return self._request('GET', f'/api/v1/vocab-layers/{vocab_id}/comments/counts',
                              query_params={'entity-id': entity_id},
-                             skip_response_transform=True)
+                             skip_response_transform=True,
+                             bypass_batch=True)
 
 
 class InvitesResource(_Resource):
@@ -1266,8 +1255,6 @@ class InvitesResource(_Resource):
         requires admin. Never includes invite codes — a code is returned once,
         by create(), and is not recoverable afterward. Transparently follows
         server-side pagination cursors and returns the full flat list.
-
-        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError if called while batching — use list_page() for a single page in a batch.
 
         Args:
             project_id: List this project's invites rather than your own
@@ -1292,8 +1279,6 @@ class InvitesResource(_Resource):
     def iter_pages(self, *, project_id: str | None = None, all: bool | None = None,
                    page_size: int = 1000):
         """Iterate over pages of invites, yielding each page's entries.
-
-        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError on first iteration if called while batching — use list_page() for a single page in a batch.
 
         Args:
             project_id: List this project's invites rather than your own
@@ -1365,7 +1350,8 @@ class TokenLayersResource(_Resource):
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/token-layers/{token_layer_id}',
-                             query_params={'as-of': as_of})
+                             query_params={'as-of': as_of},
+                             bypass_batch=True)
 
     def delete(self, token_layer_id: str, audit_message=None) -> Any:
         """Delete a token layer.
@@ -1461,23 +1447,36 @@ class DocumentsResource(_Resource):
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/documents/{document_id}/lock',
-                             query_params={'as-of': as_of})
+                             query_params={'as-of': as_of},
+                             bypass_batch=True)
 
     def acquire_lock(self, document_id: str, audit_message=None) -> Any:
         """Acquire or refresh a document lock.
 
+        Goes over the wire even while a batch is open. The lock is an
+        out-of-band signal, not project data: a queued acquire is taken only
+        when the batch submits, which is after every write it was meant to
+        guard, and until then it answers success to a caller that does not hold
+        it and cannot see the 423 saying somebody else does.
+
         Args:
             document_id: The document ID
         """
-        return self._request('POST', f'/api/v1/documents/{document_id}/lock', audit_message=audit_message)
+        return self._request('POST', f'/api/v1/documents/{document_id}/lock',
+                             audit_message=audit_message, bypass_batch=True)
 
     def release_lock(self, document_id: str, audit_message=None) -> Any:
         """Release a document lock.
 
+        Goes over the wire even while a batch is open, for the same reason as
+        :meth:`acquire_lock`: queued, the lock is held until the batch submits,
+        and not released at all if it aborts.
+
         Args:
             document_id: The document ID
         """
-        return self._request('DELETE', f'/api/v1/documents/{document_id}/lock', audit_message=audit_message)
+        return self._request('DELETE', f'/api/v1/documents/{document_id}/lock',
+                             audit_message=audit_message, bypass_batch=True)
 
     @contextmanager
     def locked(self, document_id: str):
@@ -1540,7 +1539,7 @@ class DocumentsResource(_Resource):
             document_id: The document ID
         """
         return self._request('GET', f'/api/v1/documents/{document_id}/media',
-                             no_batch=True, binary_response=True)
+                             bypass_batch=True, binary_response=True)
 
     def upload_media(self, document_id: str, file, audit_message=None, *,
                      on_progress=None) -> Any:
@@ -1593,7 +1592,8 @@ class DocumentsResource(_Resource):
         """
         return self._request('GET', f'/api/v1/documents/{document_id}',
                              query_params={'include-body': include_body, 'as-of': as_of,
-                                           'layers': _layers_param(layers)})
+                                           'layers': _layers_param(layers)},
+                             bypass_batch=True)
 
     def delete(self, document_id: str, audit_message=None) -> Any:
         """Delete a document and all data contained.
@@ -1667,8 +1667,6 @@ class DocumentsResource(_Resource):
 
         Transparently follows server-side pagination cursors and returns the
         full flat list of audit entries.
-
-        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError if called while batching — use list_page() for a single page in a batch.
 
         Args:
             document_id: The document ID
@@ -1926,8 +1924,6 @@ class ProjectsResource(_Resource):
         Transparently follows server-side pagination cursors and returns the
         full flat list.
 
-        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError if called while batching — use list_page() for a single page in a batch.
-
         Args:
             as_of: Temporal query timestamp
         """
@@ -1949,8 +1945,6 @@ class ProjectsResource(_Resource):
     def iter_pages(self, *, page_size: int = 1000, as_of: str | None = None):
         """Iterate over pages of projects, yielding each page's entries list.
 
-        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError on first iteration if called while batching — use list_page() for a single page in a batch.
-
         Args:
             page_size: Page size (1..1000)
             as_of: Temporal query timestamp
@@ -1968,16 +1962,13 @@ class ProjectsResource(_Resource):
         Note: this endpoint does not support temporal (``as-of``) queries; the
         server rejects ``?as-of=`` on the documents-list route with a 400.
 
-        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError if called while batching — use list_page() for a single page in a batch.
-
         Args:
             id: The project ID
         """
         return list_all(self._client, f'/api/v1/projects/{id}/documents')
 
     def list_documents_page(self, id: str, *, limit: int | None = None,
-                            cursor: str | None = None,
-                            bypass_batch: bool = False) -> Any:
+                            cursor: str | None = None) -> Any:
         """List one page of a project's documents.
 
         Note: this endpoint does not support temporal (``as-of``) queries; the
@@ -1987,19 +1978,15 @@ class ProjectsResource(_Resource):
             id: The project ID
             limit: Page size (1..1000)
             cursor: Opaque cursor from a previous page's ``next_cursor``
-            bypass_batch: Go over the wire even while a batch is open
         """
         return list_page(self._client, f'/api/v1/projects/{id}/documents',
-                         limit=limit, cursor=cursor,
-                         bypass_batch=bypass_batch)
+                         limit=limit, cursor=cursor)
 
     def iter_documents(self, id: str, *, page_size: int = 1000):
         """Iterate over pages of a project's documents, yielding each page's entries.
 
         Note: this endpoint does not support temporal (``as-of``) queries; the
         server rejects ``?as-of=`` on the documents-list route with a 400.
-
-        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError on first iteration if called while batching — use list_page() for a single page in a batch.
 
         Args:
             id: The project ID
@@ -2019,7 +2006,8 @@ class ProjectsResource(_Resource):
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/projects/{id}',
-                             query_params={'as-of': as_of})
+                             query_params={'as-of': as_of},
+                             bypass_batch=True)
 
     def delete(self, id: str, audit_message=None, timeout=None) -> Any:
         """Delete a project and everything in it. This is irrecoverable.
@@ -2131,8 +2119,6 @@ class ProjectsResource(_Resource):
         Transparently follows server-side pagination cursors and returns the
         full flat list of audit entries.
 
-        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError if called while batching — use list_page() for a single page in a batch.
-
         Args:
             project_id: The project ID
             start_time: Start of time range
@@ -2182,7 +2168,8 @@ class ProjectsResource(_Resource):
             project_id: The project ID
         """
         return self._request('GET', f'/api/v1/projects/{project_id}/audit/last-edits',
-                             skip_response_transform=True)
+                             skip_response_transform=True,
+                             bypass_batch=True)
 
     def link_vocab(self, id: str, vocab_id: str, audit_message=None) -> Any:
         """Link a vocabulary to a project.
@@ -2212,7 +2199,8 @@ class TextLayersResource(_Resource):
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/text-layers/{text_layer_id}',
-                             query_params={'as-of': as_of})
+                             query_params={'as-of': as_of},
+                             bypass_batch=True)
 
     def delete(self, text_layer_id: str, audit_message=None) -> Any:
         """Delete a text layer.
@@ -2323,7 +2311,8 @@ class VocabItemsResource(_Resource):
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/vocab-items/{id}',
-                             query_params={'as-of': as_of})
+                             query_params={'as-of': as_of},
+                             bypass_batch=True)
 
     def delete(self, id: str, audit_message=None) -> Any:
         """Delete a vocab item.
@@ -2388,7 +2377,8 @@ class RelationLayersResource(_Resource):
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/relation-layers/{relation_layer_id}',
-                             query_params={'as-of': as_of})
+                             query_params={'as-of': as_of},
+                             bypass_batch=True)
 
     def delete(self, relation_layer_id: str, audit_message=None) -> Any:
         """Delete a relation layer.
@@ -2496,7 +2486,8 @@ class TokensResource(_Resource):
             as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/tokens/{token_id}',
-                             query_params={'as-of': as_of})
+                             query_params={'as-of': as_of},
+                             bypass_batch=True)
 
     def delete(self, token_id: str, audit_message=None) -> Any:
         """Delete a token and remove it from any spans.
@@ -2690,7 +2681,7 @@ class AdminResource(_Resource):
         count per table and walks the media directory, so call it when someone
         asks, not on a timer.
         """
-        return self._request('GET', '/api/v1/admin/server')
+        return self._request('GET', '/api/v1/admin/server', bypass_batch=True)
 
     def backup(self) -> Any:
         """Take a database backup right now, outside the nightly schedule.
@@ -2698,13 +2689,18 @@ class AdminResource(_Resource):
         Returns the backup block, with ``ok`` reporting whether the snapshot
         succeeded. Uses VACUUM INTO, which only reads, so it is safe while
         people are working.
+
+        Goes over the wire even while a batch is open, as every admin action on
+        the server itself does: none of them writes project data, and a backup
+        taken inside somebody's open write transaction is not what the caller
+        asked for.
         """
-        return self._request('POST', '/api/v1/admin/backup')
+        return self._request('POST', '/api/v1/admin/backup', bypass_batch=True)
 
     def locks(self) -> Any:
         """Documents currently held by an editing lock, with who holds each
         and when it expires on its own."""
-        return self._request('GET', '/api/v1/admin/locks')
+        return self._request('GET', '/api/v1/admin/locks', bypass_batch=True)
 
     def release_lock(self, document_id: str) -> Any:
         """Drop the lock on a document whoever holds it. Idempotent.
@@ -2715,13 +2711,14 @@ class AdminResource(_Resource):
         Args:
             document_id: The document to unlock
         """
-        return self._request('DELETE', f'/api/v1/admin/locks/{document_id}')
+        return self._request('DELETE', f'/api/v1/admin/locks/{document_id}',
+                             bypass_batch=True)
 
     def rate_limits(self) -> Any:
         """Live login and invite rate-limit buckets: the address, the account
         where there is one, failures inside the window, the limit, and whether
         it is currently blocking."""
-        return self._request('GET', '/api/v1/admin/rate-limits')
+        return self._request('GET', '/api/v1/admin/rate-limits', bypass_batch=True)
 
     def clear_rate_limits(self, *, ip: str | None = None,
                           user_id: str | None = None) -> Any:
@@ -2732,7 +2729,8 @@ class AdminResource(_Resource):
             user_id: Narrow to one account on that address
         """
         return self._request('DELETE', '/api/v1/admin/rate-limits',
-                             query_params={'ip': ip, 'user-id': user_id})
+                             query_params={'ip': ip, 'user-id': user_id},
+                             bypass_batch=True)
 
     def logs(self, *, limit: int | None = None, q: str | None = None,
              level: str | None = None, status: str | None = None,
@@ -2760,7 +2758,8 @@ class AdminResource(_Resource):
         return self._request('GET', '/api/v1/admin/logs',
                              query_params={'limit': limit, 'q': q,
                                            'level': level, 'status': status,
-                                           'user': user, 'method': method})
+                                           'user': user, 'method': method},
+                             bypass_batch=True)
 
     def log_file(self, *, lines: int | None = None) -> Any:
         """The tail of the configured log file, as text lines.
@@ -2775,7 +2774,8 @@ class AdminResource(_Resource):
             lines: How many lines (default 200, max 2000)
         """
         return self._request('GET', '/api/v1/admin/logs/file',
-                             query_params={'lines': lines})
+                             query_params={'lines': lines},
+                             bypass_batch=True)
 
     def user_data(self, *, prefix: str | None = None, pattern: str | None = None,
                   include_values: bool = False) -> Any:
@@ -2785,8 +2785,6 @@ class AdminResource(_Resource):
         same reach across accounts at once. Transparently follows server-side
         pagination cursors and returns the full flat list, ordered by
         (user, key).
-
-        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError if called while batching — use user_data_page() for a single page in a batch.
 
         Args:
             prefix: Only keys starting with this literal head
@@ -2831,8 +2829,6 @@ class AuditResource(_Resource):
         entity scope dropped. Transparently follows server-side pagination
         cursors and returns the full flat list.
 
-        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError if called while batching — use list_page() for a single page in a batch.
-
         Args:
             start_time: Only operations at or after this instant
             end_time: Only operations at or before this instant
@@ -2864,7 +2860,6 @@ class AuditResource(_Resource):
                    op_types: Any = None, page_size: int = 1000):
         """Iterate the instance-wide audit log page by page. Admin only.
 
-        Cannot be used inside a batch (it auto-paginates across requests); raises RuntimeError on first iteration if called while batching — use list_page() for a single page in a batch.
         """
         return iter_pages(self._client, '/api/v1/audit', page_size=page_size,
                           query={'start-time': start_time, 'end-time': end_time,
@@ -2894,7 +2889,8 @@ class AuditResource(_Resource):
                 else '/api/v1/audit/tally')
         result = self._request('GET', path,
                                query_params={'start-time': start_time, 'end-time': end_time,
-                                             'daily': daily})
+                                             'daily': daily},
+                               bypass_batch=True)
         return result['entries']
 
 
@@ -2922,7 +2918,7 @@ class OperationGroupsResource(_Resource):
         Args:
             id: The group id
         """
-        return self._request('GET', f'/api/v1/operation-groups/{id}')
+        return self._request('GET', f'/api/v1/operation-groups/{id}', bypass_batch=True)
 
     def update(self, id: str, message: str | None) -> Any:
         """Relabel a logical-operation group after the fact. Owner or admin only.
@@ -3157,7 +3153,11 @@ class PlaidClient:
             self.end_operation()
 
     def begin_batch(self) -> None:
-        """Begin a batch of operations. Subsequent API calls will be queued."""
+        """Begin a batch of operations.
+
+        Subsequent WRITES are queued; reads and out-of-band signals still go
+        over the wire (see :meth:`batched`).
+        """
         self.is_batching = True
         self.batch_operations = []
         # Strict mode stamps the expected document-version on the FIRST write
@@ -3272,6 +3272,18 @@ class PlaidClient:
         a batch runs sequentially in one transaction, so a child op sees parents
         created earlier in the same block, and any op's failure rolls the whole
         batch back. Not nestable (begin/submit is per-client state).
+
+        WRITES are what a batch queues, and batch mode is one flag on the whole
+        client, so it catches every write made while it is open, including
+        writes made by code that knows nothing about this batch. READS are
+        never caught: every read method goes over the wire while a batch is
+        open and is answered from the state the batch has not committed yet, so
+        a read cannot come back as a batch marker and cannot take a slot in the
+        results list. Neither are the calls that signal something out of band
+        rather than write project data: stopping a service request, a service
+        reporting its progress or result, taking and dropping a document lock,
+        and the admin actions on the server itself. See the note at the top of
+        ``http.py`` for which column a new endpoint belongs in.
         """
         self.begin_batch()
         ctx = _BatchContext()

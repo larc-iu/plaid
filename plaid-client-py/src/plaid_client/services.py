@@ -71,11 +71,19 @@ def discard_service(client, project_id, service_id):
 
 def _report_event(client, project_id, request_id, body):
     """POST a progress/result/error event for an in-flight request; the server
-    relays it to the waiting requester."""
+    relays it to the waiting requester. The JS twin is ``reportRequestEvent``.
+
+    bypass_batch: these are out-of-band signals to whoever is waiting, not
+    writes to the project. A service reports them from inside its own
+    ``client.batched()`` block, where queueing them would hold every one back
+    until submit, deliver none at all if the batch aborts, and take slots in
+    the batch's results. The requester would hear nothing and wait out its idle
+    timeout on work that had already finished.
+    """
     client.messages._request(
         'POST',
         f'/api/v1/projects/{project_id}/service-requests/{request_id}/events',
-        body=body)
+        body=body, bypass_batch=True)
 
 
 def _error_status(error):
@@ -580,9 +588,19 @@ def attach_service_request(client, project_id, request_id, timeout=10.0, on_prog
 def cancel_service_request(client, project_id, request_id):
     """Ask the service to stop a request made earlier (by this user). The
     request still ends with whatever the service then reports, on the stream
-    of whoever is awaiting it. 404 if unknown or expired, 409 once finished."""
+    of whoever is awaiting it. 404 if unknown or expired, 409 once finished.
+
+    Goes over the wire even while a batch is open on the client. A DELETE, but
+    not a write: it signals a running service out of band and changes no
+    project data. The Stop button lives in the app's chrome, on the same client
+    an import or a bulk edit is batching on, and a stop that waits for that
+    batch to submit has stopped nothing (and if the batch aborts, it never
+    arrives at all), while the queued DELETE shifts every result index the
+    batch's caller reads back.
+    """
     return client.messages._request(
-        'DELETE', f'/api/v1/projects/{project_id}/service-requests/{request_id}')
+        'DELETE', f'/api/v1/projects/{project_id}/service-requests/{request_id}',
+        bypass_batch=True)
 
 
 def _stream_headers(client):
