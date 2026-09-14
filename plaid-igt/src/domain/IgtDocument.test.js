@@ -1007,12 +1007,16 @@ describe('atAsOf (time-travel)', () => {
       projectId: 'proj-1',
     });
 
+    const onError = () => {};
+    doc.onError = onError;
     const at = '2026-08-28T13:46:43Z';
     const next = await doc.atAsOf(at);
 
     // Exactly one request, and it carries the as-of.
     expect(asked).toEqual([{ id: liveRaw.id, includeBody: true, at }]);
     expect(next.asOf).toBe(at);
+    // The screen's error handler rides along: the snapshot reports to it too.
+    expect(next.onError).toBe(onError);
     // Snapshot-independent state is carried over, not refetched.
     expect(next.project).toBe(project);
     expect(next.vocabularies.v1.items).toEqual([{ id: 'vi-1', form: 'NOW' }]);

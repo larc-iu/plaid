@@ -6,9 +6,8 @@ import { needsReview } from '@larc-iu/plaid-client';
 import { ParseDialog } from './services/ParseDialog.jsx';
 import { SentenceRow } from './annotation/SentenceRow.jsx';
 import { EditorSessionContext } from './annotation/editorSession.js';
-import { useLayerInfo } from './hooks/useLayerInfo.js';
-import { useSentenceData } from './hooks/useSentenceData.js';
-import { useHistoryView } from './hooks/useHistoryView.js';
+import { useHistoryView } from '@ui/hooks/useHistoryView.js';
+import { HistoricalBanner } from '@ui/components/shared/HistoricalBanner.jsx';
 import { useDocumentEditor } from './useDocumentEditor.js';
 import { useReviewGestures } from './hooks/useReviewGestures.js';
 import { useSentenceDeepLink } from './hooks/useSentenceDeepLink.js';
@@ -102,7 +101,7 @@ export const AnnotationEditor = () => {
   // briefly highlights that sentence once the grid is rendered.
   const [searchParams] = useSearchParams();
   const sentParam = searchParams.get('sent');
-  const { getClient, user } = useAuth();
+  const { getClient, logout, user } = useAuth();
 
   // The history drawer, the entry being viewed, and the restore it can lead to.
   const {
@@ -112,15 +111,15 @@ export const AnnotationEditor = () => {
     selectedEntry,
     selectEntry,
     isViewingHistorical,
-    historicalDocument,
+    snapshot,
+    loadingSnapshot,
     auditEntries,
     loadingAudit,
-    loadingHistorical,
     historyError,
     restoreEntry,
     setRestoreEntry,
     handleRestored,
-  } = useHistoryView({ documentId, getClient, reload });
+  } = useHistoryView({ documentId, client: getClient(), doc, reload, onExpired: logout });
 
   // Reconcile-on-open is a WRITE (it can seed syntactic-words + delete
   // relations), so it must run at most once per document — otherwise StrictMode's
@@ -266,11 +265,11 @@ export const AnnotationEditor = () => {
   // doc-level operation errors surface as toasts (see ConlluDocument.setError);
   // a hard document-load failure is DocumentEditorShell's banner, not ours.
 
-  // When viewing historical state we fall back to the legacy raw-doc render
-  // path (useSentenceData still accepts a raw document and delegates to
-  // ConlluDocument internally). Handlers are passed `null` in that mode, so
-  // mutations stay disabled.
-  const activeDocument = isViewingHistorical ? historicalDocument : doc?.raw;
+  // What is on screen: the snapshot a history entry named, or the live
+  // document. Handlers are nulled from the click on an entry, so no mutation
+  // reaches either.
+  const shown = snapshot ?? doc;
+  const activeDocument = shown?.raw;
 
   // Read-only mode is on when the user lacks write access to the project OR
   // when time-travelling. Key the historical case on `selectedEntry`, not
@@ -287,13 +286,8 @@ export const AnnotationEditor = () => {
   // vanish the moment the run started.
   const readOnly = !canEdit || !!selectedEntry || !!writeLockHeld;
 
-  const historicalLayerInfo = useLayerInfo(historicalDocument);
-  const layerInfo = isViewingHistorical ? historicalLayerInfo : doc?.layerInfo;
-  const historicalSentences = useSentenceData(historicalDocument);
-  const processedSentences = useMemo(
-    () => (isViewingHistorical ? historicalSentences : doc?.sentences || []),
-    [isViewingHistorical, historicalSentences, doc?.sentences],
-  );
+  const layerInfo = shown?.layerInfo;
+  const processedSentences = useMemo(() => shown?.sentences || [], [shown]);
 
   // One page of sentences in the DOM. Everything a sentence is addressed by
   // stays GLOBAL to the document — its number, its tab order, what the
@@ -533,21 +527,8 @@ export const AnnotationEditor = () => {
   // state. The message names the reason so it isn't mysterious. For time travel
   // this is the sole indicator (the toolbar chip was removed), so it carries the
   // timestamp and the loading state too, and shows as soon as an entry is picked.
-  const historicalTime = selectedEntry ? new Date(selectedEntry.time).toLocaleString() : null;
   const readOnlyBanner = selectedEntry ? (
-    <div className="mt-4 flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-900">
-      {loadingHistorical ? (
-        <>
-          <span className="inline-block h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-amber-500/40 border-t-amber-700" />
-          Loading the document as of {historicalTime}…
-        </>
-      ) : (
-        <>
-          <Info className="h-4 w-4 shrink-0" />
-          Read-only. This is the document as of {historicalTime}.
-        </>
-      )}
-    </div>
+    <HistoricalBanner entry={selectedEntry} loading={loadingSnapshot} className="mt-4" />
   ) : !canEdit ? (
     <div className="mt-4 flex items-center gap-2 rounded-md border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-sm text-blue-900">
       <Info className="h-4 w-4 shrink-0" />

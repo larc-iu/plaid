@@ -159,7 +159,7 @@ export class IgtDocument {
 
   async atAsOf(asOf) {
     const raw = await this._client.documents.get(this.id, true, asOf || undefined);
-    return new IgtDocument({
+    const next = new IgtDocument({
       raw,
       project: this._project,
       // The constructor folds the document's links into whatever it is handed,
@@ -170,6 +170,9 @@ export class IgtDocument {
       asOf,
       user: this._user,
     });
+    // The error handler is the screen's, not this instance's: carry it.
+    next.onError = this.onError;
+    return next;
   }
 
   // ----- who is writing (provenance) -----

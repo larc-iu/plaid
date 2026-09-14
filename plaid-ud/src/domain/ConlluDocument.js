@@ -46,8 +46,10 @@ function operationLabel(errorLabel) {
 }
 
 export class ConlluDocument {
-  constructor({ raw, client = null, projectId = null, project = null, user = null }) {
+  constructor({ raw, client = null, projectId = null, project = null, user = null, asOf = null }) {
     this._raw = raw;
+    // Which snapshot this document was read at (null = live).
+    this._asOf = asOf;
     this._client = client;
     this._projectId = projectId;
     // The project (its ACL and config) and the person writing ({ id, isAdmin }),
@@ -78,6 +80,20 @@ export class ConlluDocument {
   static async load(client, projectId, documentId, { project = null, user = null } = {}) {
     const raw = await client.documents.get(documentId, true);
     return new ConlluDocument({ raw, client, projectId, project, user });
+  }
+
+  // This document at `asOf`, as a NEW instance: a snapshot really is a different
+  // document (see useHistoryView), where `reload` is this one refreshed.
+  async atAsOf(asOf) {
+    const raw = await this._client.documents.get(this.id, true, asOf || undefined);
+    return new ConlluDocument({
+      raw,
+      client: this._client,
+      projectId: this._projectId,
+      project: this._project,
+      user: this._user,
+      asOf,
+    });
   }
 
   // ----- who is writing (provenance) -----
@@ -115,6 +131,9 @@ export class ConlluDocument {
 
   get raw() {
     return this._raw;
+  }
+  get asOf() {
+    return this._asOf;
   }
   get id() {
     return this._raw?.id;

@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef } from 'react';
-import { humanizeError, statusOf } from '@ui/lib/errors.js';
+import { useCallback, useRef, useState } from 'react';
+import { humanizeError, statusOf } from '../lib/errors.js';
 
 // A read that came back unauthenticated, whichever way the client said so. An
 // expired token is a fact about the session, not about the history, so it goes
@@ -8,20 +8,19 @@ import { humanizeError, statusOf } from '@ui/lib/errors.js';
 export const isExpiredSession = (err) =>
   err?.message === 'Not authenticated' || statusOf(err) === 401;
 
-// Owns the history-rail UI state + audit-log fetching. Time-travel itself is
-// driven by the parent's `asOf` (which reloads the shared IgtDocument); this hook
-// no longer fetches a separate historical document.
+// The entry list of a document's history rail: read the first time the rail
+// opens, and again after a restore. Time travel itself is useHistoryView's.
 //
-// `onExpired` is called when the audit read comes back unauthenticated. It is
-// read through a ref: every screen passes it inline, and the fetcher must not
-// get a new identity on every render because of it.
-export const useDocumentHistory = (documentId, client, onExpired) => {
-  const [open, setOpen] = useState(false);
-  const [selectedEntry, setSelectedEntry] = useState(null);
+// `onExpired` is read through a ref: every screen passes it inline, and the
+// fetcher must not get a new identity on every render because of it.
+export function useDocumentHistory({ documentId, client, onExpired }) {
   const [auditEntries, setAuditEntries] = useState([]);
   const [loadingAudit, setLoadingAudit] = useState(false);
-  const [error, setError] = useState('');
   const [hasLoadedAudit, setHasLoadedAudit] = useState(false);
+  // Why the entry list is empty. The rail hides the list whenever this is set,
+  // and only the list's own read sets it: a failed time travel leaves the
+  // entries a reader is browsing on screen and says so in a toast.
+  const [error, setError] = useState('');
   const onExpiredRef = useRef(onExpired);
   onExpiredRef.current = onExpired;
 
@@ -29,33 +28,23 @@ export const useDocumentHistory = (documentId, client, onExpired) => {
     if (!documentId || !client) return;
     try {
       setLoadingAudit(true);
-      const auditData = await client.documents.audit(documentId);
-      setAuditEntries(auditData || []);
+      const entries = await client.documents.audit(documentId);
+      setAuditEntries(entries || []);
       setHasLoadedAudit(true);
       setError('');
     } catch (err) {
-      console.error('Error fetching audit log:', err);
       if (isExpiredSession(err)) {
         onExpiredRef.current?.();
         return;
       }
+      console.error('Error fetching audit log:', err);
       // The rail renders this verbatim, and a raw client message carries the
       // request URL and the ids it was given.
-      setError(humanizeError(err, 'The history could not be loaded.'));
+      setError(humanizeError(err, 'The history could not be read.'));
     } finally {
       setLoadingAudit(false);
     }
   }, [documentId, client]);
 
-  return {
-    open,
-    setOpen,
-    selectedEntry,
-    setSelectedEntry,
-    auditEntries,
-    loadingAudit,
-    error,
-    hasLoadedAudit,
-    fetchAuditLog,
-  };
-};
+  return { auditEntries, loadingAudit, hasLoadedAudit, error, fetchAuditLog };
+}

@@ -18,7 +18,6 @@ import { DocumentMetadata } from './metadata/DocumentMetadata.jsx';
 import { DocumentBaseline } from './baseline/DocumentBaseline.jsx';
 import { AnalyzeIsland } from './analyze/AnalyzeIsland.jsx';
 import { Suspended } from '@ui/components/shared/Suspended';
-import { fullTimestamp } from '@ui/lib/formatTime.js';
 import { lazyNamed } from '@ui/lib/lazyNamed';
 
 // The Media tab (the timeline, waveform, speech detection, and recording
@@ -31,7 +30,8 @@ import { useDocumentPermissions } from './hooks/useDocumentPermissions.js';
 import { useWriteLock } from '@ui/hooks/useWriteLock.js';
 import { useResumedRun } from '@ui/hooks/useResumedRun.js';
 import { RunBanner } from '@ui/components/services/RunBanner.jsx';
-import { useHistoryView } from './hooks/useHistoryView.js';
+import { useHistoryView } from '@ui/hooks/useHistoryView.js';
+import { HistoricalBanner } from '@ui/components/shared/HistoricalBanner.jsx';
 import { useReconcileOnOpen } from './hooks/useReconcileOnOpen.js';
 import { useSentenceFocus } from './hooks/useSentenceFocus.js';
 import { useDocumentTabs } from './hooks/useDocumentTabs.js';
@@ -80,24 +80,15 @@ const DocumentEditor = () => {
   // the word it cites, so the link lands on the word and not just the sentence.
   const focusWordParam = Number.parseInt(searchParams.get('focusWord') ?? '', 10);
 
-  // The single shared IgtDocument for the whole editor. Time travel swaps it
-  // for a snapshot (useHistoryView below).
-  const [doc, setDoc] = useState(null);
+  // The live IgtDocument for the whole editor. A history entry reads a
+  // snapshot beside it (useHistoryView), and `doc` is whichever is on screen.
+  const [liveDoc, setLiveDoc] = useState(null);
   const [loadError, setLoadError] = useState('');
-
-  // Base path the tab links hang their `?tab=` off.
-  const docPath = `/projects/${projectId}/documents/${documentId}`;
-
-  const permissions = useDocumentPermissions(doc?.project);
-
-  const writeLock = useWriteLock();
-  // A run the previous page started and did not live to see the end of.
-  useResumedRun(client, doc, writeLock.acquire);
-  // A code bound under Settings applies in the grid and every other field here.
-  useComposeProject(doc?.project);
   const {
     asOf,
     isViewingHistorical,
+    loadingSnapshot,
+    snapshot,
     drawerOpen,
     openHistory,
     closeHistory,
@@ -112,10 +103,22 @@ const DocumentEditor = () => {
   } = useHistoryView({
     documentId,
     client,
-    doc,
-    setDoc,
+    doc: liveDoc,
+    reload: () => liveDoc.reload(),
     onExpired: () => logout('expired'),
   });
+  const doc = snapshot ?? liveDoc;
+
+  // Base path the tab links hang their `?tab=` off.
+  const docPath = `/projects/${projectId}/documents/${documentId}`;
+
+  const permissions = useDocumentPermissions(doc?.project);
+
+  const writeLock = useWriteLock();
+  // A run the previous page started and did not live to see the end of.
+  useResumedRun(client, doc, writeLock.acquire);
+  // A code bound under Settings applies in the grid and every other field here.
+  useComposeProject(doc?.project);
   const [activeTab, setActiveTab, tabHref] = useDocumentTabs({ doc, asOf });
   // Landing on a sentence: the ?focusSentence= handoff, and a citation asking
   // for one of this document's sentences while the reader is here.
@@ -206,7 +209,7 @@ const DocumentEditor = () => {
       return undefined;
     }
     let cancelled = false;
-    setDoc(null);
+    setLiveDoc(null);
     setLoadError('');
     (async () => {
       try {
@@ -216,7 +219,7 @@ const DocumentEditor = () => {
         const d = await IgtDocument.load(client, projectId, documentId, null, { user });
         if (cancelled) return;
         d.onError = (msg, err, label) => notifyError(err ?? msg, label);
-        setDoc(d);
+        setLiveDoc(d);
       } catch (e) {
         if (cancelled) return;
         if (e.message === 'Not authenticated' || e.status === 401) {
@@ -230,9 +233,9 @@ const DocumentEditor = () => {
     return () => {
       cancelled = true;
     };
-    // NOT keyed on asOf: time travel is useHistoryView's, and it re-reads only
-    // the document. DocumentDetail is keyed by documentId, so within one mount
-    // this runs once and always at the live state.
+    // NOT keyed on asOf: time travel is useHistoryView's, which reads a
+    // snapshot beside this one. DocumentDetail is keyed by documentId, so
+    // within one mount this runs once and always at the live state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, projectId, documentId, navigate, user?.id]);
 
@@ -342,7 +345,9 @@ const DocumentEditor = () => {
   // A service run writing to this document takes the editor read-only for as
   // long as it writes: the run outlives its dialog, and it ends in a reload
   // that would discard anything typed underneath it. See useWriteLock.
-  const readOnly = permissions.isReadOnly || isViewingHistorical || !!writeLock.held;
+  // Read-only from the click on a history entry, not from the snapshot landing:
+  // nothing may land on the live document in the window between.
+  const readOnly = permissions.isReadOnly || !!selectedEntry || !!writeLock.held;
 
   return (
     <>
@@ -401,12 +406,7 @@ const DocumentEditor = () => {
             <h1 className="text-3xl font-bold tracking-tight">{doc.document.name}</h1>
             {reconciling && crumbs}
 
-            {isViewingHistorical && (
-              <div className="mb-4 rounded-md border border-blue-300 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-                <p className="font-medium">Read-only</p>
-                <p className="text-xs">This is the document as of {fullTimestamp(asOf)}.</p>
-              </div>
-            )}
+            <HistoricalBanner entry={selectedEntry} loading={loadingSnapshot} className="mb-4" />
 
             {!isViewingHistorical && permissions.isReadOnly && (
               <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
