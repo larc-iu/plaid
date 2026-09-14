@@ -95,6 +95,36 @@ describe('the ?sent= deep link', () => {
     await view.unmount();
   });
 
+  // The flash is a timer, and a second citation clicked before it comes due
+  // leaves the first one's timer running. What it would clear is the flash of
+  // the sentence the reader is looking at NOW, which is why the effect cleans
+  // up after itself. Only the sequence shows it: either way the second link
+  // scrolls where it should, and either way the flash is gone in the end.
+  it('a link overtaken by another does not cut the new flash short', async () => {
+    const row = putRow('s2');
+    const later = putRow('s3');
+    const view = await renderComponent(<Probe {...base} sentParam="s2" />);
+    await runFrame(view);
+    expect(flashOf(view)).toBe('s2');
+
+    // Most of the way through the first flash, a second citation is clicked.
+    await view.step(() => vi.advanceTimersByTime(1500));
+    await view.rerender(<Probe {...base} sentParam="s3" />);
+    await runFrame(view);
+    expect(later.scrollIntoView).toHaveBeenCalled();
+    expect(flashOf(view)).toBe('s3');
+
+    // Past the moment the FIRST flash was due to end, and still inside the
+    // second's.
+    await view.step(() => vi.advanceTimersByTime(520));
+    expect(flashOf(view)).toBe('s3');
+
+    await view.step(() => vi.advanceTimersByTime(1500));
+    expect(flashOf(view)).toBe('');
+    expect(row.scrollIntoView).toHaveBeenCalledTimes(1);
+    await view.unmount();
+  });
+
   it('does nothing while the document is still being repaired', async () => {
     const setPage = vi.fn();
     const row = putRow('s30');
