@@ -9,6 +9,21 @@
            [java.util UUID]
            [org.apache.tika Tika]))
 
+(def error-kinds
+  "Every `:error-kind` a failure here reports, and what each one means. The
+  kind is the contract with the REST layer, which turns it into a status
+  (`plaid.rest-api.v1.media/error-status`).
+
+  The message is for a person to read and must never be the exception's own:
+  a NoSuchFileException's message is an absolute server path, and it used to
+  go to the client while the route guessed a status by matching on its text.
+  Exceptions are logged here instead."
+  {:unsupported "not a media file we can store, or an extension we cannot name"
+   :too-large   "over the configured upload limit"
+   :exists      "the document already has a media file"
+   :not-found   "the document has no media file"
+   :io          "the filesystem refused the read, write or delete"})
+
 (def special-extension-cases
   "Special cases where MIME subtype doesn't match ideal file extension"
   {"audio/mpeg" "mp3"
@@ -216,19 +231,20 @@
   (nth upload-locks (mod (hash doc-id) (count upload-locks))))
 
 (defn store-media-file!
-  "Store a media file for a document. Returns {:success true} or {:success false :error msg}"
+  "Store a media file for a document. Returns {:success true ...} or
+  {:success false :error-kind <kind> :error <msg>}. See `error-kinds`."
   [doc-id temp-file filename]
   (locking (upload-lock-for doc-id)
     (let [staged-path (volatile! nil)]
       (try
         (cond
           (media-exists? doc-id)
-          {:success false :error "Media file already exists. Delete existing file first."}
+          {:success false :error-kind :exists
+           :error "Media file already exists. Delete existing file first."}
 
           (> (.length temp-file) (get-max-file-size))
-          ;; The sentinel string is what the REST layer maps to 413; the sizes
-          ;; ride alongside so the refusal can say what the limit actually is.
-          {:success false :error "File too large"
+          ;; The sizes ride along so the refusal can say what the limit is.
+          {:success false :error-kind :too-large :error "File too large"
            :max-bytes (get-max-file-size) :size (.length temp-file)}
 
           :else
@@ -255,11 +271,12 @@
                     (vreset! staged-path nil)
                     (log/info "Stored media file:" file-path "method:" (:method validation))
                     {:success true :file-path file-path :extension extension :content-type content-type})
-                  {:success false :error "Could not determine file extension"}))
-              {:success false :error (:error validation)})))
+                  {:success false :error-kind :unsupported
+                   :error "Could not determine file extension"}))
+              {:success false :error-kind :unsupported :error (:error validation)})))
         (catch Exception e
           (log/error e "Failed to store media file for document" doc-id)
-          {:success false :error (.getMessage e)})
+          {:success false :error-kind :io :error "Could not store the media file."})
         (finally
           (when-let [path @staged-path]
             (try
@@ -279,7 +296,8 @@
       (try
         (cond
           (media-exists? dst-doc-id)
-          {:success false :error "Media file already exists. Delete existing file first."}
+          {:success false :error-kind :exists
+           :error "Media file already exists. Delete existing file first."}
 
           :else
           (if-let [[src-path extension] (find-existing-media-file src-doc-id)]
@@ -300,10 +318,10 @@
               (vreset! staged-path nil)
               (log/info "Copied media file for" src-doc-id "to" dst-doc-id)
               {:success true :extension extension})
-            {:success false :error "No media file found"}))
+            {:success false :error-kind :not-found :error "No media file found"}))
         (catch Exception e
           (log/error e "Failed to copy media file from" src-doc-id "to" dst-doc-id)
-          {:success false :error (.getMessage e)})
+          {:success false :error-kind :io :error "Could not copy the media file."})
         (finally
           (when-let [path @staged-path]
             (try
@@ -312,7 +330,8 @@
                 (log/warn cleanup-error "Failed to remove staged media copy" path)))))))))
 
 (defn delete-media-file!
-  "Delete a media file for a document. Returns {:success true} or {:success false :error msg}"
+  "Delete a media file for a document. Returns {:success true} or
+  {:success false :error-kind <kind> :error <msg>}."
   [doc-id]
   (try
     (if-let [[file-path _] (find-existing-media-file doc-id)]
@@ -321,11 +340,11 @@
           (do
             (log/info "Deleted media file:" file-path)
             {:success true})
-          {:success false :error "Failed to delete file"}))
-      {:success false :error "No media file found"})
+          {:success false :error-kind :io :error "Could not delete the media file."}))
+      {:success false :error-kind :not-found :error "No media file found"})
     (catch Exception e
       (log/error e "Failed to delete media file for document" doc-id)
-      {:success false :error (.getMessage e)})))
+      {:success false :error-kind :io :error "Could not delete the media file."})))
 
 (defn delete-media-files!
   "Best-effort deletion for a collection of document media files. Returns
@@ -422,7 +441,7 @@
        :content-type (:content-type info)
        :size (:size info)
        :last-modified (:last-modified info)}
-      {:success false :error "Media file not found"})
+      {:success false :error-kind :not-found :error "Media file not found"})
     (catch Exception e
       (log/error e "Failed to get media file for document" doc-id)
-      {:success false :error (.getMessage e)})))
+      {:success false :error-kind :io :error "Could not read the media file."})))

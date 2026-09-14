@@ -8,6 +8,7 @@
             [plaid.fixtures :refer [with-db with-mount-states with-rest-handler
                                     rest-handler with-admin with-test-users
                                     admin-request with-clean-db parse-response-body]]
+            [plaid.media.storage]
             [plaid.server.config :as config]
             [plaid.test-helpers :refer [create-test-project create-test-document]])
   (:import [java.io File]
@@ -103,5 +104,67 @@
               (let [url2 (media-url)]
                 (is (some? url2))
                 (is (not= url1 url2)))))))
+      (finally
+        (delete-tree! tmp)))))
+
+(deftest a-refusal-says-what-happened-and-not-where-the-server-keeps-its-files
+  ;; The route used to pick its status by matching on the message string that
+  ;; came back from storage, and that message was the exception's own on any
+  ;; filesystem failure: a NoSuchFileException's message is an absolute server
+  ;; path, and it went to the client under a 400. The kind decides the status
+  ;; now, and the message is written for a person.
+  (let [tmp (Files/createTempDirectory "plaid-media-kind-" (make-array FileAttribute 0))
+        cfg {:plaid.server.sql/config {:main-db-path (str (.resolve tmp "plaid.db"))}
+             :plaid.media/config {:max-file-size-mb 200}}]
+    (try
+      (with-redefs [config/config cfg]
+        (let [pid (create-test-project admin-request "Media kind project")
+              did (create-test-document admin-request pid "Media document")
+              media-path (str "/api/v1/documents/" did "/media")
+              upload! (fn [filename content]
+                        (let [file (File/createTempFile "plaid-media-kind-" ".tmp")]
+                          (spit file content)
+                          (.deleteOnExit file)
+                          (rest-handler (-> (admin-request :put media-path)
+                                            (assoc :multipart-params
+                                                   {"file" {:filename filename
+                                                            :tempfile file
+                                                            :size (.length file)}})))))]
+
+          (testing "no media yet: a read and a delete are both 404"
+            (is (= 404 (:status (close-body! (rest-handler (admin-request :get media-path))))))
+            (is (= 404 (:status (rest-handler (admin-request :delete media-path))))))
+
+          (testing "a file that is not media at all is 415"
+            (let [res (upload! "notes.txt" "this is not a recording")]
+              (is (= 415 (:status res)))
+              (is (string? (-> res parse-response-body :error)))))
+
+          (is (= 201 (:status (upload! "clip.mp3" "first"))))
+
+          (testing "a second upload is 409 while the first is still there"
+            (is (= 409 (:status (upload! "clip.mp3" "second")))))
+
+          (testing "over the configured limit is 413, and says what the limit is"
+            (is (= 204 (:status (rest-handler (admin-request :delete media-path)))))
+            (with-redefs [config/config (assoc-in cfg [:plaid.media/config :max-file-size-mb] 0)]
+              (let [res (upload! "clip.mp3" "any size at all is over a zero limit")
+                    body (parse-response-body res)]
+                (is (= 413 (:status res)))
+                (is (= 0 (:max-bytes body)))
+                (is (pos? (:size body))))))
+
+          (is (= 201 (:status (upload! "clip.mp3" "back again"))))
+
+          (testing "a filesystem failure is a server fault, and its message stays here"
+            (let [secret "/srv/plaid/data/media/whoever-this-is.mp3"]
+              (with-redefs [plaid.media.storage/get-media-info
+                            (fn [_] (throw (java.nio.file.NoSuchFileException. secret)))]
+                (let [res (close-body! (rest-handler (admin-request :get media-path)))
+                      body (parse-response-body res)]
+                  (is (= 500 (:status res))
+                      "a failed read used to answer 404, and an upload 400")
+                  (is (not (str/includes? (str body) secret))
+                      "the exception's own message names a path on the server")))))))
       (finally
         (delete-tree! tmp)))))

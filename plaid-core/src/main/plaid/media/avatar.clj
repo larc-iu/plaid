@@ -120,5 +120,9 @@
            :code 400
            :error "Image could not be decoded. The file may be truncated or corrupt."})))
     (catch Exception e
+      ;; Never the exception's own message: an ImageIO or filesystem failure
+      ;; names absolute server paths, and this one goes straight to the
+      ;; uploader. The trace is in the log line above.
       (log/error e "Failed to normalize avatar upload")
-      {:success false :code 400 :error (str "Could not process image: " (.getMessage e))})))
+      {:success false :code 400
+       :error "The image could not be processed. Try a PNG, JPEG, WebP or GIF."})))

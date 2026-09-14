@@ -7,6 +7,25 @@
             [taoensso.timbre :as log])
   (:import [java.io FileInputStream InputStream]))
 
+(def ^:private error-status
+  "HTTP status for each `:error-kind` `plaid.media.storage` reports. Reading
+  the kind rather than the message is the point: the status used to be
+  guessed by matching on the message text, which meant a filesystem failure
+  answered 400 with an absolute server path in the body."
+  {:unsupported 415
+   :too-large   413
+   :exists      409
+   :not-found   404
+   :io          500})
+
+(defn- error-response
+  "Turn a storage failure into a response. An unknown kind is a server fault,
+  which is what a failure with no kind at all means too."
+  [result]
+  {:status (get error-status (:error-kind result) 500)
+   :body (merge {:error (:error result)}
+                (select-keys result [:max-bytes :size]))})
+
 (defn get-project-id-from-document
   "Get project ID from document ID for auth middleware"
   [{db :db params :parameters :as request}]
@@ -151,8 +170,7 @@
                                    (:size result)
                                    range-header)
                                   (update :headers merge cache {"ETag" etag}))))
-                          {:status 404
-                           :body {:error (:error result)}})))}
+                          (error-response result))))}
 
      :put {:summary "Upload a media file for a document. Uses Apache Tika for content validation."
            :middleware [[pra/wrap-writer-required get-project-id-from-document]]
@@ -179,15 +197,7 @@
                                    :body {:message "Media file uploaded successfully"
                                           :extension (:extension result)
                                           :content-type (:content-type result)}}
-                                  (let [error-msg (:error result)
-                                        status (cond
-                                                 (= error-msg "Unsupported media type") 415
-                                                 (= error-msg "File too large") 413
-                                                 (and error-msg (.contains error-msg "already exists")) 409
-                                                 :else 400)]
-                                    {:status status
-                                     :body (merge {:error error-msg}
-                                                  (select-keys result [:max-bytes :size]))})))
+                                  (error-response result)))
                               {:status 400
                                :body {:error "Invalid file upload - no temp file"}}))
                           {:status 400
@@ -199,5 +209,4 @@
                          (let [result (media/delete-media-file! document-id)]
                            (if (:success result)
                              {:status 204}
-                             {:status 404
-                              :body {:error (:error result)}})))}}]])
+                             (error-response result))))}}]])

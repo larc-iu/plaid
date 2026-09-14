@@ -24,7 +24,8 @@
             [plaid.server.log-buffer :as log-buffer]
             [plaid.server.version :as version]
             [plaid.sql.common :as psc]
-            [plaid.sql.user-data :as user-data])
+            [plaid.sql.user-data :as user-data]
+            [taoensso.timbre :as log])
   (:import [java.io File RandomAccessFile]
            [java.lang.management ManagementFactory]))
 
@@ -174,8 +175,12 @@
       (try
         {:file (.getAbsolutePath file) :lines (tail-lines file n)}
         (catch Exception e
+          ;; The class name of whatever went wrong told the operator nothing
+          ;; and the message was the exception's own. The screen already shows
+          ;; the path it tried; the trace goes to the log.
+          (log/error e "Failed to read the log file for the admin Logs screen")
           {:file (.getAbsolutePath file) :lines []
-           :error (or (.getMessage e) (.. e getClass getSimpleName))})))))
+           :error "The log file could not be read."})))))
 
 ;; ============================================================
 ;; Routes
