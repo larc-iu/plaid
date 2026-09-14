@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { notifyError, humanizeError } from '@/utils/feedback';
-import { useDocumentHistory } from './useDocumentHistory.js';
+import { isExpiredSession, useDocumentHistory } from './useDocumentHistory.js';
 
 // Time travel: the history rail, the snapshot being viewed, and the restore it
 // can lead to. One concern with three pieces of state that only make sense
@@ -14,12 +14,13 @@ import { useDocumentHistory } from './useDocumentHistory.js';
 // reload unmounted the whole editor to a spinner for ~1.4s on every history
 // click, which read as a full page refresh.
 //
-// `onExpired` is called when a snapshot read comes back unauthenticated.
+// `onExpired` is called when a read comes back unauthenticated, the snapshot's
+// here and the entry list's in useDocumentHistory.
 export function useHistoryView({ documentId, client, doc, setDoc, onExpired }) {
   const [asOf, setAsOf] = useState(null);
   // The history entry a restore is being confirmed for (RestoreDialog).
   const [restoreEntry, setRestoreEntry] = useState(null);
-  const history = useDocumentHistory(documentId, client);
+  const history = useDocumentHistory(documentId, client, onExpired);
 
   useEffect(() => {
     if (!doc) return undefined;
@@ -34,7 +35,7 @@ export function useHistoryView({ documentId, client, doc, setDoc, onExpired }) {
         setDoc(next);
       } catch (e) {
         if (cancelled) return;
-        if (e.message === 'Not authenticated' || e.status === 401) {
+        if (isExpiredSession(e)) {
           onExpired();
           return;
         }

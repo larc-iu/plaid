@@ -179,6 +179,18 @@ describe('the history view', () => {
     await view.unmount();
   });
 
+  it('hands an expired session from the entry list to the screen as well', async () => {
+    // Two reads answer the rail, the snapshot's and the list's, and the list's
+    // used to put the raw error in the drawer and leave the session alone.
+    audit.mockImplementation(() => Promise.reject(new Error('Not authenticated')));
+    await mount();
+    await view.step(() => api.openHistory());
+    await settle();
+    expect(onExpired).toHaveBeenCalled();
+    expect(api.historyError).toBe('');
+    await view.unmount();
+  });
+
   it('hands an expired session to the screen instead of toasting', async () => {
     await mount();
     doc.atAsOf = vi.fn(() => Promise.reject(new Error('Not authenticated')));
