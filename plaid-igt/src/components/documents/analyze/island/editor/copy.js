@@ -1,4 +1,5 @@
 import { html, nothing } from 'lit-html';
+import { notifyError } from '@/utils/feedback';
 import { COPY_FORMATS, COPY_FORMAT_STORAGE_KEY, formatSentence } from '@/domain/igtExport';
 
 // Copy as IGT: the format menu, the clipboard write, and a sentence's link.
@@ -39,8 +40,13 @@ export const copy = {
       sentFields: ctx.sentFields,
     };
     const text = formatSentence(sentence, fields, format);
-    await this._writeClipboard(text);
+    const written = await this._writeClipboard(text);
     this._copyMenu = null;
+    if (!written) {
+      this._render(true);
+      if (back?.isConnected) back.focus();
+      return;
+    }
     this._copiedFlash = sentence.id;
     clearTimeout(this._copiedTimer);
     this._copiedTimer = setTimeout(() => {
@@ -51,9 +57,15 @@ export const copy = {
     if (back?.isConnected) back.focus();
   },
 
+  /**
+   * Write to the clipboard, and say whether it landed: both routes can fail
+   * (a refused permission, an insecure context where execCommand is disabled
+   * too), and the ✓ that follows this is a lie when they do.
+   */
   async _writeClipboard(text) {
     try {
       await navigator.clipboard.writeText(text);
+      return true;
     } catch {
       // Clipboard API unavailable (insecure context): textarea fallback.
       const ta = document.createElement('textarea');
@@ -62,11 +74,16 @@ export const copy = {
       ta.style.opacity = '0';
       document.body.appendChild(ta);
       ta.select();
+      let ok;
       try {
-        document.execCommand('copy');
+        ok = document.execCommand('copy');
+      } catch {
+        ok = false;
       } finally {
         ta.remove();
       }
+      if (!ok) notifyError('Clipboard access was refused.', 'Could not copy');
+      return ok;
     }
   },
 
@@ -88,7 +105,7 @@ export const copy = {
   },
 
   async _copySentenceLink(sentence) {
-    await this._writeClipboard(this._sentenceLink(sentence));
+    if (!(await this._writeClipboard(this._sentenceLink(sentence)))) return;
     this._linkFlash = sentence.id;
     clearTimeout(this._linkTimer);
     this._linkTimer = setTimeout(() => {

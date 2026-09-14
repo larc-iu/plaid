@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { IgtEditor } from './island/IgtEditor.js';
 import { AutoAnalyzeDialog } from './AutoAnalyzeDialog.jsx';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
@@ -39,6 +40,13 @@ export const AnalyzeIsland = () => {
   const { user } = useAuth();
   const canWriteVocab = (vocab) => canManageVocabulary(vocab, user);
 
+  // The island is built once, so the confirm it holds reads through a ref and
+  // its identity never has to change. Same dialog the entry panel asks with:
+  // two renderings of a thread should not ask differently.
+  const confirm = useConfirm();
+  const confirmRef = useRef(confirm);
+  confirmRef.current = confirm;
+
   useEffect(() => {
     if (!doc || !hostRef.current) return undefined;
     editorRef.current = new IgtEditor(hostRef.current, doc, {
@@ -52,6 +60,16 @@ export const AnalyzeIsland = () => {
       comments,
       canComment: canWrite,
       canDeleteAnyComment: canManage,
+      confirmDeleteComment: (comment) =>
+        confirmRef.current({
+          title:
+            comment.authorId === comments?.currentUserId
+              ? 'Delete your comment?'
+              : `Delete ${comments?.authorName(comment.authorId)}'s comment?`,
+          description: 'Comments are not kept in the history, so this cannot be undone.',
+          confirmLabel: 'Delete',
+          destructive: true,
+        }),
       assistantOnline,
     });
     return () => {

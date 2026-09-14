@@ -49,6 +49,7 @@ export class IgtEditor {
       comments = null,
       canComment = false,
       canDeleteAnyComment = false,
+      confirmDeleteComment = null,
       assistantOnline = false,
     } = {},
   ) {
@@ -72,6 +73,12 @@ export class IgtEditor {
     this.comments = comments;
     this.canComment = canComment;
     this.canDeleteAnyComment = canDeleteAnyComment;
+    // Asked before a comment is removed, and it must resolve truthy. REQUIRED
+    // for the popover's delete, on the rule ThreadIslandBase states: a comment
+    // is unaudited, so there is no history entry and no restore, and a
+    // mis-click on a colleague's thread is permanent. A mount that cannot ask
+    // does not get to delete.
+    this.confirmDeleteComment = confirmDeleteComment;
     // Whether a sentence offers "Ask". Discovered after mount, so it also has
     // a setter (see editor/assistant.js).
     this.assistantOnline = assistantOnline;
@@ -431,12 +438,14 @@ export class IgtEditor {
     this._paintStatus();
   }
 
+  // The pill is a lit render of its own, into the toolbar's static mount.
+  // Writing an attribute lit also binds leaves lit's dirty check holding a
+  // value the DOM no longer has, and the next render that agrees with it paints
+  // nothing: the pill would stick on "Saving…" for good.
   _paintStatus() {
-    const el = this.container.querySelector('.igt-status');
-    if (!el) return;
-    const s = this._statusState || 'idle';
-    el.dataset.state = s;
-    el.textContent = s === 'saving' ? 'Saving…' : s === 'saved' ? 'Saved ✓' : '';
+    const host = this.container.querySelector('.igt-status-mount');
+    if (!host) return;
+    render(this._statusPill(), host);
   }
 
   // Enqueue a doc mutation thunk so it runs after any in-flight one. Returns a
@@ -467,6 +476,9 @@ export class IgtEditor {
       Object.keys(this.doc.vocabularies || {}).length > 0,
     );
     render(this._template(), this.container);
+    // The pill lives in a nested root the template above does not write, so a
+    // fresh toolbar comes back empty until this puts it back.
+    this._paintStatus();
     this._fitPopover();
     this._restorePendingFocus();
     // Size sentence textareas to their content (uncontrolledValue may have just

@@ -148,6 +148,8 @@ export const comments = {
               await store.edit(id, draft);
             },
             remove: async (c) => {
+              if (!this.confirmDeleteComment) return;
+              if (!(await this.confirmDeleteComment(c))) return;
               if (this._cmtEditingId === c.id) this._cmtEditingId = null;
               await store.remove(c.id);
               this._fitPopover();

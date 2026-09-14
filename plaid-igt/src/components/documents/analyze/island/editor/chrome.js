@@ -147,6 +147,15 @@ export const chrome = {
   },
 
   // Glossing progress: morphemes with at least one filled gloss field / total.
+  // The save-status pill. It has a lit root of its own inside the static mount
+  // above, so a save repaints it without re-rendering the grid (_paintStatus).
+  _statusPill() {
+    const state = this._statusState || 'idle';
+    return html`<span class="igt-status" role="status" aria-live="polite" data-state=${state}
+      >${state === 'saving' ? 'Saving…' : state === 'saved' ? 'Saved ✓' : ''}</span
+    >`;
+  },
+
   _toolbar(sentences, ctx, pageCount = 1) {
     const nSent = sentences.length;
     return html`
@@ -187,12 +196,7 @@ export const chrome = {
           }
         </div>
         <div class="igt-toolbar__right">
-          <span
-            class="igt-status"
-            role="status"
-            aria-live="polite"
-            data-state=${this._statusState || 'idle'}
-          ></span>
+          <span class="igt-status-mount"></span>
           <button
             type="button"
             class="igt-help-btn"

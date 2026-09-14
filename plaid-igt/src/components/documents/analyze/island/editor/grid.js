@@ -1,6 +1,6 @@
 import { html, nothing } from 'lit-html';
 import { repeat } from 'lit-html/directives/repeat.js';
-import { provOrigin, PROV_STATES } from '@larc-iu/plaid-client';
+import { cpLength, provOrigin, PROV_STATES } from '@larc-iu/plaid-client';
 import { isTokenIgnored } from '@/domain/igtConfig';
 import { allowedGuess } from '@/domain/glossGuess';
 import { morphemeJoiner } from '@/domain/affixMarkers';
@@ -70,7 +70,7 @@ export const grid = {
   // Cross-browser content sizing fallback (for browsers without CSS
   // field-sizing): the input's `size` attr tracks its value's code-point length.
   _fieldSize(v) {
-    return Math.max(5, [...(v ?? '')].length + 1);
+    return Math.max(5, cpLength(v ?? '') + 1);
   },
 
   _tokenCol(token, ctx, sctx) {
