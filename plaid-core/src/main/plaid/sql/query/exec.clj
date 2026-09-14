@@ -25,6 +25,7 @@
   bug) for the REST layer to map to an HTTP status."
   (:require [next.jdbc :as jdbc]
             [plaid.query.ast :as ast]
+            [plaid.query.clauses :as clauses]
             [plaid.sql.common :as psc]
             [plaid.sql.query.compile :as qc]
             [plaid.sql.query.resolve :as qr]
@@ -262,7 +263,7 @@
         ;; :limit, then apply the effective limit once at assembly.
         hqs (mapv (fn [b] (qc/compile-query (qr/resolve-query db user-id (dissoc b :limit)))) branches)]
     (cond
-      (ast/aggregate? head)
+      (clauses/aggregate? head)
       (let [plan (qc/aggregate-plan (first hqs))
             lim (min (or (:limit head) agg-group-cap) agg-group-cap)
             {:keys [hq read-kws labels]} (aggregate-query hqs plan (inc lim))

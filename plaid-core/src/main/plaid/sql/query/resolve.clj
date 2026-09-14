@@ -14,7 +14,7 @@
   as either string or UUID, and strings keep set operations unambiguous)."
   (:require [clojure.set :as set]
             [clojure.string :as str]
-            [plaid.query.ast :as ast]
+            [plaid.query.clauses :as clauses]
             [plaid.sql.common :as psc]
             [plaid.sql.project :as prj]
             [plaid.sql.user :as usr]))
@@ -157,7 +157,7 @@
               ;; :token-layer, relation-layer's :span-layer). A scalar ref is resolved
               ;; to an id against the PARENT kind's index; a var slot is left for the
               ;; compiler (a join). Mirrors the entity :layer branch above.
-              (seq (ast/layer-slots-for head))
+              (seq (clauses/layer-slots-for head))
               [head v
                (reduce
                 (fn [cm [slot parent-kind]]
@@ -167,7 +167,7 @@
                                 (vec (resolve-ref (get-index parent-kind) parent-kind ref)))
                       cm)))
                 cmap
-                (ast/layer-slots-for head))]
+                (clauses/layer-slots-for head))]
               :else clause)))]
     (-> ast*
         (assoc :where (mapv resolve-clause (:where ast*)))

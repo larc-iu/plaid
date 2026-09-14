@@ -4,7 +4,8 @@
   taxonomy. No DB."
   (:require [clojure.test :refer [deftest is testing]]
             [clojure.set]
-            [plaid.query.ast :as ast]))
+            [plaid.query.ast :as ast]
+            [plaid.query.clauses :as clauses]))
 
 (defn- code-of [f]
   (try (f) ::no-throw
@@ -318,10 +319,10 @@
       (is (= (symbol "?d") (:target cmap))))))
 
 (deftest var-predicate
-  (is (ast/var? (symbol "?s")))
-  (is (not (ast/var? 's)))
-  (is (not (ast/var? "?s")))
-  (is (= (symbol "?s") (ast/->var "?s"))))
+  (is (clauses/var? (symbol "?s")))
+  (is (not (clauses/var? 's)))
+  (is (not (clauses/var? "?s")))
+  (is (= (symbol "?s") (clauses/->var "?s"))))
 
 (deftest review3-hardening
   (testing "non-seqable :find / :where are a clean 400, not a 500 (no ISeq IllegalArgumentException)"
@@ -406,7 +407,7 @@
       (is (= "?b" v))
       (is (string? v))))
   (testing "without a binding, a ?-token keeps its normal meaning (here, a layer var)"
-    (is (ast/var? (:layer (cmap-of (ast/parse {"find" ["?s"] "where" [["span" "?s" {"layer" "?sl"}]]}))))))
+    (is (clauses/var? (:layer (cmap-of (ast/parse {"find" ["?s"] "where" [["span" "?s" {"layer" "?sl"}]]}))))))
   (testing "REST shape: the body arrives keyword-keyed (Muuntaja), so a bindings key is :?lyr"
     ;; placeholders used as clause VALUES stay strings (only keys are keywordized)
     (is (= "L9" (:layer (cmap-of (ast/parse {:find ["?s"]
@@ -460,7 +461,7 @@
     (is (some? (ast/parse+validate {"find" ["?t"] "where" [["token" "?t" {"layer" "w"}] [">=" "?t.Begin" 5]]})))
     (let [fr (nth (last (:where (ast/parse {"find" ["?t"]
                                             "where" [["token" "?t" {"layer" "w"}] ["=" "?t.metadata.caseKey" "X"]]}))) 1)]
-      (is (= ["metadata" "caseKey"] (ast/field-path fr)) "user key kept verbatim"))))
+      (is (= ["metadata" "caseKey"] (clauses/field-path fr)) "user key kept verbatim"))))
 
 (deftest metadata-constraint-rejects-a-variable
   (testing "a var in a :metadata constraint is a 400, not a silent no-match"
@@ -699,7 +700,7 @@
   (testing "the regex op parses to the keyword named \"~\", with the LHS a field-ref"
     (let [clause (last (:where (ast/parse {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}] ["~" "?s.value" "^N"]]})))]
       (is (= (keyword "~") (first clause)))
-      (is (ast/field-ref? (second clause)))
+      (is (clauses/field-ref? (second clause)))
       (is (= {:regex "^N"} (nth clause 2)) "bare string normalized to a regex spec")))
   (testing "~ requires a TEXT field on the left (numeric/opaque/reference rejected)"
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?t"] "where" [["token" "?t" {"layer" "w"}] ["~" "?t.begin" "1"]]}))))

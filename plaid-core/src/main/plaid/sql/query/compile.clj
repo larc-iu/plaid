@@ -24,6 +24,7 @@
   (:require [clojure.set :as set]
             [clojure.string :as str]
             [plaid.query.ast :as ast]
+            [plaid.query.clauses :as clauses]
             [plaid.sql.common :as psc]
             [plaid.sql.query.resolve :as qr]))
 
@@ -376,7 +377,7 @@
   (when (contains? cs :name)
     (add-where! st (atomic-pred (col a :name) (:name cs) identity)))
   ;; structural slots: join this layer's FK to its referenced parent layer
-  (doseq [[slot _parent-kind] (ast/layer-slots-for kind)
+  (doseq [[slot _parent-kind] (clauses/layer-slots-for kind)
           :when (contains? cs slot)]
     (let [fk (layer-slot-fk [kind slot])
           ref (get cs slot)]
@@ -695,7 +696,7 @@
     ;; existential (inner-only) vars get a table + scope here; correlated (outer)
     ;; vars are already in var->alias, so ensure-var! no-ops for them. (A nested
     ;; :not's own vars are handled by its recursive compile-not! call, not here.)
-    (doseq [v (distinct (mapcat ast/clause-vars inner))]
+    (doseq [v (distinct (mapcat clauses/clause-vars inner))]
       (ensure-var! sub-st v inner-cons))
     (doseq [c inner]
       (cond
@@ -756,17 +757,17 @@
   (str "$" (apply str (map #(str "." %) segs))))
 
 (defn- field-expr
-  "Resolve a field-ref term to {:sql expr :enc enc}. `ast/field-resolve` interprets
+  "Resolve a field-ref term to {:sql expr :enc enc}. `clauses/field-resolve` interprets
   the path against the host var's kind; this builds the column / decoded column /
   config json_extract / correlated metadata scalar-subquery on the var's alias."
   [st fr]
-  (let [v    (ast/field-var fr)
+  (let [v    (clauses/field-var fr)
         kind (get-in @st [:kinds v])
         a    (or (get-in @st [:var->alias v])
-                 (err-500! (str "Field path " (ast/field->str fr) " head var was never bound") {:var v}))
-        res  (ast/field-resolve kind (ast/field-path fr))]
+                 (err-500! (str "Field path " (clauses/field->str fr) " head var was never bound") {:var v}))
+        res  (clauses/field-resolve kind (clauses/field-path fr))]
     (when (:error res)
-      (err-500! (str "Field path " (ast/field->str fr) " reached the compiler unvalidated: " (:error res)) {:fr fr}))
+      (err-500! (str "Field path " (clauses/field->str fr) " reached the compiler unvalidated: " (:error res)) {:fr fr}))
     (case (:type res)
       (:core :layer-attr)
       (cond
@@ -807,8 +808,8 @@
   {:lit v} (a literal)."
   [st t]
   (cond
-    (ast/field-ref? t) (field-expr st t)
-    (ast/var? t)
+    (clauses/field-ref? t) (field-expr st t)
+    (clauses/var? t)
     (let [kind (get-in @st [:kinds t])]
       (if (= :scalar kind)
         (let [{:keys [sql enc json?]} (or (get-in @st [:scalar-col t])
@@ -908,16 +909,16 @@
   \"b\"; a field path `?t.begin` -> \"t_begin\" (alnum-cleaned, so it's a safe
   positional-free label)."
   [t]
-  (if (ast/field-ref? t)
-    (str/join "_" (cons (subs (name (ast/field-var t)) 1)
-                        (map #(str/replace % #"[^A-Za-z0-9]+" "") (ast/field-path t))))
+  (if (clauses/field-ref? t)
+    (str/join "_" (cons (subs (name (clauses/field-var t)) 1)
+                        (map #(str/replace % #"[^A-Za-z0-9]+" "") (clauses/field-path t))))
     (subs (name t) 1)))
 
 (defn- scalar-agg-expr
   "SQL for an aggregate/group VALUE: a field path -> its (decoded) expression; a
   scalar var -> its bound column (json_extract-decoded if JSON-encoded, e.g. :value)."
   [st src]
-  (if (ast/field-ref? src)
+  (if (clauses/field-ref? src)
     (:sql (field-expr st src))
     (let [{:keys [sql json?]} (or (get-in @st [:scalar-col src])
                                   (err-500! (str "Aggregate/group var " src " was never bound to a column") {:var src}))]
@@ -928,7 +929,7 @@
   entity/layer var -> its id."
   [st g]
   (cond
-    (ast/field-ref? g) (:sql (field-expr st g))
+    (clauses/field-ref? g) (:sql (field-expr st g))
     (= :scalar (get-in @st [:kinds g])) (scalar-agg-expr st g)
     :else (col (or (get-in @st [:var->alias g])
                    (err-500! (str "Group var " g " was never bound to a table") {:var g}))
@@ -971,13 +972,13 @@
   (let [scope (::qr/scope resolved)
         ;; validate already inferred + attached the var-kinds; reuse it (fall back
         ;; to re-inferring if a caller hands us an AST that skipped validate).
-        kinds (or (::ast/var-kinds resolved) (ast/infer-kinds resolved))
+        kinds (or (::ast/var-kinds resolved) (clauses/infer-kinds resolved))
         st (new-state scope kinds)
         constraints (collect-entity-constraints (:where resolved))]
     ;; Pass B: every POSITIVELY-bound var (entity + relationship-introduced) gets
     ;; a table + scope. Vars that appear only inside a :not are existential to the
     ;; subquery and are allocated there by compile-not!, not in the outer query.
-    (doseq [v (ast/positive-binding-vars (:where resolved))]
+    (doseq [v (clauses/positive-binding-vars (:where resolved))]
       (ensure-var! st v constraints))
     ;; emit each positive entity/layer clause's filters against its var's alias —
     ;; per-clause so two clauses on one var AND. Layer filters (name/structural
@@ -998,12 +999,12 @@
         (contains? layer-entity-table (first clause)) nil
         (contains? entity-table (first clause)) (compile-relation-inline! st constraints clause)
         (pred-honeysql-op (first clause)) (compile-pred! st clause)
-        (= ast/op-match (first clause)) (compile-regex-pred! st clause)
+        (= clauses/op-match (first clause)) (compile-regex-pred! st clause)
         (= :in (first clause)) (compile-in-pred! st clause)
         :else (compile-rel! st constraints clause)))
     (anchor-relations! st (:where resolved))
     (assert-acl-invariant! st)
-    (if (ast/aggregate? resolved)
+    (if (clauses/aggregate? resolved)
       ;; aggregate mode: project the distinct-match columns; exec wraps in GROUP BY
       (let [{:keys [select plan]} (aggregate-projection st (:return resolved))]
         (vary-meta {:select-distinct select :from (:from @st) :where (into [:and] (:where @st))}
