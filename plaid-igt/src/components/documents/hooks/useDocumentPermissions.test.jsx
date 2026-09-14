@@ -85,6 +85,18 @@ describe('what this reader may do with a document', () => {
     });
   });
 
+  it('refuses an admin too while the document has no project yet', async () => {
+    // An admin needs no ACL entry, so every test in permissions.js passes on
+    // the user alone and the answer for a project that has not loaded is the
+    // same all-true answer as for one that has. A member cannot see this.
+    expect(await ask({ id: 'x', isAdmin: true }, null)).toEqual({
+      canRead: false,
+      canWrite: false,
+      canManage: false,
+      isReadOnly: true,
+    });
+  });
+
   it('refuses everything with nobody signed in', async () => {
     expect(await ask(null)).toEqual({
       canRead: false,

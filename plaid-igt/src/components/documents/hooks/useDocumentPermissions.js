@@ -10,6 +10,14 @@ import { useAuth } from '../../../contexts/AuthContext.jsx';
 export const useDocumentPermissions = (projectData) => {
   const { user } = useAuth();
 
+  // Nothing is known until the project is. An admin passes every test in
+  // `permissions.js` on the user alone, so without this the editor renders as
+  // writable during the load and the first keystroke goes to a document whose
+  // project has not arrived.
+  if (!projectData) {
+    return { canRead: false, canWrite: false, canManage: false, isReadOnly: true };
+  }
+
   const canRead = canReadProject(projectData, user);
   const canWrite = canEditProject(projectData, user);
   const canManage = canManageProject(projectData, user);
