@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, MapPin, Wrench } from 'lucide-react';
+import { ChevronDown, ChevronRight, MapPin, Quote, Wrench } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { AssistantMarkdown } from './AssistantMarkdown.jsx';
 import { linkifyCitations } from './citations.js';
@@ -68,13 +68,36 @@ export const CitedMarkdown = ({ text, citations, projectId, adapter }) => {
         ),
       )}
       {inline.length > 0 && (
-        <div className="mt-2">
-          <div className="text-xs font-medium text-muted-foreground">Cited examples</div>
-          {inline.map((c) => (
-            <ExampleCard key={c.key} c={c} projectId={projectId} />
-          ))}
-        </div>
+        <CitedExamples cited={inline} projectId={projectId} adapter={adapter} />
       )}
+    </div>
+  );
+};
+
+// The cards for citations the reply only linked inline. Collapsed by default,
+// the way the tool trace is: an answer that cites a dozen examples is mostly
+// its own footnotes otherwise, and every one of them is already in the text
+// above as a link the reader can follow. A citation the model put on its own
+// line is drawn as a card in place, and that card is NOT part of this list.
+// Only the repeat at the bottom folds away.
+const CitedExamples = ({ cited, projectId, adapter }) => {
+  const { ExampleCard } = adapter;
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-2">
+      {/* The muted, small type is the button's own and not the container's: a
+          card sets its own colors but inherits what it does not set. */}
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex items-center gap-1 rounded px-1 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+      >
+        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        <Quote className="h-3 w-3" />
+        {cited.length === 1 ? '1 cited example' : `${cited.length} cited examples`}
+      </button>
+      {open && cited.map((c) => <ExampleCard key={c.key} c={c} projectId={projectId} />)}
     </div>
   );
 };
