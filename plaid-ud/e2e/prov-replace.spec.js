@@ -146,6 +146,24 @@ const apiSummary = (c) =>
     .filter((x) => x.method !== 'GET')
     .map((x) => `${x.method} ${x.status} ${x.url.replace(BASE, '')}`);
 
+// What the server holds once a write has LANDED. Every gesture below patches
+// the grid's own state BEFORE awaiting the server (see ConlluDocument), so the
+// screen settling says nothing about whether the write arrived: reading the
+// server once after it is a coin flip on how busy the core is.
+//
+// A 404 comes back as `{error}` rather than throwing, because one test is
+// waiting for a span to go away.
+const settled = async (read, until) => {
+  const now = () => read().catch((e) => ({ error: e.message }));
+  await expect.poll(async () => until(await now()), { timeout: 10_000 }).toBe(true);
+  return now();
+};
+const spanSettled = (id, until) => settled(() => S.client.spans.get(id), until);
+const relationSettled = (id, until) => settled(() => S.client.relations.get(id), until);
+const holds = (value) => (x) => x.value === value;
+const verified = (x) => x.metadata?.provConfirmed === true;
+const gone = (x) => !!x.error;
+
 test('API: batched(update + patchMetadata) verifies on the server', async () => {
   const { client, byKey, morphIds } = S;
   const tmp = (await client.spans.create(byKey.xpos, [morphIds[0]], 'DT', MACHINE)).id;
@@ -169,9 +187,8 @@ test('replace UPOS (Autocomplete cell) on dog', async ({ page }) => {
   await page.keyboard.press('Control+a');
   await page.keyboard.type('VERB', { delay: 20 });
   await page.keyboard.press('Enter');
-  await page.waitForTimeout(1200);
+  const span = await spanSettled(S.uposDog, holds('VERB'));
   const after = await page.locator('.editable-field--machine').count();
-  const span = await S.client.spans.get(S.uposDog);
   dump('upos-replace', {
     before,
     after,
@@ -195,8 +212,7 @@ test('replace lemma (plain input) on dog', async ({ page }) => {
   await page.keyboard.press('Control+a');
   await page.keyboard.type('doggo', { delay: 20 });
   await page.keyboard.press('Enter');
-  await page.waitForTimeout(1200);
-  const span = await S.client.spans.get(S.lemDog);
+  const span = await spanSettled(S.lemDog, holds('doggo'));
   const after = await page.locator('.editable-field--machine').count();
   dump('lemma-replace', {
     inferredCount: after,
@@ -223,36 +239,31 @@ test('clear XPOS then retype on dog', async ({ page }) => {
   await page.keyboard.press('Control+a');
   await page.keyboard.press('Delete');
   await page.keyboard.press('Enter');
-  await page.waitForTimeout(1200);
-  let span = await S.client.spans.get(S.xposDog).catch((e) => ({ error: e.message }));
-  dump('xpos-clear', {
-    server: span.error ? span : { value: span.value, metadata: span.metadata },
-  });
+  const span = await spanSettled(S.xposDog, gone);
+  dump('xpos-clear', { server: span });
+  expect(span.error).toMatch(/404/); // old span deleted on clear
+
+  // The retype makes a NEW span, so what says the write landed is the document
+  // rather than the old id.
+  const xposOnDog = async () => {
+    const doc = await S.client.documents.get(S.documentId, true);
+    const found = [];
+    const walk = (tl) => {
+      for (const sl of tl.spanLayers || [])
+        if (sl.id === S.byKey.xpos) found.push(...(sl.spans || []));
+      for (const ch of tl.tokenLayers || []) walk(ch);
+    };
+    for (const tl of doc.textLayers || []) for (const t of tl.tokenLayers || []) walk(t);
+    return found.find((x) => x.tokens.includes(S.morphIds[1]));
+  };
+
   await cell.focus();
   await page.keyboard.type('VBZ', { delay: 20 });
   await page.keyboard.press('Enter');
-  await page.waitForTimeout(1200);
-  span = await S.client.spans.get(S.xposDog).catch((e) => ({ error: e.message }));
-  const layer = (await S.client.spanLayers.get(S.byKey.xpos)) || {};
-  dump('xpos-retype', {
-    server: span.error ? span : { value: span.value, metadata: span.metadata },
-    api: apiSummary(c),
-    errors: c.errors.map((e) => e.text),
-  });
-  expect(span.error).toMatch(/404/); // old span deleted on clear
-  const doc = await S.client.documents.get(S.documentId, true);
-  const xposSpans = [];
-  const walk = (tl) => {
-    for (const sl of tl.spanLayers || [])
-      if (sl.id === S.byKey.xpos) xposSpans.push(...(sl.spans || []));
-    for (const ch of tl.tokenLayers || []) walk(ch);
-  };
-  for (const tl of doc.textLayers || []) for (const t of tl.tokenLayers || []) walk(t);
-  const fresh = xposSpans.find((x) => x.tokens.includes(S.morphIds[1]));
-  dump('xpos-fresh', fresh);
+  const fresh = await settled(xposOnDog, (x) => x?.value === 'VBZ');
+  dump('xpos-retype', { fresh, api: apiSummary(c), errors: c.errors.map((e) => e.text) });
   expect(fresh.value).toBe('VBZ');
   expect(fresh.metadata?.prov).toBeUndefined(); // human-made
-  void layer;
 });
 
 test('replace feature value (chip input) on dog', async ({ page }) => {
@@ -261,8 +272,7 @@ test('replace feature value (chip input) on dog', async ({ page }) => {
   await input.focus();
   await input.pressSequentially('Number=Plur', { delay: 20 });
   await input.press('Enter');
-  await page.waitForTimeout(1200);
-  const span = await S.client.spans.get(S.featDog).catch((e) => ({ error: e.message }));
+  const span = await spanSettled(S.featDog, holds('Number=Plur'));
   const machineFeats = await page.locator('.feature-text--machine').count();
   dump('feat-replace', {
     inferredFeats: machineFeats,
@@ -288,8 +298,7 @@ test('replace deprel label (tree editor)', async ({ page }) => {
   await page.keyboard.press('Control+a');
   await page.keyboard.type('nmod', { delay: 20 });
   await page.keyboard.press('Enter');
-  await page.waitForTimeout(1200);
-  const rel = await S.client.relations.get(S.relDet);
+  const rel = await relationSettled(S.relDet, holds('nmod'));
   const newLabel = page.locator('.tree-deprel-text', { hasText: 'nmod' }).first();
   const classAfter = await newLabel.getAttribute('class').catch(() => null);
   dump('deprel-replace', {
@@ -325,9 +334,11 @@ const expectVerified = (got, before) => {
   expect(got.inferredCount).toBe(before - 1);
 };
 
-const readUpos = async (page, c) => {
-  await page.waitForTimeout(1200);
-  const span = await S.client.spans.get(S.uposDog);
+// `until` is what says the gesture's write has landed. It is a predicate rather
+// than a value because one of these gestures re-types the value the span
+// already holds, where the only change is that it is now verified.
+const readUpos = async (page, c, until = holds('VERB')) => {
+  const span = await spanSettled(S.uposDog, until);
   return {
     inferredCount: await page.locator('.editable-field--machine').count(),
     cellValue: await page.locator(`[id="${S.morphIds[1]}-upos"]`).inputValue(),
@@ -345,7 +356,9 @@ test('upos: Ctrl+A, type, Enter, then Tab', async ({ page }) => {
   await page.keyboard.press('Control+a');
   await page.keyboard.type('VERB', { delay: 20 });
   await page.keyboard.press('Enter');
-  await page.waitForTimeout(300);
+  // Tab is the gesture under test, so the Enter before it has to have been
+  // taken first. What says so is the cell, which the commit fills.
+  await expect(page.locator(`[id="${S.morphIds[1]}-upos"]`)).toHaveValue('VERB');
   await page.keyboard.press('Tab');
   const got = await readUpos(page, c);
   dump('upos-enter-tab', got);
@@ -410,7 +423,7 @@ test('upos: Ctrl+A, type, Enter, click away', async ({ page }) => {
   await page.keyboard.press('Control+a');
   await page.keyboard.type('VERB', { delay: 20 });
   await page.keyboard.press('Enter');
-  await page.waitForTimeout(300);
+  await expect(page.locator(`[id="${S.morphIds[1]}-upos"]`)).toHaveValue('VERB');
   await page.mouse.click(5, 5);
   const got = await readUpos(page, c);
   dump('upos-enter-clickaway', got);
@@ -436,8 +449,8 @@ test('Accept predictions (sentence) verifies the Form span too', async ({ page }
   await expect(page.locator('.token-form--machine')).toHaveCount(1);
   await page.locator('.accept-predictions-btn').first().click();
   await expect(page.locator('.token-form--machine')).toHaveCount(0, { timeout: 8000 });
-  await page.waitForTimeout(500);
-  const span = await S.client.spans.get(S.formDog);
+  // The mark clears optimistically, BEFORE the batched PATCH lands.
+  const span = await spanSettled(S.formDog, verified);
   dump('form-accept', {
     server: span.metadata,
     api: apiSummary(c),
@@ -455,6 +468,9 @@ test('re-typing the machine value (UPOS) verifies it; tabbing through does not',
   // Pass through without typing: no commit.
   await cell.focus();
   await page.keyboard.press('Tab');
+  // A fixed wait, because what is asserted is that NOTHING was written: there
+  // is no event to poll for, only a stretch of time long enough that a write
+  // would have landed in it.
   await page.waitForTimeout(600);
   const span = await S.client.spans.get(S.uposDog);
   expect(span.metadata.provConfirmed).toBeUndefined();
@@ -464,7 +480,8 @@ test('re-typing the machine value (UPOS) verifies it; tabbing through does not',
   await page.keyboard.press('Control+a');
   await page.keyboard.type('NOUN', { delay: 20 });
   await page.keyboard.press('Enter');
-  const r = await readUpos(page, c);
+  // The span already holds NOUN, so what has to land is the verification.
+  const r = await readUpos(page, c, verified);
   dump('upos-retype-same', r);
   expect(r.server.value).toBe('NOUN');
   expect(r.server.metadata.provConfirmed).toBe(true);
@@ -485,6 +502,8 @@ test('re-typing a machine feature verifies it and adds no second chip', async ({
   // Pass through without typing: no write.
   await input.focus();
   await page.keyboard.press('Tab');
+  // A fixed wait, for the same reason as the pass-through above: the assertion
+  // is that nothing was written, so there is no event to poll for.
   await page.waitForTimeout(600);
   expect((await S.client.spans.get(S.featDog)).metadata.provConfirmed).toBeUndefined();
   expect(apiSummary(c)).toEqual([]);
@@ -493,8 +512,8 @@ test('re-typing a machine feature verifies it and adds no second chip', async ({
   await input.focus();
   await input.pressSequentially('Number=Sing', { delay: 20 });
   await input.press('Enter');
-  await page.waitForTimeout(1200);
-  const span = await S.client.spans.get(S.featDog);
+  // The span already holds the pair, so what has to land is the verification.
+  const span = await spanSettled(S.featDog, verified);
   dump('feat-retype-same', {
     server: { value: span.value, metadata: span.metadata },
     api: apiSummary(c),
@@ -534,6 +553,8 @@ test('Escape over an open suggestion list writes no feature', async ({ page }) =
   await expect(input).toHaveAttribute('aria-expanded', 'true');
   await input.press('Escape');
   await page.keyboard.press('Tab');
+  // A fixed wait: the assertion is that the Escape left nothing for the Tab to
+  // commit, so there is no event to poll for.
   await page.waitForTimeout(1200);
 
   const span = await S.client.spans.get(S.featDog);
@@ -559,8 +580,9 @@ test('re-typing the machine deprel label verifies the relation', async ({ page }
   await page.keyboard.press('Control+a');
   await page.keyboard.type('nsubj', { delay: 20 });
   await page.keyboard.press('Enter');
-  await page.waitForTimeout(1200);
-  const rel = await S.client.relations.get(S.relNsubj);
+  // The relation already holds the label, so what has to land is the
+  // verification.
+  const rel = await relationSettled(S.relNsubj, verified);
   dump('deprel-retype-same', { server: rel.metadata, api: apiSummary(c) });
   expect(rel.value).toBe('nsubj');
   expect(rel.metadata.provConfirmed).toBe(true);
