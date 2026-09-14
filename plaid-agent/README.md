@@ -6,7 +6,8 @@ app built on it.
 ```
 src/plaid_agent/
   core/   the harness: the model loop, the conversation record, the request
-          lifecycle, the web tools, the plan mechanics. Knows nothing about
+          lifecycle, the web tools, the plan mechanics, and the registry an
+          app declares its plan operations in. Knows nothing about
           what any app annotates, and `tests/test_core_boundary.py` fails if
           an app's word appears in it.
   igt/    the IGT assistant: the project model, the tools, the prompt, the
@@ -279,10 +280,17 @@ The modules below are `igt/` unless they say otherwise.
   service process across turns and users, keyed by `(id, version)` (every
   write inside a document bumps its version), so rendering hits costs a
   fetch only the first time a document is touched.
-- `plan.py`: validates and normalizes an approved plan (a later op on the same
+- `plan.py`: declares every kind of operation a plan may hold, one frozen
+  `core.opkind.OpKind` each, carrying its required keys, the noun the user
+  reads, the function that applies it, what it writes to, what it deletes,
+  how it reshapes the text, and how like operations fold into one stored
+  operation. The tables (`KINDS`, `REQUIRED`, `RESHAPES`, `SUMMARY_NAMES`,
+  `op_target`, the approval card's, the executor's dispatch) are all read
+  back off it, so a new kind is one declaration plus the tool that stages it.
+  It validates and normalizes an approved plan (a later op on the same
   target wins; links to entries the plan deletes are dropped; overlapping
-  respells are refused; ops on tokens a split, merge, or delete removes are
-  refused), then applies it with the requester's client in atomic batches
+  respells are refused; an op naming something another op in the plan deletes
+  is dropped with a note), then applies it with the requester's client in atomic batches
   under one operation (`stamp_mode` verified or human), reporting how much
   was applied if a later batch fails. A plan carries the version of every
   document it touches; approval is refused if any of them changed since, as
