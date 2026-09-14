@@ -141,10 +141,10 @@ export const vocabMutations = {
       // atomic batches under the server's 1000-op cap.
       for (let i = 0; i < replaces.length; i += REPLACE_CHUNK) {
         const chunk = replaces.slice(i, i + REPLACE_CHUNK);
-        await this._client.batched(async () => {
+        await this._client.batched(async (b) => {
           for (const r of chunk) {
-            this._client.vocabLinks.delete(r.priorLinkId);
-            this._client.vocabLinks.create(r.item.id, [r.tokenId], metadata);
+            b.vocabLinks.delete(r.priorLinkId);
+            b.vocabLinks.create(r.item.id, [r.tokenId], metadata);
           }
         });
       }
@@ -159,9 +159,9 @@ export const vocabMutations = {
       }
       for (let i = 0; i < cachePatches.length; i += REPLACE_CHUNK) {
         const chunk = cachePatches.slice(i, i + REPLACE_CHUNK);
-        await this._client.batched(async () => {
+        await this._client.batched(async (b) => {
           for (const c of chunk) {
-            this._client.tokens.patchMetadata(c.tokenId, { morphType: c.type });
+            b.tokens.patchMetadata(c.tokenId, { morphType: c.type });
           }
         });
       }
@@ -223,11 +223,11 @@ export const vocabMutations = {
         // Indexed, not `results.at(-1)`: the cache patch rides at the end, so
         // the create is no longer the last op.
         const createAt = priorLink ? 1 : 0;
-        const results = await this._client.batched(async () => {
-          if (priorLink) this._client.vocabLinks.delete(priorLink.id);
-          this._client.vocabLinks.create(vocabItemId, [targetTokenId], stamp || undefined);
+        const results = await this._client.batched(async (b) => {
+          if (priorLink) b.vocabLinks.delete(priorLink.id);
+          b.vocabLinks.create(vocabItemId, [targetTokenId], stamp || undefined);
           if (cachedType) {
-            this._client.tokens.patchMetadata(targetTokenId, { morphType: cachedType });
+            b.tokens.patchMetadata(targetTokenId, { morphType: cachedType });
           }
         });
         newLinkId = results[createAt]?.body?.id;
@@ -296,10 +296,10 @@ export const vocabMutations = {
       const typeFor = morphTypeCache(this);
       const cacheIds = targetIds.filter((id) => typeFor(id, targetVocab.id, vocabItemId));
       const cachedType = cacheIds.length ? typeFor(cacheIds[0], targetVocab.id, vocabItemId) : null;
-      const results = await this._client.batched(async () => {
-        for (const id of targetIds) this._client.vocabLinks.create(vocabItemId, [id], stamp);
+      const results = await this._client.batched(async (b) => {
+        for (const id of targetIds) b.vocabLinks.create(vocabItemId, [id], stamp);
         // After the creates, so the link result indices below stay positional.
-        for (const id of cacheIds) this._client.tokens.patchMetadata(id, { morphType: cachedType });
+        for (const id of cacheIds) b.tokens.patchMetadata(id, { morphType: cachedType });
       });
       const newIds = results.map((r) => r?.body?.id ?? r?.id ?? null);
       const itemSnapshot = { id: vocabItem.id, layer: targetVocab.id, form: vocabItem.form };
@@ -368,11 +368,11 @@ export const vocabMutations = {
       .filter((id) => morphemeIds.has(id));
 
     return this._withSaving('Failed to set entry type', async () => {
-      await this._client.batched(async () => {
-        this._client.vocabItems.patchMetadata(itemId, { morphType: morphType ?? null });
+      await this._client.batched(async (b) => {
+        b.vocabItems.patchMetadata(itemId, { morphType: morphType ?? null });
         // A cleared entry type stops overriding; the cache keeps its last value.
         if (morphType != null) {
-          linkedMorphemes.forEach((id) => this._client.tokens.patchMetadata(id, { morphType }));
+          linkedMorphemes.forEach((id) => b.tokens.patchMetadata(id, { morphType }));
         }
       });
       const setType = (meta) => {
@@ -466,9 +466,9 @@ export const vocabMutations = {
       const newItemId = createResult?.id || createResult;
       let newLinkId;
       if (replaceLinkId) {
-        const results = await this._client.batched(async () => {
-          this._client.vocabLinks.delete(replaceLinkId);
-          this._client.vocabLinks.create(newItemId, tokens, stamp);
+        const results = await this._client.batched(async (b) => {
+          b.vocabLinks.delete(replaceLinkId);
+          b.vocabLinks.create(newItemId, tokens, stamp);
         });
         newLinkId = results[results.length - 1]?.body?.id;
       } else {
@@ -515,9 +515,9 @@ export const vocabMutations = {
     const itemSnapshot = { id: item.id, form: item.form, metadata: item.metadata || {} };
     const stamp = this.createStamp || undefined;
     return this._withSaving('Failed to change multi-word expression', async () => {
-      const results = await this._client.batched(async () => {
-        this._client.vocabLinks.delete(linkId);
-        this._client.vocabLinks.create(vocabItemId, tokens, stamp);
+      const results = await this._client.batched(async (b) => {
+        b.vocabLinks.delete(linkId);
+        b.vocabLinks.create(vocabItemId, tokens, stamp);
       });
       const newLinkId = results[results.length - 1]?.body?.id;
       this._applyRawPatch((next, info, vocabs) => {
@@ -558,9 +558,9 @@ export const vocabMutations = {
     const metadata = Object.keys(merged).length ? merged : null;
     const vocabItem = prior.vocabItem;
     return this._withSaving('Failed to change multi-word expression', async () => {
-      const results = await this._client.batched(async () => {
-        this._client.vocabLinks.delete(linkId);
-        this._client.vocabLinks.create(itemId, tokens, metadata || undefined);
+      const results = await this._client.batched(async (b) => {
+        b.vocabLinks.delete(linkId);
+        b.vocabLinks.create(itemId, tokens, metadata || undefined);
       });
       const newLinkId = results[results.length - 1]?.body?.id;
       this._applyRawPatch((next, info, vocabs) => {
@@ -676,11 +676,11 @@ export const vocabMutations = {
       let newLinkId;
       if (priorLink || cachedType) {
         const createAt = priorLink ? 1 : 0;
-        const results = await this._client.batched(async () => {
-          if (priorLink) this._client.vocabLinks.delete(priorLink.id);
-          this._client.vocabLinks.create(newItemId, [targetTokenId], stamp);
+        const results = await this._client.batched(async (b) => {
+          if (priorLink) b.vocabLinks.delete(priorLink.id);
+          b.vocabLinks.create(newItemId, [targetTokenId], stamp);
           if (cachedType) {
-            this._client.tokens.patchMetadata(targetTokenId, { morphType: cachedType });
+            b.tokens.patchMetadata(targetTokenId, { morphType: cachedType });
           }
         });
         newLinkId = results[createAt]?.body?.id;

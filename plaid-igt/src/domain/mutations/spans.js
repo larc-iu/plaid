@@ -53,9 +53,9 @@ const upsertSpan = async (doc, scope, targetLayer, targetTokenId, value, metadat
     const fragment = metadata || doc.editStamp(existingSpan.metadata);
     const mergedMetadata = fragment ? mergeMetadata(existingSpan.metadata, fragment) : null;
     if (mergedMetadata) {
-      await doc._client.batched(async () => {
-        doc._client.spans.update(existingSpan.id, value);
-        doc._client.spans.setMetadata(existingSpan.id, mergedMetadata);
+      await doc._client.batched(async (b) => {
+        b.spans.update(existingSpan.id, value);
+        b.spans.setMetadata(existingSpan.id, mergedMetadata);
       });
     } else {
       await doc._client.spans.update(existingSpan.id, value);

@@ -104,7 +104,7 @@ function stubClient({ existingDocs = [], existingItems = [], existingVocabCommen
     calls.push([name, ...args]);
     return result;
   };
-  return {
+  const client = {
     calls,
     projects: {
       get: async (id) => record('projects.get', [id], targetProject()),
@@ -135,21 +135,18 @@ function stubClient({ existingDocs = [], existingItems = [], existingVocabCommen
       bulkCreate: (body) =>
         record('vocabLinks.bulkCreate', [body], { ids: body.map(() => fresh('link')) }),
     },
-    beginBatch: () => {
-      batch = [];
-    },
-    submitBatch: async () => {
-      const out = batch;
-      batch = null;
-      return out;
-    },
     withOperation: async (_message, fn) => fn(() => {}),
+    // A batch: a view of the client whose writes queue, handed to `fn` the way
+    // the real client hands one over. This fake records a write the same way on
+    // either, so the view is the client itself.
     batched: async (fn) => {
       batch = [];
-      await fn();
-      const out = batch;
-      batch = null;
-      return out;
+      try {
+        await fn(client);
+        return batch;
+      } finally {
+        batch = null;
+      }
     },
     documents: {
       create: async (projectId, name, metadata) =>
@@ -186,6 +183,7 @@ function stubClient({ existingDocs = [], existingItems = [], existingVocabCommen
         record('comments.listInVocab', [vocabId], existingVocabComments),
     },
   };
+  return client;
 }
 
 const callsOf = (client, name) => client.calls.filter(([n]) => n === name);

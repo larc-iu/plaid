@@ -71,10 +71,12 @@ function stubClient({ existingDocs = [], existingItems = [], vocabConfig = {} } 
     return Promise.resolve(result);
   };
   const docsById = new Map(existingDocs.map((d) => [d.id, d]));
-  return {
+  const client = {
     calls,
     withOperation: async (_message, fn) => fn(),
-    batched: async (fn) => fn(),
+    // A batch is a view of the client with the same bundles. This fake records
+    // a write the same way on either, so the view is the client itself.
+    batched: async (fn) => fn(client),
     projects: {
       get: () => Promise.resolve(PROJECT),
       listDocuments: () => Promise.resolve(existingDocs.map((d) => ({ id: d.id, name: d.name }))),
@@ -110,6 +112,7 @@ function stubClient({ existingDocs = [], existingItems = [], vocabConfig = {} } 
       patchMetadata: (itemId, body) => record('vocabItems.patchMetadata', { itemId, body }, {}),
     },
   };
+  return client;
 }
 
 const callsOf = (client, kind) => client.calls.filter((c) => c.kind === kind);

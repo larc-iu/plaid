@@ -279,7 +279,7 @@ describe('IgtDocument.reconcileOnOpen', () => {
     const res = await doc.reconcileOnOpen();
 
     expect(res).toMatchObject({ deleted: 0, findings: [] });
-    expect(client.calls.filter((c) => c.kind === 'submitBatch').length).toBe(0);
+    expect(client.calls.filter((c) => c.kind === 'batch.submit').length).toBe(0);
   });
 
   it('deletes an annotated orphan morpheme and reports deletedAnnotatedOrphans', async () => {

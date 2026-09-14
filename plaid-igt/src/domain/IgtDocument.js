@@ -455,11 +455,6 @@ export class IgtDocument {
   // big-bang multi-batch ops where local replay would be too complex.
   async _reload() {
     if (!this._client || !this.id) return;
-    // A failed mutation may have left a half-open batch; drop it first, or this
-    // resync GET would queue into the dead batch instead of executing (and every
-    // later call would too). Central recovery chokepoint, so this covers all
-    // _withSaving mutations.
-    if (this._client.isBatchMode()) this._client.abortBatch();
     const at = this._asOf || undefined;
     const updated = await this._client.documents.get(this.id, true, at);
     this._raw = updated;
@@ -608,18 +603,18 @@ export class IgtDocument {
       const morphemeWork = Boolean(morphemeLayer?.id && orphanMorphemeIds.length);
 
       if (morphemeWork || dedupPlans.length || linkPlans.length || typePlans.length) {
-        await this._client.batched(async () => {
-          if (morphemeWork) this._client.tokens.bulkDelete(orphanMorphemeIds);
+        await this._client.batched(async (b) => {
+          if (morphemeWork) b.tokens.bulkDelete(orphanMorphemeIds);
           dedupPlans.forEach((p) => {
-            if (p.needsUpdate) this._client.spans.update(p.keepSpanId, p.mergedValue);
-            p.deleteSpanIds.forEach((id) => this._client.spans.delete(id));
+            if (p.needsUpdate) b.spans.update(p.keepSpanId, p.mergedValue);
+            p.deleteSpanIds.forEach((id) => b.spans.delete(id));
           });
           linkPlans.forEach((p) => {
-            p.deleteLinks.forEach((l) => this._client.vocabLinks.delete(l.linkId));
+            p.deleteLinks.forEach((l) => b.vocabLinks.delete(l.linkId));
           });
           // Cached morph types that drifted from their lexicon entry's.
           typePlans.forEach((p) => {
-            this._client.tokens.patchMetadata(p.morphemeId, { morphType: p.morphType });
+            b.tokens.patchMetadata(p.morphemeId, { morphType: p.morphType });
           });
         });
         const removed = new Set(orphanMorphemeIds);
@@ -676,9 +671,6 @@ export class IgtDocument {
         findings,
       };
     } catch (err) {
-      // A failed heal batch leaves the client in batch mode (we skip _reload on
-      // the throw path); drop it so later edits don't queue into the dead batch.
-      if (this._client?.isBatchMode?.()) this._client.abortBatch();
       console.error('reconcileOnOpen failed:', err);
       return { ...ZERO, error: err };
     } finally {
@@ -699,8 +691,10 @@ export class IgtDocument {
   // - Inside `_applyRawPatch((next, info, vocabs) => ...)`, re-resolve
   //   layers/tokens via `info` — captured outer references point into the
   //   OLD raw doc and mutating through them is a real bug.
-  // - For batched ops, the order matters: `submitBatch` runs ops sequentially
-  //   server-side, so an op that depends on a prior shift must come AFTER it.
+  // - Inside `_client.batched(async (b) => ...)`, every write goes on `b`: a
+  //   write made on `this._client` there leaves the transaction.
+  // - For batched ops, the order matters: the server runs a batch's ops
+  //   sequentially, so an op that depends on a prior shift must come AFTER it.
   //
   // updateOrthography — simplest case: single field update with metadata merge.
   // splitToken — complex case: pre-cleanup of dependent tokens, atomic batch
@@ -744,9 +738,9 @@ export class IgtDocument {
         .filter((m) => m.begin === token.begin && m.end === token.end)
         .map((m) => m.id);
 
-      const results = await this._client.batched(async () => {
-        if (coincident.length > 0) this._client.tokens.bulkDelete(coincident);
-        this._client.tokens.split(tokenId, leftEnd);
+      const results = await this._client.batched(async (b) => {
+        if (coincident.length > 0) b.tokens.bulkDelete(coincident);
+        b.tokens.split(tokenId, leftEnd);
       });
       // `tokens.split` is the last queued op; its body is `{ id: <new right id> }`.
       const newRightTokenId = results[results.length - 1]?.body?.id;
@@ -758,10 +752,10 @@ export class IgtDocument {
       const leftPatch = survivorPatch(token.metadata, {}, (m) => this.editStamp(m));
       const rightMetadata = newHalfMetadata(token.metadata, (m) => this.editStamp(m));
       if (leftPatch || (newRightTokenId && rightMetadata)) {
-        await this._client.batched(async () => {
-          if (leftPatch) this._client.tokens.patchMetadata(tokenId, leftPatch);
+        await this._client.batched(async (b) => {
+          if (leftPatch) b.tokens.patchMetadata(tokenId, leftPatch);
           if (newRightTokenId && rightMetadata)
-            this._client.tokens.patchMetadata(newRightTokenId, rightMetadata);
+            b.tokens.patchMetadata(newRightTokenId, rightMetadata);
         });
       }
 

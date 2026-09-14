@@ -76,7 +76,7 @@ describe('bulkReplaceAnalyses', () => {
 
     // Strip phase: the word's span, the first morpheme's link + span, the
     // second morpheme deleted outright (its span cascades), first reset.
-    const strip = client.calls.slice(0, kinds.indexOf('submitBatch'));
+    const strip = client.calls.slice(0, kinds.indexOf('batch.submit'));
     expect(strip.map((c) => c.kind)).toEqual([
       'beginOperation',
       'spans.delete', // p-2 on the word
@@ -96,8 +96,8 @@ describe('bulkReplaceAnalyses', () => {
 
     // Apply phase (after the reload): the link, the gloss and the POS, with
     // NO provenance stamp.
-    const apply = client.calls.slice(kinds.indexOf('submitBatch') + 1);
-    const applyKinds = apply.map((c) => c.kind).filter((k) => k !== 'submitBatch');
+    const apply = client.calls.slice(kinds.indexOf('batch.submit') + 1);
+    const applyKinds = apply.map((c) => c.kind).filter((k) => k !== 'batch.submit');
     expect(applyKinds).toEqual(['vocabLinks.create', 'spans.create', 'spans.create']);
     expect(apply.find((c) => c.kind === 'vocabLinks.create').args).toEqual(['i-kat', ['m-2'], {}]);
     const gloss = apply.find((c) => c.kind === 'spans.create' && c.args[0] === 'msl-0');

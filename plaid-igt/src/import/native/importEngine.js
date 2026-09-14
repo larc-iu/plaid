@@ -287,9 +287,9 @@ async function postArchivedComments({
   }
   for (let i = 0; i < posts.length; i += CHUNK) {
     check();
-    await client.batched(async () => {
+    await client.batched(async (b) => {
       for (const post of posts.slice(i, i + CHUNK)) {
-        client.comments.create(
+        b.comments.create(
           post.entityType,
           post.entityId,
           post.body,
@@ -928,8 +928,8 @@ async function relinkVocabStructure({
   for (let i = 0; i < patches.length; i += CHUNK) {
     if (shouldStop?.()) throw new ImportCancelled();
     const chunk = patches.slice(i, i + CHUNK);
-    await client.batched(async () => {
-      for (const p of chunk) client.vocabItems.setMetadata(p.id, p.metadata);
+    await client.batched(async (b) => {
+      for (const p of chunk) b.vocabItems.setMetadata(p.id, p.metadata);
     });
   }
   if (dropped.length) {

@@ -201,8 +201,8 @@ try {
   await client.spans.bulkDelete([...doomed]);
   const changed = allSpans.filter((s) => !doomed.has(s.id)).slice(0, 300);
   for (const c of chunks(changed, 200)) {
-    await client.batched(async () => {
-      for (const s of c) client.spans.update(s.id, pick(rng, VALUES));
+    await client.batched(async (b) => {
+      for (const s of c) b.spans.update(s.id, pick(rng, VALUES));
     });
   }
   const morphs = byRole(raw, 'morpheme').tokens.filter((m) => m.precedence === 2);

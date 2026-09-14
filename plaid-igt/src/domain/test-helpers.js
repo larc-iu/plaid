@@ -131,54 +131,87 @@ export function buildRawDoc(opts = {}) {
 }
 
 // ---- fake plaid client --------------------------------------------------
-// Records every call in `.calls`, fabricates ids for creates, and emulates
-// batch semantics: queued ops accumulate, submitBatch() returns one result per
-// op in order as `{ status, body }` (body.id present for creates). Mutations
-// only read ids + batch order back from these results; the optimistic patch is
-// what updates the document, so the fake need not maintain real server state.
+// Records every call in `.calls`, fabricates ids for creates, and mirrors the
+// client's batch shape: `batched(fn)` hands `fn` a batch whose bundles queue
+// instead of answering, and resolves to one `{ status, body }` per queued op in
+// order (body.id present for creates); `batch()` returns the same view with
+// submit/abort. A write made on the client itself answers at once, batch or no
+// batch. Mutations only read ids + batch order back from these results; the
+// optimistic patch is what updates the document, so the fake need not maintain
+// real server state.
 
 export function makeFakeClient(opts = {}) {
   const calls = [];
-  let batching = false;
-  let queue = null; // array of { kind, makeResult }
-
   const record = (kind, args) => calls.push({ kind, args });
 
-  // Each op: synchronous side-effect of recording; returns a "result builder"
-  // used when not batching (returns {id}) or collected for submitBatch.
-  const op =
-    (kind, makeBody) =>
-    (...args) => {
-      record(kind, args);
-      const body = makeBody(...args);
-      if (batching) {
+  // The write bundles, bound to the queue they write into (null on the client
+  // itself, where a write answers its body directly).
+  const bundles = (queue) => {
+    const op =
+      (kind, makeBody) =>
+      (...args) => {
+        record(kind, args);
+        const body = makeBody(...args);
+        if (!queue) return body;
         queue.push({ status: 200, body });
-        return undefined; // batched ops don't return a usable value
-      }
-      return body;
+        return undefined; // a queued op has no answer until submit
+      };
+    return {
+      tokens: {
+        create: op('tokens.create', () => ({ id: nextId('tok') })),
+        delete: op('tokens.delete', () => ({})),
+        update: op('tokens.update', () => ({})),
+        split: op('tokens.split', () => ({ id: nextId('tok') })),
+        merge: op('tokens.merge', () => ({})),
+        bulkCreate: op('tokens.bulkCreate', (body) => ({
+          ids: (body || []).map(() => nextId('tok')),
+        })),
+        bulkDelete: op('tokens.bulkDelete', () => ({})),
+        setMetadata: op('tokens.setMetadata', () => ({})),
+        patchMetadata: op('tokens.patchMetadata', () => ({})),
+        deleteMetadata: op('tokens.deleteMetadata', () => ({})),
+      },
+      spans: {
+        create: op('spans.create', () => ({ id: nextId('span') })),
+        update: op('spans.update', () => ({})),
+        delete: op('spans.delete', () => ({})),
+        setMetadata: op('spans.setMetadata', () => ({})),
+        patchMetadata: op('spans.patchMetadata', () => ({})),
+      },
+      vocabLinks: {
+        create: op('vocabLinks.create', () => ({ id: nextId('link') })),
+        bulkCreate: op('vocabLinks.bulkCreate', (body) => ({
+          ids: (body || []).map(() => nextId('link')),
+        })),
+        bulkDelete: op('vocabLinks.bulkDelete', () => ({})),
+        delete: op('vocabLinks.delete', () => ({})),
+        patchMetadata: op('vocabLinks.patchMetadata', () => ({})),
+      },
+      vocabItems: {
+        create: op('vocabItems.create', () => ({ id: nextId('vitem') })),
+        patchMetadata: op('vocabItems.patchMetadata', () => ({})),
+      },
+      texts: {
+        create: op('texts.create', () => ({ id: nextId('text') })),
+        update: op('texts.update', () => ({})),
+        delete: op('texts.delete', () => ({})),
+      },
+      documents: {
+        // A read answers from "the wire" on the client and on a batch alike.
+        get: async () => opts.reloadDoc ?? buildRawDoc(),
+        update: op('documents.update', () => ({})),
+        copy: op('documents.copy', () => ({ id: nextId('doc') })),
+        setMetadata: op('documents.setMetadata', () => ({})),
+        acquireLock: op('documents.acquireLock', () => ({})),
+        releaseLock: op('documents.releaseLock', () => ({})),
+        uploadMedia: op('documents.uploadMedia', () => ({})),
+        deleteMedia: op('documents.deleteMedia', () => ({})),
+      },
     };
+  };
 
   const client = {
     calls,
-    isBatching: false,
-    beginBatch() {
-      batching = true;
-      this.isBatching = true;
-      queue = [];
-    },
-    async submitBatch() {
-      const results = queue;
-      batching = false;
-      this.isBatching = false;
-      queue = null;
-      record('submitBatch', []);
-      return results;
-    },
-    abortBatch() {
-      batching = false;
-      this.isBatching = false;
-      queue = null;
-    },
     // Logical operations (audit-log grouping): recorded like any other call so
     // a test can assert a mutation ran as one labeled operation; nesting
     // flattens exactly like the real client.
@@ -223,69 +256,37 @@ export function makeFakeClient(opts = {}) {
         await this.endOperation();
       }
     },
-    isBatchMode() {
-      return this.isBatching;
+    // A batch: the client with queueing write bundles, `submit` answering one
+    // result per queued op and `abort` dropping them.
+    batch() {
+      const queue = [];
+      const b = Object.assign(Object.create(client), bundles(queue));
+      b.client = client;
+      b.operations = queue;
+      b.open = true;
+      b.submit = async () => {
+        b.open = false;
+        record('batch.submit', []);
+        return queue.splice(0);
+      };
+      b.abort = () => {
+        b.open = false;
+        queue.length = 0;
+      };
+      return b;
     },
     async batched(fn) {
-      this.beginBatch();
+      const b = client.batch();
       try {
-        await fn();
+        await fn(b);
       } catch (e) {
-        if (this.isBatchMode()) this.abortBatch();
+        b.abort();
         throw e;
       }
-      return this.submitBatch();
+      return b.submit();
     },
 
-    tokens: {
-      create: op('tokens.create', () => ({ id: nextId('tok') })),
-      delete: op('tokens.delete', () => ({})),
-      update: op('tokens.update', () => ({})),
-      split: op('tokens.split', () => ({ id: nextId('tok') })),
-      merge: op('tokens.merge', () => ({})),
-      bulkCreate: op('tokens.bulkCreate', (body) => ({
-        ids: (body || []).map(() => nextId('tok')),
-      })),
-      bulkDelete: op('tokens.bulkDelete', () => ({})),
-      setMetadata: op('tokens.setMetadata', () => ({})),
-      patchMetadata: op('tokens.patchMetadata', () => ({})),
-      deleteMetadata: op('tokens.deleteMetadata', () => ({})),
-    },
-    spans: {
-      create: op('spans.create', () => ({ id: nextId('span') })),
-      update: op('spans.update', () => ({})),
-      delete: op('spans.delete', () => ({})),
-      setMetadata: op('spans.setMetadata', () => ({})),
-      patchMetadata: op('spans.patchMetadata', () => ({})),
-    },
-    vocabLinks: {
-      create: op('vocabLinks.create', () => ({ id: nextId('link') })),
-      bulkCreate: op('vocabLinks.bulkCreate', (body) => ({
-        ids: (body || []).map(() => nextId('link')),
-      })),
-      bulkDelete: op('vocabLinks.bulkDelete', () => ({})),
-      delete: op('vocabLinks.delete', () => ({})),
-      patchMetadata: op('vocabLinks.patchMetadata', () => ({})),
-    },
-    vocabItems: {
-      create: op('vocabItems.create', () => ({ id: nextId('vitem') })),
-      patchMetadata: op('vocabItems.patchMetadata', () => ({})),
-    },
-    texts: {
-      create: op('texts.create', () => ({ id: nextId('text') })),
-      update: op('texts.update', () => ({})),
-      delete: op('texts.delete', () => ({})),
-    },
-    documents: {
-      get: async () => opts.reloadDoc ?? buildRawDoc(),
-      update: op('documents.update', () => ({})),
-      copy: op('documents.copy', () => ({ id: nextId('doc') })),
-      setMetadata: op('documents.setMetadata', () => ({})),
-      acquireLock: op('documents.acquireLock', () => ({})),
-      releaseLock: op('documents.releaseLock', () => ({})),
-      uploadMedia: op('documents.uploadMedia', () => ({})),
-      deleteMedia: op('documents.deleteMedia', () => ({})),
-    },
+    ...bundles(null),
     projects: {
       get: async () => opts.project ?? { id: 'proj-1', vocabs: [] },
     },

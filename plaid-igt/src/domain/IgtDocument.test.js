@@ -332,7 +332,7 @@ describe('morph type from the linked lexicon entry', () => {
     expect(k).toContain('vocabItems.patchMetadata');
     const tokPatch = doc.client.calls.find((c) => c.kind === 'tokens.patchMetadata');
     expect(tokPatch.args).toEqual(['m-2', { morphType: 'proclitic' }]);
-    expect(k.indexOf('submitBatch')).toBeGreaterThan(k.indexOf('vocabItems.patchMetadata'));
+    expect(k.indexOf('batch.submit')).toBeGreaterThan(k.indexOf('vocabItems.patchMetadata'));
     const m = doc.sentences[0].tokens[0].morphemes[1];
     expect(m.morphType).toBe('proclitic');
     expect(m.vocabItem.metadata.morphType).toBe('proclitic');
@@ -370,7 +370,7 @@ describe('morpheme structural ops', () => {
     });
     const doc = makeDoc({ raw });
     await doc.splitMorpheme('m-1', 'a', 'b');
-    // ordering: patchMetadata (m-1), update (shift m-2), create (new), submitBatch
+    // ordering: patchMetadata (m-1), update (shift m-2), create (new), batch.submit
     const k = kinds(doc.client);
     const iMeta = k.indexOf('tokens.patchMetadata');
     const iShift = k.indexOf('tokens.update');
@@ -862,7 +862,7 @@ describe('vocab links (read path must reflect optimistic write)', () => {
     expect(patches).toHaveLength(1);
     expect(patches[0].args).toEqual(['m-1', { morphType: 'stem' }]);
     // One operation, so one audit entry rather than a link now and a repair later.
-    expect(doc.client.calls.filter((c) => c.kind === 'submitBatch')).toHaveLength(1);
+    expect(doc.client.calls.filter((c) => c.kind === 'batch.submit')).toHaveLength(1);
     // And reconcile has nothing left to do.
     expect(planMorphTypeSync(doc.sentences)).toEqual([]);
   });
@@ -1088,7 +1088,7 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
     expect(k).not.toContain('documents.acquireLock');
     expect(k).not.toContain('tokens.bulkDelete');
     expect(k).not.toContain('tokens.bulkCreate');
-    expect(k).not.toContain('submitBatch');
+    expect(k).not.toContain('batch.submit');
   });
 
   it('saveBaselineText re-seeds one sentence per line when the save leaves no partition', async () => {
@@ -2074,7 +2074,7 @@ describe('multi-word expressions', () => {
     expect(await doc.relinkMwe('lk-1', 'i-alt')).toBe(true);
     const k = kinds(client);
     expect(k.indexOf('vocabLinks.delete')).toBeLessThan(k.indexOf('vocabLinks.create'));
-    expect(k.indexOf('vocabLinks.create')).toBeLessThan(k.indexOf('submitBatch'));
+    expect(k.indexOf('vocabLinks.create')).toBeLessThan(k.indexOf('batch.submit'));
     const e = doc.sentences[0].mwes[0];
     expect(e.item.id).toBe('i-alt');
     expect(e.memberTokenIds).toEqual(['w-3', 'w-4']);

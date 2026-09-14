@@ -205,23 +205,20 @@ function makeFakeClient({
     return Promise.resolve(result);
   };
   const docsById = new Map(existingDocs.map((d) => [d.id, d]));
-  return {
+  const client = {
     calls,
-    beginBatch: () => {
-      batch = [];
-    },
-    submitBatch: () => {
-      const out = batch.map((op) => ({ body: op.result }));
-      batch = null;
-      return Promise.resolve(out);
-    },
     withOperation: async (_message, fn) => fn(() => {}),
+    // A batch: a view of the client whose writes queue, handed to `fn` the way
+    // the real client hands one over. This fake records a write the same way on
+    // either, so the view is the client itself.
     batched: async (fn) => {
       batch = [];
-      await fn();
-      const out = batch.map((op) => ({ body: op.result }));
-      batch = null;
-      return out;
+      try {
+        await fn(client);
+        return batch.map((op) => ({ body: op.result }));
+      } finally {
+        batch = null;
+      }
     },
     projects: {
       get: () => Promise.resolve(projectConfig ? { ...project, config: projectConfig } : project),
@@ -268,6 +265,7 @@ function makeFakeClient({
         record('vocabLinks.bulkCreate', { body }, { ids: body.map(() => id('link')) }),
     },
   };
+  return client;
 }
 
 // A vocab bulkCreate carries many entries in one call; flatten them back to

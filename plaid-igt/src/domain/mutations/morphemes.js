@@ -229,9 +229,9 @@ export const morphemeMutations = {
       const existing = morphemesInWord(morphemeLayer.tokens, word);
       const basePrecedence = existing.length + 1;
 
-      const results = await this._client.batched(async () => {
+      const results = await this._client.batched(async (b) => {
         forms.forEach((form, i) => {
-          this._client.tokens.create(
+          b.tokens.create(
             morphemeLayer.id,
             textId,
             word.begin,
@@ -348,20 +348,15 @@ export const morphemeMutations = {
           ...(types[i + 1] != null ? { morphType: types[i + 1] } : {}),
         });
 
-      const results = await this._client.batched(async () => {
+      const results = await this._client.batched(async (b) => {
         // patch, not set: form edits must not clobber other metadata keys
         // (morphType from the FLEx import, in particular)
-        this._client.tokens.patchMetadata(targetId, stamped(this, target, firstPatch));
+        b.tokens.patchMetadata(targetId, stamped(this, target, firstPatch));
         shifted.forEach((m) => {
-          this._client.tokens.update(
-            m.id,
-            undefined,
-            undefined,
-            (m.precedence ?? 0) + restForms.length,
-          );
+          b.tokens.update(m.id, undefined, undefined, (m.precedence ?? 0) + restForms.length);
         });
         restForms.forEach((form, i) => {
-          this._client.tokens.create(
+          b.tokens.create(
             morphemeLayer.id,
             textId,
             target.begin,
@@ -442,14 +437,11 @@ export const morphemeMutations = {
           : previousForm + currentForm;
       const subsequents = siblings.slice(idx + 1);
 
-      await this._client.batched(async () => {
-        this._client.tokens.patchMetadata(
-          previous.id,
-          stamped(this, previous, { form: mergedForm }),
-        );
-        this._client.tokens.delete(morphemeId);
+      await this._client.batched(async (b) => {
+        b.tokens.patchMetadata(previous.id, stamped(this, previous, { form: mergedForm }));
+        b.tokens.delete(morphemeId);
         subsequents.forEach((m) => {
-          this._client.tokens.update(m.id, undefined, undefined, (m.precedence ?? 0) - 1);
+          b.tokens.update(m.id, undefined, undefined, (m.precedence ?? 0) - 1);
         });
       });
 
@@ -503,10 +495,10 @@ export const morphemeMutations = {
     return this._withSaving('Failed to delete morpheme', async () => {
       const subsequents = siblings.filter((m) => (m.precedence ?? 0) > (target.precedence ?? 0));
 
-      await this._client.batched(async () => {
-        this._client.tokens.delete(morphemeId);
+      await this._client.batched(async (b) => {
+        b.tokens.delete(morphemeId);
         subsequents.forEach((m) => {
-          this._client.tokens.update(m.id, undefined, undefined, (m.precedence ?? 0) - 1);
+          b.tokens.update(m.id, undefined, undefined, (m.precedence ?? 0) - 1);
         });
       });
 

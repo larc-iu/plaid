@@ -452,9 +452,9 @@ async function placeSenses({ client, lexicon, senseToItem, existing, only = null
   for (let i = 0; i < fresh.length; i += CHUNK) {
     if (shouldStop?.()) throw new ImportCancelled();
     const chunk = fresh.slice(i, i + CHUNK);
-    await client.batched(async () => {
+    await client.batched(async (b) => {
       for (const p of chunk) {
-        client.vocabItems.patchMetadata(p.id, { parent: p.parent, senseOrder: p.senseOrder });
+        b.vocabItems.patchMetadata(p.id, { parent: p.parent, senseOrder: p.senseOrder });
       }
     });
   }
@@ -546,8 +546,8 @@ async function placeVariants({
   for (let i = 0; i < entries.length; i += CHUNK) {
     if (shouldStop?.()) throw new ImportCancelled();
     const chunk = entries.slice(i, i + CHUNK);
-    await client.batched(async () => {
-      for (const [id, patch] of chunk) client.vocabItems.patchMetadata(id, patch);
+    await client.batched(async (b) => {
+      for (const [id, patch] of chunk) b.vocabItems.patchMetadata(id, patch);
     });
   }
 }

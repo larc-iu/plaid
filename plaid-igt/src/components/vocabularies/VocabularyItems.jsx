@@ -424,10 +424,10 @@ export const VocabularyItems = ({
         // pile of entries has as many writes as it has references to them.
         // Chunked, since one batch is one transaction holding the write lock.
         for (let i = 0; i < patches.length; i += REPAIR_CHUNK) {
-          await client.batched(async () => {
+          await client.batched(async (b) => {
             for (const p of patches.slice(i, i + REPAIR_CHUNK)) {
-              if (Object.keys(p.metadata).length) client.vocabItems.setMetadata(p.id, p.metadata);
-              else client.vocabItems.deleteMetadata(p.id);
+              if (Object.keys(p.metadata).length) b.vocabItems.setMetadata(p.id, p.metadata);
+              else b.vocabItems.deleteMetadata(p.id);
             }
           });
         }

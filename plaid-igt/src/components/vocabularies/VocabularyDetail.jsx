@@ -509,10 +509,10 @@ export const VocabularyDetail = () => {
     await client.withOperation(`Change "${label}"`, async () => {
       for (let i = 0; i < writes.length; i += FIELD_CLEAR_CHUNK) {
         const chunk = writes.slice(i, i + FIELD_CLEAR_CHUNK);
-        await client.batched(async () => {
+        await client.batched(async (b) => {
           for (const w of chunk) {
-            if (Object.keys(w.metadata).length) client.vocabItems.setMetadata(w.id, w.metadata);
-            else client.vocabItems.deleteMetadata(w.id);
+            if (Object.keys(w.metadata).length) b.vocabItems.setMetadata(w.id, w.metadata);
+            else b.vocabItems.deleteMetadata(w.id);
           }
         });
       }

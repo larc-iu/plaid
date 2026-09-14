@@ -203,18 +203,11 @@ export const alignmentMutations = {
     const meta = { ...alignmentMeta(timeBegin, timeEnd, speaker), ...(this.createStamp || {}) };
 
     return this._withSaving('Failed to create alignment', async () => {
-      const results = await this._client.batched(async () => {
-        this._client.texts.update(textId, textOps);
-        this._client.tokens.create(
-          alignmentTokenLayer.id,
-          textId,
-          tokenBegin,
-          tokenEnd,
-          undefined,
-          meta,
-        );
+      const results = await this._client.batched(async (b) => {
+        b.texts.update(textId, textOps);
+        b.tokens.create(alignmentTokenLayer.id, textId, tokenBegin, tokenEnd, undefined, meta);
         if (seedSentence) {
-          this._client.tokens.bulkCreate([
+          b.tokens.bulkCreate([
             {
               tokenLayerId: sentenceTokenLayer.id,
               text: textId,
@@ -342,9 +335,9 @@ export const alignmentMutations = {
     const meta = { ...alignmentMeta(timeBegin, timeEnd, speaker), ...(this.createStamp || {}) };
 
     return this._withSaving('Failed to edit alignment', async () => {
-      const results = await this._client.batched(async () => {
-        this._client.texts.update(textId, textOps);
-        this._client.tokens.create(
+      const results = await this._client.batched(async (b) => {
+        b.texts.update(textId, textOps);
+        b.tokens.create(
           alignmentTokenLayer.id,
           textId,
           tokenBegin,
@@ -353,7 +346,7 @@ export const alignmentMutations = {
           meta,
         );
         if (seedSentence) {
-          this._client.tokens.bulkCreate([
+          b.tokens.bulkCreate([
             {
               tokenLayerId: sentenceTokenLayer.id,
               text: textId,

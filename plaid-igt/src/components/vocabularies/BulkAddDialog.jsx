@@ -465,8 +465,8 @@ export const BulkAddDialog = ({
           }
           for (let i = 0; i < updates.length; i += UPDATE_CHUNK) {
             const chunk = updates.slice(i, i + UPDATE_CHUNK);
-            await client.batched(async () => {
-              for (const u of chunk) client.vocabItems.patchMetadata(u.id, u.patch);
+            await client.batched(async (b) => {
+              for (const u of chunk) b.vocabItems.patchMetadata(u.id, u.patch);
             });
             updated += chunk.length;
             setProgress({ done: created + updated, total, phase: 'updating' });

@@ -716,26 +716,25 @@ describe('round trip through the exporter', () => {
     const { lexicon } = buildCldfDocuments(readCldfDataset(zipped));
     const created = [];
     let writtenFields = null;
-    await importLexicon({
-      client: {
-        vocabLayers: {
-          get: async () => ({ id: 'v', config: { igt: {} }, items: [] }),
-          setConfig: async (_id, _ns, key, value) => {
-            if (key === 'fields') writtenFields = value;
-          },
+    const client = {
+      vocabLayers: {
+        get: async () => ({ id: 'v', config: { igt: {} }, items: [] }),
+        setConfig: async (_id, _ns, key, value) => {
+          if (key === 'fields') writtenFields = value;
         },
-        vocabItems: {
-          bulkCreate: async (rows) => {
-            created.push(...rows);
-            return { ids: rows.map((_, i) => `n${i}`) };
-          },
-          patchMetadata: async () => {},
-        },
-        batched: async (fn) => fn(),
       },
-      vocabId: 'v',
-      lexicon,
-    });
+      vocabItems: {
+        bulkCreate: async (rows) => {
+          created.push(...rows);
+          return { ids: rows.map((_, i) => `n${i}`) };
+        },
+        patchMetadata: async () => {},
+      },
+      // A batch is a view of the client with the same bundles, and this fake
+      // writes the same way on either.
+      batched: async (fn) => fn(client),
+    };
+    await importLexicon({ client, vocabId: 'v', lexicon });
     // One sense IS the entry's meaning, so its part of speech rides along.
     expect(created[0].metadata).toMatchObject({ gloss: 'bench', pos: 'noun', homograph: 1 });
     // homograph is structure, never a field the schema declares.

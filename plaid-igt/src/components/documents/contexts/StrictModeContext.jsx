@@ -17,13 +17,11 @@ const StrictModeContext = createContext(null);
  * single-user-per-document by design; OCC just makes a violation loud rather
  * than silent.
  *
- * Strict mode WAS disabled because it stamped every batched op with the same
- * pre-batch version, so a multi-op batch self-409'd (the 2nd op claimed the
- * version the 1st op had already bumped). That's fixed: the client stamps only
- * the FIRST write of a batch (http.js) and the server dedupes version params
- * across the batch (task #109), giving whole-batch OCC. Verified against live
- * core with a throwaway probe: bulkDelete+bulkCreate and update+create
- * batches succeed under strict mode, while a genuine stale single write 409s.
+ * OCC over a batch is whole-batch: the client stamps a batch's one expected
+ * version onto the first write queued on it (http.js) and the server dedupes
+ * version params across the batch, so a multi-op batch cannot 409 against the
+ * bump its own first op caused. A write made on the client carries its own
+ * stamp.
  *
  * The hook name (`useStrictClient`) is kept to avoid churn across consumers.
  */

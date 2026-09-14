@@ -20,11 +20,12 @@ function lexiconCapture() {
   const items = [];
   const config = { igt: {} };
   const byId = new Map();
-  return {
+  const client = {
     items,
     config,
-    // placeSenses writes the tree under a batch; here it just runs.
-    batched: async (fn) => fn(),
+    // placeSenses writes the tree on a batch, which is a view of the client
+    // with the same bundles. Here the view is the client itself.
+    batched: async (fn) => fn(client),
     vocabLayers: {
       // The first read, before creation, sees nothing. Later ones, from the
       // variant-field merge, see what was made.
@@ -55,6 +56,7 @@ function lexiconCapture() {
       },
     },
   };
+  return client;
 }
 
 // Characters XML 1.0 forbids outright: no escaping saves them, and one of them

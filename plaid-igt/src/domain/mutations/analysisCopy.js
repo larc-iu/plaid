@@ -89,13 +89,12 @@ export const analysisCopyMutations = {
       // ---- phase 1: strip. Deleting a morpheme cascades its own spans and
       // links server-side, so only the word's and the surviving first
       // morpheme's are queued explicitly (a double delete fails the batch).
-      const strip = []; // thunks, one op each
+      const strip = []; // thunks taking the batch to queue on, one op each
       for (const { token } of targets) {
         const queueAttached = (t) => {
-          if (t.vocabItem?.linkId)
-            strip.push(() => this._client.vocabLinks.delete(t.vocabItem.linkId));
+          if (t.vocabItem?.linkId) strip.push((b) => b.vocabLinks.delete(t.vocabItem.linkId));
           for (const span of Object.values(t.annotations || {})) {
-            if (span?.id) strip.push(() => this._client.spans.delete(span.id));
+            if (span?.id) strip.push((b) => b.spans.delete(span.id));
           }
         };
         queueAttached(token);
@@ -104,13 +103,13 @@ export const analysisCopyMutations = {
         );
         morphs.forEach((m, i) => {
           if (i > 0) {
-            strip.push(() => this._client.tokens.delete(m.id));
+            strip.push((b) => b.tokens.delete(m.id));
             return;
           }
           queueAttached(m);
           // patch semantics: null deletes the key
-          strip.push(() =>
-            this._client.tokens.patchMetadata(m.id, {
+          strip.push((b) =>
+            b.tokens.patchMetadata(m.id, {
               form: null,
               morphType: null,
               prov: null,
@@ -123,13 +122,13 @@ export const analysisCopyMutations = {
           // The apply path numbers created morphemes from 2, so the survivor
           // must sit at 1.
           if ((m.precedence ?? 1) !== 1)
-            strip.push(() => this._client.tokens.update(m.id, undefined, undefined, 1));
+            strip.push((b) => b.tokens.update(m.id, undefined, undefined, 1));
         });
       }
       for (let i = 0; i < strip.length; i += STRIP_CHUNK) {
         const part = strip.slice(i, i + STRIP_CHUNK);
-        await this._client.batched(async () => {
-          part.forEach((op) => op());
+        await this._client.batched(async (b) => {
+          part.forEach((op) => op(b));
         });
       }
       await this._reload();
@@ -224,21 +223,21 @@ export const analysisCopyMutations = {
         // ---- batch 1: structure + everything addressable now ----
         let opIdx = 0;
         const pendingMorphs = []; // { slot, opIdx } — created morphemes needing batch-2 links/spans
-        const queueLinkAndSpans = (tokenId, slot) => {
+        const queueLinkAndSpans = (b, tokenId, slot) => {
           const item = findVocabItem(this._vocabularies, slot.vocabItemId);
           if (item) {
-            this._client.vocabLinks.create(item.id, [tokenId], stamp);
+            b.vocabLinks.create(item.id, [tokenId], stamp);
             opIdx++;
           }
           for (const [name, value] of Object.entries(slot.fields || {})) {
             const layer = morphLayersByName.get(name);
             if (!layer) continue;
-            this._client.spans.create(layer.id, [tokenId], value, stampValue(value));
+            b.spans.create(layer.id, [tokenId], value, stampValue(value));
             opIdx++;
           }
         };
 
-        const results = await this._client.batched(async () => {
+        const results = await this._client.batched(async (b) => {
           for (const p of live) {
             const { token, m0Id, analysis } = p;
             const slots = analysis.morphemes || [];
@@ -253,15 +252,15 @@ export const analysisCopyMutations = {
               if (s0.morphType != null) patch.morphType = s0.morphType;
               const merged = { ...patch, ...stampForm(s0.form) };
               if (Object.keys(merged).length && (Object.keys(patch).length || slots.length > 1)) {
-                this._client.tokens.patchMetadata(m0Id, merged);
+                b.tokens.patchMetadata(m0Id, merged);
                 opIdx++;
               }
-              queueLinkAndSpans(m0Id, s0);
+              queueLinkAndSpans(b, m0Id, s0);
             }
             // Remaining slots: create stamped morpheme tokens; their links/spans
             // wait for batch 2 (ids unknown until this batch lands).
             slots.slice(1).forEach((slot, j) => {
-              this._client.tokens.create(morphemeLayer.id, textId, token.begin, token.end, j + 2, {
+              b.tokens.create(morphemeLayer.id, textId, token.begin, token.end, j + 2, {
                 ...(slot.form != null ? { form: slot.form } : {}),
                 ...(slot.morphType != null ? { morphType: slot.morphType } : {}),
                 ...stampForm(slot.form),
@@ -272,13 +271,13 @@ export const analysisCopyMutations = {
             // Word-level link + fields.
             const wordItem = findVocabItem(this._vocabularies, analysis.word?.vocabItemId);
             if (wordItem) {
-              this._client.vocabLinks.create(wordItem.id, [token.id], stamp);
+              b.vocabLinks.create(wordItem.id, [token.id], stamp);
               opIdx++;
             }
             for (const [name, value] of Object.entries(analysis.word?.fields || {})) {
               const layer = wordLayersByName.get(name);
               if (!layer) continue;
-              this._client.spans.create(layer.id, [token.id], value, stampValue(value));
+              b.spans.create(layer.id, [token.id], value, stampValue(value));
               opIdx++;
             }
           }
@@ -291,14 +290,14 @@ export const analysisCopyMutations = {
             ({ slot, id }) => id && (slot.vocabItemId || Object.keys(slot.fields || {}).length),
           );
         if (second.length) {
-          await this._client.batched(async () => {
+          await this._client.batched(async (b) => {
             for (const { slot, id } of second) {
               const item = findVocabItem(this._vocabularies, slot.vocabItemId);
-              if (item) this._client.vocabLinks.create(item.id, [id], stamp);
+              if (item) b.vocabLinks.create(item.id, [id], stamp);
               for (const [name, value] of Object.entries(slot.fields || {})) {
                 const layer = morphLayersByName.get(name);
                 if (!layer) continue;
-                this._client.spans.create(layer.id, [id], value, stampValue(value));
+                b.spans.create(layer.id, [id], value, stampValue(value));
               }
             }
           });
@@ -361,13 +360,13 @@ export const analysisCopyMutations = {
     if (!linkIds.length && !spanIds.length && !morphIds.length && !resetFirst) return true;
 
     return this._withSaving('Failed to discard word analysis', async () => {
-      await this._client.batched(async () => {
-        linkIds.forEach((id) => this._client.vocabLinks.delete(id));
-        spanIds.forEach((id) => this._client.spans.delete(id));
-        morphIds.forEach((id) => this._client.tokens.delete(id));
+      await this._client.batched(async (b) => {
+        linkIds.forEach((id) => b.vocabLinks.delete(id));
+        spanIds.forEach((id) => b.spans.delete(id));
+        morphIds.forEach((id) => b.tokens.delete(id));
         if (resetFirst) {
           // patch semantics: null deletes the key
-          this._client.tokens.patchMetadata(resetFirst, {
+          b.tokens.patchMetadata(resetFirst, {
             form: null,
             morphType: null,
             prov: null,
@@ -378,7 +377,7 @@ export const analysisCopyMutations = {
           });
         }
         renumber.forEach(({ id, precedence }) =>
-          this._client.tokens.update(id, undefined, undefined, precedence),
+          b.tokens.update(id, undefined, undefined, precedence),
         );
       });
       await this._reload();
@@ -452,12 +451,12 @@ export const analysisCopyMutations = {
         .map((w, i) => ({ ...w, targetId: adoptIds[i] }))
         .filter((w) => w.targetId);
 
-      await this._client.batched(async () => {
-        tokenIds.forEach((id) => this._client.tokens.patchMetadata(id, confirm));
-        linkIds.forEach((id) => this._client.vocabLinks.patchMetadata(id, confirm));
-        spanIds.forEach((id) => this._client.spans.patchMetadata(id, confirm));
+      await this._client.batched(async (b) => {
+        tokenIds.forEach((id) => b.tokens.patchMetadata(id, confirm));
+        linkIds.forEach((id) => b.vocabLinks.patchMetadata(id, confirm));
+        spanIds.forEach((id) => b.spans.patchMetadata(id, confirm));
         live.forEach((w) =>
-          this._client.spans.create(w.layerId, [w.targetId], w.value, w.metadata || undefined),
+          b.spans.create(w.layerId, [w.targetId], w.value, w.metadata || undefined),
         );
       });
 

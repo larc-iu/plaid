@@ -231,9 +231,9 @@ export async function importLexicon({ client, vocabId, lexicon, onProgress, shou
   for (let i = 0; i < placed.length; i += CHUNK) {
     check();
     const slice = placed.slice(i, i + CHUNK);
-    await client.batched(async () => {
+    await client.batched(async (b) => {
       for (const p of slice) {
-        client.vocabItems.patchMetadata(byEntry.get(p.key), {
+        b.vocabItems.patchMetadata(byEntry.get(p.key), {
           parent: byEntry.get(p.parentKey),
           senseOrder: p.senseOrder,
         });

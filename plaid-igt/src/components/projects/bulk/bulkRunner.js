@@ -115,9 +115,9 @@ export async function applyRespell(
       const parts = chunk(morphPatches, BATCH_CHUNK - 1);
       if (!parts.length) parts.push([]);
       for (let i = 0; i < parts.length; i++) {
-        await client.batched(async () => {
-          if (i === 0) client.texts.update(textId, respellOps(docRows));
-          parts[i].forEach((m) => client.tokens.patchMetadata(m.id, { form: m.new }));
+        await client.batched(async (b) => {
+          if (i === 0) b.texts.update(textId, respellOps(docRows));
+          parts[i].forEach((m) => b.tokens.patchMetadata(m.id, { form: m.new }));
         });
       }
       out.docsChanged += 1;
@@ -126,8 +126,8 @@ export async function applyRespell(
     }
     if (includeLexicon) {
       for (const part of chunk(lexiconRows, BATCH_CHUNK)) {
-        await client.batched(async () => {
-          part.forEach((r) => client.vocabItems.update(r.id, r.new));
+        await client.batched(async (b) => {
+          part.forEach((r) => b.vocabItems.update(r.id, r.new));
         });
         out.entriesChanged += part.length;
       }
@@ -150,10 +150,10 @@ export async function applyField(client, { rows }, { label }) {
   let changed = 0;
   await client.withOperation(label, async () => {
     for (const part of chunk(rows, BATCH_CHUNK)) {
-      await client.batched(async () => {
+      await client.batched(async (b) => {
         for (const r of part) {
-          if (r.kind === 'morphForm') client.tokens.patchMetadata(r.id, { form: r.new });
-          else client.spans.update(r.id, r.new);
+          if (r.kind === 'morphForm') b.tokens.patchMetadata(r.id, { form: r.new });
+          else b.spans.update(r.id, r.new);
         }
       });
       changed += part.length;
@@ -251,10 +251,8 @@ export async function applyMerge(
 ) {
   await client.withOperation(label, async () => {
     for (const part of chunk(links, BATCH_CHUNK)) {
-      await client.batched(async () => {
-        part.forEach((l) =>
-          client.vocabLinks.create(survivorId, l.tokens, l.metadata || undefined),
-        );
+      await client.batched(async (b) => {
+        part.forEach((l) => b.vocabLinks.create(survivorId, l.tokens, l.metadata || undefined));
       });
     }
     for (const p of refPatches) {

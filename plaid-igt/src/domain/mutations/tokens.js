@@ -61,14 +61,14 @@ export const tokenMutations = {
       const inherited = survivingProvenance(toMerge.map((t) => t.metadata));
       const patch = survivorPatch(firstToken.metadata, inherited, (m) => this.editStamp(m));
 
-      await this._client.batched(async () => {
-        if (coincident.length > 0) this._client.tokens.bulkDelete(coincident);
+      await this._client.batched(async (b) => {
+        if (coincident.length > 0) b.tokens.bulkDelete(coincident);
         // Sequential merges into firstToken in begin-order. The server processes
         // batch ops sequentially, so each merge sees firstToken's widened extent.
         for (let i = 1; i < toMerge.length; i++) {
-          this._client.tokens.merge(firstToken.id, toMerge[i].id);
+          b.tokens.merge(firstToken.id, toMerge[i].id);
         }
-        if (patch) this._client.tokens.patchMetadata(firstToken.id, patch);
+        if (patch) b.tokens.patchMetadata(firstToken.id, patch);
       });
 
       const removedWordIds = new Set(toMerge.slice(1).map((t) => t.id));
@@ -107,10 +107,10 @@ export const tokenMutations = {
       // triggered the "Document repaired" toast on reopen).
       const dedup = planSpanDedup(this.layerInfo).filter((p) => p.deleteSpanIds.length > 0);
       if (dedup.length > 0) {
-        await this._client.batched(() => {
+        await this._client.batched((b) => {
           for (const p of dedup) {
-            if (p.needsUpdate) this._client.spans.update(p.keepSpanId, p.mergedValue);
-            p.deleteSpanIds.forEach((id) => this._client.spans.delete(id));
+            if (p.needsUpdate) b.spans.update(p.keepSpanId, p.mergedValue);
+            p.deleteSpanIds.forEach((id) => b.spans.delete(id));
           }
         });
         this._applyRawPatch((next, infoNext) => {
@@ -131,9 +131,8 @@ export const tokenMutations = {
       // the survivor's own link (else the earliest merged word's), delete the rest.
       const linkPlans = planVocabLinkDedup(this._vocabularies, ownLinkIds);
       if (linkPlans.length > 0) {
-        await this._client.batched(() => {
-          for (const p of linkPlans)
-            p.deleteLinks.forEach((l) => this._client.vocabLinks.delete(l.linkId));
+        await this._client.batched((b) => {
+          for (const p of linkPlans) p.deleteLinks.forEach((l) => b.vocabLinks.delete(l.linkId));
         });
         this._applyRawPatch((next, infoNext, vocabs) => applyVocabLinkDedup(vocabs, linkPlans));
       }

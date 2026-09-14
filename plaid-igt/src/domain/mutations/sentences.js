@@ -33,9 +33,9 @@ export const sentenceMutations = {
       // is not absorbed into a hand-made neighbour.
       const inherited = survivingProvenance([prev.metadata, sentence.metadata]);
       const patch = survivorPatch(prev.metadata, inherited, (m) => this.editStamp(m));
-      await this._client.batched(async () => {
-        this._client.tokens.merge(prev.id, sentenceId);
-        if (patch) this._client.tokens.patchMetadata(prev.id, patch);
+      await this._client.batched(async (b) => {
+        b.tokens.merge(prev.id, sentenceId);
+        if (patch) b.tokens.patchMetadata(prev.id, patch);
       });
       this._applyRawPatch((next, infoNext) => {
         const tokens = infoNext.sentenceTokenLayer?.tokens;
@@ -101,10 +101,9 @@ export const sentenceMutations = {
     const leftPatch = survivorPatch(containing.metadata, {}, (m) => this.editStamp(m));
     const rightMetadata = newHalfMetadata(containing.metadata, (m) => this.editStamp(m));
     if (leftPatch || (newRightId && rightMetadata)) {
-      await this._client.batched(async () => {
-        if (leftPatch) this._client.tokens.patchMetadata(containing.id, leftPatch);
-        if (newRightId && rightMetadata)
-          this._client.tokens.patchMetadata(newRightId, rightMetadata);
+      await this._client.batched(async (b) => {
+        if (leftPatch) b.tokens.patchMetadata(containing.id, leftPatch);
+        if (newRightId && rightMetadata) b.tokens.patchMetadata(newRightId, rightMetadata);
       });
     }
 
@@ -147,12 +146,12 @@ export const sentenceMutations = {
     );
 
     return this._withSaving('Failed to clear sentences', async () => {
-      await this._client.batched(async () => {
-        spanIds.forEach((id) => this._client.spans.delete(id));
+      await this._client.batched(async (b) => {
+        spanIds.forEach((id) => b.spans.delete(id));
         // Sequential merges into the first sentence in begin-order; the server
         // processes batch ops in order, so each merge sees the widened extent.
         for (let i = 1; i < sentenceTokens.length; i++) {
-          this._client.tokens.merge(first.id, sentenceTokens[i].id);
+          b.tokens.merge(first.id, sentenceTokens[i].id);
         }
       });
       await this._reload();

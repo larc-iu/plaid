@@ -42,10 +42,10 @@ const projectId = await getFixtureProjectId(client);
     const alignLayer = info.alignmentTokenLayer.id;
     // body is now 'the quick brown fox the brown'; the@[20,23) brown@[24,29)
     // createAlignment would insert ' quick' at cp 23 then token [24,29).
-    client.beginBatch();
-    client.texts.update(textId, [{ type: 'insert', index: 23, value: ' quick' }]);
-    client.tokens.create(alignLayer, textId, 24, 29, undefined, { timeBegin: 1, timeEnd: 2 });
-    await client.submitBatch();
+    const b = client.batch();
+    b.texts.update(textId, [{ type: 'insert', index: 23, value: ' quick' }]);
+    b.tokens.create(alignLayer, textId, 24, 29, undefined, { timeBegin: 1, timeEnd: 2 });
+    await b.submit();
     const fresh = await reloadFresh(client, projectId, documentId);
     const aligns = fresh.layerInfo.alignmentTokenLayer.tokens
       .slice()

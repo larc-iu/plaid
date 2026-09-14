@@ -148,12 +148,11 @@ export const ReplaceDialog = ({
       await client.withOperation(label, async () => {
         for (let i = 0; i < writes.length; i += CHUNK) {
           const chunk = writes.slice(i, i + CHUNK);
-          await client.batched(async () => {
+          await client.batched(async (b) => {
             for (const w of chunk) {
-              if (w.form != null) client.vocabItems.update(w.id, w.form);
-              else if (Object.keys(w.metadata).length)
-                client.vocabItems.setMetadata(w.id, w.metadata);
-              else client.vocabItems.deleteMetadata(w.id);
+              if (w.form != null) b.vocabItems.update(w.id, w.form);
+              else if (Object.keys(w.metadata).length) b.vocabItems.setMetadata(w.id, w.metadata);
+              else b.vocabItems.deleteMetadata(w.id);
             }
           });
           done += chunk.length;
