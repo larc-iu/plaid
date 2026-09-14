@@ -10,6 +10,7 @@ from ..core.replace import replacer as core_replacer
 from .project import word_ref
 from .tools import (Workspace, ToolError, t_set_analysis, entry_line, check_respell_overlap, span_op,
                     has_own_form, morpheme_form_op, parse_analysis, analysis_op, _meta_patch,
+                    no_scope_reaches, op_target, refuse_shape_and_analysis,
                     _refuse_doomed, _refuse_removing_survivor)
 from .vocab import plan_delete_refs, plan_merge_refs, ref_ids
 from .stats import _analyzed, _docs
@@ -365,22 +366,33 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
                     continue
                 targets.append((doc, s, w))
     _check_cap(len(targets))
-    # Plan into a scratch workspace view so a failure part-way leaves nothing
-    # behind, then adopt the ops in one go.
-    saved = ws.ops
-    ws.ops = []
+    # Staged straight onto the real plan, one word at a time. It used to plan
+    # into a scratch `ws.ops = []` so a failure part-way left nothing behind,
+    # and that hid the plan from every guard `t_set_analysis` makes: a word
+    # already being split, a corpus-wide change reaching the document, a
+    # restore. Each looks at `ws.ops`, and each saw an empty plan. Instead the
+    # whole batch is reserved up front (so the cap still refuses before
+    # anything is staged) and the plan is put back as it was if one word
+    # fails.
+    ws.reserve(len(targets))
+    saved, saved_replaced = list(ws.ops), ws.replaced
     first_note = ''
+    planned = []
     try:
         for doc, s, w in targets:
             note = t_set_analysis(ws, doc.id, word_ref(s, w), morphemes)
+            planned.append(('analysis', w.id))
             if not first_note and 'differ from the surface' in note:
                 first_note = note[note.index('(note'):]
-        staged = ws.ops
-    finally:
-        ws.ops = saved
-    ws.add_ops(staged)
-    labels = [op['label'] for op in staged]
-    return _bulk_note(ws, len(staged), labels, f'occurrences of "{form}"') + (' ' + first_note if first_note else '')
+    except Exception:
+        ws.ops[:] = saved
+        ws.replaced = saved_replaced
+        raise
+    # By target, not by position: an analysis already planned for one of these
+    # words is REPLACED where it stands rather than appended.
+    by_target = {op_target(op): op for op in ws.ops}
+    labels = [by_target[t]['label'] for t in planned if t in by_target]
+    return _bulk_note(ws, len(labels), labels, f'occurrences of "{form}"') + (' ' + first_note if first_note else '')
 
 
 def _set_analysis_for_form_q(ws: Workspace, form: str, morphemes: list, skip_analyzed: bool) -> str:
@@ -395,6 +407,15 @@ def _set_analysis_for_form_q(ws: Workspace, form: str, morphemes: list, skip_ana
     budget = _docs_of([[w] for w in words])
     staged = []
     first_note = ''
+    # The same refusals the scan path makes through t_set_analysis. This path
+    # built its ops by hand and made none of them, so a plan already reshaping
+    # one of these words, or holding a corpus-wide change over their
+    # documents, was refused only at approval, if at all.
+    for doc_id in sorted({w['document'] for w in words}):
+        no_scope_reaches(ws, doc_id, ws.doc_label(doc_id))
+    for w in words:
+        ref = ws.corpus.label_ref(w['document'], w['id'], budget)
+        refuse_shape_and_analysis(ws, w['id'], ref, analysing=True)
     for w in words:
         chain = sorted(chains.get(w['id']) or [], key=lambda m: (m.get('precedence') or 0, m.get('id')))
         existing = [{'id': m['id'], 'span_ids': spans.get(m['id']) or []} for m in chain]

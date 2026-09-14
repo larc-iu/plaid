@@ -341,3 +341,42 @@ def test_naming_a_document_lists_every_reference_not_a_sample():
             n, _form, examples = int(parts[0].strip()), parts[1], parts[2]
             assert len(examples.split(', ')) == n, line
     assert everywhere  # the corpus-wide view still renders
+
+
+def test_set_analysis_for_form_shows_the_guards_the_real_plan(monkeypatch):
+    """It used to stage into a scratch `ws.ops = []`, so every guard
+    t_set_analysis makes looked at an empty plan: a word already being split,
+    a corpus-wide change reaching the document, a restore. Both paths now
+    refuse, and a refusal leaves the plan as it was."""
+    from plaid_agent.igt import corpus as igt_corpus
+
+    analysis = {'form': 'GAM', 'morphemes': [{'form': 'gam', 'fields': {'Morph Gloss': 'fish'}}]}
+
+    # The scan path: w-2 is "gam", and the plan already splits it.
+    w = ws()
+    assert call_tool(w, 'split_word', {'document': 'd1', 'ref': 's1.w2', 'at': 1}).startswith('Planned')
+    before = list(w.ops)
+    out = call_tool(w, 'set_analysis_for_form', analysis)
+    assert 'its analysis cannot also change' in out
+    assert w.ops == before, 'a refusal leaves the plan as it was'
+
+    # The scan path again: a corpus-wide change already reaches the document.
+    w = ws()
+    w.doc('d1')
+    w.ops.append({'kind': 'bulk_scope', 'tool': 'replace_in_field', 'args': {}, 'counts': {},
+                  'count': 1, 'documents': ['d1'], 'label': 'a corpus-wide change'})
+    assert 'corpus-wide change' in call_tool(w, 'set_analysis_for_form', analysis)
+    assert len(w.ops) == 1
+
+    # The query path built its ops by hand and made neither refusal.
+    w = ws()
+    w.prefer_scan = False
+    w.doc('d1')
+    monkeypatch.setattr(igt_corpus, 'q_analysis_targets', lambda ws_, form, skip, cap: (
+        [{'id': 'w-2', 'document': 'd1', 'text': 't1', 'begin': 7, 'end': 10, 'value': 'gam'}], {}, {}))
+    w.ops.append({'kind': 'bulk_scope', 'tool': 'replace_in_field', 'args': {}, 'counts': {},
+                  'count': 1, 'documents': ['d1'], 'label': 'a corpus-wide change'})
+    assert 'corpus-wide change' in call_tool(w, 'set_analysis_for_form', analysis)
+    w.ops.clear()
+    assert call_tool(w, 'split_word', {'document': 'd1', 'ref': 's1.w2', 'at': 1}).startswith('Planned')
+    assert 'its analysis cannot also change' in call_tool(w, 'set_analysis_for_form', analysis)
