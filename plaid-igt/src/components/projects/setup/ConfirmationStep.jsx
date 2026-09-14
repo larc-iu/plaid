@@ -385,8 +385,8 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
             <div className="rounded-lg border bg-card p-4">
               <p className="mb-2 font-medium">Additional Configuration</p>
               <p className="text-sm text-muted-foreground">
-                No additional configuration selected. You can add document metadata, orthographies,
-                annotation fields, and vocabularies later through the project settings.
+                No additional configuration selected. Document metadata, orthographies, annotation
+                fields and vocabularies are in project settings.
               </p>
             </div>
           )}

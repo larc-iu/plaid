@@ -555,8 +555,8 @@ export const BulkAddDialog = ({
             className="font-mono text-xs"
           />
           <p className="text-xs text-muted-foreground">
-            One entry per line, columns separated by tabs, so you can paste straight from a
-            spreadsheet. The first row may be a header naming the columns, which you confirm next.
+            One entry per line, columns separated by tabs. The first row may be a header naming the
+            columns, which you confirm next.
             {rows.length > 0 && (
               <>
                 {' '}
@@ -844,8 +844,8 @@ export const BulkAddDialog = ({
           {failure.message}
         </p>
         <p className="text-sm text-muted-foreground">
-          {n(failure.created)} added and {n(failure.updated)} updated before it stopped. Running the
-          same import again is safe, because what already landed will show up as already present.
+          {n(failure.created)} added and {n(failure.updated)} updated before it stopped. On a second
+          run of the same import, what already landed shows as already present.
         </p>
       </div>
     ) : (

@@ -993,10 +993,10 @@ export const VocabularyDetail = () => {
                     declared at all, and only found the control by opening the
                     other app. Say where it is. */}
                   <p className="text-sm text-muted-foreground">
-                    Entries here are listed in your language's default order. To give this
-                    vocabulary an alphabet of its own, so that letters like ẹ and n-graphs like ch
-                    file where the language puts them, open it in the dictionary reader and use its
-                    Set up page. That order applies to the published dictionary.
+                    Entries here are listed in your language’s default order. A vocabulary’s own
+                    alphabet files letters like ẹ and n-graphs like ch where the language puts them.
+                    Set one in the dictionary reader, on its Set up page. That order applies to the
+                    published dictionary.
                   </p>
                   <div className="rounded-lg border bg-card p-4">
                     <div className="flex flex-col gap-4">

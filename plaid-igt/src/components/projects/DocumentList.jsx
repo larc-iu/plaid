@@ -315,7 +315,7 @@ export const DocumentList = ({
             <DialogDescription>
               {choosing
                 ? 'How would you like to add one?'
-                : 'Name the document; you can add its text on the Baseline tab afterwards.'}
+                : 'Name the document. Its text goes on the Baseline tab.'}
             </DialogDescription>
           </DialogHeader>
           {choosing ? (

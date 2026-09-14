@@ -158,8 +158,7 @@ export const ApplyBar = ({ count, busy, summary, onApply, children }) => {
           <AlertDialogHeader>
             <AlertDialogTitle>Apply {plural(count, 'change')}?</AlertDialogTitle>
             <AlertDialogDescription>
-              {summary} The edit lands as one entry in each document’s History, so it can be
-              reviewed and reverted from there.
+              {summary} It lands as one entry in each document’s History.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

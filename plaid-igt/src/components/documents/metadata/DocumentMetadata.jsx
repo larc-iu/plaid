@@ -122,8 +122,7 @@ export function DocumentMetadata() {
                     <div className="flex items-start gap-2">
                       <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
                       <p className="text-sm text-muted-foreground">
-                        No metadata fields configured for this project. You can add metadata fields
-                        in the project settings.
+                        No metadata fields for this project. Add them in project settings.
                       </p>
                     </div>
                   </div>

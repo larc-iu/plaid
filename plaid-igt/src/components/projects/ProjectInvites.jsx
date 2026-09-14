@@ -87,8 +87,8 @@ const MintedLinkDialog = ({ code, onClose, title = 'Invitation link created' }) 
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
-            Copy this link now. It is not stored, so it cannot be shown again. If you lose it,
-            revoke this invite and create another.
+            Copy this link now. It cannot be shown again. To replace it, revoke this invite and
+            create another.
           </DialogDescription>
         </DialogHeader>
         <div className="flex items-center gap-2">

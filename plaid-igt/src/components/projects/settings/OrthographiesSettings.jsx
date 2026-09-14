@@ -191,9 +191,8 @@ export const OrthographiesSettings = ({ projectId, client }) => {
     <div>
       <h2 className="text-lg font-semibold">Orthographies</h2>
       <p className="mb-4 mt-1 text-sm text-muted-foreground">
-        Configure orthographic representations for your project. The Baseline orthography represents
-        your token layer and cannot be removed. You can add additional orthographies like IPA,
-        alternative writing systems, or normalized forms.
+        The ways this project’s text is written. Baseline is the token layer’s own and cannot be
+        removed. Add others for IPA, another writing system, or a normalized form.
       </p>
 
       <OrthographiesManager

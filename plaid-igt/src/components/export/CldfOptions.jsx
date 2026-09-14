@@ -180,8 +180,8 @@ export const CldfOptions = ({ options, layers, languages, projectId, onChange })
         <div className="flex flex-col gap-1.5 border-t pt-3">
           <Label>Carry as custom columns</Label>
           <p className="mb-1 text-xs text-muted-foreground">
-            CLDF has no term for these, so they become plain columns: readable by humans and by
-            spreadsheets, ignored by CLDF tools. Unchecked tiers are left out of the export.
+            These become plain columns: readable by humans and by spreadsheets, ignored by CLDF
+            tools. Unchecked tiers are left out of the export.
           </p>
           {carryable.map((t) => (
             <label

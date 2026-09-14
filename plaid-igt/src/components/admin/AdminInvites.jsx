@@ -61,9 +61,7 @@ const BatchResult = ({ links, onClose }) => {
       <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>{links.length} links created</DialogTitle>
-          <DialogDescription>
-            Copy these now. They are not stored, so they cannot be shown again.
-          </DialogDescription>
+          <DialogDescription>Copy these now. They cannot be shown again.</DialogDescription>
         </DialogHeader>
         <textarea
           readOnly

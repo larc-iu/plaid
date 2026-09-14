@@ -236,8 +236,7 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
         )}
         {draft.format !== 'plaid-igt-json' && (
           <p className="border-t pt-3 text-xs text-muted-foreground">
-            Comments left on a document (the Comments tab) are not exported. No interchange format
-            has a place for an authored, dated remark, so they stay in Plaid. A sentence field of
+            Comments left on a document (the Comments tab) are not exported. A sentence field of
             your own named “Note” or “Comment” is a different thing and is exported like any other
             field.
           </p>
