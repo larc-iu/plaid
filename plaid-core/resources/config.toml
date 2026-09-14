@@ -54,6 +54,10 @@ library_level = "warn"
 # Write logs to a FILE (rotated daily; previous days kept as "<file>.YYYYMMDD")
 # instead of stdout. Leave commented to log to stdout — recommended when running
 # under systemd or Docker, which capture and rotate stdout for you.
+# Third-party libraries write to a sibling file with ".libraries" before the
+# extension ("data/plaid.libraries.log" below). It is not rotated: the two
+# streams cannot share one file, because the daily rotation renames it and the
+# library logger keeps writing to the file it opened at startup.
 # file = "data/plaid.log"
 
 # -----------------------------------------------------------------------------

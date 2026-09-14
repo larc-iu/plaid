@@ -254,6 +254,26 @@
     (:error :fatal) "error"
     "warn"))
 
+(defn library-log-file
+  "Where the third-party library stream writes when `[logging] file` is set:
+   a SIBLING of the app log, never the same file.
+
+   The Timbre appender rolls at midnight by RENAMING the file to
+   `<file>.YYYYMMDD`, and slf4j-simple holds the path it was handed open for
+   the life of the process. Pointed at the same file, every library line after
+   the first roll went on landing in the renamed inode, where nothing looks
+   for it.
+
+   `data/plaid.log` becomes `data/plaid.libraries.log`; a name with no
+   extension gets `.libraries` appended."
+  [^String file]
+  (when file
+    (let [dot (.lastIndexOf file ".")
+          sep (max (.lastIndexOf file "/") (.lastIndexOf file "\\"))]
+      (if (> dot sep)
+        (str (subs file 0 dot) ".libraries" (subs file dot))
+        (str file ".libraries")))))
+
 (defn- log-output-fn
   "Concise single-line Timbre format that visually matches the slf4j-simple
    library stream: `2026-06-15 12:00:00.123 [INFO] plaid.x.y - message`.
@@ -276,10 +296,12 @@
      console appender is replaced by a daily-rolling file appender (old days
      kept as `<file>.YYYYMMDD`).
    * Third-party libraries log through slf4j-simple, driven by `[logging]
-     library_level` (default warn) and pointed at the same destination. These
-     properties are read once at slf4j init, so we set them here — ahead of the
-     datasource pool, the first library logger — and a change needs a process
-     restart to take effect."
+     library_level` (default warn). With a file configured they go to a
+     sibling of it (see `library-log-file`) rather than the file itself, which
+     Timbre rolls out from under them by rename. These properties are read
+     once at slf4j init, so we set them here — ahead of the datasource pool,
+     the first library logger — and a change needs a process restart to take
+     effect."
   [config]
   (let [logging-config (:taoensso.timbre/logging-config config)
         {:keys [library-level file]} (:plaid.logging/config config)]
@@ -287,7 +309,7 @@
     (doto (System/getProperties)
       (.setProperty "org.slf4j.simpleLogger.defaultLogLevel"
                     (->slf4j-level (or library-level :warn)))
-      (.setProperty "org.slf4j.simpleLogger.logFile" (or file "System.out")))
+      (.setProperty "org.slf4j.simpleLogger.logFile" (or (library-log-file file) "System.out")))
     ;; --- Plaid's own stream (Timbre) ---
     ;; Spell out BOTH appenders' :enabled? either way so the result is the same
     ;; regardless of prior state (merge-config! is additive — a stale :rolling

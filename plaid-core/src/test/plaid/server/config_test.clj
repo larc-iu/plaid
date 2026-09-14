@@ -193,3 +193,36 @@
   (let [[content source] (read-toml "config.dev.toml")]
     (is (string? content))
     (is (= "classpath:config.dev.toml" source))))
+
+;; -----------------------------------------------------------------------------
+;; Where the library log stream writes
+;; -----------------------------------------------------------------------------
+
+(deftest the-library-log-is-a-sibling-of-the-app-log
+  ;; Timbre rolls the app log at midnight by renaming it, and slf4j-simple
+  ;; holds the path it was given open for the life of the process. Pointed at
+  ;; the same file, every library line after the first roll landed in the
+  ;; renamed inode.
+  (is (= "data/plaid.libraries.log" (config/library-log-file "data/plaid.log")))
+  (is (= "/var/log/plaid.libraries.log" (config/library-log-file "/var/log/plaid.log")))
+  (is (= "/var/log/plaid.libraries" (config/library-log-file "/var/log/plaid"))
+      "a name with no extension gets the marker appended")
+  (is (= "/var/log.d/plaid.libraries" (config/library-log-file "/var/log.d/plaid"))
+      "a dot in a directory name is not an extension")
+  (is (nil? (config/library-log-file nil))
+      "no file configured means the library stream keeps stdout"))
+
+(deftest configure-logging-points-slf4j-at-the-sibling
+  (let [previous (System/getProperty "org.slf4j.simpleLogger.logFile")]
+    (try
+      (config/configure-logging! {:plaid.logging/config {:library-level :warn
+                                                         :file "data/plaid.log"}
+                                  :taoensso.timbre/logging-config {:min-level :info}})
+      (is (= "data/plaid.libraries.log"
+             (System/getProperty "org.slf4j.simpleLogger.logFile")))
+      (finally
+        (if previous
+          (System/setProperty "org.slf4j.simpleLogger.logFile" previous)
+          (System/clearProperty "org.slf4j.simpleLogger.logFile"))
+        ;; Put Timbre back the way the rest of the suite expects it.
+        (config/configure-logging! {:taoensso.timbre/logging-config {:min-level :info}})))))
