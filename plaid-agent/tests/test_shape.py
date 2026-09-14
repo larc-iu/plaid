@@ -105,7 +105,8 @@ def test_execute_shape_ops_in_order():
            {'kind': 'merge_sentences', 'sentence_id': 's-1', 'other_id': 's-2',
             'spans': [{'layer_id': 'sl-trans', 'keep_id': 'sp-t1', 'value': 'x | y', 'delete_ids': ['sp-t2']}], 'label': ''}]
     counts = execute_plan(c, ops, source='s', label='l')
-    assert counts == {'split words': 1, 'merged words': 1, 'deleted words': 1, 'split sentences': 1, 'merged sentences': 1}
+    assert counts == {'split words': 1, 'word merges': 1, 'deleted words': 1, 'split sentences': 1,
+                      'sentence merges': 1}
     calls = [(r, m, a) for r, m, a, k in c.batches[0]]
     assert calls == [
         ('tokens', 'bulk_delete', (['m-1a', 'm-1b'],)), ('tokens', 'split', ('w-1', 3)),

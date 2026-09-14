@@ -152,6 +152,6 @@ def test_restore_document_plans_from_the_dry_run_and_stands_alone():
     assert 'maintainer access' in call_tool(w4, 'restore_document', {'document': 'd1', 'as_of': '2026-09-05T18:45:49Z'})
     # Approval runs the server's restore once, as the plan's one write.
     counts = execute_plan(c, [op], source='s', label='l')
-    assert counts == {'restored documents': 1}
+    assert counts == {'document restores': 1}
     assert c.log[-1] == ('documents', 'restore', ('d1', '2026-09-05T18:45:49Z'), {'dry_run': False})
     assert c.operations[-1] == 'l' and c.batches == []

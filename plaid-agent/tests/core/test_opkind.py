@@ -71,8 +71,10 @@ def test_a_target_is_the_kind_s_own_and_a_kind_without_one_supersedes_nothing():
 def test_the_summary_counts_by_the_noun_the_user_reads():
     reg = _reg()
     assert ok.summarize(reg, []) == 'no changes'
-    out = ok.summarize(reg, [{'kind': 'set_value'}, {'kind': 'set_value'}, {'kind': 'drop_it'}])
-    assert out == '2 values, 1 removal'
+    # The order the kinds first appear, unless the caller wants largest first.
+    ops = [{'kind': 'drop_it'}, {'kind': 'set_value'}, {'kind': 'set_value'}]
+    assert ok.summarize(reg, ops) == '1 removal, 2 values'
+    assert ok.summarize(reg, ops, common_first=True) == '2 values, 1 removal'
     # A stored group and a scope stand for what they carry.
     assert ok.summarize(reg, [{'kind': 'scope_it', 'count': 7}], ok.stored_count) == '7 sweeps'
     assert ok.summarize(reg, [{'kind': 'set_value', 'compact': True, 'count': 3}], ok.stored_count) == '3 values'
@@ -84,3 +86,9 @@ def test_a_kind_may_count_as_something_other_than_its_own_noun():
                                  if not op.get('value') else [(('value', 'values'), n)])])
     assert ok.summarize(reg, [{'kind': 'set_value'}]) == '1 cleared value'
     assert ok.summarize(reg, [{'kind': 'set_value', 'value': 'x'}]) == '1 value'
+
+
+def test_an_undeclared_kind_shows_its_identifier_rather_than_vanishing():
+    """Nothing here refuses a plan, so a kind the summary does not know must
+    still appear in the line the user reads."""
+    assert ok.summarize(_reg(), [{'kind': 'mystery'}]) == '1 mystery'

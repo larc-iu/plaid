@@ -17,6 +17,13 @@ contribution, not a verification: ``stamp_mode='contributed'`` with the
 approver's ``contributor`` id stamps everything contributed, and rewritten
 entities lose any earlier confirmation.
 
+**Every kind is declared once**, in :data:`KIND` below: its required keys, the
+noun the user reads, what applies it, what it writes to, what it deletes,
+whether it reshapes the text, and how like operations fold into one stored
+operation. ``KINDS``, ``REQUIRED``, ``RESHAPES``, ``SUMMARY_NAMES``, the
+executor's dispatch and the approval card's tables are all read off it (see
+:mod:`plaid_agent.core.opkind`), so adding a kind is one declaration.
+
 Operation shapes (all keys snake_case, no id-keyed maps, so they survive the
 wire's key recasing):
 
@@ -64,35 +71,468 @@ Each also carries a human ``label`` for the approval UI.
 from collections import Counter
 from typing import Any, Dict, List
 
+from ..core import opkind as ok
+from ..core.opkind import OpKind
 from ..core.plan import (BATCH_OP_BUDGET, CLEAR_PROV, CONFIRM, PlanError, Stamps, STAMP_MODES,  # noqa: F401
                          TrackingBatcher, applying, created_id, expand_ops)
 
+# How a kind tags what it does to the shape of the text. RESHAPES is every
+# kind tagged with one of these, so the four tools that reason about "does
+# this plan already reshape that document" ask the registry rather than a
+# list.
+WORD_SHAPE = 'word_shape'        # a word's boundaries move
+SENTENCE_SHAPE = 'sentence_shape'  # a sentence boundary moves
+TEXT_SHAPE = 'text_shape'        # the baseline text itself is rewritten
+ANALYSIS = 'analysis'            # a word's morpheme chain is replaced
 
-KINDS = ('set_span', 'set_analysis', 'set_orthography', 'respell', 'link', 'unlink', 'link_phrase', 'create_entry',
-         'set_entry_field', 'set_entry_metadata', 'set_doc_metadata', 'create_document', 'merge_entries', 'delete_entry',
-         'rename_entry', 'rename_document', 'confirm', 'discard_analysis', 'set_morpheme_form', 'set_morph_type',
-         'split_word', 'merge_words', 'delete_word', 'split_sentence', 'merge_sentences', 'edit_text',
-         'add_comment', 'restore_document', 'bulk_scope')
-REQUIRED = {
-    'bulk_scope': ('tool', 'args', 'counts'),
-    'set_span': ('layer_id', 'token_id'), 'set_analysis': ('word_id', 'text_id', 'begin', 'end', 'morpheme_layer_id', 'morphemes'),
-    'set_orthography': ('word_id', 'key'), 'respell': ('text_id', 'begin', 'end', 'value'),
-    'link': ('token_id',), 'unlink': ('link_id',), 'link_phrase': ('token_ids',), 'create_entry': ('vocab_id', 'form', 'key'),
-    'set_entry_field': ('item_id', 'field'), 'set_entry_metadata': ('item_id', 'patch'),
-    'set_doc_metadata': ('document_id', 'field'),
-    'create_document': ('name', 'text'), 'merge_entries': ('keep_id', 'remove_id'), 'delete_entry': ('item_id',),
-    'rename_entry': ('item_id', 'form'), 'rename_document': ('document_id', 'name'),
-    'confirm': (), 'discard_analysis': ('word_id',), 'set_morpheme_form': ('morpheme_id', 'form'),
-    'set_morph_type': ('morpheme_id',),
-    'split_word': ('word_id', 'position'), 'merge_words': ('word_id', 'other_ids'), 'delete_word': ('word_id',),
-    'split_sentence': ('sentence_id', 'position'), 'merge_sentences': ('sentence_id', 'other_id'),
-    'edit_text': ('document_id', 'begin', 'end', 'new'),
-    'add_comment': ('entity_type', 'entity_id', 'body'), 'restore_document': ('document_id', 'as_of'),
-}
+# What the approval card places a change at, when it is not the document.
+TOKEN = 'token'                  # a sentence, a word, a morpheme, or a value on one
+ENTRY = 'entry'                  # a lexicon entry
 
 
-RESHAPES = ('respell', 'edit_text', 'split_word', 'merge_words', 'delete_word', 'split_sentence',
-            'merge_sentences', 'set_analysis', 'discard_analysis')
+# --- the executor's shared state -------------------------------------------------
+
+class Context:
+    """What one run of the executor carries between operations: the batcher,
+    the provenance stamps, and the work each pass defers to the next."""
+
+    def __init__(self, client, project, stamps: Stamps, counts: Counter, notes: List[str], b: TrackingBatcher):
+        self.client = client
+        self.project = project
+        self.stamps = stamps
+        self.stamp = stamps.stamp
+        self.restamp = stamps.restamp
+        self.counts = counts
+        self.notes = notes
+        self.b = b
+        self.pending_spans: List[tuple] = []   # (result idx of the created morpheme, layer_id, value)
+        self.pending_links: List[tuple] = []   # ([token_id, ...], new_entry_key)
+        self.entry_idx: Dict[str, int] = {}
+        self.respells: Dict[str, List[tuple]] = {}
+        self.pending_deletes: List[str] = []   # entries to delete once their links are gone
+        self.text_edits: List[Dict[str, Any]] = []
+        self.restores: List[Dict[str, Any]] = []
+        self.new_docs: List[Dict[str, Any]] = []
+        # Once per entity, whichever ops name it. The server accepts a
+        # `bulk_delete` of ids that are already gone, but a SINGLE delete of
+        # one 404s, and the batch it shares is atomic: an unlink beside the
+        # word deletion that takes the same link, a cleared field beside the
+        # discard that deletes the same span, a merge beside a delete of the
+        # same entry. Each pair is a whole plan refused after approval.
+        self.gone: set = set()
+
+    def drop(self, resource: str, entity_id) -> None:
+        if not entity_id or (resource, entity_id) in self.gone:
+            return
+        self.gone.add((resource, entity_id))
+        self.b.add(lambda i=entity_id: getattr(self.client, resource).delete(i))
+
+
+# --- what each kind does -----------------------------------------------------------
+
+def _apply_set_span(ctx: Context, op) -> int:
+    span_id, value = op.get('span_id'), op.get('value') or ''
+    if span_id and value == '':
+        ctx.drop('spans', span_id)
+    elif span_id:
+        ctx.b.update('spans', span_id, value=value, metadata=ctx.restamp())
+    elif value != '':
+        ctx.b.add(lambda o=op, v=value: ctx.client.spans.create(o['layer_id'], [o['token_id']], v, ctx.stamp()))
+    else:
+        return 0  # nothing to clear
+    return 1
+
+
+def _apply_set_analysis(ctx: Context, op) -> int:
+    existing = op.get('existing') or []
+    morphemes = op.get('morphemes') or []
+    layer, text_id = op['morpheme_layer_id'], op['text_id']
+    begin, end = op['begin'], op['end']
+    b, client = ctx.b, ctx.client
+    if existing:
+        m0 = existing[0]
+        for m in existing[1:]:
+            ctx.drop('tokens', m['id'])  # cascades spans + links
+        for sid in m0.get('span_ids') or []:
+            ctx.drop('spans', sid)
+        first = morphemes[0]
+        b.add(lambda mid=m0['id'], f=first: client.tokens.patch_metadata(
+            mid, {'form': f['form'], 'morphType': f.get('morph_type'), **ctx.restamp()}))
+        # Keep the chain's numbering contiguous from 1 whatever the
+        # first morpheme's precedence was before.
+        b.add(lambda mid=m0['id']: client.tokens.update(mid, precedence=1))
+        for fv in first.get('fields') or []:
+            if fv.get('value') not in (None, ''):
+                b.add(lambda mid=m0['id'], fv=fv: client.spans.create(fv['layer_id'], [mid], fv['value'], ctx.stamp()))
+        rest = list(enumerate(morphemes))[1:]
+    else:
+        rest = list(enumerate(morphemes))
+    for j, m in rest:
+        meta = {'form': m['form'], **ctx.stamp()}
+        if m.get('morph_type'):
+            meta['morphType'] = m['morph_type']
+        idx = b.add(lambda j=j, meta=meta: client.tokens.create(
+            layer, text_id, begin, end, precedence=j + 1, metadata=meta))
+        for fv in m.get('fields') or []:
+            if fv.get('value') not in (None, ''):
+                ctx.pending_spans.append((idx, fv['layer_id'], fv['value']))
+    return 1
+
+
+def _apply_set_orthography(ctx: Context, op) -> int:
+    ctx.b.update('tokens', op['word_id'], metadata={op['key']: op.get('value') or None})
+    return 1
+
+
+def _apply_respell(ctx: Context, op) -> int:
+    ctx.respells.setdefault(op['text_id'], []).append((op['begin'], op['end'], op['value']))
+    return 1
+
+
+def _link(ctx: Context, op, tokens: List[str]) -> int:
+    if op.get('existing_link_id'):
+        ctx.drop('vocab_links', op['existing_link_id'])
+    if op.get('item_id'):
+        ctx.b.add(lambda o=op, t=tokens: ctx.client.vocab_links.create(o['item_id'], t, ctx.stamp()))
+    elif op.get('new_entry_key'):
+        ctx.pending_links.append((tokens, op['new_entry_key']))
+    return 1
+
+
+def _apply_link(ctx: Context, op) -> int:
+    return _link(ctx, op, [op['token_id']])
+
+
+def _apply_link_phrase(ctx: Context, op) -> int:
+    return _link(ctx, op, list(op['token_ids']))
+
+
+def _apply_unlink(ctx: Context, op) -> int:
+    ctx.drop('vocab_links', op['link_id'])
+    return 1
+
+
+def _apply_set_morph_type(ctx: Context, op) -> int:
+    ctx.b.update('tokens', op['morpheme_id'], metadata={'morphType': op.get('morph_type') or None})
+    return 1
+
+
+def _apply_add_comment(ctx: Context, op) -> int:
+    ctx.b.add(lambda o=op: ctx.client.comments.create(o['entity_type'], o['entity_id'], o['body'],
+                                                      anchor_label=o.get('anchor_label') or None))
+    return 1
+
+
+def _apply_restore_document(ctx: Context, op) -> int:
+    ctx.restores.append(op)  # after the batches: one server-side operation of its own
+    return 1
+
+
+def _apply_create_entry(ctx: Context, op) -> int:
+    ctx.entry_idx[op['key']] = ctx.b.add(lambda o=op: ctx.client.vocab_items.create(
+        o['vocab_id'], o['form'], {**(o.get('metadata') or {}), **ctx.stamp()}))
+    return 1
+
+
+def _apply_set_entry_field(ctx: Context, op) -> int:
+    ctx.b.add(lambda o=op: ctx.client.vocab_items.patch_metadata(o['item_id'], {o['field']: o.get('value') or None}))
+    return 1
+
+
+def _apply_set_entry_metadata(ctx: Context, op) -> int:
+    # A patch, so a null clears that key and the rest of the entry's metadata
+    # is left alone.
+    ctx.b.add(lambda o=op: ctx.client.vocab_items.patch_metadata(o['item_id'], o['patch']))
+    return 1
+
+
+def _apply_set_doc_metadata(ctx: Context, op) -> int:
+    ctx.b.add(lambda o=op: ctx.client.documents.patch_metadata(o['document_id'], {o['field']: o.get('value') or None}))
+    return 1
+
+
+def _apply_create_document(ctx: Context, op) -> int:
+    ctx.new_docs.append(op)  # after the batches: several dependent calls
+    return 1
+
+
+def _apply_merge_entries(ctx: Context, op) -> int:
+    for l in op.get('links') or []:
+        ctx.drop('vocab_links', l['link_id'])
+        ctx.b.add(lambda o=op, t=list(l['token_ids']): ctx.client.vocab_links.create(o['keep_id'], t, ctx.stamp()))
+    ctx.pending_deletes.append(op['remove_id'])
+    return 1
+
+
+def _apply_delete_entry(ctx: Context, op) -> int:
+    for lid in op.get('links') or []:
+        ctx.drop('vocab_links', lid)
+    ctx.pending_deletes.append(op['item_id'])
+    return 1
+
+
+def _apply_rename_entry(ctx: Context, op) -> int:
+    ctx.b.add(lambda o=op: ctx.client.vocab_items.update(o['item_id'], o['form']))
+    return 1
+
+
+def _apply_rename_document(ctx: Context, op) -> int:
+    ctx.b.add(lambda o=op: ctx.client.documents.update(o['document_id'], o['name']))
+    return 1
+
+
+def _apply_set_morpheme_form(ctx: Context, op) -> int:
+    ctx.b.update('tokens', op['morpheme_id'], metadata={'form': op['form']})
+    return 1
+
+
+def _apply_split_word(ctx: Context, op) -> int:
+    if op.get('morpheme_ids'):
+        ctx.b.add(lambda o=op: ctx.client.tokens.bulk_delete(list(o['morpheme_ids'])))
+    ctx.b.add(lambda o=op: ctx.client.tokens.split(o['word_id'], o['position']))
+    return 1
+
+
+def _merge(ctx: Context, op, key: str, others: List[str]) -> int:
+    if op.get('morpheme_ids'):
+        ctx.b.add(lambda o=op: ctx.client.tokens.bulk_delete(list(o['morpheme_ids'])))
+    # Sequential merges into the survivor: the server runs batch ops in order,
+    # so each merge sees the widened extent. The dedup ops after them see the
+    # reparented spans and links.
+    for oid in others:
+        ctx.b.add(lambda o=op, x=oid, k=key: ctx.client.tokens.merge(o[k], x))
+    for sp in op.get('spans') or []:
+        if sp.get('value') is not None:
+            ctx.b.add(lambda sp=sp: ctx.client.spans.update(sp['keep_id'], sp['value']))
+        for sid in sp.get('delete_ids') or []:
+            ctx.drop('spans', sid)
+    for lid in (op.get('links') or {}).get('delete_ids') or []:
+        ctx.drop('vocab_links', lid)
+    return 1
+
+
+def _apply_merge_words(ctx: Context, op) -> int:
+    return _merge(ctx, op, 'word_id', list(op['other_ids']))
+
+
+def _apply_merge_sentences(ctx: Context, op) -> int:
+    return _merge(ctx, op, 'sentence_id', [op['other_id']])
+
+
+def _apply_delete_word(ctx: Context, op) -> int:
+    # A multi-word expression the deletion would leave with one member goes
+    # first. The server only trims links otherwise.
+    for lid in op.get('link_ids') or []:
+        ctx.drop('vocab_links', lid)
+    ctx.drop('tokens', op['word_id'])  # cascades morphemes, spans, links
+    return 1
+
+
+def _apply_split_sentence(ctx: Context, op) -> int:
+    ctx.b.add(lambda o=op: ctx.client.tokens.split(o['sentence_id'], o['position']))
+    return 1
+
+
+def _apply_edit_text(ctx: Context, op) -> int:
+    ctx.text_edits.append(op)  # after the batches: several dependent calls
+    return 1
+
+
+def _apply_confirm(ctx: Context, op) -> int:
+    for tid in op.get('token_ids') or []:
+        ctx.b.update('tokens', tid, metadata=CONFIRM)
+    for lid in op.get('link_ids') or []:
+        ctx.b.add(lambda i=lid: ctx.client.vocab_links.patch_metadata(i, CONFIRM))
+    for sid in op.get('span_ids') or []:
+        ctx.b.update('spans', sid, metadata=CONFIRM)
+    return (len(op.get('token_ids') or []) + len(op.get('link_ids') or [])
+            + len(op.get('span_ids') or []))
+
+
+def _apply_discard_analysis(ctx: Context, op) -> int:
+    # The editor's discardWordAnalysis: machine links and spans go, machine
+    # morphemes after the first go (their spans and links cascade
+    # server-side, so they are not deleted separately), a machine first
+    # morpheme is reset to the healed default, and survivors are renumbered
+    # gap-free.
+    for lid in op.get('link_ids') or []:
+        ctx.drop('vocab_links', lid)
+    for sid in op.get('span_ids') or []:
+        ctx.drop('spans', sid)
+    for mid in op.get('morpheme_ids') or []:
+        ctx.drop('tokens', mid)
+    if op.get('reset_first_id'):
+        ctx.b.add(lambda i=op['reset_first_id']: ctx.client.tokens.patch_metadata(
+            i, {'form': None, 'morphType': None, **CLEAR_PROV}))
+    for r in op.get('renumber') or []:
+        ctx.b.add(lambda r=r: ctx.client.tokens.update(r['id'], precedence=r['precedence']))
+    return 1
+
+
+# --- what each kind deletes ---------------------------------------------------------
+
+def _set_span_deletes(op):
+    return [op['span_id']] if op.get('span_id') and (op.get('value') or '') == '' else []
+
+
+def _set_analysis_deletes(op):
+    # The survivor's spans are deleted outright and the rest ride morphemes
+    # that go with them. Both are gone by the end.
+    return [sid for m in (op.get('existing') or []) for sid in (m.get('span_ids') or [])]
+
+
+def _set_analysis_deletes_tokens(op):
+    return [m['id'] for m in (op.get('existing') or [])[1:]]
+
+
+def _merge_deletes(op):
+    return ([sid for sp in (op.get('spans') or []) for sid in (sp.get('delete_ids') or [])]
+            + list((op.get('links') or {}).get('delete_ids') or []))
+
+
+def _discard_analysis_deletes(op):
+    return list(op.get('link_ids') or []) + list(op.get('span_ids') or [])
+
+
+# --- the registry -------------------------------------------------------------------
+
+def _bulk_scope_summary(op, n):
+    # A stored replacement stands for `count` changes of several kinds.
+    return [(KIND[k].noun, int(v)) for k, v in (op.get('counts') or {}).items() if k in KIND]
+
+
+KIND = ok.registry([
+    OpKind('set_span', ('field value', 'field values'), required=('layer_id', 'token_id'),
+           apply=_apply_set_span, target=lambda op: ('span', op.get('layer_id'), op.get('token_id')),
+           at=('token_id',), at_kind=TOKEN, token_keys=('token_id',), deletes=_set_span_deletes,
+           compact_each=('token_id', 'span_id', 'value', 'doc')),
+    OpKind('set_analysis', ('analysis', 'analyses'),
+           required=('word_id', 'text_id', 'begin', 'end', 'morpheme_layer_id', 'morphemes'),
+           apply=_apply_set_analysis, target=lambda op: ('analysis', op.get('word_id')),
+           at=('word_id',), at_kind=TOKEN, token_keys=('word_id',), shape=ANALYSIS,
+           deletes=_set_analysis_deletes, deletes_tokens=_set_analysis_deletes_tokens),
+    OpKind('set_orthography', ('orthography value', 'orthography values'), required=('word_id', 'key'),
+           apply=_apply_set_orthography, target=lambda op: ('orth', op.get('word_id'), op.get('key')),
+           at=('word_id',), at_kind=TOKEN, token_keys=('word_id',),
+           compact_each=('word_id', 'value', 'doc')),
+    OpKind('respell', ('respelling', 'respellings'), required=('text_id', 'begin', 'end', 'value'),
+           apply=_apply_respell, shape=TEXT_SHAPE,
+           target=lambda op: ('respell', op.get('text_id'), op.get('begin'), op.get('end')),
+           compact_each=('text_id', 'begin', 'end', 'value', 'doc')),
+    OpKind('link', ('lexicon link', 'lexicon links'), required=('token_id',),
+           apply=_apply_link, target=lambda op: ('link', op.get('token_id')),
+           at=('token_id',), at_kind=TOKEN, token_keys=('token_id',),
+           deletes=lambda op: [op.get('existing_link_id')]),
+    OpKind('unlink', ('unlink', 'unlinks'), required=('link_id',), apply=_apply_unlink,
+           # A multi-word expression's link is its own target: unlinking it
+           # never displaces a member word's own link.
+           target=lambda op: (('mwe_link', op.get('link_id')) if op.get('token_ids')
+                              else ('link', op.get('token_id_hint'))),
+           at=('token_id_hint', 'token_ids'), at_kind=TOKEN, deletes=lambda op: [op['link_id']]),
+    OpKind('link_phrase', ('multi-word expression', 'multi-word expressions'), required=('token_ids',),
+           apply=_apply_link_phrase, target=lambda op: ('mwe', tuple(op.get('token_ids') or [])),
+           at=('token_ids',), at_kind=TOKEN, token_keys=('token_ids',),
+           deletes=lambda op: [op.get('existing_link_id')]),
+    OpKind('create_entry', ('new lexicon entry', 'new lexicon entries'), required=('vocab_id', 'form', 'key'),
+           apply=_apply_create_entry),
+    OpKind('set_entry_field', ('entry field', 'entry fields'), required=('item_id', 'field'),
+           apply=_apply_set_entry_field, at=('item_id',), at_kind=ENTRY,
+           target=lambda op: ('entry_field', op.get('item_id'), op.get('field'))),
+    OpKind('set_entry_metadata', ('entry structure change', 'entry structure changes'),
+           required=('item_id', 'patch'), apply=_apply_set_entry_metadata, at=('item_id',), at_kind=ENTRY,
+           # Keyed by the keys it writes, so renumbering a sense and promoting
+           # an example on one entry are two changes rather than one replacing
+           # the other.
+           target=lambda op: ('entry_meta', op.get('item_id'), tuple(sorted((op.get('patch') or {}).keys())))),
+    OpKind('set_doc_metadata', ('document metadata value', 'document metadata values'),
+           required=('document_id', 'field'), apply=_apply_set_doc_metadata,
+           target=lambda op: ('doc_meta', op.get('document_id'), op.get('field'))),
+    OpKind('create_document', ('new document', 'new documents'), required=('name', 'text'),
+           apply=_apply_create_document, target=lambda op: ('create_document', op.get('name'))),
+    OpKind('merge_entries', ('merged entry', 'merged entries'), required=('keep_id', 'remove_id'),
+           apply=_apply_merge_entries, at=('keep_id',), at_kind=ENTRY,
+           deletes=lambda op: [l['link_id'] for l in op.get('links') or []]),
+    OpKind('delete_entry', ('deleted entry', 'deleted entries'), required=('item_id',),
+           apply=_apply_delete_entry, at=('item_id',), at_kind=ENTRY,
+           target=lambda op: ('delete_entry', op.get('item_id')),
+           deletes=lambda op: list(op.get('links') or [])),
+    OpKind('rename_entry', ('renamed entry', 'renamed entries'), required=('item_id', 'form'),
+           apply=_apply_rename_entry, at=('item_id',), at_kind=ENTRY,
+           target=lambda op: ('rename_entry', op.get('item_id')),
+           compact_each=('item_id', 'form')),
+    OpKind('rename_document', ('renamed document', 'renamed documents'), required=('document_id', 'name'),
+           apply=_apply_rename_document, target=lambda op: ('rename_document', op.get('document_id'))),
+    OpKind('confirm', ('confirmation', 'confirmations'), apply=_apply_confirm,
+           # The exact material it confirms. Confirming the same thing twice
+           # in a turn (the model retrying, two tools reaching the same
+           # document) used to stage two ops, and the reply counted both, so
+           # the card promised twice the confirmations it would make. Two
+           # confirmations that cover DIFFERENT material have different id
+           # lists and both stand.
+           target=lambda op: ('confirm', op.get('doc'), tuple(op.get('span_ids') or []),
+                              tuple(op.get('token_ids') or []), tuple(op.get('link_ids') or []))),
+    OpKind('discard_analysis', ('discarded analysis', 'discarded analyses'), required=('word_id',),
+           apply=_apply_discard_analysis, target=lambda op: ('analysis', op.get('word_id')),
+           at=('word_id',), at_kind=TOKEN, token_keys=('word_id',), shape=ANALYSIS,
+           deletes=_discard_analysis_deletes, deletes_tokens=lambda op: list(op.get('morpheme_ids') or [])),
+    OpKind('set_morpheme_form', ('morpheme form', 'morpheme forms'), required=('morpheme_id', 'form'),
+           apply=_apply_set_morpheme_form, target=lambda op: ('morph_form', op.get('morpheme_id')),
+           at=('morpheme_id',), at_kind=TOKEN, token_keys=('morpheme_id',),
+           compact_each=('morpheme_id', 'form', 'doc')),
+    OpKind('set_morph_type', ('morpheme type', 'morpheme types'), required=('morpheme_id',),
+           apply=_apply_set_morph_type, target=lambda op: ('morph_type', op.get('morpheme_id')),
+           at=('morpheme_id',), at_kind=TOKEN, token_keys=('morpheme_id',)),
+    OpKind('split_word', ('split word', 'split words'), required=('word_id', 'position'),
+           apply=_apply_split_word, target=lambda op: ('word_shape', op.get('word_id')),
+           at=('word_id',), at_kind=TOKEN, token_keys=('word_id',), shape=WORD_SHAPE,
+           deletes_tokens=lambda op: list(op.get('morpheme_ids') or []),
+           extra={'bulk_deleted': ('morpheme_ids',)}),
+    OpKind('merge_words', ('word merge', 'word merges'), required=('word_id', 'other_ids'),
+           apply=_apply_merge_words, target=lambda op: ('word_shape', op.get('word_id')),
+           shape=WORD_SHAPE, deletes=_merge_deletes,
+           deletes_tokens=lambda op: list(op.get('morpheme_ids') or []) + list(op.get('other_ids') or []),
+           extra={'bulk_deleted': ('morpheme_ids',)}),
+    OpKind('delete_word', ('deleted word', 'deleted words'), required=('word_id',),
+           apply=_apply_delete_word, target=lambda op: ('word_shape', op.get('word_id')),
+           at=('word_id',), at_kind=TOKEN, shape=WORD_SHAPE,
+           deletes=lambda op: list(op.get('link_ids') or []),
+           deletes_tokens=lambda op: list(op.get('morpheme_ids') or []) + [op['word_id']],
+           extra={'bulk_deleted': ('morpheme_ids',)}),
+    OpKind('split_sentence', ('split sentence', 'split sentences'), required=('sentence_id', 'position'),
+           apply=_apply_split_sentence, target=lambda op: ('sentence_shape', op.get('sentence_id')),
+           at=('sentence_id',), at_kind=TOKEN, token_keys=('sentence_id',), shape=SENTENCE_SHAPE),
+    OpKind('merge_sentences', ('sentence merge', 'sentence merges'), required=('sentence_id', 'other_id'),
+           apply=_apply_merge_sentences, target=lambda op: ('sentence_shape', op.get('sentence_id')),
+           at=('sentence_id',), at_kind=TOKEN, shape=SENTENCE_SHAPE, deletes=_merge_deletes,
+           deletes_tokens=lambda op: [op['other_id']]),
+    OpKind('edit_text', ('text edit', 'text edits'), required=('document_id', 'begin', 'end', 'new'),
+           apply=_apply_edit_text, at=('sentence_id',), at_kind=TOKEN, shape=TEXT_SHAPE,
+           target=lambda op: ('edit_text', op.get('text_id'), op.get('begin'), op.get('end')),
+           deletes_tokens=lambda op: list(op.get('word_ids') or []) + list(op.get('morpheme_ids') or [])),
+    OpKind('add_comment', ('comment', 'comments'), required=('entity_type', 'entity_id', 'body'),
+           apply=_apply_add_comment, at=('entity_id',), at_kind=TOKEN, token_keys=('entity_id',)),
+    OpKind('restore_document', ('document restore', 'document restores'), required=('document_id', 'as_of'),
+           apply=_apply_restore_document, shape=ok.EXCLUSIVE,
+           target=lambda op: ('restore', op.get('document_id'))),
+    # Resolved to the ops it stands for at approval, so the executor never
+    # sees one. The summary counts what it stands for.
+    OpKind('bulk_scope', ('corpus-wide change', 'corpus-wide changes'), required=('tool', 'args', 'counts'),
+           stage=ok.RESOLVED, shape=ok.SCOPE, summary=_bulk_scope_summary),
+])
+
+# Every table below is the registry read a different way. None of them is
+# maintained beside it.
+KINDS = ok.names(KIND)
+REQUIRED = ok.required(KIND)
+# The kinds that move a word's boundaries, a sentence boundary, the baseline
+# text, or a morpheme chain. Nothing corpus-wide may share a plan with one.
+RESHAPES = ok.shaped(KIND, WORD_SHAPE, SENTENCE_SHAPE, TEXT_SHAPE, ANALYSIS)
+# What a kind is called in the line the user approves, and in the count of
+# what was applied. One word per kind, so the two never disagree.
+SUMMARY_NAMES = ok.nouns(KIND)
+# Keys naming an entity an op WRITES TO, so an op whose subject another op in
+# the plan deletes is dropped rather than failing the batch.
+_TOKEN_KEYS = ok.token_keys(KIND)
 
 
 def validate_ops(ops: List[Dict[str, Any]]) -> None:
@@ -104,10 +544,9 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
                 raise ValueError('this plan holds a corpus-wide change and reshapes a document it reaches; '
                                  'the two would meet for the first time in the batch')
     for i, op in enumerate(ops):
-        kind = op.get('kind') if isinstance(op, dict) else None
-        if kind not in KINDS:
-            raise ValueError(f'op {i + 1}: unknown kind {kind!r}')
-        for k in REQUIRED[kind]:
+        spec = ok.kind_of(KIND, op, index=i + 1)
+        kind = spec.name
+        for k in spec.required:
             if op.get(k) in (None, '') and not (k in ('begin', 'end') and op.get(k) == 0):
                 raise ValueError(f'op {i + 1} ({kind}): missing {k}')
         if kind == 'set_analysis' and (not isinstance(op['morphemes'], list) or not op['morphemes']
@@ -123,8 +562,8 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
             raise ValueError(f'op {i + 1} (merge_words): other_ids must be a list')
         if kind == 'edit_text' and not (op['new'] or '').strip():
             raise ValueError(f'op {i + 1} (edit_text): the new text is empty')
-        if kind == 'restore_document' and len(ops) > 1:
-            raise ValueError(f'op {i + 1} (restore_document): a restore must be the only op in its plan')
+        if spec.shape == ok.EXCLUSIVE and len(ops) > 1:
+            raise ValueError(f'op {i + 1} ({kind}): a {spec.noun[0]} must be the only op in its plan')
 
 
 def _bulk_gone(ops) -> set:
@@ -134,77 +573,25 @@ def _bulk_gone(ops) -> set:
     tolerates ids already gone, so the single delete is the one to skip."""
     out = set()
     for op in ops:
-        if op.get('kind') in ('split_word', 'merge_words', 'delete_word'):
-            out.update(op.get('morpheme_ids') or [])
+        spec = KIND.get(op.get('kind'))
+        for key in ((spec.extra.get('bulk_deleted') if spec else None) or ()):
+            out.update(op.get(key) or [])
     return out
 
 
 def _dead_tokens(ops) -> set:
-    """Tokens (words and morphemes) shape ops in the plan delete."""
-    dead = set()
-    for op in ops:
-        k = op.get('kind')
-        if k in ('split_word', 'merge_words', 'delete_word'):
-            dead.update(op.get('morpheme_ids') or [])
-        if k == 'delete_word':
-            dead.add(op['word_id'])
-        elif k == 'merge_words':
-            dead.update(op.get('other_ids') or [])
-        elif k == 'merge_sentences':
-            dead.add(op['other_id'])
-        elif k == 'edit_text':
-            dead.update(op.get('word_ids') or [])
-            dead.update(op.get('morpheme_ids') or [])
-        # An analysis op removes morphemes too. Nothing else in the plan may
-        # annotate or confirm one of those: the patch lands after the delete in
-        # the same atomic batch and takes the whole plan down with it.
-        elif k == 'set_analysis':
-            dead.update(m['id'] for m in (op.get('existing') or [])[1:])
-        elif k == 'discard_analysis':
-            dead.update(op.get('morpheme_ids') or [])
-    return dead
+    """Tokens (words and morphemes) the plan deletes.
 
-
-_TOKEN_KEYS = {'set_span': 'token_id', 'set_analysis': 'word_id', 'set_orthography': 'word_id', 'link': 'token_id',
-               'set_morpheme_form': 'morpheme_id', 'set_morph_type': 'morpheme_id', 'discard_analysis': 'word_id',
-               'split_word': 'word_id', 'split_sentence': 'sentence_id'}
+    An analysis op removes morphemes too. Nothing else in the plan may
+    annotate or confirm one of those: the patch lands after the delete in the
+    same atomic batch and takes the whole plan down with it."""
+    return ok.removed_tokens(KIND, ops)
 
 
 def _doomed_ids(ops) -> set:
     """Ids other ops in the plan delete, which a confirm must not touch (a
     patch of a deleted entity fails the whole batch)."""
-    gone = set()
-    for op in ops:
-        k = op.get('kind')
-        if k == 'set_span' and op.get('span_id') and (op.get('value') or '') == '':
-            gone.add(op['span_id'])
-        elif k == 'set_analysis':
-            ex = op.get('existing') or []
-            gone.update(m['id'] for m in ex[1:])
-            # The survivor's spans are deleted outright and the rest ride
-            # morphemes that go with them. Both are gone by the end.
-            for m in ex:
-                gone.update(m.get('span_ids') or [])
-        elif k == 'unlink':
-            gone.add(op['link_id'])
-        elif k in ('link', 'link_phrase') and op.get('existing_link_id'):
-            gone.add(op['existing_link_id'])
-        elif k == 'delete_word':
-            gone.update(op.get('link_ids') or [])
-        elif k == 'merge_entries':
-            gone.update(l['link_id'] for l in op.get('links') or [])
-        elif k == 'delete_entry':
-            gone.update(op.get('links') or [])
-        elif k == 'discard_analysis':
-            gone.update(op.get('link_ids') or [])
-            gone.update(op.get('span_ids') or [])
-            gone.update(op.get('morpheme_ids') or [])
-        elif k in ('merge_words', 'merge_sentences'):
-            for sp in op.get('spans') or []:
-                gone.update(sp.get('delete_ids') or [])
-            gone.update((op.get('links') or {}).get('delete_ids') or [])
-    gone.update(_dead_tokens(ops))
-    return gone
+    return ok.removed_ids(KIND, ops)
 
 
 def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
@@ -235,12 +622,13 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
     dead = _dead_tokens(ops)
     for op in ops:
         k = op.get('kind')
-        key = _TOKEN_KEYS.get(k)
-        if (key and op.get(key) in dead) or (k == 'link_phrase' and any(t in dead for t in op.get('token_ids') or [])):
-            # Refusing here refused a plan the user had already approved, and
-            # the op is moot either way: whatever it names is gone by the end.
+        # A key naming something the plan deletes: the word a change sits on,
+        # the span a comment is anchored to. Refusing here refused a plan the
+        # user had already approved, and the op is moot either way: whatever
+        # it names is gone by the end.
+        if any(_names_doomed(op.get(key), doomed) for key in _TOKEN_KEYS.get(k, ())):
             notes.append(f'dropped: {op.get("label") or k} '
-                         '(that word or morpheme is deleted or merged away in this plan)')
+                         '(what it names is deleted or merged away in this plan)')
             continue
         if k in ('link', 'link_phrase') and op.get('item_id') in removed:
             notes.append(f'dropped: {op.get("label") or "a link"} (its entry is deleted in this plan)')
@@ -277,6 +665,14 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
             respell_at[key] = len(out)
         out.append(op)
     return out, notes
+
+
+def _names_doomed(value, doomed: set) -> bool:
+    """Whether an op's key names something the plan deletes. The key holds one
+    id, or a list of them (a multi-word expression's members)."""
+    if isinstance(value, (list, tuple)):
+        return any(v in doomed for v in value)
+    return bool(value) and value in doomed
 
 
 def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, project=None,
@@ -331,261 +727,43 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str,
 
 
 def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, tracker=None) -> Dict[str, int]:
-    new_docs = []
-    human = stamps.human
-    stamp, restamp = stamps.stamp, stamps.restamp
-
     with client.operation(label):
-        b = TrackingBatcher(client, tracker=tracker)
-        pending_spans = []   # (result idx of the created morpheme, layer_id, value)
-        pending_links = []   # ([token_id, ...], new_entry_key)
-        entry_idx: Dict[str, int] = {}
-        respells: Dict[str, List[tuple]] = {}
-        pending_deletes: List[str] = []  # entries to delete once their links are gone
-        text_edits: List[Dict[str, Any]] = []
-        restores: List[Dict[str, Any]] = []
-        # Once per entity, whichever ops name it. The server accepts a
-        # `bulk_delete` of ids that are already gone, but a SINGLE delete of
-        # one 404s, and the batch it shares is atomic: an unlink beside the
-        # word deletion that takes the same link, a cleared field beside the
-        # discard that deletes the same span, a merge beside a delete of the
-        # same entry. Each pair is a whole plan refused after approval.
-        gone: set = set()
+        ctx = Context(client, project, stamps, counts, notes, TrackingBatcher(client, tracker=tracker))
+        b = ctx.b
         # Seeded with what goes without a delete call of its own, so a single
         # delete naming the same id is never issued beside it.
         for _tid in _bulk_gone(ops):
-            gone.add(('tokens', _tid))
+            ctx.gone.add(('tokens', _tid))
 
-        def drop(resource, entity_id):
-            if not entity_id or (resource, entity_id) in gone:
-                return
-            gone.add((resource, entity_id))
-            b.add(lambda i=entity_id: getattr(client, resource).delete(i))
-
-        for op in ops:
-            kind = op.get('kind')
-            if kind == 'set_span':
-                span_id, value = op.get('span_id'), op.get('value') or ''
-                if span_id and value == '':
-                    drop('spans', span_id)
-                elif span_id:
-                    b.update('spans', span_id, value=value, metadata=restamp())
-                elif value != '':
-                    b.add(lambda o=op, v=value: client.spans.create(o['layer_id'], [o['token_id']], v, stamp()))
-                else:
-                    continue  # nothing to clear
-                counts['field values'] += 1
-
-            elif kind == 'set_analysis':
-                existing = op.get('existing') or []
-                morphemes = op.get('morphemes') or []
-                layer, text_id = op['morpheme_layer_id'], op['text_id']
-                begin, end = op['begin'], op['end']
-                if existing:
-                    m0 = existing[0]
-                    for m in existing[1:]:
-                        drop('tokens', m['id'])  # cascades spans + links
-                    for sid in m0.get('span_ids') or []:
-                        drop('spans', sid)
-                    first = morphemes[0]
-                    b.add(lambda mid=m0['id'], f=first: client.tokens.patch_metadata(
-                        mid, {'form': f['form'], 'morphType': f.get('morph_type'), **restamp()}))
-                    # Keep the chain's numbering contiguous from 1 whatever the
-                    # first morpheme's precedence was before.
-                    b.add(lambda mid=m0['id']: client.tokens.update(mid, precedence=1))
-                    for fv in first.get('fields') or []:
-                        if fv.get('value') not in (None, ''):
-                            b.add(lambda mid=m0['id'], fv=fv: client.spans.create(fv['layer_id'], [mid], fv['value'], stamp()))
-                    rest = list(enumerate(morphemes))[1:]
-                else:
-                    rest = list(enumerate(morphemes))
-                for j, m in rest:
-                    meta = {'form': m['form'], **stamp()}
-                    if m.get('morph_type'):
-                        meta['morphType'] = m['morph_type']
-                    idx = b.add(lambda j=j, meta=meta: client.tokens.create(
-                        layer, text_id, begin, end, precedence=j + 1, metadata=meta))
-                    for fv in m.get('fields') or []:
-                        if fv.get('value') not in (None, ''):
-                            pending_spans.append((idx, fv['layer_id'], fv['value']))
-                counts['analyses'] += 1
-
-            elif kind == 'set_orthography':
-                b.update('tokens', op['word_id'], metadata={op['key']: op.get('value') or None})
-                counts['orthography values'] += 1
-
-            elif kind == 'respell':
-                respells.setdefault(op['text_id'], []).append((op['begin'], op['end'], op['value']))
-                counts['respellings'] += 1
-
-            elif kind in ('link', 'link_phrase'):
-                tokens = [op['token_id']] if kind == 'link' else list(op['token_ids'])
-                if op.get('existing_link_id'):
-                    drop('vocab_links', op['existing_link_id'])
-                if op.get('item_id'):
-                    b.add(lambda o=op, t=tokens: client.vocab_links.create(o['item_id'], t, stamp()))
-                elif op.get('new_entry_key'):
-                    pending_links.append((tokens, op['new_entry_key']))
-                counts['links' if kind == 'link' else 'multi-word expressions'] += 1
-
-            elif kind == 'unlink':
-                drop('vocab_links', op['link_id'])
-                counts['unlinks'] += 1
-
-            elif kind == 'set_morph_type':
-                b.update('tokens', op['morpheme_id'], metadata={'morphType': op.get('morph_type') or None})
-                counts['morpheme types'] += 1
-
-            elif kind == 'add_comment':
-                b.add(lambda o=op: client.comments.create(o['entity_type'], o['entity_id'], o['body'],
-                                                          anchor_label=o.get('anchor_label') or None))
-                counts['comments'] += 1
-
-            elif kind == 'restore_document':
-                restores.append(op)  # after the batches: one server-side operation of its own
-                counts['restored documents'] += 1
-
-            elif kind == 'create_entry':
-                entry_idx[op['key']] = b.add(lambda o=op: client.vocab_items.create(
-                    o['vocab_id'], o['form'], {**(o.get('metadata') or {}), **stamp()}))
-                counts['lexicon entries'] += 1
-
-            elif kind == 'set_entry_field':
-                b.add(lambda o=op: client.vocab_items.patch_metadata(o['item_id'], {o['field']: o.get('value') or None}))
-                counts['entry fields'] += 1
-
-            elif kind == 'set_entry_metadata':
-                # A patch, so a null clears that key and the rest of the
-                # entry's metadata is left alone.
-                b.add(lambda o=op: client.vocab_items.patch_metadata(o['item_id'], o['patch']))
-                counts['entry structure changes'] += 1
-
-            elif kind == 'set_doc_metadata':
-                b.add(lambda o=op: client.documents.patch_metadata(o['document_id'], {o['field']: o.get('value') or None}))
-                counts['document metadata values'] += 1
-
-            elif kind == 'create_document':
-                new_docs.append(op)  # after the batches: several dependent calls
-                counts['new documents'] += 1
-
-            elif kind == 'merge_entries':
-                for l in op.get('links') or []:
-                    drop('vocab_links', l['link_id'])
-                    b.add(lambda o=op, t=list(l['token_ids']): client.vocab_links.create(o['keep_id'], t, stamp()))
-                pending_deletes.append(op['remove_id'])
-                counts['merged entries'] += 1
-
-            elif kind == 'delete_entry':
-                for lid in op.get('links') or []:
-                    drop('vocab_links', lid)
-                pending_deletes.append(op['item_id'])
-                counts['deleted entries'] += 1
-
-            elif kind == 'rename_entry':
-                b.add(lambda o=op: client.vocab_items.update(o['item_id'], o['form']))
-                counts['renamed entries'] += 1
-
-            elif kind == 'rename_document':
-                b.add(lambda o=op: client.documents.update(o['document_id'], o['name']))
-                counts['renamed documents'] += 1
-
-            elif kind == 'set_morpheme_form':
-                b.update('tokens', op['morpheme_id'], metadata={'form': op['form']})
-                counts['morpheme forms'] += 1
-
-            elif kind == 'split_word':
-                if op.get('morpheme_ids'):
-                    b.add(lambda o=op: client.tokens.bulk_delete(list(o['morpheme_ids'])))
-                b.add(lambda o=op: client.tokens.split(o['word_id'], o['position']))
-                counts['split words'] += 1
-
-            elif kind in ('merge_words', 'merge_sentences'):
-                if op.get('morpheme_ids'):
-                    b.add(lambda o=op: client.tokens.bulk_delete(list(o['morpheme_ids'])))
-                others = op['other_ids'] if kind == 'merge_words' else [op['other_id']]
-                key = 'word_id' if kind == 'merge_words' else 'sentence_id'
-                # Sequential merges into the survivor: the server runs batch ops
-                # in order, so each merge sees the widened extent. The dedup
-                # ops after them see the reparented spans and links.
-                for oid in others:
-                    b.add(lambda o=op, x=oid, key=key: client.tokens.merge(o[key], x))
-                for sp in op.get('spans') or []:
-                    if sp.get('value') is not None:
-                        b.add(lambda sp=sp: client.spans.update(sp['keep_id'], sp['value']))
-                    for sid in sp.get('delete_ids') or []:
-                        drop('spans', sid)
-                for lid in (op.get('links') or {}).get('delete_ids') or []:
-                    drop('vocab_links', lid)
-                counts['merged words' if kind == 'merge_words' else 'merged sentences'] += 1
-
-            elif kind == 'delete_word':
-                # A multi-word expression the deletion would leave with one
-                # member goes first. The server only trims links otherwise.
-                for lid in op.get('link_ids') or []:
-                    drop('vocab_links', lid)
-                drop('tokens', op['word_id'])  # cascades morphemes, spans, links
-                counts['deleted words'] += 1
-
-            elif kind == 'split_sentence':
-                b.add(lambda o=op: client.tokens.split(o['sentence_id'], o['position']))
-                counts['split sentences'] += 1
-
-            elif kind == 'edit_text':
-                text_edits.append(op)  # after the batches: several dependent calls
-                counts['text edits'] += 1
-
-            elif kind == 'confirm':
-                for tid in op.get('token_ids') or []:
-                    b.update('tokens', tid, metadata=CONFIRM)
-                for lid in op.get('link_ids') or []:
-                    b.add(lambda i=lid: client.vocab_links.patch_metadata(i, CONFIRM))
-                for sid in op.get('span_ids') or []:
-                    b.update('spans', sid, metadata=CONFIRM)
-                counts['confirmed annotations'] += (len(op.get('token_ids') or []) + len(op.get('link_ids') or [])
-                                                    + len(op.get('span_ids') or []))
-
-            elif kind == 'discard_analysis':
-                # The editor's discardWordAnalysis: machine links and spans go,
-                # machine morphemes after the first go (their spans and links
-                # cascade server-side, so they are not deleted separately), a
-                # machine first morpheme is reset to the healed default, and
-                # survivors are renumbered gap-free.
-                for lid in op.get('link_ids') or []:
-                    drop('vocab_links', lid)
-                for sid in op.get('span_ids') or []:
-                    drop('spans', sid)
-                for mid in op.get('morpheme_ids') or []:
-                    drop('tokens', mid)
-                if op.get('reset_first_id'):
-                    b.add(lambda i=op['reset_first_id']: client.tokens.patch_metadata(
-                        i, {'form': None, 'morphType': None, **CLEAR_PROV}))
-                for r in op.get('renumber') or []:
-                    b.add(lambda r=r: client.tokens.update(r['id'], precedence=r['precedence']))
-                counts['discarded analyses'] += 1
-
-            else:
-                raise ValueError(f'Unknown plan operation kind: {kind}')  # unreachable after validate_ops
+        for i, op in enumerate(ops):
+            # An unknown kind refuses here rather than being written as
+            # nothing under a label saying it was applied.
+            spec = ok.kind_of(KIND, op, index=i + 1)
+            if spec.apply is None:
+                raise ValueError(f'op {i + 1} ({spec.name}): this kind is resolved before the plan is applied')
+            n = spec.apply(ctx, op)
+            counts[spec.noun[1]] += 1 if n is None else n
 
         b.flush()
 
         # Second pass: things that need ids minted above.
-        for idx, layer_id, value in pending_spans:
+        for idx, layer_id, value in ctx.pending_spans:
             mid = created_id(b.results[idx] if idx < len(b.results) else None)
             if not mid:
                 raise RuntimeError('a created morpheme came back without an id; its gloss was not written')
-            b.add(lambda l=layer_id, m=mid, v=value: client.spans.create(l, [m], v, stamp()))
-        for tokens, key in pending_links:
-            i = entry_idx.get(key)
+            b.add(lambda l=layer_id, m=mid, v=value: client.spans.create(l, [m], v, stamps.stamp()))
+        for tokens, key in ctx.pending_links:
+            i = ctx.entry_idx.get(key)
             iid = created_id(b.results[i]) if i is not None and i < len(b.results) else None
             if not iid:
                 raise RuntimeError('a created lexicon entry came back without an id; a link to it was not written')
-            b.add(lambda i=iid, t=tokens: client.vocab_links.create(i, t, stamp()))
-        for iid in pending_deletes:
-            drop('vocab_items', iid)
+            b.add(lambda i=iid, t=tokens: client.vocab_links.create(i, t, stamps.stamp()))
+        for iid in ctx.pending_deletes:
+            ctx.drop('vocab_items', iid)
         b.flush()
 
         # A restore is the server's own single operation over the document.
-        for op in restores:
+        for op in ctx.restores:
             client.documents.restore(op['document_id'], op['as_of'])
             b.applied += 1
 
@@ -594,18 +772,18 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
         # against the live body, and the tools only let a region sit after
         # every respelling of the same text, so the respellings' offsets
         # still hold afterwards.
-        for op in sorted(text_edits, key=lambda o: -o['begin']):
+        for op in sorted(ctx.text_edits, key=lambda o: -o['begin']):
             if project is None:
                 raise ValueError('edit_text needs the project')
-            _apply_text_edit(client, project, op)
+            _write_text_edit(client, project, op)
         # Whole-token replaces keep the token (and its morphemes, which share
         # its extent) and shift everything after it.
-        for text_id, edits in respells.items():
+        for text_id, edits in ctx.respells.items():
             edits.sort(key=lambda e: -e[0])
             client.texts.update(text_id, [{'type': 'replace', 'index': bg, 'length': en - bg, 'value': v}
                                           for bg, en, v in edits])
 
-        for op in new_docs:
+        for op in ctx.new_docs:
             if project is None:
                 raise ValueError('create_document needs the project')
             create_document(client, project, op['name'], op['text'], op.get('metadata') or {})
@@ -687,7 +865,7 @@ def _gaps(ranges: List[tuple], begin: int, end: int) -> List[tuple]:
     return out
 
 
-def _apply_text_edit(client, project, op: Dict[str, Any]) -> None:
+def _write_text_edit(client, project, op: Dict[str, Any]) -> None:
     """Replace body[begin:end] (verified to still read ``old``) with ``new``
     through the server's diffing text update, then give the edited region
     the sentence boundaries its line starts call for and word tokens for
@@ -736,39 +914,5 @@ def _apply_text_edit(client, project, op: Dict[str, Any]) -> None:
         client.tokens.bulk_create(creates)
 
 
-# What a kind is called in the line the user approves. Every kind needs one:
-# without it the summary shows the internal identifier instead.
-SUMMARY_NAMES = {
-    # Resolved to set_span ops at approval; the summary counts what it stands for.
-    'bulk_scope': ('corpus-wide change', 'corpus-wide changes'),
-    'set_span': ('field value', 'field values'), 'set_analysis': ('analysis', 'analyses'),
-    'set_orthography': ('orthography value', 'orthography values'), 'respell': ('respelling', 'respellings'),
-    'link': ('lexicon link', 'lexicon links'), 'unlink': ('unlink', 'unlinks'),
-    'create_entry': ('new lexicon entry', 'new lexicon entries'), 'set_entry_field': ('entry field', 'entry fields'),
-    'set_doc_metadata': ('document metadata value', 'document metadata values'),
-    'create_document': ('new document', 'new documents'),
-    'merge_entries': ('merged entry', 'merged entries'), 'delete_entry': ('deleted entry', 'deleted entries'),
-    'set_entry_metadata': ('entry structure change', 'entry structure changes'),
-    'rename_entry': ('renamed entry', 'renamed entries'),
-    'rename_document': ('renamed document', 'renamed documents'),
-    'confirm': ('confirmation', 'confirmations'), 'discard_analysis': ('discarded analysis', 'discarded analyses'),
-    'set_morpheme_form': ('morpheme form', 'morpheme forms'),
-    'split_word': ('split word', 'split words'), 'merge_words': ('word merge', 'word merges'),
-    'delete_word': ('deleted word', 'deleted words'), 'split_sentence': ('split sentence', 'split sentences'),
-    'merge_sentences': ('sentence merge', 'sentence merges'), 'edit_text': ('text edit', 'text edits'),
-    'link_phrase': ('multi-word expression', 'multi-word expressions'),
-    'set_morph_type': ('morpheme type', 'morpheme types'), 'add_comment': ('comment', 'comments'),
-    'restore_document': ('document restore', 'document restores'),
-}
-
-
 def summarize(ops: List[Dict[str, Any]]) -> str:
-    # A stored replacement stands for `count` field values.
-    counts = Counter(kind for op in expand_ops(ops)
-                     for kind in ([k for k, n in (op.get('counts') or {}).items() for _ in range(int(n))]
-                                  if op.get('kind') == 'bulk_scope' else [op.get('kind')]))
-    parts = []
-    for kind, n in counts.items():
-        one, many = SUMMARY_NAMES.get(kind, (kind, kind))
-        parts.append(f'{n} {one if n == 1 else many}')
-    return ', '.join(parts) if parts else 'no changes'
+    return ok.summarize(KIND, expand_ops(ops))

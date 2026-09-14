@@ -24,27 +24,21 @@ not have the expected shape (the card then shows the label whole).
 import re
 from typing import Any, Dict, List, Optional
 
+from ..core import opkind
+from .plan import ENTRY, KIND, TEXT_SHAPE, TOKEN
 from .project import Sentence, Word, Morpheme
 
-_TOKEN_KINDS = {
-    'set_span': 'token_id', 'link': 'token_id', 'unlink': 'token_id_hint',
-    'set_analysis': 'word_id', 'set_orthography': 'word_id', 'discard_analysis': 'word_id',
-    'split_word': 'word_id', 'delete_word': 'word_id',
-    'set_morpheme_form': 'morpheme_id', 'set_morph_type': 'morpheme_id',
-    'split_sentence': 'sentence_id', 'merge_sentences': 'sentence_id', 'edit_text': 'sentence_id',
-    'add_comment': 'entity_id',
-}
-# Ops over several tokens (a multi-word expression) read at their first one.
-_MULTI_KINDS = {'link_phrase': 'token_ids', 'unlink': 'token_ids'}
-_ENTRY_KINDS = {'set_entry_field': 'item_id', 'set_entry_metadata': 'item_id', 'delete_entry': 'item_id',
-                'rename_entry': 'item_id', 'merge_entries': 'keep_id'}
+# Which key on an op names what it lands on, read off the registry. An op over
+# several tokens (a multi-word expression) is read at its first one.
+_TOKEN_KINDS = opkind.located_at(KIND, TOKEN)
+_ENTRY_KINDS = opkind.located_at(KIND, ENTRY)
 
 # The ops that rewrite the baseline itself. Everything else a plan can do
 # annotates the text or reshapes its tokens, and can be undone by annotating
 # again; these two change the linguist's own transcription, which no
 # annotation owns. The card marks them so a rewrite cannot arrive with the
 # same visual weight as a gloss (see PlanCard).
-_TEXT_KINDS = {'respell', 'edit_text'}
+_TEXT_KINDS = frozenset(opkind.shaped(KIND, TEXT_SHAPE))
 
 
 def describe_changes(ws, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -82,7 +76,7 @@ def locate(ws, op: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         v = _vocab(ws, op.get('vocab_id'))
         return _entry_where(v, None, op.get('form'))
     if kind in _ENTRY_KINDS:
-        item_id = op.get(_ENTRY_KINDS[kind])
+        item_id = _first(op, _ENTRY_KINDS[kind])
         v = ws.vocab_of_item(item_id) if item_id else None
         item = next((it for it in ws.lexicon(v) if it['id'] == item_id), None) if v else None
         return _entry_where(v, item_id, (item or {}).get('form'))
@@ -96,13 +90,8 @@ def locate(ws, op: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         found = _find_word_at(ws, op.get('text_id'), op.get('begin'), op.get('doc'))
         if found:
             return _token_where(ws, *found)
-    if kind in _TOKEN_KINDS:
-        found = _find(ws, op.get(_TOKEN_KINDS[kind]), op.get('doc') or op.get('document_id'))
-        if found:
-            return _token_where(ws, *found)
-    if kind in _MULTI_KINDS:
-        ids = op.get(_MULTI_KINDS[kind]) or []
-        found = _find(ws, ids[0] if ids else None, op.get('doc') or op.get('document_id'))
+    for key in _TOKEN_KINDS.get(kind, ()):
+        found = _find(ws, _first(op, (key,)), op.get('doc') or op.get('document_id'))
         if found:
             return _token_where(ws, *found)
     if kind == 'confirm':
@@ -116,6 +105,19 @@ def locate(ws, op: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     doc_id = op.get('document_id') or op.get('doc') or _doc_of(ws, op)
     if doc_id:
         return {'kind': 'document', 'document_id': doc_id, 'document_name': _doc_name(ws, doc_id)}
+    return None
+
+
+def _first(op: Dict[str, Any], keys) -> Optional[str]:
+    """The first id the keys name. A key may hold a list (the members of a
+    multi-word expression), which is read at its first entry."""
+    for key in keys:
+        v = op.get(key)
+        if isinstance(v, (list, tuple)):
+            if v:
+                return v[0]
+        elif v:
+            return v
     return None
 
 

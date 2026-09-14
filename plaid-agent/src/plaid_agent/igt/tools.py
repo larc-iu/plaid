@@ -22,10 +22,13 @@ import unicodedata
 
 from plaid_client.provenance import prov_state, MACHINE
 
+from ..core import opkind
 from ..core.args import clamp_limit, read_int, sentence_number
 from ..core.limits import MAX_RESULT_CHARS, READ_LIMITS
 from ..core.plan import PLAN_MAX_OPS, PlanFull, reserve as core_reserve
 from ..core.tools import fn, tools_for as core_tools_for
+
+from .plan import ANALYSIS, KIND, WORD_SHAPE
 
 from .project import (IgtProject, IgtDoc, Sentence, Word, Morpheme, Link, load_document, resolve, document_lines,
                       render_document, render_overview, render_word, mwe_ref, REVIEWABLE,
@@ -466,12 +469,12 @@ def _change_part(label: str) -> str:
 
 
 def compact_spec(ws: Workspace) -> Dict[str, Dict[str, Any]]:
-    """How like ops fold into one stored op (core.plan.compact_ops): which
-    keys vary per member, and the group's line. The document is per member,
-    so a bulk change over a whole corpus is one group and not one per
-    document (most of which held too few to fold at all). The line is
-    headed by the document when the group has one, the way every label is,
-    so the card can split it the same way."""
+    """How like ops fold into one stored op (core.plan.compact_ops), read off
+    the registry: each kind says which of its keys vary per member (the
+    document among them, so a bulk change over a whole corpus is one group
+    and not one per document, most of which held too few to fold at all).
+    The line is headed by the document when the group has one, the way every
+    label is, so the card can split it the same way."""
     def label(first, members):
         n = len(members)
         parts = [_change_part(m.get('label') or '') for m in members[:5]]
@@ -483,71 +486,13 @@ def compact_spec(ws: Workspace) -> Dict[str, Dict[str, Any]]:
             return f'{n} changes in {len(docs)} documents: ' + body.split(': ', 1)[1]
         return body
 
-    return {
-        'set_span': {'each': ('token_id', 'span_id', 'value', 'doc'), 'label': label},
-        'respell': {'each': ('text_id', 'begin', 'end', 'value', 'doc'), 'label': label},
-        'set_orthography': {'each': ('word_id', 'value', 'doc'), 'label': label},
-        'set_morpheme_form': {'each': ('morpheme_id', 'form', 'doc'), 'label': label},
-        'rename_entry': {'each': ('item_id', 'form'), 'label': label},
-    }
+    return opkind.compact_spec(KIND, label)
 
 
 def op_target(op: Dict[str, Any]):
-    """What an op writes to, for last-wins replacement within one plan."""
-    k = op.get('kind')
-    if k == 'set_span':
-        return ('span', op.get('layer_id'), op.get('token_id'))
-    if k in ('set_analysis', 'discard_analysis'):
-        return ('analysis', op.get('word_id'))
-    if k == 'set_orthography':
-        return ('orth', op.get('word_id'), op.get('key'))
-    if k == 'set_morpheme_form':
-        return ('morph_form', op.get('morpheme_id'))
-    if k == 'set_morph_type':
-        return ('morph_type', op.get('morpheme_id'))
-    if k in ('split_word', 'merge_words', 'delete_word'):
-        return ('word_shape', op.get('word_id'))
-    if k in ('split_sentence', 'merge_sentences'):
-        return ('sentence_shape', op.get('sentence_id'))
-    if k == 'edit_text':
-        return ('edit_text', op.get('text_id'), op.get('begin'), op.get('end'))
-    if k == 'respell':
-        return ('respell', op.get('text_id'), op.get('begin'), op.get('end'))
-    if k == 'link':
-        return ('link', op.get('token_id'))
-    if k == 'unlink':
-        # A multi-word expression's link is its own target: unlinking it
-        # never displaces a member word's own link.
-        return ('mwe_link', op.get('link_id')) if op.get('token_ids') else ('link', op.get('token_id_hint'))
-    if k == 'link_phrase':
-        return ('mwe', tuple(op.get('token_ids') or []))
-    if k == 'confirm':
-        # The exact material it confirms. Confirming the same thing twice in a
-        # turn (the model retrying, two tools reaching the same document) used
-        # to stage two ops, and the reply counted both, so the card promised
-        # twice the confirmations it would make. Two confirmations that cover
-        # DIFFERENT material have different id lists and both stand.
-        return ('confirm', op.get('doc'), tuple(op.get('span_ids') or []),
-                tuple(op.get('token_ids') or []), tuple(op.get('link_ids') or []))
-    if k == 'restore_document':
-        return ('restore', op.get('document_id'))
-    if k == 'set_entry_field':
-        return ('entry_field', op.get('item_id'), op.get('field'))
-    if k == 'set_entry_metadata':
-        # Keyed by the keys it writes, so renumbering a sense and promoting an
-        # example on one entry are two changes rather than one replacing the other.
-        return ('entry_meta', op.get('item_id'), tuple(sorted((op.get('patch') or {}).keys())))
-    if k == 'rename_entry':
-        return ('rename_entry', op.get('item_id'))
-    if k == 'delete_entry':
-        return ('delete_entry', op.get('item_id'))
-    if k == 'set_doc_metadata':
-        return ('doc_meta', op.get('document_id'), op.get('field'))
-    if k == 'rename_document':
-        return ('rename_document', op.get('document_id'))
-    if k == 'create_document':
-        return ('create_document', op.get('name'))
-    return None
+    """What an op writes to, for last-wins replacement within one plan. Each
+    kind declares its own; a kind that can supersede nothing has none."""
+    return opkind.target_of(KIND, op)
 
 
 # --- helpers -----------------------------------------------------------------
@@ -1538,9 +1483,10 @@ def t_set_analysis(ws: Workspace, document: str, ref: Optional[str] = None, morp
 
 
 # A word's BOUNDARIES change (a split, a merge, a delete, a text edit over it)
-# or its MORPHEME CHAIN does. Never both in one plan.
-_WORD_SHAPE_KINDS = ('split_word', 'merge_words', 'delete_word')
-_ANALYSIS_KINDS = ('set_analysis', 'discard_analysis')
+# or its MORPHEME CHAIN does. Never both in one plan. Both sets are the
+# registry's shape tags, so a new kind of either joins them by being declared.
+_WORD_SHAPE_KINDS = opkind.shaped(KIND, WORD_SHAPE)
+_ANALYSIS_KINDS = opkind.shaped(KIND, ANALYSIS)
 
 
 def _reshaped_words(ws: Workspace) -> set:

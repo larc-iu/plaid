@@ -141,7 +141,7 @@ def test_execute_link_phrase_and_pending_entries():
            {'kind': 'link_phrase', 'token_ids': ['w-1', 'w-2'], 'item_id': 'vi-ali', 'new_entry_key': None,
             'existing_link_id': None, 'label': ''}]
     counts = execute_plan(c, ops, source='s', label='l')
-    assert counts == {'lexicon entries': 1, 'multi-word expressions': 2}
+    assert counts == {'new lexicon entries': 1, 'multi-word expressions': 2}
     first = [(r, m, a) for r, m, a, k in c.batches[0]]
     assert first[1] == ('vocab_links', 'delete', (MWE_LINK,))
     assert first[2][:2] == ('vocab_links', 'create') and first[2][2][:2] == ('vi-ali', ['w-1', 'w-2'])

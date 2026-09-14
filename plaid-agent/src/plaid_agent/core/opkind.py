@@ -64,6 +64,9 @@ class OpKind:
     ``at``        keys naming the entity the operation lands on, in the order
                   to try them, for the row on the approval card. A key holding
                   a list is read at its first entry.
+    ``at_kind``   the app's word for what ``at`` names, so the card knows how
+                  to resolve it. Empty where an operation is placed some other
+                  way, or at its document alone.
     ``token_keys``keys naming an entity the operation WRITES TO, so an
                   operation whose subject another operation in the same plan
                   deletes can be dropped instead of failing the batch. Never
@@ -90,6 +93,7 @@ class OpKind:
     stage: str = BATCH
     target: Optional[Callable[[Dict[str, Any]], Any]] = None
     at: Tuple[str, ...] = ()
+    at_kind: str = ''
     token_keys: Tuple[str, ...] = ()
     deletes: Optional[Callable[[Dict[str, Any]], Iterable[str]]] = None
     deletes_tokens: Optional[Callable[[Dict[str, Any]], Iterable[str]]] = None
@@ -154,6 +158,12 @@ def token_keys(reg: Mapping[str, OpKind]) -> Dict[str, Tuple[str, ...]]:
     return {name: k.token_keys for name, k in reg.items() if k.token_keys}
 
 
+def located_at(reg: Mapping[str, OpKind], at_kind: str) -> Dict[str, Tuple[str, ...]]:
+    """The keys that place each kind of operation whose subject is
+    ``at_kind``, for the row on the approval card."""
+    return {name: k.at for name, k in reg.items() if k.at and k.at_kind == at_kind}
+
+
 def compact_spec(reg: Mapping[str, OpKind], label: Optional[Callable] = None) -> Dict[str, Dict[str, Any]]:
     """The folding rules ``core.plan.compact_ops`` takes, for every kind that
     declares per-member keys. ``label`` writes the group's line for the kinds
@@ -205,22 +215,29 @@ def target_of(reg: Mapping[str, OpKind], op: Dict[str, Any]):
 
 
 def summarize(reg: Mapping[str, OpKind], ops: Iterable[Dict[str, Any]],
-              count_of: Optional[Callable[[OpKind, Dict[str, Any]], int]] = None) -> str:
+              count_of: Optional[Callable[[OpKind, Dict[str, Any]], int]] = None,
+              common_first: bool = False) -> str:
     """A plan in one phrase, for the audit label and the applied message.
 
     ``count_of(spec, op)`` says how many changes one stored operation stands
-    for (a folded group, a scope); the default is one."""
+    for (a folded group, a scope); the default is one. The phrase runs in the
+    order the kinds first appear, or largest first with ``common_first``."""
     c: Counter = Counter()
     for op in ops:
         spec = reg.get(op.get('kind'))
         if spec is None:
+            # Nothing here refuses a plan (the executor does that); showing the
+            # identifier beats leaving the change out of the line silently.
+            name = str(op.get('kind'))
+            c[(name, name)] += 1
             continue
         n = count_of(spec, op) if count_of else 1
         for noun, k in (spec.summary(op, n) if spec.summary else [(spec.noun, n)]):
             c[noun] += k
     if not c:
         return 'no changes'
-    return ', '.join(f'{n} {one if n == 1 else many}' for (one, many), n in c.most_common())
+    items = c.most_common() if common_first else list(c.items())
+    return ', '.join(f'{n} {one if n == 1 else many}' for (one, many), n in items)
 
 
 def stored_count(spec: OpKind, op: Dict[str, Any]) -> int:

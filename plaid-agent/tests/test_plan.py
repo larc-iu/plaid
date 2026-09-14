@@ -86,7 +86,7 @@ def test_confirm_and_discard_analysis_ops():
             'reset_first_id': 'm-4a', 'renumber': [{'id': 'm-4c', 'precedence': 2}], 'label': 'd'}]
     counts = execute_plan(c, ops, source='src', label='l')
     # The confirmation of a span another op deletes is dropped, one whole op with a note.
-    assert counts == {'confirmed annotations': 3, 'field values': 1, 'discarded analyses': 1,
+    assert counts == {'confirmations': 3, 'field values': 1, 'discarded analyses': 1,
                       'notes': ['dropped: c2 (everything it confirms is deleted in this plan)']}
     calls = [(r, m, a) for r, m, a, k in c.log]
     assert ('tokens', 'patch_metadata', ('m-x', {'provConfirmed': True})) in calls
@@ -157,7 +157,7 @@ def test_execute_links_entries_orthography_and_respells_last():
         {'kind': 'respell', 'text_id': TEXT_ID, 'begin': 11, 'end': 16, 'value': 'akun', 'label': ''},
     ]
     counts = execute_plan(c, ops, source='src', label='l')
-    assert counts == {'respellings': 2, 'lexicon entries': 1, 'links': 2, 'unlinks': 1,
+    assert counts == {'respellings': 2, 'new lexicon entries': 1, 'lexicon links': 2, 'unlinks': 1,
                       'orthography values': 1, 'entry fields': 1}
     b0 = [(r, m, a) for r, m, a, k in c.batches[0]]
     assert b0[0] == ('vocab_items', 'create', (VOCAB, 'akun', {'gloss': 'see', **b0[0][2][2]}))
@@ -192,68 +192,63 @@ def test_malformed_plans_are_rejected_before_any_write():
         assert c.batches == [] and c.log == []
 
 
-def _dispatched_kinds(fn, module) -> set:
-    """The op kinds a function's if/elif chain tests for.
-
-    Read off the source rather than listed by hand, because a list by hand is
-    the very thing this test exists to catch: the dispatch is the one table
-    with no name, so nothing could compare it with the others.
-    """
-    import ast
-    import inspect
-    import textwrap
-
-    def literals(node):
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            return {node.value}
-        if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
-            return {e.value for e in node.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)}
-        if isinstance(node, ast.Name):   # a named tuple of kinds, e.g. SCOPES
-            got = getattr(module, node.id, None)
-            return set(got) if isinstance(got, (tuple, list, set, frozenset)) else set()
-        return set()
-
-    def tests_a_kind(node):
-        if isinstance(node, ast.Name) and node.id in ('kind', 'k'):
-            return True
-        # op.get('kind')
-        return (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                and node.func.attr == 'get' and len(node.args) == 1
-                and isinstance(node.args[0], ast.Constant) and node.args[0].value == 'kind')
-
-    out = set()
-    for node in ast.walk(ast.parse(textwrap.dedent(inspect.getsource(fn)))):
-        if isinstance(node, ast.Compare) and tests_a_kind(node.left):
-            for op, cmp in zip(node.ops, node.comparators):
-                if isinstance(op, (ast.Eq, ast.NotEq, ast.In, ast.NotIn)):
-                    out |= literals(cmp)
-    return out
+def _apply_functions(module) -> set:
+    """Every ``_apply_*`` in a plan module: what the executor can do."""
+    return {getattr(module, n) for n in dir(module) if n.startswith('_apply_') and callable(getattr(module, n))}
 
 
-def test_every_igt_op_kind_is_declared_everywhere_a_kind_is_declared():
-    """Four tables name the kinds: KINDS, the required keys, the prose name the
-    approval line uses, and the dispatch in _execute. A kind missing from one
-    of them fails at apply time (a KeyError, or an op written as nothing), and
-    a kind missing from the summary shows the user an internal identifier in
-    the line they approve."""
+def test_every_igt_kind_has_an_apply_and_every_apply_is_registered():
+    """The dispatch used to be an if/elif chain: the one table with a name
+    nothing could compare with the others, so this test read it off the
+    source with ast. Now the apply function is part of the declaration, and
+    the only thing left to hold is that the two sets match: a kind the
+    executor cannot apply, or an applier nothing reaches."""
+    from plaid_agent.core import opkind
     from plaid_agent.igt import plan
-    from plaid_agent.igt.plan import KINDS, REQUIRED, SUMMARY_NAMES
-    assert set(KINDS) == set(REQUIRED) == set(SUMMARY_NAMES)
-    # bulk_scope never reaches the executor: resolve_scopes turns it into the
-    # per-span ops it stands for.
-    assert _dispatched_kinds(plan._execute, plan) == set(KINDS) - {'bulk_scope'}
+
+    for name, spec in plan.KIND.items():
+        if spec.stage == opkind.RESOLVED:
+            assert spec.apply is None, f'{name} never reaches the executor'
+        else:
+            assert callable(spec.apply), f'{name} has no apply function'
+    registered = {spec.apply for spec in plan.KIND.values() if spec.apply}
+    orphans = _apply_functions(plan) - registered
+    assert not orphans, f'appliers no kind names: {sorted(f.__name__ for f in orphans)}'
 
 
-def test_every_ud_op_kind_is_declared_everywhere_a_kind_is_declared():
-    """The same four tables, in the app the test never covered. One of them
-    (the summary) is a chain rather than a dict here, so it is read the same
-    way as the dispatch."""
-    from plaid_agent.ud import plan
-    from plaid_agent.ud.plan import KINDS, REQUIRED, SCOPES, summarize
-    assert set(KINDS) == set(REQUIRED)
-    assert _dispatched_kinds(summarize, plan) == set(KINDS)
-    # A scope is resolved to per-span ops before the executor sees it.
-    assert _dispatched_kinds(plan._execute, plan) == set(KINDS) - set(SCOPES)
+def test_every_igt_table_is_the_registry_read_back():
+    """KINDS, the required keys, the noun the approval line uses, the reshape
+    set, the token keys and the folding rules were six tables kept in step by
+    hand. Each is now a function of the registry, and this holds them to it."""
+    from plaid_agent.core import opkind
+    from plaid_agent.igt import plan
+    from plaid_agent.igt.plan import KINDS, REQUIRED, RESHAPES, SUMMARY_NAMES
+
+    assert set(KINDS) == set(REQUIRED) == set(SUMMARY_NAMES) == set(plan.KIND)
+    assert set(RESHAPES) <= set(KINDS)
+    assert set(plan._TOKEN_KEYS) <= set(KINDS)
+    # Every noun is a (singular, plural) pair, so the applied count and the
+    # approval line cannot disagree about what a kind is called.
+    assert all(isinstance(v, tuple) and len(v) == 2 and all(v) for v in SUMMARY_NAMES.values())
+    # A kind that folds declares which of its keys vary per member.
+    for name, s in opkind.compact_spec(plan.KIND, label=lambda f, m: '').items():
+        assert s['each'], name
+
+
+def test_an_unknown_igt_kind_refuses_instead_of_writing_nothing():
+    """A kind nobody wired up must never be applied as nothing at all, under
+    an operation label saying it had been."""
+    import pytest
+    from plaid_agent.igt.plan import _execute
+    from plaid_agent.core.plan import Stamps
+    from collections import Counter
+    with pytest.raises(ValueError, match='unknown kind'):
+        _execute(FakeClient(), [{'kind': 'not_a_kind', 'label': ''}], label='l', project=None,
+                 counts=Counter(), notes=[], stamps=Stamps('verified', 's'))
+    # And a kind that is resolved before the executor runs never gets there.
+    with pytest.raises(ValueError, match='resolved before'):
+        _execute(FakeClient(), [{'kind': 'bulk_scope', 'label': ''}], label='l', project=None,
+                 counts=Counter(), notes=[], stamps=Stamps('verified', 's'))
 
 
 def test_a_ud_kind_with_no_dispatch_refuses_instead_of_writing_nothing():
