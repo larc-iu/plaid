@@ -63,6 +63,11 @@ export const AuditFeed = ({
     // for the scope just left can answer last.
     const isCurrent = begin();
     setLoading(true);
+    // The rows and the cursor on screen are the PREVIOUS scope's. Clearing them
+    // here is what stops "Load older" fetching that scope's next page into this
+    // one while the first page of this one is still out.
+    setEntries([]);
+    setCursor(null);
     try {
       const page = await fetchPage({ limit: CHUNK });
       if (!isCurrent()) return;
@@ -88,15 +93,19 @@ export const AuditFeed = ({
 
   const loadOlder = async () => {
     if (!cursor) return;
+    // A re-scope while this is out drops the page rather than appending it.
+    const isCurrent = begin();
     setLoadingMore(true);
     try {
       const page = await fetchPage({ limit: CHUNK, cursor });
+      if (!isCurrent()) return;
       setEntries((prev) => [...prev, ...(page.entries || [])]);
       setCursor(page.nextCursor || null);
     } catch (err) {
+      if (!isCurrent()) return;
       notifyError(humanizeError(err), 'Could not load the older changes');
     } finally {
-      setLoadingMore(false);
+      if (isCurrent()) setLoadingMore(false);
     }
   };
 

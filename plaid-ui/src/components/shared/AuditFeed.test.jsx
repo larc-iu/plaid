@@ -22,7 +22,7 @@ const deferred = () => {
     at: (key) => {
       scope = key;
     },
-    settle: (key, entries) => pending.get(key)({ entries, nextCursor: null }),
+    settle: (key, entries, nextCursor = null) => pending.get(key)({ entries, nextCursor }),
     fetchPage: vi.fn(() => new Promise((resolve) => pending.set(scope, resolve))),
   };
 };
@@ -63,6 +63,33 @@ describe('the audit feed when its scope changes under it', () => {
 
     await view.step(async () => d.settle('B', [entry('bee')]));
     expect(shown(view.container)).toContain('bee');
+    await view.unmount();
+  });
+
+  it('drops an older page that belongs to the scope just left', async () => {
+    // The cursor and the rows on screen are the previous scope's until the new
+    // first page lands, so "Load older" could append that scope's next page to
+    // this one. Whichever half is fixed first, both have to be.
+    const d = deferred();
+    d.at('A');
+    const view = await renderComponent(feed(d, 'A'));
+    await view.step(async () => d.settle('A', [entry('ay')], 'more-of-a'));
+
+    const older = [...view.container.querySelectorAll('button')].find((b) =>
+      /Load older/.test(b.textContent),
+    );
+    expect(older).not.toBe(undefined);
+    d.at('A-older');
+    await view.step(() => older.click());
+
+    // The reader re-scopes while A's older page is still out.
+    d.at('B');
+    await view.rerender(feed(d, 'B'));
+    await view.step(async () => d.settle('B', [entry('bee')]));
+    await view.step(async () => d.settle('A-older', [entry('ay-older')]));
+
+    expect(shown(view.container)).toContain('bee');
+    expect(shown(view.container)).not.toContain('ay-older');
     await view.unmount();
   });
 
