@@ -356,6 +356,12 @@ export class IgtEditor {
   }
 
   destroy() {
+    // Set FIRST, and read by both paint paths: a mutation, a clipboard write
+    // or the project-precedent query can answer after the tab is gone (the
+    // shell builds a new island per document, so a time-travel step or a move
+    // to the next document destroys this one mid-flight), and each of them
+    // paints when it lands.
+    this._destroyed = true;
     this._altsRoot?.remove();
     this._altsRoot = null;
     if (this._unsub) this._unsub();
@@ -443,6 +449,7 @@ export class IgtEditor {
   }
 
   _render(force = false) {
+    if (this._destroyed) return;
     if (!force && this.doc.dataVersion === this._lastDataVersion) return;
     this._lastDataVersion = this.doc.dataVersion;
     // Fresh alternatives memo for this pass (see _alternatives).

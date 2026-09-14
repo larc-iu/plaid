@@ -35,6 +35,8 @@ export const alternatives = {
    * Tab across the grid.
    */
   _renderAlts() {
+    // The list has its own root, taken down with the island (see destroy).
+    if (this._destroyed) return;
     const el = this._alts
       ? this.container.querySelector(`[data-cell-key="${this._alts.cellKey}"]`)
       : null;
