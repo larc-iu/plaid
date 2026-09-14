@@ -269,8 +269,8 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
               {/* Persistent selection highlight */}
               {selection && (
                 <TimeAlignmentPopover
-                  opened={popoverOpened}
-                  onClose={() => setPopoverOpened(false)}
+                  open={popoverOpened}
+                  onOpenChange={setPopoverOpened}
                   selection={selection}
                   onAlignmentCreated={handleAlignmentCreated}
                   selectionBox={

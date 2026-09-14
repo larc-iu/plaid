@@ -24,8 +24,8 @@ import { snapToWords } from './selectWords.js';
 // trim it down to the segment, which nobody guessed: the first thing everyone
 // did was highlight the words.
 export const TimeAlignmentPopover = ({
-  opened,
-  onClose,
+  open,
+  onOpenChange,
   selection,
   onAlignmentCreated,
   selectionBox,
@@ -52,21 +52,21 @@ export const TimeAlignmentPopover = ({
 
   // A fresh popover every time it opens.
   useEffect(() => {
-    if (opened) {
+    if (open) {
       setMode('new');
       setText('');
       setAvailable('');
       setPicked(null);
       setSpeaker(getStickySpeaker());
     }
-  }, [opened]);
+  }, [open]);
 
   // Focus the box. New text: caret at the end of whatever is there, never
   // with the contents selected, so a stray key cannot replace them. Existing
   // text: caret at the start, where the next segment's words usually begin,
   // so Shift+Right selects them from the keyboard.
   useEffect(() => {
-    if (!opened) return;
+    if (!open) return;
     requestAnimationFrame(() => {
       const el = textareaRef.current;
       if (!el) return;
@@ -74,7 +74,7 @@ export const TimeAlignmentPopover = ({
       const n = mode === 'align' ? 0 : el.value.length;
       el.setSelectionRange(n, n);
     });
-  }, [opened, mode]);
+  }, [open, mode]);
 
   const handleModeChange = (newMode) => {
     setMode(newMode);
@@ -87,7 +87,7 @@ export const TimeAlignmentPopover = ({
     setText('');
     setPicked(null);
     setMode('new');
-    onClose();
+    onOpenChange(false);
   };
 
   // What the box has selected, snapped to whole words. Read on every
@@ -129,7 +129,7 @@ export const TimeAlignmentPopover = ({
       setText('');
       setPicked(null);
       setMode('new');
-      onClose();
+      onOpenChange(false);
     } finally {
       setSaving(false);
     }
@@ -150,7 +150,7 @@ export const TimeAlignmentPopover = ({
 
   return (
     <Popover
-      open={opened}
+      open={open}
       onOpenChange={() => {
         /* controlled: closed by Cancel, Save, Esc, or an outside click on an untouched popover */
       }}
@@ -171,7 +171,7 @@ export const TimeAlignmentPopover = ({
           // A click elsewhere closes an untouched popover and leaves one with
           // typing or a selection in it alone, so a stray click never eats work.
           if (ready) e.preventDefault();
-          else onClose();
+          else onOpenChange(false);
         }}
         onEscapeKeyDown={(e) => e.preventDefault()}
         onKeyDown={onKeyDown}

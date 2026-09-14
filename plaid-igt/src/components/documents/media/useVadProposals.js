@@ -2,6 +2,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import { speechProbabilities } from '../../../domain/vad/speechProbabilities.js';
 import { speechTimestamps, toSeconds } from '../../../domain/vad/speechTimestamps.js';
 import { detectorParams } from './detectSpeechBuiltin.js';
+import { humanizeError } from '@ui/lib/errors.js';
 
 // Speech detection as PROPOSALS, not as data.
 //
@@ -194,7 +195,7 @@ export function useVadProposals({
         settleToWhatIsThere();
         return;
       }
-      setError(e?.message ?? String(e));
+      setError(humanizeError(e));
       setStatus('error');
     }
   }, [mediaBlob, settleToWhatIsThere]);

@@ -12,6 +12,7 @@ import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { useVadProposals, VAD_METADATA_KEY } from './useVadProposals.js';
 import { DETECT_SPEECH_BUILTIN } from './detectSpeechBuiltin.js';
 import { writeRunRecord, clearRunRecord } from '@ui/domain/runRecord.js';
+import { reloadAfterRun } from '@ui/lib/runReload.js';
 
 // Hotkeys ignore key events from form fields, with one exception: the tab's
 // own boxes (transcript rows, time boxes, the alignment popover) sit under a
@@ -639,7 +640,7 @@ export const useMediaOperations = () => {
       // other step rather than left as dead air.
       transcribeRun.report({ percent: null, message: 'Loading the transcript…' });
       lock.setStatus('Loading the transcript…');
-      await doc._reload();
+      await reloadAfterRun(() => doc._reload());
     } catch (error) {
       console.error('Transcription failed:', error);
       // `pending` means the request is still out there. The client stopped

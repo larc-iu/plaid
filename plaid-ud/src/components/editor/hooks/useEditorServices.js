@@ -8,6 +8,7 @@ import { notifySuccess, notifyError } from '../../../utils/notify.js';
 import { BUILTIN_TOKENIZE_SEGMENTER, languageParamSeed } from '../../../utils/serviceDefaults.js';
 import { readProjectLanguage } from '../../../utils/udLayerUtils.js';
 import { parseNotice } from '../../../domain/parseNotice.js';
+import { reloadAfterRun } from '@ui/lib/runReload.js';
 
 // How long a service may say NOTHING, not a cap on the run: the client
 // restarts this clock on every progress event. A model load plus a neural
@@ -127,7 +128,7 @@ export const useEditorServices = ({ client, projectId, doc, project, acquireWrit
         // rather than left as dead air.
         run.report({ percent: null, message: 'Loading results…' });
         lock.setStatus('Loading results…');
-        await doc._reload();
+        await reloadAfterRun(() => doc._reload());
       } catch (error) {
         // requestService has already said it out loud; log so a failed run
         // does not toast twice.
