@@ -63,3 +63,30 @@ test('Escape still closes the vocab popover and still reverts a cell edit', asyn
   await page.keyboard.press('Escape');
   await expect(field).toHaveValue(saved);
 });
+
+// Deleting a comment is permanent: comments are unaudited, so there is no
+// history entry to restore from and no undo. The grid asks first, with the
+// same dialog the rest of the app asks with.
+test('deleting a comment from the grid asks first', async ({ page }) => {
+  await openAnalyze(page);
+  const badge = page.locator('.igt-token-form .igt-cmt-badge').first();
+  await badge.click();
+  const pop = page.locator('.igt-cmt-pop');
+  await expect(pop).toBeVisible();
+
+  const body = `delete me ${Date.now()}`;
+  await pop.locator('textarea').fill(body);
+  await pop.getByRole('button', { name: 'Comment', exact: true }).click();
+  await expect(pop.getByText(body)).toBeVisible();
+
+  // Refusing the dialog keeps it.
+  await pop.locator('[aria-label="Delete this comment"]').last().click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Cancel' }).click();
+  await badge.click();
+  await expect(page.locator('.igt-cmt-pop').getByText(body)).toBeVisible();
+
+  await page.locator('.igt-cmt-pop [aria-label="Delete this comment"]').last().click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click();
+  await badge.click();
+  await expect(page.locator('.igt-cmt-pop').getByText(body)).toHaveCount(0);
+});
