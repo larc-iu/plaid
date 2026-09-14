@@ -10,6 +10,7 @@ import logging
 from typing import List, Dict, Any, Optional
 
 from plaid_client.provenance import stamp_inferred, is_protected
+from plaid_client.service import check_unchanged
 
 from .tokenizer_model import TokenSpan
 
@@ -34,7 +35,7 @@ class TokenProcessor:
     
     def process_tokens(self, client, document_id: str, sentences: List[TokenSpan], words: List[TokenSpan],
                       primary_token_layer_id: str, sentence_layer_id: Optional[str], response_helper,
-                      *, text_layer_id: str,
+                      *, text_layer_id: str, expect_version=None,
                       prov_source: Optional[str] = None, overwrite: bool = False) -> Dict[str, int]:
         """Hold the document lock for the whole tokenization rewrite, then
         delegate to :meth:`_process_tokens_locked`.
@@ -54,11 +55,12 @@ class TokenProcessor:
             return self._process_tokens_locked(
                 client, document_id, sentences, words,
                 primary_token_layer_id, sentence_layer_id, response_helper,
-                text_layer_id=text_layer_id, prov_source=prov_source, overwrite=overwrite)
+                text_layer_id=text_layer_id, expect_version=expect_version,
+                prov_source=prov_source, overwrite=overwrite)
 
     def _process_tokens_locked(self, client, document_id: str, sentences: List[TokenSpan], words: List[TokenSpan],
                       primary_token_layer_id: str, sentence_layer_id: Optional[str], response_helper,
-                      *, text_layer_id: str,
+                      *, text_layer_id: str, expect_version=None,
                       prov_source: Optional[str] = None, overwrite: bool = False) -> Dict[str, int]:
         """
         Process tokenization results and update the Plaid document.
@@ -75,6 +77,10 @@ class TokenProcessor:
                 rather than taken positionally: a project may hold more than one
                 text layer, and tokenizing the first one while the caller read
                 another writes tokens whose offsets index the wrong string.
+            expect_version: The document version the caller tokenized. The text
+                was read before the lock was taken, so an edit since then moved
+                every offset the caller computed; the run is refused rather than
+                writing tokens that cut the text in the wrong places.
             prov_source: Optional provenance producer id (e.g.
                 ``service_source('<service-id>')``). When set, created tokens
                 are stamped machine-made per the provenance convention.
@@ -92,6 +98,8 @@ class TokenProcessor:
         # Get document with layers
         response_helper.progress(10, "Fetching document...")
         full_document = client.documents.get(document_id, include_body=True)
+        check_unchanged(client, document_id, expect_version,
+                        current=full_document.get("version"))
         
         # Find the text layer and content
         text_layer = next((tl for tl in full_document.get("text_layers", [])

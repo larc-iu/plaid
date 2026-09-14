@@ -42,6 +42,7 @@ import argparse
 from typing import Dict, List, Optional, Tuple
 
 from plaid_client import BaseService, TASKS, Param, service_source
+from plaid_client.service import check_unchanged
 from plaid_client.workflows.igt import (
     ParsedWord, derive, select_targets, parse_interleaved, align_words, analysis_for, write_analyses,
 )
@@ -215,6 +216,7 @@ class PolyGlossService(BaseService):
 
         response_helper.progress(3, 'Fetching document...')
         doc = self.client.documents.get(document_id, include_body=True)
+        read_version = doc.get('version')
         try:
             sentences, gloss_layer_id = derive(
                 doc, word_layer_id, morph_layer_id, sent_layer_id,
@@ -297,6 +299,11 @@ class PolyGlossService(BaseService):
         with response_helper.critical():
             with self.client.operation(f'PolyGloss analysis ({len(plans)} words)'):
                 with self.client.documents.locked(document_id):
+                    # The plans were made from a read taken before the model
+                    # ran. If someone has edited the document since, both the
+                    # write contract they were selected under and the ids they
+                    # point at are out of date, so nothing is written.
+                    check_unchanged(self.client, document_id, read_version)
                     written = write_analyses(self.client, plans, gloss_layer_id, morph_layer_id,
                                              source, stamp_detail)
 

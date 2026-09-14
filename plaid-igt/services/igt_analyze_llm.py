@@ -48,7 +48,7 @@ import os
 from typing import Any, Dict, List, Optional
 
 from plaid_client import BaseService, TASKS, Param, service_source
-from plaid_client.service import requester_message
+from plaid_client.service import check_unchanged, requester_message
 from plaid_client.workflows.igt import (
     derive, select_targets, word_state, parse_interleaved, align_words, analysis_for, write_analyses,
     tagset_for, mode_rule, value_lines,
@@ -465,6 +465,7 @@ class LLMAnalyzeService(BaseService):
 
         response_helper.progress(2, 'Fetching document...')
         doc = self.client.documents.get(document_id, include_body=True)
+        read_version = doc.get('version')
         layers = (word_layer_id, morph_layer_id, sent_layer_id)
         try:
             sentences, gloss_layer_id = derive(doc, *layers, gloss_field=gloss_field,
@@ -543,6 +544,11 @@ class LLMAnalyzeService(BaseService):
         with response_helper.critical():
             with self.client.operation(f'LLM glossing ({len(plans)} words)'):
                 with self.client.documents.locked(document_id):
+                    # The plans were made from a read taken before the model
+                    # ran. If someone has edited the document since, both the
+                    # write contract they were selected under and the ids they
+                    # point at are out of date, so nothing is written.
+                    check_unchanged(self.client, document_id, read_version)
                     written = write_analyses(self.client, plans, gloss_layer_id, morph_layer_id, source, stamp_detail)
 
             response_helper.progress(100, 'Done')

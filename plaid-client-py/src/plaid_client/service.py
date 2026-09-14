@@ -109,21 +109,24 @@ def progress_heartbeat(response_helper, percent, message, interval_s=20.0):
         done.set()
 
 
-def check_unchanged(client, document_id, version) -> None:
+def check_unchanged(client, document_id, version, current=None) -> None:
     """Refuse to write when the document changed since ``version`` was read.
 
     A service that reads a document, spends minutes in a model, then writes is
     writing against a picture that may be out of date: the write contract it
-    applied, and the token and span ids it planned around, are both from the
+    applied (which words are human-made, which are the machine's own to
+    replace) and the token and span ids it planned around are both from the
     old read. Call this right after taking the document lock, with the version
-    the read carried.
+    the read carried; ``current`` saves a round trip when the caller has just
+    re-read the document anyway.
 
     Raises ``ValueError`` (the authored-refusal shape) when it differs, so
     nothing is written at all.
     """
     if not version:
         return
-    current = (client.documents.get(document_id) or {}).get('version')
+    if current is None:
+        current = (client.documents.get(document_id) or {}).get('version')
     if current and current != version:
         raise ValueError('The document changed while this run was working. Run it again.')
 

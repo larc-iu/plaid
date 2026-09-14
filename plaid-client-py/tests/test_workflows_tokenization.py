@@ -189,3 +189,34 @@ def test_split_tokens_are_deleted_in_one_op_however_many_there_are():
     # the second sentence and merely contains a piece w1 was cut into, which
     # used to be read as "w2 was split too".
     assert bulk == [('bulk_delete', ['w1'])]
+
+
+def test_a_document_edited_since_it_was_read_is_not_tokenized():
+    # The text was read, and tokenized, before the lock was taken. An edit in
+    # between moved every offset, so the run is refused rather than cutting the
+    # text in the places the old string had.
+    doc = _document('Hello there.', sentences=[(0, 12)], words=[])
+    doc['version'] = 59
+    client = _FakeClient(doc)
+    helper = _Helper()
+    with pytest.raises(ValueError) as caught:
+        TokenProcessor().process_tokens(
+            client, 'd1', _spans('Hello there.'),
+            [TokenSpan(text='Hello', start=0, end=5)],
+            'word-layer', 'sentence-layer', helper,
+            text_layer_id='text-layer', expect_version=58)
+    assert 'changed while this run was working' in str(caught.value)
+    assert helper.errors == [] and helper.done == []
+    assert [c for c in client.calls if c[0] in ('bulk_create', 'bulk_delete')] == []
+
+
+def test_the_same_document_is_tokenized():
+    doc = _document('Hello there.', sentences=[(0, 12)], words=[])
+    doc['version'] = 58
+    client = _FakeClient(doc)
+    counts = TokenProcessor().process_tokens(
+        client, 'd1', _spans('Hello there.'),
+        [TokenSpan(text='Hello', start=0, end=5)],
+        'word-layer', 'sentence-layer', _Helper(),
+        text_layer_id='text-layer', expect_version=58)
+    assert counts['sentences_created'] == 1

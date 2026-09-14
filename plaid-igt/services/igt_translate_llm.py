@@ -33,7 +33,7 @@ import os
 from typing import Any, Dict, List, Optional
 
 from plaid_client import BaseService, TASKS, Param, service_source
-from plaid_client.service import requester_message
+from plaid_client.service import check_unchanged, requester_message
 from plaid_client.provenance import stamp_inferred, prov_state, MACHINE, HUMAN
 from plaid_client.workflows.igt import derive
 
@@ -273,6 +273,7 @@ class LLMTranslateService(BaseService):
 
         response_helper.progress(3, 'Fetching document...')
         doc = self.client.documents.get(document_id, include_body=True)
+        read_version = doc.get('version')
         layers = (word_layer_id, morph_layer_id, sent_layer_id)
         gloss_layer_id = None
         try:
@@ -357,6 +358,11 @@ class LLMTranslateService(BaseService):
         with response_helper.critical():
             with self.client.operation(f'LLM translation ({len(plans)} sentences)'):
                 with self.client.documents.locked(document_id):
+                    # The plans were made from a read taken before the model
+                    # ran. If someone has edited the document since, both the
+                    # write contract they were selected under and the span ids
+                    # they point at are out of date, so nothing is written.
+                    check_unchanged(self.client, document_id, read_version)
                     for start in range(0, len(plans), WRITE_CHUNK // 2):
                         with self.client.batched():
                             for s, span, text in plans[start:start + WRITE_CHUNK // 2]:

@@ -998,3 +998,42 @@ def test_the_funnel_redacts_the_services_own_secrets():
     helper = _Helper()
     svc.handle_service_request({}, helper).join(5)
     assert helper.errors == ['An: provider said: bad key [redacted]']
+
+
+# --- a document that changed while the run was working -----------------------
+
+class _VersionClient:
+    def __init__(self, version):
+        self.reads = 0
+        outer = self
+
+        class Documents:
+            def get(self, document_id, include_body=None):
+                outer.reads += 1
+                return {'id': document_id, 'version': version}
+        self.documents = Documents()
+
+
+def test_a_run_writes_only_against_the_document_it_read():
+    client = _VersionClient(58)
+    check_unchanged(client, 'd1', 58)          # unchanged: nothing to say
+    assert client.reads == 1
+    with pytest.raises(ValueError) as caught:
+        check_unchanged(client, 'd1', 57)
+    assert str(caught.value) == 'The document changed while this run was working. Run it again.'
+
+
+def test_a_caller_that_just_read_the_document_is_not_made_to_read_it_again():
+    client = _VersionClient(58)
+    check_unchanged(client, 'd1', 57, current=57)
+    assert client.reads == 0
+    with pytest.raises(ValueError):
+        check_unchanged(client, 'd1', 57, current=58)
+    assert client.reads == 0
+
+
+def test_no_version_to_compare_is_not_a_refusal():
+    client = _VersionClient(58)
+    check_unchanged(client, 'd1', None)
+    check_unchanged(client, 'd1', 0)
+    assert client.reads == 0

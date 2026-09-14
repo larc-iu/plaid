@@ -198,6 +198,7 @@ class NLTKTokenizerService(BaseService):
                     self.client, document_id, sentences, words,
                     primary_token_layer_id, sentence_layer_id, response_helper,
                     text_layer_id=text_layer_id,
+                    expect_version=full_document.get('version'),
                     prov_source=service_source(self.service_id),
                     overwrite=overwrite,
                 )
