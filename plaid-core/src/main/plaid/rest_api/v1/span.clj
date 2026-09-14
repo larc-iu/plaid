@@ -1,6 +1,7 @@
 (ns plaid.rest-api.v1.span
   (:require [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.metadata :as metadata]
+            [plaid.rest-api.v1.schema :as schema]
             [plaid.rest-api.v1.middleware :as prm]
             [reitit.coercion.malli]
             [plaid.sql.span :as s]
@@ -96,7 +97,7 @@
                             :body [:map
                                    [:span-layer-id :uuid]
                                    [:tokens [:vector uuid?]]
-                                   [:value [:or string? number? boolean? nil?]]
+                                   [:value schema/atomic-value]
                                    [:metadata {:optional true} [:map-of string? any?]]]}
                :handler (fn [{{{:keys [span-layer-id tokens value metadata]} :body} :parameters db :db user-id :user/id :as request}]
                           (let [attrs {:span/layer span-layer-id
@@ -125,7 +126,7 @@
                                         [:map
                                          [:span-layer-id :uuid]
                                          [:tokens [:vector uuid?]]
-                                         [:value [:or string? number? boolean? nil?]]
+                                         [:value schema/atomic-value]
                                          [:metadata {:optional true} [:map-of string? any?]]]]}
                     :handler (fn [{{spans :body} :parameters db :db user-id :user/id :as request}]
                                (let [spans-attrs (mapv (fn [span-data]
@@ -149,7 +150,7 @@
                                   [prm/wrap-document-version bulk-update-get-document-id]
                                   metadata/wrap-inline-metadata-shape-guard]
                      :parameters {:query [:map [:document-version {:optional true} :int]]
-                                  :body [:sequential [:map [:id :uuid] [:value {:optional true} [:or string? number? boolean? nil?]] [:metadata {:optional true} [:map-of string? any?]]]]}
+                                  :body [:sequential [:map [:id :uuid] [:value {:optional true} schema/atomic-value] [:metadata {:optional true} [:map-of string? any?]]]]}
                      :handler (fn [{{items :body} :parameters db :db user-id :user/id}]
                                 (let [{:keys [success code error extra]} (s/bulk-update db items user-id)]
                                   (if success
@@ -186,7 +187,7 @@
                               [prm/wrap-document-version get-document-id]]
                  :parameters {:query [:map [:document-version {:optional true} :int]]
                               :body [:map
-                                     [:value [:or string? number? boolean? nil?]]]}
+                                     [:value schema/atomic-value]]}
                  :handler (fn [{{{:keys [span-id]} :path {:keys [value]} :body} :parameters db :db user-id :user/id :as request}]
                             (let [doc-id (get-document-id request)
                                   {:keys [success code error]} (s/merge db span-id {:span/value value} user-id)]

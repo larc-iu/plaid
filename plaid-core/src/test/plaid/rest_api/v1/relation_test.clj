@@ -1,10 +1,11 @@
 (ns plaid.rest-api.v1.relation-test
   (:require [clojure.test :refer :all]
             [plaid.fixtures :refer [with-db
-                                    with-mount-states with-rest-handler admin-request api-call
+                                    with-mount-states with-rest-handler admin-request api-call rest-handler
                                     assert-status assert-success assert-created assert-ok assert-no-content assert-not-found assert-bad-request assert-forbidden
                                     with-admin with-test-users user1-request user2-request with-clean-db]]
-            [plaid.test-helpers :refer :all]))
+            [plaid.test-helpers :refer :all]
+            [ring.mock.request :as mock]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
@@ -42,6 +43,63 @@
     (assert-ok (update-relation-target admin-request rid sid1))
     (assert-no-content (delete-relation admin-request rid))
     (assert-not-found (get-relation admin-request rid))))
+
+(defn- raw-call
+  "Hit the rest-handler directly and return the ring response unparsed. The
+  malli coercion failure path answers with a raw Clojure map, which
+  `api-call` cannot slurp."
+  [method path body]
+  (rest-handler (-> (admin-request method path) (mock/json-body body))))
+
+(defn- refused-by
+  "Which guard turned this write down: :schema when request coercion rejected
+  the body (its response body is the raw coercion map), :write when the body
+  passed the schema and the operation's own check answered."
+  [response]
+  (if (= :reitit.coercion/request-coercion (:type (:body response)))
+    :schema
+    :write))
+
+(deftest relation-value-must-be-atomic-on-every-write
+  ;; A relation's value is an atomic JSON scalar, the same rule a span's value
+  ;; follows. The single create and the single patch used to declare `any?`
+  ;; while the bulk patch declared the scalar schema, so the same body was a
+  ;; coercion 400 on one route and reached the SQL guard on another.
+  (let [proj (create-test-project admin-request "RelAtomicProj")
+        doc (create-test-document admin-request proj "RelAtomicDoc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        tid (-> (create-text admin-request tl doc "abcdef") :body :id)
+        tkl (-> (create-token-layer admin-request tl "Tokens") :body :id)
+        id1 (-> (create-token admin-request tkl tid 0 2) :body :id)
+        id2 (-> (create-token admin-request tkl tid 2 4) :body :id)
+        sl (-> (create-span-layer admin-request tkl "Spans") :body :id)
+        sid1 (-> (create-span admin-request sl [id1] "A") :body :id)
+        sid2 (-> (create-span admin-request sl [id2] "B") :body :id)
+        rl (-> (create-relation-layer admin-request sl "Rels") :body :id)
+        rid (-> (create-relation admin-request rl sid1 sid2 "R") :body :id)]
+
+    (testing "scalars and null are accepted on create and on patch"
+      (doseq [v ["nsubj" 42 true nil]]
+        (let [created (create-relation admin-request rl sid1 sid2 v)]
+          (assert-created created)
+          (assert-no-content (delete-relation admin-request (-> created :body :id))))
+        (assert-ok (update-relation admin-request rid v))))
+
+    (testing "a map or a list is refused everywhere a span's would be, by the
+              request schema and not by the write"
+      (doseq [v [{"a" 1} ["a" "b"]]]
+        (let [create (raw-call :post "/api/v1/relations"
+                               {:layer-id rl :source-id sid1 :target-id sid2 :value v})
+              patch (raw-call :patch (str "/api/v1/relations/" rid) {:value v})
+              bulk (raw-call :patch "/api/v1/relations/bulk" [{:id rid :value v}])
+              span (raw-call :post "/api/v1/spans" {:span-layer-id sl :tokens [id1] :value v})]
+          (doseq [[label response] [["create" create] ["patch" patch] ["bulk patch" bulk]]]
+            (is (= 400 (:status response)) (str label " of " (pr-str v)))
+            (is (= (refused-by span) (refused-by response))
+                (str label " refuses " (pr-str v) " the way a span's value is refused"))))))
+
+    (is (= nil (-> (get-relation admin-request rid) :body :relation/value))
+        "the last accepted write stands; none of the refused ones landed")))
 
 (deftest relation-metadata-functionality
   (let [proj (create-test-project admin-request "RelMetadataProj")

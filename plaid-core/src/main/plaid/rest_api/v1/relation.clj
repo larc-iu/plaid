@@ -1,6 +1,7 @@
 (ns plaid.rest-api.v1.relation
   (:require [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.metadata :as metadata]
+            [plaid.rest-api.v1.schema :as schema]
             [plaid.rest-api.v1.middleware :as prm]
             [reitit.coercion.malli]
             [plaid.sql.relation :as r]
@@ -89,7 +90,7 @@
                              "\n<body>layer-id</body>: the relation layer"
                              "\n<body>source-id</body>: the source span this relation originates from"
                              "\n<body>target-id</body>: the target span this relation goes to"
-                             "\n<body>value</body>: the label for the relation")
+                             "\n<body>value</body>: the label for the relation (must be string, number, boolean, or null).")
                :middleware [[pra/wrap-writer-required get-project-id]
                             [prm/wrap-document-version get-document-id]
                             metadata/wrap-inline-metadata-shape-guard]
@@ -98,7 +99,7 @@
                                    [:layer-id :uuid]
                                    [:source-id :uuid]
                                    [:target-id :uuid]
-                                   [:value any?]
+                                   [:value schema/atomic-value]
                                    [:metadata {:optional true} [:map-of string? any?]]]}
                :handler (fn [{{{:keys [layer-id source-id target-id value metadata]} :body} :parameters db :db user-id :user/id :as request}]
                           (let [attrs {:relation/layer layer-id
@@ -130,7 +131,7 @@
                                          [:relation-layer-id :uuid]
                                          [:source :uuid]
                                          [:target :uuid]
-                                         [:value any?]
+                                         [:value schema/atomic-value]
                                          [:metadata {:optional true} [:map-of string? any?]]]]}
                     :handler (fn [{{relations :body} :parameters db :db user-id :user/id :as request}]
                                (let [relations-attrs (mapv (fn [relation-data]
@@ -156,7 +157,7 @@
                                   [prm/wrap-document-version bulk-update-get-document-id]
                                   metadata/wrap-inline-metadata-shape-guard]
                      :parameters {:query [:map [:document-version {:optional true} :int]]
-                                  :body [:sequential [:map [:id :uuid] [:value {:optional true} [:or string? number? boolean? nil?]] [:metadata {:optional true} [:map-of string? any?]]]]}
+                                  :body [:sequential [:map [:id :uuid] [:value {:optional true} schema/atomic-value] [:metadata {:optional true} [:map-of string? any?]]]]}
                      :handler (fn [{{items :body} :parameters db :db user-id :user/id}]
                                 (let [{:keys [success code error extra]} (r/bulk-update db items user-id)]
                                   (if success
@@ -193,7 +194,7 @@
                  :middleware [[pra/wrap-writer-required get-project-id]
                               [prm/wrap-document-version get-document-id]]
                  :parameters {:query [:map [:document-version {:optional true} :int]]
-                              :body [:map [:value any?]]}
+                              :body [:map [:value schema/atomic-value]]}
                  :handler (fn [{{{:keys [relation-id]} :path {:keys [value]} :body} :parameters db :db user-id :user/id :as request}]
                             (let [doc-id (get-document-id request)
                                   {:keys [success code error]} (r/merge db relation-id {:relation/value value} user-id)]
