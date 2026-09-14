@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { authService } from '../../services/auth';
+import { authService } from '@ui/services/auth.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { notifySuccess } from '@/utils/feedback';
 import { isEmail, EMAIL_REQUIRED_MESSAGE, EMAIL_INVALID_MESSAGE } from '@ui/lib/email.js';

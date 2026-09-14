@@ -1,5 +1,10 @@
 import PlaidClient from '@larc-iu/plaid-client';
 
+// The session every app in this repo holds: one backend, one JWT, one set of
+// localStorage keys. The keys are deliberately NOT prefixed with `appPrefix`,
+// unlike everything else this package writes: plaid-igt and plaid-ud share the
+// server's tokens, and the e2e helpers seed the same names for both.
+
 // Get base URL from environment or use default
 const BASE_URL = import.meta.env.VITE_API_URL || window.location.origin;
 
@@ -35,7 +40,7 @@ function getUserIdFromToken(token) {
 
 // Persist a freshly-authenticated client as the current session. Shared by
 // login and invite redemption, which differ only in how they obtained the
-// token — everything after that (identify the user, fetch their profile, write
+// token. Everything after that (identify the user, fetch their profile, write
 // localStorage) has to be identical, or a redeemed session ends up subtly
 // unlike a logged-in one.
 async function establishSession(authedClient) {
@@ -118,12 +123,13 @@ export const authService = {
     localStorage.removeItem('displayName');
     localStorage.removeItem('isAdmin');
     localStorage.removeItem('avatarHash');
-    // HashRouter + the production '/ud/' base mean the login route lives in the
-    // URL fragment; navigating to an absolute '/login' path misses the SPA (the
-    // server has nothing there under /ud/). Set the fragment off the current
-    // path so the base is preserved in both dev ('/') and prod ('/ud/'), then
-    // hard-reload to clear in-memory React state — the onAuthError path calls
-    // logout() outside the AuthContext, so the user state won't reset itself.
+    // HashRouter plus a production base ('/igt/', '/ud/') mean the login route
+    // lives in the URL fragment. Navigating to an absolute '/login' path misses
+    // the SPA, since the server has nothing there under the app's base. Set the
+    // fragment off the current path so the base is preserved in both dev ('/')
+    // and prod, then hard-reload to clear in-memory React state: the
+    // onAuthError path calls logout() outside the AuthContext, so the user
+    // state will not reset itself.
     window.location.hash = '#/login';
     window.location.reload();
   },

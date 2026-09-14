@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { authService } from '../services/auth';
+import { authService } from '@ui/services/auth.js';
 import { humanizeError, signInError, statusOf } from '@ui/lib/errors.js';
 
 const AuthContext = createContext(null);
