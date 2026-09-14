@@ -115,9 +115,3 @@ class Corpus(BaseCorpus):
         """How much corpus there is: sentences and words."""
         return {'sentences': self.count([['token', '?s', {'layer': self.p.sentence_layer_id}]], ['?s']),
                 'words': self.count([self.word('?t')], ['?t'])}
-
-    # --- documents --------------------------------------------------------
-
-    def documents_with(self, where: List[Any], var: str = '?s') -> List[tuple]:
-        """[(document id, hits)] for a constraint, most hits first."""
-        return [(row[0], row[-1]) for row in self.group(where, [f'{var}.doc']) if row[0]]

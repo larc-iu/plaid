@@ -200,8 +200,11 @@ The modules below are `igt/` unless they say otherwise.
   the plan's size budget, the rule that a second change to one target replaces
   the first, the refusals a plan owes itself (a change to something the plan
   deletes is refused in either order, as the plan is built), and the note a
-  tool ends with. An app answers four things: its op-kind registry, what counts
-  as one change, its query helper, and the refusals only it owes.
+  tool ends with. An app answers six things: its op-kind registry, what counts
+  as one change, `SPAN_KIND` (the kind that sets one value on one token, which
+  is the only one a second tool in the same turn reads a planned value out of),
+  its query helper, the refusals only it owes, and its own words for a change
+  the plan deletes out from under.
 - `core/corpus.py`: the query engine bound to one workspace, and whether a read
   was cut short. Each app adds the clauses that name what it annotates.
 - `core/citations.py`: the citation syntax, the order citations are read in,
@@ -304,9 +307,9 @@ The modules below are `igt/` unless they say otherwise.
   `core.opkind.OpKind` each, carrying its required keys, the noun the user
   reads, the function that applies it and which pass of the executor runs it,
   what it writes to, what it deletes, how it reshapes the text, and how like
-  operations fold into one stored operation. The tables (`KINDS`, `REQUIRED`,
-  `RESHAPES`, `SCOPES`, `SUMMARY_NAMES`, `op_target`, the approval card's,
-  the executor's dispatch) are all read back off it, so a new kind is one
+  operations fold into one stored operation. The tables (`RESHAPES`, `SCOPES`,
+  `EXCLUSIVE_KINDS`, `COMPACT`, `op_target`, the approval card's, the
+  executor's dispatch) are all read back off it, so a new kind is one
   declaration plus the tool that stages it. An app declares `STAGES`, the
   passes its executor really runs, and a kind staged for any other refuses
   before the first batch opens rather than being skipped by every pass and

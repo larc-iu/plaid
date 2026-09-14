@@ -969,6 +969,19 @@ def test_a_head_or_an_index_that_is_not_a_number_reads_as_english(ws):
 
 # --- corpus-wide changes -----------------------------------------------------------
 
+def test_the_documents_a_constraint_hits_come_back_most_first():
+    """UD overrode the shared helper with a copy that dropped the sort, while
+    its own docstring and both its callers said "most hits first": `_spread`
+    samples evenly down a RANKED list, and worklist prints the top documents by
+    count. Both were reading whatever order the engine returned."""
+    from ud_fixtures import ud_client
+    client = ud_client()
+    ws = Workspace(client, load_project(client, PID))
+    ws.client.query = lambda body: {'return': 'aggregate',
+                                    'results': [['low', 1], ['high', 9], ['mid', 4]]}
+    assert ws.corpus.documents_with([['token', '?t', {}]], '?t') == [('high', 9), ('mid', 4), ('low', 1)]
+
+
 def _engine_rows(ws, spans):
     """A fake engine answering a replace_in_field query: one span row per
     (span id, value, document, token id), the way entities come back."""

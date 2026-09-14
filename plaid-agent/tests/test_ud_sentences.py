@@ -169,9 +169,9 @@ def test_no_op_kind_is_summarized_as_nothing():
     """It happened: summarize knew six op kinds and a plan of the two new ones
     read "no changes", which is what a user would have been asked to approve.
     Its chain has no else, so every kind has to be named in it by hand."""
-    from plaid_agent.ud.plan import KINDS, summarize
+    from plaid_agent.ud.plan import KIND, summarize
 
-    for kind in KINDS:
+    for kind in KIND:
         assert summarize([{'kind': kind, 'document_ids': ['d1']}]) != 'no changes', kind
 
 

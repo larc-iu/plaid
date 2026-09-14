@@ -7,9 +7,9 @@ and the provenance an approval writes. What is here is the ops themselves.
 **Every kind is declared once**, in :data:`KIND` below: its required keys, the
 noun the user reads, which pass of the executor applies it, what it writes to,
 what it deletes, whether it reshapes the document, and how like ops fold into
-one stored op. ``KINDS``, ``REQUIRED``, ``SCOPES``, ``RESHAPES_DOCUMENT``,
-``LATER_PASSES``, the summary and the executor's dispatch are all read off it
-(see :mod:`plaid_agent.core.opkind`).
+one stored op. ``SCOPES``, ``RESHAPES_DOCUMENT``, ``RESHAPES_TOKEN``,
+``COMPACT``, the summary and the executor's dispatch are all read off it (see
+:mod:`plaid_agent.core.opkind`).
 
 **Two batches, not one.** A batch op cannot refer to an id produced by an
 earlier op in the SAME batch, and a relation needs its endpoints' lemma spans
@@ -314,8 +314,6 @@ KIND = ok.registry([
 ])
 
 # Every table below is the registry read a different way.
-KINDS = ok.names(KIND)
-REQUIRED = ok.required(KIND)
 SCOPES = ok.shaped(KIND, ok.SCOPE)
 RESHAPES_DOCUMENT = ok.shaped(KIND, SENTENCE_SHAPE)
 RESHAPES_TOKEN = ok.shaped(KIND, WORD_SHAPE)
@@ -323,9 +321,6 @@ RESHAPES_TOKEN = ok.shaped(KIND, WORD_SHAPE)
 # their whole plan. A restore is the second; a parse is only the first.
 REWRITES_DOCUMENT = ok.shaped(KIND, DOCUMENT_SHAPE)
 EXCLUSIVE_KINDS = ok.shaped(KIND, ok.EXCLUSIVE)
-# Kinds a LATER pass of the executor applies: relations, which need the ids
-# the first batch mints, and the parser, which runs outside the batches.
-LATER_PASSES = ok.staged(KIND, IDS, PARSE)
 # How the like ops of one plan fold into one stored op (core.plan.compact_ops).
 COMPACT = ok.compact_spec(KIND)
 

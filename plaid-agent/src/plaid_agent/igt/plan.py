@@ -20,8 +20,8 @@ entities lose any earlier confirmation.
 **Every kind is declared once**, in :data:`KIND` below: its required keys, the
 noun the user reads, what applies it, what it writes to, what it deletes,
 whether it reshapes the text, and how like operations fold into one stored
-operation. ``KINDS``, ``REQUIRED``, ``RESHAPES``, ``SUMMARY_NAMES``, the
-executor's dispatch and the approval card's tables are all read off it (see
+operation. ``RESHAPES``, ``SCOPES``, ``EXCLUSIVE_KINDS``, the compaction spec,
+the executor's dispatch and the approval card's tables are all read off it (see
 :mod:`plaid_agent.core.opkind`), so adding a kind is one declaration.
 
 Operation shapes (all keys snake_case, no id-keyed maps, so they survive the
@@ -563,8 +563,6 @@ KIND = ok.registry([
 
 # Every table below is the registry read a different way. None of them is
 # maintained beside it.
-KINDS = ok.names(KIND)
-REQUIRED = ok.required(KIND)
 # The kinds that move a word's boundaries, a sentence boundary, the baseline
 # text, or a morpheme chain. Nothing corpus-wide may share a plan with one.
 RESHAPES = ok.shaped(KIND, WORD_SHAPE, SENTENCE_SHAPE, TEXT_SHAPE, ANALYSIS)
@@ -573,9 +571,6 @@ RESHAPES = ok.shaped(KIND, WORD_SHAPE, SENTENCE_SHAPE, TEXT_SHAPE, ANALYSIS)
 # a second one of either joins by being declared.
 SCOPES = ok.shaped(KIND, ok.SCOPE)
 EXCLUSIVE_KINDS = ok.shaped(KIND, ok.EXCLUSIVE)
-# What a kind is called in the line the user approves, and in the count of
-# what was applied. One word per kind, so the two never disagree.
-SUMMARY_NAMES = ok.nouns(KIND)
 
 
 def validate_ops(ops: List[Dict[str, Any]]) -> None:

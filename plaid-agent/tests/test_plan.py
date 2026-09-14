@@ -218,20 +218,31 @@ def test_every_igt_kind_has_an_apply_and_every_apply_is_registered():
     assert not orphans, f'appliers no kind names: {sorted(f.__name__ for f in orphans)}'
 
 
-def test_every_igt_table_is_the_registry_read_back():
-    """KINDS, the required keys, the noun the approval line uses, the reshape
-    set, the token keys and the folding rules were six tables kept in step by
-    hand. Each is now a function of the registry, and this holds them to it."""
+def test_the_igt_registry_declares_what_every_table_is_read_off():
+    """The required keys, the noun the approval line uses, the reshape set and
+    the folding rules were tables kept in step by hand. Each is a function of
+    the registry now.
+
+    Hand-listed, not compared with another comprehension over the same
+    registry: an assertion of that shape passes whatever the registry says,
+    which is what the two tests here used to do.
+    """
     from plaid_agent.core import opkind
     from plaid_agent.igt import plan
-    from plaid_agent.igt.plan import KINDS, REQUIRED, RESHAPES, SUMMARY_NAMES
+    from plaid_agent.igt.plan import RESHAPES
 
-    assert set(KINDS) == set(REQUIRED) == set(SUMMARY_NAMES) == set(plan.KIND)
-    assert set(RESHAPES) <= set(KINDS)
-    assert set(opkind.token_keys(plan.KIND)) <= set(KINDS)
+    assert plan.KIND['set_span'].required == ('layer_id', 'token_id')
+    assert plan.KIND['set_span'].noun == ('field value', 'field values')
+    assert plan.KIND['delete_entry'].noun == ('deleted entry', 'deleted entries')
+    # The kinds that move a boundary, the text, or a morpheme chain: nothing
+    # corpus-wide may share a plan with one of these.
+    assert set(RESHAPES) == {'set_analysis', 'respell', 'discard_analysis', 'split_word',
+                             'merge_words', 'delete_word', 'split_sentence', 'merge_sentences',
+                             'edit_text'}
     # Every noun is a (singular, plural) pair, so the applied count and the
     # approval line cannot disagree about what a kind is called.
-    assert all(isinstance(v, tuple) and len(v) == 2 and all(v) for v in SUMMARY_NAMES.values())
+    assert all(isinstance(s.noun, tuple) and len(s.noun) == 2 and all(s.noun)
+               for s in plan.KIND.values())
     # A kind that folds declares which of its keys vary per member.
     for name, s in opkind.compact_spec(plan.KIND, label=lambda f, m: '').items():
         assert s['each'], name
@@ -338,15 +349,19 @@ def test_every_ud_kind_has_an_apply_and_every_apply_is_registered():
     assert not orphans, f'appliers no kind names: {sorted(f.__name__ for f in orphans)}'
 
 
-def test_every_ud_table_is_the_registry_read_back():
+def test_the_ud_registry_declares_what_every_table_is_read_off():
+    """Hand-listed, for the reason the IGT one above gives."""
     from plaid_agent.core import opkind
     from plaid_agent.ud import plan
-    from plaid_agent.ud.plan import KINDS, LATER_PASSES, REQUIRED, RESHAPES_DOCUMENT, SCOPES
+    from plaid_agent.ud.plan import RESHAPES_DOCUMENT, RESHAPES_TOKEN, SCOPES
     from plaid_agent.ud.tools import COMPACT, SCOPE_KINDS
 
-    assert set(KINDS) == set(REQUIRED) == set(plan.KIND)
-    assert set(SCOPES) <= set(KINDS) and set(RESHAPES_DOCUMENT) <= set(KINDS)
-    assert set(LATER_PASSES) <= set(KINDS)
+    assert plan.KIND['set_head'].required == ('word_id', 'head_id', 'lemma_layer_id',
+                                              'relation_layer_id', 'deprel')
+    assert plan.KIND['del_relation'].noun == ('removed dependency', 'removed dependencies')
+    assert set(SCOPES) == {'confirm_scope', 'discard_scope', 'replace_scope'}
+    assert set(RESHAPES_DOCUMENT) == {'split_sentence', 'merge_sentences'}
+    assert set(RESHAPES_TOKEN) == {'set_words'}
     # The tools' view of a scope is the plan's: one table, not two that drifted
     # (replace_scope had to be spelled out beside SCOPE_KINDS at every site).
     assert set(SCOPE_KINDS) == set(SCOPES)

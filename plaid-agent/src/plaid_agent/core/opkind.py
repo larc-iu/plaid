@@ -174,25 +174,9 @@ def kind_of(reg: Mapping[str, OpKind], op: Any, index: Optional[int] = None) -> 
 
 # --- the tables ------------------------------------------------------------------
 
-def names(reg: Mapping[str, OpKind]) -> Tuple[str, ...]:
-    return tuple(reg)
-
-
-def required(reg: Mapping[str, OpKind]) -> Dict[str, Tuple[str, ...]]:
-    return {name: k.required for name, k in reg.items()}
-
-
-def nouns(reg: Mapping[str, OpKind]) -> Dict[str, Tuple[str, str]]:
-    return {name: k.noun for name, k in reg.items()}
-
-
 def shaped(reg: Mapping[str, OpKind], *shapes: str) -> Tuple[str, ...]:
     """Every kind tagged with one of ``shapes``."""
     return tuple(name for name, k in reg.items() if k.shape in shapes)
-
-
-def staged(reg: Mapping[str, OpKind], *stages: str) -> Tuple[str, ...]:
-    return tuple(name for name, k in reg.items() if k.stage in stages)
 
 
 def token_keys(reg: Mapping[str, OpKind]) -> Dict[str, Tuple[str, ...]]:

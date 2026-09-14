@@ -27,12 +27,8 @@ def test_a_name_declared_twice_is_refused_at_import():
 
 def test_every_table_is_the_registry_read_a_different_way():
     reg = _reg()
-    assert ok.names(reg) == ('set_value', 'drop_it', 'scope_it')
-    assert ok.required(reg) == {'set_value': ('id',), 'drop_it': ('id',), 'scope_it': ()}
-    assert ok.nouns(reg)['drop_it'] == ('removal', 'removals')
     assert ok.shaped(reg, 'reshape') == ('drop_it',)
     assert ok.shaped(reg, ok.SCOPE) == ('scope_it',)
-    assert ok.staged(reg, ok.BATCH) == ('set_value', 'drop_it')
     assert ok.token_keys(reg) == {'set_value': ('id',)}
     spec = ok.compact_spec(reg, label=lambda first, members: 'grouped')
     assert spec == {'set_value': {'each': ('id', 'value'), 'label': spec['set_value']['label']}}
