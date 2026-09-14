@@ -542,6 +542,18 @@
                                     "where" [["span" "?s" {"layer" "p" "value" {"var" "?v"}}]
                                              ["=" "?v" "NOUN"]]})))))
 
+(deftest a-where-that-binds-nothing-is-a-400
+  (testing "an aggregate over a :where of only :not has nothing to select from"
+    (is (= 400 (code-of #(ast/expand {"where" [["not" ["span" "?s" {"layer" "p"}]]]
+                                      "return" {"group" [] "aggregates" [["count"]]}})))))
+  (testing "so does one of only predicate clauses"
+    (is (= 400 (code-of #(ast/expand {"where" [["=" 1 1]]
+                                      "return" {"group" [] "aggregates" [["count"]]}})))))
+  (testing "a :find query keeps its more specific message"
+    (let [e (try (ast/parse+validate {"find" ["?s"] "where" [["not" ["span" "?s" {"layer" "p"}]]]})
+                 (catch clojure.lang.ExceptionInfo ex ex))]
+      (is (re-find #"never positively bound" (ex-message e))))))
+
 (deftest field-paths-review-fixes
   (testing "group by a field path is allowed (mirrors aggregate sources)"
     (is (some? (ast/expand {"where" [["token" "?t" {"layer" "w"}]]

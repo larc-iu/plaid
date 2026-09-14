@@ -1148,6 +1148,14 @@
       (err! :validate (str "Var(s) " (vec find-unbound) " in :find are never positively bound "
                            "(a var that appears only inside :not is not bound)")
             {:vars (vec find-unbound)}))
+    ;; A :where made only of :not (or only of predicates) binds nothing
+    ;; positively, so there is no table to select from and the compiler emits
+    ;; SELECT DISTINCT <nothing> FROM <nothing>. The :find check above catches
+    ;; that whenever :find is used; an aggregate :return has no :find, so check
+    ;; the shape itself and keep the 500 off this path.
+    (when (empty? positive)
+      (err! :validate (str ":where binds nothing: it needs at least one positive entity or layer clause "
+                           "(a :where of only :not or predicate clauses has nothing to match)")))
     ;; scalar vars are join/predicate helpers; they bind a value, not an entity,
     ;; so they cannot be returned (v0).
     (doseq [v (:find ast)]
