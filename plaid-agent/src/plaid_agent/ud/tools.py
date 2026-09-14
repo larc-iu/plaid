@@ -19,8 +19,8 @@ from ..core.limits import (MAX_RESULT_CHARS, MAX_SCOPE_DOCS, MAX_SENTENCES_PER_R
                           READ_LIMITS)
 from ..core.workspace import BaseWorkspace
 from ..core.tools import ToolError, server_refused, truncate
-from .plan import (COMPACT, KIND,  # noqa: F401 - COMPACT is re-exported for the tests
-                   RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT, docs_of_op, scope_clears)
+from .plan import (KIND, RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT, docs_of_op,
+                   scope_clears)
 from .project import (Sentence, Token, UdDoc, UdProject, Word, load_document, render_document,
                       resolve, word_ref)
 from .review import (REVIEW_FIELDS, all_words, confirm_targets, counts_phrase, discard_targets,
@@ -163,7 +163,7 @@ class Workspace(BaseWorkspace):
         # A snapshot: the payload must not alias the live list, since it is
         # what the user approves later. Large groups of like ops are stored
         # as one (the summary still counts what they stand for).
-        ops = compact_ops(copy.deepcopy(self.ops), COMPACT)
+        ops = compact_ops(copy.deepcopy(self.ops), compact_spec(self))
         return {'id': uuid.uuid4().hex, 'summary': summarize(self.ops),
                 'labels': [op['label'] for op in ops], 'ops': ops,
                 'changes': describe_changes(self, ops),
@@ -191,10 +191,20 @@ class Workspace(BaseWorkspace):
 
 
 def op_target(op: Dict[str, Any]):
-    """What an op writes, for deduping within one turn. Each kind declares its
-    own; an op that can supersede nothing (a comment, a structural change) has
-    none."""
+    """What an op writes to, for last-wins replacement within one plan. Each
+    kind declares its own; a kind that can supersede nothing has none."""
     return opkind.target_of(KIND, op)
+
+
+def compact_spec(ws: 'Workspace') -> Dict[str, Dict[str, Any]]:
+    """How like ops fold into one stored op (core.plan.compact_ops), read off
+    the registry: each kind says which of its keys vary per member, and writes
+    the line its group shows.
+
+    A function taking the workspace, as IGT's is, because that app's group
+    lines are headed by their document. Nothing here needs it, and one name
+    for the thing beats two."""
+    return opkind.compact_spec(KIND)
 
 
 # --- reads --------------------------------------------------------------------

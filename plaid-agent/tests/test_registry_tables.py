@@ -7,6 +7,7 @@ the rule to it. A kind reading its own keys (a validation of one shape, the
 card's wording for one op) is not this, and is not swept.
 """
 
+import pathlib
 import sys
 
 import pytest
@@ -142,3 +143,18 @@ def test_the_kind_tables_are_not_empty(app):
     """Without this every sweep above is green on an empty registry."""
     mod = __import__(f'plaid_agent.{app}.plan', fromlist=['KIND'])
     assert len(mod.KIND) > 10
+
+
+def test_the_compaction_spec_has_one_name_in_both_apps():
+    """UD called it COMPACT and IGT built it in `workspace.compact_spec`, and
+    the README named UD's. A reader following either name found half the
+    package."""
+    from plaid_agent.igt.workspace import compact_spec as igt_spec
+    from plaid_agent.ud.tools import compact_spec as ud_spec
+    from plaid_agent.igt.plan import KIND as IGT_KIND
+    from plaid_agent.ud.plan import KIND as UD_KIND
+    assert set(ud_spec(None)) == {n for n, k in UD_KIND.items() if k.compact_each}
+    from fixtures import FakeClient, scan_ws
+    assert set(igt_spec(scan_ws(FakeClient()))) == {n for n, k in IGT_KIND.items() if k.compact_each}
+    readme = (pathlib.Path(__file__).resolve().parent.parent / 'README.md').read_text()
+    assert 'compact_spec' in readme and '`COMPACT`' not in readme

@@ -365,7 +365,7 @@ def test_the_ud_registry_declares_what_every_table_is_read_off():
     from plaid_agent.core import opkind
     from plaid_agent.ud import plan
     from plaid_agent.ud.plan import RESHAPES_DOCUMENT, RESHAPES_TOKEN, SCOPES
-    from plaid_agent.ud.tools import COMPACT, SCOPE_KINDS
+    from plaid_agent.ud.tools import SCOPE_KINDS, compact_spec
 
     assert plan.KIND['set_head'].required == ('word_id', 'head_id', 'lemma_layer_id',
                                               'relation_layer_id', 'deprel')
@@ -377,8 +377,9 @@ def test_the_ud_registry_declares_what_every_table_is_read_off():
     # (replace_scope had to be spelled out beside SCOPE_KINDS at every site).
     assert set(SCOPE_KINDS) == set(SCOPES)
     # Every kind that folds into a stored group has a line to show for one.
-    assert set(COMPACT) == {n for n, s in plan.KIND.items() if s.compact_each}
-    for name, s in COMPACT.items():
+    spec = compact_spec(None)
+    assert set(spec) == {n for n, s in plan.KIND.items() if s.compact_each}
+    for name, s in spec.items():
         op = {'kind': name, 'field': 'lemma', 'value': 'x', 'deprel': 'nsubj', 'ref': 's1.w1'}
         assert s['label'](op, [op, op]), name
     # The plural comes off the kind's own noun, so no count says "dependencys".

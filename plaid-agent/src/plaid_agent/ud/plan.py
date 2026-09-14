@@ -8,7 +8,7 @@ and the provenance an approval writes. What is here is the ops themselves.
 noun the user reads, which pass of the executor applies it, what it writes to,
 what it deletes, whether it reshapes the document, and how like ops fold into
 one stored op. ``SCOPES``, ``RESHAPES_DOCUMENT``, ``RESHAPES_TOKEN``,
-``COMPACT``, the summary and the executor's dispatch are all read off it (see
+``compact_spec``, the summary and the executor's dispatch are all read off it (see
 :mod:`plaid_agent.core.opkind`).
 
 **Two batches, not one.** A batch op cannot refer to an id produced by an
@@ -321,8 +321,6 @@ RESHAPES_TOKEN = ok.shaped(KIND, WORD_SHAPE)
 # their whole plan. A restore is the second; a parse is only the first.
 REWRITES_DOCUMENT = ok.shaped(KIND, DOCUMENT_SHAPE)
 EXCLUSIVE_KINDS = ok.shaped(KIND, ok.EXCLUSIVE)
-# How the like ops of one plan fold into one stored op (core.plan.compact_ops).
-COMPACT = ok.compact_spec(KIND)
 
 
 def docs_of_op(op: Dict[str, Any]) -> set:
