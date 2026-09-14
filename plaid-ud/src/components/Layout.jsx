@@ -7,7 +7,7 @@ import { AssistantChrome } from '@ui/components/assistant/AssistantChrome.jsx';
 import { AssistantSubjectProvider } from '@ui/components/assistant/AssistantSubject.jsx';
 import { useAssistantScope } from '@ui/components/assistant/subject.js';
 import { UD_ASSISTANT } from './assistant/adapter.js';
-import { adminUrl } from '../domain/siblingApps.js';
+import { adminUrl } from '@ui/domain/siblingApps.js';
 
 // The shell, and the one place the assistant panel is mounted.
 //

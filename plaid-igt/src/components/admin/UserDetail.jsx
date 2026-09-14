@@ -9,6 +9,7 @@ import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { AuditFeed } from '@ui/components/shared/AuditFeed';
+import { textIncludes } from '@ui/domain/collation.js';
 
 // One account: what they can reach, what they have been doing, and what is
 // holding a session open in their name.
@@ -152,7 +153,7 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
             defaultSort={{ key: 'name', dir: 'asc' }}
             search={{
               placeholder: 'Search projects…',
-              match: (p, q) => p.name.toLowerCase().includes(q),
+              match: (p, q) => textIncludes(p.name, q),
             }}
             noun="project"
             empty="No project roles."

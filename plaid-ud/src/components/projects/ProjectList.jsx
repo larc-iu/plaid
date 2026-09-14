@@ -15,6 +15,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@ui/components/ui/tooltip';
+import { textIncludes } from '@ui/domain/collation.js';
 
 export const ProjectList = () => {
   useDocumentTitle('Projects');
@@ -237,7 +238,7 @@ export const ProjectList = () => {
             defaultSort={{ key: 'updated', dir: 'desc' }}
             search={{
               placeholder: 'Search projects…',
-              match: (p, q) => (p.name || '').toLowerCase().includes(q),
+              match: (p, q) => textIncludes(p.name || '', q),
             }}
             noun="project"
           />

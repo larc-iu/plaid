@@ -7,6 +7,7 @@ import { DataTable } from '@ui/components/shared/data-table';
 import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
+import { textIncludes } from '@ui/domain/collation.js';
 
 // Services register per project, so "is the analyze service up" can only be
 // answered one project at a time. This asks every project at once.
@@ -193,10 +194,10 @@ export const AdminServices = ({ client }) => {
       search={{
         placeholder: 'Search services…',
         match: (r, q) =>
-          r.serviceName.toLowerCase().includes(q) ||
-          r.serviceId.toLowerCase().includes(q) ||
-          r.tasks.join(' ').toLowerCase().includes(q) ||
-          r.entries.some((e) => e.project.name.toLowerCase().includes(q)),
+          textIncludes(r.serviceName, q) ||
+          textIncludes(r.serviceId, q) ||
+          textIncludes(r.tasks.join(' '), q) ||
+          r.entries.some((e) => textIncludes(e.project.name, q)),
       }}
       noun="service"
       empty="No project has seen a service."

@@ -17,6 +17,7 @@ import {
   rowsToConfig,
   validateCode,
 } from '@/domain/composeConfig';
+import { textIncludes } from '@ui/domain/collation.js';
 
 const ORIGIN_LABEL = {
   changed: 'Changed',
@@ -67,9 +68,9 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
     if (!needle) return draft;
     return draft.filter(
       (r) =>
-        r.code.toLowerCase().includes(needle) ||
+        textIncludes(r.code, needle) ||
         r.char === q.trim() ||
-        (r.description || '').toLowerCase().includes(needle),
+        textIncludes(r.description || '', needle),
     );
   }, [draft, q]);
 

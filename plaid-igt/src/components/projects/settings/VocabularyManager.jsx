@@ -22,6 +22,7 @@ import {
 } from '@ui/components/ui/dialog';
 import { cn } from '@ui/lib/utils';
 import { notifyError } from '@/utils/feedback';
+import { textIncludes } from '@ui/domain/collation.js';
 
 export const VocabularyManager = ({
   initialData,
@@ -230,7 +231,7 @@ export const VocabularyManager = ({
   // wizard's Next button below all of it. Picking a colleague's lexicon out of
   // that was not realistically possible.
   const q = query.trim().toLowerCase();
-  const shown = q ? tableData.filter((v) => (v.name || '').toLowerCase().includes(q)) : tableData;
+  const shown = q ? tableData.filter((v) => textIncludes(v.name || '', q)) : tableData;
   const paged = usePagedList(shown, { resetKey: q });
 
   // Don't render until initialized

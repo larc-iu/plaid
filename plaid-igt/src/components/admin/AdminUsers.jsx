@@ -15,6 +15,7 @@ import { notifyError } from '@/utils/feedback';
 import { useUserAdmin } from './useUserAdmin';
 import { UserAdminDialogs } from './userAdmin';
 import { UserDetail } from './UserDetail';
+import { textIncludes } from '@ui/domain/collation.js';
 
 // The whole account directory. The project Access tab resolves one project's
 // members; this browses everyone, and opens onto what one person has been
@@ -150,8 +151,7 @@ export const AdminUsers = ({ client, currentUser }) => {
         defaultSort={{ key: 'name', dir: 'asc' }}
         search={{
           placeholder: 'Search accounts…',
-          match: (u, q) =>
-            u.id.toLowerCase().includes(q) || (u.displayName || '').toLowerCase().includes(q),
+          match: (u, q) => textIncludes(u.id, q) || textIncludes(u.displayName || '', q),
         }}
         noun="account"
         empty="No accounts."

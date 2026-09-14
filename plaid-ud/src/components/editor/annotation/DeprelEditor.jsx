@@ -3,6 +3,7 @@ import { Combobox } from '@ui/components/shared/combobox';
 import { readFieldProbs, groupSuggestions, probLabel } from '../../../utils/provenanceUi.js';
 import { notifyWarning } from '../../../utils/notify.js';
 import { useEditorSession, controlledField } from './editorSession.js';
+import { textIncludes } from '@ui/domain/collation.js';
 
 // Inline editor for a dependency-relation label, rendered inside the tree's
 // SVG <foreignObject>. Mirrors the grid's vocab cells: a Combobox seeded with
@@ -114,9 +115,7 @@ export function DeprelEditor({ relation, onCommit, onCancel, onDelete, onTab }) 
   const filterSort = (items, q) =>
     !q
       ? items
-      : items
-          .filter((o) => o.label.toLowerCase().includes(q))
-          .sort((a, b) => rankCmp(a.label, b.label, q));
+      : items.filter((o) => textIncludes(o.label, q)).sort((a, b) => rankCmp(a.label, b.label, q));
 
   // Group-aware filter: the data may be flat or grouped. Keeps the literal item
   // (if present) out of filtering and pins it last; everything else is

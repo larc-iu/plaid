@@ -11,6 +11,7 @@ import { AssistantMarkdown } from '@ui/components/assistant/AssistantMarkdown.js
 import { conversationToMarkdown } from '@ui/components/assistant/exportMarkdown.js';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 import { PLAIN_CITATIONS } from '@ui/components/assistant/plainCitations.js';
+import { textIncludes } from '@ui/domain/collation.js';
 
 // Every assistant conversation on the instance. A conversation is private to
 // the person who had it — it never appears in anyone else's sidebar — and an
@@ -293,10 +294,10 @@ export const AdminAssistant = ({ client }) => {
       search={{
         placeholder: 'Search conversations…',
         match: (r, q) =>
-          r.title.toLowerCase().includes(q) ||
-          r.userName.toLowerCase().includes(q) ||
-          r.userId.toLowerCase().includes(q) ||
-          r.projectName.toLowerCase().includes(q),
+          textIncludes(r.title, q) ||
+          textIncludes(r.userName, q) ||
+          textIncludes(r.userId, q) ||
+          textIncludes(r.projectName, q),
       }}
       noun="conversation"
       empty="No conversations."

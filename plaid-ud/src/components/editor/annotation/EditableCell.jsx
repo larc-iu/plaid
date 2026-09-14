@@ -10,6 +10,7 @@ import {
 } from '../../../utils/provenanceUi.js';
 import { NO_OPTIONS, tabTooSoon } from './cellInput.js';
 import { useEditorSession, controlledField } from './editorSession.js';
+import { textIncludes } from '@ui/domain/collation.js';
 
 // Editable cell component for annotation fields
 export const EditableCell = React.memo(
@@ -345,13 +346,13 @@ export const EditableCell = React.memo(
     // the time, but Alt+Down gives it one to show.
     if (!isReadOnly && (precedent || (suggestions && suggestions.length))) {
       // Group-aware pristine filter: the data may be flat or grouped.
-      const filterItems = (items, q) => items.filter((o) => o.label.toLowerCase().includes(q));
+      const filterItems = (items, q) => items.filter((o) => textIncludes(o.label, q));
       const optionsFilter = ({ options, search }) => {
         if (precedent || pristine) return options;
         const q = search.toLowerCase().trim();
         return options
           .map((o) => ('group' in o ? { ...o, items: filterItems(o.items, q) } : o))
-          .filter((o) => ('group' in o ? o.items.length > 0 : o.label.toLowerCase().includes(q)));
+          .filter((o) => ('group' in o ? o.items.length > 0 : textIncludes(o.label, q)));
       };
       // Commit the picked tag and leave, from a click or from Enter. The value
       // goes through the ref-backed setter so the blur this triggers reads the

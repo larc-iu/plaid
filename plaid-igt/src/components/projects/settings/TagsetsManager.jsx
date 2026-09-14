@@ -21,6 +21,7 @@ import {
   unreachableValues,
   seedCandidates,
 } from '@/domain/tagsets';
+import { textIncludes } from '@ui/domain/collation.js';
 
 // The editor for a project's tagsets. Owns a draft of the whole map and hands
 // the whole map back on every discrete change (add/delete/toggle) or on blur
@@ -444,7 +445,7 @@ export const TagsetsManager = ({
                         .filter(
                           ({ rec }) =>
                             !q ||
-                            rec.value.toLowerCase().includes(q) ||
+                            textIncludes(rec.value, q) ||
                             String(rec.description ?? '')
                               .toLowerCase()
                               .includes(q),

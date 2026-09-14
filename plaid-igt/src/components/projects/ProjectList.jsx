@@ -15,6 +15,7 @@ import { notifyWarning } from '@/utils/feedback';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
+import { textIncludes } from '@ui/domain/collation.js';
 
 export const ProjectList = () => {
   useDocumentTitle('Projects');
@@ -226,7 +227,7 @@ export const ProjectList = () => {
             defaultSort={{ key: 'updated', dir: 'desc' }}
             search={{
               placeholder: 'Search projects…',
-              match: (p, q) => (p.name || '').toLowerCase().includes(q),
+              match: (p, q) => textIncludes(p.name || '', q),
             }}
             noun="project"
           />

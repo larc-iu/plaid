@@ -25,6 +25,7 @@ import { readVocabFields } from '@/domain/igtConfig';
 import { planMerge, applyMerge } from './bulkRunner.js';
 import { plural, useRun } from './bulkShared.js';
 import { ApplyBar, Checkbox, Progress } from './parts.jsx';
+import { textIncludes } from '@ui/domain/collation.js';
 
 // Merge entries: fold one lexicon entry into another, relinking its uses.
 // Provenance keys are bookkeeping rather than content. The structural keys
@@ -137,7 +138,7 @@ export const MergePanel = ({ project, client }) => {
   const shown = useMemo(() => {
     if (!items) return [];
     const q = filter.trim().toLowerCase();
-    const list = q ? items.filter((it) => (it.form || '').toLowerCase().includes(q)) : items;
+    const list = q ? items.filter((it) => textIncludes(it.form || '', q)) : items;
     return [...list].sort((a, b) => (a.form || '').localeCompare(b.form || '')).slice(0, 200);
   }, [items, filter]);
   const pick = (id, on) => {

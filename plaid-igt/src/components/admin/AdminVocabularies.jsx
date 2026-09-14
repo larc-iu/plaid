@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Badge } from '@ui/components/ui/badge';
 import { DataTable } from '@ui/components/shared/data-table';
 import { notifyError } from '@/utils/feedback';
+import { textIncludes } from '@ui/domain/collation.js';
 
 // Vocabularies are shared across projects, so which projects use one is
 // invisible from inside any of them. This is the join, plus the vocabularies
@@ -96,7 +97,7 @@ export const AdminVocabularies = ({ client }) => {
       defaultSort={{ key: 'name', dir: 'asc' }}
       search={{
         placeholder: 'Search vocabularies…',
-        match: (v, q) => (v.name || '').toLowerCase().includes(q),
+        match: (v, q) => textIncludes(v.name || '', q),
       }}
       noun="vocabulary"
       empty="No vocabularies."

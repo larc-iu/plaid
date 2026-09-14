@@ -25,6 +25,7 @@ import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { inviteLinkFor } from '@/utils/inviteLink';
+import { textIncludes } from '@ui/domain/collation.js';
 
 // Every invite on the server, whoever minted it. A project's own tab shows
 // that project's links; this is the one place an admin can see an admin grant
@@ -267,9 +268,9 @@ export const AdminInvites = ({ client }) => {
         search={{
           placeholder: 'Search invites\u2026',
           match: (i, q) =>
-            (i.note || '').toLowerCase().includes(q) ||
-            (i.createdBy || '').toLowerCase().includes(q) ||
-            projectName(i.projectId).toLowerCase().includes(q),
+            textIncludes(i.note || '', q) ||
+            textIncludes(i.createdBy || '', q) ||
+            textIncludes(projectName(i.projectId), q),
         }}
         noun="invite"
         empty="No invites."

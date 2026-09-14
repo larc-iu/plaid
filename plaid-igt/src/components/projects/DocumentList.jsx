@@ -23,6 +23,7 @@ import {
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { findBaselineTextLayer } from '@/domain/igtConfig';
 import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
+import { textIncludes } from '@ui/domain/collation.js';
 
 export const DocumentList = ({
   documents,
@@ -299,7 +300,7 @@ export const DocumentList = ({
           defaultSort={{ key: 'updated', dir: 'desc' }}
           search={{
             placeholder: 'Search documents…',
-            match: (d, q) => (d.name || '').toLowerCase().includes(q),
+            match: (d, q) => textIncludes(d.name || '', q),
           }}
           noun="document"
           empty="No documents yet."

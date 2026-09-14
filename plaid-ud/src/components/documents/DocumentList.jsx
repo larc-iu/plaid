@@ -17,6 +17,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@ui/components/ui/tooltip';
+import { textIncludes } from '@ui/domain/collation.js';
 
 const Spinner = () => (
   <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-muted border-t-primary align-middle" />
@@ -357,7 +358,7 @@ export const DocumentList = () => {
             defaultSort={{ key: 'name', dir: 'asc' }}
             search={{
               placeholder: 'Search documents…',
-              match: (d, q) => (d.name || '').toLowerCase().includes(q),
+              match: (d, q) => textIncludes(d.name || '', q),
             }}
             noun="document"
             empty="No documents yet."

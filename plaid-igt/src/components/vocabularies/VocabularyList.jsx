@@ -15,6 +15,7 @@ import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { notifyWarning, isPermissionError } from '@/utils/feedback';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { PARENT_KEY } from '@/domain/vocabDictionary';
+import { textIncludes } from '@ui/domain/collation.js';
 
 export const VocabularyList = () => {
   useDocumentTitle('Vocabularies');
@@ -229,7 +230,7 @@ export const VocabularyList = () => {
             defaultSort={{ key: 'name', dir: 'asc' }}
             search={{
               placeholder: 'Search vocabularies…',
-              match: (v, q) => (v.name || '').toLowerCase().includes(q),
+              match: (v, q) => textIncludes(v.name || '', q),
             }}
             noun="vocabulary"
           />
