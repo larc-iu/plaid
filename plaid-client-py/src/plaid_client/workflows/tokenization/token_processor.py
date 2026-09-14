@@ -34,6 +34,7 @@ class TokenProcessor:
     
     def process_tokens(self, client, document_id: str, sentences: List[TokenSpan], words: List[TokenSpan],
                       primary_token_layer_id: str, sentence_layer_id: Optional[str], response_helper,
+                      *, text_layer_id: str,
                       prov_source: Optional[str] = None, overwrite: bool = False) -> Dict[str, int]:
         """Hold the document lock for the whole tokenization rewrite, then
         delegate to :meth:`_process_tokens_locked`.
@@ -53,10 +54,11 @@ class TokenProcessor:
             return self._process_tokens_locked(
                 client, document_id, sentences, words,
                 primary_token_layer_id, sentence_layer_id, response_helper,
-                prov_source=prov_source, overwrite=overwrite)
+                text_layer_id=text_layer_id, prov_source=prov_source, overwrite=overwrite)
 
     def _process_tokens_locked(self, client, document_id: str, sentences: List[TokenSpan], words: List[TokenSpan],
                       primary_token_layer_id: str, sentence_layer_id: Optional[str], response_helper,
+                      *, text_layer_id: str,
                       prov_source: Optional[str] = None, overwrite: bool = False) -> Dict[str, int]:
         """
         Process tokenization results and update the Plaid document.
@@ -69,6 +71,10 @@ class TokenProcessor:
             primary_token_layer_id: ID of primary token layer for words
             sentence_layer_id: Optional ID of sentence token layer
             response_helper: Helper for progress updates
+            text_layer_id: ID of the text layer the tokens were read from. Named
+                rather than taken positionally: a project may hold more than one
+                text layer, and tokenizing the first one while the caller read
+                another writes tokens whose offsets index the wrong string.
             prov_source: Optional provenance producer id (e.g.
                 ``service_source('<service-id>')``). When set, created tokens
                 are stamped machine-made per the provenance convention.
@@ -88,7 +94,10 @@ class TokenProcessor:
         full_document = client.documents.get(document_id, include_body=True)
         
         # Find the text layer and content
-        text_layer = full_document["text_layers"][0]
+        text_layer = next((tl for tl in full_document.get("text_layers", [])
+                           if tl.get("id") == text_layer_id), None)
+        if not text_layer or not (text_layer.get("text") or {}).get("id"):
+            raise ValueError("This document has no text to tokenize.")
         text_id = text_layer["text"]["id"]
         text_content = text_layer["text"]["body"]
         
@@ -183,21 +192,24 @@ class TokenProcessor:
         split_existing_tokens = []
 
         if split_boundaries:
-            existing_tokens_split = self._split_cross_sentence_tokens(
-                [{'begin': t['begin'], 'end': t['end'], 'id': t.get('id')} for t in existing_tokens],
-                split_boundaries
-            )
-
-            # Find tokens that were actually split
+            # Split each existing token on its own and ask THAT token whether it
+            # came apart. Splitting them all together and then matching pieces
+            # back by containment claimed a token was split whenever another
+            # token's pieces happened to fall inside it, so a word that merely
+            # overlapped a split neighbour was deleted — cascading away its
+            # spans and vocab links — and replaced by a piece of its neighbour.
             for orig_token in existing_tokens:
-                matching_split_tokens = [t for t in existing_tokens_split
-                                       if t['begin'] >= orig_token['begin'] and t['end'] <= orig_token['end']]
-
-                if len(matching_split_tokens) > 1:  # Token was split
+                pieces = self._split_cross_sentence_tokens(
+                    [{'begin': orig_token['begin'], 'end': orig_token['end']}],
+                    split_boundaries
+                )
+                if len(pieces) > 1:
                     tokens_to_delete.append(orig_token['id'])
-                    split_existing_tokens.extend([{'begin': t['begin'], 'end': t['end']} for t in matching_split_tokens])
-                elif len(matching_split_tokens) == 1:  # Token unchanged
-                    split_existing_tokens.append({'begin': orig_token['begin'], 'end': orig_token['end']})
+                    split_existing_tokens.extend(
+                        [{'begin': t['begin'], 'end': t['end']} for t in pieces])
+                else:
+                    split_existing_tokens.append(
+                        {'begin': orig_token['begin'], 'end': orig_token['end']})
         else:
             split_existing_tokens = [{'begin': t['begin'], 'end': t['end']} for t in existing_tokens]
 
@@ -261,12 +273,16 @@ class TokenProcessor:
                 # IMPORTANT: when sentences are being reset, the bulk_delete above already
                 # cascade-deletes every word token nested in the deleted sentence partition
                 # (the single existing sentence covers [0, text_length), which contains
-                # every word). Issuing individual deletes for those same token IDs would
-                # 404 (>= 300 -> batch rollback). Only run the per-word delete loop in
-                # the word-only retokenization path.
-                if not should_do_sentences:
-                    for token_id in tokens_to_delete:
-                        client.tokens.delete(token_id)
+                # every word). Deleting those same token IDs again is work for
+                # nothing. Only delete words in the word-only retokenization path.
+                if not should_do_sentences and tokens_to_delete:
+                    # ONE op, whatever the document's size: a batch is capped
+                    # at 1000 sub-ops and holds the single write lock for as
+                    # long as it runs, so nothing in it may scale with the
+                    # document. bulk_delete also tolerates an id that is
+                    # already gone, where a single delete 404s and takes the
+                    # whole batch down with it.
+                    client.tokens.bulk_delete(tokens_to_delete)
 
                 # Provenance: stamp everything this (machine) run creates.
                 prov_fragment = stamp_inferred(prov_source) if prov_source else None

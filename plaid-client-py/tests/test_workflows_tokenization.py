@@ -127,7 +127,8 @@ def test_a_refused_run_raises_instead_of_reporting_over_its_caller():
         TokenProcessor().process_tokens(
             client, 'd1', _spans('Hello there.'),
             [TokenSpan(text='Hello', start=0, end=5)],
-            'word-layer', 'sentence-layer', helper)
+            'word-layer', 'sentence-layer', helper,
+            text_layer_id='text-layer')
     assert 'human-made or human-verified' in str(caught.value)
     assert helper.errors == [] and helper.done == []
     # Nothing was written, and the lock it took was given back.
@@ -144,7 +145,8 @@ def test_a_machine_annotation_is_not_in_the_way():
     counts = TokenProcessor().process_tokens(
         client, 'd1', _spans('Hello there.'),
         [TokenSpan(text='Hello', start=0, end=5)],
-        'word-layer', 'sentence-layer', _Helper())
+        'word-layer', 'sentence-layer', _Helper(),
+        text_layer_id='text-layer')
     assert counts['sentences_created'] == 1
 
 
@@ -152,7 +154,8 @@ def test_an_empty_document_is_refused_in_words_not_in_zeroes():
     client = _FakeClient(_document('   ', sentences=[], words=[]))
     with pytest.raises(ValueError) as caught:
         TokenProcessor().process_tokens(client, 'd1', [], [], 'word-layer',
-                                        'sentence-layer', _Helper())
+                                        'sentence-layer', _Helper(),
+                                        text_layer_id='text-layer')
     assert 'no text' in str(caught.value)
 
 
@@ -161,4 +164,28 @@ def test_a_missing_word_layer_is_refused():
     with pytest.raises(ValueError):
         TokenProcessor().process_tokens(client, 'd1', _spans('Hello.'),
                                         [TokenSpan(text='Hello', start=0, end=5)],
-                                        'no-such-layer', 'sentence-layer', _Helper())
+                                        'no-such-layer', 'sentence-layer', _Helper(),
+                                        text_layer_id='text-layer')
+
+
+def test_split_tokens_are_deleted_in_one_op_however_many_there_are():
+    # Two existing sentences, so the partition is left alone and the words that
+    # straddle the boundary are deleted individually. One op per token put an
+    # unbounded number of sub-ops in a single batch (the server caps it at
+    # 1000) and made the whole batch fail on any id that had already gone.
+    body = 'ab cd ef gh'
+    crossing = [(0, 5), (3, 8), (6, 11)]
+    doc = _document(body, sentences=[(0, 6), (6, 11)], words=crossing)
+    client = _FakeClient(doc)
+    TokenProcessor().process_tokens(
+        client, 'd1', _spans(body),
+        [TokenSpan(text='ab', start=0, end=2)],
+        'word-layer', 'sentence-layer', _Helper(),
+        text_layer_id='text-layer')
+    deletes = [c for c in client.calls if c[0] == 'delete']
+    bulk = [c for c in client.calls if c[0] == 'bulk_delete']
+    assert deletes == []
+    # Only the token that really straddles the boundary goes. w2 sits inside
+    # the second sentence and merely contains a piece w1 was cut into, which
+    # used to be read as "w2 was split too".
+    assert bulk == [('bulk_delete', ['w1'])]
