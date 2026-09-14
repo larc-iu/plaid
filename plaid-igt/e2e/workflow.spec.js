@@ -197,7 +197,10 @@ test('C3-01/02: appending needs no confirm and extends the sentence; a mid-text 
 test('C2-02: rename and delete from the Metadata tab', async ({ page }) => {
   await openTab(page, 'metadata');
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
-  const name = page.getByRole('textbox').first();
+  // By its placeholder, not the first textbox on the tab: the metadata tab also
+  // draws a box per configured field, and which one comes first in the DOM is
+  // the project's configuration rather than this test's business.
+  const name = page.getByPlaceholder('Enter document name');
   await name.fill('Renamed workflow doc');
   await page.getByRole('button', { name: /^Save/ }).click();
   await page.waitForLoadState('networkidle');
