@@ -61,9 +61,7 @@ most of a plan.
 documents. A parse REWRITES a document from scratch, so it cannot share a plan with any other change to the \
 same document, and it is never the way to fix particular words. Propose it only when a document should be \
 parsed afresh, and say what overwrite will and will not touch.
-- Do NOT read a document to answer something search, frequency_list, worklist or check_consistency can \
-answer: those ask the whole project at once, and reading documents one by one to count something will run \
-out of tool calls long before it runs out of corpus.
+{read_budget}
 {be_concise}
 {cite_evidence}
 - SAY HOW AN EXAMPLE SHOULD BE DRAWN, with view= on the tag. An example is drawn either as a dependency \
@@ -94,6 +92,7 @@ SYSTEM = shared.filled(_SYSTEM, {
     'stage_now': shared.stage_now(),
     'one_turn': shared.one_turn(),
     'final_message': shared.final_message('words'),
+    'read_budget': shared.read_budget('search, frequency_list, worklist or check_consistency'),
     'be_concise': shared.be_concise(),
     'cite_evidence': shared.cite_evidence(
         refs=_CITE_REFS, shown_as='sentence', never_paste='CoNLL-U rows', example=_CITE_EXAMPLE),

@@ -44,7 +44,12 @@ are the only way to modify data. When the user's request is ambiguous about what
 STAGE_NOW = '''- Once the request is clear, STAGE the changes with the plan tools in the same turn. Never ask \
 the user to confirm in chat before staging: the staged plan is what they confirm, with Approve and Discard on \
 the plan card. A reply that lists intended changes without having staged them leaves the user nothing to \
-approve.{more}'''
+approve. Promising one for "a separate step" or "next" is the same thing, and worse when you are undoing your \
+own mistake: there is no later turn of your own to do it in, so stage it now.'''
+
+READ_BUDGET = '''- Do NOT read a document to answer something {tools} can answer: those ask the whole project \
+at once, and reading documents one by one to count something will run out of tool calls long before it runs \
+out of corpus.'''
 
 ONE_TURN = '''- A plan lives for ONE turn. The staging tools start empty on every message, so a plan you built \
 in an earlier message is not yours to add to and not yours to describe: it is already on screen as its own \
@@ -132,10 +137,16 @@ def find_first(subject: str) -> str:
     return FIND_FIRST.replace('{subject}', subject)
 
 
-def stage_now(more: str = '') -> str:
+def stage_now() -> str:
     """Stage the changes in the turn that decided on them, rather than
-    promising them. ``more`` is anything an app has learned to add."""
-    return STAGE_NOW.replace('{more}', f' {more}' if more else '')
+    promising them for a later turn there will not be one of."""
+    return STAGE_NOW
+
+
+def read_budget(tools: str) -> str:
+    """Ask the whole project rather than reading it document by document.
+    ``tools`` are the app's own reads that answer over the corpus."""
+    return READ_BUDGET.replace('{tools}', tools)
 
 
 def one_turn() -> str:

@@ -21,8 +21,8 @@ from plaid_agent.ud import prompt as ud_prompt  # noqa: E402
 # Every paragraph `core.prompt` owns, as the template it keeps, so a hole an
 # app fills is not compared and everything around it is.
 SHARED = [shared.PLAN_CONTRACT, shared.PROJECT_SHAPE, shared.HOW_TO_WORK, shared.FIND_FIRST,
-          shared.STAGE_NOW, shared.ONE_TURN, shared.FINAL_MESSAGE, shared.BE_CONCISE,
-          shared.CITE_EVIDENCE]
+          shared.STAGE_NOW, shared.ONE_TURN, shared.FINAL_MESSAGE, shared.READ_BUDGET,
+          shared.BE_CONCISE, shared.CITE_EVIDENCE]
 
 
 def _fragments(template: str):

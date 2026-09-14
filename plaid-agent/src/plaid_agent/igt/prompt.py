@@ -66,14 +66,12 @@ split_word, merge_words, delete_word, split_sentence, merge_sentences change the
 split or merge deletes the affected morpheme analyses); append_text adds sentences to a document and \
 retype_sentence fixes a sentence's transcript (respell for one word's spelling). When \
 none of these can express a question, read query_help and write a query.
+{read_budget}
 {be_concise}
 {cite_evidence}
 '''
 
 # The IGT halves of the paragraphs every app says.
-_STAGE_NOW_TOO = '''Promising one for "a separate step" or "next" is the same thing, and worse when you are \
-undoing your own mistake: there is no later turn of your own to do it in, so stage it now.'''
-
 _CITE_REFS = '''<cite doc="Text 1" ref="s3"/> for a sentence, ref="s3.w2" for a word, ref="s3.w2.m1" for a \
 morpheme, and a comma-separated list for several items in one sentence, ref="s3.w2,w5" or ref="s3.w2.m1,m3" \
 (each item may leave off what it shares with the one before it).'''
@@ -88,9 +86,10 @@ SYSTEM = shared.filled(_SYSTEM, {
     'project_shape': shared.project_shape(),
     'how_to_work': shared.how_to_work(),
     'find_first': shared.find_first('item (worklist, search, frequency_list)'),
-    'stage_now': shared.stage_now(_STAGE_NOW_TOO),
+    'stage_now': shared.stage_now(),
     'one_turn': shared.one_turn(),
     'final_message': shared.final_message('items'),
+    'read_budget': shared.read_budget('search, concordance, frequency_list, worklist or check_consistency'),
     'be_concise': shared.be_concise(),
     'cite_evidence': shared.cite_evidence(
         refs=_CITE_REFS, aside=_CITE_ASIDE, shown_as='full interlinear example',
