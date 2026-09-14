@@ -6,8 +6,8 @@
   "description": "The screens and primitives plaid-igt, plaid-ud and plaid-dict share.",
   "scripts": {
     "lint": "eslint . --max-warnings 0",
-    "format": "prettier --write \"src/**/*.{js,mjs,jsx,css}\"",
-    "format:check": "prettier --check \"src/**/*.{js,mjs,jsx,css}\""
+    "format": "prettier --write \"**/*.{js,mjs,jsx,css}\"",
+    "format:check": "prettier --check \"**/*.{js,mjs,jsx,css}\""
   },
   "peerDependencies": {
     "@larc-iu/plaid-client": "*",

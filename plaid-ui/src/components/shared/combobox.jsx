@@ -24,7 +24,6 @@ import { normalizeOptions, flattenOptions, defaultFilter } from './comboboxOptio
 // `filter({options, search})` receives them normalized and returns the same
 // shape, so a call site can order matches however it likes.
 
-
 export const Combobox = React.forwardRef(function Combobox(
   {
     value = '',

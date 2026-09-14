@@ -26,13 +26,6 @@ export default defineConfig({
       '@larc-iu/plaid-client': fileURLToPath(
         new URL('../plaid-client-js/src/index.js', import.meta.url),
       ),
-      // The package's tests run here because this app has what they need, and
-      // Tailwind's own resolver is one of those things: `plaidUiDeps` answers
-      // the bare imports of files under `plaid-ui/src`, and the preset's test
-      // sits beside the preset, at the package root.
-      'tailwindcss/resolveConfig.js': fileURLToPath(
-        new URL('./node_modules/tailwindcss/resolveConfig.js', import.meta.url),
-      ),
     },
   },
   test: {

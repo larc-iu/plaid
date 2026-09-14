@@ -4,6 +4,16 @@ import { fileURLToPath } from 'node:url';
 /** This package's source directory, for aliases and watchers. */
 export const PLAID_UI_SRC = fileURLToPath(new URL('./src', import.meta.url));
 
+/** The package root, for the files that sit beside `src`: the preset and its test. */
+export const PLAID_UI_ROOT = fileURLToPath(new URL('.', import.meta.url));
+
+// A file of this package, whether under `src` or at the root. The package's own
+// `node_modules` (its eslint and prettier) is not: a bare import from in there
+// belongs to that tool, not to the app.
+const ownFile = (importer) =>
+  importer.startsWith(PLAID_UI_SRC) ||
+  (importer.startsWith(PLAID_UI_ROOT) && !importer.includes('/node_modules/'));
+
 /**
  * Static files every app serves at its root: the mark the browser tab shows and
  * the bits that hang off it. Each app points `publicDir` here rather than
@@ -60,7 +70,7 @@ export const plaidUiDeps = (appRoot) => ({
   name: 'plaid-ui-deps',
   enforce: 'pre',
   async resolveId(id, importer, options) {
-    if (!importer || !importer.startsWith(PLAID_UI_SRC)) return null;
+    if (!importer || !ownFile(importer)) return null;
     if (id[0] === '.' || id[0] === '/' || id[0] === '\0') return null;
     const resolved = await this.resolve(id, path.join(appRoot, 'index.html'), {
       ...options,
