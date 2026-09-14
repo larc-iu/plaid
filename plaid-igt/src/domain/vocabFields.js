@@ -26,6 +26,10 @@
 // affixMarkers.js), `gloss` for the vocab list's Gloss column. New vocabs are
 // seeded with the full core inventory; immutable fields are also guaranteed on
 // existing vocabs (injected if missing).
+//
+// plaid-agent's vocab mirror imports this module whole and compares every
+// function it exports against the Python port, so an export with no importer
+// in this tree is not spare.
 
 import { readTagsets } from './tagsets.js';
 

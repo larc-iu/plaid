@@ -90,7 +90,7 @@ const LINGUISTIC_TYPES = [
 ];
 
 /** Default tier names for the four structural tiers. */
-export const DEFAULT_TIER_NAMES = Object.freeze({
+const DEFAULT_TIER_NAMES = Object.freeze({
   sentence: 'Sentence',
   segment: 'Segment',
   word: 'Word',

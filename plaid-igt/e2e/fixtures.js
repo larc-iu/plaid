@@ -11,11 +11,6 @@ import {
 // with plaid-ud, and what stays here is what this app supplies: Playwright
 // itself, the dev server it is pointed at, and the path to its own token.
 
-// The dev server the suite runs against, matching playwright.config.js. A spec
-// that builds absolute URLs (or trims them out of a log line) reads it here
-// rather than writing the port again.
-export const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5174';
-
 const TOKEN_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '.token');
 
 // The non-expiring API token for a@b.com.

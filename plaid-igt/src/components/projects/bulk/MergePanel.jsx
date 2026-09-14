@@ -38,7 +38,7 @@ const isBookkeepingKey = (k) => k.startsWith('prov');
 // keys, a FLEx homograph number, example sentences). Shown under a ticked row
 // so what survives and what is lost in a merge is plain to see. `nameOf`
 // names another entry of the vocabulary, for the fields that refer to one.
-export const EntryDetail = ({ item, fields, nameOf }) => {
+const EntryDetail = ({ item, fields, nameOf }) => {
   const meta = item.metadata || {};
   const known = new Set(fields.map((f) => f.name));
   const extras = Object.keys(editableMetadata(meta)).filter(

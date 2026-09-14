@@ -320,7 +320,7 @@ export function cldfLossSummary(layers, options) {
 // beside it lists per-field losses and reads, otherwise, as the whole story: a
 // round trip through CLDF came back with 1,062 vocabulary links and 1,062
 // provenance marks gone and nothing on screen had said they would be.
-export const INHERENT_LOSSES = [
+const INHERENT_LOSSES = [
   'Vocabulary links from words and morphemes to their entries',
   'Provenance marks: machine-made and confirmed values arrive looking hand-made',
   'Morpheme types, except the clitics the joints in the aligned cell still carry',

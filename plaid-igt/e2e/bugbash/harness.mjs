@@ -19,8 +19,8 @@ import { IgtDocument } from '../../src/domain/IgtDocument.js';
 import { readToken } from '../fixtures.js';
 import { File } from 'node:buffer';
 
-export const CORE_URL = process.env.PLAID_CORE_URL || 'http://localhost:8085';
-export const FIXTURE_PROJECT_NAME = 'E2E IGT Fixture';
+const CORE_URL = process.env.PLAID_CORE_URL || 'http://localhost:8085';
+const FIXTURE_PROJECT_NAME = 'E2E IGT Fixture';
 
 export function makeClient() {
   const { token } = readToken();

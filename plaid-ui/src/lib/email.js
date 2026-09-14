@@ -6,7 +6,7 @@
 // something stricter. A client check that rejects an address the server would
 // accept is worse than no check at all: it locks someone out of their own
 // signup with no way to argue.
-export const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 export const isEmail = (value) => EMAIL_PATTERN.test((value ?? '').trim());
 

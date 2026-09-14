@@ -20,6 +20,10 @@
 //
 // A field of type `item` holds a reference (or, with `many`, a list of them)
 // to another entry of the SAME vocabulary. References never cross vocabularies.
+//
+// plaid-agent's vocab mirror imports this module whole and compares every
+// function it exports against the Python port, so an export with no importer
+// in this tree is not spare.
 
 import { FIELD_SCOPES, FIELD_TYPES } from './vocabFields.js';
 

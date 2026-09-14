@@ -17,7 +17,7 @@ import {
 } from './parts.jsx';
 
 // Respell: change a word's spelling wherever it occurs, morphemes included.
-export const RespellChange = ({ row, includeMorphemes }) => {
+const RespellChange = ({ row, includeMorphemes }) => {
   const chain = row.chain ? chainText(row.chain, includeMorphemes) : null;
   return (
     <ChangeGrid

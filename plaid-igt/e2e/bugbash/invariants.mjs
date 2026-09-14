@@ -2,6 +2,10 @@
 // IgtDocument (server truth) and returns an array of violation strings (empty =
 // OK). Plus a comparison for optimistic-vs-server divergence.
 //
+// What the scripts take is `runAllInvariants` and `optimisticMatchesServer`;
+// the checks themselves are internal, and a violation carries the name of the
+// one that raised it.
+//
 // All offsets are CODE POINTS. Use the doc's layerInfo, which exposes the raw
 // token layers with begin/end/metadata intact.
 
@@ -16,7 +20,7 @@ const morphemes = (doc) => doc.layerInfo?.morphemeTokenLayer?.tokens || [];
 const overlaps = (a, b, c, d) => a < d && b > c;
 
 // Every token offset is within [0, len] and well-formed (begin < end).
-export function tokenOffsetsInBounds(doc) {
+function tokenOffsetsInBounds(doc) {
   const len = cpLength(doc.body || '');
   const v = [];
   const check = (toks, label) => {
@@ -43,7 +47,7 @@ export function tokenOffsetsInBounds(doc) {
 }
 
 // No two alignment tokens may overlap on the text axis.
-export function noOverlappingAlignments(doc) {
+function noOverlappingAlignments(doc) {
   const toks = [...align(doc)].sort((a, b) => a.begin - b.begin);
   const v = [];
   for (let i = 0; i < toks.length; i++) {
@@ -61,7 +65,7 @@ export function noOverlappingAlignments(doc) {
 // Temporal order (timeBegin) must match positional order (begin). If alignment
 // A starts earlier in time than B but later in the text, that's an inversion —
 // exactly the conflict alignment.js tries to prevent.
-export function alignmentTimeOrderMatchesText(doc) {
+function alignmentTimeOrderMatchesText(doc) {
   const toks = align(doc)
     .map((t) => ({ id: t.id, begin: t.begin, tb: t.metadata?.timeBegin ?? 0 }))
     .sort((a, b) => a.tb - b.tb);
@@ -78,7 +82,7 @@ export function alignmentTimeOrderMatchesText(doc) {
 
 // The sentence layer is :partitioning — its tokens must exactly tile [0, len)
 // with no gaps and no overlaps (when len>0).
-export function partitionCoversBody(doc) {
+function partitionCoversBody(doc) {
   const len = cpLength(doc.body || '');
   const toks = [...sentences(doc)].sort((a, b) => a.begin - b.begin);
   const v = [];
@@ -107,7 +111,7 @@ export function partitionCoversBody(doc) {
 
 // Word & morpheme tokens must fall inside some sentence (no orphan tokens
 // pointing outside the partition). Cheap structural sanity check.
-export function wordsInsidePartition(doc) {
+function wordsInsidePartition(doc) {
   const sents = sentences(doc);
   const len = cpLength(doc.body || '');
   const v = [];
@@ -120,12 +124,12 @@ export function wordsInsidePartition(doc) {
 }
 
 // Corruption sniff: U+FFFD replacement chars suggest a botched encode/slice.
-export function noReplacementChars(doc) {
+function noReplacementChars(doc) {
   const body = doc.body || '';
   return body.includes('�') ? [`body contains U+FFFD replacement char (encoding corruption?)`] : [];
 }
 
-export const ALL_INVARIANTS = {
+const ALL_INVARIANTS = {
   tokenOffsetsInBounds,
   noOverlappingAlignments,
   alignmentTimeOrderMatchesText,

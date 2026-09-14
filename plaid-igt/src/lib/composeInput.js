@@ -49,7 +49,7 @@ const escapedAtOf = (el) => {
 };
 
 /** Forget any escape state, e.g. when a field is re-seeded programmatically. */
-export const clearComposeState = (el) => {
+const clearComposeState = (el) => {
   if (el) delete el[ESCAPED];
 };
 

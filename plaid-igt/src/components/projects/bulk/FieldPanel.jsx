@@ -42,7 +42,7 @@ const tagsetForTarget = (target, layerInfo, project) => {
 
 // One field match: the word (and morpheme) it sits under as context, then the
 // field's before → after.
-export const FieldChange = ({ row, target }) => {
+const FieldChange = ({ row, target }) => {
   const lines = [];
   if (row.word != null) lines.push({ label: 'Word', cls: SCOPE_CLS.word, from: row.word });
   if (row.morpheme != null)

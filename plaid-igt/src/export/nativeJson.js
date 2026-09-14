@@ -36,7 +36,7 @@ import { normalizeVocabFields } from '../domain/vocabFields.js';
 import { discoverExportLayers } from './exportLayers.js';
 
 export const NATIVE_FORMAT_VERSION = 1;
-export const NATIVE_FORMAT_NAME = 'plaid-igt';
+const NATIVE_FORMAT_NAME = 'plaid-igt';
 
 const nonEmpty = (obj) => obj != null && Object.keys(obj).length > 0;
 
@@ -435,7 +435,7 @@ const alignmentNodes = (alignmentTokens) =>
  * caption the comment was posted with (what it is about, in words); it is
  * what a comment shows once its anchor is gone.
  */
-export function commentNodes(comments, archived = () => true) {
+function commentNodes(comments, archived = () => true) {
   return (comments || [])
     .filter((c) => c && archived(c.entityType, c.entityId))
     .map((c) => ({

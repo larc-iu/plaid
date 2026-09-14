@@ -86,7 +86,7 @@ const fieldLang = (options, scope, field) =>
 // The <item type> a field may take, per annotation scope. Shared by the writers
 // and by the <languages> census so the two cannot disagree about which fields
 // are actually exported.
-export const ITEM_TYPES_BY_SCOPE = {
+const ITEM_TYPES_BY_SCOPE = {
   sentence: ['gls', 'lit', 'note'],
   word: ['gls', 'pos'],
   morpheme: ['gls', 'msa'],

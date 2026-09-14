@@ -26,8 +26,9 @@ not clobber each other's and fail with `browserContext.close: ENOENT`.
   A spec that writes into it puts it back; `node e2e/scripts/reset-fixture.mjs`
   says whether one did not.
 - `fixtures.js`: the Playwright helpers (`test`, `expect`, `seedAuth`, `readToken`,
-  `BASE_URL`, `collectClientErrors`), most of them handed on from
-  `../../plaid-ui/e2e/appFixtures.js`. `fixtureProject.js`: the fixture project
+  `collectClientErrors`), most of them handed on from
+  `../../plaid-ui/e2e/appFixtures.js`. Every spec here navigates by relative path,
+  so the base URL stays Playwright's own. `fixtureProject.js`: the fixture project
   builder.
 - `../../plaid-ui/e2e/`: the specs plaid-igt and plaid-ud SHARE, because what
   they cover is one component in that package: `assistantChrome.js`,

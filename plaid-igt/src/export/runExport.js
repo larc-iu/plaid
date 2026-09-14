@@ -134,7 +134,7 @@ const extOfContentType = (contentType) => {
  * because the client's _request is bounded by its default 30s timeout, which
  * large media files can easily exceed. Returns { bytes, ext, mime }.
  */
-export async function fetchDocumentMedia(client, mediaUrl) {
+async function fetchDocumentMedia(client, mediaUrl) {
   const res = await fetch(`${client.baseUrl}${mediaUrl}`, {
     headers: { Authorization: `Bearer ${client.token}` },
   });
@@ -189,12 +189,12 @@ async function shapeComments(client, raw, nameCache) {
 }
 
 /** A document's comments, shaped for `serializeDocumentNative`. */
-export async function loadDocumentComments(client, projectId, documentId, nameCache) {
+async function loadDocumentComments(client, projectId, documentId, nameCache) {
   return shapeComments(client, await client.comments.list(projectId, { documentId }), nameCache);
 }
 
 /** A vocabulary's entry comments, shaped for `serializeVocabularyNative`. */
-export async function loadVocabComments(client, vocabId, nameCache) {
+async function loadVocabComments(client, vocabId, nameCache) {
   return shapeComments(client, await client.comments.listInVocab(vocabId), nameCache);
 }
 
