@@ -5,8 +5,16 @@ Provides utilities to convert various tokenizer outputs to the TokenSpan format
 used by the tokenization framework.
 """
 
-from typing import List, Tuple, Any
-from .tokenizer_model import TokenSpan
+from typing import List, Tuple
+# spans_from_tokens lives beside TokenSpan and is re-exported here, where a
+# service author looking for a converter expects to find it. It used to be a
+# second copy of the same forty lines, which is one copy to keep right.
+from .tokenizer_model import TokenSpan, spans_from_tokens
+
+__all__ = [
+    'spans_from_spacy_doc', 'spans_from_nltk_punkt', 'spans_from_transformers_tokenizer',
+    'spans_from_whitespace', 'spans_from_tokens',
+]
 
 
 def spans_from_spacy_doc(doc) -> Tuple[List[TokenSpan], List[TokenSpan]]:
@@ -207,45 +215,3 @@ def spans_from_whitespace(text: str) -> Tuple[List[TokenSpan], List[TokenSpan]]:
         ))
     
     return sentences, words
-
-
-def spans_from_tokens(text: str, tokens: List[str]) -> List[TokenSpan]:
-    """
-    Convert a list of token strings back to positioned TokenSpans.
-    
-    This is useful for tokenizers that only return strings without positions.
-    Uses simple string matching to find positions.
-    
-    Args:
-        text: Original text that was tokenized
-        tokens: List of token strings in order
-        
-    Returns:
-        List of TokenSpan objects with calculated positions
-        
-    Note:
-        This is a fallback method and may not be accurate for all tokenizers.
-        Prefer tokenizers that provide span information directly.
-    """
-    spans = []
-    current_pos = 0
-    
-    for token in tokens:
-        if not token.strip():
-            continue
-            
-        # Find the token in the remaining text
-        token_start = text.find(token, current_pos)
-        if token_start == -1:
-            # Token not found, skip it
-            continue
-            
-        token_end = token_start + len(token)
-        spans.append(TokenSpan(
-            text=token,
-            start=token_start,
-            end=token_end
-        ))
-        current_pos = token_end
-    
-    return spans

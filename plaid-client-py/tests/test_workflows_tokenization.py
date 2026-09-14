@@ -13,7 +13,9 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from plaid_client.workflows.tokenization import TokenProcessor, TokenSpan  # noqa: E402
+from plaid_client.workflows.tokenization import (  # noqa: E402
+    TokenProcessor, TokenSpan, helpers, tokenizer_model,
+)
 
 
 class _Helper:
@@ -220,3 +222,117 @@ def test_the_same_document_is_tokenized():
         'word-layer', 'sentence-layer', _Helper(),
         text_layer_id='text-layer', expect_version=58)
     assert counts['sentences_created'] == 1
+
+
+# --- the converters a service author builds on -------------------------------
+# helpers is in the package's __all__, so these are public surface. Nothing in
+# this repo calls four of them, which is exactly why they need a test: a break
+# would otherwise first be noticed by somebody writing their own service.
+
+class _SpacyToken:
+    def __init__(self, text, idx, is_space=False):
+        self.text = text
+        self.idx = idx
+        self.is_space = is_space
+        self.pos_ = 'NOUN'
+        self.lemma_ = text.lower()
+        self.is_alpha = text.isalpha()
+        self.is_punct = not text.isalnum()
+
+
+class _SpacySent:
+    def __init__(self, text, start_char, end_char):
+        self.text = text
+        self.start_char = start_char
+        self.end_char = end_char
+
+
+class _SpacyDoc:
+    def __init__(self, sents, tokens):
+        self.sents = sents
+        self._tokens = tokens
+
+    def __iter__(self):
+        return iter(self._tokens)
+
+
+def test_spans_from_spacy_doc_keeps_character_positions_and_skips_whitespace():
+    text = 'Dogs bark. Cats nap.'
+    doc = _SpacyDoc(
+        [_SpacySent('Dogs bark.', 0, 10), _SpacySent('Cats nap.', 11, 20)],
+        [_SpacyToken('Dogs', 0), _SpacyToken(' ', 4, is_space=True),
+         _SpacyToken('bark', 5), _SpacyToken('.', 9), _SpacyToken('Cats', 11)])
+    sentences, words = helpers.spans_from_spacy_doc(doc)
+    assert [(s.start, s.end) for s in sentences] == [(0, 10), (11, 20)]
+    assert [(w.text, w.start, w.end) for w in words] == [
+        ('Dogs', 0, 4), ('bark', 5, 9), ('.', 9, 10), ('Cats', 11, 15)]
+    assert words[0].metadata['lemma'] == 'dogs' and words[0].metadata['pos'] == 'NOUN'
+
+
+class _Encoding:
+    def __init__(self, offset_mapping, input_ids):
+        self.offset_mapping = offset_mapping
+        self.input_ids = input_ids
+        self.attention_mask = [1] * len(input_ids)
+
+
+class _HfTokenizer:
+    """Shaped like a fast HuggingFace tokenizer: callable, with an offset
+    mapping whose special tokens are zero-width."""
+
+    def __init__(self, offsets, ids, pieces=()):
+        self._offsets = offsets
+        self._ids = ids
+        self._pieces = list(pieces)
+
+    def __call__(self, text, return_offsets_mapping=True):
+        return _Encoding(self._offsets, self._ids)
+
+    def tokenize(self, text):
+        return self._pieces
+
+
+def test_spans_from_transformers_tokenizer_reads_the_offset_mapping():
+    text = 'unhappy dog'
+    tok = _HfTokenizer([(0, 0), (0, 2), (2, 7), (8, 11), (0, 0)],
+                       [101, 5, 6, 7, 102])
+    spans = helpers.spans_from_transformers_tokenizer(text, tok)
+    # The zero-width special tokens at either end are not spans.
+    assert [(s.text, s.start, s.end) for s in spans] == [
+        ('un', 0, 2), ('happy', 2, 7), ('dog', 8, 11)]
+    assert spans[0].metadata['token_id'] == 5
+
+
+def test_a_tokenizer_without_offsets_falls_back_to_finding_the_strings():
+    text = 'unhappy dog'
+    tok = _HfTokenizer([], [], pieces=['un', 'happy', 'dog'])
+    spans = helpers.spans_from_transformers_tokenizer(text, tok, return_offsets_mapping=False)
+    assert [(s.text, s.start, s.end) for s in spans] == [
+        ('un', 0, 2), ('happy', 2, 7), ('dog', 8, 11)]
+
+
+def test_spans_from_whitespace_splits_sentences_on_newlines_and_words_on_space():
+    text = 'one two\n\nthree four\nfive'
+    sentences, words = helpers.spans_from_whitespace(text)
+    assert [s.text for s in sentences] == ['one two', 'three four', 'five']
+    assert [(w.text, w.start) for w in words] == [
+        ('one', 0), ('two', 4), ('three', 9), ('four', 15), ('five', 20)]
+    # Text with no newline at all is one sentence covering all of it.
+    only, _ = helpers.spans_from_whitespace('just this')
+    assert [(s.start, s.end) for s in only] == [(0, 9)]
+
+
+def test_spans_from_tokens_walks_forward_and_drops_what_it_cannot_place():
+    text = 'the cat sat on the mat'
+    spans = helpers.spans_from_tokens(text, ['the', 'cat', ' ', 'sat', 'zebra', 'the'])
+    assert [(s.text, s.start) for s in spans] == [
+        ('the', 0), ('cat', 4), ('sat', 8), ('the', 15)]
+    # The second "the" is the later one: positions only ever move forward, so a
+    # repeated token cannot land back on the first occurrence.
+    assert spans[-1].start > spans[0].start
+
+
+def test_spans_from_nltk_spans_drops_empty_and_whitespace_only_ranges():
+    text = 'ab  cd'
+    spans = tokenizer_model.spans_from_nltk_spans(text, [(0, 2), (2, 4), (4, 6), (6, 6)])
+    assert [(s.text, s.start, s.end) for s in spans] == [('ab', 0, 2), ('cd', 4, 6)]
