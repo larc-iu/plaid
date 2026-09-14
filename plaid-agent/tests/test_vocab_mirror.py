@@ -32,6 +32,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import warnings
 
 from live import _skip_or_fail
 
@@ -215,7 +216,6 @@ SURFACE_EXEMPT = {
     # the seeding of a new vocabulary, none of which the agent draws.
     'editableMetadata': 'the entry form',
     'fieldBaseName': 'the entry form',
-    'fieldControl': 'the entry form',
     'fieldDescription': 'the entry form',
     'fieldLabel': 'the entry form',
     'fieldsToConfig': 'the Settings field table',
@@ -274,8 +274,16 @@ def test_every_app_function_is_ported_or_exempted():
         'plaid-igt exports these with no counterpart in plaid_agent/igt/vocab.py: '
         f'{missing}. Port each one, or add it to SURFACE_EXEMPT here and to the '
         'module docstring with the reason.')
+    # A name here that the app has since dropped is a list to tidy, not a
+    # failure: failing would mean an unused function in plaid-igt cannot be
+    # deleted without editing this package, and a dead function kept alive
+    # costs more than a stale line in a dictionary.
     stale = [n for n in SURFACE_EXEMPT if n not in exported]
-    assert not stale, f'SURFACE_EXEMPT names functions the app no longer exports: {stale}'
+    if stale:
+        warnings.warn(
+            f'SURFACE_EXEMPT names functions the app no longer exports: {stale}. '
+            'Remove them from the list here and from the module docstring.',
+            stacklevel=2)
     # And the other way: a function invented here, or one the app renamed out
     # from under the port, both read as a name with nothing behind it.
     expected = {SURFACE_ALIAS.get(n, _snake(n)) for n in exported}

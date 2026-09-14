@@ -185,9 +185,6 @@ export const groupFieldsForForm = (fields, { statusField = null } = {}) => {
   return out;
 };
 
-/** Which input control a field uses: morphType is a controlled-vocab select. */
-export const fieldControl = (name) => (name === 'morphType' ? 'morphType' : 'text');
-
 /** The values `type` and `scope` may take. */
 export const FIELD_TYPES = Object.freeze({ TEXT: 'text', ITEM: 'item' });
 export const FIELD_SCOPES = Object.freeze({ ENTRY: 'entry', SENSE: 'sense' });
