@@ -4,6 +4,7 @@ import { defineConfig, devices } from '@playwright/test';
 // `npx vite --port 5183` while the shared one on 5173 is mid-change), the way
 // plaid-igt's config does. Specs that build their own URLs read it too.
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5173';
+const PORT = new URL(BASE_URL).port;
 
 // `npm run test:e2e:own` sets this, and the config then starts a dev server of
 // its own on that port and stops it afterwards. Without it nothing is started
@@ -17,10 +18,15 @@ const OWN_SERVER = process.env.PLAYWRIGHT_OWN_SERVER === '1';
 
 export default defineConfig({
   testDir: './e2e',
+  // Two runs from this directory clobber each other's `.playwright-artifacts-*`
+  // and fail with `browserContext.close: ENOENT`, which reads exactly like a
+  // test failure and is not. A run on its own server keeps its own directory,
+  // named by the port only it is using.
+  outputDir: OWN_SERVER ? `test-results/${PORT}` : 'test-results',
   ...(OWN_SERVER
     ? {
         webServer: {
-          command: `npx vite --port ${new URL(BASE_URL).port} --strictPort`,
+          command: `npx vite --port ${PORT} --strictPort`,
           url: BASE_URL,
           reuseExistingServer: false,
           timeout: 60_000,
