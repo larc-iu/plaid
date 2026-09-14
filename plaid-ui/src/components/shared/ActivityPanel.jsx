@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '../ui/button.jsx';
-import { DataTable } from '../ui/data-table.jsx';
+import { DataTable } from './data-table.jsx';
 import { UserAvatar } from './UserAvatar.jsx';
 import { timeAgo, fullTimestamp } from '../../lib/formatTime.js';
 import { notifyError } from '../../lib/notify.js';

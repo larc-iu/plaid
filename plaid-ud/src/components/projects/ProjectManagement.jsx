@@ -21,7 +21,7 @@ import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@ui/components/ui/card';
-import { SearchInput, ListHint } from '@ui/components/ui/list-search';
+import { SearchInput, ListHint } from '@ui/components/shared/list-search';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@ui/components/ui/dialog';
 import {
   DropdownMenu,

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AudioLines, ChevronRight, PenLine, Plus } from 'lucide-react';
-import { DataTable } from '@ui/components/ui/data-table';
+import { DataTable } from '@ui/components/shared/data-table';
 import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';

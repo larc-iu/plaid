@@ -3,7 +3,7 @@ import { Pencil, Trash2 } from 'lucide-react';
 import { useConfirm } from './ConfirmProvider.jsx';
 import { Button } from '../ui/button.jsx';
 import { Textarea } from '../ui/textarea.jsx';
-import { SafeMarkdown } from '../ui/markdown.jsx';
+import { SafeMarkdown } from './markdown.jsx';
 import { timeAgo, fullTimestamp } from '../../lib/formatTime.js';
 import { isPending } from '../../domain/CommentStore.js';
 

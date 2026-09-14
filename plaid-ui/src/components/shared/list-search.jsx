@@ -9,8 +9,8 @@ import {
   Search as SearchIcon,
   X,
 } from 'lucide-react';
-import { Button } from './button.jsx';
-import { Input } from './input.jsx';
+import { Button } from '../ui/button.jsx';
+import { Input } from '../ui/input.jsx';
 import { cn } from '../../lib/utils.js';
 
 // The chrome every browsable list in the app wears: one search box, one count,

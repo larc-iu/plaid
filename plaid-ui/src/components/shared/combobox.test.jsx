@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { useState } from 'react';
 import { renderComponent } from '../../test/renderComponent.jsx';
-import { Combobox, normalizeOptions, flattenOptions, defaultFilter } from './combobox.jsx';
+import { Combobox } from './combobox.jsx';
+import { normalizeOptions, flattenOptions, defaultFilter } from './comboboxOptions.js';
 
 describe('the option shapes', () => {
   it('takes strings, objects and groups in one list', () => {

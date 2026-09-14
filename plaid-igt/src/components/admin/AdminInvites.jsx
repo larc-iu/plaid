@@ -20,7 +20,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@ui/components/ui/dialog';
-import { DataTable } from '@ui/components/ui/data-table';
+import { DataTable } from '@ui/components/shared/data-table';
 import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';

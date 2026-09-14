@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { pageSlice, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
-import { ListPager } from '@ui/components/ui/list-search';
+import { ListPager } from '@ui/components/shared/list-search';
 import { Button } from '@ui/components/ui/button';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 

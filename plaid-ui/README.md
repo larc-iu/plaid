@@ -8,7 +8,7 @@ and imports from it directly:
 
 ```js
 import { Button } from '@ui/components/ui/button.jsx';
-import { DataTable } from '@ui/components/ui/data-table.jsx';
+import { DataTable } from '@ui/components/shared/data-table.jsx';
 import { usePagedList } from '@ui/hooks/usePagedList.js';
 ```
 
@@ -57,6 +57,14 @@ that app's copy of React, Radix, lucide and the rest is the one that runs. The
 list in `package.json` is what a consuming app has to have. An app that never
 imports `lib/markdown.js` does not need `marked` or `dompurify`.
 
+## Two component directories
+
+`components/ui/` holds the vendored shadcn primitives and nothing else, so a
+file there can be refreshed from upstream. Three of them carry a "modified from
+shadcn" banner at the top and must be re-patched after a refresh. Everything
+this package wrote itself, including the table, the list chrome, the combobox
+and the markdown renderer, lives in `components/shared/`.
+
 ## Tailwind
 
 Each app's `tailwind.config.js` includes `../plaid-ui/src/**/*.{js,jsx}` in its
@@ -72,6 +80,6 @@ The package's tests run under **plaid-igt's** vitest, which includes this
 directory: the tests need a React and a happy-dom, and running them under all
 three apps would run them three times to learn the same thing.
 
-`components/ui/data-table.usage.test.js` is the exception that reads outward: 
+`components/shared/data-table.usage.test.js` is the exception that reads outward: 
 it scans every app's `src/` for `<DataTable>` call sites, because a call site in
 any of them can break the table's invariants.

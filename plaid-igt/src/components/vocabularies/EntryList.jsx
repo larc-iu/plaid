@@ -10,7 +10,7 @@ import {
   ListTree,
 } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
-import { SearchInput, ListCount, ListPager, SortHeader } from '@ui/components/ui/list-search';
+import { SearchInput, ListCount, ListPager, SortHeader } from '@ui/components/shared/list-search';
 import {
   Select,
   SelectContent,

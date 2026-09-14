@@ -14,7 +14,7 @@ import { useReviewGestures } from './hooks/useReviewGestures.js';
 import { useSentenceDeepLink } from './hooks/useSentenceDeepLink.js';
 import { usePrecedent } from './hooks/usePrecedent.js';
 import { HistoryDrawer, HISTORY_DRAWER_WIDTH } from '@ui/components/shared/HistoryDrawer';
-import { ListPager } from '@ui/components/ui/list-search';
+import { ListPager } from '@ui/components/shared/list-search';
 import { usePagedList, pageKey, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
 import { useWideEnoughToDock } from '@ui/components/assistant/useDock.js';
 import { RestoreDialog } from './annotation/RestoreDialog.jsx';

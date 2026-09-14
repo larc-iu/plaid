@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { flattenOptions, normalizeOptions } from '../ui/combobox.jsx';
+import { flattenOptions, normalizeOptions } from '../shared/comboboxOptions.js';
 import { activeMention, filterMentions, insertMention } from './mentions.js';
 
 // `@` in the composer: a typeahead over the reference spellings the model

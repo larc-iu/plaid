@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { cn } from '../../lib/utils.js';
-import { flattenOptions } from '../ui/combobox.jsx';
+import { flattenOptions } from '../shared/comboboxOptions.js';
 
 // What `@` offers, over the composer it is being typed into.
 //

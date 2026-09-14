@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { UserPlus, Plus, MoreVertical } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
-import { SearchInput, ListHint } from '@ui/components/ui/list-search';
-import { DataTable } from '@ui/components/ui/data-table';
+import { SearchInput, ListHint } from '@ui/components/shared/list-search';
+import { DataTable } from '@ui/components/shared/data-table';
 import {
   Select,
   SelectTrigger,

@@ -1,7 +1,7 @@
 // lit-html's window onto the app's one Markdown renderer (src/lib/markdown.js).
 //
 // `unsafeHTML` is safe here and only here: the string has already been through
-// DOMPurify. React's equivalent wrapper is @ui/components/ui/markdown.
+// DOMPurify. React's equivalent wrapper is @ui/components/shared/markdown.
 
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
 import { markdownToSafeHtml } from '@ui/lib/markdown';

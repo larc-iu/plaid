@@ -1,6 +1,7 @@
 import * as React from 'react';
 import * as PopoverPrimitive from '@radix-ui/react-popover';
 import { cn } from '../../lib/utils.js';
+import { normalizeOptions, flattenOptions, defaultFilter } from './comboboxOptions.js';
 
 // A text input with a list of suggestions under it, and no opinion about what
 // the keys mean.
@@ -23,34 +24,6 @@ import { cn } from '../../lib/utils.js';
 // `filter({options, search})` receives them normalized and returns the same
 // shape, so a call site can order matches however it likes.
 
-const normalizeOption = (option) =>
-  typeof option === 'string'
-    ? { value: option, label: option }
-    : { ...option, label: option.label ?? option.value };
-
-/** Strings, `{value,label}` and `{group,items}` in, the last two out. */
-export function normalizeOptions(options) {
-  return (options || []).map((option) =>
-    option && typeof option === 'object' && 'group' in option
-      ? { ...option, items: (option.items || []).map(normalizeOption) }
-      : normalizeOption(option),
-  );
-}
-
-/** The options a keyboard walks, in display order, with the groups flattened away. */
-export function flattenOptions(options) {
-  return (options || []).flatMap((option) => ('group' in option ? option.items : [option]));
-}
-
-/** Substring match on the label, group-aware. What a call site gets if it names no filter. */
-export function defaultFilter({ options, search }) {
-  const q = (search || '').trim().toLowerCase();
-  if (!q) return options;
-  const keep = (option) => option.label.toLowerCase().includes(q);
-  return options
-    .map((option) => ('group' in option ? { ...option, items: option.items.filter(keep) } : option))
-    .filter((option) => ('group' in option ? option.items.length > 0 : keep(option)));
-}
 
 export const Combobox = React.forwardRef(function Combobox(
   {

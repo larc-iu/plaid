@@ -8,7 +8,7 @@ import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { Button } from '@ui/components/ui/button';
 import { Card } from '@ui/components/ui/card';
-import { DataTable } from '@ui/components/ui/data-table';
+import { DataTable } from '@ui/components/shared/data-table';
 import {
   Tooltip,
   TooltipContent,

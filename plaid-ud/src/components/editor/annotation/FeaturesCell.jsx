@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Combobox } from '@ui/components/ui/combobox';
+import { Combobox } from '@ui/components/shared/combobox';
 import { notifyWarning } from '../../../utils/notify.js';
 import { provMark } from '../../../utils/provenanceUi.js';
 import { NO_OPTIONS, tabTooSoon } from './cellInput.js';

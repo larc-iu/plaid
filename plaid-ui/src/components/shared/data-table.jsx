@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
-import { Button } from './button.jsx';
+import { Button } from '../ui/button.jsx';
 import { SearchInput, ListCount, ListPager, SortHeader } from './list-search.jsx';
 import { pageKey, usePagedList } from '../../hooks/usePagedList.js';
 import { listPrefKey, useStickySort } from '../../hooks/useStickyState.js';

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Plus } from 'lucide-react';
-import { DataTable } from '@ui/components/ui/data-table';
+import { DataTable } from '@ui/components/shared/data-table';
 import { Button } from '@ui/components/ui/button';
 import { Card } from '@ui/components/ui/card';
 import {

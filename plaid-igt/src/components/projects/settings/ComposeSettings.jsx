@@ -4,7 +4,7 @@ import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import { Badge } from '@ui/components/ui/badge';
-import { SearchInput, ListCount, ListPager } from '@ui/components/ui/list-search';
+import { SearchInput, ListCount, ListPager } from '@ui/components/shared/list-search';
 import { usePagedList, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
 import { notifyError } from '@/utils/feedback';
 import { IGT_NAMESPACE, readCompose } from '@/domain/igtConfig';

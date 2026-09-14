@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, CornerUpRight } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
-import { SearchInput, ListCount, ListPager } from '../ui/list-search.jsx';
+import { SearchInput, ListCount, ListPager } from './list-search.jsx';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select.jsx';
 import { usePagedList, TALL_LIST_PAGE_SIZE } from '../../hooks/usePagedList.js';
 import { useCommentStore } from '../../domain/useCommentStore.js';

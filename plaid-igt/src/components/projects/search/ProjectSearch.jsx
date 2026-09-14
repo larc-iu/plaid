@@ -3,8 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { Link } from 'react-router-dom';
 import { FileText } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
-import { SearchInput, ListHint } from '@ui/components/ui/list-search';
-import { DataTable } from '@ui/components/ui/data-table';
+import { SearchInput, ListHint } from '@ui/components/shared/list-search';
+import { DataTable } from '@ui/components/shared/data-table';
 import {
   Select,
   SelectTrigger,

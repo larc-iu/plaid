@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Info } from 'lucide-react';
 import { pageSlice, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
-import { ListPager } from '@ui/components/ui/list-search';
+import { ListPager } from '@ui/components/shared/list-search';
 import { segmentize } from './grewToHighlight.js';
 
 // Renders grouped sentence matches. `groups` come from groupResults():

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Button } from '@ui/components/ui/button';
-import { DataTable } from '@ui/components/ui/data-table';
+import { DataTable } from '@ui/components/shared/data-table';
 import {
   Select,
   SelectContent,

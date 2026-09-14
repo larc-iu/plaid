@@ -1,5 +1,5 @@
 import { Badge } from '@ui/components/ui/badge';
-import { SearchInput, ListHint } from '@ui/components/ui/list-search';
+import { SearchInput, ListHint } from '@ui/components/shared/list-search';
 import { UserAvatar } from '@ui/components/shared/UserAvatar';
 import { USER_SEARCH_LIMIT } from '@/hooks/useUserSearch';
 

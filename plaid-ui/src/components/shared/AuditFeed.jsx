@@ -1,8 +1,8 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '../ui/button.jsx';
-import { ListHint } from '../ui/list-search.jsx';
-import { DataTable } from '../ui/data-table.jsx';
+import { ListHint } from './list-search.jsx';
+import { DataTable } from './data-table.jsx';
 import { timeAgo, fullTimestamp } from '../../lib/formatTime.js';
 import { notifyError } from '../../lib/notify.js';
 import { readableDescription } from '../../lib/auditText.js';

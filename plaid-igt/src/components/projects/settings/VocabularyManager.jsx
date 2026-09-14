@@ -10,7 +10,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { Input } from '@ui/components/ui/input';
-import { SearchInput, ListCount, ListPager } from '@ui/components/ui/list-search';
+import { SearchInput, ListCount, ListPager } from '@ui/components/shared/list-search';
 import { usePagedList } from '@ui/hooks/usePagedList';
 import { Button } from '@ui/components/ui/button';
 import {

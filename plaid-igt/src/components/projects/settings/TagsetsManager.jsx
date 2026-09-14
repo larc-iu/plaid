@@ -3,7 +3,7 @@ import { Plus, Trash2, ChevronDown, ChevronRight, Sparkles, AlertTriangle } from
 import { Input } from '@ui/components/ui/input';
 import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
-import { SearchInput, ListCount, ListPager } from '@ui/components/ui/list-search';
+import { SearchInput, ListCount, ListPager } from '@ui/components/shared/list-search';
 import { pageSlice, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
 import { Switch } from '@ui/components/ui/switch';
 import { Textarea } from '@ui/components/ui/textarea';

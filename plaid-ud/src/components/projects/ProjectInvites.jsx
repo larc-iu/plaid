@@ -5,7 +5,7 @@ import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { Badge } from '@ui/components/ui/badge';
 import { Button } from '@ui/components/ui/button';
-import { DataTable } from '@ui/components/ui/data-table';
+import { DataTable } from '@ui/components/shared/data-table';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import {

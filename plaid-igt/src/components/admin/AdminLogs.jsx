@@ -3,8 +3,8 @@ import { ChevronDown, ChevronRight, RefreshCw, X } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
 import { Switch } from '@ui/components/ui/switch';
-import { DataTable } from '@ui/components/ui/data-table';
-import { SearchInput } from '@ui/components/ui/list-search';
+import { DataTable } from '@ui/components/shared/data-table';
+import { SearchInput } from '@ui/components/shared/list-search';
 import {
   Select,
   SelectContent,

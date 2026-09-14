@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Trash2, AlertTriangle, Plus } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
-import { SearchInput, ListHint } from '@ui/components/ui/list-search';
+import { SearchInput, ListHint } from '@ui/components/shared/list-search';
 import { UserAvatar } from '@ui/components/shared/UserAvatar';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useUserSearch } from '@/hooks/useUserSearch';
