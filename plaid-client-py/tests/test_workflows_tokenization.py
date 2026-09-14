@@ -336,3 +336,34 @@ def test_spans_from_nltk_spans_drops_empty_and_whitespace_only_ranges():
     text = 'ab  cd'
     spans = tokenizer_model.spans_from_nltk_spans(text, [(0, 2), (2, 4), (4, 6), (6, 6)])
     assert [(s.text, s.start, s.end) for s in spans] == [('ab', 0, 2), ('cd', 4, 6)]
+
+
+class _FakePunkt:
+    """A Punkt model stands for its span_tokenize, which is all the converter
+    asks it for. The Treebank word tokenizer beneath it is the real one."""
+
+    def __init__(self, spans):
+        self._spans = spans
+
+    def span_tokenize(self, text):
+        return list(self._spans)
+
+
+def test_spans_from_nltk_punkt_makes_the_sentences_tile_the_whole_text():
+    # The sentence layer is partitioning, so the converter that feeds it must
+    # leave no gap: the first sentence is pulled back to 0, each one runs to
+    # where the next begins, and the last runs to the end of the text.
+    text = '  Dogs bark. Cats nap.  '
+    sentences, words = helpers.spans_from_nltk_punkt(text, _FakePunkt([(2, 12), (13, 22)]))
+    assert [(s.start, s.end) for s in sentences] == [(0, 13), (13, len(text))]
+    assert sentences[0].end == sentences[1].start
+    assert [w.text for w in words] == ['Dogs', 'bark', '.', 'Cats', 'nap', '.']
+    # Word positions are absolute, not relative to their sentence.
+    assert all(text[w.start:w.end] == w.text for w in words)
+
+
+def test_text_punkt_finds_no_sentence_in_is_one_sentence():
+    text = 'no boundaries here'
+    sentences, words = helpers.spans_from_nltk_punkt(text, _FakePunkt([]))
+    assert [(s.start, s.end) for s in sentences] == [(0, len(text))]
+    assert [w.text for w in words] == ['no', 'boundaries', 'here']
