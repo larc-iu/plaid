@@ -2,7 +2,7 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { createProtectedRoute } from '@ui/components/shared/ProtectedRoute.jsx';
 import { LoginForm } from './components/auth/LoginForm';
-import { RedeemInvite } from './components/auth/RedeemInvite';
+import { RedeemInvite } from '@ui/components/auth/RedeemInvite.jsx';
 import { ProjectList } from './components/projects/ProjectList';
 import { ProjectDetail } from './components/projects/ProjectDetail';
 import { NewProjectChooser } from './components/projects/NewProjectChooser';
@@ -65,7 +65,10 @@ function App() {
                 has no account yet, or has lost the password to the one they
                 have. The code rides in the hash fragment, so it never reaches
                 the server as part of a URL. */}
-              <Route path="/invite/:code" element={<RedeemInvite />} />
+              <Route
+                path="/invite/:code"
+                element={<RedeemInvite loginPath="/login" homePath="/projects" />}
+              />
 
               {/* Protected routes, all inside ONE shell.
 

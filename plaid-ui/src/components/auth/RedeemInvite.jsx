@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
-import { authService } from '@ui/services/auth.js';
-import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
-import { isEmail, EMAIL_REQUIRED_MESSAGE, EMAIL_INVALID_MESSAGE } from '@ui/lib/email.js';
-import { Button } from '@ui/components/ui/button';
-import { Input } from '@ui/components/ui/input';
-import { Label } from '@ui/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@ui/components/ui/card';
+import { useAuth } from '../../contexts/useAuth.js';
+import { authService } from '../../services/auth.js';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
+import { notifySuccess } from '../../lib/notify.js';
+import { isEmail, EMAIL_REQUIRED_MESSAGE, EMAIL_INVALID_MESSAGE } from '../../lib/email.js';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 
 // Matches the server's minimum. Stated up front rather than only on rejection:
 // this is the one password the user will have to remember, and finding out the
@@ -15,7 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@ui/c
 const MIN_PASSWORD = 8;
 
 // Why a code can be dead, in the words the holder needs. The server sends the
-// status because the holder already has the code — there is nothing left to
+// status because the holder already has the code: there is nothing left to
 // withhold, and "invalid" alone leaves them with no idea what to do next.
 const DEAD_STATUS_MESSAGE = {
   used: 'This invite has already been used. Ask whoever sent it for a new link.',
@@ -23,7 +24,13 @@ const DEAD_STATUS_MESSAGE = {
   revoked: 'This invite has been revoked. Ask whoever sent it for a new link.',
 };
 
-export const RedeemInvite = () => {
+/**
+ * Accept an invitation, or set a new password from an admin-issued reset link.
+ *
+ * `loginPath` and `homePath` are the app's, for the same reason
+ * `createProtectedRoute` takes its `loginPath`: a routing table is an app's own.
+ */
+export const RedeemInvite = ({ loginPath, homePath }) => {
   const { code } = useParams();
   const navigate = useNavigate();
   const { redeemInvite, user } = useAuth();
@@ -72,7 +79,7 @@ export const RedeemInvite = () => {
     if (!isReset && !isEmail(email)) return setError(EMAIL_INVALID_MESSAGE);
     if (password.length < MIN_PASSWORD)
       return setError(`Password must be at least ${MIN_PASSWORD} characters`);
-    if (password !== confirm) return setError('Passwords do not match.');
+    if (password !== confirm) return setError('Passwords do not match');
 
     setSubmitting(true);
     const result = await redeemInvite(code, {
@@ -84,7 +91,11 @@ export const RedeemInvite = () => {
     setSubmitting(false);
 
     if (result.success) {
-      navigate('/projects');
+      notifySuccess(
+        isReset ? 'Your password has been changed.' : 'Your account is ready.',
+        'Welcome',
+      );
+      navigate(homePath);
       return;
     }
     // 409 is the one failure worth rewording: the server says "already exists",
@@ -106,8 +117,6 @@ export const RedeemInvite = () => {
         ? `You have been invited to join ${preview.projectName} as a ${preview.projectRole}.`
         : 'Choose an email address and password.';
 
-  // Renders outside the Layout shell, so it carries its own root for the
-  // scoped preflight subset (see src/index.css).
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
       <Card className="w-full max-w-sm">
@@ -131,7 +140,7 @@ export const RedeemInvite = () => {
                 {lookupError || deadMessage}
               </div>
               <Button asChild variant="outline" className="w-full">
-                <Link to="/login">Go to sign in</Link>
+                <Link to={loginPath}>Go to sign in</Link>
               </Button>
             </div>
           ) : (
