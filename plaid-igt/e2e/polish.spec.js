@@ -124,9 +124,12 @@ test('a failed save keeps the typed value in the cell and the focus on it', asyn
   await cell.click();
   await page.keyboard.type('OFFLINE');
   await page.keyboard.press('Enter');
+  // The client retries a 503 four times with backoff before it gives up, so
+  // the toast is a few seconds out on a quiet machine and longer under a full
+  // suite.
   await expect(
     page.locator('[data-sonner-toast]').filter({ hasText: /Could not reach the server/ }),
-  ).toBeVisible();
+  ).toBeVisible({ timeout: 15000 });
   await expect(cell).toHaveValue('OFFLINE');
   await expect(cell).toBeFocused();
   await page.unroute('**/api/v1/spans**');
