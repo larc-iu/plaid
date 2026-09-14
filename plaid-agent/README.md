@@ -282,11 +282,15 @@ The modules below are `igt/` unless they say otherwise.
   fetch only the first time a document is touched.
 - `plan.py`: declares every kind of operation a plan may hold, one frozen
   `core.opkind.OpKind` each, carrying its required keys, the noun the user
-  reads, the function that applies it, what it writes to, what it deletes,
-  how it reshapes the text, and how like operations fold into one stored
-  operation. The tables (`KINDS`, `REQUIRED`, `RESHAPES`, `SUMMARY_NAMES`,
-  `op_target`, the approval card's, the executor's dispatch) are all read
-  back off it, so a new kind is one declaration plus the tool that stages it.
+  reads, the function that applies it and which pass of the executor runs it,
+  what it writes to, what it deletes, how it reshapes the text, and how like
+  operations fold into one stored operation. The tables (`KINDS`, `REQUIRED`,
+  `RESHAPES`, `SCOPES`, `SUMMARY_NAMES`, `op_target`, the approval card's,
+  the executor's dispatch) are all read back off it, so a new kind is one
+  declaration plus the tool that stages it. An app declares `STAGES`, the
+  passes its executor really runs, and a kind staged for any other refuses
+  before the first batch opens rather than being skipped by every pass and
+  reported applied.
   It validates and normalizes an approved plan (a later op on the same
   target wins; links to entries the plan deletes are dropped; overlapping
   respells are refused; an op naming something another op in the plan deletes
