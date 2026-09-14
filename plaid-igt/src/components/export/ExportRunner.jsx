@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Download, Settings } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Label } from '@ui/components/ui/label';
-import { notifySuccess, notifyError, notifyWarning } from '@/utils/feedback';
+import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
 import { readExportPresets, EXPORT_FORMATS } from '@/export/presets';
 import { runExport, ExportCancelled } from '@/export/runExport';
 import { downloadBlob } from '@/export/files';
@@ -125,7 +125,7 @@ export const ExportRunner = ({
         notifyWarning('Export cancelled. Nothing was downloaded.', 'Export');
       } else {
         console.error('Export failed:', err);
-        notifyError(err?.message || 'Export failed. Try again.', 'Export failed');
+        notifyError(humanizeError(err), 'Export failed');
       }
     } finally {
       setRunning(false);

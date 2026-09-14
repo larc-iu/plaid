@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
 } from '@ui/components/ui/dropdown-menu';
 import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
-import { notifyError } from '@/utils/feedback';
+import { notifyError, humanizeError } from '@/utils/feedback';
 import { useUserAdmin } from './useUserAdmin';
 import { UserAdminDialogs } from './userAdmin';
 import { UserDetail } from './UserDetail';
@@ -36,7 +36,7 @@ export const AdminUsers = ({ client, currentUser }) => {
       setUsers((await client.users.list()) || []);
     } catch (err) {
       console.error('Error loading users:', err);
-      notifyError(err.message || 'Failed to load users', 'Error');
+      notifyError(humanizeError(err), 'Could not load the accounts');
     } finally {
       setLoading(false);
     }

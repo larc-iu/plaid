@@ -22,7 +22,7 @@ import {
   SelectItem,
 } from '@ui/components/ui/select';
 import { useAuth } from '../../contexts/AuthContext';
-import { notifyError } from '@/utils/feedback';
+import { notifyError, humanizeError } from '@/utils/feedback';
 import { readCldfDataset } from '../../import/cldf/readDataset';
 import {
   buildCldfDocuments,
@@ -75,7 +75,7 @@ export const ImportCldfProject = () => {
       setStage('review');
     } catch (e) {
       console.error('CLDF read failed:', e);
-      notifyError(e.message, 'Could not read dataset');
+      notifyError(humanizeError(e), 'Could not read dataset');
       setStage('pick');
     }
   };

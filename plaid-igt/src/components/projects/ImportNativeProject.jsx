@@ -14,7 +14,7 @@ import { Upload, Check, RefreshCw, Square } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { useAuth } from '../../contexts/AuthContext';
-import { notifyError } from '@/utils/feedback';
+import { notifyError, humanizeError } from '@/utils/feedback';
 import { readNativeArchive } from '../../import/native/readArchive';
 import { deriveSetupData, runNativeImport } from '../../import/native/importEngine';
 import { useResumeImport } from '@/hooks/useResumeImport';
@@ -46,7 +46,7 @@ export const ImportNativeProject = () => {
       setStage('review');
     } catch (e) {
       console.error('Archive read failed:', e);
-      notifyError(e.message, 'Could not read archive');
+      notifyError(humanizeError(e), 'Could not read archive');
       setStage('pick');
     }
   };

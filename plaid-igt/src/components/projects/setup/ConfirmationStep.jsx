@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Check, X, RefreshCw } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
-import { notifySuccess, notifyError } from '@/utils/feedback';
+import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { executeProjectSetup } from './executeSetup';
 
 export const ConfirmationStep = ({ setupData, isNewProject, projectId, client }) => {
@@ -83,9 +83,9 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
       navigate(`/projects/${result.projectId}`);
     } catch (error) {
       console.error('Setup failed:', error);
-      setErrors((prev) => [...prev, `Setup failed: ${error.message}`]);
+      setErrors((prev) => [...prev, `Setup failed: ${humanizeError(error)}`]);
 
-      notifyError(error.message, 'Setup Failed');
+      notifyError(humanizeError(error), 'Setup failed');
     } finally {
       setIsExecuting(false);
     }

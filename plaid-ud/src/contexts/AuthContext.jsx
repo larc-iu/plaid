@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { authService } from '../services/auth';
+import { humanizeError, signInError, statusOf } from '@ui/lib/errors.js';
 
 const AuthContext = createContext(null);
 
@@ -30,10 +31,7 @@ export const AuthProvider = ({ children }) => {
       setUser(result.user);
       return { success: true };
     } catch (error) {
-      return {
-        success: false,
-        error: error.message || 'Login failed',
-      };
+      return { success: false, error: signInError(error) };
     }
   };
 
@@ -46,7 +44,10 @@ export const AuthProvider = ({ children }) => {
       return {
         success: false,
         status: error.status,
-        error: error.message || 'Could not redeem this invite',
+        error:
+          statusOf(error) === 404
+            ? 'This invitation link is not valid.'
+            : humanizeError(error, 'Could not redeem this invite.'),
       };
     }
   };

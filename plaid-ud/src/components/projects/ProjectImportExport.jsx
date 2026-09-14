@@ -168,7 +168,7 @@ export const ProjectImportExport = () => {
           logout();
           return;
         }
-        setLoadError('Failed to load project: ' + (err.message || 'Unknown error'));
+        setLoadError(humanizeError(err, 'This project could not be loaded.'));
       } finally {
         if (!cancelled) setLoading(false);
       }

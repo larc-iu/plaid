@@ -16,7 +16,7 @@ import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Badge } from '@ui/components/ui/badge';
 import { useAuth } from '../../contexts/AuthContext';
-import { notifyError } from '@/utils/feedback';
+import { notifyError, humanizeError } from '@/utils/feedback';
 import { readFwbackup } from '../../import/flex/fwbackup';
 import { parseFwdata } from '../../import/flex/fwdataParser';
 import { buildDocuments } from '../../import/flex/buildDocuments';
@@ -114,7 +114,7 @@ export const ImportFlexProject = () => {
         .catch((err) => console.warn('Could not list vocabularies:', err));
     } catch (e) {
       console.error('FLEx parse failed:', e);
-      notifyError(e.message, 'Could not read backup');
+      notifyError(humanizeError(e), 'Could not read backup');
       setStage('pick');
     }
   };

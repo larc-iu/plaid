@@ -250,7 +250,7 @@ export const UserProfile = () => {
       // Update form data to reflect the new display name
       setFormData((prev) => ({ ...prev, displayName: updatedUserData.displayName }));
     } catch (err) {
-      setError(err.message || 'Failed to update profile');
+      setError(humanizeError(err, 'Could not save the profile.'));
     } finally {
       setLoading(false);
     }

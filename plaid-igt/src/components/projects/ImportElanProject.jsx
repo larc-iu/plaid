@@ -26,7 +26,7 @@ import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import { useAuth } from '../../contexts/AuthContext';
-import { notifyError } from '@/utils/feedback';
+import { notifyError, humanizeError } from '@/utils/feedback';
 import { deriveSetupData, runElanImport } from '../../import/elan/importEngine';
 import { useResumeImport } from '@/hooks/useResumeImport';
 import { useProjectImportRun } from '@/hooks/useProjectImportRun';
@@ -69,7 +69,7 @@ export const ImportElanProject = () => {
       setStage('review');
     } catch (e) {
       console.error('ELAN read failed:', e);
-      notifyError(e.message, 'Could not read the files');
+      notifyError(humanizeError(e), 'Could not read the files');
       setStage(batch.files ? 'review' : 'pick');
     }
   };

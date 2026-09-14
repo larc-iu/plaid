@@ -4,6 +4,7 @@ import { DataTable } from './data-table.jsx';
 import { UserAvatar } from './UserAvatar.jsx';
 import { timeAgo, fullTimestamp } from '../../lib/formatTime.js';
 import { notifyError } from '../../lib/notify.js';
+import { humanizeError } from '../../lib/errors.js';
 import { AuditFeed } from './AuditFeed.jsx';
 import { textIncludes } from '../../domain/collation.js';
 
@@ -70,7 +71,7 @@ export const ActivityPanel = ({ client, projectId, roster, projectHref, document
       );
     } catch (err) {
       console.error('Error loading activity:', err);
-      notifyError(err.message || 'Failed to load activity', 'Error');
+      notifyError(humanizeError(err), 'Could not load the activity');
     } finally {
       setLoading(false);
     }

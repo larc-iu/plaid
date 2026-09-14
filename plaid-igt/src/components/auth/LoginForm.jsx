@@ -49,7 +49,7 @@ export const LoginForm = () => {
         notifySuccess('Login successful!', 'Success');
         navigate('/projects');
       } else {
-        setError(result.error || 'Login failed. Please check your credentials.');
+        setError(result.error || 'Email or password is incorrect.');
       }
     } catch {
       setError('An unexpected error occurred. Please try again.');

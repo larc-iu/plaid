@@ -31,7 +31,7 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from '@ui/components/ui/alert-dialog';
-import { notifySuccess, notifyError } from '@/utils/feedback';
+import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { MAINTAINER_HINT } from '@ui/domain/permissions.js';
 
 const GRANT_ROLES = ['reader', 'writer', 'maintainer'];
@@ -162,7 +162,7 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage }) =>
       await load();
     } catch (err) {
       console.error('Error creating invite:', err);
-      notifyError(err.message || 'Failed to create invitation link', 'Error');
+      notifyError(humanizeError(err), 'Could not create the link');
     } finally {
       setCreating(false);
     }

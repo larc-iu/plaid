@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { notifySuccess, notifyError } from '@/utils/feedback';
+import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { isEmail, EMAIL_INVALID_MESSAGE } from '@ui/lib/email.js';
 
 // Account administration, shared by the two screens that do it: the Access tab
@@ -91,7 +91,7 @@ export const useUserAdmin = ({ client, currentUser, onChanged }) => {
       await changed();
     } catch (err) {
       console.error('Error updating user:', err);
-      notifyError('Failed to update user: ' + (err.message || 'Unknown error'), 'Error');
+      notifyError(humanizeError(err), 'Could not save the account');
     } finally {
       setSavingEdit(false);
     }
@@ -107,7 +107,7 @@ export const useUserAdmin = ({ client, currentUser, onChanged }) => {
       setResetCode(inv.code);
     } catch (err) {
       console.error('Error creating reset link:', err);
-      notifyError(err.message || 'Failed to create a password reset link', 'Error');
+      notifyError(humanizeError(err), 'Could not create the reset link');
     } finally {
       setResetting(false);
     }
@@ -124,7 +124,7 @@ export const useUserAdmin = ({ client, currentUser, onChanged }) => {
       await changed();
     } catch (err) {
       console.error('Error deactivating user:', err);
-      notifyError('Failed to deactivate user: ' + (err.message || 'Unknown error'), 'Error');
+      notifyError(humanizeError(err), 'Could not deactivate the account');
     } finally {
       setDeactivating(false);
     }
@@ -137,7 +137,7 @@ export const useUserAdmin = ({ client, currentUser, onChanged }) => {
       await changed();
     } catch (err) {
       console.error('Error reactivating user:', err);
-      notifyError('Failed to reactivate user: ' + (err.message || 'Unknown error'), 'Error');
+      notifyError(humanizeError(err), 'Could not reactivate the account');
     }
   };
 

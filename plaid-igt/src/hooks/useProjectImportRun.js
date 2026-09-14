@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { executeProjectSetup } from '@/components/projects/setup/executeSetup';
 import { markImportStarted, markImportFinished } from '@/domain/igtConfig';
 import { ImportCancelled } from '@/import/resume';
-import { notifyError, notifySuccess, notifyWarning } from '@/utils/feedback';
+import { notifyError, notifySuccess, notifyWarning, humanizeError } from '@/utils/feedback';
 
 // The run of a project import, shared by the four wizards that make a project
 // from a file (FLEx, CLDF, ELAN, the archive). A wizard reads its file, shows
@@ -104,10 +104,10 @@ export function useProjectImportRun({ client, kind, resumeId }) {
       return res;
     } catch (e) {
       console.error(`${kind} import failed:`, e);
-      setRunError(e.message);
+      setRunError(humanizeError(e));
       setStage('review');
       if (!(e instanceof ImportCancelled) && e.message !== 'Import cancelled') {
-        notifyError(e.message, 'Import failed');
+        notifyError(humanizeError(e), 'Import failed');
       }
       return null;
     }

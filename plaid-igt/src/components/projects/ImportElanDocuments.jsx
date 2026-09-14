@@ -38,7 +38,7 @@ import {
   SelectItem,
 } from '@ui/components/ui/select';
 import { useAuth } from '../../contexts/AuthContext';
-import { notifyError, notifySuccess, notifyWarning } from '@/utils/feedback';
+import { notifyError, notifySuccess, notifyWarning, humanizeError } from '@/utils/feedback';
 import { runElanImport } from '../../import/elan/importEngine';
 import { priorImports } from '../../import/resume';
 import {
@@ -149,7 +149,7 @@ export const ImportElanDocuments = () => {
       setStage('review');
     } catch (e) {
       console.error('ELAN read failed:', e);
-      notifyError(e.message, 'Could not read the files');
+      notifyError(humanizeError(e), 'Could not read the files');
       setStage(batch.files ? 'review' : 'pick');
     }
   };
@@ -227,9 +227,9 @@ export const ImportElanDocuments = () => {
       }
     } catch (e) {
       console.error('ELAN import failed:', e);
-      setRunError(e.message);
+      setRunError(humanizeError(e));
       setStage('review');
-      if (!/cancelled/i.test(e.message)) notifyError(e.message, 'Import failed');
+      if (!/cancelled/i.test(e.message)) notifyError(humanizeError(e), 'Import failed');
     }
   };
 

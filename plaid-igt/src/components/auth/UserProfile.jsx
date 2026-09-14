@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { ArrowLeft, Copy, Check, ImagePlus } from 'lucide-react';
-import { notifySuccess, notifyError, notifyWarning } from '@/utils/feedback';
+import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
@@ -55,7 +55,7 @@ export const UserProfile = () => {
       notifySuccess('Profile picture updated', 'Success');
     } catch (err) {
       console.error('Error uploading profile picture:', err);
-      notifyError(err.message || 'Failed to upload profile picture', 'Error');
+      notifyError(humanizeError(err), 'Could not upload the picture');
     } finally {
       setAvatarBusy(false);
     }
@@ -69,7 +69,7 @@ export const UserProfile = () => {
       notifySuccess('Profile picture removed', 'Success');
     } catch (err) {
       console.error('Error removing profile picture:', err);
-      notifyError(err.message || 'Failed to remove profile picture', 'Error');
+      notifyError(humanizeError(err), 'Could not remove the picture');
     } finally {
       setAvatarBusy(false);
     }
@@ -123,7 +123,7 @@ export const UserProfile = () => {
       await loadTokens();
     } catch (err) {
       console.error('Error creating API token:', err);
-      notifyError('Failed to create API token: ' + (err.message || 'Unknown error'), 'Error');
+      notifyError(humanizeError(err), 'Could not create the token');
     } finally {
       setCreatingToken(false);
     }
@@ -146,7 +146,7 @@ export const UserProfile = () => {
       await loadTokens();
     } catch (err) {
       console.error('Error revoking API token:', err);
-      notifyError('Failed to revoke API token: ' + (err.message || 'Unknown error'), 'Error');
+      notifyError(humanizeError(err), 'Could not revoke the token');
     }
   };
 
@@ -204,7 +204,7 @@ export const UserProfile = () => {
         isAdmin: updatedUserData.isAdmin || false,
       });
     } catch (err) {
-      notifyError(err.message || 'Failed to update profile', 'Error');
+      notifyError(humanizeError(err), 'Could not save the profile');
     } finally {
       setLoading(false);
     }

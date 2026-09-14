@@ -22,7 +22,7 @@ import {
 } from '@ui/components/ui/dialog';
 import { DataTable } from '@ui/components/shared/data-table';
 import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
-import { notifySuccess, notifyError } from '@/utils/feedback';
+import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { inviteLinkFor } from '@/utils/inviteLink';
 import { textIncludes } from '@ui/domain/collation.js';
@@ -106,7 +106,7 @@ export const AdminInvites = ({ client }) => {
       setProjects(projectList || []);
     } catch (err) {
       console.error('Error loading invites:', err);
-      notifyError(err.message || 'Failed to load invites', 'Error');
+      notifyError(humanizeError(err), 'Could not load the invitations');
     } finally {
       setLoading(false);
     }
@@ -160,7 +160,7 @@ export const AdminInvites = ({ client }) => {
     } catch (err) {
       console.error('Error minting invites:', err);
       notifyError(
-        `${links.length} of ${count} created before it failed. ${err.message || ''}`.trim(),
+        `${links.length} of ${count} created before it failed. ${humanizeError(err, '')}`.trim(),
         'Error',
       );
       if (links.length) setMinted(links);
@@ -182,7 +182,7 @@ export const AdminInvites = ({ client }) => {
       notifySuccess('Link revoked', 'Revoked');
       await load();
     } catch (err) {
-      notifyError(err.message || 'Failed to revoke', 'Error');
+      notifyError(humanizeError(err), 'Could not revoke the invitation');
     }
   };
 

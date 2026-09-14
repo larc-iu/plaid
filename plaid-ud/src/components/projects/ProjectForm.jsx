@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { createUdProject } from '../../domain/udProjectSetup.js';
+import { humanizeError } from '../../utils/feedback.jsx';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
@@ -34,7 +35,7 @@ export const ProjectForm = ({ isOpen, onClose, onSuccess }) => {
       onSuccess(created);
     } catch (err) {
       console.error('Error creating project:', err);
-      setError(err?.message || 'Failed to create project with layers');
+      setError(humanizeError(err, 'The project could not be created.'));
     } finally {
       setLoading(false);
     }

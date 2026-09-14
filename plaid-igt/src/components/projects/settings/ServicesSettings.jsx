@@ -12,7 +12,7 @@ import { Badge } from '@ui/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@ui/components/ui/card';
 import { ServiceParamForm } from '@ui/components/services/ServiceParamForm.jsx';
 import { ServiceSummary } from '@ui/components/services/ServiceSummary.jsx';
-import { notifyError } from '@/utils/feedback';
+import { notifyError, humanizeError } from '@/utils/feedback';
 import { IGT_NAMESPACE, resolveAutoAnalysis } from '@/domain/igtConfig';
 import {
   BUILTIN_TOKENIZE_RULE_BASED,
@@ -319,7 +319,7 @@ export const ServicesSettings = ({ projectId, client }) => {
       setAutoDraft(resolveAutoAnalysis(p?.config));
       setDirty(false);
     } catch (error) {
-      notifyError(error.message || 'Failed to load services');
+      notifyError(humanizeError(error), 'Could not load the services');
     } finally {
       setLoading(false);
     }
@@ -361,7 +361,7 @@ export const ServicesSettings = ({ projectId, client }) => {
       await client.projects.setConfig(projectId, IGT_NAMESPACE, 'autoAnalysis', autoDraft);
       setDirty(false);
     } catch (error) {
-      notifyError(error.message || 'Failed to save service defaults');
+      notifyError(humanizeError(error), 'Could not save the defaults');
     } finally {
       setSaving(false);
     }
@@ -373,7 +373,7 @@ export const ServicesSettings = ({ projectId, client }) => {
       await client.messages.discardService(projectId, serviceId);
       await load();
     } catch (error) {
-      notifyError(error.message || 'Failed to forget service');
+      notifyError(humanizeError(error), 'Could not forget the service');
     }
   };
 

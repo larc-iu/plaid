@@ -19,7 +19,7 @@ import {
   DialogFooter,
 } from '@ui/components/ui/dialog';
 import { cn } from '@ui/lib/utils';
-import { notifySuccess, notifyError } from '@/utils/feedback';
+import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { humanizeFieldName, fieldDescription, FIELD_TYPES } from '@/domain/vocabFields';
 import { downloadBlob, sanitizeFilename } from '@/export/files';
 import {
@@ -489,7 +489,11 @@ export const BulkAddDialog = ({
       close();
     } catch (err) {
       console.error('Bulk add failed:', err);
-      setFailure({ message: err?.message || 'The server rejected the import.', created, updated });
+      setFailure({
+        message: humanizeError(err, 'The server rejected the import.'),
+        created,
+        updated,
+      });
       await onImported();
     }
   };

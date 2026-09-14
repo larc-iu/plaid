@@ -6,7 +6,7 @@ import { Badge } from '@ui/components/ui/badge';
 import { UserAvatar } from '@ui/components/shared/UserAvatar';
 import { DataTable } from '@ui/components/shared/data-table';
 import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
-import { notifySuccess, notifyError } from '@/utils/feedback';
+import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { AuditFeed } from '@ui/components/shared/AuditFeed';
 import { textIncludes } from '@ui/domain/collation.js';
@@ -47,7 +47,7 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
       setTally((tallyRows || []).find((r) => r.user?.id === userId) || null);
     } catch (err) {
       console.error('Error loading user:', err);
-      notifyError(err.message || 'Failed to load the account', 'Error');
+      notifyError(humanizeError(err), 'Could not load the account');
     } finally {
       setLoading(false);
     }
@@ -70,7 +70,7 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
       setTokens((ts) => ts.filter((t) => t.id !== token.id));
       notifySuccess('Token revoked', 'Revoked');
     } catch (err) {
-      notifyError(err.message || 'Failed to revoke the token', 'Error');
+      notifyError(humanizeError(err), 'Could not revoke the token');
     }
   };
 

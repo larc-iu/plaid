@@ -99,7 +99,7 @@ export const SearchPage = () => {
         message: 'The query was too broad and timed out. Add more constraints.',
       });
     } else {
-      setError({ name: 'ServerError', message: err?.message || 'The request failed.' });
+      setError({ name: 'ServerError', message: humanizeError(err, 'The request failed.') });
     }
   }, []);
 

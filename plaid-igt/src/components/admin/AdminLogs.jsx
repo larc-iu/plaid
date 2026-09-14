@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from '@ui/components/ui/select';
 import { fullTimestamp } from '@ui/lib/formatTime.js';
-import { notifyError } from '@/utils/feedback';
+import { notifyError, humanizeError } from '@/utils/feedback';
 
 // What the server is doing right now, and what went wrong. Requests and
 // events are buffered apart on the server, so a bulk import cannot push the
@@ -143,7 +143,7 @@ export const AdminLogs = ({ client }) => {
         });
       } catch (err) {
         if (ticket !== generation.current) return;
-        if (!quiet) notifyError(err.message || 'Failed to read the log', 'Error');
+        if (!quiet) notifyError(humanizeError(err), 'Could not read the log');
       } finally {
         inFlight.current -= 1;
         if (ticket === generation.current) setLoading(false);
@@ -166,7 +166,7 @@ export const AdminLogs = ({ client }) => {
     try {
       setFile(await client.admin.logFile({ lines: 500 }));
     } catch (err) {
-      notifyError(err.message || 'Failed to read the log file', 'Error');
+      notifyError(humanizeError(err), 'Could not read the log file');
     }
   }, [client]);
 

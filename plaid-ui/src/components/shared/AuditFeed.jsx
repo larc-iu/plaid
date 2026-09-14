@@ -5,6 +5,7 @@ import { ListHint } from './list-search.jsx';
 import { DataTable } from './data-table.jsx';
 import { timeAgo, fullTimestamp } from '../../lib/formatTime.js';
 import { notifyError } from '../../lib/notify.js';
+import { humanizeError } from '../../lib/errors.js';
 import { readableDescription } from '../../lib/auditText.js';
 import { textIncludes } from '../../domain/collation.js';
 
@@ -63,7 +64,7 @@ export const AuditFeed = ({
       setCursor(page.nextCursor || null);
     } catch (err) {
       console.error('Error loading the audit feed:', err);
-      notifyError(err.message || 'Failed to load recent changes', 'Error');
+      notifyError(humanizeError(err), 'Could not load the recent changes');
       setEntries([]);
       setCursor(null);
     } finally {
@@ -86,7 +87,7 @@ export const AuditFeed = ({
       setEntries((prev) => [...prev, ...(page.entries || [])]);
       setCursor(page.nextCursor || null);
     } catch (err) {
-      notifyError(err.message || 'Failed to load older changes', 'Error');
+      notifyError(humanizeError(err), 'Could not load the older changes');
     } finally {
       setLoadingMore(false);
     }

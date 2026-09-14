@@ -5,7 +5,7 @@ import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
 import { DataTable } from '@ui/components/shared/data-table';
 import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
-import { notifySuccess, notifyError } from '@/utils/feedback';
+import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { textIncludes } from '@ui/domain/collation.js';
 
@@ -67,7 +67,7 @@ export const AdminServices = ({ client }) => {
       setRegistrations(found.flat());
     } catch (err) {
       console.error('Error loading services:', err);
-      notifyError(err.message || 'Failed to load services', 'Error');
+      notifyError(humanizeError(err), 'Could not load the services');
     } finally {
       setLoading(false);
     }
@@ -92,7 +92,7 @@ export const AdminServices = ({ client }) => {
       notifySuccess('Registration forgotten', 'Removed');
       await load();
     } catch (err) {
-      notifyError(err.message || 'Failed to forget the registration', 'Error');
+      notifyError(humanizeError(err), 'Could not forget the registration');
     }
   };
 

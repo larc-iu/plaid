@@ -5,7 +5,7 @@ import { Badge } from '@ui/components/ui/badge';
 import { DataTable } from '@ui/components/shared/data-table';
 import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { isUdProject } from '@ui/domain/udProject';
-import { notifySuccess, notifyError } from '@/utils/feedback';
+import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { findBaselineTextLayer, readInitialized } from '../../domain/igtConfig';
 import { udProjectUrl } from '@ui/domain/siblingApps.js';
 import { textIncludes } from '@ui/domain/collation.js';
@@ -43,7 +43,7 @@ export const AdminProjects = ({ client, currentUser }) => {
       setProjects((await client.projects.list()) || []);
     } catch (err) {
       console.error('Error loading projects:', err);
-      notifyError(err.message || 'Failed to load projects', 'Error');
+      notifyError(humanizeError(err), 'Could not load the projects');
     } finally {
       setLoading(false);
     }
@@ -59,7 +59,7 @@ export const AdminProjects = ({ client, currentUser }) => {
       notifySuccess(`You are a maintainer of ${project.name}`, 'Added');
       await load();
     } catch (err) {
-      notifyError(err.message || 'Failed to add you to the project', 'Error');
+      notifyError(humanizeError(err), 'Could not add you to the project');
     }
   };
 

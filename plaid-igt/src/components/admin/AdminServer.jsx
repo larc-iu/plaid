@@ -5,7 +5,7 @@ import { Badge } from '@ui/components/ui/badge';
 import { DataTable } from '@ui/components/shared/data-table';
 import { formatBytes } from '@/utils/formatBytes';
 import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
-import { notifySuccess, notifyError } from '@/utils/feedback';
+import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 
 // What the server is doing and what it is sitting on. Read-only except for
@@ -66,7 +66,7 @@ export const AdminServer = ({ client }) => {
       setRateLimits(rl);
     } catch (err) {
       console.error('Error loading server report:', err);
-      notifyError(err.message || 'Failed to load the server report', 'Error');
+      notifyError(humanizeError(err), 'Could not load the server report');
     } finally {
       setLoading(false);
     }
@@ -87,7 +87,7 @@ export const AdminServer = ({ client }) => {
         notifyError('The server could not write the backup. Check the log.', 'Backup failed');
       }
     } catch (err) {
-      notifyError(err.message || 'Failed to take a backup', 'Backup failed');
+      notifyError(humanizeError(err), 'Backup failed');
     } finally {
       setBackingUp(false);
     }
@@ -106,7 +106,7 @@ export const AdminServer = ({ client }) => {
       setLocks((ls) => ls.filter((l) => l.documentId !== lock.documentId));
       notifySuccess('Lock released', 'Released');
     } catch (err) {
-      notifyError(err.message || 'Failed to release the lock', 'Error');
+      notifyError(humanizeError(err), 'Could not release the lock');
     }
   };
 
@@ -116,7 +116,7 @@ export const AdminServer = ({ client }) => {
       setRateLimits(await client.admin.rateLimits());
       notifySuccess(userId ? `${userId} at ${ip} cleared` : `${ip} cleared`, 'Cleared');
     } catch (err) {
-      notifyError(err.message || 'Failed to clear', 'Error');
+      notifyError(humanizeError(err), 'Could not clear');
     }
   };
 

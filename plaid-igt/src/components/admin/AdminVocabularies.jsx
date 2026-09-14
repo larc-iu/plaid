@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge } from '@ui/components/ui/badge';
 import { DataTable } from '@ui/components/shared/data-table';
-import { notifyError } from '@/utils/feedback';
+import { notifyError, humanizeError } from '@/utils/feedback';
 import { textIncludes } from '@ui/domain/collation.js';
 
 // Vocabularies are shared across projects, so which projects use one is
@@ -25,7 +25,7 @@ export const AdminVocabularies = ({ client }) => {
       setProjects(projectList || []);
     } catch (err) {
       console.error('Error loading vocabularies:', err);
-      notifyError(err.message || 'Failed to load vocabularies', 'Error');
+      notifyError(humanizeError(err), 'Could not load the vocabularies');
     } finally {
       setLoading(false);
     }

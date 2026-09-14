@@ -61,3 +61,11 @@ export const humanizeError = (error, fallback = 'Something went wrong.') => {
     .trim();
   return msg || fallback;
 };
+
+// A sign-in that fails says one thing to the person typing, so the general
+// wording for 401 ("your session has expired") does not belong on that screen.
+// Everything else reads as it does everywhere: a server that is down, a 500.
+export const signInError = (error) =>
+  statusOf(error) === 401
+    ? 'Email or password is incorrect.'
+    : humanizeError(error, 'Could not sign in.');
