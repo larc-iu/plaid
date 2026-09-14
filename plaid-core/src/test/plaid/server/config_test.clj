@@ -161,6 +161,17 @@
   (is (= {:a 1} (deep-merge {:a 1} nil)))
   (is (= {:a 1 :b {:c 2}} (deep-merge {:a 1 :b {:c 2}} {:b nil}))))
 
+(deftest no-classpath-static-root-is-served
+  ;; ring-defaults puts wrap-resource on every GET when :static names a
+  ;; resource root, and this one named "public", which has never existed on
+  ;; this classpath. Every GET paid for the lookup, nothing could ever be
+  ;; found, and no config key could turn it off.
+  (let [cfg (config/load-config! {:config-path nil :explicit? false})]
+    (is (nil? (io/resource "public"))
+        "if a public/ root ever appears, this default has to be reconsidered")
+    (is (not (contains? (:ring.middleware/defaults-config cfg) :static))
+        "the bundled SPAs are served by wrap-bundled-spa, not by ring-defaults")))
+
 ;; -----------------------------------------------------------------------------
 ;; Which copy of a config file wins
 ;; -----------------------------------------------------------------------------

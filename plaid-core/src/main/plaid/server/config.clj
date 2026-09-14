@@ -41,7 +41,16 @@
                                                  :content-types true
                                                  :default-charset "utf-8"
                                                  :not-modified-responses true}
-                                     :static {:resources "public"}
+                                     ;; No :static. ring-defaults would put
+                                     ;; wrap-resource on every GET, walking the
+                                     ;; classpath for a `public/` root that has
+                                     ;; never existed here: the bundled SPAs are
+                                     ;; served from `ud/`, `igt/` and `dict/` by
+                                     ;; `plaid.server.middleware/wrap-bundled-spa`,
+                                     ;; and a filesystem directory only by
+                                     ;; `[server] static_resources_path`. It could
+                                     ;; not hit, cost a lookup per request, and
+                                     ;; no operator could turn it off.
                                      :security {:anti-forgery false
                                                 :hsts true
                                                 :ssl-redirect false
