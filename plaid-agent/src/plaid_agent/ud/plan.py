@@ -218,25 +218,55 @@ def _run_parse_summary(op, n):
     return [(('parsed document', 'parsed documents'), len(op.get('document_ids') or []))]
 
 
+# --- how a group of like ops reads on the card ---------------------------------------
+#
+# One line for a whole fold, declared with the kind it folds, so a kind that
+# folds without a line to show is refused when this module is imported rather
+# than when a plan first grows large enough to fold.
+
+def _refs_phrase(members, limit: int = 8) -> str:
+    refs = [m.get('ref') for m in members if m.get('ref')]
+    shown = ', '.join(refs[:limit])
+    return shown + (f', … {len(refs) - limit} more' if len(refs) > limit else '')
+
+
+def _set_span_label(first, members) -> str:
+    what = f'{first["field"]} = "{first["value"]}"' if first.get('value') else f'clear {first["field"]}'
+    return f'{what} on {len(members)} words ({_refs_phrase(members)})'
+
+
+def _set_head_label(first, members) -> str:
+    return f'{first["deprel"]} on {len(members)} words ({_refs_phrase(members)})'
+
+
+def _del_relation_label(first, members) -> str:
+    return f'remove the head of {len(members)} words ({_refs_phrase(members)})'
+
+
+def _confirm_label(first, members) -> str:
+    return f'confirm {len(members)} values ({_refs_phrase(members)})'
+
+
 # --- the registry -------------------------------------------------------------------
 
 KIND = ok.registry([
     OpKind('set_span', _FIELD_VALUE, required=('layer_id', 'token_id'), apply=_apply_set_span,
            target=lambda op: ('span', op.get('layer_id'), op.get('token_id')),
            deletes=lambda op: ([op['span_id']] if op.get('span_id') and (op.get('value') or '') == '' else []),
-           compact_each=('token_id', 'span_id', 'ref'), summary=_set_span_summary),
+           compact_each=('token_id', 'span_id', 'ref'), compact_label=_set_span_label,
+           summary=_set_span_summary),
     OpKind('set_head', ('dependency', 'dependencies'), stage=IDS, apply=_apply_set_head,
            required=('word_id', 'head_id', 'lemma_layer_id', 'relation_layer_id', 'deprel'),
            target=lambda op: ('head', op.get('word_id')),
            deletes=lambda op: [op.get('relation_id')],
            compact_each=('word_id', 'head_id', 'word_form', 'head_form', 'lemma_span_id',
-                         'head_lemma_span_id', 'relation_id', 'ref')),
+                         'head_lemma_span_id', 'relation_id', 'ref'), compact_label=_set_head_label),
     OpKind('del_relation', _REMOVED_DEP, stage=IDS, apply=_apply_del_relation,
            required=('relation_id',), target=lambda op: ('head', op.get('word_id')),
            deletes=lambda op: [op['relation_id']],
-           compact_each=('word_id', 'relation_id', 'ref')),
+           compact_each=('word_id', 'relation_id', 'ref'), compact_label=_del_relation_label),
     OpKind('confirm', ('confirmation', 'confirmations'), apply=_apply_confirm,
-           compact_each=('span_id', 'relation_id', 'ref')),
+           compact_each=('span_id', 'relation_id', 'ref'), compact_label=_confirm_label),
     OpKind('run_parse', ('parsed document', 'parsed documents'), stage=PARSE, apply=_apply_run_parse,
            required=('document_ids', 'service_id', 'project_id', 'language'),
            shape=ok.EXCLUSIVE, summary=_run_parse_summary),
@@ -277,6 +307,8 @@ RESHAPES_TOKEN = ok.shaped(KIND, WORD_SHAPE)
 # Kinds a LATER pass of the executor applies: relations, which need the ids
 # the first batch mints, and the parser, which runs outside the batches.
 LATER_PASSES = ok.staged(KIND, IDS, PARSE)
+# How the like ops of one plan fold into one stored op (core.plan.compact_ops).
+COMPACT = ok.compact_spec(KIND)
 
 
 def _reach(op: Dict[str, Any]) -> set:

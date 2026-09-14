@@ -92,3 +92,12 @@ def test_an_undeclared_kind_shows_its_identifier_rather_than_vanishing():
     """Nothing here refuses a plan, so a kind the summary does not know must
     still appear in the line the user reads."""
     assert ok.summarize(_reg(), [{'kind': 'mystery'}]) == '1 mystery'
+
+
+def test_a_noun_that_collides_with_what_rides_beside_the_counts_is_refused():
+    """An executor returns per-kind counts keyed by plural noun, with the
+    changes it dropped beside them under "notes". A kind counted as notes
+    would be overwritten by that list, and found by whoever added the kind
+    rather than by the code."""
+    with pytest.raises(ValueError, match='dropped changes'):
+        ok.registry([ok.OpKind('set_note', ('note', 'notes'))])

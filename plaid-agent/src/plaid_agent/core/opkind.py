@@ -108,13 +108,24 @@ class UnknownKind(ValueError):
     """A plan carries an operation of a kind nobody declared."""
 
 
+# What an executor returns is the per-kind counts KEYED BY PLURAL NOUN, with
+# what the plan dropped beside them under ``notes`` (``core.service`` reads it
+# back out). A kind whose plural noun were that word would be overwritten by
+# the list, and its count would reach the user as a list of sentences.
+RESERVED_COUNT_KEYS = frozenset({'notes'})
+
+
 def registry(kinds: Iterable[OpKind]) -> Dict[str, OpKind]:
-    """The kinds by name, in declaration order. A name declared twice is a
-    mistake worth catching at import rather than at apply time."""
+    """The kinds by name, in declaration order. A name declared twice, or a
+    noun that collides with what rides beside the counts, is a mistake worth
+    catching at import rather than at apply time."""
     out: Dict[str, OpKind] = {}
     for k in kinds:
         if k.name in out:
             raise ValueError(f'op kind {k.name!r} is declared twice')
+        if k.noun[1] in RESERVED_COUNT_KEYS:
+            raise ValueError(f'op kind {k.name!r} cannot be counted as {k.noun[1]!r}: that is what an '
+                             f'executor returns the dropped changes under')
         out[k.name] = k
     return out
 

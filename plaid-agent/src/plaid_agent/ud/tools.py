@@ -19,7 +19,7 @@ from ..core.args import clamp_limit, read_int, sentence_number
 from ..core.limits import MAX_RESULT_CHARS, READ_LIMITS
 from ..core.plan import PLAN_MAX_OPS, PlanFull, reserve as core_reserve
 from ..core.tools import fn, tools_for as core_tools_for
-from .plan import KIND
+from .plan import COMPACT, KIND  # noqa: F401 - COMPACT is re-exported for the tests
 from .project import (MISSING, Sentence, Token, UdDoc, UdProject, Word, load_document, parse_ref,
                       render_document, render_sentence, resolve, word_ref)
 from .review import (REVIEW_FIELDS, all_words, confirm_targets, counts_phrase, discard_targets,
@@ -213,41 +213,6 @@ def op_target(op: Dict[str, Any]):
     own; an op that can supersede nothing (a comment, a structural change) has
     none."""
     return opkind.target_of(KIND, op)
-
-
-def _refs_phrase(members, limit: int = 8) -> str:
-    refs = [m.get('ref') for m in members if m.get('ref')]
-    shown = ', '.join(refs[:limit])
-    return shown + (f', … {len(refs) - limit} more' if len(refs) > limit else '')
-
-
-def _set_span_label(first, members) -> str:
-    what = f'{first["field"]} = "{first["value"]}"' if first.get('value') else f'clear {first["field"]}'
-    return f'{what} on {len(members)} words ({_refs_phrase(members)})'
-
-
-def _set_head_label(first, members) -> str:
-    return f'{first["deprel"]} on {len(members)} words ({_refs_phrase(members)})'
-
-
-def _del_relation_label(first, members) -> str:
-    return f'remove the head of {len(members)} words ({_refs_phrase(members)})'
-
-
-def _confirm_label(first, members) -> str:
-    return f'confirm {len(members)} values ({_refs_phrase(members)})'
-
-
-# How the like ops of one plan fold into one stored op (core.plan.compact_ops).
-# Which of a kind's keys vary per member is declared with the kind; the line
-# each group shows is here, in the words the rest of this module uses.
-_GROUP_LABELS = {
-    'set_span': _set_span_label,
-    'set_head': _set_head_label,
-    'del_relation': _del_relation_label,
-    'confirm': _confirm_label,
-}
-COMPACT = opkind.compact_spec(KIND, label=lambda first, members: _GROUP_LABELS[first['kind']](first, members))
 
 
 def _truncate(s: str) -> str:
