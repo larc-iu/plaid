@@ -2534,7 +2534,8 @@ class PlaidClient {
       /**
        * Discover the services seen on a project (synchronous GET). Currently
        * connected services carry `online: true`; previously-seen offline ones
-       * carry `online: false` plus a `lastSeenAt` stamp.
+       * carry `online: false` plus a `lastSeenAt` stamp. Goes over the wire
+       * even while a batch is open on the client.
        * @param {string} projectId - The UUID of the project to query
        * @returns {Promise<Array>} Array of discovered service information
        */

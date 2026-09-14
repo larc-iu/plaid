@@ -15,14 +15,22 @@ import { transformRequest, transformResponse } from './transforms.js';
  * service ever registered on the project: currently connected ones carry
  * `online: true`; previously-seen offline ones carry `online: false` plus a
  * `lastSeenAt` stamp. Callers that need a service they can actually submit
- * work to should filter on `online`.
+ * work to should filter on `online`. Goes over the wire even while a batch is
+ * open on the client.
  *
  * @param {Object} client - PlaidClient instance
  * @param {string} projectId - Project UUID
  * @returns {Promise<Array>} [{serviceId, serviceName, description, extras, online, lastSeenAt}]
  */
 export function discoverServices(client, projectId) {
-  return client._request('GET', `/api/v1/projects/${projectId}/services`);
+  // bypassBatch: the registry is read by whoever asked, not by whatever batch
+  // happens to be open on this shared client. The assistant's availability
+  // probe polls for 49 seconds after a mount and landed inside a Grew rewrite
+  // or an import, where the answer was `{batched: true}`, cached as the
+  // service list, and every later render threw on it until a reload.
+  return client._request('GET', `/api/v1/projects/${projectId}/services`, {
+    bypassBatch: true,
+  });
 }
 
 /**

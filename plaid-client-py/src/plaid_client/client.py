@@ -1788,7 +1788,8 @@ class MessagesResource(_Resource):
         Reads the server-side service registry synchronously. Returns every
         service ever registered on the project: currently connected ones carry
         ``online: True``; previously-seen offline ones carry ``online: False``
-        plus a ``last_seen_at`` stamp.
+        plus a ``last_seen_at`` stamp. Goes over the wire even while a batch
+        is open on the client.
 
         Args:
             project_id: The UUID of the project to query

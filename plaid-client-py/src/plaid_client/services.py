@@ -52,8 +52,12 @@ def discover_services(client, project_id):
     ones carry ``online: True``; previously-seen offline ones carry
     ``online: False`` plus a ``last_seen_at`` stamp. Callers that need a
     service they can actually submit work to should filter on ``online``.
+    Goes over the wire even while a batch is open on the client.
     """
-    return client.messages._request('GET', f'/api/v1/projects/{project_id}/services')
+    # bypass_batch: the registry is read by whoever asked, not by whatever
+    # batch happens to be open on this shared client. See the JS twin.
+    return client.messages._request('GET', f'/api/v1/projects/{project_id}/services',
+                                    bypass_batch=True)
 
 
 def discard_service(client, project_id, service_id):
