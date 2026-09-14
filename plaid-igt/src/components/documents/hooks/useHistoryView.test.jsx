@@ -24,6 +24,19 @@ let doc;
 let client;
 let onExpired;
 let audit;
+// The `asOf` of every document the hook COMMITTED, in order. A snapshot read
+// the reader has already moved past must not appear here at all.
+let committed;
+
+// A promise the test finishes when it chooses, so two snapshot reads can be in
+// flight at once and land out of order.
+const deferred = () => {
+  let resolve;
+  const promise = new Promise((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+};
 
 // A stand-in IgtDocument. `atAsOf` hands back another one at the asked-for
 // snapshot, which is what the real one does.
@@ -44,7 +57,10 @@ const Probe = () => {
     documentId: 'doc-1',
     client,
     doc: current,
-    setDoc,
+    setDoc: (next) => {
+      committed.push(next?.asOf ?? null);
+      setDoc(next);
+    },
     onExpired,
   });
   return null;
@@ -66,6 +82,7 @@ beforeEach(() => {
   client = { documents: { audit } };
   onExpired = vi.fn();
   doc = makeDoc();
+  committed = [];
 });
 
 describe('the history view', () => {
@@ -95,6 +112,31 @@ describe('the history view', () => {
     expect(api.selectedEntry).toBe(ENTRY_A);
     // Swapped, never blanked: there is a document on screen the whole way.
     expect(doc.asOf).toBe(ENTRY_A.time);
+    await view.unmount();
+  });
+
+  it('drops a snapshot read the reader has already clicked past', async () => {
+    // Two history entries in quick succession, and the first read is the slower
+    // one. The second click is what the reader is looking at, so the first read
+    // has to be thrown away rather than committed on top of it.
+    await mount();
+    const pending = new Map();
+    doc.atAsOf = vi.fn((next) => {
+      const d = deferred();
+      pending.set(next, d);
+      return d.promise;
+    });
+
+    await view.step(() => api.selectEntry(ENTRY_A));
+    await view.step(() => api.selectEntry(ENTRY_B));
+    await view.step(() => pending.get(ENTRY_B.time).resolve(makeDoc(ENTRY_B.time)));
+    await settle();
+    await view.step(() => pending.get(ENTRY_A.time).resolve(makeDoc(ENTRY_A.time)));
+    await settle();
+
+    expect(api.asOf).toBe(ENTRY_B.time);
+    expect(doc.asOf).toBe(ENTRY_B.time);
+    expect(committed).toEqual([ENTRY_B.time]);
     await view.unmount();
   });
 
