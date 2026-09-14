@@ -60,6 +60,29 @@ export class UncontrolledValueDirective extends Directive {
 }
 export const uncontrolledValue = directive(UncontrolledValueDirective);
 
+// Where a floating surface sits under the thing that opened it: viewport
+// coordinates, clamped into view, flipped above when it does not fit below and
+// clamped into view either way when the window is too short for both.
+//
+// `position: fixed` is not a nicety here: .igt-grid sets overflow-x:auto, which
+// forces overflow-y to a clipping value, so an absolutely positioned surface
+// inside a column is cut off at the bottom of the sentence band. All three
+// surfaces place themselves this way — the vocab and comment popover (centred
+// on its opener), the row menu, and the alternatives list.
+export const anchoredPos = (anchorEl, { width, height, gap = 4, center = false }) => {
+  const r = anchorEl?.getBoundingClientRect?.();
+  if (!r) return null;
+  const pad = 8;
+  const wanted = center ? r.left + r.width / 2 - width / 2 : r.left;
+  const left = Math.max(pad, Math.min(wanted, window.innerWidth - width - pad));
+  let top = r.bottom + gap;
+  if (top + height > window.innerHeight) {
+    const above = r.top - height - gap;
+    top = above > pad ? above : Math.max(pad, window.innerHeight - height - pad);
+  }
+  return { left, top };
+};
+
 // A cell's TIER: its kind plus the field it holds — the logical row that Enter,
 // Tab and the Ctrl+Enter hop move along, which band wrapping can put on several
 // screen rows. Rendered as an attribute rather than read back out of the cell

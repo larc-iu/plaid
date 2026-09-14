@@ -1,4 +1,5 @@
 import { html } from 'lit-html';
+import { anchoredPos } from './shared.js';
 
 // Minimized rows: which annotation rows are collapsed, remembered per
 // project, and the row menu that toggles them.
@@ -114,16 +115,10 @@ export const rows = {
     }
   },
 
-  // Viewport coords under the clicked label, clamped into view. `position:
-  // fixed` is not a nicety here: .igt-grid sets overflow-x:auto (which forces
-  // overflow-y to a clipping value), so an absolutely-positioned menu inside
-  // the label column gets cut off at the bottom of the sentence band. Same
-  // reason and same approach as _computePopoverPos.
+  // Viewport coords under the clicked label (see anchoredPos), with the menu's
+  // height estimated from the rows it will list.
   _computeRowMenuPos(anchorEl) {
-    const r = anchorEl?.getBoundingClientRect?.();
-    if (!r) return null;
-    const W = 232;
-    const Hest = Math.min(
+    const height = Math.min(
       360,
       92 +
         this._rows(
@@ -131,14 +126,7 @@ export const rows = {
         ).length *
           26,
     );
-    const pad = 8;
-    let left = Math.max(pad, Math.min(r.left, window.innerWidth - W - pad));
-    let top = r.bottom + 4;
-    if (top + Hest > window.innerHeight) {
-      const above = r.top - Hest - 4;
-      top = above > pad ? above : Math.max(pad, window.innerHeight - Hest - pad);
-    }
-    return { left, top };
+    return anchoredPos(anchorEl, { width: 232, height });
   },
 
   _rowMenuPanel(ctx) {

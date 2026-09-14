@@ -2,6 +2,7 @@ import { render, html, nothing } from 'lit-html';
 import { collationKey } from '@ui/domain/collation.js';
 import { TAGSET_SOURCE } from '@/domain/glossGuess';
 import { isValueAllowed, replacePartAtCaret } from '@/domain/tagsets';
+import { anchoredPos } from './shared.js';
 
 // The alternatives list: Alt+Down on a cell lists every value the project
 // has given that form, and a pick adopts one.
@@ -199,19 +200,12 @@ export const alternatives = {
     if (el) this._pickAlt(el, item);
   },
 
+  // At least as wide as the cell it lists for, and as tall as its rows up to
+  // the eight it scrolls past. Placed like every other floating surface.
   _computeAltsPos(el, n) {
-    const r = el?.getBoundingClientRect?.();
-    if (!r) return null;
-    const pad = 8;
-    const width = Math.max(160, r.width);
-    const H = Math.min(n, 8) * 24 + 10;
-    const left = Math.max(pad, Math.min(r.left, window.innerWidth - width - pad));
-    let top = r.bottom + 2;
-    if (top + H > window.innerHeight) {
-      const above = r.top - H - 2;
-      top = above > pad ? above : Math.max(pad, window.innerHeight - H - pad);
-    }
-    return { left, top, width };
+    const width = Math.max(160, el?.getBoundingClientRect?.().width ?? 0);
+    const pos = anchoredPos(el, { width, height: Math.min(n, 8) * 24 + 10, gap: 2 });
+    return pos && { ...pos, width };
   },
 
   _repositionAlts() {

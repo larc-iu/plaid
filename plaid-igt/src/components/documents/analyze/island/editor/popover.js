@@ -1,3 +1,5 @@
+import { anchoredPos } from './shared.js';
+
 // The one popover surface: where it opens, how it is sized and moved, and
 // how it closes, whatever it is showing.
 export const popover = {
@@ -93,27 +95,11 @@ export const popover = {
     });
   },
 
-  // Position the popover (240px wide) below the opener as fixed coords, clamped
-  // to the viewport — so edge columns don't overflow and the grid's overflow-x
-  // scroll container can't clip it.
+  // Centred under the opener, as fixed coords (see anchoredPos for why).
   // `height`: the popover's measured height once rendered (see _fitPopover);
   // before the first paint an estimate is used.
   _computePopoverPos(anchorEl, height = 280, width = 240) {
-    const r = anchorEl?.getBoundingClientRect?.();
-    if (!r) return null;
-    const W = width,
-      Hest = height,
-      pad = 8;
-    let left = r.left + r.width / 2 - W / 2;
-    left = Math.max(pad, Math.min(left, window.innerWidth - W - pad));
-    let top = r.bottom + 4;
-    if (top + Hest > window.innerHeight) {
-      const above = r.top - Hest - 4;
-      // Flip above if it fits; otherwise (viewport too short either way) clamp
-      // into view so the search box + create button stay reachable.
-      top = above > pad ? above : Math.max(pad, window.innerHeight - Hest - pad);
-    }
-    return { left, top };
+    return anchoredPos(anchorEl, { width, height, center: true });
   },
 
   // returnFocus: send focus back to the opener (for keyboard-driven closes —
