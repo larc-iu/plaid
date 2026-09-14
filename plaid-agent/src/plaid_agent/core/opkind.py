@@ -4,7 +4,9 @@ A plan is a list of operations, each with a ``kind``. Everything an app does
 with one is keyed by that kind: which keys it must carry, what to call it in
 the line the user approves, what it writes to, what it deletes, whether it
 reshapes what other operations address, how like operations fold into one
-stored operation, and the code that applies it.
+stored operation, the code that applies it, and (for a scope, which stands for
+everything a predicate matches) the code that resolves it into the operations
+it stands for.
 
 Each of those used to be its own table, written beside the others and kept in
 step by hand. Adding a kind meant editing ten or thirteen places, and a test
@@ -14,10 +16,11 @@ table is a function of the registry.
 
 An app declares its kinds with :func:`registry` and derives what it needs:
 :func:`names`, :func:`required`, :func:`nouns`, :func:`shaped`,
-:func:`token_keys`, :func:`compact_spec`, :func:`removed_ids`,
-:func:`removed_tokens`. The executor asks :func:`kind_of` for the operation in
-front of it, which raises on a kind nobody declared rather than letting it
-through as a write of nothing.
+:func:`scopes`, :func:`token_keys`, :func:`compact_spec`, :func:`removed_ids`,
+:func:`removed_tokens`. Approval calls :func:`resolve_ops`, which puts what
+each scope stands for in its place. The executor asks :func:`kind_of` for the
+operation in front of it, which raises on a kind nobody declared rather than
+letting it through as a write of nothing.
 
 The vocabulary of ``shape`` and ``stage`` past the two constants here is the
 app's own: what counts as reshaping is a fact about what the app annotates.
@@ -57,6 +60,10 @@ class OpKind:
                   operation. The number is how many changes it stands for
                   (``None`` means one). Every kind whose ``stage`` the
                   executor runs needs one.
+    ``resolve``   ``(ctx, op) -> ops``: the operations this one stands for,
+                  read from the project when the plan is applied. A kind that
+                  declares one is a SCOPE: it never reaches the executor, and
+                  :func:`resolve_ops` puts what it resolves to in its place.
     ``stage``     which pass of the executor applies it.
     ``target``    ``op -> hashable``: what the operation writes to, so a
                   second operation on the same target within one turn replaces
@@ -98,6 +105,7 @@ class OpKind:
     noun: Tuple[str, str]
     required: Tuple[str, ...] = ()
     apply: Optional[Callable[[Any, Dict[str, Any]], Optional[int]]] = None
+    resolve: Optional[Callable[[Any, Dict[str, Any]], Iterable[Dict[str, Any]]]] = None
     stage: str = BATCH
     target: Optional[Callable[[Dict[str, Any]], Any]] = None
     at: Tuple[str, ...] = ()
@@ -126,9 +134,10 @@ RESERVED_COUNT_KEYS = frozenset({'notes'})
 
 
 def registry(kinds: Iterable[OpKind]) -> Dict[str, OpKind]:
-    """The kinds by name, in declaration order. A name declared twice, or a
-    noun that collides with what rides beside the counts, is a mistake worth
-    catching at import rather than at apply time."""
+    """The kinds by name, in declaration order. A name declared twice, a noun
+    that collides with what rides beside the counts, or a scope and its
+    resolver disagreeing is a mistake worth catching at import rather than at
+    apply time."""
     out: Dict[str, OpKind] = {}
     for k in kinds:
         if k.name in out:
@@ -136,6 +145,18 @@ def registry(kinds: Iterable[OpKind]) -> Dict[str, OpKind]:
         if k.noun[1] in RESERVED_COUNT_KEYS:
             raise ValueError(f'op kind {k.name!r} cannot be counted as {k.noun[1]!r}: that is what an '
                              f'executor returns the dropped changes under')
+        # The two halves of being a scope. Tagged without a resolver, nothing
+        # would put the operations it stands for in its place and the plan
+        # would refuse at the executor, after the user approved it; resolving
+        # without the tag, every guard built on the tag would let it into a
+        # plan it cannot share.
+        if k.resolve and k.shape != SCOPE:
+            raise ValueError(f'op kind {k.name!r} resolves into other operations, so it is a {SCOPE!r}')
+        if k.shape == SCOPE and not k.resolve:
+            raise ValueError(f'op kind {k.name!r} is a {SCOPE!r} with nothing to resolve it')
+        if k.resolve and k.apply:
+            raise ValueError(f'op kind {k.name!r} is resolved away before the executor runs, so it '
+                             f'cannot also be applied')
         out[k.name] = k
     return out
 
@@ -177,6 +198,40 @@ def kind_of(reg: Mapping[str, OpKind], op: Any, index: Optional[int] = None) -> 
 def shaped(reg: Mapping[str, OpKind], *shapes: str) -> Tuple[str, ...]:
     """Every kind tagged with one of ``shapes``."""
     return tuple(name for name, k in reg.items() if k.shape in shapes)
+
+
+def scopes(reg: Mapping[str, OpKind]) -> Tuple[str, ...]:
+    """Every kind resolved into the operations it stands for, which is every
+    kind that declares how (:attr:`OpKind.resolve`). Whether an operation is a
+    scope is one question with one answer, so every table of scope kinds and
+    every guard that asks reads this."""
+    return tuple(name for name, k in reg.items() if k.resolve)
+
+
+def resolver(reg: Mapping[str, OpKind], op: Dict[str, Any]) -> Optional[Callable]:
+    """How to resolve one operation, or ``None`` where it stands for itself."""
+    spec = reg.get(op.get('kind'))
+    return spec.resolve if spec is not None else None
+
+
+def resolve_ops(reg: Mapping[str, OpKind], ctx: Any, ops: Iterable[Dict[str, Any]],
+                keep: Optional[Callable[[Dict[str, Any]], bool]] = None) -> List[Dict[str, Any]]:
+    """``ops`` with every scope replaced, in its place, by the operations it
+    stands for. ``ctx`` is whatever the app's resolvers read with, and ``keep``
+    says which of the resolved operations join the plan.
+
+    No kind is named here, so a scope kind added later is resolved by declaring
+    a resolver. The loop this replaced dispatched on the name, and a kind it
+    did not know reached the executor, which refuses a kind staged
+    :data:`RESOLVED`: the plan failed after the user had approved it."""
+    out: List[Dict[str, Any]] = []
+    for op in ops:
+        fn = resolver(reg, op)
+        if fn is None:
+            out.append(op)
+            continue
+        out.extend(o for o in fn(ctx, op) if keep is None or keep(o))
+    return out
 
 
 def token_keys(reg: Mapping[str, OpKind]) -> Dict[str, Tuple[str, ...]]:

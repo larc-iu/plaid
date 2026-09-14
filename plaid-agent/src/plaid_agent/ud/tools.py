@@ -31,8 +31,9 @@ PLAN_NOTE = ("A whole document's review (confirm or discard_predictions without 
              "change however many values it covers.")
 # Ops that stand for everything a predicate matches (a document and a set of
 # fields, or a field and a pattern) and are resolved to spans when the plan is
-# applied. Read off the registry, so a new one joins by being declared.
-SCOPE_KINDS = opkind.shaped(KIND, opkind.SCOPE)
+# applied. Every kind that declares how to resolve itself, so a new one joins
+# by being declared.
+SCOPE_KINDS = opkind.scopes(KIND)
 # The most documents one review may cover when several are named or all
 # are asked for: each is read to count what is waiting, and read again at
 # approval.

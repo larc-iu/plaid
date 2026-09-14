@@ -5,9 +5,10 @@ cap, counting what was committed so a failure part-way can say how far it got,
 and the provenance an approval writes. What is here is the ops themselves.
 
 **Every kind is declared once**, in :data:`KIND` below: its required keys, the
-noun the user reads, which pass of the executor applies it, what it writes to,
-what it deletes, whether it reshapes the document, and how like ops fold into
-one stored op. ``SCOPES``, ``RESHAPES_DOCUMENT``, ``RESHAPES_TOKEN``,
+noun the user reads, which pass of the executor applies it (or, for a scope,
+what it resolves into at approval), what it writes to, what it deletes, whether
+it reshapes the document, and how like ops fold into one stored op.
+``SCOPES``, ``RESHAPES_DOCUMENT``, ``RESHAPES_TOKEN``,
 ``compact_spec``, the summary and the executor's dispatch are all read off it (see
 :mod:`plaid_agent.core.opkind`).
 
@@ -263,6 +264,60 @@ def _relation_entity(op):
     return ('relation', op['relation_id']) if op.get('relation_id') else None
 
 
+# --- what each scope stands for --------------------------------------------------
+#
+# A scope is stored as the predicate the model gave and resolved to per-span
+# ops at approval, reading the document NOW. Each kind declares its own
+# resolver beside everything else it declares, and `resolve_scopes` runs them
+# without naming one.
+
+class Resolution:
+    """What the scopes of one plan resolve with: the client, the project, and
+    the documents read so far, so two scopes over one document read it once."""
+
+    def __init__(self, client, project):
+        self.client = client
+        self.project = project
+        self._docs: Dict[str, Any] = {}
+
+    def document(self, document_id: str):
+        if document_id not in self._docs:
+            self._docs[document_id] = load_document(self.client, self.project, document_id)
+        return self._docs[document_id]
+
+
+def _resolve_confirm_scope(res: Resolution, op):
+    did = op['document_id']
+    doc = res.document(did)
+    fields = list(op.get('fields') or [])
+    for sentence, w, f, span_id, relation_id in confirm_targets(all_words(doc), fields):
+        ref = word_ref(sentence, w)
+        yield {'kind': 'confirm', 'span_id': span_id, 'relation_id': relation_id,
+               'token_id': w.id, 'document_id': did, 'ref': ref,
+               'label': f'confirm the head of {ref}' if f == 'deprel' else f'confirm {f} on {ref}'}
+
+
+def _resolve_discard_scope(res: Resolution, op):
+    did = op['document_id']
+    doc = res.document(did)
+    fields = list(op.get('fields') or [])
+    targets, _spared = discard_targets(all_words(doc), fields)
+    for sentence, w, f, span, relation_id in targets:
+        ref = word_ref(sentence, w)
+        if f == 'deprel':
+            yield {'kind': 'del_relation', 'word_id': w.id, 'relation_id': relation_id,
+                   'document_id': did, 'ref': ref, 'label': f'discard the unconfirmed head of {ref}'}
+        else:
+            yield {'kind': 'set_span', 'layer_id': span.layer_id, 'token_id': w.id,
+                   'span_id': span.id, 'value': '', 'field': f, 'document_id': did,
+                   'ref': ref, 'label': f'discard the unconfirmed {f} on {ref}'}
+
+
+def _resolve_replace_scope(res: Resolution, op):
+    from .bulk import resolve_replace
+    return resolve_replace(res.client, res.project, op)
+
+
 # --- the registry -------------------------------------------------------------------
 
 KIND = ok.registry([
@@ -310,17 +365,19 @@ KIND = ok.registry([
     # A scope names a document and fields, or a field and a pattern, and is
     # resolved to spans at approval, so the executor never sees one.
     OpKind('confirm_scope', ('confirmation', 'confirmations'), stage=ok.RESOLVED, shape=ok.SCOPE,
-           required=('document_id', 'fields'),
+           required=('document_id', 'fields'), resolve=_resolve_confirm_scope,
            target=lambda op: ('scope', 'confirm_scope', op.get('document_id'))),
     # `clears` says a scope throws values away without being able to name
     # which until it is resolved, so two scopes over one document cannot share
     # a plan when either of them does.
     OpKind('discard_scope', ('discarded prediction', 'discarded predictions'), stage=ok.RESOLVED,
            shape=ok.SCOPE, required=('document_id', 'fields'), summary=_discard_scope_summary,
+           resolve=_resolve_discard_scope,
            target=lambda op: ('scope', 'discard_scope', op.get('document_id')),
            extra={'clears': lambda op: True}),
     OpKind('replace_scope', _FIELD_VALUE, stage=ok.RESOLVED, shape=ok.SCOPE,
            required=('field', 'pattern'), summary=_replace_scope_summary,
+           resolve=_resolve_replace_scope,
            target=lambda op: ('replace', op.get('field'), op.get('pattern'),
                               op.get('replacement'), op.get('document_id')),
            extra={'clears': lambda op: not (op.get('replacement') or '')}),
@@ -331,7 +388,9 @@ KIND = ok.registry([
 ])
 
 # Every table below is the registry read a different way.
-SCOPES = ok.shaped(KIND, ok.SCOPE)
+# A scope is a kind that says how to resolve itself, so a new one joins every
+# guard built on this by declaring a resolver.
+SCOPES = ok.scopes(KIND)
 RESHAPES_DOCUMENT = ok.shaped(KIND, SENTENCE_SHAPE)
 RESHAPES_TOKEN = ok.shaped(KIND, WORD_SHAPE)
 # Kinds that rewrite the documents they name from scratch, and kinds that own
@@ -517,12 +576,15 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]):
     """The per-span ops a scope stands for, read from the document NOW.
     Returns (ops, notes).
 
+    Each scope kind declares its own resolver and this dispatches on that, so
+    a kind added later is resolved without being named here.
+
     Approval has already refused the plan if the document's version moved
     since the model counted, so what is found here is what it counted.
     Nothing is written: this only reads, and a document that cannot be read
     refuses the whole plan before any batch opens."""
     notes: List[str] = []
-    if not any(op.get('kind') in SCOPES for op in ops):
+    if not any(ok.resolver(KIND, op) for op in ops):
         return ops, notes
     if project is None:
         raise ValueError('a whole-document review needs the project to read the document with')
@@ -530,7 +592,7 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]):
     # whichever came first: the scope's preview read stored values, not
     # planned ones, and last-wins by position would let it override a
     # set_field the user read on the card.
-    named = [op for op in ops if op.get('kind') not in SCOPES]
+    named = [op for op in ops if not ok.resolver(KIND, op)]
     named_entities = {entity_of(op) for op in named} - {None}
     named_gone = ok.removed_ids(KIND, named, only_certain=True)
 
@@ -570,44 +632,7 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]):
             return False
         return not named_too(o)
 
-    out: List[Dict[str, Any]] = []
-    docs: Dict[str, Any] = {}
-    for op in ops:
-        kind = op.get('kind')
-        if kind not in SCOPES:
-            out.append(op)
-            continue
-        if kind == 'replace_scope':
-            from .bulk import resolve_replace
-            out.extend(o for o in resolve_replace(client, project, op) if keep(o))
-            continue
-        did = op['document_id']
-        if did not in docs:
-            docs[did] = load_document(client, project, did)
-        doc = docs[did]
-        fields = list(op.get('fields') or [])
-        if kind == 'confirm_scope':
-            for sentence, w, f, span_id, relation_id in confirm_targets(all_words(doc), fields):
-                ref = word_ref(sentence, w)
-                o = {'kind': 'confirm', 'span_id': span_id, 'relation_id': relation_id,
-                     'token_id': w.id, 'document_id': did, 'ref': ref,
-                     'label': f'confirm the head of {ref}' if f == 'deprel' else f'confirm {f} on {ref}'}
-                if keep(o):
-                    out.append(o)
-            continue
-        targets, _spared = discard_targets(all_words(doc), fields)
-        for sentence, w, f, span, relation_id in targets:
-            ref = word_ref(sentence, w)
-            if f == 'deprel':
-                o = {'kind': 'del_relation', 'word_id': w.id, 'relation_id': relation_id,
-                     'document_id': did, 'ref': ref, 'label': f'discard the unconfirmed head of {ref}'}
-            else:
-                o = {'kind': 'set_span', 'layer_id': span.layer_id, 'token_id': w.id,
-                     'span_id': span.id, 'value': '', 'field': f, 'document_id': did,
-                     'ref': ref, 'label': f'discard the unconfirmed {f} on {ref}'}
-            if keep(o):
-                out.append(o)
-    return out, notes
+    return ok.resolve_ops(KIND, Resolution(client, project), ops, keep), notes
 
 
 def _run(ctx: Context, ops, stage: str) -> None:

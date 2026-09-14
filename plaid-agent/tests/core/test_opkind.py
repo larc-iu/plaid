@@ -16,7 +16,9 @@ def _reg():
                   apply=lambda ctx, op: 1,
                   deletes_tokens=lambda op: [op['id']],
                   shape='reshape'),
-        ok.OpKind('scope_it', ('sweep', 'sweeps'), stage=ok.RESOLVED, shape=ok.SCOPE),
+        ok.OpKind('scope_it', ('sweep', 'sweeps'), stage=ok.RESOLVED, shape=ok.SCOPE,
+                  resolve=lambda ctx, op: [{'kind': 'set_value', 'id': i, 'value': op['value']}
+                                           for i in op['ids']]),
     ])
 
 
@@ -28,11 +30,40 @@ def test_a_name_declared_twice_is_refused_at_import():
 def test_every_table_is_the_registry_read_a_different_way():
     reg = _reg()
     assert ok.shaped(reg, 'reshape') == ('drop_it',)
-    assert ok.shaped(reg, ok.SCOPE) == ('scope_it',)
+    assert ok.shaped(reg, ok.SCOPE) == ok.scopes(reg) == ('scope_it',)
     assert ok.token_keys(reg) == {'set_value': ('id',)}
     spec = ok.compact_spec(reg, label=lambda first, members: 'grouped')
     assert spec == {'set_value': {'each': ('id', 'value'), 'label': spec['set_value']['label']}}
     assert spec['set_value']['label'](None, []) == 'grouped'
+
+
+def test_a_scope_and_its_resolver_are_two_halves_of_one_declaration():
+    """Tagged a scope with nothing to resolve it, the plan refuses at the
+    executor after the user approved it; resolving without the tag, every
+    guard built on the tag lets it into a plan it cannot share."""
+    with pytest.raises(ValueError, match='nothing to resolve it'):
+        ok.registry([ok.OpKind('x', ('a', 'b'), stage=ok.RESOLVED, shape=ok.SCOPE)])
+    with pytest.raises(ValueError, match="so it is a 'scope'"):
+        ok.registry([ok.OpKind('x', ('a', 'b'), resolve=lambda ctx, op: [])])
+    with pytest.raises(ValueError, match='cannot also be applied'):
+        ok.registry([ok.OpKind('x', ('a', 'b'), shape=ok.SCOPE, resolve=lambda ctx, op: [],
+                               apply=lambda ctx, op: 1)])
+
+
+def test_a_scope_is_replaced_in_place_by_what_it_stands_for():
+    """The loop names no kind: a scope is one that says how to resolve itself.
+    `keep` is the app's own rule for which of them join the plan."""
+    reg = _reg()
+    ops = [{'kind': 'set_value', 'id': 'a', 'value': 'kept'},
+           {'kind': 'scope_it', 'ids': ['b', 'c'], 'value': 'found'},
+           {'kind': 'drop_it', 'id': 'd'}]
+    assert ok.resolve_ops(reg, None, ops) == [
+        ops[0], {'kind': 'set_value', 'id': 'b', 'value': 'found'},
+        {'kind': 'set_value', 'id': 'c', 'value': 'found'}, ops[2]]
+    assert ok.resolve_ops(reg, None, ops, keep=lambda o: o['id'] == 'c') == [
+        ops[0], {'kind': 'set_value', 'id': 'c', 'value': 'found'}, ops[2]]
+    assert ok.resolver(reg, ops[1]) and ok.resolver(reg, ops[0]) is None
+    assert ok.resolver(reg, {'kind': 'nope'}) is None
 
 
 def test_a_kind_that_folds_without_a_line_for_the_group_is_refused():
@@ -56,7 +87,8 @@ def test_a_plan_refuses_before_a_pass_runs_what_no_pass_would_apply():
     reg = ok.registry([
         ok.OpKind('now', ('change', 'changes'), apply=lambda ctx, op: 1),
         ok.OpKind('later', ('change', 'changes'), stage='second', apply=lambda ctx, op: 1),
-        ok.OpKind('never', ('sweep', 'sweeps'), stage=ok.RESOLVED, shape=ok.SCOPE),
+        ok.OpKind('never', ('sweep', 'sweeps'), stage=ok.RESOLVED, shape=ok.SCOPE,
+                  resolve=lambda ctx, op: []),
     ])
     stages = (ok.BATCH, 'second')
     ok.check_applicable(reg, [{'kind': 'now'}, {'kind': 'later'}], stages)

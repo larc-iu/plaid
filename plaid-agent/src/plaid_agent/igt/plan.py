@@ -18,9 +18,10 @@ approver's ``contributor`` id stamps everything contributed, and rewritten
 entities lose any earlier confirmation.
 
 **Every kind is declared once**, in :data:`KIND` below: its required keys, the
-noun the user reads, what applies it, what it writes to, what it deletes,
-whether it reshapes the text, and how like operations fold into one stored
-operation. ``RESHAPES``, ``SCOPES``, ``EXCLUSIVE_KINDS``, the compaction spec,
+noun the user reads, what applies it (or, for a scope, what it resolves into at
+approval), what it writes to, what it deletes, whether it reshapes the text, and
+how like operations fold into one stored operation.
+``RESHAPES``, ``SCOPES``, ``EXCLUSIVE_KINDS``, the compaction spec,
 the executor's dispatch and the approval card's tables are all read off it (see
 :mod:`plaid_agent.core.opkind`), so adding a kind is one declaration.
 
@@ -419,6 +420,36 @@ def _confirm_writes(op):
             + list((op.get('on') or {}).values()))
 
 
+# --- what each scope stands for ------------------------------------------------------
+#
+# A scope is stored as the tool and the arguments the model gave, and resolved
+# to per-span ops at approval by the same function that previewed it. The kind
+# declares its resolver beside everything else it declares, and
+# `resolve_scopes` runs it without naming it.
+
+class Resolution:
+    """What the scopes of one plan resolve with: a workspace over the project
+    the plan is being applied to, built once however many scopes it holds."""
+
+    def __init__(self, client, project):
+        from .workspace import Workspace
+        self.client = client
+        self.project = project
+        self.ws = Workspace(client, project)
+
+
+def _resolve_bulk_scope(res: Resolution, op):
+    from .bulk import CANDIDATE_MAX, SCOPED
+    from ..core.tools import ToolError
+    fn = SCOPED.get(op.get('tool'))
+    if fn is None:
+        raise ValueError(f'unknown corpus-wide tool {op.get("tool")!r}')
+    try:
+        return fn(res.ws, dict(op.get('args') or {}), CANDIDATE_MAX)
+    except ToolError as e:
+        raise ValueError(str(e)) from e
+
+
 # --- the registry -------------------------------------------------------------------
 
 def _bulk_scope_summary(op, n):
@@ -565,7 +596,8 @@ KIND = ok.registry([
     # Resolved to the ops it stands for at approval, so the executor never
     # sees one. The summary counts what it stands for.
     OpKind('bulk_scope', ('corpus-wide change', 'corpus-wide changes'), required=('tool', 'args', 'counts'),
-           stage=ok.RESOLVED, shape=ok.SCOPE, summary=_bulk_scope_summary),
+           stage=ok.RESOLVED, shape=ok.SCOPE, resolve=_resolve_bulk_scope,
+           summary=_bulk_scope_summary),
 ])
 
 # Every table below is the registry read a different way. None of them is
@@ -574,9 +606,10 @@ KIND = ok.registry([
 # text, or a morpheme chain. Nothing corpus-wide may share a plan with one.
 RESHAPES = ok.shaped(KIND, WORD_SHAPE, SENTENCE_SHAPE, TEXT_SHAPE, ANALYSIS)
 # Kinds resolved to the ops they stand for at approval, and kinds that own
-# their whole plan. Both are the registry's tags rather than a kind's name, so
-# a second one of either joins by being declared.
-SCOPES = ok.shaped(KIND, ok.SCOPE)
+# their whole plan. A scope is a kind that says how to resolve itself, and an
+# exclusive kind is the registry's tag, so a second one of either joins by
+# being declared.
+SCOPES = ok.scopes(KIND)
 EXCLUSIVE_KINDS = ok.shaped(KIND, ok.EXCLUSIVE)
 # The kinds that write to a morpheme by id, so a plan that rewrites the chain
 # those morphemes belong to knows which of its other ops are now moot.
@@ -803,31 +836,20 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str,
     """The per-span ops a stored corpus-wide change stands for, computed
     again NOW by the same function that previewed it. Approval has already
     refused the plan if a matched document moved since, so what is found
-    here is what was counted."""
-    if not any(op.get('kind') in SCOPES for op in ops):
+    here is what was counted.
+
+    Each scope kind declares its own resolver and this dispatches on that, so
+    a kind added later is resolved without being named here."""
+    if not any(ok.resolver(KIND, op) for op in ops):
         return ops
     if project is None:
         raise ValueError('a corpus-wide change needs the project to read the corpus with')
-    from .bulk import CANDIDATE_MAX, SCOPED
-    from ..core.tools import ToolError
-    from .workspace import Workspace, op_target
-    ws = Workspace(client, project)
+    from .workspace import op_target
     # A change the model made by name beats one a scope finds at approval,
     # whichever came first (the scope previewed stored values, not planned).
-    explicit = {op_target(op) for op in ops if op.get('kind') not in SCOPES} - {None}
-    out: List[Dict[str, Any]] = []
-    for op in ops:
-        if op.get('kind') not in SCOPES:
-            out.append(op)
-            continue
-        fn = SCOPED.get(op.get('tool'))
-        if fn is None:
-            raise ValueError(f'unknown corpus-wide tool {op.get("tool")!r}')
-        try:
-            out.extend(o for o in fn(ws, dict(op.get('args') or {}), CANDIDATE_MAX) if op_target(o) not in explicit)
-        except ToolError as e:
-            raise ValueError(str(e)) from e
-    return out
+    explicit = {op_target(op) for op in ops if not ok.resolver(KIND, op)} - {None}
+    return ok.resolve_ops(KIND, Resolution(client, project), ops,
+                          lambda o: op_target(o) not in explicit)
 
 
 def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, tracker=None) -> Dict[str, int]:

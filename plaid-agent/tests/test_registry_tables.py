@@ -145,6 +145,57 @@ def test_the_kind_tables_are_not_empty(app):
     assert len(mod.KIND) > 10
 
 
+@pytest.mark.parametrize('app', ['igt', 'ud'])
+def test_a_scope_kind_is_one_that_says_how_to_resolve_itself(app):
+    """The two halves of being a scope, in both apps. Tagged without a
+    resolver, the plan carries the op into the executor, which refuses a kind
+    staged RESOLVED, after the user has approved it. Resolving without the
+    tag, every guard that asks whether a plan holds a scope misses it."""
+    mod = __import__(f'plaid_agent.{app}.plan', fromlist=['KIND'])
+    tagged = {n for n, k in mod.KIND.items() if k.shape == ok.SCOPE}
+    resolving = {n for n, k in mod.KIND.items() if k.resolve}
+    assert tagged, 'the sweep is green on an app with no scope kind'
+    assert tagged == resolving == set(mod.SCOPES)
+    for name in sorted(tagged):
+        assert mod.KIND[name].stage == ok.RESOLVED, name
+        assert mod.KIND[name].apply is None, name
+
+
+def _scope_fixture(app):
+    """A client and a project a plan can be resolved against."""
+    if app == 'igt':
+        from fixtures import FakeClient, scan_ws
+        ws = scan_ws(FakeClient())
+        return ws.client, ws.project
+    from plaid_agent.ud.project import load_project
+    from ud_fixtures import PID, ud_client
+    client = ud_client()
+    return client, load_project(client, PID)
+
+
+@pytest.mark.parametrize('app', ['igt', 'ud'])
+def test_a_new_scope_kind_is_resolved_by_a_loop_that_names_none(app):
+    """`resolve_scopes` dispatched on the kind's NAME in both apps, so a scope
+    kind added later stayed in the plan and reached the executor, which refuses
+    a kind staged RESOLVED: a plan that failed after the user approved it. The
+    kind declares its resolver and the loop runs it."""
+    mod = __import__(f'plaid_agent.{app}.plan', fromlist=['KIND'])
+    stands_for = {'kind': 'set_span', 'layer_id': 'L', 'token_id': 't-1', 'value': 'x',
+                  'label': 'one value'}
+    sweep = OpKind('sweep_all', ('sweep', 'sweeps'), stage=ok.RESOLVED, shape=ok.SCOPE,
+                   resolve=lambda res, op: [stands_for])
+    client, project = _scope_fixture(app)
+    saved = mod.KIND
+    try:
+        mod.KIND = dict(saved, sweep_all=sweep)
+        out = mod.resolve_scopes(client, project, [{'kind': 'sweep_all', 'label': 'a sweep'}])
+        # UD's resolver reports what it dropped beside the ops; IGT's has
+        # nothing to drop.
+        assert (out[0] if isinstance(out, tuple) else out) == [stands_for]
+    finally:
+        mod.KIND = saved
+
+
 def test_the_compaction_spec_has_one_name_in_both_apps():
     """UD called it COMPACT and IGT built it in `workspace.compact_spec`, and
     the README named UD's. A reader following either name found half the

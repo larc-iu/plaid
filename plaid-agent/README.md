@@ -307,7 +307,10 @@ The modules below are `igt/` unless they say otherwise.
   `core.opkind.OpKind` each, carrying its required keys, the noun the user
   reads, the function that applies it and which pass of the executor runs it,
   what it writes to, what it deletes, how it reshapes the text, and how like
-  operations fold into one stored operation. The tables (`RESHAPES`, `SCOPES`,
+  operations fold into one stored operation. A scope (an operation standing for
+  everything a predicate matches) declares instead the function that resolves
+  it, at approval, into the operations it stands for: `resolve_scopes` runs
+  every one of them and names none. The tables (`RESHAPES`, `SCOPES`,
   `EXCLUSIVE_KINDS`, `compact_spec`, `op_target`, the approval card's, the
   executor's dispatch) are all read back off it, so a new kind is one
   declaration plus the tool that stages it. An app declares `STAGES`, the
