@@ -55,6 +55,14 @@ async function ensureFixture() {
     return ensureDocument(client, projectId, full);
   }
 
+  await initLayers(client, projectId);
+  await ensureVocab(client, projectId);
+  const finalProject = await client.projects.get(projectId);
+  return ensureDocument(client, projectId, finalProject);
+}
+
+// The layer hierarchy and the config flags, on a project that has neither.
+async function initLayers(client, projectId) {
   // 2. Text layer (primary) — tagged with the shared `baseline` role.
   const textLayer = await client.textLayers.create(projectId, 'Main Text');
   await client.textLayers.setConfig(textLayer.id, 'plaid', 'role', ROLES.BASELINE);
@@ -116,10 +124,23 @@ async function ensureFixture() {
 
   // 8. Mark initialized — igt namespace.
   await client.projects.setConfig(projectId, 'igt', 'initialized', true);
+}
 
-  await ensureVocab(client, projectId);
-  const finalProject = await client.projects.get(projectId);
-  return ensureDocument(client, projectId, finalProject);
+// A throwaway project on the same recipe, with one seeded document. For a spec
+// whose writes must not land in the shared fixture: a restore rewrites a whole
+// document, and a run that dies partway leaves it rewritten. Delete the project
+// in the spec's afterAll.
+export async function createScratchProject({ name, docName, body }) {
+  const client = makeClient();
+  const created = await client.projects.create(name);
+  const projectId = created.id;
+  await initLayers(client, projectId);
+  const project = await client.projects.get(projectId);
+  const layers = resolveLayers(project);
+  const doc = await client.documents.create(projectId, docName);
+  await client.texts.create(layers.textLayerId, doc.id, body);
+  await seedTokensIfEmpty(client, doc.id, layers);
+  return { projectId, documentId: doc.id };
 }
 
 // Ensure a project-linked vocabulary with a few items exists, so the vocab-link
