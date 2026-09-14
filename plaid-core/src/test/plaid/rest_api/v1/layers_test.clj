@@ -243,3 +243,33 @@
             (assert-no-content (delete-layer-config layer-type id "MyEditor" "color")))))
       (finally
         (delete-test-project admin-request project-id)))))
+
+(def ^:private absent-id "00000000-0000-0000-0000-000000000000")
+
+(deftest the-four-layer-kinds-answer-alike
+  ;; The four layer route files were one file written four times. They are now
+  ;; one `layer-routes` factory, so the shapes they share are asserted together:
+  ;; a missing layer 404s by its own name on GET and on shift, and a rename of
+  ;; one is a 404 too. Before this, shift's 404 named the SQL table.
+  (doseq [[layer-type noun] [["text-layers" "Text layer"]
+                             ["token-layers" "Token layer"]
+                             ["span-layers" "Span layer"]
+                             ["relation-layers" "Relation layer"]]]
+    (testing (str layer-type " on an id that does not exist")
+      (let [get-res (api-call admin-request {:method :get
+                                             :path (str "/api/v1/" layer-type "/" absent-id)})
+            patch-res (api-call admin-request {:method :patch
+                                               :path (str "/api/v1/" layer-type "/" absent-id)
+                                               :body {:name "X"}})
+            shift-res (api-call admin-request {:method :post
+                                               :path (str "/api/v1/" layer-type "/" absent-id "/shift")
+                                               :body {:direction "up"}})
+            delete-res (api-call admin-request {:method :delete
+                                                :path (str "/api/v1/" layer-type "/" absent-id)})]
+        (assert-not-found get-res)
+        (is (= (str noun " not found") (-> get-res :body :error)))
+        (assert-not-found patch-res)
+        (assert-not-found shift-res)
+        (is (= (str noun " not found with id `" absent-id "`") (-> shift-res :body :error))
+            "the shift 404 names the layer kind, not the SQL table")
+        (assert-not-found delete-res)))))

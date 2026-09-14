@@ -9,6 +9,7 @@
   them here."
   (:require [taoensso.timbre :as log]
             [plaid.sql.common :as psc]
+            [plaid.sql.layer :as layer]
             [plaid.sql.operation :as op :refer [submit-operation!]]
             [plaid.sql.token-layer :as token-layer])
   (:refer-clojure :exclude [get merge]))
@@ -37,11 +38,14 @@
 ;; Reads
 ;; ============================================================
 
-(defn get [db id]
-  (row->text-layer (psc/fetch-by-id db :text_layers id)))
+(def ^{:doc "Read one text layer by id, or nil."
+       :arglists '([db id])}
+  get (layer/reader :text_layers row->text-layer))
 
-(defn project-id [db id]
-  (:project_id (psc/fetch-by-id db :text_layers id)))
+(defn project-id
+  "The project owning this text layer."
+  [db id]
+  (layer/project-id db :text_layers id))
 
 ;; ============================================================
 ;; Mutations
@@ -100,43 +104,13 @@
                            (psc/update-by-id! tx :text_layers eid attrs))
                          eid))))
 
-(defn- shift-layer!
-  "Swap order_idx between `eid` and its adjacent sibling (up? → previous,
-  else next) inside `table`, where siblings share `parent-col` = parent."
-  [tx table eid parent-col up?]
-  (let [row (psc/fetch-by-id tx table eid)]
-    (when (nil? row)
-      (throw (ex-info (psc/err-msg-not-found (clojure.core/name table) eid)
-                      {:code 404 :id eid})))
-    (let [parent (clojure.core/get row parent-col)
-          my-idx (:order_idx row)
-          neighbor (psc/q1 tx {:select [:*]
-                               :from [table]
-                               :where [:and
-                                       [:= parent-col parent]
-                                       (if up?
-                                         [:< :order_idx my-idx]
-                                         [:> :order_idx my-idx])]
-                               :order-by [[:order_idx (if up? :desc :asc)]]
-                               :limit 1})]
-      (when neighbor
-        ;; Two-step swap via a temporary sentinel idx to avoid colliding on
-        ;; the (parent, order_idx) shape if any unique constraint were added.
-        (let [tmp -1
-              their-idx (:order_idx neighbor)
-              their-id (:id neighbor)]
-          (psc/update-by-id! tx table eid {:order_idx tmp})
-          (psc/update-by-id! tx table their-id {:order_idx my-idx})
-          (psc/update-by-id! tx table eid {:order_idx their-idx})))
-      eid)))
-
 (defn shift-text-layer [db txtl-id up? user-id]
   (submit-operation! [tx db {:type :text-layer/shift
                              :project (project-id db txtl-id)
                              :document nil
                              :description (str "Shift text layer " txtl-id " " (if up? "up" "down"))
                              :user user-id}]
-                     (shift-layer! tx :text_layers txtl-id :project_id up?)))
+                     (layer/shift-layer! tx :text_layers "Text layer" txtl-id :project_id up?)))
 
 (defn cascade-delete!
   "Tx-level cascade for a text_layer. Audits every descendant entity

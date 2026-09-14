@@ -7,6 +7,7 @@
   relations) cascade-delete via FK ON DELETE CASCADE."
   (:require [taoensso.timbre :as log]
             [plaid.sql.common :as psc]
+            [plaid.sql.layer :as layer]
             [plaid.sql.operation :as op :refer [submit-operation!]])
   (:refer-clojure :exclude [get merge]))
 
@@ -33,11 +34,14 @@
 ;; Reads
 ;; ============================================================
 
-(defn get [db id]
-  (row->span-layer (psc/fetch-by-id db :span_layers id)))
+(def ^{:doc "Read one span layer by id, or nil."
+       :arglists '([db id])}
+  get (layer/reader :span_layers row->span-layer))
 
-(defn project-id [db id]
-  (:project_id (psc/fetch-by-id db :span_layers id)))
+(defn project-id
+  "The project owning this span layer."
+  [db id]
+  (layer/project-id db :span_layers id))
 
 ;; ============================================================
 ;; Mutations
@@ -98,39 +102,13 @@
                            (psc/update-by-id! tx :span_layers eid attrs))
                          eid))))
 
-(defn- shift-layer!
-  [tx table eid parent-col up?]
-  (let [row (psc/fetch-by-id tx table eid)]
-    (when (nil? row)
-      (throw (ex-info (psc/err-msg-not-found (clojure.core/name table) eid)
-                      {:code 404 :id eid})))
-    (let [parent (clojure.core/get row parent-col)
-          my-idx (:order_idx row)
-          neighbor (psc/q1 tx {:select [:*]
-                               :from [table]
-                               :where [:and
-                                       [:= parent-col parent]
-                                       (if up?
-                                         [:< :order_idx my-idx]
-                                         [:> :order_idx my-idx])]
-                               :order-by [[:order_idx (if up? :desc :asc)]]
-                               :limit 1})]
-      (when neighbor
-        (let [tmp -1
-              their-idx (:order_idx neighbor)
-              their-id (:id neighbor)]
-          (psc/update-by-id! tx table eid {:order_idx tmp})
-          (psc/update-by-id! tx table their-id {:order_idx my-idx})
-          (psc/update-by-id! tx table eid {:order_idx their-idx})))
-      eid)))
-
 (defn shift-span-layer [db sl-id up? user-id]
   (submit-operation! [tx db {:type :span-layer/shift
                              :project (project-id db sl-id)
                              :document nil
                              :description (str "Shift span layer " sl-id " " (if up? "up" "down"))
                              :user user-id}]
-                     (shift-layer! tx :span_layers sl-id :token_layer_id up?)))
+                     (layer/shift-layer! tx :span_layers "Span layer" sl-id :token_layer_id up?)))
 
 (defn cascade-delete!
   "Tx-level cascade for a span_layer: audit every descendant entity

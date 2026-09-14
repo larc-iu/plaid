@@ -12,6 +12,7 @@
   (:require [clojure.string :as str]
             [taoensso.timbre :as log]
             [plaid.sql.common :as psc]
+            [plaid.sql.layer :as layer]
             [plaid.sql.constraints.token :as tc]
             [plaid.sql.operation :as op :refer [submit-operation!]]
             [plaid.sql.span-layer :as span-layer]
@@ -49,11 +50,14 @@
 ;; Reads
 ;; ============================================================
 
-(defn get [db id]
-  (row->token-layer (psc/fetch-by-id db :token_layers id)))
+(def ^{:doc "Read one token layer by id, or nil."
+       :arglists '([db id])}
+  get (layer/reader :token_layers row->token-layer))
 
-(defn project-id [db id]
-  (:project_id (psc/fetch-by-id db :token_layers id)))
+(defn project-id
+  "The project owning this token layer."
+  [db id]
+  (layer/project-id db :token_layers id))
 
 (defn overlap-mode
   "Returns the keyword overlap-mode for a token layer (default :any)."
@@ -194,39 +198,13 @@
                            (psc/update-by-id! tx :token_layers eid attrs))
                          eid))))
 
-(defn- shift-layer!
-  [tx table eid parent-col up?]
-  (let [row (psc/fetch-by-id tx table eid)]
-    (when (nil? row)
-      (throw (ex-info (psc/err-msg-not-found (clojure.core/name table) eid)
-                      {:code 404 :id eid})))
-    (let [parent (clojure.core/get row parent-col)
-          my-idx (:order_idx row)
-          neighbor (psc/q1 tx {:select [:*]
-                               :from [table]
-                               :where [:and
-                                       [:= parent-col parent]
-                                       (if up?
-                                         [:< :order_idx my-idx]
-                                         [:> :order_idx my-idx])]
-                               :order-by [[:order_idx (if up? :desc :asc)]]
-                               :limit 1})]
-      (when neighbor
-        (let [tmp -1
-              their-idx (:order_idx neighbor)
-              their-id (:id neighbor)]
-          (psc/update-by-id! tx table eid {:order_idx tmp})
-          (psc/update-by-id! tx table their-id {:order_idx my-idx})
-          (psc/update-by-id! tx table eid {:order_idx their-idx})))
-      eid)))
-
 (defn shift-token-layer [db tokl-id up? user-id]
   (submit-operation! [tx db {:type :token-layer/shift
                              :project (project-id db tokl-id)
                              :document nil
                              :description (str "Shift token layer " tokl-id " " (if up? "up" "down"))
                              :user user-id}]
-                     (shift-layer! tx :token_layers tokl-id :text_layer_id up?)))
+                     (layer/shift-layer! tx :token_layers "Token layer" tokl-id :text_layer_id up?)))
 
 (defn- descendant-token-layer-ids
   "Vector of descendant token_layer ids (transitive over
