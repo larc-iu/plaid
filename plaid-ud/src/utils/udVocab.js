@@ -76,7 +76,7 @@ export const UNIVERSAL_DEPRELS = Object.freeze([
 
 // Default UD morphological feature inventory (universal features + values),
 // used to seed the FEATS picker. Stored/edited as an array of {key, values}.
-export const UD_FEATURE_INVENTORY = Object.freeze([
+const UD_FEATURE_INVENTORY = Object.freeze([
   {
     key: 'PronType',
     values: ['Prs', 'Rcp', 'Art', 'Int', 'Rel', 'Dem', 'Tot', 'Neg', 'Ind', 'Exc', 'Emp'],
@@ -153,7 +153,7 @@ export const baseRel = (deprel) => (deprel || '').split(':')[0];
 // read as TEXT on a white background (labels render as colored text in both the
 // SVG tree and the grid). Deliberately distinct from the selection/hover blue
 // (#2563eb) so the highlight state stays unambiguous.
-export const AUTO_PALETTE = Object.freeze([
+const AUTO_PALETTE = Object.freeze([
   '#1f77b4',
   '#d62728',
   '#2ca02c',
@@ -222,5 +222,3 @@ export const readFeatureInventory = (config) => {
 // Drop empty assignments before persisting a {label: '#hex'} map. Pass to setConfig.
 export const cleanColorMap = (colorMap) =>
   Object.fromEntries(Object.entries(colorMap || {}).filter(([label, color]) => label && color));
-
-export { UD_NAMESPACE };

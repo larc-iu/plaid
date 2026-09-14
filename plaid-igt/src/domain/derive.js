@@ -340,21 +340,21 @@ function attachMwes(sentences, tokenPositionMaps, mweLinks) {
  * when the caller has built that map over the lexicon. Null when the entry
  * and everything above it are untyped.
  */
-export const entryMorphType = (vocabItem, entryTypes = null) => {
+const entryMorphType = (vocabItem, entryTypes = null) => {
   const resolved = entryTypes?.get(vocabItem?.id);
   const fromItem = resolved ?? vocabItem?.metadata?.morphType;
   return typeof fromItem === 'string' && fromItem !== '' ? fromItem : null;
 };
 
 /** A morpheme's effective type: the linked entry's, else the token's own. */
-export const effectiveMorphType = (tokenMetadata, vocabItem, entryTypes = null) =>
+const effectiveMorphType = (tokenMetadata, vocabItem, entryTypes = null) =>
   entryMorphType(vocabItem, entryTypes) ?? tokenMetadata?.morphType ?? null;
 
 /**
  * item id -> the morph type it goes by, over every vocabulary: its own, else
  * its headword's. A sense made by hand carries none of its own.
  */
-export const collectEntryMorphTypes = (vocabularies) => {
+const collectEntryMorphTypes = (vocabularies) => {
   const out = new Map();
   for (const vocab of Object.values(vocabularies || {})) {
     const view = lexiconView(vocab.items || []);

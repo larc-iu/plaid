@@ -8,7 +8,7 @@ import { citationHighlights, citationRows, citationTitle, sentenceHref } from '.
 // model named filled in and a word cited for its morphemes tinted around them.
 // A morpheme row's cell for a word whose morphemes the citation names: drawn
 // morpheme by morpheme, so the named ones stand out inside the word.
-export const MorphemeCell = ({ parts, joiners, marked }) =>
+const MorphemeCell = ({ parts, joiners, marked }) =>
   parts.map((part, k) => (
     <Fragment key={k}>
       {k > 0 && (joiners[k - 1] ?? '-')}

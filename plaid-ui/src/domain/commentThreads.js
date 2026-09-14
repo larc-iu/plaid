@@ -79,7 +79,7 @@ export function sortThreads(threads, sort = 'recent') {
   return [...threads].sort(comparators[sort] ?? comparators.recent);
 }
 
-export function filterThreads(threads, query = '') {
+function filterThreads(threads, query = '') {
   const q = String(query ?? '')
     .trim()
     .toLowerCase();

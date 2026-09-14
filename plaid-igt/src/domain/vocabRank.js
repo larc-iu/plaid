@@ -26,7 +26,7 @@ export const TIERS = Object.freeze({
   FUZZY: 4,
 });
 
-export function levenshtein(a, b) {
+function levenshtein(a, b) {
   if (a === b) return 0;
   if (!a.length) return b.length;
   if (!b.length) return a.length;

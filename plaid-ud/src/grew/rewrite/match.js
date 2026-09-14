@@ -366,7 +366,7 @@ function checkFeatItem(node, fi) {
   }
 }
 
-export function matchValue(actual, value) {
+function matchValue(actual, value) {
   switch (value.type) {
     case 'lit':
       return String(actual) === String(value.value);
@@ -446,7 +446,7 @@ function checkDominates(g, item, nodes) {
 }
 
 // Nodes strictly below `start` (self-loops ignored).
-export function descendants(g, start, allowed = null) {
+function descendants(g, start, allowed = null) {
   const seen = new Set();
   const queue = [start];
   while (queue.length) {

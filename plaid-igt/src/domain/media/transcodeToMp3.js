@@ -22,7 +22,7 @@ import { decodeTo16kMono, TARGET_RATE } from '../vad/decodeTo16kMono.js';
 export const MP3_BITRATE_KBPS = 32;
 
 /** Roughly what an hour of it comes to, for when the real size is not known. */
-export const MP3_MB_PER_HOUR = Math.round((3600 * MP3_BITRATE_KBPS * 1000) / 8 / 1e6);
+const MP3_MB_PER_HOUR = Math.round((3600 * MP3_BITRATE_KBPS * 1000) / 8 / 1e6);
 
 /**
  * What converting costs and what it produces, in one sentence. Every surface
@@ -42,7 +42,7 @@ export const conversionNote = ({ bytes = null, video = false } = {}) =>
  * would accept the file as it is. A judgement about the user's time and
  * connection, not about what the server allows.
  */
-export const OFFER_CONVERSION_OVER = 50 * 1000 * 1000;
+const OFFER_CONVERSION_OVER = 50 * 1000 * 1000;
 
 /**
  * What to do about a recording of `bytes`, given the server's limit (null when

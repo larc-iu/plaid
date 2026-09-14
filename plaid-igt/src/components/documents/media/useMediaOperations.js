@@ -53,7 +53,7 @@ export const PLAYBACK_RATE_MIN = 0.25;
 export const PLAYBACK_RATE_MAX = 5;
 export const PLAYBACK_RATE_STEP = 0.05;
 // Snap a rate onto the slider's grid and into its range.
-export const clampRate = (rate) => {
+const clampRate = (rate) => {
   const n = Number(rate);
   if (!Number.isFinite(n)) return 1;
   const snapped = Math.round(n / PLAYBACK_RATE_STEP) * PLAYBACK_RATE_STEP;

@@ -28,7 +28,7 @@ const COUNT = { aggregates: [['count']] };
  * token's own text otherwise, and no single constraint covers both. Asking one
  * way would silently miss every word of the other kind.
  */
-export const lemmaByForm = (projectId, layers, form) => [
+const lemmaByForm = (projectId, layers, form) => [
   {
     where: [
       ['token', '?t', { layer: layers.morpheme, value: form }],
@@ -53,7 +53,7 @@ export const lemmaByForm = (projectId, layers, form) => [
 ];
 
 /** Values given in `layer` to words whose lemma is `lemma`. */
-export const byLemma = (projectId, layers, layerId, lemma) => [
+const byLemma = (projectId, layers, layerId, lemma) => [
   {
     where: [
       ['span', '?l', { layer: layers.lemma, value: lemma }],

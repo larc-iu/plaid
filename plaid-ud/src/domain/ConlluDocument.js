@@ -40,7 +40,7 @@ const cloneRaw = (raw) => JSON.parse(JSON.stringify(raw));
 // Audit-log label for a mutation, derived from its "Failed to <verb phrase>"
 // error label: "Failed to create relation" → "Create relation". Keeps every
 // mutation a labeled logical operation without a second string per call site.
-export function operationLabel(errorLabel) {
+function operationLabel(errorLabel) {
   const s = String(errorLabel).replace(/^Failed to\s+/i, '');
   return s.charAt(0).toUpperCase() + s.slice(1);
 }

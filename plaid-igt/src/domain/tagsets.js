@@ -205,7 +205,7 @@ export const governedFields = (layerInfo, projectConfig) => {
  * The affix joiners a WORD-scope gloss is written with — the same "-" and "="
  * the morpheme grid splits on (see affixMarkers.js).
  */
-export const WORD_AFFIX_DELIMITERS = Object.freeze(['-', '=']);
+const WORD_AFFIX_DELIMITERS = Object.freeze(['-', '=']);
 
 /**
  * Delimiters a tagset needs but does not have, given that a word-scope field

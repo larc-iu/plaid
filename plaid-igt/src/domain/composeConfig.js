@@ -101,7 +101,7 @@ export const builtInRow = (code) =>
   isBuiltInCode(code) ? { code, char: BUILT_IN_TABLE[code], description: '' } : null;
 
 /** Has this row been changed from what ships? */
-export const isRowDirty = (row) => {
+const isRowDirty = (row) => {
   if (!isBuiltInCode(row.code)) return true;
   if (row.origin === 'removed') return true;
   return row.char !== BUILT_IN_TABLE[row.code] || !!row.description;

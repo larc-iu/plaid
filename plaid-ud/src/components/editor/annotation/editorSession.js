@@ -33,7 +33,7 @@ export const useEditorSession = () => {
 // data rather than a rule, and a `lemma` entry in any one of them would have
 // turned the LEMMA cell into a combobox that refuses values off the list.
 // Stating the set is the rule.
-export const CONTROLLED_FIELDS = Object.freeze(['upos', 'xpos', 'deprel', 'feats']);
+const CONTROLLED_FIELDS = Object.freeze(['upos', 'xpos', 'deprel', 'feats']);
 
 const UNCONTROLLED = Object.freeze({
   suggestions: undefined,

@@ -147,7 +147,7 @@ export const cliticSideOfBoundary = ({ leftIdx, count, leftGloss = null, rightGl
   return leftIsFirst && rightIsLast ? 'right' : null;
 };
 
-export const CLITIC_TYPE_BY_SIDE = Object.freeze({ left: 'proclitic', right: 'enclitic' });
+const CLITIC_TYPE_BY_SIDE = Object.freeze({ left: 'proclitic', right: 'enclitic' });
 
 /**
  * morphType stamps for a chain of pieces being written into a word.

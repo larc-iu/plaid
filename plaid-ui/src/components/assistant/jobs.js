@@ -5,24 +5,24 @@ import { humanizeError } from '../../lib/errors.js';
 // where, the page-independent job registry, and starting, watching,
 // rejoining, and stopping a run. No React in here.
 // A stream, not a deadline: the service keeps its own budget per turn.
-export const REQUEST_TIMEOUT_MS = 12 * 60 * 60 * 1000;
+const REQUEST_TIMEOUT_MS = 12 * 60 * 60 * 1000;
 
-export const TITLE_MAX = 60;
+const TITLE_MAX = 60;
 
 // Said when the page gives up waiting on a request the service is still
 // running. The conversation record is where the answer lands, so it is there
 // to be picked up.
-export const LOST_CONTACT =
+const LOST_CONTACT =
   'Lost contact with the assistant. It is still working. Reload to pick it back up.';
 
 // The record keys carry the app's tag, the same one the service writes
 // (plaid_agent/core/conversation.py), so one user's ud: and igt: records
 // never collide.
-export const metaKey = (app, projectId, id) => `${app}:assistant:${projectId}:meta:${id}`;
+const metaKey = (app, projectId, id) => `${app}:assistant:${projectId}:meta:${id}`;
 
-export const convKey = (app, projectId, id) => `${app}:assistant:${projectId}:conv:${id}`;
+const convKey = (app, projectId, id) => `${app}:assistant:${projectId}:conv:${id}`;
 
-export const metaPrefix = (app, projectId) => `${app}:assistant:${projectId}:meta:`;
+const metaPrefix = (app, projectId) => `${app}:assistant:${projectId}:meta:`;
 
 // Every conversation of this app's, across every project. The project sits in
 // the MIDDLE of the key, so no prefix can select the small sidebar entries
@@ -43,7 +43,7 @@ export const projectOfKey = (app, key) => {
 };
 
 // Newest first, by when each conversation was last written to.
-export const byRecency = (a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || '');
+const byRecency = (a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || '');
 
 // The sidebar entries, newest first. `allProjects` widens the read from this
 // project to every one of them, for a reader looking for a thread whose
@@ -70,7 +70,7 @@ export const readMetas = async (store, { allProjects = false } = {}) => {
 
 // A UUID: request ids must be one (the server checks), and conversation ids
 // share the generator.
-export const newId = () =>
+const newId = () =>
   typeof crypto !== 'undefined' && crypto.randomUUID
     ? crypto.randomUUID()
     : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -78,7 +78,7 @@ export const newId = () =>
         return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
       });
 
-export const titleFrom = (text) => {
+const titleFrom = (text) => {
   const t = text.replace(/\s+/g, ' ').trim();
   return t.length > TITLE_MAX ? `${t.slice(0, TITLE_MAX - 1)}…` : t;
 };
@@ -99,7 +99,7 @@ export const titleFrom = (text) => {
 // The registry lives on globalThis rather than in this module's scope, so a
 // hot update of this file in development (which re-evaluates the module
 // while a job may be running) finds the same maps instead of empty ones.
-export const registry = (globalThis.__plaidAssistantJobs ??= {
+const registry = (globalThis.__plaidAssistantJobs ??= {
   serviceCache: new Map(), // project id -> services, so a remount need not blank the picker
   saveQueues: new Map(), // conversation id -> Promise (writes in order)
   jobs: new Map(), // conversation id -> job in flight
@@ -110,7 +110,7 @@ export const { serviceCache, saveQueues, jobs, jobListeners, lastOpen } = regist
 
 export const jobFor = (id) => (id ? jobs.get(id) || null : null);
 
-export const notifyJob = (j) => jobListeners.forEach((fn) => fn(j));
+const notifyJob = (j) => jobListeners.forEach((fn) => fn(j));
 
 // An entry after a write, back in its place in the list. SORTED rather than
 // moved to the front: opening a conversation re-reads its record without
@@ -220,12 +220,12 @@ export const settle = (conv, index, status, note) => ({
 
 // The user's message leaves the model transcript when its turn ends without
 // an answer, so a retry does not send it twice; it stays on screen.
-export const dropUnanswered = (conv) =>
+const dropUnanswered = (conv) =>
   conv.messages.at(-1)?.role === 'user' ? conv.messages.slice(0, -1) : conv.messages;
 
 // A progress event carries the reply text written so far (`text`), whole
 // each time; the step list keeps only what the assistant did between them.
-export const progressOf = (j) => (p) => {
+const progressOf = (j) => (p) => {
   const msg = p?.message || '';
   j.progress = msg;
   if (typeof p?.text === 'string') j.partial = p.text;
@@ -240,7 +240,7 @@ export const progressOf = (j) => (p) => {
 };
 
 // Run a request stream to its end, recording how it ended on the job.
-export const watch = async (j, run) => {
+const watch = async (j, run) => {
   try {
     j.outcome = await run();
   } catch (e) {
@@ -261,7 +261,7 @@ export const watch = async (j, run) => {
 // a timeout). Then the service is working and will write the record itself,
 // and settling it as failed would both lose the answer when it lands and stop
 // the next page from rejoining. Leave it pending and say so.
-export const finishJob = async (j, store, service) => {
+const finishJob = async (j, store, service) => {
   let conv;
   let meta;
   try {
@@ -312,7 +312,7 @@ export const finishJob = async (j, store, service) => {
   return j.result;
 };
 
-export const newJob = (fields) => ({
+const newJob = (fields) => ({
   controller: new AbortController(),
   steps: [],
   partial: '',

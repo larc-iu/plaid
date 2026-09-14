@@ -32,6 +32,3 @@ export const notifyWarning = (message, title = 'Warning', options) =>
 // error) as the outcome.
 export const notifyPromise = (promise, { loading, success, error }) =>
   toast.promise(promise, { loading, success, error });
-
-// Re-export the raw toast for advanced cases (promise toasts, custom JSX, etc.).
-export { toast };

@@ -608,7 +608,7 @@ const DOCUMENT_STEPS = [
 ];
 
 /** Import one document end to end. Assumes it does not exist yet. */
-export async function importDocument({
+async function importDocument({
   client,
   projectId,
   targets,

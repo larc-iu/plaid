@@ -55,7 +55,7 @@ export function isUnicodePunctuation(char) {
  * @param {string} char - Single character to check
  * @returns {boolean} True if character is whitespace
  */
-export function isWhitespace(char) {
+function isWhitespace(char) {
   return /\s/.test(char);
 }
 
@@ -80,7 +80,7 @@ export function isWhitespace(char) {
  * @param {Object} config - Ignored tokens configuration
  * @returns {boolean} True if character should cause token boundary
  */
-export function shouldTokenizeCharacter(char, config) {
+function shouldTokenizeCharacter(char, config) {
   if (!config) return isUnicodePunctuation(char);
 
   if (config.type === 'unicodePunctuation') {

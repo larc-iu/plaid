@@ -98,7 +98,7 @@ export function nextReviewWord(sentences, reviewable, tokenId, dir = 'next') {
  * that earned it rather than on whichever row the caret happened to be in.
  * `feats` counts when ANY of the word's feature spans does.
  */
-export const REVIEW_FIELDS = Object.freeze(['lemma', 'xpos', 'upos', 'feats']);
+const REVIEW_FIELDS = Object.freeze(['lemma', 'xpos', 'upos', 'feats']);
 
 export function markedFields(entry, reviewable) {
   if (!entry) return [];

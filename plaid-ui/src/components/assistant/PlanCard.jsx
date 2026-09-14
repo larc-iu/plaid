@@ -189,7 +189,7 @@ export const PlanCard = ({
 // card arranges (Turn.jsx). Opening a new browser tab for every row was the
 // panel's one link that behaved differently from the rest of the app, and it
 // left the thread behind on a navigation the panel is built to survive.
-export const ChangeRow = ({ row, projectId, adapter }) => {
+const ChangeRow = ({ row, projectId, adapter }) => {
   const place = adapter.changePlace(projectId, row.where);
   return (
     <tr className="align-top">

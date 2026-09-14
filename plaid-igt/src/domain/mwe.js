@@ -10,7 +10,7 @@
 import { provState, provOrigin } from '@larc-iu/plaid-client';
 import { itemsById, linkedItem } from './vocabLookup.js';
 
-export const isMweLink = (link) =>
+const isMweLink = (link) =>
   Array.isArray(link?.tokens) && link.tokens.length >= 2 && !!link.vocabItem;
 
 /** Every MWE link across the project's vocabularies. */

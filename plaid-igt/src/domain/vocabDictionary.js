@@ -24,12 +24,12 @@
 import { FIELD_SCOPES, FIELD_TYPES } from './vocabFields.js';
 
 export const PARENT_KEY = 'parent';
-export const SENSE_ORDER_KEY = 'senseOrder';
+const SENSE_ORDER_KEY = 'senseOrder';
 // The order of an entry among the entries that share its form. A FLEx
 // import writes FLEx's homograph number here; reordering in the app
 // rewrites it 1..n. Missing or zero sorts after the numbered ones.
-export const HOMOGRAPH_KEY = 'homograph';
-export const EXAMPLES_KEY = 'examples';
+const HOMOGRAPH_KEY = 'homograph';
+const EXAMPLES_KEY = 'examples';
 
 /** The editorial status field a new vocabulary is seeded with, and its list. */
 export const STATUS_FIELD = 'status';

@@ -8,7 +8,7 @@
 const META = /[.\\+*?(){}[\]^$|]/g;
 
 // Escape a literal so it matches itself inside a Java regex.
-export const escapeRegex = (s) => String(s).replace(META, '\\$&');
+const escapeRegex = (s) => String(s).replace(META, '\\$&');
 
 // Plaid supports only the case-insensitive flag; drop anything else.
 export const normalizeFlags = (flags) => (flags && flags.includes('i') ? 'i' : '');
@@ -28,7 +28,7 @@ export const negatedLabelRegex = (labels) => `^(?!(?:${labels.map(escapeRegex).j
 
 // A deprel value whose main type is `label`, matching the bare label and any
 // subtype: `nsubj` matches "nsubj" and "nsubj:pass" (Grew `-[1=nsubj]->`).
-export const subtypeRegex = (label) => `^${escapeRegex(label)}(:|$)`;
+const subtypeRegex = (label) => `^${escapeRegex(label)}(:|$)`;
 
 // "value is not exactly `val`" for a single-valued span layer (upos<>VERB).
 export const notExactlyRegex = (val) => `^(?!${escapeRegex(val)}$)`;

@@ -65,7 +65,7 @@ const fieldKey = (name) =>
 const TRUSTED_LINK_STATES = new Set([PROV_STATES.HUMAN, PROV_STATES.VERIFIED]);
 
 /** Whether a derived vocabItem's LINK was made or confirmed by a person. */
-export const isTrustedLink = (vocabItem) =>
+const isTrustedLink = (vocabItem) =>
   !!vocabItem && TRUSTED_LINK_STATES.has(vocabItem.prov ?? PROV_STATES.HUMAN);
 
 // The linked entry's own value for the same-named field. An entry's fields
@@ -109,7 +109,7 @@ export function vocabEntryGuessSource({ trusted = null } = {}) {
 }
 
 // First source with an opinion wins.
-export function composeGuessSources(sources) {
+function composeGuessSources(sources) {
   return {
     id: sources.map((s) => s.id).join('+'),
     guessFor(kind, form, field, ctx = null) {

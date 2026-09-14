@@ -12,9 +12,9 @@
 // same name is not this import's to delete.
 
 /** The source's own id for the document, written at creation. */
-export const SOURCE_KEY = 'importSource';
+const SOURCE_KEY = 'importSource';
 /** Written last, so a document without it is one the run did not finish. */
-export const DONE_KEY = 'importDone';
+const DONE_KEY = 'importDone';
 
 export class ImportCancelled extends Error {
   constructor() {

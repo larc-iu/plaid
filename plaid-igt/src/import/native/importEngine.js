@@ -337,7 +337,7 @@ const DOCUMENT_STEPS = [
 ];
 
 /** Import one document end to end. Assumes it does not exist yet. */
-export async function importNativeDocument({
+async function importNativeDocument({
   client,
   projectId,
   targets,

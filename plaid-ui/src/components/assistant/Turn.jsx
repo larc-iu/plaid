@@ -204,7 +204,7 @@ export const Turn = ({
 // names the tool call it came from, and `results` maps that to the tool's
 // output in the transcript, so nothing is stored twice (and a result the size
 // cap dropped reads as dropped here too).
-export const ToolTrace = ({ steps, summary, results }) => {
+const ToolTrace = ({ steps, summary, results }) => {
   const [open, setOpen] = useState(false);
   const [shown, setShown] = useState(null);
   return (

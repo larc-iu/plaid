@@ -234,7 +234,7 @@ export const readInitialized = (config) => readIgt(config, 'initialized') === tr
  * Every importer resumes, so the way to clear it is to run the same import
  * again.
  */
-export const IMPORT_KEY = 'import';
+const IMPORT_KEY = 'import';
 export const readImportState = (config) => readIgt(config, IMPORT_KEY) ?? null;
 
 /**
@@ -300,7 +300,7 @@ export const readVocabFields = (config) => readIgt(config, 'fields') ?? null;
  * (The auto-linker itself always runs when the built-in method is chosen; its
  * method/default lives in the Auto-link-vocabulary spot, not here.)
  */
-export const AUTO_ANALYSIS_DEFAULTS = Object.freeze({
+const AUTO_ANALYSIS_DEFAULTS = Object.freeze({
   copyAnalyses: true,
   copySegmentation: true,
   copyLinks: true,

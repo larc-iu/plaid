@@ -98,7 +98,7 @@ export const allowsFeature = (value, inventoryMap, config) => {
  * apologise: the annotator either meant a different tag or wants the list
  * changed, and both are one click away for a maintainer.
  */
-export const refusalMessage = (value, field) => `${value} is not in this project's ${field} list.`;
+const refusalMessage = (value, field) => `${value} is not in this project's ${field} list.`;
 
 /**
  * The refusal rule for each annotation field, as `(value) => message | null`,

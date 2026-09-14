@@ -16,11 +16,11 @@
 
 import { arcHeight, arcPath, assignLevels } from '../../utils/arcLayout.js';
 
-export const WORD_GAP = 16; // space between words
-export const CHAR = 7.2; // monospace advance at the card's font size
-export const PAD = 10;
-export const BASELINE = 18; // words sit this far above the bottom
-export const LABEL_H = 11;
+const WORD_GAP = 16; // space between words
+const CHAR = 7.2; // monospace advance at the card's font size
+const PAD = 10;
+const BASELINE = 18; // words sit this far above the bottom
+const LABEL_H = 11;
 
 // The card draws at about half the editor's scale — a 9px label over words a
 // couple of characters wide — so the stack climbs in smaller steps and turns
@@ -76,7 +76,7 @@ export const cited = (placed, all) => {
 // The SVG path for one arc, and where its label sits. `baseY` is the line the
 // words sit on and `topY` the highest an arc may reach; y grows downward, so
 // an arc rising means a SMALLER y.
-export const placeArc = (placed, arc, height, baseY, topY) => {
+const placeArc = (placed, arc, height, baseY, topY) => {
   const to = placed[arc.to];
   // Every arc ends AT its dependent, which is what the arrowhead marks: a
   // dependency tree without direction is just a set of lines.

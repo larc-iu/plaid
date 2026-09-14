@@ -36,7 +36,7 @@ import { jobFor } from './jobs.js';
 // the first thing that tells them apart.
 // `elsewhere` is the name of the project a row belongs to when that is not the
 // one on screen, for a list widened past this project.
-export const ConversationRow = ({ m, opening, elsewhere = null }) => {
+const ConversationRow = ({ m, opening, elsewhere = null }) => {
   // Where the conversation began. The field name is the kind, so a vocabulary
   // thread reads its own: only the document was named here, and every thread
   // started beside a vocabulary showed no subject at all.

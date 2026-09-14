@@ -22,7 +22,7 @@ import {
 import { parseFieldName } from '../../domain/fieldNames.js';
 
 /** The annotation scopes a span layer can carry, in the order they are shown. */
-export const SCOPES = ['Sentence', 'Word', 'Morpheme'];
+const SCOPES = ['Sentence', 'Word', 'Morpheme'];
 
 /**
  * The fields the project already has: {scope: [{name, id}]}, in layer order.

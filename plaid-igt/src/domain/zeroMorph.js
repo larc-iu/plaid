@@ -33,7 +33,7 @@ export const isZeroMorph = (form) => form === ZERO_MORPH;
  * correction, never to rewrite anything automatically: `0` is a real form in a
  * text about numbers, and Ø is a real letter.
  */
-export const ZERO_MORPH_LOOKALIKES = Object.freeze(['Ø', 'ø', '0', '*0', '^0']);
+const ZERO_MORPH_LOOKALIKES = Object.freeze(['Ø', 'ø', '0', '*0', '^0']);
 
 /** Does this form look like a zero someone spelled the wrong way? */
 export const looksLikeZeroMorph = (form) => ZERO_MORPH_LOOKALIKES.includes(form);

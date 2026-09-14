@@ -93,7 +93,7 @@ export function probLabel(probs, value) {
 // prediction extras describe the ORIGINAL prediction, not necessarily the
 // current value).
 /** Every reserved provenance metadata key (the convention's flat slots). */
-export const PROV_KEYS = Object.freeze(
+const PROV_KEYS = Object.freeze(
   new Set([PROV.key, PROV.sourceKey, PROV.confirmedKey, PROV.probKey, PROV.detailKey]),
 );
 

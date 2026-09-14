@@ -107,7 +107,7 @@ export const changeTitle = (where) => {
 
 // The heading a change is filed under: its document, or the lexicon for an
 // entry. Changes with no location share one untitled group.
-export const groupOf = (projectId, where) => {
+const groupOf = (projectId, where) => {
   if (!where) return { key: 'other', title: 'Other changes', href: null };
   if (where.kind === 'entry')
     return {
@@ -125,7 +125,7 @@ export const groupOf = (projectId, where) => {
 // What a plan row shows for a change: the place as a link, plus the short
 // reference beside it. A token change names the word (a whole-sentence one
 // names the sentence and shows its text), an entry change names the form.
-export const changePlace = (projectId, where) => {
+const changePlace = (projectId, where) => {
   if (!where) return null;
   const href = changeHref(projectId, where);
   const title = changeTitle(where);

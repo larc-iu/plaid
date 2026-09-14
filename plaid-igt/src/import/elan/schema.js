@@ -142,7 +142,7 @@ export function tierSchema(eaf, canonical = null) {
 
 // The form a person reads a tier name as: canonical Unicode, no invisibles,
 // runs of whitespace flattened, case ignored.
-export const foldName = (name) =>
+const foldName = (name) =>
   String(name ?? '')
     .normalize('NFC')
     .replace(/[\u200B-\u200D\u2060\uFEFF]/g, '')
@@ -151,7 +151,7 @@ export const foldName = (name) =>
     .toLowerCase();
 
 /** How two names that fold alike actually differ, in the user's words. */
-export function differenceKind(a, b) {
+function differenceKind(a, b) {
   const strip = (x) => String(x).replace(/[\u200B-\u200D\u2060\uFEFF]/g, '');
   if (strip(a) !== a || strip(b) !== b) return 'invisible characters';
   // Equal once normalized, but not before: the same letters spelled two ways.
@@ -166,7 +166,7 @@ export function differenceKind(a, b) {
  *
  * @returns {Array<{names: string[], differsBy: string}>}
  */
-export function nearMisses(nodes) {
+function nearMisses(nodes) {
   const byFolded = new Map();
   for (const node of nodes) {
     const folded = foldName(node.baseName);
@@ -195,7 +195,7 @@ export function nearMisses(nodes) {
 }
 
 /** Names in `a` that have a near-miss twin in `b` rather than a real absence. */
-export const nearMissesAcross = (a, b) => {
+const nearMissesAcross = (a, b) => {
   const folded = new Set(b.map(foldName));
   return a.filter((n) => folded.has(foldName(n)));
 };

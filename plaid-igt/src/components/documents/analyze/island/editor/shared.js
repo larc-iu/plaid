@@ -120,8 +120,8 @@ export const PULSE_CLASS = 'igt-confirmed';
 // the entity) tells a verified value's two origins apart; `contributor`
 // is whether the person looking is one, whose Ctrl+Enter takes machine
 // proposals only.
-export const REVIEW_HINT = 'Edit to fix, Ctrl+Enter accepts the whole word';
-export const provStateText = (state, origin, contributor) => {
+const REVIEW_HINT = 'Edit to fix, Ctrl+Enter accepts the whole word';
+const provStateText = (state, origin, contributor) => {
   if (state === PROV_STATES.MACHINE) return `machine-suggested, unverified. ${REVIEW_HINT}`;
   if (state === PROV_STATES.CONTRIBUTED)
     return contributor ? 'contributed, awaiting review' : `contributed, unverified. ${REVIEW_HINT}`;

@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useTabParam } from '@/hooks/useTabParam';
 
 // The tab bar's inventory, in display order, and the tab a document opens on.
-export const TABS = ['metadata', 'baseline', 'media', 'tokenize', 'analyze', 'comments', 'export'];
+const TABS = ['metadata', 'baseline', 'media', 'tokenize', 'analyze', 'comments', 'export'];
 const DEFAULT_TAB = 'metadata';
 
 // Which tab of a document is showing, and the two things that change it on

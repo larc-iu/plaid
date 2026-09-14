@@ -123,7 +123,7 @@ export function applyTextEditsLocally(raw, textId, ops, vocabs = null) {
  * Drop every span and vocab link pinned to a token in `deletedIds`, as the
  * server does when a token goes.
  */
-export function sweepDeadTokens(tokenLayers, deletedIds, vocabs = null) {
+function sweepDeadTokens(tokenLayers, deletedIds, vocabs = null) {
   if (deletedIds.length === 0) return;
   const dead = new Set(deletedIds);
   const touchesDead = (ids) => Array.isArray(ids) && ids.some((id) => dead.has(id));

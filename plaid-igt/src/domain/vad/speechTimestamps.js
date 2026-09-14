@@ -14,7 +14,7 @@
 // out.
 
 /** Samples per frame at 16 kHz. The model accepts no other window. */
-export const WINDOW_SAMPLES = 512;
+const WINDOW_SAMPLES = 512;
 export const SAMPLE_RATE = 16000;
 
 /**

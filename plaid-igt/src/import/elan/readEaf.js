@@ -30,7 +30,7 @@ export class EafError extends Error {
 }
 
 /** The four EAF stereotypes, plus null for an unconstrained (top) tier. */
-export const STEREOTYPES = Object.freeze({
+const STEREOTYPES = Object.freeze({
   TIME_SUBDIVISION: 'Time_Subdivision',
   SYMBOLIC_SUBDIVISION: 'Symbolic_Subdivision',
   SYMBOLIC_ASSOCIATION: 'Symbolic_Association',

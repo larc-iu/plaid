@@ -9,7 +9,7 @@
 
 // A cite tag of any app, plus the older brace form. Deliberately looser than
 // either app's: it matches the syntax, not the addressing inside it.
-export const PLAIN_CITE_RE =
+const PLAIN_CITE_RE =
   /<\s*cite\b[^<>]*?\/?\s*>(?:[ \t]*<\s*\/\s*cite\s*>)?|\{\{?\s*[^{}\n]+?\s+s\d+(?:\.[\w-]+)*\s*\}\}?/g;
 
 export const PLAIN_CITATIONS = {

@@ -23,7 +23,7 @@ import {
   multiHeadTargets,
 } from '../utils/udReconcile.js';
 
-export const SEVERITY = { ERROR: 'error', WARNING: 'warning' };
+const SEVERITY = { ERROR: 'error', WARNING: 'warning' };
 
 export function validateConlluDocument(layerInfo) {
   const findings = [];

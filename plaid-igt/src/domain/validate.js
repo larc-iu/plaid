@@ -21,7 +21,7 @@ import { planMorphemeReconcile, planSpanDedup } from './igtReconcile.js';
 import { conflictingPairs } from './alignmentTimes.js';
 import { collectMweLinks } from './mwe.js';
 
-export const SEVERITY = { ERROR: 'error', WARNING: 'warning' };
+const SEVERITY = { ERROR: 'error', WARNING: 'warning' };
 
 export function validateIgtDocument(
   layerInfo,

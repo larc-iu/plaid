@@ -5,7 +5,7 @@
 
 // Bulk Edit, Validation and Activity are maintainers-only. The Assistant is
 // open to everyone, since it acts under the reader's own permissions.
-export const CONTENT_TABS = ['documents', 'search', 'bulk', 'validate', 'activity', 'assistant'];
+const CONTENT_TABS = ['documents', 'search', 'bulk', 'validate', 'activity', 'assistant'];
 
 const MAINTAINER_TABS = new Set(['bulk', 'validate', 'activity']);
 

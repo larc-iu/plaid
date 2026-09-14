@@ -115,7 +115,7 @@ export function rewriteSentence(grs, graph, { maxApplications = MAX_APPLICATIONS
 }
 
 // Everything a command can change, as one string.
-export function fingerprint(g) {
+function fingerprint(g) {
   const nodes = g.order.map((id) => {
     const n = g.nodes.get(id);
     if (n.deleted) return [id, 'deleted'];

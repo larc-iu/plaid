@@ -27,14 +27,12 @@ import {
 
 const ITEM_SOURCE_KEY = 'cldfEntry';
 
-export { ImportCancelled };
-
 /** The setup-wizard input derived from a build. */
 /**
  * The vocabularies a lexicon names, in first-seen order; an entry that names
  * none goes under the default. Empty when there is no lexicon at all.
  */
-export const lexiconNames = (lexicon, fallback = 'Lexicon') => {
+const lexiconNames = (lexicon, fallback = 'Lexicon') => {
   if (!lexicon?.length) return [];
   const names = [];
   for (const e of lexicon) {
@@ -269,7 +267,7 @@ const DOCUMENT_STEPS = [
 ];
 
 /** Import one document: text, sentence partition, words, morphemes, spans. */
-export async function importDocument({
+async function importDocument({
   client,
   projectId,
   targets,

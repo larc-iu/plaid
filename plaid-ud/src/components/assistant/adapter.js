@@ -12,7 +12,7 @@ import { ExampleCard } from './ExampleCard.jsx';
 // (the service resolves those only when the turn read a single document).
 // A reference may name a multi-word token, `s3.w1-2`, but never a morpheme:
 // UD's words are the smallest thing addressed.
-export const CITE_RE =
+const CITE_RE =
   /<\s*cite\b[^<>]*?\/?\s*>(?:[ \t]*<\s*\/\s*cite\s*>)?|\{\{?\s*[^{}\n]+?\s+s\d+(?:\.w\d+(?:-\d+)?)?\s*\}\}?|(?<![\w{.])s\d+(?:\.w\d+(?:-\d+)?)?\b/g;
 
 // The sentence in the annotation editor. The route is `annotate`, and the
@@ -39,7 +39,7 @@ export const citationTitle = (c) => {
 // the document and, for a change inside one, the CoNLL-U reference, the
 // sentence, and the word's own text.
 
-export const changeHref = (projectId, where) => {
+const changeHref = (projectId, where) => {
   if (!where) return null;
   if (where.kind === 'token')
     return (
@@ -51,7 +51,7 @@ export const changeHref = (projectId, where) => {
   return null;
 };
 
-export const changeTitle = (where) => {
+const changeTitle = (where) => {
   if (!where) return '';
   if (where.kind === 'token')
     return (
@@ -64,7 +64,7 @@ export const changeTitle = (where) => {
 
 // The heading a change is filed under: its document. Changes with no location
 // share one untitled group.
-export const groupOf = (projectId, where) => {
+const groupOf = (projectId, where) => {
   if (!where) return { key: 'other', title: 'Other changes', href: null };
   return {
     key: `doc:${where.documentId}`,
@@ -76,7 +76,7 @@ export const groupOf = (projectId, where) => {
 // What a plan row shows: the word as a link, with its reference beside it. A
 // change to the whole document names the document, one to a whole sentence
 // names the sentence.
-export const changePlace = (projectId, where) => {
+const changePlace = (projectId, where) => {
   if (!where) return null;
   const href = changeHref(projectId, where);
   const title = changeTitle(where);
@@ -89,7 +89,7 @@ export const changePlace = (projectId, where) => {
 
 // A cited sentence as a Markdown table, for the conversation export: the
 // CoNLL-U columns, one row per line, with the cited words in bold.
-export const citationToMarkdown = (c, { origin, projectId }) => {
+const citationToMarkdown = (c, { origin, projectId }) => {
   const columns = c.columns || [];
   const out = [`**[${linkLabel(citationTitle(c))}](${sentenceHref(origin, projectId, c)})**`, ''];
   if (!columns.length) {
