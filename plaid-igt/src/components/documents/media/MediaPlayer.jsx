@@ -86,6 +86,13 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
         }
         setMediaError(null);
       } catch (error) {
+        // Two of the three ways `play()` rejects say nothing about the file.
+        // An AbortError is a seek or a pause landing on top of the play, which
+        // happens whenever a segment is played from a row, and a NotAllowedError
+        // is the browser's autoplay policy. Neither is a codec, and the banner
+        // they used to raise is sticky: it stayed over a recording that was
+        // playing.
+        if (error?.name === 'AbortError' || error?.name === 'NotAllowedError') return;
         console.error('Media playback error:', error);
         setMediaError(
           'Media format not supported by your browser. Please try MP4, WebM, MP3, or WAV files.',
