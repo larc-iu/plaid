@@ -1,23 +1,33 @@
-import PlaidClient from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth } from './fixtures.js';
+import { getFixture, createScratchProject, makeClient } from './fixtureProject.js';
 
 // A list opens the way it was left: the sort a reader chose survives a reload,
-// and it is remembered per project rather than for every list at once. Runs
-// against "E2E IGT Fixture" and writes nothing to the server.
+// and it is remembered per project rather than for every list at once. Reads
+// "E2E IGT Fixture" and never writes to it.
 
-const CORE = 'http://localhost:8085';
 const sortKey = (id) => `plaid_igt_list_sort:documents:${id}`;
 
 let projectId;
 let otherProjectId;
 
 test.beforeAll(async () => {
-  const client = new PlaidClient(CORE, readToken().token);
-  const projects = await client.projects.list();
-  const fixture = projects.find((p) => p.name === 'E2E IGT Fixture');
-  if (!fixture) throw new Error('run node e2e/fixtureProject.js first');
-  projectId = fixture.id;
-  otherProjectId = projects.find((p) => p.id !== projectId)?.id;
+  ({ projectId } = await getFixture());
+  // A second project of its own. It used to take whatever happened to be
+  // second on the dev core, which is another session's: it may hold no
+  // documents for the list to show, somebody may have sorted it already, and
+  // its own spec's afterAll may delete it mid-test.
+  ({ projectId: otherProjectId } = await createScratchProject({
+    name: `E2E List Prefs ${Date.now()}`,
+    docName: 'Second List Document',
+    body: 'Uno dos tres.',
+  }));
+});
+
+test.afterAll(async () => {
+  if (!otherProjectId) return;
+  await makeClient()
+    .projects.delete(otherProjectId)
+    .catch((e) => console.error('cleanup failed:', e.message));
 });
 
 test.beforeEach(async ({ page }) => {
@@ -60,8 +70,6 @@ test('a chosen sort survives a reload', async ({ page }) => {
 });
 
 test('the sort is remembered per project, not for every list at once', async ({ page }) => {
-  test.skip(!otherProjectId, 'needs a second project on this server');
-
   await openDocuments(page, projectId);
   await documentHeader(page).click();
 

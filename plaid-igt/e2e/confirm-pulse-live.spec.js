@@ -78,6 +78,10 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   if (documentId) await client.documents.delete(documentId).catch(() => {});
+  // The entry goes into the SHARED "IGT Lexicon", which is linked to the
+  // fixture project and read by every popover and gloss-guess spec, so a run
+  // that leaves its `dup...` behind adds one to that lexicon for good.
+  if (ids.entry) await client.vocabItems.delete(ids.entry).catch(() => {});
 });
 
 async function openAnalyze(page) {

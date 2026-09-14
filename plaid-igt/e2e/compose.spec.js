@@ -21,6 +21,20 @@ async function freshCell(page) {
   return cell;
 }
 
+// Put the first morpheme's form back. The fixture document is shared and reused
+// by name across runs, so a test that commits into it has to, and the check is
+// made after a RELOAD: the box this spec typed into holds the restored text
+// whether or not the write reached the server, so reading it proves nothing.
+async function restoreForm(page, projectId, documentId, original) {
+  const cell = page.locator('.igt-island .igt-morph-field').first();
+  await cell.click();
+  await cell.press('Control+a');
+  await page.keyboard.type(original);
+  await cell.press('Enter');
+  await openAnalyze(page, projectId, documentId);
+  await expect(page.locator('.igt-island .igt-morph-field').first()).toHaveValue(original);
+}
+
 test('a backslash code composes in a morpheme form cell', async ({ page }) => {
   const { projectId, documentId } = await getFixture();
   const diag = collectClientErrors(page);
@@ -58,6 +72,7 @@ test('a code ending in a hyphen composes instead of splitting', async ({ page })
   await seedAuth(page);
   await openAnalyze(page, projectId, documentId);
 
+  const original = await page.locator('.igt-island .igt-morph-field').first().inputValue();
   const cell = await freshCell(page);
   // Count within THIS word only: the fixture document is shared and other
   // specs move morphemes around in it.
@@ -74,9 +89,12 @@ test('a code ending in a hyphen composes instead of splitting', async ({ page })
   await page.keyboard.type('-');
   await expect.poll(async () => inWord.count()).toBe(before + 1);
 
-  // Put the word back, so the shared fixture does not drift.
+  // Put the word back, so the shared fixture does not drift. The count AND the
+  // form: a merge leaves the typed text in the morpheme it merged into, which
+  // is what every later spec then reads as the word's form.
   await page.keyboard.press('Backspace');
   await expect.poll(async () => inWord.count()).toBe(before);
+  await restoreForm(page, projectId, documentId, original);
 });
 
 test('Alt+0 types a zero morph and it round-trips', async ({ page }) => {
@@ -91,21 +109,13 @@ test('Alt+0 types a zero morph and it round-trips', async ({ page }) => {
   await page.keyboard.press('Alt+0');
   await expect(cell).toHaveValue('∅');
   await cell.press('Tab');
-  await page.waitForTimeout(600);
-
-  await page.reload();
+  // The commit is a write, and the reload below must not race it.
   await page.waitForLoadState('networkidle');
-  await page.getByRole('tab', { name: 'Analyze' }).click();
-  await page.locator('.igt-island .igt-token-col').first().waitFor({ state: 'visible' });
-  const reloaded = page.locator('.igt-island .igt-morph-field').first();
-  await expect(reloaded).toHaveValue('∅');
 
-  await reloaded.click();
-  await reloaded.press('Control+a');
-  await page.keyboard.type(original);
-  await reloaded.press('Tab');
-  await page.waitForTimeout(600);
-  await expect(page.locator('.igt-island .igt-morph-field').first()).toHaveValue(original);
+  await openAnalyze(page, projectId, documentId);
+  await expect(page.locator('.igt-island .igt-morph-field').first()).toHaveValue('∅');
+
+  await restoreForm(page, projectId, documentId, original);
 });
 
 test('codes work outside the island too', async ({ page }) => {
@@ -116,9 +126,14 @@ test('codes work outside the island too', async ({ page }) => {
   await page.getByRole('tab', { name: 'Baseline' }).click();
 
   const area = page.locator('#baseline-text');
-  if (!(await area.isVisible().catch(() => false))) {
-    await page.getByRole('button', { name: /edit/i }).first().click();
-  }
+  const edit = page.getByRole('button', { name: /edit/i }).first();
+  // One or the other: an empty document opens straight into the editor, and one
+  // with text waits behind Edit. Waiting for whichever arrives first is what
+  // makes the branch below a branch rather than a race: a bare `isVisible()`
+  // read while the tab is still rendering answers "no" and clicks a button that
+  // is not there either.
+  await area.or(edit).first().waitFor();
+  if (!(await area.isVisible())) await edit.click();
   await area.click();
   await area.press('Control+End');
   await page.keyboard.type(' \\ng');
@@ -168,11 +183,7 @@ test('every zero-morph code types the same character', async ({ page }) => {
   await page.keyboard.type('^');
   await expect(cell).toHaveValue('\u030A');
 
-  await cell.press('Control+a');
-  await page.keyboard.type(original);
-  await cell.press('Tab');
-  await page.waitForTimeout(600);
-  await expect(page.locator('.igt-island .igt-morph-field').first()).toHaveValue(original);
+  await restoreForm(page, projectId, documentId, original);
 });
 
 test('a code added in Settings works in the grid', async ({ page }) => {
