@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { cpLength, cpSlice, TASKS } from '@larc-iu/plaid-client';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
-import { useIgtDocument } from '../../../domain/useIgtDocument.js';
+import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { useServiceRequest } from '@ui/hooks/useServiceRequest.js';
 import { useServiceSpot } from '@ui/hooks/useServiceSpot.js';
 import { useRunProgress, useMirroredProgress } from '@ui/hooks/useRunProgress.js';
@@ -31,7 +31,7 @@ const TOKENIZE_BUILTINS = [
 // Only the service glue, method selection, and progress are local.
 export const useTokenOperations = () => {
   const { doc, client, acquireWriteLock } = useDocumentCtx();
-  useIgtDocument(doc);
+  useDocumentModel(doc);
   const project = doc.project;
 
   const {

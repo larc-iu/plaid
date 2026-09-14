@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useLocation, Outlet, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
-import { useConlluDocument } from '../../domain/useConlluDocument.js';
+import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { DocumentTabs } from './DocumentTabs.jsx';
 import { CommentStore } from '@ui/domain/CommentStore';
 import { useCommentStore } from '@ui/domain/useCommentStore';
@@ -83,8 +83,8 @@ export const DocumentEditorShell = () => {
   // child raises this the same way it publishes its offset.
   const [chromeBusy, setChromeBusy] = useState(false);
 
-  // Re-render on any mutation of the shared document (see useConlluDocument).
-  useConlluDocument(doc);
+  // Re-render on any mutation of the shared document (see useDocumentModel).
+  useDocumentModel(doc);
 
   // A service run that writes takes the document read-only for as long as it
   // writes: the run outlives its dialog and ends in a reload, so anything

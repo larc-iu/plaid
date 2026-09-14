@@ -1,6 +1,6 @@
 import React from 'react';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
-import { useIgtDocument } from '../../../domain/useIgtDocument.js';
+import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { useMediaOperations } from './useMediaOperations.js';
 import { MediaPlayer } from './MediaPlayer.jsx';
 import { Timeline } from './Timeline.jsx';
@@ -14,7 +14,7 @@ import { DeleteSegmentsDialog } from './DeleteSegmentsDialog.jsx';
 
 export function DocumentMedia() {
   const { doc, readOnly, canWrite, writeLock } = useDocumentCtx();
-  useIgtDocument(doc);
+  useDocumentModel(doc);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
 
   // Use media operations hook

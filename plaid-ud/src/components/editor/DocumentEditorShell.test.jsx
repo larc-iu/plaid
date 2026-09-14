@@ -33,7 +33,7 @@ vi.mock('../../domain/ConlluDocument.js', () => ({
     }
   },
 }));
-vi.mock('../../domain/useConlluDocument.js', () => ({ useConlluDocument: () => 0 }));
+vi.mock('@ui/domain/useDocumentModel.js', () => ({ useDocumentModel: () => 0 }));
 vi.mock('./DocumentTabs.jsx', () => ({ DocumentTabs: () => null }));
 const stores = vi.hoisted(() => []);
 vi.mock('@ui/domain/CommentStore', () => ({

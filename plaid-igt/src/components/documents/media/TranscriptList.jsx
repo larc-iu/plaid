@@ -20,7 +20,7 @@ import { cn } from '@ui/lib/utils';
 import { notifyError } from '@/utils/feedback';
 import { PLAYBACK_RATE_STEP } from './useMediaOperations';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
-import { useIgtDocument } from '../../../domain/useIgtDocument.js';
+import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { whenIdle } from '../../../domain/whenIdle.js';
 import { formatTime } from './formatTime.js';
 import { rangeProblem } from '../../../domain/alignmentTimes.js';
@@ -705,7 +705,7 @@ export function TranscriptList({
   footer = null,
 }) {
   const { doc } = useDocumentCtx();
-  useIgtDocument(doc);
+  useDocumentModel(doc);
 
   // `mediaOps` is a fresh object every render; callbacks read it through a ref
   // so the memoized rows keep their identity while the playhead moves.

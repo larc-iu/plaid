@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { cpSlice, cpLength } from '@larc-iu/plaid-client';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
-import { useIgtDocument } from '../../../domain/useIgtDocument.js';
+import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { alignableRange } from '../../../domain/mutations/alignment.js';
 
 // The timeline popover's operations, backed by the shared IgtDocument: make a
@@ -12,7 +12,7 @@ import { alignableRange } from '../../../domain/mutations/alignment.js';
 // segment happen in its transcript row, not here.
 export const useAlignmentEditor = (selection, onAlignmentCreated) => {
   const { doc } = useDocumentCtx();
-  useIgtDocument(doc);
+  useDocumentModel(doc);
 
   // The stretch of baseline text a segment at `selection` may take: whatever
   // lies between the segment before it in time and the one after. Code points.

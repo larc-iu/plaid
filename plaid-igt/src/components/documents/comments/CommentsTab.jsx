@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
-import { useIgtDocument } from '@/domain/useIgtDocument';
+import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { buildAnchorIndex } from '@/domain/commentAnchors';
 import { CommentsBrowser } from '@ui/components/shared/CommentsBrowser';
 
@@ -15,7 +15,7 @@ import { CommentsBrowser } from '@ui/components/shared/CommentsBrowser';
 export const CommentsTab = () => {
   const { doc, comments, canWrite, canManage } = useDocumentCtx();
   const { projectId, documentId } = useParams();
-  useIgtDocument(doc);
+  useDocumentModel(doc);
 
   // Anchor labels are derived from the document and only change when its DATA
   // changes, so they are memoized on dataVersion, the same gate the grid uses.

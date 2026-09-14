@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
-import { useIgtDocument } from '../../../domain/useIgtDocument.js';
+import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { notifySuccess } from '@/utils/feedback';
 import { readDocumentMetadata } from '@/domain/igtConfig';
 import { readTagsets } from '@/domain/tagsets';
@@ -13,7 +13,7 @@ import { changedValuesAllowed } from '@/domain/tagsets';
 export const useMetadataOperations = () => {
   const navigate = useNavigate();
   const { doc } = useDocumentCtx();
-  useIgtDocument(doc);
+  useDocumentModel(doc);
 
   const document = doc.document;
   const project = doc.project;

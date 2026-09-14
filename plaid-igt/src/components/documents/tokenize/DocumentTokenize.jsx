@@ -13,14 +13,14 @@ import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { notifySuccess } from '@/utils/feedback';
 import { splitPointsFromSegments } from '@/domain/segments.js';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
-import { useIgtDocument } from '../../../domain/useIgtDocument.js';
+import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { TokenizeDialog } from './TokenizeDialog.jsx';
 import Lazy from '../../lazy';
 import './DocumentTokenize.css';
 
 export function DocumentTokenize() {
   const { doc, readOnly, canWrite, writeLock } = useDocumentCtx();
-  useIgtDocument(doc);
+  useDocumentModel(doc);
   const ops = useTokenOperations();
 
   const sentences = doc.sentences;

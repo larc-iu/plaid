@@ -13,6 +13,7 @@ import {
 // `node --test` suite, where no alias exists. It is the same file the alias
 // resolves to, and it imports nothing itself, which is what lets node load it.
 import { canManageProject } from '../../../plaid-ui/src/domain/permissions.js';
+import { DocumentModel } from '../../../plaid-ui/src/domain/DocumentModel.js';
 import { getUdLayerInfo, containsToken, readProjectLanguage } from '../utils/udLayerUtils.js';
 import {
   interSententialRelationIds,
@@ -29,53 +30,10 @@ import { buildConllu } from './conlluSerialize.js';
 import { basicTokenize, newlineSentenceRanges } from '../utils/basicTokenize.js';
 import { normalizeFeature, featureRefusal } from '../utils/feats.js';
 
-const cloneRaw = (raw) => JSON.parse(JSON.stringify(raw));
-
-// Single source of truth for a loaded plaid-ud document. Wraps a raw
-// plaid-client document, knows the UD 3-layer hierarchy (sentences > words >
-// morphemes), owns the optimistic-update logic that used to live in
-// TextEditor / useAnnotationHandlers, and exposes a version-counted
-// subscription so React (or anything else) can re-render on change.
-// Audit-log label for a mutation, derived from its "Failed to <verb phrase>"
-// error label: "Failed to create relation" → "Create relation". Keeps every
-// mutation a labeled logical operation without a second string per call site.
-function operationLabel(errorLabel) {
-  const s = String(errorLabel).replace(/^Failed to\s+/i, '');
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-export class ConlluDocument {
+export class ConlluDocument extends DocumentModel {
   constructor({ raw, client = null, projectId = null, project = null, user = null, asOf = null }) {
-    this._raw = raw;
-    // Which snapshot this document was read at (null = live).
-    this._asOf = asOf;
-    this._client = client;
-    this._projectId = projectId;
-    // The project (its ACL and config) and the person writing ({ id, isAdmin }),
-    // for the provenance convention: see `writer`. Null = a verifier.
-    this._project = project;
-    this._user = user;
+    super({ raw, client, projectId, project, user, asOf });
     this._writer = null;
-    // `_version` is the React subscription snapshot — it bumps on EVERY emit
-    // (including isSaving/error toggles that change no document data). The
-    // derived caches below instead key on `_dataVersion`, which bumps only when
-    // `_raw` actually changes, so transient saving re-renders don't rebuild the
-    // whole sentence grid (which would re-render every cell mid-edit).
-    this._version = 0;
-    this._dataVersion = 0;
-    this._listeners = new Set();
-    this._sentencesCache = null;
-    this._sentencesCacheVersion = -1;
-    this._layerInfoCache = null;
-    this._layerInfoCacheVersion = -1;
-    this._conlluCache = null;
-    this._conlluCacheVersion = -1;
-    this._isSaving = false;
-    this._error = '';
-    // The screen's error channel, `(message, err, label)`: the label is what
-    // was being done and `err` the client's error, for the screen to word.
-    // Null until the screen wires it. The domain layer shows nothing itself.
-    this.onError = null;
   }
 
   // Convenience factory: fetch a document by id and wrap it. `project` and
@@ -85,11 +43,8 @@ export class ConlluDocument {
     return new ConlluDocument({ raw, client, projectId, project, user });
   }
 
-  // This document at `asOf`, as a NEW instance: a snapshot really is a different
-  // document (see useHistoryView), where `reload` is this one refreshed.
-  async atAsOf(asOf) {
-    const raw = await this._client.documents.get(this.id, true, asOf || undefined);
-    const next = new ConlluDocument({
+  _snapshot(raw, asOf) {
+    return new ConlluDocument({
       raw,
       client: this._client,
       projectId: this._projectId,
@@ -97,9 +52,6 @@ export class ConlluDocument {
       user: this._user,
       asOf,
     });
-    // The error handler is the screen's, not this instance's: carry it.
-    next.onError = this.onError;
-    return next;
   }
 
   // ----- who is writing (provenance) -----
@@ -131,74 +83,9 @@ export class ConlluDocument {
     return importConlluDocument(client, projectId, name, conlluText, precomputedLayerInfo);
   }
 
-  get version() {
-    return this._version;
-  }
-
-  get raw() {
-    return this._raw;
-  }
-  get asOf() {
-    return this._asOf;
-  }
-  get id() {
-    return this._raw?.id;
-  }
-  get name() {
-    return this._raw?.name;
-  }
-  get client() {
-    return this._client;
-  }
-  get projectId() {
-    return this._projectId;
-  }
-  get isSaving() {
-    return this._isSaving;
-  }
-  get error() {
-    return this._error;
-  }
-
-  // ----- React subscription bridge (useSyncExternalStore-compatible) -----
-  // Arrow-function fields so identities stay stable across renders.
-  subscribe = (listener) => {
-    this._listeners.add(listener);
-    return () => {
-      this._listeners.delete(listener);
-    };
-  };
-
-  getSnapshot = () => this._version;
-
-  _emit() {
-    this._version++;
-    this._listeners.forEach((fn) => fn());
-  }
-
-  // Operation and validation errors go to the screen's `onError`. `_error` is
-  // still tracked so callers can branch on outcome and the same sticky message
-  // is not reported twice.
-  setError(msg) {
-    if (this._error === msg) return;
-    this._error = msg;
-    if (msg && this.onError) this.onError(msg);
-    this._emit();
-  }
-
-  clearError() {
-    if (!this._error) return;
-    this._error = '';
-    this._emit();
-  }
-
-  // ----- layer info (cached per version) -----
+  // ----- layer info (cached per data version) -----
   get layerInfo() {
-    if (this._layerInfoCacheVersion !== this._dataVersion) {
-      this._layerInfoCache = getUdLayerInfo(this._raw);
-      this._layerInfoCacheVersion = this._dataVersion;
-    }
-    return this._layerInfoCache;
+    return this._derived('layerInfo', () => getUdLayerInfo(this._raw));
   }
 
   get body() {
@@ -207,12 +94,7 @@ export class ConlluDocument {
 
   // ----- derived sentence/word/morpheme hierarchy (cached per version) -----
   get sentences() {
-    if (this._sentencesCache && this._sentencesCacheVersion === this._dataVersion) {
-      return this._sentencesCache;
-    }
-    this._sentencesCache = this._buildSentences();
-    this._sentencesCacheVersion = this._dataVersion;
-    return this._sentencesCache;
+    return this._derived('sentences', () => this._buildSentences());
   }
 
   // The rows come from `buildSentenceRows`, which needs nothing but the body
@@ -222,74 +104,13 @@ export class ConlluDocument {
   }
 
   // ============================================================
-  // Mutation infrastructure
+  // Mutation infrastructure (the lifecycle itself is DocumentModel's)
   // ============================================================
 
-  // Single-flight gate around mutations: skip if already saving, clear
-  // error at the start, capture and surface errors, refetch the document
-  // from the server on failure. Returns true on success / false otherwise
-  // so callers can branch on outcome.
-  // Every mutation also runs as ONE logical operation in the audit log
-  // (`client.withOperation`): however many writes/batches it makes show up in
-  // the History drawer as a single expandable entry labeled `operation`
-  // (derived from the "Failed to …" error label unless given explicitly).
-  // Nested mutations flatten into the outer operation.
-  async _withSaving(label, fn, operation = operationLabel(label)) {
-    if (this._isSaving) return false;
-    this._isSaving = true;
-    this._error = '';
-    this._emit();
-    try {
-      await this._client.withOperation(operation, fn);
-      return true;
-    } catch (err) {
-      console.error(`${label}:`, err);
-      this._error = `${label}: ${err.message || 'Unknown error'}`;
-      // The raw error rides along so the screen can word it (statuses, network
-      // failures) while keeping the "Failed to ..." label as the title.
-      if (this.onError) this.onError(this._error, err, label);
-      try {
-        await this._reload();
-      } catch (reloadErr) {
-        console.error('Reload after failure also failed:', reloadErr);
-      }
-      return false;
-    } finally {
-      this._isSaving = false;
-      this._emit();
-    }
-  }
-
-  // Apply an optimistic local-state patch. The producer receives a deep
-  // clone of the raw document plus a freshly-computed layerInfo for that
-  // clone, mutates it in place, and the result replaces `_raw`. Emits, so
-  // every `_raw` swap goes hand-in-hand with a version bump and a notify —
-  // the invariant downstream caches rely on.
-  _applyRawPatch(producer) {
-    const next = cloneRaw(this._raw);
-    producer(next, getUdLayerInfo(next));
-    this._raw = next;
-    this._dataVersion++;
-    this._emit();
-  }
-
-  // Public resync. `DocumentEditorShell` hands this to the tabs as `reload`,
-  // so an NLP service that rewrote the document refreshes it IN PLACE — the
-  // instance (and every component subscribed to it) survives, where building a
-  // fresh ConlluDocument would remount the whole annotation grid.
-  async reload() {
-    return this._reload();
-  }
-
-  // Re-fetch the raw document from the server. Used in catch-paths and as
-  // an explicit "give up and resync" hook after large multi-batch ops.
-  // Emits so the version bumps in lockstep with the `_raw` swap.
-  async _reload() {
-    if (!this._client || !this.id) return;
-    const updated = await this._client.documents.get(this.id, true);
-    this._raw = updated;
-    this._dataVersion++;
-    this._emit();
+  // A patch producer receives the clone of `_raw` and a freshly computed
+  // layerInfo for that clone.
+  _patchContext(next) {
+    return [getUdLayerInfo(next)];
   }
 
   // ============================================================
@@ -1516,10 +1337,7 @@ export class ConlluDocument {
   // Serialize the current document state to CoNLL-U text. Result is cached
   // per version so repeated calls between mutations are free.
   toConllu() {
-    if (this._conlluCacheVersion === this._dataVersion) return this._conlluCache;
-    this._conlluCache = this._buildConllu();
-    this._conlluCacheVersion = this._dataVersion;
-    return this._conlluCache;
+    return this._derived('conllu', () => this._buildConllu());
   }
 
   // The serializer is `buildConllu`, which needs nothing but these three.

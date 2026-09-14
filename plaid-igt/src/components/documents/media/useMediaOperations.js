@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
 import { TASKS } from '@larc-iu/plaid-client';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
-import { useIgtDocument } from '../../../domain/useIgtDocument.js';
+import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useServiceRequest } from '@ui/hooks/useServiceRequest.js';
 import { useServiceSpot } from '@ui/hooks/useServiceSpot.js';
@@ -91,7 +91,7 @@ const parseBool = (raw) => (raw === 'true' ? true : raw === 'false' ? false : un
 // single source the timeline + player read from.
 export const useMediaOperations = () => {
   const { doc, client, acquireWriteLock, canWrite } = useDocumentCtx();
-  useIgtDocument(doc);
+  useDocumentModel(doc);
   const confirm = useConfirm();
 
   const project = doc.project;

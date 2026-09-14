@@ -7,6 +7,7 @@ import {
   writerPolicy,
 } from '@larc-iu/plaid-client';
 import { canManageProject } from '@ui/domain/permissions.js';
+import { DocumentModel } from '@ui/domain/DocumentModel.js';
 import { newHalfMetadata, survivorPatch } from './tokenReshape.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 import { readSpeakers, IGT_NAMESPACE } from './igtConfig.js';
@@ -34,7 +35,6 @@ import { documentMutations } from './mutations/document.js';
 import { alignmentMutations } from './mutations/alignment.js';
 import { analysisCopyMutations } from './mutations/analysisCopy.js';
 
-const cloneRaw = (raw) => JSON.parse(JSON.stringify(raw));
 const cloneVocabs = (vocabularies) => JSON.parse(JSON.stringify(vocabularies));
 
 // Single source of truth for a loaded plaid-igt document. Wraps a raw
@@ -45,7 +45,7 @@ const cloneVocabs = (vocabularies) => JSON.parse(JSON.stringify(vocabularies));
 // can re-render on change.
 //
 // Framework-agnostic — no React imports here. The React bridge lives in
-// useIgtDocument.js.
+// useDocumentModel.js.
 //
 // Vocab links are scoped on the vocab layer, not the document, so the doc
 // also holds the project's loaded vocabularies (`_vocabularies`) and applies
@@ -53,12 +53,7 @@ const cloneVocabs = (vocabularies) => JSON.parse(JSON.stringify(vocabularies));
 // Audit-log label for a mutation, derived from its "Failed to <verb phrase>"
 // error label: "Failed to merge morphemes" → "Merge morphemes". Keeps every
 // mutation a labeled logical operation without a second string per call site.
-function operationLabel(errorLabel) {
-  const s = String(errorLabel).replace(/^Failed to\s+/i, '');
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-export class IgtDocument {
+export class IgtDocument extends DocumentModel {
   constructor({
     raw,
     project = null,
@@ -68,46 +63,13 @@ export class IgtDocument {
     asOf = null,
     user = null,
   }) {
-    this._raw = raw;
-    this._project = project;
-    // The person writing through this document ({ id, isAdmin }), for the
-    // provenance convention (see contributorId). Null = a verifier: scripts,
-    // imports, tests.
-    this._user = user;
+    super({ raw, client, projectId, project, user, asOf });
     this._writer = null;
     // Fold the document-embedded vocab-links (under raw's token layers) into the
-    // separately-loaded vocabularies — `vocabLayers.get` returns items but not
+    // separately-loaded vocabularies: `vocabLayers.get` returns items but not
     // links, so this is the only way links survive a fresh load. See
-    // mergeRawVocabLinks. Reload re-folds explicitly (it bypasses the ctor).
+    // mergeRawVocabLinks. A reload re-folds explicitly (it bypasses the ctor).
     this._vocabularies = mergeRawVocabLinks(raw, vocabularies);
-    this._client = client;
-    this._projectId = projectId;
-    // The as-of timestamp this doc was loaded at (null = live). Threaded through
-    // _reload so a resync during time-travel stays on the historical snapshot
-    // instead of silently jumping to live data.
-    this._asOf = asOf;
-    this._version = 0;
-    // Bumps only when `_raw`/`_vocabularies` actually change (via _applyRawPatch
-    // / _reload), NOT on isSaving/error-only emits. Derived caches and the
-    // vanilla island gate on this so transient saving toggles don't rebuild the
-    // grid or jitter input focus (see plaid-ud's _dataVersion lesson).
-    this._dataVersion = 0;
-    this._listeners = new Set();
-    this._isSaving = false;
-    this._error = '';
-    // Optional sink for surfacing errors loudly (e.g. a toast). Framework-agnostic:
-    // the React mount wrapper sets this to notifyError; tests leave it null.
-    this.onError = null;
-
-    // Per-data-version caches. Each is gated on `*CacheVersion === this._dataVersion`.
-    this._layerInfoCache = null;
-    this._layerInfoCacheVersion = -1;
-    this._documentDataCache = null;
-    this._documentDataCacheVersion = -1;
-    this._sentencesBundleCache = null;
-    this._sentencesBundleCacheVersion = -1;
-    this._alignmentTokensCache = null;
-    this._alignmentTokensCacheVersion = -1;
   }
 
   // Convenience factory: fetch document + project + project vocabularies and
@@ -143,23 +105,8 @@ export class IgtDocument {
   // fetch. Only the document is snapshot-dependent: `load` deliberately reads
   // project config and vocab LIVE even for a historical view (layer structure is
   // immutable), so re-fetching those per click could not return anything new.
-  /** Re-read this document IN PLACE, keeping its identity.
-   *
-   * `atAsOf` returns a NEW IgtDocument, which is right for time travel (the
-   * snapshot really is a different document) and wrong for a refresh: the
-   * Analyze island's mount effect is keyed on doc identity, so a new object
-   * destroys and rebuilds the island and the reader loses their scroll
-   * position, the focused cell and any open popover. This emits instead, which
-   * the island repaints from. Use it whenever the document the user is looking
-   * at has simply changed underneath them.
-   */
-  async reload() {
-    await this._reload();
-  }
-
-  async atAsOf(asOf) {
-    const raw = await this._client.documents.get(this.id, true, asOf || undefined);
-    const next = new IgtDocument({
+  _snapshot(raw, asOf) {
+    return new IgtDocument({
       raw,
       project: this._project,
       // The constructor folds the document's links into whatever it is handed,
@@ -170,9 +117,6 @@ export class IgtDocument {
       asOf,
       user: this._user,
     });
-    // The error handler is the screen's, not this instance's: carry it.
-    next.onError = this.onError;
-    return next;
   }
 
   // ----- who is writing (provenance) -----
@@ -223,50 +167,12 @@ export class IgtDocument {
   }
 
   // ----- read API -----
-  get version() {
-    return this._version;
-  }
-  get dataVersion() {
-    return this._dataVersion;
-  }
-  get raw() {
-    return this._raw;
-  }
-  get id() {
-    return this._raw?.id;
-  }
-  get name() {
-    return this._raw?.name;
-  }
-  get client() {
-    return this._client;
-  }
-  get projectId() {
-    return this._projectId;
-  }
-  // Which snapshot this document was read at (null = live).
-  get asOf() {
-    return this._asOf;
-  }
-  get project() {
-    return this._project;
-  }
   get vocabularies() {
     return this._vocabularies;
   }
-  get isSaving() {
-    return this._isSaving;
-  }
-  get error() {
-    return this._error;
-  }
 
   get layerInfo() {
-    if (this._layerInfoCacheVersion !== this._dataVersion) {
-      this._layerInfoCache = getIgtLayerInfo(this._raw);
-      this._layerInfoCacheVersion = this._dataVersion;
-    }
-    return this._layerInfoCache;
+    return this._derived('layerInfo', () => getIgtLayerInfo(this._raw));
   }
 
   // The document's metadata as stored, including keys no metadata field is
@@ -277,11 +183,9 @@ export class IgtDocument {
   }
 
   get document() {
-    if (this._documentDataCacheVersion !== this._dataVersion) {
-      this._documentDataCache = deriveDocumentData(this._raw, this.layerInfo, this._project);
-      this._documentDataCacheVersion = this._dataVersion;
-    }
-    return this._documentDataCache;
+    return this._derived('document', () =>
+      deriveDocumentData(this._raw, this.layerInfo, this._project),
+    );
   }
 
   get body() {
@@ -289,11 +193,7 @@ export class IgtDocument {
   }
 
   get alignmentTokens() {
-    if (this._alignmentTokensCacheVersion !== this._dataVersion) {
-      this._alignmentTokensCache = deriveAlignmentTokens(this.layerInfo);
-      this._alignmentTokensCacheVersion = this._dataVersion;
-    }
-    return this._alignmentTokensCache;
+    return this._derived('alignmentTokens', () => deriveAlignmentTokens(this.layerInfo));
   }
 
   // Speaker-label suggestions for the diarization autocomplete: every speaker
@@ -338,11 +238,9 @@ export class IgtDocument {
   // Sentences + lookup maps share one derivation; expose individually for
   // ergonomic consumer access.
   _sentencesBundle() {
-    if (this._sentencesBundleCacheVersion !== this._dataVersion) {
-      this._sentencesBundleCache = deriveSentences(this._raw, this.layerInfo, this._vocabularies);
-      this._sentencesBundleCacheVersion = this._dataVersion;
-    }
-    return this._sentencesBundleCache;
+    return this._derived('sentences', () =>
+      deriveSentences(this._raw, this.layerInfo, this._vocabularies),
+    );
   }
   get sentences() {
     return this._sentencesBundle().sentences;
@@ -366,123 +264,47 @@ export class IgtDocument {
     return this._sentencesBundle().findSentenceForToken;
   }
 
-  // ----- subscription bridge (useSyncExternalStore-compatible) -----
-  // Arrow-field properties so identities stay stable across renders of the
-  // same doc instance.
-  subscribe = (listener) => {
-    this._listeners.add(listener);
-    return () => {
-      this._listeners.delete(listener);
-    };
-  };
-
-  getSnapshot = () => this._version;
-
-  _emit() {
-    this._version++;
-    this._listeners.forEach((fn) => fn());
-  }
-
-  setError(msg) {
-    if (this._error === msg) return;
-    this._error = msg;
-    if (msg && this.onError) this.onError(msg);
-    this._emit();
-  }
-
-  clearError() {
-    if (!this._error) return;
-    this._error = '';
-    this._emit();
-  }
-
   // ============================================================
-  // Mutation infrastructure
+  // Mutation infrastructure (the lifecycle itself is DocumentModel's)
   // ============================================================
 
-  // Single-flight gate around a mutation: skip if already saving, clear the
-  // error at the start, capture and surface errors, refetch the document on
-  // failure. Returns true on success / false otherwise so callers can branch.
-  //
-  // Every mutation also runs as ONE logical operation in the audit log
-  // (`client.withOperation`): however many writes/batches it makes show up in
-  // the History drawer as a single expandable entry labeled `operation`
-  // (derived from the "Failed to …" error label unless given explicitly).
-  // Nested mutations flatten into the outer operation.
-  async _withSaving(label, fn, operation = operationLabel(label)) {
-    if (this._isSaving) return false;
-    this._isSaving = true;
-    this._error = '';
-    this._emit();
-    try {
-      await this._client.withOperation(operation, fn);
-      return true;
-    } catch (err) {
-      console.error(`${label}:`, err);
-      this._error = `${label}: ${err.message || 'Unknown error'}`;
-      // The raw error rides along so the UI can humanize it (statuses, network
-      // failures) while keeping the "Failed to …" label.
-      if (this.onError) this.onError(this._error, err, label);
-      try {
-        await this._reload();
-      } catch (reloadErr) {
-        console.error('Reload after failure also failed:', reloadErr);
-      }
-      return false;
-    } finally {
-      this._isSaving = false;
-      this._emit();
-    }
+  // A patch producer receives the clone of `_raw`, a freshly computed layerInfo
+  // for that clone (mutating through `info.primaryTokenLayer.tokens.push(...)`
+  // mutates the clone, since layerInfo references are live into raw), and a
+  // mutable clone of `_vocabularies` for link and unlink patches.
+  _patchContext(next) {
+    return [getIgtLayerInfo(next), cloneVocabs(this._vocabularies)];
   }
-
-  // Apply an optimistic local-state patch. The producer receives a deep clone
-  // of `_raw` plus a freshly-computed layerInfo for that clone (mutating
-  // through `info.primaryTokenLayer.tokens.push(...)` mutates the clone, since
-  // layerInfo references are live into raw). The producer's third arg is a
-  // mutable shallow clone of `_vocabularies` for link/unlink patches. Emits.
-  _applyRawPatch(producer) {
-    const next = cloneRaw(this._raw);
-    const nextVocabs = cloneVocabs(this._vocabularies);
-    producer(next, getIgtLayerInfo(next), nextVocabs);
-    this._raw = next;
+  _afterPatch(next, [, nextVocabs]) {
     this._vocabularies = nextVocabs;
-    this._dataVersion++;
-    this._emit();
   }
 
-  // Re-fetch the raw document and project vocabularies from the server. Used
-  // in `_withSaving` catch-paths and as the "give up and resync" hook for
-  // big-bang multi-batch ops where local replay would be too complex.
-  async _reload() {
-    if (!this._client || !this.id) return;
+  // A reload refreshes the project vocabularies with the document, at the same
+  // snapshot. The document itself is kept even when the vocabularies cannot
+  // be: the user is told the links may be stale rather than shown old ones
+  // silently.
+  async _adoptReload(updated) {
+    if (!this._project) return;
     const at = this._asOf || undefined;
-    const updated = await this._client.documents.get(this.id, true, at);
-    this._raw = updated;
-    if (this._project) {
-      try {
-        const { vocabularies: reloaded, failedCount } = await loadProjectVocabularies(
-          this._client,
-          this._project,
-          at,
+    try {
+      const { vocabularies: reloaded, failedCount } = await loadProjectVocabularies(
+        this._client,
+        this._project,
+        at,
+      );
+      this._vocabularies = mergeRawVocabLinks(updated, reloaded);
+      if (failedCount > 0 && this.onError) {
+        this.onError(
+          `${failedCount} vocabular${failedCount === 1 ? 'y' : 'ies'} could not be refreshed. Vocab links may display stale values. Reload the page if they look wrong.`,
         );
-        this._vocabularies = mergeRawVocabLinks(updated, reloaded);
-        if (failedCount > 0 && this.onError) {
-          this.onError(
-            `${failedCount} vocabular${failedCount === 1 ? 'y' : 'ies'} could not be refreshed. Vocab links may display stale values. Reload the page if they look wrong.`,
-          );
-        }
-      } catch (err) {
-        // The document itself reloaded fine — keep it, but tell the user the
-        // vocab table is stale rather than silently rendering old links.
-        console.warn('Vocab reload failed:', err);
-        if (this.onError)
-          this.onError(
-            'Vocabulary data could not be refreshed. Vocab links may display stale values. Reload the page if they look wrong.',
-          );
       }
+    } catch (err) {
+      console.warn('Vocab reload failed:', err);
+      if (this.onError)
+        this.onError(
+          'Vocabulary data could not be refreshed. Vocab links may display stale values. Reload the page if they look wrong.',
+        );
     }
-    this._dataVersion++;
-    this._emit();
   }
 
   // Reconcile-on-open: repair IGT invariants another app may have broken while

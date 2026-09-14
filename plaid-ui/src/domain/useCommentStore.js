@@ -13,7 +13,7 @@ const NOOP_SNAPSHOT = () => 0;
 // instance; React's useSyncExternalStore won't tear down / resubscribe
 // spuriously.
 //
-// Mirrors useIgtDocument. Keeping the store itself framework-agnostic is what
+// Mirrors useDocumentModel. Keeping the store itself framework-agnostic is what
 // lets the vanilla-JS editor island read the same instance the Comments tab
 // renders from.
 export function useCommentStore(store) {

@@ -1,0 +1,241 @@
+// The lifecycle every editable document shares, whichever app's linguistics sit
+// on top: the raw document and who is writing it, a subscription a React hook
+// or a vanilla island can follow, the single-flight saving gate that runs each
+// mutation as one logical operation and resyncs on failure, the optimistic raw
+// patch, reload in place, and the snapshot beside the live document. What a
+// document MEANS (its layers, rows, and every mutation) is the subclass's.
+//
+// Imports nothing: plaid-ud's node suite reaches this file by relative path,
+// where no alias and no package resolves. Errors leave through `onError`.
+
+const cloneRaw = (raw) => JSON.parse(JSON.stringify(raw));
+
+// "Failed to create relation" is the error label; "Create relation" is the
+// operation the audit log shows for it.
+function operationLabel(errorLabel) {
+  const s = String(errorLabel).replace(/^Failed to\s+/i, '');
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+export class DocumentModel {
+  constructor({ raw, client = null, projectId = null, project = null, user = null, asOf = null }) {
+    this._raw = raw;
+    this._client = client;
+    this._projectId = projectId;
+    // The project (its ACL and config) and the person writing ({ id, isAdmin }),
+    // for the provenance convention the subclass's `writer` reads. Null = a
+    // verifier: scripts, imports, tests.
+    this._project = project;
+    this._user = user;
+    // Which snapshot this document was read at (null = live). `_reload` reads
+    // at it, so a resync during time travel stays on the snapshot instead of
+    // silently jumping to live data.
+    this._asOf = asOf;
+    // `_version` is the subscription snapshot: it bumps on EVERY emit, including
+    // the isSaving and error toggles that change no document data. Derived
+    // values key on `_dataVersion` instead, which bumps only when `_raw`
+    // changes, so a transient saving re-render does not rebuild a grid and
+    // jitter the focused cell.
+    this._version = 0;
+    this._dataVersion = 0;
+    this._listeners = new Set();
+    this._derivedCache = new Map();
+    this._isSaving = false;
+    this._error = '';
+    // The screen's error channel, `(message, err, label)`: the label is what
+    // was being done and `err` the client's error, for the screen to word.
+    // Null until the screen wires it. The domain layer shows nothing itself.
+    this.onError = null;
+  }
+
+  get version() {
+    return this._version;
+  }
+  get dataVersion() {
+    return this._dataVersion;
+  }
+  get raw() {
+    return this._raw;
+  }
+  get id() {
+    return this._raw?.id;
+  }
+  get name() {
+    return this._raw?.name;
+  }
+  get client() {
+    return this._client;
+  }
+  get projectId() {
+    return this._projectId;
+  }
+  get project() {
+    return this._project;
+  }
+  get asOf() {
+    return this._asOf;
+  }
+  get isSaving() {
+    return this._isSaving;
+  }
+  get error() {
+    return this._error;
+  }
+
+  // ----- subscription bridge (useSyncExternalStore-compatible) -----
+  // Arrow-field properties so identities stay stable across renders of the
+  // same instance.
+  subscribe = (listener) => {
+    this._listeners.add(listener);
+    return () => {
+      this._listeners.delete(listener);
+    };
+  };
+
+  getSnapshot = () => this._version;
+
+  _emit() {
+    this._version++;
+    this._listeners.forEach((fn) => fn());
+  }
+
+  // Operation and validation errors go to the screen's `onError`. `_error` is
+  // still tracked so callers can branch on outcome and the same sticky message
+  // is not reported twice.
+  setError(msg) {
+    if (this._error === msg) return;
+    this._error = msg;
+    if (msg && this.onError) this.onError(msg);
+    this._emit();
+  }
+
+  clearError() {
+    if (!this._error) return;
+    this._error = '';
+    this._emit();
+  }
+
+  // A value derived from `_raw`, computed once per data version. Every cached
+  // getter in a subclass goes through here, so nothing can be served stale
+  // after a patch or a reload.
+  _derived(key, compute) {
+    const hit = this._derivedCache.get(key);
+    if (hit && hit.version === this._dataVersion) return hit.value;
+    const value = compute();
+    this._derivedCache.set(key, { version: this._dataVersion, value });
+    return value;
+  }
+
+  // ----- mutation infrastructure -----
+
+  // Single-flight gate around a mutation: skip if already saving, clear the
+  // error at the start, report and surface a failure, refetch the document on
+  // failure. Returns true on success and false otherwise so callers can branch.
+  //
+  // Every mutation also runs as ONE logical operation in the audit log
+  // (`client.withOperation`): however many writes or batches it makes show up
+  // in the History drawer as a single expandable entry labeled `operation`
+  // (derived from the "Failed to ..." error label unless given explicitly).
+  // Nested mutations flatten into the outer operation.
+  async _withSaving(label, fn, operation = operationLabel(label)) {
+    if (this._isSaving) return false;
+    this._isSaving = true;
+    this._error = '';
+    this._emit();
+    try {
+      await this._client.withOperation(operation, fn);
+      return true;
+    } catch (err) {
+      console.error(`${label}:`, err);
+      this._error = `${label}: ${err.message || 'Unknown error'}`;
+      // The raw error rides along so the screen can word it (statuses, network
+      // failures) while keeping the "Failed to ..." label as the title.
+      if (this.onError) this.onError(this._error, err, label);
+      try {
+        await this._reload();
+      } catch (reloadErr) {
+        console.error('Reload after failure also failed:', reloadErr);
+      }
+      return false;
+    } finally {
+      this._isSaving = false;
+      this._emit();
+    }
+  }
+
+  // What a patch producer is handed beside the clone of `_raw` (a fresh layer
+  // info for the clone, a mutable copy of whatever else the subclass keeps
+  // beside the document), and what the subclass keeps from it once the patch
+  // is in.
+  _patchContext(next) {
+    void next;
+    return [];
+  }
+  _afterPatch(next, context) {
+    void next;
+    void context;
+  }
+
+  // Apply an optimistic local-state patch. The producer receives a deep clone
+  // of `_raw` plus the subclass's context for that clone, mutates in place, and
+  // the result replaces `_raw`. Emits, so every `_raw` swap goes hand in hand
+  // with a version bump and a notify, which is the invariant every derived
+  // value relies on.
+  _applyRawPatch(producer) {
+    const next = cloneRaw(this._raw);
+    const context = this._patchContext(next);
+    producer(next, ...context);
+    this._afterPatch(next, context);
+    this._raw = next;
+    this._dataVersion++;
+    this._emit();
+  }
+
+  // Re-read this document IN PLACE, keeping its identity. `atAsOf` returns a
+  // NEW instance, which is right for time travel (the snapshot really is a
+  // different document) and wrong for a refresh: an editor keyed on the
+  // document's identity would be destroyed and rebuilt, and the reader would
+  // lose their scroll position, the focused cell and any open popover. This
+  // emits instead, which the editor repaints from. Use it whenever the
+  // document the user is looking at has simply changed underneath them.
+  async reload() {
+    return this._reload();
+  }
+
+  // Re-fetch the raw document from the server, at this document's own
+  // snapshot. Used in `_withSaving` catch paths and as the "give up and resync"
+  // hook after a large multi-batch operation.
+  async _reload() {
+    if (!this._client || !this.id) return;
+    const updated = await this._client.documents.get(this.id, true, this._asOf || undefined);
+    await this._adoptReload(updated);
+    this._raw = updated;
+    this._dataVersion++;
+    this._emit();
+  }
+
+  // Whatever the subclass keeps beside the document and has to refresh with
+  // it (plaid-igt's vocabularies). Runs before the raw swap and the emit.
+  async _adoptReload(updated) {
+    void updated;
+  }
+
+  // This document at `asOf`, as a NEW instance: a snapshot really is a
+  // different document (see useHistoryView), where `reload` is this one
+  // refreshed. `this` is left untouched, so the caller keeps rendering it
+  // until it swaps.
+  async atAsOf(asOf) {
+    const raw = await this._client.documents.get(this.id, true, asOf || undefined);
+    const next = this._snapshot(raw, asOf);
+    // The error handler is the screen's, not this instance's: carry it.
+    next.onError = this.onError;
+    return next;
+  }
+
+  // Build the instance `atAsOf` returns, from a raw document read at `asOf`.
+  _snapshot(raw, asOf) {
+    void raw;
+    void asOf;
+    throw new Error(`${this.constructor.name} does not build snapshots`);
+  }
+}

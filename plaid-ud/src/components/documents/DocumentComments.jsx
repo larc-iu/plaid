@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { CommentsBrowser } from '@ui/components/shared/CommentsBrowser';
 import { useDocumentEditor } from '../editor/useDocumentEditor.js';
-import { useConlluDocument } from '../../domain/useConlluDocument.js';
+import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { buildAnchorIndex } from '../../domain/commentAnchors.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 
@@ -14,7 +14,7 @@ import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 export const DocumentComments = () => {
   const { projectId, documentId, doc, project, comments, canComment, canDeleteAnyComment } =
     useDocumentEditor();
-  useConlluDocument(doc);
+  useDocumentModel(doc);
 
   useDocumentTitle('Comments', doc?.name, project?.name);
 

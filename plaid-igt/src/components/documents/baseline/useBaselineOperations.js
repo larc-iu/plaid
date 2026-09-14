@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
-import { useIgtDocument } from '../../../domain/useIgtDocument.js';
+import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { notifySuccess } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 
@@ -9,7 +9,7 @@ import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 // lives in doc.saveBaselineText; the hook just owns the local editing state.
 export const useBaselineOperations = () => {
   const { doc } = useDocumentCtx();
-  useIgtDocument(doc);
+  useDocumentModel(doc);
   const confirm = useConfirm();
 
   const body = doc.body || '';
