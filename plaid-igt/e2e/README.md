@@ -4,8 +4,27 @@ Everything here runs against the LIVE dev core (`:8085`) and dev server (`:5174`
 as the admin `a@b.com` whose non-expiring token is in `../.token`. Run from
 `plaid-igt/` with Node 24 (`nvm use 24.1.0`).
 
+**Point it at your own dev server, not the shared one**, the way plaid-ud's
+README says. `npm run test:e2e:own` starts a private one and stops it
+afterwards, and `PLAYWRIGHT_BASE_URL` points the suite at one you started
+yourself:
+
+```
+npx vite --port 5185 &
+PLAYWRIGHT_BASE_URL=http://localhost:5185 npm run test:e2e
+```
+
+Running against a server someone else is looking at reloads their page, and
+editing `src/` while a run is in flight reloads the page under the TEST, which
+looks exactly like flakiness. If a run fails oddly, check nothing was being
+edited before believing it. A run started with `PLAYWRIGHT_OWN_SERVER=1` also
+keeps its artifacts in `test-results/<port>`, so two runs from this directory do
+not clobber each other's and fail with `browserContext.close: ENOENT`.
+
 - `*.spec.js`: the Playwright suite, `npm run test:e2e`. Specs share the
   "E2E IGT Fixture" project that `node e2e/fixtureProject.js` creates or finds.
+  A spec that writes into it puts it back; `node e2e/scripts/reset-fixture.mjs`
+  says whether one did not.
 - `fixtures.js`: the Playwright helpers (`test`, `expect`, `seedAuth`, `readToken`,
   `BASE_URL`, `collectClientErrors`), most of them handed on from
   `../../plaid-ui/e2e/appFixtures.js`. `fixtureProject.js`: the fixture project
@@ -20,6 +39,8 @@ as the admin `a@b.com` whose non-expiring token is in `../.token`. Run from
   and the domain model through node with no browser, each with a usage line at
   the top. They are run by hand when the code they cover changes.
 - `scripts/`: seeders, demos, and screenshots. `uxseed.mjs` and `uxshot.mjs` seed
-  and screenshot the grid headlessly.
+  and screenshot the grid headlessly. `reset-fixture.mjs` reports and removes
+  anything the shared fixture document carries that `fixtureProject.js` did not
+  seed, and takes `--dry-run`.
 - `bugbash/`: the headless integrity fuzzer and its harness (`harness.mjs` is
   also the client and fixture lookup the live scripts use).
