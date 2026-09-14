@@ -174,3 +174,20 @@ def test_confirm_counts_a_machine_expression_once():
     assert 'the plan now holds 1' in out2
     out = call_tool(w2, 'worklist', {'kind': 'unverified'})
     assert out.startswith('2 words with annotations awaiting review') and '\tgam\t' in out and '\takuna\t' in out
+
+
+def test_a_refused_link_phrase_leaves_the_unlink_it_would_have_replaced():
+    """link_phrase drops a planned unlink of the link it replaces, then stages
+    its own op. The two used to be separate writes to the plan, so a refused
+    add_op left the plan one unlink short of what the model had been told, with
+    nothing said."""
+    from plaid_agent.core.plan import PLAN_MAX_OPS
+    w = ws()
+    call_tool(w, 'unlink_phrase', {'document': 'd1', 'refs': ['s1.w3']})
+    unlink = dict(w.ops[-1])
+    w.ops.extend({'kind': 'rename_document', 'document_id': f'x{i}', 'name': str(i), 'label': f'f{i}'}
+                 for i in range(PLAN_MAX_OPS))
+    out = call_tool(w, 'link_phrase', {'document': 'd1', 'refs': ['s1.w3', 's1.w2'], 'entry_form': 'Ali'})
+    assert out.startswith('Error:') and 'plan' in out
+    assert w.ops[0] == unlink
+    assert not [o for o in w.ops if o.get('kind') == 'link_phrase']

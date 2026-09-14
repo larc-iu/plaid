@@ -737,3 +737,50 @@ def test_check_lexicon_does_not_call_a_headword_glossless():
     out = call_tool(dict_ws(items=items), 'check_lexicon', {'section': 'fields'})
     assert 'bare' in out
     assert 'kwatha' not in out.split('entries without a gloss')[1].split('\n')[0]
+
+
+# ---- a tool stages everything or nothing -----------------------------------
+
+def _fill_plan(w, n):
+    """The plan within `n` of the cap, so the next staging call past that
+    refuses the way a real full plan does."""
+    from plaid_agent.core.plan import PLAN_MAX_OPS
+    w.ops.extend({'kind': 'rename_document', 'document_id': f'x{i}', 'name': str(i),
+                  'label': f'filler {i}'} for i in range(PLAN_MAX_OPS - n))
+
+
+def test_a_merge_that_cannot_carry_its_references_stages_nothing():
+    """The merge and the reference repairs it carries are one change. Staged
+    in two calls with no rollback, a refused repair left the merge in the plan
+    with the references still pointing at the entry it removes, while the model
+    was told the call had failed."""
+    w = dict_ws()
+    _fill_plan(w, 1)   # room for the merge, none for the repairs
+    before = len(w.ops)
+    out = call_tool(w, 'merge_entries', {'keep_form': 'phika', 'remove_form': 'kwatha'})
+    assert out.startswith('Error:') and 'plan' in out
+    assert len(w.ops) == before
+    assert not ops_of(w, 'merge_entries') and not ops_of(w, 'set_entry_metadata')
+
+
+def test_a_delete_that_cannot_carry_its_references_stages_nothing():
+    w = dict_ws()
+    _fill_plan(w, 1)
+    before = len(w.ops)
+    out = call_tool(w, 'delete_entry', {'entry_form': 'kwatha'})
+    assert out.startswith('Error:')
+    assert len(w.ops) == before and not ops_of(w, 'delete_entry')
+
+
+def test_a_rolled_back_tool_call_takes_the_entries_it_created_with_it():
+    """`new_entries` is turn state beside the plan: a rollback that put only
+    the ops back left an entry with no op to create it, and the next tool read
+    a lexicon holding it."""
+    w = dict_ws()
+    before_ops, before_new = len(w.ops), dict(w.new_entries)
+    with pytest.raises(RuntimeError):
+        with w.staging():
+            call_tool(w, 'create_entry', {'form': 'ndiwo', 'fields': {'gloss': 'relish'}})
+            assert w.new_entries and len(w.ops) > before_ops
+            raise RuntimeError('the tool gave up')
+    assert len(w.ops) == before_ops and w.new_entries == before_new

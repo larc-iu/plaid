@@ -292,6 +292,20 @@ class Workspace(BaseWorkspace):
 
     # --- plan --------------------------------------------------------------
 
+    def snapshot(self) -> Dict[str, Any]:
+        """The plan, plus the two things a lexicon tool builds up beside it:
+        the entries the plan creates and the metadata it is patching. A
+        rollback that put only the ops back left a created entry with no op to
+        create it, and the next tool read a lexicon holding it."""
+        return {**super().snapshot(), 'new_entries': dict(self.new_entries),
+                'item_patches': copy.deepcopy(self.item_patches)}
+
+    def restore(self, saved: Dict[str, Any]) -> None:
+        super().restore(saved)
+        self.new_entries = saved['new_entries']
+        self.item_patches = saved['item_patches']
+        self._patch_version += 1
+
     def guard_op(self, op: Dict[str, Any], replacing=None) -> None:
         """A restore rewrites a document wholesale, so nothing else can be
         planned against the ids and offsets read before it: a restore is

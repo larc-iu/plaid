@@ -394,17 +394,21 @@ def t_link_phrase(ws: Workspace, document: str, refs, entry_form: Optional[str] 
     surfaces = ' '.join(w.surface for _, _, w in words)
     where = '+'.join(f'w{w.index}' for _, _, w in words) if all(sn is s for _, sn, _ in words) \
         else '+'.join(word_ref(sn, w) for _, sn, w in words)
-    # A planned unlink of the link being replaced would delete it twice.
-    if existing is not None:
-        before = len(ws.ops)
-        ws.ops = [op for op in ws.ops if not (op.get('kind') == 'unlink' and op.get('link_id') == existing.id)]
-        ws.replaced += before - len(ws.ops)
-    ws.add_op({'kind': 'link_phrase', 'token_ids': token_ids,
-               'item_id': target['id'] if kind == 'existing' else None,
-               'new_entry_key': target if kind == 'new' else None,
-               'existing_link_id': existing.id if existing is not None else None,
-               'label': f'{ws.doc_label(doc.id)} s{s.index} {where} "{surfaces}": link phrase '
-                        + (f'"{existing.form}" → ' if existing is not None else '') + f'"{form}"'})
+    # A planned unlink of the link being replaced would delete it twice. The
+    # drop and the op that replaces it are one change or none: a refused
+    # add_op used to leave the plan short an unlink nobody had been told about.
+    with ws.staging():
+        if existing is not None:
+            before = len(ws.ops)
+            ws.ops[:] = [op for op in ws.ops
+                         if not (op.get('kind') == 'unlink' and op.get('link_id') == existing.id)]
+            ws.replaced += before - len(ws.ops)
+        ws.add_op({'kind': 'link_phrase', 'token_ids': token_ids,
+                   'item_id': target['id'] if kind == 'existing' else None,
+                   'new_entry_key': target if kind == 'new' else None,
+                   'existing_link_id': existing.id if existing is not None else None,
+                   'label': f'{ws.doc_label(doc.id)} s{s.index} {where} "{surfaces}": link phrase '
+                            + (f'"{existing.form}" → ' if existing is not None else '') + f'"{form}"'})
     return ws.planned_note(1)
 
 

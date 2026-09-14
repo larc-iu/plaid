@@ -378,20 +378,15 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
     # anything is staged) and the plan is put back as it was if one word
     # fails.
     ws.reserve(len(targets))
-    saved, saved_replaced, saved_reported = list(ws.ops), ws.replaced, ws.reported_replaced
+    saved_reported = ws.reported_replaced
     first_note = ''
     planned = []
-    try:
+    with ws.staging():
         for doc, s, w in targets:
             note = t_set_analysis(ws, doc.id, word_ref(s, w), morphemes)
             planned.append(('analysis', w.id))
             if not first_note and 'differ from the surface' in note:
                 first_note = note[note.index('(note'):]
-    except Exception:
-        ws.ops[:] = saved
-        ws.replaced = saved_replaced
-        ws.reported_replaced = saved_reported
-        raise
     # Each inner call wrote a note of its own, and each said what it
     # superseded. Those notes are thrown away here, so what they reported
     # belongs to the one note this call does write: running the tool twice
@@ -545,11 +540,16 @@ def t_merge_entries(ws: Workspace, keep_form: Optional[str] = None, remove_form:
     view = ws.view_of_item(remove['id'])
     # Named the way a tool takes them back, so two entries spelled alike
     # (the very pair a merge is for) read apart on the card.
-    ws.add_op({'kind': 'merge_entries', 'keep_id': keep['id'], 'remove_id': remove['id'], 'links': links,
-               'label': f'Merge entry {_name(view, remove)} into {_name(view, keep)}: '
-                        f'move {len(links)} link{"s" if len(links) != 1 else ""}, delete the former'})
-    refs = _ref_repair_ops(ws, view, plan_merge_refs, keep['id'], [remove['id']])
-    ws.add_ops(refs)
+    # The merge and the reference repairs it carries are one change or none:
+    # a repair refused (the plan is full, it names something else the plan
+    # deletes) left the merge staged with the references still pointing at the
+    # entry it removes, while the model was told the call had failed.
+    with ws.staging():
+        ws.add_op({'kind': 'merge_entries', 'keep_id': keep['id'], 'remove_id': remove['id'], 'links': links,
+                   'label': f'Merge entry {_name(view, remove)} into {_name(view, keep)}: '
+                            f'move {len(links)} link{"s" if len(links) != 1 else ""}, delete the former'})
+        refs = _ref_repair_ops(ws, view, plan_merge_refs, keep['id'], [remove['id']])
+        ws.add_ops(refs)
     note = ws.planned_note(1 + len(refs)) + f' {len(links)} link(s) will move.'
     return note + (f' {len(refs)} entr{"y" if len(refs) == 1 else "ies"} repointed at the survivor.' if refs else '')
 
@@ -562,11 +562,12 @@ def t_delete_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Opt
     _refuse_removing_survivor(ws, it, 'be deleted')
     links = _links_to(ws, it['id'])
     view = ws.view_of_item(it['id'])
-    ws.add_op({'kind': 'delete_entry', 'item_id': it['id'], 'links': [l['link_id'] for l in links],
-               'label': f'Delete entry {_name(view, it)} '
-                        f'({len(links)} link{"s" if len(links) != 1 else ""} removed)'})
-    refs = _ref_repair_ops(ws, view, plan_delete_refs, [it['id']])
-    ws.add_ops(refs)
+    with ws.staging():
+        ws.add_op({'kind': 'delete_entry', 'item_id': it['id'], 'links': [l['link_id'] for l in links],
+                   'label': f'Delete entry {_name(view, it)} '
+                            f'({len(links)} link{"s" if len(links) != 1 else ""} removed)'})
+        refs = _ref_repair_ops(ws, view, plan_delete_refs, [it['id']])
+        ws.add_ops(refs)
     note = ws.planned_note(1 + len(refs)) + f' {len(links)} link(s) would be removed.'
     return note + (f' {len(refs)} entr{"y" if len(refs) == 1 else "ies"} freed or cleared.' if refs else '')
 

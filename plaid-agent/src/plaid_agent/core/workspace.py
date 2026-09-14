@@ -13,6 +13,7 @@ adds how ITS documents are loaded, what a plan payload looks like, and the
 refusals only it owes (:meth:`BaseWorkspace.guard_op`).
 """
 
+from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 
 from . import opkind
@@ -178,15 +179,53 @@ class BaseWorkspace:
         """
         self.reserve(len(ops))
         # Each op against the plan AS IT STANDS, never against the batch's own
-        # earlier ops, and guard_op is not asked here at all. Nothing reaches
-        # that gap today: no tool builds a batch that deletes one of its own
-        # subjects, and no app guard turns on what a batch holds. One that did
-        # would stage part of its batch and then raise from add_op below, which
-        # is the outcome this pre-check exists to prevent.
+        # earlier ops, so a tool naming four words is refused here before any
+        # of them is staged rather than half-way through the loop below.
         for op in ops:
             self.refuse_doomed(op, replacing=self.replacing(op))
-        for op in ops:
-            self.add_op(op)
+        # And whatever the loop still refuses (an app guard that turns on what
+        # the batch holds, a clash with the batch's own earlier ops) puts the
+        # plan back as it was rather than leaving part of the batch in it.
+        with self.staging():
+            for op in ops:
+                self.add_op(op)
+
+    @contextmanager
+    def staging(self):
+        """All of one tool call's changes, or none of them.
+
+        A tool that stages more than once (a loop over documents, a change and
+        the reference repairs it carries, a plan op beside a change to the
+        plan itself) leaves the first half in the plan when the second is
+        refused, while the model is told the call failed. The user is then
+        offered changes nobody described to them, which is the outcome an
+        approval card exists to prevent.
+
+        :meth:`add_ops` is the same promise for one batch of like ops. Use
+        this where a tool stages in more than one call.
+        """
+        saved = self.snapshot()
+        try:
+            yield
+        except BaseException:
+            self.restore(saved)
+            raise
+
+    def snapshot(self) -> Dict[str, Any]:
+        """What :meth:`restore` puts back. An app whose tools carry state
+        beside the plan (entries a plan creates, patches it builds up) adds it
+        here and in :meth:`restore`, in one pair, so no tool has to remember
+        which halves of the turn a rollback owes."""
+        return {'ops': list(self.ops), 'replaced': self.replaced,
+                'reported_replaced': self.reported_replaced}
+
+    def restore(self, saved: Dict[str, Any]) -> None:
+        self.ops[:] = saved['ops']
+        self.replaced = saved['replaced']
+        self.reported_replaced = saved['reported_replaced']
+        # The plan changed by something other than add_op, and a restore can
+        # land on the length the watermark holds with different ops under it.
+        self._gone_at = -1
 
     def guard_op(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
         """The refusals only this app owes when something is staged. The
