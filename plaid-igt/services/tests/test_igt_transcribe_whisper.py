@@ -9,13 +9,16 @@ Run: pytest plaid-igt/services/tests
 """
 
 import argparse
+import pathlib
 import threading
 import types
 
 import pytest
-import servicetest
+from plaid_client import testing as servicetest
 from plaid_client.http import PlaidAPIError
 from plaid_client.workflows.asr import alignment_processor as ap_module
+
+SERVICES = pathlib.Path(__file__).resolve().parent.parent
 
 DOC = 'd1'
 TEXT_LAYER = 'text-layer'
@@ -73,7 +76,8 @@ def fake_whisper(segments=SEGMENTS, before_return=None):
 
 def load_whisper(segments=SEGMENTS, before_return=None):
     module = fake_whisper(segments, before_return)
-    service = servicetest.load_service('igt_transcribe_whisper', {'whisper': module})
+    service = servicetest.load_service(SERVICES / 'igt_transcribe_whisper.py',
+                                       {'whisper': module})
     return service, module
 
 

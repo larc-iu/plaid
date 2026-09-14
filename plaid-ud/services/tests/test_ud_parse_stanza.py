@@ -10,11 +10,14 @@ Run: pytest services/tests, from plaid-ud. Runs from the base env; stanza
 itself is never imported.
 """
 
+import pathlib
 import types
 
 import pytest
-import servicetest
+from plaid_client import testing as servicetest
 from plaid_client.http import PlaidAPIError
+
+SERVICES = pathlib.Path(__file__).resolve().parent.parent
 
 DOC = 'd1'
 BODY = 'the dog barks'
@@ -43,7 +46,7 @@ fake_stanza.__version__ = '1.11.0'
 fake_stanza.Pipeline = lambda *a, **k: (_ for _ in ()).throw(
     AssertionError('a test must not build a real pipeline'))
 
-ud = servicetest.load_service('ud_parse_stanza', {'stanza': fake_stanza})
+ud = servicetest.load_service(SERVICES / 'ud_parse_stanza.py', {'stanza': fake_stanza})
 
 
 class _Token:

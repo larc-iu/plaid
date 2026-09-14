@@ -8,8 +8,12 @@ milliseconds with no GPU and no server.
 Run: pytest plaid-igt/services/tests
 """
 
-import servicetest
+import pathlib
+
+from plaid_client import testing as servicetest
 from plaid_client.http import PlaidAPIError
+
+SERVICES = pathlib.Path(__file__).resolve().parent.parent
 
 DOC = 'd1'
 SOURCE = 'service:polygloss-analyzer'
@@ -29,7 +33,7 @@ REQUEST = {
 
 OUTPUT = 'house(ev) come(gel)-PROG(iyor)'
 
-polygloss = servicetest.load_service('igt_analyze_polygloss')
+polygloss = servicetest.load_service(SERVICES / 'igt_analyze_polygloss.py')
 
 
 # --- the seam ----------------------------------------------------------------

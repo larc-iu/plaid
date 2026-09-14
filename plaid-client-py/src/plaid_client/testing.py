@@ -1,24 +1,37 @@
-"""Harness for driving a bundled service's REQUEST HANDLER end to end.
+"""Drive a ``BaseService`` REQUEST HANDLER end to end, with no server.
 
-A service's pure helpers are easy to test and were; the handler is where the
-contract lives (what it writes, what it refuses, when it takes the lock, what
-it reports and how many times), and it is reached only through
+This is how to test a service you have written. A service's pure helpers are
+easy to test on their own, but the handler is where the contract lives (what
+it writes, what it refuses, when it takes the lock, what it reports and how
+many times), and it is reached only through
 ``BaseService.handle_service_request`` -- the one funnel every failure and
 every stop passes through. So a handler test drives that, on the thread the
 server would, rather than calling ``process_request`` directly.
 
+Three pieces::
+
+    from plaid_client import testing
+
+    service = testing.load_service(SERVICES / 'my_service.py')
+    service.client = testing.FakeClient([a_document])
+    helper = testing.run(service, {'document_id': 'd1'})
+
+    assert helper.errors == []
+    assert [kind for kind, _ in service.client.writes] == ['tokens.bulk_create']
+
+``load_service`` imports the service by path, standing in for the heavy model
+libraries it imports at module level. ``FakeClient`` is enough of a
+``PlaidClient`` to answer a handler and record everything it is asked to do,
+in order, modelling the two things a handler test must get right: a batch
+ABORTS on an exception, and ``locked()`` releases however the block ends.
 ``Helper`` stands in for ``serve``'s ``ResponseHelper`` with its real
-semantics: ``progress`` is a cancellation checkpoint, ``critical()`` holds a
-stop off until the block ends, and EVERY terminal report is remembered, so a
-test can see a request reported twice.
+cancellation semantics: ``progress`` is a cancellation checkpoint, a real
+``CancelScope`` is behind ``critical()``, and EVERY terminal report is
+remembered, so a test can see a request reported twice.
 
-Run: pytest services/tests, from the app this file lives under.
-
-Lives under tests/ because bb/pipeline.clj bundles every services/*.py into
-the jar. THIS FILE IS BYTE-IDENTICAL IN plaid-igt/services/tests AND
-plaid-ud/services/tests: a test-only harness has no home either app can import
-from, so change both copies together, or move it into plaid_client and let
-both import it.
+It lives in the shipped package rather than beside the tests because a
+test-only copy had no home either app could import from, and the two apps kept
+byte-identical copies of it instead.
 """
 
 import contextlib
@@ -29,24 +42,28 @@ import sys
 
 from plaid_client.services import CancelScope, requester_message
 
-SERVICES_DIR = pathlib.Path(__file__).resolve().parent.parent
 
+def load_service(path, fake_modules=None):
+    """Import a service module from its ``.py`` file.
 
-def load_service(name, fake_modules=None):
-    """Import ``services/<name>.py`` by path.
+    A service is a script, not an installed module, so a test names its path::
+
+        SERVICES = pathlib.Path(__file__).resolve().parent.parent
+        service = load_service(SERVICES / 'my_service.py')
 
     ``fake_modules`` stands in for the heavy model libraries a service imports
-    at module level (whisper, torch), so the suite runs in seconds from the
-    base env and does not depend on a model being installed. The service keeps
-    the object it imported, so the stand-ins come back out of ``sys.modules``
-    once the import is done.
+    at module level (whisper, torch), so a suite runs in seconds and does not
+    depend on a model being installed. The service keeps the object it
+    imported, so the stand-ins come back out of ``sys.modules`` once the
+    import is done.
     """
+    path = pathlib.Path(path)
     saved = {}
     for mod_name, module in (fake_modules or {}).items():
         saved[mod_name] = sys.modules.get(mod_name)
         sys.modules[mod_name] = module
     try:
-        spec = importlib.util.spec_from_file_location(name, SERVICES_DIR / f'{name}.py')
+        spec = importlib.util.spec_from_file_location(path.stem, path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return module
