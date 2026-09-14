@@ -564,20 +564,20 @@
       (is (= "only-doc" (:document/name stub))))))
 
 (deftest validation-routes-through-submit-operation-catch
-  ;; Regression test for task #47: pre-flight validations (valid-name?,
+  ;; Regression test for task #47: pre-flight validations (assert-valid-name!,
   ;; validate-atomic-value!, body-shape checks, etc.) used to throw OUTSIDE
   ;; the submit-operation! macro body, escaping past its catch and producing
   ;; raw 500s at the REST layer. Now the outer try/catch in
   ;; submit-operation* — combined with validations moved INTO the macro
   ;; body — projects them to {:success false :code 400}.
   (testing "Project create with empty name returns 400, not 500"
-    ;; valid-name? rejects empty strings. Before #47, this threw past the
+    ;; assert-valid-name! rejects empty strings. Before #47, this threw past the
     ;; macro and surfaced as Ring's default 500.
     (let [response (create-project admin-request {:name ""})]
       (assert-bad-request response)))
 
   (testing "Project create with non-string name returns 400, not 500"
-    ;; valid-name? rejects non-strings with code 400. We have to bypass the
+    ;; assert-valid-name! rejects non-strings with code 400. We have to bypass the
     ;; coercion layer to hit this — call the function directly.
     (let [db fix/db
           result (prj/create db {:project/name 42} "admin@example.com")]

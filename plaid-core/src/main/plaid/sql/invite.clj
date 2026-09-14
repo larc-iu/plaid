@@ -317,7 +317,7 @@
                                             (str "Create password reset link for user " target-user-id)
                                             "Create invite")
                              :user actor-id}]
-                     (when (some? note) (psc/valid-name? note))
+                     (when (some? note) (psc/assert-valid-name! note))
                      (when (not= (nil? project-id) (nil? project-role))
                        (throw (ex-info "project-id and project-role must be given together"
                                        {:code 400})))

@@ -70,7 +70,7 @@
                                :description (str "Create text layer \"" name "\" in project " project-id)
                                :user user-id}]
                        ;; Validation inside the body (task #47).
-                       (psc/valid-name? name)
+                       (psc/assert-valid-name! name)
                        (when (nil? (psc/fetch-by-id tx :projects project-id))
                          (throw (ex-info (psc/err-msg-not-found "Project" project-id)
                                          {:id project-id :code 400})))
@@ -93,7 +93,7 @@
                              :description (str "Update text layer " eid)
                              :user user-id}]
                      (when-let [n (:text-layer/name m)]
-                       (psc/valid-name? n))
+                       (psc/assert-valid-name! n))
                      (let [existing (psc/fetch-by-id tx :text_layers eid)]
                        (when (nil? existing)
                          (throw (ex-info (psc/err-msg-not-found "Text layer" eid) {:code 404 :id eid})))

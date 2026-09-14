@@ -283,9 +283,12 @@
 ;; Validation
 ;; ============================================================
 
-(defn valid-name?
-  "Returns true if `s` passes the project-wide name length limits.
-  Throws ex-info with :code 400 otherwise (matches the v2 contract)."
+(defn assert-valid-name!
+  "Throws ex-info with :code 400 unless `s` passes the project-wide name
+  length limits. Returns true when it does, which no caller reads.
+
+  Call it inside a `submit-operation!` body: validation outside one does
+  not get projected to a structured response."
   [s]
   (let [name-config (try (:plaid.sql.common/config config) (catch Exception _ nil))
         max-l (or (:max-name-length name-config) 500)

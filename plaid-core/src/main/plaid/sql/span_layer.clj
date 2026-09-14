@@ -67,7 +67,7 @@
                                                  token-layer-id)
                                :user user-id}]
                        ;; Validation inside the body (task #47).
-                       (psc/valid-name? name)
+                       (psc/assert-valid-name! name)
                        (let [tokl (psc/fetch-by-id tx :token_layers token-layer-id)]
                          (when (nil? tokl)
                            (throw (ex-info (psc/err-msg-not-found "Token layer" token-layer-id)
@@ -91,7 +91,7 @@
                              :description (str "Update span layer " eid)
                              :user user-id}]
                      (when-let [n (:span-layer/name m)]
-                       (psc/valid-name? n))
+                       (psc/assert-valid-name! n))
                      (let [existing (psc/fetch-by-id tx :span_layers eid)]
                        (when (nil? existing)
                          (throw (ex-info (psc/err-msg-not-found "Span layer" eid) {:code 404 :id eid})))

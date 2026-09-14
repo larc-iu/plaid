@@ -67,7 +67,7 @@
                                                  span-layer-id)
                                :user user-id}]
                        ;; Validation inside the body (task #47).
-                       (psc/valid-name? name)
+                       (psc/assert-valid-name! name)
                        (let [sl (psc/fetch-by-id tx :span_layers span-layer-id)]
                          (when (nil? sl)
                            (throw (ex-info (psc/err-msg-not-found "Span layer" span-layer-id)
@@ -91,7 +91,7 @@
                              :description (str "Update relation layer " eid)
                              :user user-id}]
                      (when-let [n (:relation-layer/name m)]
-                       (psc/valid-name? n))
+                       (psc/assert-valid-name! n))
                      (let [existing (psc/fetch-by-id tx :relation_layers eid)]
                        (when (nil? existing)
                          (throw (ex-info (psc/err-msg-not-found "Relation layer" eid) {:code 404 :id eid})))

@@ -602,7 +602,7 @@
                         ;; Validation inside the body (task #47) so a bad
                         ;; name produces {:success false :code 400} via the
                         ;; outer catch in submit-operation*.
-                        (psc/valid-name? name)
+                        (psc/assert-valid-name! name)
                         (when (nil? (psc/fetch-by-id tx :projects project))
                           (throw (ex-info (psc/err-msg-not-found "Project" project)
                                           {:id project :code 400})))
@@ -633,7 +633,7 @@
                              ;; emit a duplicate audit row over the body's update.
                              :skip-doc-version-bump? true}]
                      (when-let [n (:document/name m)]
-                       (psc/valid-name? n))
+                       (psc/assert-valid-name! n))
                      (let [existing (psc/fetch-by-id tx :documents eid)]
                        (when (nil? existing)
                          (throw (ex-info (psc/err-msg-not-found "Document" eid) {:code 404 :id eid})))
@@ -680,7 +680,7 @@
                                     ;; `create` does; skip the post-body bump so
                                     ;; the copy starts where a new document does.
                                     :skip-doc-version-bump? true}]
-                            (psc/valid-name? new-name)
+                            (psc/assert-valid-name! new-name)
                             (let [src (psc/fetch-by-id tx :documents src-id)]
                               (when (nil? src)
                                 (throw (ex-info (psc/err-msg-not-found "Document" src-id)

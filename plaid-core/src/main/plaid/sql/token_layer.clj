@@ -153,7 +153,7 @@
                                :user user-id}]
                        ;; Validation inside the body (task #47) so name + overlap-mode
                        ;; rejections produce {:success false :code 400}.
-                       (psc/valid-name? name)
+                       (psc/assert-valid-name! name)
                        (when-not (valid-overlap-modes overlap-mode-kw)
                          (throw (ex-info (str "Invalid overlap-mode: " overlap-mode-kw
                                               ". Must be one of: "
@@ -187,7 +187,7 @@
                              :description (str "Update token layer " eid)
                              :user user-id}]
                      (when-let [n (:token-layer/name m)]
-                       (psc/valid-name? n))
+                       (psc/assert-valid-name! n))
                      (let [existing (psc/fetch-by-id tx :token_layers eid)]
                        (when (nil? existing)
                          (throw (ex-info (psc/err-msg-not-found "Token layer" eid) {:code 404 :id eid})))

@@ -104,7 +104,7 @@
                              :document nil
                              :description (str "Create API token \"" name "\" for user " owner-user-id)
                              :user acting-user-id}]
-                     (psc/valid-name? name)
+                     (psc/assert-valid-name! name)
                      (let [id (psc/new-uuid)
                            row {:id         id
                                 :user_id    owner-user-id

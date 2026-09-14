@@ -230,7 +230,7 @@
                                :document nil
                                :description (str "Create vocab '" name "'")
                                :user user-id}]
-                       (psc/valid-name? name)
+                       (psc/assert-valid-name! name)
                        ;; Stamped from the op's ts (not a fresh now-iso) so the
                        ;; timestamps agree with the operations row, as documents do.
                        (let [ts (op/op-ts)]
@@ -265,7 +265,7 @@
                                                  (str " name to \"" (:vocab/name m) "\"")))
                              :user user-id}]
                      (when (contains? m :vocab/name)
-                       (psc/valid-name? (:vocab/name m)))
+                       (psc/assert-valid-name! (:vocab/name m)))
                      (let [existing (psc/fetch-by-id tx :vocab_layers eid)]
                        (when (nil? existing)
                          (throw (ex-info (psc/err-msg-not-found "Vocab" eid) {:code 404 :id eid})))

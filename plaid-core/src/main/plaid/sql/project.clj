@@ -418,7 +418,7 @@
                                :user user-id}]
                        ;; Validation inside the body so submit-operation*'s
                        ;; outer catch surfaces a structured 4xx (task #47).
-                       (psc/valid-name? name)
+                       (psc/assert-valid-name! name)
                        (psc/execute! tx {:insert-into :projects
                                          :values [{:id new-id
                                                    :name name
@@ -449,7 +449,7 @@
                                                  (str " to name \"" (:project/name m) "\"")))
                              :user user-id}]
                      (when-let [n (:project/name m)]
-                       (psc/valid-name? n))
+                       (psc/assert-valid-name! n))
                      (let [existing (psc/fetch-by-id tx :projects eid)]
                        (when (nil? existing)
                          (throw (ex-info (psc/err-msg-not-found "Project" eid) {:code 404 :id eid})))

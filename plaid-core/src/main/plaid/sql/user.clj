@@ -177,7 +177,7 @@
   Throws ex-info with :code 400. Callers must already be inside
   `submit-operation!`, which is what projects that into a 400 response."
   [email]
-  (psc/valid-name? email)
+  (psc/assert-valid-name! email)
   (when-not (re-matches email-pattern email)
     (throw (ex-info "User ID must be an email address"
                     {:code 400 :email email})))
@@ -198,7 +198,7 @@
   length limits. Deliberately NOT unique and deliberately not email-shaped.
   Throws ex-info with :code 400; call inside `submit-operation!`."
   [display-name]
-  (psc/valid-name? display-name)
+  (psc/assert-valid-name! display-name)
   (when (clojure.string/blank? display-name)
     (throw (ex-info "Display name cannot be blank" {:code 400})))
   true)
