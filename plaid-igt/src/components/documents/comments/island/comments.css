@@ -306,10 +306,3 @@
 .igt-cmt__btn--primary:hover:not(:disabled) {
   background: var(--cmt-blue-700);
 }
-
-.igt-cmt__btn--danger {
-  color: var(--cmt-red-700);
-}
-.igt-cmt__btn--danger:hover:not(:disabled) {
-  background: var(--cmt-red-50);
-}

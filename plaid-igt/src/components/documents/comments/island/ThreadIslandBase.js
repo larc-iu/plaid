@@ -2,9 +2,9 @@
 //
 // Every place that mounts `commentThread` owns the same transient state: which
 // comment is being edited, the edit draft, and one composer draft per thread.
-// The Comments tab (every thread in a document or a vocabulary) and the entry
-// panel (one entry's thread) both extend this. The interlinear grid keeps its
-// own copy inside IgtEditor, whose popover plumbing owns focus and re-render
+// The entry panel (one entry's thread) extends this; the two Comments tabs
+// render plaid-ui's React thread instead. The interlinear grid keeps its own
+// copy inside IgtEditor, whose popover plumbing owns focus and re-render
 // timing and cannot share a host.
 //
 // The comments themselves live in the CommentStore; this never holds one.

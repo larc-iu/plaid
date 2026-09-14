@@ -6,9 +6,9 @@ import { buildAnchorIndex, describeAnchor, anchorCaption } from '@/domain/commen
 export const comments = {
   //
   // The island draws a badge and opens a popover; the thread itself is the
-  // shared `commentThread` view, the very same one the Comments tab renders.
+  // shared `commentThread` view, the same one the lexicon's entry panel mounts.
   // Comment state lives in the CommentStore, not here — this owns only which
-  // comment is being edited and what is typed, exactly as the tab does.
+  // comment is being edited and what is typed, as every other host does.
 
   /**
    * @param inline  place the badge in the flow instead of tangent to the right

@@ -1,9 +1,10 @@
 // One comment thread, in lit-html.
 //
 // Framework-agnostic on purpose: this is mounted BOTH inside the Analyze
-// island (in a popover anchored to the commented cell) and inside the Comments
-// tab. Writing it in React would have meant either a window-event bridge into
-// the island or two implementations of the same list.
+// island (in a popover anchored to the commented cell) and in the lexicon's
+// entry panel. Writing it in React would have meant either a window-event
+// bridge into the island or two implementations of the same list. The Comments
+// tabs render plaid-ui's React twin, which reads its rules off the same store.
 //
 // Pure view. Every piece of state — which comment is being edited, what is
 // typed in the composer — lives on the host, which passes it in and gets
