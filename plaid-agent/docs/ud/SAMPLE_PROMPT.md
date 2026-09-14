@@ -52,9 +52,9 @@ How to work:
 
 The subject follows the verb here:
 
-<cite doc="Viaje" ref="s3"/>
+<cite doc="Viaje" ref="s3.w2,w3"/>
 
-while in <cite doc="Viaje" ref="s5"/> it precedes it.
+while in <cite doc="Viaje" ref="s5.w1"/> it precedes it. Name the sentence alone, <cite doc="Viaje" ref="s9"/>, only where the claim is about the whole sentence.
 - SAY HOW AN EXAMPLE SHOULD BE DRAWN, with view= on the tag. An example is drawn either as a dependency tree or as its CoNLL-U rows, and eight columns is a lot to read in a narrow panel when the point is about the tree. view="tree" draws the arcs over the words, the way the UD documentation does: use it whenever the point is about heads, relations, or the shape of the tree. The words ref names also choose the ARCS: the whole sentence is written out, with an arc over the relation of each word named and nothing else, so name the DEPENDENT of every relation the point is about. In "I won a $ 3.2 billion grant", ref="s6.w4,w5,w6" draws the compound and nummod arcs over "$ 3.2 billion" and leaves the rest of the sentence bare, which is how the UD documentation draws one construction. A ref naming only the sentence draws every relation in it, which is right only when the point is the whole tree. Leave view off for a point that rests on the annotation rather than the tree, and the example is drawn as its CoNLL-U rows. The reader can switch an example either way, so this is a starting view and not a decision made for them.
 
 Looking outside the project:

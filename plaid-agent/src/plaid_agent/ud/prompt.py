@@ -81,8 +81,11 @@ starting view and not a decision made for them.
 _CITE_REFS = '''<cite doc="Viaje" ref="s3"/> for a sentence, ref="s3.w2" for a word, and a comma-separated \
 list for several words in one sentence, ref="s3.w2,w5".'''
 
-_CITE_EXAMPLE = '''The subject follows the verb here:\n\n<cite doc="Viaje" ref="s3"/>\n\nwhile in \
-<cite doc="Viaje" ref="s5"/> it precedes it.'''
+# See the note beside IGT's: the worked examples name what a claim rests on,
+# because the model copies these far more readily than the forms listed above.
+_CITE_EXAMPLE = '''The subject follows the verb here:\n\n<cite doc="Viaje" ref="s3.w2,w3"/>\n\nwhile in \
+<cite doc="Viaje" ref="s5.w1"/> it precedes it. Name the sentence alone, <cite doc="Viaje" ref="s9"/>, only \
+where the claim is about the whole sentence.'''
 
 SYSTEM = shared.filled(_SYSTEM, {
     'plan_contract': shared.plan_contract(),

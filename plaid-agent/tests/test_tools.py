@@ -1,3 +1,4 @@
+import re
 import pytest
 from fixtures import scan_ws, FakeClient
 
@@ -541,7 +542,15 @@ def test_prompt_teaches_cite_tags_and_the_old_braces_still_resolve():
     from plaid_agent.igt.citations import resolve_citations
     w = ws()
     prompt = build_system_prompt(w.project)
-    assert '<cite doc="Text 1" ref="s32"/>' in prompt and 'Demo' in prompt and '{project_name}' not in prompt
+    assert '<cite doc="Text 1"' in prompt and 'Demo' in prompt and '{project_name}' not in prompt
+    # A worked example must NAME something inside a sentence. The forms were
+    # listed and never demonstrated once, and the model wrote whole-sentence
+    # refs back: a citation that highlights nothing is the feature not working,
+    # and it looked like the highlighting had broken.
+    worked = re.findall(r'<cite doc="[^"]*" ref="([^"]*)"/>', prompt)
+    assert any('.w' in r for r in worked), f'no worked example names a word or morpheme: {worked}'
+    assert any('.m' in r for r in worked), f'no worked example names a morpheme: {worked}'
+    assert any(re.fullmatch(r's\d+', r) for r in worked), f'and one still names a whole sentence: {worked}'
     out = resolve_citations(w, 'see {Text 1 s2} and {{Text 1 s1.w1}}')
     assert [(c['key'], c['sentence']) for c in out] == [('{Text 1 s2}', 2), ('{{Text 1 s1.w1}}', 1)]
 

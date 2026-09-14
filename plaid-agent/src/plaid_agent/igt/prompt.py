@@ -76,10 +76,16 @@ _CITE_REFS = '''<cite doc="Text 1" ref="s3"/> for a sentence, ref="s3.w2" for a 
 morpheme, and a comma-separated list for several items in one sentence, ref="s3.w2,w5" or ref="s3.w2.m1,m3" \
 (each item may leave off what it shares with the one before it).'''
 
-_CITE_ASIDE = ''', e.g. "The wh-word stays in situ: <cite doc="Text 1" ref="s3"/>"'''
+_CITE_ASIDE = ''', e.g. "The wh-word stays in situ: <cite doc="Text 1" ref="s3.w4"/>"'''
 
-_CITE_EXAMPLE = '''The relative noun takes dative case here:\n\n<cite doc="Text 1" ref="s32"/>\n\nwhile in \
-<cite doc="Text 1" ref="s34"/> it is focused.'''
+# Every worked example here used to name a whole sentence, and the model wrote
+# whole sentences back however the forms above were enumerated: a demonstration
+# outweighs a list. So the examples now show a morpheme, a pair of words, and a
+# whole sentence, with the rule for choosing between them.
+_CITE_EXAMPLE = '''The dative suffix is what marks the relative noun:\n\n\
+<cite doc="Text 1" ref="s32.w2.m3"/>\n\nwhile in <cite doc="Text 1" ref="s34.w2,w5"/> neither argument \
+carries it. Name the sentence alone, <cite doc="Text 1" ref="s41"/>, only where the claim is about the \
+whole sentence.'''
 
 SYSTEM = shared.filled(_SYSTEM, {
     'plan_contract': shared.plan_contract(),
