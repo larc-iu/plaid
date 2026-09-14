@@ -10,11 +10,13 @@
             [taoensso.timbre :as log]
             [plaid.fixtures :as fixtures
              :refer [with-db with-mount-states with-rest-handler
-                     rest-handler with-admin with-clean-db
-                     admin-token admin-request parse-response-body]]
+                     rest-handler with-admin with-test-users with-clean-db
+                     admin-token admin-request user1-request api-call
+                     parse-response-body]]
             [plaid.rest-api.v1.auth :as auth]
             [plaid.rest-api.v1.middleware :as middleware]
-            [plaid.rest-api.v1.rate-limit :as rl]))
+            [plaid.rest-api.v1.rate-limit :as rl]
+            [plaid.sql.common :as psc]))
 
 (defn- with-clean-rate-limit
   "Each-test fixture: start every test with empty rate-limit buckets so
@@ -23,7 +25,7 @@
   (rl/reset-all!)
   (f))
 
-(use-fixtures :once with-db with-mount-states with-rest-handler with-admin)
+(use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db with-clean-rate-limit)
 
 (deftest missing-user-still-checks-a-password-hash
@@ -285,3 +287,30 @@
       (is (<= 50 ttl 70)
           (str "Issued :exp must be within ~60s when configured TTL is 60s; got "
                ttl " seconds")))))
+
+;; ----------------------------------------------------------------------------
+;; An id that resolves to no project: what the refusal says
+;; ----------------------------------------------------------------------------
+
+(deftest an-unresolvable-entity-refuses-without-naming-an-empty-project
+  ;; Every project resolver reads the entity named in the path or the body to
+  ;; find its project, so it comes back with nothing when that entity does not
+  ;; exist. The refusal stays a 403 on purpose — a non-member must not learn
+  ;; from the status whether the id is real (comment-test/comment-on-missing-
+  ;; anchor-does-not-create and history.read-test/deleted-doc-readable-by-non-
+  ;; admin-reader-via-fallthrough both pin that) — but it used to read
+  ;; "...to read project " with nothing after it.
+  (let [ghost (str (psc/new-uuid))]
+    (doseq [[what path] [["a span" (str "/api/v1/spans/" ghost)]
+                         ["a token" (str "/api/v1/tokens/" ghost)]
+                         ["a relation" (str "/api/v1/relations/" ghost)]
+                         ["a text" (str "/api/v1/texts/" ghost)]
+                         ["a document" (str "/api/v1/documents/" ghost)]]]
+      (testing what
+        (let [res (api-call user1-request {:method :get :path path})
+              error (-> res :body :error)]
+          (is (= 403 (:status res)))
+          (is (string? error))
+          (is (not (clojure.string/ends-with? error "project "))
+              "the message named a project id that was never resolved")
+          (is (clojure.string/includes? error "the project this entity belongs to")))))))

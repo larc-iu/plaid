@@ -368,6 +368,27 @@
    :project/writers "write for"
    :project/maintainers "maintain"})
 
+(defn- resolve-project-id
+  "Run a route's project resolver against `request`.
+
+  `:as-of-ts` is forwarded so doc-scoped resolvers can fall through to
+  audit-log reconstruction when the document has been deleted from OLTP but
+  existed at `ts`. ACL membership is still resolved from CURRENT OLTP —
+  historical-ACL is explicitly out of scope; only the doc→project lookup is
+  allowed to time-travel."
+  [{db :db :as request} get-project-id]
+  (get-project-id {:parameters (:parameters request)
+                   :db db
+                   :as-of-ts (:as-of-ts request)}))
+
+(defn- holds-privilege?
+  "Does `request`'s user hold at least `key` on `project-id`, or admin?"
+  [{db :db :as request} key project-id]
+  (let [user-id (->user-id request)
+        admin? (user/admin? (:user/record request))
+        project (prj/get db project-id)]
+    (boolean (or admin? (some #(seq ((-> project % set) user-id)) (key levels))))))
+
 (defn privileged?
   "Does the request's user hold at least `key` (`:project/readers`,
   `:project/writers`, or `:project/maintainers`) on the project that
@@ -375,35 +396,34 @@
   `wrap-*-required` middlewares, exposed for a handler whose requirement
   depends on runtime state (submitting to a service is reader-or-writer
   depending on whether that service delegates)."
-  [{db :db :as request} key get-project-id]
+  [request key get-project-id]
   (when-not (-> levels keys set key)
     (throw (ex-info "Bad key" {:key key})))
-  (let [user-id (->user-id request)
-        ;; Forward :as-of-ts so doc-scoped `get-project-id` resolvers
-        ;; can fall through to audit-log reconstruction when the doc has
-        ;; been deleted from OLTP but existed at `ts`. ACL membership is
-        ;; still resolved from CURRENT OLTP (`prj/get db id` below) —
-        ;; historical-ACL is explicitly out of scope; only the
-        ;; doc→project lookup is allowed to time-travel.
-        id (get-project-id {:parameters (:parameters request)
-                            :db db
-                            :as-of-ts (:as-of-ts request)})
-        admin? (user/admin? (:user/record request))
-        project (prj/get db id)]
-    (boolean (or admin? (some #(seq ((-> project % set) user-id)) (key levels))))))
+  (holds-privilege? request key (resolve-project-id request get-project-id)))
 
 (defn wrap-project-privileges-required
+  "Refuse the request unless its user holds `key` on the project
+  `get-project-id` resolves.
+
+  A resolver that comes back with nothing still refuses with 403, never a
+  404: the entity named in the path or the body may not exist, and a
+  non-member must not be able to learn which (`comment-test/comment-on-
+  missing-anchor-does-not-create` and `history.read-test/deleted-doc-
+  readable-by-non-admin-reader-via-fallthrough` both pin that trade). The
+  message says so rather than trailing an empty project id."
   [handler key get-project-id]
   (when-not (-> levels keys set key)
     (throw (ex-info "Bad key" {:key key})))
-  (fn [{db :db :as request}]
-    (if-not (privileged? request key get-project-id)
-      (let [id (get-project-id {:parameters (:parameters request)
-                                :db db
-                                :as-of-ts (:as-of-ts request)})]
+  (fn [request]
+    (let [id (resolve-project-id request get-project-id)]
+      (if (holds-privilege? request key id)
+        (handler request)
         {:status 403
-         :body {:error (str "User " (->user-id request) " lacks sufficient privileges to " (key verb) " project " id)}})
-      (handler request))))
+         :body {:error (str "User " (->user-id request)
+                            " lacks sufficient privileges to " (key verb) " "
+                            (if id
+                              (str "project " id)
+                              "the project this entity belongs to"))}}))))
 
 (defn wrap-reader-required [handler get-project-id]
   (wrap-project-privileges-required handler :project/readers get-project-id))
