@@ -17,6 +17,7 @@ import { UD_ASSISTANT } from '../assistant/adapter.js';
 import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
 import { dismissIntegrityFindings } from '@ui/lib/integrityToast.js';
 import { humanizeError } from '@ui/lib/errors.js';
+import { notifyError } from '../../utils/feedback.jsx';
 
 // Parent route of the four document tabs (/edit, /annotate, /export, /details).
 // It owns the project + ConlluDocument load and renders the breadcrumbs and the
@@ -67,7 +68,14 @@ export const DocumentEditorShell = () => {
   );
   useCommentStore(comments);
   useEffect(() => {
-    comments?.load();
+    if (!comments) return;
+    // Every write in the store is optimistic, so a refusal is a comment
+    // vanishing from the thread again. Without this the rollback was the only
+    // sign, and the store's error channel led nowhere. The same line plaid-igt
+    // wires to its two stores.
+    comments.onError = (msg, err, label) =>
+      notifyError(err ? `${label}: ${humanizeError(err)}` : humanizeError(msg, msg));
+    comments.load();
   }, [comments]);
   // The tab strip is chrome, so it survives a tab switch — but it must not be
   // clickable while the body is repairing the document (see DocumentTabs). The

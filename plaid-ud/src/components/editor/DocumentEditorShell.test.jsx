@@ -32,13 +32,19 @@ vi.mock('../../domain/ConlluDocument.js', () => ({
 }));
 vi.mock('../../domain/useConlluDocument.js', () => ({ useConlluDocument: () => 0 }));
 vi.mock('./DocumentTabs.jsx', () => ({ DocumentTabs: () => null }));
+const stores = vi.hoisted(() => []);
 vi.mock('@ui/domain/CommentStore', () => ({
   CommentStore: class {
+    constructor() {
+      stores.push(this);
+    }
     load() {
       return Promise.resolve();
     }
   },
 }));
+const feedback = vi.hoisted(() => ({ notifyError: vi.fn() }));
+vi.mock('../../utils/feedback.jsx', () => feedback);
 vi.mock('@ui/domain/useCommentStore', () => ({ useCommentStore: () => 0 }));
 vi.mock('@ui/hooks/useWriteLock.js', () => ({
   useWriteLock: () => ({ held: null, acquire: () => null }),
@@ -98,6 +104,8 @@ const textOf = (name) => view.container.querySelector(`[data-testid="${name}"]`)
 
 beforeEach(() => {
   toast.dismissIntegrityFindings.mockReset();
+  feedback.notifyError.mockReset();
+  stores.length = 0;
   auth.getClient.mockReturnValue({
     projects: { get: vi.fn(async () => ({ id: 'p1', name: 'Project' })) },
     documents: { get: vi.fn(async (id) => ({ id, name: 'Doc' })) },
@@ -153,6 +161,20 @@ describe('the document editor shell', () => {
       await Promise.resolve();
     });
     expect(textOf('show')).toBe('d2');
+    await view.unmount();
+  });
+
+  // Every write in the comment store is optimistic, so a refusal shows up as
+  // the comment vanishing again. Nothing here read the store's error channel,
+  // which is the only thing that says why.
+  it('says so when a comment write is refused', async () => {
+    await mountAt('/projects/p1/documents/d1/annotate');
+    const store = stores[0];
+    expect(typeof store.onError).toBe('function');
+
+    store.onError('Post comment: HTTP 423', { status: 423 }, 'Post comment');
+    expect(feedback.notifyError).toHaveBeenCalledTimes(1);
+    expect(feedback.notifyError.mock.calls[0][0]).toContain('Post comment');
     await view.unmount();
   });
 
