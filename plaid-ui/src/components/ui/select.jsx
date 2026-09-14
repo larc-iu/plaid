@@ -1,3 +1,5 @@
+// Modified from shadcn: an item takes a `hint`, a line under its name saying
+// what choosing it means, and lays itself out in a column when it has one.
 import * as React from 'react';
 import * as SelectPrimitive from '@radix-ui/react-select';
 import { Check, ChevronDown, ChevronUp } from 'lucide-react';
