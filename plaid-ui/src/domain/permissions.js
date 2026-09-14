@@ -12,6 +12,15 @@
 // The server enforces all of this regardless; these helpers drive the UI so a
 // user is never shown an action they can't perform.
 
+// What the two app-agnostic levels grant, said where the choice is made.
+//
+// Reader and Writer read differently per app, because what a writer edits is
+// texts and a lexicon in one and a treebank in the other. These two do not:
+// no access is no access, and a maintainer's powers are the server's, so the
+// line must not drift between the four screens that show it.
+export const NO_ACCESS_HINT = 'Cannot open the project.';
+export const MAINTAINER_HINT = 'Also changes settings and members, and deletes the project.';
+
 const inList = (list, id) => Array.isArray(list) && id != null && list.includes(id);
 
 export const canEditProject = (project, user) =>

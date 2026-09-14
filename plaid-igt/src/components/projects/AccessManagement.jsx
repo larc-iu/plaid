@@ -25,6 +25,7 @@ import { useUserAdmin } from '../admin/useUserAdmin';
 import { UserAdminDialogs } from '../admin/userAdmin';
 import { useUserSearch } from '@/hooks/useUserSearch';
 import { UserSearch } from '@/components/shared/UserSearch';
+import { MAINTAINER_HINT, NO_ACCESS_HINT } from '@ui/domain/permissions.js';
 import {
   PLAID_NAMESPACE,
   REVIEW_KEY,
@@ -42,14 +43,10 @@ import {
 // only way to learn that a Reader cannot leave a comment was to give someone
 // Reader access and hear about it from them.
 const ROLE_OPTIONS = [
-  { value: 'none', label: 'No access', hint: 'Cannot open the project.' },
+  { value: 'none', label: 'No access', hint: NO_ACCESS_HINT },
   { value: 'reader', label: 'Reader', hint: 'Reads the texts and the lexicon. Cannot comment.' },
   { value: 'writer', label: 'Writer', hint: 'Also edits documents and links vocabulary.' },
-  {
-    value: 'maintainer',
-    label: 'Maintainer',
-    hint: 'Also changes settings and members, and deletes the project.',
-  },
+  { value: 'maintainer', label: 'Maintainer', hint: MAINTAINER_HINT },
 ];
 const GRANT_ROLES = ['reader', 'writer', 'maintainer'];
 // Most access first, so the Project role column groups the way someone

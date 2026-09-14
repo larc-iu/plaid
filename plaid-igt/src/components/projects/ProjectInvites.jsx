@@ -32,6 +32,7 @@ import {
   AlertDialogCancel,
 } from '@ui/components/ui/alert-dialog';
 import { notifySuccess, notifyError } from '@/utils/feedback';
+import { MAINTAINER_HINT } from '@ui/domain/permissions.js';
 
 const GRANT_ROLES = ['reader', 'writer', 'maintainer'];
 const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
@@ -43,7 +44,7 @@ const EMPTY_FORM = { role: 'writer', maxUses: '1', ttlDays: '14', note: '' };
 const ROLE_HINTS = {
   reader: 'Reads the texts and the lexicon. Cannot comment.',
   writer: 'Also edits documents and links vocabulary.',
-  maintainer: 'Also changes settings and members, and deletes the project.',
+  maintainer: MAINTAINER_HINT,
 };
 
 const STATUS_VARIANT = {

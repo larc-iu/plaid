@@ -6,6 +6,7 @@ import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { Badge } from '@ui/components/ui/badge';
 import { Button } from '@ui/components/ui/button';
 import { DataTable } from '@ui/components/shared/data-table';
+import { MAINTAINER_HINT } from '@ui/domain/permissions.js';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import {
@@ -23,17 +24,14 @@ import {
   SelectValue,
 } from '@ui/components/ui/select';
 
-// What each level grants, said where the choice is made. plaid-igt says the
-// same three lines on the same two screens; the levels are the server's, so
-// they must not read differently depending on which app you are in.
+// What each level grants, said where the choice is made. The other screen that
+// makes the choice is Access, which says the same three lines. Reader and
+// Writer are this app's words for what they cover; Maintainer is the server's
+// and comes from plaid-ui, so it cannot drift between the apps.
 const GRANT_ROLES = [
   { value: 'reader', label: 'Reader', hint: 'Reads the treebank. Cannot comment.' },
   { value: 'writer', label: 'Writer', hint: 'Also edits documents and their annotation.' },
-  {
-    value: 'maintainer',
-    label: 'Maintainer',
-    hint: 'Also changes settings and members, and deletes the project.',
-  },
+  { value: 'maintainer', label: 'Maintainer', hint: MAINTAINER_HINT },
 ];
 
 const STATUS_VARIANT = {

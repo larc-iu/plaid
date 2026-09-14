@@ -30,12 +30,24 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@ui/components/ui/dropdown-menu';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@ui/components/ui/select';
+import { MAINTAINER_HINT, NO_ACCESS_HINT } from '@ui/domain/permissions.js';
 
+// What each level grants, said where the choice is made. The Invites screen
+// says the same three lines, and this screen decides what a class of fifteen
+// can do: naming the levels and nothing else left "a Reader cannot comment"
+// to be learned by granting someone Reader and hearing about it.
 const PERMISSION_OPTIONS = [
-  { value: 'none', label: 'None' },
-  { value: 'reader', label: 'Reader' },
-  { value: 'writer', label: 'Writer' },
-  { value: 'maintainer', label: 'Maintainer' },
+  { value: 'none', label: 'None', hint: NO_ACCESS_HINT },
+  { value: 'reader', label: 'Reader', hint: 'Reads the treebank. Cannot comment.' },
+  { value: 'writer', label: 'Writer', hint: 'Also edits documents and their annotation.' },
+  { value: 'maintainer', label: 'Maintainer', hint: MAINTAINER_HINT },
 ];
 const GRANT_ROLES = ['reader', 'writer', 'maintainer'];
 const SEARCH_LIMIT = 25;
@@ -495,19 +507,25 @@ export const ProjectManagement = () => {
                     <tr key={m.id} className="border-b">
                       <td className="py-2 pr-3">{userCell(m)}</td>
                       <td className="px-3 py-2">
-                        <select
-                          className="h-8 w-36 rounded-md border border-input bg-transparent px-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                        <Select
                           value={m.role}
-                          aria-label={`${m.displayName} project role`}
+                          onValueChange={(v) => setRole(m.id, v)}
                           disabled={m.id === user.id}
-                          onChange={(e) => setRole(m.id, e.target.value)}
                         >
-                          {PERMISSION_OPTIONS.map((o) => (
-                            <option key={o.value} value={o.value}>
-                              {o.label}
-                            </option>
-                          ))}
-                        </select>
+                          <SelectTrigger
+                            className="h-8 w-36"
+                            aria-label={`${m.displayName} project role`}
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {PERMISSION_OPTIONS.map((o) => (
+                              <SelectItem key={o.value} value={o.value} hint={o.hint}>
+                                {o.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                         {m.id === user.id && (
                           <p className="mt-0.5 text-xs text-muted-foreground">Your own access</p>
                         )}
