@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { rawDocFromConllu } from './helpers/rawDoc.js';
-import { withOps } from './helpers/stubClient.js';
+import { withOps, batchOf } from './helpers/stubClient.js';
 import { getUdLayerInfo } from '../src/utils/udLayerUtils.js';
 import { parseGrs } from '../src/grew/parser.js';
 import { planRewrite, applyRewrite } from '../src/grew/rewrite/runner.js';
@@ -20,10 +20,10 @@ const CONLLU = [
   '6\tloudly\t_\tADV\t_\t_\t_\t_\t_\t_',
 ].join('\n');
 
-// A recording client: every write lands in `calls` (and in the open batch,
-// whose submit hands back a fresh id per op, as the server would). Strict
+// A recording client: every write lands in `calls` when its batch submits,
+// and the submit hands back a fresh id per op, as the server would. Strict
 // mode is recorded too; a batch for `failOn` is refused with a 409, as the
-// server refuses a stale document version.
+// server refuses a stale document version, and writes nothing.
 function stubClient(...raws) {
   const c = {
     calls: [],
@@ -40,22 +40,27 @@ function stubClient(...raws) {
       c.strict.push(['exit']);
       c._strictDoc = null;
     },
-    beginBatch: () => {
-      c._batch = [];
-    },
-    submitBatch: async () => {
+    batched: async (fn) => {
+      const b = batchOf(c);
+      try {
+        await fn(b);
+      } catch (e) {
+        b.abort();
+        throw e;
+      }
       if (c._strictDoc && c._strictDoc === c.failOn) {
+        b.abort();
         throw Object.assign(new Error('document version mismatch'), { status: 409 });
       }
-      return c._batch.map((call, i) => ({ status: 200, body: { id: `${call.op}-${i}` } }));
+      const ops = b.operations.map((o) => o.op);
+      await b.submit();
+      return ops.map((op, i) => ({ status: 200, body: { id: `${op}-${i}` } }));
     },
   };
   const rec =
     (op) =>
     (...args) => {
-      const call = { op, args };
-      c.calls.push(call);
-      c._batch?.push(call);
+      c.calls.push({ op, args });
     };
   c.tokens = { delete: rec('tokens.delete') };
   c.spans = {

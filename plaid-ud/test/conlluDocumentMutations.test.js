@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 
 import { ConlluDocument } from '../src/domain/ConlluDocument.js';
 import { rawDocFromConllu } from './helpers/rawDoc.js';
-import { withOps } from './helpers/stubClient.js';
+import { withOps, batchOf } from './helpers/stubClient.js';
 
 const INPUT = [
   '# text = del perro',
@@ -83,11 +83,6 @@ const provClient = () => {
   const calls = [];
   const client = {
     calls,
-    beginBatch() {},
-    async submitBatch() {
-      calls.push(['submitBatch']);
-      return [];
-    },
     spans: {
       update: (id, value) => {
         calls.push(['spans.update', id, value]);
@@ -115,6 +110,20 @@ const provClient = () => {
     calls.push(['spans.create', layerId, tokens, value, metadata]);
     return { id: `new-${value}` };
   };
+  // A batch: its writes queue and land together, which is what the ['submit']
+  // entry at the end of `calls` shows.
+  client.batched = async (fn) => {
+    const b = batchOf(client);
+    try {
+      await fn(b);
+    } catch (e) {
+      b.abort();
+      throw e;
+    }
+    const results = await b.submit();
+    calls.push(['submit']);
+    return results;
+  };
   return client;
 };
 
@@ -129,7 +138,7 @@ test('editing a machine-made annotation verifies it (batched update + patchMetad
   assert.equal(await doc.updateAnnotation(span.tokens[0], 'upos', 'PROPN'), true);
   assert.deepEqual(
     client.calls.map((c) => c[0]),
-    ['spans.update', 'spans.patchMetadata', 'submitBatch'],
+    ['spans.update', 'spans.patchMetadata', 'submit'],
   );
   assert.deepEqual(client.calls[1][2], { provConfirmed: true });
 
@@ -169,7 +178,7 @@ test('re-typing a feature already on the word confirms it and adds no second spa
   assert.equal(await doc.updateAnnotation(feat.tokens[0], 'features', 'Gender=Masc'), true);
   assert.deepEqual(
     client.calls.map((c) => c[0]),
-    ['spans.update', 'spans.patchMetadata', 'submitBatch'],
+    ['spans.update', 'spans.patchMetadata', 'submit'],
   );
   assert.deepEqual(client.calls[1][2], { provConfirmed: true });
   assert.equal(doc.layerInfo.featuresLayer.spans.length, before);
@@ -272,7 +281,7 @@ test('editing a machine-made relation verifies it too', async () => {
   assert.equal(await doc.updateRelation(rel.id, 'nsubj'), true);
   assert.deepEqual(
     client.calls.map((c) => c[0]),
-    ['relations.update', 'relations.patchMetadata', 'submitBatch'],
+    ['relations.update', 'relations.patchMetadata', 'submit'],
   );
   const after = doc.layerInfo.relationLayer.relations.find((r) => r.id === rel.id);
   assert.equal(after.value, 'nsubj');
@@ -309,7 +318,7 @@ test("a contributor's edit of a confirmed machine annotation marks it contribute
   assert.equal(await doc.updateAnnotation(span.tokens[0], 'upos', 'PROPN'), true);
   assert.deepEqual(
     client.calls.map((c) => c[0]),
-    ['spans.update', 'spans.patchMetadata', 'submitBatch'],
+    ['spans.update', 'spans.patchMetadata', 'submit'],
   );
   assert.deepEqual(client.calls[1][2], { ...CONTRIBUTED, provConfirmed: null });
   const after = doc.layerInfo.uposLayer.spans.find((s) => s.id === span.id);

@@ -257,16 +257,16 @@ async function applyToDocument(client, doc, rows) {
   // 1. Deleted words (their spans and relations cascade server-side).
   const tokens = rows.flatMap((r) => r.writes.tokens);
   for (const part of chunk(tokens, BATCH_CHUNK)) {
-    await client.batched(async () => {
-      part.forEach((w) => client.tokens.delete(w.id));
+    await client.batched(async (b) => {
+      part.forEach((w) => b.tokens.delete(w.id));
     });
   }
 
   // 2. Lemma spans the relations below hang on.
   const lemmas = rows.flatMap((r) => r.writes.lemmaCreates);
   for (const part of chunk(lemmas, BATCH_CHUNK)) {
-    const results = await client.batched(async () => {
-      part.forEach((w) => client.spans.create(w.layer, w.tokens, w.value, createStamp));
+    const results = await client.batched(async (b) => {
+      part.forEach((w) => b.spans.create(w.layer, w.tokens, w.value, createStamp));
     });
     part.forEach((w, i) => lemmaOf.set(w.node, results[i]?.body?.id));
   }
@@ -275,38 +275,38 @@ async function applyToDocument(client, doc, rows) {
   // carries the writer's stamp, in the same batch as the value.
   const main = rows.flatMap((r) => r.writes.main);
   for (const part of chunk(main, BATCH_CHUNK)) {
-    await client.batched(async () => {
+    await client.batched(async (b) => {
       for (const w of part) {
         switch (w.op) {
           case 'updateSpan': {
-            client.spans.update(w.id, w.value);
+            b.spans.update(w.id, w.value);
             const stamp = writer.editStamp(w.metadata);
-            if (stamp) client.spans.patchMetadata(w.id, stamp);
+            if (stamp) b.spans.patchMetadata(w.id, stamp);
             break;
           }
           case 'createSpan':
-            client.spans.create(w.layer, w.tokens, w.value, createStamp);
+            b.spans.create(w.layer, w.tokens, w.value, createStamp);
             break;
           case 'deleteSpan':
-            client.spans.delete(w.id);
+            b.spans.delete(w.id);
             break;
           case 'updateRelation': {
-            client.relations.update(w.id, w.value);
+            b.relations.update(w.id, w.value);
             const stamp = writer.editStamp(w.metadata);
-            if (stamp) client.relations.patchMetadata(w.id, stamp);
+            if (stamp) b.relations.patchMetadata(w.id, stamp);
             break;
           }
           case 'setSource':
-            client.relations.setSource(w.id, lemmaOf.get(w.node));
+            b.relations.setSource(w.id, lemmaOf.get(w.node));
             break;
           case 'setTarget':
-            client.relations.setTarget(w.id, lemmaOf.get(w.node));
+            b.relations.setTarget(w.id, lemmaOf.get(w.node));
             break;
           case 'deleteRelation':
-            client.relations.delete(w.id);
+            b.relations.delete(w.id);
             break;
           case 'createRelation':
-            client.relations.create(
+            b.relations.create(
               w.layer,
               lemmaOf.get(w.src),
               lemmaOf.get(w.tgt),

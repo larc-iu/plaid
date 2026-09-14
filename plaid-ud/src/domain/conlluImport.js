@@ -165,11 +165,11 @@ export async function importConlluDocument(
     // Token batch: sentences -> words -> morphemes, atomic. `morphemeResultIndex`
     // must live outside the batched() callback so it's readable after it returns.
     let morphemeResultIndex = -1;
-    const tokenResults = await client.batched(async () => {
-      client.tokens.bulkCreate(sentenceOps);
-      if (wordOps.length > 0) client.tokens.bulkCreate(wordOps);
+    const tokenResults = await client.batched(async (b) => {
+      b.tokens.bulkCreate(sentenceOps);
+      if (wordOps.length > 0) b.tokens.bulkCreate(wordOps);
       if (morphemeOps.length > 0) {
-        client.tokens.bulkCreate(morphemeOps);
+        b.tokens.bulkCreate(morphemeOps);
         morphemeResultIndex = wordOps.length > 0 ? 2 : 1;
       }
     });
@@ -239,25 +239,25 @@ export async function importConlluDocument(
     const spanOpsInOrder = [];
     // batched() submits an empty batch as a no-op ([]), so the old
     // "submit only if something was queued" guard is unnecessary.
-    const spanResults = await client.batched(async () => {
+    const spanResults = await client.batched(async (b) => {
       if (formOps.length) {
-        client.spans.bulkCreate(formOps);
+        b.spans.bulkCreate(formOps);
         spanOpsInOrder.push('form');
       }
       if (lemmaOps.length) {
-        client.spans.bulkCreate(lemmaOps);
+        b.spans.bulkCreate(lemmaOps);
         spanOpsInOrder.push('lemma');
       }
       if (uposOps.length) {
-        client.spans.bulkCreate(uposOps);
+        b.spans.bulkCreate(uposOps);
         spanOpsInOrder.push('upos');
       }
       if (xposOps.length) {
-        client.spans.bulkCreate(xposOps);
+        b.spans.bulkCreate(xposOps);
         spanOpsInOrder.push('xpos');
       }
       if (featOps.length) {
-        client.spans.bulkCreate(featOps);
+        b.spans.bulkCreate(featOps);
         spanOpsInOrder.push('feat');
       }
     });
@@ -305,17 +305,14 @@ export async function importConlluDocument(
         });
       });
       if (relationOps.length > 0) {
-        await client.batched(async () => {
-          client.relations.bulkCreate(relationOps);
+        await client.batched(async (b) => {
+          b.relations.bulkCreate(relationOps);
         });
       }
     }
 
     return { documentId: createdDocumentId, importWarnings };
   } catch (err) {
-    // A mid-batch failure leaves the client in batch mode; drop it so the
-    // cleanup delete below actually runs instead of queuing into the dead batch.
-    if (client.isBatchMode()) client.abortBatch();
     if (createdDocumentId) {
       try {
         await client.documents.delete(createdDocumentId);

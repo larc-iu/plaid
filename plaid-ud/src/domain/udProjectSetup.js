@@ -35,8 +35,9 @@ import {
 // a token born of a split is otherwise born bare, and what is lost that way
 // leaves nothing for a later reconcile to find. See the manual's "Metadata
 // Preserved Across a Split".
-const declarePreserveOnSplit = (client, layerId) =>
-  client.tokenLayers.setConfig(layerId, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY, [
+// Takes the batch it queues on, since every caller writes inside one.
+const declarePreserveOnSplit = (batch, layerId) =>
+  batch.tokenLayers.setConfig(layerId, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY, [
     ...PROVENANCE_KEYS,
   ]);
 import {
@@ -76,49 +77,44 @@ const bootstrap = async (client, projectName) => {
     // creating a UD project failed on `null.id` from then on. Adding a config
     // op must not be able to do that again.
     // B2: textLayer (alone; setConfig + sentence create both need its id)
-    const b2 = await client.batched(async () => {
-      client.textLayers.create(projectId, 'Text');
+    const b2 = await client.batched(async (b) => {
+      b.textLayers.create(projectId, 'Text');
     });
     const textLayerId = b2.at(-1).body.id;
 
     // B3: textLayer.setConfig + sentenceLayer.create
-    const b3 = await client.batched(async () => {
-      client.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
-      client.tokenLayers.create(textLayerId, 'Sentences', 'partitioning');
+    const b3 = await client.batched(async (b) => {
+      b.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
+      b.tokenLayers.create(textLayerId, 'Sentences', 'partitioning');
     });
     const sentenceLayerId = b3.at(-1).body.id;
 
     // B4: sentenceLayer.setConfig + wordLayer.create
-    const b4 = await client.batched(async () => {
-      client.tokenLayers.setConfig(sentenceLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.SENTENCE);
-      declarePreserveOnSplit(client, sentenceLayerId);
-      client.tokenLayers.create(textLayerId, 'Tokens', 'non-overlapping', sentenceLayerId);
+    const b4 = await client.batched(async (b) => {
+      b.tokenLayers.setConfig(sentenceLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.SENTENCE);
+      declarePreserveOnSplit(b, sentenceLayerId);
+      b.tokenLayers.create(textLayerId, 'Tokens', 'non-overlapping', sentenceLayerId);
     });
     const wordLayerId = b4.at(-1).body.id;
 
     // B5: wordLayer.setConfig + morphemeLayer.create
-    const b5 = await client.batched(async () => {
-      client.tokenLayers.setConfig(wordLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.WORD);
-      declarePreserveOnSplit(client, wordLayerId);
-      client.tokenLayers.create(textLayerId, 'Words', 'any', wordLayerId);
+    const b5 = await client.batched(async (b) => {
+      b.tokenLayers.setConfig(wordLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.WORD);
+      declarePreserveOnSplit(b, wordLayerId);
+      b.tokenLayers.create(textLayerId, 'Words', 'any', wordLayerId);
     });
     const morphemeLayerId = b5.at(-1).body.id;
 
     // B6: morphemeLayer.setConfig + all 5 span layer creates
-    const b6 = await client.batched(async () => {
+    const b6 = await client.batched(async (b) => {
       // UD's "Words" layer holds SYNTACTIC WORDS (MWT splits), so its role is
       // `syntactic-word`, NOT `morpheme`. IGT's true-morpheme layer is a
       // sibling under the shared word layer. Getting this wrong corrupts
       // segmentation.
-      client.tokenLayers.setConfig(
-        morphemeLayerId,
-        PLAID_NAMESPACE,
-        ROLE_KEY,
-        ROLES.SYNTACTIC_WORD,
-      );
-      declarePreserveOnSplit(client, morphemeLayerId);
+      b.tokenLayers.setConfig(morphemeLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.SYNTACTIC_WORD);
+      declarePreserveOnSplit(b, morphemeLayerId);
       for (const [name] of SPAN_LAYER_SPECS) {
-        client.spanLayers.create(morphemeLayerId, name);
+        b.spanLayers.create(morphemeLayerId, name);
       }
     });
     // The five span creates are the LAST five results, whatever config ops run
@@ -128,17 +124,17 @@ const bootstrap = async (client, projectName) => {
     const lemmaLayerId = spanLayerIds[lemmaIdx];
 
     // B7: 5x spanLayer.setConfig + relationLayer.create (uses lemmaLayerId)
-    const b7 = await client.batched(async () => {
+    const b7 = await client.batched(async (b) => {
       SPAN_LAYER_SPECS.forEach(([, configKey], i) => {
-        client.spanLayers.setConfig(spanLayerIds[i], UD_NAMESPACE, configKey, true);
+        b.spanLayers.setConfig(spanLayerIds[i], UD_NAMESPACE, configKey, true);
       });
-      client.relationLayers.create(lemmaLayerId, 'Dependency Relations');
+      b.relationLayers.create(lemmaLayerId, 'Dependency Relations');
     });
     const relationLayerId = b7.at(-1).body.id;
 
     // B8: relationLayer.setConfig
-    await client.batched(async () => {
-      client.relationLayers.setConfig(relationLayerId, UD_NAMESPACE, UD_RELATION_CONFIG_KEY, true);
+    await client.batched(async (b) => {
+      b.relationLayers.setConfig(relationLayerId, UD_NAMESPACE, UD_RELATION_CONFIG_KEY, true);
     });
 
     return project;

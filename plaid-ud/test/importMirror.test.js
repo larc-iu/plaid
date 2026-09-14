@@ -17,16 +17,14 @@ import { getUdLayerInfo } from '../src/utils/udLayerUtils.js';
 
 const conllu = (lines) => lines.join('\n');
 
-/** A client that records the bulk creates and hands back ids for them. */
+/**
+ * A client that records the bulk creates and hands back ids for them. The
+ * importer makes every write on a batch, so the bulk creates live on the batch
+ * `batched` hands it.
+ */
 function recordingClient() {
   let n = 0;
-  const open = [];
   const calls = { tokens: [], spans: [], relations: [] };
-  let inBatch = false;
-  const queue = (kind, ops) => {
-    open.push({ kind, ops });
-    calls[kind].push(ops);
-  };
   return {
     calls,
     documents: {
@@ -37,24 +35,19 @@ function recordingClient() {
       delete: async () => {},
     },
     texts: { create: async () => ({ id: 'text-1' }) },
-    tokens: { bulkCreate: (ops) => queue('tokens', ops) },
-    spans: { bulkCreate: (ops) => queue('spans', ops) },
-    relations: { bulkCreate: (ops) => queue('relations', ops) },
-    isBatchMode: () => inBatch,
-    abortBatch: () => {
-      inBatch = false;
-      open.length = 0;
-    },
     batched: async (fn) => {
-      inBatch = true;
-      open.length = 0;
-      await fn();
-      inBatch = false;
-      const results = open.map(({ kind, ops }) => ({
-        body: { ids: ops.map(() => `${kind}-${n++}`) },
-      }));
-      open.length = 0;
-      return results;
+      const queued = [];
+      const queue = (kind, ops) => {
+        queued.push({ kind, ops });
+        calls[kind].push(ops);
+      };
+      const batch = {
+        tokens: { bulkCreate: (ops) => queue('tokens', ops) },
+        spans: { bulkCreate: (ops) => queue('spans', ops) },
+        relations: { bulkCreate: (ops) => queue('relations', ops) },
+      };
+      await fn(batch);
+      return queued.map(({ kind, ops }) => ({ body: { ids: ops.map(() => `${kind}-${n++}`) } }));
     },
   };
 }

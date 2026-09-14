@@ -27,8 +27,6 @@ const failingClient = (err) => ({
   withOperation: async () => {
     throw err;
   },
-  isBatchMode: () => false,
-  abortBatch: () => {},
   documents: { get: async () => RAW },
 });
 
