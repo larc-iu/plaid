@@ -434,6 +434,10 @@ const DocumentEditor = () => {
               writeLock: writeLock.held,
               acquireWriteLock: writeLock.acquire,
               assistantOnline: !!assistantAvailable,
+              // How a tab sends the reader to another tab. The window event
+              // the island uses stays the island's: it is not React and has no
+              // context to read.
+              goToTab: setActiveTab,
             }}
           >
             {/* The initial repair takes the tab strip's place rather than

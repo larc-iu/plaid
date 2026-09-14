@@ -498,7 +498,7 @@ function SentenceComponent({ sentence, ops, index, drag, setDrag, dragRef, readO
   );
 }
 
-function TokenComponent({
+export function TokenComponent({
   ops,
   sentence,
   piece,
@@ -508,7 +508,7 @@ function TokenComponent({
   dragRef,
   readOnly = false,
 }) {
-  const { doc } = useDocumentCtx();
+  const { doc, goToTab } = useDocumentCtx();
   const [isSplitting, setIsSplitting] = useState(false);
   const isDraggingHere = drag?.sentenceId === sentence.id;
   const isSelected = isDraggingHere && drag.selectedTokenIds.has(piece.id);
@@ -521,7 +521,7 @@ function TokenComponent({
     // Works read-only too, since it changes nothing.
     if (e.altKey) {
       e.preventDefault();
-      window.dispatchEvent(new CustomEvent('igt:navigate-tab', { detail: { tab: 'analyze' } }));
+      goToTab('analyze');
       return;
     }
     // Read the ref (not the closure) so a trailing click after a press sees the

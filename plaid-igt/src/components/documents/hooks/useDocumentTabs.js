@@ -22,7 +22,8 @@ export function useDocumentTabs({ doc, asOf }) {
   });
 
   // The interlinear island is framework-agnostic; its empty-state CTA asks to
-  // switch tabs via a DOM event rather than reaching into the router.
+  // switch tabs via a DOM event rather than reaching into the router. It is the
+  // only sender: a React tab calls `goToTab` off the document context instead.
   useEffect(() => {
     const onNav = (e) => {
       const t = e.detail?.tab;
