@@ -350,6 +350,8 @@ class _FakePunkt:
 
 
 def test_spans_from_nltk_punkt_makes_the_sentences_tile_the_whole_text():
+    # The helper's word tokenizer is nltk's; the package does not depend on it.
+    pytest.importorskip('nltk')
     # The sentence layer is partitioning, so the converter that feeds it must
     # leave no gap: the first sentence is pulled back to 0, each one runs to
     # where the next begins, and the last runs to the end of the text.
@@ -363,6 +365,8 @@ def test_spans_from_nltk_punkt_makes_the_sentences_tile_the_whole_text():
 
 
 def test_text_punkt_finds_no_sentence_in_is_one_sentence():
+    # The helper's word tokenizer is nltk's; the package does not depend on it.
+    pytest.importorskip('nltk')
     text = 'no boundaries here'
     sentences, words = helpers.spans_from_nltk_punkt(text, _FakePunkt([]))
     assert [(s.start, s.end) for s in sentences] == [(0, len(text))]
