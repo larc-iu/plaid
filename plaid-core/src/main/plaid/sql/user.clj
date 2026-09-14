@@ -348,13 +348,17 @@
 ;; touches, so routing the BLOB through it would write a copy of the picture
 ;; into `audit_writes` on every change. The digest is the durable record. The
 ;; pixels are current-state only.
+;;
+;; They carry their own op types (`:user/set-avatar`, `:user/delete-avatar`)
+;; rather than `:user/update`: the audit log is read by op type, and a picture
+;; change and a rename are not the same act to anyone reading it.
 
 (defn set-avatar!
   "Store `avatar` (as produced by `plaid.media.avatar/normalize`) as `eid`'s
   profile picture, replacing any existing one. `acting-user-id` attributes the
   op (the user themselves, or an admin). Returns `{:success true :extra <hash>}`."
   [db eid {:keys [content-type bytes hash]} acting-user-id]
-  (submit-operation! [tx db {:type :user/update
+  (submit-operation! [tx db {:type :user/set-avatar
                              :project nil
                              :document nil
                              :description (str "Set profile picture for user " eid)
@@ -375,7 +379,7 @@
   "Remove `eid`'s profile picture. 404s when the user has none, so a repeated
   delete is distinguishable from a successful one. Returns `{:success true}`."
   [db eid acting-user-id]
-  (submit-operation! [tx db {:type :user/update
+  (submit-operation! [tx db {:type :user/delete-avatar
                              :project nil
                              :document nil
                              :description (str "Remove profile picture for user " eid)

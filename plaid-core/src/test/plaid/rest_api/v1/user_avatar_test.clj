@@ -187,3 +187,16 @@
         "the hash is in the audit image, so the change is visible in history")
     (is (every? #(< (count (str %)) 2000) images)
         "the image is a user row plus a 64-char digest, never a copy of the picture")))
+
+(deftest a-picture-change-is-its-own-kind-of-operation
+  ;; Both writes were logged as :user/update, the same op type a rename gets,
+  ;; so the audit log could not tell one from the other.
+  (let [op-types (fn []
+                   (->> (psc/q db {:select [:op_type]
+                                   :from [:operations]
+                                   :where [:like :op_type "user/%avatar%"]
+                                   :order-by [[:ts :asc]]})
+                        (mapv :op_type)))]
+    (upload user1-request "user1@example.com" (temp-image! 200 200 BufferedImage/TYPE_INT_RGB))
+    (is (= 204 (:status (rest-handler (user1-request :delete "/api/v1/users/user1@example.com/avatar")))))
+    (is (= ["user/set-avatar" "user/delete-avatar"] (op-types)))))
