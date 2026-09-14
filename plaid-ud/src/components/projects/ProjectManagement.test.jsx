@@ -16,10 +16,8 @@ vi.mock('../../utils/feedback.jsx', async () => {
   const { humanizeError } = await import('@ui/lib/errors.js');
   return { notifySuccess: vi.fn(), notifyError: vi.fn(), humanizeError };
 });
-vi.mock('./ProjectInvites', () => ({
-  ProjectInvites: () => null,
-  MintedLinkModal: () => null,
-}));
+vi.mock('@ui/components/shared/ProjectInvites.jsx', () => ({ ProjectInvites: () => null }));
+vi.mock('@ui/components/shared/MintedLinkDialog.jsx', () => ({ MintedLinkDialog: () => null }));
 vi.mock('@ui/components/shared/ConfirmProvider', () => ({ useConfirm: () => async () => false }));
 
 const auth = vi.hoisted(() => ({ getClient: vi.fn(), user: { id: 'u', isAdmin: false } }));

@@ -24,19 +24,13 @@ import { DataTable } from '@ui/components/shared/data-table';
 import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
-import { inviteLinkFor } from '@/utils/inviteLink';
+import { InviteStatusBadge } from '@ui/components/shared/InviteStatusBadge.jsx';
+import { inviteLinkFor, GRANT_ROLES, cap } from '@ui/domain/invites.js';
 import { textIncludes } from '@ui/domain/collation.js';
 
 // Every invite on the server, whoever minted it. A project's own tab shows
 // that project's links; this is the one place an admin can see an admin grant
 // somebody else handed out, and the one place to mint a set of links at once.
-
-const STATUS_VARIANT = {
-  active: 'default',
-  used: 'secondary',
-  expired: 'secondary',
-  revoked: 'outline',
-};
 
 const EMPTY_BATCH = { count: '20', role: 'writer', ttlDays: '30', note: '', projectId: '' };
 
@@ -239,7 +233,7 @@ export const AdminInvites = ({ client }) => {
       key: 'status',
       label: 'Status',
       sort: (i) => i.status,
-      render: (i) => <Badge variant={STATUS_VARIANT[i.status] || 'secondary'}>{i.status}</Badge>,
+      render: (i) => <InviteStatusBadge status={i.status} />,
     },
     {
       key: 'actions',
@@ -339,9 +333,11 @@ export const AdminInvites = ({ client }) => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="reader">Reader</SelectItem>
-                  <SelectItem value="writer">Writer</SelectItem>
-                  <SelectItem value="maintainer">Maintainer</SelectItem>
+                  {GRANT_ROLES.map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {cap(r)}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

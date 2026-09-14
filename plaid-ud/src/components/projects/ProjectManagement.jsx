@@ -9,7 +9,8 @@ import {
   readReview,
   withReviewedUser,
 } from '@larc-iu/plaid-client';
-import { ProjectInvites, MintedLinkModal } from './ProjectInvites';
+import { ProjectInvites } from '@ui/components/shared/ProjectInvites.jsx';
+import { MintedLinkDialog } from '@ui/components/shared/MintedLinkDialog.jsx';
 import { useAuth } from '../../contexts/AuthContext';
 import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
@@ -50,6 +51,9 @@ const PERMISSION_OPTIONS = [
   { value: 'writer', label: 'Writer', hint: 'Also edits documents and their annotation.' },
   { value: 'maintainer', label: 'Maintainer', hint: MAINTAINER_HINT },
 ];
+const ROLE_HINTS = Object.fromEntries(
+  PERMISSION_OPTIONS.filter((o) => o.value !== 'none').map((o) => [o.value, o.hint]),
+);
 const GRANT_ROLES = ['reader', 'writer', 'maintainer'];
 const SEARCH_LIMIT = 25;
 
@@ -595,9 +599,10 @@ export const ProjectManagement = () => {
         projectName={project?.name}
         client={getClient()}
         canManage={canInvite}
+        roleHints={ROLE_HINTS}
       />
 
-      <MintedLinkModal
+      <MintedLinkDialog
         code={resetCode}
         onClose={() => setResetCode(null)}
         title="Password reset link created"

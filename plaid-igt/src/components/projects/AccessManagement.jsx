@@ -20,7 +20,7 @@ import {
   DropdownMenuLabel,
 } from '@ui/components/ui/dropdown-menu';
 import { notifySuccess, notifyError } from '@/utils/feedback';
-import { ProjectInvites } from './ProjectInvites';
+import { ProjectInvites } from '@ui/components/shared/ProjectInvites.jsx';
 import { useUserAdmin } from '../admin/useUserAdmin';
 import { UserAdminDialogs } from '../admin/userAdmin';
 import { useUserSearch } from '@/hooks/useUserSearch';
@@ -52,6 +52,12 @@ const GRANT_ROLES = ['reader', 'writer', 'maintainer'];
 // Most access first, so the Project role column groups the way someone
 // scanning it expects rather than alphabetically.
 const ROLE_RANK = { maintainer: 0, writer: 1, reader: 2, none: 3 };
+
+// The same lines under the invite screen's role picker: it is the other place
+// the choice is made, and it is made for people who have no account yet.
+const ROLE_HINTS = Object.fromEntries(
+  ROLE_OPTIONS.filter((o) => o.value !== 'none').map((o) => [o.value, o.hint]),
+);
 
 // The role someone was explicitly granted, as this screen spells it: the client
 // says `null` for a non-member and the Select needs a value.
@@ -315,6 +321,7 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
         projectName={project?.name}
         client={client}
         canManage={canInvite}
+        roleHints={ROLE_HINTS}
       />
 
       {/* Add a user (server-side search) */}
