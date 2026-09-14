@@ -44,9 +44,11 @@ Requirements (on top of plaid-client): litellm.
 
 import argparse
 import difflib
+import os
 from typing import Any, Dict, List, Optional
 
 from plaid_client import BaseService, TASKS, Param, service_source
+from plaid_client.service import requester_message
 from plaid_client.workflows.igt import (
     derive, select_targets, word_state, parse_interleaved, align_words, analysis_for, write_analyses,
     tagset_for, mode_rule, value_lines,
@@ -424,6 +426,11 @@ class LLMAnalyzeService(BaseService):
     def setup(self, args) -> None:
         self.model = ChatModel(args.model, api_base=args.api_base, api_key=args.api_key,
                                temperature=args.temperature, max_tokens=args.max_tokens)
+        # Keys never reach a requester: a provider quotes the key it refused
+        # back in its own error text, and that text names the failed sentence.
+        self.REQUEST_SECRETS = tuple(
+            v for v in ([args.api_key] + [v for k, v in os.environ.items()
+                                          if k.endswith('API_KEY')]) if v)
         if args.service_id:
             self.service_id = args.service_id
         self.service_name = args.service_name or f'LLM glossing ({args.model})'
@@ -506,7 +513,11 @@ class LLMAnalyzeService(BaseService):
             try:
                 reply = self.model.complete(system, prompt)
             except Exception as exc:
-                failed.append({'sentence_id': s['id'], 'reason': f'model error: {exc}'})
+                # The provider's own error text is the operator's: it can carry
+                # the endpoint, the request body, and the key that was refused.
+                print(f'Model call failed for sentence {s["id"]}: {exc}')
+                failed.append({'sentence_id': s['id'],
+                               'reason': f'model error: {requester_message(exc, secrets=self.REQUEST_SECRETS)}'})
                 continue
             outputs = parse_interleaved(first_gloss_line(reply))
             if not outputs:

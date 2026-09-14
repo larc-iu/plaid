@@ -29,9 +29,11 @@ Requirements (on top of plaid-client): litellm.
 """
 
 import argparse
+import os
 from typing import Any, Dict, List, Optional
 
 from plaid_client import BaseService, TASKS, Param, service_source
+from plaid_client.service import requester_message
 from plaid_client.provenance import stamp_inferred, prov_state, MACHINE, HUMAN
 from plaid_client.workflows.igt import derive
 
@@ -233,6 +235,11 @@ class LLMTranslateService(BaseService):
     def setup(self, args) -> None:
         self.model = ChatModel(args.model, api_base=args.api_base, api_key=args.api_key,
                                temperature=args.temperature, max_tokens=args.max_tokens)
+        # Keys never reach a requester: a provider quotes the key it refused
+        # back in its own error text, and that text names the failed sentence.
+        self.REQUEST_SECRETS = tuple(
+            v for v in ([args.api_key] + [v for k, v in os.environ.items()
+                                          if k.endswith('API_KEY')]) if v)
         if args.service_id:
             self.service_id = args.service_id
         self.service_name = args.service_name or f'LLM translation ({args.model})'
@@ -329,7 +336,11 @@ class LLMTranslateService(BaseService):
             try:
                 text = first_line(self.model.complete(SYSTEM_PROMPT.format(language=language, metalanguage=metalanguage), prompt))
             except Exception as exc:
-                failed.append({'sentence_id': s['id'], 'reason': f'model error: {exc}'})
+                # The provider's own error text is the operator's: it can carry
+                # the endpoint, the request body, and the key that was refused.
+                print(f'Model call failed for sentence {s["id"]}: {exc}')
+                failed.append({'sentence_id': s['id'],
+                               'reason': f'model error: {requester_message(exc, secrets=self.REQUEST_SECRETS)}'})
                 continue
             if not text:
                 failed.append({'sentence_id': s['id'], 'reason': 'empty reply'})

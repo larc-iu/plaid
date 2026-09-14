@@ -147,72 +147,65 @@ class NLTKTokenizerService(BaseService):
             response_helper.error("Missing required parameter: primaryTokenLayerId")
             return
         
-        try:
-            # Get document text
-            response_helper.progress(5, "Fetching document...")
-            full_document = self.client.documents.get(document_id, include_body=True)
+        # Get document text
+        response_helper.progress(5, "Fetching document...")
+        full_document = self.client.documents.get(document_id, include_body=True)
 
-            # Find the specified text layer
-            text_layer = None
-            for layer in full_document.get("text_layers", []):
-                if layer.get("id") == text_layer_id:
-                    text_layer = layer
-                    break
-            
-            if not text_layer:
-                response_helper.error(f"Text layer {text_layer_id} not found in document {document_id}")
-                return
-            
-            if "text" not in text_layer or text_layer["text"] is None:
-                response_helper.error(f"Text does not exist for text layer {text_layer_id}")
-                return
+        # Find the specified text layer
+        text_layer = None
+        for layer in full_document.get("text_layers", []):
+            if layer.get("id") == text_layer_id:
+                text_layer = layer
+                break
+        
+        if not text_layer:
+            response_helper.error(f"Text layer {text_layer_id} not found in document {document_id}")
+            return
+        
+        if "text" not in text_layer or text_layer["text"] is None:
+            response_helper.error(f"Text does not exist for text layer {text_layer_id}")
+            return
 
-            # Find the text content
-            text_content = text_layer["text"]["body"]
-            
-            if not text_content.strip():
-                response_helper.error(f"Text content is empty for document {document_id}")
-                return
-            
-            # Tokenize with our model
-            response_helper.progress(25, f"Tokenizing text ({language})...")
-            sentences, words = self.tokenizer_model.tokenize_text(text_content, language)
-            
-            if not words:
-                response_helper.error("No tokens generated from text")
-                return
-            
-            response_helper.progress(30, f"Generated {len(sentences)} sentences and {len(words)} words...")
-            
-            # Process tokens using the token processor. Created tokens are
-            # stamped machine-made (provenance convention); the processor
-            # refuses to destroy protected annotations unless `overwrite`.
-            # Group every write into ONE labeled audit-log entry (the processor acquires the
-            # document lock and does the batched token writes inside this scope).
-            # The report of the work is inside `critical()` with the work
-            # itself: a stop that arrives once the writing is done has nothing
-            # left to prevent, and a checkpoint out here would throw the result
-            # away and call a finished run stopped.
-            with response_helper.critical():
-                with self.client.operation(f"NLTK Punkt tokenization ({language})"):
-                    results = self.token_processor.process_tokens(
-                        self.client, document_id, sentences, words,
-                        primary_token_layer_id, sentence_layer_id, response_helper,
-                        prov_source=service_source(self.service_id),
-                        overwrite=overwrite,
-                    )
-                response_helper.progress(100, "Tokenization completed successfully")
-                response_helper.complete({
-                    "document_id": document_id,
-                    "status": "success",
-                    **results  # tokens_created, tokens_deleted, sentences_created
-                })
-            
-        except Exception as e:
-            import traceback
-            print(f"Error during tokenization: {str(e)}")
-            response_helper.error(f"Tokenization error: {str(e)}")
-            traceback.print_exc()
+        # Find the text content
+        text_content = text_layer["text"]["body"]
+        
+        if not text_content.strip():
+            response_helper.error(f"Text content is empty for document {document_id}")
+            return
+        
+        # Tokenize with our model
+        response_helper.progress(25, f"Tokenizing text ({language})...")
+        sentences, words = self.tokenizer_model.tokenize_text(text_content, language)
+        
+        if not words:
+            response_helper.error("No tokens generated from text")
+            return
+        
+        response_helper.progress(30, f"Generated {len(sentences)} sentences and {len(words)} words...")
+        
+        # Process tokens using the token processor. Created tokens are
+        # stamped machine-made (provenance convention); the processor
+        # refuses to destroy protected annotations unless `overwrite`.
+        # Group every write into ONE labeled audit-log entry (the processor acquires the
+        # document lock and does the batched token writes inside this scope).
+        # The report of the work is inside `critical()` with the work
+        # itself: a stop that arrives once the writing is done has nothing
+        # left to prevent, and a checkpoint out here would throw the result
+        # away and call a finished run stopped.
+        with response_helper.critical():
+            with self.client.operation(f"NLTK Punkt tokenization ({language})"):
+                results = self.token_processor.process_tokens(
+                    self.client, document_id, sentences, words,
+                    primary_token_layer_id, sentence_layer_id, response_helper,
+                    prov_source=service_source(self.service_id),
+                    overwrite=overwrite,
+                )
+            response_helper.progress(100, "Tokenization completed successfully")
+            response_helper.complete({
+                "document_id": document_id,
+                "status": "success",
+                **results  # tokens_created, tokens_deleted, sentences_created
+            })
 
 
 def main():

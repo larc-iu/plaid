@@ -19,7 +19,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from plaid_client.service_schema import (  # noqa: E402
     TASKS, Param, build_extras, default_values, coerce,
 )
-from plaid_client.service import BaseService  # noqa: E402
+from plaid_client.service import (  # noqa: E402
+    BaseService, requester_message, UNKNOWN_FAILURE, progress_heartbeat, check_unchanged,
+)
 from plaid_client.http import PlaidAPIError  # noqa: E402
 from plaid_client.services import (  # noqa: E402
     ServiceRegistration, ServiceRegistrationError, CancelScope, ServiceCancelled,
@@ -931,3 +933,68 @@ def test_a_stream_that_ends_without_a_result_leaves_the_request_alive(monkeypatc
         svc_mod.request_service(client, 'p1', 's1', {}, timeout=5)
     assert 'without a result' in str(caught.value)
     assert getattr(caught.value, 'pending', False) is True
+
+
+# --- what a requester is told about a failure --------------------------------
+
+def test_an_api_failure_reaches_the_requester_without_its_url():
+    err = PlaidAPIError('HTTP 400 Span value is required at http://plaid.internal:8085/api/v1/spans',
+                        status=400, url='http://plaid.internal:8085/api/v1/spans', method='POST')
+    assert requester_message(err) == 'HTTP 400 Span value is required'
+    timed_out = PlaidAPIError('Request timed out at http://plaid.internal:8085/api/v1/batch',
+                              status=0, url='http://plaid.internal:8085/api/v1/batch')
+    assert requester_message(timed_out) == 'The Plaid server could not be reached.'
+
+
+def test_the_locks_own_wording_survives_the_scrub():
+    # documents.locked() already authors a 423 for the person who asked; it
+    # carries no URL, so nothing may rewrite it.
+    said = "Document d1 is locked by a@b.com (likely being edited); try again once they're done."
+    assert requester_message(PlaidAPIError(said, status=423, url='http://x:8085/lock')) == said
+
+
+def test_a_transport_error_loses_its_url_and_a_key_loses_itself():
+    raw = Exception("404 Client Error: Not Found for url: http://plaid.internal:8085/api/v1/media?v=3")
+    assert requester_message(raw) == '404 Client Error: Not Found'
+    keyed = Exception('Incorrect API key provided: sk-abcdefghij. Check your key.')
+    assert requester_message(keyed, secrets=('sk-abcdefghij',)) == \
+        'Incorrect API key provided: [redacted]. Check your key.'
+    # A short or empty "secret" must not turn every message into redactions.
+    assert requester_message(Exception('plain'), secrets=('', 'ab')) == 'plain'
+
+
+def test_an_exception_with_nothing_to_say_is_not_named_by_its_class():
+    assert requester_message(KeyError()) == UNKNOWN_FAILURE
+    assert 'KeyError' not in requester_message(KeyError())
+
+
+def test_the_failure_funnel_prefixes_a_fault_and_passes_a_refusal_through():
+    class MyService(BaseService):
+        def process_request(self, request_data, response_helper):
+            raise request_data['boom']
+
+    svc = MyService('tok:x', 'Tok', 'x', tasks=[TASKS.TOKENIZE])
+    svc.client = object()
+    helper = _Helper()
+    svc.handle_service_request(
+        {'boom': PlaidAPIError('HTTP 500 nope at http://h:8085/api/v1/x', status=500,
+                               url='http://h:8085/api/v1/x')}, helper).join(5)
+    assert helper.errors == ['Tok: HTTP 500 nope']
+
+    helper = _Helper()
+    svc.handle_service_request({'boom': ValueError('No field named "Gloss".')}, helper).join(5)
+    assert helper.errors == ['No field named "Gloss".']
+
+
+def test_the_funnel_redacts_the_services_own_secrets():
+    class MyService(BaseService):
+        REQUEST_SECRETS = ('sk-topsecret1',)
+
+        def process_request(self, request_data, response_helper):
+            raise RuntimeError('provider said: bad key sk-topsecret1')
+
+    svc = MyService('an:x', 'An', 'x', tasks=[TASKS.ANALYZE])
+    svc.client = object()
+    helper = _Helper()
+    svc.handle_service_request({}, helper).join(5)
+    assert helper.errors == ['An: provider said: bad key [redacted]']

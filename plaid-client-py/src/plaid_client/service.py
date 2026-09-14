@@ -18,6 +18,8 @@ Two distinct kinds of "arguments", do not conflate them:
 """
 
 import argparse
+import contextlib
+import re
 import sys
 import threading
 import time
@@ -28,6 +30,102 @@ from plaid_client.client import PlaidClient
 from plaid_client.http import PlaidAPIError, short_error
 from plaid_client.service_schema import build_extras
 from plaid_client.services import ServiceRegistrationError, ServiceCancelled
+
+# An absolute URL anywhere in an error message, with the phrase that introduces
+# it (`... at http://host/api/v1/spans`, requests' `... for url: http://...`).
+# Client and transport errors name the endpoint they called, which is the
+# service operator's business and not the requester's.
+_URL_IN_TEXT = re.compile(r'(?:\s+(?:at|for url:?))?\s*\b[a-zA-Z][\w+.-]*://\S+')
+
+#: What a requester is told when an exception carries no message of its own.
+#: Naming the Python class instead would say nothing they can act on.
+UNKNOWN_FAILURE = 'The service could not finish this request.'
+
+
+def requester_message(error, secrets=()) -> str:
+    """One line about a failure that is safe to show the person who asked.
+
+    Strips absolute URLs (so an internal host never reaches a requester's
+    screen) and any ``secrets`` given (a model provider's API key can come
+    back inside its own error text). The full exception, with its traceback,
+    still goes to the operator's log: this is the requester's half only.
+
+    A network failure is reported as one, rather than as urllib3's retry
+    chain: the requester can do nothing with the latter and it names hosts.
+    """
+    if isinstance(error, PlaidAPIError):
+        if not error.status:
+            return 'The Plaid server could not be reached.'
+        text = str(error)
+        if error.url:
+            text = text.replace(f' at {error.url}', '').replace(error.url, '')
+        text = text.strip().rstrip(' ,:;')
+        return _redact(text, secrets) or f'HTTP {error.status}'
+    text = _URL_IN_TEXT.sub('', str(error) or '').strip().rstrip(' ,:;')
+    return _redact(text, secrets) or UNKNOWN_FAILURE
+
+
+def _redact(text: str, secrets) -> str:
+    for secret in secrets or ():
+        if secret and len(str(secret)) >= 8:
+            text = text.replace(str(secret), '[redacted]')
+    return text.strip()
+
+
+@contextlib.contextmanager
+def progress_heartbeat(response_helper, percent, message, interval_s=20.0):
+    """Keep reporting ``message`` while a single blocking call runs.
+
+    A requester gives up after a stretch of SILENCE, not after a long run, so
+    one uninterruptible call (loading a model, transcribing an hour of audio,
+    parsing a whole document) has to keep talking or it will be given up on
+    while it is working. Wrap only calls that touch neither the client nor the
+    document: the beat runs on its own thread, and its own ``progress`` is a
+    cancellation checkpoint, so a stop ends the beat there and the work's next
+    checkpoint sees the same stop.
+
+    Re-sends the same percent and message, which is what the requester's
+    status line already shows: the point is the event, not new words.
+    """
+    if response_helper is None:
+        yield
+        return
+    done = threading.Event()
+
+    def beat():
+        while not done.wait(interval_s):
+            try:
+                response_helper.progress(percent, message)
+            except BaseException:
+                # A stop landed (or the report failed). The work's own
+                # checkpoint carries it from here; the beat has nothing to add.
+                return
+
+    thread = threading.Thread(target=beat, daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        done.set()
+
+
+def check_unchanged(client, document_id, version) -> None:
+    """Refuse to write when the document changed since ``version`` was read.
+
+    A service that reads a document, spends minutes in a model, then writes is
+    writing against a picture that may be out of date: the write contract it
+    applied, and the token and span ids it planned around, are both from the
+    old read. Call this right after taking the document lock, with the version
+    the read carried.
+
+    Raises ``ValueError`` (the authored-refusal shape) when it differs, so
+    nothing is written at all.
+    """
+    if not version:
+        return
+    current = (client.documents.get(document_id) or {}).get('version')
+    if current and current != version:
+        raise ValueError('The document changed while this run was working. Run it again.')
 
 
 class BaseService(ABC):
@@ -150,6 +248,21 @@ class BaseService(ABC):
         """
         raise NotImplementedError
 
+    #: Secrets to keep out of anything a requester is shown (a provider API
+    #: key, say). Set in :meth:`setup`; see :func:`requester_message`.
+    REQUEST_SECRETS: tuple = ()
+
+    def request_error_message(self, error) -> str:
+        """What the requester is told when a request fails.
+
+        A ``ValueError`` is an authored refusal — its message was written for
+        the person who asked (no gloss field by that name, the document
+        changed, human work would be lost) — so it goes out as it stands.
+        Anything else is a fault in the service, named by the service.
+        """
+        text = requester_message(error, secrets=self.REQUEST_SECRETS)
+        return text if isinstance(error, ValueError) else f'{self.service_name}: {text}'
+
     #: Handle requests concurrently (each on its own thread) instead of
     #: single-flight. Right for an I/O-bound service such as a chat assistant
     #: waiting on a remote model; wrong for a GPU-bound one. A concurrent
@@ -237,7 +350,7 @@ class BaseService(ABC):
             import traceback
             print(f"Error during {self.service_name} processing: {str(e)}")
             traceback.print_exc()
-            response_helper.error(f"{self.service_name} processing error: {str(e)}")
+            response_helper.error(self.request_error_message(e))
         finally:
             if joined:
                 op_client.end_operation()

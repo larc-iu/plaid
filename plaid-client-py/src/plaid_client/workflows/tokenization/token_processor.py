@@ -74,244 +74,240 @@ class TokenProcessor:
         Returns:
             Dictionary with counts of tokens created/deleted
         """
-        try:
-            # Get document with layers
-            response_helper.progress(10, "Fetching document...")
-            full_document = client.documents.get(document_id, include_body=True)
-            
-            # Find the text layer and content
-            text_layer = full_document["text_layers"][0]
-            text_id = text_layer["text"]["id"]
-            text_content = text_layer["text"]["body"]
-            
-            if not text_content.strip():
-                response_helper.error(f"Text content is empty for document {document_id}")
-                return {"tokens_created": 0, "tokens_deleted": 0, "sentences_created": 0}
-            
-            # Get existing tokens
-            response_helper.progress(20, "Analyzing existing tokens...")
-            primary_layer = None
-            sentence_layer = None
-            
-            for tl in text_layer["token_layers"]:
-                if tl["id"] == primary_token_layer_id:
-                    primary_layer = tl
-                elif sentence_layer_id and tl["id"] == sentence_layer_id:
-                    sentence_layer = tl
-            
-            if not primary_layer:
-                response_helper.error("Primary token layer not found")
-                return {"tokens_created": 0, "tokens_deleted": 0, "sentences_created": 0}
-            
-            existing_tokens = primary_layer.get("tokens", [])
-            existing_sentences = sentence_layer.get("tokens", []) if sentence_layer else []
-            
-            # Convert TokenSpan objects to the format expected by existing functions
-            response_helper.progress(30, "Processing tokenization results...")
-            new_sentences_dict = [{'begin': s.start, 'end': s.end, 'text': s.text} for s in sentences]
-            new_words_dict = [{'begin': w.start, 'end': w.end, 'text': w.text} for w in words]
-            
-            # Prepare sentence boundaries for splitting
-            existing_sentence_boundaries = []
-            if existing_sentences:
-                existing_sentence_boundaries = [{'begin': s['begin'], 'end': s['end']} for s in existing_sentences]
+        # Get document with layers
+        response_helper.progress(10, "Fetching document...")
+        full_document = client.documents.get(document_id, include_body=True)
+        
+        # Find the text layer and content
+        text_layer = full_document["text_layers"][0]
+        text_id = text_layer["text"]["id"]
+        text_content = text_layer["text"]["body"]
+        
+        if not text_content.strip():
+            response_helper.error(f"Text content is empty for document {document_id}")
+            return {"tokens_created": 0, "tokens_deleted": 0, "sentences_created": 0}
+        
+        # Get existing tokens
+        response_helper.progress(20, "Analyzing existing tokens...")
+        primary_layer = None
+        sentence_layer = None
+        
+        for tl in text_layer["token_layers"]:
+            if tl["id"] == primary_token_layer_id:
+                primary_layer = tl
+            elif sentence_layer_id and tl["id"] == sentence_layer_id:
+                sentence_layer = tl
+        
+        if not primary_layer:
+            response_helper.error("Primary token layer not found")
+            return {"tokens_created": 0, "tokens_deleted": 0, "sentences_created": 0}
+        
+        existing_tokens = primary_layer.get("tokens", [])
+        existing_sentences = sentence_layer.get("tokens", []) if sentence_layer else []
+        
+        # Convert TokenSpan objects to the format expected by existing functions
+        response_helper.progress(30, "Processing tokenization results...")
+        new_sentences_dict = [{'begin': s.start, 'end': s.end, 'text': s.text} for s in sentences]
+        new_words_dict = [{'begin': w.start, 'end': w.end, 'text': w.text} for w in words]
+        
+        # Prepare sentence boundaries for splitting
+        existing_sentence_boundaries = []
+        if existing_sentences:
+            existing_sentence_boundaries = [{'begin': s['begin'], 'end': s['end']} for s in existing_sentences]
 
-            # Decide whether we're resetting the sentence partition, and compute the
-            # NEW sentence boundaries BEFORE splitting words. We need the new
-            # boundaries up-front because words straddling a new sentence boundary
-            # will be rejected by enforce-nesting (word layer is nested under
-            # sentence). If we only split against the OLD partition (which is the
-            # single full-text sentence whenever should_do_sentences is True),
-            # any word straddling a new sentence boundary makes the whole batch
-            # roll back.
-            should_do_sentences = sentence_layer and self._should_tokenize_sentences(existing_sentences)
-            sentences_to_create = []
-            sentence_ids_to_delete = []
-            text_length = len(text_content)
+        # Decide whether we're resetting the sentence partition, and compute the
+        # NEW sentence boundaries BEFORE splitting words. We need the new
+        # boundaries up-front because words straddling a new sentence boundary
+        # will be rejected by enforce-nesting (word layer is nested under
+        # sentence). If we only split against the OLD partition (which is the
+        # single full-text sentence whenever should_do_sentences is True),
+        # any word straddling a new sentence boundary makes the whole batch
+        # roll back.
+        should_do_sentences = sentence_layer and self._should_tokenize_sentences(existing_sentences)
+        sentences_to_create = []
+        sentence_ids_to_delete = []
+        text_length = len(text_content)
 
-            if should_do_sentences:
-                response_helper.progress(33, "Processing sentence tokenization...")
-                # Sentence layer is :partitioning — must replace via bulk_delete + bulk_create
-                # in one batch. Build a complete partition covering [0, text_length) exactly,
-                # filling any gaps left by the tokenizer so the server accepts it.
-                sentence_ids_to_delete = [s['id'] for s in existing_sentences]
-                sentences_to_create = self._normalize_sentence_partition(
-                    [{'begin': s['begin'], 'end': s['end']} for s in new_sentences_dict],
-                    text_length
+        if should_do_sentences:
+            response_helper.progress(33, "Processing sentence tokenization...")
+            # Sentence layer is :partitioning — must replace via bulk_delete + bulk_create
+            # in one batch. Build a complete partition covering [0, text_length) exactly,
+            # filling any gaps left by the tokenizer so the server accepts it.
+            sentence_ids_to_delete = [s['id'] for s in existing_sentences]
+            sentences_to_create = self._normalize_sentence_partition(
+                [{'begin': s['begin'], 'end': s['end']} for s in new_sentences_dict],
+                text_length
+            )
+            # Pre-check: complete cover of [0, text_length), no gaps/overlaps/zero-widths
+            if not self._is_complete_partition(sentences_to_create, text_length):
+                response_helper.error(
+                    f"Sentence tokenization did not produce a valid partition of [0, {text_length})"
                 )
-                # Pre-check: complete cover of [0, text_length), no gaps/overlaps/zero-widths
-                if not self._is_complete_partition(sentences_to_create, text_length):
-                    response_helper.error(
-                        f"Sentence tokenization did not produce a valid partition of [0, {text_length})"
-                    )
-                    return {"tokens_created": 0, "tokens_deleted": 0, "sentences_created": 0}
+                return {"tokens_created": 0, "tokens_deleted": 0, "sentences_created": 0}
 
-                # Provenance write contract: the sentence reset cascade-deletes
-                # every sentence-level annotation. Machine-made UNVERIFIED ones
-                # are replaceable; human-made or human-verified ones are not —
-                # refuse unless the caller explicitly opted into overwriting.
-                _, protected = self._sentence_annotation_loss(sentence_layer, sentence_ids_to_delete)
-                if protected and not overwrite:
-                    response_helper.error(
-                        f"Re-tokenizing would delete {protected} human-made or human-verified "
-                        f"sentence-level annotation(s); re-run with overwrite enabled to replace them."
-                    )
-                    return {"tokens_created": 0, "tokens_deleted": 0, "sentences_created": 0}
-            elif sentence_layer and len(existing_sentences) != 1:
-                response_helper.progress(33, "Skipping sentence tokenization (not exactly one existing sentence)...")
-
-            # Boundaries to split against for word-level processing. When the
-            # sentence partition is being reset, words must respect the NEW
-            # boundaries (otherwise enforce-nesting rejects). Otherwise (no
-            # sentence change), they must respect the OLD boundaries.
-            if should_do_sentences:
-                split_boundaries = [
-                    {'begin': s['begin'], 'end': s['end']} for s in sentences_to_create
-                ]
-            else:
-                split_boundaries = existing_sentence_boundaries
-
-            # Split both existing and new tokens that cross sentence boundaries
-            response_helper.progress(35, "Splitting cross-sentence tokens...")
-
-            # Find which existing tokens need to be deleted (those that will be split)
-            tokens_to_delete = []
-            split_existing_tokens = []
-
-            if split_boundaries:
-                existing_tokens_split = self._split_cross_sentence_tokens(
-                    [{'begin': t['begin'], 'end': t['end'], 'id': t.get('id')} for t in existing_tokens],
-                    split_boundaries
+            # Provenance write contract: the sentence reset cascade-deletes
+            # every sentence-level annotation. Machine-made UNVERIFIED ones
+            # are replaceable; human-made or human-verified ones are not —
+            # refuse unless the caller explicitly opted into overwriting.
+            _, protected = self._sentence_annotation_loss(sentence_layer, sentence_ids_to_delete)
+            if protected and not overwrite:
+                response_helper.error(
+                    f"Re-tokenizing would delete {protected} human-made or human-verified "
+                    f"sentence-level annotation(s); re-run with overwrite enabled to replace them."
                 )
+                return {"tokens_created": 0, "tokens_deleted": 0, "sentences_created": 0}
+        elif sentence_layer and len(existing_sentences) != 1:
+            response_helper.progress(33, "Skipping sentence tokenization (not exactly one existing sentence)...")
 
-                # Find tokens that were actually split
-                for orig_token in existing_tokens:
-                    matching_split_tokens = [t for t in existing_tokens_split
-                                           if t['begin'] >= orig_token['begin'] and t['end'] <= orig_token['end']]
+        # Boundaries to split against for word-level processing. When the
+        # sentence partition is being reset, words must respect the NEW
+        # boundaries (otherwise enforce-nesting rejects). Otherwise (no
+        # sentence change), they must respect the OLD boundaries.
+        if should_do_sentences:
+            split_boundaries = [
+                {'begin': s['begin'], 'end': s['end']} for s in sentences_to_create
+            ]
+        else:
+            split_boundaries = existing_sentence_boundaries
 
-                    if len(matching_split_tokens) > 1:  # Token was split
-                        tokens_to_delete.append(orig_token['id'])
-                        split_existing_tokens.extend([{'begin': t['begin'], 'end': t['end']} for t in matching_split_tokens])
-                    elif len(matching_split_tokens) == 1:  # Token unchanged
-                        split_existing_tokens.append({'begin': orig_token['begin'], 'end': orig_token['end']})
-            else:
-                split_existing_tokens = [{'begin': t['begin'], 'end': t['end']} for t in existing_tokens]
+        # Split both existing and new tokens that cross sentence boundaries
+        response_helper.progress(35, "Splitting cross-sentence tokens...")
 
-            # Split new words and merge with split existing tokens
-            new_words_split = self._split_cross_sentence_tokens(
-                [{'begin': w['begin'], 'end': w['end']} for w in new_words_dict],
+        # Find which existing tokens need to be deleted (those that will be split)
+        tokens_to_delete = []
+        split_existing_tokens = []
+
+        if split_boundaries:
+            existing_tokens_split = self._split_cross_sentence_tokens(
+                [{'begin': t['begin'], 'end': t['end'], 'id': t.get('id')} for t in existing_tokens],
                 split_boundaries
             )
 
-            response_helper.progress(40, "Merging tokens...")
-            words_to_create = self._merge_with_existing_tokens(new_words_split, split_existing_tokens)
+            # Find tokens that were actually split
+            for orig_token in existing_tokens:
+                matching_split_tokens = [t for t in existing_tokens_split
+                                       if t['begin'] >= orig_token['begin'] and t['end'] <= orig_token['end']]
+
+                if len(matching_split_tokens) > 1:  # Token was split
+                    tokens_to_delete.append(orig_token['id'])
+                    split_existing_tokens.extend([{'begin': t['begin'], 'end': t['end']} for t in matching_split_tokens])
+                elif len(matching_split_tokens) == 1:  # Token unchanged
+                    split_existing_tokens.append({'begin': orig_token['begin'], 'end': orig_token['end']})
+        else:
+            split_existing_tokens = [{'begin': t['begin'], 'end': t['end']} for t in existing_tokens]
+
+        # Split new words and merge with split existing tokens
+        new_words_split = self._split_cross_sentence_tokens(
+            [{'begin': w['begin'], 'end': w['end']} for w in new_words_dict],
+            split_boundaries
+        )
+
+        response_helper.progress(40, "Merging tokens...")
+        words_to_create = self._merge_with_existing_tokens(new_words_split, split_existing_tokens)
+        
+        # Filter out tokens that already exist — but only when we're NOT resetting
+        # the sentence partition. If should_do_sentences is True, the sentence
+        # bulk_delete (queued below) cascades to delete every existing word, so we
+        # need to recreate all of them — including ones whose ranges happen to
+        # match existing words verbatim.
+        if not should_do_sentences:
+            existing_ranges = {(t['begin'], t['end']) for t in split_existing_tokens}
+            words_to_create = [w for w in words_to_create if (w['begin'], w['end']) not in existing_ranges]
+        
+        # Apply changes
+        response_helper.progress(50, "Applying changes...")
+
+        sentences_created = 0
+        tokens_deleted = len(tokens_to_delete)
+
+        if words_to_create or sentences_to_create or sentence_ids_to_delete or tokens_to_delete:
+            with client.batched():
+
+                # TODO(annotation-preservation): when the new sentence partition is a strict
+                # REFINEMENT of the existing one (every new boundary falls inside the SAME old
+                # sentence — i.e. we're only ADDING cut points, never moving or removing them),
+                # we could iteratively `client.tokens.split(sentence_id, position)` to add the
+                # cut points instead of doing a full bulk_delete + bulk_create reset. `split`
+                # preserves the original sentence's spans and vocab-links on the left half and
+                # leaves the right half un-annotated, which is much better than the current
+                # behavior of cascade-deleting EVERY sentence-level annotation.
+                #
+                # We don't bother today because the gate above is "exactly one existing
+                # sentence", so the annotation-loss scope is bounded (and we already log a
+                # warning below). If we ever loosen the gate to allow re-tokenization across
+                # multiple existing sentences, switch to the refinement-check + split path.
+                #
+                # Reset sentence partition: bulk_delete existing + bulk_create new in one batch.
+                # Sentence layer is :partitioning so single delete/create is rejected, and
+                # partial bulk_delete is also rejected — we must clear the whole partition.
+                if sentence_ids_to_delete:
+                    # Warn the operator that any sentence-level annotations on the
+                    # existing sentence will be cascade-deleted by the bulk_delete
+                    # below. The gate is "exactly one existing sentence" so the
+                    # scope is bounded, but the loss is silent without this warning.
+                    self._warn_about_sentence_annotation_loss(
+                        sentence_layer, sentence_ids_to_delete
+                    )
+                    client.tokens.bulk_delete(sentence_ids_to_delete)
+
+                # Delete tokens that were split (word-layer tokens, :non-overlapping — single
+                # delete is fine here; cascades to dependent morpheme tokens server-side).
+                #
+                # IMPORTANT: when sentences are being reset, the bulk_delete above already
+                # cascade-deletes every word token nested in the deleted sentence partition
+                # (the single existing sentence covers [0, text_length), which contains
+                # every word). Issuing individual deletes for those same token IDs would
+                # 404 (>= 300 -> batch rollback). Only run the per-word delete loop in
+                # the word-only retokenization path.
+                if not should_do_sentences:
+                    for token_id in tokens_to_delete:
+                        client.tokens.delete(token_id)
+
+                # Provenance: stamp everything this (machine) run creates.
+                prov_fragment = stamp_inferred(prov_source) if prov_source else None
+
+                # Create new sentence tokens (establishes the new partition)
+                if sentences_to_create:
+                    sent_operations = []
+                    for sent in sentences_to_create:
+                        op = {
+                            "token_layer_id": sentence_layer_id,
+                            "text": text_id,
+                            "begin": sent['begin'],
+                            "end": sent['end']
+                        }
+                        if prov_fragment:
+                            op["metadata"] = dict(prov_fragment)
+                        sent_operations.append(op)
+
+                    client.tokens.bulk_create(sent_operations)
+                    sentences_created = len(sent_operations)
+
+                # Create word tokens
+                if words_to_create:
+                    token_operations = []
+                    for token in words_to_create:
+                        op = {
+                            "token_layer_id": primary_token_layer_id,
+                            "text": text_id,
+                            "begin": token['begin'],
+                            "end": token['end']
+                        }
+                        if prov_fragment:
+                            op["metadata"] = dict(prov_fragment)
+                        token_operations.append(op)
+
+                    client.tokens.bulk_create(token_operations)
+                    response_helper.progress(90, f"Created {len(token_operations)} tokens...")
             
-            # Filter out tokens that already exist — but only when we're NOT resetting
-            # the sentence partition. If should_do_sentences is True, the sentence
-            # bulk_delete (queued below) cascades to delete every existing word, so we
-            # need to recreate all of them — including ones whose ranges happen to
-            # match existing words verbatim.
-            if not should_do_sentences:
-                existing_ranges = {(t['begin'], t['end']) for t in split_existing_tokens}
-                words_to_create = [w for w in words_to_create if (w['begin'], w['end']) not in existing_ranges]
-            
-            # Apply changes
-            response_helper.progress(50, "Applying changes...")
+                response_helper.progress(95, "Committing changes...")
+        
+        return {
+            "tokens_created": len(words_to_create) if words_to_create else 0,
+            "tokens_deleted": tokens_deleted,
+            "sentences_created": sentences_created
+        }
 
-            sentences_created = 0
-            tokens_deleted = len(tokens_to_delete)
-
-            if words_to_create or sentences_to_create or sentence_ids_to_delete or tokens_to_delete:
-                with client.batched():
-
-                    # TODO(annotation-preservation): when the new sentence partition is a strict
-                    # REFINEMENT of the existing one (every new boundary falls inside the SAME old
-                    # sentence — i.e. we're only ADDING cut points, never moving or removing them),
-                    # we could iteratively `client.tokens.split(sentence_id, position)` to add the
-                    # cut points instead of doing a full bulk_delete + bulk_create reset. `split`
-                    # preserves the original sentence's spans and vocab-links on the left half and
-                    # leaves the right half un-annotated, which is much better than the current
-                    # behavior of cascade-deleting EVERY sentence-level annotation.
-                    #
-                    # We don't bother today because the gate above is "exactly one existing
-                    # sentence", so the annotation-loss scope is bounded (and we already log a
-                    # warning below). If we ever loosen the gate to allow re-tokenization across
-                    # multiple existing sentences, switch to the refinement-check + split path.
-                    #
-                    # Reset sentence partition: bulk_delete existing + bulk_create new in one batch.
-                    # Sentence layer is :partitioning so single delete/create is rejected, and
-                    # partial bulk_delete is also rejected — we must clear the whole partition.
-                    if sentence_ids_to_delete:
-                        # Warn the operator that any sentence-level annotations on the
-                        # existing sentence will be cascade-deleted by the bulk_delete
-                        # below. The gate is "exactly one existing sentence" so the
-                        # scope is bounded, but the loss is silent without this warning.
-                        self._warn_about_sentence_annotation_loss(
-                            sentence_layer, sentence_ids_to_delete
-                        )
-                        client.tokens.bulk_delete(sentence_ids_to_delete)
-
-                    # Delete tokens that were split (word-layer tokens, :non-overlapping — single
-                    # delete is fine here; cascades to dependent morpheme tokens server-side).
-                    #
-                    # IMPORTANT: when sentences are being reset, the bulk_delete above already
-                    # cascade-deletes every word token nested in the deleted sentence partition
-                    # (the single existing sentence covers [0, text_length), which contains
-                    # every word). Issuing individual deletes for those same token IDs would
-                    # 404 (>= 300 -> batch rollback). Only run the per-word delete loop in
-                    # the word-only retokenization path.
-                    if not should_do_sentences:
-                        for token_id in tokens_to_delete:
-                            client.tokens.delete(token_id)
-
-                    # Provenance: stamp everything this (machine) run creates.
-                    prov_fragment = stamp_inferred(prov_source) if prov_source else None
-
-                    # Create new sentence tokens (establishes the new partition)
-                    if sentences_to_create:
-                        sent_operations = []
-                        for sent in sentences_to_create:
-                            op = {
-                                "token_layer_id": sentence_layer_id,
-                                "text": text_id,
-                                "begin": sent['begin'],
-                                "end": sent['end']
-                            }
-                            if prov_fragment:
-                                op["metadata"] = dict(prov_fragment)
-                            sent_operations.append(op)
-
-                        client.tokens.bulk_create(sent_operations)
-                        sentences_created = len(sent_operations)
-
-                    # Create word tokens
-                    if words_to_create:
-                        token_operations = []
-                        for token in words_to_create:
-                            op = {
-                                "token_layer_id": primary_token_layer_id,
-                                "text": text_id,
-                                "begin": token['begin'],
-                                "end": token['end']
-                            }
-                            if prov_fragment:
-                                op["metadata"] = dict(prov_fragment)
-                            token_operations.append(op)
-
-                        client.tokens.bulk_create(token_operations)
-                        response_helper.progress(90, f"Created {len(token_operations)} tokens...")
-                
-                    response_helper.progress(95, "Committing changes...")
-            
-            return {
-                "tokens_created": len(words_to_create) if words_to_create else 0,
-                "tokens_deleted": tokens_deleted,
-                "sentences_created": sentences_created
-            }
-            
-        except Exception as e:
-            raise Exception(f"Failed to process tokens: {str(e)}")
-    
     def _should_tokenize_sentences(self, existing_sentences: List[Dict]) -> bool:
         """Check if we should tokenize sentences based on existing sentence count"""
         return len(existing_sentences) == 1

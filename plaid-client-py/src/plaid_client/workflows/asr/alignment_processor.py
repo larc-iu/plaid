@@ -13,8 +13,15 @@ import re
 from typing import List, Dict, Any, Optional, Tuple
 
 from plaid_client.provenance import stamp_inferred, is_protected
+from plaid_client.service import requester_message
 
 from .asr_model import Alignment
+
+# Media download budgets. Both are STALL budgets, not caps on the transfer:
+# how long to wait for the connection, and how long one chunk may take.
+CONNECT_TIMEOUT_S = 15
+READ_TIMEOUT_S = 60
+CHUNK_BYTES = 1 << 16
 
 
 class AlignmentProcessor:
@@ -91,7 +98,7 @@ class AlignmentProcessor:
 
             return tokens_created
     
-    def download_media_file(self, client, media_url: str, temp_dir: str) -> str:
+    def download_media_file(self, client, media_url: str, temp_dir: str, on_progress=None) -> str:
         """
         Download media file from authenticated URL.
         
@@ -104,7 +111,7 @@ class AlignmentProcessor:
             Path to downloaded file
             
         Raises:
-            Exception: If download fails
+            ValueError: If the download fails, with a reason the requester reads
         """
         try:
             # The token goes in the header, not the query string. A media URL
@@ -113,243 +120,253 @@ class AlignmentProcessor:
             # the request arrived unauthenticated (401). A header also keeps the
             # token out of access logs, which is why the browser client stopped
             # putting it in the URL.
+            #
+            # The timeout is a STALL timeout: a connect budget and a per-chunk
+            # read budget, not a cap on the download, so a large file over a
+            # slow link still arrives while a server that stops sending does
+            # not hold the request open forever with nothing to report.
             response = requests.get(
                 media_url,
                 stream=True,
                 headers={'Authorization': f'Bearer {client.token}'},
+                timeout=(CONNECT_TIMEOUT_S, READ_TIMEOUT_S),
             )
             response.raise_for_status()
-            
-            # Save to temporary file
+
+            total = int(response.headers.get('Content-Length') or 0)
             temp_file = os.path.join(temp_dir, "media")
+            read = 0
             with open(temp_file, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
+                for chunk in response.iter_content(chunk_size=CHUNK_BYTES):
                     f.write(chunk)
-            
+                    read += len(chunk)
+                    if on_progress:
+                        on_progress(read, total)
+
             return temp_file
-            
+
         except Exception as e:
-            raise Exception(f"Failed to download media file: {str(e)}")
-    
+            # The exception names the media URL, which is the operator's
+            # business; the requester is told what failed, not where.
+            print(f"Failed to download media file: {e}")
+            raise ValueError(f"The document's media file could not be downloaded "
+                             f"({requester_message(e)}).")
+
     def _create_time_alignment_tokens(self, client, document_id: str, transcriptions: List[Dict],
                                      text_layer_id: str, alignment_token_layer_id: str,
                                      sentence_token_layer_id: Optional[str], response_helper,
                                      prov_source: Optional[str] = None, overwrite: bool = False) -> int:
         """Create time alignment tokens from transcription results, preserving existing work"""
-        try:
-            # Get document with full token information
-            response_helper.progress(75, "Analyzing existing tokens and text...")
-            document = client.documents.get(document_id, include_body=True)
+        # Get document with full token information
+        response_helper.progress(75, "Analyzing existing tokens and text...")
+        document = client.documents.get(document_id, include_body=True)
+        
+        # Find text layer and existing tokens
+        text_layer = None
+        alignment_token_layer = None
+        
+        for tl in document["text_layers"]:
+            if tl["id"] == text_layer_id:
+                text_layer = tl
+                # Find token layers within this text layer
+                for token_layer in tl.get("token_layers", []):
+                    if token_layer["id"] == alignment_token_layer_id:
+                        alignment_token_layer = token_layer
+                        break
+                break
+        
+        if not text_layer:
+            raise ValueError("Text layer not found")
+        
+        # Get existing alignment tokens
+        existing_alignment_tokens = sorted(
+            alignment_token_layer.get("tokens", []) if alignment_token_layer else [],
+            key=lambda t: t.get("metadata", {}).get("timeBegin", 0)
+        )
+        
+        # Get current text content
+        current_text = text_layer.get("text", {}).get("body", "")
+        text_id = text_layer.get("text", {}).get("id")
+        
+        if not text_id:
+            # Create initial text if none exists
+            text_result = client.texts.create(text_layer_id, document_id, "")
+            text_id = text_result["id"]
+            current_text = ""
+        
+        response_helper.progress(78, "Filtering transcriptions to avoid time collisions...")
+        
+        # Step 1: Filter out transcriptions that have time collisions
+        non_colliding_transcriptions = []
+        for trans in transcriptions:
+            trans_start = trans['start']
+            trans_end = trans['end']
             
-            # Find text layer and existing tokens
-            text_layer = None
-            alignment_token_layer = None
-            
-            for tl in document["text_layers"]:
-                if tl["id"] == text_layer_id:
-                    text_layer = tl
-                    # Find token layers within this text layer
-                    for token_layer in tl.get("token_layers", []):
-                        if token_layer["id"] == alignment_token_layer_id:
-                            alignment_token_layer = token_layer
-                            break
+            # Check for time overlap with existing alignment tokens
+            has_collision = False
+            for existing_token in existing_alignment_tokens:
+                existing_start = existing_token.get("metadata", {}).get("timeBegin", 0)
+                existing_end = existing_token.get("metadata", {}).get("timeEnd", 0)
+                
+                # Check for overlap: not (trans_end <= existing_start or trans_start >= existing_end)
+                if not (trans_end <= existing_start or trans_start >= existing_end):
+                    has_collision = True
                     break
             
-            if not text_layer:
-                raise ValueError("Text layer not found")
+            if not has_collision:
+                non_colliding_transcriptions.append(trans)
+        
+        response_helper.progress(82, f"Processing {len(non_colliding_transcriptions)} non-colliding transcriptions...")
+        
+        # Step 2 & 3: For each non-colliding transcription, update text and create tokens
+        new_alignment_tokens = []
+        
+        # We'll need to track text changes to update positions correctly
+        text_modifications = []  # List of (position, old_length, new_text) tuples
+        
+        for i, trans in enumerate(non_colliding_transcriptions):
+            segment_text = trans['text'].strip()
+            if not segment_text:
+                continue
             
-            # Get existing alignment tokens
-            existing_alignment_tokens = sorted(
-                alignment_token_layer.get("tokens", []) if alignment_token_layer else [],
-                key=lambda t: t.get("metadata", {}).get("timeBegin", 0)
-            )
+            # Find insertion point in text based on time
+            insertion_pos = self._find_text_insertion_position(current_text, existing_alignment_tokens, trans['start'])
             
-            # Get current text content
-            current_text = text_layer.get("text", {}).get("body", "")
-            text_id = text_layer.get("text", {}).get("id")
+            # Add space at the end of all segments except the final one
+            is_final_segment = (i == len(non_colliding_transcriptions) - 1)
+            if is_final_segment:
+                new_segment_text = segment_text
+            else:
+                new_segment_text = segment_text + " "
             
-            if not text_id:
-                # Create initial text if none exists
-                text_result = client.texts.create(text_layer_id, document_id, "")
-                text_id = text_result["id"]
-                current_text = ""
+            # Track this modification
+            text_modifications.append({
+                'position': insertion_pos,
+                'old_length': 0,
+                'new_text': new_segment_text,
+                'segment_start_offset': 0,  # Segment always starts at insertion point
+                'segment_length': len(segment_text),  # Token length is just the segment text
+                'time_start': trans['start'],
+                'time_end': trans['end'],
+                'metadata': trans.get('metadata', {})
+            })
+        
+        # Apply text modifications and create tokens
+        if text_modifications:
+            response_helper.progress(85, "Applying text changes and creating tokens...")
             
-            response_helper.progress(78, "Filtering transcriptions to avoid time collisions...")
+            # Sort modifications by position (forward order for sequential application)
+            text_modifications.sort(key=lambda m: m['position'])
             
-            # Step 1: Filter out transcriptions that have time collisions
-            non_colliding_transcriptions = []
-            for trans in transcriptions:
-                trans_start = trans['start']
-                trans_end = trans['end']
+            # Apply modifications sequentially and track cumulative offset
+            new_text = current_text
+            cumulative_offset = 0
+            
+            for mod in text_modifications:
+                # Calculate actual insertion position with cumulative offset
+                actual_pos = mod['position'] + cumulative_offset
                 
-                # Check for time overlap with existing alignment tokens
-                has_collision = False
-                for existing_token in existing_alignment_tokens:
-                    existing_start = existing_token.get("metadata", {}).get("timeBegin", 0)
-                    existing_end = existing_token.get("metadata", {}).get("timeEnd", 0)
-                    
-                    # Check for overlap: not (trans_end <= existing_start or trans_start >= existing_end)
-                    if not (trans_end <= existing_start or trans_start >= existing_end):
-                        has_collision = True
-                        break
+                # Insert the segment text
+                new_text = new_text[:actual_pos] + mod['new_text'] + new_text[actual_pos:]
                 
-                if not has_collision:
-                    non_colliding_transcriptions.append(trans)
-            
-            response_helper.progress(82, f"Processing {len(non_colliding_transcriptions)} non-colliding transcriptions...")
-            
-            # Step 2 & 3: For each non-colliding transcription, update text and create tokens
-            new_alignment_tokens = []
-            
-            # We'll need to track text changes to update positions correctly
-            text_modifications = []  # List of (position, old_length, new_text) tuples
-            
-            for i, trans in enumerate(non_colliding_transcriptions):
-                segment_text = trans['text'].strip()
-                if not segment_text:
-                    continue
+                # Calculate token positions in the final text
+                token_start = actual_pos + mod['segment_start_offset']
+                token_end = token_start + mod['segment_length']
                 
-                # Find insertion point in text based on time
-                insertion_pos = self._find_text_insertion_position(current_text, existing_alignment_tokens, trans['start'])
+                # Create alignment token with metadata
+                token_metadata = {
+                    "timeBegin": mod['time_start'],
+                    "timeEnd": mod['time_end']
+                }
+                token_metadata.update(mod['metadata'])  # Add any model-specific metadata
+                if prov_source:
+                    # Provenance: machine-made until a human verifies it.
+                    token_metadata.update(stamp_inferred(prov_source))
                 
-                # Add space at the end of all segments except the final one
-                is_final_segment = (i == len(non_colliding_transcriptions) - 1)
-                if is_final_segment:
-                    new_segment_text = segment_text
-                else:
-                    new_segment_text = segment_text + " "
-                
-                # Track this modification
-                text_modifications.append({
-                    'position': insertion_pos,
-                    'old_length': 0,
-                    'new_text': new_segment_text,
-                    'segment_start_offset': 0,  # Segment always starts at insertion point
-                    'segment_length': len(segment_text),  # Token length is just the segment text
-                    'time_start': trans['start'],
-                    'time_end': trans['end'],
-                    'metadata': trans.get('metadata', {})
+                new_alignment_tokens.append({
+                    "token_layer_id": alignment_token_layer_id,
+                    "text": text_id,
+                    "begin": token_start,
+                    "end": token_end,
+                    "metadata": token_metadata
                 })
+                
+                # Update cumulative offset for next insertion
+                cumulative_offset += len(mod['new_text'])
             
-            # Apply text modifications and create tokens
-            if text_modifications:
-                response_helper.progress(85, "Applying text changes and creating tokens...")
-                
-                # Sort modifications by position (forward order for sequential application)
-                text_modifications.sort(key=lambda m: m['position'])
-                
-                # Apply modifications sequentially and track cumulative offset
-                new_text = current_text
-                cumulative_offset = 0
-                
+            # Begin atomic batch operation
+            response_helper.progress(88, "Committing changes...")
+            with client.batched():
+
+                # Build explicit insert ops rather than passing the full new_text
+                # string. Passing a string would make the server run an editscript
+                # diff that CAN synthesize replacement (:r) ops covering deletions;
+                # if such a synthesized delete fully covered an existing sentence,
+                # that sentence row would be gone by the time bulk_delete(sentence_ids)
+                # ran (partitioning layers require deleting ALL or none), causing a
+                # 400 and full batch rollback. ASR is insert-only by construction,
+                # so emit explicit :insert directives — they cannot synthesize deletes.
+                #
+                # Edit ops MUST be applied left-to-right against the ORIGINAL text
+                # (the server's apply-text-edits applies them in sequence and each
+                # op's index is into the text as of that point). Our text_modifications
+                # are sorted by 'position' (= insertion index in the original text),
+                # and we tracked cumulative_offset against the previous original
+                # positions, so by emitting them in order with an index that reflects
+                # the already-applied earlier inserts we exactly reproduce the
+                # new_text we built locally.
+                edit_ops = []
+                running_offset = 0
                 for mod in text_modifications:
-                    # Calculate actual insertion position with cumulative offset
-                    actual_pos = mod['position'] + cumulative_offset
-                    
-                    # Insert the segment text
-                    new_text = new_text[:actual_pos] + mod['new_text'] + new_text[actual_pos:]
-                    
-                    # Calculate token positions in the final text
-                    token_start = actual_pos + mod['segment_start_offset']
-                    token_end = token_start + mod['segment_length']
-                    
-                    # Create alignment token with metadata
-                    token_metadata = {
-                        "timeBegin": mod['time_start'],
-                        "timeEnd": mod['time_end']
-                    }
-                    token_metadata.update(mod['metadata'])  # Add any model-specific metadata
-                    if prov_source:
-                        # Provenance: machine-made until a human verifies it.
-                        token_metadata.update(stamp_inferred(prov_source))
-                    
-                    new_alignment_tokens.append({
-                        "token_layer_id": alignment_token_layer_id,
-                        "text": text_id,
-                        "begin": token_start,
-                        "end": token_end,
-                        "metadata": token_metadata
+                    edit_ops.append({
+                        "type": "insert",
+                        "index": mod['position'] + running_offset,
+                        "value": mod['new_text'],
                     })
-                    
-                    # Update cumulative offset for next insertion
-                    cumulative_offset += len(mod['new_text'])
-                
-                # Begin atomic batch operation
-                response_helper.progress(88, "Committing changes...")
-                with client.batched():
-
-                    # Build explicit insert ops rather than passing the full new_text
-                    # string. Passing a string would make the server run an editscript
-                    # diff that CAN synthesize replacement (:r) ops covering deletions;
-                    # if such a synthesized delete fully covered an existing sentence,
-                    # that sentence row would be gone by the time bulk_delete(sentence_ids)
-                    # ran (partitioning layers require deleting ALL or none), causing a
-                    # 400 and full batch rollback. ASR is insert-only by construction,
-                    # so emit explicit :insert directives — they cannot synthesize deletes.
-                    #
-                    # Edit ops MUST be applied left-to-right against the ORIGINAL text
-                    # (the server's apply-text-edits applies them in sequence and each
-                    # op's index is into the text as of that point). Our text_modifications
-                    # are sorted by 'position' (= insertion index in the original text),
-                    # and we tracked cumulative_offset against the previous original
-                    # positions, so by emitting them in order with an index that reflects
-                    # the already-applied earlier inserts we exactly reproduce the
-                    # new_text we built locally.
-                    edit_ops = []
-                    running_offset = 0
-                    for mod in text_modifications:
-                        edit_ops.append({
-                            "type": "insert",
-                            "index": mod['position'] + running_offset,
-                            "value": mod['new_text'],
-                        })
-                        running_offset += len(mod['new_text'])
-                    client.texts.update(text_id, edit_ops)
-                
-                    # Create alignment tokens
-                    if new_alignment_tokens:
-                        response_helper.progress(90, f"Creating {len(new_alignment_tokens)} alignment tokens...")
-                        client.tokens.bulk_create(new_alignment_tokens)
-
-                    # NOTE: Do NOT update existing alignment-token positions here. The
-                    # server-side text-edit cascade (apply-text-edit + compensate-after-cascade)
-                    # already shifts/reindexes those tokens when texts.update runs. Applying
-                    # our own shifts in the same batch would double-shift them
-                    # (original + 2 * delta). The text-edit cascade is sufficient.
-
-                    # Update sentence partitioning
-                    if sentence_token_layer_id:
-                        response_helper.progress(92, "Updating sentence partitioning...")
-                        self._update_sentence_partitioning(
-                            client, document, text_id, sentence_token_layer_id,
-                            existing_alignment_tokens, new_alignment_tokens, current_text, new_text, text_modifications,
-                            overwrite=overwrite
-                        )
-                
-                    # All queued ops are submitted atomically when this
-                    # `with client.batched()` block exits.
-                    response_helper.progress(95, "Submitting batch...")
-
-                # Validate temporal ordering invariant - need to get updated tokens from database
-                response_helper.progress(98, "Validating temporal ordering...")
-                # Re-fetch the document to get updated token positions for validation
-                updated_document = client.documents.get(document_id, include_body=True)
-                all_updated_tokens = []
-                for tl in updated_document["text_layers"]:
-                    for token_layer in tl.get("token_layers", []):
-                        if token_layer["id"] == alignment_token_layer_id:
-                            all_updated_tokens = token_layer.get("tokens", [])
-                            break
-                self._validate_temporal_ordering(all_updated_tokens)
-                
-                # Validate sentence partitioning invariant
-                self._validate_sentence_partitioning(client, document, sentence_token_layer_id)
+                    running_offset += len(mod['new_text'])
+                client.texts.update(text_id, edit_ops)
             
-            return len(new_alignment_tokens)
+                # Create alignment tokens
+                if new_alignment_tokens:
+                    response_helper.progress(90, f"Creating {len(new_alignment_tokens)} alignment tokens...")
+                    client.tokens.bulk_create(new_alignment_tokens)
+
+                # NOTE: Do NOT update existing alignment-token positions here. The
+                # server-side text-edit cascade (apply-text-edit + compensate-after-cascade)
+                # already shifts/reindexes those tokens when texts.update runs. Applying
+                # our own shifts in the same batch would double-shift them
+                # (original + 2 * delta). The text-edit cascade is sufficient.
+
+                # Update sentence partitioning
+                if sentence_token_layer_id:
+                    response_helper.progress(92, "Updating sentence partitioning...")
+                    self._update_sentence_partitioning(
+                        client, document, text_id, sentence_token_layer_id,
+                        existing_alignment_tokens, new_alignment_tokens, current_text, new_text, text_modifications,
+                        overwrite=overwrite
+                    )
             
-        except Exception as e:
-            raise Exception(f"Failed to create alignment tokens: {str(e)}")
-    
+                # All queued ops are submitted atomically when this
+                # `with client.batched()` block exits.
+                response_helper.progress(95, "Submitting batch...")
+
+            # Validate temporal ordering invariant - need to get updated tokens from database
+            response_helper.progress(98, "Validating temporal ordering...")
+            # Re-fetch the document to get updated token positions for validation
+            updated_document = client.documents.get(document_id, include_body=True)
+            all_updated_tokens = []
+            for tl in updated_document["text_layers"]:
+                for token_layer in tl.get("token_layers", []):
+                    if token_layer["id"] == alignment_token_layer_id:
+                        all_updated_tokens = token_layer.get("tokens", [])
+                        break
+            self._validate_temporal_ordering(all_updated_tokens)
+            
+            # Validate sentence partitioning invariant
+            self._validate_sentence_partitioning(client, document, sentence_token_layer_id)
+        
+        return len(new_alignment_tokens)
+
     def _find_text_insertion_position(self, current_text: str, existing_alignment_tokens: List[Dict], target_time: float) -> int:
         """Find the best position in text to insert a word based on its timestamp"""
         

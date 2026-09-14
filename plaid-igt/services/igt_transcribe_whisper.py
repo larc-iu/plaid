@@ -113,8 +113,6 @@ class WhisperASRModel(ASRModel):
             
             return alignments
             
-        except Exception as e:
-            raise RuntimeError(f"Whisper transcription failed: {str(e)}")
         finally:
             if not self.keep_loaded:
                 # Not cached; drop the reference so it can be reclaimed.
@@ -275,13 +273,9 @@ class WhisperASRService(BaseService):
                     "segments_transcribed": len(alignments)
                 })
             
-        except Exception as e:
-            import traceback
-            print(f"Error during ASR processing: {str(e)}")
-            response_helper.error(f"ASR processing error: {str(e)}")
-            traceback.print_exc()
         finally:
-            # Clean up temporary files
+            # Clean up temporary files. Reporting a failure is BaseService's
+            # job, on the one path every service's failures take.
             try:
                 shutil.rmtree(temp_dir)
             except Exception as cleanup_error:
