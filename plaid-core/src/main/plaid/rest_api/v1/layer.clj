@@ -28,6 +28,17 @@
                               {:status (or code 500)
                                :body   {:error (or error "Internal server error")}})))}})
 
+(defn- assert-config-table!
+  "Reject a table that carries no editor `:config` column, at the moment the
+  route is built. Every caller builds its routes in a `def`, so the throw
+  lands at namespace load and a bad table is a boot failure rather than a 500
+  the first time someone writes a config value."
+  [table]
+  (when-not (prj/config-tables table)
+    (throw (ex-info (str "Not a table that carries editor config: " table)
+                    {:table table :config-tables (sort prj/config-tables)})))
+  table)
+
 (defn layer-config-routes
   "Generates config sub-routes for a layer. `table` is the row's own SQL table
   (:projects / :text_layers / :token_layers / :span_layers / :relation_layers /
@@ -37,10 +48,10 @@
   When omitted, assumes the caller has already wrapped with appropriate auth middleware."
   ([table id-keyword]
    ["/config/:namespace/:config-key"
-    (config-handlers table id-keyword)])
+    (config-handlers (assert-config-table! table) id-keyword)])
   ([table id-keyword get-project-id-fn]
    ["/config/:namespace/:config-key"
-    (assoc (config-handlers table id-keyword)
+    (assoc (config-handlers (assert-config-table! table) id-keyword)
            :middleware [[pra/wrap-maintainer-required get-project-id-fn]])]))
 
 (defn layer-routes

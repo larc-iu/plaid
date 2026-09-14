@@ -834,7 +834,10 @@
 (def config-tables
   "The tables whose rows carry an editor `:config` column. The route that
   reaches one of these names its own table, so a config write never has to
-  search for the row's kind."
+  search for the row's kind.
+
+  Both ends check against this set: `plaid.rest-api.v1.layer` when the route
+  is built, so a bad table fails at boot, and `config-row!` on the write."
   #{:projects :text_layers :token_layers :span_layers :relation_layers :vocab_layers})
 
 (defn- editor-config-project-id
