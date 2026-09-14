@@ -12,7 +12,7 @@
 // Playwright nor `@larc-iu/plaid-client` from here, so `test`, `expect` and
 // `seedAuth` come in as arguments.
 
-export const headerBand = (page) => page.locator('header');
+const headerBand = (page) => page.locator('header');
 export const headerAccount = (page) => headerBand(page).getByRole('button', { name: /a@b\.com/ });
 
 export const headerBandTests = ({
