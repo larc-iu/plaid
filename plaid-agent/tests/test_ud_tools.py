@@ -414,6 +414,17 @@ def test_a_span_is_joined_to_its_word_by_covers(ws):
     assert set(where[1][2]) <= {'doc', 'layer', 'metadata', 'value'}
 
 
+def test_the_audit_log_the_fixture_seeds_names_this_project_s_own_document(ws):
+    """The fake client used to be IGT's, with a UD project passed in, so UD's
+    tests read an audit log naming a document their project does not have: a
+    document-scoped read found nothing and nobody noticed."""
+    named = {d['id'] for e in ws.client.audit for d in e.get('documents') or []}
+    assert named <= set(ws.client._documents), named
+    assert [e['id'] for e in ws.client.documents.audit('ud1')] == ['g1']
+    out = run(ws, 'recent_changes', document='Viaje')
+    assert 'Assistant: 2 field values' in out
+
+
 def test_recent_changes_prints_the_instant_after_the_change(ws):
     """A change is a whole operation of many writes. Restoring to the instant
     it BEGAN lands in the middle of it, with some writes kept and some thrown
@@ -1099,7 +1110,7 @@ def test_a_comment_is_a_plan_op_on_a_sentence_or_the_document(ws):
     run(ws, 'add_comment', document='Viaje', body='Whole document note')
     assert ws.ops[1]['entity_type'] == 'document' and ws.ops[1]['ref'] is None
     assert summarize(ws.ops) == '2 comments'
-    from fixtures import Recorder
+    from core.fake_client import Recorder
     ws.client.comments = Recorder(ws.client.log, 'comments')
     counts = execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
     assert counts == {'comments': 2}

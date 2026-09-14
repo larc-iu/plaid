@@ -5,7 +5,7 @@ full-width rule and the range line are exercised by every test that reads the
 fixture rather than by one test that remembers to.
 """
 
-from fixtures import FakeClient  # noqa: F401  (re-exported: the fake client is app-neutral enough)
+from core.fake_client import BaseFakeClient
 
 PID = 'up1'
 TEXT_LAYER, SENT_LAYER, TOK_LAYER, WORD_LAYER = 'u-tl', 'u-sent', 'u-tok', 'u-word'
@@ -46,10 +46,6 @@ def project_raw():
 
 BODY = 'Vamos al mar. Corre.'
 # Vamos 0-5 | al 6-8 | mar 9-12 | . 12-13 || Corre 14-19 | . 19-20
-
-
-def _span(sid, layer_value_pairs):
-    return sid
 
 
 def document_raw():
@@ -112,5 +108,28 @@ def document_raw():
     }
 
 
+def audit_raw():
+    """Two entries, naming this project's own document."""
+    return [
+        {'id': 'g1', 'time': '2026-08-29T18:51:47Z', 'user': {'id': 'a@b.com', 'display_name': 'Luke G'},
+         'end_time': '2026-08-29T18:51:49Z', 'message': 'Assistant: 2 field values',
+         'documents': [{'id': 'ud1', 'name': 'Viaje'}],
+         'ops': [{'type': 'span/create', 'description': 'Create span'},
+                 {'type': 'span/update', 'description': 'Update span'}]},
+        {'id': 'o2', 'time': '2026-08-28T10:00:00Z', 'user': {'id': 'x@y.z', 'display_name': 'Someone'},
+         'documents': [], 'ops': [{'type': 'project/create', 'description': 'Create project "Spanish"'}]},
+    ]
+
+
+class FakeClient(BaseFakeClient):
+    """The app-neutral fake client with this app's project, document and audit
+    log. A treebank has no vocabulary layers, so it offers none."""
+
+    def __init__(self, project=None, documents=None, audit=None):
+        super().__init__(project or project_raw(),
+                         documents if documents is not None else {'ud1': document_raw()},
+                         audit if audit is not None else audit_raw())
+
+
 def ud_client(**kw):
-    return FakeClient(project=project_raw(), documents={'ud1': document_raw()}, **kw)
+    return FakeClient(**kw)
