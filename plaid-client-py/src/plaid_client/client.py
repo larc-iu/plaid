@@ -1037,7 +1037,8 @@ class ApiTokensResource(_Resource):
 class UserDataResource(_Resource):
     """Private per-user key/value storage: small JSON documents that follow a
     user across devices and sessions (assistant conversations, drafts,
-    preferences). Owner or admin only; never audited; not batchable."""
+    preferences). Owner or admin only, and never audited. A write refuses to
+    join an open batch, a read goes over the wire around one."""
 
     def list(self, user_id: str, *, prefix: str | None = None, pattern: str | None = None,
              include_values: bool = False) -> Any:
@@ -1055,15 +1056,20 @@ class UserDataResource(_Resource):
             pattern: Only keys matching this GLOB
             include_values: Also return each entry's value
         """
+        # bypass_batch: a read belongs to whoever asked for it, not to whatever
+        # batch happens to be open on this shared client. Raising instead (what
+        # no_batch does) only moves the failure onto a caller that has nothing
+        # to do with the batch.
         return self._request('GET', f'/api/v1/users/{user_id}/data',
                              query_params={'prefix': prefix, 'pattern': pattern,
                                            'include-values': include_values or None},
-                             no_batch=True)
+                             bypass_batch=True)
 
     def get(self, user_id: str, key: str) -> Any:
         """Read one entry ({key, updated_at, value}); 404 if absent."""
+        # bypass_batch for the same reason as list() above.
         return self._request('GET', f'/api/v1/users/{user_id}/data/{quote(key, safe="")}',
-                             no_batch=True)
+                             bypass_batch=True)
 
     def put(self, user_id: str, key: str, value: Any) -> Any:
         """Create or replace one entry. ``value`` is any JSON (up to 1 MB).

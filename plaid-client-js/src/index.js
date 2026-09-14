@@ -1043,8 +1043,15 @@ class PlaidClient {
        * @param {boolean} [opts.includeValues] - Also return each entry's value
        */
       list: (userId, { prefix, pattern, includeValues } = {}) =>
+        // bypassBatch: a read belongs to whoever asked for it, not to whatever
+        // batch happens to be open on this shared client. The assistant panel
+        // is app chrome in both SPAs, so it reads this store while an import or
+        // a bulk edit holds a batch open. Queued, the read answered
+        // `{batched: true}` (the sidebar then threw on `.map`) and took a slot
+        // in the batch's results, shifting every index the caller counted on.
         this._request("GET", `/api/v1/users/${userId}/data`, {
           queryParams: { prefix, pattern, "include-values": includeValues },
+          bypassBatch: true,
         }),
       /**
        * Read one private data entry ({key, updatedAt, value}); 404 if absent.
@@ -1052,9 +1059,11 @@ class PlaidClient {
        * @param {string} key
        */
       get: (userId, key) =>
+        // bypassBatch for the same reason as list() above.
         this._request(
           "GET",
           `/api/v1/users/${userId}/data/${encodeURIComponent(key)}`,
+          { bypassBatch: true },
         ),
       /**
        * Create or replace one private data entry. `value` is any JSON (up to
