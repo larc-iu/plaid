@@ -8,7 +8,9 @@
   module audits that cascade explicitly)."
   (:require [taoensso.timbre :as log]
             [plaid.sql.bulk :as bulk]
+            [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
+            [plaid.sql.crud :as crud]
             [plaid.sql.operation :refer [submit-operation!]]
             [plaid.sql.metadata :as metadata]
             [clojure.string])
@@ -164,9 +166,9 @@
                                        {:skip-parent-audit? true})
             (let [post-row (psc/fetch-by-id tx :relations new-id)
                   post-image (assoc post-row :metadata metadata)]
-              (psc/record-audit-write! tx :relations new-id :insert nil post-image)))
+              (psaw/record-audit-write! tx :relations new-id :insert nil post-image)))
           ;; No metadata: use the audited insert! helper as before.
-          (psc/insert! tx :relations row))
+          (crud/insert! tx :relations row))
         new-id)))))
 
 ;; ============================================================
@@ -192,7 +194,7 @@
                    (contains? m :relation/value)
                    (assoc :value (psc/write-json (:relation/value m))))]
        (when (seq attrs)
-         (psc/update-by-id! tx :relations eid attrs))
+         (crud/update-by-id! tx :relations eid attrs))
        eid))))
 
 ;; ============================================================
@@ -212,7 +214,7 @@
      (when (nil? (psc/fetch-by-id tx :relations eid))
        (throw (ex-info (psc/err-msg-not-found "Relation" eid)
                        {:code 404 :id eid})))
-     (psc/delete-by-id! tx :relations eid)
+     (crud/delete-by-id! tx :relations eid)
      (psc/execute! tx
                    {:delete-from :entity_metadata
                     :where [:and
@@ -334,7 +336,7 @@
        (when (> (count doc-ids) 1)
          (throw (ex-info "Not all relations belong to the same document"
                          {:document-ids doc-ids :code 400})))
-       (psc/insert-many! tx :relations (mapv #(dissoc % ::metadata) records))
+       (crud/insert-many! tx :relations (mapv #(dissoc % ::metadata) records))
        (doseq [r records]
          (when (seq (::metadata r))
            (metadata/insert-metadata! tx "relation" (:id r) (::metadata r))))
@@ -368,7 +370,7 @@
            (throw (ex-info "Not all relations belong to the same document"
                            {:document-ids doc-ids :code 400}))))
        (doseq [rid eids]
-         (psc/delete-by-id! tx :relations rid))
+         (crud/delete-by-id! tx :relations rid))
        (psc/execute! tx
                      {:delete-from :entity_metadata
                       :where [:and
@@ -415,5 +417,5 @@
                                    new-source new-target
                                    new-source-row new-target-row)
        (let [col (if (= end-key :relation/source) :source_span_id :target_span_id)]
-         (psc/update-by-id! tx :relations eid {col new-span-id}))
+         (crud/update-by-id! tx :relations eid {col new-span-id}))
        eid))))

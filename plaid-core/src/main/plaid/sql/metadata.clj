@@ -56,7 +56,9 @@
       exposes. See its docstring."
   (:require [clojure.string :as str]
             [clojure.data.json]
+            [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
+            [plaid.sql.crud :as crud]
             [plaid.sql.operation :refer [submit-operation!]])
   (:refer-clojure :exclude [get]))
 
@@ -176,7 +178,7 @@
   captures a metadata transition. The parent row contents are unchanged
   but pre-image carries `:metadata <old>` and post-image carries
   `:metadata <new>`. No-op when pre == post (e.g. replace-with-same map)
-  to match the (= pre post) skip in `psc/update-by-id!`.
+  to match the (= pre post) skip in `crud/update-by-id!`.
 
   Returns nil if the parent row is missing — this can happen when the
   metadata mutator is called BEFORE the parent row exists (rare; the
@@ -190,7 +192,7 @@
       (let [pre-image  (assoc parent-row :metadata (or pre-meta {}))
             post-image (assoc parent-row :metadata (or post-meta {}))]
         (when (not= pre-image post-image)
-          (psc/record-audit-write! tx table entity-id :update pre-image post-image))))))
+          (psaw/record-audit-write! tx table entity-id :update pre-image post-image))))))
 
 (defn insert-metadata!
   "Insert k/v pairs into entity_metadata and emit a synthetic audit row

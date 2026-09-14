@@ -7,6 +7,7 @@
             [ring.mock.request :as mock]
             [plaid.server.events :as events]
             [plaid.sql.common :as psc]
+            [plaid.sql.crud :as crud]
             [plaid.fixtures :as fixtures
              :refer [with-db
                      with-mount-states
@@ -226,7 +227,7 @@
               "single ops publish without batch deferral"))))))
 
 (deftest test-bulk-create-chunked-insert-over-parameter-limit
-  ;; Fix-4 smoke test: psc/insert-many! and psc/fetch-ids-as-map both used
+  ;; Fix-4 smoke test: crud/insert-many! and psc/fetch-ids-as-map both used
   ;; to build single statements whose parameter count grew linearly with
   ;; the input size. With SQLITE_MAX_VARIABLE_NUMBER = 32766 in
   ;; sqlite-jdbc 3.50.x and tokens taking ~7 columns each, a bulk-create

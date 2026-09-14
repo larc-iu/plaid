@@ -9,6 +9,7 @@
             [clojure.string]
             [taoensso.timbre :as log]
             [plaid.sql.common :as psc]
+            [plaid.sql.crud :as crud]
             [plaid.sql.operation :as op :refer [submit-operation!]]
             [plaid.sql.document-rows :as drows]
             [plaid.sql.metadata :as metadata]
@@ -606,13 +607,13 @@
                         (when (nil? (psc/fetch-by-id tx :projects project))
                           (throw (ex-info (psc/err-msg-not-found "Project" project)
                                           {:id project :code 400})))
-                        (psc/insert! tx :documents
-                                     {:id new-id
-                                      :name name
-                                      :project_id project
-                                      :version 1
-                                      :created_at now
-                                      :modified_at now})
+                        (crud/insert! tx :documents
+                                      {:id new-id
+                                       :name name
+                                       :project_id project
+                                       :version 1
+                                       :created_at now
+                                       :modified_at now})
                         (when (seq metadata-map)
                           (metadata/insert-metadata! tx "document" new-id metadata-map))
                         new-id))))
@@ -641,7 +642,7 @@
                                             :version (inc (or (:version existing) 1))}
                                      (some? (:document/name m))
                                      (assoc :name (:document/name m)))]
-                         (psc/update-by-id! tx :documents eid attrs)
+                         (crud/update-by-id! tx :documents eid attrs)
                          eid))))
 
 (defn copy
@@ -695,13 +696,13 @@
                                     text-ids (fresh (:texts rows))
                                     token-ids (fresh (:tokens rows))
                                     span-ids (fresh (:spans rows))]
-                                (psc/insert! tx :documents
-                                             {:id new-id
-                                              :name new-name
-                                              :project_id (:project_id src)
-                                              :version 1
-                                              :created_at now
-                                              :modified_at now})
+                                (crud/insert! tx :documents
+                                              {:id new-id
+                                               :name new-name
+                                               :project_id (:project_id src)
+                                               :version 1
+                                               :created_at now
+                                               :modified_at now})
                                 (when (seq (:metadata (:document rows)))
                                   (metadata/insert-metadata! tx "document" new-id
                                                              (:metadata (:document rows))))
@@ -770,7 +771,7 @@
                          (mapv :id))]
         (when (seq tok-ids)
           (multi-delete! tx tok-ids)))
-      (psc/delete-where! tx :texts [:in :id text-ids])
+      (crud/delete-where! tx :texts [:in :id text-ids])
       (psc/execute! tx
                     {:delete-from :entity_metadata
                      :where [:and
@@ -782,21 +783,21 @@
   ;; lists were already empty). Each is one audited
   ;; `DELETE ... WHERE document_id = ?` round-trip (batched audit via
   ;; delete-where!), not a per-row SELECT + delete-by-id! loop.
-  (let [rel-ids (mapv :id (psc/delete-where! tx :relations [:= :document_id eid]))]
+  (let [rel-ids (mapv :id (crud/delete-where! tx :relations [:= :document_id eid]))]
     (when (seq rel-ids)
       (psc/execute! tx
                     {:delete-from :entity_metadata
                      :where [:and
                              [:= :entity_type "relation"]
                              [:in :entity_id rel-ids]]})))
-  (let [span-ids (mapv :id (psc/delete-where! tx :spans [:= :document_id eid]))]
+  (let [span-ids (mapv :id (crud/delete-where! tx :spans [:= :document_id eid]))]
     (when (seq span-ids)
       (psc/execute! tx
                     {:delete-from :entity_metadata
                      :where [:and
                              [:= :entity_type "span"]
                              [:in :entity_id span-ids]]})))
-  (let [vl-ids (mapv :id (psc/delete-where! tx :vocab_links [:= :document_id eid]))]
+  (let [vl-ids (mapv :id (crud/delete-where! tx :vocab_links [:= :document_id eid]))]
     (when (seq vl-ids)
       (psc/execute! tx
                     {:delete-from :entity_metadata
@@ -805,7 +806,7 @@
                              [:in :entity_id vl-ids]]})))
   ;; Document's own metadata + row.
   (metadata/delete-metadata! tx "document" eid)
-  (psc/delete-by-id! tx :documents eid))
+  (crud/delete-by-id! tx :documents eid))
 
 (defn delete
   "Delete a document. Walks the descendant subtree (texts/tokens via

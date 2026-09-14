@@ -8,7 +8,9 @@
   `node-or-map`. Delete is a single row delete on `vocab_links` — the
   FK ON DELETE CASCADE sweeps the junction rows."
   (:require [taoensso.timbre :as log]
+            [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
+            [plaid.sql.crud :as crud]
             [plaid.sql.operation :as op :refer [submit-operation!]]
             [plaid.sql.metadata :as metadata])
   (:refer-clojure :exclude [get merge format]))
@@ -171,10 +173,10 @@
   "Insert the ordered join rows linking `vl-id` to `token-ids`."
   [tx vl-id token-ids]
   (doseq [[idx tid] (map-indexed vector token-ids)]
-    (psc/add-join! tx :vocab_link_tokens
-                   {:vocab_link_id vl-id
-                    :token_id tid
-                    :order_idx idx})))
+    (crud/add-join! tx :vocab_link_tokens
+                    {:vocab_link_id vl-id
+                     :token_id tid
+                     :order_idx idx})))
 
 ;; ============================================================
 ;; Create
@@ -227,7 +229,7 @@
       (let [token-rows (fetch-tokens-by-ids tx tokens)
             {:keys [doc-id]} (check-vocab-link-invariants!
                               tx vocab-item tokens token-rows)]
-        ;; Manual insert + audit (vs. psc/insert!) so the post-image
+        ;; Manual insert + audit (vs. crud/insert!) so the post-image
         ;; carries the junction-table tokens — see docstring.
         (psc/execute! tx {:insert-into :vocab_links
                           :values [{:id new-id
@@ -245,7 +247,7 @@
               post-tokens (fetch-token-ids tx new-id)
               post-image (cond-> (assoc post-row :tokens post-tokens)
                            (seq metadata) (assoc :metadata metadata))]
-          (psc/record-audit-write! tx :vocab_links new-id :insert nil post-image))
+          (psaw/record-audit-write! tx :vocab_links new-id :insert nil post-image))
         new-id)))))
 
 ;; ============================================================
@@ -298,7 +300,7 @@
        (when-not (= 1 (count doc-ids))
          (throw (ex-info "Tokens in a bulk vocab-link create must all belong to the same document"
                          {:document-ids doc-ids :code 400})))
-       ;; Manual insert (not psc/insert-many!) so the post-image folds the
+       ;; Manual insert (not crud/insert-many!) so the post-image folds the
        ;; junction tokens — see single-`create` docstring (task #59).
        (psc/execute! tx {:insert-into :vocab_links
                          :values (mapv (fn [r]
@@ -317,7 +319,7 @@
                post-tokens (fetch-token-ids tx (:id r))
                post-image (cond-> (assoc post-row :tokens post-tokens)
                             (seq (:metadata r)) (assoc :metadata (:metadata r)))]
-           (psc/record-audit-write! tx :vocab_links (:id r) :insert nil post-image)))
+           (psaw/record-audit-write! tx :vocab_links (:id r) :insert nil post-image)))
        (mapv :id records)))))
 
 ;; ============================================================
@@ -352,7 +354,7 @@
      (when (nil? (psc/fetch-by-id tx :vocab_links eid))
        (throw (ex-info (psc/err-msg-not-found "Vocab link" eid)
                        {:code 404 :id eid})))
-     (psc/delete-by-id! tx :vocab_links eid)
+     (crud/delete-by-id! tx :vocab_links eid)
      (psc/execute! tx
                    {:delete-from :entity_metadata
                     :where [:and
@@ -367,7 +369,7 @@
 (defn bulk-delete
   "Bulk-delete vocab links in a single operation. Ids that don't resolve to
   an existing row are silently dropped (mirrors `span/bulk-delete`) — without
-  the filter they'd reach `psc/delete-by-id!` and emit phantom :delete audit
+  the filter they'd reach `crud/delete-by-id!` and emit phantom :delete audit
   rows with pre = nil. Each delete relies on the FK ON DELETE CASCADE to sweep
   `vocab_link_tokens`; `entity_metadata` has no FK and is swept manually. All
   links must belong to a single document (the doc-version OCC covers one doc).
@@ -395,7 +397,7 @@
              (throw (ex-info "Tokens in a bulk vocab-link delete must all belong to the same document"
                              {:document-ids doc-ids :code 400}))))
          (doseq [eid existing-ids]
-           (psc/delete-by-id! tx :vocab_links eid))
+           (crud/delete-by-id! tx :vocab_links eid))
          (psc/execute! tx {:delete-from :entity_metadata
                            :where [:and
                                    [:= :entity_type "vocab-link"]

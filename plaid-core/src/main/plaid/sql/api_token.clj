@@ -14,6 +14,7 @@
   Mirrors the read/write shape of `plaid.sql.user`: `db` is a DataSource
   (reads) or an in-tx Connection (writes via `submit-operation!`)."
   (:require [plaid.sql.common :as psc]
+            [plaid.sql.crud :as crud]
             [plaid.sql.operation :as op :refer [submit-operation!]]
             [plaid.sql.pagination :as pagination])
   (:refer-clojure :exclude [get list]))
@@ -110,7 +111,7 @@
                                 :user_id    owner-user-id
                                 :name       name
                                 :created_at (psc/now-iso)}]
-                       (psc/insert! tx :api_tokens row)
+                       (crud/insert! tx :api_tokens row)
                        id)))
 
 (defn revoke!
@@ -128,7 +129,7 @@
                        (when (nil? existing)
                          (throw (ex-info (psc/err-msg-not-found "API token" id) {:code 404 :id id})))
                        (when (nil? (:revoked_at existing))
-                         (psc/update-by-id! tx :api_tokens id {:revoked_at (psc/now-iso)}))
+                         (crud/update-by-id! tx :api_tokens id {:revoked_at (psc/now-iso)}))
                        id)))
 
 (defn touch-last-used!

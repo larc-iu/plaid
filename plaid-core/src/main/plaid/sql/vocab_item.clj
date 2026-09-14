@@ -4,7 +4,9 @@
 
   Per v2 there is no public `delete` — items are removed transitively
   via the cascade from `vocab_layers`."
-  (:require [plaid.sql.common :as psc]
+  (:require [plaid.sql.audit-write :as psaw]
+            [plaid.sql.common :as psc]
+            [plaid.sql.crud :as crud]
             [plaid.sql.operation :as op :refer [submit-operation!]]
             [plaid.sql.metadata :as metadata])
   (:refer-clojure :exclude [get merge]))
@@ -93,10 +95,10 @@
                                                        {:skip-parent-audit? true})
                             (let [post-row (psc/fetch-by-id tx :vocab_items new-id)
                                   post-image (assoc post-row :metadata metadata-map)]
-                              (psc/record-audit-write! tx :vocab_items new-id
-                                                       :insert nil post-image)))
+                              (psaw/record-audit-write! tx :vocab_items new-id
+                                                        :insert nil post-image)))
                           ;; No metadata: use the audited insert! helper as before.
-                          (psc/insert! tx :vocab_items row))
+                          (crud/insert! tx :vocab_items row))
                         (op/touch-vocab-layer! tx layer)
                         new-id))))
 
@@ -117,7 +119,7 @@
                                      (some? (:vocab-item/form m))
                                      (assoc :form (:vocab-item/form m)))]
                          (when (seq attrs)
-                           (psc/update-by-id! tx :vocab_items eid attrs)
+                           (crud/update-by-id! tx :vocab_items eid attrs)
                            (op/touch-vocab-layer! tx (:vocab_layer_id existing)))
                          eid))))
 
@@ -143,7 +145,7 @@
                                                     :where [:= :vocab_item_id eid]})
                                          (mapv :id))]
                          (doseq [vlid vl-ids]
-                           (psc/delete-by-id! tx :vocab_links vlid))
+                           (crud/delete-by-id! tx :vocab_links vlid))
                          (when (seq vl-ids)
                            (psc/execute! tx
                                          {:delete-from :entity_metadata
@@ -155,7 +157,7 @@
                                       :where [:and
                                               [:= :entity_type "vocab-item"]
                                               [:= :entity_id eid]]})
-                       (psc/delete-by-id! tx :vocab_items eid)
+                       (crud/delete-by-id! tx :vocab_items eid)
                        (op/touch-vocab-layer! tx (:vocab_layer_id existing))
                        eid)))
 
@@ -233,7 +235,7 @@
                            (doseq [r records]
                              (let [post-image (cond-> (clojure.core/get row-by-id (:id r))
                                                 (seq (:metadata r)) (assoc :metadata (:metadata r)))]
-                               (psc/record-audit-write! tx :vocab_items (:id r) :insert nil post-image))))
+                               (psaw/record-audit-write! tx :vocab_items (:id r) :insert nil post-image))))
                          (op/touch-vocab-layers! tx layer-ids)
                          (mapv :id records)))))
 
@@ -263,8 +265,8 @@
                          (when (seq existing-ids)
                            ;; Descendant vocab_links (audited per row), then their
                            ;; metadata (unaudited sweep, no FK on entity_metadata).
-                           (let [link-ids (->> (psc/delete-where! tx :vocab_links
-                                                                  [:in :vocab_item_id existing-ids])
+                           (let [link-ids (->> (crud/delete-where! tx :vocab_links
+                                                                   [:in :vocab_item_id existing-ids])
                                                (mapv :id))]
                              (when (seq link-ids)
                                (psc/execute! tx {:delete-from :entity_metadata
@@ -276,7 +278,7 @@
                                              :where [:and
                                                      [:= :entity_type "vocab-item"]
                                                      [:in :entity_id existing-ids]]})
-                           (psc/delete-where! tx :vocab_items [:in :id existing-ids])
+                           (crud/delete-where! tx :vocab_items [:in :id existing-ids])
                            (op/touch-vocab-layers! tx layer-ids))
                          existing-ids))))
 

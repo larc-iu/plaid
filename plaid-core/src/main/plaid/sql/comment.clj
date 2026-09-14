@@ -59,6 +59,7 @@
   `entity_metadata` (where any writer could rewrite anyone's text)."
   (:require [clojure.string]
             [plaid.sql.common :as psc]
+            [plaid.sql.crud :as crud]
             [plaid.sql.pagination :as pg])
   (:refer-clojure :exclude [get list update]))
 
@@ -290,7 +291,7 @@
                :body           body
                :created_at     now
                :updated_at     now}]
-      ;; Raw insert, NOT `psc/insert!`: that helper requires a bound
+      ;; Raw insert, NOT `crud/insert!`: that helper requires a bound
       ;; operation and writes an audit row, and comments are neither audited
       ;; nor part of any operation. See the ns docstring.
       (psc/execute! db {:insert-into :comments :values [row]})

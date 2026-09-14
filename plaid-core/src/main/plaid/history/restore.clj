@@ -32,7 +32,9 @@
   A dry run builds the same plan from a plain read and reports what
   would change without opening an operation."
   (:require [plaid.history.read :as hread]
+            [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
+            [plaid.sql.crud :as crud]
             [plaid.sql.constraints.token :as tc]
             [plaid.sql.document-rows :as drows]
             [plaid.sql.metadata :as metadata]
@@ -180,7 +182,7 @@
   (when (seq rows)
     (let [ids (mapv :id rows)]
       (doseq [chunk (partition-all drows/chunk-size ids)]
-        (psc/delete-where! tx table [:in :id (vec chunk)])
+        (crud/delete-where! tx table [:in :id (vec chunk)])
         (metadata/sweep-metadata! tx (get drows/entity-type table) (vec chunk))))))
 
 (defn- fetch-junction-tokens [tx [jtable jcol] id]
@@ -194,7 +196,7 @@
           cols (get drows/columns table)]
       (doseq [chunk (partition-all 1000 (for [u updates :when (:attrs? u)]
                                           [(:id u) (select-keys (:row u) cols)]))]
-        (psc/bulk-update-by-id! tx table (vec chunk)))
+        (crud/bulk-update-by-id! tx table (vec chunk)))
       ;; A token list is rewritten in the junction table and audited as one
       ;; synthetic row on the parent carrying the new list (span/set-tokens).
       (doseq [u updates :when (:tokens? u)]
@@ -202,9 +204,9 @@
               pre (fetch-junction-tokens tx j (:id u))]
           (psc/execute! tx {:delete-from (first j) :where [:= (second j) (:id u)]})
           (drows/insert-junction! tx j [(:row u)])
-          (psc/record-audit-write! tx table (:id u) :update
-                                   (assoc row :tokens pre)
-                                   (assoc row :tokens (drows/tokens-of (:row u))))))
+          (psaw/record-audit-write! tx table (:id u) :update
+                                    (assoc row :tokens pre)
+                                    (assoc row :tokens (drows/tokens-of (:row u))))))
       (doseq [u updates :when (:meta? u)]
         (metadata/replace-metadata! tx etype (:id u) (meta-of (:row u)))))))
 
@@ -217,7 +219,7 @@
   (delete-rows! tx :texts (get-in p [:texts :delete]))
   ;; The document row.
   (when-let [n (:name p)]
-    (psc/update-by-id! tx :documents doc-id {:name n}))
+    (crud/update-by-id! tx :documents doc-id {:name n}))
   (when (:document-metadata? p)
     (metadata/replace-metadata! tx "document" doc-id (:document-metadata p)))
   ;; Inserts top-down, then the in-place changes.

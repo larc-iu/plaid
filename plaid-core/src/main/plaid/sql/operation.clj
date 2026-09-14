@@ -12,7 +12,9 @@
   transactions provide atomicity, and SQLite's single-writer model
   serializes concurrent batches naturally."
   (:require [clojure.string]
+            [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
+            [plaid.sql.crud :as crud]
             [plaid.sql.datasource :as psd]
             [plaid.server.events :as events]
             [plaid.server.locks :as locks]
@@ -115,7 +117,7 @@
   `:audit/documents` is the union of the op-attrs' single `:document`
   and the docs the body actually version-bumped (`:documents`, recorded
   by bump-document-version!/bump-document-versions! via the
-  `:affected-documents` atom in `psc/*op*`). Multi-document ops like
+  `:affected-documents` atom in `psaw/*op*`). Multi-document ops like
   vocab/delete and project/remove-vocab carry `:document nil` but bump
   N docs — without the union their events were doc-blind and
   document-scoped listeners were never notified."
@@ -203,11 +205,11 @@
                         :set {:version (:version post)
                               :modified_at (:modified_at post)}
                         :where [:= :id doc-id]})
-      (psc/record-audit-write! tx :documents doc-id
-                               psc/doc-version-bump-change-type
-                               pre post)
+      (psaw/record-audit-write! tx :documents doc-id
+                                psaw/doc-version-bump-change-type
+                                pre post)
       ;; Record the bump for the op's audit event (see ->v2-shape).
-      (when-let [a (:affected-documents psc/*op*)]
+      (when-let [a (:affected-documents psaw/*op*)]
         (swap! a conj doc-id)))))
 
 (defn bump-document-versions!
@@ -230,7 +232,7 @@
   ;; can be marginally LESS than the op's strictly-monotonic ts, leaving
   ;; modified_at slightly behind the op time. (Falls back to now-iso if
   ;; ever called outside an op context.)
-  (let [ts (or (:ts psc/*op*) (psc/now-iso))]
+  (let [ts (or (:ts psaw/*op*) (psc/now-iso))]
     ;; `(distinct some-set)` throws in Clojure 1.12 (`nth` not supported on
     ;; PersistentHashSet) due to a `distinct` fast-path bug — coerce to a
     ;; seq via `seq` so we work for any input shape (set, vector, lazy).
@@ -244,13 +246,13 @@
                           :set {:version (:version post)
                                 :modified_at (:modified_at post)}
                           :where [:= :id doc-id]})
-        (psc/record-audit-write! tx :documents doc-id
-                                 psc/doc-version-bump-change-type
-                                 pre post)
+        (psaw/record-audit-write! tx :documents doc-id
+                                  psaw/doc-version-bump-change-type
+                                  pre post)
         ;; Record the bump for the op's audit event (see ->v2-shape) —
         ;; this is exactly the multi-document signal: ops like
         ;; vocab/delete carry :document nil but bump N docs here.
-        (when-let [a (:affected-documents psc/*op*)]
+        (when-let [a (:affected-documents psaw/*op*)]
           (swap! a conj doc-id))))))
 
 (defn op-ts
@@ -258,7 +260,7 @@
   time column themselves (vocab-layer creation, the folded `:modified_at`
   on a vocab rename). Falls back to wall clock outside an op context."
   []
-  (or (:ts psc/*op*) (psc/now-iso)))
+  (or (:ts psaw/*op*) (psc/now-iso)))
 
 (defn touch-vocab-layers!
   "Stamp `vocab_layers.modified_at` with the op's ts for each id in
@@ -287,7 +289,7 @@
     ;; bump-document-versions!), and callers pass whatever shape they have.
     (doseq [vid (distinct (seq vocab-ids))
             :when vid]
-      (psc/update-by-id! tx :vocab_layers vid {:modified_at ts}))))
+      (crud/update-by-id! tx :vocab_layers vid {:modified_at ts}))))
 
 (defn touch-vocab-layer!
   "Single-id `touch-vocab-layers!`."
@@ -337,7 +339,7 @@
           op-record* (volatile! nil)
           ;; Documents whose version the body bumps (via
           ;; bump-document-version!/bump-document-versions!, which read
-          ;; this atom off psc/*op*). Unioned into the audit event's
+          ;; this atom off psaw/*op*). Unioned into the audit event's
           ;; :audit/documents post-commit — see ->v2-shape.
           affected-docs (atom #{})
           extra (psd/with-tx [tx db]
@@ -367,7 +369,7 @@
                     (insert-operation-row! tx op-record)
                     ;; In-tx OCC check (task #108). Before the body runs,
                     ;; verify the client's expected `?document-version=`
-                    ;; (carried via psc/*expected-document-version*) still
+                    ;; (carried via psaw/*expected-document-version*) still
                     ;; matches the row inside our write tx. SQLite serializes
                     ;; concurrent writers via BEGIN IMMEDIATE, so this read
                     ;; sees a snapshot consistent with what we're about to
@@ -383,7 +385,7 @@
                     ;; The check DOES fire for :document/delete: at this
                     ;; point the row is still present, so a stale version
                     ;; correctly produces a 409 and rolls the tx back.
-                    (when-let [expected psc/*expected-document-version*]
+                    (when-let [expected psaw/*expected-document-version*]
                       (when-let [doc-id (:document op-attrs)]
                         (when-let [cur (psc/fetch-by-id tx :documents doc-id)]
                           (when (not= expected (:version cur))
@@ -398,9 +400,9 @@
                     ;; (op_id, seq) tuple. The op is single-threaded inside
                     ;; submit-operation*, so the atom is just an in-memory
                     ;; counter — no real contention.
-                    (binding [psc/*op* {:id op-id :ts ts :tx tx
-                                        :seq-counter (atom 0)
-                                        :affected-documents affected-docs}]
+                    (binding [psaw/*op* {:id op-id :ts ts :tx tx
+                                         :seq-counter (atom 0)
+                                         :affected-documents affected-docs}]
                       (let [result (body-fn tx)]
                         ;; Bump documents.version so the optimistic-concurrency
                         ;; middleware (wrap-document-version) detects stale clients.
@@ -492,7 +494,7 @@
                                :project project-id
                                :document doc-id
                                :user user-id}]
-      (psc/insert! tx :tokens row))
+      (crud/insert! tx :tokens row))
 
   Returns {:success true :extra <body-result>} on success, otherwise
   {:success false :error :code}.  Rolls back the tx on exception."

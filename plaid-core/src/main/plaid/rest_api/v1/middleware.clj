@@ -1,6 +1,7 @@
 (ns plaid.rest-api.v1.middleware
   (:require [plaid.server.log-buffer :as log-buffer]
             [reitit.coercion :as reitit-coercion]
+            [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
             [plaid.sql.operation :as op]
             [taoensso.timbre :as log]
@@ -509,7 +510,7 @@
 (defn wrap-document-version
   "Optimistic-concurrency middleware. For non-GET requests carrying
   `document-version=<int>` in the query, BINDS the parsed integer to
-  `plaid.sql.common/*expected-document-version*` so the authoritative
+  `plaid.sql.audit-write/*expected-document-version*` so the authoritative
   check fires inside the write tx in `submit-operation*` — closing the
   TOCTOU window that existed when the middleware did the comparison
   before the handler opened its tx (task #108).
@@ -549,7 +550,7 @@
 
         (and parsed-version (not= parsed-version ::parse-error) (not= method :get))
         (if-let [doc-id (->document-id request)]
-          (let [validated-versions psc/*batch-validated-document-versions*
+          (let [validated-versions psaw/*batch-validated-document-versions*
                 already-validated (if validated-versions
                                     (get @validated-versions doc-id ::not-validated)
                                     ::not-validated)
@@ -567,7 +568,7 @@
                :body {:error "Inconsistent document versions were supplied for the same document in one batch."}}
 
               (= already-validated parsed-version)
-              (binding [psc/*expected-document-version* nil]
+              (binding [psaw/*expected-document-version* nil]
                 (handler request))
 
               (and latest-version (not= latest-version parsed-version))
@@ -577,7 +578,7 @@
               (do
                 (when validated-versions
                   (swap! validated-versions assoc doc-id parsed-version))
-                (binding [psc/*expected-document-version* parsed-version]
+                (binding [psaw/*expected-document-version* parsed-version]
                   (handler request)))))
           ;; The resolver found no document at all, which is a different thing
           ;; from finding one at another version (that is the 409 above).

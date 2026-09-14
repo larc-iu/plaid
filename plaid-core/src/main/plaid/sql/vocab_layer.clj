@@ -6,7 +6,9 @@
   Items live in `vocab_items` (see plaid.sql.vocab-item) and are
   cascade-deleted by the FK when a vocab layer is dropped."
   (:require [taoensso.timbre :as log]
+            [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
+            [plaid.sql.crud :as crud]
             [plaid.sql.operation :as op :refer [submit-operation!]]
             [plaid.sql.pagination :as pagination]
             [plaid.sql.user :as user])
@@ -247,11 +249,11 @@
                        (doseq [uid (distinct maintainers)]
                          (when (nil? (psc/fetch-by-id tx :users uid))
                            (throw (ex-info (str "Not a valid user ID: " uid) {:id uid :code 400})))
-                         (psc/add-join! tx :vocab_maintainers
-                                        {:vocab_layer_id new-id :user_id uid}))
+                         (crud/add-join! tx :vocab_maintainers
+                                         {:vocab_layer_id new-id :user_id uid}))
                        (let [vl-row (psc/fetch-by-id tx :vocab_layers new-id)
                              post-image (assoc vl-row :maintainers (fetch-vocab-maintainer-ids tx new-id))]
-                         (psc/record-audit-write! tx :vocab_layers new-id :insert nil post-image))
+                         (psaw/record-audit-write! tx :vocab_layers new-id :insert nil post-image))
                        new-id)))
 
 (defn merge
@@ -276,8 +278,8 @@
                            ;; Folded rather than a separate touch-vocab-layer! call:
                            ;; this op already writes the row, so one audit row carries
                            ;; both the new name and the new modified_at.
-                           (psc/update-by-id! tx :vocab_layers eid
-                                              (assoc attrs :modified_at (op/op-ts))))
+                           (crud/update-by-id! tx :vocab_layers eid
+                                               (assoc attrs :modified_at (op/op-ts))))
                          eid))))
 
 (defn fetch-vocab-maintainer-ids
@@ -334,7 +336,7 @@
       (let [vl-row (psc/fetch-by-id tx :vocab_layers vocab-id)
             pre-image (assoc vl-row :maintainers pre-maintainers)
             post-image (assoc vl-row :maintainers post-maintainers)]
-        (psc/record-audit-write! tx :vocab_layers vocab-id :update pre-image post-image)))))
+        (psaw/record-audit-write! tx :vocab_layers vocab-id :update pre-image post-image)))))
 
 (defn delete
   "Delete a vocab layer. Walks the descendant subtree (vocab_items
@@ -388,14 +390,14 @@
                                ;; share a doc) — bump-document-versions!
                                ;; dedups internally.
                                (vswap! affected-doc-ids into (mapv :document_id vl-rows))
-                               (psc/delete-where! tx :vocab_links [:in :id vl-ids])
+                               (crud/delete-where! tx :vocab_links [:in :id vl-ids])
                                (psc/execute! tx
                                              {:delete-from :entity_metadata
                                               :where [:and
                                                       [:= :entity_type "vocab-link"]
                                                       [:in :entity_id vl-ids]]})))
                            ;; Vocab_items themselves + their metadata.
-                           (psc/delete-where! tx :vocab_items [:in :id vi-ids])
+                           (crud/delete-where! tx :vocab_items [:in :id vi-ids])
                            (psc/execute! tx
                                          {:delete-from :entity_metadata
                                           :where [:and
@@ -433,7 +435,7 @@
                              ;; maintainers folded into the pre-image —
                              ;; matches the parent-row-carries-junction
                              ;; pattern that ETL relies on. We do this
-                             ;; manually (vs. psc/delete-by-id!) so the
+                             ;; manually (vs. crud/delete-by-id!) so the
                              ;; pre-image carries :maintainers
                              ;; (unnamespaced; see #65) rather than just
                              ;; the raw row.
@@ -441,7 +443,7 @@
                              vl-pre-image (assoc vl-row :maintainers pre-maintainers)]
                          (psc/execute! tx {:delete-from :vocab_layers
                                            :where [:= :id eid]})
-                         (psc/record-audit-write! tx :vocab_layers eid :delete vl-pre-image nil)
+                         (psaw/record-audit-write! tx :vocab_layers eid :delete vl-pre-image nil)
                          ;; Per-project audits for the project_vocabs
                          ;; FK-cascade losses. Each project sees one
                          ;; :update row showing its vocab-grant list
@@ -453,7 +455,7 @@
                                  post-grants (vec (remove #(= % eid) pre-grants))
                                  pre-image (assoc proj-row :vocabs pre-grants)
                                  post-image (assoc proj-row :vocabs post-grants)]
-                             (psc/record-audit-write! tx :projects pid :update pre-image post-image))))
+                             (psaw/record-audit-write! tx :projects pid :update pre-image post-image))))
                        eid)))
 
 ;; ============================================================
@@ -480,9 +482,9 @@
                      ;; is accurate. Audit emission is skipped when the
                      ;; write is a no-op (user is already a maintainer).
                      (let [pre-maintainers (fetch-vocab-maintainer-ids tx vocab-id)]
-                       (psc/add-join-if-absent! tx :vocab_maintainers
-                                                {:vocab_layer_id vocab-id
-                                                 :user_id user-id})
+                       (crud/add-join-if-absent! tx :vocab_maintainers
+                                                 {:vocab_layer_id vocab-id
+                                                  :user_id user-id})
                        (audit-vocab-maintainers-change! tx vocab-id pre-maintainers))))
 
 (defn remove-maintainer
@@ -494,7 +496,7 @@
                              :user actor-user-id}]
                      (assert-user-and-vocab! tx vocab-id user-id)
                      (let [pre-maintainers (fetch-vocab-maintainer-ids tx vocab-id)]
-                       (psc/remove-join! tx :vocab_maintainers
-                                         {:vocab_layer_id vocab-id
-                                          :user_id user-id})
+                       (crud/remove-join! tx :vocab_maintainers
+                                          {:vocab_layer_id vocab-id
+                                           :user_id user-id})
                        (audit-vocab-maintainers-change! tx vocab-id pre-maintainers))))

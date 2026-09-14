@@ -29,6 +29,7 @@
   `requiring-resolve`."
   (:require [plaid.algos.text :as ta]
             [plaid.sql.common :as psc]
+            [plaid.sql.crud :as crud]
             [plaid.sql.metadata :as metadata]
             [plaid.sql.operation :as op :refer [submit-operation!]]
             [plaid.util.codepoint :as cp])
@@ -167,11 +168,11 @@
           (throw (ex-info (str "Text already exists for document " document)
                           {:document document :code 409})))
         (try
-          (psc/insert! tx :texts
-                       {:id new-id
-                        :body body-str
-                        :document_id document
-                        :text_layer_id layer})
+          (crud/insert! tx :texts
+                        {:id new-id
+                         :body body-str
+                         :document_id document
+                         :text_layer_id layer})
           (catch Exception e
             ;; Belt-and-suspenders: if a concurrent writer slipped in,
             ;; the UNIQUE constraint will trip here. Re-throw with 409.
@@ -279,9 +280,9 @@
                       (sort-by (fn [[_ {:keys [begin]}]] begin))
                       vec)]
              (when (seq survivor-updates)
-               (psc/bulk-update-by-id! tx :tokens survivor-updates)))
+               (crud/bulk-update-by-id! tx :tokens survivor-updates)))
            ;; 3. Update the text body.
-           (psc/update-by-id! tx :texts eid {:body new-body})
+           (crud/update-by-id! tx :texts eid {:body new-body})
            ;; 4. Partitioning-mode gap-fill on the surviving tokens.
            (let [survivors (->> new-tokens
                                 (remove #(contains? deleted-set (:token/id %)))
@@ -318,7 +319,7 @@
        (when (seq token-ids)
          (multi-delete! tx token-ids))
        (metadata/delete-metadata! tx "text" eid)
-       (psc/delete-by-id! tx :texts eid)
+       (crud/delete-by-id! tx :texts eid)
        eid))))
 
 ;; ============================================================

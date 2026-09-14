@@ -22,6 +22,7 @@
   startup hook `ensure-converted!` (wired in plaid.server.sql). Use `detect`
   for a read-only pre-flight."
   (:require [plaid.sql.common :as psc]
+            [plaid.sql.crud :as crud]
             [plaid.sql.operation :as op :refer [submit-operation!]]
             [plaid.sql.text :as text]
             [plaid.util.codepoint :as cp]
@@ -101,7 +102,7 @@
                                   :end_ (cp/utf16->cp body end_)}])
                            tokens)]
          (when (seq updates)
-           (psc/bulk-update-by-id! tx :tokens updates))
+           (crud/bulk-update-by-id! tx :tokens updates))
          ;; Idempotency marker, in the SAME tx as the rewrites above.
          (psc/execute! tx {:insert-into :data_migrations
                            :values [{:id (text-marker text-id)}]})

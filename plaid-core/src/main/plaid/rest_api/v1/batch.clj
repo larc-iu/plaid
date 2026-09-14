@@ -5,7 +5,7 @@
             [muuntaja.core :as m]
             [next.jdbc :as jdbc]
             [plaid.server.log-buffer :as log-buffer]
-            [plaid.sql.common :as psc]
+            [plaid.sql.audit-write :as psaw]
             [plaid.sql.datasource :as psd]
             [plaid.sql.operation :as op]
             [taoensso.timbre :as log])
@@ -132,7 +132,7 @@
                 (psd/with-tx [tx db]
                   (binding [op/*current-batch-id* batch-id
                             op/*deferred-events* deferred-events
-                            psc/*batch-validated-document-versions* (atom {})]
+                            psaw/*batch-validated-document-versions* (atom {})]
                     (loop [remaining operations responses []]
                       (if (empty? remaining)
                         ;; The access-log line already covers this HTTP request;

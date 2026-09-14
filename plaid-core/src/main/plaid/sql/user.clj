@@ -8,7 +8,9 @@
   `plaid.sql.operation/submit-operation!`."
   (:require [buddy.hashers :as hashers]
             [clojure.string]
+            [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
+            [plaid.sql.crud :as crud]
             [plaid.sql.operation :as op :refer [submit-operation!]]
             [plaid.sql.pagination :as pagination])
   (:refer-clojure :exclude [get merge])
@@ -210,7 +212,7 @@
   PUBLIC because invite redemption (plaid.sql.invite/redeem!) creates the
   account inside its own `:invite/redeem` op, alongside the project grant and
   the use-count bump, so all three commit or none do. Callers MUST already be
-  inside `submit-operation!` (psc/insert! asserts it). Relies on the users
+  inside `submit-operation!` (crud/insert! asserts it). Relies on the users
   table's PRIMARY KEY (id) + UNIQUE (username) constraints — racing
   SELECT-then-INSERT was wrong inside SAVEPOINTs (no BEGIN IMMEDIATE
   lock), so we let the DB enforce uniqueness and translate ONLY the
@@ -236,7 +238,7 @@
               :password_changes 0
               :is_admin         (if is-admin 1 0)}]
      (try
-       (psc/insert! tx :users row)
+       (crud/insert! tx :users row)
        (catch SQLException e
          (if (account-taken-violation? e)
            (throw (ex-info (psc/err-msg-already-exists "User" id) {:id id :code 409}))
@@ -314,7 +316,7 @@
                                      (some? (:user/is-admin m))
                                      (assoc :is_admin (if (:user/is-admin m) 1 0)))]
                          (when (seq attrs)
-                           (psc/update-by-id! tx :users eid attrs))
+                           (crud/update-by-id! tx :users eid attrs))
                          eid))))
 
 (defn set-password-in-tx!
@@ -334,9 +336,9 @@
   (let [intern (get-internal tx eid)]
     (when (nil? intern)
       (throw (ex-info (psc/err-msg-not-found "User" eid) {:code 404 :id eid})))
-    (psc/update-by-id! tx :users eid
-                       {:password_hash    (hashers/derive password)
-                        :password_changes (inc (or (:user/password-changes intern) 0))})
+    (crud/update-by-id! tx :users eid
+                        {:password_hash    (hashers/derive password)
+                         :password_changes (inc (or (:user/password-changes intern) 0))})
     eid))
 
 ;; Profile pictures.
@@ -372,7 +374,7 @@
                                                  :updated_at   (psc/now-iso)}]
                                        :on-conflict :user_id
                                        :do-update-set [:content_type :bytes :updated_at]})
-                     (psc/update-by-id! tx :users eid {:avatar_hash hash})
+                     (crud/update-by-id! tx :users eid {:avatar_hash hash})
                      hash))
 
 (defn delete-avatar!
@@ -391,7 +393,7 @@
                          (throw (ex-info (str "User " eid " has no profile picture")
                                          {:code 404 :id eid})))
                        (psc/execute! tx {:delete-from :user_avatars :where [:= :user_id eid]})
-                       (psc/update-by-id! tx :users eid {:avatar_hash nil})
+                       (crud/update-by-id! tx :users eid {:avatar_hash nil})
                        eid)))
 
 (defn- audit-and-cascade-project-memberships!
@@ -467,7 +469,7 @@
                                           [:= :revoked_at nil]]})
                        (mapv :id))]
     (doseq [tid token-ids]
-      (psc/update-by-id! tx :api_tokens tid {:revoked_at ts}))))
+      (crud/update-by-id! tx :api_tokens tid {:revoked_at ts}))))
 
 (defn deactivate
   "Deactivate a user by ID (the DELETE /users/:id semantics). Users are
@@ -517,11 +519,11 @@
                                    {:code 400 :id eid :projects orphan-projects}))))
                        (audit-and-cascade-project-memberships! tx eid)
                        (audit-and-cascade-vocab-maintainerships! tx eid)
-                       (let [ts (:ts psc/*op*)]
+                       (let [ts (:ts psaw/*op*)]
                          (revoke-all-api-tokens! tx eid ts)
-                         (psc/update-by-id! tx :users eid
-                                            {:deactivated_at ts
-                                             :password_changes (inc (or (:password_changes existing) 0))}))
+                         (crud/update-by-id! tx :users eid
+                                             {:deactivated_at ts
+                                              :password_changes (inc (or (:password_changes existing) 0))}))
                        eid)))
 
 (defn reactivate
@@ -542,5 +544,5 @@
                        (when (nil? (:deactivated_at existing))
                          (throw (ex-info (str "User " eid " is not deactivated")
                                          {:code 400 :id eid})))
-                       (psc/update-by-id! tx :users eid {:deactivated_at nil})
+                       (crud/update-by-id! tx :users eid {:deactivated_at nil})
                        eid)))

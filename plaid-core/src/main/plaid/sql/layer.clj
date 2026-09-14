@@ -6,7 +6,8 @@
   Each `plaid.sql.<kind>-layer` namespace keeps what is its own (the row
   mapper, create, merge, the cascade walk) and delegates these three here,
   so a change lands once rather than four times."
-  (:require [plaid.sql.common :as psc]))
+  (:require [plaid.sql.common :as psc]
+            [plaid.sql.crud :as crud]))
 
 (defn reader
   "A `(fn [db id] ...)` returning one row of `table` through `row->layer`,
@@ -47,7 +48,7 @@
         (let [tmp -1
               their-idx (:order_idx neighbor)
               their-id (:id neighbor)]
-          (psc/update-by-id! tx table eid {:order_idx tmp})
-          (psc/update-by-id! tx table their-id {:order_idx my-idx})
-          (psc/update-by-id! tx table eid {:order_idx their-idx})))
+          (crud/update-by-id! tx table eid {:order_idx tmp})
+          (crud/update-by-id! tx table their-id {:order_idx my-idx})
+          (crud/update-by-id! tx table eid {:order_idx their-idx})))
       eid)))

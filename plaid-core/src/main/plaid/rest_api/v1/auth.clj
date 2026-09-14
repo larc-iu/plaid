@@ -6,7 +6,7 @@
             [plaid.server.config :refer [config]]
             [plaid.server.log-buffer :as log-buffer]
             [plaid.sql.api-token :as api-token]
-            [plaid.sql.common :as psc]
+            [plaid.sql.crud :as crud]
             [plaid.sql.operation :as op]
             [plaid.sql.project :as prj]
             [plaid.sql.user :as user]
@@ -188,7 +188,7 @@
    (let [intern (user/get-internal tx user-id)]
      (when (some? intern)
        (let [next-counter (inc (or (:user/password-changes intern) 0))]
-         (psc/update-by-id! tx :users user-id {:password_changes next-counter}))))))
+         (crud/update-by-id! tx :users user-id {:password_changes next-counter}))))))
 
 (def logout-routes
   ["/logout"

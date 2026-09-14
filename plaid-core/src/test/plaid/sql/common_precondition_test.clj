@@ -5,6 +5,7 @@
   even fires, leaving the audit log inconsistent with the data."
   (:require [clojure.test :refer :all]
             [plaid.sql.common :as psc]
+            [plaid.sql.crud :as crud]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     with-admin with-clean-db]]))
 
@@ -17,7 +18,7 @@
   ;; (no row is inserted, no audit row is emitted). Use a fake table /
   ;; row — we never reach SQL formatting, so the shape can be minimal.
   (let [thrown (try
-                 (psc/insert! db :projects {:id (psc/new-uuid) :name "x"})
+                 (crud/insert! db :projects {:id (psc/new-uuid) :name "x"})
                  nil
                  (catch clojure.lang.ExceptionInfo e e))]
     (is (some? thrown) "insert! must throw when *op* is nil")

@@ -12,6 +12,7 @@
   (:require [clojure.string :as str]
             [taoensso.timbre :as log]
             [plaid.sql.common :as psc]
+            [plaid.sql.crud :as crud]
             [plaid.sql.layer :as layer]
             [plaid.sql.constraints.token :as tc]
             [plaid.sql.operation :as op :refer [submit-operation!]]
@@ -164,17 +165,17 @@
                            (throw (ex-info (psc/err-msg-not-found "Text layer" text-layer-id)
                                            {:id text-layer-id :code 400})))
                          (validate-parent! tx parent-tl-id text-layer-id overlap-mode-kw)
-                         (psc/insert! tx :token_layers
-                                      {:id new-id
-                                       :name name
-                                       :text_layer_id text-layer-id
-                                       :project_id (:project_id txtl)
-                                       :overlap_mode (clojure.core/name overlap-mode-kw)
-                                       :parent_token_layer_id parent-tl-id
-                                       :order_idx (psc/next-order-idx-expr
-                                                   :token_layers
-                                                   [:= :text_layer_id text-layer-id])
-                                       :config (psc/serialize-config config)})
+                         (crud/insert! tx :token_layers
+                                       {:id new-id
+                                        :name name
+                                        :text_layer_id text-layer-id
+                                        :project_id (:project_id txtl)
+                                        :overlap_mode (clojure.core/name overlap-mode-kw)
+                                        :parent_token_layer_id parent-tl-id
+                                        :order_idx (psc/next-order-idx-expr
+                                                    :token_layers
+                                                    [:= :text_layer_id text-layer-id])
+                                        :config (psc/serialize-config config)})
                          new-id))))
 
 (defn merge
@@ -195,7 +196,7 @@
                                      (some? (:token-layer/name m))
                                      (assoc :name (:token-layer/name m)))]
                          (when (seq attrs)
-                           (psc/update-by-id! tx :token_layers eid attrs))
+                           (crud/update-by-id! tx :token_layers eid attrs))
                          eid))))
 
 (defn shift-token-layer [db tokl-id up? user-id]
@@ -274,7 +275,7 @@
                                  :where [:in :t.token_layer_id (vec layer-ids)]})
                       (mapv :id))]
       (when (seq vl-ids)
-        (psc/delete-where! tx :vocab_links [:in :id vl-ids])
+        (crud/delete-where! tx :vocab_links [:in :id vl-ids])
         (psc/execute! tx
                       {:delete-from :entity_metadata
                        :where [:and
@@ -304,7 +305,7 @@
                      :where [:and
                              [:= :entity_type "token-layer"]
                              [:= :entity_id tl-id]]})
-      (psc/delete-by-id! tx :token_layers tl-id))))
+      (crud/delete-by-id! tx :token_layers tl-id))))
 
 (defn delete
   "Delete a token layer. Walks the descendant subtree (child

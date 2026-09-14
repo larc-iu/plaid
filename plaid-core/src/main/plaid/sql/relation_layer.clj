@@ -7,6 +7,7 @@
   `node-or-map`. Relations cascade-delete via FK ON DELETE CASCADE."
   (:require [taoensso.timbre :as log]
             [plaid.sql.common :as psc]
+            [plaid.sql.crud :as crud]
             [plaid.sql.layer :as layer]
             [plaid.sql.operation :as op :refer [submit-operation!]])
   (:refer-clojure :exclude [get merge]))
@@ -72,15 +73,15 @@
                          (when (nil? sl)
                            (throw (ex-info (psc/err-msg-not-found "Span layer" span-layer-id)
                                            {:id span-layer-id :code 400})))
-                         (psc/insert! tx :relation_layers
-                                      {:id new-id
-                                       :name name
-                                       :span_layer_id span-layer-id
-                                       :project_id (:project_id sl)
-                                       :order_idx (psc/next-order-idx-expr
-                                                   :relation_layers
-                                                   [:= :span_layer_id span-layer-id])
-                                       :config (psc/serialize-config config)})
+                         (crud/insert! tx :relation_layers
+                                       {:id new-id
+                                        :name name
+                                        :span_layer_id span-layer-id
+                                        :project_id (:project_id sl)
+                                        :order_idx (psc/next-order-idx-expr
+                                                    :relation_layers
+                                                    [:= :span_layer_id span-layer-id])
+                                        :config (psc/serialize-config config)})
                          new-id))))
 
 (defn merge
@@ -99,7 +100,7 @@
                                      (some? (:relation-layer/name m))
                                      (assoc :name (:relation-layer/name m)))]
                          (when (seq attrs)
-                           (psc/update-by-id! tx :relation_layers eid attrs))
+                           (crud/update-by-id! tx :relation_layers eid attrs))
                          eid))))
 
 (defn shift-relation-layer [db rl-id up? user-id]
@@ -135,7 +136,7 @@
                                                      :where [:= :relation_layer_id eid]})
                                           (mapv :id))]
                          (when (seq rel-ids)
-                           (psc/delete-where! tx :relations [:in :id rel-ids])
+                           (crud/delete-where! tx :relations [:in :id rel-ids])
                            (psc/execute! tx
                                          {:delete-from :entity_metadata
                                           :where [:and
@@ -148,5 +149,5 @@
                                       :where [:and
                                               [:= :entity_type "relation-layer"]
                                               [:= :entity_id eid]]})
-                       (psc/delete-by-id! tx :relation_layers eid)
+                       (crud/delete-by-id! tx :relation_layers eid)
                        eid)))

@@ -13,6 +13,7 @@
   `plaid.history.read/document-rows-at` folds out of the audit log, so
   a live read and an as-of read are diffable row for row."
   (:require [clojure.data.json :as json]
+            [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
             [plaid.sql.metadata :as metadata]))
 
@@ -144,7 +145,7 @@
           (when j (insert-junction! tx j chunk))
           (metadata/insert-metadata-rows!
            tx etype (into {} (keep (fn [r] (when (seq (:metadata r)) [(:id r) (:metadata r)]))) chunk))
-          (psc/record-audit-writes!
+          (psaw/record-audit-writes!
            tx table :insert
            (mapv (fn [r]
                    (let [post (get post-by-id (:id r))]

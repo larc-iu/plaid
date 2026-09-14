@@ -9,6 +9,7 @@
   them here."
   (:require [taoensso.timbre :as log]
             [plaid.sql.common :as psc]
+            [plaid.sql.crud :as crud]
             [plaid.sql.layer :as layer]
             [plaid.sql.operation :as op :refer [submit-operation!]]
             [plaid.sql.token-layer :as token-layer])
@@ -74,14 +75,14 @@
                        (when (nil? (psc/fetch-by-id tx :projects project-id))
                          (throw (ex-info (psc/err-msg-not-found "Project" project-id)
                                          {:id project-id :code 400})))
-                       (psc/insert! tx :text_layers
-                                    {:id new-id
-                                     :name name
-                                     :project_id project-id
-                                     :order_idx (psc/next-order-idx-expr
-                                                 :text_layers
-                                                 [:= :project_id project-id])
-                                     :config (psc/serialize-config config)})
+                       (crud/insert! tx :text_layers
+                                     {:id new-id
+                                      :name name
+                                      :project_id project-id
+                                      :order_idx (psc/next-order-idx-expr
+                                                  :text_layers
+                                                  [:= :project_id project-id])
+                                      :config (psc/serialize-config config)})
                        new-id)))
 
 (defn merge
@@ -101,7 +102,7 @@
                                      (some? (:text-layer/name m))
                                      (assoc :name (:text-layer/name m)))]
                          (when (seq attrs)
-                           (psc/update-by-id! tx :text_layers eid attrs))
+                           (crud/update-by-id! tx :text_layers eid attrs))
                          eid))))
 
 (defn shift-text-layer [db txtl-id up? user-id]
@@ -144,7 +145,7 @@
                                  :where [:= :text_layer_id eid]})
                       (mapv :id))]
     (doseq [tid text-ids]
-      (psc/delete-by-id! tx :texts tid))
+      (crud/delete-by-id! tx :texts tid))
     (when (seq text-ids)
       (psc/execute! tx
                     {:delete-from :entity_metadata
@@ -157,7 +158,7 @@
                  :where [:and
                          [:= :entity_type "text-layer"]
                          [:= :entity_id eid]]})
-  (psc/delete-by-id! tx :text_layers eid))
+  (crud/delete-by-id! tx :text_layers eid))
 
 (defn delete
   "Delete a text layer. Walks the descendant subtree (token_layers →

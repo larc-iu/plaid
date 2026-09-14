@@ -6,7 +6,7 @@
     documents' versions but carried `:document nil`, so their audit
     events had an EMPTY :audit/documents — document-scoped listeners
     were never notified that their view went stale. The version-bump
-    helpers now record every bumped doc into psc/*op*'s
+    helpers now record every bumped doc into psaw/*op*'s
     :affected-documents, which ->v2-shape unions into the event.
 
   - Editor-config ops carried `:project nil` and `:user nil`, so the
@@ -19,6 +19,7 @@
                                     assert-created assert-ok assert-no-content
                                     assert-status with-clean-db]]
             [plaid.server.events :as events]
+            [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
             [plaid.test-helpers :refer :all]))
 

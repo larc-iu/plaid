@@ -24,7 +24,9 @@
   lets FK CASCADE only sweep up the now-orphaned junction rows."
   (:require [taoensso.timbre :as log]
             [plaid.sql.bulk :as bulk]
+            [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
+            [plaid.sql.crud :as crud]
             [plaid.sql.operation :refer [submit-operation!]]
             [plaid.sql.metadata :as metadata]
             [clojure.string]
@@ -302,9 +304,9 @@
                                         :where [:= parent-id-col pid]
                                         :order-by [:order_idx]})
                              (mapv :token_id))]
-        (psc/record-audit-write! tx parent-table pid :update
-                                 (assoc row :tokens tokens)
-                                 (assoc row :tokens post-tokens))))))
+        (psaw/record-audit-write! tx parent-table pid :update
+                                  (assoc row :tokens tokens)
+                                  (assoc row :tokens post-tokens))))))
 
 ;; ============================================================
 ;; Cascade delete
@@ -380,7 +382,7 @@
   [tx {:keys [span-id span-row pre-tokens post-tokens]}]
   (let [pre-image  (assoc span-row :tokens pre-tokens)
         post-image (assoc span-row :tokens post-tokens)]
-    (psc/record-audit-write! tx :spans span-id :update pre-image post-image)
+    (psaw/record-audit-write! tx :spans span-id :update pre-image post-image)
     (psc/execute! tx
                   {:delete-from :span_tokens
                    :where [:and
@@ -450,7 +452,7 @@
   [tx {:keys [vl-id vl-row pre-tokens post-tokens]}]
   (let [pre-image  (assoc vl-row :tokens pre-tokens)
         post-image (assoc vl-row :tokens post-tokens)]
-    (psc/record-audit-write! tx :vocab_links vl-id :update pre-image post-image)
+    (psaw/record-audit-write! tx :vocab_links vl-id :update pre-image post-image)
     ;; Drop junction rows whose token no longer survives. FK CASCADE
     ;; on vocab_link_tokens.token_id (when the token row goes away
     ;; below) would handle this anyway, but doing it here keeps the
@@ -466,7 +468,7 @@
   No-op when ids is empty.
 
   Audit strategy: this sweep is INTENTIONALLY unaudited. The parent
-  entity's `:delete` audit row (just emitted via `psc/delete-by-id!`)
+  entity's `:delete` audit row (just emitted via `crud/delete-by-id!`)
   signals the entity is gone, and metadata is treated by the ETL
   replayer as parent-owned state (any metadata key whose entity row
   is absent must also be absent in the history replica). Auditing each
@@ -493,7 +495,7 @@
   remain — synthetic :update audit row carrying the trimmed `:tokens`
   vector; see v2's `multi-delete*` for the original semantics).
   Relations whose source/target span is about to disappear are deleted
-  too. Each visible-entity delete uses psc/delete-by-id! so
+  too. Each visible-entity delete uses crud/delete-by-id! so
   audit_writes captures it.
 
   Ordering rationale: a span deletion FK-cascades to relations
@@ -530,10 +532,10 @@
       ;; Each cascade phase is one DELETE ... WHERE id IN (...) RETURNING *
       ;; round-trip; per-id audit rows still emitted via delete-where!.
       (when (seq rel-ids)
-        (psc/delete-where! tx :relations [:in :id rel-ids]))
+        (crud/delete-where! tx :relations [:in :id rel-ids]))
       (sweep-entity-metadata! tx "relation" rel-ids)
       (when (seq orphan-span-ids)
-        (psc/delete-where! tx :spans [:in :id orphan-span-ids]))
+        (crud/delete-where! tx :spans [:in :id orphan-span-ids]))
       (sweep-entity-metadata! tx "span" orphan-span-ids)
       ;; Span partial trim: emit synthetic audit + rewrite junctions.
       (doseq [plan span-trim-plan]
@@ -543,9 +545,9 @@
         (trim-vocab-link-tokens! tx plan))
       ;; Vocab_link full-orphan delete.
       (when (seq orphan-vl-ids)
-        (psc/delete-where! tx :vocab_links [:in :id orphan-vl-ids]))
+        (crud/delete-where! tx :vocab_links [:in :id orphan-vl-ids]))
       (sweep-entity-metadata! tx "vocab-link" orphan-vl-ids)
-      (psc/delete-where! tx :tokens [:in :id eids])
+      (crud/delete-where! tx :tokens [:in :id eids])
       (sweep-entity-metadata! tx "token" eids))))
 
 ;; ============================================================
@@ -621,9 +623,9 @@
                                          {:skip-parent-audit? true})
               (let [post-row (psc/fetch-by-id tx :tokens new-id)
                     post-image (assoc post-row :metadata metadata)]
-                (psc/record-audit-write! tx :tokens new-id :insert nil post-image)))
+                (psaw/record-audit-write! tx :tokens new-id :insert nil post-image)))
             ;; No metadata: use the audited insert! helper as before.
-            (psc/insert! tx :tokens row))
+            (crud/insert! tx :tokens row))
           new-id))))))
 
 ;; ============================================================
@@ -692,7 +694,7 @@
          (resize-child-cascade! tx dlids layer doc-id
                                 old-begin old-end new-begin new-end))
        ;; Step 2: apply the parent update.
-       (psc/update-by-id! tx :tokens eid (clojure.core/merge extent-attrs prec-attrs))
+       (crud/update-by-id! tx :tokens eid (clojure.core/merge extent-attrs prec-attrs))
        ;; Step 3: constraints. Post-state in tx is what we're checking
        ;; against — orphan guard runs against the now-trimmed children.
        (tc/enforce! tx :update
@@ -806,7 +808,7 @@
                          :text-length text-length
                          :records (mapv #(dissoc % ::metadata) records)})
            ;; Bulk INSERT.
-           (psc/insert-many! tx :tokens (mapv token->row records))
+           (crud/insert-many! tx :tokens (mapv token->row records))
            ;; Per-token metadata after the inserts.
            (doseq [t records]
              (when (seq (::metadata t))
@@ -943,14 +945,14 @@
           keep-keys (preserved-on-split tx token_layer_id)
           inherited (when (seq keep-keys)
                       (select-keys (metadata/get-metadata tx "token" id) keep-keys))]
-      (psc/update-by-id! tx :tokens id {:end_ position})
-      (psc/insert! tx :tokens
-                   {:id new-id
-                    :text_id text_id
-                    :token_layer_id token_layer_id
-                    :document_id document_id
-                    :begin position
-                    :end_ end_})
+      (crud/update-by-id! tx :tokens id {:end_ position})
+      (crud/insert! tx :tokens
+                    {:id new-id
+                     :text_id text_id
+                     :token_layer_id token_layer_id
+                     :document_id document_id
+                     :begin position
+                     :end_ end_})
       (when (seq inherited)
         (metadata/insert-metadata! tx "token" new-id inherited {:skip-parent-audit? true}))
       new-id)))
@@ -1057,8 +1059,8 @@
        ;; Same for vocab_links.
        (reparent-junction! tx :vocab_links :vocab_link_tokens :vocab_link_id (:id left) (:id right))
        ;; Grow the left token to the union extent.
-       (psc/update-by-id! tx :tokens (:id left)
-                          {:begin merged-begin :end_ merged-end})
+       (crud/update-by-id! tx :tokens (:id left)
+                           {:begin merged-begin :end_ merged-end})
        ;; Delete the right token only. Descendants inside [right.begin,
        ;; right.end_) MUST be preserved — after the merge they sit inside
        ;; the surviving left token (whose extent now covers the union),
@@ -1108,12 +1110,12 @@
                                     :text-length text-length})]
          ;; Step 2: apply the partitioning neighbor adjustments.
          (doseq [{:keys [id attrs]} shift-adjustments]
-           (psc/update-by-id! tx :tokens id attrs))
+           (crud/update-by-id! tx :tokens id attrs))
          ;; Step 3: cascade the resize down to descendants.
          (resize-child-cascade! tx dlids layer doc-id begin end new-begin new-end)
          ;; Step 4: apply the parent boundary change.
-         (psc/update-by-id! tx :tokens token-id
-                            {:begin new-begin :end_ new-end})
+         (crud/update-by-id! tx :tokens token-id
+                             {:begin new-begin :end_ new-end})
          ;; Step 5: post-state nesting + parent-side guard check.
          (tc/enforce! tx :shift
                       {:layer layer :doc-id doc-id :token-id token-id
@@ -1170,9 +1172,9 @@
       (when (seq to-delete)
         (multi-delete! tx (mapv :token/id to-delete)))
       (doseq [d to-trim]
-        (psc/update-by-id! tx :tokens (:token/id d)
-                           {:begin (max (:token/begin d) nb)
-                            :end_ (min (:token/end d) ne)})))))
+        (crud/update-by-id! tx :tokens (:token/id d)
+                            {:begin (max (:token/begin d) nb)
+                             :end_ (min (:token/end d) ne)})))))
 
 ;; ============================================================
 ;; Metadata
@@ -1301,5 +1303,5 @@
           ;; One CASE-driven UPDATE per partition layer instead of N
           ;; per-row UPDATEs + N SELECTs.
           (when (seq updates)
-            (psc/bulk-update-by-id! tx :tokens updates))
+            (crud/bulk-update-by-id! tx :tokens updates))
           (tc/validate-partition! final new-text-length))))))

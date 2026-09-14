@@ -7,6 +7,7 @@
   relations) cascade-delete via FK ON DELETE CASCADE."
   (:require [taoensso.timbre :as log]
             [plaid.sql.common :as psc]
+            [plaid.sql.crud :as crud]
             [plaid.sql.layer :as layer]
             [plaid.sql.operation :as op :refer [submit-operation!]])
   (:refer-clojure :exclude [get merge]))
@@ -72,15 +73,15 @@
                          (when (nil? tokl)
                            (throw (ex-info (psc/err-msg-not-found "Token layer" token-layer-id)
                                            {:id token-layer-id :code 400})))
-                         (psc/insert! tx :span_layers
-                                      {:id new-id
-                                       :name name
-                                       :token_layer_id token-layer-id
-                                       :project_id (:project_id tokl)
-                                       :order_idx (psc/next-order-idx-expr
-                                                   :span_layers
-                                                   [:= :token_layer_id token-layer-id])
-                                       :config (psc/serialize-config config)})
+                         (crud/insert! tx :span_layers
+                                       {:id new-id
+                                        :name name
+                                        :token_layer_id token-layer-id
+                                        :project_id (:project_id tokl)
+                                        :order_idx (psc/next-order-idx-expr
+                                                    :span_layers
+                                                    [:= :token_layer_id token-layer-id])
+                                        :config (psc/serialize-config config)})
                          new-id))))
 
 (defn merge
@@ -99,7 +100,7 @@
                                      (some? (:span-layer/name m))
                                      (assoc :name (:span-layer/name m)))]
                          (when (seq attrs)
-                           (psc/update-by-id! tx :span_layers eid attrs))
+                           (crud/update-by-id! tx :span_layers eid attrs))
                          eid))))
 
 (defn shift-span-layer [db sl-id up? user-id]
@@ -122,7 +123,7 @@
   `relations.source_span_id ON DELETE CASCADE` /
   `relations.target_span_id ON DELETE CASCADE`. ANY relation_layer or
   span deletion will FK-sweep its relations without going through
-  `psc/delete-by-id!` (which is what captures the audit pre-image from
+  `crud/delete-by-id!` (which is what captures the audit pre-image from
   the live row). So we must audit-delete EVERY affected relation FIRST
   — including both the relations inside nested relation_layers AND the
   relations elsewhere that reference spans in this span_layer — before
@@ -163,7 +164,7 @@
     ;;    relation_layer or span row goes away. One bulk DELETE ...
     ;;    RETURNING * fans out per-id audit rows via delete-where!.
     (when (seq rel-ids)
-      (psc/delete-where! tx :relations [:in :id rel-ids])
+      (crud/delete-where! tx :relations [:in :id rel-ids])
       (psc/execute! tx
                     {:delete-from :entity_metadata
                      :where [:and
@@ -173,7 +174,7 @@
     ;;    entity_metadata. Relations under them were drained in step 2,
     ;;    so the FK cascade on `relations.relation_layer_id` is a no-op.
     (when (seq rl-ids)
-      (psc/delete-where! tx :relation_layers [:in :id rl-ids])
+      (crud/delete-where! tx :relation_layers [:in :id rl-ids])
       (psc/execute! tx
                     {:delete-from :entity_metadata
                      :where [:and
@@ -183,7 +184,7 @@
     ;;    referencing these spans were drained in step 2, so FK cascade
     ;;    on `relations.source_span_id` / `target_span_id` is a no-op.
     (when (seq span-ids)
-      (psc/delete-where! tx :spans [:in :id span-ids])
+      (crud/delete-where! tx :spans [:in :id span-ids])
       (psc/execute! tx
                     {:delete-from :entity_metadata
                      :where [:and
@@ -195,7 +196,7 @@
                  :where [:and
                          [:= :entity_type "span-layer"]
                          [:= :entity_id eid]]})
-  (psc/delete-by-id! tx :span_layers eid))
+  (crud/delete-by-id! tx :span_layers eid))
 
 (defn delete
   "Delete a span layer. Walks the descendant subtree (relation_layers,

@@ -8,7 +8,9 @@
   either a HikariCP DataSource (reads) or a JDBC Connection in a tx
   (writes). Write fns open their own tx via `submit-operation!`."
   (:require [taoensso.timbre :as log]
+            [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
+            [plaid.sql.crud :as crud]
             [plaid.sql.operation :as op :refer [submit-operation!]]
             [plaid.sql.pagination :as pagination]
             [plaid.sql.user :as user])
@@ -404,7 +406,7 @@
   :insert, whose post-image is the projects row augmented with the
   :readers/:writers/:maintainers role vectors (unnamespaced — the audit
   \"extras\" shape; see `fetch-project-acl-snapshot`). Manual insert + folded
-  audit (vs. `psc/insert!`) so the maintainer grant rides the SAME audit row —
+  audit (vs. `crud/insert!`) so the maintainer grant rides the SAME audit row —
   otherwise the project_users grant would be invisible to history replay and the
   creator wouldn't be reconstructed as a maintainer."
   [db attrs user-id]
@@ -431,11 +433,11 @@
                        (doseq [uid (distinct maintainers)]
                          (when (nil? (psc/fetch-by-id tx :users uid))
                            (throw (ex-info (str "Not a valid user ID: " uid) {:id uid :code 400})))
-                         (psc/add-join! tx :project_users
-                                        {:project_id new-id :user_id uid :role "maintainer"}))
+                         (crud/add-join! tx :project_users
+                                         {:project_id new-id :user_id uid :role "maintainer"}))
                        (let [proj-row (psc/fetch-by-id tx :projects new-id)
                              post-image (clojure.core/merge proj-row (fetch-project-acl-snapshot tx new-id))]
-                         (psc/record-audit-write! tx :projects new-id :insert nil post-image))
+                         (psaw/record-audit-write! tx :projects new-id :insert nil post-image))
                        new-id)))
 
 (defn merge
@@ -457,7 +459,7 @@
                                      (some? (:project/name m))
                                      (assoc :name (:project/name m)))]
                          (when (seq attrs)
-                           (psc/update-by-id! tx :projects eid attrs))
+                           (crud/update-by-id! tx :projects eid attrs))
                          eid))))
 
 (defn delete
@@ -533,7 +535,7 @@
                                                              [:= :entity_id eid]]}))
                                     ;; One audit row; FK ON DELETE CASCADE sweeps the
                                     ;; descendant subtree + junction tables.
-                                    (psc/delete-by-id! tx :projects eid)
+                                    (crud/delete-by-id! tx :projects eid)
                                     eid))]
     (assoc result :deleted-document-ids
            (if (:success result) @deleted-document-ids []))))
@@ -666,7 +668,7 @@
       (let [proj-row (psc/fetch-by-id tx :projects project-id)
             pre-image (clojure.core/merge proj-row pre-acl)
             post-image (clojure.core/merge proj-row post-acl)]
-        (psc/record-audit-write! tx :projects project-id :update pre-image post-image)))))
+        (psaw/record-audit-write! tx :projects project-id :update pre-image post-image)))))
 
 (defn- audit-project-vocabs-change!
   "Emit a synthetic :projects audit row for a project_vocabs mutation.
@@ -679,7 +681,7 @@
       (let [proj-row (psc/fetch-by-id tx :projects project-id)
             pre-image (assoc proj-row :vocabs pre-vocabs)
             post-image (assoc proj-row :vocabs post-vocabs)]
-        (psc/record-audit-write! tx :projects project-id :update pre-image post-image)))))
+        (psaw/record-audit-write! tx :projects project-id :update pre-image post-image)))))
 
 (defn sole-maintainer-project-ids
   "Project ids on which `user-id` is the ONLY user holding the maintainer
@@ -754,12 +756,12 @@
     ;; can observe the gap), but it would become fragile if a future
     ;; refactor reuses `tx` across nested `with-tx*` calls or otherwise
     ;; multiplexes read/write traffic on the same Connection mid-tx.
-    (psc/remove-join! tx :project_users
-                      {:project_id project-id :user_id user-id})
-    (psc/add-join! tx :project_users
-                   {:project_id project-id
-                    :user_id user-id
-                    :role role})
+    (crud/remove-join! tx :project_users
+                       {:project_id project-id :user_id user-id})
+    (crud/add-join! tx :project_users
+                    {:project_id project-id
+                     :user_id user-id
+                     :role role})
     (audit-project-acl-change! tx project-id pre-acl)))
 
 (defn- remove-role!
@@ -770,10 +772,10 @@
     ;; The DELETE names the role, so removing a role the user does not hold
     ;; leaves the one they do hold alone: that is the role to check against.
     (assert-maintainer-remains! tx project-id user-id (when (not= held role) held))
-    (psc/remove-join! tx :project_users
-                      {:project_id project-id
-                       :user_id user-id
-                       :role role})
+    (crud/remove-join! tx :project_users
+                       {:project_id project-id
+                        :user_id user-id
+                        :role role})
     (audit-project-acl-change! tx project-id pre-acl)))
 
 (defn add-reader [db project-id user-id actor-user-id]
@@ -893,8 +895,8 @@
                                                 [(if (keyword? editor-name) (name editor-name) (str editor-name))
                                                  (if (keyword? config-key) (name config-key) (str config-key))]
                                                 config-value)]
-                       (psc/update-by-id! tx table layer-id
-                                          (config-update-attrs table new-config)))))
+                       (crud/update-by-id! tx table layer-id
+                                           (config-update-attrs table new-config)))))
 
 (defn dissoc-editor-config-pair
   "Remove <editor-name>/<config-key> from the layer's :config JSON. `table`
@@ -912,8 +914,8 @@
                            ed-key (if (keyword? editor-name) (name editor-name) (str editor-name))
                            cfg-key (if (keyword? config-key) (name config-key) (str config-key))
                            new-config (update current ed-key dissoc cfg-key)]
-                       (psc/update-by-id! tx table layer-id
-                                          (config-update-attrs table new-config)))))
+                       (crud/update-by-id! tx table layer-id
+                                           (config-update-attrs table new-config)))))
 
 ;; ============================================================
 ;; Vocab management (project_vocabs join + cascade vocab_links)
@@ -935,9 +937,9 @@
                      ;; synthetic audit row (emitted after the write)
                      ;; carries an accurate pre-image.
                      (let [pre-vocabs (fetch-project-vocab-grants tx project-id)]
-                       (psc/add-join-if-absent! tx :project_vocabs
-                                                {:project_id project-id
-                                                 :vocab_layer_id vocab-id})
+                       (crud/add-join-if-absent! tx :project_vocabs
+                                                 {:project_id project-id
+                                                  :vocab_layer_id vocab-id})
                        (audit-project-vocabs-change! tx project-id pre-vocabs))))
 
 (defn remove-vocab
@@ -976,7 +978,7 @@
                            vl-ids (mapv :id vl-rows)
                            affected-doc-ids (mapv :document_id vl-rows)]
                        (when (seq vl-ids)
-                         (psc/delete-where! tx :vocab_links [:in :id vl-ids])
+                         (crud/delete-where! tx :vocab_links [:in :id vl-ids])
                          ;; Sweep orphan entity_metadata rows for those
                          ;; vocab_links — matches `vocab_layer.clj/delete`
                          ;; (#66). Intentionally NOT audited:
@@ -993,7 +995,7 @@
                      ;; junction-row removal so the synthetic audit
                      ;; captures only the grant transition itself.
                      (let [pre-vocabs (fetch-project-vocab-grants tx project-id)]
-                       (psc/remove-join! tx :project_vocabs
-                                         {:project_id project-id
-                                          :vocab_layer_id vocab-id})
+                       (crud/remove-join! tx :project_vocabs
+                                          {:project_id project-id
+                                           :vocab_layer_id vocab-id})
                        (audit-project-vocabs-change! tx project-id pre-vocabs))))

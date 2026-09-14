@@ -10,7 +10,9 @@
   then sweeps the now-orphaned span_tokens rows."
   (:require [taoensso.timbre :as log]
             [plaid.sql.bulk :as bulk]
+            [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
+            [plaid.sql.crud :as crud]
             [plaid.sql.operation :refer [submit-operation!]]
             [plaid.sql.metadata :as metadata]
             [clojure.string])
@@ -157,10 +159,10 @@
   "Insert the ordered join rows linking `span-id` to `token-ids`."
   [tx span-id token-ids]
   (doseq [[idx tid] (map-indexed vector token-ids)]
-    (psc/add-join! tx :span_tokens
-                   {:span_id span-id
-                    :token_id tid
-                    :order_idx idx})))
+    (crud/add-join! tx :span_tokens
+                    {:span_id span-id
+                     :token_id tid
+                     :order_idx idx})))
 
 ;; ============================================================
 ;; Create
@@ -201,7 +203,7 @@
       (let [token-rows (fetch-tokens-by-ids tx tokens)
             _ (check-tokens! tx layer tokens token-rows)
             doc-id (:document_id (first token-rows))]
-        ;; Manual insert + audit (vs. psc/insert!) so the post-image we
+        ;; Manual insert + audit (vs. crud/insert!) so the post-image we
         ;; emit carries the junction-table tokens. Otherwise the audit
         ;; row would only show {id, span_layer_id, document_id, value}
         ;; and ETL replay would produce a span with no tokens.
@@ -222,7 +224,7 @@
               post-tokens (fetch-token-ids tx new-id)
               post-image (cond-> (assoc post-row :tokens post-tokens)
                            (seq metadata) (assoc :metadata metadata))]
-          (psc/record-audit-write! tx :spans new-id :insert nil post-image))
+          (psaw/record-audit-write! tx :spans new-id :insert nil post-image))
         new-id)))))
 
 ;; ============================================================
@@ -247,7 +249,7 @@
                    (contains? m :span/value)
                    (assoc :value (psc/write-json (:span/value m))))]
        (when (seq attrs)
-         (psc/update-by-id! tx :spans eid attrs))
+         (crud/update-by-id! tx :spans eid attrs))
        eid))))
 
 ;; ============================================================
@@ -256,7 +258,7 @@
 
 (defn delete
   "Delete a span. Relations that reference this span (source or target)
-  are deleted FIRST (audited via psc/delete-by-id!) so the audit log
+  are deleted FIRST (audited via crud/delete-by-id!) so the audit log
   captures them — the FK ON DELETE CASCADE on relations would otherwise
   silently sweep them. The span_tokens FK CASCADE cleans up the
   junction rows."
@@ -274,8 +276,8 @@
        (throw (ex-info (psc/err-msg-not-found "Span" eid) {:code 404 :id eid})))
      (let [rel-ids (get-relation-ids tx eid)]
        (doseq [rid rel-ids]
-         (psc/delete-by-id! tx :relations rid))
-       (psc/delete-by-id! tx :spans eid)
+         (crud/delete-by-id! tx :relations rid))
+       (crud/delete-by-id! tx :spans eid)
        ;; Clean up entity_metadata rows (no FK; doesn't auto-cascade).
        (psc/execute! tx
                      {:delete-from :entity_metadata
@@ -396,7 +398,7 @@
          (throw (ex-info "Not all spans belong to the same document"
                          {:document-ids doc-ids :code 400})))
        ;; Insert all span rows. We deliberately do NOT use
-       ;; `psc/insert-many!` here: that helper emits a bare :insert audit
+       ;; `crud/insert-many!` here: that helper emits a bare :insert audit
        ;; row per span (no :tokens). Because the history replayer treats an
        ;; :insert as a full put (replace), a bulk-created span that is
        ;; never subsequently updated would land in the history with NO
@@ -426,7 +428,7 @@
                post-tokens (fetch-token-ids tx (:id r))
                post-image (cond-> (assoc post-row :tokens post-tokens)
                             (seq (:metadata r)) (assoc :metadata (:metadata r)))]
-           (psc/record-audit-write! tx :spans (:id r) :insert nil post-image)))
+           (psaw/record-audit-write! tx :spans (:id r) :insert nil post-image)))
        (mapv :id records)))))
 
 ;; ============================================================
@@ -443,7 +445,7 @@
   (mirrors v2's `(filter :span/id (vals span-map))` filter in
   `bulk-delete*`). Returns the vector of ids actually deleted, which
   excludes any unknown ids the caller passed in. Without this filter,
-  unknown ids would flow through `psc/delete-by-id!` and produce phantom
+  unknown ids would flow through `crud/delete-by-id!` and produce phantom
   audit rows with `pre = nil`."
   [db eids user-id]
   (let [eids (vec (distinct eids))
@@ -462,7 +464,7 @@
      ;; Re-fetch inside the tx so the existence check is consistent
      ;; with the rows we then delete. Filter the caller's eids down to
      ;; ids that actually exist; unknown ids are dropped silently and
-     ;; never reach psc/delete-by-id! (which would otherwise audit a
+     ;; never reach crud/delete-by-id! (which would otherwise audit a
      ;; phantom :delete with pre = nil).
      (let [span-rows-tx (psc/fetch-ids tx :spans eids)
            existing-ids (->> span-rows-tx (keep :id) vec)]
@@ -480,10 +482,10 @@
                                                [:in :target_span_id existing-ids]]})
                             (mapv :id))]
            (doseq [rid rel-ids]
-             (psc/delete-by-id! tx :relations rid)))
+             (crud/delete-by-id! tx :relations rid)))
          ;; Spans themselves. FK CASCADE on span_tokens sweeps the join rows.
          (doseq [sid existing-ids]
-           (psc/delete-by-id! tx :spans sid))
+           (crud/delete-by-id! tx :spans sid))
          ;; entity_metadata (no FK, manual sweep).
          (psc/execute! tx
                        {:delete-from :entity_metadata
@@ -544,5 +546,5 @@
          (let [post-tokens (fetch-token-ids tx eid)
                pre-image (assoc span-row :tokens pre-tokens)
                post-image (assoc span-row :tokens post-tokens)]
-           (psc/record-audit-write! tx :spans eid :update pre-image post-image)))
+           (psaw/record-audit-write! tx :spans eid :update pre-image post-image)))
        eid))))

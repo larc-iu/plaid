@@ -28,7 +28,9 @@
   `db` is a DataSource (reads) or an in-tx Connection (writes via
   `submit-operation!`), matching every other namespace here."
   (:require [clojure.string :as str]
+            [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
+            [plaid.sql.crud :as crud]
             [plaid.sql.operation :refer [submit-operation!]]
             [plaid.sql.pagination :as pagination]
             [plaid.sql.project :as prj]
@@ -284,16 +286,16 @@
   "Record an audit_writes row for an invite, with `code_hash` stripped from
   the image.
 
-  Every other table here goes through `psc/insert!` / `psc/update-by-id!`,
+  Every other table here goes through `crud/insert!` / `crud/update-by-id!`,
   which capture `RETURNING *` as the post-image. That would put a live
   credential's verifier into the audit log, which is readable by more people
   and retained far longer than the invite itself. Nothing downstream needs
   the digest, so the raw `record-audit-write!` entry point takes a redacted
   image instead."
   [tx id change-type pre post]
-  (psc/record-audit-write! tx :invites id change-type
-                           (dissoc pre :code_hash)
-                           (dissoc post :code_hash)))
+  (psaw/record-audit-write! tx :invites id change-type
+                            (dissoc pre :code_hash)
+                            (dissoc post :code_hash)))
 
 (defn create!
   "Mint an invite. Returns `{:success true :extra {:id .. :code ..}}`; the

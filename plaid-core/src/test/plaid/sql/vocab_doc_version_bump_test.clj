@@ -9,6 +9,7 @@
   `plaid.sql.operation`, which emits one `:doc-version-bump` audit row per
   affected document. Replay parity preserved."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
+            [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     admin-request with-admin api-call
@@ -136,7 +137,7 @@
 ;; ---------------------------------------------------------------------------
 ;; Task #102.4 — :seq monotonicity for bump-document-versions!
 ;; ---------------------------------------------------------------------------
-;; The per-op `:seq` counter in `psc/*op*` is a single atom; every
+;; The per-op `:seq` counter in `psaw/*op*` is a single atom; every
 ;; record-audit-write! pulls + bumps it, so within one op the seqs MUST
 ;; be contiguous [N, N+1, N+2, ...] — never sparse. If a future change
 ;; were to fire writes from a parallel scope (e.g. a background thread)

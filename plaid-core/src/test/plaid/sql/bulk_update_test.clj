@@ -14,6 +14,7 @@
                                     admin-request with-admin with-clean-db
                                     assert-created]]
             [plaid.sql.common :as psc]
+            [plaid.sql.crud :as crud]
             [plaid.sql.operation :as op]
             [plaid.test-helpers :refer [create-test-project create-test-document
                                         create-text-layer create-token-layer
@@ -58,7 +59,7 @@
                           :project proj
                           :description "empty bulk-update"
                           :user "admin@example.com"}]
-                  (psc/bulk-update-by-id! tx :tokens {}))
+                  (crud/bulk-update-by-id! tx :tokens {}))
           op-id (latest-op-id "test/bulk-update-empty")
           rows (audit-rows-for-op op-id)]
       (is (:success result) (str "op should succeed: " result))
@@ -75,7 +76,7 @@
                      :project proj
                      :description "single bulk-update"
                      :user "admin@example.com"}]
-             (psc/bulk-update-by-id! tx :tokens {t1 {:begin 1}}))
+             (crud/bulk-update-by-id! tx :tokens {t1 {:begin 1}}))
           op-id (latest-op-id "test/bulk-update-one")
           token-rows (filter #(= "tokens" (:target_table %))
                              (audit-rows-for-op op-id))]
@@ -97,9 +98,9 @@
                      :project proj
                      :description "sparse bulk-update"
                      :user "admin@example.com"}]
-             (psc/bulk-update-by-id! tx :tokens
-                                     {t1 {:begin 1}
-                                      t2 {:end_ 9}}))
+             (crud/bulk-update-by-id! tx :tokens
+                                      {t1 {:begin 1}
+                                       t2 {:end_ 9}}))
           post-t1 (psc/fetch-by-id db :tokens t1)
           post-t2 (psc/fetch-by-id db :tokens t2)
           op-id (latest-op-id "test/bulk-update-sparse")

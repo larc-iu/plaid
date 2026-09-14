@@ -13,7 +13,9 @@
   `plaid.sql.metadata`, both of which require common."
   (:require [clojure.string :as str]
             [plaid.server.locks :as locks]
+            [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
+            [plaid.sql.crud :as crud]
             [plaid.sql.metadata :as metadata]
             [plaid.sql.operation :as op :refer [submit-operation!]]))
 
@@ -85,7 +87,7 @@
            (psc/validate-atomic-value! Noun (:value it))))
        (let [doc-ids (vec (distinct (map :document_id rows)))]
          (when (> (count doc-ids) 1)
-           (when psc/*expected-document-version*
+           (when psaw/*expected-document-version*
              (throw (ex-info (str "document-version names one document, and this update reaches "
                                   (count doc-ids) ". Send it without document-version, or one "
                                   "request per document.")
@@ -98,7 +100,7 @@
            (let [value-pairs (vec (for [it items :when (contains? it :value)]
                                     [(:id it) {:value (psc/write-json (:value it))}]))]
              (when (seq value-pairs)
-               (psc/bulk-update-by-id! tx table value-pairs))))
+               (crud/bulk-update-by-id! tx table value-pairs))))
          (doseq [it items :when (seq (:metadata it))]
            (metadata/patch-metadata! tx entity-type (:id it) (:metadata it)))
          (when (> (count doc-ids) 1)
