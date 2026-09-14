@@ -509,7 +509,9 @@
                   (swap! validated-versions assoc doc-id parsed-version))
                 (binding [psc/*expected-document-version* parsed-version]
                   (handler request)))))
-          {:status 400 :body {:error "document-version was provided but no document was found with the provided version."}})
+          ;; The resolver found no document at all, which is a different thing
+          ;; from finding one at another version (that is the 409 above).
+          {:status 400 :body {:error "document-version was provided but this request names no document."}})
 
         :else
         (handler request)))))

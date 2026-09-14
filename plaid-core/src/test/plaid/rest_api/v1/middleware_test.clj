@@ -473,3 +473,18 @@
       (with-redefs [psc/q counting-q]
         (is (= {} (psc/document-versions fix/db [])))
         (is (zero? @queries))))))
+
+(deftest a-version-on-a-request-that-names-no-document-says-so
+  ;; The refusal used to read "no document was found with the provided
+  ;; version", which describes the 409 next to it. The resolver found no
+  ;; document at all, at any version.
+  (let [proj (create-test-project admin-request "NoDocumentVersionProj")
+        _ (create-test-document admin-request proj "Doc")
+        res (api-call admin-request {:method :post
+                                     :path "/api/v1/spans/bulk?document-version=1"
+                                     :body []})
+        error (-> res :body :error)]
+    (is (= 400 (:status res)))
+    (is (clojure.string/includes? error "names no document"))
+    (is (not (clojure.string/includes? error "with the provided version"))
+        "that phrasing belongs to the 409, where a document was found")))
