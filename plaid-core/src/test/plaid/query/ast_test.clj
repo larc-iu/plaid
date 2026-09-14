@@ -534,6 +534,14 @@
                                               "where" [["span" "?s" {"layer" "?sl"}] ["span-layer" "?sl" {}]
                                                        ["=" "?sl" "pos"]]})))
         "a layer var too"))
+  (testing "in takes the same rule: the other route into the same footgun"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"]
+                                              "where" [["span" "?s" {"layer" "p"}] ["in" "?s" ["NOUN" "VERB"]]]}))))
+    (is (some? (ast/parse+validate {"find" ["?s"]
+                                    "where" [["span" "?s" {"layer" "p"}]
+                                             ["in" "?s" ["11111111-1111-1111-1111-111111111111"
+                                                         "22222222-2222-2222-2222-222222222222"]]]}))
+        "a list of ids is accepted"))
   (testing "an id literal and a scalar var are still accepted"
     (is (some? (ast/parse+validate {"find" ["?s"]
                                     "where" [["span" "?s" {"layer" "p"}]

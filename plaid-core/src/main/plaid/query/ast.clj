@@ -1237,7 +1237,16 @@
           (let [res (field-resolve (get kinds (field-var lhs)) (field-path lhs))]
             (when (and (= :ref (:type res)) (not (every? uuid-like? members)))
               (err! :validate (str "in on reference field " (field->str lhs)
-                                   " requires layer/entity ids (UUIDs), not names")))))))
+                                   " requires layer/entity ids (UUIDs), not names")))))
+        ;; the same rule for a bare entity/layer var, which `in` compares on its
+        ;; id exactly as `=` does. This is the other route into the footgun the
+        ;; `=` guard above closes.
+        (when (var? lhs)
+          (let [kind (get kinds lhs)]
+            (when (and (some? kind) (not= :scalar kind) (not (every? uuid-like? members)))
+              (err! :validate (str "in on " lhs " (a " (name kind) ") compares its id, so the list "
+                                   "must be ids (UUIDs), not names. To match by value, constrain the "
+                                   "clause or use a field path such as " lhs ".value.")))))))
     ;; order-by: each entry is [field-ref dir]; the head must be a :find var (so
     ;; the sort column is present in every UNION branch). Any field is sortable
     ;; (ids give a stable order), so ordering? is false here.
