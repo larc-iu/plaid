@@ -58,8 +58,7 @@ const Resizer = ({ width, onResize }) => {
 // `picker` stands in for the chat when there is no project for it to be about
 // yet, which is the state a reader is in on the screen they land on after
 // signing in.
-export const AssistantDock = ({ open, width, onResize, onClose, picker = null, ...assistant }) => {
-  if (!open) return null;
+export const AssistantDock = ({ width, onResize, onClose, picker = null, ...assistant }) => {
   return (
     <aside
       style={{ width }}

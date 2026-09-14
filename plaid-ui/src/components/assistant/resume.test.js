@@ -1,39 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { rewindForRetry, stoppedIn, unansweredTurn } from './resume.js';
+import { rewindForRetry, stoppedIn } from './resume.js';
 
 const conv = (messages, display) => ({ id: 'c1', messages, display });
-
-describe('unansweredTurn', () => {
-  it('is true when nothing came back after the user spoke', () => {
-    expect(
-      unansweredTurn(conv([{ role: 'user', content: 'hi' }], [{ kind: 'user', text: 'hi' }])),
-    ).toBe(true);
-  });
-
-  it('is false once the assistant answered, or failed', () => {
-    const answered = conv(
-      [],
-      [
-        { kind: 'user', text: 'hi' },
-        { kind: 'assistant', text: 'yes' },
-      ],
-    );
-    const failed = conv(
-      [],
-      [
-        { kind: 'user', text: 'hi' },
-        { kind: 'error', text: 'boom' },
-      ],
-    );
-    expect(unansweredTurn(answered)).toBe(false);
-    expect(unansweredTurn(failed)).toBe(false);
-  });
-
-  it('is false for an empty or missing conversation', () => {
-    expect(unansweredTurn(conv([], []))).toBe(false);
-    expect(unansweredTurn(null)).toBe(false);
-  });
-});
 
 describe('rewindForRetry', () => {
   it('drops the user message from an interrupted turn, so sending it again does not duplicate it', () => {

@@ -1,12 +1,5 @@
-// Recognising a turn that never got its answer, and rewinding a conversation
-// so the user's last message can be sent again.
-//
-// The service writes every outcome into the conversation record (a reply, a
-// stop, an error), so a conversation whose last item is still the user's
-// message, with no request under way for it, is one whose request was lost:
-// the server or the service went away before the record was written.
-
-export const unansweredTurn = (conv) => conv?.display.at(-1)?.kind === 'user';
+// Rewinding a conversation so the user's last message can be sent again, and
+// what a turn the reader stopped had already got through.
 
 // What a turn the reader STOPPED had already got through, if it was this
 // conversation's. The live step list lives inside the panel's `busy` block and

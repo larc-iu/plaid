@@ -136,7 +136,6 @@ export const AssistantChrome = ({
       {gate.showHandle && <AssistantRail onOpen={() => setDockOpen(true)} />}
       {gate.showDock && (
         <AssistantDock
-          open
           width={width}
           onResize={resize}
           onClose={() => setDockOpen(false)}

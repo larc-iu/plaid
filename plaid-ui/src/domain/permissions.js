@@ -28,12 +28,3 @@ export const canEditProject = (project, user) =>
 
 export const canManageProject = (project, user) =>
   !!(user?.isAdmin || inList(project?.maintainers, user?.id));
-
-// 'maintainer' | 'writer' | 'reader' | 'none'
-export const projectAccessLevel = (project, user) => {
-  if (!user || !project) return 'none';
-  if (user.isAdmin || inList(project.maintainers, user.id)) return 'maintainer';
-  if (inList(project.writers, user.id)) return 'writer';
-  if (inList(project.readers, user.id)) return 'reader';
-  return 'none';
-};
