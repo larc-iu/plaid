@@ -661,11 +661,15 @@ form of a chain of `covers` + `precedes`.
 
 Each element is `[kind, {constraints}]`, optionally followed by `"as", "?var"` to
 capture it. A `span` element matches a token that the span covers; a `token`
-element matches the sequence token directly. An element's constraint map accepts
-the same keys as the standalone clause of that kind (a `span` element takes
-`value` / `doc` / `metadata`, a `token` element `value` / `begin` / `end` / `metadata`). The
-`seq` config map takes `layer` (required) and an optional `doc` to pin the whole
-sequence to one document.
+element matches the sequence token directly. A `span` element takes `layer` /
+`value` / `metadata`, a `token` element `value` / `begin` / `end` / `metadata`.
+
+The `seq` config map takes `layer` (required) and an optional `doc` to pin the
+whole sequence to one document. Those two belong to the config and nowhere else:
+the config's `layer` is the token layer the sequence walks, so a `token`
+element carrying its own `layer` is a 400, and so is a `doc` on an element of
+either kind. (A `span` element's `layer` is its own span layer, which is a
+different thing, and it is kept.)
 
 === Quantifiers
 
