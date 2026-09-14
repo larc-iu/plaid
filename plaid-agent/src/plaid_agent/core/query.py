@@ -42,6 +42,8 @@ Constraint values: literal "NOUN" (equality) | list ["NOUN","PROPN"] (any of) | 
   (Java regex, substring unless anchored) | {"var": "?x"} (bind the column instead of filtering; the same ?x
   elsewhere is a join).
 Metadata matches by JSON equality per key: {"metadata": {"prov": "inferred"}}; a regex runs on the value text.
+  Metadata is MATCHED, never bound, so a value beginning with "?" would read as a variable and is refused:
+  write {"literal": "?PL"} (one value or a list of them) for a value that really does begin with "?".
 Filter by document name: ["span","?s",{"layer":"X","doc":{"var":"?dv"}}], ["document","?d",{"name":{"regex":"^Text 3"}}], ["=","?dv","?d"]
 Relationship clauses  [op, "?a", "?b"]:
   ["covers", ?span, ?token]      the span sits on that token

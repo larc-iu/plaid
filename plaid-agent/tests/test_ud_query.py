@@ -99,6 +99,15 @@ def test_the_help_carries_the_language_itself(ws):
         assert clause in help_text, clause
 
 
+def test_the_help_names_the_escape_for_a_metadata_value_beginning_with_a_question_mark(ws):
+    """The server refuses one as a variable and its 400 names the wrapper, but
+    the reference the model reads BEFORE writing a query did not, so a value
+    like the gloss "?PL" could only be searched for with a regex."""
+    help_text = call_tool(ws, 'query_help', {})
+    assert '{"literal": "?PL"}' in help_text
+    assert 'MATCHED, never bound' in help_text
+
+
 def test_the_commonest_forms_can_be_asked_for_project_wide(ws):
     """A form is the token's surface unless a Form span overrides it. The
     engine answers both halves (surfaces of tokens with no Form span, and
