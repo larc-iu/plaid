@@ -6,6 +6,7 @@ import { DataTable } from './data-table.jsx';
 import { timeAgo, fullTimestamp } from '../../lib/formatTime.js';
 import { notifyError } from '../../lib/notify.js';
 import { readableDescription } from '../../lib/auditText.js';
+import { textIncludes } from '../../domain/collation.js';
 
 // A paged audit feed. `fetchPage({cursor, limit})` returns the server's
 // `{entries, nextCursor}` newest-first, and this holds what has been loaded so
@@ -197,7 +198,7 @@ export const AuditFeed = ({
               e.user?.id,
               ...(e.documents || []).map((d) => d.name),
               ...(e.projects || []).map((p) => p.name),
-            ].some((v) => v && v.toLowerCase().includes(q)),
+            ].some((v) => v && textIncludes(v, q)),
         }}
         noun="change"
         empty={empty}

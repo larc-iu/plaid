@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, all } from '../../test/renderComponent.jsx';
 import { DataTable } from './data-table';
+import { textIncludes } from '../../domain/collation.js';
 
 // DataTable is the one browsable table every admin screen uses, so its sort,
 // search and paging are load-bearing in a way a single screen's are not.
@@ -100,6 +101,38 @@ describe('DataTable', () => {
     });
     expect(names(container)).toEqual(['Bob']);
     expect(container.textContent).toContain('1 of 3 people');
+    await unmount();
+  });
+
+  // Whether a reader's `ẹ` arrives as one character or as `e` plus a combining
+  // dot below is decided by their keyboard, the export or the paste it came
+  // from, and the two are not equal strings. The query reaches `match` as a
+  // collation key, so a row filed the other way still matches.
+  it('hands the match a query that is already a collation key', async () => {
+    const DECOMPOSED = 'Ẹ̀J'; // E, combining dot below, combining grave
+    const KEY = 'ẹ̀j'; // the same thing composed and folded
+    let seen = null;
+    const { container, step, unmount } = await table({
+      rows: [{ id: 'x', name: `${KEY}a`, changes: 1 }],
+      search: {
+        placeholder: 'Search…',
+        match: (r, q) => {
+          seen = q;
+          return textIncludes(r.name, q);
+        },
+      },
+    });
+    const box = container.querySelector('input');
+    const setValue = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      'value',
+    ).set;
+    await step(() => {
+      setValue.call(box, DECOMPOSED);
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(seen).toBe(KEY);
+    expect(names(container)).toHaveLength(1);
     await unmount();
   });
 

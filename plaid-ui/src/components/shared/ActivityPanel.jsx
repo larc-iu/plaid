@@ -5,6 +5,7 @@ import { UserAvatar } from './UserAvatar.jsx';
 import { timeAgo, fullTimestamp } from '../../lib/formatTime.js';
 import { notifyError } from '../../lib/notify.js';
 import { AuditFeed } from './AuditFeed.jsx';
+import { textIncludes } from '../../domain/collation.js';
 
 // Who has been working, and on what. Two reads: a tally of people, and the
 // feed of what happened. `projectId` scopes both to one project, which is what
@@ -214,7 +215,7 @@ export const ActivityPanel = ({ client, projectId, roster, projectHref, document
         defaultSort={{ key: 'changes', dir: 'desc' }}
         search={{
           placeholder: 'Search people…',
-          match: (row, q) => nameOf(row).toLowerCase().includes(q),
+          match: (row, q) => textIncludes(nameOf(row), q),
         }}
         noun="person"
         empty="Nothing in this window."
@@ -232,7 +233,7 @@ export const ActivityPanel = ({ client, projectId, roster, projectHref, document
           defaultSort={{ key: 'person', dir: 'asc' }}
           search={{
             placeholder: 'Search people…',
-            match: (m, q) => (m.displayName || m.id).toLowerCase().includes(q),
+            match: (m, q) => textIncludes(m.displayName || m.id, q),
           }}
           noun="person"
         />

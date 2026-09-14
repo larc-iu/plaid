@@ -100,6 +100,19 @@ describe('filterMentions', () => {
     expect(filterMentions(groups, '')).toHaveLength(2);
   });
 
+  // A reader's `ẹ` may arrive composed or as `e` plus a combining dot, and a
+  // sentence's may be filed the other way. Neither is wrong, and they are not
+  // equal strings.
+  it('matches across the two spellings of one letter', () => {
+    const composed = '\u1EB9ja'; // ẹja
+    const decomposed = 'e\u0323ja'; // the same word, e + combining dot below
+    const rows = [
+      { group: 'Sentences', items: [{ value: 's1', label: 's1', hint: `Mo ri ${composed}` }] },
+    ];
+    expect(filterMentions(rows, decomposed)[0].items).toHaveLength(1);
+    expect(filterMentions(rows, composed.toUpperCase())[0].items).toHaveLength(1);
+  });
+
   it('caps a group, because a long document is not a list to scroll', () => {
     const many = [
       {

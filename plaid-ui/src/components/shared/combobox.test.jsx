@@ -29,6 +29,17 @@ describe('the option shapes', () => {
       { group: 'All tags', items: [{ value: 'VERB', label: 'VERB' }] },
     ]);
   });
+
+  // A tag or a headword may be filed with `ẹ` as one character and typed as
+  // `e` plus a combining dot below, or the other way round. Neither is wrong,
+  // and they are not equal strings.
+  it('matches across the two spellings of one letter', () => {
+    const composed = '\u1EB9ja'; // ẹja
+    const decomposed = 'e\u0323ja'; // the same word, decomposed
+    const options = normalizeOptions([composed]);
+    expect(defaultFilter({ options, search: decomposed })).toHaveLength(1);
+    expect(defaultFilter({ options, search: decomposed.toUpperCase() })).toHaveLength(1);
+  });
 });
 
 // The contract the annotation grid depends on: the call site is told what the

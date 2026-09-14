@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
+import { collationKey } from '../../domain/collation.js';
 import { Button } from '../ui/button.jsx';
 import { SearchInput, ListCount, ListPager, SortHeader } from './list-search.jsx';
 import { pageKey, usePagedList } from '../../hooks/usePagedList.js';
@@ -21,6 +22,12 @@ import { listPrefKey, useStickySort } from '../../hooks/useStickyState.js';
 // whatever the caller filters on that this cannot know about (a status
 // dropdown, a time window). Text search is this component's job when a
 // `search` prop is given.
+//
+// `search.match(row, q)` is handed the query as a COLLATION KEY (NFC, lower
+// case). Compare with `textIncludes` from `domain/collation.js` rather than
+// `.toLowerCase().includes(q)`: `e` plus a combining dot below and the single
+// character are different strings, and which one a row carries depends on the
+// keyboard, the export or the paste it came from.
 //
 // `expand(row)` makes rows openable: it returns what to draw underneath one,
 // in a full-width cell, and a chevron column appears in front. Use it when a
@@ -80,7 +87,7 @@ export const DataTable = ({
   );
 
   const matched = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = collationKey(query.trim());
     if (!q || !search?.match) return rows;
     return rows.filter((row) => search.match(row, q));
   }, [rows, query, search]);

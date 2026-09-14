@@ -1,3 +1,5 @@
+import { textIncludes } from '../../domain/collation.js';
+
 // The option shapes a Combobox takes and the walks over them, apart from the
 // component so that files which only need the shapes (the mention list, a
 // hook) import no React tree, and so the component file exports one thing.
@@ -22,9 +24,9 @@ export function flattenOptions(options) {
 
 /** Substring match on the label, group-aware. What a call site gets if it names no filter. */
 export function defaultFilter({ options, search }) {
-  const q = (search || '').trim().toLowerCase();
+  const q = (search || '').trim();
   if (!q) return options;
-  const keep = (option) => option.label.toLowerCase().includes(q);
+  const keep = (option) => textIncludes(option.label, q);
   return options
     .map((option) => ('group' in option ? { ...option, items: option.items.filter(keep) } : option))
     .filter((option) => ('group' in option ? option.items.length > 0 : keep(option)));
