@@ -1,6 +1,7 @@
 """The system prompt."""
 
 from ..core import sandbox, webtools
+from ..core.limits import OVERVIEW_DOCS
 from .project import IgtProject, SCOPES, tagset_lines
 
 # Values of one tagset shown in the system prompt. Project_overview lists the rest.
@@ -46,7 +47,7 @@ decide.
 - Your final message for a turn that planned changes must say plainly what the plan does, how many items it \
 touches, and anything uncertain, so the user can decide. Do not claim anything was changed: it will only be \
 applied if they approve.
-- Which tool: list_documents to find documents by name or metadata (the overview shows the first hundred); \
+- Which tool: list_documents to find documents by name or metadata (the overview shows the first {overview_docs}); \
 worklist for what is unfinished (by frequency); corpus_stats and frequency_list for numbers; \
 search for finding items, concordance for context around a form or gloss, sequence_search for constructions; \
 analyses_of before proposing any analysis (pass forms=[...] for every word of a sentence at once, and plan the \
@@ -153,6 +154,10 @@ def build_system_prompt(project: IgtProject, web: bool = False) -> str:
     lines.append('- Orthographies: ' + (', '.join(project.orthographies) or 'none'))
     lines.append('- Lexicons: ' + (', '.join(v['name'] for v in project.vocabs) or 'none'))
     # Not str.format: field and layer names in the shape may contain braces.
-    out = SYSTEM.replace('{project_name}', project.name).replace('{shape}', '\n'.join(lines))
+    # The number the overview really shows, before the project's own text goes
+    # in: written out as a word here, the prompt promised a hundred documents
+    # after the overview moved to fifty.
+    out = SYSTEM.replace('{overview_docs}', str(OVERVIEW_DOCS))
+    out = out.replace('{project_name}', project.name).replace('{shape}', '\n'.join(lines))
     out = out + WEB if web else out
     return out + CODE if sandbox.available() is None else out

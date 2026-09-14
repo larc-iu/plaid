@@ -85,6 +85,20 @@ def test_both_apps_cap_a_scope_and_a_read_at_the_same_number():
     assert ud_tools.OVERVIEW_DOCS is limits.OVERVIEW_DOCS
 
 
+def test_the_prompt_says_how_many_documents_the_overview_really_shows():
+    """Written out as a word, the IGT prompt promised the model a hundred
+    documents for as long as the overview showed fifty. It reads the number
+    now, and no placeholder survives assembly."""
+    import sys
+    sys.path.insert(0, 'tests')
+    from fixtures import FakeClient
+    from plaid_agent.igt.project import load_project
+    from plaid_agent.igt.prompt import build_system_prompt
+    out = build_system_prompt(load_project(FakeClient(), 'p1'))
+    assert f'the overview shows the first {limits.OVERVIEW_DOCS}' in out
+    assert '{overview_docs}' not in out
+
+
 def test_the_bulk_cap_is_the_plan_cap():
     """IGT called it MAX_BULK and its refusal said "more than the N one plan
     may hold", which is `PLAN_MAX_OPS` under another name."""
