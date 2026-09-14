@@ -74,11 +74,13 @@ export const useDocumentHistory = (documentId) => {
         // Time travel to a past state failed (non-200). Fail loudly via a toast
         // so it's obvious even when the drawer is closed — but DON'T disturb the
         // drawer's entry list (a transient failure shouldn't wipe the history you
-        // were browsing). Surface the HTTP status. (As-of reads come straight
-        // from the audit log — no replica, so no 425/"not caught up" class.)
-        const status = err.status ? ` (HTTP ${err.status})` : '';
-        const msg = `Couldn't load the document at that point in time${status}: ${humanizeError(err)}`;
-        notifyError(msg, 'Time travel failed');
+        // were browsing).
+        //
+        // The error OBJECT is the message, so its status is read off it. A
+        // sentence with the status composed into it was read back by
+        // `humanizeError` and REPLACED wholesale, so a stalled read said only
+        // "Could not reach the server" and named nothing it had been doing.
+        notifyError(err, 'Time travel failed');
         console.error('Error fetching historical document:', err);
         return null;
       } finally {

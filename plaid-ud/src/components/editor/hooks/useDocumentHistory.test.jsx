@@ -11,10 +11,11 @@ const logout = vi.hoisted(() => vi.fn());
 vi.mock('../../../contexts/AuthContext.jsx', () => ({
   useAuth: () => ({ getClient: () => client, logout }),
 }));
-vi.mock('../../../utils/feedback.jsx', () => ({
+const feedback = vi.hoisted(() => ({
   notifyError: vi.fn(),
   humanizeError: (err) => String(err?.message ?? err),
 }));
+vi.mock('../../../utils/feedback.jsx', () => feedback);
 
 const { useDocumentHistory } = await import('./useDocumentHistory.js');
 
@@ -40,6 +41,7 @@ beforeEach(() => {
   client.documents.get.mockReset();
   client.documents.audit.mockReset();
   logout.mockReset();
+  feedback.notifyError.mockReset();
   for (const key of Object.keys(lands)) delete lands[key];
 });
 
@@ -111,6 +113,25 @@ describe('an as-of read that is overtaken', () => {
       await reading;
     });
     expect(api.historicalDocument).toBe(null);
+    await view.unmount();
+  });
+
+  it('hands the error itself to the toast, under the name of what failed', async () => {
+    // The status belongs to the error, and `humanizeError` is the one place it
+    // becomes a sentence. Composing it into a sentence here and passing the
+    // string meant the toast read that string back, found the status in it,
+    // and replaced the whole thing: a stalled read said "Could not reach the
+    // server" and nothing about the load it had been doing.
+    const err = Object.assign(new Error('HTTP 503 Service Unavailable'), { status: 503 });
+    client.documents.get.mockRejectedValue(err);
+    view = await renderComponent(<Probe />);
+
+    await view.step(async () => {
+      await api.fetchHistoricalDocument(A);
+    });
+
+    expect(feedback.notifyError).toHaveBeenCalledTimes(1);
+    expect(feedback.notifyError).toHaveBeenCalledWith(err, 'Time travel failed');
     await view.unmount();
   });
 

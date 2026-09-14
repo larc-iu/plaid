@@ -220,7 +220,12 @@ export class ConlluDocument {
     } catch (err) {
       console.error(`${label}:`, err);
       this._error = `${label}: ${err.message || 'Unknown error'}`;
-      notifyError(this._error);
+      // The label is the toast's TITLE and the error object its message.
+      // Composing the two and handing over the string lost both halves: the
+      // toast reads its description through `humanizeError`, which finds the
+      // "HTTP 503" the raw message carries and REPLACES the whole sentence,
+      // label included, with "Could not reach the server."
+      notifyError(err, label);
       try {
         await this._reload();
       } catch (reloadErr) {
