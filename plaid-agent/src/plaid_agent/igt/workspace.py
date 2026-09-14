@@ -16,10 +16,9 @@ text the way the editor does.
 import copy
 import re
 import uuid
-from collections import OrderedDict
 from typing import Any, Dict, List, Optional
 
-from ..core import opkind
+from ..core import docload, opkind
 from ..core.tools import ToolError
 from ..core.workspace import BaseWorkspace
 
@@ -34,13 +33,9 @@ MAX_DOCS_PER_SEARCH = 1000
 PLAN_NOTE = ('A corpus-wide replace or respell counts as one change, and so does a whole '
              "document's confirm, however many values it covers.")
 
-# Parsed documents, shared across turns and users of this process, keyed by
-# (document id, version): every write inside a document bumps its version,
-# and the document list a turn starts from carries the current versions, so a
-# cached document is exact or unused. Any reader of a project may read all
-# of its documents, so sharing is safe. Bounded, least recently used out.
-_DOC_CACHE: 'OrderedDict[tuple, IgtDoc]' = OrderedDict()
-DOC_CACHE_SIZE = 400
+# Parsed documents, shared across turns and users of this process. See
+# plaid_agent.core.docload for what the key covers and what it does not.
+_DOC_CACHE = docload.DocCache()
 
 
 class Workspace(BaseWorkspace):
@@ -50,6 +45,7 @@ class Workspace(BaseWorkspace):
     KIND = KIND
     PLAN_NOTE = PLAN_NOTE
     SPAN_KIND = 'set_span'
+    DOC_CACHE = _DOC_CACHE
 
     def __init__(self, client, project: IgtProject, on_progress=None):
         super().__init__(client, project, on_progress)
@@ -88,31 +84,24 @@ class Workspace(BaseWorkspace):
 
     # --- loading ---------------------------------------------------------
 
+    def load_doc(self, doc_id: str) -> IgtDoc:
+        return load_document(self.client, self.project, doc_id)
+
     def doc(self, document: str) -> IgtDoc:
         did = self.resolve_document_id(document)
         if did not in self._docs:
             entry = next((d for d in self.documents() if d['id'] == did), {})
-            # A client may opt out (test doubles reuse ids with different content).
-            version = None if getattr(self.client, 'no_doc_cache', False) else entry.get('version')
-            key = (did, version)
-            cached = _DOC_CACHE.get(key) if version is not None else None
-            if cached is not None:
-                _DOC_CACHE.move_to_end(key)
-                self._docs[did] = cached
-                return cached
-            self.on_progress(f'Reading "{entry.get("name") or did}"…')
-            doc = load_document(self.client, self.project, did)
-            self._docs[did] = doc
-            if version is not None and doc.version == version:
-                _DOC_CACHE[key] = doc
-                while len(_DOC_CACHE) > DOC_CACHE_SIZE:
-                    _DOC_CACHE.popitem(last=False)
+            self._docs[did] = self.reader.get(did, self._version_of(entry),
+                                              entry.get('name') or did)
         return self._docs[did]
 
     def all_docs(self) -> List[IgtDoc]:
         docs = self.documents()
         if len(docs) > MAX_DOCS_PER_SEARCH:
             raise ToolError(f'{len(docs)} documents is too many to scan at once; name a document.')
+        # Every one of them is wanted, so there is nothing to guess at: start
+        # them all and take them in order as they land.
+        self.read_ahead(docs)
         return [self.doc(d['id']) for d in docs]
 
     def lexicon(self, vocab: dict) -> List[dict]:

@@ -93,12 +93,6 @@ def api(ws: Workspace) -> Dict[str, Callable]:
     def documents():
         return [{'id': d['id'], 'name': d.get('name') or ''} for d in ws.documents()]
 
-    def load(document: str):
-        try:
-            return view(ws.doc(document))
-        except ToolError as e:
-            raise ValueError(str(e))
-
     def query(q):
         try:
             parsed = parse_query(q)
@@ -111,7 +105,7 @@ def api(ws: Workspace) -> Dict[str, Callable]:
     # The toolkit is the last module imported (it reads every tool module,
     # this one included), so it is asked for here rather than at the top.
     from .toolkit import WRITE_TOOLS, call_tool
-    return {'documents': documents, 'load': load, 'query': query,
+    return {'documents': documents, 'load': sandbox.load_proxy(ws, view), 'query': query,
             'plan': sandbox.plan_proxy(ws, call_tool, WRITE_TOOLS)}
 
 

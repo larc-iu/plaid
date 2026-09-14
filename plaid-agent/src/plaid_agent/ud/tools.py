@@ -13,7 +13,7 @@ import copy
 import uuid
 from typing import Any, Dict, List, Optional
 
-from ..core import opkind
+from ..core import docload, opkind
 from ..core.args import clamp_limit, read_int, sentence_number, whole
 from ..core.limits import (MAX_RESULT_CHARS, MAX_SCOPE_DOCS, MAX_SENTENCES_PER_READ, OVERVIEW_DOCS,
                           READ_LIMITS)
@@ -38,6 +38,10 @@ SCOPE_KINDS = opkind.scopes(KIND)
 # are asked for: each is read to count what is waiting, and read again at
 # approval.
 
+# Parsed documents, shared across turns and users of this process. See
+# plaid_agent.core.docload for what the key covers and what it does not.
+_DOC_CACHE = docload.DocCache()
+
 
 
 
@@ -50,6 +54,7 @@ class Workspace(BaseWorkspace):
     KIND = KIND
     PLAN_NOTE = PLAN_NOTE
     SPAN_KIND = 'set_span'
+    DOC_CACHE = _DOC_CACHE
 
     def __init__(self, client, project: UdProject, on_progress=None):
         super().__init__(client, project, on_progress)
@@ -58,14 +63,17 @@ class Workspace(BaseWorkspace):
         from .corpus import Corpus
         return Corpus(self)
 
+    def load_doc(self, doc_id: str) -> UdDoc:
+        return load_document(self.client, self.project, doc_id)
+
     def doc(self, document: str) -> UdDoc:
         did = self.resolve_document_id(document)
         if did not in self._docs:
             # Name it the way the user would: a corpus-wide tool passes an id,
             # and "Reading 019ed0b8-…" tells a watcher nothing.
             entry = next((d for d in self.documents() if d['id'] == did), {})
-            self.on_progress(f'Reading "{entry.get("name") or document}"…')
-            self._docs[did] = load_document(self.client, self.project, did)
+            self._docs[did] = self.reader.get(did, self._version_of(entry),
+                                              entry.get('name') or document)
         return self._docs[did]
 
     def word(self, document: str, ref: str):

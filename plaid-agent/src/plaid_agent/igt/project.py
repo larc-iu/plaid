@@ -195,6 +195,25 @@ class IgtProject:
                 return f['name']
         return None
 
+    def read_layer_ids(self) -> List[str]:
+        """The layers a document read has to carry, for ``?layers=``.
+
+        A project may hold layers this app never parses: a relation layer, a
+        span layer with no IGT scope, anything another app annotating the same
+        project put there. Naming what is read keeps the server from fetching,
+        serializing and compressing the rest, which is most of what a corpus
+        walk costs on both ends.
+
+        A layer carries its own content only when it is NAMED, so the text
+        layer is here for the text body, each token layer for its tokens and
+        its vocab links, and each field's span layer for its spans.
+        """
+        ids = [self.text_layer_id, self.sentence_layer_id, self.word_layer_id]
+        if self.morpheme_layer_id:
+            ids.append(self.morpheme_layer_id)
+        ids.extend(f.layer_id for f in self.fields.values())
+        return [i for i in dict.fromkeys(ids) if i]
+
     def field_by_layer(self, layer_id: str) -> Optional[Field]:
         for f in self.fields.values():
             if f.layer_id == layer_id:
@@ -447,7 +466,8 @@ def _links_by_token(token_layer):
 
 
 def load_document(client, project: IgtProject, document_id: str) -> IgtDoc:
-    raw = client.documents.get(document_id, include_body=True)
+    raw = client.documents.get(document_id, include_body=True,
+                               layers=project.read_layer_ids())
     return parse_document(raw, project)
 
 

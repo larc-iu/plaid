@@ -104,6 +104,22 @@ class UdProject:
     modes: Dict[str, str] = dc_field(default_factory=dict)
     descriptions: Dict[str, Dict[str, str]] = dc_field(default_factory=dict)
 
+    def read_layer_ids(self) -> List[str]:
+        """The layers a document read has to carry, for ``?layers=``.
+
+        A project may hold layers this app never parses: an IGT gloss or
+        morpheme layer where the two apps share a project, anything with no UD
+        meaning. Naming what is read keeps the server from fetching,
+        serializing and compressing the rest.
+
+        A layer carries its own content only when it is NAMED, so the text
+        layer is here for the text body, each token layer for its tokens, and
+        each annotation layer for its spans or relations.
+        """
+        ids = [self.text_layer_id, self.sentence_layer_id, self.token_layer_id,
+               self.word_layer_id, *self.span_layers.values(), self.relation_layer_id]
+        return [i for i in dict.fromkeys(ids) if i]
+
     def layer(self, field: str) -> str:
         """The span layer id for an annotation field, by its UD name."""
         lid = self.span_layers.get(field)
@@ -314,7 +330,8 @@ def _relations(token_layer, relation_layer_id: Optional[str]) -> List[dict]:
 
 
 def load_document(client, project: UdProject, document_id: str) -> UdDoc:
-    raw = client.documents.get(document_id, include_body=True)
+    raw = client.documents.get(document_id, include_body=True,
+                               layers=project.read_layer_ids())
     return parse_document(raw, project)
 
 

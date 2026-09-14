@@ -233,6 +233,29 @@ def plan_proxy(ws, call_tool, write_tools) -> Callable[..., str]:
     return plan
 
 
+def load_proxy(ws, view: Callable[[Any], Any]) -> Callable[[str], Any]:
+    """``load(document)`` for the sandbox: one document as the app's plain-data
+    view, addressed by id or name.
+
+    A run that has asked for a second document is walking the corpus rather
+    than asking about one, and every ``load`` after that would otherwise wait
+    a whole round trip by itself. From there the rest of the document list is
+    read in the background, a bounded few at a time, so the walk overlaps its
+    reads instead of queueing them. A run that wanted one or two documents
+    starts nothing extra, and a run that stops early takes the unstarted reads
+    with it when the turn closes.
+    """
+    def load(document: str):
+        try:
+            doc = view(ws.doc(document))
+        except ToolError as e:
+            raise ValueError(str(e))
+        if ws.reader.walking():
+            ws.read_ahead(ws.documents(), once=True)
+        return doc
+    return load
+
+
 def run_tool(ws, code: Optional[str], api: Callable[[Any], Dict[str, Callable]]) -> str:
     """The ``run_code`` tool, for every app. One worker per turn, opened on the
     first call and released by the workspace's ``close()``; ``api(ws)`` is what

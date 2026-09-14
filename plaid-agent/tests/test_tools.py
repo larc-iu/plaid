@@ -587,7 +587,7 @@ def test_parsed_documents_are_cached_across_workspaces_by_version(fresh_document
     c._documents['d1'] = raw
     w = scan_ws(c)
     fresh = w.doc('d1')
-    assert fresh is not d and fresh.version == 4 and T._DOC_CACHE[('d1', 4)] is fresh
+    assert fresh is not d and fresh.version == 4 and T._DOC_CACHE.get(('d1', 4)) is fresh
 
 
 def test_a_large_group_of_like_changes_is_stored_as_one_op_and_applies_whole(monkeypatch):

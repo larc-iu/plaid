@@ -57,6 +57,7 @@ class BaseFakeClient:
 
     def __init__(self, project, documents, audit=None):
         self.log = []
+        self.doc_reads = []  # (document id, layers asked for) per body read
         self.batches = []  # each: list of log entries submitted together
         self.operations = []
         self._batch_start = None
@@ -90,7 +91,12 @@ class BaseFakeClient:
         def __init__(self, c):
             self.c = c
 
-        def get(self, did, include_body=None, **kw):
+        def get(self, did, include_body=None, layers=None, **kw):
+            # Recorded so a test can pin WHICH layers a read asked for. The
+            # fake returns the whole fixture either way: what ?layers= drops
+            # is the server's business, and the app's business is naming the
+            # layers it parses.
+            self.c.doc_reads.append((did, tuple(layers) if layers else None))
             return self.c._documents[did]
 
         def create(self, project_id, name, metadata=None, **kw):

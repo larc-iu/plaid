@@ -16,7 +16,7 @@ refusals only it owes (:meth:`BaseWorkspace.guard_op`).
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 
-from . import opkind
+from . import docload, opkind
 from .plan import PLAN_MAX_OPS, PlanFull, reserve as core_reserve
 from .tools import ToolError
 
@@ -48,6 +48,9 @@ class BaseWorkspace:
     # ``token_id`` and ``value``. Named by the app rather than here, so no kind
     # of any app's is written into the base.
     SPAN_KIND = ''
+    # The app's process-wide cache of parsed documents (a docload.DocCache).
+    # An app that sets none reads every document afresh every turn.
+    DOC_CACHE = None
 
     def __init__(self, client, project, on_progress=None):
         self.client = client
@@ -74,12 +77,64 @@ class BaseWorkspace:
         # The turn's code worker (core.sandbox.Session), opened by the first
         # run_code call and released by close().
         self.code = None
+        # The turn's document reads. Made on first use so a turn that reads no
+        # document opens no thread pool.
+        self._reader = None
 
     def close(self) -> None:
-        """Release what the turn held: the code worker, if one was opened."""
+        """Release what the turn held: the code worker and any reads still
+        running, if either was opened."""
         if self.code is not None:
             self.code.close()
             self.code = None
+        if self._reader is not None:
+            self._reader.close()
+            self._reader = None
+
+    # --- reading documents ------------------------------------------------
+
+    def load_doc(self, doc_id: str):
+        """Read and parse one document. The app answers this. Called on worker
+        threads as well as this one, so it may touch the client and the
+        project and nothing else on the workspace."""
+        raise NotImplementedError
+
+    @property
+    def reader(self) -> docload.Reader:
+        if self._reader is None:
+            cache = self.DOC_CACHE or docload.DocCache(0)
+            self._reader = docload.Reader(self.load_doc, cache, self.on_progress)
+        return self._reader
+
+    def _version_of(self, entry: dict):
+        """The version to cache a listed document under, or None to read it
+        afresh. A client may opt out, which test doubles do: they reuse ids
+        across different content, so a version means nothing there."""
+        if getattr(self.client, 'no_doc_cache', False):
+            return None
+        return (entry or {}).get('version')
+
+    def read_ahead(self, wanted, *, once: bool = False) -> None:
+        """Start reading documents in the background, a bounded few at a time.
+
+        ``wanted`` is document ids or entries from :meth:`documents`, in the
+        order they will be used. The ones already cached or already running are
+        skipped, so passing the whole list when only some are wanted costs
+        nothing for the rest.
+
+        Only call it where every document WILL be read. A caller that stops
+        early leaves a window's worth of reads that nobody wanted, which is
+        exactly the cost this is supposed to save.
+        """
+        listed = None
+        pairs = []
+        for item in wanted:
+            if isinstance(item, str):
+                if listed is None:
+                    listed = {d['id']: d for d in self.documents()}
+                item = listed.get(item) or {'id': item}
+            pairs.append((item['id'], self._version_of(item)))
+        self.reader.read_ahead(pairs, once=once)
 
     # --- the corpus helper ------------------------------------------------
 

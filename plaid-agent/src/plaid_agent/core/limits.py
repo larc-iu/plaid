@@ -38,6 +38,12 @@ READ_LIMITS = {
     'query': (50, 500),
 }
 
+# How many parsed documents this process keeps, across every turn and every
+# user of it. Documents are what a corpus walk re-reads most, and a parsed one
+# is large, so this is a memory budget as much as a hit rate: raising it is
+# how an operator with room trades memory for round trips.
+DOC_CACHE_SIZE = 400
+
 # What one reply's citations may cost. A citation is resolved against the
 # documents the turn already read; past that it fetches, so the fetching is
 # what needs a budget.

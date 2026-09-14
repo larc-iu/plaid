@@ -96,6 +96,8 @@ def _ref_index(ws: Workspace, doc_ids: List[str]) -> Dict[str, str]:
     """entity id -> positional reference, for the named documents. What makes a
     row readable: "Viaje" s3.w2 rather than a UUID."""
     refs: Dict[str, str] = {}
+    # Every one of them is read below, so there is nothing to guess at.
+    ws.read_ahead(doc_ids)
     for did in doc_ids:
         try:
             doc = ws.doc(did)
