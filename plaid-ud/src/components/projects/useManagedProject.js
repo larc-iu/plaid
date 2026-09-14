@@ -50,11 +50,18 @@ export const useManagedProject = () => {
     fetchProject();
   }, [fetchProject]);
 
-  const canConfigure = canManageProject(project, user);
+  // The project the ROUTE asks for. `project` still holds the one before it
+  // while a second read is in flight, and keeps holding it when that read
+  // fails, so both the guard below and the screens above read this instead:
+  // otherwise a project the reader manages stands in for the one they are
+  // looking at, and walking from a managed project to an unmanaged one is
+  // briefly permitted.
+  const loaded = project?.id === projectId ? project : null;
+  const canConfigure = canManageProject(loaded, user);
 
   useEffect(() => {
-    if (project && !canConfigure) navigate('/projects');
-  }, [project, canConfigure, navigate]);
+    if (loaded && !canConfigure) navigate('/projects');
+  }, [loaded, canConfigure, navigate]);
 
-  return { projectId, project, loading, fetchProject, canConfigure };
+  return { projectId, project: loaded, loading, fetchProject, canConfigure };
 };

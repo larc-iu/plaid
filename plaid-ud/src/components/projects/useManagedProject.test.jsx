@@ -51,6 +51,7 @@ const app = (
 
 beforeEach(() => {
   seen = null;
+  auth.user = { id: 'u', isAdmin: true };
 });
 
 describe('the managed project when the reader walks to another one', () => {
@@ -82,6 +83,26 @@ describe('the managed project when the reader walks to another one', () => {
     await view.step(async () => d.settle('B', { id: 'B', name: 'Bee' }));
     expect(seen.project.id).toBe('B');
     expect(seen.loading).toBe(false);
+    await view.unmount();
+  });
+
+  // The guard is about the project the ROUTE names. Reading the one still in
+  // hand makes walking from a project the reader manages to one they do not
+  // briefly permitted, and a failed read leaves it permitted for good.
+  it('does not take the project it left as leave to configure the next one', async () => {
+    const d = deferred();
+    auth.getClient.mockReturnValue(d.client);
+    auth.user = { id: 'u' };
+    const view = await renderComponent(app);
+    await view.step(async () => d.settle('A', { id: 'A', name: 'Ay', maintainers: ['u'] }));
+    expect(seen.canConfigure).toBe(true);
+
+    await view.step(() => go('/projects/B/general'));
+    expect(seen.project).toBe(null);
+    expect(seen.canConfigure).toBe(false);
+
+    await view.step(async () => d.settle('B', { id: 'B', name: 'Bee', maintainers: ['other'] }));
+    expect(seen.canConfigure).toBe(false);
     await view.unmount();
   });
 
