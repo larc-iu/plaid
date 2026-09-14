@@ -1,25 +1,18 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
-import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
-import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { ArrowLeft, Copy, Check, ImagePlus } from 'lucide-react';
-import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
-import { Button } from '@ui/components/ui/button';
-import { Input } from '@ui/components/ui/input';
-import { Label } from '@ui/components/ui/label';
-import { Card, CardHeader, CardTitle, CardContent } from '@ui/components/ui/card';
-import { UserAvatar } from '@ui/components/shared/UserAvatar';
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogFooter,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogAction,
-  AlertDialogCancel,
-} from '@ui/components/ui/alert-dialog';
+import { useAuth } from '../../contexts/useAuth.js';
+import { timeAgo, fullTimestamp } from '../../lib/formatTime.js';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
+import { notifySuccess, notifyError, notifyWarning } from '../../lib/notify.js';
+import { humanizeError } from '../../lib/errors.js';
+import { cn } from '../../lib/utils.js';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Card, CardHeader, CardTitle, CardContent } from '../ui/card';
+import { UserAvatar } from '../shared/UserAvatar';
+import { useConfirm } from '../shared/ConfirmProvider';
 
 const EMPTY = (displayName = '') => ({
   displayName,
@@ -28,9 +21,16 @@ const EMPTY = (displayName = '') => ({
   confirmPassword: '',
 });
 
-export const UserProfile = () => {
+/**
+ * The account screen: display name, password, profile picture, API tokens.
+ *
+ * `className` is the outer wrapper's, because the two shells differ: plaid-ud's
+ * Outlet is already padded and plaid-igt's is not.
+ */
+export const UserProfile = ({ className }) => {
   useDocumentTitle('Profile');
   const navigate = useNavigate();
+  const confirm = useConfirm();
   const { user, client, updateUser } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -83,8 +83,9 @@ export const UserProfile = () => {
   // Freshly-minted token, shown exactly once (the server never returns it again).
   const [mintedToken, setMintedToken] = useState(null);
   const [copied, setCopied] = useState(false);
-  const [revokeTarget, setRevokeTarget] = useState(null);
 
+  // A revoked token's row stays on the server forever, so the audit log can
+  // always resolve its name. Only the live ones belong on this screen.
   const activeTokens = tokens.filter((t) => !t.revokedAt);
 
   const loadTokens = async () => {
@@ -95,7 +96,7 @@ export const UserProfile = () => {
       setTokens(result || []);
     } catch (err) {
       console.error('Error loading API tokens:', err);
-      notifyError('Failed to load API tokens', 'Error');
+      notifyError(humanizeError(err), 'Could not load the tokens');
     } finally {
       setTokensLoading(false);
     }
@@ -111,7 +112,7 @@ export const UserProfile = () => {
     e.preventDefault();
     const name = newTokenName.trim();
     if (!name) {
-      notifyError('Please enter a name for the token', 'Error');
+      notifyError('Name the token', 'Could not create the token');
       return;
     }
     try {
@@ -131,18 +132,23 @@ export const UserProfile = () => {
 
   const handleCopyMinted = () => {
     if (!mintedToken?.token) return;
-    navigator.clipboard.writeText(mintedToken.token);
+    navigator.clipboard?.writeText(mintedToken.token).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleRevokeToken = async () => {
-    if (!revokeTarget) return;
+  const handleRevokeToken = async (token) => {
+    const ok = await confirm({
+      title: 'Revoke API token',
+      description: `Revoke ${token.name}? Any service using it loses access immediately. This cannot be undone.`,
+      confirmLabel: 'Revoke',
+      destructive: true,
+    });
+    if (!ok) return;
     try {
-      await client.apiTokens.revoke(user.id, revokeTarget.id);
-      if (mintedToken && mintedToken.id === revokeTarget.id) setMintedToken(null);
+      await client.apiTokens.revoke(user.id, token.id);
+      if (mintedToken && mintedToken.id === token.id) setMintedToken(null);
       notifySuccess('API token revoked', 'Success');
-      setRevokeTarget(null);
       await loadTokens();
     } catch (err) {
       console.error('Error revoking API token:', err);
@@ -194,7 +200,7 @@ export const UserProfile = () => {
       );
       const updatedUserData = await client.users.get(user.id);
 
-      notifySuccess('Profile updated successfully!', 'Success');
+      notifySuccess('Profile updated', 'Success');
       setIsEditing(false);
       setFields(EMPTY(updatedUserData.displayName));
       localStorage.setItem('displayName', updatedUserData.displayName);
@@ -217,10 +223,12 @@ export const UserProfile = () => {
   };
 
   return (
-    <div className="mx-auto max-w-xl px-4 py-8">
-      <Button variant="ghost" size="sm" className="mb-4" onClick={() => navigate(-1)}>
-        <ArrowLeft className="h-4 w-4" /> Back
-      </Button>
+    <div className={cn('mx-auto flex max-w-2xl flex-col gap-6', className)}>
+      <div>
+        <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
+          <ArrowLeft className="h-4 w-4" /> Back
+        </Button>
+      </div>
 
       <Card>
         <CardHeader>
@@ -236,7 +244,7 @@ export const UserProfile = () => {
               className="h-20 w-20"
               fallbackClassName="text-2xl"
             />
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-1.5">
               <div className="flex items-center gap-2">
                 <input
                   ref={fileInputRef}
@@ -265,6 +273,9 @@ export const UserProfile = () => {
                   </Button>
                 )}
               </div>
+              <p className="text-xs text-muted-foreground">
+                PNG, JPEG, WebP or GIF. Cropped to a square and resized.
+              </p>
             </div>
           </div>
 
@@ -279,16 +290,11 @@ export const UserProfile = () => {
                 <p className="text-lg">{user?.id}</p>
               </div>
               <Button className="self-start" onClick={() => setIsEditing(true)}>
-                Edit Profile
+                Edit profile
               </Button>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="email">Email address</Label>
-                <Input id="email" value={user?.id ?? ''} disabled readOnly />
-              </div>
-
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="displayName">Display name</Label>
                 <Input
@@ -300,41 +306,49 @@ export const UserProfile = () => {
                 {fieldError('displayName')}
               </div>
 
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="email">Email address</Label>
+                <Input id="email" value={user?.id ?? ''} disabled readOnly />
+                <p className="text-xs text-muted-foreground">
+                  What you sign in with. Ask an administrator to change it.
+                </p>
+              </div>
+
               <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                <div className="h-px flex-1 bg-border" /> Change Password (Optional){' '}
+                <div className="h-px flex-1 bg-border" /> Change password (optional){' '}
                 <div className="h-px flex-1 bg-border" />
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="cur">Current Password</Label>
+                <Label htmlFor="currentPassword">Current password</Label>
                 <Input
-                  id="cur"
+                  id="currentPassword"
                   type="password"
                   value={fields.currentPassword}
                   onChange={set('currentPassword')}
-                  placeholder="Enter current password"
+                  autoComplete="current-password"
                 />
                 {fieldError('currentPassword')}
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="new">New Password</Label>
+                <Label htmlFor="newPassword">New password</Label>
                 <Input
-                  id="new"
+                  id="newPassword"
                   type="password"
                   value={fields.newPassword}
                   onChange={set('newPassword')}
-                  placeholder="Enter new password"
+                  autoComplete="new-password"
                 />
                 {fieldError('newPassword')}
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="conf">Confirm New Password</Label>
+                <Label htmlFor="confirmPassword">Confirm new password</Label>
                 <Input
-                  id="conf"
+                  id="confirmPassword"
                   type="password"
                   value={fields.confirmPassword}
                   onChange={set('confirmPassword')}
-                  placeholder="Confirm new password"
+                  autoComplete="new-password"
                 />
                 {fieldError('confirmPassword')}
               </div>
@@ -344,7 +358,7 @@ export const UserProfile = () => {
                   Cancel
                 </Button>
                 <Button type="submit" disabled={loading}>
-                  {loading ? 'Saving…' : 'Save Changes'}
+                  {loading ? 'Saving…' : 'Save changes'}
                 </Button>
               </div>
             </form>
@@ -352,18 +366,18 @@ export const UserProfile = () => {
         </CardContent>
       </Card>
 
-      {/* API Tokens — named, revocable credentials for scripts & services.
-          Attributed by name in the audit log, unlike the session token. */}
-      <Card className="mt-6">
+      {/* API Tokens: named, revocable credentials for scripts and services.
+          Actions taken with one are attributed by name in the audit log,
+          unlike the session token. They carry the same permissions as you. */}
+      <Card>
         <CardHeader>
           <CardTitle className="text-xl">API Tokens</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
-            Create named tokens to access the API from external services (parsers, scripts, the
-            Python <code>PlaidClient</code>). Each token carries your permissions, never expires,
-            and survives password changes. Revoke one to cut off access. Actions taken with a token
-            are labelled by its name in the audit history.
+            A named credential for scripts and services (parsers, the Python{' '}
+            <code>PlaidClient</code>). It carries your permissions and does not expire. Actions
+            taken with one are labelled by its name in the audit history.
           </p>
 
           {/* One-time reveal of a freshly minted token */}
@@ -371,7 +385,7 @@ export const UserProfile = () => {
             <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3">
               <p className="text-sm font-medium">Token &ldquo;{mintedToken.name}&rdquo; created</p>
               <p className="mb-2 mt-0.5 text-xs text-muted-foreground">
-                Copy it now. You won&apos;t be able to see it again.
+                Copy it now. It is not shown again.
               </p>
               <div className="flex items-center gap-2">
                 <code className="min-w-0 flex-1 break-all rounded bg-background px-2 py-1 text-xs">
@@ -379,7 +393,7 @@ export const UserProfile = () => {
                 </code>
                 <Button size="sm" variant="outline" onClick={handleCopyMinted}>
                   {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                  {copied ? 'Copied!' : 'Copy'}
+                  {copied ? 'Copied' : 'Copy'}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => setMintedToken(null)}>
                   Done
@@ -400,7 +414,7 @@ export const UserProfile = () => {
               />
             </div>
             <Button type="submit" disabled={creatingToken}>
-              {creatingToken ? 'Creating…' : 'Create Token'}
+              {creatingToken ? 'Creating…' : 'Create token'}
             </Button>
           </form>
 
@@ -412,7 +426,7 @@ export const UserProfile = () => {
                 Loading tokens…
               </div>
             ) : activeTokens.length === 0 ? (
-              <p className="text-sm text-muted-foreground">You have no active API tokens.</p>
+              <p className="text-sm text-muted-foreground">No active tokens.</p>
             ) : (
               <div className="flex flex-col">
                 {activeTokens.map((t) => (
@@ -426,14 +440,14 @@ export const UserProfile = () => {
                         className="text-xs text-muted-foreground"
                         title={fullTimestamp(t.createdAt)}
                       >
-                        Created {timeAgo(t.createdAt)}
+                        Created {timeAgo(t.createdAt) || 'unknown'}
                       </p>
                     </div>
                     <Button
                       variant="ghost"
                       size="sm"
                       className="text-destructive hover:text-destructive"
-                      onClick={() => setRevokeTarget(t)}
+                      onClick={() => handleRevokeToken(t)}
                     >
                       Revoke
                     </Button>
@@ -444,35 +458,6 @@ export const UserProfile = () => {
           </div>
         </CardContent>
       </Card>
-
-      <AlertDialog
-        open={!!revokeTarget}
-        onOpenChange={(o) => {
-          if (!o) setRevokeTarget(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Revoke API token?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Revoke <strong>{revokeTarget?.name}</strong>? Any service using it will immediately
-              lose access. This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault();
-                handleRevokeToken();
-              }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Revoke
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 };

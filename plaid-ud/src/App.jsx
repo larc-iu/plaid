@@ -6,7 +6,7 @@ import { Layout } from './components/Layout';
 import { createProtectedRoute } from '@ui/components/shared/ProtectedRoute.jsx';
 import { LoginForm } from '@ui/components/auth/LoginForm.jsx';
 import { RedeemInvite } from '@ui/components/auth/RedeemInvite.jsx';
-import { UserProfile } from './components/auth/UserProfile';
+import { UserProfile } from '@ui/components/auth/UserProfile.jsx';
 import { ProjectList } from './components/projects/ProjectList';
 import { DocumentList } from './components/documents/DocumentList';
 import { TextEditor } from './components/editor/TextEditor.jsx';

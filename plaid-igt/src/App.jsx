@@ -37,7 +37,7 @@ const ImportElanDocuments = lazyNamed(
   () => import('./components/projects/ImportElanDocuments'),
   'ImportElanDocuments',
 );
-const UserProfile = lazyNamed(() => import('./components/auth/UserProfile'), 'UserProfile');
+const UserProfile = lazyNamed(() => import('@ui/components/auth/UserProfile.jsx'), 'UserProfile');
 const AdminView = lazyNamed(() => import('./components/admin/AdminView'), 'AdminView');
 const VocabularyList = lazyNamed(
   () => import('./components/vocabularies/VocabularyList'),
@@ -126,7 +126,7 @@ function App() {
                 <Route path="/vocabularies/:vocabularyId" element={<VocabularyDetail />} />
 
                 <Route path="/admin" element={<AdminView />} />
-                <Route path="/profile" element={<UserProfile />} />
+                <Route path="/profile" element={<UserProfile className="px-4 py-8" />} />
                 {/* Catch all. INSIDE the protected layout on purpose: a route
                   the router does not know is usually a typo, a stale bookmark
                   or a guess at a scheme the app does not use
