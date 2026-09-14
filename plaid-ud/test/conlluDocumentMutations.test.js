@@ -179,6 +179,27 @@ test('re-typing a feature already on the word confirms it and adds no second spa
   assert.equal(after.metadata.provSource, 'service:stanza-parser');
 });
 
+// The rule is about the KEY, not the pair: the write lands on whichever span
+// already holds `Gender=`, whatever its value. Nothing above can fail on that
+// (matching the whole value would pass those too), so this is the case that
+// holds it: a different value for a key the word already carries.
+test('a new value for a key the word already has overwrites that span', async () => {
+  const raw = rawDocFromConllu(INPUT, 'mut-doc');
+  const client = provClient();
+  const doc = new ConlluDocument({ raw, client: withOps(client) });
+
+  const feat = doc.layerInfo.featuresLayer.spans.find((s) => s.value === 'Gender=Masc');
+  const before = doc.layerInfo.featuresLayer.spans.length;
+
+  assert.equal(await doc.updateAnnotation(feat.tokens[0], 'features', 'Gender=Fem'), true);
+  assert.deepEqual(client.calls, [['spans.update', feat.id, 'Gender=Fem']]);
+  assert.equal(doc.layerInfo.featuresLayer.spans.length, before);
+  assert.equal(doc.layerInfo.featuresLayer.spans.find((s) => s.id === feat.id).value, 'Gender=Fem');
+  // And the word is left with one Gender, not two.
+  const onWord = doc.layerInfo.featuresLayer.spans.filter((s) => s.tokens.includes(feat.tokens[0]));
+  assert.deepEqual(onWord.map((s) => s.value).sort(), ['Gender=Fem', 'Number=Sing']);
+});
+
 test('typing a feature the word does not have creates a span and confirms nothing', async () => {
   const raw = rawDocFromConllu(INPUT, 'mut-doc');
   const client = provClient();
