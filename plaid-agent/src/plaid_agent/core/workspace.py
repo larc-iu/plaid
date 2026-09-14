@@ -176,6 +176,12 @@ class BaseWorkspace:
         approved a change the model never told them about.
         """
         self.reserve(len(ops))
+        # Each op against the plan AS IT STANDS, never against the batch's own
+        # earlier ops, and guard_op is not asked here at all. Nothing reaches
+        # that gap today: no tool builds a batch that deletes one of its own
+        # subjects, and no app guard turns on what a batch holds. One that did
+        # would stage part of its batch and then raise from add_op below, which
+        # is the outcome this pre-check exists to prevent.
         for op in ops:
             self.refuse_doomed(op, replacing=self.replacing(op))
         for op in ops:
