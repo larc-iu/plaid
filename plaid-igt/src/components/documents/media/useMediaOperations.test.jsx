@@ -349,3 +349,40 @@ describe('useMediaOperations: transcribing', () => {
     await h.unmount();
   });
 });
+
+describe('useMediaOperations: detecting speech', () => {
+  it('refuses a second run rather than opening a progress row for one that never starts', async () => {
+    const client = fakeClient({
+      messages: {
+        discoverServices: vi.fn(async () => SERVICES),
+        // A run that is still out there: nothing resolves it.
+        requestService: vi.fn(() => new Promise(() => {})),
+      },
+    });
+    const h = await mountMedia({ client });
+
+    await h.step(() => h.api.detectSpot.choose('service:det-1'));
+    await h.step(async () => {
+      h.api.handleDetectSpeech();
+      await settle();
+    });
+    expect(client.messages.requestService).toHaveBeenCalledTimes(1);
+    expect(h.api.isProcessing).toBe(true);
+    expect(h.api.detectRun.running).toBe(true);
+    expect(h.api.vad.status).toBe('running');
+
+    // Asked again while the first is still out. `requestService` refuses and
+    // returns nothing, so the dialog used to open a run, see no result, and
+    // close it again without a word: the first run's own progress row went
+    // with it.
+    await h.step(async () => {
+      h.api.handleDetectSpeech();
+      await settle();
+    });
+
+    expect(client.messages.requestService).toHaveBeenCalledTimes(1);
+    expect(h.api.detectRun.running).toBe(true);
+    expect(h.api.vad.status).toBe('running');
+    await h.unmount();
+  });
+});

@@ -681,6 +681,15 @@ export const useMediaOperations = () => {
       }
       return;
     }
+    // One service run at a time, the same guard Transcribe carries. Without
+    // it the dialog opened its progress row and the proposal list went to
+    // "running", `requestService` refused and returned nothing, and the run
+    // ended a beat later saying nothing at all.
+    if (isProcessing) {
+      notifyError('Another service run is in progress.', 'Detect speech');
+      return;
+    }
+
     const missing = Object.values(detectSpot.params.errors);
     if (missing.length) {
       notifyError(missing[0], 'Missing required option');
@@ -730,7 +739,7 @@ export const useMediaOperations = () => {
     } finally {
       detectRun.finish();
     }
-  }, [detectSpot, detectRun, vad, requestService, project, doc]);
+  }, [detectSpot, detectRun, vad, requestService, isProcessing, project, doc]);
 
   // Deleting a segment takes its text with it by default: a segment IS its
   // utterance, and the row asks first only when annotations are built on that
