@@ -1,5 +1,5 @@
 import { test, expect, seedAuth, collectClientErrors } from './fixtures.js';
-import { getFixture } from './fixtureProject.js';
+import { getFixture, makeClient } from './fixtureProject.js';
 
 // The composer in a real browser. vitest runs against happy-dom, which has no
 // execCommand and so only ever exercises the fallback insert; this is the path
@@ -7,6 +7,20 @@ import { getFixture } from './fixtureProject.js';
 
 async function openAnalyze(page, projectId, documentId) {
   await page.goto(`/#/projects/${projectId}/documents/${documentId}`);
+  await page.waitForLoadState('networkidle');
+  await page.getByRole('tab', { name: 'Analyze' }).click();
+  await page.locator('.igt-island .igt-token-col').first().waitFor({ state: 'visible' });
+}
+
+// The same, but reading the SERVER again.
+//
+// A `goto` to a URL that differs only in the fragment is a same-document
+// navigation, and this app is a hash router, so going "back" to a document it
+// already has loaded keeps the IgtDocument in memory, typed-in values and all.
+// Anything that has to prove a value reached the server reloads.
+async function reloadAnalyze(page, projectId, documentId) {
+  await page.goto(`/#/projects/${projectId}/documents/${documentId}`);
+  await page.reload();
   await page.waitForLoadState('networkidle');
   await page.getByRole('tab', { name: 'Analyze' }).click();
   await page.locator('.igt-island .igt-token-col').first().waitFor({ state: 'visible' });
@@ -22,17 +36,45 @@ async function freshCell(page) {
 }
 
 // Put the first morpheme's form back. The fixture document is shared and reused
-// by name across runs, so a test that commits into it has to, and the check is
-// made after a RELOAD: the box this spec typed into holds the restored text
-// whether or not the write reached the server, so reading it proves nothing.
-async function restoreForm(page, projectId, documentId, original) {
-  const cell = page.locator('.igt-island .igt-morph-field').first();
-  await cell.click();
-  await cell.press('Control+a');
-  await page.keyboard.type(original);
-  await cell.press('Enter');
-  await openAnalyze(page, projectId, documentId);
-  await expect(page.locator('.igt-island .igt-morph-field').first()).toHaveValue(original);
+// by name across runs, so a test that commits into it has to, and a navigation
+// away from the grid commits whatever is in the cell.
+//
+// Through the client, not by typing: what is seeded is a morpheme with NO form
+// of its own, whose text comes from the word underneath. Typing "Todos" back
+// into the cell writes metadata.form = "Todos", which looks identical on screen
+// and is not the same thing, and e2e/scripts/reset-fixture.mjs would report the
+// fixture as drifted after every run.
+//
+// The check is made after a reload, because the box this spec typed into holds
+// whatever it was given whether or not the write landed.
+async function restoreForm(page, projectId, documentId) {
+  const client = makeClient();
+  const firstMorpheme = async () => {
+    const raw = await client.documents.get(documentId, true);
+    const text = raw.textLayers[0];
+    const morphemes = text.tokenLayers.find((l) => l.config?.plaid?.role === 'morpheme');
+    const token = morphemes.tokens
+      .slice()
+      .sort((a, b) => a.begin - b.begin || (a.precedence ?? 0) - (b.precedence ?? 0))[0];
+    return { token, seeded: text.text.body.slice(token.begin, token.end) };
+  };
+
+  // Whatever the test typed is still sitting in the cell, and leaving the grid
+  // blurs it, which commits. Let that land FIRST: a clear made before it is
+  // simply overwritten by it, which is how "Ə" survived three restores.
+  await reloadAnalyze(page, projectId, documentId);
+
+  const { token, seeded } = await firstMorpheme();
+  await client.tokens.patchMetadata(token.id, { form: null });
+  // The clear is checked on the server, not on the screen: a commit still in
+  // flight would put the form back after it, and this is the assertion that
+  // goes red rather than the next spec that trips over the residue.
+  await expect
+    .poll(async () => (await firstMorpheme()).token.metadata?.form, { timeout: 8000 })
+    .toBeUndefined();
+
+  await reloadAnalyze(page, projectId, documentId);
+  await expect(page.locator('.igt-island .igt-morph-field').first()).toHaveValue(seeded);
 }
 
 test('a backslash code composes in a morpheme form cell', async ({ page }) => {
@@ -72,7 +114,6 @@ test('a code ending in a hyphen composes instead of splitting', async ({ page })
   await seedAuth(page);
   await openAnalyze(page, projectId, documentId);
 
-  const original = await page.locator('.igt-island .igt-morph-field').first().inputValue();
   const cell = await freshCell(page);
   // Count within THIS word only: the fixture document is shared and other
   // specs move morphemes around in it.
@@ -94,7 +135,7 @@ test('a code ending in a hyphen composes instead of splitting', async ({ page })
   // is what every later spec then reads as the word's form.
   await page.keyboard.press('Backspace');
   await expect.poll(async () => inWord.count()).toBe(before);
-  await restoreForm(page, projectId, documentId, original);
+  await restoreForm(page, projectId, documentId);
 });
 
 test('Alt+0 types a zero morph and it round-trips', async ({ page }) => {
@@ -104,7 +145,6 @@ test('Alt+0 types a zero morph and it round-trips', async ({ page }) => {
 
   // This one commits, and the fixture project is reused by name across runs,
   // so put the form back at the end.
-  const original = await page.locator('.igt-island .igt-morph-field').first().inputValue();
   const cell = await freshCell(page);
   await page.keyboard.press('Alt+0');
   await expect(cell).toHaveValue('∅');
@@ -112,10 +152,10 @@ test('Alt+0 types a zero morph and it round-trips', async ({ page }) => {
   // The commit is a write, and the reload below must not race it.
   await page.waitForLoadState('networkidle');
 
-  await openAnalyze(page, projectId, documentId);
+  await reloadAnalyze(page, projectId, documentId);
   await expect(page.locator('.igt-island .igt-morph-field').first()).toHaveValue('∅');
 
-  await restoreForm(page, projectId, documentId, original);
+  await restoreForm(page, projectId, documentId);
 });
 
 test('codes work outside the island too', async ({ page }) => {
@@ -166,9 +206,6 @@ test('every zero-morph code types the same character', async ({ page }) => {
   await seedAuth(page);
   await openAnalyze(page, projectId, documentId);
 
-  // The fixture project is shared with every other spec, so put the form back.
-  const original = await page.locator('.igt-island .igt-morph-field').first().inputValue();
-
   for (const code of ['\\00', '\\0/', '\\O|']) {
     const cell = await freshCell(page);
     await page.keyboard.type(code);
@@ -183,7 +220,7 @@ test('every zero-morph code types the same character', async ({ page }) => {
   await page.keyboard.type('^');
   await expect(cell).toHaveValue('\u030A');
 
-  await restoreForm(page, projectId, documentId, original);
+  await restoreForm(page, projectId, documentId);
 });
 
 test('a code added in Settings works in the grid', async ({ page }) => {
@@ -227,13 +264,15 @@ test('a code added in Settings works in the grid', async ({ page }) => {
   await page.keyboard.type('\\sw');
   await expect(cell).toHaveValue('ə');
 
-  // Put the project back.
+  // Put the project back, and the document with it: leaving the grid for the
+  // settings page blurs the cell, and a blur is a commit.
   await page.goto(`/#/projects/${projectId}/text-and-vocab`);
   await page.waitForLoadState('networkidle');
   await page.getByLabel('Search codes').fill("b'");
   await page.getByRole('button', { name: "Remove code b'" }).click();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+  await restoreForm(page, projectId, documentId);
 });
 
 test('a built-in code can be changed and reset', async ({ page }) => {
@@ -275,4 +314,8 @@ test('a built-in code can be changed and reset', async ({ page }) => {
   const back = await freshCell(page);
   await page.keyboard.type('\\sw');
   await expect(back).toHaveValue('ə');
+
+  // Leaving the grid for the settings page above committed the changed code's
+  // output as the morpheme's form, so the document needs putting back too.
+  await restoreForm(page, projectId, documentId);
 });

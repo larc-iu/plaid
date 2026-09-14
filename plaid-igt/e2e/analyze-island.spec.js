@@ -28,8 +28,13 @@ const glossSpan = async () => {
   return (gloss.spans || []).find((s) => (s.tokens || []).some((t) => (t?.id ?? t) === first.id));
 };
 
-async function openAnalyze(page) {
+async function openAnalyze(page, { reload = false } = {}) {
   await page.goto(`/#/projects/${projectId}/documents/${documentId}`);
+  // A `goto` to a URL that differs only in the fragment is a same-document
+  // navigation, and this app is a hash router, so coming back to a document it
+  // already has loaded keeps the IgtDocument in memory. Without the reload the
+  // round trip below reads the value this test typed, not the server's.
+  if (reload) await page.reload();
   await page.waitForLoadState('networkidle');
   await page.getByRole('tab', { name: 'Analyze' }).click();
   await page.locator('.igt-island .igt-token-col').first().waitFor({ state: 'visible' });
@@ -89,7 +94,7 @@ test('editing a morpheme gloss persists across reload', async ({ page }) => {
 
   // Reload the whole page and re-open analyze: the value must survive the
   // full server round-trip + re-derivation.
-  await openAnalyze(page);
+  await openAnalyze(page, { reload: true });
   const reloaded = page.locator('.igt-field[data-cell-key^="ma:"]').first();
   await expect(reloaded).toHaveValue('TESTGLOSS');
 });
