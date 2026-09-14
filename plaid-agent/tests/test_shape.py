@@ -154,6 +154,14 @@ def test_a_change_and_a_certain_delete_of_its_subject_refuse_each_other_at_stagi
     assert 'writes to something this plan deletes' in call_tool(
         w2, 'set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'fish'})
     assert [o['kind'] for o in w2.ops] == ['delete_word']
+    # A tool naming several words where the plan deletes one of them stages
+    # none of them: half a batch would be a change the user approves without
+    # the model ever having said it was planned.
+    w6 = ws()
+    call_tool(w6, 'delete_word', {'document': 'd1', 'refs': ['s1.w3']})
+    out = call_tool(w6, 'set_field', {'document': 'd1', 'refs': ['s1.w1', 's1.w3'], 'field': 'Gloss', 'value': 'x'})
+    assert 'writes to something this plan deletes' in out
+    assert [o['kind'] for o in w6.ops] == ['delete_word']
     # A merge takes the words it names but not the one it merges INTO.
     w3 = ws()
     call_tool(w3, 'merge_words', {'document': 'd1', 'refs': ['s1.w2', 's1.w3']})

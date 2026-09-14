@@ -391,14 +391,15 @@ def t_set_field(ws: Workspace, document: str = None, refs=None, field: str = Non
     value = '' if value is None else str(value)
     _check_value(ws, field, value)
     words = _words(ws, doc, refs)
-    ws.reserve(len(words))
+    staged = []
     for w in words:
         sp = w.fields.get(field)
-        ws.add_op({'kind': 'set_span', 'layer_id': layer_id, 'token_id': w.id,
-                   'span_id': sp.id if sp else None, 'value': value,
-                   'field': field, 'document_id': doc.id,
-                   'label': f'{field} = "{value}"' if value else f'clear {field}',
-                   'ref': word_ref(ws.sentence_of(doc, w), w)})
+        staged.append({'kind': 'set_span', 'layer_id': layer_id, 'token_id': w.id,
+                       'span_id': sp.id if sp else None, 'value': value,
+                       'field': field, 'document_id': doc.id,
+                       'label': f'{field} = "{value}"' if value else f'clear {field}',
+                       'ref': word_ref(ws.sentence_of(doc, w), w)})
+    ws.add_ops(staged)
     what = f'{field} = "{value}"' if value else f'{field} cleared'
     return f'Planned {what} on {len(words)} word(s): ' + ', '.join(
         word_ref(ws.sentence_of(doc, w), w) for w in words)
@@ -441,8 +442,7 @@ def t_set_feature(ws: Workspace, document: str = None, refs=None, feature: str =
     doc = ws.doc(document)
     layer_id = ws.project.layer('features')
     words = _words(ws, doc, refs)
-    ws.reserve(len(words))
-    changed = []
+    staged, changed = [], []
     for w in words:
         current = ws.planned_value(layer_id, w.id, w.value('features'))
         pairs = [(k, v) for k, v in _features(current) if k != feature]
@@ -453,11 +453,12 @@ def t_set_feature(ws: Workspace, document: str = None, refs=None, feature: str =
             continue
         sp = w.fields.get('features')
         ref = word_ref(ws.sentence_of(doc, w), w)
-        ws.add_op({'kind': 'set_span', 'layer_id': layer_id, 'token_id': w.id,
-                   'span_id': sp.id if sp else None, 'value': new, 'field': 'features',
-                   'document_id': doc.id, 'ref': ref,
-                   'label': f'{feature}={value}' if value else f'remove {feature}'})
+        staged.append({'kind': 'set_span', 'layer_id': layer_id, 'token_id': w.id,
+                       'span_id': sp.id if sp else None, 'value': new, 'field': 'features',
+                       'document_id': doc.id, 'ref': ref,
+                       'label': f'{feature}={value}' if value else f'remove {feature}'})
         changed.append(ref)
+    ws.add_ops(staged)
     if not changed:
         return (f'Nothing to change: {feature}={value} is already set on every word named.' if value
                 else f'Nothing to change: none of the words named has {feature}.')
@@ -535,14 +536,11 @@ def t_del_relation(ws: Workspace, document: str = None, refs=None) -> str:
     if len(headless) == len(words):
         return 'Nothing to remove: ' + ', '.join(
             word_ref(ws.sentence_of(doc, w), w) for w in words) + ' already have no head.'
-    ws.reserve(len(words) - len(headless))
-    for w in words:
-        if not w.relation_id:
-            continue
-        ws.add_op({'kind': 'del_relation', 'word_id': w.id, 'relation_id': w.relation_id,
-                   'document_id': doc.id,
-                   'label': f'remove the head of {word_ref(ws.sentence_of(doc, w), w)}',
-                   'ref': word_ref(ws.sentence_of(doc, w), w)})
+    ws.add_ops([{'kind': 'del_relation', 'word_id': w.id, 'relation_id': w.relation_id,
+                 'document_id': doc.id,
+                 'label': f'remove the head of {word_ref(ws.sentence_of(doc, w), w)}',
+                 'ref': word_ref(ws.sentence_of(doc, w), w)}
+                for w in words if w.relation_id])
     n = len(words) - len(headless)
     return f'Planned removing the head of {n} word(s).'
 
@@ -668,12 +666,13 @@ def t_confirm(ws: Workspace, document: str = None, refs=None, field: str = None,
         targets = confirm_targets(_named(ws, doc, refs), fields)
         if not targets:
             return 'Nothing to confirm: every value named is already a person\'s work or confirmed.'
-        ws.reserve(len(targets))
+        staged = []
         for sentence, w, f, span_id, relation_id in targets:
             ref = word_ref(sentence, w)
-            ws.add_op({'kind': 'confirm', 'span_id': span_id, 'relation_id': relation_id,
-                       'token_id': w.id, 'document_id': doc.id, 'ref': ref,
-                       'label': f'confirm the head of {ref}' if f == 'deprel' else f'confirm {f} on {ref}'})
+            staged.append({'kind': 'confirm', 'span_id': span_id, 'relation_id': relation_id,
+                           'token_id': w.id, 'document_id': doc.id, 'ref': ref,
+                           'label': f'confirm the head of {ref}' if f == 'deprel' else f'confirm {f} on {ref}'})
+        ws.add_ops(staged)
         return f'Planned confirming {len(targets)} value(s).'
     fields = _scope_fields(ws, 'confirm_scope', doc, fields)
     targets = confirm_targets(_whole_document(ws, doc), fields)
@@ -705,18 +704,18 @@ def t_discard_predictions(ws: Workspace, document: str = None, refs=None, field:
     fields = _review_fields(field)
     if refs:
         targets, spared = discard_targets(_named(ws, doc, refs), fields)
-        if targets:
-            ws.reserve(len(targets))
+        staged = []
         for sentence, w, f, span, relation_id in targets:
             ref = word_ref(sentence, w)
             if f == 'deprel':
-                ws.add_op({'kind': 'del_relation', 'word_id': w.id, 'relation_id': relation_id,
-                           'document_id': doc.id, 'ref': ref,
-                           'label': f'discard the unconfirmed head of {ref}'})
+                staged.append({'kind': 'del_relation', 'word_id': w.id, 'relation_id': relation_id,
+                               'document_id': doc.id, 'ref': ref,
+                               'label': f'discard the unconfirmed head of {ref}'})
             else:
-                ws.add_op({'kind': 'set_span', 'layer_id': span.layer_id, 'token_id': w.id,
-                           'span_id': span.id, 'value': '', 'field': f, 'document_id': doc.id,
-                           'ref': ref, 'label': f'discard the unconfirmed {f} on {ref}'})
+                staged.append({'kind': 'set_span', 'layer_id': span.layer_id, 'token_id': w.id,
+                               'span_id': span.id, 'value': '', 'field': f, 'document_id': doc.id,
+                               'ref': ref, 'label': f'discard the unconfirmed {f} on {ref}'})
+        ws.add_ops(staged)
         n = len(targets)
     else:
         fields = _scope_fields(ws, 'discard_scope', doc, fields)

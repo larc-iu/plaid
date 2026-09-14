@@ -127,6 +127,14 @@ class BaseWorkspace:
         none."""
         return opkind.target_of(self.KIND, op)
 
+    def replacing(self, op: Dict[str, Any]) -> Optional[int]:
+        """The index of the planned op this one supersedes, if any: they write
+        to the same thing, and the later one wins."""
+        key = self.op_target(op)
+        if key is None:
+            return None
+        return next((i for i, prev in enumerate(self.ops) if self.op_target(prev) == key), None)
+
     def add_op(self, op: Dict[str, Any]) -> None:
         """Append a plan op. An op on a target the plan already touches
         REPLACES the earlier op (last wins), so a corrected instruction never
@@ -138,10 +146,7 @@ class BaseWorkspace:
         """
         if self.web is not None and getattr(self.web, 'read', False):
             raise ToolError(WEB_READ_REFUSAL)
-        key = self.op_target(op)
-        at = None
-        if key is not None:
-            at = next((i for i, prev in enumerate(self.ops) if self.op_target(prev) == key), None)
+        at = self.replacing(op)
         self.refuse_doomed(op, replacing=at)
         self.guard_op(op, replacing=at)
         if at is not None:
@@ -156,9 +161,17 @@ class BaseWorkspace:
             self._gone_at = len(self.ops)
 
     def add_ops(self, ops: List[Dict[str, Any]]) -> None:
-        # Asked for the whole batch first, so a tool with more changes than
-        # the plan can hold refuses before it has staged any of them.
+        """Stage a tool's whole batch, or none of it.
+
+        Both refusals are asked of the batch BEFORE any of it is staged: the
+        size cap, and the change-to-something-deleted guard. Asked op by op,
+        a tool naming four words where the plan deletes the fourth staged
+        three of them and then answered with an error, so the user would have
+        approved a change the model never told them about.
+        """
         self.reserve(len(ops))
+        for op in ops:
+            self.refuse_doomed(op, replacing=self.replacing(op))
         for op in ops:
             self.add_op(op)
 

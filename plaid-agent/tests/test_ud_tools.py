@@ -174,6 +174,24 @@ def test_a_confirmation_and_a_discard_of_one_document_refuse_each_other(ws):
         ws, 'discard_predictions', document='Viaje', refs=['s1.w4'])
 
 
+def test_a_refused_batch_leaves_nothing_behind():
+    """A tool naming several words where the plan deletes one of them stages
+    none of them. Staged op by op it left the others behind, so the user would
+    have approved a change the model never said it had planned."""
+    from ud_fixtures import FakeClient, document_raw, project_raw
+    raw = document_raw()
+    # Two machine UPOS values waiting for review, so the confirmation below is
+    # a batch of two rather than one.
+    upos = [sl for sl in raw['text_layers'][0]['token_layers'][2]['span_layers'] if sl['id'] == UPOS][0]
+    upos['spans'][0]['metadata'] = {'prov': 'inferred', 'provSource': 'service:ud:parse'}
+    client = FakeClient(project=project_raw(), documents={'ud1': raw})
+    ws = Workspace(client, load_project(client, PID))
+    assert 'Planned' in run(ws, 'discard_predictions', document='Viaje', refs=['s1.w4'], field='upos')
+    out = run(ws, 'confirm', document='Viaje', refs=['s1.w1', 's1.w4'], field='upos')
+    assert 'writes to something this plan deletes' in out
+    assert [op['kind'] for op in ws.ops] == ['set_span']
+
+
 def test_a_confirmation_and_a_delete_of_its_word_refuse_each_other(ws):
     """A confirmation names a span, and the word it sits on is named nowhere
     else, so a reshape that deletes the word takes the value with it without
