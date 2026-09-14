@@ -12,6 +12,7 @@ audit log naming a document their project did not have.
 """
 
 import copy
+import fnmatch
 from contextlib import contextmanager
 
 from plaid_client.http import PlaidAPIError
@@ -141,9 +142,41 @@ class BaseFakeClient:
         def delete(self, user_id, key):
             self.store.pop((user_id, key), None)
 
-        def list(self, user_id, *, prefix=None, include_values=False):
-            return [{'key': k, **({'value': copy.deepcopy(v)} if include_values else {})}
-                    for (u, k), v in self.store.items() if u == user_id and (not prefix or k.startswith(prefix))]
+        def _entries(self, user_id, prefix, pattern, include_values):
+            """Every matching entry, ordered by key like the server's listing."""
+            rows = [{'key': k, **({'value': copy.deepcopy(v)} if include_values else {})}
+                    for (u, k), v in self.store.items()
+                    if u == user_id
+                    and (not prefix or k.startswith(prefix))
+                    and (not pattern or fnmatch.fnmatchcase(k, pattern))]
+            rows.sort(key=lambda r: r['key'])
+            return rows
+
+        def list(self, user_id, *, prefix=None, pattern=None, include_values=False,
+                 page_size=100):
+            """The full flat list, as the real client's auto-paginating list.
+
+            ``pattern`` is a GLOB over the whole key (``*`` any run, ``?`` one
+            character), which is how the assistant asks for a segment in the
+            middle of its ``<app>:assistant:<project>:<kind>:<id>`` keys.
+            ``page_size`` only sets how many entries a request carries, so
+            here it is accepted and unused.
+            """
+            return self._entries(user_id, prefix, pattern, include_values)
+
+        def list_page(self, user_id, *, prefix=None, pattern=None, include_values=False,
+                      limit=None, cursor=None):
+            """One page, as the envelope the real client hands back.
+
+            The cursor is opaque to a caller, so it is the last key of the page
+            it came from.
+            """
+            rows = self._entries(user_id, prefix, pattern, include_values)
+            if cursor is not None:
+                rows = [r for r in rows if r['key'] > cursor]
+            page, rest = rows[:limit or 100], rows[limit or 100:]
+            return {'entries': page,
+                    'next_cursor': page[-1]['key'] if rest else None}
 
     @property
     def projects(self):

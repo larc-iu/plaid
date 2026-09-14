@@ -55,6 +55,41 @@ def test_a_write_is_recorded_and_a_batch_answers_per_op():
     assert c.operations == ['a label']
 
 
+def test_the_user_data_store_matches_the_real_client_surface():
+    """A fake that lies about a signature teaches the first tool written
+    against it to call the real client wrong. ``pattern``, the GLOB the
+    assistant's keys are picked out by, and ``page_size`` were both missing,
+    and so was ``list_page``."""
+    from plaid_client.client import UserDataResource
+
+    def params(fn):
+        return {n: p.default for n, p in inspect.signature(fn).parameters.items()
+                if n not in ('self', 'user_id')}
+
+    assert params(BaseFakeClient._UserData.list) == params(UserDataResource.list)
+    assert params(BaseFakeClient._UserData.list_page) == params(UserDataResource.list_page)
+
+
+def test_the_user_data_store_reads_like_the_server_does():
+    c = _client()
+    for k in ['igt:assistant:p2:meta:c2', 'igt:assistant:p1:meta:c1', 'igt:assistant:p1:conv:c1']:
+        c.user_data.put('u', k, {'of': k})
+    # Ordered by key, whatever order they were written in.
+    assert [r['key'] for r in c.user_data.list('u', prefix='igt:assistant:p1:')] == [
+        'igt:assistant:p1:conv:c1', 'igt:assistant:p1:meta:c1']
+    # A GLOB picks out a segment in the middle, which a prefix cannot say.
+    assert [r['key'] for r in c.user_data.list('u', pattern='igt:assistant:*:meta:*')] == [
+        'igt:assistant:p1:meta:c1', 'igt:assistant:p2:meta:c2']
+    assert 'value' not in c.user_data.list('u')[0]
+    assert c.user_data.list('u', prefix='igt:assistant:p1:conv:', include_values=True)[0]['value'] == {
+        'of': 'igt:assistant:p1:conv:c1'}
+    first = c.user_data.list_page('u', pattern='*:meta:*', limit=1)
+    assert [r['key'] for r in first['entries']] == ['igt:assistant:p1:meta:c1']
+    rest = c.user_data.list_page('u', pattern='*:meta:*', limit=1, cursor=first['next_cursor'])
+    assert [r['key'] for r in rest['entries']] == ['igt:assistant:p2:meta:c2']
+    assert rest['next_cursor'] is None
+
+
 def test_a_missing_user_data_key_is_a_404_and_not_a_none():
     from plaid_client.http import PlaidAPIError
     c = _client()
