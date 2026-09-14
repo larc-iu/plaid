@@ -109,9 +109,11 @@ export const AssistantChat = ({
   // Its callbacks (onApplied, onFocusHere, mentions) travel with it.
   subject = null,
   // Which conversation is open, and how to open another. The tab keeps this in
-  // the URL; the panel keeps it in state.
+  // the URL; the panel keeps it in state. A surface that tracks neither still
+  // gets called: deleting the open conversation and following a link to one
+  // that is gone both clear it.
   conversationId = null,
-  onConversationId,
+  onConversationId = () => {},
   // Come back to the project's most recent thread rather than opening new (see
   // useResumeConversation).
   resumeNewest = false,
@@ -133,6 +135,9 @@ export const AssistantChat = ({
   // open conversation and its sidebar entry, what a list of conversations
   // needs, which assistant answers, and how to start or send one.
   renderSidebar = null,
+  // Who is answering, named the way this surface names it. It is the one render
+  // prop the header calls only where an assistant is online, so the bag's
+  // `service` is never null inside it.
   renderIdentity = null,
   renderActions = null,
   renderEmpty = null,
@@ -537,6 +542,10 @@ export const AssistantChat = ({
     setAllProjects: list.setAllProjects,
     startNew,
     choice,
+    // The assistant answering, which is null until one is online. renderIdentity
+    // is the one place it is a service for certain, because the header calls it
+    // in the branch where there is one.
+    service,
     busy: !!busy,
     canSend,
     send,

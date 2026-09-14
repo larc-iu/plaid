@@ -46,7 +46,7 @@ export const AssistantPanel = ({
         onConversationId={(id) => setConvId(id)}
         resumeNewest
         toastOnApply={false}
-        renderIdentity={({ choice, busy }) =>
+        renderIdentity={({ choice, service, busy }) =>
           // Which assistant answers is settled at the start of a conversation
           // and then stays put, so the panel offers the choice exactly where it
           // shows the answer: the model's name IS the picker while the thread
@@ -55,17 +55,14 @@ export const AssistantPanel = ({
             <AssistantPicker
               assistants={choice.assistants}
               stranded={choice.stranded}
-              value={choice.service.serviceId}
+              value={service.serviceId}
               onChange={choice.choose}
               disabled={busy}
               compact
             />
           ) : (
-            <span
-              className="min-w-0 truncate text-muted-foreground"
-              title={choice.service.serviceName}
-            >
-              {choice.model || choice.service.serviceName}
+            <span className="min-w-0 truncate text-muted-foreground" title={service.serviceName}>
+              {choice.model || service.serviceName}
             </span>
           )
         }

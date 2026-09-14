@@ -65,10 +65,10 @@ export const AssistantTab = ({
             </p>
           </aside>
         )}
-        renderIdentity={({ choice }) => (
+        renderIdentity={({ choice, service }) => (
           <>
-            <span className="font-medium">{choice.service.serviceName}</span>
-            {choice.model && !choice.service.serviceName?.includes(choice.model) && (
+            <span className="font-medium">{service.serviceName}</span>
+            {choice.model && !service.serviceName?.includes(choice.model) && (
               <Badge variant="secondary">{choice.model}</Badge>
             )}
             {!canWrite && (
