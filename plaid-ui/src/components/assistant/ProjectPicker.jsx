@@ -14,10 +14,10 @@ import { AssistantMark } from './PlaidMarks.jsx';
 // without, and asking for it is a better answer than a chat with 2 of its 64
 // tools.
 //
-// `onCollapse` is the same hide button the chat's header carries, in the same
+// `onHide` is the same button the chat's header carries, in the same
 // place. The panel is shut from its own header on every screen, and this is
 // the header on the screen a reader lands on.
-export const ProjectPicker = ({ client, onPick, onCollapse }) => {
+export const ProjectPicker = ({ client, onPick, onHide }) => {
   const [projects, setProjects] = useState(null);
   const [error, setError] = useState('');
 
@@ -44,13 +44,13 @@ export const ProjectPicker = ({ client, onPick, onCollapse }) => {
       <header className="flex items-center gap-2 border-b px-3 py-2 text-sm">
         <AssistantMark className="h-4 w-4 shrink-0" />
         <span className="text-muted-foreground">Choose a project</span>
-        {onCollapse && (
+        {onHide && (
           <Button
             type="button"
             variant="ghost"
             size="sm"
             className="ml-auto"
-            onClick={onCollapse}
+            onClick={onHide}
             title="Hide the assistant"
           >
             <PanelRightClose className="h-4 w-4" />

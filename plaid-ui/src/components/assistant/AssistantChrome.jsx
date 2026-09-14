@@ -155,7 +155,7 @@ export const AssistantChrome = ({
               <ProjectPicker
                 client={client}
                 onPick={(p) => setHeld({ projectId: p.id, projectName: p.name })}
-                onCollapse={() => setDockOpen(false)}
+                onHide={() => setDockOpen(false)}
               />
             ) : null
           }
