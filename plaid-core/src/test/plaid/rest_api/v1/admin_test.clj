@@ -203,6 +203,39 @@
       (is (not-any? #(str/includes? (:message %) "user=")
                     (:entries (:events body)))))))
 
+(deftest a-request-that-matches-no-route-is-still-logged
+  (log-buffer/clear!)
+  ;; The access log used to be route middleware, so the two answers the
+  ;; router gives without a route -- a path that matches nothing and a method
+  ;; the path does not have -- left no line and no record at all.
+  (api-call admin-request {:method :get :path "/api/v1/no-such-endpoint"})
+  (api-call admin-request {:method :delete :path "/api/v1/projects"})
+  (let [entries (:entries (:requests (:body (admin-get "/logs"))))
+        by-path (into {} (map (juxt :path identity)) entries)]
+    (testing "A path miss is a 404 with a line of its own"
+      (is (= 404 (:status (get by-path "/api/v1/no-such-endpoint")))))
+    (testing "And a method the route does not have is a 405"
+      (is (= 405 (:status (get by-path "/api/v1/projects")))))))
+
+(deftest a-batch-is-one-request-however-many-sub-ops-it-carries
+  (log-buffer/clear!)
+  ;; Every sub-op was logged as a request of its own, with no address, so five
+  ;; thousand-op batches evicted the whole request buffer and everything an
+  ;; operator might have come looking for with it.
+  (let [proj (create-test-project admin-request "BatchLogProj")
+        _ (log-buffer/clear!)
+        res (api-call admin-request
+                      {:method :post
+                       :path "/api/v1/batch"
+                       :body [{:path "/api/v1/documents" :method "post"
+                               :body {:project-id proj :name "One"}}
+                              {:path "/api/v1/documents" :method "post"
+                               :body {:project-id proj :name "Two"}}]})
+        entries (:entries (:requests (:body (admin-get "/logs"))))]
+    (testing "the batch itself is logged, and its sub-ops are not"
+      (is (= ["/api/v1/batch"] (map :path entries)))
+      (is (= 200 (:status res))))))
+
 ;; ============================================================
 ;; Private user data across accounts
 ;; ============================================================

@@ -183,11 +183,13 @@
 (defn wrap-access-log
   "One line per request, and one structured record for the admin Logs screen.
 
-  OUTERMOST in the stack, on purpose. A request refused by authentication
-  (401) or by coercion (400) never reaches any inner middleware, and those
-  are exactly the requests an operator goes looking for. Logging from the
-  inside meant they left no trace but the occasional warning from whatever
-  refused them.
+  OUTERMOST in the stack, on purpose, and outside the ROUTER as well as the
+  route middleware: it is `ring/ring-handler`'s own `:middleware`, so a path
+  that matches no route (404) and a method the route does not have (405) are
+  logged too. Both are answered by the default handler, which route data can
+  never reach. A request refused by authentication (401) or by coercion (400)
+  never reaches any inner middleware either, and those together are exactly
+  the requests an operator goes looking for.
 
   The cost of sitting out there is that the account is not on the request
   yet, so authentication hands it back through the volatile under
@@ -201,7 +203,11 @@
   an error, a 4xx is a warning, everything else is info. The same facts ride
   along in Timbre's context, which is what sorts the entry into the request
   buffer rather than the event one. Logged once, read two ways: nothing can
-  appear on that screen that was not logged."
+  appear on that screen that was not logged.
+
+  A batch sub-operation is the exception: it is re-routed through this same
+  handler, and it gets a debug line with no record. See
+  `log-buffer/sub-request-key`."
   [handler]
   (fn [request]
     (if (skip-logging? (:uri request))
@@ -225,12 +231,14 @@
                            (some? @response) (:status @response)
                            :else "???")
                   record (access-record request @identity status elapsed @thrown)]
-              (log/with-context+ {log-buffer/context-key record}
-                (cond
-                  @thrown                                  (log/error (access-line record status))
-                  (and (integer? status) (>= status 500))  (log/error (access-line record status))
-                  (and (integer? status) (>= status 400))  (log/warn (access-line record status))
-                  :else                                     (log/info (access-line record status)))))))
+              (if (get request log-buffer/sub-request-key)
+                (log/debug (access-line record status))
+                (log/with-context+ {log-buffer/context-key record}
+                  (cond
+                    @thrown                                  (log/error (access-line record status))
+                    (and (integer? status) (>= status 500))  (log/error (access-line record status))
+                    (and (integer? status) (>= status 400))  (log/warn (access-line record status))
+                    :else                                     (log/info (access-line record status))))))))
         (if @thrown
           (throw @thrown)
           @response)))))

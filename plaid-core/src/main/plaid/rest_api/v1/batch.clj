@@ -4,6 +4,7 @@
             [clojure.data.json :as json]
             [muuntaja.core :as m]
             [next.jdbc :as jdbc]
+            [plaid.server.log-buffer :as log-buffer]
             [plaid.sql.common :as psc]
             [plaid.sql.operation :as op]
             [taoensso.timbre :as log])
@@ -54,8 +55,14 @@
              :scheme (:scheme original-request)
              :server-name (:server-name original-request)
              :server-port (:server-port original-request)
+             :remote-addr (:remote-addr original-request)
              :headers headers
              :rest-handler (:rest-handler original-request)
+             ;; One batch is one request in the access log: its sub-ops are
+             ;; logged at debug and kept out of the request buffer, which a
+             ;; thousand of them would otherwise empty. See
+             ;; `log-buffer/sub-request-key`.
+             log-buffer/sub-request-key true
              :db tx                                  ; CRITICAL: the tx connection, not the DS
              :jwt-data (:jwt-data original-request)
              :secret-key (:secret-key original-request)}

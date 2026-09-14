@@ -43,6 +43,21 @@
   access line and belongs in the request buffer."
   ::request)
 
+(def sub-request-key
+  "Request key marking a batch sub-operation, set by the batch handler when it
+  builds each sub-request.
+
+  One atomic batch is one request as far as an operator is concerned. Its
+  sub-ops have no address and no arrival of their own, and a batch may carry a
+  thousand of them, so five batches would evict this buffer's whole 5000
+  entries and every other request with them. The access log leaves them at
+  debug, where the appender does not reach.
+
+  Here rather than in either middleware namespace for the same reason as
+  `identity-key`: both the batch handler and the access log can require this
+  namespace, and neither requires the other."
+  ::sub-request)
+
 (def identity-key
   "Request key holding a volatile that the authentication middleware fills in
   with `{:user ... :token ...}` once it has validated a token.

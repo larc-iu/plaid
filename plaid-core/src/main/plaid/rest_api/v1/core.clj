@@ -159,12 +159,7 @@
                   {:data {:coercion coercion
                           :muuntaja muuntaja-instance
                           :swagger {:id ::api}
-                          :middleware [;; Outermost, so that every request gets an access
-                                       ;; line: a 401 from authentication and a 400
-                                       ;; from coercion are refused before anything
-                                       ;; below them runs.
-                                       prm/wrap-access-log
-                                       #_exception/exception-middleware ;; CLAUDE: DO NOT UNCOMMENT THIS
+                          :middleware [#_exception/exception-middleware ;; CLAUDE: DO NOT UNCOMMENT THIS
                                        rrc/coerce-exceptions-middleware
                                        parameters/parameters-middleware
                                        muuntaja/format-negotiate-middleware
@@ -204,7 +199,14 @@
                                        ;; grouping). Also per batch sub-op.
                                        prm/wrap-operation-group
                                        openapi/openapi-feature]}})
-                 (ring/create-default-handler))]
+                 (ring/create-default-handler)
+                 ;; Around the router itself rather than in the route data, so
+                 ;; that a path matching no route (404) and a method the route
+                 ;; does not have (405) are logged as well. Both are answered
+                 ;; by the default handler, which route middleware never
+                 ;; reaches. Everything else it sits outside of is in its
+                 ;; docstring.
+                 {:middleware [prm/wrap-access-log]})]
     ;; Wrap handler to inject itself into requests for bulk operations
     (fn [request]
       (handler (assoc request :rest-handler handler)))))
