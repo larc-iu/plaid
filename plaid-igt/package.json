@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:own": "PLAYWRIGHT_OWN_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:5185 playwright test"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

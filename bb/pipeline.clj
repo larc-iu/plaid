@@ -124,7 +124,11 @@
              "--ignore=tests/test_live_dictionary.py")
     (step "Run the Python test suite (plaid-igt services)")
     ;; The bundled services are plain plaid-client code and run from base.
-    (p/shell {:dir "plaid-igt"} (python-exe) "-m" "pytest" "-q" "services/tests")))
+    (p/shell {:dir "plaid-igt"} (python-exe) "-m" "pytest" "-q" "services/tests")
+    ;; The Python client's own suite: BaseService, cancellation, the idle
+    ;; deadline, batch bypass and the three workflows. It was never in the gate.
+    (step "Run the Python test suite (plaid-client-py)")
+    (p/shell {:dir "plaid-client-py"} (python-exe) "-m" "pytest" "-q")))
 
 ;; The two SAMPLE_PROMPT.md files are snapshots of what the model is actually
 ;; sent, and they rot silently: a tool changes and the file goes on describing
