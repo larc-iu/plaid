@@ -43,7 +43,12 @@
       (->> (psc/q db {:select [:*] :from [table] :where [:in :id ids]})
            (into {} (map (juxt :id identity)))))))
 
-(defn- select-user [u]  (when u {:user/id (:id u) :user/display-name (:display_name u)}))
+;; The avatar hash rides along with the name because a screen that shows a
+;; face needs it to know there is no face: without it, every person here who
+;; has never uploaded a picture costs a request that can only 404.
+(defn- select-user [u]  (when u {:user/id (:id u)
+                                 :user/display-name (:display_name u)
+                                 :user/avatar-hash (:avatar_hash u)}))
 (defn- select-proj [p]  (when p {:project/id (:id p) :project/name (:name p)}))
 (defn- select-doc  [d]  (when d {:document/id (:id d) :document/name (:name d)}))
 (defn- select-token [t] (when t {:token/id (:id t) :token/name (:name t)}))

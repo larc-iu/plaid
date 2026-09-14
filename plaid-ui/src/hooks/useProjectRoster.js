@@ -13,7 +13,7 @@ import { useEffect, useMemo, useState } from 'react';
 // failure leaves the ids standing in for the names rather than emptying the
 // list.
 export const useProjectRoster = (client, project) => {
-  const [names, setNames] = useState({});
+  const [people, setPeople] = useState({});
 
   const memberIds = useMemo(
     () =>
@@ -34,7 +34,7 @@ export const useProjectRoster = (client, project) => {
       .list()
       .then((all) => {
         if (!alive) return;
-        setNames(Object.fromEntries((all || []).map((u) => [u.id, u.displayName || u.id])));
+        setPeople(Object.fromEntries((all || []).map((u) => [u.id, u])));
       })
       .catch(() => {});
     return () => {
@@ -42,8 +42,18 @@ export const useProjectRoster = (client, project) => {
     };
   }, [client, memberIds.length]);
 
+  // `avatarHash` defaults to null, not undefined: null is what tells the
+  // avatar there is no picture and spares it a request that can only 404.
+  // Before the directory read lands that is a guess, and the right one —
+  // most people have no picture, and the ones who do get theirs a moment
+  // later when this recomputes.
   return useMemo(
-    () => memberIds.map((id) => ({ id, displayName: names[id] || id })),
-    [memberIds, names],
+    () =>
+      memberIds.map((id) => ({
+        id,
+        displayName: people[id]?.displayName || id,
+        avatarHash: people[id]?.avatarHash ?? null,
+      })),
+    [memberIds, people],
   );
 };

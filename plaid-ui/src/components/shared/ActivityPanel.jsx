@@ -116,6 +116,7 @@ export const ActivityPanel = ({ client, projectId, roster, projectHref, document
               client={client}
               userId={row.user.id}
               displayName={row.user.displayName}
+              avatarHash={row.user.avatarHash}
               className="h-6 w-6"
             />
             <span>{nameOf(row)}</span>
@@ -181,6 +182,7 @@ export const ActivityPanel = ({ client, projectId, roster, projectHref, document
             client={client}
             userId={m.id}
             displayName={m.displayName}
+            avatarHash={m.avatarHash}
             className="h-6 w-6"
           />
           <span>{m.displayName || m.id}</span>
