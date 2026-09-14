@@ -8,7 +8,10 @@
                                     with-mount-states with-rest-handler admin-request api-call
                                     assert-status assert-created assert-ok assert-no-content
                                     with-admin with-test-users with-clean-db]]
+            [plaid.fixtures :as fix]
+            [plaid.media.storage :as media]
             [plaid.rest-api.v1.middleware :as mw]
+            [plaid.sql.common :as psc]
             [plaid.test-helpers :refer :all]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
@@ -410,3 +413,63 @@
                                          :path "/api/v1/invites/lookup"
                                          :body {:code code}}))))]
       (is (not-any? #(clojure.string/includes? % code) lines)))))
+
+;; ============================================================
+;; What answering X-Document-Versions costs
+;; ============================================================
+
+(deftest the-version-header-asks-the-documents-table-and-nothing-else
+  ;; Every write response carries the versions of the documents it touched,
+  ;; and it used to read them through `plaid.sql.document/get`: a listing of
+  ;; the whole media directory plus a metadata query, per document, on every
+  ;; write there is. A cross-document bulk paid it N times.
+  (let [proj (create-test-project admin-request "VersionHeaderCostProj")
+        doc1 (create-test-document admin-request proj "Doc1")
+        doc2 (create-test-document admin-request proj "Doc2")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        text1 (-> (create-text admin-request tl doc1 "one") :body :id)
+        text2 (-> (create-text admin-request tl doc2 "two") :body :id)
+        real-find media/find-existing-media-file
+        walks (atom 0)]
+    (with-redefs [media/find-existing-media-file (fn [doc-id]
+                                                   (swap! walks inc)
+                                                   (real-find doc-id))]
+      (let [res (api-call admin-request
+                          {:method :post
+                           :path "/api/v1/batch"
+                           :body [{:path (str "/api/v1/texts/" text1)
+                                   :method "patch"
+                                   :body {:body "one edited"}}
+                                  {:path (str "/api/v1/texts/" text2)
+                                   :method "patch"
+                                   :body {:body "two edited"}}]})
+            versions (parse-version-header res)]
+        (assert-ok res)
+        (testing "both documents' versions still come back"
+          (is (contains? versions doc1))
+          (is (contains? versions doc2))
+          (is (every? integer? (vals versions))))
+        (testing "and no media directory was walked to find them"
+          (is (zero? @walks)))))))
+
+(deftest document-versions-is-one-query-for-many-documents
+  (let [proj (create-test-project admin-request "VersionBatchReadProj")
+        docs (mapv #(create-test-document admin-request proj (str "Doc" %)) (range 3))
+        real-q psc/q
+        queries (atom 0)
+        ;; `q`'s two-arity delegates to its three-arity through the var, so
+        ;; count the calls the caller makes and pass the inner one through.
+        counting-q (fn ([db query] (swap! queries inc) (real-q db query))
+                     ([db query opts] (real-q db query opts)))]
+    (with-redefs [psc/q counting-q]
+      (let [versions (psc/document-versions fix/db docs)]
+        (is (= 1 @queries) "one SELECT, whatever the number of documents")
+        (is (= (set docs) (set (keys versions))))
+        (is (every? integer? (vals versions)))))
+    (testing "an id with no document is simply absent"
+      (is (= {} (psc/document-versions fix/db [(psc/new-uuid)]))))
+    (testing "and no ids means no query at all"
+      (reset! queries 0)
+      (with-redefs [psc/q counting-q]
+        (is (= {} (psc/document-versions fix/db [])))
+        (is (zero? @queries))))))

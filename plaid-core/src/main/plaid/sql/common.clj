@@ -1031,6 +1031,34 @@
   ([db table id-col ids]
    (into {} (map (juxt id-col identity)) (fetch-ids db table id-col ids))))
 
+(defn document-version
+  "`documents.version` for one id, nil when there is no such document. The
+  OCC pre-flight in `wrap-document-version` asks this of every write that
+  carries a `?document-version=`."
+  [db doc-id]
+  (:version (q1 db {:select [:version]
+                    :from [:documents]
+                    :where [:= :id doc-id]})))
+
+(defn document-versions
+  "Map of document id → `documents.version`, for the ids that exist. One
+  SELECT per chunk of ids, whatever the caller's count.
+
+  Every write response answers this question about the documents it touched
+  (`X-Document-Versions`, so a strict client knows the version to send next).
+  Asking `plaid.sql.document/get` instead paid for a walk of the whole media
+  directory and a metadata query per document, on every one of them."
+  [db doc-ids]
+  (if (empty? doc-ids)
+    {}
+    (into {}
+          (comp (mapcat (fn [chunk]
+                          (q db {:select [:id :version]
+                                 :from [:documents]
+                                 :where [:in :id (vec chunk)]})))
+                (map (juxt :id :version)))
+          (partition-all bulk-chunk-size (distinct doc-ids)))))
+
 (defn next-order-idx-expr
   "Returns a HoneySQL scalar-subquery fragment that resolves at INSERT
   time to `MAX(order_idx) + 1` over `table` filtered by `where-clause`,

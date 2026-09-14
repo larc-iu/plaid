@@ -1,7 +1,6 @@
 (ns plaid.rest-api.v1.middleware
   (:require [plaid.server.log-buffer :as log-buffer]
             [plaid.sql.common :as psc]
-            [plaid.sql.document :as doc]
             [plaid.sql.operation :as op]
             [taoensso.timbre :as log]
             [clojure.string :as str]
@@ -45,13 +44,14 @@
 
   A bulk write reaches the documents of one project, and a client that
   learned only one of their versions goes on to write the rest with a
-  stale one, which its own strict mode then refuses."
+  stale one, which its own strict mode then refuses.
+
+  The versions come from `psc/document-versions`, one SELECT over the ids.
+  Reading them through `doc/get` cost a walk of the media directory and a
+  metadata query per document, on every write response there is."
   [response db doc-ids]
   (if (and (seq doc-ids) (>= (:status response) 200) (< (:status response) 300))
-    (let [versions (into {} (keep (fn [doc-id]
-                                    (when-let [v (:document/version (doc/get db doc-id))]
-                                      [doc-id v])))
-                         doc-ids)]
+    (let [versions (psc/document-versions db doc-ids)]
       (if (seq versions)
         (assoc-in response [:headers "X-Document-Versions"] (json/write-str versions))
         response))
@@ -475,7 +475,7 @@
                 already-validated (if validated-versions
                                     (get @validated-versions doc-id ::not-validated)
                                     ::not-validated)
-                latest-version (:document/version (doc/get (:db request) doc-id))]
+                latest-version (psc/document-version (:db request) doc-id)]
             ;; Fast-fail pre-flight: bail with 409 if the visible version
             ;; is ALREADY ahead of the client. Not authoritative — a
             ;; racing writer can bump between this read and the in-tx
