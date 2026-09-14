@@ -10,6 +10,7 @@ word takes its analysis, values, and links with it while the text stays."""
 
 from typing import Any, Dict, List, Optional
 
+from ..core.args import whole
 from ..core.tools import ToolError
 from .project import Sentence, Word, resolve, split_sentences, split_words, word_ref
 from .tools import (reshape_guards, refuse_comment_and_text_edit, refuse_shape_and_analysis)
@@ -110,16 +111,20 @@ def t_split_word(ws: Workspace, document: str, ref: str, at) -> str:
     reshape_guards(ws, doc)
     w = _need(resolve(doc, ref), Word, ref)
     _guard(ws, w, ref)
-    if isinstance(at, str) and not at.strip().isdigit():
-        left = at.strip()
+    # `at` is either a count or the left part itself, so the number is read
+    # first and the text is what is left when it is not one. `whole` and not
+    # `int`: `isdigit` is true of "²", and `int(2.7)` used to cut a word
+    # after two characters for an argument that named no position at all.
+    try:
+        n = whole(at)
+    except ValueError:
+        left = at.strip() if isinstance(at, str) else ''
+        if not left:
+            raise ToolError('at must be the number of characters in the left part (a whole number), '
+                            'or the left part itself') from None
         if not w.surface.startswith(left):
-            raise ToolError(f'"{left}" is not the start of "{w.surface}"; give the left part, or the number of characters in it')
+            raise ToolError(f'"{left}" is not the start of "{w.surface}"; give the left part, or the number of characters in it') from None
         n = len(left)
-    else:
-        try:
-            n = int(at)
-        except (TypeError, ValueError, OverflowError):
-            raise ToolError('at must be the number of characters in the left part, or the left part itself')
     if not 0 < n < len(w.surface):
         raise ToolError(f'at must be between 1 and {len(w.surface) - 1} for "{w.surface}"')
     left, right = w.surface[:n], w.surface[n:]
@@ -222,9 +227,9 @@ def t_split_sentence(ws: Workspace, document: str, ref: str, before_word: int) -
     s = _need(resolve(doc, ref), Sentence, ref)
     _guard(ws, s, ref)
     try:
-        n = int(before_word)
-    except (TypeError, ValueError, OverflowError):
-        raise ToolError('before_word must be a word number (the first word of the new sentence)')
+        n = whole(before_word)
+    except ValueError:
+        raise ToolError('before_word must be a word number (the first word of the new sentence)') from None
     if not 2 <= n <= len(s.words):
         raise ToolError(f'before_word must be between 2 and {len(s.words)} for {ref} (a split before w1 changes nothing)')
     w = s.words[n - 1]

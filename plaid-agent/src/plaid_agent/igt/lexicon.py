@@ -10,6 +10,7 @@ mirrors the app's own vocabDictionary.js.
 import re
 from typing import Any, Dict, Optional
 
+from ..core.args import whole
 from ..core.tools import ToolError
 
 from .project import word_ref
@@ -267,11 +268,11 @@ def t_move_sense(ws: Workspace, number, entry_form: Optional[str] = None, lexico
     # own siblings, so only the last segment says where it should land.
     raw = str(number).strip().rsplit('.', 1)[-1]
     try:
-        wanted = int(round(float(raw)))
-    except (TypeError, ValueError, OverflowError):
+        wanted = whole(raw)
+    except ValueError:
         raise ToolError(f'"{number}" is not a sense number. Give the place among the senses of '
                         f'{view.label(view.tree.root_of.get(target["id"]) or target["id"])}, '
-                        'counting from 1.')
+                        'counting from 1.') from None
     patches = plan_sense_set_number(view.tree, target['id'], wanted)
     if not patches:
         sibs = len(view.tree.senses_of(view.tree.parent_of[target['id']]))
@@ -428,10 +429,11 @@ def t_remove_example(ws: Workspace, index: int, entry_form: Optional[str] = None
     if not exs:
         raise ToolError(f'{view.label(target["id"])} has no usage examples.')
     # One sentence for a number out of range and for something that is not a
-    # number at all: int() answered the second with its own error text.
+    # number at all: int() answered the second with its own error text, and
+    # cut 1.5 down to example 1 for an argument that named no example.
     try:
-        i = None if isinstance(index, bool) else int(index)
-    except (TypeError, ValueError, OverflowError):
+        i = whole(index)
+    except ValueError:
         i = None
     if i is None or i < 0 or i >= len(exs):
         raise ToolError(f'"{index}" is not one of {view.label(target["id"])}\'s {len(exs)} example(s), which are '

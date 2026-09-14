@@ -10,7 +10,6 @@ Everything is addressed positionally (``s3.w2``), never by id: see
 """
 
 import copy
-import re
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -471,21 +470,16 @@ def _head_id(head) -> int:
 
     Every other argument in this module is a reference, so a model reaches for
     one ("w3", "s3.w3") before it reaches for a bare number, and int() answered
-    that with its own error text. A number with a fraction is refused rather
-    than truncated: 2.7 is not word 2.
+    that with its own error text. `core.args.whole` is the one reader of a
+    number a model wrote: it refuses a fraction rather than truncating it (2.7
+    is not word 2), refuses True, and refuses "\u00b2", which `isdigit` calls a
+    digit and `int` then complains about in Python's own words.
     """
-    if isinstance(head, int) and not isinstance(head, bool):
-        return head
-    if isinstance(head, float) and head.is_integer():
-        return int(head)
-    text = str(head).strip()
-    # `isdigit` is true of "\u00b2" and of the digits in "--1", and int() then
-    # answered the model with its own error text, which is the symptom this
-    # helper exists to remove.
-    if re.fullmatch(r'-?[0-9]+', text):
-        return int(text)
-    raise ToolError(f'"{head}" is not a head. Give the number the head word carries within its own sentence '
-                    '(1, 2, 3 …), or 0 for the root. It is a plain number, not a reference.')
+    try:
+        return whole(head)
+    except ValueError:
+        raise ToolError(f'"{head}" is not a head. Give the number the head word carries within its own sentence '
+                        '(1, 2, 3 …), or 0 for the root. It is a plain number, not a reference.') from None
 
 
 def t_set_head(ws: Workspace, document: str = None, ref: str = None, head=None,

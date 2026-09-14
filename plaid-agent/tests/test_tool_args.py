@@ -114,3 +114,35 @@ def test_a_sentence_range_takes_the_references_a_read_prints(app):
     plain = call(ws, 'read_document', {'document': doc, 'from_sentence': 2})
     assert plain == call(ws, 'read_document', {'document': doc, 'from_sentence': 's2'})
     assert plain == call(ws, 'read_document', {'document': doc, 'from_sentence': '2'})
+
+
+# A number a model wrote that is not a whole one. `int()` cuts 2.7 down to 2
+# and acts on a position nobody named, which is worse than a refusal: the
+# change is made, described, and approved. Every argument naming a POSITION
+# goes through `core.args.whole`, which refuses a fraction. The cases are the
+# arguments that used to read their own numbers by hand.
+FRACTIONS = [
+    ('igt', 'split_word', {'document': 'Text 1', 'ref': 's1.w1', 'at': 2.5}, 'split_word'),
+    ('igt', 'split_sentence', {'document': 'Text 1', 'ref': 's1', 'before_word': 2.5}, 'split_sentence'),
+    ('ud', 'set_head', {'document': 'Viaje', 'ref': 's1.w3', 'head': 2.5, 'deprel': 'obj'}, 'set_head'),
+]
+
+
+@pytest.mark.parametrize('app,tool,args,kind', FRACTIONS, ids=[f'{a}.{t}' for a, t, _, _ in FRACTIONS])
+def test_a_position_is_never_truncated_to_a_whole_number(app, tool, args, kind):
+    ws, call = (_igt_ws(), igt_call) if app == 'igt' else (_ud_ws(), ud_call)
+    answer = call(ws, tool, args)
+    _check(answer, tool, list(args)[-1])
+    assert answer.startswith('Error:'), f'{tool} accepted a fraction: {answer!r}'
+    assert not any(op.get('kind') == kind for op in ws.ops), f'{tool} staged a change for a fraction'
+
+
+@pytest.mark.parametrize('app,tool,args,kind', FRACTIONS, ids=[f'{a}.{t}' for a, t, _, _ in FRACTIONS])
+def test_true_is_not_the_number_one(app, tool, args, kind):
+    """`int(True)` is 1, so a boolean used to name the first word, the first
+    example, or the root."""
+    ws, call = (_igt_ws(), igt_call) if app == 'igt' else (_ud_ws(), ud_call)
+    args = {**args, list(args)[-1]: True}
+    answer = call(ws, tool, args)
+    _check(answer, tool, list(args)[-1])
+    assert answer.startswith('Error:'), f'{tool} read True as a number: {answer!r}'

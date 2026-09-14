@@ -385,8 +385,11 @@ def test_a_duplicate_example_is_ignored_and_a_bad_index_says_the_range():
     out = call_tool(w, 'promote_example', {'entry_form': 'phika', 'document': 'd1', 'ref': 's1.w2'})
     assert 'already has that example' in out
     assert 'numbered 0 to 0' in call_tool(w, 'remove_example', {'entry_form': 'phika', 'index': 4})
-    # A number the tool cannot read gets the same sentence, not int()'s.
-    for bad in ('two', None, '1.5', [0]):
+    # A number the tool cannot read gets the same sentence, not int()'s. 0.5
+    # is in that list because `int(0.5)` is 0: the fraction used to drop the
+    # first example for an argument that named no example at all, and True
+    # did the same.
+    for bad in ('two', None, '1.5', [0], 0.5, True):
         out = call_tool(w, 'remove_example', {'entry_form': 'phika', 'index': bad})
         assert 'numbered 0 to 0' in out and 'int()' not in out, (bad, out)
     assert len([o for o in w.ops if o.get('kind') == 'set_entry_metadata']) == 1
