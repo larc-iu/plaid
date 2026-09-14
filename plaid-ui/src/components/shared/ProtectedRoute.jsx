@@ -6,7 +6,7 @@ import { Navigate } from 'react-router-dom';
 // The auth state is the app's, and a package file cannot reach an app's
 // context, so the app binds its own hook once, at module scope in App.jsx:
 //
-//   const ProtectedRoute = createProtectedRoute(useAuth);
+//   const ProtectedRoute = createProtectedRoute(useAuth, { loginPath: '/login' });
 //
 // It cannot be a prop or a call inside App: App is what renders the
 // AuthProvider, so there is no auth above it to read.

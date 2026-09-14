@@ -54,7 +54,27 @@ describe('what a package file may not know', () => {
   });
 
   it('holds no app’s routes', () => {
-    const ROUTE = /['"`]\/(projects|documents|vocabularies|profile|admin|login)\b/;
+    // Every segment either app routes on, matched ANYWHERE inside a string
+    // rather than only at its start: half the paths a component builds are
+    // interpolated (`${projectPath}/annotate`), and a pattern anchored to the
+    // opening quote reads those as clean.
+    const SEGMENTS = [
+      'projects',
+      'documents',
+      'vocabularies',
+      'profile',
+      'admin',
+      'login',
+      'annotate',
+      'edit',
+      'settings',
+      'assistant',
+      'export',
+      'import',
+      'tokenize',
+      'analyze',
+    ].join('|');
+    const ROUTE = new RegExp(`['"\`][^'"\`]*/(${SEGMENTS})\\b`);
     expect(offenders(ROUTE, { skip: [SIBLING_APPS] })).toEqual([]);
   });
 
