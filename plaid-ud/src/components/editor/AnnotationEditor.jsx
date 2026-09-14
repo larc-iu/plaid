@@ -17,7 +17,8 @@ import { HistoryDrawer, HISTORY_DRAWER_WIDTH } from '@ui/components/shared/Histo
 import { ListPager } from '@ui/components/shared/list-search';
 import { usePagedList, pageKey, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
 import { useWideEnoughToDock } from '@ui/components/assistant/useDock.js';
-import { RestoreDialog } from './annotation/RestoreDialog.jsx';
+import { RestoreDialog } from '@ui/components/shared/RestoreDialog.jsx';
+import { TOKEN_ROLE_WORDS } from '../../domain/restoreSummary.js';
 import { EditorLegend } from './annotation/EditorLegend.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 // Raised here, dismissed by DocumentEditorShell: the notice outlives this tab.
@@ -619,6 +620,7 @@ export const AnnotationEditor = () => {
         client={getClient()}
         documentId={documentId}
         raw={doc?.raw}
+        roleWords={TOKEN_ROLE_WORDS}
         entry={restoreEntry}
         onRestored={handleRestored}
       />

@@ -1,18 +1,16 @@
-// Restore a document to the state selected in the History drawer. The
-// server does the work in one operation (documents.restore); the confirm
-// step asks it for a dry run and lists what would change, in the
-// linguist's terms, and the toast that confirms the restore offers Undo.
+// Restore a document to the state selected in the History drawer. The server
+// does the work in one operation (documents.restore); the confirm step asks it
+// for a dry run and lists what would change, in the linguist's terms, and the
+// toast that confirms the restore offers Undo.
+//
+// The only thing each app says differently is what it calls a token layer, so
+// `roleWords` (role -> [singular, plural]) is a prop. Everything else, down to
+// the wording of the toasts, is the same in both.
 
 import { useEffect, useRef, useState } from 'react';
-import { Button } from '@ui/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@ui/components/ui/dialog';
-import { notifySuccess, notifyWarning, notifyError, notifyPromise } from '@/utils/feedback';
+import { readRole } from '@larc-iu/plaid-client';
+import { Button } from '../ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog';
 import {
   changeLines,
   historyMessage,
@@ -20,15 +18,23 @@ import {
   latestState,
   restoreError,
   skippedLines,
-} from '@/domain/restoreSummary.js';
-import { fullTimestamp } from '@ui/lib/formatTime.js';
+} from '../../domain/restoreSummary.js';
+import {
+  notifySuccess,
+  notifyWarning,
+  notifyError,
+  notifyPromise,
+  notifyWithAction,
+} from '../../lib/notify.js';
+import { fullTimestamp } from '../../lib/formatTime.js';
 
 export const RestoreDialog = ({
   open,
   onOpenChange,
   client,
   documentId,
-  doc,
+  raw,
+  roleWords,
   entry,
   onRestored,
 }) => {
@@ -36,8 +42,8 @@ export const RestoreDialog = ({
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const asOf = entry?.time ?? null;
-  // The toast's Undo fires long after the restore's render, so it reads the
-  // latest callback rather than the one it closed over.
+  // The toast's Undo fires long after this render, so it reads the latest
+  // callback rather than the one it closed over.
   const onRestoredRef = useRef(onRestored);
   onRestoredRef.current = onRestored;
 
@@ -59,9 +65,10 @@ export const RestoreDialog = ({
     };
   }, [open, asOf, client, documentId]);
 
-  const layers = indexLayers(doc?.raw);
-  const lines = changeLines(preview, layers);
+  const layers = indexLayers(raw, readRole);
+  const lines = changeLines(preview, layers, roleWords);
   const gaps = skippedLines(preview?.skipped);
+
   const close = () => {
     if (busy) return;
     onOpenChange(false);
@@ -76,6 +83,8 @@ export const RestoreDialog = ({
       {},
       historyMessage(before.time, before.label),
     );
+    // The failure is already on screen as the toast, so swallow the rejection
+    // rather than letting it surface a second time as an unhandled one.
     notifyPromise(
       run.finally(() => onRestoredRef.current?.()),
       {
@@ -86,27 +95,30 @@ export const RestoreDialog = ({
             : 'Back to the state before the restore.',
         error: (err) => restoreError(err, 'The undo was not applied.'),
       },
-    );
+    ).catch(() => {});
   };
 
   const restore = async () => {
     setBusy(true);
     try {
       const before = await latestState(client, documentId).catch(() => null);
-      // The toast stays long enough to be acted on.
-      const action = before
-        ? { action: { label: 'Undo', onClick: () => undo(before) }, duration: 15000 }
-        : {};
       const res = await client.documents.restore(
         documentId,
         asOf,
         {},
         historyMessage(asOf, entry?.label),
       );
-      if (res?.skipped?.length) {
-        notifyWarning(skippedLines(res.skipped).join(' '), 'Restored, with gaps', action);
+      const message = res?.skipped?.length
+        ? skippedLines(res.skipped).join(' ')
+        : `Restored to ${fullTimestamp(asOf)}.`;
+      const title = res?.skipped?.length ? 'Restored, with gaps' : 'Restored';
+      const kind = res?.skipped?.length ? 'warning' : 'success';
+      if (before) {
+        notifyWithAction(message, title, { label: 'Undo', onClick: () => undo(before), kind });
+      } else if (res?.skipped?.length) {
+        notifyWarning(message, title);
       } else {
-        notifySuccess(`Restored to ${fullTimestamp(asOf)}.`, 'Restored', action);
+        notifySuccess(message, title);
       }
       onOpenChange(false);
       await onRestored?.();
@@ -125,34 +137,43 @@ export const RestoreDialog = ({
         <DialogHeader>
           <DialogTitle>Restore to {asOf ? fullTimestamp(asOf) : ''}</DialogTitle>
         </DialogHeader>
-        {entry?.label && <p className="text-sm text-muted-foreground">{entry.label}</p>}
-        {error && <p className="text-sm text-destructive">{error}</p>}
-        {!error && !preview && (
-          <p className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span className="h-3 w-3 animate-spin rounded-full border-2 border-muted border-t-primary" />
-            Comparing…
-          </p>
-        )}
-        {preview && lines.length === 0 && (
-          <p className="text-sm text-muted-foreground">Nothing differs from the current state.</p>
-        )}
-        {preview && lines.length > 0 && (
-          <div className="text-sm">
-            <p className="mb-1 font-medium">Changes</p>
-            <ul className="list-disc pl-5">
-              {lines.map((l) => (
-                <li key={l}>{l}</li>
+
+        <div className="flex flex-col gap-3">
+          {entry?.label && <p className="text-sm text-muted-foreground">{entry.label}</p>}
+
+          {error && <p className="text-sm text-destructive">{error}</p>}
+
+          {!error && !preview && (
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-muted border-t-primary" />
+              Comparing…
+            </p>
+          )}
+
+          {preview && lines.length === 0 && (
+            <p className="text-sm text-muted-foreground">Nothing differs from the current state.</p>
+          )}
+
+          {preview && lines.length > 0 && (
+            <div>
+              <p className="mb-1 text-sm font-medium">Changes</p>
+              <ul className="ml-5 list-disc space-y-0.5 text-sm">
+                {lines.map((l) => (
+                  <li key={l}>{l}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {gaps.length > 0 && (
+            <ul className="ml-5 list-disc space-y-0.5 text-sm text-destructive">
+              {gaps.map((g) => (
+                <li key={g}>{g}</li>
               ))}
             </ul>
-          </div>
-        )}
-        {gaps.length > 0 && (
-          <ul className="list-disc pl-5 text-sm text-destructive">
-            {gaps.map((g) => (
-              <li key={g}>{g}</li>
-            ))}
-          </ul>
-        )}
+          )}
+        </div>
+
         <DialogFooter>
           <Button variant="outline" onClick={close} disabled={busy}>
             Cancel

@@ -12,7 +12,8 @@ import { Button } from '@ui/components/ui/button';
 import { ExportRunner } from '@/components/export/ExportRunner.jsx';
 import { DocumentTokenize } from './tokenize/DocumentTokenize.jsx';
 import { HistoryDrawer, HISTORY_DRAWER_WIDTH } from '@ui/components/shared/HistoryDrawer';
-import { RestoreDialog } from './RestoreDialog.jsx';
+import { RestoreDialog } from '@ui/components/shared/RestoreDialog.jsx';
+import { TOKEN_ROLE_WORDS } from '@/domain/restoreSummary.js';
 import { DocumentMetadata } from './metadata/DocumentMetadata.jsx';
 import { DocumentBaseline } from './baseline/DocumentBaseline.jsx';
 import { AnalyzeIsland } from './analyze/AnalyzeIsland.jsx';
@@ -365,7 +366,8 @@ const DocumentEditor = () => {
         }}
         client={client}
         documentId={documentId}
-        doc={doc}
+        raw={doc?.raw}
+        roleWords={TOKEN_ROLE_WORDS}
         entry={restoreEntry}
         onRestored={handleRestored}
       />

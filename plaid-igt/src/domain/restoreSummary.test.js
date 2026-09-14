@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { changeLines, indexLayers } from './restoreSummary.js';
+import { readRole } from '@larc-iu/plaid-client';
+import {
+  changeLines as changeLinesWith,
+  indexLayers as indexLayersWith,
+} from '@ui/domain/restoreSummary.js';
+import { TOKEN_ROLE_WORDS } from './restoreSummary.js';
+
+// The two halves as the dialog puts them together: the shared reading, and
+// this app's words for a token layer's role.
+const indexLayers = (raw) => indexLayersWith(raw, readRole);
+const changeLines = (summary, layers) => changeLinesWith(summary, layers, TOKEN_ROLE_WORDS);
 
 // A document's layers, plus one token layer belonging to another app that
 // shares the substrate (plaid-ud's syntactic words) to check the fallback.

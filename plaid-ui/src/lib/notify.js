@@ -26,3 +26,29 @@ export const notifyWarning = (message, title = 'Warning', options) =>
 // Neither good news nor bad: a run someone stopped, a state that simply is.
 export const notifyInfo = (message, title, options) =>
   toast(title || message, { ...(title ? { description: message } : {}), ...options });
+
+// A toast for work in flight, updated in place when the promise settles.
+// `success` and `error` may be strings or functions of the settled value.
+//
+// Returns the promise it was given, not sonner's toast id: callers chain off
+// it (`.catch(() => {})` where the failure is already on screen as this toast
+// and must not surface a second time as an unhandled rejection).
+export const notifyPromise = (promise, { loading, success, error }) => {
+  toast.promise(promise, { loading, success, error });
+  return promise;
+};
+
+// A toast carrying a single action button. sonner dismisses it on click.
+// `kind` picks the variant, and a `duration` of Infinity makes it stick.
+export const notifyWithAction = (
+  message,
+  title,
+  { label, onClick, kind = 'success', duration = 15000 },
+) => {
+  const show = { success: toast.success, warning: toast.warning, error: toast.error }[kind];
+  return show(title || message, {
+    ...(title ? { description: message } : {}),
+    duration,
+    action: { label, onClick },
+  });
+};

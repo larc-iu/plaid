@@ -3,13 +3,20 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { readRole } from '@larc-iu/plaid-client';
 import {
-  changeLines,
+  changeLines as changeLinesWith,
   historyMessage,
-  indexLayers,
+  indexLayers as indexLayersWith,
   restoreError,
   skippedLines,
-} from '../src/domain/restoreSummary.js';
+} from '../../plaid-ui/src/domain/restoreSummary.js';
+import { TOKEN_ROLE_WORDS } from '../src/domain/restoreSummary.js';
+
+// The two halves as the dialog puts them together: the shared reading, and
+// this app's words for a token layer's role.
+const indexLayers = (raw) => indexLayersWith(raw, readRole);
+const changeLines = (summary, layers) => changeLinesWith(summary, layers, TOKEN_ROLE_WORDS);
 
 // A UD document's layers, plus one token layer belonging to another app that
 // shares the substrate (IGT's morphemes) to check the fallback naming.
