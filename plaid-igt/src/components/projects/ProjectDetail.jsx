@@ -61,7 +61,10 @@ export const ProjectDetail = () => {
   const location = useLocation();
   const { user, client, logout } = useAuth();
   const [project, setProject] = useState(null);
-  const [documents, setDocuments] = useState([]);
+  // The rows and the project they belong to, together: walking from A to B
+  // renders once with B's id and A's state before any effect runs, and a list
+  // of A's documents under B's name is a list the reader can click.
+  const [docs, setDocs] = useState({ projectId, rows: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -102,7 +105,7 @@ export const ProjectDetail = () => {
       ]);
       if (token.cancelled) return;
       setProject(projectData);
-      setDocuments(docsList || []);
+      setDocs({ projectId, rows: docsList || [] });
       setError('');
     } catch (err) {
       if (token.cancelled) return;
@@ -209,8 +212,12 @@ export const ProjectDetail = () => {
   }, [importResumeTo, canManage, projectId, navigate]);
 
   const handleDocumentCreated = (newDocument) => {
-    setDocuments((prev) => [...prev, newDocument]);
+    setDocs((prev) => ({ ...prev, rows: [...prev.rows, newDocument] }));
   };
+
+  // Nothing of another project's, ever: the rows are the route's or there are
+  // none yet.
+  const documents = docs.projectId === projectId ? docs.rows : [];
 
   if (loading) {
     return (

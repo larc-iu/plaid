@@ -8,7 +8,16 @@ import { renderComponent } from '@ui/test/renderComponent.jsx';
 // project it is handed: A landing last would put A's layers under a Save the
 // reader makes on B.
 
-vi.mock('./DocumentList', () => ({ DocumentList: () => null }));
+// Every render of the list, with the project it was drawn for: the frame that
+// carries the new id with the old rows is the one under test, and it is gone
+// again before any effect has run.
+const listed = vi.hoisted(() => []);
+vi.mock('./DocumentList', () => ({
+  DocumentList: ({ documents, projectId }) => {
+    listed.push({ projectId, ids: documents.map((d) => d.id).join(',') });
+    return <div data-testid="docs">{documents.map((d) => d.id).join(',')}</div>;
+  },
+}));
 vi.mock('./search/ProjectSearch.jsx', () => ({ ProjectSearch: () => null }));
 vi.mock('./ProjectSettingsPanel', () => ({ ProjectSettingsPanel: () => null }));
 vi.mock('@/hooks/useCompose', () => ({ useComposeProject: () => {} }));
@@ -35,8 +44,9 @@ const PROJECTS = {
   B: { id: 'B', name: 'Beeworth', config: { igt: { initialized: true } } },
 };
 
-// One deferred project read per id. The document list answers at once: what is
-// under test is which project lands, not which documents.
+// One deferred project read per id. The document list answers at once, with a
+// row named after its project, so a list from the project the reader left is
+// recognizable.
 const deferred = () => {
   const pending = new Map();
   return {
@@ -44,7 +54,7 @@ const deferred = () => {
     client: {
       projects: {
         get: (id) => new Promise((resolve) => pending.set(id, resolve)),
-        listDocuments: async () => [],
+        listDocuments: async (id) => [{ id: `${id}-doc`, name: `${id} doc` }],
       },
     },
   };
@@ -67,6 +77,7 @@ const app = (
 );
 
 const heading = (container) => container.querySelector('h1')?.textContent ?? '';
+const docs = (container) => container.querySelector('[data-testid="docs"]')?.textContent ?? '';
 
 describe('the project screen when the reader walks to another project', () => {
   it('keeps the project it was last asked for, however late the other answers', async () => {
@@ -93,6 +104,25 @@ describe('the project screen when the reader walks to another project', () => {
 
     await view.step(async () => d.settle('B'));
     expect(heading(view.container)).toBe('Beeworth');
+    await view.unmount();
+  });
+
+  // The rows are part of the project, and state set in an effect lands a frame
+  // late: the render that first carries B's id still had A's rows in hand.
+  it('never lists the documents of the project the reader left', async () => {
+    const d = deferred();
+    auth.client = d.client;
+    listed.length = 0;
+    const view = await renderComponent(app);
+    await view.step(async () => d.settle('A'));
+    expect(docs(view.container)).toBe('A-doc');
+
+    await view.step(() => go('/projects/B'));
+    await view.step(async () => d.settle('B'));
+    expect(docs(view.container)).toBe('B-doc');
+
+    const wrong = listed.filter((r) => r.ids && !r.ids.startsWith(r.projectId));
+    expect(wrong).toEqual([]);
     await view.unmount();
   });
 
