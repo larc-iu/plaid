@@ -40,6 +40,10 @@ logger = logging.getLogger(__name__)
 #    or never if the batch aborts, while its caller reads success. Pass
 #    ``bypass_batch`` for these too.
 #
+# A bypassed call neither joins the batch nor spends its stamp. Strict mode
+# marks the batch's one expected document-version onto the first QUEUED write,
+# and a call that went over the wire on its own is not that write.
+#
 # ``no_batch`` is not part of that judgment. It marks the few calls the batch
 # transport cannot carry at all (a batch inside a batch, a multipart upload, the
 # media and avatar blobs, the user-data store) and raises so the caller finds
@@ -395,7 +399,7 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
         request_body = transform_request(body)
 
     # Strict mode: append document-version for non-GET requests.
-    # Inside a batch, stamp ONLY the first write: batches run atomically
+    # Inside a batch, stamp ONLY the first queued write: batches run atomically
     # server-side, so a version check on the first op gives whole-batch OCC
     # semantics, while stamping every op would 409 the second op against the
     # version bump the first op itself caused (every queued op captures the
@@ -407,7 +411,12 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
         if doc_version:
             separator = '&' if '?' in url else '?'
             url += f'{separator}document-version={quote(str(doc_version), safe="")}'
-            if client.is_batching:
+            # A bypassing call queues nothing, so it must not spend the batch's
+            # one stamp. ``query`` is a POST and lands here from app chrome
+            # while someone else's batch is open: marking the batch stamped
+            # there left the first real write unversioned and the batch
+            # unguarded.
+            if client.is_batching and not bypass_batch:
                 client.batch_version_stamped = True
 
     # Per-call custom audit-log message (overrides the auto-generated

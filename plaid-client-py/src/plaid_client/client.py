@@ -3160,8 +3160,9 @@ class PlaidClient:
         """
         self.is_batching = True
         self.batch_operations = []
-        # Strict mode stamps the expected document-version on the FIRST write
-        # of the batch only (see http.make_request) — reset the marker per batch.
+        # Strict mode stamps the expected document-version on the FIRST QUEUED
+        # write of the batch only (see http.make_request), so reset the marker
+        # per batch.
         self.batch_version_stamped = False
 
     def submit_batch(self) -> list[Any]:

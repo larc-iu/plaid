@@ -3053,8 +3053,8 @@ class PlaidClient {
   beginBatch() {
     this.isBatching = true;
     this.batchOperations = [];
-    // Strict mode stamps the expected document-version on the FIRST write of
-    // the batch only (see _request) — reset the marker per batch.
+    // Strict mode stamps the expected document-version on the FIRST QUEUED
+    // write of the batch only (see _request), so reset the marker per batch.
     this.batchVersionStamped = false;
   }
 
