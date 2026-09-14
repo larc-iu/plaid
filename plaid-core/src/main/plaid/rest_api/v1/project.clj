@@ -177,4 +177,4 @@
    ;; Config endpoints
    ["/:id"
     {:middleware [[pra/wrap-maintainer-required get-project-id]]}
-    (layer-config-routes :id)]])
+    (layer-config-routes :projects :id)]])

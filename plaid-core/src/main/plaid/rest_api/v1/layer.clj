@@ -6,14 +6,14 @@
             [plaid.rest-api.v1.auth :as pra]
             [plaid.sql.project :as prj]))
 
-(defn- config-handlers [id-keyword]
+(defn- config-handlers [table id-keyword]
   {:put    {:summary    (str "Set a configuration value for a layer in an editor namespace. Intended for storing "
                              "metadata about how the layer is intended to be used, e.g. for morpheme tokenization "
                              "or sentence boundary marking.")
             :parameters {:path [:map [id-keyword :uuid] [:namespace string?] [:config-key string?]]
                          :body any?}
             :handler    (fn [{{{:keys [namespace config-key] id id-keyword} :path config-value :body} :parameters db :db user-id :user/id}]
-                          (let [{:keys [success code error]} (prj/assoc-editor-config-pair db id namespace config-key config-value user-id)]
+                          (let [{:keys [success code error]} (prj/assoc-editor-config-pair db table id namespace config-key config-value user-id)]
                             (if success
                               {:status 204}
                               {:status (or code 500)
@@ -22,22 +22,25 @@
    :delete {:summary    "Remove a configuration value for a layer."
             :parameters {:path [:map [id-keyword :uuid] [:namespace string?] [:config-key string?]]}
             :handler    (fn [{{{:keys [namespace config-key] id id-keyword} :path} :parameters db :db user-id :user/id}]
-                          (let [{:keys [success code error]} (prj/dissoc-editor-config-pair db id namespace config-key user-id)]
+                          (let [{:keys [success code error]} (prj/dissoc-editor-config-pair db table id namespace config-key user-id)]
                             (if success
                               {:status 204}
                               {:status (or code 500)
                                :body   {:error (or error "Internal server error")}})))}})
 
 (defn layer-config-routes
-  "Generates config sub-routes for a layer.
+  "Generates config sub-routes for a layer. `table` is the row's own SQL table
+  (:projects / :text_layers / :token_layers / :span_layers / :relation_layers /
+  :vocab_layers) — the route already knows the kind, so the write reads that
+  one table instead of searching six for the id.
   When get-project-id-fn is provided, applies wrap-maintainer-required middleware directly.
   When omitted, assumes the caller has already wrapped with appropriate auth middleware."
-  ([id-keyword]
+  ([table id-keyword]
    ["/config/:namespace/:config-key"
-    (config-handlers id-keyword)])
-  ([id-keyword get-project-id-fn]
+    (config-handlers table id-keyword)])
+  ([table id-keyword get-project-id-fn]
    ["/config/:namespace/:config-key"
-    (assoc (config-handlers id-keyword)
+    (assoc (config-handlers table id-keyword)
            :middleware [[pra/wrap-maintainer-required get-project-id-fn]])]))
 
 (defn layer-routes
@@ -49,6 +52,8 @@
   Spec:
     :path        the collection path, e.g. \"/span-layers\"
     :id-key      the path-parameter keyword, e.g. :span-layer-id
+    :table       the SQL table these rows live in, e.g. :span_layers (the
+                 config routes write straight to it)
     :noun        lowercase noun for the summaries and the 404, e.g. \"span layer\"
     :project-fn  `(fn [request])` -> the project id the auth middleware guards
     :post        the create route's `{:summary :parameters :handler}` map (the
@@ -59,7 +64,7 @@
     :delete-fn   `(fn [db id user-id])`   -> the operation result
     :shift-fn    `(fn [db id up? user-id])` -> the operation result
     :shift-summary  the shift route's summary (text layer's names the project)"
-  [{:keys [path id-key noun project-fn post
+  [{:keys [path id-key table noun project-fn post
            get-fn merge-fn name-key delete-fn shift-fn shift-summary]}]
   (let [Noun (str/capitalize noun)
         maintainer [[pra/wrap-maintainer-required project-fn]]
@@ -109,4 +114,4 @@
                                    400 (str "Failed to shift " noun)
                                    (fn [] {:status 204})))}}]
 
-      (layer-config-routes id-key project-fn)]]))
+      (layer-config-routes table id-key project-fn)]]))

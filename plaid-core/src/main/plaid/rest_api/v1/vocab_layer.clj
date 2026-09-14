@@ -101,4 +101,4 @@
    ;; Config endpoints
    ["/:id"
     {:middleware [[pra/wrap-vocab-maintainer-required get-vocab-id]]}
-    (layer-config-routes :id)]])
+    (layer-config-routes :vocab_layers :id)]])

@@ -20,6 +20,7 @@
   (layer-routes
    {:path "/span-layers"
     :id-key :span-layer-id
+    :table :span_layers
     :noun "span layer"
     :project-fn get-project-id
     :get-fn sl/get

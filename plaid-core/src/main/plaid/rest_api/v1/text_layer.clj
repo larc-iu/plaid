@@ -19,6 +19,7 @@
   (layer-routes
    {:path "/text-layers"
     :id-key :text-layer-id
+    :table :text_layers
     :noun "text layer"
     :project-fn get-project-id
     :get-fn txtl/get

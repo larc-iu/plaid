@@ -831,32 +831,23 @@
 ;; assoc/dissoc mutates one inner cell at a time.
 ;; ============================================================
 
-(def ^:private layer-tables
-  "Order matters only for first-match; each id is unique across tables so
-  no real ambiguity in practice."
-  [:projects :text_layers :token_layers :span_layers :relation_layers :vocab_layers])
-
-(defn- find-layer-table
-  "Find the table that contains a row with id=`layer-id`. Returns nil
-  if no table has it."
-  [db layer-id]
-  (some (fn [table]
-          (when (psc/fetch-by-id db table layer-id)
-            table))
-        layer-tables))
+(def config-tables
+  "The tables whose rows carry an editor `:config` column. The route that
+  reaches one of these names its own table, so a config write never has to
+  search for the row's kind."
+  #{:projects :text_layers :token_layers :span_layers :relation_layers :vocab_layers})
 
 (defn- editor-config-project-id
   "Project id to attribute an editor-config op to: the layer's
   denormalized project_id, the project itself when `layer-id` IS a
   project, nil for vocab layers (global — linked to projects only via
-  project_vocabs) and for unknown ids (the op body then 400s)."
-  [db layer-id]
-  (when-let [table (find-layer-table db layer-id)]
-    (let [row (psc/fetch-by-id db table layer-id)]
-      (case table
-        :projects (:id row)
-        :vocab_layers nil
-        (:project_id row)))))
+  project_vocabs) and for an id that is not in `table` (the op body then 400s)."
+  [db table layer-id]
+  (when-let [row (psc/fetch-by-id db table layer-id)]
+    (case table
+      :projects (:id row)
+      :vocab_layers nil
+      (:project_id row))))
 
 (defn- config-update-attrs
   "Column attrs for a config write on `table`. Vocab layers additionally
@@ -868,52 +859,58 @@
   (cond-> {:config (psc/serialize-config new-config)}
     (= table :vocab_layers) (assoc :modified_at (op/op-ts))))
 
+(defn- config-row!
+  "The row a config write is about to edit, read inside the tx from the one
+  table the route named. An id absent from that table is a 400: the route
+  said which kind it is."
+  [tx table layer-id]
+  (when-not (config-tables table)
+    (throw (ex-info (str "Not a table that carries editor config: " table) {:table table :code 500})))
+  (or (psc/fetch-by-id tx table layer-id)
+      (throw (ex-info (str "Not a valid layer ID: " layer-id) {:id layer-id :code 400}))))
+
 (defn assoc-editor-config-pair
   "Set <editor-name>/<config-key> = <config-value> in the layer's :config
-  JSON. `layer-id` may be any kind of layer (project / text / token /
-  span / relation / vocab) — we look it up across all layer tables.
-  `acting-user-id` attributes the op (a maintainer-level action)."
-  [db layer-id editor-name config-key config-value acting-user-id]
+  JSON. `table` is the row's own table, which the caller's route already
+  determined (:projects / :text_layers / :token_layers / :span_layers /
+  :relation_layers / :vocab_layers). `acting-user-id` attributes the op
+  (a maintainer-level action)."
+  [db table layer-id editor-name config-key config-value acting-user-id]
   (submit-operation! [tx db {:type :layer/assoc-editor-config-pair
-                             :project (editor-config-project-id db layer-id)
+                             :project (editor-config-project-id db table layer-id)
                              :document nil
                              :description (str "Set editor config " editor-name "/" config-key
                                                " on layer " layer-id)
                              :user acting-user-id}]
-                     (let [table (find-layer-table tx layer-id)]
-                       (when-not table
-                         (throw (ex-info (str "Not a valid layer ID: " layer-id) {:id layer-id :code 400})))
-                       (let [row (psc/fetch-by-id tx table layer-id)
-                             current (psc/parse-config (:config row))
-                             ;; Config keys must round-trip as strings so user-supplied
-                             ;; casing (PascalCase, camelCase) survives JSON storage.
-                             new-config (assoc-in current
-                                                  [(if (keyword? editor-name) (name editor-name) (str editor-name))
-                                                   (if (keyword? config-key) (name config-key) (str config-key))]
-                                                  config-value)]
-                         (psc/update-by-id! tx table layer-id
-                                            (config-update-attrs table new-config))))))
+                     (let [row (config-row! tx table layer-id)
+                           current (psc/parse-config (:config row))
+                           ;; Config keys must round-trip as strings so user-supplied
+                           ;; casing (PascalCase, camelCase) survives JSON storage.
+                           new-config (assoc-in current
+                                                [(if (keyword? editor-name) (name editor-name) (str editor-name))
+                                                 (if (keyword? config-key) (name config-key) (str config-key))]
+                                                config-value)]
+                       (psc/update-by-id! tx table layer-id
+                                          (config-update-attrs table new-config)))))
 
 (defn dissoc-editor-config-pair
-  "Remove <editor-name>/<config-key> from the layer's :config JSON.
+  "Remove <editor-name>/<config-key> from the layer's :config JSON. `table`
+  is the row's own table, as in `assoc-editor-config-pair`.
   `acting-user-id` attributes the op (a maintainer-level action)."
-  [db layer-id editor-name config-key acting-user-id]
+  [db table layer-id editor-name config-key acting-user-id]
   (submit-operation! [tx db {:type :layer/dissoc-editor-config-pair
-                             :project (editor-config-project-id db layer-id)
+                             :project (editor-config-project-id db table layer-id)
                              :document nil
                              :description (str "Unset editor config " editor-name "/" config-key
                                                " on layer " layer-id)
                              :user acting-user-id}]
-                     (let [table (find-layer-table tx layer-id)]
-                       (when-not table
-                         (throw (ex-info (str "Not a valid layer ID: " layer-id) {:id layer-id :code 400})))
-                       (let [row (psc/fetch-by-id tx table layer-id)
-                             current (psc/parse-config (:config row))
-                             ed-key (if (keyword? editor-name) (name editor-name) (str editor-name))
-                             cfg-key (if (keyword? config-key) (name config-key) (str config-key))
-                             new-config (update current ed-key dissoc cfg-key)]
-                         (psc/update-by-id! tx table layer-id
-                                            (config-update-attrs table new-config))))))
+                     (let [row (config-row! tx table layer-id)
+                           current (psc/parse-config (:config row))
+                           ed-key (if (keyword? editor-name) (name editor-name) (str editor-name))
+                           cfg-key (if (keyword? config-key) (name config-key) (str config-key))
+                           new-config (update current ed-key dissoc cfg-key)]
+                       (psc/update-by-id! tx table layer-id
+                                          (config-update-attrs table new-config)))))
 
 ;; ============================================================
 ;; Vocab management (project_vocabs join + cascade vocab_links)

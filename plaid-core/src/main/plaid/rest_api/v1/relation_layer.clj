@@ -19,6 +19,7 @@
   (layer-routes
    {:path "/relation-layers"
     :id-key :relation-layer-id
+    :table :relation_layers
     :noun "relation layer"
     :project-fn get-project-id
     :get-fn rl/get

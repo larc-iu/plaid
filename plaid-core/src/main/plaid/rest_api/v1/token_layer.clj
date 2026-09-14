@@ -20,6 +20,7 @@
   (layer-routes
    {:path "/token-layers"
     :id-key :token-layer-id
+    :table :token_layers
     :noun "token layer"
     :project-fn get-project-id
     :get-fn tokl/get

@@ -4,6 +4,7 @@
                                     with-mount-states with-rest-handler admin-request api-call
                                     assert-status assert-success assert-created assert-ok assert-no-content assert-not-found assert-bad-request
                                     with-admin with-test-users with-clean-db]]
+            [plaid.sql.common :as psc]
             [plaid.test-helpers :refer [create-test-project delete-test-project
                                         create-text-layer create-token-layer create-span-layer create-relation-layer]]))
 
@@ -273,3 +274,30 @@
         (is (= (str noun " not found with id `" absent-id "`") (-> shift-res :body :error))
             "the shift 404 names the layer kind, not the SQL table")
         (assert-not-found delete-res)))))
+
+(deftest a-config-write-reads-only-its-own-table
+  ;; A config route knows the kind it was reached through, so the write goes
+  ;; straight to that table. It used to search six tables for the id, twice
+  ;; per call (once to attribute the operation to a project, once inside the
+  ;; tx), which for a relation layer meant ten single-row reads across every
+  ;; layer table in the schema.
+  (let [project-id (create-test-project admin-request "ConfigOneTable")
+        tl (-> (create-text-layer admin-request project-id "TL") :body :id)
+        kl (-> (create-token-layer admin-request tl "KL") :body :id)
+        sl (-> (create-span-layer admin-request kl "SL") :body :id)
+        rl (-> (create-relation-layer admin-request sl "RL") :body :id)]
+    (doseq [[layer-type id table] [["text-layers" tl :text_layers]
+                                   ["token-layers" kl :token_layers]
+                                   ["span-layers" sl :span_layers]
+                                   ["relation-layers" rl :relation_layers]]]
+      (let [seen (atom [])
+            real psc/fetch-by-id]
+        (with-redefs [psc/fetch-by-id (fn [& args]
+                                        (let [[_ t & rest] args]
+                                          (when (= (last rest) id) (swap! seen conj t)))
+                                        (apply real args))]
+          (assert-no-content (set-layer-config layer-type id "MyEditor" "color" "blue"))
+          (assert-no-content (delete-layer-config layer-type id "MyEditor" "color")))
+        (is (= #{table} (set @seen))
+            (str layer-type " config set+delete read " (pr-str (distinct @seen))))))
+    (delete-test-project admin-request project-id)))
