@@ -103,22 +103,27 @@ test('no read is ever queued into an open batch', async () => {
   // The count is the table: every read method on the client answered from the
   // wire with a batch open. It only ever goes up.
   assert.ok(
-    overTheWire.length >= 45,
-    `expected every read (about 50) to go over the wire, saw ${overTheWire.length}: ${overTheWire.join(', ')}`,
+    overTheWire.length >= 60,
+    `expected every read (66 of them) to go over the wire, saw ${overTheWire.length}: ${overTheWire.join(', ')}`,
   );
 });
 
-test('an out-of-band signal goes over the wire while a batch is open', async () => {
+test('a read or a signal shaped like a write goes over the wire', async () => {
   const client = new PlaidClient('http://x', 'tok');
   const sent = [];
   const realFetch = globalThis.fetch;
   stubFetch(sent);
   client.beginBatch();
 
-  // Each of these is shaped like a write and carries no project data. Its
-  // whole value is that it happens now: queued, it happens when the batch
-  // submits, or never if the batch aborts, while its caller reads success.
+  // None of these is a GET, so the discovery test above cannot see them. The
+  // first is a read that travels as a POST. The rest are out-of-band signals:
+  // shaped like a write, carrying no project data, and worth having only if
+  // they happen now. Queued, each happens when the batch submits, or never if
+  // the batch aborts, while its caller reads success.
   const signals = [
+    // A query runs against the pool; inside the batch's transaction it 500s
+    // and rolls back every write the batch had queued.
+    ['run a query', () => client.query({ find: ['?t'], where: [] })],
     // The assistant's Stop button, pressed during an import.
     ['cancel a service request', () => cancelServiceRequest(client, 'p1', 'r1')],
     // A service reporting from inside its own batch of writes.

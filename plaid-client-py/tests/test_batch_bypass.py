@@ -63,7 +63,7 @@ def _stub_session(client):
 # requests).
 _SKIP_RESOURCES = {'messages'}
 # Methods whose probe would run past the request layer into real work.
-_SKIP_METHODS = {'locked', 'avatar_url', 'iter_pages', 'iter_documents'}
+_SKIP_METHODS = {'locked', 'avatar_url'}
 
 
 def test_no_read_is_ever_queued_into_an_open_batch():
@@ -115,20 +115,25 @@ def test_no_read_is_ever_queued_into_an_open_batch():
         + '\n  '.join(queued_reads))
     # The count is the table: every read method on the client answered from the
     # wire with a batch open. It only ever goes up.
-    assert len(over_the_wire) >= 35, (
-        f'expected every read (about 40) to go over the wire, saw '
+    assert len(over_the_wire) >= 60, (
+        f'expected every read (66 of them) to go over the wire, saw '
         f'{len(over_the_wire)}: {over_the_wire}')
 
 
-def test_an_out_of_band_signal_goes_over_the_wire_while_batching():
+def test_a_read_or_a_signal_shaped_like_a_write_goes_over_the_wire():
     client = PlaidClient('http://x', 'tok')
     sent = _stub_session(client)
     client.begin_batch()
 
-    # Each of these is shaped like a write and carries no project data. Its
-    # whole value is that it happens now: queued, it happens when the batch
-    # submits, or never if the batch aborts, while its caller reads success.
+    # None of these is a GET, so the discovery test above cannot see them. The
+    # first is a read that travels as a POST. The rest are out-of-band signals:
+    # shaped like a write, carrying no project data, and worth having only if
+    # they happen now. Queued, each happens when the batch submits, or never if
+    # the batch aborts, while its caller reads success.
     signals = [
+        # A query runs against the pool; inside the batch's transaction it 500s
+        # and rolls back every write the batch had queued.
+        ('run a query', lambda: client.query({'find': ['?t'], 'where': []})),
         # The assistant's Stop button, pressed during an import.
         ('cancel a service request', lambda: cancel_service_request(client, 'p1', 'r1')),
         # A service reporting from inside its own batch of writes.
