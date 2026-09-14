@@ -36,6 +36,7 @@ import { useSentenceFocus } from './hooks/useSentenceFocus.js';
 import { useDocumentTabs } from './hooks/useDocumentTabs.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { useComposeProject } from '@/hooks/useCompose';
+import { useDelayedFlag } from '@/hooks/useDelayedFlag';
 import { cpSlice, isReviewed } from '@larc-iu/plaid-client';
 import { EdgeRail } from '@ui/components/shared/EdgeRail.jsx';
 import { useAssistantSubject } from '@ui/components/assistant/subject.js';
@@ -242,6 +243,12 @@ const DocumentEditor = () => {
     asOf,
     canWrite: permissions?.canWrite,
   });
+  // The gate is up from the first render, but a document with nothing to heal
+  // plans entirely locally and lowers it again in a microtask, so the spinner
+  // is on screen for one paint on every open. Hold the tabs back on the raw
+  // flag and the SPINNER on the delayed one: a pass that is over before anyone
+  // could read "Checking this document…" shows nothing at all.
+  const showReconcileSpinner = useDelayedFlag(reconciling);
 
   // The built-in analysis helpers (copy prior analyses + auto-link) no longer
   // run automatically — they were disruptive mid-editing. They run on demand
@@ -433,7 +440,7 @@ const DocumentEditor = () => {
                 running underneath it: reconcile writes, so no tab may be
                 opened and edited while it is still healing. The breadcrumbs
                 and the title stay put above, so the page doesn't blank. */}
-            {reconciling && <Spinner label="Checking this document…" />}
+            {showReconcileSpinner && <Spinner label="Checking this document…" />}
 
             {!reconciling && (
               <Tabs value={activeTab} onValueChange={setActiveTab}>
