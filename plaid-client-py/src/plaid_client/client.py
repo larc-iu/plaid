@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 import uuid
 from contextlib import contextmanager
 from typing import Any
@@ -10,6 +11,7 @@ from urllib.parse import quote, urlencode
 
 import requests as req_lib
 
+from plaid_client.document_lock import DocumentLock, LockKeeper, lock_ttl_s
 from plaid_client.http import (
     PlaidAPIError, make_request, extract_document_versions,
     list_all, list_page, iter_pages, build_api_error, retry_while_busy,
@@ -1482,7 +1484,7 @@ class DocumentsResource(_Resource):
                              audit_message=audit_message, bypass_batch=True)
 
     @contextmanager
-    def locked(self, document_id: str):
+    def locked(self, document_id: str, *, keep_alive: bool = True):
         """Hold this document's server-enforced lock for a ``with`` block,
         releasing it on exit (including on error).
 
@@ -1499,16 +1501,37 @@ class DocumentsResource(_Resource):
             with client.documents.locked(doc_id):
                 ...delete + recreate tokens...
 
+        The block is renewed for as long as it runs, so work that computes for
+        minutes before it writes holds the lock the whole time rather than only
+        for its first minute. If a renewal fails the lock is gone: every later
+        write from this client raises :class:`DocumentLockLost`, and a block
+        that got to the end anyway ends with that error rather than reporting
+        success. The block may also read ``lock.lost`` to give up sooner::
+
+            with client.documents.locked(doc_id) as lock:
+                for sentence in sentences:
+                    lock.raise_if_lost()
+                    ...
+
+        Args:
+            document_id: The document to hold.
+            keep_alive: Renew the lock on a timer while the block runs
+                (default). Pass False for a block that writes as it goes and
+                wants no background thread.
+
         Notes:
-        - The lock is per-USER and TTL-bound (server default ~60s), refreshed by
-          the holder's writes. A long compute with no intervening write can let
-          it lapse; for typical service workloads the writes keep it alive.
+        - The lock is per-USER and TTL-bound (server default 60s, and the
+          acquire response's ``expires_at`` is what the renewal reads). Writes
+          to the document renew it server-side too.
         - NOT re-entrant: nesting two ``locked(same_doc)`` blocks would release
           on the inner exit and leave the outer unprotected. Lock at exactly one
           level per call path.
+        - A lost lock is recorded on the CLIENT, like batch and strict mode, so
+          it stops every write the client makes and not only the ones this
+          block makes.
         """
         try:
-            self.acquire_lock(document_id)
+            info = self.acquire_lock(document_id)
         except PlaidAPIError as e:
             if e.status == 423:
                 data = e.response_data or {}
@@ -1520,9 +1543,26 @@ class DocumentsResource(_Resource):
                     response_data=e.response_data, status_text=e.status_text,
                     original_error=e) from e
             raise
+        client = self._client
+        keeper = None
+        if keep_alive:
+            ttl_s = lock_ttl_s((info or {}).get('expires_at'), time.time())
+            client.document_lock_lost = None
+            keeper = LockKeeper(
+                self.acquire_lock, document_id, ttl_s,
+                on_lost=lambda lost: setattr(client, 'document_lock_lost', lost))
+            keeper.start()
+        raised = False
         try:
-            yield
+            yield DocumentLock(document_id, keeper)
+        except BaseException:
+            raised = True
+            raise
         finally:
+            if keeper is not None:
+                keeper.stop()
+            lost = keeper.lost if keeper is not None else None
+            client.document_lock_lost = None
             # Best-effort release: the server TTL reclaims a stranded lock, and
             # we must not let a release failure mask the real error from the body.
             try:
@@ -1530,6 +1570,11 @@ class DocumentsResource(_Resource):
             except Exception as release_err:
                 logging.getLogger(__name__).warning(
                     "Failed to release lock on document %s: %s", document_id, release_err)
+            # A block that ran to the end without the lock it asked for did not
+            # do what it says it did. Only raise when nothing else is already
+            # propagating, so the real failure is never masked.
+            if lost is not None and not raised:
+                raise lost
 
     def get_media(self, document_id: str) -> bytes:
         """Get the media file for a document.
@@ -2967,6 +3012,10 @@ class PlaidClient:
         self.batch_operations: list[dict] = []
         self.document_versions: dict[str, str] = {}
         self.strict_mode_document_id: str | None = None
+        # Set to a DocumentLockLost while a ``documents.locked()`` block's
+        # keep-alive has failed. Every write raises it until the block exits;
+        # see plaid_client.document_lock.
+        self.document_lock_lost: Exception | None = None
         # The open logical operation (audit-log group), or None. While set, every
         # write is stamped with ``?group-id=`` (+ ``group-message``) so the audit
         # log folds them into ONE expandable entry. See begin_operation /

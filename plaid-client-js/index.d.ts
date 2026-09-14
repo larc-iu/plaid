@@ -767,10 +767,39 @@ interface TokenLayersBundle {
   ): Promise<any>;
 }
 
+/** Handle passed to a `documents.locked()` block. */
+export declare class DocumentLock {
+  readonly documentId: string;
+  /** The DocumentLockLost if the lock lapsed, else null. */
+  readonly lost: DocumentLockLost | null;
+  /** Throw if the lock lapsed; call it between steps that have not written. */
+  raiseIfLost(): void;
+}
+
+/** The lock a `documents.locked()` block was holding is no longer held. */
+export declare class DocumentLockLost extends Error {
+  readonly name: "DocumentLockLost";
+  readonly documentId: string;
+  readonly cause?: unknown;
+}
+
+/** The server's default document-lock window, in ms. */
+export const DOCUMENT_LOCK_TTL_MS: 60000;
+
 interface DocumentsBundle {
   checkLock(documentId: string, asOf?: string): Promise<any>;
   acquireLock(documentId: string, auditMessage?: string): Promise<any>;
   releaseLock(documentId: string, auditMessage?: string): Promise<any>;
+  /**
+   * Hold the document's lock for the length of `fn`, renewing it while `fn`
+   * runs and releasing it on the way out. Rejects with a 423 if another user
+   * holds it, and with DocumentLockLost if a renewal fails.
+   */
+  locked<T>(
+    documentId: string,
+    fn: (lock: DocumentLock) => T | Promise<T>,
+    options?: { keepAlive?: boolean },
+  ): Promise<T>;
   getMedia(documentId: string): Promise<ArrayBuffer>;
   uploadMedia(
     documentId: string,

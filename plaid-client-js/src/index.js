@@ -15,6 +15,7 @@ import {
   DEFAULT_BATCH_TIMEOUT_MS,
 } from "./http.js";
 import { listAll, listPage, iterPages } from "./pagination.js";
+import { withDocumentLock } from "./documentLock.js";
 import { createSSEConnection } from "./sse.js";
 import {
   discoverServices,
@@ -145,6 +146,10 @@ class PlaidClient {
     this.batchOperations = [];
     this.documentVersions = {};
     this.strictModeDocumentId = null;
+    // Set to a DocumentLockLost while a `documents.locked()` block's keep-alive
+    // has failed. Every write throws it until the block exits; see
+    // documentLock.js.
+    this.documentLockLost = null;
     // The open logical operation (audit-log group), or null. While set, every
     // write is stamped with `?group-id=` (+ `group-message`) so the audit log
     // folds them into ONE expandable entry. See beginOperation / withOperation.
@@ -1629,6 +1634,43 @@ class PlaidClient {
           auditMessage,
           bypassBatch: true,
         }),
+      /**
+       * Hold this document's server-enforced lock for the length of `fn`,
+       * releasing it on the way out (including on error). Resolves to what
+       * `fn` returned.
+       *
+       *   await client.documents.locked(docId, async () => {
+       *     // delete + recreate tokens
+       *   });
+       *
+       * Wrap any multi-step, server-side mutation of a document that must not
+       * interleave with a human editor or another service, e.g. a parser or
+       * tokenizer that deletes and recreates a document's tokens, spans and
+       * relations. A single atomic call does not need it. While the lock is
+       * held, writes to the document by ANOTHER user are refused with HTTP
+       * 423; the holder's own writes pass and renew it. If another user
+       * already holds it this rejects with a readable 423 and `fn` does not
+       * run.
+       *
+       * The lock is renewed for as long as `fn` runs, so work that computes
+       * for minutes before it writes holds the lock the whole time rather than
+       * only for its first minute. If a renewal fails the lock is gone: every
+       * later write from this client throws `DocumentLockLost`, and a block
+       * that got to the end anyway ends with that error rather than reporting
+       * success. `fn` receives a lock handle and may read `lock.lost` (or call
+       * `lock.raiseIfLost()`) to give up sooner.
+       *
+       * NOT re-entrant: nesting two `locked()` blocks on one document would
+       * release on the inner exit and leave the outer unprotected. Lock at
+       * exactly one level per call path. A lost lock is recorded on the
+       * CLIENT, like batch and strict mode, so it stops every write the client
+       * makes and not only the ones this block makes.
+       * @param {string} documentId - The document ID
+       * @param {(lock: DocumentLock) => any} fn - The work to run while holding it
+       * @param {object} [options] - `{ keepAlive }`: renew on a timer (default true)
+       */
+      locked: (documentId, fn, options) =>
+        withDocumentLock(this, documentId, fn, options),
       /**
        * Get the media file for a document. Media is not versioned, so there is
        * no as-of form: the route refuses the parameter. Prefer the document's
@@ -3396,6 +3438,14 @@ export {
 // request, and `critical()` holds that off around writes. See ./services.js
 // and the manual, "Stopping a request".
 export { ServiceCancelled, createCancelScope } from "./services.js";
+// Document locks: `client.documents.locked()` holds one for a block of work and
+// renews it while the block runs. DocumentLockLost is what a write throws once
+// a renewal has failed. See ./documentLock.js.
+export {
+  DOCUMENT_LOCK_TTL_MS,
+  DocumentLock,
+  DocumentLockLost,
+} from "./documentLock.js";
 // Provenance: the cross-app convention for who made an annotation (flat
 // prov/provSource/provConfirmed metadata; absence = a verifier; 'inferred' =
 // a machine; 'contributed' = a person whose work is reviewed), plus the

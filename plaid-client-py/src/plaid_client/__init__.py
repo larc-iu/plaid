@@ -1,4 +1,9 @@
 from plaid_client.client import PlaidClient
+from plaid_client.document_lock import (
+    DOCUMENT_LOCK_TTL_S,
+    DocumentLock,
+    DocumentLockLost,
+)
 from plaid_client.http import PlaidAPIError
 from plaid_client.service import BaseService
 from plaid_client.services import ServiceRegistrationError, ServiceCancelled, CancelScope
@@ -48,6 +53,9 @@ from plaid_client.roles import (
 __all__ = [
     "PlaidClient",
     "PlaidAPIError",
+    "DOCUMENT_LOCK_TTL_S",
+    "DocumentLock",
+    "DocumentLockLost",
     "BaseService",
     "ServiceRegistrationError",
     "ServiceCancelled",

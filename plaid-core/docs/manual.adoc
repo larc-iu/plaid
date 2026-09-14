@@ -1155,6 +1155,27 @@ client2.checkLock(documentId);
 Locks are useful for situations where a concurrent edit by another user could yield an invalid state with respect to data integrity constraints beyond what is enforced in Plaid's core.
 They should be used only where necessary in order to minimize the risk of invariant violations stemming from concurrent modifications.
 
+Both clients wrap the three calls in a block that holds the lock for the length of the work and releases it on the way out, including on error:
+
+[,js]
+----
+await client.documents.locked(documentId, async () => {
+  // delete + recreate this document's tokens
+});
+----
+
+[,python]
+----
+with client.documents.locked(document_id):
+    # delete + recreate this document's tokens
+----
+
+The block also renews the lock while it runs, which matters for a service.
+The expiration timer is refreshed by the holder's writes, so a parser that loads a model, reads the document, spends minutes in inference and only then writes holds the lock for its first minute and nothing after that: the lock lapses in silence and an edit can land between the read the work was planned from and the write about to go out.
+The block renews on a timer instead, reading the window from the `expiresAt` the acquire returned.
+If a renewal fails the lock is gone, and the block says so rather than carrying on: every later write from that client raises `DocumentLockLost` (`documentLockLost` is set on the client until the block exits), and a block that reached its end anyway ends with that error instead of reporting success.
+Work that has not written yet can give up sooner by reading `lock.lost` on the handle the block is given.
+
 == Atomic Batches
 
 Finally, you may also submit multiple requests in **batch**es.

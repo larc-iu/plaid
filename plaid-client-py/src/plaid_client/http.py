@@ -378,6 +378,16 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
     """
     url = f'{client.base_url}{path}'
 
+    # A write must not go out on a lock that lapsed. ``documents.locked()``
+    # records the loss here when its keep-alive cannot renew, and from that
+    # moment the block is holding nothing: an edit by somebody else can already
+    # have landed between the read the work was planned from and the write about
+    # to go out. Reads pass, and so do the lock routes themselves, which is how
+    # the block still releases on its way out.
+    lock_lost = getattr(client, 'document_lock_lost', None)
+    if lock_lost is not None and method != 'GET' and not path.endswith('/lock'):
+        raise lock_lost
+
     # Append query params
     if query_params:
         filtered = {}

@@ -331,6 +331,20 @@ export async function makeRequest(client, method, path, options = {}) {
     onUploadProgress,
   } = options;
 
+  // A write must not go out on a lock that lapsed. `documents.locked()`
+  // records the loss here when its keep-alive cannot renew, and from that
+  // moment the block is holding nothing: an edit by somebody else can already
+  // have landed between the read the work was planned from and the write about
+  // to go out. Reads pass, and so do the lock routes themselves, which is how
+  // the block still releases on its way out.
+  if (
+    client.documentLockLost &&
+    method !== "GET" &&
+    !path.endsWith("/lock")
+  ) {
+    throw client.documentLockLost;
+  }
+
   // Build URL
   let url = `${client.baseUrl}${path}`;
 
