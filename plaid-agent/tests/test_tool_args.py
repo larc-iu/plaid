@@ -23,6 +23,13 @@ IGT_ARGS = {'document': 'Text 1', 'pattern': 'gam', 'field': 'Gloss', 'ref': 's1
             'query': {'find': ['?t'], 'where': [['token', '?t', {'layer': 'words'}]]}}
 UD_ARGS = {'document': 'Viaje', 'pattern': 'mar', 'field': 'lemma', 'ref': 's1.w1', 'refs': ['s1.w1'],
            'what': 'lemma', 'query': {'find': ['?t'], 'where': [['token', '?t', {'layer': 'words'}]]}}
+# Where one name means something else to one tool: `pattern` is a document
+# NAME to list_documents and a value to search for everywhere else, and a
+# pattern that matches nothing answers "no documents" without reading a
+# number.
+# `query` is a Plaid query object to the query tool and a phrase to the web.
+OVERRIDES = {'igt': {'list_documents': {'pattern': 'Text'}, 'web_search': {'query': 'ergative alignment'}},
+             'ud': {'list_documents': {'pattern': 'Viaje'}, 'web_search': {'query': 'ergative alignment'}}}
 
 # What a Python exception looks like when it reaches the model instead of a
 # refusal. None of these may appear in any answer below.
@@ -32,22 +39,36 @@ PYTHON_LEAKS = ('invalid literal', 'base 10', 'could not convert', 'not supporte
 NOT_A_NUMBER = 'not-a-number'
 
 
+def _types(spec):
+    types = spec.get('type')
+    return types if isinstance(types, list) else [types]
+
+
 def _int_params(tools):
     out = []
     for t in tools:
         f = t['function']
-        params = f.get('parameters') or {}
-        props = params.get('properties') or {}
+        props = (f.get('parameters') or {}).get('properties') or {}
         for name, spec in props.items():
-            types = spec.get('type')
-            types = types if isinstance(types, list) else [types]
-            if 'integer' in types or 'number' in types:
-                out.append((f['name'], name, list(params.get('required') or [])))
+            if 'integer' in _types(spec) or 'number' in _types(spec):
+                out.append((f['name'], name, props))
     return out
 
 
 IGT_INTS = _int_params(IGT_TOOLS)
 UD_INTS = _int_params(UD_TOOLS)
+
+
+class NoWeb:
+    """A web session that finds nothing.
+
+    The web tools are withheld where the operator configured no backend, so
+    without one `web_search` refused before it read its limit and the sweep
+    below was green on an answer that said nothing about the number.
+    """
+
+    def search(self, query, limit):
+        return []
 
 
 def _igt_ws():
@@ -58,6 +79,7 @@ def _igt_ws():
     c = ExtClient(project=project_raw(), documents={'d1': document_raw()}, lexicon=lexicon_raw())
     w = Workspace(c, load_project(c, 'p1'))
     w.prefer_scan = True
+    w.web = NoWeb()
     return w
 
 
@@ -69,12 +91,33 @@ def _ud_ws():
     from plaid_agent.ud.project import load_project
     from plaid_agent.ud.tools import Workspace
     c = ExtClient(project=project_raw(), documents={'ud1': document_raw()})
-    return Workspace(c, load_project(c, PID))
+    w = Workspace(c, load_project(c, PID))
+    w.web = NoWeb()
+    return w
 
 
-def _args(required, values, param):
-    args = {k: values[k] for k in required if k in values and k != param}
-    args[param] = NOT_A_NUMBER
+def _args(props, values, param, bad=True):
+    """Every argument the tool declares, filled with something it accepts, and
+    the swept one filled with something that is not a number (or left out, to
+    see what the tool answers without it).
+
+    Only the REQUIRED arguments used to be filled, so a tool that needs an
+    optional one refused before it read the number at all: three of the
+    thirty-one swept arguments answered exactly the same with and without the
+    bad value, which is a case proving nothing.
+    """
+    args = {}
+    for name, spec in props.items():
+        if name == param:
+            continue
+        if name in values:
+            args[name] = values[name]
+        elif 'integer' in _types(spec) or 'number' in _types(spec):
+            args[name] = 1
+        elif 'boolean' in _types(spec):
+            args[name] = False
+    if bad:
+        args[param] = NOT_A_NUMBER
     return args
 
 
@@ -85,14 +128,25 @@ def _check(answer, tool, param):
     assert answer.strip(), f'{tool}.{param} answered with nothing'
 
 
-@pytest.mark.parametrize('tool,param,required', IGT_INTS, ids=[f'{t}.{p}' for t, p, _ in IGT_INTS])
-def test_igt_integer_arguments_refuse_in_words(tool, param, required):
-    _check(igt_call(_igt_ws(), tool, _args(required, IGT_ARGS, param)), tool, param)
+def _sweep(app, ws_of, call, values, tool, param, props):
+    values = {**values, **OVERRIDES.get(app, {}).get(tool, {})}
+    answer = call(ws_of(), tool, _args(props, values, param))
+    _check(answer, tool, param)
+    # The bad value has to be what the answer is ABOUT. A tool that refused
+    # for some other reason (an argument it was never given, a capability it
+    # does not have) answers the same either way and proves nothing.
+    without = call(ws_of(), tool, _args(props, values, param, bad=False))
+    assert answer != without, f'{tool}.{param}: the same answer without the bad value, so nothing read it'
 
 
-@pytest.mark.parametrize('tool,param,required', UD_INTS, ids=[f'{t}.{p}' for t, p, _ in UD_INTS])
-def test_ud_integer_arguments_refuse_in_words(tool, param, required):
-    _check(ud_call(_ud_ws(), tool, _args(required, UD_ARGS, param)), tool, param)
+@pytest.mark.parametrize('tool,param,props', IGT_INTS, ids=[f'{t}.{p}' for t, p, _ in IGT_INTS])
+def test_igt_integer_arguments_refuse_in_words(tool, param, props):
+    _sweep('igt', _igt_ws, igt_call, IGT_ARGS, tool, param, props)
+
+
+@pytest.mark.parametrize('tool,param,props', UD_INTS, ids=[f'{t}.{p}' for t, p, _ in UD_INTS])
+def test_ud_integer_arguments_refuse_in_words(tool, param, props):
+    _sweep('ud', _ud_ws, ud_call, UD_ARGS, tool, param, props)
 
 
 def test_the_sweep_actually_found_the_integers():
