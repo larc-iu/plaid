@@ -7,8 +7,15 @@
   Fix: both ops now collect the distinct `document_ids` of the vocab_links
   they're about to delete and call `bump-document-versions!` (plural) from
   `plaid.sql.operation`, which emits one `:doc-version-bump` audit row per
-  affected document. Replay parity preserved."
-  (:require [clojure.test :refer [deftest is testing use-fixtures]]
+  affected document. Replay parity preserved.
+
+  The same rule binds every writer that renames or removes an ENTRY, which
+  the original fix missed: a deep document read embeds the entry's `form` on
+  each vocab_link, so `vocab-item/merge` restates those documents and
+  `vocab-item/delete` / `bulk-delete` remove rows from them, all under ops
+  carrying `:document nil`. Those cases are covered below."
+  (:require [clojure.data.json]
+            [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
@@ -22,6 +29,9 @@
                                         create-vocab-layer
                                         create-vocab-item
                                         create-vocab-link
+                                        update-vocab-item
+                                        delete-vocab-item
+                                        bulk-delete-vocab-items
                                         delete-vocab-layer
                                         link-vocab-to-project
                                         unlink-vocab-from-project
@@ -133,6 +143,87 @@
           (is (contains? bumped-doc-ids (str doc))
               (str "expected a :doc-version-bump row for doc " doc
                    ", got rows for " bumped-doc-ids)))))))
+
+(defn- assert-bumped!
+  "Every doc in `docs` went up by exactly one, and the op carries one
+  :doc-version-bump audit row naming each of them."
+  [op-type docs pre-versions]
+  (let [post-versions (mapv (comp doc-version :doc) docs)]
+    (doseq [[doc-info pre post] (map vector docs pre-versions post-versions)]
+      (is (= (inc pre) post)
+          (str "doc " (:doc doc-info) " version " pre " -> " post
+               " (expected +1)"))))
+  (let [op-id (latest-op-id op-type)
+        bumps (doc-bump-rows op-id)
+        bumped-doc-ids (set (map (comp str :target_id) bumps))]
+    (is (some? op-id) (str op-type " op was recorded"))
+    (is (= (count docs) (count bumps))
+        (str "expected " (count docs) " :doc-version-bump audit rows for "
+             op-type ", got " (count bumps)))
+    (doseq [{:keys [doc]} docs]
+      (is (contains? bumped-doc-ids (str doc))
+          (str "expected a :doc-version-bump row for doc " doc
+               ", got rows for " bumped-doc-ids)))))
+
+(deftest vocab-item-rename-bumps-linked-doc-versions
+  (testing "vocab-item/merge bumps every document that links the renamed
+            entry: the deep read embeds the entry's form on each link, so
+            those bodies are stale even though nothing in them changed"
+    (let [{:keys [item docs]} (setup-fixture! "ItemRename")
+          pre-versions (mapv (comp doc-version :doc) docs)]
+      (update-vocab-item admin-request item "salutation")
+      (assert-bumped! "vocab-item/merge" docs pre-versions))))
+
+(deftest vocab-item-rename-to-same-form-bumps-nothing
+  (testing "a PATCH setting the form the entry already has restates no
+            document, so it must not bump every document that links it"
+    (let [{:keys [item docs]} (setup-fixture! "ItemNoop")
+          pre-versions (mapv (comp doc-version :doc) docs)]
+      (update-vocab-item admin-request item "greeting")
+      (is (= pre-versions (mapv (comp doc-version :doc) docs))
+          "an unchanged form left every linked document's version alone")
+      (is (empty? (doc-bump-rows (latest-op-id "vocab-item/merge")))
+          "and emitted no :doc-version-bump audit rows"))))
+
+(deftest vocab-item-delete-bumps-linked-doc-versions
+  (testing "vocab-item/delete bumps every document that loses a vocab_link"
+    (let [{:keys [item docs]} (setup-fixture! "ItemDel")
+          pre-versions (mapv (comp doc-version :doc) docs)]
+      (delete-vocab-item admin-request item)
+      (assert-bumped! "vocab-item/delete" docs pre-versions))))
+
+(deftest vocab-item-bulk-delete-bumps-linked-doc-versions
+  (testing "vocab-item/bulk-delete bumps every document that loses a
+            vocab_link, across every entry in the call"
+    (let [{:keys [item docs]} (setup-fixture! "ItemBulkDel")
+          pre-versions (mapv (comp doc-version :doc) docs)]
+      (bulk-delete-vocab-items admin-request [item])
+      (assert-bumped! "vocab-item/bulk-delete" docs pre-versions))))
+
+(defn- header-versions
+  "The X-Document-Versions map on a response, keyed by document id string."
+  [response]
+  (some-> (get-in response [:headers "X-Document-Versions"])
+          (clojure.data.json/read-str)))
+
+(deftest an-entry-write-tells-the-client-the-new-versions
+  (testing "a rename and a delete both report every bumped document in
+            X-Document-Versions: a strict-mode client holds versions for the
+            document it has open, and without the header its next write there
+            is refused for a change it made itself"
+    (let [{:keys [item docs]} (setup-fixture! "ItemHeader")
+          expected (into {} (map (fn [{:keys [doc]}]
+                                   [(str doc) (inc (doc-version doc))]))
+                         docs)
+          renamed (update-vocab-item admin-request item "salutation")]
+      (is (= expected (header-versions renamed))
+          "the rename response names every document that links the entry")
+      (let [after-rename (into {} (map (fn [{:keys [doc]}]
+                                         [(str doc) (inc (doc-version doc))]))
+                               docs)
+            deleted (delete-vocab-item admin-request item)]
+        (is (= after-rename (header-versions deleted))
+            "and so does the delete, on a 204 with no body to carry them")))))
 
 ;; ---------------------------------------------------------------------------
 ;; Task #102.4 — :seq monotonicity for bump-document-versions!

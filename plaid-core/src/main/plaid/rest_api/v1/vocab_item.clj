@@ -1,6 +1,7 @@
 (ns plaid.rest-api.v1.vocab-item
   (:require [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.metadata :as metadata]
+            [plaid.rest-api.v1.middleware :as prm]
             [reitit.coercion.malli]
             [plaid.sql.vocab-item :as vocab-item]
             [plaid.sql.vocab-layer :as vocab-layer]
@@ -96,7 +97,8 @@
                                        {:status 201 :body {:ids (:extra result)}}
                                        {:status (or (:code result) 500)
                                         :body {:error (:error result)}})))))}
-             :delete {:summary "Delete multiple vocab items in a single operation. Provide an array of IDs. Each item's descendant vocab links are deleted too."
+             :delete {:summary (str "Delete multiple vocab items in a single operation. Provide an array of IDs. "
+                                    "Each item's descendant vocab links are deleted too. Every document holding a link to the entry has its version bumped, and their new versions are returned in X-Document-Versions.")
                       :middleware [[pra/wrap-vocab-writer-required bulk-get-layer-id-from-item]]
                       :parameters {:body [:sequential :uuid]}
                       :handler (fn [{{ids :body} :parameters db :db user-id :user/id}]
@@ -105,9 +107,10 @@
                                    (if (seq unwritable)
                                      {:status 403
                                       :body {:error (str "User " user-id " lacks write access to vocab layer(s) " (vec unwritable))}}
-                                     (let [{:keys [success code error]} (vocab-item/bulk-delete db ids user-id)]
+                                     (let [{:keys [success code error documents]} (vocab-item/bulk-delete db ids user-id)]
                                        (if success
-                                         {:status 204}
+                                         (prm/assoc-document-versions-in-header
+                                          {:status 204} db documents)
                                          {:status (or code 500)
                                           :body {:error (or error "Internal server error")}})))))}}]
 
@@ -125,7 +128,8 @@
                           {:status 404
                            :body {:error "Vocab item not found"}})))}
 
-     :patch {:summary "Update a vocab item's form"
+     :patch {:summary (str "Update a vocab item's form. A document read carries the entry's form on "
+                           "every link to it, so a rename restates those documents. Every document holding a link to the entry has its version bumped, and their new versions are returned in X-Document-Versions.")
              :middleware [[pra/wrap-vocab-writer-required get-vocab-id-from-item]]
              :parameters {:body [:map [:form string?]]}
              :handler (fn [{{{:keys [id]} :path {:keys [form]} :body} :parameters
@@ -133,19 +137,26 @@
                             user-id :user/id :as req}]
                         (let [result (vocab-item/merge db id {:vocab-item/form form} user-id)]
                           (if (:success result)
-                            {:status 200
-                             :body (vocab-item/get db id)}
+                            ;; A rename restates every document that links this
+                            ;; entry, so their versions moved: tell the client,
+                            ;; or its next write to one of them is refused for a
+                            ;; change it made itself.
+                            (prm/assoc-document-versions-in-header
+                             {:status 200
+                              :body (vocab-item/get db id)}
+                             db (:documents result))
                             {:status (or (:code result) 500)
                              :body {:error (:error result)}})))}
 
-     :delete {:summary "Delete a vocab item"
+     :delete {:summary (str "Delete a vocab item, and every link to it. Every document holding a link to the entry has its version bumped, and their new versions are returned in X-Document-Versions.")
               :middleware [[pra/wrap-vocab-writer-required get-vocab-id-from-item]]
               :handler (fn [{{{:keys [id]} :path} :parameters
                              db :db
                              user-id :user/id :as req}]
-                         (let [{:keys [success code error]} (vocab-item/delete db id user-id)]
+                         (let [{:keys [success code error documents]} (vocab-item/delete db id user-id)]
                            (if success
-                             {:status 204}
+                             (prm/assoc-document-versions-in-header
+                              {:status 204} db documents)
                              {:status (or code 500)
                               :body {:error (or error "Internal server error")}})))}}]
 

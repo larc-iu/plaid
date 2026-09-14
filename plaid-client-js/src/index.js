@@ -2346,6 +2346,9 @@ class PlaidClient {
       /**
        * Delete multiple vocab items in a single operation. Each item's
        * descendant vocab links are deleted too. Provide an array of IDs.
+       *
+       * Every document holding one of those links has its version bumped, and
+       * a strict-mode client picks up their new versions from the response.
        * @param {string[]} body - The vocab item IDs to delete
        */
       bulkDelete: (body, auditMessage) =>
@@ -2364,13 +2367,18 @@ class PlaidClient {
           queryParams: { "as-of": asOf },
         }),
       /**
-       * Delete a vocab item
+       * Delete a vocab item, and every link to it. Every document holding one
+       * of those links has its version bumped, and a strict-mode client picks
+       * up their new versions from the response.
        * @param {string} id - The resource ID
        */
       delete: (id, auditMessage) =>
         this._request("DELETE", `/api/v1/vocab-items/${id}`, { auditMessage }),
       /**
-       * Update a vocab item's form
+       * Update a vocab item's form. A document read carries the entry's form on
+       * every link to it, so a rename restates those documents: each has its
+       * version bumped, and a strict-mode client picks up their new versions
+       * from the response.
        * @param {string} id - The resource ID
        * @param {string} form - The vocab item form
        */

@@ -16,6 +16,37 @@
                 :vocab-item/form])
 
 ;; ============================================================
+;; Linked documents
+;;
+;; An entry is global: its op carries `:project nil :document nil`, so the
+;; post-body `bump-document-version!` hook never fires. But a deep document
+;; read embeds the entry's `form` on every vocab_link that points at it
+;; (`plaid.sql.document/get-with-layer-data`), so a rename makes those
+;; documents' bodies stale, and a delete removes rows from them outright,
+;; while nothing in the documents themselves has changed. Every writer here
+;; that renames or removes an entry has to walk the affected documents and
+;; bump them explicitly, the same shape vocab-layer/delete and
+;; project/remove-vocab already use.
+;;
+;; Without it a client's optimistic-concurrency version never moves, the
+;; op's `:audit/documents` set comes back empty so document-scoped SSE
+;; listeners are never told their view went stale, and any consumer caching
+;; a body against `documents.version` (the agent does, keyed on
+;; `(id, version)`) serves the old headword indefinitely.
+;; ============================================================
+
+(defn- linked-document-ids
+  "Document ids holding a vocab_link to any of `item-ids`, duplicates and all
+  (`bump-document-versions!` dedups). Must be read BEFORE the links go away."
+  [tx item-ids]
+  (if-let [ids (seq item-ids)]
+    (->> (psc/q tx {:select [:document_id]
+                    :from :vocab_links
+                    :where [:in :vocab_item_id (vec ids)]})
+         (mapv :document_id))
+    []))
+
+;; ============================================================
 ;; Row mapper
 ;; ============================================================
 
@@ -117,10 +148,18 @@
                                          {:code 404 :id eid})))
                        (let [attrs (cond-> {}
                                      (some? (:vocab-item/form m))
-                                     (assoc :form (:vocab-item/form m)))]
+                                     (assoc :form (:vocab-item/form m)))
+                             ;; Only a real change to the form restates the
+                             ;; documents: a PATCH that sets the form it
+                             ;; already has must not bump every document that
+                             ;; links the entry.
+                             renamed? (and (contains? attrs :form)
+                                           (not= (:form attrs) (:form existing)))
+                             doc-ids (when renamed? (linked-document-ids tx [eid]))]
                          (when (seq attrs)
                            (crud/update-by-id! tx :vocab_items eid attrs)
                            (op/touch-vocab-layer! tx (:vocab_layer_id existing)))
+                         (op/bump-document-versions! tx doc-ids)
                          eid))))
 
 (defn delete
@@ -140,10 +179,10 @@
                        (when (nil? existing)
                          (throw (ex-info (psc/err-msg-not-found "Vocab item" eid)
                                          {:code 404 :id eid})))
-                       (let [vl-ids (->> (psc/q tx {:select [:id]
-                                                    :from :vocab_links
-                                                    :where [:= :vocab_item_id eid]})
-                                         (mapv :id))]
+                       (let [vl-rows (psc/q tx {:select [:id :document_id]
+                                                :from :vocab_links
+                                                :where [:= :vocab_item_id eid]})
+                             vl-ids (mapv :id vl-rows)]
                          (doseq [vlid vl-ids]
                            (crud/delete-by-id! tx :vocab_links vlid))
                          (when (seq vl-ids)
@@ -151,7 +190,8 @@
                                          {:delete-from :entity_metadata
                                           :where [:and
                                                   [:= :entity_type "vocab-link"]
-                                                  [:in :entity_id vl-ids]]})))
+                                                  [:in :entity_id vl-ids]]}))
+                         (op/bump-document-versions! tx (mapv :document_id vl-rows)))
                        (psc/execute! tx
                                      {:delete-from :entity_metadata
                                       :where [:and
@@ -265,14 +305,15 @@
                          (when (seq existing-ids)
                            ;; Descendant vocab_links (audited per row), then their
                            ;; metadata (unaudited sweep, no FK on entity_metadata).
-                           (let [link-ids (->> (crud/delete-where! tx :vocab_links
-                                                                   [:in :vocab_item_id existing-ids])
-                                               (mapv :id))]
+                           (let [link-rows (crud/delete-where! tx :vocab_links
+                                                               [:in :vocab_item_id existing-ids])
+                                 link-ids (mapv :id link-rows)]
                              (when (seq link-ids)
                                (psc/execute! tx {:delete-from :entity_metadata
                                                  :where [:and
                                                          [:= :entity_type "vocab-link"]
-                                                         [:in :entity_id link-ids]]})))
+                                                         [:in :entity_id link-ids]]}))
+                             (op/bump-document-versions! tx (mapv :document_id link-rows)))
                            ;; The items' own metadata, then the items (audited per row).
                            (psc/execute! tx {:delete-from :entity_metadata
                                              :where [:and

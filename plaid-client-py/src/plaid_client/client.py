@@ -2390,7 +2390,9 @@ class VocabItemsResource(_Resource):
     def bulk_delete(self, body: list, audit_message=None) -> Any:
         """Delete multiple vocab items in a single operation. Provide a list of IDs.
 
-        Each item's descendant vocab links are deleted too.
+        Each item's descendant vocab links are deleted too. Every document
+        holding one of those links has its version bumped, and a strict-mode
+        client picks up their new versions from the response.
 
         Args:
             body: The vocab item IDs to delete
@@ -2409,7 +2411,10 @@ class VocabItemsResource(_Resource):
                              bypass_batch=True)
 
     def delete(self, id: str, audit_message=None) -> Any:
-        """Delete a vocab item.
+        """Delete a vocab item, and every link to it.
+
+        Every document holding one of those links has its version bumped, and a
+        strict-mode client picks up their new versions from the response.
 
         Args:
             id: The resource ID
@@ -2418,6 +2423,10 @@ class VocabItemsResource(_Resource):
 
     def update(self, id: str, form: str, audit_message=None) -> Any:
         """Update a vocab item's form.
+
+        A document read carries the entry's form on every link to it, so a
+        rename restates those documents: each has its version bumped, and a
+        strict-mode client picks up their new versions from the response.
 
         Args:
             id: The resource ID

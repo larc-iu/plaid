@@ -418,7 +418,16 @@
         (post-submit! op-record (:user op-attrs))
         (catch Throwable t
           (log/warn t "post-submit! failed after successful commit:" (ex-message t))))
-      {:success true :extra extra})
+      ;; `:documents` is every document this op bumped the version of, the same
+      ;; set the audit event carries. A handler passes it to
+      ;; `assoc-document-versions-in-header` so a strict-mode client learns the
+      ;; new versions from the write that caused them. Without it a write that
+      ;; restates OTHER documents (renaming a vocabulary entry restates every
+      ;; document that links it) leaves the client holding versions the server
+      ;; has already moved past, and its next write to one of them 409s with
+      ;; nobody to blame. Every op gets it, so a new multi-document op only has
+      ;; to pass it along.
+      {:success true :extra extra :documents (vec (:documents op-record))})
     ;; NOTE on batch-tx interaction (verified by
     ;; `plaid.rest-api.v1.batch-test/test-batch-rollback-when-body-throws-ex-info`):
     ;; when we're running inside an outer batch tx (db is a Connection),

@@ -538,7 +538,11 @@
                                  :from [:documents]
                                  :where [:in :id (vec chunk)]})))
                 (map (juxt :id :version)))
-          (partition-all bulk-chunk-size (distinct doc-ids)))))
+          ;; `seq` first: `(distinct some-set)` throws in Clojure 1.12 (a
+          ;; `distinct` fast-path bug — `nth` is not supported on a
+          ;; PersistentHashSet), and callers pass whatever shape they have.
+          ;; `submit-operation!` hands back a set of affected documents.
+          (partition-all bulk-chunk-size (distinct (seq doc-ids))))))
 
 (defn next-order-idx-expr
   "Returns a HoneySQL scalar-subquery fragment that resolves at INSERT
