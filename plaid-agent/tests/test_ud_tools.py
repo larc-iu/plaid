@@ -140,13 +140,16 @@ def test_a_plan_never_confirms_what_it_deletes(ws):
 
     A change made by name beats one a whole-document review finds, so the
     confirmation of that span is never staged at all: the review is a
-    predicate, resolved against the document when the plan is applied."""
+    predicate, resolved against the document when the plan is applied. The
+    card counted that confirmation, so the applied message says it went and
+    why."""
     assert 'cleared' in run(ws, 'set_field', document='Viaje', refs=['s1.w4'], field='upos', value='')
     assert 'confirming 1' in run(ws, 'confirm', document='Viaje')
     counts = execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
     calls = [(r, m, a) for r, m, a, k in ws.client.batches[0]]
     assert calls == [('spans', 'delete', ('sp-u3',))]
-    assert counts == {'field values': 1}
+    assert 'the plan deletes what it confirms' in ' '.join(counts.get('notes') or [])
+    assert counts['field values'] == 1
 
 
 def test_a_confirmation_and_a_discard_of_one_document_refuse_each_other(ws):

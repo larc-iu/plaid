@@ -497,22 +497,25 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
     stamps = Stamps(stamp_mode, source, contributor)
     ops = expand_ops(ops)
     validate_ops(ops)
-    ops = resolve_scopes(client, project, ops)
-    ops, notes = normalize_ops(ops)
+    ops, notes = resolve_scopes(client, project, ops)
+    ops, superseded = normalize_ops(ops)
+    notes += superseded
     counts: Counter = Counter()
     return applying(ops, lambda tracker: _execute(client, ops, label=label, counts=counts,
                                                   notes=notes, stamps=stamps, tracker=tracker))
 
 
-def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def resolve_scopes(client, project, ops: List[Dict[str, Any]]):
     """The per-span ops a scope stands for, read from the document NOW.
+    Returns (ops, notes).
 
     Approval has already refused the plan if the document's version moved
     since the model counted, so what is found here is what it counted.
     Nothing is written: this only reads, and a document that cannot be read
     refuses the whole plan before any batch opens."""
+    notes: List[str] = []
     if not any(op.get('kind') in SCOPES for op in ops):
-        return ops
+        return ops, notes
     if project is None:
         raise ValueError('a whole-document review needs the project to read the document with')
     # A change the model made by name beats one a scope finds at approval,
@@ -525,17 +528,41 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str,
     named = [op for op in ops if op.get('kind') not in SCOPES]
     named_gone = ok.removed_ids(KIND, named, only_certain=True)
 
-    def explicit(o):
-        # The same rule seen a second way: a change made by name also beats one
-        # a scope finds when the two would meet as a write and a delete of one
-        # span (confirming a value a set_field clears, discarding one a
-        # confirm names). Left in, that pair refused the plan at the last step,
-        # after the user had approved it.
-        if ok.delete_clash(KIND, named, o, named_gone):
-            return True
+    def named_too(o) -> bool:
+        """The model made this same change by name, on the same span or the
+        same relation."""
         if o.get('kind') == 'set_span':
             return (o.get('layer_id'), o.get('token_id')) in spans
         return o.get('kind') in ('set_deprel', 'del_relation') and o.get('relation_id') in relations
+
+    def clashes(o) -> str:
+        """Why this change the scope found cannot stand beside what the model
+        named, and '' where the two do not meet.
+
+        The same rule seen a second way: a change made by name also beats one
+        a scope finds when the two would meet as a write and a delete of one
+        span (confirming a value a set_field clears, discarding one a confirm
+        names). Left in, that pair refused the plan at the last step, after
+        the user had approved it.
+        """
+        clash = ok.delete_clash(KIND, named, o, named_gone)
+        if not clash:
+            return ''
+        victim, _killer = clash
+        if victim is not o:
+            return 'another change in this plan writes to what it deletes'
+        return ('the plan deletes what it confirms' if o.get('kind') == 'confirm'
+                else 'the plan deletes what it writes to')
+
+    def keep(o) -> bool:
+        """Whether a change the scope stands for joins the plan. A clash is
+        noted: the card counted this change, so the applied message has to
+        account for it going."""
+        why = clashes(o)
+        if why:
+            notes.append(f'dropped: {o.get("label") or o.get("kind")} ({why})')
+            return False
+        return not named_too(o)
 
     out: List[Dict[str, Any]] = []
     docs: Dict[str, Any] = {}
@@ -546,7 +573,7 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str,
             continue
         if kind == 'replace_scope':
             from .bulk import resolve_replace
-            out.extend(o for o in resolve_replace(client, project, op) if not explicit(o))
+            out.extend(o for o in resolve_replace(client, project, op) if keep(o))
             continue
         did = op['document_id']
         if did not in docs:
@@ -559,7 +586,7 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str,
                 o = {'kind': 'confirm', 'span_id': span_id, 'relation_id': relation_id,
                      'token_id': w.id, 'document_id': did, 'ref': ref,
                      'label': f'confirm the head of {ref}' if f == 'deprel' else f'confirm {f} on {ref}'}
-                if not explicit(o):
+                if keep(o):
                     out.append(o)
             continue
         targets, _spared = discard_targets(all_words(doc), fields)
@@ -572,9 +599,9 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str,
                 o = {'kind': 'set_span', 'layer_id': span.layer_id, 'token_id': w.id,
                      'span_id': span.id, 'value': '', 'field': f, 'document_id': did,
                      'ref': ref, 'label': f'discard the unconfirmed {f} on {ref}'}
-            if not explicit(o):
+            if keep(o):
                 out.append(o)
-    return out
+    return out, notes
 
 
 def _run(ctx: Context, ops, stage: str) -> None:
