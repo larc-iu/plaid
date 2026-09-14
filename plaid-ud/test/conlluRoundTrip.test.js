@@ -66,6 +66,26 @@ test('an incoming `# sent_id` survives import and is re-emitted verbatim', () =>
   assert.equal(new ConlluDocument({ raw: rawDocFromConllu(out, 'rt-doc') }).toConllu(), out);
 });
 
+test('a document whose project is not set up for UD exports a sentinel, and builds no rows', () => {
+  // The row model needs the layers the document is missing, so the export has
+  // to answer before it is asked for. This held until `buildConllu` moved out
+  // of the class and the call site started evaluating `sentences` as an
+  // argument.
+  const raw = rawDocFromConllu(INPUT, 'rt-doc');
+  const morphemeLayer = raw.textLayers[0].tokenLayers[2];
+  morphemeLayer.spanLayers = morphemeLayer.spanLayers.filter((l) => l.id !== 'upos-layer');
+
+  const doc = new ConlluDocument({ raw });
+  let built = 0;
+  doc._buildSentences = () => {
+    built += 1;
+    return [];
+  };
+
+  assert.equal(doc.toConllu(), '# Project configuration incomplete: UPOS layer');
+  assert.equal(built, 0);
+});
+
 test('a value carrying a tab or a newline still exports a file that re-parses', () => {
   // CoNLL-U has no escape of its own: a tab makes an eleven-column row and a
   // newline makes a bare line. The UI's inputs are single-line, but the API,

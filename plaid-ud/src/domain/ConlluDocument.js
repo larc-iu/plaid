@@ -1521,7 +1521,13 @@ export class ConlluDocument {
   }
 
   // The serializer is `buildConllu`, which needs nothing but these three.
+  // An unconfigured document hands it no rows: `sentences` is the whole grid
+  // model, and building one for a document that answers with a sentinel line
+  // is work nobody reads. The sentinel itself stays in the serializer, so
+  // there is one place that writes it.
   _buildConllu() {
-    return buildConllu({ name: this.name, layerInfo: this.layerInfo, sentences: this.sentences });
+    const info = this.layerInfo;
+    const sentences = info.isConfigured ? this.sentences : null;
+    return buildConllu({ name: this.name, layerInfo: info, sentences });
   }
 }
