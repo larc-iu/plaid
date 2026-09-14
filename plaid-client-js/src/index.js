@@ -3124,7 +3124,7 @@ class PlaidClient {
    * callback to refine the label once the outcome is known.
    *
    *   await client.withOperation('Merge morphemes', async (setMessage) => {
-   *     await client.batched(() => { ... });
+   *     await client.batched(async (b) => { ... });
    *     setMessage(`Merged ${n} morphemes`);
    *   });
    *

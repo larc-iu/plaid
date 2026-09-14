@@ -221,6 +221,9 @@ class Resource:
     def patch_metadata(self, entity_id, metadata):
         self._call('patch_metadata', (entity_id, metadata), {'body': {}})
 
+    def set_metadata(self, entity_id, metadata):
+        self._call('set_metadata', (entity_id, metadata), {'body': {}})
+
     def update(self, entity_id, ops):
         self._call('update', (entity_id, ops), {'body': {}})
 

@@ -3194,7 +3194,7 @@ class PlaidClient:
         known::
 
             with client.operation('Merge morphemes') as op:
-                with client.batched():
+                with client.batched() as b:
                     ...
                 op.set_message(f'Merged {n} morphemes')
 

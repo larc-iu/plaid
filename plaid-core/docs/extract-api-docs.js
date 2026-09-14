@@ -132,7 +132,7 @@ function parseJSDoc(content) {
   // Look for specific instance methods that should be in misc
   const miscMethods = [
     'enterStrictMode', 'exitStrictMode',
-    'beginBatch', 'submitBatch', 'abortBatch', 'isBatchMode', 'batched',
+    'batch', 'batched',
     'beginOperation', 'endOperation', 'withOperation',
   ];
 
@@ -752,10 +752,10 @@ const doc = await client.documents.create(project.id, 'Document 1');
 const docs = await client.projects.listDocuments(project.id);
 
 // Batch multiple operations atomically
-client.beginBatch();
-client.tokens.create(tokenLayerId, textId, 0, 5);
-client.tokens.create(tokenLayerId, textId, 6, 11);
-const results = await client.submitBatch();</code></pre>
+const results = await client.batched(async (b) => {
+  b.tokens.create(tokenLayerId, textId, 0, 5);
+  b.tokens.create(tokenLayerId, textId, 6, 11);
+});</code></pre>
     </div>` : `
     <div class="preamble">
       <h2>Quick Start</h2>
@@ -773,10 +773,10 @@ doc = client.documents.create(project["id"], "Document 1")
 docs = client.projects.list_documents(project["id"])
 
 # Batch multiple operations atomically
-client.begin_batch()
-client.tokens.create(token_layer_id, text_id, 0, 5)
-client.tokens.create(token_layer_id, text_id, 6, 11)
-results = client.submit_batch()</code></pre>
+with client.batched() as b:
+    b.tokens.create(token_layer_id, text_id, 0, 5)
+    b.tokens.create(token_layer_id, text_id, 6, 11)
+results = b.results</code></pre>
     </div>`}
     ${content}
   </div>
