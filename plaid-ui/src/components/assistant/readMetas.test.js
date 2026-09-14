@@ -7,7 +7,17 @@ import { metaGlob, projectOfKey, readMetas } from './jobs.js';
 // and widening to every project must not drag the transcripts down with it.
 
 const store = (list) => ({
-  client: { userData: { list: async (_u, opts) => list(opts) } },
+  client: {
+    userData: {
+      // `list` is the client's all-pages read. `listPage` is here to be left
+      // alone: the store pages by key and the sidebar orders by recency, so
+      // one page would be an arbitrary hundred rather than the newest hundred.
+      list: async (_u, opts) => list(opts),
+      listPage: async () => {
+        throw new Error('readMetas must read every page, not one');
+      },
+    },
+  },
   userId: 'a@b.com',
   app: 'igt',
   projectId: 'p1',
@@ -98,5 +108,16 @@ describe('readMetas', () => {
 
   it('reads nothing without a user, since the store is theirs', async () => {
     expect(await readMetas({ ...store(() => []), userId: null })).toEqual([]);
+  });
+
+  it('reads the whole listing rather than one page', async () => {
+    // Three hundred conversations is three requests at the client's default
+    // bound. Taking only the first would drop two thirds of the sidebar, and
+    // the rows that survived would not be the newest ones.
+    const many = Array.from({ length: 300 }, (_, i) =>
+      entry('p1', `c${i}`, `2026-01-${String((i % 28) + 1).padStart(2, '0')}`),
+    );
+    const metas = await readMetas(store(() => many));
+    expect(metas).toHaveLength(300);
   });
 });

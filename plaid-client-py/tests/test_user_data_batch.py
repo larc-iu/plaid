@@ -9,11 +9,15 @@ def _client(monkeypatch):
     client = PlaidClient('http://example.test', 'tok')
     calls = []
 
-    def fake_request(self, method, path, **kwargs):
+    def fake_request(_client, method, path, **kwargs):
         calls.append((method, path, kwargs))
-        return []
+        return {'entries': [], 'next_cursor': None}
 
-    monkeypatch.setattr('plaid_client.client._Resource._request', fake_request)
+    # Two homes for one function: a resource method calls the name imported
+    # into client.py, and the pagination helpers call the one in http.py. The
+    # listing pages, so it goes through the second.
+    monkeypatch.setattr('plaid_client.client.make_request', fake_request)
+    monkeypatch.setattr('plaid_client.http.make_request', fake_request)
     return client, calls
 
 

@@ -1039,8 +1039,12 @@ class UserDataResource(_Resource):
     join an open batch, a read goes over the wire around one."""
 
     def list(self, user_id: str, *, prefix: str | None = None, pattern: str | None = None,
-             include_values: bool = False) -> Any:
-        """List a user's entries ({key, updated_at}, plus value when requested).
+             include_values: bool = False, page_size: int = 100) -> Any:
+        """List a user's entries ({key, updated_at}, plus value when requested),
+        ordered by key.
+
+        Transparently follows server-side pagination cursors and returns the
+        full flat list.
 
         Narrow with ``prefix`` (the literal head of a key) and/or ``pattern``, a
         GLOB over the whole key (``*`` any run, ``?`` one character) - the way to
@@ -1053,15 +1057,52 @@ class UserDataResource(_Resource):
             prefix: Only keys starting with this prefix
             pattern: Only keys matching this GLOB
             include_values: Also return each entry's value
+            page_size: Entries per request (1..1000). Exposed here, and lower
+                than elsewhere, because one value runs to 1 MB: a page of them
+                with ``include_values`` is the largest response this API can be
+                asked for. Raise it when the listing is keys, or the values are
+                known to be small.
         """
-        # bypass_batch: a read belongs to whoever asked for it, not to whatever
-        # batch happens to be open on this shared client. Raising instead (what
-        # no_batch does) only moves the failure onto a caller that has nothing
-        # to do with the batch.
-        return self._request('GET', f'/api/v1/users/{user_id}/data',
-                             query_params={'prefix': prefix, 'pattern': pattern,
-                                           'include-values': include_values or None},
-                             bypass_batch=True)
+        # Every page carries bypass_batch (the pagination helpers set it): a
+        # read belongs to whoever asked for it, not to whatever batch happens
+        # to be open on this shared client. Raising instead (what no_batch
+        # does) only moves the failure onto a caller that has nothing to do
+        # with the batch.
+        return list_all(self._client, f'/api/v1/users/{user_id}/data', page_size=page_size,
+                        query={'prefix': prefix, 'pattern': pattern,
+                               'include-values': include_values or None})
+
+    def list_page(self, user_id: str, *, prefix: str | None = None, pattern: str | None = None,
+                  include_values: bool = False, limit: int | None = None,
+                  cursor: str | None = None) -> Any:
+        """One page of a user's entries, ordered by key.
+
+        Args:
+            user_id: The owning user
+            prefix: Only keys starting with this prefix
+            pattern: Only keys matching this GLOB
+            include_values: Also return each entry's value
+            limit: Page size (1..1000; server default 100)
+            cursor: Opaque cursor from a previous page's ``next_cursor``
+        """
+        return list_page(self._client, f'/api/v1/users/{user_id}/data', limit=limit, cursor=cursor,
+                         query={'prefix': prefix, 'pattern': pattern,
+                                'include-values': include_values or None})
+
+    def iter_pages(self, user_id: str, *, prefix: str | None = None, pattern: str | None = None,
+                   include_values: bool = False, page_size: int = 100):
+        """Yield a user's entries one page at a time, following the cursors.
+
+        Args:
+            user_id: The owning user
+            prefix: Only keys starting with this prefix
+            pattern: Only keys matching this GLOB
+            include_values: Also return each entry's value
+            page_size: Entries per request (1..1000)
+        """
+        return iter_pages(self._client, f'/api/v1/users/{user_id}/data', page_size=page_size,
+                          query={'prefix': prefix, 'pattern': pattern,
+                                 'include-values': include_values or None})
 
     def get(self, user_id: str, key: str) -> Any:
         """Read one entry ({key, updated_at, value}); 404 if absent."""

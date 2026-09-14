@@ -33,9 +33,34 @@
                                 :where [:and [:= :user_id user-id] [:= :key key]]}))
               true))
 
+(defn- key-clauses
+  "The two key narrowings as HoneySQL predicates, in the order they are ANDed.
+  Shared by the per-user `list` and the admin-side `list-all` so one read
+  cannot drift from the other."
+  [prefix pattern]
+  (cond-> []
+    ;; substr, not LIKE: keys routinely contain `_`, which LIKE would treat
+    ;; as a wildcard. SQLite's substr counts code points, so the length has
+    ;; to as well: `count` is UTF-16, and a prefix holding one astral
+    ;; character asked for one code point too many and matched nothing.
+    (seq prefix) (conj [:= [:substr :key 1 (cp/cp-count prefix)] prefix])
+    ;; glob(X, Y) is SQLite's function spelling of `Y GLOB X`, so the
+    ;; pattern is the first argument.
+    (seq pattern) (conj [:glob pattern :key])))
+
+(def ^:private select-cols
+  {true [:user_id :key :value :updated_at]
+   false [:user_id :key :updated_at]})
+
 (defn list
-  "The user's entries ({:key :updated-at}, plus :value when `include-values?`),
-  ordered by key.
+  "One page of the user's entries ({:key :updated-at}, plus :value when
+  `include-values?`), ordered by key. Keyset paginated by (user-id, key), the
+  table's primary key: both columns are TEXT NOT NULL, so the page order is
+  total and walking it is index-backed. The same order and the same cursor
+  shape as `list-all`.
+
+  Paginated because a value runs to `max-value-bytes`, so `include-values?`
+  over a whole store is a request with no upper bound on its response.
 
   Two independent narrowings, ANDed when both are given:
     :prefix   the literal head of a key (nil = all)
@@ -51,22 +76,14 @@
   Neither narrowing can use an index: `prefix` compares a substr of the key, so
   it scans the same as the glob does. That is affordable because the table holds
   per-user app state, not annotation data."
-  [db user-id {:keys [prefix pattern include-values?]}]
-  (->> (psc/q db {:select (if include-values? [:key :value :updated_at] [:key :updated_at])
-                  :from :user_data
-                  :where (cond-> [:and [:= :user_id user-id]]
-                           ;; substr, not LIKE: keys routinely contain `_`,
-                           ;; which LIKE would treat as a wildcard. SQLite's
-                           ;; substr counts code points, so the length has to
-                           ;; as well: `count` is UTF-16, and a prefix holding
-                           ;; one astral character asked for one code point
-                           ;; too many and matched nothing.
-                           (seq prefix) (conj [:= [:substr :key 1 (cp/cp-count prefix)] prefix])
-                           ;; glob(X, Y) is SQLite's function spelling of
-                           ;; `Y GLOB X`, so the pattern is the first argument.
-                           (seq pattern) (conj [:glob pattern :key]))
-                  :order-by [:key]})
-       (mapv #(row->entry % include-values?))))
+  [db user-id {:keys [prefix pattern include-values? limit cursor-vals]}]
+  (psp/paginate db {:select (select-cols (boolean include-values?))
+                    :from :user_data
+                    :base-where (into [:and [:= :user_id user-id]] (key-clauses prefix pattern))
+                    :order-by [:user_id :key]
+                    :limit limit
+                    :cursor-vals cursor-vals
+                    :row->entity #(row->entry % include-values?)}))
 
 (defn put!
   "Upsert `value` (any JSON-able Clojure data) under `key`. Returns
@@ -98,16 +115,8 @@
   given: `:prefix` (the literal head of a key) and `:pattern` (a GLOB over the
   whole key). See that docstring for what the glob is for and what it costs."
   [db {:keys [prefix pattern include-values? limit cursor-vals]}]
-  (let [clauses (cond-> []
-                  ;; Code points, as in `list` above: SQLite's substr counts
-                  ;; them and Clojure's `count` counts UTF-16 units.
-                  (seq prefix) (conj [:= [:substr :key 1 (cp/cp-count prefix)] prefix])
-                  ;; glob(X, Y) is SQLite's function spelling of `Y GLOB X`,
-                  ;; so the pattern is the first argument.
-                  (seq pattern) (conj [:glob pattern :key]))]
-    (psp/paginate db {:select (if include-values?
-                                [:user_id :key :value :updated_at]
-                                [:user_id :key :updated_at])
+  (let [clauses (key-clauses prefix pattern)]
+    (psp/paginate db {:select (select-cols (boolean include-values?))
                       :from :user_data
                       :base-where (when (seq clauses) (into [:and] clauses))
                       :order-by [:user_id :key]

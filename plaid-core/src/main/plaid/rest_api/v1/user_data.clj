@@ -4,6 +4,7 @@
   that a key exists. Values are arbitrary JSON, stored and returned verbatim."
   (:require [plaid.rest-api.v1.api-token :refer [wrap-self-or-admin]]
             [plaid.rest-api.v1.auth :as pra]
+            [plaid.rest-api.v1.pagination :as pagination]
             [plaid.sql.user-data :as user-data]))
 
 (def user-data-routes
@@ -13,21 +14,26 @@
     :middleware [pra/wrap-login-required wrap-self-or-admin]}
 
    [""
-    {:get {:summary (str "List a user's private data entries ({key, updated-at}), narrowed by "
-                         "<query>prefix</query> (the literal head of a key) and/or "
+    {:get {:summary (str "List a user's private data entries ({key, updated-at}), ordered by key "
+                         "and narrowed by <query>prefix</query> (the literal head of a key) and/or "
                          "<query>pattern</query>, a GLOB over the whole key (`*` any run, `?` one "
                          "character) for a key convention whose selector is a segment in the middle, "
                          "e.g. `igt:assistant:*:meta:*`. Each entry's value comes with "
-                         "<query>include-values</query>.")
-           :parameters {:query [:map
-                                [:prefix {:optional true} string?]
-                                [:pattern {:optional true} string?]
-                                [:include-values {:optional true} boolean?]]}
-           :handler (fn [{{{:keys [user-id]} :path {:keys [prefix pattern include-values]} :query} :parameters db :db}]
-                      {:status 200
-                       :body (user-data/list db user-id {:prefix prefix
-                                                         :pattern pattern
-                                                         :include-values? (true? include-values)})})}}]
+                         "<query>include-values</query>, so an unnarrowed listing stays a listing "
+                         "of keys.")
+           :parameters {:query (into [:map
+                                      [:prefix {:optional true} string?]
+                                      [:pattern {:optional true} string?]
+                                      [:include-values {:optional true} boolean?]]
+                                     pagination/query-params)}
+           :handler (fn [{{{:keys [user-id]} :path {:keys [prefix pattern include-values] :as query} :query} :parameters db :db}]
+                      (pagination/list-response
+                       query
+                       (fn [opts]
+                         (user-data/list db user-id (assoc opts
+                                                           :prefix prefix
+                                                           :pattern pattern
+                                                           :include-values? (true? include-values))))))}}]
 
    ["/:key"
     {:parameters {:path [:map [:key string?]]}}

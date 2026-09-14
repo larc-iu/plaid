@@ -1038,29 +1038,74 @@ class PlaidClient {
     this.userData = {
       /**
        * List a user's private data entries ({key, updatedAt}, plus value when
-       * includeValues). Owner or admin only.
+       * includeValues), ordered by key. Owner or admin only. Transparently
+       * follows pagination cursors and returns the full flat array.
        *
        * Narrow with `prefix` (the literal head of a key) and/or `pattern`, a
        * GLOB over the whole key (`*` any run, `?` one character) — the way to
        * ask for a key convention identified by a segment in the middle, e.g.
        * `igt:assistant:*:meta:*` for every conversation's sidebar entry across
        * every project without dragging down the transcripts beside them.
+       *
+       * `pageSize` is exposed here, and defaults lower than elsewhere, because
+       * one value runs to 1 MB: a page of them with `includeValues` is the
+       * largest response this API can be asked for. Raise it when the listing
+       * is keys, or the values are known to be small.
        * @param {string} userId
        * @param {object} [opts]
        * @param {string} [opts.prefix] - Only keys starting with this prefix
        * @param {string} [opts.pattern] - Only keys matching this GLOB
        * @param {boolean} [opts.includeValues] - Also return each entry's value
+       * @param {number} [opts.pageSize=100] - Entries per request (1..1000)
        */
-      list: (userId, { prefix, pattern, includeValues } = {}) =>
-        // bypassBatch: a read belongs to whoever asked for it, not to whatever
-        // batch happens to be open on this shared client. The assistant panel
-        // is app chrome in both SPAs, so it reads this store while an import or
-        // a bulk edit holds a batch open. Queued, the read answered
-        // `{batched: true}` (the sidebar then threw on `.map`) and took a slot
-        // in the batch's results, shifting every index the caller counted on.
-        this._request("GET", `/api/v1/users/${userId}/data`, {
-          queryParams: { prefix, pattern, "include-values": includeValues },
-          bypassBatch: true,
+      list: (userId, { prefix, pattern, includeValues, pageSize = 100 } = {}) =>
+        // Every page carries bypassBatch (the pagination helpers set it): a
+        // read belongs to whoever asked for it, not to whatever batch happens
+        // to be open on this shared client. The assistant panel is app chrome
+        // in both SPAs, so it reads this store while an import or a bulk edit
+        // holds a batch open. Queued, the read answered `{batched: true}` (the
+        // sidebar then threw on `.map`) and took a slot in the batch's
+        // results, shifting every index the caller counted on.
+        listAll(this, `/api/v1/users/${userId}/data`, {
+          pageSize,
+          query: { prefix, pattern, "include-values": includeValues },
+        }),
+      /**
+       * One page of a user's private data entries, ordered by key.
+       * @param {string} userId
+       * @param {object} [opts]
+       * @param {string} [opts.prefix] - Only keys starting with this prefix
+       * @param {string} [opts.pattern] - Only keys matching this GLOB
+       * @param {boolean} [opts.includeValues] - Also return each entry's value
+       * @param {number} [opts.limit] - Page size (1..1000; server default 100)
+       * @param {string} [opts.cursor] - Opaque cursor from a previous page
+       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       */
+      listPage: (
+        userId,
+        { prefix, pattern, includeValues, limit, cursor } = {},
+      ) =>
+        listPage(this, `/api/v1/users/${userId}/data`, {
+          limit,
+          cursor,
+          query: { prefix, pattern, "include-values": includeValues },
+        }),
+      /**
+       * Async generator over a user's private data entries, one page at a time.
+       * @param {string} userId
+       * @param {object} [opts]
+       * @param {string} [opts.prefix] - Only keys starting with this prefix
+       * @param {string} [opts.pattern] - Only keys matching this GLOB
+       * @param {boolean} [opts.includeValues] - Also return each entry's value
+       * @param {number} [opts.pageSize=100] - Entries per request (1..1000)
+       */
+      iterPages: (
+        userId,
+        { prefix, pattern, includeValues, pageSize = 100 } = {},
+      ) =>
+        iterPages(this, `/api/v1/users/${userId}/data`, {
+          pageSize,
+          query: { prefix, pattern, "include-values": includeValues },
         }),
       /**
        * Read one private data entry ({key, updatedAt, value}); 404 if absent.

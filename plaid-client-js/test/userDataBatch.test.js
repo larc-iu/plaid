@@ -9,7 +9,7 @@ function makeClient() {
   const client = new PlaidClient('http://example.test', 'tok');
   client._request = (method, path, options = {}) => {
     calls.push({ method, path, options });
-    return Promise.resolve([]);
+    return Promise.resolve({ entries: [], nextCursor: null });
   };
   return { client, calls };
 }

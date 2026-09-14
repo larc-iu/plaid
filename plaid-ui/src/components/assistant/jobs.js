@@ -49,6 +49,10 @@ const byRecency = (a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || '')
 // project to every one of them, for a reader looking for a thread whose
 // project they have forgotten. Each entry carries the project it belongs to,
 // so a row can say so and link there.
+//
+// The store pages, at the client's default of 100 entries a request, and every
+// page is read: the server orders by key and the sidebar orders by recency, so
+// a single page would be an arbitrary hundred rather than the newest hundred.
 export const readMetas = async (store, { allProjects = false } = {}) => {
   const { client, userId, app, projectId } = store;
   if (!userId) return [];

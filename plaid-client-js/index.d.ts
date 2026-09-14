@@ -322,12 +322,26 @@ interface UserDataEntry {
   value?: any;
 }
 
+interface UserDataOptions {
+  prefix?: string;
+  pattern?: string;
+  includeValues?: boolean;
+}
+
 /** Private per-user key/value storage (owner or admin only; not audited). */
 interface UserDataBundle {
   list(
     userId: string,
-    opts?: { prefix?: string; includeValues?: boolean },
+    opts?: UserDataOptions & { pageSize?: number },
   ): Promise<UserDataEntry[]>;
+  listPage(
+    userId: string,
+    opts?: UserDataOptions & { limit?: number; cursor?: string },
+  ): Promise<Page<UserDataEntry>>;
+  iterPages(
+    userId: string,
+    opts?: UserDataOptions & { pageSize?: number },
+  ): AsyncGenerator<UserDataEntry[]>;
   get(userId: string, key: string): Promise<UserDataEntry & { value: any }>;
   put(
     userId: string,
