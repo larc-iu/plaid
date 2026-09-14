@@ -42,6 +42,12 @@ class TokenProcessor:
         spans/relations), which must not interleave with a concurrent editor or
         another service — see :meth:`PlaidClient.documents.locked`. If another
         user holds the lock, ``locked`` raises and we refuse rather than clobber.
+
+        A refusal RAISES ``ValueError`` with the reason, and never reports it
+        itself: only the caller knows whether anything else has already been
+        said about this request. Reporting here and returning zero counts sent
+        the requester an error and then, from the caller's unconditional
+        ``complete``, a success over the top of it.
         """
         with client.documents.locked(document_id):
             return self._process_tokens_locked(
@@ -73,6 +79,9 @@ class TokenProcessor:
 
         Returns:
             Dictionary with counts of tokens created/deleted
+
+        Raises:
+            ValueError: the run is refused, with the reason for the requester
         """
         # Get document with layers
         response_helper.progress(10, "Fetching document...")
@@ -84,8 +93,7 @@ class TokenProcessor:
         text_content = text_layer["text"]["body"]
         
         if not text_content.strip():
-            response_helper.error(f"Text content is empty for document {document_id}")
-            return {"tokens_created": 0, "tokens_deleted": 0, "sentences_created": 0}
+            raise ValueError("This document has no text to tokenize.")
         
         # Get existing tokens
         response_helper.progress(20, "Analyzing existing tokens...")
@@ -99,8 +107,7 @@ class TokenProcessor:
                 sentence_layer = tl
         
         if not primary_layer:
-            response_helper.error("Primary token layer not found")
-            return {"tokens_created": 0, "tokens_deleted": 0, "sentences_created": 0}
+            raise ValueError("This document has no word layer to tokenize into.")
         
         existing_tokens = primary_layer.get("tokens", [])
         existing_sentences = sentence_layer.get("tokens", []) if sentence_layer else []
@@ -140,10 +147,9 @@ class TokenProcessor:
             )
             # Pre-check: complete cover of [0, text_length), no gaps/overlaps/zero-widths
             if not self._is_complete_partition(sentences_to_create, text_length):
-                response_helper.error(
-                    f"Sentence tokenization did not produce a valid partition of [0, {text_length})"
+                raise ValueError(
+                    f"Sentence tokenization did not produce a valid partition of [0, {text_length})."
                 )
-                return {"tokens_created": 0, "tokens_deleted": 0, "sentences_created": 0}
 
             # Provenance write contract: the sentence reset cascade-deletes
             # every sentence-level annotation. Machine-made UNVERIFIED ones
@@ -151,11 +157,10 @@ class TokenProcessor:
             # refuse unless the caller explicitly opted into overwriting.
             _, protected = self._sentence_annotation_loss(sentence_layer, sentence_ids_to_delete)
             if protected and not overwrite:
-                response_helper.error(
+                raise ValueError(
                     f"Re-tokenizing would delete {protected} human-made or human-verified "
                     f"sentence-level annotation(s); re-run with overwrite enabled to replace them."
                 )
-                return {"tokens_created": 0, "tokens_deleted": 0, "sentences_created": 0}
         elif sentence_layer and len(existing_sentences) != 1:
             response_helper.progress(33, "Skipping sentence tokenization (not exactly one existing sentence)...")
 
