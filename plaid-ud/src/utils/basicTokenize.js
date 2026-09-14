@@ -18,7 +18,7 @@
 // Locale defaults to `'und'`. When per-document language is tracked, thread
 // it through here for better script-specific segmentation (especially for
 // ja/zh/th which V8 segments with dictionary lookup when given the locale).
-import { cpLength } from '@larc-iu/plaid-client';
+import { cpLength, utf16ToCp } from '@larc-iu/plaid-client';
 
 export function basicTokenize(text, locale = 'und') {
   const segmenter = new Intl.Segmenter(locale, { granularity: 'word' });
@@ -33,5 +33,35 @@ export function basicTokenize(text, locale = 'und') {
     }
     cp += len;
   }
+  return ranges;
+}
+
+/**
+ * The document's sentences, as a gap-free partition of [0, len) in code points.
+ *
+ * A run of newlines ends a sentence and is kept with the sentence it follows,
+ * so the ranges tile the whole text (the sentence layer is partitioning, and a
+ * gap in it is not a thing the server will accept). A text with no newline in
+ * it is one sentence, and so is an empty one.
+ *
+ * The regex matches in UTF-16, so each boundary is converted to a code-point
+ * offset: token ranges are code points everywhere in Plaid.
+ *
+ * @param {string} text the document body
+ * @returns {[number, number][]} sentence ranges in document order
+ */
+export function newlineSentenceRanges(text) {
+  const len = cpLength(text);
+  const ranges = [];
+  let start = 0;
+  const newlineRun = /\n+/g;
+  let m;
+  while ((m = newlineRun.exec(text)) !== null) {
+    const endCp = utf16ToCp(text, m.index + m[0].length);
+    ranges.push([start, endCp]);
+    start = endCp;
+  }
+  if (start < len) ranges.push([start, len]);
+  if (ranges.length === 0) ranges.push([0, len]);
   return ranges;
 }

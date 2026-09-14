@@ -1,7 +1,6 @@
 import {
   cpLength,
   cpSlice,
-  utf16ToCp,
   isMachine,
   isReviewed,
   mergeMetadata,
@@ -17,6 +16,7 @@ import { canManageProject } from '../../../plaid-ui/src/domain/permissions.js';
 import { getUdLayerInfo, containsToken, readProjectLanguage } from '../utils/udLayerUtils.js';
 import {
   interSententialRelationIds,
+  relationsCrossing,
   wordsNeedingSyntacticWord,
   orphanSyntacticWords,
   planSpanDedup,
@@ -26,7 +26,7 @@ import { validateConlluDocument } from './validate.js';
 import { importConlluDocument } from './conlluImport.js';
 import { buildSentenceRows } from './sentenceRows.js';
 import { buildConllu } from './conlluSerialize.js';
-import { basicTokenize } from '../utils/basicTokenize.js';
+import { basicTokenize, newlineSentenceRanges } from '../utils/basicTokenize.js';
 import { normalizeFeature, featureRefusal } from '../utils/feats.js';
 import { notifyError } from '../utils/notify.js';
 
@@ -404,23 +404,9 @@ export class ConlluDocument {
 
     return this._withSaving('Failed to create tokens', async () => {
       const body = textContent;
-      const len = cpLength(body);
 
-      // Sentences: gap-free partition of [0, len). Runs of newlines end a
-      // sentence and are kept with the preceding sentence so there are no gaps.
-      // The regex matches in UTF-16 (m.index), so convert each boundary to a
-      // code-point offset (sentence tokens are code-point ranges).
-      const sentenceRanges = [];
-      let start = 0;
-      const newlineRun = /\n+/g;
-      let m;
-      while ((m = newlineRun.exec(body)) !== null) {
-        const endCp = utf16ToCp(body, m.index + m[0].length);
-        sentenceRanges.push([start, endCp]);
-        start = endCp;
-      }
-      if (start < len) sentenceRanges.push([start, len]);
-      if (sentenceRanges.length === 0) sentenceRanges.push([0, len]);
+      // Sentences: a gap-free partition of [0, len), broken at runs of newlines.
+      const sentenceRanges = newlineSentenceRanges(body);
 
       // Words: Unicode-aware basic tokenization. Punctuation flanked by
       // letters/digits on both sides stays in the word (contractions,
@@ -510,9 +496,8 @@ export class ConlluDocument {
   // or merge (remove).
   async toggleSentenceBoundary(charPos) {
     return this._withSaving('Failed to update sentence boundary', async () => {
-      const { sentenceTokenLayer, morphemeTokenLayer, lemmaLayer, relationLayer } = this.layerInfo;
+      const { sentenceTokenLayer } = this.layerInfo;
       const sentenceTokens = sentenceTokenLayer?.tokens || [];
-      const morphemeTokens = morphemeTokenLayer?.tokens || [];
 
       const startsHere = sentenceTokens.find((s) => s.begin === charPos);
       if (startsHere) {
@@ -541,27 +526,14 @@ export class ConlluDocument {
       // same atomic batch as the split so a relation never spans two
       // sentences. (UD relations are sentence-internal — an app-level
       // invariant the server doesn't model.)
-      const beginByMorpheme = new Map(morphemeTokens.map((t) => [t.id, t.begin]));
-      const beginByLemmaSpan = new Map();
-      (lemmaLayer?.spans || []).forEach((span) => {
-        const tid = Array.isArray(span.tokens) && span.tokens.length > 0 ? span.tokens[0] : null;
-        if (tid != null && beginByMorpheme.has(tid))
-          beginByLemmaSpan.set(span.id, beginByMorpheme.get(tid));
-      });
-      const crossing = (relationLayer?.relations || []).filter((rel) => {
-        if (rel.source === rel.target) return false;
-        const s = beginByLemmaSpan.get(rel.source);
-        const t = beginByLemmaSpan.get(rel.target);
-        if (s == null || t == null) return false;
-        return s < charPos !== t < charPos;
-      });
+      const crossing = relationsCrossing(this.layerInfo, charPos);
 
       const res = await this._client.batched(async () => {
         this._client.tokens.split(containing.id, charPos);
-        crossing.forEach((rel) => this._client.relations.delete(rel.id));
+        crossing.forEach((id) => this._client.relations.delete(id));
       });
       const newRightSentId = res[0]?.body?.id;
-      const removedRelIds = new Set(crossing.map((r) => r.id));
+      const removedRelIds = new Set(crossing);
 
       this._applyRawPatch((next, info) => {
         if (info.sentenceTokenLayer?.tokens) {

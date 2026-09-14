@@ -7,8 +7,9 @@
 // straddling two. We can't catch that while UD is closed; instead UD validates
 // on open and heals.
 //
-// This generalizes the single-split "crossing" check inside
-// ConlluDocument.toggleSentenceBoundary to the whole current sentence partition.
+// `interSententialRelationIds` is that check over the whole current partition,
+// and `relationsCrossing` is the single-boundary form a split asks before it
+// makes one. Both live here so the rule is written once.
 
 /**
  * IDs of dependency relations whose two endpoints lie in different sentences
@@ -60,6 +61,41 @@ export const interSententialRelationIds = (layerInfo) => {
       const t = sentenceIdByLemmaSpan.get(rel.target);
       if (s == null || t == null) return false; // unresolvable — leave it alone
       return s !== t; // different sentences -> crosses a boundary
+    })
+    .map((rel) => rel.id);
+};
+
+/**
+ * IDs of dependency relations that a new sentence boundary at `charPos` would
+ * split: their two endpoints land on opposite sides of it. The edit-time case
+ * of the above, where the partition being asked about is the one the split is
+ * about to make rather than the one on screen, so it compares offsets against
+ * charPos instead of resolving each endpoint to a sentence.
+ *
+ * Same conservatism: a root self-loop is not a crossing, and an endpoint that
+ * resolves to no morpheme is left alone. The caller deletes these in the same
+ * atomic batch as the split, so a relation never spans two sentences.
+ *
+ * @param {object} layerInfo the result of getUdLayerInfo (bound layers)
+ * @param {number} charPos the offset the new boundary starts at
+ * @returns {string[]} relation ids to delete
+ */
+export const relationsCrossing = (layerInfo, charPos) => {
+  const morphemeTokens = layerInfo?.morphemeTokenLayer?.tokens || [];
+  const beginByMorpheme = new Map(morphemeTokens.map((t) => [t.id, t.begin]));
+  const beginByLemmaSpan = new Map();
+  (layerInfo?.lemmaLayer?.spans || []).forEach((span) => {
+    const tid = Array.isArray(span.tokens) && span.tokens.length > 0 ? span.tokens[0] : null;
+    if (tid != null && beginByMorpheme.has(tid))
+      beginByLemmaSpan.set(span.id, beginByMorpheme.get(tid));
+  });
+  return (layerInfo?.relationLayer?.relations || [])
+    .filter((rel) => {
+      if (rel.source === rel.target) return false;
+      const s = beginByLemmaSpan.get(rel.source);
+      const t = beginByLemmaSpan.get(rel.target);
+      if (s == null || t == null) return false;
+      return s < charPos !== t < charPos;
     })
     .map((rel) => rel.id);
 };
