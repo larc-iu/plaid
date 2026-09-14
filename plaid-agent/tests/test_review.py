@@ -105,6 +105,44 @@ def test_confirming_the_same_thing_twice_in_a_turn_stages_it_once():
     assert len(w2.ops) == 2
 
 
+def test_a_confirmation_by_ref_and_a_delete_of_its_word_refuse_each_other():
+    """A confirmation the model named by reference is a write to what it
+    names, so it refuses a certain delete of any of it in both orders, like
+    every other named write. It used to stage either way round, and the card
+    promised annotations the applied plan then trimmed away without a word."""
+    w = ws()
+    assert 'Planned' in call_tool(w, 'confirm', {'document': 'd1', 'refs': ['s1.w1']})
+    out = call_tool(w, 'delete_word', {'document': 'd1', 'refs': ['s1.w1']})
+    assert 'writes to something this plan deletes' in out and 'drop_planned' in out
+    assert [o['kind'] for o in w.ops] == ['confirm']
+    # The delete first, then the confirmation.
+    w2 = ws()
+    assert 'Planned' in call_tool(w2, 'delete_word', {'document': 'd1', 'refs': ['s1.w1']})
+    assert 'writes to something this plan deletes' in call_tool(
+        w2, 'confirm', {'document': 'd1', 'refs': ['s1.w1']})
+    assert [o['kind'] for o in w2.ops] == ['delete_word']
+
+
+def test_a_confirmation_of_a_document_leaves_out_what_the_plan_deletes():
+    """A confirmation of a whole document names nothing the model chose: it
+    stands for whatever there awaits review, so it stages beside a delete and
+    is resolved when the plan is applied, leaving out what the plan deletes.
+    The applied message says how many it left out."""
+    from plaid_agent.igt.plan import execute_plan
+    raw = contributed_document_raw()
+    layers = raw['text_layers'][0]['token_layers']
+    layers[1]['span_layers'][0]['spans'].append(
+        {'id': 'sp-g2', 'value': 'fish', 'tokens': ['w-2'],
+         'metadata': {'prov': 'inferred', 'provSource': 'service:x'}})
+    w = scan_ws(ExtClient(documents={'d1': raw}))
+    assert 'Planned' in call_tool(w, 'delete_word', {'document': 'd1', 'refs': ['s1.w1']})
+    assert '4 annotations will be marked verified' in call_tool(w, 'confirm', {'document': 'd1'})
+    counts = execute_plan(w.client, w.ops, source='s', label='l', project=w.project)
+    assert counts['confirmations'] == 1 and counts['deleted words'] == 1
+    assert counts['notes'] == ['Text 1: confirm 3 values, 1 link: 3 annotations left unconfirmed '
+                               '(deleted in this plan)']
+
+
 def test_prompt_says_a_contributors_approval_is_a_contribution():
     from plaid_agent.igt.prompt import build_system_prompt
     p = build_system_prompt(ws().project)

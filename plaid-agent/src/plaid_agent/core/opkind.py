@@ -71,6 +71,10 @@ class OpKind:
                   operation whose subject another operation in the same plan
                   deletes can be dropped instead of failing the batch. Never
                   the entity the operation itself removes.
+    ``writes``    ``op -> ids``: what it writes to that no key of its own names
+                  plainly, because the id is nested in a payload or because
+                  which ids count depends on how the operation was made. Read
+                  beside ``token_keys``, not instead of it.
     ``deletes``   ``op -> ids``: entities this operation deletes.
     ``deletes_tokens`` ``op -> ids``: the subset of those that are tokens,
                   which other operations address positionally.
@@ -99,6 +103,7 @@ class OpKind:
     at: Tuple[str, ...] = ()
     at_kind: str = ''
     token_keys: Tuple[str, ...] = ()
+    writes: Optional[Callable[[Dict[str, Any]], Iterable[str]]] = None
     deletes: Optional[Callable[[Dict[str, Any]], Iterable[str]]] = None
     deletes_tokens: Optional[Callable[[Dict[str, Any]], Iterable[str]]] = None
     certain: bool = True
@@ -245,10 +250,11 @@ def removed_ids(reg: Mapping[str, OpKind], ops: Iterable[Dict[str, Any]],
 
 
 def written_to(reg: Mapping[str, OpKind], op: Dict[str, Any]) -> set:
-    """The entities one operation writes to, by the keys its kind declares
-    (:attr:`OpKind.token_keys`). A key may hold one id or a list of them."""
+    """The entities one operation writes to: what the keys its kind declares
+    name (:attr:`OpKind.token_keys`), plus whatever :attr:`OpKind.writes` adds.
+    A key may hold one id or a list of them."""
     spec = reg.get(op.get('kind'))
-    if spec is None or not spec.token_keys:
+    if spec is None:
         return set()
     out: set = set()
     for key in spec.token_keys:
@@ -257,6 +263,8 @@ def written_to(reg: Mapping[str, OpKind], op: Dict[str, Any]) -> set:
             out.update(v for v in value if v)
         elif value:
             out.add(value)
+    if spec.writes:
+        out.update(_ids(spec.writes, op))
     return out
 
 

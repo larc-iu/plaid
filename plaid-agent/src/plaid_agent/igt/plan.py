@@ -55,7 +55,10 @@ wire's key recasing):
                   (append or retype: the region is re-verified against the live body, the edit goes through the
                    server's diffing text update so unchanged words keep their tokens, then sentence boundaries at
                    line starts and word tokens for untokenized text in the region are created from the real result)
-  confirm         {span_ids, token_ids, link_ids}   (provConfirmed on material awaiting review, any origin)
+  confirm         {span_ids, token_ids, link_ids, on: {id: token_id}, named}   (provConfirmed on material
+                  awaiting review, any origin. `on` says which token each span and link sits on. `named` marks
+                  one the model named by reference, which writes to what it names; without it the op covers
+                  whatever a document has awaiting review, and what the plan deletes is left out at approval)
   discard_analysis {word_id, link_ids, span_ids, morpheme_ids, reset_first_id|null, renumber: [{id, precedence}]}
   link_phrase     {token_ids: [word ids], item_id|null, new_entry_key|null, existing_link_id|null}
                   (a multi-word expression: one link over two or more words, and unlink with token_ids is one too)
@@ -75,6 +78,7 @@ from ..core import opkind as ok
 from ..core.opkind import OpKind
 from ..core.plan import (CLEAR_PROV, CONFIRM, PlanError, Stamps,  # noqa: F401 - PlanError is re-exported
                          TrackingBatcher, applying, created_id, expand_ops)
+from .vocab import parent_of
 
 # How a kind tags what it does to the shape of the text. RESHAPES is every
 # kind tagged with one of these, so the four tools that reason about "does
@@ -400,6 +404,31 @@ def _discard_analysis_deletes(op):
     return list(op.get('link_ids') or []) + list(op.get('span_ids') or [])
 
 
+# --- what a kind writes to that no key of its own names ------------------------------
+
+def _create_entry_writes(op):
+    """A new sense hangs off the entry it is a sense of, which is named inside
+    the metadata it carries rather than by a key of the op. A plan that deletes
+    that entry would leave the sense hanging off an id that resolves to
+    nothing."""
+    return [parent_of({'metadata': op.get('metadata') or {}})]
+
+
+def _confirm_writes(op):
+    """What a confirmation the model NAMED writes to: the ids it confirms, and
+    the tokens they sit on, since a span or a link whose token is deleted goes
+    with it without being named anywhere.
+
+    A confirmation over a scope (a whole document, several documents) writes to
+    nothing here: the model named none of this material, it stands for whatever
+    in that document awaits review, and what the plan deletes is left out of it
+    when the plan is applied."""
+    if not op.get('named'):
+        return []
+    return ([i for key in ('span_ids', 'token_ids', 'link_ids') for i in (op.get(key) or [])]
+            + list((op.get('on') or {}).values()))
+
+
 # --- the registry -------------------------------------------------------------------
 
 def _bulk_scope_summary(op, n):
@@ -445,12 +474,13 @@ KIND = ok.registry([
            at=('token_ids',), at_kind=TOKEN, token_keys=('token_ids', 'item_id'),
            deletes=lambda op: [op.get('existing_link_id')]),
     OpKind('create_entry', ('new lexicon entry', 'new lexicon entries'), required=('vocab_id', 'form', 'key'),
-           apply=_apply_create_entry),
+           apply=_apply_create_entry, writes=_create_entry_writes),
     OpKind('set_entry_field', ('entry field', 'entry fields'), required=('item_id', 'field'),
-           apply=_apply_set_entry_field, at=('item_id',), at_kind=ENTRY,
+           apply=_apply_set_entry_field, at=('item_id',), at_kind=ENTRY, token_keys=('item_id',),
            target=lambda op: ('entry_field', op.get('item_id'), op.get('field'))),
     OpKind('set_entry_metadata', ('entry structure change', 'entry structure changes'),
            required=('item_id', 'patch'), apply=_apply_set_entry_metadata, at=('item_id',), at_kind=ENTRY,
+           token_keys=('item_id',),
            # Keyed by the keys it writes, so renumbering a sense and promoting
            # an example on one entry are two changes rather than one replacing
            # the other.
@@ -468,12 +498,17 @@ KIND = ok.registry([
            target=lambda op: ('delete_entry', op.get('item_id')),
            deletes=lambda op: [op['item_id']] + list(op.get('links') or [])),
     OpKind('rename_entry', ('renamed entry', 'renamed entries'), required=('item_id', 'form'),
-           apply=_apply_rename_entry, at=('item_id',), at_kind=ENTRY,
+           apply=_apply_rename_entry, at=('item_id',), at_kind=ENTRY, token_keys=('item_id',),
            target=lambda op: ('rename_entry', op.get('item_id')),
            compact_each=('item_id', 'form')),
     OpKind('rename_document', ('renamed document', 'renamed documents'), required=('document_id', 'name'),
            apply=_apply_rename_document, target=lambda op: ('rename_document', op.get('document_id'))),
-    OpKind('confirm', ('confirmation', 'confirmations'), apply=_apply_confirm,
+    # A confirmation the model NAMED (refs) is a write to what it names, and a
+    # change deleting any of it is refused in both orders like every other
+    # named write. One over a scope names nothing of its own, so it keeps no
+    # token keys: it is resolved when the plan is applied, leaving out what the
+    # plan deletes, and the applied message says how many it left out.
+    OpKind('confirm', ('confirmation', 'confirmations'), apply=_apply_confirm, writes=_confirm_writes,
            # The exact material it confirms. Confirming the same thing twice
            # in a turn (the model retrying, two tools reaching the same
            # document) used to stage two ops, and the reply counted both, so
@@ -551,9 +586,6 @@ EXCLUSIVE_KINDS = ok.shaped(KIND, ok.EXCLUSIVE)
 # What a kind is called in the line the user approves, and in the count of
 # what was applied. One word per kind, so the two never disagree.
 SUMMARY_NAMES = ok.nouns(KIND)
-# Keys naming an entity an op WRITES TO, so an op whose subject another op in
-# the plan deletes is dropped rather than failing the batch.
-_TOKEN_KEYS = ok.token_keys(KIND)
 
 
 def validate_ops(ops: List[Dict[str, Any]]) -> None:
@@ -651,16 +683,17 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
     dead = _dead_tokens(ops)
     for op in ops:
         k = op.get('kind')
-        # A key naming something the plan deletes: the word a change sits on,
-        # the entry a link points at, the span a comment is anchored to.
-        named = [key for key in _TOKEN_KEYS.get(k, ()) if _names_doomed(op.get(key), doomed)]
-        if named:
+        # What this op writes to and the plan deletes: the word a change sits
+        # on, the entry a link points at, the span a comment is anchored to,
+        # the material a confirmation the model NAMED confirms.
+        writes = ok.written_to(KIND, op)
+        if writes & doomed:
             # A CERTAIN delete is refused as the plan is built, in both orders,
             # so a card never promises a change that will not happen. Reaching
             # here with one means the plan was built some way the staging guard
             # does not cover, and refusing the whole plan says so rather than
             # applying most of it.
-            if any(_names_doomed(op.get(key), certain) for key in named):
+            if writes & certain:
                 raise ValueError(f'{op.get("label") or k}: what it names is deleted or merged away by '
                                  'another change in this plan')
             # A text edit's word ids are a GUESS (the server diffs the text and
@@ -673,15 +706,24 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
             notes.append(f'dropped: {op.get("label") or "a morpheme change"} (that analysis is rewritten in this plan)')
             continue
         if k == 'confirm' and (doomed or dead):
+            # A confirmation over a scope stands for the material awaiting
+            # review in a document, which the model never named: what the plan
+            # deletes is left out of it here, and the note says how much.
             # `on` says which token each span and link sits on, because a span
             # whose token is deleted is gone without ever being named.
             on = op.get('on') or {}
-            op = {**op, **{key: [i for i in (op.get(key) or [])
-                                 if i not in doomed and on.get(i) not in dead]
-                           for key in ('span_ids', 'token_ids', 'link_ids')}}
+            kept = {key: [i for i in (op.get(key) or [])
+                          if i not in doomed and on.get(i) not in dead]
+                    for key in ('span_ids', 'token_ids', 'link_ids')}
+            left_out = sum(len(op.get(key) or []) - len(kept[key]) for key in kept)
+            op = {**op, **kept}
             if not any(op[key] for key in ('span_ids', 'token_ids', 'link_ids')):
                 notes.append(f'dropped: {op.get("label") or "a confirmation"} (everything it confirms is deleted in this plan)')
                 continue
+            if left_out:
+                notes.append(f'{op.get("label") or "a confirmation"}: {left_out} '
+                             f'annotation{"s" if left_out != 1 else ""} left unconfirmed '
+                             '(deleted in this plan)')
         if k == 'delete_entry':
             if op['item_id'] in seen_delete:
                 continue
@@ -701,14 +743,6 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
             respell_at[key] = len(out)
         out.append(op)
     return out, notes
-
-
-def _names_doomed(value, doomed: set) -> bool:
-    """Whether an op's key names something the plan deletes. The key holds one
-    id, or a list of them (a multi-word expression's members)."""
-    if isinstance(value, (list, tuple)):
-        return any(v in doomed for v in value)
-    return bool(value) and value in doomed
 
 
 def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, project=None,

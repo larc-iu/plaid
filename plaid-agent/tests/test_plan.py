@@ -85,9 +85,12 @@ def test_confirm_and_discard_analysis_ops():
            {'kind': 'discard_analysis', 'word_id': 'w-4', 'link_ids': ['l-d'], 'span_ids': ['sp-gone2'], 'morpheme_ids': ['m-4b'],
             'reset_first_id': 'm-4a', 'renumber': [{'id': 'm-4c', 'precedence': 2}], 'label': 'd'}]
     counts = execute_plan(c, ops, source='src', label='l')
-    # The confirmation of a span another op deletes is dropped, one whole op with a note.
+    # Neither confirmation names its material (they cover whatever awaits
+    # review), so what the plan deletes is left out of each: c1 keeps the rest
+    # and says how many it left, c2 had nothing else and is dropped whole.
     assert counts == {'confirmations': 3, 'field values': 1, 'discarded analyses': 1,
-                      'notes': ['dropped: c2 (everything it confirms is deleted in this plan)']}
+                      'notes': ['c1: 1 annotation left unconfirmed (deleted in this plan)',
+                                'dropped: c2 (everything it confirms is deleted in this plan)']}
     calls = [(r, m, a) for r, m, a, k in c.log]
     assert ('tokens', 'patch_metadata', ('m-x', {'provConfirmed': True})) in calls
     assert ('vocab_links', 'patch_metadata', ('l-a', {'provConfirmed': True})) in calls
@@ -225,7 +228,7 @@ def test_every_igt_table_is_the_registry_read_back():
 
     assert set(KINDS) == set(REQUIRED) == set(SUMMARY_NAMES) == set(plan.KIND)
     assert set(RESHAPES) <= set(KINDS)
-    assert set(plan._TOKEN_KEYS) <= set(KINDS)
+    assert set(opkind.token_keys(plan.KIND)) <= set(KINDS)
     # Every noun is a (singular, plural) pair, so the applied count and the
     # approval line cannot disagree about what a kind is called.
     assert all(isinstance(v, tuple) and len(v) == 2 and all(v) for v in SUMMARY_NAMES.values())
@@ -615,7 +618,9 @@ def test_op_keys_survive_the_wire_unchanged():
         ('create_document', {'name': 'Brand new', 'text': 'Sa cuma.'}),
         ('confirm', {'document': 'Text 1'}),
         ('rename_entry', {'entry_id': 'vi-gam', 'new_form': 'gam2'}),
-        ('delete_entry', {'entry_form': 'Ali'}),
+        # Not "Ali": a change above sets a field on it, and a plan that writes
+        # to an entry it also deletes refuses itself.
+        ('delete_entry', {'entry_id': 'vi-erg'}),
         ('merge_words', {'document': 'Text 1', 'refs': ['s1.w1', 's1.w2']}),
         ('merge_sentences', {'document': 'Text 1', 'ref': 's2'}),
         ('rename_document', {'document': 'Text 1', 'new_name': 'Text One'}),

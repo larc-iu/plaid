@@ -332,6 +332,31 @@ def test_a_sense_cannot_be_moved_under_its_own_descendant():
     assert not w.ops
 
 
+def test_a_change_to_an_entry_and_a_delete_of_it_refuse_each_other():
+    """Both orders. Delete first was refused by the lexicon tools themselves.
+    The other order staged clean, and the card promised a field, a headword or
+    a sense on an entry the same plan removes: the field and the rename are
+    written and thrown away, and the sense is left hanging off an id that
+    resolves to nothing.
+    """
+    for tool, args, kind in (('set_entry_field', {'entry_form': 'phika', 'field': 'gloss', 'value': 'boil'},
+                              'set_entry_field'),
+                             ('rename_entry', {'entry_form': 'phika', 'new_form': 'fika'}, 'rename_entry'),
+                             ('add_sense', {'entry_form': 'phika', 'fields': {'gloss': 'stew'}}, 'create_entry')):
+        w = dict_ws()
+        assert 'Planned 1 change' in call_tool(w, tool, args), tool
+        out = call_tool(w, 'delete_entry', {'entry_form': 'phika'})
+        assert 'writes to something this plan deletes' in out, tool
+        assert [o['kind'] for o in w.ops] == [kind], tool
+        # The delete first, then the change: refused before the registry is
+        # asked, because the lexicon a tool resolves a form against is the one
+        # the plan leaves behind, and that entry is not in it.
+        w2 = dict_ws()
+        assert 'Planned' in call_tool(w2, 'delete_entry', {'entry_form': 'phika'})
+        assert call_tool(w2, tool, args).startswith('Error'), tool
+        assert kind not in [o['kind'] for o in w2.ops], tool
+
+
 def test_structural_tools_compose_within_one_plan():
     w = dict_ws()
     call_tool(w, 'free_sense', {'entry_form': 'kwatha#1.1'})

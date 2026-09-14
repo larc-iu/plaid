@@ -619,7 +619,11 @@ def t_confirm(ws: Workspace, document: Optional[str] = None, refs=None, field: O
             pieces = _review_pieces(obj, f)
             if not _has_pieces(pieces):
                 continue
-            staged.append({'kind': 'confirm', **pieces,
+            # `named`: the model chose this material by reference, so it is a
+            # write to it, and a change in the same plan that deletes any of it
+            # is refused as the plan is built. A confirmation of a whole
+            # document names nothing and carries no such flag.
+            staged.append({'kind': 'confirm', **pieces, 'named': True,
                            'label': f'{ws.doc_label(doc.id)} {ref} "{_what(obj)[:40]}": confirm {_pieces_label(pieces)}'
                                     + (f' ({f.name})' if f else '')})
     else:

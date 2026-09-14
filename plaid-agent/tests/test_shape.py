@@ -129,8 +129,18 @@ def test_ops_on_tokens_a_shape_op_removes_refuse_the_plan_or_are_filtered():
     with pytest.raises(ValueError, match='deleted or merged away'):
         normalize_ops([{'kind': 'merge_words', 'word_id': 'w-2', 'other_ids': ['w-3'], 'morpheme_ids': [], 'spans': [], 'links': {}, 'label': ''},
                        {'kind': 'link', 'token_id': 'w-3', 'item_id': 'vi', 'label': ''}])
-    out, notes = normalize_ops(dead + [{'kind': 'confirm', 'span_ids': [], 'token_ids': ['m-4a', 'm-9'], 'link_ids': [], 'label': ''}])
-    assert out[1]['token_ids'] == ['m-9'] and notes == []
+    # A confirmation the model NAMED is a write to what it names, like any
+    # other: the plan refuses rather than quietly confirming less than the card
+    # promised.
+    with pytest.raises(ValueError, match='deleted or merged away'):
+        normalize_ops(dead + [{'kind': 'confirm', 'named': True, 'span_ids': [],
+                               'token_ids': ['m-4a', 'm-9'], 'link_ids': [], 'label': 'confirm s1.w4'}])
+    # One over a whole document named none of it, so the deleted morpheme is
+    # left out of it and the note says how many were left out.
+    out, notes = normalize_ops(dead + [{'kind': 'confirm', 'span_ids': [], 'token_ids': ['m-4a', 'm-9'],
+                                        'link_ids': [], 'label': 'Text 1: confirm 2 segmentations'}])
+    assert out[1]['token_ids'] == ['m-9']
+    assert notes == ['Text 1: confirm 2 segmentations: 1 annotation left unconfirmed (deleted in this plan)']
     # The survivor of a merge may still be written to.
     out, _ = normalize_ops([{'kind': 'merge_words', 'word_id': 'w-2', 'other_ids': ['w-3'], 'morpheme_ids': [], 'spans': [], 'links': {}, 'label': ''},
                             {'kind': 'set_span', 'layer_id': 'L', 'token_id': 'w-2', 'span_id': None, 'value': 'v', 'label': ''}])
@@ -407,7 +417,9 @@ def test_a_confirm_skips_what_rides_a_token_the_plan_rewrites():
     # Neither span is named by the analysis op, and both are gone once it
     # lands: sp-m1a is deleted outright, sp-m1b rides a morpheme that goes.
     # Patching either after the delete fails the whole atomic batch, after the
-    # user has approved it.
+    # user has approved it. This confirmation carries no `named` flag, so it
+    # stands for whatever in the document awaits review: what the plan deletes
+    # is left out of it here, and the applied message says how much.
     ops = [{'kind': 'set_analysis', 'word_id': 'w-1', 'text_id': 't', 'begin': 0, 'end': 3,
             'morpheme_layer_id': 'ml', 'morphemes': [{'form': 'x', 'fields': []}],
             'existing': [{'id': 'm-1a', 'span_ids': ['sp-m1a']},
@@ -419,7 +431,7 @@ def test_a_confirm_skips_what_rides_a_token_the_plan_rewrites():
     confirm = [o for o in out if o['kind'] == 'confirm'][0]
     assert confirm['span_ids'] == ['sp-ok']
     assert confirm['token_ids'] == ['w-9']
-    assert notes == []
+    assert notes == ['a confirmation: 3 annotations left unconfirmed (deleted in this plan)']
 
 
 def test_a_single_delete_never_repeats_what_a_bulk_already_took():

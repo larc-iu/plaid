@@ -284,10 +284,10 @@ def test_entry_gloss_singles_out_a_homograph():
     call_tool(w, 'rename_entry', {'entry_form': 'gam', 'entry_gloss': 'net', 'new_form': 'gham'})
     assert w.ops[-1] == {'kind': 'rename_entry', 'item_id': 'vi-gam2', 'form': 'gham', 'label': 'Rename entry "gam#2" (net) → "gham"'}
     merge = {'keep_form': 'gam', 'keep_gloss': 'fish', 'remove_form': 'gam', 'remove_gloss': 'net'}
-    # The link planned above points at the entry the merge removes, so the two
-    # refuse each other until one of them is dropped.
+    # The link and the rename planned above both write to the entry the merge
+    # removes, so the merge refuses until they are dropped.
     assert 'writes to something this plan deletes' in call_tool(w, 'merge_entries', merge)
-    call_tool(w, 'drop_planned', {'indexes': [1]})
+    call_tool(w, 'drop_planned', {'indexes': [1, 2]})
     call_tool(w, 'merge_entries', merge)
     assert w.ops[-1]['kind'] == 'merge_entries' and (w.ops[-1]['keep_id'], w.ops[-1]['remove_id']) == ('vi-gam', 'vi-gam2')
     assert 'No lexicon entry "gam" with a field valued "boat"' in call_tool(w, 'delete_entry', {'entry_form': 'gam', 'entry_gloss': 'boat'})
