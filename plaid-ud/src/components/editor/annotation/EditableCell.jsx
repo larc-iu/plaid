@@ -9,7 +9,7 @@ import {
   provMark,
 } from '../../../utils/provenanceUi.js';
 import { NO_OPTIONS, tabTooSoon } from './cellInput.js';
-import { useEditorSession } from './editorSession.js';
+import { useEditorSession, controlledField } from './editorSession.js';
 
 // Editable cell component for annotation fields
 export const EditableCell = React.memo(
@@ -27,15 +27,13 @@ export const EditableCell = React.memo(
     onPrecedent,
   }) => {
     // Everything below is the same for every cell in the document, so it comes
-    // from the session rather than down four levels of props. The three
-    // per-field lookups are keyed by the field's own name, which is how
-    // layerInfo shapes them: a field with no controlled list of its own (LEMMA)
-    // has no entry in any of them, and the cell stays a plain input.
+    // from the session rather than down four levels of props. Which fields have
+    // a controlled list at all is `CONTROLLED_FIELDS`, not whichever keys the
+    // project's config happens to carry: a cell on a field outside it (LEMMA)
+    // stays a plain input whatever the config says.
     const session = useEditorSession();
     const { isReadOnly, onAnnotationUpdate: onUpdate } = session;
-    const suggestions = session.vocab?.[field];
-    const validate = session.validators?.[field];
-    const descriptions = session.descriptions?.[field];
+    const { suggestions, validate, descriptions } = controlledField(session, field);
     // How this cell's value came to be there, from the same metadata the
     // tooltip below reads.
     const mark = provMark(provMeta);

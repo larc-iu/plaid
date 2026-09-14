@@ -24,8 +24,11 @@ export const TokenColumn = React.memo(
     // Alt+Down asks what the project has said before about a word like this
     // one. Bound to THIS word once: an arrow function made in the render would
     // be a new prop every time, and the cells below are memoized on theirs.
-    // LEMMA and XPOS are the two fields with a precedent question of their own,
-    // so UPOS is given no gesture rather than one that answers nothing.
+    // LEMMA, XPOS and FEATS each have a precedent question of their own
+    // (domain/precedent.js). UPOS has none, so it is given no gesture rather
+    // than one that answers nothing. Of the three, only the two plain cells
+    // offer it: the FEATS chip input holds a list of values rather than one,
+    // and has nowhere to put a list of whole feature sets.
     const askPrecedent = useMemo(
       () => (onPrecedent ? (field) => onPrecedent(field, data) : undefined),
       [onPrecedent, data],
