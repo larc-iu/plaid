@@ -26,6 +26,13 @@ export default defineConfig({
       '@larc-iu/plaid-client': fileURLToPath(
         new URL('../plaid-client-js/src/index.js', import.meta.url),
       ),
+      // The package's tests run here because this app has what they need, and
+      // Tailwind's own resolver is one of those things: `plaidUiDeps` answers
+      // the bare imports of files under `plaid-ui/src`, and the preset's test
+      // sits beside the preset, at the package root.
+      'tailwindcss/resolveConfig.js': fileURLToPath(
+        new URL('./node_modules/tailwindcss/resolveConfig.js', import.meta.url),
+      ),
     },
   },
   test: {
@@ -34,8 +41,14 @@ export default defineConfig({
     globals: true,
     // The shared package's tests run here, not under every app: they need a
     // React and a happy-dom, and three runs would learn the same thing three
-    // times. See ../plaid-ui/README.md.
-    include: ['src/**/*.{test,spec}.{js,jsx}', '../plaid-ui/src/**/*.{test,spec}.{js,jsx}'],
+    // times. See ../plaid-ui/README.md. Its ROOT is listed as well as its src,
+    // because what the package exports from there (the Tailwind preset, the
+    // vite plugin) is tested beside the file it guards.
+    include: [
+      'src/**/*.{test,spec}.{js,jsx}',
+      '../plaid-ui/src/**/*.{test,spec}.{js,jsx}',
+      '../plaid-ui/*.{test,spec}.{js,jsx}',
+    ],
     exclude: ['node_modules', 'dist', 'e2e'],
   },
 });

@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import resolveConfig from 'tailwindcss/resolveConfig.js';
 
-import igtConfig from '../../../plaid-igt/tailwind.config.js';
-import udConfig from '../../../plaid-ud/tailwind.config.js';
-import { PLAID_UI_CONTENT } from '../../tailwind.preset.js';
+import igtConfig from '../plaid-igt/tailwind.config.js';
+import udConfig from '../plaid-ud/tailwind.config.js';
+import { PLAID_UI_CONTENT } from './tailwind.preset.js';
 
 // What every app that mounts plaid-ui has to end up with once its Tailwind
 // config is resolved. Checked on the RESOLVED config, because that is where the
@@ -16,8 +16,9 @@ import { PLAID_UI_CONTENT } from '../../tailwind.preset.js';
 // renders unstyled in the parts it does not own.
 //
 // This reads BOTH apps, since the preset is shared and either can break it,
-// which is why it lives in this package rather than in one of them. It runs
-// under plaid-igt's vitest, like every test here.
+// which is why it lives in this package rather than in one of them. It sits
+// beside the preset it guards, at the package root, and runs under plaid-igt's
+// vitest like every test here.
 //
 // plaid-dict is deliberately not here: it is a toolchain generation behind and
 // still carries its own copy.
