@@ -1,26 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { StrictMode } from 'react';
-import { renderComponent } from '@ui/test/renderComponent.jsx';
+import { renderComponent } from '../test/renderComponent.jsx';
 
-// The repair itself is IgtDocument's, so `doc.reconcileOnOpen` is the seam.
+// The repair itself is the document's, so `doc.reconcileOnOpen` is the seam.
 // What is under test is the GATE around it: it is up before the pass, it comes
 // down however the pass ends, it never runs over a snapshot, and it runs once
 // per document. Every one of those has a failure mode that looks like nothing:
 // a gate that never comes down is a document stuck on a spinner, and a pass
 // over a snapshot writes what was true THEN into the live document.
-vi.mock('@/utils/feedback', () => ({
-  notifyError: vi.fn(),
-  humanizeError: (e, fallback) => e?.message || fallback,
-}));
-vi.mock('@ui/lib/integrityToast.js', () => ({
-  reportIntegrityFindings: vi.fn(),
-  dismissIntegrityFindings: vi.fn(),
-}));
+vi.mock('../lib/notify.js', () => ({ notifyError: vi.fn() }));
+vi.mock('../lib/integrityToast.js', () => ({ reportIntegrityFindings: vi.fn() }));
 
-const { notifyError } = await import('@/utils/feedback');
-const { reportIntegrityFindings, dismissIntegrityFindings } = await import(
-  '@ui/lib/integrityToast.js'
-);
+const { notifyError } = await import('../lib/notify.js');
+const { reportIntegrityFindings } = await import('../lib/integrityToast.js');
 const { useReconcileOnOpen } = await import('./useReconcileOnOpen.js');
 
 let view;
@@ -37,10 +29,13 @@ const settle = () =>
     await Promise.resolve();
   });
 
+// A stand-in document: the repair resolves to `result`, and the description
+// of a repair is the document's own line, as it is on the real ones.
 const makeDoc = (result = {}, asOf = null) => ({
   id: 'doc-1',
   asOf,
   reconcileOnOpen: vi.fn(() => Promise.resolve(result)),
+  describeReconcile: ({ deleted = 0 } = {}) => (deleted ? `Reconcile: removed ${deleted}` : null),
 });
 
 // A document whose repair the test finishes when it chooses, so two passes can
@@ -57,17 +52,17 @@ const pendingDoc = (id) => {
             finish = resolve;
           }),
       ),
+      describeReconcile: () => null,
     },
     finish: (result) => finish(result),
   };
 };
 
-const base = { documentId: 'doc-1', asOf: null, canWrite: true };
+const base = { asOf: null, canWrite: true };
 
 beforeEach(() => {
   notifyError.mockReset();
   reportIntegrityFindings.mockReset();
-  dismissIntegrityFindings.mockReset();
   vi.spyOn(console, 'info').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -149,11 +144,11 @@ describe('the reconcile gate', () => {
   });
 
   it('names the cause when a repair fails', async () => {
-    const doc = makeDoc({ error: new Error('request timed out') });
+    const doc = makeDoc({ error: new Error('the span layer is gone') });
     view = await renderComponent(<Probe {...base} doc={doc} />);
     await settle();
     expect(notifyError).toHaveBeenCalledWith(
-      expect.stringContaining('request timed out'),
+      expect.stringContaining('the span layer is gone'),
       'Repair failed',
     );
     // A failure does not also report findings from the same pass.
@@ -190,7 +185,7 @@ describe('the reconcile gate', () => {
     const first = pendingDoc('doc-1');
     const second = pendingDoc('doc-2');
     view = await renderComponent(<Probe {...base} doc={first.doc} />);
-    await view.rerender(<Probe {...base} documentId="doc-2" doc={second.doc} />);
+    await view.rerender(<Probe {...base} doc={second.doc} />);
 
     // The first document's repair lands after the reader has moved on.
     await view.step(() => first.finish({ findings: [{ severity: 'error', code: 'stale' }] }));
@@ -231,12 +226,29 @@ describe('the reconcile gate', () => {
     await view.unmount();
   });
 
-  it('drops the sticky toast when the reader leaves the document', async () => {
-    const doc = makeDoc();
-    view = await renderComponent(<Probe {...base} doc={doc} />);
+  it('calls onRepaired once the pass has ended and before the gate comes down', async () => {
+    const seen = [];
+    const { doc, finish } = pendingDoc('doc-1');
+    const onRepaired = () => seen.push(api.reconciling);
+    view = await renderComponent(<Probe {...base} doc={doc} onRepaired={onRepaired} />);
+    expect(seen).toEqual([]);
+
+    await view.step(() => finish({}));
     await settle();
-    expect(dismissIntegrityFindings).not.toHaveBeenCalled();
+    // Called while the gate was still up: strict mode is on before any edit.
+    expect(seen).toEqual([true]);
+    expect(api.reconciling).toBe(false);
     await view.unmount();
-    expect(dismissIntegrityFindings).toHaveBeenCalled();
+  });
+
+  it('calls onRepaired on a path with nothing to repair', async () => {
+    const onRepaired = vi.fn();
+    view = await renderComponent(
+      <Probe {...base} doc={makeDoc()} canWrite={false} onRepaired={onRepaired} />,
+    );
+    await settle();
+    expect(onRepaired).toHaveBeenCalledTimes(1);
+    expect(api.reconciling).toBe(false);
+    await view.unmount();
   });
 });

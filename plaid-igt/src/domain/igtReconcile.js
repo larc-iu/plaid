@@ -14,8 +14,6 @@ import { fieldNameLang } from './fieldNames.js';
 const extentKey = (t) => `${t.begin}:${t.end}`;
 
 /** The label a reconcile pass that wrote nothing keeps. */
-export const RECONCILE_LABEL = 'Reconcile layers on open';
-
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 /**

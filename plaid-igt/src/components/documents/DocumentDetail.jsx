@@ -32,7 +32,8 @@ import { useResumedRun } from '@ui/hooks/useResumedRun.js';
 import { RunBanner } from '@ui/components/services/RunBanner.jsx';
 import { useHistoryView } from '@ui/hooks/useHistoryView.js';
 import { HistoricalBanner } from '@ui/components/shared/HistoricalBanner.jsx';
-import { useReconcileOnOpen } from './hooks/useReconcileOnOpen.js';
+import { useReconcileOnOpen } from '@ui/hooks/useReconcileOnOpen.js';
+import { dismissIntegrityFindings } from '@ui/lib/integrityToast.js';
 import { useSentenceFocus } from './hooks/useSentenceFocus.js';
 import { useDocumentTabs } from './hooks/useDocumentTabs.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
@@ -241,12 +242,10 @@ const DocumentEditor = () => {
 
   // The initial repair, and the gate the editor holds behind a spinner while it
   // runs.
-  const reconciling = useReconcileOnOpen({
-    doc,
-    documentId,
-    asOf,
-    canWrite: permissions?.canWrite,
-  });
+  const reconciling = useReconcileOnOpen({ doc, asOf, canWrite: permissions?.canWrite });
+  // The integrity notice is sticky so it is not missed, but it is about THIS
+  // document: it goes when the reader leaves for another document or page.
+  useEffect(() => () => dismissIntegrityFindings(), [documentId]);
   // The gate is up from the first render, but a document with nothing to heal
   // plans entirely locally and lowers it again in a microtask, so the spinner
   // is on screen for one paint on every open. Hold the tabs back on the raw

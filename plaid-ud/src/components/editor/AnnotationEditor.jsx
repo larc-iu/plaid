@@ -21,8 +21,7 @@ import { TOKEN_ROLE_WORDS } from '../../domain/restoreSummary.js';
 import { EditorLegend } from './annotation/EditorLegend.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 // Raised here, dismissed by DocumentEditorShell: the notice outlives this tab.
-import { reportIntegrityFindings } from '@ui/lib/integrityToast.js';
-import { notifyError } from '../../utils/feedback.jsx';
+import { useReconcileOnOpen } from '@ui/hooks/useReconcileOnOpen.js';
 import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { readMetadataFields } from '../../utils/udMetadata.js';
@@ -50,27 +49,6 @@ const loadVisibleFields = () => {
     /* ignore malformed/absent value */
   }
   return DEFAULT_VISIBLE_FIELDS;
-};
-
-// A failed repair, said in a way the user can act on. "Could not auto-repair"
-// with no reason is what a production failure looks like from the outside, and
-// the usual cause on a large document is a timeout on the full-body reload
-// rather than anything about the document itself.
-const reconcileFailureReason = (err) => {
-  if (!err) return null;
-  if (/timed out/i.test(err.message || '')) return 'the request timed out';
-  if (err.status === 0) return 'the server could not be reached';
-  if (err.status) return `the server returned HTTP ${err.status}`;
-  return err.message || null;
-};
-
-const reportReconcileFailure = (err) => {
-  console.error('Reconcile-on-open failed:', err);
-  const reason = reconcileFailureReason(err);
-  notifyError(
-    `Could not auto-repair this document. Try reloading.${reason ? ` (${reason})` : ''}`,
-    'Repair failed',
-  );
 };
 
 export const AnnotationEditor = () => {
@@ -111,6 +89,7 @@ export const AnnotationEditor = () => {
     selectedEntry,
     selectEntry,
     isViewingHistorical,
+    asOf,
     snapshot,
     loadingSnapshot,
     auditEntries,
@@ -121,17 +100,19 @@ export const AnnotationEditor = () => {
     handleRestored,
   } = useHistoryView({ documentId, client: getClient(), doc, reload, onExpired: logout });
 
-  // Reconcile-on-open is a WRITE (it can seed syntactic-words + delete
-  // relations), so it must run at most once per document — otherwise StrictMode's
-  // double-invoke of the mount effect would seed duplicates. Track the last
-  // document we reconciled; navigation to a new doc re-arms it. `reconcileRef`
-  // holds the in-flight promise so BOTH StrictMode passes await the same repair
-  // before entering strict mode.
-  const reconciledDocRef = useRef(null);
-  const reconcileRef = useRef(null);
-  // Gates the grid until the repair has finished and strict mode is on, so no
-  // edit can land un-OCC-guarded in the window where a repair is still writing.
-  const [reconciling, setReconciling] = useState(true);
+  // The initial repair, and the gate the grid holds behind a spinner while it
+  // runs. Strict mode OCC-guards annotation edits and is entered only AFTER the
+  // repair's own writes have landed, before the grid opens.
+  const reconciling = useReconcileOnOpen({
+    doc,
+    asOf,
+    canWrite: canEditProject(project, user),
+    onRepaired: () => getClient()?.enterStrictMode(documentId),
+  });
+  // Strict mode is client-GLOBAL, so it is exited on the way out of this tab,
+  // or it leaks onto unrelated writes (tokenizing in the Text Editor),
+  // attaching a stale document-version and triggering spurious 409s.
+  useEffect(() => () => getClient()?.exitStrictMode(), [documentId, getClient]);
 
   // Which annotation rows are expanded (document-wide). Persisted to localStorage.
   const [visibleFields, setVisibleFields] = useState(loadVisibleFields);
@@ -147,104 +128,6 @@ export const AnnotationEditor = () => {
   }, []);
 
   useDocumentTitle('Annotate', doc?.name, project?.name);
-
-  // Reconcile-on-open: heal UD invariants another app may have broken while
-  // this editor was closed (e.g. a sentence split that left a dependency
-  // relation crossing a boundary).
-  //
-  // Silent on success, loud on failure. A repair that worked leaves a correct
-  // document and nothing for the user to do, so it goes to the console only —
-  // a toast on every open just trains people to dismiss toasts. A repair that
-  // FAILED, and an invariant we could not heal at all (`findings`), both still
-  // interrupt: those are the cases where the document is still wrong.
-  const runReconcile = useCallback(async () => {
-    try {
-      const {
-        deletedRelations,
-        createdSyntacticWords,
-        deletedOrphans,
-        deletedAnnotatedOrphans,
-        dedupedSpans,
-        findings,
-        error,
-      } = await doc.reconcileOnOpen();
-      if (error) {
-        reportReconcileFailure(error);
-        return;
-      }
-      const parts = [];
-      if (createdSyntacticWords > 0) {
-        parts.push(
-          `added ${createdSyntacticWords} word${createdSyntacticWords === 1 ? '' : 's'} ` +
-            'to the annotation grid',
-        );
-      }
-      if (deletedOrphans > 0) {
-        let s =
-          `removed ${deletedOrphans} stray word${deletedOrphans === 1 ? '' : 's'} ` +
-          'that no longer matched the text';
-        if (deletedAnnotatedOrphans > 0) {
-          s += ` (${deletedAnnotatedOrphans} had annotations, recoverable via document history)`;
-        }
-        parts.push(s);
-      }
-      if (dedupedSpans > 0) {
-        parts.push(
-          `merged ${dedupedSpans} duplicate annotation${dedupedSpans === 1 ? '' : 's'} ` +
-            "(values joined with ' | ', review them)",
-        );
-      }
-      if (deletedRelations > 0) {
-        parts.push(
-          `removed ${deletedRelations} dependency relation${deletedRelations === 1 ? '' : 's'} that ` +
-            'crossed a sentence boundary',
-        );
-      }
-      if (parts.length) {
-        console.info(`Reconcile-on-open: ${parts.join('; ')}`);
-      }
-      // What the repair could NOT heal, which is why it interrupts: a repair
-      // that worked says nothing. The notice is the shared one, so it reads the
-      // same here as in plaid-igt and one document replaces its own.
-      reportIntegrityFindings(findings, { documentId: doc.id });
-    } catch (e) {
-      reportReconcileFailure(e);
-    }
-  }, [doc]);
-
-  useEffect(() => {
-    let cancelled = false;
-    // Arm the repair once per document. Setting the ref synchronously here (not
-    // inside the async body) closes the StrictMode race where both effect runs
-    // pass the check before either has marked the doc reconciled — both then
-    // await the SAME promise below rather than repairing twice.
-    if (reconciledDocRef.current !== documentId) {
-      reconciledDocRef.current = documentId;
-      reconcileRef.current = canEditProject(project, user) ? runReconcile() : null;
-    }
-    const pending = reconcileRef.current;
-
-    (async () => {
-      if (pending) await pending;
-      if (cancelled) return;
-      // Strict mode OCC-guards annotation edits, and must be entered only AFTER
-      // the repair's own writes have landed.
-      const client = getClient();
-      if (client) client.enterStrictMode(documentId);
-      setReconciling(false);
-    })();
-
-    // Strict mode is client-GLOBAL, so it must be exited when we leave this
-    // tab — otherwise it leaks onto unrelated writes (e.g. tokenizing in the
-    // Text Editor), attaching a stale document-version and triggering spurious
-    // 409s.
-    return () => {
-      cancelled = true;
-      const client = getClient();
-      if (client) client.exitStrictMode();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [documentId, doc]);
 
   // Lock the shell's tab strip for as long as the body is a spinner. The gate
   // below keeps edits out of THIS tab while a repair is writing; without this

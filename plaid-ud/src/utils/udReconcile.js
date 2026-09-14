@@ -21,6 +21,38 @@
  * @param {object} layerInfo the result of getUdLayerInfo (bound layers)
  * @returns {string[]} relation ids to delete
  */
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+// The audit label for a reconcile pass, naming what it actually changed, and
+// the console's record of it. Terse on purpose: a row in a drawer. Null when
+// nothing was written, which leaves the pass its plain label and, since a
+// group is created lazily by its first write, usually no entry at all.
+export const describeReconcile = ({
+  createdSyntacticWords = 0,
+  deletedOrphans = 0,
+  deletedAnnotatedOrphans = 0,
+  dedupedSpans = 0,
+  deletedRelations = 0,
+} = {}) => {
+  const parts = [];
+  if (createdSyntacticWords)
+    parts.push(`added ${plural(createdSyntacticWords, 'word', 'words')} to the annotation grid`);
+  if (deletedOrphans) {
+    let s = `removed ${plural(deletedOrphans, 'stray word', 'stray words')}`;
+    if (deletedAnnotatedOrphans)
+      s += ` (${deletedAnnotatedOrphans} annotated, recoverable via document history)`;
+    parts.push(s);
+  }
+  if (dedupedSpans)
+    parts.push(`merged ${plural(dedupedSpans, 'duplicate annotation', 'duplicate annotations')}`);
+  if (deletedRelations)
+    parts.push(
+      `removed ${plural(deletedRelations, 'relation', 'relations')} crossing a sentence boundary`,
+    );
+  if (!parts.length) return null;
+  return `Reconcile: ${parts.join(', ')}`;
+};
+
 export const interSententialRelationIds = (layerInfo) => {
   const sentenceTokens = layerInfo?.sentenceTokenLayer?.tokens || [];
   const morphemeTokens = layerInfo?.morphemeTokenLayer?.tokens || [];

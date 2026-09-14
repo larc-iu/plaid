@@ -17,8 +17,7 @@ import {
   planVocabLinkDedup,
   applyVocabLinkDedup,
   planMorphTypeSync,
-  describeReconcile,
-  RECONCILE_LABEL,
+  describeReconcile as describeIgtReconcile,
   planPreserveOnSplit,
   planFieldLangBackfill,
   planVocabFieldLangBackfill,
@@ -329,29 +328,8 @@ export class IgtDocument extends DocumentModel {
   // `describeReconcile` to name the repair that ran (no entry at all when
   // nothing needed healing, since groups are created lazily by the first
   // write).
-  async reconcileOnOpen() {
-    // Concurrent callers (React StrictMode's dev double-invoke, a quick tab
-    // switch) share ONE in-flight pass and its results; a bare single-flight
-    // gate handed the second caller an empty result, which is what the UI
-    // reported, so integrity findings were never toasted in dev.
-    if (this._reconcilePromise) return this._reconcilePromise;
-    this._reconcilePromise = this._client
-      .withOperation(RECONCILE_LABEL, async (setMessage) => {
-        const result = await this._reconcileOnOpenImpl();
-        // Name the repair that ran, so the History drawer says what changed
-        // rather than only that something did. Not after a failure: the pass
-        // may have written half of what the label would claim. A pass that
-        // wrote nothing creates no group, so there is nothing to relabel.
-        if (!result.error) {
-          const refined = describeReconcile(result);
-          if (refined) setMessage(refined);
-        }
-        return result;
-      })
-      .finally(() => {
-        this._reconcilePromise = null;
-      });
-    return this._reconcilePromise;
+  describeReconcile(result) {
+    return describeIgtReconcile(result);
   }
 
   // Declared on the layer so a split in ANY app preserves it, including one
@@ -395,7 +373,7 @@ export class IgtDocument extends DocumentModel {
     }
   }
 
-  async _reconcileOnOpenImpl() {
+  async _reconcile() {
     const ZERO = {
       deleted: 0,
       deletedAnnotatedOrphans: 0,

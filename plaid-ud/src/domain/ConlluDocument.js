@@ -22,6 +22,7 @@ import {
   orphanSyntacticWords,
   planSpanDedup,
   planPreserveOnSplit,
+  describeReconcile as describeUdReconcile,
 } from '../utils/udReconcile.js';
 import { validateConlluDocument } from './validate.js';
 import { importConlluDocument } from './conlluImport.js';
@@ -426,10 +427,8 @@ export class ConlluDocument extends DocumentModel {
   // Every heal write folds under one "Reconcile layers on open" audit entry
   // (no entry at all when nothing needed healing — groups are created lazily
   // by the first write).
-  async reconcileOnOpen() {
-    return this._client.withOperation('Reconcile layers on open', () =>
-      this._reconcileOnOpenImpl(),
-    );
+  describeReconcile(result) {
+    return describeUdReconcile(result);
   }
 
   // Maintainers only, since it is layer config; a failure is not worth
@@ -449,7 +448,7 @@ export class ConlluDocument extends DocumentModel {
     }
   }
 
-  async _reconcileOnOpenImpl() {
+  async _reconcile() {
     const ZERO = {
       deletedRelations: 0,
       createdSyntacticWords: 0,

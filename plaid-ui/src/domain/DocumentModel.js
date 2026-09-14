@@ -10,6 +10,10 @@
 
 const cloneRaw = (raw) => JSON.parse(JSON.stringify(raw));
 
+// The audit label every heal write of a reconcile pass folds under, until the
+// pass names what it changed (see `describeReconcile`).
+const RECONCILE_LABEL = 'Reconcile layers on open';
+
 // "Failed to create relation" is the error label; "Create relation" is the
 // operation the audit log shows for it.
 function operationLabel(errorLabel) {
@@ -237,5 +241,52 @@ export class DocumentModel {
     void raw;
     void asOf;
     throw new Error(`${this.constructor.name} does not build snapshots`);
+  }
+
+  // ----- reconcile on open -----
+
+  // Heal what another app may have left in the shared substrate, once, when
+  // the document opens (useReconcileOnOpen holds the editor behind a gate while
+  // it runs). The repair is the subclass's `_reconcile`, which resolves to a
+  // tally carrying `findings` (what it could not heal) and `error` (a repair
+  // that failed partway). Every heal write folds under ONE audit entry,
+  // relabelled by `describeReconcile` to name the repair that ran, and never
+  // after a failure, since the pass may have written half of what the label
+  // would claim. A pass that wrote nothing creates no group. Deliberately not
+  // `_withSaving`: a failed heal must not reload and revert the freshly loaded
+  // document.
+  //
+  // Concurrent callers (StrictMode's double invoke, a quick tab switch) share
+  // ONE in-flight pass and its result. A bare single-flight gate handed the
+  // second caller an empty result, which is what the screen reported, so
+  // integrity findings were never shown in dev.
+  async reconcileOnOpen() {
+    if (this._reconcilePromise) return this._reconcilePromise;
+    this._reconcilePromise = this._client
+      .withOperation(RECONCILE_LABEL, async (setMessage) => {
+        const result = await this._reconcile();
+        if (!result.error) {
+          const refined = this.describeReconcile(result);
+          if (refined) setMessage(refined);
+        }
+        return result;
+      })
+      .finally(() => {
+        this._reconcilePromise = null;
+      });
+    return this._reconcilePromise;
+  }
+
+  // The repair itself: what this document's invariants are and how to heal
+  // them. Resolves to the tally `reconcileOnOpen` describes.
+  async _reconcile() {
+    return { findings: [] };
+  }
+
+  // One line naming what a repair changed, or null when it wrote nothing. The
+  // audit entry's label, and the console's record of the pass.
+  describeReconcile(result) {
+    void result;
+    return null;
   }
 }
