@@ -194,11 +194,11 @@
                ;; existing lock rather than tripping over itself.
                _ (when (nil? @instance-lock)
                    (reset! instance-lock (acquire-instance-lock! db-path)))
-               ;; Pool/PRAGMA tuning under :plaid.sql.common/pool — see
+               ;; Pool/PRAGMA tuning under :plaid.server.sql/pool — see
                ;; `psd/default-pool-config` for keys + defaults. Absent
                ;; config falls through to the defaults; passing nil is
                ;; explicitly supported by `build-datasource`.
-               pool-cfg (:plaid.sql.common/pool config)
+               pool-cfg (:plaid.server.sql/pool config)
                ;; Wire the slow-query threshold from config — promised by the
                ;; docstring on `psc/*slow-query-threshold-ms*` but previously
                ;; never read. Defaults to the var's existing 500ms default.

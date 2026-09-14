@@ -80,8 +80,8 @@
   (let [f (temp-toml "[database]\nmax_pool_size = 20\njournal_mode = \"DELETE\"\n")]
     (try
       (let [cfg (config/load-config! {:config-path (.getAbsolutePath f) :explicit? true})]
-        (is (= 20 (get-in cfg [:plaid.sql.common/pool :max-pool-size])))
-        (is (= "DELETE" (get-in cfg [:plaid.sql.common/pool :journal-mode]))))
+        (is (= 20 (get-in cfg [:plaid.server.sql/pool :max-pool-size])))
+        (is (= "DELETE" (get-in cfg [:plaid.server.sql/pool :journal-mode]))))
       (finally (.delete f)))))
 
 (deftest missing-explicit-path-throws

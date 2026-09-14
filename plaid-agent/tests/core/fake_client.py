@@ -16,6 +16,7 @@ import fnmatch
 from contextlib import contextmanager
 
 from plaid_client.http import PlaidAPIError
+from plaid_agent.core.conversation import now_iso
 
 
 class Recorder:
@@ -143,7 +144,7 @@ class BaseFakeClient:
 
         def put(self, user_id, key, value):
             self.store[(user_id, key)] = copy.deepcopy(value)
-            return {'key': key}
+            return {'key': key, 'updated_at': now_iso()}
 
         def delete(self, user_id, key):
             self.store.pop((user_id, key), None)
