@@ -281,7 +281,7 @@ def test_a_whole_document_review_cannot_join_a_reshape(ws, tool):
     token before patching the span."""
     run(ws, 'set_words', document='Viaje', ref='s1.w4', forms=['ma', 'r'])
     out = run(ws, tool, document='Viaje')
-    assert 'reshapes the token' in out, out
+    assert 'changes every matching word' in out, out
     assert not any(op.get('kind') in ('confirm', 'set_span') for op in ws.ops)
 
 
@@ -295,11 +295,12 @@ def test_a_whole_document_review_cannot_join_a_moved_boundary(ws, tool):
 # --- the guards, from both sides -----------------------------------------------
 
 def test_a_reshape_will_not_join_a_plan_that_annotates_the_token_it_deletes(ws):
-    """`_not_being_reshaped` refused annotate-AFTER-reshape. The other order was
-    staged, shown on the card, approved, and only then refused by validate_ops."""
+    """Annotate-then-reshape was staged, shown on the card, approved, and only
+    then refused by validate_ops. Both orders are the certain-delete funnel's
+    now, and UD supplies the wording."""
     run(ws, 'set_field', document='Viaje', refs=['s1.w2'], field='upos', value='ADP')
     out = run(ws, 'set_words', document='Viaje', ref='s1.w2', forms=['a', 'el'])
-    assert 'already annotates a word of this token' in out, out
+    assert 'writes to one of its words' in out, out
     assert not any(op.get('kind') == 'set_words' for op in ws.ops)
 
 

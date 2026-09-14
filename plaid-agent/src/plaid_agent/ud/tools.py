@@ -83,6 +83,45 @@ class Workspace(BaseWorkspace):
     def guard_op(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
         _no_restore_planned(self)
         self.refuse_scope_clash(op, replacing=replacing)
+        self.refuse_reshape_clash(op, replacing=replacing)
+
+    def clash_message(self, victim: Dict[str, Any], killer: Optional[Dict[str, Any]]) -> str:
+        """Reshaping a token deletes and remakes its words, so the words it
+        takes with it are worth naming: the registry's own wording says only
+        that one change writes to what another deletes."""
+        if (killer or {}).get('kind') in RESHAPES_TOKEN:
+            return ('This plan both reshapes a token and writes to one of its words, and the '
+                    'reshape deletes that word. Keep one of the two (plan_status, drop_planned), '
+                    'or plan them in separate turns.')
+        return super().clash_message(victim, killer)
+
+    def refuse_reshape_clash(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
+        """A token reshape against a change that names no word, which is what
+        the certain-delete funnel matches on: a second reshape of the same
+        token, and a scope, which reaches every word of its document without
+        naming one. Both orders, with `validate_ops` as the backstop.
+
+        A reshape against a change that DOES name a word is the funnel's, and
+        saying it here as well would be one rule with two writers.
+        """
+        kind = op.get('kind')
+        if kind not in RESHAPES_TOKEN and kind not in SCOPE_KINDS:
+            return
+        planned = [o for i, o in enumerate(self.ops) if i != replacing]
+        if kind in RESHAPES_TOKEN:
+            words = set(op.get('existing_word_ids') or [])
+            if any(prev.get('kind') in RESHAPES_TOKEN
+                   and words & set(prev.get('existing_word_ids') or []) for prev in planned):
+                raise ToolError('This plan already reshapes this token. Keep one of the two '
+                                '(plan_status, drop_planned), or plan them in separate turns.')
+            other = SCOPE_KINDS
+        else:
+            other = RESHAPES_TOKEN
+        reach = docs_of_op(op)
+        if any(prev.get('kind') in other and docs_of_op(prev) & reach for prev in planned):
+            raise ToolError('This plan both reshapes a token and changes every matching word of '
+                            'its document, and the reshape deletes some of them. Keep one of the '
+                            'two (plan_status, drop_planned), or plan them in separate turns.')
 
     def refuse_scope_clash(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
         """Two changes that cover a whole document, reaching one document,
@@ -301,38 +340,6 @@ def _boundary_can_still_move(ws: Workspace, doc: UdDoc) -> None:
                         f'(plan_status, drop_planned).')
 
 
-def _not_being_reshaped(ws: Workspace, words: List[Word]) -> None:
-    """Reshaping a token deletes and remakes its words, so annotating one of
-    them in the same plan writes to something that will not exist."""
-    doomed = {w for op in ws.ops if op.get('kind') in RESHAPES_TOKEN
-              for w in (op.get('existing_word_ids') or [])}
-    hit = [w for w in words if w.id in doomed]
-    if hit:
-        raise ToolError('This plan already reshapes the token these words belong to, and that '
-                        'deletes them. Do one or the other (plan_status, drop_planned).')
-
-
-def _no_words_annotated(ws: Workspace, token, doc_id: str = None) -> None:
-    """Reshaping a token deletes and remakes its words, so a plan that already
-    annotates one of them would be writing to something that will not exist.
-    `_not_being_reshaped` is this rule seen from the other side; without both,
-    annotate-then-reshape was staged, approved, and only then refused."""
-    doomed = {w.id for w in token.words}
-    for op in ws.ops:
-        if op.get('kind') in RESHAPES_TOKEN and set(op.get('existing_word_ids') or []) & doomed:
-            raise ToolError('This plan already reshapes this token. Do one or the other '
-                            '(plan_status, drop_planned).')
-        # A scope op reaches every word of its document, this token's included,
-        # and a corpus-wide replacement reaches every document it matched.
-        if op.get('kind') in SCOPE_KINDS and doc_id in docs_of_op(op):
-            raise ToolError('This plan already reviews every word of this document, and reshaping '
-                            'a token deletes some of them. Do one or the other (plan_status, '
-                            'drop_planned).')
-        if op.get('token_id') in doomed or op.get('word_id') in doomed:
-            raise ToolError('This plan already annotates a word of this token, and reshaping it '
-                            'deletes that word. Do one or the other (plan_status, drop_planned).')
-
-
 def _guards(ws: Workspace, doc: UdDoc) -> None:
     """The refusals every edit to a document owes, whichever tool stages it.
     Kept in one place because the hole they leave is invisible: a tool that
@@ -361,7 +368,6 @@ def _words(ws: Workspace, doc: UdDoc, refs) -> List[Word]:
             raise ToolError(f'{ref} is a multi-word token, which carries no annotation of its own. '
                             f'Name its words: ' + ', '.join(f's?.w{w.index}' for w in thing.words))
         out.append(thing)
-    _not_being_reshaped(ws, out)
     return out
 
 
@@ -565,12 +571,11 @@ def _named(ws: Workspace, doc: UdDoc, refs) -> List[tuple]:
 
 
 def _whole_document(ws: Workspace, doc: UdDoc) -> List[tuple]:
-    """Every word, with the refusals `_words` would have made: a scope op
-    reaches every word, so it cannot join a plan that reshapes any of them."""
+    """Every word, with the refusals `_words` would have made. The scope op
+    this feeds is refused against a reshape of the same document when it is
+    staged, which is where every other path into that rule goes too."""
     _guards(ws, doc)
-    words = all_words(doc)
-    _not_being_reshaped(ws, [w for _, w in words])
-    return words
+    return all_words(doc)
 
 
 def _scope_fields(ws: Workspace, kind: str, doc: UdDoc, fields: List[str]) -> List[str]:

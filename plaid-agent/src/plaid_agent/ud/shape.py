@@ -35,10 +35,9 @@ def _token_of(ws: Workspace, doc: UdDoc, ref: str) -> Token:
 
 def t_set_words(ws: Workspace, document: str = None, ref: str = None, forms=None) -> str:
     doc = ws.doc(document)
-    from .tools import _guards, _no_words_annotated
+    from .tools import _guards
     _guards(ws, doc)
     token = _token_of(ws, doc, ref)
-    _no_words_annotated(ws, token, doc.id)
     if isinstance(forms, str):
         forms = [forms]
     clean = [f.strip() for f in (forms or []) if isinstance(f, str) and f.strip()]

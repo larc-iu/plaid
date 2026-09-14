@@ -201,7 +201,7 @@ def test_a_confirmation_and_a_delete_of_its_word_refuse_each_other(ws):
     the plan being able to see it by id."""
     assert 'Planned' in run(ws, 'confirm', document='Viaje', refs=['s1.w4'], field='upos')
     out = run(ws, 'set_words', document='Viaje', ref='s1.w4', forms=['de', 'el'])
-    assert 'annotates a word of this token' in out
+    assert 'writes to one of its words' in out
     assert [op['kind'] for op in ws.ops] == ['confirm']
     # The backstop under it, which reads the word off the confirmation itself.
     import pytest
@@ -274,10 +274,11 @@ def test_a_second_confirm_widens_the_scope_instead_of_replacing_it(ws):
 
 def test_a_scope_and_a_reshape_of_the_same_document_cannot_share_a_plan(ws):
     run(ws, 'confirm', document='Viaje')
-    assert 'reviews every word' in run(ws, 'set_words', document='Viaje', ref='s1.w2-3', forms=['al'])
+    assert 'changes every matching word' in run(ws, 'set_words', document='Viaje', ref='s1.w2-3',
+                                                forms=['al'])
     ws.ops.clear()
     run(ws, 'set_words', document='Viaje', ref='s1.w2-3', forms=['al'])
-    assert 'reshapes the token' in run(ws, 'confirm', document='Viaje')
+    assert 'changes every matching word' in run(ws, 'confirm', document='Viaje')
     # The backstop, for a plan that reached the executor anyway.
     with pytest.raises(ValueError, match='reshapes a token and'):
         execute_plan(ws.client, ws.ops + [{'kind': 'confirm_scope', 'document_id': 'ud1', 'fields': ['upos']}],
@@ -698,32 +699,68 @@ def test_reshaping_and_annotating_the_same_token_cannot_share_a_plan(ws):
     call_tool(ws, 'set_words', {'document': 'Viaje', 'ref': 's1.w1', 'forms': ['va', 'mos']})
     out = call_tool(ws, 'set_field', {'document': 'Viaje', 'refs': ['s1.w1'], 'field': 'lemma',
                                       'value': 'ir'})
-    assert 'already reshapes the token' in out and len(ws.ops) == 1
+    assert 'writes to one of its words' in out and len(ws.ops) == 1
     from plaid_agent.ud.plan import validate_ops
     with pytest.raises(ValueError, match='reshapes a token and annotates'):
         validate_ops(ws.ops + [{'kind': 'set_span', 'layer_id': 'l', 'token_id': 'uw-1'}])
 
 
-def test_the_reshape_guards_read_the_registry_table_not_a_kind_name(ws, monkeypatch):
-    """`RESHAPES_TOKEN` is the registry's WORD_SHAPE tag, and `validate_ops`
-    used it while both staging guards still tested `kind == 'set_words'` by
-    hand. A second kind that deletes a token's words would have been refused
-    only after the user approved the plan."""
-    from plaid_agent.ud import tools
+def test_the_reshape_refusal_is_the_funnels_and_reads_the_same_in_both_orders(ws):
+    """One rule, one writer. It used to have two: a pair of functions in
+    tools.py that fired as the words were resolved, beside the certain-delete
+    check in BaseWorkspace.add_op, so the two orders of the same plan were
+    refused in different words and a tool that reached a word another way
+    reached only one of them. The funnel finds the pair now and asks UD for the
+    wording.
+    """
+    from plaid_agent.core.tools import ToolError
 
+    run(ws, 'set_words', document='Viaje', ref='s1.w4', forms=['ma', 'r'])
+    after = run(ws, 'set_field', document='Viaje', refs=['s1.w4'], field='upos', value='NOUN')
+    ws.ops.clear()
+    run(ws, 'set_field', document='Viaje', refs=['s1.w4'], field='upos', value='NOUN')
+    before = run(ws, 'set_words', document='Viaje', ref='s1.w4', forms=['ma', 'r'])
+    assert before == after
+    assert 'both reshapes a token and writes to one of its words' in after
+
+    # Straight through the funnel, with no tool in the way: the same words.
+    ws.ops.clear()
+    run(ws, 'set_words', document='Viaje', ref='s1.w4', forms=['ma', 'r'])
+    with pytest.raises(ToolError, match='writes to one of its words'):
+        ws.add_op({'kind': 'set_span', 'layer_id': LEMMA, 'token_id': 'uw-3', 'value': 'mare',
+                   'document_id': 'ud1', 'label': 'lemma = "mare"'})
+
+
+def test_the_reshape_guards_read_the_registry_not_a_kind_name(ws, monkeypatch):
+    """A second kind that deletes a token's words joins every reshape guard by
+    being DECLARED: `deletes_tokens` puts it in front of the certain-delete
+    funnel, and the WORD_SHAPE tag puts it in front of the two refusals a
+    reshape owes that name no word. Both staging guards once tested
+    `kind == 'set_words'` by hand, so such a kind was refused only after the
+    user had approved the plan."""
+    from plaid_agent.core.opkind import OpKind
+    from plaid_agent.ud import plan, tools
+
+    monkeypatch.setitem(plan.KIND, 'recut_token', OpKind(
+        'recut_token', ('recut token', 'recut tokens'), shape=plan.WORD_SHAPE,
+        deletes_tokens=lambda op: list(op.get('existing_word_ids') or [])))
     monkeypatch.setattr(tools, 'RESHAPES_TOKEN', tools.RESHAPES_TOKEN + ('recut_token',))
     recut = {'kind': 'recut_token', 'document_id': 'ud1', 'token_id': 'ut-1',
              'existing_word_ids': ['uw-1'], 'label': 'recut'}
 
     # Annotating a word the other kind deletes.
     ws.ops.append(dict(recut))
-    assert 'already reshapes the token' in call_tool(
+    assert 'writes to one of its words' in call_tool(
         ws, 'set_field', {'document': 'Viaje', 'refs': ['s1.w1'], 'field': 'lemma', 'value': 'ir'})
     assert len(ws.ops) == 1
 
     # And the other way round: reshaping a token the other kind already recuts.
     assert 'already reshapes this token' in call_tool(
         ws, 'set_words', {'document': 'Viaje', 'ref': 's1.w1', 'forms': ['va', 'mos']})
+    assert len(ws.ops) == 1
+
+    # And a whole-document review of a document it recuts.
+    assert 'changes every matching word' in call_tool(ws, 'confirm', {'document': 'Viaje'})
     assert len(ws.ops) == 1
 
 
@@ -1020,8 +1057,8 @@ def test_a_replacement_and_a_reshape_of_a_document_it_reaches_cannot_share_a_pla
     _engine_rows(ws, [('sp-l3', 'mar', 'ud1', 'uw-3')])
     run(ws, 'replace_in_field', field='lemma', pattern='mar', replacement='mare')
     assert 'changes every matching word' not in run(ws, 'plan_status')
-    assert 'reaches' in run(ws, 'set_words', document='Viaje', ref='s1.w2-3', forms=['al']) or \
-        'reviews every word' in run(ws, 'set_words', document='Viaje', ref='s1.w2-3', forms=['al'])
+    assert 'changes every matching word' in run(ws, 'set_words', document='Viaje', ref='s1.w2-3',
+                                                forms=['al'])
     ws.ops.clear()
     run(ws, 'set_words', document='Viaje', ref='s1.w2-3', forms=['al'])
     assert 'reshapes a token' in run(ws, 'replace_in_field', field='lemma', pattern='mar', replacement='mare')

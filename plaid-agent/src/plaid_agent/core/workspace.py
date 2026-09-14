@@ -32,11 +32,12 @@ WEB_READ_REFUSAL = (
 class BaseWorkspace:
     """What one turn holds while its tools run.
 
-    An app answers five things: ``KIND``, its op-kind registry; ``PLAN_NOTE``,
+    An app answers six things: ``KIND``, its op-kind registry; ``PLAN_NOTE``,
     what counts as one change here, appended to the plan-is-full refusal;
     ``SPAN_KIND``, the kind that sets one value on one token;
-    :meth:`make_corpus`, its query helper; and :meth:`guard_op`, the refusals
-    only it owes when something is staged.
+    :meth:`make_corpus`, its query helper; :meth:`guard_op`, the refusals
+    only it owes when something is staged; and :meth:`clash_message`, its own
+    words for a change the plan deletes out from under.
     """
 
     KIND: Dict[str, opkind.OpKind] = {}
@@ -222,7 +223,14 @@ class BaseWorkspace:
             planned, gone = [o for i, o in enumerate(self.ops) if i != replacing], None
         clash = opkind.delete_clash(self.KIND, planned, op, gone)
         if clash:
-            raise ToolError(opkind.clash_message(*clash))
+            raise ToolError(self.clash_message(*clash))
+
+    def clash_message(self, victim: Dict[str, Any], killer: Optional[Dict[str, Any]]) -> str:
+        """What to tell the model when one change in the plan writes to what
+        another deletes. The registry names the pair; an app overrides this
+        where its own kinds have a clearer way to say what happened, so the
+        wording is the app's and the rule stays the funnel's."""
+        return opkind.clash_message(victim, killer)
 
     def planned_value(self, layer_id: str, token_id: str, current: str) -> str:
         """The value a span will have once the plan runs (a planned op wins
