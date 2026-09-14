@@ -1,5 +1,5 @@
 import { test, expect, seedAuth } from './fixtures.js';
-import { headerBand, headerBandTests } from '../../plaid-ui/e2e/headerBand.js';
+import { headerAccount, headerBand, headerBandTests } from '../../plaid-ui/e2e/headerBand.js';
 
 // The header band, which is the same band as plaid-igt's: `headerItem` and
 // `UserButton` in plaid-ui draw it, so the two tests that are about it are
@@ -14,6 +14,6 @@ headerBandTests({
     await menu.getByRole('menuitem', { name: /Logout/ }).click();
     // It really signs out: the login screen, and no account in the band.
     await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
-    await expect(headerBand(page).getByRole('button', { name: /a@b\.com/ })).toHaveCount(0);
+    await expect(headerAccount(page)).toHaveCount(0);
   },
 });

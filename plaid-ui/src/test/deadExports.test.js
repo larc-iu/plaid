@@ -293,13 +293,6 @@ const EXEMPT_NAMES = {
   'plaid-ud/src/utils/feedback.jsx:notifyInfo': 'one import site for every toast form',
   'plaid-ud/src/utils/feedback.jsx:notifyPromise': 'one import site for every toast form',
   'plaid-ud/src/utils/feedback.jsx:notifyWithAction': 'one import site for every toast form',
-
-  // The shared header spec exports two locators, and only `headerBand` is
-  // imported. plaid-ud's header.spec.js hand-writes the account locator that
-  // `headerAccount` already is, so the pair stays whole and that spec should
-  // take it rather than spell it again. Listed rather than unexported for that
-  // reason: the fix is one line in an app's spec, not here.
-  'plaid-ui/e2e/headerBand.js:headerAccount': 'half of the helper’s locator pair',
 };
 
 // ---------------------------------------------------------------------------
