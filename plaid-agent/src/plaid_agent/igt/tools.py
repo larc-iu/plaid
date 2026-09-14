@@ -2606,6 +2606,15 @@ def t_add_comment(ws: Workspace, document: str, body: str, ref: Optional[str] = 
     if len(body) > 10000:
         raise ToolError('a comment holds at most 10000 characters')
     doc = ws.doc(document)
+    # No `reshape_guards` here, deliberately: a comment reshapes nothing, so a
+    # corpus-wide change in the same plan cannot collide with it. What CAN
+    # collide is its anchor. The server resolves the anchor to find the owner
+    # whose permissions apply, and an anchor that does not exist fails closed,
+    # so a comment on a word, morpheme or value the same plan deletes would
+    # refuse the batch it shares after the user approved it. A comment
+    # outlives its anchor once written (that is the ruling), but it cannot be
+    # written onto one that is already gone. `normalize_ops` drops such a
+    # comment with a note, whichever order the two were planned in.
     etype, eid, caption, what = _anchor(ws, doc, ref, field)
     where = f'{ws.doc_label(doc.id)} {ref} "{(what or "")[:40]}"' if ref else f'"{ws.doc_label(doc.id)}"'
     ws.add_op({'kind': 'add_comment', 'entity_type': etype, 'entity_id': eid, 'body': body, 'anchor_label': caption,
