@@ -26,6 +26,7 @@ const ProjectExport = lazyNamed(() => import('./ProjectExport.jsx'), 'ProjectExp
 import { readInitialized, readImportState, importRouteFor } from '@/domain/igtConfig';
 import { isReviewed } from '@larc-iu/plaid-client';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
+import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
 import { useTabParam } from '@/hooks/useTabParam';
 import { contentTabsFor, TAB_ALIASES } from '@/domain/projectTabs';
 import { cn } from '@ui/lib/utils';
@@ -109,11 +110,11 @@ export const ProjectDetail = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
-  const canManage = !!user && !!project && (user.isAdmin || project.maintainers?.includes(user.id));
+  const canManage = canManageProject(project, user);
   // Creating/editing documents needs WRITE, which writers have but managing
   // (settings/access) does not. Gate document-create on this so a reader isn't
   // shown a button that 403s on submit.
-  const canWrite = canManage || (!!user && !!project && project.writers?.includes(user.id));
+  const canWrite = canEditProject(project, user);
 
   // Which top-level tab is active. Documents/Search are local UI state; the
   // Settings tab is reflected in the path so its sections are deep-linkable.

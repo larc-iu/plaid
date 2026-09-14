@@ -28,3 +28,17 @@ export const canEditProject = (project, user) =>
 
 export const canManageProject = (project, user) =>
   !!(user?.isAdmin || inList(project?.maintainers, user?.id));
+
+// Whether the project opens at all. An admin reads every project, so a screen
+// asking "is this person a member" wants `projectRole` instead.
+export const canReadProject = (project, user) =>
+  !!(canEditProject(project, user) || inList(project?.readers, user?.id));
+
+// Explicit membership, for a member table or an "add me to this project" offer,
+// is `projectRole` in `@larc-iu/plaid-client`. It is not repeated here.
+
+// A vocabulary carries its own maintainer list, and nothing else: adding or
+// editing entries is a maintainer's, linking existing ones needs only project
+// write access.
+export const canManageVocabulary = (vocabulary, user) =>
+  !!(user?.isAdmin || inList(vocabulary?.maintainers, user?.id));

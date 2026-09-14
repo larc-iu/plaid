@@ -60,13 +60,9 @@ const EMPTY_USER_FORM = {
   isAdmin: false,
 };
 
-// Role a given user holds on a project, from the project's ACL arrays.
-const roleOf = (project, userId) => {
-  if (project?.maintainers?.includes(userId)) return 'maintainer';
-  if (project?.writers?.includes(userId)) return 'writer';
-  if (project?.readers?.includes(userId)) return 'reader';
-  return 'none';
-};
+// The role someone was explicitly granted, as this screen spells it: the client
+// says `null` for a non-member and the Select needs a value.
+const roleOf = (project, userId) => projectRole(project, userId) ?? 'none';
 
 export const ProjectManagement = () => {
   const { projectId } = useParams();

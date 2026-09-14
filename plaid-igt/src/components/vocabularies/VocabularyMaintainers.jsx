@@ -7,6 +7,7 @@ import { UserAvatar } from '@ui/components/shared/UserAvatar';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useUserSearch } from '@/hooks/useUserSearch';
 import { UserSearch } from '@/components/shared/UserSearch';
+import { canManageVocabulary } from '@ui/domain/permissions.js';
 
 // Current maintainers are resolved id-by-id (the per-user GET is open to any
 // logged-in caller); new ones come from the shared directory search.
@@ -45,11 +46,6 @@ export const VocabularyMaintainers = ({ vocabulary, user, vocabularyId, client, 
 
   const search = useUserSearch({ client, excludeIds: maintainerIds });
 
-  const canManageVocabulary = () => {
-    if (!user || !vocabulary) return false;
-    return user.isAdmin || vocabulary.maintainers?.includes(user.id);
-  };
-
   const handleAddMaintainer = async (userId) => {
     try {
       setUpdatingUser(userId);
@@ -86,7 +82,7 @@ export const VocabularyMaintainers = ({ vocabulary, user, vocabularyId, client, 
     }
   };
 
-  if (!canManageVocabulary()) {
+  if (!canManageVocabulary(vocabulary, user)) {
     return (
       <div className="rounded-md border border-border bg-muted p-3">
         <div className="flex items-start gap-2">

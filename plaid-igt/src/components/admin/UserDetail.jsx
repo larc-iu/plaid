@@ -10,6 +10,7 @@ import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { AuditFeed } from '@ui/components/shared/AuditFeed';
 import { textIncludes } from '@ui/domain/collation.js';
+import { projectRole } from '@larc-iu/plaid-client';
 
 // One account: what they can reach, what they have been doing, and what is
 // holding a session open in their name.
@@ -34,17 +35,12 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
       setUser(u);
       setProjects(
         (projectList || [])
-          .map((p) => ({
-            id: p.id,
-            name: p.name,
-            role: p.maintainers?.includes(userId)
-              ? 'Maintainer'
-              : p.writers?.includes(userId)
-                ? 'Writer'
-                : p.readers?.includes(userId)
-                  ? 'Reader'
-                  : null,
-          }))
+          .map((p) => {
+            // Explicit membership only: this lists the projects this account
+            // was added to, so an admin's implicit reach does not belong here.
+            const role = projectRole(p, userId);
+            return { id: p.id, name: p.name, role: role && role[0].toUpperCase() + role.slice(1) };
+          })
           .filter((p) => p.role),
       );
       setTokens(tokenList || []);

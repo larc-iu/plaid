@@ -25,7 +25,7 @@ import { useUserAdmin } from '../admin/useUserAdmin';
 import { UserAdminDialogs } from '../admin/userAdmin';
 import { useUserSearch } from '@/hooks/useUserSearch';
 import { UserSearch } from '@/components/shared/UserSearch';
-import { MAINTAINER_HINT, NO_ACCESS_HINT } from '@ui/domain/permissions.js';
+import { MAINTAINER_HINT, NO_ACCESS_HINT, canManageProject } from '@ui/domain/permissions.js';
 import {
   PLAID_NAMESPACE,
   REVIEW_KEY,
@@ -53,12 +53,9 @@ const GRANT_ROLES = ['reader', 'writer', 'maintainer'];
 // scanning it expects rather than alphabetically.
 const ROLE_RANK = { maintainer: 0, writer: 1, reader: 2, none: 3 };
 
-const roleOf = (project, userId) => {
-  if (project?.maintainers?.includes(userId)) return 'maintainer';
-  if (project?.writers?.includes(userId)) return 'writer';
-  if (project?.readers?.includes(userId)) return 'reader';
-  return 'none';
-};
+// The role someone was explicitly granted, as this screen spells it: the client
+// says `null` for a non-member and the Select needs a value.
+const roleOf = (project, userId) => projectRole(project, userId) ?? 'none';
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export const AccessManagement = ({ project, user, projectId, client, onDataUpdate }) => {
@@ -77,7 +74,7 @@ export const AccessManagement = ({ project, user, projectId, client, onDataUpdat
 
   // Whether this user can hand out project invites. Maintainers can, which is
   // the point: onboarding a class should not queue behind an admin.
-  const canInvite = isAdmin || (project?.maintainers || []).includes(user?.id);
+  const canInvite = canManageProject(project, user);
 
   // Whose work is reviewed (the cross-app `plaid.review` norm, provenance
   // convention): a marked member's annotations are recorded as contributed

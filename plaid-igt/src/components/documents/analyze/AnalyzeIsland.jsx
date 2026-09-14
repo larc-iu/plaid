@@ -3,6 +3,7 @@ import { IgtEditor } from './island/IgtEditor.js';
 import { AutoAnalyzeDialog } from './AutoAnalyzeDialog.jsx';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useAuth } from '../../../contexts/AuthContext.jsx';
+import { canManageVocabulary } from '@ui/domain/permissions.js';
 
 // Thin React shell around the vanilla IgtEditor island. Consumes the single
 // shared IgtDocument from DocumentContext (the same instance the other tabs use)
@@ -36,8 +37,7 @@ export const AnalyzeIsland = () => {
   // Vocab-entry creation needs vocab-maintainer rights (linking needs less);
   // the island hides its "+ Create" row for vocabs this user can't add to.
   const { user } = useAuth();
-  const canWriteVocab = (vocab) =>
-    !!user && (user.isAdmin === true || (vocab?.maintainers || []).includes(user.id));
+  const canWriteVocab = (vocab) => canManageVocabulary(vocab, user);
 
   useEffect(() => {
     if (!doc || !hostRef.current) return undefined;

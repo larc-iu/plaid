@@ -9,6 +9,7 @@ import { notifySuccess, notifyError } from '@/utils/feedback';
 import { findBaselineTextLayer, readInitialized } from '../../domain/igtConfig';
 import { udProjectUrl } from '@ui/domain/siblingApps.js';
 import { textIncludes } from '@ui/domain/collation.js';
+import { projectRole } from '@larc-iu/plaid-client';
 
 // Every project on the server, including the ones this admin has no role in.
 // An admin's project list already returns all of them; what is missing
@@ -62,10 +63,9 @@ export const AdminProjects = ({ client, currentUser }) => {
     }
   };
 
-  const isMember = (p) =>
-    p.maintainers?.includes(currentUser?.id) ||
-    p.writers?.includes(currentUser?.id) ||
-    p.readers?.includes(currentUser?.id);
+  // Explicit membership, not what an admin may do: the offer below is "add me
+  // to this project", and every project on this screen is one an admin reaches.
+  const isMember = (p) => projectRole(p, currentUser?.id) !== null;
 
   const columns = [
     {

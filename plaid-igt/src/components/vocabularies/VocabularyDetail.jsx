@@ -59,7 +59,7 @@ import { VocabularyMaintainers } from './VocabularyMaintainers';
 import { VocabularyCommentsTab } from './VocabularyCommentsTab';
 import { CommentStore } from '@ui/domain/CommentStore';
 import { useCommentStore } from '@ui/domain/useCommentStore';
-import { canEditProject } from '@ui/domain/permissions.js';
+import { canEditProject, canManageVocabulary } from '@ui/domain/permissions.js';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { useTabParam } from '@/hooks/useTabParam';
@@ -171,12 +171,6 @@ export const VocabularyDetail = () => {
     }
   };
 
-  // Helper function to check permissions
-  const canManageVocabulary = (vocab = vocabulary) => {
-    if (!user || !vocab) return false;
-    return user.isAdmin || vocab.maintainers?.includes(user.id);
-  };
-
   // Comments on this vocabulary's entries live in their own store, shared by
   // the entry panel and the Comments tab, so a comment posted on an entry
   // shows in the tab without a refetch. Owned by the vocabulary, not by any
@@ -222,7 +216,7 @@ export const VocabularyDetail = () => {
       alive = false;
     };
   }, [client, user, vocabularyId, isNewVocabulary]);
-  const canComment = canManageVocabulary() || writerThroughProject;
+  const canComment = canManageVocabulary(vocabulary, user) || writerThroughProject;
 
   // The tab rides in `?tab=`, so a reload or a shared link reopens the same one.
   // Only the tabs this user actually gets are legal values, so a maintainer's
@@ -232,7 +226,7 @@ export const VocabularyDetail = () => {
   // Base path for the tab links (the item list is the bare vocabulary URL).
   const vocabPath = `/vocabularies/${vocabularyId}`;
   const [activeTab, setActiveTab, tabHref] = useTabParam(
-    canManageVocabulary()
+    canManageVocabulary(vocabulary, user)
       ? ['items', 'comments', 'maintainers', 'settings']
       : ['items', 'comments'],
     isNewVocabulary ? 'settings' : 'items',
@@ -943,12 +937,12 @@ export const VocabularyDetail = () => {
                   </span>
                 )}
               </TabsTrigger>
-              {canManageVocabulary() && (
+              {canManageVocabulary(vocabulary, user) && (
                 <TabsTrigger value="maintainers" to={tabHref(vocabPath, 'maintainers')}>
                   <Users className="h-4 w-4" /> Maintainers
                 </TabsTrigger>
               )}
-              {canManageVocabulary() && (
+              {canManageVocabulary(vocabulary, user) && (
                 <TabsTrigger value="settings" to={tabHref(vocabPath, 'settings')}>
                   <Settings className="h-4 w-4" /> Settings
                 </TabsTrigger>
@@ -961,7 +955,7 @@ export const VocabularyDetail = () => {
                 vocabulary={vocabulary}
                 client={client}
                 fields={fields}
-                canManage={canManageVocabulary()}
+                canManage={canManageVocabulary(vocabulary, user)}
                 comments={comments}
                 canComment={canComment}
               />
@@ -974,11 +968,11 @@ export const VocabularyDetail = () => {
                 store={comments}
                 fields={fields}
                 canWrite={canComment}
-                canDeleteAny={canManageVocabulary()}
+                canDeleteAny={canManageVocabulary(vocabulary, user)}
               />
             </TabsContent>
 
-            {canManageVocabulary() && (
+            {canManageVocabulary(vocabulary, user) && (
               <TabsContent value="maintainers">
                 <VocabularyMaintainers
                   vocabulary={vocabulary}
@@ -990,7 +984,7 @@ export const VocabularyDetail = () => {
               </TabsContent>
             )}
 
-            {canManageVocabulary() && (
+            {canManageVocabulary(vocabulary, user) && (
               <TabsContent value="settings">
                 <div className="flex flex-col gap-6">
                   {/* The alphabet is set in the dictionary reader, not here, and

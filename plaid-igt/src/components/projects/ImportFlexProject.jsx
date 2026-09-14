@@ -28,6 +28,7 @@ import { useProjectImportRun } from '@/hooks/useProjectImportRun';
 import { documentFraction, documentLabel } from '../../import/progress';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { humanizeFieldName } from '@/domain/vocabFields';
+import { canManageVocabulary } from '@ui/domain/permissions.js';
 
 const SCOPE_BADGE = {
   Word: 'border-transparent bg-blue-100 text-blue-700',
@@ -109,13 +110,7 @@ export const ImportFlexProject = () => {
       // Adding entries needs vocab-maintainer rights, so only offer those.
       client.vocabLayers
         .list()
-        .then((all) =>
-          setExistingVocabs(
-            (all || []).filter(
-              (v) => user?.isAdmin === true || (v.maintainers || []).includes(user?.id),
-            ),
-          ),
-        )
+        .then((all) => setExistingVocabs((all || []).filter((v) => canManageVocabulary(v, user))))
         .catch((err) => console.warn('Could not list vocabularies:', err));
     } catch (e) {
       console.error('FLEx parse failed:', e);

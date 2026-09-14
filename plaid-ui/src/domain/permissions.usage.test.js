@@ -75,6 +75,30 @@ const ownKeys = (text) => {
   return out;
 };
 
+// Reading an ACL array by hand is the same rule written a second time, and it
+// drifts: the document editor's own copy answered "not read-only" for a user
+// with no access at all, and five screens each decided for themselves what a
+// vocabulary maintainer is. Every question about who may do what goes through
+// `permissions.js` (or the client's `projectRole` for explicit membership).
+const ACL_BY_HAND = /\b(maintainers|writers|readers)\b[^\n]*(\.includes\(|\.indexOf\(|\.some\()/;
+
+describe('who may do what', () => {
+  it('is asked here and nowhere else', () => {
+    const offenders = [];
+    for (const app of APPS) {
+      for (const file of sources(path.join(repo, app))) {
+        if (/\.test\.jsx?$/.test(file)) continue;
+        fs.readFileSync(file, 'utf8')
+          .split('\n')
+          .forEach((line, i) => {
+            if (ACL_BY_HAND.test(line)) offenders.push(`${path.relative(repo, file)}:${i + 1}`);
+          });
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe('project role copy', () => {
   it('writes the maintainer line once, here', () => {
     const copies = APPS.flatMap((app) => sources(path.join(repo, app)))
