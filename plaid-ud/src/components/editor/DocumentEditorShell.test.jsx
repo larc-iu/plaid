@@ -166,15 +166,18 @@ describe('the document editor shell', () => {
 
   // Every write in the comment store is optimistic, so a refusal shows up as
   // the comment vanishing again. Nothing here read the store's error channel,
-  // which is the only thing that says why.
+  // which is the only thing that says why. What the store calls the write is
+  // the toast's TITLE, since that is the line a person scans, and the error
+  // rides along as the object so the description reads as a sentence.
   it('says so when a comment write is refused', async () => {
     await mountAt('/projects/p1/documents/d1/annotate');
     const store = stores[0];
     expect(typeof store.onError).toBe('function');
 
-    store.onError('Post comment: HTTP 423', { status: 423 }, 'Post comment');
+    const err = { status: 423 };
+    store.onError('Post comment: HTTP 423', err, 'Post comment');
     expect(feedback.notifyError).toHaveBeenCalledTimes(1);
-    expect(feedback.notifyError.mock.calls[0][0]).toContain('Post comment');
+    expect(feedback.notifyError.mock.calls[0]).toEqual([err, 'Post comment']);
     await view.unmount();
   });
 

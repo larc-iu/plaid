@@ -191,8 +191,9 @@ const DocumentEditor = () => {
 
   useEffect(() => {
     if (!comments) return undefined;
-    comments.onError = (msg, err, label) =>
-      notifyError(err ? `${label}: ${humanizeError(err)}` : humanizeError(msg, msg));
+    // The label is the title: it is what a person scans, and the description
+    // is the reason under it.
+    comments.onError = (msg, err, label) => notifyError(err ?? msg, label);
     comments.load();
   }, [comments]);
 
@@ -213,8 +214,7 @@ const DocumentEditor = () => {
         // edits are stamped as such (IgtDocument.contributorId).
         const d = await IgtDocument.load(client, projectId, documentId, null, { user });
         if (cancelled) return;
-        d.onError = (msg, err, label) =>
-          notifyError(err ? `${label}: ${humanizeError(err)}` : humanizeError(msg, msg));
+        d.onError = (msg, err, label) => notifyError(err ?? msg, label);
         setDoc(d);
       } catch (e) {
         if (cancelled) return;

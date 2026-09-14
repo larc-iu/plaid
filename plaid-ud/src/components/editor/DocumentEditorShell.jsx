@@ -73,8 +73,9 @@ export const DocumentEditorShell = () => {
     // vanishing from the thread again. Without this the rollback was the only
     // sign, and the store's error channel led nowhere. The same line plaid-igt
     // wires to its two stores.
-    comments.onError = (msg, err, label) =>
-      notifyError(err ? `${label}: ${humanizeError(err)}` : humanizeError(msg, msg));
+    // The label is the title: it is what a person scans, and the description
+    // is the reason under it.
+    comments.onError = (msg, err, label) => notifyError(err ?? msg, label);
     comments.load();
   }, [comments]);
   // The tab strip is chrome, so it survives a tab switch — but it must not be
