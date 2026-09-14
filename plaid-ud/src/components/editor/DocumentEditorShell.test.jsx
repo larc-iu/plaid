@@ -54,6 +54,7 @@ vi.mock('@ui/components/assistant/subject.js', () => ({
 vi.mock('./hooks/useEditorServices.js', () => ({ useEditorServices: () => ({}) }));
 
 const { DocumentEditorShell } = await import('./DocumentEditorShell.jsx');
+const { useDocumentEditor } = await import('./useDocumentEditor.js');
 
 let view;
 let go;
@@ -65,6 +66,12 @@ const Nav = () => {
 
 const Tab = ({ name }) => <div data-testid={name} />;
 
+// A tab that says which document the shell handed it.
+const DocTab = () => {
+  const { doc } = useDocumentEditor();
+  return <div data-testid="show">{doc?.raw?.id}</div>;
+};
+
 const mountAt = async (path) => {
   view = await renderComponent(
     <MemoryRouter initialEntries={[path]}>
@@ -74,6 +81,7 @@ const mountAt = async (path) => {
         <Route path="/projects/:projectId/documents/:documentId" element={<DocumentEditorShell />}>
           <Route path="annotate" element={<Tab name="annotate" />} />
           <Route path="edit" element={<Tab name="edit" />} />
+          <Route path="show" element={<DocTab />} />
         </Route>
       </Routes>
     </MemoryRouter>,
@@ -86,6 +94,7 @@ const mountAt = async (path) => {
 };
 
 const at = (name) => !!view.container.querySelector(`[data-testid="${name}"]`);
+const textOf = (name) => view.container.querySelector(`[data-testid="${name}"]`)?.textContent;
 
 beforeEach(() => {
   toast.dismissIntegrityFindings.mockReset();
@@ -114,6 +123,36 @@ describe('the document editor shell', () => {
     await view.step(() => go('/projects/p1'));
     expect(at('project')).toBe(true);
     expect(toast.dismissIntegrityFindings).toHaveBeenCalledTimes(1);
+    await view.unmount();
+  });
+
+  // Opening a document is a read, and a reader can open a second one before the
+  // first has answered. Whichever read lands last, the document on screen is
+  // the one whose URL is in the bar. The tests above cannot see this: each of
+  // them opens one document at a time, so the shell holds the right one at the
+  // end whether or not the load is cancelled on the way out.
+  it('a document the reader left does not land on the one they opened', async () => {
+    const lands = {};
+    auth.getClient.mockReturnValue({
+      projects: { get: vi.fn(async () => ({ id: 'p1', name: 'Project' })) },
+      documents: { get: vi.fn((id) => new Promise((resolve) => (lands[id] = resolve))) },
+    });
+    await mountAt('/projects/p1/documents/d1/show');
+    expect(at('show')).toBe(false); // d1 is still being read
+
+    await view.step(() => go('/projects/p1/documents/d2/show'));
+    await view.step(async () => {
+      lands.d2({ id: 'd2', name: 'Doc' });
+      await Promise.resolve();
+    });
+    expect(textOf('show')).toBe('d2');
+
+    // d1 answers now, for a screen nobody is on.
+    await view.step(async () => {
+      lands.d1({ id: 'd1', name: 'Doc' });
+      await Promise.resolve();
+    });
+    expect(textOf('show')).toBe('d2');
     await view.unmount();
   });
 
