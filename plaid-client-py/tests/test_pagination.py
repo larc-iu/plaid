@@ -101,6 +101,38 @@ def test_list_all_raises_on_non_advancing_cursor(monkeypatch):
     assert raised, 'expected RuntimeError on non-advancing cursor'
 
 
+# Every collection endpoint answers with the envelope, so a bare list is a
+# broken endpoint. Absorbing it as a terminal full page is how a listing gets
+# silently truncated, which is what caused the pagination revert once already.
+def test_list_all_rejects_a_bare_list_naming_the_endpoint(monkeypatch):
+    calls = []
+    _patch(monkeypatch, [[{'id': 'a'}, {'id': 'b'}]], calls)
+
+    raised = False
+    try:
+        list_all(_FakeClient(), '/api/v1/things')
+    except ValueError as e:
+        raised = True
+        assert '/api/v1/things' in str(e)
+        assert 'paginated envelope' in str(e)
+    assert raised, 'expected ValueError on a bare list response'
+
+
+def test_iter_pages_rejects_a_bare_list_naming_the_endpoint(monkeypatch):
+    calls = []
+    _patch(monkeypatch, [[{'id': 'a'}]], calls)
+
+    raised = False
+    try:
+        for _page in iter_pages(_FakeClient(), '/api/v1/things'):
+            break
+    except ValueError as e:
+        raised = True
+        assert '/api/v1/things' in str(e)
+        assert 'paginated envelope' in str(e)
+    assert raised, 'expected ValueError on a bare list response'
+
+
 def test_list_all_empty_envelope_returns_empty(monkeypatch):
     calls = []
     _patch(monkeypatch, [{'entries': [], 'next_cursor': None}], calls)
@@ -196,6 +228,8 @@ def _run_standalone():
     tests = [
         test_list_all_returns_full_set_across_pages,
         test_list_all_raises_on_non_advancing_cursor,
+        test_list_all_rejects_a_bare_list_naming_the_endpoint,
+        test_iter_pages_rejects_a_bare_list_naming_the_endpoint,
         test_list_all_empty_envelope_returns_empty,
         test_list_all_follows_cursors_over_the_wire_while_batching,
         test_iter_pages_yields_each_non_empty_page,

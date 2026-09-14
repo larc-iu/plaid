@@ -26,6 +26,18 @@ function buildQueryParams(query, limit, cursor) {
   return params;
 }
 
+// Every collection endpoint answers with the envelope. A bare array or any
+// other shape is a broken endpoint, so name it and stop rather than return a
+// silently truncated result.
+function entriesOf(response, path) {
+  if (!response || !Array.isArray(response.entries)) {
+    throw new Error(
+      `GET ${path} did not return a paginated envelope (no 'entries' array)`,
+    );
+  }
+  return response.entries;
+}
+
 /**
  * Fetch every page and return the full flat array of entries, transparently
  * following `nextCursor` until it is null. This is what `.list()` calls so it
@@ -47,19 +59,7 @@ export async function listAll(client, path, { pageSize = 1000, query = {} } = {}
       queryParams: buildQueryParams(query, pageSize, cursor),
       bypassBatch: true,
     });
-    // Compatibility shim: a non-paginated server (or proxy) may return a bare
-    // array. Treat it as a terminal full result with no further paging.
-    if (Array.isArray(response)) {
-      all.push(...response);
-      break;
-    }
-    if (response && Array.isArray(response.entries)) {
-      all.push(...response.entries);
-    } else {
-      throw new Error(
-        "Unexpected list response shape (no 'entries'); server may be incompatible.",
-      );
-    }
+    all.push(...entriesOf(response, path));
     prevCursor = cursor;
     cursor = response.nextCursor;
     // Guard against a buggy server/proxy that returns a constant non-null
@@ -110,7 +110,7 @@ export async function* iterPages(client, path, { pageSize = 1000, query = {} } =
       queryParams: buildQueryParams(query, pageSize, cursor),
       bypassBatch: true,
     });
-    const entries = (response && Array.isArray(response.entries)) ? response.entries : [];
+    const entries = entriesOf(response, path);
     // Suppress the trailing empty page that the server emits when a collection's
     // size is an exact multiple of the page size (a final full page with a
     // non-null cursor, then an empty page). Still follow the cursor below.
@@ -118,7 +118,7 @@ export async function* iterPages(client, path, { pageSize = 1000, query = {} } =
       yield entries;
     }
     prevCursor = cursor;
-    cursor = response ? response.nextCursor : null;
+    cursor = response.nextCursor;
     // Guard against a buggy server/proxy that returns a constant non-null
     // cursor, which would otherwise loop forever.
     if (cursor !== null && cursor !== undefined && cursor === prevCursor) {

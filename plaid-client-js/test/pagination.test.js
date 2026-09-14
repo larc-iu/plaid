@@ -75,6 +75,27 @@ test('listAll throws when the cursor does not advance', async () => {
   );
 });
 
+// Every collection endpoint answers with the envelope, so a bare array is a
+// broken endpoint. Absorbing it as a terminal full page is how a listing gets
+// silently truncated, which is what caused the pagination revert once already.
+test('listAll rejects a bare array, naming the endpoint', async () => {
+  const client = makeFakeClient([[{ id: 'a' }, { id: 'b' }]]);
+
+  await assert.rejects(
+    () => listAll(client, '/api/v1/things'),
+    /GET \/api\/v1\/things did not return a paginated envelope/,
+  );
+});
+
+test('iterPages rejects a bare array, naming the endpoint', async () => {
+  const client = makeFakeClient([[{ id: 'a' }]]);
+
+  await assert.rejects(async () => {
+    // eslint-disable-next-line no-unused-vars
+    for await (const _page of iterPages(client, '/api/v1/things')) break;
+  }, /GET \/api\/v1\/things did not return a paginated envelope/);
+});
+
 test('listAll returns [] for an empty envelope', async () => {
   const client = makeFakeClient([{ entries: [], nextCursor: null }]);
 

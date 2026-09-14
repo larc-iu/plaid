@@ -210,6 +210,20 @@ def _merge_query(query, **extra):
     return merged
 
 
+def _entries_of(page, path):
+    """The page's ``entries``, or a ValueError naming the endpoint.
+
+    Every collection endpoint answers with the envelope. A bare list or any
+    other shape is a broken endpoint, so name it and stop rather than return a
+    silently truncated result.
+    """
+    if not isinstance(page, dict) or not isinstance(page.get('entries'), list):
+        raise ValueError(
+            f"GET {path} did not return a paginated envelope (no 'entries' list)"
+        )
+    return page['entries']
+
+
 def list_page(client, path, *, limit=None, cursor=None, query=None):
     """Fetch a single page from a paginated collection endpoint.
 
@@ -252,7 +266,7 @@ def iter_pages(client, path, *, page_size=1000, query=None):
     cursor = None
     while True:
         page = list_page(client, path, limit=page_size, cursor=cursor, query=query)
-        entries = page.get('entries', []) or []
+        entries = _entries_of(page, path)
         # Suppress the trailing empty page that the server emits when a
         # collection's size is an exact multiple of the page size (a final full
         # page with a non-null cursor, then an empty page). Still follow the
@@ -295,18 +309,7 @@ def list_all(client, path, *, page_size=1000, query=None):
     prev_cursor = None
     while True:
         page = list_page(client, path, limit=page_size, cursor=cursor, query=query)
-        # Compatibility shim: a non-paginated server (or proxy) may return a
-        # bare list. Treat it as a terminal full result with no further paging.
-        if isinstance(page, list):
-            results.extend(page)
-            break
-        if isinstance(page, dict) and 'entries' in page:
-            results.extend(page.get('entries') or [])
-        else:
-            raise ValueError(
-                "Unexpected list response shape (no 'entries'); server may be "
-                "incompatible."
-            )
+        results.extend(_entries_of(page, path))
         prev_cursor = cursor
         cursor = page.get('next_cursor')
         if cursor is None:
