@@ -10,7 +10,7 @@ from typing import Any, Callable, Dict
 from plaid_client.provenance import prov_state
 
 from ..core import sandbox
-from ..core.query import documents_in, parse_query, rewrite, run as run_query, QueryRefused
+from ..core.query import parse_query, rewrite, run as run_query, QueryRefused
 from .project import UdDoc, word_ref
 from .tools import ToolError, Workspace, WRITE_TOOLS, call_tool
 

@@ -12,7 +12,7 @@ sentence boundary.
 """
 
 import re
-from typing import Any, Dict, List
+from typing import List
 
 from .plan import _plural
 from .tools import ToolError, Workspace

@@ -15,7 +15,7 @@ Two things about the engine (v0) that shape everything here:
 """
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from ..core.corpus import Clipping
 from ..core.limits import GROUP_LIMIT, ROW_LIMIT

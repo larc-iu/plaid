@@ -341,7 +341,11 @@ LATER_PASSES = ok.staged(KIND, IDS, PARSE)
 COMPACT = ok.compact_spec(KIND)
 
 
-def _reach(op: Dict[str, Any]) -> set:
+def docs_of_op(op: Dict[str, Any]) -> set:
+    """The documents an op reaches: one, a parse's list, or every document a
+    corpus-wide replacement matched. Every guard that reasons about what a
+    plan touches asks this, the tools' as well as the executor's, so the two
+    cannot drift into disagreeing about what an op reaches."""
     out = set()
     if op.get('document_id'):
         out.add(op['document_id'])
@@ -385,7 +389,7 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
     # reshape there, without naming a word for the check below to catch.
     reshaped_docs = {op.get('document_id') for op in ops if op.get('kind') in RESHAPES_TOKEN}
     for op in ops:
-        if op.get('kind') in SCOPES and _reach(op) & reshaped_docs:
+        if op.get('kind') in SCOPES and docs_of_op(op) & reshaped_docs:
             raise ValueError('this plan both reshapes a token and changes every matching word of its '
                              'document, and the reshape deletes some of them')
     if reshaped:
@@ -422,7 +426,7 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
         if op.get('kind') in RESHAPES_DOCUMENT:
             moved[op.get('document_id')] = moved.get(op.get('document_id'), 0) + 1
     if moved:
-        others = set().union(*(_reach(op) for op in ops
+        others = set().union(*(docs_of_op(op) for op in ops
                                if op.get('kind') not in RESHAPES_DOCUMENT)) & set(moved)
         if others:
             raise ValueError('this plan both moves a sentence boundary in and edits '
@@ -433,9 +437,9 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
             raise ValueError('a plan moves at most one sentence boundary per document, and this '
                              'one moves several in ' + ', '.join(crowded)
                              + ': each renumbers the sentences the next would name')
-    parsed = set().union(*(_reach(op) for op in ops if op.get('kind') in REWRITES_DOCUMENT))
+    parsed = set().union(*(docs_of_op(op) for op in ops if op.get('kind') in REWRITES_DOCUMENT))
     if parsed:
-        clash = set().union(*(_reach(op) for op in ops
+        clash = set().union(*(docs_of_op(op) for op in ops
                               if op.get('kind') not in REWRITES_DOCUMENT)) & parsed
         if clash:
             raise ValueError('this plan both parses and edits ' + ', '.join(sorted(clash))
@@ -682,7 +686,6 @@ def _parse(client, op, document_id: str, notes: List[str], b, total: int) -> Non
     parser answers, earlier batches may already stand. The count comes from
     the batcher rather than being assumed to be zero."""
     from plaid_client.services import request_service
-    from ..core.plan import PlanError
     try:
         request_service(client, op['project_id'], op['service_id'],
                         {'document_id': document_id, 'language': op['language'],

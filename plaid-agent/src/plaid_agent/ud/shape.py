@@ -17,10 +17,10 @@ for the same gesture. Divergence here would mean two ways of building a
 multi-word token that a later read cannot tell apart.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from .project import Token, UdDoc, Word, resolve
-from .tools import ToolError, Workspace, _truncate
+from .tools import ToolError, Workspace
 
 
 def _token_of(ws: Workspace, doc: UdDoc, ref: str) -> Token:

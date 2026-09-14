@@ -6,7 +6,7 @@ only to print the hits it actually has.
 
 import math
 from collections import defaultdict
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from .corpus import DOCS_PER_SEARCH, Corpus, rx
 from .project import Sentence, UdDoc, Word, kwic, word_ref

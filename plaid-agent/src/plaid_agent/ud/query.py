@@ -13,8 +13,7 @@ from typing import Any, Dict, List
 
 from ..core.args import clamp_limit
 from ..core.limits import READ_LIMITS
-from ..core.query import (HELP, QueryRefused, cell, documents_in, parse_query, render,
-                          resolve_layer, rewrite, run)
+from ..core.query import HELP, QueryRefused, documents_in, parse_query, render, rewrite, run
 from .project import word_ref
 from .tools import ToolError, Workspace, _truncate
 

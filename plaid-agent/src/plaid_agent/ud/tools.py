@@ -20,9 +20,9 @@ from ..core.limits import MAX_RESULT_CHARS, READ_LIMITS
 from ..core.plan import PLAN_MAX_OPS, PlanFull, reserve as core_reserve
 from ..core.tools import fn, tools_for as core_tools_for
 from .plan import (COMPACT, EXCLUSIVE_KINDS, KIND,  # noqa: F401 - COMPACT is re-exported for the tests
-                   RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT, scope_clears)
-from .project import (MISSING, Sentence, Token, UdDoc, UdProject, Word, load_document, parse_ref,
-                      render_document, render_sentence, resolve, word_ref)
+                   RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT, docs_of_op, scope_clears)
+from .project import (Sentence, Token, UdDoc, UdProject, Word, load_document, render_document,
+                      resolve, word_ref)
 from .review import (REVIEW_FIELDS, all_words, confirm_targets, counts_phrase, discard_targets,
                      per_field)
 
@@ -258,17 +258,6 @@ class Workspace:
                 # carries its version, which is all the stale check needs.
                 out.append({'id': did, 'name': listed[did].get('name'), 'version': listed[did].get('version')})
         return out
-
-
-def docs_of_op(op: Dict[str, Any]) -> set:
-    """The documents an op reaches: one, a parse's list, or every document a
-    corpus-wide replacement matched."""
-    out = set()
-    if op.get('document_id'):
-        out.add(op['document_id'])
-    out.update(op.get('document_ids') or [])
-    out.update(op.get('documents') or [])
-    return out
 
 
 def op_target(op: Dict[str, Any]):

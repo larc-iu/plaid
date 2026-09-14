@@ -73,7 +73,7 @@ from typing import Any, Dict, List
 
 from ..core import opkind as ok
 from ..core.opkind import OpKind
-from ..core.plan import (BATCH_OP_BUDGET, CLEAR_PROV, CONFIRM, PlanError, Stamps, STAMP_MODES,  # noqa: F401
+from ..core.plan import (CLEAR_PROV, CONFIRM, PlanError, Stamps,  # noqa: F401 - PlanError is re-exported
                          TrackingBatcher, applying, created_id, expand_ops)
 
 # How a kind tags what it does to the shape of the text. RESHAPES is every
