@@ -20,7 +20,14 @@ nothing was being edited before believing it.
 
 - `*.spec.js`: the Playwright suite, `npm run test:e2e`, and part of the gate.
 - `fixtures.js`: the Playwright helpers (`test`, `expect`, `seedAuth`,
-  `readToken`, `BASE_URL`, `collectClientErrors`).
+  `readToken`, `BASE_URL`, `collectClientErrors`), most of them handed on from
+  `../../plaid-ui/e2e/appFixtures.js`.
+- `../../plaid-ui/e2e/`: the specs plaid-ud and plaid-igt SHARE, because what
+  they cover is one component in that package: `assistantChrome.js`,
+  `assistantPanel.js`, `headerBand.js`, plus `appFixtures.js`. They import
+  nothing an app owns, so `test`, `expect`, `seedAuth` and a client factory go in
+  as arguments, and each app's spec supplies only its routes and selectors. A
+  failure there names the shared file, which is where the fix goes.
 - `fixtureProject.js`: the shared "E2E UD Fixture" project, created or found by
   `node e2e/fixtureProject.js`. Its layers come from `createUdProject`, the same
   function the New Project modal calls: never rebuild them by hand here, which
