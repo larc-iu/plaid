@@ -20,7 +20,7 @@ from ..core.limits import MAX_RESULT_CHARS, READ_LIMITS
 from ..core.plan import PLAN_MAX_OPS, PlanFull, reserve as core_reserve
 from ..core.tools import fn, tools_for as core_tools_for
 from .plan import (COMPACT, EXCLUSIVE_KINDS, KIND,  # noqa: F401 - COMPACT is re-exported for the tests
-                   REWRITES_DOCUMENT)
+                   RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT)
 from .project import (MISSING, Sentence, Token, UdDoc, UdProject, Word, load_document, parse_ref,
                       render_document, render_sentence, resolve, word_ref)
 from .review import (REVIEW_FIELDS, all_words, confirm_targets, counts_phrase, discard_targets,
@@ -348,7 +348,7 @@ def _no_boundary_moved(ws: Workspace, doc: UdDoc) -> None:
     "s7.w2" means before or after, a plan that moves a boundary does that and
     nothing else to the document."""
     for op in ws.ops:
-        if op.get('kind') in ('split_sentence', 'merge_sentences') and op.get('document_id') == doc.id:
+        if op.get('kind') in RESHAPES_DOCUMENT and op.get('document_id') == doc.id:
             raise ToolError(f'This plan already moves a sentence boundary in "{doc.name}", and '
                             f'that renumbers the sentences every other reference names. Apply it '
                             f'on its own, then plan the rest against the new numbering '
@@ -371,7 +371,7 @@ def _boundary_can_still_move(ws: Workspace, doc: UdDoc) -> None:
 def _not_being_reshaped(ws: Workspace, words: List[Word]) -> None:
     """Reshaping a token deletes and remakes its words, so annotating one of
     them in the same plan writes to something that will not exist."""
-    doomed = {w for op in ws.ops if op.get('kind') == 'set_words'
+    doomed = {w for op in ws.ops if op.get('kind') in RESHAPES_TOKEN
               for w in (op.get('existing_word_ids') or [])}
     hit = [w for w in words if w.id in doomed]
     if hit:
@@ -386,7 +386,7 @@ def _no_words_annotated(ws: Workspace, token, doc_id: str = None) -> None:
     annotate-then-reshape was staged, approved, and only then refused."""
     doomed = {w.id for w in token.words}
     for op in ws.ops:
-        if op.get('kind') == 'set_words' and set(op.get('existing_word_ids') or []) & doomed:
+        if op.get('kind') in RESHAPES_TOKEN and set(op.get('existing_word_ids') or []) & doomed:
             raise ToolError('This plan already reshapes this token. Do one or the other '
                             '(plan_status, drop_planned).')
         # A scope op reaches every word of its document, this token's included,

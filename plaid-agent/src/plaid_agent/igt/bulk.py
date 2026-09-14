@@ -7,6 +7,7 @@ is applied only after approval."""
 from typing import Any, Dict, List, Optional
 
 from ..core.replace import replacer as core_replacer
+from .plan import SCOPES
 from .project import word_ref
 from .tools import (Workspace, ToolError, t_set_analysis, entry_line, check_respell_overlap, span_op,
                     has_own_form, morpheme_form_op, parse_analysis, analysis_op, _meta_patch,
@@ -195,7 +196,7 @@ def _stage(ws: Workspace, tool: str, args: Dict[str, Any], staged: List[Dict[str
 def scope_reaches(ws: Workspace, doc_id: Optional[str]) -> bool:
     """Whether a corpus-wide change already planned reaches this document (or
     might, when the document is not known)."""
-    reach = {d for op in ws.ops if op.get('kind') == 'bulk_scope' for d in (op.get('documents') or [])}
+    reach = {d for op in ws.ops if op.get('kind') in SCOPES for d in (op.get('documents') or [])}
     return bool(reach) and (doc_id is None or doc_id in reach)
 
 

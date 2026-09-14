@@ -25,7 +25,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from ..core import opkind
-from .plan import ENTRY, KIND, TEXT_SHAPE, TOKEN
+from .plan import ENTRY, KIND, SCOPES, TEXT_SHAPE, TOKEN
 from .project import Sentence, Word, Morpheme
 
 # Which key on an op names what it lands on, read off the registry. An op over
@@ -55,7 +55,7 @@ def describe_change(ws, op: Dict[str, Any]) -> Dict[str, Any]:
 def writes_text(op: Dict[str, Any]) -> bool:
     """Whether this op rewrites baseline text. A compacted group keeps the
     kind of its members; a corpus-wide op stands for a count per kind."""
-    if op.get('kind') == 'bulk_scope':
+    if op.get('kind') in SCOPES:
         return any(k in _TEXT_KINDS for k, n in (op.get('counts') or {}).items() if n)
     return op.get('kind') in _TEXT_KINDS
 

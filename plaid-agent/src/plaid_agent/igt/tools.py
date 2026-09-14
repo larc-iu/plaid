@@ -28,7 +28,7 @@ from ..core.limits import MAX_RESULT_CHARS, READ_LIMITS
 from ..core.plan import PLAN_MAX_OPS, PlanFull, reserve as core_reserve
 from ..core.tools import fn, tools_for as core_tools_for
 
-from .plan import ANALYSIS, KIND, TEXT_SHAPE, WORD_SHAPE
+from .plan import ANALYSIS, EXCLUSIVE_KINDS, KIND, TEXT_SHAPE, WORD_SHAPE
 
 from .project import (IgtProject, IgtDoc, Sentence, Word, Morpheme, Link, load_document, resolve, document_lines,
                       render_document, render_overview, render_word, mwe_ref, REVIEWABLE,
@@ -344,7 +344,7 @@ class Workspace:
         # A restore rewrites a document wholesale, so nothing else can be
         # planned against the ids and offsets read before it: a restore is
         # always a plan of its own.
-        if op.get('kind') != 'restore_document' and any(o.get('kind') == 'restore_document' for o in self.ops):
+        if op.get('kind') not in EXCLUSIVE_KINDS and any(o.get('kind') in EXCLUSIVE_KINDS for o in self.ops):
             raise ToolError('The plan holds a restore, which must be approved on its own; discard_plan first, '
                             'or let the user approve the restore and plan this afterwards.')
         key = op_target(op)

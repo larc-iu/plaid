@@ -611,6 +611,41 @@ def test_reshaping_and_annotating_the_same_token_cannot_share_a_plan(ws):
         validate_ops(ws.ops + [{'kind': 'set_span', 'layer_id': 'l', 'token_id': 'uw-1'}])
 
 
+def test_the_reshape_guards_read_the_registry_table_not_a_kind_name(ws, monkeypatch):
+    """`RESHAPES_TOKEN` is the registry's WORD_SHAPE tag, and `validate_ops`
+    used it while both staging guards still tested `kind == 'set_words'` by
+    hand. A second kind that deletes a token's words would have been refused
+    only after the user approved the plan."""
+    from plaid_agent.ud import tools
+
+    monkeypatch.setattr(tools, 'RESHAPES_TOKEN', tools.RESHAPES_TOKEN + ('recut_token',))
+    recut = {'kind': 'recut_token', 'document_id': 'ud1', 'token_id': 'ut-1',
+             'existing_word_ids': ['uw-1'], 'label': 'recut'}
+
+    # Annotating a word the other kind deletes.
+    ws.ops.append(dict(recut))
+    assert 'already reshapes the token' in call_tool(
+        ws, 'set_field', {'document': 'Viaje', 'refs': ['s1.w1'], 'field': 'lemma', 'value': 'ir'})
+    assert len(ws.ops) == 1
+
+    # And the other way round: reshaping a token the other kind already recuts.
+    assert 'already reshapes this token' in call_tool(
+        ws, 'set_words', {'document': 'Viaje', 'ref': 's1.w1', 'forms': ['va', 'mos']})
+    assert len(ws.ops) == 1
+
+
+def test_the_boundary_guard_reads_the_registry_table_too(ws, monkeypatch):
+    """`_no_boundary_moved` listed split_sentence and merge_sentences by hand
+    where RESHAPES_DOCUMENT already answers."""
+    from plaid_agent.ud import tools
+
+    monkeypatch.setattr(tools, 'RESHAPES_DOCUMENT', tools.RESHAPES_DOCUMENT + ('recut_sentences',))
+    ws.ops.append({'kind': 'recut_sentences', 'document_id': 'ud1', 'label': 'recut'})
+    assert 'moves a sentence boundary' in call_tool(
+        ws, 'set_field', {'document': 'Viaje', 'refs': ['s1.w1'], 'field': 'lemma', 'value': 'ir'})
+    assert len(ws.ops) == 1
+
+
 def test_applying_a_reshape_remakes_the_words_then_their_spans(ws):
     call_tool(ws, 'set_words', {'document': 'Viaje', 'ref': 's2.w1', 'forms': ['co', 'rre']})
     counts = execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified')

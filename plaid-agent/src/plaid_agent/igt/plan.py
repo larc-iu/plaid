@@ -533,6 +533,11 @@ REQUIRED = ok.required(KIND)
 # The kinds that move a word's boundaries, a sentence boundary, the baseline
 # text, or a morpheme chain. Nothing corpus-wide may share a plan with one.
 RESHAPES = ok.shaped(KIND, WORD_SHAPE, SENTENCE_SHAPE, TEXT_SHAPE, ANALYSIS)
+# Kinds resolved to the ops they stand for at approval, and kinds that own
+# their whole plan. Both are the registry's tags rather than a kind's name, so
+# a second one of either joins by being declared.
+SCOPES = ok.shaped(KIND, ok.SCOPE)
+EXCLUSIVE_KINDS = ok.shaped(KIND, ok.EXCLUSIVE)
 # What a kind is called in the line the user approves, and in the count of
 # what was applied. One word per kind, so the two never disagree.
 SUMMARY_NAMES = ok.nouns(KIND)
@@ -543,7 +548,7 @@ _TOKEN_KEYS = ok.token_keys(KIND)
 
 def validate_ops(ops: List[Dict[str, Any]]) -> None:
     """Reject a malformed plan BEFORE anything is written."""
-    reach = {d for op in ops if op.get('kind') == 'bulk_scope' for d in (op.get('documents') or [])}
+    reach = {d for op in ops if op.get('kind') in SCOPES for d in (op.get('documents') or [])}
     if reach:
         for op in ops:
             if op.get('kind') in RESHAPES and (not op.get('doc') or op['doc'] in reach):
@@ -707,7 +712,7 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str,
     again NOW by the same function that previewed it. Approval has already
     refused the plan if a matched document moved since, so what is found
     here is what was counted."""
-    if not any(op.get('kind') == 'bulk_scope' for op in ops):
+    if not any(op.get('kind') in SCOPES for op in ops):
         return ops
     if project is None:
         raise ValueError('a corpus-wide change needs the project to read the corpus with')
@@ -716,10 +721,10 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str,
     ws = Workspace(client, project)
     # A change the model made by name beats one a scope finds at approval,
     # whichever came first (the scope previewed stored values, not planned).
-    explicit = {op_target(op) for op in ops if op.get('kind') != 'bulk_scope'} - {None}
+    explicit = {op_target(op) for op in ops if op.get('kind') not in SCOPES} - {None}
     out: List[Dict[str, Any]] = []
     for op in ops:
-        if op.get('kind') != 'bulk_scope':
+        if op.get('kind') not in SCOPES:
             out.append(op)
             continue
         fn = SCOPED.get(op.get('tool'))

@@ -235,6 +235,26 @@ def test_every_igt_table_is_the_registry_read_back():
         assert s['each'], name
 
 
+def test_igt_reads_its_scope_and_exclusive_kinds_off_the_registry(monkeypatch):
+    """Both sets were the kind's name written out at six sites, where the
+    registry's SCOPE and EXCLUSIVE tags already answer. A second kind of
+    either would have joined a plan that neither guard knew about."""
+    import pytest
+    from fixtures import scan_ws
+    from plaid_agent.igt import plan, tools
+
+    monkeypatch.setattr(plan, 'SCOPES', plan.SCOPES + ('sweep',))
+    with pytest.raises(ValueError, match='corpus-wide change'):
+        plan.validate_ops([{'kind': 'sweep', 'documents': ['d1']},
+                           {'kind': 'split_word', 'word_id': 'w-1', 'position': 2, 'doc': 'd1'}])
+
+    w = scan_ws(FakeClient())
+    monkeypatch.setattr(tools, 'EXCLUSIVE_KINDS', tools.EXCLUSIVE_KINDS + ('wipe',))
+    w.ops.append({'kind': 'wipe', 'label': 'a wipe'})
+    with pytest.raises(tools.ToolError, match='approved on its own'):
+        w.add_op({'kind': 'set_span', 'layer_id': 'L', 'token_id': 'T', 'value': 'x', 'label': ''})
+
+
 def test_an_unknown_igt_kind_refuses_instead_of_writing_nothing():
     """A kind nobody wired up must never be applied as nothing at all, under
     an operation label saying it had been."""
