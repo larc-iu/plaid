@@ -488,7 +488,7 @@ def _head_id(head) -> int:
     digit and `int` then complains about in Python's own words.
     """
     try:
-        return whole(head)
+        return whole(head, 'head')
     except ValueError:
         raise ToolError(f'"{head}" is not a head. Give the number the head word carries within its own sentence '
                         '(1, 2, 3 …), or 0 for the root. It is a plain number, not a reference.') from None
@@ -769,7 +769,7 @@ def t_drop_planned(ws: Workspace, indexes=None) -> str:
     if not indexes:
         raise ToolError('Give indexes: the numbers plan_status shows, as a list.')
     try:
-        drop = {whole(i) for i in indexes}
+        drop = {whole(i, 'indexes') for i in indexes}
     except (TypeError, ValueError):
         raise ToolError('indexes must be the whole numbers plan_status shows, as a list, e.g. [2, 5].')
     bad = [i for i in drop if not 1 <= i <= len(ws.ops)]

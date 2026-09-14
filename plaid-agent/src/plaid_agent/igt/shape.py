@@ -98,7 +98,7 @@ def t_split_word(ws: Workspace, document: str, ref: str, at) -> str:
     # `int`: `isdigit` is true of "²", and `int(2.7)` used to cut a word
     # after two characters for an argument that named no position at all.
     try:
-        n = whole(at)
+        n = whole(at, 'at')
     except ValueError:
         left = at.strip() if isinstance(at, str) else ''
         if not left:
@@ -209,7 +209,7 @@ def t_split_sentence(ws: Workspace, document: str, ref: str, before_word: int) -
     s = _need(resolve(doc, ref), Sentence, ref)
     _guard(ws, s, ref)
     try:
-        n = whole(before_word)
+        n = whole(before_word, 'before_word')
     except ValueError:
         raise ToolError('before_word must be a word number (the first word of the new sentence)') from None
     if not 2 <= n <= len(s.words):

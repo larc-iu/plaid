@@ -268,7 +268,7 @@ def t_move_sense(ws: Workspace, number, entry_form: Optional[str] = None, lexico
     # own siblings, so only the last segment says where it should land.
     raw = str(number).strip().rsplit('.', 1)[-1]
     try:
-        wanted = whole(raw)
+        wanted = whole(raw, 'number')
     except ValueError:
         raise ToolError(f'"{number}" is not a sense number. Give the place among the senses of '
                         f'{view.label(view.tree.root_of.get(target["id"]) or target["id"])}, '
@@ -432,7 +432,7 @@ def t_remove_example(ws: Workspace, index: int, entry_form: Optional[str] = None
     # number at all: int() answered the second with its own error text, and
     # cut 1.5 down to example 1 for an argument that named no example.
     try:
-        i = whole(index)
+        i = whole(index, 'index')
     except ValueError:
         i = None
     if i is None or i < 0 or i >= len(exs):

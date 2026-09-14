@@ -13,20 +13,31 @@ import re
 from typing import Any, Optional
 
 
-def whole(i) -> int:
-    """One plan index. A fraction is refused rather than truncated: 1.5 is not
-    change 1, and silently dropping change 1 for it is worse than a refusal."""
+def whole(i, name: str = 'number') -> int:
+    """One position a model named. A fraction is refused rather than
+    truncated: 1.5 is not change 1, and silently dropping change 1 for it is
+    worse than a refusal.
+
+    Most callers catch this and say what the argument is for in their own
+    words. It raises a SENTENCE all the same, naming ``name``: raising the
+    bare value reached the model as "Error: 2.5" from any caller that did
+    not, which is a refusal with nothing in it to act on.
+    """
     if isinstance(i, bool):
-        raise ValueError(i)
+        raise ValueError(_not_whole(name, i))
     if isinstance(i, int):
         return i
     if isinstance(i, float):
         if not i.is_integer():
-            raise ValueError(i)
+            raise ValueError(_not_whole(name, i))
         return int(i)
     if re.fullmatch(r'-?[0-9]+', str(i).strip()):
         return int(str(i).strip())
-    raise ValueError(i)
+    raise ValueError(_not_whole(name, i))
+
+
+def _not_whole(name: str, value) -> str:
+    return f'"{name}" has to be a whole number, not {value!r}.'
 
 
 def clamp_limit(raw: Any, default: int, cap: int, name: str = 'limit') -> int:

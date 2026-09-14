@@ -915,7 +915,7 @@ def t_drop_planned(ws: Workspace, indexes) -> str:
     if isinstance(indexes, (int, str)):
         indexes = [indexes]
     try:
-        wanted = {whole(i) for i in (indexes or [])}
+        wanted = {whole(i, 'indexes') for i in (indexes or [])}
     except (TypeError, ValueError):
         raise ToolError('indexes must be the whole numbers shown by plan_status, e.g. [2, 5]')
     bad = sorted(i for i in wanted if not 1 <= i <= len(ws.ops))
