@@ -19,7 +19,7 @@ from ..core.limits import (MAX_RESULT_CHARS, MAX_SCOPE_DOCS, MAX_SENTENCES_PER_R
                           READ_LIMITS)
 from ..core.workspace import BaseWorkspace
 from ..core.tools import ToolError, truncate
-from .plan import (COMPACT, EXCLUSIVE_KINDS, KIND,  # noqa: F401 - COMPACT is re-exported for the tests
+from .plan import (COMPACT, KIND,  # noqa: F401 - COMPACT is re-exported for the tests
                    RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT, docs_of_op, scope_clears)
 from .project import (Sentence, Token, UdDoc, UdProject, Word, load_document, render_document,
                       resolve, word_ref)
@@ -80,9 +80,18 @@ class Workspace(BaseWorkspace):
     # --- the plan --------------------------------------------------------
 
     def guard_op(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
-        _no_restore_planned(self)
+        super().guard_op(op, replacing=replacing)
         self.refuse_scope_clash(op, replacing=replacing)
         self.refuse_reshape_clash(op, replacing=replacing)
+
+    def exclusive_message(self, staging_it: bool) -> str:
+        if staging_it:
+            return ('A restore must be a plan of its own, since it rewrites every layer of the '
+                    'document. Discard the plan first (discard_plan), or let the user approve it '
+                    'and ask for the restore afterwards.')
+        return ('This plan restores a document, and a restore rewrites every layer of '
+                'it, so nothing else can share the plan. Apply it on its own, then '
+                'plan the rest against what it restored (plan_status, drop_planned).')
 
     def clash_message(self, victim: Dict[str, Any], killer: Optional[Dict[str, Any]]) -> str:
         """Reshaping a token deletes and remakes its words, so the words it
@@ -292,15 +301,10 @@ def _no_parse_planned(ws: Workspace, doc: UdDoc) -> None:
 
 def _no_restore_planned(ws: Workspace) -> None:
     """A restore rewrites every layer of its document, so nothing may join its
-    plan. The set is the registry's EXCLUSIVE tag rather than a kind name, so
-    a second kind that owns its plan is refused by declaring itself. The check
-    looks FORWARD as well as back: refusing only when the exclusive op is
-    planned second would let an edit slip in after one."""
-    for op in ws.ops:
-        if op.get('kind') in EXCLUSIVE_KINDS:
-            raise ToolError('This plan restores a document, and a restore rewrites every layer of '
-                            'it, so nothing else can share the plan. Apply it on its own, then '
-                            'plan the rest against what it restored (plan_status, drop_planned).')
+    plan. The rule and its wording are the workspace's, and every staged op
+    reaches them through `guard_op`; this is the early refusal for a tool that
+    would otherwise do expensive work first."""
+    ws.refuse_exclusive(None)
 
 
 def _no_boundary_moved(ws: Workspace, doc: UdDoc) -> None:

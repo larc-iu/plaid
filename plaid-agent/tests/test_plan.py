@@ -254,19 +254,30 @@ def test_igt_reads_its_scope_and_exclusive_kinds_off_the_registry(monkeypatch):
     either would have joined a plan that neither guard knew about."""
     import pytest
     from fixtures import scan_ws
+    from plaid_agent.core import opkind as ok
     from plaid_agent.core.tools import ToolError
-    from plaid_agent.igt import plan, workspace
+    from plaid_agent.igt import plan
 
     monkeypatch.setattr(plan, 'SCOPES', plan.SCOPES + ('sweep',))
     with pytest.raises(ValueError, match='corpus-wide change'):
         plan.validate_ops([{'kind': 'sweep', 'documents': ['d1']},
                            {'kind': 'split_word', 'word_id': 'w-1', 'position': 2, 'doc': 'd1'}])
 
+    # A second kind that owns its whole plan joins the rule by DECLARING itself,
+    # and the rule holds both ways round: nothing joins a plan that has one, and
+    # one does not join a plan that has anything.
+    wipe = ok.OpKind('wipe', ('wipe', 'wipes'), apply=lambda ctx, op: 1, shape=ok.EXCLUSIVE)
     w = scan_ws(FakeClient())
-    monkeypatch.setattr(workspace, 'EXCLUSIVE_KINDS', workspace.EXCLUSIVE_KINDS + ('wipe',))
+    monkeypatch.setattr(type(w), 'KIND', dict(plan.KIND, wipe=wipe))
     w.ops.append({'kind': 'wipe', 'label': 'a wipe'})
     with pytest.raises(ToolError, match='approved on its own'):
         w.add_op({'kind': 'set_span', 'layer_id': 'L', 'token_id': 'T', 'value': 'x', 'label': ''})
+
+    w2 = scan_ws(FakeClient())
+    monkeypatch.setattr(type(w2), 'KIND', dict(plan.KIND, wipe=wipe))
+    w2.add_op({'kind': 'set_span', 'layer_id': 'L', 'token_id': 'T', 'value': 'x', 'label': ''})
+    with pytest.raises(ToolError, match='plan of its own'):
+        w2.add_op({'kind': 'wipe', 'label': 'a wipe'})
 
 
 def test_an_unknown_igt_kind_refuses_instead_of_writing_nothing():

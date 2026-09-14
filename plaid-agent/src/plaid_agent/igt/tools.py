@@ -876,9 +876,9 @@ def t_restore_document(ws: Workspace, document: str, as_of: str) -> str:
     if not re.match(r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}', as_of):
         raise ToolError('as_of must be an ISO-8601 instant, e.g. 2026-09-05T18:45:49Z (recent_changes prints one '
                         'per change as as_of=)')
-    if ws.ops:
-        raise ToolError('A restore must be a plan of its own: discard_plan first, or let the user approve the '
-                        'plan so far and ask for the restore afterwards.')
+    # The funnel asks the same question of the op this tool is about to stage;
+    # asked here too, the model is told before the dry run costs a round trip.
+    ws.refuse_exclusive('restore_document')
     doc = ws.doc(document)
     ws.on_progress(f'Checking what a restore of "{doc.name}" would change…')
     try:

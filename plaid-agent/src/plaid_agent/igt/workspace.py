@@ -23,7 +23,7 @@ from ..core import opkind
 from ..core.tools import ToolError
 from ..core.workspace import BaseWorkspace
 
-from .plan import EXCLUSIVE_KINDS, KIND, removed_entries
+from .plan import KIND, removed_entries
 from .project import IgtProject, IgtDoc, Morpheme, Sentence, Word, load_document, resolve
 from .lexview import LexView, _dict_hits, entry_line
 from .vocab import RESERVED_ITEM_KEYS, fields_for_item
@@ -306,13 +306,15 @@ class Workspace(BaseWorkspace):
         self.item_patches = saved['item_patches']
         self._patch_version += 1
 
-    def guard_op(self, op: Dict[str, Any], replacing=None) -> None:
+    def exclusive_message(self, staging_it: bool) -> str:
         """A restore rewrites a document wholesale, so nothing else can be
         planned against the ids and offsets read before it: a restore is
-        always a plan of its own."""
-        if op.get('kind') not in EXCLUSIVE_KINDS and any(o.get('kind') in EXCLUSIVE_KINDS for o in self.ops):
-            raise ToolError('The plan holds a restore, which must be approved on its own; discard_plan first, '
-                            'or let the user approve the restore and plan this afterwards.')
+        always a plan of its own, whichever of the two is staged first."""
+        if staging_it:
+            return ('A restore must be a plan of its own: discard_plan first, or let the user approve the '
+                    'plan so far and ask for the restore afterwards.')
+        return ('The plan holds a restore, which must be approved on its own; discard_plan first, '
+                'or let the user approve the restore and plan this afterwards.')
 
     def planned_respells(self, text_id: str) -> List[tuple]:
         return [(op['begin'], op['end']) for op in self.ops if op.get('kind') == 'respell' and op.get('text_id') == text_id]

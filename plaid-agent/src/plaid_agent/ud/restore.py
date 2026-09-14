@@ -53,10 +53,9 @@ def t_restore_document(ws: Workspace, document: str = None, as_of: str = None) -
     if not AS_OF.match(as_of):
         raise ToolError('as_of must be an ISO-8601 instant, e.g. 2026-09-05T18:45:49Z. '
                         'recent_changes prints one per change.')
-    if ws.ops:
-        raise ToolError('A restore must be a plan of its own, since it rewrites every layer of '
-                        'the document. Discard the plan first (discard_plan), or let the user '
-                        'approve it and ask for the restore afterwards.')
+    # The funnel asks the same question of the op this tool is about to stage;
+    # asked here too, the model is told before the dry run costs a round trip.
+    ws.refuse_exclusive('restore_document')
     doc = ws.doc(document)
     ws.on_progress(f'Checking what a restore of "{doc.name}" would change…')
     try:

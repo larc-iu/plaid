@@ -227,10 +227,42 @@ class BaseWorkspace:
         # land on the length the watermark holds with different ops under it.
         self._gone_at = -1
 
+    def refuse_exclusive(self, kind: Optional[str], replacing: Optional[int] = None) -> None:
+        """An op of a kind tagged EXCLUSIVE is the only op in its plan, BOTH
+        WAYS ROUND: nothing joins a plan that holds one, and one does not join
+        a plan that holds anything.
+
+        The two halves were written apart, the first in each app's
+        ``guard_op`` and the second in each app's restore tool, so a second
+        exclusive kind would have got the first half by being declared and the
+        second not at all. ``kind`` is what is being staged, or None where the
+        caller is asking the question early, before it has built an op.
+        """
+        exclusive = opkind.shaped(self.KIND, opkind.EXCLUSIVE)
+        planned = [o for i, o in enumerate(self.ops) if i != replacing]
+        if kind in exclusive:
+            if planned:
+                raise ToolError(self.exclusive_message(staging_it=True))
+        elif any(o.get('kind') in exclusive for o in planned):
+            raise ToolError(self.exclusive_message(staging_it=False))
+
+    def exclusive_message(self, staging_it: bool) -> str:
+        """What to tell the model about a change that owns its whole plan.
+        ``staging_it`` is True when that change is the one being staged and
+        the plan already holds something else. An app names the change."""
+        if staging_it:
+            return ('This change rewrites what everything else in the plan addresses, so it must be a '
+                    'plan of its own. Discard the plan first (discard_plan), or let the user approve '
+                    'it and ask for this afterwards.')
+        return ('The plan holds a change that rewrites what this one addresses, and it must be '
+                'approved on its own. discard_plan first, or let the user approve it and plan this '
+                'afterwards.')
+
     def guard_op(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
         """The refusals only this app owes when something is staged. The
         ``replacing`` index is the op this one supersedes, which is not part of
         the plan any more."""
+        self.refuse_exclusive(op.get('kind'), replacing=replacing)
 
     def reserve(self, n: int) -> None:
         """Refuse BEFORE staging what would push the plan past what a record
