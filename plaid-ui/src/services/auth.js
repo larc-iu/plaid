@@ -10,6 +10,26 @@ const BASE_URL = import.meta.env.VITE_API_URL || window.location.origin;
 
 let client = null;
 
+// Where the app's sign-in page is, as a hash route. The app names it, the way
+// it names `createProtectedRoute`'s `loginPath`: a routing table is an app's
+// own, and a default here would be one app's table living in the package.
+// No default, so a forgotten call is loud rather than a silent no-op.
+let loginRoute = null;
+
+/** Tell the session where sign-in is. Call once, at startup, from main.jsx. */
+export const configureAuth = ({ loginRoute: route }) => {
+  loginRoute = route;
+};
+
+const signInRoute = () => {
+  if (!loginRoute) {
+    throw new Error(
+      'plaid-ui: no loginRoute. Call configureAuth({loginRoute}) from the app entry.',
+    );
+  }
+  return loginRoute;
+};
+
 // JWT parsing utility
 function parseJwtPayload(token) {
   try {
@@ -123,14 +143,14 @@ export const authService = {
     localStorage.removeItem('displayName');
     localStorage.removeItem('isAdmin');
     localStorage.removeItem('avatarHash');
-    // HashRouter plus a production base ('/igt/', '/ud/') mean the login route
-    // lives in the URL fragment. Navigating to an absolute '/login' path misses
-    // the SPA, since the server has nothing there under the app's base. Set the
-    // fragment off the current path so the base is preserved in both dev ('/')
-    // and prod, then hard-reload to clear in-memory React state: the
-    // onAuthError path calls logout() outside the AuthContext, so the user
-    // state will not reset itself.
-    window.location.hash = '#/login';
+    // HashRouter plus a production base ('/igt/', '/ud/') mean sign-in lives in
+    // the URL fragment. Navigating to an absolute path misses the SPA, since
+    // the server has nothing there under the app's base. Set the fragment off
+    // the current path so the base is preserved in both dev ('/') and prod,
+    // then hard-reload to clear in-memory React state: the onAuthError path
+    // calls logout() outside the AuthContext, so the user state will not reset
+    // itself.
+    window.location.hash = signInRoute();
     window.location.reload();
   },
 

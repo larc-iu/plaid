@@ -29,7 +29,8 @@ vi.mock('@larc-iu/plaid-client', () => {
   return { default: PlaidClient };
 });
 
-const { authService } = await import('./auth.js');
+const { authService, configureAuth } = await import('./auth.js');
+configureAuth({ loginRoute: '#/login' });
 
 const session = () => ({
   token: localStorage.getItem('token'),
@@ -104,6 +105,12 @@ describe('authService', () => {
       avatarHash: null,
     });
     expect(authService.isAuthenticated()).toBe(true);
+  });
+
+  it('refuses to sign out to a route no app named', () => {
+    configureAuth({ loginRoute: null });
+    expect(() => authService.logout()).toThrow(/loginRoute/);
+    configureAuth({ loginRoute: '#/login' });
   });
 
   it('clears every session key on logout and records the reason', () => {

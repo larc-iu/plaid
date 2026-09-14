@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { Toaster } from '@ui/components/ui/sonner';
 import { configureUi } from '@ui/lib/uiConfig.js';
+import { configureAuth } from '@ui/services/auth.js';
 import { attachCompose } from '@/lib/composeInput.js';
 import App from './App';
 // The provenance palette the apps share, then this app's own tokens.
@@ -20,6 +21,9 @@ configureUi({
   appName: 'Plaid IGT',
   attachCompose,
 });
+
+// Where a signed-out session lands. The app's routing table is the app's.
+configureAuth({ loginRoute: '#/login' });
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

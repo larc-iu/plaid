@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { Toaster } from '@ui/components/ui/sonner';
 import { ConfirmProvider } from '@ui/components/shared/ConfirmProvider';
 import { configureUi } from '@ui/lib/uiConfig.js';
+import { configureAuth } from '@ui/services/auth.js';
 // The provenance palette the apps share, then this app's own tokens.
 import '@ui/index.css';
 import './index.css';
@@ -13,6 +14,9 @@ import App from './App.jsx';
 // project's config bucket under `configNamespace`. This app binds no compose
 // codes.
 configureUi({ appPrefix: 'plaid_ud', configNamespace: 'ud', appName: 'Plaid UD' });
+
+// Where a signed-out session lands. The app's routing table is the app's.
+configureAuth({ loginRoute: '#/login' });
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
