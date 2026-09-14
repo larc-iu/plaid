@@ -314,3 +314,40 @@
           (is (not (clojure.string/ends-with? error "project "))
               "the message named a project id that was never resolved")
           (is (clojure.string/includes? error "the project this entity belongs to")))))))
+
+;; ----------------------------------------------------------------------------
+;; A dead token is refused as often as it is sent, and warned about once
+;; ----------------------------------------------------------------------------
+
+(deftest a-refused-token-warns-once-and-then-goes-quiet
+  ;; One client left running with an expired token retries on a timer, and a
+  ;; warning per retry evicts the 1000-entry event buffer in a few minutes.
+  (auth/reset-jwt-rejection-log!)
+  (let [warnings (atom 0)
+        debugs (atom 0)
+        refuse! (fn [token]
+                  (rest-handler (-> (mock/request :get "/api/v1/projects")
+                                    (mock/header "accept" "application/edn")
+                                    (mock/header "Authorization" (str "Bearer " token)))))]
+    (binding [log/*config* (merge log/*config*
+                                  {:min-level :debug
+                                   :appenders {:println {:enabled? false}
+                                               :count {:enabled? true
+                                                       :min-level :debug
+                                                       :fn (fn [{:keys [level msg_]}]
+                                                             (when (str/includes? (str (force msg_))
+                                                                                  "JWT validation failed")
+                                                               (case level
+                                                                 :warn (swap! warnings inc)
+                                                                 :debug (swap! debugs inc)
+                                                                 nil)))}}})]
+      (testing "every refusal is still a 401"
+        (is (every? #(= 401 (:status %))
+                    (repeatedly 5 #(refuse! "not-a-token")))))
+      (testing "and only the first one is a warning"
+        (is (= 1 @warnings))
+        (is (= 4 @debugs)))
+      (testing "a different token gets its own warning"
+        (refuse! "also-not-a-token")
+        (is (= 2 @warnings))))
+    (auth/reset-jwt-rejection-log!)))

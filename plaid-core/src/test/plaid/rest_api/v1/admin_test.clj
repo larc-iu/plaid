@@ -9,6 +9,7 @@
                                     admin-request api-call assert-ok assert-forbidden
                                     with-admin with-test-users user1-request user2-request
                                     with-clean-db]]
+            [plaid.rest-api.v1.auth :as auth]
             [plaid.rest-api.v1.rate-limit :as rl]
             [plaid.server.locks :as locks]
             [plaid.server.log-buffer :as log-buffer]
@@ -187,6 +188,9 @@
 
 (deftest live-log-keeps-events-out-of-the-request-flood
   (log-buffer/clear!)
+  ;; A token is warned about once per window, so this test has to be the
+  ;; first refusal of this one however the namespaces happen to be ordered.
+  (auth/reset-jwt-rejection-log!)
   ;; A rejected token is logged by the JWT middleware, not by the access log,
   ;; so it lands in the event buffer while its 401 lands in the request one.
   (api-call bad-token-request {:method :get :path "/api/v1/projects"})

@@ -220,6 +220,43 @@
                               (do (log/error "Logout failed for" user-id ":" (:error result))
                                   {:status 500 :body {:error "Internal error"}}))))))}}])
 
+(def ^:private jwt-rejection-window-ms
+  "How long one refused token stays quiet after the warning it earns. A client
+  whose token has expired retries on a timer, and a warning per retry empties
+  the 1000-entry event buffer of everything an operator came to it for. Every
+  refusal still leaves its 401 in the request buffer."
+  (* 5 60 1000))
+
+(def ^:private jwt-rejection-cap
+  "How many refused tokens are remembered at once. Past this the table is
+  dropped whole rather than pruned: it is a noise filter, not a record, and
+  the next refusal of each token simply warns again."
+  256)
+
+(defonce ^:private jwt-rejections
+  (atom {}))
+
+(defn reset-jwt-rejection-log!
+  "Forget which tokens have already been warned about. For tests, which
+  otherwise inherit each other's quiet windows."
+  []
+  (reset! jwt-rejections {}))
+
+(defn- log-jwt-rejection!
+  "Warn the first time a token is refused and once per window after that,
+  debug in between. The token is never logged, only a hash of it: even a
+  partial prefix of a JWT weakens the signature."
+  [token ^Exception e]
+  (let [k (hash token)
+        now (System/currentTimeMillis)
+        last-at (clojure.core/get @jwt-rejections k)
+        message (str "JWT validation failed: " (.getMessage e))]
+    (if (and last-at (<= (- now last-at) jwt-rejection-window-ms))
+      (log/debug message)
+      (do (swap! jwt-rejections
+                 (fn [m] (assoc (if (>= (count m) jwt-rejection-cap) {} m) k now)))
+          (log/warn message)))))
+
 (defn wrap-read-jwt
   "Reitit middleware that looks for JWT tokens in either:
   1. \"Authorization: Bearer ...\" header (standard approach)
@@ -288,9 +325,10 @@
                                        api-token-id (assoc :api-token/id api-token-id))))]
               (cond
                 (instance? Exception token-data)
-                ;; Log just the message — a rejected token is routine (expired,
-                ;; tampered, wrong secret) and not worth a full stack trace.
-                (do (log/warn "JWT validation failed:" (.getMessage ^Exception token-data))
+                ;; Just the message, and only once per token per window — a
+                ;; rejected token is routine (expired, tampered, wrong secret),
+                ;; not worth a stack trace, and not worth a line per retry.
+                (do (log-jwt-rejection! token ^Exception token-data)
                     {:status 401
                      :body {:error (str "Token invalid. Obtain a new token.")}})
 
