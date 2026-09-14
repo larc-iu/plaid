@@ -1170,6 +1170,16 @@
                            (err! :validate (str "Predicate :" (name op) " cannot order entity/layer variables "
                                                 "(ids are unordered); use := or :!="))))
             :else nil))
+        ;; An entity/layer VARIABLE compares on its id, so the same rule the
+        ;; reference-field guard below applies has to apply here: a bare name on
+        ;; the other side compiles to `id = 'NOUN'` and matches nothing. Loud 400.
+        (doseq [[t other] [[a b] [b a]]
+                :when (and (var? t) (some? (get kinds t)) (not= :scalar (get kinds t)))]
+          (when (and (not (var? other)) (not (field-ref? other)) (not (uuid-like? other)))
+            (err! :validate (str "Var " t " is a " (name (get kinds t)) " and compares on its id; compare it "
+                                 "to a variable or an id, not " (pr-str other)
+                                 ". To match by value, constrain the clause (for example "
+                                 "[\"span\", " (pr-str (str t)) ", {\"value\": " (pr-str other) "}])."))))
         ;; G4: a reference field (?s.layer / ?r.source / ?r.target) compares only to a
         ;; variable or an id literal, and the variable must be the KIND the reference
         ;; targets. Both guards exist for the same reason — a bare NAME, or a wrong-kind

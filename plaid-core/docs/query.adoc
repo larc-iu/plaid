@@ -559,6 +559,10 @@ A predicate compares two already-bound terms: `[op, a, b]` where `op` is one of
 
 * On entity variables only `=` / `!=` are allowed (ids have no order); this is
   how you say "two distinct matches" and keep an entity from matching itself.
+  An entity or layer variable compares on its id, so the other term must be a
+  variable, a field path, or an id: a bare name is a 400, since it could only
+  ever match nothing. To compare an annotation's text, use its field path
+  (`?s.value`) or constrain the clause.
 * On value variables and literals, all six operators work.
 * A term beginning with `?` reads as a variable. For a literal that really does
   begin with `?`, use the same `{"literal": …}` wrapper the

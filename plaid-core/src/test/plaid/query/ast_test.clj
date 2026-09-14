@@ -524,6 +524,24 @@
                                               "where" [["span" "?s" {"layer" "g"}]
                                                        ["=" "?s.metadata.gloss" {"literal" "x" "regex" "y"}]]}))))))
 
+(deftest entity-var-compared-to-a-bare-literal-is-a-400
+  (testing "an entity var compares on its id, so a bare name can only match nothing"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"]
+                                              "where" [["span" "?s" {"layer" "p"}] ["=" "?s" "NOUN"]]}))))
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"]
+                                              "where" [["span" "?s" {"layer" "p"}] ["!=" "NOUN" "?s"]]}))))
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"]
+                                              "where" [["span" "?s" {"layer" "?sl"}] ["span-layer" "?sl" {}]
+                                                       ["=" "?sl" "pos"]]})))
+        "a layer var too"))
+  (testing "an id literal and a scalar var are still accepted"
+    (is (some? (ast/parse+validate {"find" ["?s"]
+                                    "where" [["span" "?s" {"layer" "p"}]
+                                             ["=" "?s" "11111111-1111-1111-1111-111111111111"]]})))
+    (is (some? (ast/parse+validate {"find" ["?s"]
+                                    "where" [["span" "?s" {"layer" "p" "value" {"var" "?v"}}]
+                                             ["=" "?v" "NOUN"]]})))))
+
 (deftest field-paths-review-fixes
   (testing "group by a field path is allowed (mirrors aggregate sources)"
     (is (some? (ast/expand {"where" [["token" "?t" {"layer" "w"}]]
