@@ -1,143 +1,86 @@
-import PlaidClient from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth } from './fixtures.js';
+import { getFixture } from './fixtureProject.js';
+import { assistantStub } from '../../plaid-ui/e2e/assistantChrome.js';
+import { assistantPanelHarness, assistantPanelTests } from '../../plaid-ui/e2e/assistantPanel.js';
 
 // The assistant docked beside the interlinear grid, on the Analyze tab.
 //
 // No model, and no service: an assistant is made to look online by answering
-// the one discovery GET. What is held still is what a turn does not touch, and
-// all of it was built by hand against a browser:
+// the one discovery GET. What is held still is what a turn does not touch.
 //
-//   - nothing is offered when no assistant is online, including the "Ask" the
-//     lit island draws for itself
-//   - the panel docks at exactly viewport height, composer reachable
-//   - the island's "Ask" crosses to React and names the sentence
-//
-// The tab itself (plans, Approve, Discard, Retry) is e2e/assistant.spec.js,
-// which seeds conversations into the record rather than stubbing anything.
+// The dock is one component in plaid-ui, so the six tests that are about IT are
+// there too (`assistantPanelTests`), driven with this app's screens. What stays
+// here is what this app's grid and its assistants make different. The panel as
+// APP chrome (it survives a navigation, it keeps one thread per project) is
+// e2e/assistant-chrome.spec.js, and the tab itself (plans, Approve, Discard,
+// Retry) is e2e/assistant.spec.js.
 
-const CORE = 'http://localhost:8085';
+const DOCUMENT_NAME = 'Sample IGT Document';
 
 let projectId;
 let documentId;
 
-const ASSISTANT = [
-  {
-    serviceId: 'igt:assist:test',
-    serviceName: 'IGT Assistant (test)',
-    description: 'A stand-in for the specs.',
-    extras: { model: 'test/model', app: 'igt', tasks: ['assist'] },
-    tasks: ['assist'],
-    online: true,
-  },
-];
-
-// The OTHER app's assistant, online on this very project. UD and IGT share
-// projects, so that is the ordinary state of a shared one, not a contrivance.
-const FOREIGN = [
-  {
-    serviceId: 'ud:assist:test',
-    serviceName: 'Assistant from the other app',
-    description: 'A stand-in for the specs.',
-    extras: { model: 'test/model', app: 'ud', tasks: ['assist'] },
-    tasks: ['assist'],
-    online: true,
-  },
-];
-
-const withAssistant = (page, services = ASSISTANT) =>
-  page.route('**/api/v1/projects/*/services', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(services) }),
-  );
-
 test.beforeAll(async () => {
-  const client = new PlaidClient(CORE, readToken().token);
-  const project = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
-  if (!project) throw new Error('run node e2e/fixtureProject.js first');
-  projectId = project.id;
-  documentId = (await client.projects.listDocuments(projectId)).find(
-    (d) => d.name === 'Sample IGT Document',
-  ).id;
+  ({ projectId, documentId } = await getFixture());
 });
 
-const analyze = (page) => page.goto(`/#/projects/${projectId}/documents/${documentId}?tab=analyze`);
-
-test('nothing offers an assistant when none is online', async ({ page }) => {
-  await seedAuth(page);
-  await withAssistant(page, []);
-  await analyze(page);
-  await expect(page.locator('.igt-sentence').first()).toBeVisible();
-
-  await expect(page.getByRole('button', { name: 'Assistant', exact: true })).toHaveCount(0);
-  // The island draws its own "Ask", so it has to be told too.
-  await expect(page.locator('.igt-ask')).toHaveCount(0);
+const panel = assistantPanelHarness({
+  app: 'igt',
+  expect,
+  documentPath: () => `/#/projects/${projectId}/documents/${documentId}?tab=analyze`,
+  contentSelector: '.igt-sentence',
 });
+const { stub, withAssistant, panelOf, toggle, openDocument } = panel;
 
-test("the OTHER app's assistant does not count as one", async ({ page }) => {
-  // It happened, and this is the project it happened on: UD and IGT share
-  // projects, the filter asked only whether a service does `assist`, so this
-  // app offered a `ud:assist:` service. A conversation's record is namespaced
-  // by the app it was started in, so every turn came back "No such
-  // conversation" and the thread could never be answered.
-  await seedAuth(page);
-  await withAssistant(page, FOREIGN);
-  await analyze(page);
-  await expect(page.locator('.igt-sentence').first()).toBeVisible();
-
-  await expect(page.getByRole('button', { name: 'Assistant', exact: true })).toHaveCount(0);
-  await expect(page.locator('.igt-ask')).toHaveCount(0);
-});
-
-test('the panel docks at exactly viewport height', async ({ page }) => {
-  await seedAuth(page);
-  await withAssistant(page);
-  await analyze(page);
-  await page.getByRole('button', { name: 'Assistant', exact: true }).click();
-
-  const panel = page.locator('aside.border-l');
-  await expect(panel).toBeVisible();
-  // ONE header bar. The panel used to carry a second one above the assistant's
-  // own row, repeating the document's name, which the page's heading says a few
-  // pixels to the left. The hide button lives in the remaining row.
-  await expect(panel.locator('header')).toHaveCount(1);
-  // The HEADER does not repeat it. The empty-state line below still names what
-  // the panel is about, which is a sentence rather than a second title bar.
-  await expect(panel.locator('header')).not.toContainText('Sample IGT Document');
-  await expect(panel.getByTitle('Hide the assistant')).toBeVisible();
-
-  const box = await panel.boundingBox();
-  const viewport = page.viewportSize();
-  // Guessing this in CSS put the composer off the bottom of the screen: the
-  // app header, breadcrumbs, the tab strip, a run banner and the history
-  // drawer all sit above it and not one is a fixed height.
-  expect(box.y + box.height).toBeLessThanOrEqual(viewport.height + 1);
-  expect(box.y + box.height).toBeGreaterThan(viewport.height - 4);
-
-  const composer = panel.getByRole('textbox');
-  const cbox = await composer.boundingBox();
-  expect(cbox.y + cbox.height).toBeLessThanOrEqual(viewport.height);
+assistantPanelTests({
+  test,
+  expect,
+  seedAuth,
+  panel,
+  documentName: DOCUMENT_NAME,
+  ask: {
+    // The island draws its own "Ask", so it has to be told about an absent
+    // assistant too.
+    absent: (page) => expect(page.locator('.igt-ask')).toHaveCount(0),
+    // Hover-revealed, like Copy beside it. The grid is lit and the panel is
+    // React, so the gesture goes over a window event, the same bridge the
+    // auto-analyze opener uses.
+    first: async (page) => {
+      const sentence = page.locator('.igt-sentence').first();
+      await sentence.hover();
+      await sentence.locator('.igt-ask').click();
+    },
+    last: async (page) => {
+      const sentence = page.locator('.igt-sentence').last();
+      await sentence.scrollIntoViewIfNeeded();
+      return {
+        watch: sentence,
+        click: async () => {
+          await sentence.hover();
+          await sentence.locator('.igt-ask').click();
+        },
+      };
+    },
+  },
 });
 
 test('the panel picks which assistant answers, while the thread is new', async ({ page }) => {
-  const TWO = [
-    ASSISTANT[0],
-    {
+  const two = [
+    ...stub,
+    ...assistantStub('igt', {
       serviceId: 'igt:assist:other',
       serviceName: 'IGT Assistant (other)',
-      description: 'A second stand-in.',
       extras: { model: 'other/model', app: 'igt', tasks: ['assist'] },
-      tasks: ['assist'],
-      online: true,
-    },
+    }),
   ];
   await seedAuth(page);
-  await withAssistant(page, TWO);
-  await analyze(page);
-  await page.getByRole('button', { name: 'Assistant', exact: true }).click();
-  const panel = page.locator('aside.border-l');
-  await expect(panel).toBeVisible();
+  await withAssistant(page, two);
+  await openDocument(page);
+  await toggle(page).click();
+  await expect(panelOf(page)).toBeVisible();
 
   // The model's name IS the picker while the conversation is new.
-  const picker = panel.getByRole('combobox', { name: 'Assistant' });
+  const picker = panelOf(page).getByRole('combobox', { name: 'Assistant' });
   await expect(picker).toHaveText('test/model');
   await picker.click();
   await page.getByRole('option', { name: 'other/model' }).click();
@@ -147,20 +90,19 @@ test('the panel picks which assistant answers, while the thread is new', async (
 test('the panel names the one assistant rather than offering a choice of one', async ({ page }) => {
   await seedAuth(page);
   await withAssistant(page);
-  await analyze(page);
-  await page.getByRole('button', { name: 'Assistant', exact: true }).click();
-  const panel = page.locator('aside.border-l');
-  await expect(panel).toBeVisible();
-  await expect(panel.getByText('test/model')).toBeVisible();
-  await expect(panel.getByRole('combobox', { name: 'Assistant' })).toHaveCount(0);
+  await openDocument(page);
+  await toggle(page).click();
+  await expect(panelOf(page)).toBeVisible();
+  await expect(panelOf(page).getByText('test/model')).toBeVisible();
+  await expect(panelOf(page).getByRole('combobox', { name: 'Assistant' })).toHaveCount(0);
 });
 
 test('the tab strip stays pinned under the app header with the panel docked', async ({ page }) => {
-  // A sticky offset is measured from the scrollport it sticks to, and the
-  // strip once carried one meant for a different scrollport: it hung 57px down
-  // into the grid, with rows scrolling through the gap above it. The dock is
-  // fixed, so the PAGE is what scrolls whether it is open or not, and this is
-  // the case that used to be wrong.
+  // A sticky offset is measured from the scrollport it sticks to, and the strip
+  // once carried one meant for a different scrollport: it hung 57px down into
+  // the grid, with rows scrolling through the gap above it. The dock is fixed,
+  // so the PAGE is what scrolls whether it is open or not, and this is the case
+  // that used to be wrong.
   const under = async () => {
     const header = await page.locator('header.sticky').boundingBox();
     const strip = await page.locator('div.sticky.z-30').first().boundingBox();
@@ -171,77 +113,12 @@ test('the tab strip stays pinned under the app header with the panel docked', as
   // Short, so the fixture's few sentences give the page something to scroll: a
   // document that fits leaves the strip in flow and never pins it.
   await page.setViewportSize({ width: 1280, height: 420 });
-  await analyze(page);
+  await openDocument(page);
   await page.locator('.igt-island .igt-token-col').first().waitFor({ state: 'visible' });
-  await page.getByRole('button', { name: 'Assistant', exact: true }).click();
-  await expect(page.locator('aside.border-l')).toBeVisible();
+  await toggle(page).click();
+  await expect(panelOf(page)).toBeVisible();
 
   // Far enough that the strip is pinned rather than still in flow.
   await page.evaluate(() => window.scrollTo(0, 1500));
-  await page.waitForTimeout(400);
-  expect(await under()).toBe(0);
-});
-
-test("the island's Ask crosses to the panel and names the sentence", async ({ page }) => {
-  await seedAuth(page);
-  await withAssistant(page);
-  await analyze(page);
-
-  // Hover-revealed, like Copy beside it.
-  const sentence = page.locator('.igt-sentence').first();
-  await sentence.hover();
-  await sentence.locator('.igt-ask').click();
-
-  // The grid is lit and the panel is React: the gesture goes over a window
-  // event, the same bridge the auto-analyze opener uses.
-  const panel = page.locator('aside.border-l');
-  await expect(panel).toBeVisible();
-  await expect(panel).toContainText('Sentence');
-  await expect(panel).toContainText('s1');
-
-  await panel.getByRole('button', { name: 'Remove' }).click();
-  await expect(panel).not.toContainText('Sentence');
-});
-
-test('docking keeps the reader where they were, and Ask keeps its sentence', async ({ page }) => {
-  // Opening the panel used to dump the reader at the top of the document:
-  // measuring the docked height puts the page at the top to do it, and the
-  // discarded offset was the reader's place. Worst on "Ask", whose whole point
-  // is the sentence in front of you. It was then handed to whatever element had
-  // become the scrollport, which is two moving parts to get a reader back where
-  // they already were.
-  //
-  // The dock is fixed in the shell now, so it is bounded to the viewport by
-  // construction, nothing measures anything, and the page is never touched. The
-  // assertion is correspondingly stronger: the scroll position is not restored
-  // to within a line, it is UNCHANGED.
-  await seedAuth(page);
-  await withAssistant(page);
-  // Short enough that this document really scrolls.
-  await page.setViewportSize({ width: 1280, height: 400 });
-  await analyze(page);
-  await expect(page.locator('.igt-sentence').first()).toBeVisible();
-
-  const last = page.locator('.igt-sentence').last();
-  await last.scrollIntoViewIfNeeded();
-  await expect.poll(async () => await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
-  const scrolledTo = await page.evaluate(() => window.scrollY);
-  const before = await last.boundingBox();
-
-  await last.hover();
-  await last.locator('.igt-ask').click();
-
-  const panel = page.locator('aside.border-l');
-  await expect(panel).toBeVisible();
-  expect(await page.evaluate(() => window.scrollY)).toBe(scrolledTo);
-  // The sentence asked about is still on screen, within a line of where it was.
-  // Not exactly where it was: the dock takes width, so the column narrows and
-  // what is above this sentence re-wraps. That reflow is the reason for a
-  // tolerance here, and it is why the scroll position above is the assertion
-  // that can be exact.
-  const after = await last.boundingBox();
-  expect(after).not.toBeNull();
-  expect(after.y).toBeGreaterThan(0);
-  expect(after.y).toBeLessThan(400);
-  expect(Math.abs(after.y - before.y)).toBeLessThan(80);
+  await expect.poll(under).toBe(0);
 });

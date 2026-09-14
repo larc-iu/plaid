@@ -160,26 +160,6 @@ test('the picker is not offered where there is no annotation to ask about', asyn
   await expect(toggle(page)).toHaveCount(0);
 });
 
-test('the page never scrolls sideways to make room for the panel', async ({ page }) => {
-  // The dock is fixed and the shell pads by its width. Padding the wrong
-  // element (or none) leaves the page as wide as it was and the panel sitting
-  // on top of the annotation, which is the one thing it must never do.
-  await seedAuth(page);
-  await withAssistant(page);
-  await gotoDocument(page, documentId);
-  await openDock(page);
-
-  const box = await panelOf(page).boundingBox();
-  const overlap = await page.evaluate((panelLeft) => {
-    const el = document.querySelector('.igt-sentence');
-    return el.getBoundingClientRect().right - panelLeft;
-  }, box.x);
-  expect(overlap).toBeLessThanOrEqual(0);
-  // And the app header stops short of it too, rather than running underneath.
-  const header = await page.locator('header').first().boundingBox();
-  expect(header.x + header.width).toBeLessThanOrEqual(box.x + 1);
-});
-
 test('the tab can list conversations from every project, and links them there', async ({
   page,
 }) => {

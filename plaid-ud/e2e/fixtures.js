@@ -1,85 +1,26 @@
 import { test as base, expect } from '@playwright/test';
-import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  tokenFixtures,
+  collectClientErrors,
+  reportDiagnostics,
+} from '../../plaid-ui/e2e/appFixtures.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const TOKEN_PATH = path.join(__dirname, '..', '.token');
+// Playwright helpers. Everything app-agnostic lives in plaid-ui/e2e, shared
+// with plaid-igt, and what stays here is what this app supplies: Playwright
+// itself, the dev server it is pointed at, and the path to its own token.
 
 // The dev server the suite is pointed at, matching playwright.config.js. A spec
 // that builds absolute URLs (or trims them out of a log line) reads it here
 // rather than writing the port again.
 export const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5173';
 
-function parseJwtPayload(token) {
-  const payload = token.split('.')[1];
-  const padded = payload + '='.repeat((4 - (payload.length % 4)) % 4);
-  return JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
-}
+const TOKEN_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '.token');
 
-export function readToken() {
-  const tok = fs.readFileSync(TOKEN_PATH, 'utf8').trim();
-  const payload = parseJwtPayload(tok);
-  return { token: tok, userId: payload['user/id'] };
-}
+// The non-expiring API token for a@b.com.
+export const { readToken, seedAuth } = tokenFixtures(TOKEN_PATH);
 
-// Plays the role of authService.login() — primes localStorage so AuthContext
-// considers us logged in without going through the UI. Must run *before* the
-// app boots, because AuthProvider only reads localStorage in its mount effect.
-export async function seedAuth(page, { token, userId, displayName, isAdmin = true } = {}) {
-  if (!token) {
-    const fromFile = readToken();
-    token = fromFile.token;
-    userId = userId || fromFile.userId;
-  }
-  displayName = displayName || userId;
-  await page.addInitScript(
-    ({ token, userId, displayName, isAdmin }) => {
-      localStorage.setItem('token', token);
-      localStorage.setItem('userId', userId);
-      localStorage.setItem('displayName', displayName);
-      localStorage.setItem('isAdmin', String(isAdmin));
-    },
-    { token, userId, displayName, isAdmin },
-  );
-}
-
-// Collect console errors, failed network requests, and every /api/v1/ call
-// (with status). Returns plain arrays the test can inspect.
-export function collectClientErrors(page) {
-  const errors = [];
-  const failures = [];
-  const apiCalls = [];
-  page.on('console', (msg) => {
-    if (msg.type() === 'error') {
-      errors.push({ text: msg.text(), location: msg.location() });
-    }
-  });
-  page.on('pageerror', (err) => {
-    errors.push({ text: `pageerror: ${err.message}`, stack: err.stack });
-  });
-  page.on('requestfailed', (req) => {
-    failures.push({ url: req.url(), method: req.method(), failure: req.failure()?.errorText });
-  });
-  page.on('response', async (resp) => {
-    const url = resp.url();
-    if (url.includes('/api/v1/')) {
-      const entry = { method: resp.request().method(), status: resp.status(), url };
-      if (resp.status() >= 400) {
-        try {
-          entry.body = (await resp.text()).slice(0, 500);
-        } catch {
-          /* body unavailable */
-        }
-        failures.push(entry);
-      }
-      apiCalls.push(entry);
-    } else if (resp.status() >= 400) {
-      failures.push({ url, method: resp.request().method(), status: resp.status() });
-    }
-  });
-  return { errors, failures, apiCalls };
-}
-
+export { collectClientErrors, reportDiagnostics };
 export const test = base.extend({});
 export { expect };

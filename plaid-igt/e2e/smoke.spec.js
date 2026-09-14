@@ -1,18 +1,16 @@
-import { test, expect, seedAuth, collectClientErrors } from './fixtures.js';
+import { test, expect, seedAuth, collectClientErrors, reportDiagnostics } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 
 // Diagnostic smoke tests: drive the main surfaces against live plaid-core and
 // surface any API failures / console errors. Assertions are soft so every
 // surface's diagnostics print even when one fails.
+//
+// The `waitForTimeout` in each test is not a gate on an assertion, which would
+// retry anyway: it is settling time for `diag.failures`, which is a plain array
+// read once. A late 500 that arrives after the read is a failure this suite
+// exists to see.
 
-function report(label, { failures, errors }) {
-  console.log(`\n===== ${label} =====`);
-  console.log('--- failed requests ---');
-  for (const f of failures) console.log(JSON.stringify(f));
-  console.log('--- console errors ---');
-  for (const e of errors) console.log(JSON.stringify(e));
-  if (!failures.length && !errors.length) console.log('(none)');
-}
+const report = reportDiagnostics;
 
 test('project list loads', async ({ page }) => {
   const diag = collectClientErrors(page);
