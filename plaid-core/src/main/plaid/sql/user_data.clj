@@ -9,7 +9,8 @@
   (every chat turn). Rows cascade away with their user."
   (:require [clojure.data.json :as json]
             [plaid.sql.common :as psc]
-            [plaid.sql.pagination :as psp])
+            [plaid.sql.pagination :as psp]
+            [plaid.util.codepoint :as cp])
   (:refer-clojure :exclude [get list]))
 
 (def max-value-bytes
@@ -55,8 +56,12 @@
                   :from :user_data
                   :where (cond-> [:and [:= :user_id user-id]]
                            ;; substr, not LIKE: keys routinely contain `_`,
-                           ;; which LIKE would treat as a wildcard.
-                           (seq prefix) (conj [:= [:substr :key 1 (count prefix)] prefix])
+                           ;; which LIKE would treat as a wildcard. SQLite's
+                           ;; substr counts code points, so the length has to
+                           ;; as well: `count` is UTF-16, and a prefix holding
+                           ;; one astral character asked for one code point
+                           ;; too many and matched nothing.
+                           (seq prefix) (conj [:= [:substr :key 1 (cp/cp-count prefix)] prefix])
                            ;; glob(X, Y) is SQLite's function spelling of
                            ;; `Y GLOB X`, so the pattern is the first argument.
                            (seq pattern) (conj [:glob pattern :key]))
@@ -94,7 +99,9 @@
   whole key). See that docstring for what the glob is for and what it costs."
   [db {:keys [prefix pattern include-values? limit cursor-vals]}]
   (let [clauses (cond-> []
-                  (seq prefix) (conj [:= [:substr :key 1 (count prefix)] prefix])
+                  ;; Code points, as in `list` above: SQLite's substr counts
+                  ;; them and Clojure's `count` counts UTF-16 units.
+                  (seq prefix) (conj [:= [:substr :key 1 (cp/cp-count prefix)] prefix])
                   ;; glob(X, Y) is SQLite's function spelling of `Y GLOB X`,
                   ;; so the pattern is the first argument.
                   (seq pattern) (conj [:glob pattern :key]))]

@@ -104,3 +104,21 @@
   (let [big (apply str (repeat 1000001 "a"))]
     (is (= 413 (:status (api-call user1-request {:method :put :path (path u1 "big") :body big}))))
     (is (= 404 (:status (api-call user1-request {:method :get :path (path u1 "big")}))))))
+
+(deftest a-prefix-holding-an-astral-character-still-matches
+  ;; The prefix is compared with SQLite's `substr`, which counts code points,
+  ;; against a length taken with Clojure's `count`, which counts UTF-16 units.
+  ;; A prefix with one emoji in it asked for one code point too many, so the
+  ;; comparison ran past the prefix and matched nothing.
+  (let [prefix "igt:🌍:"
+        key (str prefix "notes")]
+    (api-call user1-request {:method :put :path (path u1 key) :body {:n 1}})
+    (api-call user1-request {:method :put :path (path u1 "igt:plain:notes") :body {:n 2}})
+    (testing "the owner's own listing"
+      (is (= [key] (mapv :key (:body (api-call user1-request
+                                               {:method :get
+                                                :path (str (path u1) "?prefix=" prefix)}))))))
+    (testing "and the admin listing across accounts, which builds the same clause"
+      (is (= [key] (mapv :key (:entries (:body (api-call admin-request
+                                                         {:method :get
+                                                          :path (str "/api/v1/admin/user-data?prefix=" prefix)})))))))))
