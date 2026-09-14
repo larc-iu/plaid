@@ -118,7 +118,15 @@ export const VocabularyDetail = () => {
   const closeDeleteModal = () => setDeleteModalOpened(false);
   const [confirmDeleteName, setConfirmDeleteName] = useState('');
 
-  const fetchVocabulary = async () => {
+  // Walking from vocabulary A to vocabulary B keeps this component mounted and
+  // starts a second load without ending the first. Nothing orders them, so A
+  // can answer last and the Settings tab would then hold A's field inventory
+  // and A's tagsets under B's name, one Save away from writing them onto B.
+  // One token per vocabulary id, cancelled by the effect's cleanup, and every
+  // writer of `vocabulary` checks it.
+  const live = useRef(null);
+
+  const fetchVocabulary = async (token) => {
     if (isNewVocabulary) {
       setVocabulary({
         name: '',
@@ -151,6 +159,7 @@ export const VocabularyDetail = () => {
       }
 
       const vocabularyData = await client.vocabLayers.get(vocabularyId);
+      if (token.cancelled) return;
       setVocabulary(vocabularyData);
       setEditedName(vocabularyData.name);
 
@@ -160,6 +169,7 @@ export const VocabularyDetail = () => {
 
       setError('');
     } catch (err) {
+      if (token.cancelled) return;
       if (err.message === 'Not authenticated' || err.status === 401) {
         logout('expired');
         return;
@@ -167,7 +177,7 @@ export const VocabularyDetail = () => {
       setError('Failed to load vocabulary');
       console.error('Error fetching vocabulary:', err);
     } finally {
-      setLoading(false);
+      if (!token.cancelled) setLoading(false);
     }
   };
 
@@ -239,6 +249,7 @@ export const VocabularyDetail = () => {
   // Lightweight update function that only updates vocabulary data without loading state
   const updateVocabulary = async () => {
     if (isNewVocabulary) return;
+    const token = live.current;
 
     try {
       if (!client) {
@@ -250,6 +261,7 @@ export const VocabularyDetail = () => {
       }
 
       const vocabularyData = await client.vocabLayers.get(vocabularyId);
+      if (token?.cancelled) return;
       setVocabulary(vocabularyData);
       setFields(normalizeVocabFields(readVocabFields(vocabularyData.config)));
     } catch (err) {
@@ -259,7 +271,12 @@ export const VocabularyDetail = () => {
   };
 
   useEffect(() => {
-    fetchVocabulary();
+    const token = { cancelled: false };
+    live.current = token;
+    fetchVocabulary(token);
+    return () => {
+      token.cancelled = true;
+    };
     // Runs once per id; the loader reads the client fresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vocabularyId]);

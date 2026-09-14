@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { Activity, FileText, Search, Replace, ShieldCheck, Download, Settings } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@ui/components/ui/tabs';
@@ -71,27 +71,41 @@ export const ProjectDetail = () => {
   // A code bound under Settings applies everywhere this project is open.
   useComposeProject(project);
 
+  // Walking from project A to project B keeps this component mounted and
+  // starts a second load without ending the first. Nothing orders them, so A
+  // can answer last and every screen below would then be reading A under B's
+  // heading. Settings makes that worse than a wrong title: it takes LAYER IDS
+  // off the loaded project, so a stale one sends A's layers into a Save the
+  // reader makes on B. One token per project id, cancelled by the effect's
+  // cleanup, and both writers of `project` check it.
+  const live = useRef(null);
+
   const refreshProject = async () => {
     if (!client) return;
+    const token = live.current;
     try {
-      setProject(await client.projects.get(projectId));
+      const projectData = await client.projects.get(projectId);
+      if (token?.cancelled) return;
+      setProject(projectData);
     } catch (err) {
       console.error('Could not refresh the project:', err);
     }
   };
 
-  const fetchData = async (showLoadingSpinner = false) => {
+  const fetchData = async (token) => {
     try {
-      if (showLoadingSpinner) setLoading(true);
+      setLoading(true);
       if (!client) throw new Error('Not authenticated');
       const [projectData, docsList] = await Promise.all([
         client.projects.get(projectId),
         client.projects.listDocuments(projectId),
       ]);
+      if (token.cancelled) return;
       setProject(projectData);
       setDocuments(docsList || []);
       setError('');
     } catch (err) {
+      if (token.cancelled) return;
       if (err.message === 'Not authenticated' || err.status === 401) {
         // Clear the rejected token before leaving, else /login bounces back.
         logout('expired');
@@ -100,12 +114,17 @@ export const ProjectDetail = () => {
       setError('Failed to load data');
       console.error('Error fetching data:', err);
     } finally {
-      if (showLoadingSpinner) setLoading(false);
+      if (!token.cancelled) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchData(true);
+    const token = { cancelled: false };
+    live.current = token;
+    fetchData(token);
+    return () => {
+      token.cancelled = true;
+    };
     // Runs once per id; the loader reads the client fresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
