@@ -165,36 +165,54 @@
                       {:source source})))
     (toml->clj result)))
 
+(defn- read-bundled-toml
+  "Return [content source-label] for a TOML RESOURCE, or nil. Classpath only,
+   deliberately: the template is the source of every default value, and a
+   config.toml sitting in the working directory must not be able to become
+   that."
+  [resource-name]
+  (when-let [r (io/resource resource-name)]
+    [(slurp r) (str "classpath:" resource-name)]))
+
 (defn- read-toml
-  "Return [content source-label] for `path`, resolving the classpath first
-   (io/resource) then the filesystem (io/file). nil if it resolves to neither."
+  "Return [content source-label] for an overlay at `path`, preferring the
+   filesystem and falling back to the classpath. nil if it resolves to neither.
+
+   The filesystem wins because the classpath used to: `--config config.toml`
+   run from a deploy directory holding exactly that file loaded the template
+   bundled in the jar instead, and logged the operator's path as the source.
+   The classpath branch stays for the dev overlay (config.dev.toml), which
+   only ever exists as a resource."
   [path]
   (when path
-    (if-let [r (io/resource path)]
-      [(slurp r) (str "classpath:" path)]
-      (let [f (io/file path)]
-        (when (.exists f)
-          [(slurp f) (.getAbsolutePath f)])))))
+    (let [f (io/file path)]
+      (if (.exists f)
+        [(slurp f) (.getAbsolutePath f)]
+        (read-bundled-toml path)))))
 
 ;; -----------------------------------------------------------------------------
 ;; Loading
 ;; -----------------------------------------------------------------------------
 (defn load-config!
   "Build the internal config map: the bundled config.toml template supplies the
-   default values, the file at `config-path` (classpath first, then filesystem)
+   default values, the file at `config-path` (filesystem first, then classpath)
    is deep-merged on top, and the internal-only plumbing sits underneath.
 
    When `explicit?` is true (operator passed --config) and the path resolves to
    nothing, throws ex-info naming the path rather than silently degrading to
-   defaults. When false (the default path), a missing overlay is tolerated."
+   defaults. When false (the default path), a missing overlay is tolerated.
+
+   The source that actually won rides back as `::source` metadata on the
+   returned map, so the boot line names the file that was read rather than the
+   path that was asked for."
   [{:keys [config-path explicit?]}]
-  (let [[tpl-content tpl-src] (or (read-toml "config.toml")
+  (let [[tpl-content tpl-src] (or (read-bundled-toml "config.toml")
                                   (throw (ex-info "Bundled config.toml is missing from the classpath" {})))
         defaults (translate (parse-toml tpl-content tpl-src))
         [ov-content ov-src] (read-toml config-path)]
     (when (and explicit? (nil? ov-content))
       (throw (ex-info (str "Config file not found: " config-path
-                           " (resolved neither on the classpath nor on the filesystem)")
+                           " (resolved neither on the filesystem nor on the classpath)")
                       {:config-path config-path})))
     (let [overlay (when ov-content
                     (let [toml (parse-toml ov-content ov-src)
@@ -203,7 +221,8 @@
                         (log/warn "Unrecognized config keys in" ov-src "(ignored):"
                                   (str/join ", " (map #(str/join "." %) uk))))
                       (translate toml)))]
-      (deep-merge (deep-merge internal-only-defaults defaults) overlay))))
+      (vary-meta (deep-merge (deep-merge internal-only-defaults defaults) overlay)
+                 assoc ::source (or ov-src (str "the bundled defaults (" tpl-src ")"))))))
 
 (defn ensure-config-file!
   "If no file exists at `path`, copy the bundled config.toml template there
@@ -307,7 +326,7 @@
                    (ensure-config-file! path))
                configuration (load-config! {:config-path path :explicit? explicit?})]
            (configure-logging! configuration)
-           (log/info "Loaded config from" path)
+           (log/info "Loaded config from" (::source (meta configuration)))
            ;; Full resolved config (incl. internal plumbing) is verbose and
            ;; only useful when diagnosing — keep it at debug.
            (log/debug (pr-str configuration))

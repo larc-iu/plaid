@@ -160,3 +160,36 @@
     (is (= base (deep-merge base nil))))
   (is (= {:a 1} (deep-merge {:a 1} nil)))
   (is (= {:a 1 :b {:c 2}} (deep-merge {:a 1 :b {:c 2}} {:b nil}))))
+
+;; -----------------------------------------------------------------------------
+;; Which copy of a config file wins
+;; -----------------------------------------------------------------------------
+
+(deftest a-file-in-the-working-directory-beats-the-bundled-resource
+  ;; `--config config.toml` from a deploy directory holding exactly that file
+  ;; used to load the template bundled in the jar, because io/resource was
+  ;; consulted first, and then log the operator's path as the source.
+  (let [cwd-file (File. "config.toml")]
+    (is (not (.exists cwd-file))
+        "this test writes ./config.toml and needs the working directory clean")
+    (try
+      (spit cwd-file "[server]\nport = 7777\n")
+      (testing "the file on disk is what is read, and it says where it came from"
+        (let [[content source] (read-toml "config.toml")]
+          (is (re-find #"7777" content))
+          (is (= (.getAbsolutePath cwd-file) source))))
+      (testing "and it is loaded as an overlay, not as the defaults"
+        (let [cfg (config/load-config! {:config-path "config.toml" :explicit? true})]
+          (is (= 7777 (get-in cfg [:org.httpkit.server/config :port])))
+          (is (= 200 (get-in cfg [:plaid.media/config :max-file-size-mb]))
+              "the bundled template still supplies every value the overlay omits")
+          (is (= (.getAbsolutePath cwd-file) (:plaid.server.config/source (meta cfg)))
+              "the boot line names the file that was read")))
+      (finally (.delete cwd-file)))))
+
+(deftest a-classpath-only-overlay-still-resolves
+  ;; The dev overlay only ever exists as a resource, so the fallback has to
+  ;; stay: user/start passes "config.dev.toml" as an explicit path.
+  (let [[content source] (read-toml "config.dev.toml")]
+    (is (string? content))
+    (is (= "classpath:config.dev.toml" source))))
