@@ -19,10 +19,24 @@
                                         get-document
                                         update-document-metadata
                                         patch-document-metadata
+                                        create-text-layer create-token-layer
+                                        create-span-layer create-relation-layer
+                                        create-text get-text
+                                        update-text-metadata patch-text-metadata
+                                        create-token get-token
+                                        update-token-metadata patch-token-metadata
+                                        create-span get-span
+                                        update-span-metadata patch-span-metadata
+                                        create-relation get-relation
+                                        update-relation-metadata patch-relation-metadata
                                         create-vocab-layer create-vocab-item
                                         get-vocab-item
                                         update-vocab-item-metadata
-                                        patch-vocab-item-metadata]]))
+                                        patch-vocab-item-metadata
+                                        link-vocab-to-project
+                                        create-vocab-link get-vocab-link
+                                        update-vocab-link-metadata
+                                        patch-vocab-link-metadata]]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin)
 (use-fixtures :each with-clean-db)
@@ -107,17 +121,55 @@
       (assert-status 400 (patch-document-metadata admin-request doc {"" "x"}))
       (assert-status 400 (patch-document-metadata admin-request doc {"" nil})))))
 
-(deftest patch-merges-on-vocab-item
-  (testing "vocab-item uses a bespoke (non-shared) metadata route; confirm its
-            PATCH merges with the same semantics (set/overwrite, null-delete,
-            preserve-omitted)"
-    (let [vocab (-> (create-vocab-layer admin-request "PatchVocab") :body :id)
-          item (-> (create-vocab-item admin-request vocab "hello") :body :id)
-          item-meta (fn [] (-> (get-vocab-item admin-request item) :body :metadata))]
-      (assert-ok (update-vocab-item-metadata admin-request item {"a" "1" "b" "2"}))
-      (assert-ok (patch-vocab-item-metadata admin-request item {"a" "9" "b" nil "c" "3"}))
-      (is (= {"a" "9" "c" "3"} (item-meta))
-          "a overwritten, b deleted via null, c added, (no omitted keys here)"))))
+(defn- every-entity
+  "One of each entity that carries metadata, with the reader and the two
+  writers for each. Seven entries: span, relation, token, text, document,
+  vocab item, vocab link."
+  []
+  (let [proj (create-test-project admin-request "AllSevenMeta")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        tokl (-> (create-token-layer admin-request tl "Tokens") :body :id)
+        sl (-> (create-span-layer admin-request tokl "Spans") :body :id)
+        rl (-> (create-relation-layer admin-request sl "Rels") :body :id)
+        vocab (-> (create-vocab-layer admin-request "AllSevenVocab") :body :id)
+        _ (link-vocab-to-project admin-request proj vocab)
+        doc (create-test-document admin-request proj "Doc")
+        text (-> (create-text admin-request tl doc "ab cd") :body :id)
+        t1 (-> (create-token admin-request tokl text 0 2) :body :id)
+        t2 (-> (create-token admin-request tokl text 3 5) :body :id)
+        s1 (-> (create-span admin-request sl [t1] "A") :body :id)
+        s2 (-> (create-span admin-request sl [t2] "B") :body :id)
+        rel (-> (create-relation admin-request rl s1 s2 "dep") :body :id)
+        item (-> (create-vocab-item admin-request vocab "hello") :body :id)
+        link (-> (create-vocab-link admin-request item [t1]) :body :id)
+        read (fn [getter id] (fn [] (-> (getter admin-request id) :body :metadata)))]
+    [{:noun "span" :id s1 :read (read get-span s1)
+      :put update-span-metadata :patch patch-span-metadata}
+     {:noun "relation" :id rel :read (read get-relation rel)
+      :put update-relation-metadata :patch patch-relation-metadata}
+     {:noun "token" :id t1 :read (read get-token t1)
+      :put update-token-metadata :patch patch-token-metadata}
+     {:noun "text" :id text :read (read get-text text)
+      :put update-text-metadata :patch patch-text-metadata}
+     {:noun "document" :id doc :read (read get-document doc)
+      :put update-document-metadata :patch patch-document-metadata}
+     {:noun "vocab item" :id item :read (read get-vocab-item item)
+      :put update-vocab-item-metadata :patch patch-vocab-item-metadata}
+     {:noun "vocab link" :id link :read (read get-vocab-link link)
+      :put update-vocab-link-metadata :patch patch-vocab-link-metadata}]))
+
+(deftest patch-merges-on-every-entity-type
+  (testing "all seven entities that carry metadata share one triplet
+            (plaid.sql.metadata/metadata-fns), so all seven merge the same way:
+            set/overwrite, null-delete, preserve-omitted, replace-nested"
+    (doseq [{:keys [noun id read put patch]} (every-entity)]
+      (assert-ok (put admin-request id {"a" "1" "b" "2" "obj" {"x" "1"}}))
+      (assert-ok (patch admin-request id {"a" "9" "b" nil "c" "3" "obj" {"z" "3"}}))
+      (is (= {"a" "9" "c" "3" "obj" {"z" "3"}} (read))
+          (str noun ": a overwritten, b deleted via null, c added, obj replaced wholesale"))
+      (testing (str noun " patch validates its keys and 404s on a missing entity")
+        (assert-status 400 (patch admin-request id {"" "x"}))
+        (assert-status 404 (patch admin-request "00000000-0000-0000-0000-000000000000" {"a" "1"}))))))
 
 (deftest patch-emits-single-folded-update-audit-row
   (testing "a patch that changes metadata emits exactly ONE :documents audit

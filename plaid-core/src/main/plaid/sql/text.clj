@@ -325,51 +325,23 @@
 ;; Metadata
 ;; ============================================================
 
-(defn set-metadata
-  "Replace all metadata for the text."
-  [db eid metadata-map user-id]
-  (submit-operation!
-   [tx db {:type :text/set-metadata
-           :project (project-id db eid)
-           :document (:document_id (psc/fetch-by-id db :texts eid))
-           :description (str "Set metadata on text " eid
-                             " with " (count metadata-map) " keys")
-           :user user-id}]
-   (metadata/validate-entity-type! "text")
-   (when (nil? (psc/fetch-by-id tx :texts eid))
-     (throw (ex-info (psc/err-msg-not-found "Text" eid) {:code 404 :id eid})))
-   (metadata/replace-metadata! tx "text" eid metadata-map)
-   eid))
+(def ^:private metadata-fns
+  (metadata/metadata-fns {:table :texts
+                          :entity-type "text"
+                          :noun "text"
+                          :project-fn project-id
+                          :doc-id-fn (fn [db eid] (:document_id (psc/fetch-by-id db :texts eid)))}))
 
-(defn patch-metadata
-  "Shallow-merge a metadata patch on the text: keys present set/overwrite,
+(def ^{:doc "Replace all metadata for the text."
+       :arglists '([db eid metadata-map user-id])}
+  set-metadata (:set-metadata metadata-fns))
+
+(def ^{:doc "Shallow-merge a metadata patch on the text: keys present set/overwrite,
   a null value deletes that key, omitted keys are untouched. See
   `plaid.sql.metadata/patch-metadata!`."
-  [db eid patch user-id]
-  (submit-operation!
-   [tx db {:type :text/patch-metadata
-           :project (project-id db eid)
-           :document (:document_id (psc/fetch-by-id db :texts eid))
-           :description (str "Patch metadata on text " eid
-                             " with " (count patch) " keys")
-           :user user-id}]
-   (metadata/validate-entity-type! "text")
-   (when (nil? (psc/fetch-by-id tx :texts eid))
-     (throw (ex-info (psc/err-msg-not-found "Text" eid) {:code 404 :id eid})))
-   (metadata/patch-metadata! tx "text" eid patch)
-   eid))
+       :arglists '([db eid patch user-id])}
+  patch-metadata (:patch-metadata metadata-fns))
 
-(defn delete-metadata
-  "Remove all metadata from the text."
-  [db eid user-id]
-  (submit-operation!
-   [tx db {:type :text/delete-metadata
-           :project (project-id db eid)
-           :document (:document_id (psc/fetch-by-id db :texts eid))
-           :description (str "Delete all metadata from text " eid)
-           :user user-id}]
-   (metadata/validate-entity-type! "text")
-   (when (nil? (psc/fetch-by-id tx :texts eid))
-     (throw (ex-info (psc/err-msg-not-found "Text" eid) {:code 404 :id eid})))
-   (metadata/delete-metadata! tx "text" eid)
-   eid))
+(def ^{:doc "Remove all metadata from the text."
+       :arglists '([db eid user-id])}
+  delete-metadata (:delete-metadata metadata-fns))

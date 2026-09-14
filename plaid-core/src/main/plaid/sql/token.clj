@@ -1178,21 +1178,16 @@
 ;; Metadata
 ;; ============================================================
 
-(defn set-metadata
-  "Replace all metadata on a token."
-  [db eid metadata-map user-id]
-  (submit-operation!
-   [tx db {:type :token/set-metadata
-           :project (project-id db eid)
-           :document (:document_id (psc/fetch-by-id db :tokens eid))
-           :description (str "Set metadata on token " eid
-                             " with " (count metadata-map) " keys")
-           :user user-id}]
-   (metadata/validate-entity-type! "token")
-   (when (nil? (psc/fetch-by-id tx :tokens eid))
-     (throw (ex-info (psc/err-msg-not-found "Token" eid) {:code 404 :id eid})))
-   (metadata/replace-metadata! tx "token" eid metadata-map)
-   eid))
+(def ^:private metadata-fns
+  (metadata/metadata-fns {:table :tokens
+                          :entity-type "token"
+                          :noun "token"
+                          :project-fn project-id
+                          :doc-id-fn (fn [db eid] (:document_id (psc/fetch-by-id db :tokens eid)))}))
+
+(def ^{:doc "Replace all metadata on a token."
+       :arglists '([db eid metadata-map user-id])}
+  set-metadata (:set-metadata metadata-fns))
 
 (def bulk-update-spec
   "The `plaid.sql.bulk/bulk-update!` spec for tokens. A token has no value
@@ -1212,38 +1207,15 @@
   [db items user-id]
   (bulk/bulk-update! db items user-id bulk-update-spec))
 
-(defn patch-metadata
-  "Shallow-merge a metadata patch on a token: keys present set/overwrite,
+(def ^{:doc "Shallow-merge a metadata patch on a token: keys present set/overwrite,
   a null value deletes that key, omitted keys are untouched. See
   `plaid.sql.metadata/patch-metadata!`."
-  [db eid patch user-id]
-  (submit-operation!
-   [tx db {:type :token/patch-metadata
-           :project (project-id db eid)
-           :document (:document_id (psc/fetch-by-id db :tokens eid))
-           :description (str "Patch metadata on token " eid
-                             " with " (count patch) " keys")
-           :user user-id}]
-   (metadata/validate-entity-type! "token")
-   (when (nil? (psc/fetch-by-id tx :tokens eid))
-     (throw (ex-info (psc/err-msg-not-found "Token" eid) {:code 404 :id eid})))
-   (metadata/patch-metadata! tx "token" eid patch)
-   eid))
+       :arglists '([db eid patch user-id])}
+  patch-metadata (:patch-metadata metadata-fns))
 
-(defn delete-metadata
-  "Remove all metadata from a token."
-  [db eid user-id]
-  (submit-operation!
-   [tx db {:type :token/delete-metadata
-           :project (project-id db eid)
-           :document (:document_id (psc/fetch-by-id db :tokens eid))
-           :description (str "Delete all metadata from token " eid)
-           :user user-id}]
-   (metadata/validate-entity-type! "token")
-   (when (nil? (psc/fetch-by-id tx :tokens eid))
-     (throw (ex-info (psc/err-msg-not-found "Token" eid) {:code 404 :id eid})))
-   (metadata/delete-metadata! tx "token" eid)
-   eid))
+(def ^{:doc "Remove all metadata from a token."
+       :arglists '([db eid user-id])}
+  delete-metadata (:delete-metadata metadata-fns))
 
 ;; ============================================================
 ;; Text-edit cascade compensator (called by plaid.sql.text)

@@ -48,10 +48,16 @@
     (add-metadata-to-response db core-attrs entity-type entity-id)
       Reader-side helper that mirrors the v2
       `metadata/add-metadata-to-response` contract: looks up metadata
-      and, if non-empty, assoc's it under :metadata on the response map."
-  (:require [clojure.string]
+      and, if non-empty, assoc's it under :metadata on the response map.
+
+    (metadata-fns spec)
+      => {:set-metadata f :patch-metadata f :delete-metadata f}
+      The three operation-level entry points every entity with metadata
+      exposes. See its docstring."
+  (:require [clojure.string :as str]
             [clojure.data.json]
-            [plaid.sql.common :as psc])
+            [plaid.sql.common :as psc]
+            [plaid.sql.operation :refer [submit-operation!]])
   (:refer-clojure :exclude [get]))
 
 (def ^:private valid-entity-types
@@ -314,3 +320,80 @@
     (if (seq m)
       (assoc core-attrs :metadata m)
       core-attrs)))
+
+;; ============================================================
+;; The set / patch / delete triplet, once
+;; ============================================================
+
+(defn metadata-fns
+  "Build the three operation-level metadata entry points for one entity
+  type. Every entity that carries metadata (span, relation, token, text,
+  document, vocab item, vocab link) exposes the same triplet: each opens
+  one operation, 404s if the parent row is gone, and calls the matching
+  `plaid.sql.metadata` mutator, which folds the transition into a
+  synthetic parent-row audit image.
+
+  Returns `{:set-metadata f :patch-metadata f :delete-metadata f}`, where
+  set/patch take `[db eid m user-id]` and delete takes `[db eid user-id]`.
+  All three return `eid` inside the operation's `{:success true}` envelope.
+
+  Spec:
+    :table        parent SQL table keyword, e.g. :spans
+    :entity-type  the metadata entity-type string, e.g. \"span\". Also the
+                  namespace of the op type (:span/set-metadata) — the two
+                  are the same string at every call site, so it has one home.
+    :noun         lowercase noun for the description and the 404, e.g.
+                  \"vocab item\"
+    :project-fn   optional (fn [db eid]) -> the op's :project (vocab items
+                  are project-less)
+    :doc-id-fn    optional (fn [db eid]) -> the op's :document (a document's
+                  own id, the parent's document_id, or nothing)
+    :after-fn     optional (fn [tx parent-row]) run inside the operation
+                  after the metadata write (vocab item touches its layer)"
+  [{:keys [table entity-type noun project-fn doc-id-fn after-fn]}]
+  (validate-entity-type! entity-type)
+  (let [not-found (str/capitalize noun)
+        op-type (fn [verb] (keyword entity-type verb))
+        ;; Fetch the parent row inside the tx: its absence is the 404, and
+        ;; :after-fn reads it (a vocab item needs its layer id).
+        parent! (fn [tx eid]
+                  (or (psc/fetch-by-id tx table eid)
+                      (throw (ex-info (psc/err-msg-not-found not-found eid) {:code 404 :id eid}))))
+        op-attrs (fn [db eid verb description user-id]
+                   {:type (op-type verb)
+                    :project (when project-fn (project-fn db eid))
+                    :document (when doc-id-fn (doc-id-fn db eid))
+                    :description description
+                    :user user-id})]
+    {:set-metadata
+     (fn [db eid metadata-map user-id]
+       (submit-operation!
+        [tx db (op-attrs db eid "set-metadata"
+                         (str "Set metadata on " noun " " eid " with " (count metadata-map) " keys")
+                         user-id)]
+        (let [row (parent! tx eid)]
+          (replace-metadata! tx entity-type eid metadata-map)
+          (when after-fn (after-fn tx row))
+          eid)))
+
+     :patch-metadata
+     (fn [db eid patch user-id]
+       (submit-operation!
+        [tx db (op-attrs db eid "patch-metadata"
+                         (str "Patch metadata on " noun " " eid " with " (count patch) " keys")
+                         user-id)]
+        (let [row (parent! tx eid)]
+          (patch-metadata! tx entity-type eid patch)
+          (when after-fn (after-fn tx row))
+          eid)))
+
+     :delete-metadata
+     (fn [db eid user-id]
+       (submit-operation!
+        [tx db (op-attrs db eid "delete-metadata"
+                         (str "Delete all metadata from " noun " " eid)
+                         user-id)]
+        (let [row (parent! tx eid)]
+          (delete-metadata! tx entity-type eid)
+          (when after-fn (after-fn tx row))
+          eid)))}))

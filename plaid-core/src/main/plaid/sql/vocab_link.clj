@@ -406,54 +406,23 @@
 ;; Metadata
 ;; ============================================================
 
-(defn set-metadata
-  "Replace all metadata on a vocab-link."
-  [db eid metadata-map user-id]
-  (metadata/validate-entity-type! "vocab-link")
-  (submit-operation!
-   [tx db {:type :vocab-link/set-metadata
-           :project (project-id db eid)
-           :document (:document_id (psc/fetch-by-id db :vocab_links eid))
-           :description (str "Set metadata on vocab link " eid
-                             " with " (count metadata-map) " keys")
-           :user user-id}]
-   (when (nil? (psc/fetch-by-id tx :vocab_links eid))
-     (throw (ex-info (psc/err-msg-not-found "Vocab link" eid)
-                     {:code 404 :id eid})))
-   (metadata/replace-metadata! tx "vocab-link" eid metadata-map)
-   eid))
+(def ^:private metadata-fns
+  (metadata/metadata-fns {:table :vocab_links
+                          :entity-type "vocab-link"
+                          :noun "vocab link"
+                          :project-fn project-id
+                          :doc-id-fn (fn [db eid] (:document_id (psc/fetch-by-id db :vocab_links eid)))}))
 
-(defn patch-metadata
-  "Shallow-merge a metadata patch on a vocab-link: keys present set/overwrite,
+(def ^{:doc "Replace all metadata on a vocab-link."
+       :arglists '([db eid metadata-map user-id])}
+  set-metadata (:set-metadata metadata-fns))
+
+(def ^{:doc "Shallow-merge a metadata patch on a vocab-link: keys present set/overwrite,
   a null value deletes that key, omitted keys are untouched. See
   `plaid.sql.metadata/patch-metadata!`."
-  [db eid patch user-id]
-  (metadata/validate-entity-type! "vocab-link")
-  (submit-operation!
-   [tx db {:type :vocab-link/patch-metadata
-           :project (project-id db eid)
-           :document (:document_id (psc/fetch-by-id db :vocab_links eid))
-           :description (str "Patch metadata on vocab link " eid
-                             " with " (count patch) " keys")
-           :user user-id}]
-   (when (nil? (psc/fetch-by-id tx :vocab_links eid))
-     (throw (ex-info (psc/err-msg-not-found "Vocab link" eid)
-                     {:code 404 :id eid})))
-   (metadata/patch-metadata! tx "vocab-link" eid patch)
-   eid))
+       :arglists '([db eid patch user-id])}
+  patch-metadata (:patch-metadata metadata-fns))
 
-(defn delete-metadata
-  "Remove all metadata from a vocab-link."
-  [db eid user-id]
-  (metadata/validate-entity-type! "vocab-link")
-  (submit-operation!
-   [tx db {:type :vocab-link/delete-metadata
-           :project (project-id db eid)
-           :document (:document_id (psc/fetch-by-id db :vocab_links eid))
-           :description (str "Delete all metadata from vocab link " eid)
-           :user user-id}]
-   (when (nil? (psc/fetch-by-id tx :vocab_links eid))
-     (throw (ex-info (psc/err-msg-not-found "Vocab link" eid)
-                     {:code 404 :id eid})))
-   (metadata/delete-metadata! tx "vocab-link" eid)
-   eid))
+(def ^{:doc "Remove all metadata from a vocab-link."
+       :arglists '([db eid user-id])}
+  delete-metadata (:delete-metadata metadata-fns))

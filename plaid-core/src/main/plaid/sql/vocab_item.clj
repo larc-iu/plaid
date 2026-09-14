@@ -284,57 +284,25 @@
 ;; Metadata
 ;; ============================================================
 
-(defn set-metadata
-  "Replace all metadata on the vocab item with metadata-map."
-  [db eid metadata-map user-id]
-  (submit-operation! [tx db {:type :vocab-item/set-metadata
-                             :project nil
-                             :document nil
-                             :description (str "Set metadata on vocab item " eid
-                                               " with " (count metadata-map) " keys")
-                             :user user-id}]
-                     (metadata/validate-entity-type! "vocab-item")
-                     (let [existing (psc/fetch-by-id tx :vocab_items eid)]
-                       (when (nil? existing)
-                         (throw (ex-info (psc/err-msg-not-found "Vocab item" eid)
-                                         {:code 404 :id eid})))
-                       (metadata/replace-metadata! tx "vocab-item" eid metadata-map)
-                       (op/touch-vocab-layer! tx (:vocab_layer_id existing))
-                       eid)))
+(def ^:private metadata-fns
+  ;; A vocab item has no project and no document: its vocabulary is global,
+  ;; granted to projects. Its layer is touched after every metadata write so
+  ;; readers see the vocabulary change.
+  (metadata/metadata-fns {:table :vocab_items
+                          :entity-type "vocab-item"
+                          :noun "vocab item"
+                          :after-fn (fn [tx row] (op/touch-vocab-layer! tx (:vocab_layer_id row)))}))
 
-(defn patch-metadata
-  "Shallow-merge a metadata patch on the vocab item: keys present set/overwrite,
+(def ^{:doc "Replace all metadata on the vocab item with metadata-map."
+       :arglists '([db eid metadata-map user-id])}
+  set-metadata (:set-metadata metadata-fns))
+
+(def ^{:doc "Shallow-merge a metadata patch on the vocab item: keys present set/overwrite,
   a null value deletes that key, omitted keys are untouched. See
   `plaid.sql.metadata/patch-metadata!`."
-  [db eid patch user-id]
-  (submit-operation! [tx db {:type :vocab-item/patch-metadata
-                             :project nil
-                             :document nil
-                             :description (str "Patch metadata on vocab item " eid
-                                               " with " (count patch) " keys")
-                             :user user-id}]
-                     (metadata/validate-entity-type! "vocab-item")
-                     (let [existing (psc/fetch-by-id tx :vocab_items eid)]
-                       (when (nil? existing)
-                         (throw (ex-info (psc/err-msg-not-found "Vocab item" eid)
-                                         {:code 404 :id eid})))
-                       (metadata/patch-metadata! tx "vocab-item" eid patch)
-                       (op/touch-vocab-layer! tx (:vocab_layer_id existing))
-                       eid)))
+       :arglists '([db eid patch user-id])}
+  patch-metadata (:patch-metadata metadata-fns))
 
-(defn delete-metadata
-  "Remove all metadata for the vocab item."
-  [db eid user-id]
-  (submit-operation! [tx db {:type :vocab-item/delete-metadata
-                             :project nil
-                             :document nil
-                             :description (str "Delete all metadata from vocab item " eid)
-                             :user user-id}]
-                     (metadata/validate-entity-type! "vocab-item")
-                     (let [existing (psc/fetch-by-id tx :vocab_items eid)]
-                       (when (nil? existing)
-                         (throw (ex-info (psc/err-msg-not-found "Vocab item" eid)
-                                         {:code 404 :id eid})))
-                       (metadata/delete-metadata! tx "vocab-item" eid)
-                       (op/touch-vocab-layer! tx (:vocab_layer_id existing))
-                       eid)))
+(def ^{:doc "Remove all metadata for the vocab item."
+       :arglists '([db eid user-id])}
+  delete-metadata (:delete-metadata metadata-fns))
